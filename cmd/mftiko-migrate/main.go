@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/BullionBear/mftiko/internal/buildinfo"
+	"github.com/BullionBear/mftiko/internal/logger"
 	"github.com/BullionBear/mftiko/migrations"
 )
 
@@ -18,10 +19,11 @@ func main() {
 	database := flag.String("database", os.Getenv("DATABASE_URL"), "PostgreSQL URL (default $DATABASE_URL)")
 	flag.Parse()
 	if *version {
-		fmt.Println(buildinfo.Version)
+		fmt.Println(buildinfo.String())
 		return
 	}
 	_, _ = database, migrations.FS
-	fmt.Fprintln(os.Stderr, "mftiko-migrate: not implemented")
+	log := logger.New("mftiko-migrate")
+	log.Error().Msg("not implemented")
 	os.Exit(1)
 }

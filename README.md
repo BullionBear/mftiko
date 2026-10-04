@@ -53,6 +53,15 @@ docs/                     DECISIONS.md, PROTOCOL.md
 
 Requires Go 1.24+, Node 22+ and npm; Docker only for `make db-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`.
 
+## Logging and build identity
+
+Every binary logs through `internal/logger` (zerolog): JSON, one object per line, on stderr. Each line carries `component`, `version` and `commit`.
+
+- `MFTIKO_LOG_LEVEL`: `trace`, `debug`, `info` (default), `warn`, `error`.
+- `MFTIKO_LOG_FORMAT=console`: human-readable output for local development.
+
+`make build` stamps `internal/buildinfo` with the version (`git describe`, matching `vX.Y.Z` tags), the short commit hash and the UTC build time. Every binary prints them with `-version`.
+
 ## Other languages
 
 The platform ships only the Go SDK. A strategy in another language works if its SDK follows PROTOCOL §9 and passes `mftiko-conformance` (DECISIONS D19).

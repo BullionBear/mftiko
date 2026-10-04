@@ -3,9 +3,17 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := all
 
-GO       ?= go
-VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS  := -X github.com/BullionBear/mftiko/internal/buildinfo.Version=$(VERSION)
+GO      ?= go
+PACKAGE := github.com/BullionBear/mftiko
+
+VERSION := $(shell git describe --tags --always --dirty --match='v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || echo "dev")
+COMMIT_HASH := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+# -u: UTC, avoid builder timezone skew
+BUILD_TIMESTAMP := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+LDFLAGS := -X '$(PACKAGE)/internal/buildinfo.Version=$(VERSION)' \
+           -X '$(PACKAGE)/internal/buildinfo.CommitHash=$(COMMIT_HASH)' \
+           -X '$(PACKAGE)/internal/buildinfo.BuildTime=$(BUILD_TIMESTAMP)'
 
 BIN      := bin
 TOOLS    := $(abspath $(BIN)/tools)
@@ -54,10 +62,10 @@ proto-breaking: web-install ## buf breaking against main: compatible changes onl
 # ---------- Go ----------
 
 build: ## Build every command into bin/
-	$(GO) build -ldflags '$(LDFLAGS)' -o $(BIN)/ ./cmd/...
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/ ./cmd/...
 
 examples: ## Build the example strategies into bin/examples/
-	$(GO) build -ldflags '$(LDFLAGS)' -o $(BIN)/examples/ ./examples/strategies/...
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/examples/ ./examples/strategies/...
 
 test: ## go test
 	$(GO) test ./...

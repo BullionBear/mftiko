@@ -9,15 +9,17 @@ import (
 	"os"
 
 	"github.com/BullionBear/mftiko/internal/buildinfo"
+	"github.com/BullionBear/mftiko/internal/logger"
 )
 
 func main() {
 	version := flag.Bool("version", false, "print the release and exit")
 	flag.Parse()
 	if *version {
-		fmt.Println(buildinfo.Version)
+		fmt.Println(buildinfo.String())
 		return
 	}
-	fmt.Fprintln(os.Stderr, "mftiko-td-agent: not implemented")
+	log := logger.New("mftiko-td-agent")
+	log.Error().Msg("not implemented")
 	os.Exit(1)
 }
