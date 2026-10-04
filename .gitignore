@@ -31,3 +31,8 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# mftiko build outputs and generated code (make proto / make build / make web)
+/bin/
+/gen/
+/web/src/lib/gen/

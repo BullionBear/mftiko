@@ -1,0 +1,71 @@
+// Source of truth: docs/PROTOCOL.md. Keep the two in sync.
+syntax = "proto3";
+
+package mftiko.mdctl.v1;
+
+import "mftiko/common/v1/common.proto";
+
+option go_package = "github.com/BullionBear/mftiko/gen/mftiko/mdctl/v1;mdctlv1";
+
+message InitPayload {
+  string venue = 1;
+  string route = 2; // 由 adapter 依 channel 推得（D26）
+  uint32 n = 3;
+  string md_instance = 4;
+  reserved 5; // 原本的 tape_url：tape 在 worker 記憶體（D21）
+  reserved "tape_url";
+  // 實際連線的 URL。host 由 MD instance 的設定選：預設，或交易所提供的替代 endpoint（D26）。換 URL 要換 incarnation。
+  string url = 6;
+}
+
+// Start 沒有 payload：連上 websocket，等第一份 Desired。
+message StartPayload {}
+
+message Command {
+  oneof cmd {
+    Desired desired = 1;
+  }
+}
+
+// 這條連線上該有的 atom，完整清單。
+message Desired {
+  mftiko.common.v1.Version version = 1;
+  repeated AtomAssignment atoms = 2;
+}
+
+message AtomAssignment {
+  string atom_id = 1;
+  repeated string feeds = 2; // 這個 atom 要發佈的 feed（atom → 事件 1:N）
+  bool record = 3;           // 錄 tape；MD agent 依 topic 推導（D21）
+}
+
+message Report {
+  mftiko.common.v1.Version applied = 1;
+  uint64 conn_epoch = 2; // 每次重連 +1
+  ConnState state = 3;
+  string reason = 4;
+  repeated AtomStatus atoms = 5;
+  double msg_rate = 6;
+}
+
+enum ConnState {
+  CONN_STATE_UNSPECIFIED = 0;
+  CONN_STATE_CONNECTING = 1;
+  CONN_STATE_LIVE = 2;
+  CONN_STATE_DOWN = 3;
+}
+
+message AtomStatus {
+  string atom_id = 1;
+  AtomState state = 2;
+  int64 first_msg_at_ns = 3;
+  int64 last_msg_at_ns = 4;
+  string error = 5;
+}
+
+enum AtomState {
+  ATOM_STATE_UNSPECIFIED = 0;
+  ATOM_STATE_PENDING = 1;
+  ATOM_STATE_SUBSCRIBED = 2; // 交易所已 ack
+  ATOM_STATE_ERROR = 3;
+}

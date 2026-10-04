@@ -1,0 +1,11 @@
+# buf v2 workspace. Protos live under proto/; packages are mftiko.<contract>.v<major> (PROTOCOL §1).
+version: v2
+modules:
+  - path: proto
+lint:
+  use:
+    - STANDARD
+breaking:
+  # Each contract evolves compatibly within a major (PROTOCOL §1). CI runs `make proto-breaking`.
+  use:
+    - FILE

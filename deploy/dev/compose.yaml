@@ -1,0 +1,16 @@
+# Local development only: `make db-up`, then `make migrate-up`.
+# No password: trust auth, with the port bound to 127.0.0.1 so nothing outside this machine can connect.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: mftiko
+      POSTGRES_DB: mftiko
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
