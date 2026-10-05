@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/BullionBear/mftiko/internal/exchange"
+	"github.com/BullionBear/mftiko/internal/symbol"
 )
 
 // history reads /api/v5/trade/fills-history, newest first: HistoryTraits.Descending (D20).
@@ -18,6 +19,6 @@ func (h *history) Fills(context.Context, exchange.FillQuery) (*exchange.FillPage
 	return nil, exchange.ErrNotImplemented
 }
 
-func (h *history) Order(context.Context, exchange.Symbol, string) (*exchange.OrderUpdate, error) {
+func (h *history) Order(context.Context, *symbol.Info, string) (*exchange.OrderUpdate, error) {
 	return nil, exchange.ErrNotImplemented
 }

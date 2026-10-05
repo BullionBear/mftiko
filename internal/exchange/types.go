@@ -1,20 +1,10 @@
 package exchange
 
-// Symbol is an instrument as the venue names it.
-//
-// Category is the <Category> token of UniversalTicker (D11). Most venues could do without it, but on
-// a unified-account venue the native name alone is ambiguous: Bybit's spot and linear BTCUSDT are
-// both "BTCUSDT".
-type Symbol struct {
-	Category string
-	Native   string
-}
-
 // Topic is a platform market-data topic: the <topic> of a feed key <topic>.<UniversalTicker> and of
 // the md.f subject (D12). A topic cannot contain '.', it is one NATS subject token.
 type Topic string
 
-// Platform topics. PROTOCOL has no topic table yet (DECISIONS Q19); these follow the names in D12, D21.
+// Platform topics (PROTOCOL §2), mftik's names plus orderbook_delta and mark_price.
 const (
 	TopicBestQuote      Topic = "bestquote"
 	TopicTrade          Topic = "trade"
@@ -23,15 +13,17 @@ const (
 	TopicOrderBookDelta Topic = "orderbook_delta"
 	TopicTicker         Topic = "ticker"
 	TopicLiquidation    Topic = "liquidation"
-	TopicFundingRate    Topic = "fundingrate"
-	TopicOpenInterest   Topic = "openinterest"
+	TopicFundingRate    Topic = "funding_rate"
+	TopicOpenInterest   Topic = "open_interest"
 	TopicGreeks         Topic = "greeks"
-	TopicMarkPrice      Topic = "markprice"
+	TopicMarkPrice      Topic = "mark_price"
 )
 
-// KlineTopic returns the topic of a kline feed, "kline_" + the canonical interval (1m, 4h, 1mo, as in
-// md.fetch). Provisional until Q19 is settled.
-func KlineTopic(interval string) Topic { return Topic("kline_" + interval) }
+// KlinePrefix: a feed key is only <topic>.<ticker>, so a kline's interval rides in the topic,
+// "kline_" + the canonical interval (1m, 4h, 1mo, as in md.fetch): kline_1m.Binance_Spot_BTCUSDT.
+const KlinePrefix = "kline_"
+
+func KlineTopic(interval string) Topic { return Topic(KlinePrefix + interval) }
 
 // TopicCaps is one row of a venue's capability table (D12): the topic is supported, and these
 // optional fields of its event are never filled on this venue.

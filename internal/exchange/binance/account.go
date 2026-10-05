@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/BullionBear/mftiko/internal/exchange"
+	"github.com/BullionBear/mftiko/internal/symbol"
 )
 
 func accountFactory(p product) exchange.AccountFactory {
@@ -43,7 +44,7 @@ func (a *account) Snapshot(context.Context) (*exchange.AccountSnapshot, error) {
 	return nil, exchange.ErrNotImplemented
 }
 
-func (a *account) Leverage(context.Context, exchange.Symbol) (string, error) {
+func (a *account) Leverage(context.Context, *symbol.Info) (string, error) {
 	return "", exchange.ErrNotImplemented
 }
 
@@ -52,6 +53,6 @@ func (a *account) NewStream() (exchange.PrivateStream, error) {
 }
 
 // ArmCancelOnDisconnect: countdownCancelAll, per symbol (futures only).
-func (a *account) ArmCancelOnDisconnect(context.Context, time.Duration, []exchange.Symbol) error {
+func (a *account) ArmCancelOnDisconnect(context.Context, time.Duration, []*symbol.Info) error {
 	return exchange.ErrNotImplemented
 }

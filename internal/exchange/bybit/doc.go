@@ -7,8 +7,8 @@
 //   - Routes: "spot", "linear", "inverse", "option" (/v5/public/<category>). Spread trading has its
 //     own path too and is not modeled yet. Private data is on /v5/private, after auth.
 //   - The same channel string exists on several routes: "publicTrade.BTCUSDT" is both a spot and a
-//     linear atom. That is why exchange.AtomRef carries Route, and why the atom id `<venue>:<channel>`
-//     (PROTOCOL §2) is ambiguous here (DECISIONS Q18).
+//     linear atom. The route comes from the resolved instrument's category, and it is part of the
+//     atom id <venue>:<route>:<channel> (D31).
 //   - Capacity is characters, not streams: the args of one public connection may total at most
 //     21,000 characters. Cost is len(channel), Budget is 21000.
 //   - Spot takes at most 10 args per subscribe request (SessionLimits.PerRequest); options at most

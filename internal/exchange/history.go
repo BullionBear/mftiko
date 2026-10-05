@@ -3,6 +3,8 @@ package exchange
 import (
 	"context"
 	"time"
+
+	"github.com/BullionBear/mftiko/internal/symbol"
 )
 
 // HistoryFactory builds a History for one api_id. The TD agent calls it for backfill without
@@ -14,13 +16,15 @@ type HistoryFactory func(cfg AccountConfig) (History, error)
 type History interface {
 	Traits() HistoryTraits
 
-	// Fills reads one page of the account's fills on one symbol. Continue with FillPage.Next while
-	// catching up; once caught up, the job re-reads from the confirmed line by time (D20).
+	// Fills reads one page of the account's fills on one instrument. A backfill scope is
+	// (api_id, UniversalTicker) (D20); the job resolves it and passes the Info. Continue with
+	// FillPage.Next while catching up; once caught up, the job re-reads from the confirmed line by
+	// time (D20).
 	Fills(ctx context.Context, q FillQuery) (*FillPage, error)
 
 	// Order looks up one order by venue id. The job asks for every order_id that has fills but no
 	// terminal row in orders yet, and stores it once terminal with filled_qty > 0 (D20).
-	Order(ctx context.Context, sym Symbol, orderID string) (*OrderUpdate, error)
+	Order(ctx context.Context, inst *symbol.Info, orderID string) (*OrderUpdate, error)
 }
 
 // HistoryTraits tell the backfill job how to walk a venue's history.
@@ -41,12 +45,12 @@ type HistoryTraits struct {
 
 // FillQuery is one page request: Cursor, or FromID, or StartNs and EndNs.
 type FillQuery struct {
-	Symbol  Symbol
-	Cursor  string // FillPage.Next of the previous page
-	FromID  string
-	StartNs int64
-	EndNs   int64
-	Limit   int
+	Instrument *symbol.Info
+	Cursor     string // FillPage.Next of the previous page
+	FromID     string
+	StartNs    int64
+	EndNs      int64
+	Limit      int
 }
 
 type FillPage struct {

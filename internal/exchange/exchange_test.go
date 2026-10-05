@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/rs/zerolog"
+
+	"github.com/BullionBear/mftiko/internal/symbol"
 )
 
 func TestCredentialsNeverFormat(t *testing.T) {
@@ -34,15 +36,20 @@ func TestCredentialsNeverFormat(t *testing.T) {
 }
 
 func TestRegistryRejectsDuplicates(t *testing.T) {
-	a := []Venue{{Name: "X", Exchange: "a"}}
-	b := []Venue{{Name: "X", Exchange: "b"}}
+	x := symbol.Venue{Name: "X", Categories: []symbol.Category{symbol.Spot}}
+	w := symbol.Venue{Name: "W", Categories: []symbol.Category{symbol.Perp}}
+	a := []Venue{{Venue: x, Exchange: "a"}}
+	b := []Venue{{Venue: x, Exchange: "b"}}
 	if _, err := NewRegistry(a, b); err == nil {
 		t.Fatal("duplicate venue accepted")
 	}
 	if _, err := NewRegistry([]Venue{{Exchange: "a"}}); err == nil {
 		t.Fatal("unnamed venue accepted")
 	}
-	r, err := NewRegistry(a, []Venue{{Name: "W", Exchange: "b"}})
+	if _, err := NewRegistry([]Venue{{Venue: symbol.Venue{Name: "Y"}, Exchange: "a"}}); err == nil {
+		t.Fatal("venue without categories accepted")
+	}
+	r, err := NewRegistry(a, []Venue{{Venue: w, Exchange: "b"}})
 	if err != nil {
 		t.Fatal(err)
 	}

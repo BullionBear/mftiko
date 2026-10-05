@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/BullionBear/mftiko/internal/exchange"
+	"github.com/BullionBear/mftiko/internal/symbol"
 )
 
 func historyFactory(p product) exchange.HistoryFactory {
@@ -27,6 +28,6 @@ func (h *history) Fills(context.Context, exchange.FillQuery) (*exchange.FillPage
 	return nil, exchange.ErrNotImplemented
 }
 
-func (h *history) Order(context.Context, exchange.Symbol, string) (*exchange.OrderUpdate, error) {
+func (h *history) Order(context.Context, *symbol.Info, string) (*exchange.OrderUpdate, error) {
 	return nil, exchange.ErrNotImplemented
 }

@@ -5,8 +5,9 @@
 //
 // An exchange package (binance, okx, bybit) is a unit of code. It declares one or more venues.
 // A venue is one connection plus one credential (DECISIONS D26): Binance declares Binance, BinanceUM,
-// BinanceCM, BinanceEO and BinancePM. The venue name is the <Venue> token of UniversalTicker (D11).
-// Registry maps venue names to adapters; package all builds the registry of every exchange.
+// BinanceCM, BinanceEO and BinancePM. Each venue's symbol.Venue is its entry in the venue registry
+// (D11): the <Venue> token of UniversalTicker and the categories it trades. Registry maps venue
+// names to adapters; package all builds the registry of every exchange.
 //
 // # Who calls what
 //
@@ -15,7 +16,7 @@
 //	MD conn worker               Market.Session, BookSync,         D21, D24
 //	                             PublicREST.Depth (in process)
 //	md.fetch                     PublicREST: Klines, OpenInterest  D21
-//	SYM                          PublicREST.Instruments            D11
+//	SYM                          PublicREST.Listing                D11
 //	TD account worker            Account, PrivateStream            D25, D27
 //	TD agent (backfill)          History                           D20
 //
@@ -25,8 +26,11 @@
 //
 //   - Decimals are strings exactly as the venue sent them. No float64 anywhere.
 //   - Times are int64 unix nanoseconds, fields end in Ns.
-//   - Symbols in and out are venue-native (Symbol). Translating to and from UniversalTicker is a
-//     table lookup in the SymbolResolver (D11), done by the caller, never string surgery here.
+//   - Instruments go in resolved and come out venue-named (D31). The platform names an instrument
+//     by UniversalTicker, a placeholder: the caller resolves it through SYM (symbol.Resolver.Get)
+//     and hands the adapter the *symbol.Info, so adapters never call SYM and never derive a venue
+//     spelling from a ticker. What the venue sends back carries a symbol.ExchKey, which the caller
+//     turns into a UniversalTicker with symbol.Resolver.Reverse.
 //   - Fill.FillID is the venue's trade id and must be identical on the private stream and in
 //     History (D20): the database deduplicates on (api_id, fill_id).
 //   - Event pointers passed to a Sink are valid only for the duration of the call.

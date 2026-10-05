@@ -1,6 +1,9 @@
 package bybit
 
-import "github.com/BullionBear/mftiko/internal/exchange"
+import (
+	"github.com/BullionBear/mftiko/internal/exchange"
+	"github.com/BullionBear/mftiko/internal/symbol"
+)
 
 type market struct{}
 
@@ -8,9 +11,10 @@ var _ exchange.Market = (*market)(nil)
 
 func (m *market) Topics() []exchange.TopicCaps { return nil }
 
-// Atom: Route is the Symbol's category, Channel the Bybit topic verbatim ("publicTrade.BTCUSDT",
-// "orderbook.50.BTCUSDT").
-func (m *market) Atom(exchange.Topic, exchange.Symbol) (exchange.AtomRef, error) {
+// Atom: the route comes from the resolved category (Spot -> spot, Perp and Future -> linear,
+// Inverse -> inverse, Option -> option), the channel is the Bybit topic verbatim with the
+// instrument's ExchTicker ("publicTrade.BTCUSDT", "orderbook.50.BTCUSDT").
+func (m *market) Atom(exchange.Topic, *symbol.Info) (exchange.AtomRef, error) {
 	return exchange.AtomRef{}, exchange.ErrNotImplemented
 }
 

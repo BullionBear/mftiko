@@ -9,7 +9,7 @@ option go_package = "github.com/BullionBear/mftiko/gen/mftiko/mdctl/v1;mdctlv1";
 
 message InitPayload {
   string venue = 1;
-  string route = 2; // 由 adapter 依 channel 推得（D26）
+  string route = 2; // 由 adapter 從解析後的商品推得（D26、D31）
   uint32 n = 3;
   string md_instance = 4;
   reserved 5; // 原本的 tape_url：tape 在 worker 記憶體（D21）

@@ -3,12 +3,15 @@ package exchange
 import (
 	"fmt"
 	"sort"
+
+	"github.com/BullionBear/mftiko/internal/symbol"
 )
 
-// Venue is one venue's adapter. A nil part means the venue does not have it.
+// Venue is one venue's registry entry (D11, D26) and its adapter. A nil part means the venue does
+// not have it.
 type Venue struct {
-	Name     string // UniversalTicker's <Venue> token, e.g. "BinanceUM"
-	Exchange string // the exchange package that declares it, e.g. "binance"
+	symbol.Venue        // Name, Categories, key types: what Resolve and the API check against
+	Exchange     string // the exchange package that declares it, e.g. "binance"
 
 	Market  Market     // public websocket market data
 	REST    PublicREST // public REST reader
@@ -16,7 +19,8 @@ type Venue struct {
 	History HistoryFactory
 }
 
-// Registry maps venue names to adapters. Built once at startup, read-only after.
+// Registry maps venue names to adapters. Built once at startup, read-only after. It is also the
+// venue registry symbol.Resolve checks user input against.
 type Registry struct {
 	byName map[string]Venue
 }
@@ -26,8 +30,8 @@ func NewRegistry(sets ...[]Venue) (*Registry, error) {
 	r := &Registry{byName: map[string]Venue{}}
 	for _, set := range sets {
 		for _, v := range set {
-			if v.Name == "" {
-				return nil, fmt.Errorf("exchange: %s declares a venue without a name", v.Exchange)
+			if v.Name == "" || len(v.Categories) == 0 {
+				return nil, fmt.Errorf("exchange: %s declares a venue without a name or categories", v.Exchange)
 			}
 			if prev, dup := r.byName[v.Name]; dup {
 				return nil, fmt.Errorf("exchange: venue %s declared by both %s and %s", v.Name, prev.Exchange, v.Exchange)
@@ -42,6 +46,14 @@ func (r *Registry) Venue(name string) (Venue, bool) {
 	v, ok := r.byName[name]
 	return v, ok
 }
+
+// Lookup implements symbol.Venues.
+func (r *Registry) Lookup(name string) (symbol.Venue, bool) {
+	v, ok := r.byName[name]
+	return v.Venue, ok
+}
+
+var _ symbol.Venues = (*Registry)(nil)
 
 // Names returns every venue name, sorted.
 func (r *Registry) Names() []string {

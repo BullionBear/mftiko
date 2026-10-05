@@ -24,6 +24,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-conformance      SDK conformance suite
 internal/                 platform packages (agent skeleton, planes, shim, workers, state, ...)
   exchange/               exchange adapters: interfaces, registry; one package per exchange (binance, okx, bybit)
+  symbol/                 UniversalTicker, venue registry, SYM client (resolve before calling an adapter)
 sdk/                      Go strategy SDK, the reference implementation of PROTOCOL §9
 examples/strategies/      hello, tape-keeper
 proto/mftiko/<pkg>/v1/    protobuf contracts; source of truth is docs/PROTOCOL.md

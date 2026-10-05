@@ -3,6 +3,8 @@ package exchange
 import (
 	"context"
 	"time"
+
+	"github.com/BullionBear/mftiko/internal/symbol"
 )
 
 // AccountConfig is what the TD account worker (or the TD agent, for History) builds an adapter from.
@@ -20,6 +22,10 @@ type AccountFactory func(cfg AccountConfig) (Account, error)
 
 // Account is a venue's private trading interface for one api_id, owned by the TD account worker.
 // Safe for concurrent use: the worker's HTTP pool calls it from several goroutines.
+//
+// Instruments go in resolved (*symbol.Info, from the order's UniversalTicker, cached by the worker)
+// and come out as the venue names them (symbol.ExchKey); the worker maps them back with
+// symbol.Resolver.Reverse (D31).
 //
 // It knows nothing about algo_id (D25). The worker checks algo ownership, and translates
 // BatchCancel(algo_id) by filtering its OMS for open orders whose client_order_id carries that algo,
@@ -41,7 +47,7 @@ type Account interface {
 	Snapshot(ctx context.Context) (*AccountSnapshot, error)
 
 	// Leverage answers td.view's EnsureLeverage.
-	Leverage(ctx context.Context, sym Symbol) (string, error)
+	Leverage(ctx context.Context, inst *symbol.Info) (string, error)
 
 	// NewStream returns the private websocket codec for one connection.
 	NewStream() (PrivateStream, error)
@@ -55,14 +61,16 @@ type AccountLimits struct {
 }
 
 // CancelOnDisconnect is implemented by venues with a dead-man switch, used for
-// AccountSettings.cancel_on_disconnect_s. syms is ignored by venues whose switch is account-wide;
+// AccountSettings.cancel_on_disconnect_s. insts is ignored by venues whose switch is account-wide;
 // Binance's is per symbol.
 type CancelOnDisconnect interface {
-	ArmCancelOnDisconnect(ctx context.Context, timeout time.Duration, syms []Symbol) error
+	ArmCancelOnDisconnect(ctx context.Context, timeout time.Duration, insts []*symbol.Info) error
 }
 
+// OrderRequest carries the resolved instrument: ExchTicker for the wire, filters for the worker's
+// checks before sending.
 type OrderRequest struct {
-	Symbol        Symbol
+	Instrument    *symbol.Info
 	Side          Side
 	Type          OrderType
 	TIF           TimeInForce
@@ -84,7 +92,7 @@ type OrderResult struct {
 // CancelRef names an order. Either id is enough; the platform always has ClientOrderID for its own
 // orders (D25).
 type CancelRef struct {
-	Symbol        Symbol
+	Instrument    *symbol.Info
 	OrderID       string
 	ClientOrderID string
 }
@@ -98,9 +106,9 @@ type AccountSnapshot struct {
 	AsOfNs     int64
 }
 
-// OrderUpdate follows td.v1.Order.
+// OrderUpdate follows td.v1.Order, with the instrument as the venue names it.
 type OrderUpdate struct {
-	Symbol        Symbol
+	Exch          symbol.ExchKey
 	OrderID       string
 	ClientOrderID string
 	Side          Side
@@ -117,7 +125,7 @@ type OrderUpdate struct {
 
 // Fill follows td.v1.Fill. FillID must be the same value here and in History (D20).
 type Fill struct {
-	Symbol        Symbol
+	Exch          symbol.ExchKey
 	FillID        string
 	OrderID       string
 	ClientOrderID string // "" when the venue does not send it (REST history usually does not)
@@ -136,7 +144,7 @@ type Balance struct {
 }
 
 type Position struct {
-	Symbol        Symbol
+	Exch          symbol.ExchKey
 	Size          string // signed: negative is short
 	EntryPrice    string
 	MarkPrice     string

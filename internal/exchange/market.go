@@ -1,6 +1,10 @@
 package exchange
 
-import "time"
+import (
+	"time"
+
+	"github.com/BullionBear/mftiko/internal/symbol"
+)
 
 // RouteDefault is the route of a venue whose public data all lives on one websocket path (PROTOCOL §2).
 const RouteDefault = "default"
@@ -13,11 +17,14 @@ type Market interface {
 	// Topics is the capability table (D12). A topic missing here is unsupported on this venue.
 	Topics() []TopicCaps
 
-	// Atom maps a feed to its atom, always 1:1 on one venue (D12): the venue channel to subscribe and
-	// the route (websocket path) it lives on (D26). orderbook and orderbook_delta map to the same atom
-	// (D21). Returns ErrUnsupported when the venue does not push this topic: the lease item becomes
-	// REJECTED (PROTOCOL §3.5), and query-only values go to md.fetch instead.
-	Atom(topic Topic, sym Symbol) (AtomRef, error)
+	// Atom maps a feed to its atom (D12, D31). The feed's UniversalTicker is only a placeholder: the
+	// caller resolves it through SYM first (symbol.Resolver.Get) and passes what came back, so this
+	// stays a pure function. The answer is the venue channel to subscribe and the route (websocket
+	// path) it lives on (D26); several topics may land on one atom (orderbook and orderbook_delta,
+	// D21; Bybit's linear tickers carry ticker, funding, open interest and mark price).
+	// ErrUnsupported when the venue does not push this topic: the lease item becomes REJECTED
+	// (PROTOCOL §3.5), and query-only values go to md.fetch instead.
+	Atom(topic Topic, inst *symbol.Info) (AtomRef, error)
 
 	// Routes lists the venue's public routes. A single-path venue returns []string{RouteDefault}.
 	Routes() []string
@@ -41,12 +48,12 @@ type Market interface {
 	Book(channel string) (BookSync, bool)
 }
 
-// AtomRef identifies an atom: one subscribe and one venue ack on one connection (D12).
-//
-// Route is returned here instead of being parsed back out of Channel: on Bybit the same channel
-// string ("publicTrade.BTCUSDT") exists on both the spot and the linear path (DECISIONS Q18).
+// AtomRef is an atom's identity within its venue: one subscribe and one venue ack on one
+// connection (D12). The atom id is <venue>:<route>:<channel> (D31). Route is part of it because a
+// channel string can repeat across routes: Bybit's "publicTrade.BTCUSDT" is both a spot and a linear
+// atom.
 type AtomRef struct {
-	Route   string
+	Route   string // one lowercase word, e.g. public, market, linear; RouteDefault on a single-path venue
 	Channel string // the venue's subscribe argument, verbatim
 }
 

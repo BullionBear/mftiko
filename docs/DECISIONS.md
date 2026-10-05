@@ -115,7 +115,7 @@ UniversalTicker（`<Venue>_<Category>_<SYMBOL>`）、`Parse` 嚴格／`Resolve` 
 
 ### D12 feed 與 atom
 
-- **atom** 是交易所那一側的一個訂閱項：在一條 websocket 上 subscribe 一次、交易所 ack 一次的最小單位，身分是 `(venue, channel)`，channel 逐字照抄交易所參數。要連哪條 WS 路徑（route）由 channel 推得，不另外放進身分（D26）。
+- **atom** 是交易所那一側的一個訂閱項：在一條 websocket 上 subscribe 一次、交易所 ack 一次的最小單位，身分是 `(venue, route, channel)`，channel 逐字照抄交易所參數；route 是 WS 路徑，由 adapter 從解析後的商品推得（D26、D31）。
 - **feed** 是策略宣告的行情：`topic.UniversalTicker`。
 - **在同一個 venue 上，feed → atom 一律 1:1。** 一個平台 topic 在一個 venue 上只對應一個 channel。
 - **atom → 事件可以 1:N。** 一個 frame 解碼出多種事件（Deribit `ticker.*` → quote、greeks、OI），是解碼端的扇出，不需要 join。
@@ -382,7 +382,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 - **venue 以「一條連線、一份憑證」為單位**，照 mftik 的 venue registry（D11）。host 或產品線不同就是不同 venue，例如 `Binance`（現貨）、`BinanceUM`、`BinanceCM`、`BinanceEO`、`BinancePM`。
 - **endpoint 是連線的可選參數，不是身分。** 同一家交易所提供的替代 host（例如針對某個雲端優化的 endpoint）視為同一個 venue，由 MD instance 的設定選擇，進 conn worker 的 spawn spec。換 endpoint 要換 incarnation（D8）。
-- **route：同一個 venue 裡，channel 可能決定要連哪條 WS 路徑。** 例如 OKX 的 K 線在 `/ws/v5/business`，其他公開行情在 `/ws/v5/public`；Bybit 的公開行情依類別分成 `/v5/public/spot`、`linear`、`inverse`、`option`。不同 route 不能共用連線。OKX、Bybit 是一份憑證的統一帳戶，拆成不同 venue 會破壞 UniversalTicker 與 TD 的帳號，所以由 adapter 依 channel 推出 route。大多數 venue 只有一個 route。
+- **route：同一個 venue 裡，商品和 topic 決定要連哪條 WS 路徑。** 例如 OKX 的 K 線在 `/ws/v5/business`，其他公開行情在 `/ws/v5/public`；Bybit 的公開行情依類別分成 `/v5/public/spot`、`linear`、`inverse`、`option`。不同 route 不能共用連線。OKX、Bybit 是一份憑證的統一帳戶，拆成不同 venue 會破壞 UniversalTicker 與 TD 的帳號，所以由 adapter 從解析後的商品推出 route（D31）。大多數 venue 只有一個 route。
 - **連線的身分是 `(venue, route, n)`。** 之後加版號（D8）就是 `(version, venue, route, n)`。同一組 atom 一律共用連線，兩個 session 要同一個 atom 就是 refcount=2，不會多開連線。
 - **只有連線達到交易所的上限才開 n+1。** 上限由 adapter 宣告，例如 Binance USDⓈ-M 一條連線 1024 個 stream。新 atom 放進同一個 `(venue, route)` 下還有空間、n 最小的那條。不整併：1024 連期權鏈也用不完，實際上幾乎只會有 n=0。
 
@@ -443,12 +443,33 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **不影響下單延遲：** 授權只在建立連線時做一次（`CONNECT` 帶 JWT 與對 nonce 的簽章）。之後每次發佈，server 只拿 subject 比對這條連線的權限快取，訊息本身不帶任何 token。
 - MD、TD 的 worker 是平台程式，用所屬 instance 的憑證。
 
+### D31 UniversalTicker 是佔位，解析之後才知道要訂閱什麼
+
+照 mftik 的 symbol plane（D11）。
+
+- **平台裡指涉商品一律用 UniversalTicker：** spec、lease 項目、`md.f` 的 subject、`td.order`、DB。交易所的寫法（`exch_ticker`）只出現在 adapter 和 SYM 的表裡。
+- **翻譯是查表，經 SYM 解析，不是字串轉換。** `BTCUSDT` 不帶 base／quote 的切法，交易所的寫法也不一定是 base＋分隔＋quote。
+- **先解析，再交給 adapter。** MD agent 收到 lease 項目，先向 SYM 取得商品資料，找不到或已下架就是 `REJECTED`；再把解析結果交給 adapter，由它決定 route 和 channel。
+  - adapter 因此是純函數：不查 SYM、不做 I/O，只用資料就能測。
+  - mftik 的 adapter 自己帶 SymbolResolver，在裡面查；mftik refactor 的 B7-01 改成先解析再 `atoms_for`。這裡照後者。
+- **回程帶交易所那一側的 key。** 私有事件、REST 拿回的成交與訂單帶 `(category, exch_ticker)`，account worker 和 backfill 以 SYM 反查換回 UniversalTicker。category 是 key 的一部分：統一帳戶的 venue 上，同一個寫法可能是兩個商品（Bybit 現貨與 linear 的 `BTCUSDT`）。
+- **行情的熱路徑不查表。** conn worker 依 `AtomAssignment` 的 feed 在事件上蓋 UniversalTicker，解析只在 atom 建立時做一次。account worker 每個 ticker 第一次下單時解析一次，之後查記憶體。
+- **atom 的身分是解析後的 `(venue, route, channel)`，id 為 `<venue>:<route>:<channel>`。** channel 仍逐字照抄交易所參數；route 從解析後的商品推得（Bybit 依 category），所以同一個 channel 字串在不同 route 上是不同的 atom。
+  - 不拿 `topic.UniversalTicker` 當 atom 的身分。一個 channel 常同時服務多個 topic：`orderbook` 和 `orderbook_delta`；Bybit linear 的 `tickers.*` 帶 ticker、funding、OI、mark price。以 (topic, ticker) 當身分，同一條連線上會重複訂閱同一個 channel，退訂一個就把其他的斷掉。這是 mftik `MdVenueSubscriptions` 處理過的問題：產品的 refcount 和 wire 上的訂閱是兩本帳。
+  - 佔位留在 MD 外面：`md.f` 的 subject 是 feed（`topic.UniversalTicker`），atom 不出現在資料面（PROTOCOL §7）。
+- **topic 名稱沿用 mftik：** `bestquote`、`trade`、`aggtrade`、`orderbook`、`ticker`、`liquidation`、`funding_rate`、`open_interest`、`greeks`、`kline_<interval>`，加上這裡自己的 `orderbook_delta`、`mark_price`。表在 PROTOCOL §2。
+- **SYM 照 mftik：**
+  - 刷新以 `(venue, category)` 為單位，各自刷新、各自下架：現貨的刷新不會讓 perp 下架。
+  - 列永遠不刪，訂單與 session 會一直指向下架的商品。
+  - 單一商品以 ticker 精確查詢，不載入整個 venue 的表；整表分頁讀，每頁最多 500 筆。
+  - 用戶端快取，TTL 10 分鐘。
+  - 契約見 PROTOCOL §7.3，表見 `migrations/0002_symbol`。
+- venue 名稱照 mftik 用 CamelCase：OKX 的 token 是 `Okx`。
+
 ## 待討論
 
-寫 exchange adapter 的形狀時發現的，程式先照下面的暫定做法，標在 `internal/exchange`。協議層其他還沒定的見 PROTOCOL §10。
+程式先照下面的暫定做法，標在 `internal/exchange`。協議層其他還沒定的見 PROTOCOL §10。
 
-- **Q18 atom 的身分在 Bybit 不唯一。** `publicTrade.BTCUSDT` 同時是 spot 和 linear 的 channel，差別只在 WS 路徑，所以 `<venue>:<channel>` 會撞在一起，route 也沒辦法只從 channel 推出來（D12、D26 的前提在 Bybit 不成立）。暫定：adapter 的 `Atom()` 同時回 route 和 channel。建議 atom 的身分改成 `(venue, route, channel)`，id 為 `<venue>:<route>:<channel>`：route 本來就在連線的身分裡，channel 仍然逐字照抄。
-- **Q19 topic 沒有一張表。** PROTOCOL 沒列平台 topic，K 線的 interval 放在哪也沒定。暫定：`bestquote`、`trade`、`aggtrade`、`orderbook`、`orderbook_delta`、`ticker`、`liquidation`、`fundingrate`、`openinterest`、`greeks`、`markprice`；K 線是 `kline_<interval>`（`kline_1m`），因為 topic 是 subject 的一個 token，不能有 `.`。定了之後寫進 PROTOCOL §2。
-- **Q20 Binance 在 2026 年的變動和 D26 的 venue 切法。** USDⓈ-M 從 2026-03 起依路徑分成 `/public`、`/market`、`/private`，正好是 D26 的 route；COIN-M 在 2026-06-30 併進 USDⓈ-M 的架構（REST、stream、帳戶行為）；期權重建之後行情也在 `fstream` 上。BinanceCM、BinanceEO 還要不要是獨立的 venue、能不能和 UM 共用連線，要先查清楚 CM-UM 整併的細節。暫定照 D26 維持五個 venue。
+- **Q20 Binance 在 2026 年的變動和 D26 的 venue 切法。** USDⓈ-M 從 2026-03 起依路徑分成 `/public`、`/market`、`/private`，正好是 D26 的 route；COIN-M 在 2026-06-30 併進 USDⓈ-M 的架構（REST、stream、帳戶行為）；期權重建之後行情也在 `fstream` 上。BinanceCM、BinanceEO 還要不要是獨立的 venue、能不能和 UM 共用連線，要先查清楚 CM-UM 整併的細節。BinancePM 也在這裡：它透過一個帳號交易 UM、CM 的商品，它的 UniversalTicker 和 `BinanceUM_*`、`BinanceCM_*` 是什麼關係、行情從哪個 venue 來，還沒定。暫定照 D26 維持五個 venue。
 
-已解決：舊的 Q2（綁定變化經 STS agent 轉送，因為 ack 在 etcd、由 STS agent watch）、Q4（durable store 是 etcd，訂單歷史另放 Postgres）、Q12（每個 region 一個 etcd，見 D17）、Q1（每個策略一個 artifact，見 D18、D19）、Q13（生命週期兩段，見 D15）、Q11（TD 也依 refcount 起停，見 D9）、Q16（歷史補正是 TD agent 的 job，見 D20）、Q9（tape 與 book 的權威在 conn worker，以 `md.view` 讀取；md.fetch 是無狀態服務，見 D21）、Q3（一期沒有執行中加減訂閱的介面，見 D22）、Q6（spec 不可變維持；策略狀態經 volume 與資料 artifact 延續，見 D23）、Q5（單一 dispatcher、TD／MD 兩個 buffer、prehook 依 `recv_window_ms` 丟舊行情，見 D24）、Q8（平台不清場；策略以 algo_id 範圍的 `batch_cancel` 自己清，否則人工撤，見 D25）、Q7（連線以 `(venue, route, n)` 共用，滿了才開下一條，不整併，見 D26）、Q10（線上編碼一律 protobuf，`buf breaking` 機械檢查相容性；`md.f` 在 protobuf 前面加固定長度的二進位 envelope，見 D24、PROTOCOL §1、§7.1）、Q14（行情過舊由策略自己驗時間戳；TD 降級時拒新單、放行撤單，重連後以 `OnRecon` 重置狀態，見 D27）、Q15（只有一層 linger；TTL 統一 60 秒、linger 5 秒，見 D28）、Q17（backfill 的範圍從下單決定：worker 以 Report 回報每個商品第一次下單的時間，agent 建 cursor，見 D20）。
+已解決：舊的 Q2（綁定變化經 STS agent 轉送，因為 ack 在 etcd、由 STS agent watch）、Q4（durable store 是 etcd，訂單歷史另放 Postgres）、Q12（每個 region 一個 etcd，見 D17）、Q1（每個策略一個 artifact，見 D18、D19）、Q13（生命週期兩段，見 D15）、Q11（TD 也依 refcount 起停，見 D9）、Q16（歷史補正是 TD agent 的 job，見 D20）、Q9（tape 與 book 的權威在 conn worker，以 `md.view` 讀取；md.fetch 是無狀態服務，見 D21）、Q3（一期沒有執行中加減訂閱的介面，見 D22）、Q6（spec 不可變維持；策略狀態經 volume 與資料 artifact 延續，見 D23）、Q5（單一 dispatcher、TD／MD 兩個 buffer、prehook 依 `recv_window_ms` 丟舊行情，見 D24）、Q8（平台不清場；策略以 algo_id 範圍的 `batch_cancel` 自己清，否則人工撤，見 D25）、Q7（連線以 `(venue, route, n)` 共用，滿了才開下一條，不整併，見 D26）、Q10（線上編碼一律 protobuf，`buf breaking` 機械檢查相容性；`md.f` 在 protobuf 前面加固定長度的二進位 envelope，見 D24、PROTOCOL §1、§7.1）、Q14（行情過舊由策略自己驗時間戳；TD 降級時拒新單、放行撤單，重連後以 `OnRecon` 重置狀態，見 D27）、Q15（只有一層 linger；TTL 統一 60 秒、linger 5 秒，見 D28）、Q17（backfill 的範圍從下單決定：worker 以 Report 回報每個商品第一次下單的時間，agent 建 cursor，見 D20）、Q18（atom 的身分加上 route，商品先經 SYM 解析，見 D31）、Q19（topic 名稱沿用 mftik，見 D31、PROTOCOL §2）。
