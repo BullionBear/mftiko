@@ -30,4 +30,10 @@ var (
 	ErrSuperseded = errors.New("state: superseded by a newer epoch")
 	// ErrClosed: Term.Close was called.
 	ErrClosed = errors.New("state: term closed")
+
+	// ErrCrossCluster: one write touches keys of more than one cluster, or a range that leaves its instance.
+	// Fencing is per cluster (D17 rule 3), so such a write cannot be made atomic.
+	ErrCrossCluster = errors.New("state: write spans clusters")
+	// ErrBadOp: an option that a put or delete cannot take (clientv3 would panic on it).
+	ErrBadOp = errors.New("state: bad op")
 )

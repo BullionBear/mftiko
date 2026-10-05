@@ -290,9 +290,9 @@ func (t *Term) Err() error {
 	return t.err
 }
 
-// Close resigns, revokes the session's lease and ends the term with ErrClosed (unless it had already ended).
-// Errors from resigning and revoking are ignored once the session is lost. Idempotent: later calls return the
-// first call's result.
+// Close ends the term with ErrClosed (unless it had already ended), resigns and revokes the session's lease.
+// Errors from resigning and revoking are ignored once the session is lost; with the cluster client already
+// closed (Clusters.Close) neither is tried. Idempotent: later calls return the first call's result.
 func (t *Term) Close(ctx context.Context) error {
 	t.closeOnce.Do(func() {
 		t.end(ErrClosed)
@@ -302,12 +302,17 @@ func (t *Term) Close(ctx context.Context) error {
 			lost = true
 		default:
 		}
+		cli := t.session.Client()
+		if cli.Ctx().Err() != nil {
+			t.session.Orphan()
+			return
+		}
 		var errs []error
 		if err := t.election.Resign(ctx); err != nil && !lost {
 			errs = append(errs, fmt.Errorf("state: resign %s/%s: %w", t.plane, t.inst, err))
 		}
 		t.session.Orphan()
-		if _, err := t.session.Client().Revoke(ctx, t.session.Lease()); err != nil && !lost {
+		if _, err := cli.Revoke(ctx, t.session.Lease()); err != nil && !lost {
 			errs = append(errs, fmt.Errorf("state: revoke session of %s/%s: %w", t.plane, t.inst, err))
 		}
 		t.closeErr = errors.Join(errs...)

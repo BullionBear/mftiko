@@ -29,9 +29,11 @@ func campaign(t *testing.T, ctx context.Context, cl *Clusters, p Plane, inst str
 // waitDone waits for the term to end, or fails the test.
 func waitDone(t *testing.T, term *Term, within time.Duration) {
 	t.Helper()
+	timer := time.NewTimer(within)
+	defer timer.Stop()
 	select {
 	case <-term.Done():
-	case <-time.After(within):
+	case <-timer.C:
 		t.Fatalf("term still running after %s", within)
 	}
 }

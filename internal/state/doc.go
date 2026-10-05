@@ -11,6 +11,10 @@
 //     takes the home writer key; Fence takes the writer key in another cluster on first use and records its
 //     rev R (PROTOCOL §3.2 W2 steps 1-3). A term ends, once and for good, when its session is lost, a writer
 //     key shows a newer epoch, or it is closed.
+//   - Fenced writes (write.go): Term.Put, Delete and Txn route by key, fence the target cluster on first use,
+//     and run as one txn conditioned on that cluster's writer key still having rev R (W2 step 4); a caller's
+//     Txn is nested inside it. A failed condition ends the term with ErrSuperseded, without retry. These are
+//     the only write path: Clusters exposes readers only.
 //
-// Not yet: fenced writes (E1-05), incarnations (E1-02), lease handling, auth.
+// Not yet: incarnations (E1-02), lease handling, auth.
 package state
