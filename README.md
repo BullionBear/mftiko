@@ -22,7 +22,8 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-migrate          applies the PostgreSQL migrations (a deploy step)
   mftiko-pack             builds a strategy artifact (OCI image + mftiko manifest)
   mftiko-conformance      SDK conformance suite
-internal/                 platform packages (agent skeleton, planes, shim, workers, state, venue adapters, ...)
+internal/                 platform packages (agent skeleton, planes, shim, workers, state, ...)
+  exchange/               exchange adapters: interfaces, registry; one package per exchange (binance, okx, bybit)
 sdk/                      Go strategy SDK, the reference implementation of PROTOCOL §9
 examples/strategies/      hello, tape-keeper
 proto/mftiko/<pkg>/v1/    protobuf contracts; source of truth is docs/PROTOCOL.md

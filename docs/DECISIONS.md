@@ -445,6 +445,10 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 ## 待討論
 
-目前沒有。協議層還沒定的見 PROTOCOL §10。
+寫 exchange adapter 的形狀時發現的，程式先照下面的暫定做法，標在 `internal/exchange`。協議層其他還沒定的見 PROTOCOL §10。
+
+- **Q18 atom 的身分在 Bybit 不唯一。** `publicTrade.BTCUSDT` 同時是 spot 和 linear 的 channel，差別只在 WS 路徑，所以 `<venue>:<channel>` 會撞在一起，route 也沒辦法只從 channel 推出來（D12、D26 的前提在 Bybit 不成立）。暫定：adapter 的 `Atom()` 同時回 route 和 channel。建議 atom 的身分改成 `(venue, route, channel)`，id 為 `<venue>:<route>:<channel>`：route 本來就在連線的身分裡，channel 仍然逐字照抄。
+- **Q19 topic 沒有一張表。** PROTOCOL 沒列平台 topic，K 線的 interval 放在哪也沒定。暫定：`bestquote`、`trade`、`aggtrade`、`orderbook`、`orderbook_delta`、`ticker`、`liquidation`、`fundingrate`、`openinterest`、`greeks`、`markprice`；K 線是 `kline_<interval>`（`kline_1m`），因為 topic 是 subject 的一個 token，不能有 `.`。定了之後寫進 PROTOCOL §2。
+- **Q20 Binance 在 2026 年的變動和 D26 的 venue 切法。** USDⓈ-M 從 2026-03 起依路徑分成 `/public`、`/market`、`/private`，正好是 D26 的 route；COIN-M 在 2026-06-30 併進 USDⓈ-M 的架構（REST、stream、帳戶行為）；期權重建之後行情也在 `fstream` 上。BinanceCM、BinanceEO 還要不要是獨立的 venue、能不能和 UM 共用連線，要先查清楚 CM-UM 整併的細節。暫定照 D26 維持五個 venue。
 
 已解決：舊的 Q2（綁定變化經 STS agent 轉送，因為 ack 在 etcd、由 STS agent watch）、Q4（durable store 是 etcd，訂單歷史另放 Postgres）、Q12（每個 region 一個 etcd，見 D17）、Q1（每個策略一個 artifact，見 D18、D19）、Q13（生命週期兩段，見 D15）、Q11（TD 也依 refcount 起停，見 D9）、Q16（歷史補正是 TD agent 的 job，見 D20）、Q9（tape 與 book 的權威在 conn worker，以 `md.view` 讀取；md.fetch 是無狀態服務，見 D21）、Q3（一期沒有執行中加減訂閱的介面，見 D22）、Q6（spec 不可變維持；策略狀態經 volume 與資料 artifact 延續，見 D23）、Q5（單一 dispatcher、TD／MD 兩個 buffer、prehook 依 `recv_window_ms` 丟舊行情，見 D24）、Q8（平台不清場；策略以 algo_id 範圍的 `batch_cancel` 自己清，否則人工撤，見 D25）、Q7（連線以 `(venue, route, n)` 共用，滿了才開下一條，不整併，見 D26）、Q10（線上編碼一律 protobuf，`buf breaking` 機械檢查相容性；`md.f` 在 protobuf 前面加固定長度的二進位 envelope，見 D24、PROTOCOL §1、§7.1）、Q14（行情過舊由策略自己驗時間戳；TD 降級時拒新單、放行撤單，重連後以 `OnRecon` 重置狀態，見 D27）、Q15（只有一層 linger；TTL 統一 60 秒、linger 5 秒，見 D28）、Q17（backfill 的範圍從下單決定：worker 以 Report 回報每個商品第一次下單的時間，agent 建 cursor，見 D20）。
