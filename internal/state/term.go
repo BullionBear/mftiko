@@ -223,7 +223,7 @@ func (t *Term) Fence(ctx context.Context, region string) (int64, error) {
 	rev, err := t.acquire(bctx, cli, region)
 	if errors.Is(err, ErrSuperseded) {
 		t.end(err)
-		return 0, err
+		return 0, t.Err() // the first cause, if the term had ended meanwhile
 	}
 	if err != nil {
 		return 0, t.cause(err)
@@ -340,10 +340,14 @@ func (t *Term) cause(err error) error {
 	return err
 }
 
-// bind derives a context that is also cancelled when the term ends.
+// bind derives a context that is also cancelled when the term ends. If it has ended already, the context is
+// cancelled before bind returns (AfterFunc alone would cancel it from another goroutine, a little later).
 func (t *Term) bind(ctx context.Context) (context.Context, func()) {
 	ctx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(t.ctx, cancel)
+	if t.ctx.Err() != nil {
+		cancel()
+	}
 	return ctx, func() { stop(); cancel() }
 }
 

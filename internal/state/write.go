@@ -89,10 +89,9 @@ func (t *Term) txn(ctx context.Context, scope writeScope, cmps []clientv3.Cmp, t
 		if kvs := resp.Responses[0].GetResponseRange().GetKvs(); len(kvs) > 0 {
 			held = fmt.Sprintf("epoch %q at rev %d", kvs[0].Value, kvs[0].ModRevision)
 		}
-		err := fmt.Errorf("%w: writer key in %s holds %s, this term has epoch %d at rev %d",
-			ErrSuperseded, region, held, t.epoch, rev)
-		t.end(err)
-		return nil, err
+		t.end(fmt.Errorf("%w: writer key in %s holds %s, this term has epoch %d at rev %d",
+			ErrSuperseded, region, held, t.epoch, rev))
+		return nil, t.Err() // the first cause, if the term had ended meanwhile
 	}
 	inner := resp.Responses[0].GetResponseTxn()
 	if inner == nil {

@@ -374,3 +374,38 @@ func TestFenceConcurrentFirstUse(t *testing.T) {
 		t.Fatal(term.Err())
 	}
 }
+
+// end keeps the first cause; bind on an ended term hands out a context that is already cancelled.
+func TestEndAndBind(t *testing.T) {
+	term := &Term{done: make(chan struct{})}
+	term.ctx, term.cancel = context.WithCancel(context.Background())
+
+	ctx, release := term.bind(context.Background())
+	if ctx.Err() != nil {
+		t.Fatal("bound context cancelled while the term runs")
+	}
+	term.end(ErrSessionLost)
+	term.end(ErrSuperseded)
+	if !errors.Is(term.Err(), ErrSessionLost) || errors.Is(term.Err(), ErrSuperseded) {
+		t.Fatalf("Err = %v, want the first cause", term.Err())
+	}
+	select {
+	case <-term.Done():
+	default:
+		t.Fatal("Done open after end")
+	}
+	select {
+	case <-ctx.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("bound context not cancelled when the term ended")
+	}
+	release()
+
+	for range 100 {
+		ctx, release := term.bind(context.Background())
+		if ctx.Err() == nil {
+			t.Fatal("bind on an ended term returned a live context")
+		}
+		release()
+	}
+}
