@@ -281,9 +281,9 @@ func TestFenceSupersededAtAcquisition(t *testing.T) {
 	}
 }
 
-// A put whose reply was lost leaves our own epoch in the key; Fence adopts it instead of reporting itself as
-// superseded.
-func TestFenceAdoptsOwnEpoch(t *testing.T) {
+// A writer key at our own epoch that this term never wrote belongs to another term with the same epoch (epochs
+// were not unique): never shared, superseded.
+func TestFenceEqualEpochNotOurs(t *testing.T) {
 	ctx := testCtx(t)
 	_, jp, topo := twoServers(t)
 	rawJP := jp.Client(t)
@@ -294,12 +294,74 @@ func TestFenceAdoptsOwnEpoch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := term.Fence(ctx, "jp")
-	if err != nil || r != put.Header.Revision {
-		t.Fatalf("Fence(jp) = %d, %v; want %d", r, err, put.Header.Revision)
+	if r, err := term.Fence(ctx, "jp"); !errors.Is(err, ErrSuperseded) {
+		t.Fatalf("Fence(jp) over another term's equal epoch = %d, %v; want ErrSuperseded", r, err)
+	}
+	waitDone(t, term, time.Second)
+	if kvs := mustGet(t, ctx, rawJP, key).Kvs; kvs[0].ModRevision != put.Header.Revision {
+		t.Fatal("writer key rewritten")
+	}
+}
+
+// The reviewer's reproduction: two deployments that disagree on an instance's home region each elect an agent
+// at epoch 1 in their own cluster. Neither may share the other's writer key.
+func TestFenceInconsistentTopologies(t *testing.T) {
+	ctx := testCtx(t)
+	tw, jp, _ := twoServers(t)
+	servers := map[string]*etcdtest.Server{"tw": tw, "jp": jp}
+	inTW := topologyOf(servers, map[string]string{"sts-x-1": "tw"})
+	inJP := topologyOf(servers, map[string]string{"sts-x-1": "jp"})
+
+	a := campaign(t, ctx, newClusters(t, inTW, nil, nil), PlaneSTS, "sts-x-1", TermOptions{ID: "a"})
+	b := campaign(t, ctx, newClusters(t, inJP, nil, nil), PlaneSTS, "sts-x-1", TermOptions{ID: "b"})
+	if a.Epoch() != 1 || b.Epoch() != 1 {
+		t.Fatalf("epochs %d and %d, want 1 and 1", a.Epoch(), b.Epoch())
+	}
+	if _, err := a.Fence(ctx, "jp"); !errors.Is(err, ErrSuperseded) {
+		t.Fatalf("a taking b's equal-epoch writer in jp: %v", err)
+	}
+	if _, err := b.Fence(ctx, "tw"); !errors.Is(err, ErrSuperseded) {
+		t.Fatalf("b taking a's equal-epoch writer in tw: %v", err)
+	}
+}
+
+// A put that applied but whose reply was lost leaves our own epoch in the key; the next Fence adopts it.
+func TestFenceLostReply(t *testing.T) {
+	ctx := testCtx(t)
+	_, jp, topo := twoServers(t)
+	rawJP := jp.Client(t)
+	key := WriterKey(PlaneSTS, "sts-tw-1")
+
+	errLost := errors.New("reply lost")
+	dropped := 0
+	hooks := &termHooks{writerTxn: func(region string, resp *clientv3.TxnResponse, err error) (*clientv3.TxnResponse, error) {
+		if region == "jp" && dropped == 0 && err == nil && resp.Succeeded {
+			dropped++
+			return nil, errLost
+		}
+		return resp, err
+	}}
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneSTS, "sts-tw-1", TermOptions{hooks: hooks})
+
+	if _, err := term.Fence(ctx, "jp"); !errors.Is(err, errLost) {
+		t.Fatalf("first Fence(jp): %v, want the lost reply", err)
 	}
 	if !running(term) {
-		t.Fatal(term.Err())
+		t.Fatalf("a lost reply ended the term: %v", term.Err())
+	}
+	kvs := mustGet(t, ctx, rawJP, key).Kvs
+	if len(kvs) != 1 || string(kvs[0].Value) != formatEpoch(term.Epoch()) {
+		t.Fatalf("jp writer after the lost reply: %v", kvs)
+	}
+	r, err := term.Fence(ctx, "jp")
+	if err != nil || r != kvs[0].ModRevision {
+		t.Fatalf("second Fence(jp) = %d, %v; want our own put at %d", r, err, kvs[0].ModRevision)
+	}
+	if kvs := mustGet(t, ctx, rawJP, key).Kvs; kvs[0].Version != 1 {
+		t.Fatalf("writer key put %d times, want once", kvs[0].Version)
+	}
+	if err := term.Put(ctx, MDLeaseKey("md-jp-1", "sts-tw-1", "a1b2c3", "feed/x"), "lease"); err != nil {
+		t.Fatalf("write behind the adopted fence: %v", err)
 	}
 }
 

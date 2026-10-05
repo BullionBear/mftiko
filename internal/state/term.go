@@ -26,6 +26,14 @@ const (
 type TermOptions struct {
 	ID         string        // this candidate, stored as the election value (e.g. host:pid); required
 	SessionTTL time.Duration // election session TTL, rounded up to whole seconds; 0 = DefaultSessionTTL
+
+	hooks *termHooks // tests only
+}
+
+// termHooks let tests act at points no real interleaving can be made to hit reliably. Nil outside tests.
+type termHooks struct {
+	// writerTxn may replace the outcome of a writer-key txn in region, e.g. drop the reply of a put that applied.
+	writerTxn func(region string, resp *clientv3.TxnResponse, err error) (*clientv3.TxnResponse, error)
 }
 
 // Term is this process's tenure as the agent of one (plane, instance): the election it won, the epoch E it
@@ -48,6 +56,7 @@ type Term struct {
 
 	session  *concurrency.Session
 	election *concurrency.Election
+	hooks    *termHooks
 
 	ctx    context.Context // cancelled when the term ends, to abort in-flight calls
 	cancel context.CancelFunc
@@ -63,8 +72,9 @@ type Term struct {
 
 // fence is the writer key this term holds in one cluster.
 type fence struct {
-	mu  sync.Mutex // held while acquiring, so one term never races itself for the key
-	rev int64      // R, the writer key's mod_revision after our put; 0 until acquired
+	mu      sync.Mutex // held while acquiring, so one term never races itself for the key
+	rev     int64      // R, the writer key's mod_revision after our put; 0 until acquired
+	unknown bool       // a put of our epoch was sent here and no reply said whether it applied
 }
 
 // Campaign blocks until this process leads (plane, inst) in its home region (PROTOCOL §3.2 W2 steps 1-2), then
@@ -118,6 +128,7 @@ func Campaign(ctx context.Context, cl *Clusters, p Plane, inst string, opt TermO
 		cl: cl, plane: p, inst: inst, home: home,
 		session:  sess,
 		election: concurrency.NewElection(sess, ElectionPrefix(p, inst)),
+		hooks:    opt.hooks,
 		done:     make(chan struct{}),
 		fences:   map[string]*fence{},
 	}
@@ -220,7 +231,7 @@ func (t *Term) Fence(ctx context.Context, region string) (int64, error) {
 	}
 	bctx, release := t.bind(ctx)
 	defer release()
-	rev, err := t.acquire(bctx, cli, region)
+	rev, err := t.acquire(bctx, cli, region, f)
 	if errors.Is(err, ErrSuperseded) {
 		t.end(err)
 		return 0, t.Err() // the first cause, if the term had ended meanwhile
@@ -234,26 +245,42 @@ func (t *Term) Fence(ctx context.Context, region string) (int64, error) {
 
 // acquire puts E into the writer key if it is absent or holds a smaller epoch. etcd fails a Value compare on a
 // missing key, hence two txns.
-func (t *Term) acquire(ctx context.Context, cli *clientv3.Client, region string) (int64, error) {
+//
+// A writer key that already holds exactly E is taken over only if this term sent a put here whose outcome it
+// never learned (the call failed after sending): then it is our own write. Otherwise it is another term's, and
+// it means epochs were not unique (an epoch key lost or restored, or topologies that disagree on the home
+// region); sharing its R would let two terms write as one, so that is ErrSuperseded too.
+func (t *Term) acquire(ctx context.Context, cli *clientv3.Client, region string, f *fence) (int64, error) {
 	key := WriterKey(t.plane, t.inst)
-	for range writerAttempts {
-		resp, err := cli.Txn(ctx).
-			If(clientv3.Compare(clientv3.CreateRevision(key), "=", 0)).
-			Then(clientv3.OpPut(key, t.val)).
-			Commit()
+	put := func(txn clientv3.Txn) (*clientv3.TxnResponse, error) {
+		before := f.unknown
+		f.unknown = true // from here until a reply says otherwise, the put may have applied
+		resp, err := txn.Commit()
+		if t.hooks != nil && t.hooks.writerTxn != nil {
+			resp, err = t.hooks.writerTxn(region, resp, err)
+		}
 		if err != nil {
-			return 0, fmt.Errorf("state: fence %s: %w", region, err)
+			return nil, fmt.Errorf("state: fence %s: %w", region, err)
+		}
+		f.unknown = before // the reply settles this put: applied (we return R) or not
+		return resp, nil
+	}
+	for range writerAttempts {
+		resp, err := put(cli.Txn(ctx).
+			If(clientv3.Compare(clientv3.CreateRevision(key), "=", 0)).
+			Then(clientv3.OpPut(key, t.val)))
+		if err != nil {
+			return 0, err
 		}
 		if resp.Succeeded {
 			return resp.Header.Revision, nil
 		}
-		resp, err = cli.Txn(ctx).
+		resp, err = put(cli.Txn(ctx).
 			If(clientv3.Compare(clientv3.Value(key), "<", t.val)).
 			Then(clientv3.OpPut(key, t.val)).
-			Else(clientv3.OpGet(key)).
-			Commit()
+			Else(clientv3.OpGet(key)))
 		if err != nil {
-			return 0, fmt.Errorf("state: fence %s: %w", region, err)
+			return 0, err
 		}
 		if resp.Succeeded {
 			return resp.Header.Revision, nil
@@ -262,9 +289,8 @@ func (t *Term) acquire(ctx context.Context, cli *clientv3.Client, region string)
 		if len(kvs) == 0 {
 			continue // deleted between the two txns: start over
 		}
-		if string(kvs[0].Value) == t.val {
-			// Epochs are unique, so this is our own put from an earlier attempt whose reply was lost.
-			return kvs[0].ModRevision, nil
+		if string(kvs[0].Value) == t.val && f.unknown {
+			return kvs[0].ModRevision, nil // our own put, whose reply was lost
 		}
 		return 0, fmt.Errorf("%w: writer key in %s holds epoch %q, this term has %d", ErrSuperseded, region, kvs[0].Value, t.epoch)
 	}
