@@ -36,6 +36,9 @@ var (
 	ErrCrossCluster = errors.New("state: write spans clusters")
 	// ErrBadOp: an option that a put or delete cannot take (clientv3 would panic on it).
 	ErrBadOp = errors.New("state: bad op")
+	// ErrNotWriter: the write touches a key this agent is not the writer of (PROTOCOL §3.2 W1), including the
+	// keys fencing relies on (election, epoch, writer) and incarnations outside Incarnations.
+	ErrNotWriter = errors.New("state: not this agent's key")
 
 	// ErrBadIncarnation: a stored incarnation is not a decimal uint32.
 	ErrBadIncarnation = errors.New("state: bad incarnation")

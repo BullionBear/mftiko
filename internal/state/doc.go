@@ -13,8 +13,10 @@
 //     key shows a newer epoch, or it is closed.
 //   - Fenced writes (write.go): Term.Put, Delete and Txn route by key, fence the target cluster on first use,
 //     and run as one txn conditioned on that cluster's writer key still having rev R (W2 step 4); a caller's
-//     Txn is nested inside it. A failed condition ends the term with ErrSuperseded, without retry. These are
-//     the only write path: Clusters exposes readers only.
+//     Txn is nested inside it. A failed condition ends the term with ErrSuperseded, without retry. They also
+//     enforce W1: an agent puts and deletes only the keys whose writer it is in §3.1 (ErrNotWriter otherwise),
+//     so no write can reach the election, epoch or writer keys, incarnations outside Incarnations, another
+//     agent's keys, or the API's. These are the only write path: Clusters exposes readers only.
 //   - Incarnations (incarnation.go): LoadIncarnations reads the agent's counters once per term; Next takes a
 //     worker key's next number in one fenced txn before the spawn (W6, D8), so a superseded agent gets none;
 //     Forget deletes an STS session's counter once it is terminal.

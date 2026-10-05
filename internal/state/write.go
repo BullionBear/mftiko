@@ -3,6 +3,8 @@ package state
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -11,6 +13,10 @@ import (
 // make the write one txn conditioned on ModRevision(WriterKey) == R (PROTOCOL §3.2 W2 step 4). If the condition
 // fails, another agent has taken over: the term ends with ErrSuperseded and the write is not retried (the agent
 // exits and systemd restarts it). There is no other write path: Clusters hands out readers only.
+//
+// They also enforce W1 (PROTOCOL §3.2, the writer column of §3.1): a term puts and deletes only keys its agent is
+// the writer of, so it can neither touch the keys fencing relies on nor another agent's or the API's keys.
+// Reads (gets and compares) may name any key in the same cluster.
 
 // Put writes key behind the writer condition. opts are put options, e.g. clientv3.WithLease.
 func (t *Term) Put(ctx context.Context, key, val string, opts ...clientv3.OpOption) error {
@@ -26,7 +32,7 @@ func (t *Term) Put(ctx context.Context, key, val string, opts ...clientv3.OpOpti
 }
 
 // Delete deletes key behind the writer condition. opts are delete options, e.g. clientv3.WithPrefix; a range
-// must stay within the key's instance.
+// must lie within one of the agent's writable prefixes.
 func (t *Term) Delete(ctx context.Context, key string, opts ...clientv3.OpOption) error {
 	if err := t.Err(); err != nil {
 		return err
@@ -44,13 +50,18 @@ func (t *Term) Delete(ctx context.Context, key string, opts ...clientv3.OpOption
 //	If(writer rev == R) Then(Txn(If(cmps) Then(then) Else(els))) Else(Get WriterKey)
 //
 // It returns the inner response (Succeeded says whether the caller's compares held; Header is the outer txn's).
-// All keys in cmps, then and els, nested txns included, must route to the same region, else ErrCrossCluster
-// (checked before any I/O).
+// All keys in cmps, then and els, nested txns included, must route to the same region, else ErrCrossCluster;
+// every put and delete must be the agent's to write (W1), else ErrNotWriter. Both are checked before any I/O.
 func (t *Term) Txn(ctx context.Context, cmps []clientv3.Cmp, then, els []clientv3.Op) (*clientv3.TxnResponse, error) {
+	return t.txn(ctx, writeScope{plane: t.plane, inst: t.inst}, cmps, then, els)
+}
+
+// txn is Txn with the writable areas given by scope.
+func (t *Term) txn(ctx context.Context, scope writeScope, cmps []clientv3.Cmp, then, els []clientv3.Op) (*clientv3.TxnResponse, error) {
 	if err := t.Err(); err != nil {
 		return nil, err
 	}
-	region, err := routeTxn(t.cl.topo, cmps, then, els)
+	region, err := routeTxn(t.cl.topo, scope, cmps, then, els)
 	if err != nil {
 		return nil, err
 	}
@@ -101,9 +112,9 @@ func buildOp(f func() clientv3.Op) (op clientv3.Op, err error) {
 	return f(), nil
 }
 
-// routeTxn is the one region every key of a txn routes to.
-func routeTxn(topo Topology, cmps []clientv3.Cmp, then, els []clientv3.Op) (string, error) {
-	r := router{topo: topo}
+// routeTxn is the one region every key of a txn routes to; every put and delete must also lie in scope.
+func routeTxn(topo Topology, scope writeScope, cmps []clientv3.Cmp, then, els []clientv3.Op) (string, error) {
+	r := router{topo: topo, scope: scope}
 	if err := r.txn(cmps, then, els); err != nil {
 		return "", err
 	}
@@ -115,6 +126,7 @@ func routeTxn(topo Topology, cmps []clientv3.Cmp, then, els []clientv3.Op) (stri
 
 type router struct {
 	topo   Topology
+	scope  writeScope
 	region string
 	first  string // the key that fixed region, for the error message
 }
@@ -127,14 +139,19 @@ func (r *router) txn(cmps []clientv3.Cmp, then, els []clientv3.Op) error {
 	}
 	for _, ops := range [][]clientv3.Op{then, els} {
 		for _, op := range ops {
-			var err error
 			if op.IsTxn() {
-				err = r.txn(op.Txn())
-			} else {
-				err = r.key(op.KeyBytes(), op.RangeBytes())
+				if err := r.txn(op.Txn()); err != nil {
+					return err
+				}
+				continue
 			}
-			if err != nil {
+			if err := r.key(op.KeyBytes(), op.RangeBytes()); err != nil {
 				return err
+			}
+			if op.IsPut() || op.IsDelete() {
+				if err := r.scope.check(op.KeyBytes(), op.RangeBytes()); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -167,4 +184,66 @@ func (r *router) key(key, end []byte) error {
 		return fmt.Errorf("%w: %q is in %s, %q in %s", ErrCrossCluster, r.first, r.region, k, region)
 	}
 	return nil
+}
+
+// writeScope is what a term of (plane, inst) may put and delete: the rows of PROTOCOL §3.1 whose writer is that
+// agent (W1). The election, epoch and writer keys are not among them; Term writes those itself. Incarnation keys
+// are written only through Incarnations, whose scope is incarnations alone.
+type writeScope struct {
+	plane        Plane
+	inst         string
+	incarnations bool
+}
+
+// areas are the writable prefixes and exact keys of the scope that fall under the instance (p, inst) a key
+// belongs to.
+func (w writeScope) areas(p Plane, inst string) (prefixes, exact []string) {
+	switch {
+	case w.incarnations:
+		if p == w.plane && inst == w.inst {
+			prefixes = []string{IncarnationPrefix(w.plane, w.inst)}
+		}
+	case p == w.plane && inst == w.inst:
+		exact = []string{AgentKey(w.plane, w.inst)}
+		prefixes = []string{WorkerStatusPrefix(w.plane, w.inst)}
+		switch w.plane {
+		case PlaneSTS:
+			prefixes = append(prefixes, SessionStatusPrefix(w.inst))
+		case PlaneMD:
+			prefixes = append(prefixes, MDAckPrefix(w.inst), SelectorPrefix(w.inst), PlacementPrefix(w.inst))
+		case PlaneTD:
+			prefixes = append(prefixes, TDAckPrefix(w.inst))
+		}
+	case w.plane == PlaneSTS && p == PlaneMD:
+		prefixes = []string{MDLeasePrefix(inst) + w.inst + "/"} // this STS's entries only
+	case w.plane == PlaneSTS && p == PlaneTD:
+		prefixes = []string{TDLeasePrefix(inst) + w.inst + "/"}
+	}
+	return prefixes, exact
+}
+
+// check is nil if the put or delete of key, or of the range [key, end), lies within one writable area. Exact
+// keys take no range.
+func (w writeScope) check(key, end []byte) error {
+	k := string(key)
+	p, inst, err := Owner(k)
+	if err != nil {
+		return err
+	}
+	prefixes, exact := w.areas(p, inst)
+	if len(end) == 0 && slices.Contains(exact, k) {
+		return nil
+	}
+	for _, pre := range prefixes {
+		if !strings.HasPrefix(k, pre) {
+			continue
+		}
+		if len(end) == 0 || (string(end) != "\x00" && string(end) <= clientv3.GetPrefixRangeEnd(pre)) {
+			return nil
+		}
+	}
+	if len(end) > 0 {
+		return fmt.Errorf("%w: %s/%s may not delete [%q, %q)", ErrNotWriter, w.plane, w.inst, k, end)
+	}
+	return fmt.Errorf("%w: %s/%s may not write %q", ErrNotWriter, w.plane, w.inst, k)
 }

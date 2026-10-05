@@ -54,7 +54,7 @@ func LoadIncarnations(ctx context.Context, t *Term) (*Incarnations, error) {
 	return c, nil
 }
 
-// Next takes the next number for workerKey (W6.2-W6.4): one Term.Txn with compares
+// Next takes the next number for workerKey (W6.2-W6.4): one fenced txn, like Term.Txn, with compares
 //
 //	Value(IncarnationKey) == current n   (or CreateRevision == 0 when the cache has none)
 //
@@ -79,7 +79,7 @@ func (c *Incarnations) Next(ctx context.Context, workerKey string) (uint32, erro
 		if n == math.MaxUint32 {
 			return 0, fmt.Errorf("%w: %s", ErrIncarnationExhausted, workerKey)
 		}
-		resp, err := c.t.Txn(ctx,
+		resp, err := c.t.txn(ctx, c.scope(),
 			[]clientv3.Cmp{held},
 			[]clientv3.Op{clientv3.OpPut(key, formatIncarnation(n+1))},
 			[]clientv3.Op{clientv3.OpGet(key)})
@@ -125,11 +125,17 @@ func (c *Incarnations) Forget(ctx context.Context, workerKey string) error {
 	h := WorkerHash(workerKey)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if err := c.t.Delete(ctx, IncarnationKey(c.t.plane, c.t.inst, h)); err != nil {
+	del := []clientv3.Op{clientv3.OpDelete(IncarnationKey(c.t.plane, c.t.inst, h))}
+	if _, err := c.t.txn(ctx, c.scope(), nil, del, nil); err != nil {
 		return err
 	}
 	delete(c.cur, h)
 	return nil
+}
+
+// scope lets the incarnation keys, and only those, be written: Term.Put, Delete and Txn cannot reach them (W1).
+func (c *Incarnations) scope() writeScope {
+	return writeScope{plane: c.t.plane, inst: c.t.inst, incarnations: true}
 }
 
 func formatIncarnation(n uint32) string { return strconv.FormatUint(uint64(n), 10) }

@@ -114,14 +114,16 @@ func IncarnationKey(p Plane, inst, h string) string { return IncarnationPrefix(p
 func IncarnationPrefix(p Plane, inst string) string { return instPrefix(p, inst) + "incarnation/" }
 
 // SelectorKey is an MD selector's state, shared by selectors with the same spec (PROTOCOL §3.4).
-func SelectorKey(mdInst, specHash string) string {
-	return instPrefix(PlaneMD, mdInst) + "selector/" + specHash
-}
+func SelectorKey(mdInst, specHash string) string { return SelectorPrefix(mdInst) + specHash }
+
+// SelectorPrefix lists every selector state of an MD instance, read back on restart (PROTOCOL §3.4).
+func SelectorPrefix(mdInst string) string { return instPrefix(PlaneMD, mdInst) + "selector/" }
 
 // PlacementKey is where an MD atom is placed (PROTOCOL §3.4).
-func PlacementKey(mdInst, atomHash string) string {
-	return instPrefix(PlaneMD, mdInst) + "placement/" + atomHash
-}
+func PlacementKey(mdInst, atomHash string) string { return PlacementPrefix(mdInst) + atomHash }
+
+// PlacementPrefix lists every placement of an MD instance, read back on restart (PROTOCOL §3.4).
+func PlacementPrefix(mdInst string) string { return instPrefix(PlaneMD, mdInst) + "placement/" }
 
 // Owner returns the plane and instance a key belongs to: the two path segments after Root. Every key in
 // PROTOCOL §3.1 is /{plane}/{inst}/..., and that instance is the one the routing rule (PROTOCOL §3, D17) names:

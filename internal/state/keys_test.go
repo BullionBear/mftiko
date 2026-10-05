@@ -71,6 +71,8 @@ func TestKeys(t *testing.T) {
 		{MDAckPrefix("md-jp-1"), r + "/md/md-jp-1/ack/", PlaneMD, "md-jp-1", "jp"},
 		{TDAckPrefix("td-tw-1"), r + "/td/td-tw-1/ack/", PlaneTD, "td-tw-1", "tw"},
 		{IncarnationPrefix(PlaneMD, "md-jp-1"), r + "/md/md-jp-1/incarnation/", PlaneMD, "md-jp-1", "jp"},
+		{SelectorPrefix("md-jp-1"), r + "/md/md-jp-1/selector/", PlaneMD, "md-jp-1", "jp"},
+		{PlacementPrefix("md-tw-1"), r + "/md/md-tw-1/placement/", PlaneMD, "md-tw-1", "tw"},
 		{WorkerStatusPrefix(PlaneSTS, "sts-tw-1"), r + "/sts/sts-tw-1/worker/", PlaneSTS, "sts-tw-1", "tw"},
 	}
 	topo := twoRegions()
