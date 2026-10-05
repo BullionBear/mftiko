@@ -53,7 +53,7 @@ docs/                     DECISIONS.md, PROTOCOL.md
 | `make clean` | removes `bin/`, `gen/`, web build output and generated TS |
 | `make help` | lists targets |
 
-Requires Go 1.24+, Node 22+ and npm; Docker only for `make db-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`.
+Requires Go 1.26+, Node 22+ and npm; Docker only for `make db-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`.
 
 ## Logging and build identity
 
