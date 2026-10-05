@@ -147,7 +147,7 @@ message SessionStatus {
   int64 observed_generation = 1;
   Phase phase = 2;
   repeated mftiko.common.v1.Condition conditions = 3;
-  uint32 incarnation = 4;
+  uint32 incarnation = 4; // 顯示用；權威值在 /sts/{inst}/incarnation/{h}（PROTOCOL §3.2 W6）
   uint32 restart_count = 5;
   string reason = 6;
   mftiko.common.v1.ExitInfo last_exit = 7;
