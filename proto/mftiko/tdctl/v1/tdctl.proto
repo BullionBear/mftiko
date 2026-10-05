@@ -1,0 +1,54 @@
+// Source of truth: docs/PROTOCOL.md. Keep the two in sync.
+syntax = "proto3";
+
+package mftiko.tdctl.v1;
+
+option go_package = "github.com/BullionBear/mftiko/gen/mftiko/tdctl/v1;tdctlv1";
+
+message InitPayload {
+  int64 api_id = 1;
+  string kind = 2; // 帳號種類（D32），同 state.v1.Account.kind
+  string td_instance = 3;
+  uint32 cancel_on_disconnect_s = 4;
+  Credentials credentials = 5; // 只經 socketpair 送進去
+}
+
+message Credentials {
+  string key_type = 1; // hmac | ed25519
+  string key = 2;
+  string secret = 3;
+  string passphrase = 4;
+}
+
+// Start：建 HTTP 連線池、連私有 websocket、recon。全部完成才回 Done(START, ok)。
+message StartPayload {}
+
+message Command {
+  oneof cmd {
+    Drain drain = 1;
+  }
+}
+
+// drain-replace 的第一步：新單以可重試的錯誤拒絕，等在途 ack 收齊。
+message Drain {
+  uint32 deadline_ms = 1;
+}
+
+message Report {
+  AccountState state = 1;
+  string reason = 2;
+  int64 reconciled_at_ns = 3;
+  uint32 open_orders = 4;
+  uint32 inflight = 5;
+  bool draining = 6;
+  // 這個 incarnation 下過單的商品 → 第一次 Submit 的時間（DECISIONS D20）。TD agent 據此建 backfill 的 scope。
+  // 新商品的第一筆單：worker 先送出含它的 Report，再送單。
+  map<string, int64> first_submit_ns = 7;
+}
+
+enum AccountState {
+  ACCOUNT_STATE_UNSPECIFIED = 0;
+  ACCOUNT_STATE_READY = 1;
+  ACCOUNT_STATE_DEGRADED = 2; // 私有 websocket 斷線：新單以 1xx 拒絕，撤單照常（D27）
+  ACCOUNT_STATE_UNAVAILABLE = 3;
+}

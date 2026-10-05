@@ -1,0 +1,88 @@
+// Source of truth: docs/PROTOCOL.md. Keep the two in sync.
+syntax = "proto3";
+
+package mftiko.md.v1;
+
+import "mftiko/md/v1/md.proto";
+
+option go_package = "github.com/BullionBear/mftiko/gen/mftiko/md/v1;mdv1";
+
+// ---------- md.view.{inst}.{topic}.{ticker} ----------
+// 由持有該 atom 的 conn worker 回答。回什麼由 subject 的 topic 決定：
+// trade、aggtrade、liquidation 回 tape；orderbook_delta 回 book。其他 topic 回 error = "unsupported"。
+
+message ViewRequest {
+  uint32 limit = 1;            // 只用於 tape：這一頁最多幾筆
+  optional Cursor before = 2;  // 只用於 tape：第一頁不填
+}
+
+// 以 (conn_epoch, seq) 的字典序比較。
+message Cursor {
+  uint64 conn_epoch = 1;
+  uint64 seq = 2;
+}
+
+message ViewReply {
+  string error = 1; // 空字串 = 成功；unsupported | not_held | invalid
+  oneof result {
+    TapePage tape = 10;
+    BookSnapshot book = 11;
+  }
+}
+
+message TapePage {
+  // 由新到舊。每則是 md.f 上發佈過的原始訊息（envelope ＋ FeedEvent），worker 直接從 ring 拷貝，不重新編碼。
+  repeated bytes events = 1;
+  bool more = 2;
+  optional Cursor next = 3;      // 下一頁的 before
+  int64 continuous_since_ns = 4; // 從這個時間起沒有 gap
+  repeated Gap gaps = 5;         // 這一頁涵蓋範圍內的 gap
+}
+
+message Gap {
+  int64 start_ns = 1;
+  int64 end_ns = 2;
+}
+
+// orderbook_delta 這個 feed 在 (conn_epoch, seq) 當下的完整 book。
+message BookSnapshot {
+  Meta meta = 1;
+  repeated Level bids = 2;
+  repeated Level asks = 3;
+  uint64 conn_epoch = 4;
+  uint64 seq = 5;
+  int64 md_ts_ns = 6;
+}
+
+// ---------- md.fetch ----------
+// 無狀態服務，轉發交易所的公開 REST。queue group，任何 replica 都能回答。
+
+message FetchRequest {
+  oneof req {
+    FetchKlines klines = 1;
+    FetchOpenInterest open_interest = 2; // 交易所不推送、只能查詢的值（D12）
+  }
+}
+
+message FetchKlines {
+  string ticker = 1;   // UniversalTicker
+  string interval = 2; // 正規寫法：1m、4h、1mo
+  uint32 limit = 3;    // 最近 N 根已收盤的；超過交易所單次上限時由服務分頁
+}
+
+message FetchOpenInterest {
+  string ticker = 1;
+}
+
+message FetchReply {
+  string error = 1; // 空字串 = 成功；invalid | unsupported | rate_limited | venue_error
+  string reason = 2;
+  oneof result {
+    Klines klines = 10;
+    OpenInterest open_interest = 11;
+  }
+}
+
+message Klines {
+  repeated Kline klines = 1; // 由舊到新，只有已收盤的
+}

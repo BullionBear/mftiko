@@ -1,0 +1,122 @@
+// Source of truth: docs/PROTOCOL.md. Keep the two in sync.
+syntax = "proto3";
+
+package mftiko.shim.v1;
+
+import "mftiko/common/v1/common.proto";
+import "mftiko/worker/v1/worker.proto";
+
+option go_package = "github.com/BullionBear/mftiko/gen/mftiko/shim/v1;shimv1";
+
+// ---------- agent → shim ----------
+
+message ShimRequest {
+  uint64 id = 1;
+  oneof op {
+    Attach attach = 10;
+    Ack ack = 11;
+    Signal signal = 12;
+    mftiko.worker.v1.Init init = 13;
+    mftiko.worker.v1.Start start = 14;
+    Stop stop = 15;
+    mftiko.worker.v1.Relay relay = 16;
+    Release release = 17;
+  }
+}
+
+message Attach {
+  string plane = 1;
+  string agent_instance = 2;
+  int64 epoch = 3;
+  string agent_release = 4;
+  repeated uint32 shim_majors = 5;
+  uint64 resume_from = 6;
+}
+
+message Ack {
+  uint64 seq = 1;
+}
+
+message Signal {
+  int32 signo = 1;
+}
+
+message Stop {
+  string reason = 1;
+  uint32 grace_ms = 2;
+  uint32 kill_after_ms = 3;
+}
+
+message Release {}
+
+// ---------- shim → agent ----------
+
+message ShimMessage {
+  oneof msg {
+    Response response = 1;
+    Event event = 2;
+    Preempted preempted = 3;
+  }
+}
+
+message Response {
+  uint64 id = 1;
+  bool ok = 2;
+  mftiko.common.v1.Error error = 3; // stale_epoch | not_controller | wrong_agent | running | bad_stage
+  Attached attached = 4;
+}
+
+message Attached {
+  string shim_release = 1;
+  uint32 shim_major = 2;
+  mftiko.common.v1.WorkerRef worker = 3;
+  string spec_hash = 4;
+  WorkerState state = 5;
+  string stage = 6; // 最後一個 Stage
+  int32 pid = 7;
+  int32 pgid = 8;
+  uint64 start_time = 9; // /proc/<pid>/stat 的 starttime，防 pid 重用
+  mftiko.worker.v1.Hello hello = 10;
+  uint64 oldest_seq = 11;
+  uint64 next_seq = 12;
+  int64 last_beat_at_ns = 13;
+}
+
+enum WorkerState {
+  WORKER_STATE_UNSPECIFIED = 0;
+  WORKER_STATE_STARTING = 1; // 已 exec，還沒 Hello
+  WORKER_STATE_RUNNING = 2;
+  WORKER_STATE_EXITED = 3;
+}
+
+message Event {
+  uint64 seq = 1;
+  int64 at_ns = 2;
+  bool gap = 3;
+  oneof kind {
+    Started started = 10;
+    mftiko.worker.v1.Hello hello = 11;
+    mftiko.worker.v1.Done done = 12;
+    mftiko.worker.v1.Stage stage = 13;
+    mftiko.worker.v1.Beat beat = 14;
+    mftiko.worker.v1.Report report = 15;
+    mftiko.worker.v1.Relay relay = 16;
+    mftiko.worker.v1.Exiting exiting = 17;
+    mftiko.worker.v1.Stopped stopped = 18;
+    Exited exited = 19;
+  }
+}
+
+message Started {
+  int32 pid = 1;
+  int32 pgid = 2;
+  uint64 start_time = 3;
+}
+
+message Exited {
+  mftiko.common.v1.ExitInfo exit = 1;
+}
+
+message Preempted {
+  int64 by_epoch = 1;
+}
