@@ -298,7 +298,9 @@ func TestSupersededWritesFail(t *testing.T) {
 	}
 }
 
-// The realistic takeover: A's session goes, B is elected with the next epoch and writes; A's next write never lands.
+// A takeover A has not noticed: A's election key goes while its session stays alive (as when A is cut off from
+// etcd but its lease has not run out in A's view), B is elected with the next epoch and writes. A's next write
+// reaches etcd and is refused by the server-side fence alone.
 func TestSupersededByNewLeader(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
@@ -309,7 +311,7 @@ func TestSupersededByNewLeader(t *testing.T) {
 	if err := a.Put(ctx, key, "a"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := raw.Revoke(ctx, a.session.Lease()); err != nil {
+	if _, err := raw.Delete(ctx, a.election.Key()); err != nil {
 		t.Fatal(err)
 	}
 	b := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{ID: "b"})
@@ -320,17 +322,48 @@ func TestSupersededByNewLeader(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := a.Put(ctx, key, "a again")
-	if !errors.Is(err, ErrSuperseded) && !errors.Is(err, ErrSessionLost) {
-		t.Fatalf("old leader's write: %v", err)
+	if !running(a) {
+		t.Fatalf("A noticed before writing (%v): the fence path would go untested", a.Err())
 	}
-	t.Logf("old leader saw: %v", err)
+	if err := a.Put(ctx, key, "a again"); !errors.Is(err, ErrSuperseded) {
+		t.Fatalf("old leader's write: %v, want ErrSuperseded from the fence", err)
+	}
 	waitDone(t, a, time.Second)
+	if !errors.Is(a.Err(), ErrSuperseded) {
+		t.Fatalf("A ended with %v", a.Err())
+	}
 	if kvs := mustGet(t, ctx, raw, key).Kvs; string(kvs[0].Value) != "b" {
 		t.Fatalf("value %q, want b", kvs[0].Value)
 	}
 	if !running(b) {
 		t.Fatalf("new leader's term ended: %v", b.Err())
+	}
+}
+
+// The other order: A's lease goes and A notices first. A stops writing on its own, before etcd is asked.
+func TestSessionLostThenNewLeader(t *testing.T) {
+	ctx := testCtx(t)
+	s, topo := singleRegion(t, "td-tw-1")
+	raw := s.Client(t)
+	key := WorkerStatusKey(PlaneTD, "td-tw-1", WorkerHash("td/42"))
+
+	a := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{ID: "a", SessionTTL: 2 * time.Second})
+	if err := a.Put(ctx, key, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Revoke(ctx, a.session.Lease()); err != nil {
+		t.Fatal(err)
+	}
+	waitDone(t, a, 15*time.Second)
+	b := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{ID: "b"})
+	if err := b.Put(ctx, key, "b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Put(ctx, key, "a again"); !errors.Is(err, ErrSessionLost) {
+		t.Fatalf("old leader's write: %v, want ErrSessionLost", err)
+	}
+	if kvs := mustGet(t, ctx, raw, key).Kvs; string(kvs[0].Value) != "b" {
+		t.Fatalf("value %q, want b", kvs[0].Value)
 	}
 }
 

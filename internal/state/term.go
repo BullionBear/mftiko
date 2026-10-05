@@ -35,6 +35,8 @@ type TermOptions struct {
 type termHooks struct {
 	// writerTxn may replace the outcome of a writer-key txn in region, e.g. drop the reply of a put that applied.
 	writerTxn func(region string, resp *clientv3.TxnResponse, err error) (*clientv3.TxnResponse, error)
+	// beforeEpochTxn runs between reading the epoch and the bump txn, attempt counting from 0.
+	beforeEpochTxn func(t *Term, attempt int)
 }
 
 // Term is this process's tenure as the agent of one (plane, instance): the election it won, the epoch E it
@@ -166,7 +168,7 @@ func (t *Term) start(ctx context.Context, cli *clientv3.Client, id string) error
 // unchanged since it was read.
 func (t *Term) bumpEpoch(ctx context.Context, cli *clientv3.Client) error {
 	key := EpochKey(t.plane, t.inst)
-	for range epochAttempts {
+	for attempt := range epochAttempts {
 		get, err := cli.Get(ctx, key)
 		if err != nil {
 			return fmt.Errorf("state: read epoch %s: %w", key, err)
@@ -183,6 +185,9 @@ func (t *Term) bumpEpoch(ctx context.Context, cli *clientv3.Client) error {
 			return fmt.Errorf("%w: %s is at its maximum", ErrBadEpoch, key)
 		}
 		e := prev + 1
+		if t.hooks != nil && t.hooks.beforeEpochTxn != nil {
+			t.hooks.beforeEpochTxn(t, attempt)
+		}
 		leader := clientv3.Compare(clientv3.CreateRevision(t.election.Key()), "=", t.election.Rev())
 		resp, err := cli.Txn(ctx).
 			If(leader, unchanged).

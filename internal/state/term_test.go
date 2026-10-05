@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -194,6 +195,73 @@ func TestCloseLeaseAlreadyGone(t *testing.T) {
 	}
 	if !errors.Is(term.Err(), ErrClosed) && !errors.Is(term.Err(), ErrSessionLost) {
 		t.Fatalf("Err = %v", term.Err())
+	}
+}
+
+// The election key goes between winning and bumping the epoch: the bump's leader compare fails, Campaign
+// reports the session lost and takes no epoch.
+func TestBumpEpochLeaderLost(t *testing.T) {
+	ctx := testCtx(t)
+	s, topo := singleRegion(t, "md-tw-1")
+	raw := s.Client(t)
+	hooks := &termHooks{beforeEpochTxn: func(term *Term, attempt int) {
+		if _, err := raw.Delete(ctx, term.election.Key()); err != nil {
+			t.Error(err)
+		}
+	}}
+	if _, err := Campaign(ctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{ID: "a", hooks: hooks}); !errors.Is(err, ErrSessionLost) {
+		t.Fatalf("Campaign after losing the election key: %v, want ErrSessionLost", err)
+	}
+	for _, key := range []string{EpochKey(PlaneMD, "md-tw-1"), WriterKey(PlaneMD, "md-tw-1")} {
+		if kvs := mustGet(t, ctx, raw, key).Kvs; len(kvs) != 0 {
+			t.Fatalf("%s written: %v", key, kvs)
+		}
+	}
+}
+
+// The epoch moves between the read and the bump: the bump retries from the new value.
+func TestBumpEpochRetry(t *testing.T) {
+	ctx := testCtx(t)
+	s, topo := singleRegion(t, "md-tw-1")
+	raw := s.Client(t)
+	var attempts []int
+	hooks := &termHooks{beforeEpochTxn: func(term *Term, attempt int) {
+		attempts = append(attempts, attempt)
+		if attempt == 0 {
+			if _, err := raw.Put(ctx, EpochKey(PlaneMD, "md-tw-1"), formatEpoch(41)); err != nil {
+				t.Error(err)
+			}
+		}
+	}}
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{hooks: hooks})
+	if term.Epoch() != 42 || !slices.Equal(attempts, []int{0, 1}) {
+		t.Fatalf("epoch %d after attempts %v, want 42 after [0 1]", term.Epoch(), attempts)
+	}
+	if kvs := mustGet(t, ctx, raw, EpochKey(PlaneMD, "md-tw-1")).Kvs; string(kvs[0].Value) != formatEpoch(42) {
+		t.Fatalf("stored epoch %s", kvs[0].Value)
+	}
+}
+
+// The epoch keeps moving: the bump gives up after epochAttempts and the candidate does not take office.
+func TestBumpEpochGivesUp(t *testing.T) {
+	ctx := testCtx(t)
+	s, topo := singleRegion(t, "md-tw-1")
+	raw := s.Client(t)
+	calls := 0
+	hooks := &termHooks{beforeEpochTxn: func(term *Term, attempt int) {
+		calls++
+		if _, err := raw.Put(ctx, EpochKey(PlaneMD, "md-tw-1"), formatEpoch(int64(100+attempt))); err != nil {
+			t.Error(err)
+		}
+	}}
+	if _, err := Campaign(ctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{ID: "a", hooks: hooks}); !errors.Is(err, ErrSuperseded) {
+		t.Fatalf("Campaign with a moving epoch: %v, want ErrSuperseded", err)
+	}
+	if calls != epochAttempts {
+		t.Fatalf("%d attempts, want %d", calls, epochAttempts)
+	}
+	if kvs := mustGet(t, ctx, raw, WriterKey(PlaneMD, "md-tw-1")).Kvs; len(kvs) != 0 {
+		t.Fatal("writer key taken without an epoch")
 	}
 }
 
