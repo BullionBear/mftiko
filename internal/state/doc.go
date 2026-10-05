@@ -7,6 +7,10 @@
 //   - Routing (topology.go, clusters.go): Topology maps instances to regions and regions to clusters; Clusters
 //     dials one client per region lazily and hands out read-only Readers routed by key (D17). AgentRegions is
 //     the set of clusters an agent may connect to.
+//   - Terms (term.go): Campaign wins the instance's election in its home region, bumps the persisted epoch and
+//     takes the home writer key; Fence takes the writer key in another cluster on first use and records its
+//     rev R (PROTOCOL §3.2 W2 steps 1-3). A term ends, once and for good, when its session is lost, a writer
+//     key shows a newer epoch, or it is closed.
 //
-// Not yet: election, epoch and writer-key fencing (E1-04, E1-05), incarnations (E1-02), lease handling, auth.
+// Not yet: fenced writes (E1-05), incarnations (E1-02), lease handling, auth.
 package state
