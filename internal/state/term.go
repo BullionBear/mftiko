@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/concurrency"
 )
@@ -317,8 +318,10 @@ func (t *Term) Err() error {
 }
 
 // Close ends the term with ErrClosed (unless it had already ended), resigns and revokes the session's lease.
-// Errors from resigning and revoking are ignored once the session is lost; with the cluster client already
-// closed (Clusters.Close) neither is tried. Idempotent: later calls return the first call's result.
+// Errors from resigning and revoking are ignored once the session is lost, and a lease that is already gone
+// (expired or revoked before the session noticed) is not an error; with the cluster client already closed
+// (Clusters.Close) neither is tried. Resigning a key that is already gone is a no-op in etcd, not an error.
+// Idempotent: later calls return the first call's result.
 func (t *Term) Close(ctx context.Context) error {
 	t.closeOnce.Do(func() {
 		t.end(ErrClosed)
@@ -338,7 +341,7 @@ func (t *Term) Close(ctx context.Context) error {
 			errs = append(errs, fmt.Errorf("state: resign %s/%s: %w", t.plane, t.inst, err))
 		}
 		t.session.Orphan()
-		if _, err := cli.Revoke(ctx, t.session.Lease()); err != nil && !lost {
+		if _, err := cli.Revoke(ctx, t.session.Lease()); err != nil && !lost && !errors.Is(err, rpctypes.ErrLeaseNotFound) {
 			errs = append(errs, fmt.Errorf("state: revoke session of %s/%s: %w", t.plane, t.inst, err))
 		}
 		t.closeErr = errors.Join(errs...)

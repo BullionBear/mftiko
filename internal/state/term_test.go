@@ -179,6 +179,24 @@ func TestCampaignCancelled(t *testing.T) {
 	}
 }
 
+// A lease that is gone before the session notices (default TTL: the next keepalive is seconds away) makes
+// Revoke fail with "lease not found"; Close does not report it.
+func TestCloseLeaseAlreadyGone(t *testing.T) {
+	ctx := testCtx(t)
+	s, topo := singleRegion(t, "md-tw-1")
+	raw := s.Client(t)
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{})
+	if _, err := raw.Revoke(ctx, term.session.Lease()); err != nil {
+		t.Fatal(err)
+	}
+	if err := term.Close(ctx); err != nil {
+		t.Fatalf("Close with the lease already revoked: %v", err)
+	}
+	if !errors.Is(term.Err(), ErrClosed) && !errors.Is(term.Err(), ErrSessionLost) {
+		t.Fatalf("Err = %v", term.Err())
+	}
+}
+
 func TestSessionLost(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "sts-tw-1")
