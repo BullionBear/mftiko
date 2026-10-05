@@ -1,4 +1,5 @@
-// Package bybit is the Bybit adapter: one venue, Bybit, a unified account (D26). The category
+// Package bybit is the Bybit adapter: one venue and one account kind, both named Bybit (two enums,
+// D32), a unified account (D26). The category
 // (spot, linear, inverse, option) is part of every request and of every public websocket path.
 //
 // Facts the implementation must honor. Checked 2026-10-05 against bybit-exchange.github.io/docs/v5;

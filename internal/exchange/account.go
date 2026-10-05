@@ -17,7 +17,7 @@ type AccountConfig struct {
 	StreamEndpoint string
 }
 
-// AccountFactory builds an Account for one api_id.
+// AccountFactory builds an Account for one api_id of one AccountKind.
 type AccountFactory func(cfg AccountConfig) (Account, error)
 
 // Account is a venue's private trading interface for one api_id, owned by the TD account worker.
@@ -25,7 +25,8 @@ type AccountFactory func(cfg AccountConfig) (Account, error)
 //
 // Instruments go in resolved (*symbol.Info, from the order's UniversalTicker, cached by the worker)
 // and come out as the venue names them (symbol.ExchKey); the worker maps them back with
-// symbol.Resolver.Reverse (D31).
+// symbol.Resolver.Reverse (D31). The worker has already checked AccountKind.CanTrade; a kind that
+// trades several venues (BinancePM) routes each request by inst.Ticker.Venue (D32).
 //
 // It knows nothing about algo_id (D25). The worker checks algo ownership, and translates
 // BatchCancel(algo_id) by filtering its OMS for open orders whose client_order_id carries that algo,

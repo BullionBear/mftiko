@@ -7,7 +7,7 @@ option go_package = "github.com/BullionBear/mftiko/gen/mftiko/tdctl/v1;tdctlv1";
 
 message InitPayload {
   int64 api_id = 1;
-  string venue = 2;
+  string kind = 2; // 帳號種類（D32），同 state.v1.Account.kind
   string td_instance = 3;
   uint32 cancel_on_disconnect_s = 4;
   Credentials credentials = 5; // 只經 socketpair 送進去

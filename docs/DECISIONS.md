@@ -380,7 +380,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 ### D26 MD 連線的身分、endpoint 與放置
 
-- **venue 以「一條連線、一份憑證」為單位**，照 mftik 的 venue registry（D11）。host 或產品線不同就是不同 venue，例如 `Binance`（現貨）、`BinanceUM`、`BinanceCM`、`BinanceEO`、`BinancePM`。
+- **venue 以「一條連線、一組商品」為單位**，照 mftik 的 venue registry（D11）。host 或產品線不同就是不同 venue，例如 `Binance`（現貨）、`BinanceUM`、`BinanceCM`、`BinanceEO`。憑證屬於帳號種類，不屬於 venue；`BinancePM` 是帳號種類，不是 venue（D32）。
 - **endpoint 是連線的可選參數，不是身分。** 同一家交易所提供的替代 host（例如針對某個雲端優化的 endpoint）視為同一個 venue，由 MD instance 的設定選擇，進 conn worker 的 spawn spec。換 endpoint 要換 incarnation（D8）。
 - **route：同一個 venue 裡，商品和 topic 決定要連哪條 WS 路徑。** 例如 OKX 的 K 線在 `/ws/v5/business`，其他公開行情在 `/ws/v5/public`；Bybit 的公開行情依類別分成 `/v5/public/spot`、`linear`、`inverse`、`option`。不同 route 不能共用連線。OKX、Bybit 是一份憑證的統一帳戶，拆成不同 venue 會破壞 UniversalTicker 與 TD 的帳號，所以由 adapter 從解析後的商品推出 route（D31）。大多數 venue 只有一個 route。
 - **連線的身分是 `(venue, route, n)`。** 之後加版號（D8）就是 `(version, venue, route, n)`。同一組 atom 一律共用連線，兩個 session 要同一個 atom 就是 refcount=2，不會多開連線。
@@ -452,7 +452,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **先解析，再交給 adapter。** MD agent 收到 lease 項目，先向 SYM 取得商品資料，找不到或已下架就是 `REJECTED`；再把解析結果交給 adapter，由它決定 route 和 channel。
   - adapter 因此是純函數：不查 SYM、不做 I/O，只用資料就能測。
   - mftik 的 adapter 自己帶 SymbolResolver，在裡面查；mftik refactor 的 B7-01 改成先解析再 `atoms_for`。這裡照後者。
-- **回程帶交易所那一側的 key。** 私有事件、REST 拿回的成交與訂單帶 `(category, exch_ticker)`，account worker 和 backfill 以 SYM 反查換回 UniversalTicker。category 是 key 的一部分：統一帳戶的 venue 上，同一個寫法可能是兩個商品（Bybit 現貨與 linear 的 `BTCUSDT`）。
+- **回程帶交易所那一側的 key。** 私有事件、REST 拿回的成交與訂單帶 `(venue, category, exch_ticker)`（venue 見 D32），account worker 和 backfill 以 SYM 反查換回 UniversalTicker。category 是 key 的一部分：統一帳戶的 venue 上，同一個寫法可能是兩個商品（Bybit 現貨與 linear 的 `BTCUSDT`）。
 - **行情的熱路徑不查表。** conn worker 依 `AtomAssignment` 的 feed 在事件上蓋 UniversalTicker，解析只在 atom 建立時做一次。account worker 每個 ticker 第一次下單時解析一次，之後查記憶體。
 - **atom 的身分是解析後的 `(venue, route, channel)`，id 為 `<venue>:<route>:<channel>`。** channel 仍逐字照抄交易所參數；route 從解析後的商品推得（Bybit 依 category），所以同一個 channel 字串在不同 route 上是不同的 atom。
   - 不拿 `topic.UniversalTicker` 當 atom 的身分。一個 channel 常同時服務多個 topic：`orderbook` 和 `orderbook_delta`；Bybit linear 的 `tickers.*` 帶 ticker、funding、OI、mark price。以 (topic, ticker) 當身分，同一條連線上會重複訂閱同一個 channel，退訂一個就把其他的斷掉。這是 mftik `MdVenueSubscriptions` 處理過的問題：產品的 refcount 和 wire 上的訂閱是兩本帳。
@@ -466,10 +466,24 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   - 契約見 PROTOCOL §7.3，表見 `migrations/0002_symbol`。
 - venue 名稱照 mftik 用 CamelCase：OKX 的 token 是 `Okx`。
 
+### D32 帳號種類和 venue 是兩個 enum
+
+- **venue 是市場，帳號種類是 api_id 是什麼。** 兩個獨立的 enum，名稱可能相同，不可互查。
+  - venue：UniversalTicker 的第一段，一條連線的公開行情、一組商品（D26）。`Binance`、`BinanceUM`、`BinanceCM`、`BinanceEO`、`Okx`、`Bybit`。
+  - 帳號種類：收哪種憑證、可以交易哪些 venue 的商品，由各交易所的套件在程式裡宣告。`Binance`、`BinanceUM`、`BinanceCM`、`BinanceEO`、`BinancePM`、`Okx`、`Bybit`。
+  - 大多數帳號種類只交易同名的那個 venue。
+- **BinancePM 是帳號種類，不是 venue。** 它可以交易 `Binance_Spot_BTCUSDT`、`BinanceUM_Perp_BTCUSDT`、`BinanceCM_*`；請求依帳號種類走 papi，再依 ticker 的 venue 選 margin、um、cm 的端點。沒有 `BinancePM_Spot_BTCUSDT` 這種 ticker：保證金模式改的是帳號怎麼算錢、單送到哪，不是商品本身，同一本訂單簿只有一個身分。
+  - 帳號宣告（`state.v1.Account`）記的是帳號種類（`kind`），不是 venue。
+  - account worker 在 `Submit` 前檢查 ticker 的 venue 在帳號種類的清單裡，不在就以 1xx 拒絕。
+  - 交易所回來的事件帶 `(venue, category, exch_ticker)`：一條 PM 的私有連線同時有 margin、UM、CM 的事件，所以 D31 的反查 key 加上 venue。
+  - D20 的 backfill 範圍 `(api_id, ticker)`、D25 的 algo_id 都不假設帳號只有一個 venue，不用改。
+- **BinanceCM、BinanceEO 維持獨立的 venue。** 2026-06 的 CM-UM 整合之後，CM 仍然是 `dapi`、`dstream`，錢包也沒合併；EO 的行情雖然在 `fstream` 上，REST 與帳戶都是自己的。D26 的規則不變。
+  - CM 的 `dstream` 沒有路徑分流，只有 `default` 一個 route。
+- **UM 和 CM 不共用連線。** 整合之後部分 stream 可以跨 host 訂，但連線的身分仍是 `(venue, route, n)`。全市場陣列在兩個 host 上都會送 UM＋CM 合併的內容，以 `st` 區分，adapter 解碼時丟掉另一個 venue 的列。
+- **UM、CM 之間的耦合不寫進 adapter 契約。** 整合之後兩者共用 IP 的 weight 與下單數上限、共用持倉模式（`dualSidePosition`），CM 的 STP 跟著 UM。只記在 Binance adapter 的實作說明。
+
 ## 待討論
 
-程式先照下面的暫定做法，標在 `internal/exchange`。協議層其他還沒定的見 PROTOCOL §10。
+目前沒有。協議層還沒定的見 PROTOCOL §10。
 
-- **Q20 Binance 在 2026 年的變動和 D26 的 venue 切法。** USDⓈ-M 從 2026-03 起依路徑分成 `/public`、`/market`、`/private`，正好是 D26 的 route；COIN-M 在 2026-06-30 併進 USDⓈ-M 的架構（REST、stream、帳戶行為）；期權重建之後行情也在 `fstream` 上。BinanceCM、BinanceEO 還要不要是獨立的 venue、能不能和 UM 共用連線，要先查清楚 CM-UM 整併的細節。BinancePM 也在這裡：它透過一個帳號交易 UM、CM 的商品，它的 UniversalTicker 和 `BinanceUM_*`、`BinanceCM_*` 是什麼關係、行情從哪個 venue 來，還沒定。暫定照 D26 維持五個 venue。
-
-已解決：舊的 Q2（綁定變化經 STS agent 轉送，因為 ack 在 etcd、由 STS agent watch）、Q4（durable store 是 etcd，訂單歷史另放 Postgres）、Q12（每個 region 一個 etcd，見 D17）、Q1（每個策略一個 artifact，見 D18、D19）、Q13（生命週期兩段，見 D15）、Q11（TD 也依 refcount 起停，見 D9）、Q16（歷史補正是 TD agent 的 job，見 D20）、Q9（tape 與 book 的權威在 conn worker，以 `md.view` 讀取；md.fetch 是無狀態服務，見 D21）、Q3（一期沒有執行中加減訂閱的介面，見 D22）、Q6（spec 不可變維持；策略狀態經 volume 與資料 artifact 延續，見 D23）、Q5（單一 dispatcher、TD／MD 兩個 buffer、prehook 依 `recv_window_ms` 丟舊行情，見 D24）、Q8（平台不清場；策略以 algo_id 範圍的 `batch_cancel` 自己清，否則人工撤，見 D25）、Q7（連線以 `(venue, route, n)` 共用，滿了才開下一條，不整併，見 D26）、Q10（線上編碼一律 protobuf，`buf breaking` 機械檢查相容性；`md.f` 在 protobuf 前面加固定長度的二進位 envelope，見 D24、PROTOCOL §1、§7.1）、Q14（行情過舊由策略自己驗時間戳；TD 降級時拒新單、放行撤單，重連後以 `OnRecon` 重置狀態，見 D27）、Q15（只有一層 linger；TTL 統一 60 秒、linger 5 秒，見 D28）、Q17（backfill 的範圍從下單決定：worker 以 Report 回報每個商品第一次下單的時間，agent 建 cursor，見 D20）、Q18（atom 的身分加上 route，商品先經 SYM 解析，見 D31）、Q19（topic 名稱沿用 mftik，見 D31、PROTOCOL §2）。
+已解決：舊的 Q2（綁定變化經 STS agent 轉送，因為 ack 在 etcd、由 STS agent watch）、Q4（durable store 是 etcd，訂單歷史另放 Postgres）、Q12（每個 region 一個 etcd，見 D17）、Q1（每個策略一個 artifact，見 D18、D19）、Q13（生命週期兩段，見 D15）、Q11（TD 也依 refcount 起停，見 D9）、Q16（歷史補正是 TD agent 的 job，見 D20）、Q9（tape 與 book 的權威在 conn worker，以 `md.view` 讀取；md.fetch 是無狀態服務，見 D21）、Q3（一期沒有執行中加減訂閱的介面，見 D22）、Q6（spec 不可變維持；策略狀態經 volume 與資料 artifact 延續，見 D23）、Q5（單一 dispatcher、TD／MD 兩個 buffer、prehook 依 `recv_window_ms` 丟舊行情，見 D24）、Q8（平台不清場；策略以 algo_id 範圍的 `batch_cancel` 自己清，否則人工撤，見 D25）、Q7（連線以 `(venue, route, n)` 共用，滿了才開下一條，不整併，見 D26）、Q10（線上編碼一律 protobuf，`buf breaking` 機械檢查相容性；`md.f` 在 protobuf 前面加固定長度的二進位 envelope，見 D24、PROTOCOL §1、§7.1）、Q14（行情過舊由策略自己驗時間戳；TD 降級時拒新單、放行撤單，重連後以 `OnRecon` 重置狀態，見 D27）、Q15（只有一層 linger；TTL 統一 60 秒、linger 5 秒，見 D28）、Q17（backfill 的範圍從下單決定：worker 以 Report 回報每個商品第一次下單的時間，agent 建 cursor，見 D20）、Q18（atom 的身分加上 route，商品先經 SYM 解析，見 D31）、Q19（topic 名稱沿用 mftik，見 D31、PROTOCOL §2）、Q20（BinanceCM、BinanceEO 維持獨立 venue、不共用連線；BinancePM 是帳號種類，見 D32）。

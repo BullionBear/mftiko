@@ -35,25 +35,50 @@ func TestCredentialsNeverFormat(t *testing.T) {
 	}
 }
 
-func TestRegistryRejectsDuplicates(t *testing.T) {
-	x := symbol.Venue{Name: "X", Categories: []symbol.Category{symbol.Spot}}
-	w := symbol.Venue{Name: "W", Categories: []symbol.Category{symbol.Perp}}
-	a := []Venue{{Venue: x, Exchange: "a"}}
-	b := []Venue{{Venue: x, Exchange: "b"}}
-	if _, err := NewRegistry(a, b); err == nil {
-		t.Fatal("duplicate venue accepted")
+func TestRegistry(t *testing.T) {
+	venue := func(name string) Venue {
+		return Venue{Venue: symbol.Venue{Name: name, Categories: []symbol.Category{symbol.Spot}}}
 	}
-	if _, err := NewRegistry([]Venue{{Exchange: "a"}}); err == nil {
-		t.Fatal("unnamed venue accepted")
+	kind := func(name string, trades ...string) AccountKind {
+		return AccountKind{Name: name, Trades: trades}
 	}
-	if _, err := NewRegistry([]Venue{{Venue: symbol.Venue{Name: "Y"}, Exchange: "a"}}); err == nil {
-		t.Fatal("venue without categories accepted")
+	bad := map[string][]Declaration{
+		"duplicate venue": {
+			{Exchange: "a", Venues: []Venue{venue("X")}},
+			{Exchange: "b", Venues: []Venue{venue("X")}},
+		},
+		"venue without categories": {{Exchange: "a", Venues: []Venue{{Venue: symbol.Venue{Name: "Y"}}}}},
+		"duplicate account kind": {
+			{Exchange: "a", Venues: []Venue{venue("X")}, AccountKinds: []AccountKind{kind("K", "X")}},
+			{Exchange: "b", AccountKinds: []AccountKind{kind("K", "X")}},
+		},
+		"kind trading an unknown venue": {{Exchange: "a", AccountKinds: []AccountKind{kind("K", "Nowhere")}}},
+		"kind trading nothing":          {{Exchange: "a", AccountKinds: []AccountKind{kind("K")}}},
 	}
-	r, err := NewRegistry(a, []Venue{{Venue: w, Exchange: "b"}})
+	for name, decls := range bad {
+		if _, err := NewRegistry(decls...); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+
+	// A venue and an account kind may share a name: two enums (D32).
+	r, err := NewRegistry(
+		Declaration{Exchange: "a", Venues: []Venue{venue("X"), venue("W")}, AccountKinds: []AccountKind{kind("X", "X"), kind("XPM", "X", "W")}},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(r.Names(), ","); got != "W,X" {
-		t.Fatalf("Names() = %s", got)
+	if got := strings.Join(r.Venues(), ","); got != "W,X" {
+		t.Fatalf("Venues() = %s", got)
+	}
+	if got := strings.Join(r.AccountKinds(), ","); got != "X,XPM" {
+		t.Fatalf("AccountKinds() = %s", got)
+	}
+	if _, ok := r.Lookup("XPM"); ok {
+		t.Fatal("an account kind resolved as a venue")
+	}
+	pm, _ := r.AccountKind("XPM")
+	if !pm.CanTrade("W") || pm.CanTrade("XPM") {
+		t.Fatal("CanTrade")
 	}
 }

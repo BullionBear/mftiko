@@ -1,5 +1,5 @@
-// Package okx is the OKX adapter: one venue, Okx (the CamelCase token of D11), a unified account
-// (D26). Spot, swap, futures and options share it; the instId tells them apart (BTC-USDT,
+// Package okx is the OKX adapter: one venue and one account kind, both named Okx (the CamelCase
+// token of D11; two enums, D32), a unified account (D26). Spot, swap, futures and options share it; the instId tells them apart (BTC-USDT,
 // BTC-USDT-SWAP).
 //
 // Facts the implementation must honor. Checked 2026-10-05 against okx.com/docs-v5; re-check before

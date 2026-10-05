@@ -17,13 +17,20 @@ type Info struct {
 }
 
 // Exch is the venue-side key of the instrument.
-func (i *Info) Exch() ExchKey { return ExchKey{Category: i.Ticker.Category, ExchTicker: i.ExchTicker} }
+func (i *Info) Exch() ExchKey {
+	return ExchKey{Venue: i.Ticker.Venue, Category: i.Ticker.Category, ExchTicker: i.ExchTicker}
+}
 
-// ExchKey names an instrument the way a venue's messages do. The category is part of it because on
-// a unified-account venue the spelling alone is ambiguous: Bybit's spot and linear BTCUSDT are
-// both "BTCUSDT". Adapters emit it on the way out (fills, orders, positions); the caller turns it
-// back into a UniversalTicker with Resolver.Reverse.
+// ExchKey names an instrument the way a venue's messages do. Adapters emit it on the way out
+// (fills, orders, positions); the caller turns it back into a UniversalTicker with
+// Resolver.Reverse.
+//
+//   - Venue is part of it because one account kind can trade several venues: a BinancePM private
+//     stream carries UM, CM and spot-margin events (D32).
+//   - Category is part of it because on a unified-account venue the spelling alone is ambiguous:
+//     Bybit's spot and linear books both list "BTCUSDT".
 type ExchKey struct {
+	Venue      string
 	Category   Category
 	ExchTicker string
 }

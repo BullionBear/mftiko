@@ -29,7 +29,7 @@ type Resolver interface {
 	Get(ctx context.Context, t UniversalTicker, includeInactive bool) (*Info, error)
 
 	// Reverse turns a venue's spelling back into a ticker, from the (venue, category) table.
-	Reverse(ctx context.Context, venue string, key ExchKey) (UniversalTicker, error)
+	Reverse(ctx context.Context, key ExchKey) (UniversalTicker, error)
 
 	// List is every active instrument of one (venue, category), paged under the hood. Selectors
 	// evaluate on it (D9).

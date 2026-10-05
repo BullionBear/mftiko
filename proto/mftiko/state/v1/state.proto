@@ -113,7 +113,9 @@ message Limits {
 
 message Account {
   string name = 1;
-  string venue = 2;
+  // 帳號種類（DECISIONS D32），不是 venue：BinancePM 可以交易 Binance、BinanceUM、BinanceCM 的商品。
+  // 兩個 enum 的名稱可能相同（帳號種類 BinanceUM 交易 venue BinanceUM），不可互查。
+  string kind = 2;
   bytes sealed_credentials = 3; // 以 TD instance 的公鑰封裝；etcd 裡不放明文
   AccountSettings settings = 4;
   bool enabled = 5;

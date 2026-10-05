@@ -1,19 +1,21 @@
 package symbol
 
-// Venue is one entry of the venue registry (D11, D26): one connection plus one credential. Each
-// exchange package declares its venues in code; adding a venue goes through review, not runtime
-// configuration.
+// Venue is one entry of the venue registry (D11, D26): a market, the first part of a
+// UniversalTicker. Each exchange package declares its venues in code; adding one goes through
+// review, not runtime configuration.
+//
+// A venue is not an account. Who may trade a venue's instruments, and with what credential, is the
+// account kind (internal/exchange AccountKind, D32): a separate enum whose names may coincide with
+// venue names. Never look one up in the other's table.
 type Venue struct {
 	Name  string // CamelCase, the first part of a UniversalTicker: BinanceUM, Okx, Bybit
 	Label string // for the console
-	// Categories the venue trades. A classic-account venue has one; a unified account (Bybit, Okx)
-	// has several behind one credential, and a caller must always name which one it means.
+	// Categories the venue lists. A classic venue has one or two; a unified-account venue (Bybit,
+	// Okx) has several, and a caller must always name which one it means.
 	Categories []Category
-	KeyTypes   []string // credential algorithms the adapter can sign with: hmac, ed25519
-	Passphrase bool     // the credential includes a passphrase (Okx)
 }
 
-// Venues is the registry as Resolve sees it. internal/exchange's Registry implements it.
+// Venues is the venue registry as Resolve sees it. internal/exchange's Registry implements it.
 type Venues interface {
 	Lookup(name string) (Venue, bool)
 }

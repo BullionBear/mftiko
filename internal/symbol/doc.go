@@ -9,7 +9,7 @@
 // base/quote split, and venues publish tickers that are not base + separator + quote at all. So:
 //
 //	UniversalTicker ──Resolver.Get──▶ Info (ExchTicker, filters, expiry) ──▶ exchange adapter
-//	exchange adapter ──ExchKey{Category, ExchTicker}──Resolver.Reverse──▶ UniversalTicker
+//	exchange adapter ──ExchKey{Venue, Category, ExchTicker}──Resolver.Reverse──▶ UniversalTicker
 //
 // Callers resolve before they call an adapter, and adapters never call SYM: adapter functions stay
 // pure (D31). The market-data hot path does no lookup at all: a conn worker stamps each event with

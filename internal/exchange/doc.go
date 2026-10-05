@@ -1,26 +1,33 @@
 // Package exchange defines the exchange adapters. Everything venue-specific sits behind these
 // interfaces; nothing outside internal/exchange parses a venue's wire format or signs a venue request.
 //
-// # Exchange and venue
+// # Exchange, venue, account kind
 //
-// An exchange package (binance, okx, bybit) is a unit of code. It declares one or more venues.
-// A venue is one connection plus one credential (DECISIONS D26): Binance declares Binance, BinanceUM,
-// BinanceCM, BinanceEO and BinancePM. Each venue's symbol.Venue is its entry in the venue registry
-// (D11): the <Venue> token of UniversalTicker and the categories it trades. Registry maps venue
-// names to adapters; package all builds the registry of every exchange.
+// An exchange package (binance, okx, bybit) is a unit of code. It declares two independent enums
+// (D32), whose names may coincide:
+//
+//   - Venues are markets, the <Venue> token of UniversalTicker (D11): one connection's worth of
+//     public data and one set of instruments (D26). Binance declares Binance, BinanceUM, BinanceCM
+//     and BinanceEO.
+//   - Account kinds are what an api_id is: the credential it takes and the venues it can trade.
+//     Binance declares Binance, BinanceUM, BinanceCM, BinanceEO and BinancePM. The account kind
+//     BinancePM trades Binance_Spot_*, BinanceUM_* and BinanceCM_* tickers and routes each request
+//     by the ticker's venue; there is no BinancePM venue and no BinancePM_* ticker.
+//
+// Registry holds both; package all builds the registry of every exchange.
 //
 // # Who calls what
 //
-//	caller                       interface                         decisions
-//	MD agent (planning, no I/O)  Market: Atom, Budget, Cost        D12, D26
-//	MD conn worker               Market.Session, BookSync,         D21, D24
+//	caller                       interface                           decisions
+//	MD agent (planning, no I/O)  Market: Atom, Budget, Cost          D12, D26, D31
+//	MD conn worker               Market.NewSession, BookSync,        D21, D24
 //	                             PublicREST.Depth (in process)
-//	md.fetch                     PublicREST: Klines, OpenInterest  D21
-//	SYM                          PublicREST.Listing                D11
-//	TD account worker            Account, PrivateStream            D25, D27
-//	TD agent (backfill)          History                           D20
+//	md.fetch                     PublicREST: Klines, OpenInterest    D21
+//	SYM                          PublicREST.Listing                  D11
+//	TD account worker            AccountKind.Account, PrivateStream  D25, D27, D32
+//	TD agent (backfill)          AccountKind.History                 D20, D32
 //
-// Any of a venue's parts may be absent: BinancePM has no public market data, only an account.
+// Any of a venue's parts may be absent.
 //
 // # Rules every adapter follows
 //

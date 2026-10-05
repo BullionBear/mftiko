@@ -7,16 +7,17 @@ import (
 	"github.com/BullionBear/mftiko/internal/symbol"
 )
 
-func historyFactory(p product) exchange.HistoryFactory {
+func historyFactory(k kind) exchange.HistoryFactory {
 	return func(cfg exchange.AccountConfig) (exchange.History, error) {
-		return &history{p: p, cfg: cfg}, nil
+		return &history{k: k, cfg: cfg}, nil
 	}
 }
 
-// history reads myTrades (spot) / userTrades (futures) by fromId, ascending; the trade id is the
-// same "id" the private stream reports as "t", which is what D20 needs for fill_id.
+// history reads myTrades (spot) / userTrades (futures; papi's um and cm userTrades for BinancePM) by
+// fromId, ascending; the trade id is the same "id" the private stream reports as "t", which is
+// what D20 needs for fill_id.
 type history struct {
-	p   product
+	k   kind
 	cfg exchange.AccountConfig
 }
 

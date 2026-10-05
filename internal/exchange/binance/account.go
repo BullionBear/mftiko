@@ -8,14 +8,17 @@ import (
 	"github.com/BullionBear/mftiko/internal/symbol"
 )
 
-func accountFactory(p product) exchange.AccountFactory {
+func accountFactory(k kind) exchange.AccountFactory {
 	return func(cfg exchange.AccountConfig) (exchange.Account, error) {
-		return &account{p: p, cfg: cfg}, nil
+		return &account{k: k, cfg: cfg}, nil
 	}
 }
 
+// account serves every Binance account kind. The kind picks the API family: api (spot), fapi (UM),
+// dapi (CM), eapi (EO); BinancePM uses papi and picks /papi/v1/margin, /um or /cm by the ticker's
+// venue.
 type account struct {
-	p   product
+	k   kind
 	cfg exchange.AccountConfig
 }
 

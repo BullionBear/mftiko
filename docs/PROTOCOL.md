@@ -1,6 +1,6 @@
 # PROTOCOL — 協議與契約
 
-> **狀態：草案 v0.20（2026-10-05）。** 依據 [DECISIONS.md](DECISIONS.md)。v0.3 把控制面改到 etcd（D14），依賴改成 agent 層級的 lease（D9），shim 與 worker 之間加入生命週期動詞（D15），資料面拿掉給策略看的可用性廣播（D16）。v0.4 依 D17 改成每個 region 一個 etcd cluster：路由函數、每個 cluster 各自的 writer key、版本號不依賴 etcd revision；並依 D18 加入策略 artifact 的格式（§8）。v0.5 依 D20 加入歷史補正：`AccountSettings` 加 interval 與手動觸發，TD agent 訂閱 `td.evt` 落庫，`Fill.fill_id` 規定為交易所的 trade id。v0.6 依 D21：md.proto 加 `OrderBookDelta`，新增 `read.proto`（`md.view`、`md.fetch`），tape 不再用 Redis（拿掉 `tape_url` 與 `StandingSubscription.record`）。v0.7 依 D8：行情的 subject 一律由 MD agent 給，`SelectorBinding` 加 `subject_prefix`。v0.8 依 D22 拿掉 `stsctl.SubscribeRequest`：一期策略完全宣告式。v0.9 依 D23 加入 session volume 與資料 artifact：`SessionSpec.inputs`、`Limits.volume_mb`、`SessionStatus.state_out`、兩個環境變數、§8.4。v0.10 依 D24：`md.f` 加 envelope（`seq`、`conn_epoch`、`md_ts_ns` 從 `Meta` 移過去），拿掉 `Delivery`，加 `SessionSpec.recv_window_ms`、`Limits.hook_timeout_s`、`QueueStat.max_age_ms`。v0.11 依 D25：加 `algo_id`（由 spec 在每個帳號上宣告，可以多個，TD agent 以 lease 檢查衝突），`client_order_id` 的 session 欄位換成 algo，`CancelSession` 換成策略自己發的 `BatchCancel`，STS agent 不再有 `td.order` 的權限。v0.12：`client_order_id` 改成 `ver(4) | algo(10) | ts_ms(40) | seq(10)`。v0.13 依 D26：MD 連線的身分改成 `(venue, route, n)`，endpoint 變成 `mdctl.InitPayload.url` 這個參數，atom id 拿掉 endpoint。v0.14 依 D27：`td.evt` 的 `AccountReset` 換成帶快照的 `Recon`，TD 降級時拒新單、放行撤單。v0.15 依 D28：只有一層 linger，連線在最後一個 atom 退訂時就停；lease 的 TTL 統一 60 秒。v0.16 依 D29 拿掉常駐訂閱（`StandingSubscription` 與 `/md/{inst}/standing/`）：MD 的 owner 只有 session 的 lease 項目。v0.17 依 D20：`tdctl.Report` 加 `first_submit_ns`，backfill 的範圍從下單決定。v0.18 依 D30：session worker 的 NATS 憑證每個 session 一份（`stsctl.InitPayload.nats`），權限見 §7。v0.19 依 D19：一期只做 Go SDK，拿掉 Python 綁 Go 的設計；新增 §9，寫明其他語言的 SDK 要遵守的契約，以及 STS agent 以 `Beat` 逾時判定 `HUNG` 的保險。v0.20 依 D31：UniversalTicker 是佔位，經 SYM 解析之後才決定訂閱什麼；atom id 改成 `<venue>:<route>:<channel>`；加入 topic 表與 SYM 的契約（§7.3，`mftiko.sym.v1`）。還沒定的寫在 [§10](#10-待定)。
+> **狀態：草案 v0.21（2026-10-05）。** 依據 [DECISIONS.md](DECISIONS.md)。v0.3 把控制面改到 etcd（D14），依賴改成 agent 層級的 lease（D9），shim 與 worker 之間加入生命週期動詞（D15），資料面拿掉給策略看的可用性廣播（D16）。v0.4 依 D17 改成每個 region 一個 etcd cluster：路由函數、每個 cluster 各自的 writer key、版本號不依賴 etcd revision；並依 D18 加入策略 artifact 的格式（§8）。v0.5 依 D20 加入歷史補正：`AccountSettings` 加 interval 與手動觸發，TD agent 訂閱 `td.evt` 落庫，`Fill.fill_id` 規定為交易所的 trade id。v0.6 依 D21：md.proto 加 `OrderBookDelta`，新增 `read.proto`（`md.view`、`md.fetch`），tape 不再用 Redis（拿掉 `tape_url` 與 `StandingSubscription.record`）。v0.7 依 D8：行情的 subject 一律由 MD agent 給，`SelectorBinding` 加 `subject_prefix`。v0.8 依 D22 拿掉 `stsctl.SubscribeRequest`：一期策略完全宣告式。v0.9 依 D23 加入 session volume 與資料 artifact：`SessionSpec.inputs`、`Limits.volume_mb`、`SessionStatus.state_out`、兩個環境變數、§8.4。v0.10 依 D24：`md.f` 加 envelope（`seq`、`conn_epoch`、`md_ts_ns` 從 `Meta` 移過去），拿掉 `Delivery`，加 `SessionSpec.recv_window_ms`、`Limits.hook_timeout_s`、`QueueStat.max_age_ms`。v0.11 依 D25：加 `algo_id`（由 spec 在每個帳號上宣告，可以多個，TD agent 以 lease 檢查衝突），`client_order_id` 的 session 欄位換成 algo，`CancelSession` 換成策略自己發的 `BatchCancel`，STS agent 不再有 `td.order` 的權限。v0.12：`client_order_id` 改成 `ver(4) | algo(10) | ts_ms(40) | seq(10)`。v0.13 依 D26：MD 連線的身分改成 `(venue, route, n)`，endpoint 變成 `mdctl.InitPayload.url` 這個參數，atom id 拿掉 endpoint。v0.14 依 D27：`td.evt` 的 `AccountReset` 換成帶快照的 `Recon`，TD 降級時拒新單、放行撤單。v0.15 依 D28：只有一層 linger，連線在最後一個 atom 退訂時就停；lease 的 TTL 統一 60 秒。v0.16 依 D29 拿掉常駐訂閱（`StandingSubscription` 與 `/md/{inst}/standing/`）：MD 的 owner 只有 session 的 lease 項目。v0.17 依 D20：`tdctl.Report` 加 `first_submit_ns`，backfill 的範圍從下單決定。v0.18 依 D30：session worker 的 NATS 憑證每個 session 一份（`stsctl.InitPayload.nats`），權限見 §7。v0.19 依 D19：一期只做 Go SDK，拿掉 Python 綁 Go 的設計；新增 §9，寫明其他語言的 SDK 要遵守的契約，以及 STS agent 以 `Beat` 逾時判定 `HUNG` 的保險。v0.20 依 D31：UniversalTicker 是佔位，經 SYM 解析之後才決定訂閱什麼；atom id 改成 `<venue>:<route>:<channel>`；加入 topic 表與 SYM 的契約（§7.3，`mftiko.sym.v1`）。v0.21 依 D32：帳號種類和 venue 分成兩個 enum，`state.v1.Account.venue`、`tdctl.InitPayload.venue` 改為 `kind`；BinancePM 是帳號種類，不是 venue。還沒定的寫在 [§10](#10-待定)。
 >
 > proto 區塊開頭的 `// file:` 是它在 `proto/` 下的路徑。全部區塊以 `protoc` 編譯驗證過。
 
@@ -56,7 +56,9 @@ shim 與 worker 會比 agent 活得久（D4），所以**版本偏差是常態**
 | `Version` | `(epoch, seq)`，字典序比較。agent 推給 worker 的指令都帶它；`seq` 在同一個 agent 進程內遞增 | agent |
 | generation | session spec key 的 `mod_revision`（§3.2），只在該 key 所在的 cluster 內比較 | etcd |
 | UniversalTicker | `<Venue>_<Category>_<SYMBOL>`，照抄 mftik（D11）。平台內指涉商品一律用它，是佔位：要用交易所的寫法時經 SYM 解析（D31）。Venue 是 CamelCase（`BinanceUM`、`Okx`）；Category 是 `Spot`、`Perp`、`Inverse`、`Future`、`Option`；SYMBOL 是 base＋quote 不加分隔，到期合約加 `-YYMMDD`，期權再加 `-STRIKE-C`／`-P`，strike 的小數點寫成 `D`（`6D4`）。不含 `_` 以外的分隔、不含 `.` | SYM（由 listing 推得） |
-| exch_ticker | 交易所自己的寫法，只出現在 adapter 與 SYM。反查要帶 category：統一帳戶的 venue 上，同一個寫法可能是兩個商品（Bybit 現貨與 linear 的 `BTCUSDT`） | 交易所 |
+| venue | 市場，UniversalTicker 的第一段，CamelCase：`Binance`、`BinanceUM`、`BinanceCM`、`BinanceEO`、`Okx`、`Bybit`。一條連線的公開行情、一組商品（D26） | 程式（`internal/exchange`） |
+| 帳號種類 | api_id 是什麼：收哪種憑證、可以交易哪些 venue 的商品：`Binance`、`BinanceUM`、`BinanceCM`、`BinanceEO`、`BinancePM`、`Okx`、`Bybit`。和 venue 是兩個獨立的 enum，名稱可能相同，不可互查。`BinancePM` 只是帳號種類，交易 `Binance`、`BinanceUM`、`BinanceCM` 的商品，依 ticker 的 venue 路由，沒有 `BinancePM_*` 這種 ticker（D32） | 程式（`internal/exchange`） |
+| exch_ticker | 交易所自己的寫法，只出現在 adapter 與 SYM。反查要帶 venue 與 category：一個帳號種類可能交易多個 venue（BinancePM），統一帳戶的 venue 上同一個寫法可能是兩個商品（Bybit 現貨與 linear 的 `BTCUSDT`） | 交易所 |
 | topic | `bestquote`、`trade`、`aggtrade`、`orderbook`、`orderbook_delta`、`ticker`、`liquidation`、`funding_rate`、`open_interest`、`greeks`、`mark_price`、`kline_<interval>`（interval 是 `1m`、`4h`、`1mo` 這類正規寫法）。前面幾個沿用 mftik 的名稱（D31） | — |
 | feed key | `<topic>.<UniversalTicker>` | — |
 | atom id | `<venue>:<route>:<channel>`，只出現在 MD 內部與 `mdctl`。channel 是交易所的訂閱參數，逐字照抄，可能含 `:` 與 `.`，所以只切前兩個 `:`。route 是身分的一部分：同一個 channel 字串可能出現在不同 route（Bybit 現貨與 linear 的 `publicTrade.BTCUSDT`）（D31） | MD adapter（由解析後的商品推得） |
@@ -327,7 +329,9 @@ message Limits {
 
 message Account {
   string name = 1;
-  string venue = 2;
+  // 帳號種類（DECISIONS D32），不是 venue：BinancePM 可以交易 Binance、BinanceUM、BinanceCM 的商品。
+  // 兩個 enum 的名稱可能相同（帳號種類 BinanceUM 交易 venue BinanceUM），不可互查。
+  string kind = 2;
   bytes sealed_credentials = 3; // 以 TD instance 的公鑰封裝；etcd 裡不放明文
   AccountSettings settings = 4;
   bool enabled = 5;
@@ -983,7 +987,7 @@ option go_package = "github.com/BullionBear/mftiko/gen/mftiko/tdctl/v1;tdctlv1";
 
 message InitPayload {
   int64 api_id = 1;
-  string venue = 2;
+  string kind = 2; // 帳號種類（D32），同 state.v1.Account.kind
   string td_instance = 3;
   uint32 cancel_on_disconnect_s = 4;
   Credentials credentials = 5; // 只經 socketpair 送進去
@@ -1056,6 +1060,7 @@ enum AccountState {
   - publish：`td.order.{綁定的 api_id}`、`td.view.{綁定的 api_id}`、`md.view.{綁定的 MD instance}.>`、`md.fetch`、`log.sts.{session_id}`。
   - subscribe：`md.f.{綁定的 MD instance}.>`、`td.evt.{綁定的 api_id}`、`_INBOX_{session_id}.>`。
   - 授權只在連線時做一次，訊息不帶 token。對沒綁定的帳號發 `td.order`，broker 直接拒絕。
+- **帳號只交易它的種類可交易的 venue（D32）。** `Submit` 的 ticker 所屬的 venue 不在帳號種類的清單裡，account worker 以 1xx 拒絕（`venue_not_tradable`），不送出。
 - **策略只能動自己的單（D25）。** TD 檢查 `Submit`、`Cancel`、`BatchCancel` 帶的 `algo_id` 與 `client_order_id` 的 algo 欄位一致，不符就以 1xx 拒絕。沒有 `client_order_id` 的單（人工下的）不屬於任何策略。SDK 只允許使用 spec 裡宣告給該帳號的 algo_id；這是防呆，不是防惡意。平台不替策略撤單，STS agent 沒有 `td.order` 的權限。
 - **TD agent 訂閱 `td.evt` 落庫（D20）。** 所有 `Fill`，以及終態且 `filled_qty > 0` 的 `Order`，以 provisional 進 agent 的 queue。走 core NATS：漏收的由歷史補正讀回，不用 JetStream。
 

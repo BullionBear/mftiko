@@ -1,5 +1,5 @@
 // Package all builds the registry of every exchange adapter. Binaries that need adapters (md-agent,
-// md-conn, md-fetch, sym, td-agent, td-account) call Registry once at startup.
+// md-conn, md-fetch, sym, td-agent, td-account, api) call Registry once at startup.
 package all
 
 import (
@@ -9,13 +9,13 @@ import (
 	"github.com/BullionBear/mftiko/internal/exchange/okx"
 )
 
-// Registry returns the registry of every exchange in this build. It panics on a duplicate venue
-// name, a programming error that all_test.go catches first.
+// Registry returns the registry of every exchange in this build. It panics on an inconsistent
+// declaration, a programming error that all_test.go catches first.
 func Registry() *exchange.Registry {
 	r, err := exchange.NewRegistry(
-		binance.Venues(),
-		okx.Venues(),
-		bybit.Venues(),
+		binance.Declare(),
+		okx.Declare(),
+		bybit.Declare(),
 	)
 	if err != nil {
 		panic(err)
