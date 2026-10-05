@@ -15,6 +15,9 @@
 //     and run as one txn conditioned on that cluster's writer key still having rev R (W2 step 4); a caller's
 //     Txn is nested inside it. A failed condition ends the term with ErrSuperseded, without retry. These are
 //     the only write path: Clusters exposes readers only.
+//   - Incarnations (incarnation.go): LoadIncarnations reads the agent's counters once per term; Next takes a
+//     worker key's next number in one fenced txn before the spawn (W6, D8), so a superseded agent gets none;
+//     Forget deletes an STS session's counter once it is terminal.
 //
-// Not yet: incarnations (E1-02), lease handling, auth.
+// Not yet: the etcd leases that lease entries and acks are bound to (PROTOCOL §3.3), auth and RBAC (E1-08).
 package state

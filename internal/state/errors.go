@@ -36,4 +36,13 @@ var (
 	ErrCrossCluster = errors.New("state: write spans clusters")
 	// ErrBadOp: an option that a put or delete cannot take (clientv3 would panic on it).
 	ErrBadOp = errors.New("state: bad op")
+
+	// ErrBadIncarnation: a stored incarnation is not a decimal uint32.
+	ErrBadIncarnation = errors.New("state: bad incarnation")
+	// ErrIncarnationConflict: the stored incarnation kept changing under Next (PROTOCOL §3.2 W6.3).
+	ErrIncarnationConflict = errors.New("state: incarnation conflict")
+	// ErrIncarnationExhausted: the worker key has taken every uint32.
+	ErrIncarnationExhausted = errors.New("state: incarnations exhausted")
+	// ErrNotSTS: only the STS agent deletes incarnation keys (PROTOCOL §3.2 W6.5).
+	ErrNotSTS = errors.New("state: only STS forgets incarnations")
 )

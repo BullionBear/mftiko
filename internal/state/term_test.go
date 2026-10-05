@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -330,5 +331,46 @@ func TestParseEpoch(t *testing.T) {
 	}
 	if e, err := parseEpoch([]byte(formatEpoch(42))); err != nil || e != 42 {
 		t.Errorf("round trip: %d, %v", e, err)
+	}
+}
+
+// Many writers hitting a cluster for the first time at once: one acquisition, no false ErrSuperseded.
+func TestFenceConcurrentFirstUse(t *testing.T) {
+	ctx := testCtx(t)
+	_, jp, topo := twoServers(t)
+	rawJP := jp.Client(t)
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneSTS, "sts-tw-1", TermOptions{})
+
+	const n = 16
+	revs := make(chan int64, n)
+	errs := make(chan error, n)
+	var wg sync.WaitGroup
+	for range n {
+		wg.Go(func() {
+			r, err := term.Fence(ctx, "jp")
+			if err != nil {
+				errs <- err
+				return
+			}
+			revs <- r
+		})
+	}
+	wg.Wait()
+	close(revs)
+	close(errs)
+	for err := range errs {
+		t.Fatal(err)
+	}
+	kvs := mustGet(t, ctx, rawJP, WriterKey(PlaneSTS, "sts-tw-1")).Kvs
+	if len(kvs) != 1 || kvs[0].Version != 1 {
+		t.Fatalf("jp writer %v: want exactly one put", kvs)
+	}
+	for r := range revs {
+		if r != kvs[0].ModRevision {
+			t.Fatalf("Fence returned %d, writer is at %d", r, kvs[0].ModRevision)
+		}
+	}
+	if !running(term) {
+		t.Fatal(term.Err())
 	}
 }
