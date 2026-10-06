@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-04 更新）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-05 更新）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 
@@ -65,6 +65,12 @@ agent 每次啟動帶 epoch。shim 只接受 epoch 最大的 agent 的指令；�
 ### D8 incarnation
 
 - 同一個 worker 身分下，實體進程（shim ＋ worker）的計數。每換一個進程加 1。
+- **計數存在 etcd，不綁 lease。** key 是 `/{plane}/{inst}/incarnation/{h}`，寫入者是該平面的 agent，三個平面共用同一套（PROTOCOL §3.2 W6）。spawn 前先以 txn 取號，條件是 writer key 的 rev（§3.2 W2）：被取代的 agent 取不到號，也就 spawn 不了。
+  - 不放 `WorkerStatus`：它綁在 agent 的 lease 上，agent 一死就消失。舊 shim 都 Release 之後 agent 再起來，號碼會從 1 重來，和舊進程的 `td.evt` seq、`Recon` 撞號。
+  - 不放 `/td/{inst}/account/{api_id}`：那是 API 寫的宣告（W1）。TD agent 寫進去會和 API 搶同一個 key，每次 spawn 都改動宣告的 revision，RBAC 也得讓 TD agent 能寫放憑證的前綴。MD 也沒有對應的宣告可放。
+  - 不由 `(epoch, 本機 seq)` 推導：incarnation 和 epoch 就不再是兩個獨立的計數（見本節最後一條），型別也要從 `uint32` 改成兩個欄位。
+  - 不用雜湊：雜湊只分得出不同，分不出新舊，「舊的晚到就丟」需要比大小。
+  - 號碼只保證遞增，可以跳號。key 不刪：worker 停掉之後同一個 worker key 還會再起來，刪了就從 1 重來。例外是 STS 的 session 結束之後，見 PROTOCOL §3.2 W6。
 - 訊息與事件帶 `(身分, incarnation)`：舊的晚到就丟；下游看到 incarnation 變了就重新同步。
 - 換 incarnation 一律 delete-before-create：舊的確認消失之後才起新的。
 - worker 換版一律走換 incarnation。各平面的強制換法：MD 對連線 restart；TD drain-replace；STS 結束 session 後開新的。
