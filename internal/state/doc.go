@@ -10,7 +10,9 @@
 //   - Terms (term.go): Campaign wins the instance's election in its home region, bumps the persisted epoch and
 //     takes the home writer key; Fence takes the writer key in another cluster on first use and records its
 //     rev R (PROTOCOL §3.2 W2 steps 1-3). A term ends, once and for good, when its session is lost, a writer
-//     key shows a newer epoch, or it is closed.
+//     key shows a newer epoch, or it is closed. Fencing is per cluster: a superseded term that has not yet
+//     noticed can still write to a cluster the new term has not fenced. An agent therefore fences every cluster
+//     it will write before its first reconcile (the agent skeleton, E1-15), not on first use.
 //   - Fenced writes (write.go): Term.Put, Delete and Txn route by key, fence the target cluster on first use,
 //     and run as one txn conditioned on that cluster's writer key still having rev R (W2 step 4); a caller's
 //     Txn is nested inside it. A failed condition ends the term with ErrSuperseded, without retry. They also
