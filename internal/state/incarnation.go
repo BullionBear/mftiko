@@ -19,9 +19,10 @@ const incarnationRetries = 3
 // A worker key's counter is IncarnationKey(plane, inst, WorkerHash(worker key)) in the home region: decimal, not
 // bound to any lease, written only by this agent and only behind its writer key (D8). Safe for concurrent use.
 type Incarnations struct {
-	t *Term
+	t   *Term
+	sem chan struct{} // one slot: one Next or Forget at a time; waiting for it honours ctx and the term
 
-	mu  sync.Mutex
+	mu  sync.Mutex        // guards cur only, never held across etcd calls
 	cur map[string]uint32 // WorkerHash -> last number taken or loaded
 }
 
@@ -43,7 +44,7 @@ func LoadIncarnations(ctx context.Context, t *Term) (*Incarnations, error) {
 	if err != nil {
 		return nil, t.cause(fmt.Errorf("state: load incarnations %s: %w", prefix, err))
 	}
-	c := &Incarnations{t: t, cur: make(map[string]uint32, len(resp.Kvs))}
+	c := &Incarnations{t: t, sem: make(chan struct{}, 1), cur: make(map[string]uint32, len(resp.Kvs))}
 	for _, kv := range resp.Kvs {
 		n, err := parseIncarnation(kv.Value)
 		if err != nil {
@@ -68,10 +69,12 @@ func LoadIncarnations(ctx context.Context, t *Term) (*Incarnations, error) {
 func (c *Incarnations) Next(ctx context.Context, workerKey string) (uint32, error) {
 	h := WorkerHash(workerKey)
 	key := IncarnationKey(c.t.plane, c.t.inst, h)
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	if err := c.t.lock(ctx, c.sem, "incarnations"); err != nil {
+		return 0, err
+	}
+	defer func() { <-c.sem }()
 	for range 1 + incarnationRetries {
-		n, ok := c.cur[h]
+		n, ok := c.get(h)
 		held := clientv3.Compare(clientv3.CreateRevision(key), "=", 0)
 		if ok {
 			held = clientv3.Compare(clientv3.Value(key), "=", formatIncarnation(n))
@@ -87,30 +90,27 @@ func (c *Incarnations) Next(ctx context.Context, workerKey string) (uint32, erro
 			return 0, err
 		}
 		if resp.Succeeded {
-			c.cur[h] = n + 1
+			c.set(h, n+1, true)
 			return n + 1, nil
 		}
 		// The writer condition held, so only the cache was wrong: take what etcd has and try again.
 		kvs := resp.Responses[0].GetResponseRange().GetKvs()
 		if len(kvs) == 0 {
-			delete(c.cur, h)
+			c.set(h, 0, false)
 			continue
 		}
 		v, err := parseIncarnation(kvs[0].Value)
 		if err != nil {
 			return 0, fmt.Errorf("%w: %s (%s) holds %q", ErrBadIncarnation, key, workerKey, kvs[0].Value)
 		}
-		c.cur[h] = v
+		c.set(h, v, true)
 	}
 	return 0, fmt.Errorf("%w: %s changed %d times", ErrIncarnationConflict, workerKey, 1+incarnationRetries)
 }
 
 // Current is the last number taken or loaded for workerKey; ok=false if none.
 func (c *Incarnations) Current(workerKey string) (n uint32, ok bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	n, ok = c.cur[WorkerHash(workerKey)]
-	return n, ok
+	return c.get(WorkerHash(workerKey))
 }
 
 // Forget deletes the key (W6.5). Only for STS, once the session is terminal and its last incarnation is confirmed gone;
@@ -123,14 +123,34 @@ func (c *Incarnations) Forget(ctx context.Context, workerKey string) error {
 		return fmt.Errorf("%w: %s agent, worker %s", ErrNotSTS, c.t.plane, workerKey)
 	}
 	h := WorkerHash(workerKey)
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	if err := c.t.lock(ctx, c.sem, "incarnations"); err != nil {
+		return err
+	}
+	defer func() { <-c.sem }()
 	del := []clientv3.Op{clientv3.OpDelete(IncarnationKey(c.t.plane, c.t.inst, h))}
 	if _, err := c.t.txn(ctx, c.scope(), nil, del, nil); err != nil {
 		return err
 	}
-	delete(c.cur, h)
+	c.set(h, 0, false)
 	return nil
+}
+
+func (c *Incarnations) get(h string) (uint32, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n, ok := c.cur[h]
+	return n, ok
+}
+
+// set caches n for h, or forgets h when ok is false.
+func (c *Incarnations) set(h string, n uint32, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if ok {
+		c.cur[h] = n
+	} else {
+		delete(c.cur, h)
+	}
 }
 
 // scope lets the incarnation keys, and only those, be written: Term.Put, Delete and Txn cannot reach them (W1).

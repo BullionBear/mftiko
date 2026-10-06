@@ -7,6 +7,7 @@ import (
 	"math"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
@@ -75,9 +76,9 @@ type Term struct {
 
 // fence is the writer key this term holds in one cluster.
 type fence struct {
-	mu      sync.Mutex // held while acquiring, so one term never races itself for the key
-	rev     int64      // R, the writer key's mod_revision after our put; 0 until acquired
-	unknown bool       // a put of our epoch was sent here and no reply said whether it applied
+	sem     chan struct{} // one slot, held while acquiring, so one term never races itself for the key
+	rev     atomic.Int64  // R, the writer key's mod_revision after our put; 0 until acquired
+	unknown bool          // under sem: a put of our epoch was sent here and no reply said whether it applied
 }
 
 // Campaign blocks until this process leads (plane, inst) in its home region (PROTOCOL §3.2 W2 steps 1-2), then
@@ -222,15 +223,22 @@ func (t *Term) Fence(ctx context.Context, region string) (int64, error) {
 	t.mu.Lock()
 	f := t.fences[region]
 	if f == nil {
-		f = &fence{}
+		f = &fence{sem: make(chan struct{}, 1)}
 		t.fences[region] = f
 	}
 	t.mu.Unlock()
+	if r := f.rev.Load(); r != 0 {
+		return r, nil
+	}
 
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.rev != 0 {
-		return f.rev, nil
+	// Another call may be acquiring this region, possibly stuck on an unreachable cluster: wait for it only as
+	// long as ctx and the term allow.
+	if err := t.lock(ctx, f.sem, "fence "+region); err != nil {
+		return 0, err
+	}
+	defer func() { <-f.sem }()
+	if r := f.rev.Load(); r != 0 {
+		return r, nil
 	}
 	if err := t.Err(); err != nil {
 		return 0, err
@@ -245,7 +253,7 @@ func (t *Term) Fence(ctx context.Context, region string) (int64, error) {
 	if err != nil {
 		return 0, t.cause(err)
 	}
-	f.rev = rev
+	f.rev.Store(rev)
 	return rev, nil
 }
 
@@ -372,6 +380,19 @@ func (t *Term) cause(err error) error {
 		return e
 	}
 	return err
+}
+
+// lock takes a one-slot semaphore, unless ctx is done or the term ends first. Semaphores, not mutexes, guard
+// whatever is held across etcd calls, so a caller never waits longer than its own ctx.
+func (t *Term) lock(ctx context.Context, sem chan struct{}, what string) error {
+	select {
+	case sem <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("state: waiting for %s: %w", what, ctx.Err())
+	case <-t.done:
+		return t.Err()
+	}
 }
 
 // bind derives a context that is also cancelled when the term ends. If it has ended already, the context is

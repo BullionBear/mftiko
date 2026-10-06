@@ -7,6 +7,7 @@ import (
 	"math"
 	"sync"
 	"testing"
+	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -248,5 +249,36 @@ func TestIncarnationConcurrent(t *testing.T) {
 	}
 	if len(seen) != workers*each {
 		t.Fatalf("%d numbers, want %d", len(seen), workers*each)
+	}
+}
+
+// Next waits for another Next (here: a held slot, as if one were stuck in etcd) only as long as its ctx and the
+// term allow.
+func TestIncarnationWaitHonoursCtx(t *testing.T) {
+	ctx := testCtx(t)
+	_, topo := singleRegion(t, "td-tw-1")
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{})
+	inc := loadIncarnations(t, ctx, term)
+
+	inc.sem <- struct{}{}
+	short, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if n, err := inc.Next(short, "td/42"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Next behind a held slot = %d, %v", n, err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("Next took %s on a 200ms ctx", d)
+	}
+
+	if err := term.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := inc.Next(ctx, "td/42"); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Next behind a held slot after Close = %d, %v", n, err)
+	}
+	<-inc.sem
+	if _, ok := inc.Current("td/42"); ok {
+		t.Fatal("a refused Next changed the cache")
 	}
 }

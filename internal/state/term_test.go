@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"slices"
 	"sync"
 	"testing"
@@ -555,5 +556,89 @@ func TestEndAndBind(t *testing.T) {
 			t.Fatal("bind on an ended term returned a live context")
 		}
 		release()
+	}
+}
+
+// unusedEndpoint is a local address nothing listens on: a client dialled to it never becomes ready.
+func unusedEndpoint(t *testing.T) string {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := l.Addr().String()
+	l.Close()
+	return "http://" + addr
+}
+
+// holding reports whether some call holds region's fence semaphore.
+func holding(term *Term, region string) bool {
+	term.mu.Lock()
+	f := term.fences[region]
+	term.mu.Unlock()
+	return f != nil && len(f.sem) == 1
+}
+
+// A Fence stuck on an unreachable cluster holds that region's fence. Other callers wait behind it no longer than
+// their own ctx allows, and the stuck call still honours its ctx.
+func TestFenceWaitHonoursCtx(t *testing.T) {
+	ctx := testCtx(t)
+	tw := etcdtest.Start(t)
+	topo := Topology{
+		Regions:   map[string]Region{"tw": {Endpoints: tw.Endpoints()}, "jp": {Endpoints: []string{unusedEndpoint(t)}}},
+		Instances: twoRegions().Instances,
+	}
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneSTS, "sts-tw-1", TermOptions{})
+
+	stuckCtx, cancelStuck := context.WithCancel(ctx)
+	defer cancelStuck()
+	stuck := make(chan error, 1)
+	go func() {
+		_, err := term.Fence(stuckCtx, "jp")
+		stuck <- err
+	}()
+	for deadline := time.Now().Add(10 * time.Second); !holding(term, "jp"); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the first Fence never took jp's fence")
+		}
+	}
+
+	key := MDLeaseKey("md-jp-1", "sts-tw-1", "abc123", "feed/trade.Binance_Spot_BTCUSDT")
+	calls := []struct {
+		name string
+		call func(context.Context) error
+	}{
+		{"Fence", func(c context.Context) error { _, err := term.Fence(c, "jp"); return err }},
+		{"Put", func(c context.Context) error { return term.Put(c, key, "x") }},
+	}
+	for _, c := range calls {
+		short, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+		start := time.Now()
+		err := c.call(short)
+		cancel()
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("%s behind a stuck Fence: %v", c.name, err)
+		}
+		if d := time.Since(start); d > 2*time.Second {
+			t.Fatalf("%s took %s on a 200ms ctx", c.name, d)
+		}
+	}
+
+	select {
+	case err := <-stuck:
+		t.Fatalf("the stuck Fence returned before its ctx ended: %v", err)
+	default:
+	}
+	cancelStuck()
+	select {
+	case err := <-stuck:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("stuck Fence after cancel: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the stuck Fence ignored its ctx")
+	}
+	if !running(term) {
+		t.Fatalf("a caller's ctx ended the term: %v", term.Err())
 	}
 }
