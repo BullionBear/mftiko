@@ -57,7 +57,10 @@ type Reader interface {
 	// and ends a watch without an error, so a long-running reader such as Mirror checks this instead.
 	Done() <-chan struct{}
 	// RequestProgress asks the watch stream that ctx's metadata selects for a progress notification: once every
-	// watch on it has caught up, each receives the current revision (clientv3.Watcher.RequestProgress).
+	// watch on it has caught up, and none starts beyond the current revision, each receives that revision
+	// (clientv3.Watcher.RequestProgress). Every watch on the stream gets the notification, so N mirrors probing one
+	// client make N² of them per interval. With no stream for that metadata, clientv3 opens one that lasts until
+	// the client closes; while the stream reconnects, the call waits for ctx.
 	RequestProgress(ctx context.Context) error
 }
 

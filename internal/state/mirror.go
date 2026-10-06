@@ -70,24 +70,27 @@ type MirrorStats struct {
 // Run lists the prefix in pages, all at the first page's revision, then watches and applies each watch response
 // whole, so a view never shows half of a txn. W4 says to watch from the list's revision + 1; Run watches from the
 // revision itself and drops events at or below the copy's revision, which are already in it. The effect is the
-// same, but a watch never starts beyond the cluster's current revision: etcd withholds progress notifications from
-// every watch on a stream while one of them does, which on a quiet cluster would be indefinitely. The watch
-// requires a leader (clientv3.WithRequireLeader): a member cut off from its leader cancels it rather than going
-// quiet.
+// same, but Run's own watches never start beyond the cluster's current revision: etcd withholds progress
+// notifications from every watch on a stream while one of them does, which on a quiet cluster would be
+// indefinitely. (clientv3 still does so when it resumes a watch by itself after a progress notification; see
+// Staleness.) The watch requires a leader (clientv3.WithRequireLeader): a member cut off from its leader cancels
+// it rather than going quiet.
 //
-//   - Compaction: when the watch reports that the next revision it needs is gone, Run lists again and replaces
-//     the copy, which drops keys whose deletes were compacted away.
+//   - Compaction: when the watch reports that a revision it needs is gone, Run lists again and replaces the copy,
+//     which drops keys whose deletes were compacted away. A compaction at exactly the copy's revision + 1 costs a
+//     relist that a watch from revision + 1 would not have needed.
 //   - Interruption: when the watch ends for any other reason, Run reopens it from the last revision it applied.
 //     clientv3 also resumes a watch by itself across reconnects; either way nothing is skipped.
 //   - A replaced or rebuilt cluster: revisions start over, and a resumed watch would wait silently for a revision
-//     the new cluster has not reached. Every ProbeInterval Run reads one key; a different cluster ID, a lower
-//     revision or a lower raft term than the copy has seen means the copy belongs to another history, so Run
-//     lists again. Watch responses are checked for cluster ID and raft term too. A restore that keeps the cluster
-//     ID must not reuse revisions (etcdutl snapshot restore --bump-revision --mark-compacted): one that reused
-//     them and overtook the copy's revision within a probe interval would not be noticed.
-//   - Staleness: the probe also asks the watch stream for a progress notification. LastContact is the last time
-//     the mirror knew it was current; a watch that stays silent for 3 probe intervals while the cluster answers
-//     is reopened.
+//     the new cluster has not reached. Every ProbeInterval Run reads one key: another cluster ID, or a revision or
+//     raft term below what the copy had seen before the read was sent, means the copy belongs to another history,
+//     so Run lists again. Watch responses are checked for the cluster ID too. A restore that keeps the cluster ID
+//     must not reuse revisions (etcdutl snapshot restore --bump-revision --mark-compacted): one that reused them
+//     and overtook the copy's revision within a probe interval would not be noticed.
+//   - Staleness: LastContact is the last time the copy was known to be current: a list, a progress notification,
+//     a watch response that brought the copy up to the response's revision, or a probe that found nothing in the
+//     cluster newer than the copy. The probe also asks the watch stream for a progress notification; a watch that
+//     stays silent for 3 probe intervals while the cluster has moved past the copy is reopened.
 //
 // Readers act level-triggered: Notify says that something changed, Snapshot or Take says what is there now.
 // Notify and Take are for one consumer: Take consumes the set of changed keys. Safe for concurrent use; Run is
@@ -101,19 +104,22 @@ type Mirror struct {
 	ran    atomic.Bool
 	synced chan struct{}
 	notify chan struct{}
-	kick   chan struct{} // the probe asks the watch loop to stop; relist says whether to list again
+	kick   chan struct{} // the probe asks the watch loop to stop; relistAsked and kickGen say why
 
-	mu        sync.Mutex
-	rev       int64 // the revision entries are current as of; 0 until the first list
-	revCh     chan struct{}
-	clusterID uint64    // of the cluster the copy was listed from
-	term      uint64    // highest raft term seen
-	contact   time.Time // last list, events or progress notification
-	opened    time.Time // when the current watch was opened
-	relist    bool
-	entries   map[string]Entry
-	dirty     map[string]struct{}
-	stats     MirrorStats
+	mu          sync.Mutex
+	rev         int64 // the revision entries are current as of; 0 until the first list
+	revCh       chan struct{}
+	clusterID   uint64    // of the cluster the copy was listed from
+	term        uint64    // highest raft term seen
+	contact     time.Time // see LastContact
+	gen         uint64    // the current watch's generation
+	opened      time.Time // when it was opened
+	kickGen     uint64    // the generation a stall kick is for
+	relistAsked uint64    // relists the probe asked for, counted
+	relistDone  uint64    // relistAsked as of the start of the last completed list
+	entries     map[string]Entry
+	dirty       map[string]struct{}
+	stats       MirrorStats
 }
 
 // NewMirror mirrors every key that starts with prefix, read through r. prefix must not be empty; end it with "/"
@@ -321,8 +327,12 @@ func (m *Mirror) Run(ctx context.Context) error {
 
 // list reads the whole prefix at one revision, in pages, and replaces the copy with it.
 func (m *Mirror) list(ctx context.Context) error {
+	m.mu.Lock()
+	asked := m.relistAsked // a relist asked for after this point is not answered by this list
+	m.mu.Unlock()
 	entries := map[string]Entry{}
 	var first *etcdserverpb.ResponseHeader
+	sent := time.Now()
 	key := m.prefix
 	for {
 		opts := []clientv3.OpOption{clientv3.WithRange(m.end), clientv3.WithLimit(m.opt.PageSize)}
@@ -344,28 +354,29 @@ func (m *Mirror) list(ctx context.Context) error {
 		}
 		key = string(resp.Kvs[len(resp.Kvs)-1].Key) + "\x00"
 	}
-	m.replace(first, entries)
+	m.replace(first, entries, asked, sent)
 	return nil
 }
 
-var errKicked = errors.New("watch silent while the cluster answers")
+var errKicked = errors.New("watch silent while the cluster moved on")
 
 // watch applies events after Rev() until the watch ends. progressed: at least one response was applied. relist:
 // the copy must be listed again (compaction, or another cluster's history).
 func (m *Mirror) watch(ctx context.Context) (progressed, relist bool, err error) {
 	wctx, cancel := context.WithCancel(clientv3.WithRequireLeader(ctx))
 	defer cancel()
-	select { // a kick from before this watch was about the previous one; a wanted relist stays in m.relist
+	m.mu.Lock()
+	select { // a kick sent before now was decided about an older watch, or asks for a relist that stays counted
 	case <-m.kick:
 	default:
 	}
-	m.mu.Lock()
-	if m.relist {
-		m.relist = false
+	if m.relistAsked > m.relistDone {
 		m.mu.Unlock()
 		return false, true, nil
 	}
 	from := m.rev // not +1: see the type's comment; apply drops what the copy already has
+	m.gen++
+	gen := m.gen
 	m.opened = time.Now()
 	m.stats.Watches++
 	m.mu.Unlock()
@@ -384,19 +395,23 @@ func (m *Mirror) watch(ctx context.Context) (progressed, relist bool, err error)
 			if err := resp.Err(); err != nil {
 				return progressed, false, err
 			}
-			if m.foreign(resp.Header, false) {
+			if m.otherCluster(resp.Header) {
 				return progressed, true, nil
 			}
 			m.apply(resp)
 			progressed = true
 		case <-m.kick:
 			m.mu.Lock()
-			relist, m.relist = m.relist, false
+			relist := m.relistAsked > m.relistDone
+			stalled := m.kickGen == gen
 			m.mu.Unlock()
 			if relist {
 				return progressed, true, nil
 			}
-			return progressed, false, errKicked
+			if stalled {
+				return progressed, false, errKicked
+			}
+			// a stall kick for an older watch: ignore it
 		}
 	}
 }
@@ -419,6 +434,12 @@ func (m *Mirror) probe(pctx context.Context) {
 		default:
 			continue // nothing to compare with before the first list
 		}
+		// What the copy had seen before the read was sent: a linearizable read is at least that, while events
+		// applied during the read may already be past it.
+		m.mu.Lock()
+		revBefore, termBefore, gen := m.rev, m.term, m.gen
+		m.mu.Unlock()
+		sent := time.Now()
 		ctx, cancel := context.WithTimeout(pctx, m.opt.ProbeInterval)
 		resp, err := m.r.Get(ctx, m.prefix) // one key, only for the header
 		if err == nil {
@@ -428,48 +449,65 @@ func (m *Mirror) probe(pctx context.Context) {
 		if err != nil {
 			continue // the cluster does not answer: LastContact shows it, the watch resumes when it does
 		}
-		if m.foreign(resp.Header, true) {
-			m.signalKick(true)
+		h := resp.Header
+		switch {
+		case m.otherCluster(h):
+			m.askRelist()
+			continue
+		case h.RaftTerm < termBefore:
+			m.logWarn(fmt.Sprintf("raft term went back from %d to %d, relisting", termBefore, h.RaftTerm))
+			m.askRelist()
+			continue
+		case h.Revision < revBefore:
+			m.logWarn(fmt.Sprintf("revision went back from %d to %d, relisting", revBefore, h.Revision))
+			m.askRelist()
 			continue
 		}
-		m.mu.Lock() // a new watch gets the same grace as one that just reported
-		silent := time.Since(latest(m.contact, m.opened)) > mirrorStallProbes*m.opt.ProbeInterval
+		m.mu.Lock()
+		m.term = max(m.term, h.RaftTerm)
+		if h.Revision == revBefore { // nothing newer in the cluster than the copy: it was current when sent
+			m.contact = latest(m.contact, sent)
+			m.mu.Unlock()
+			continue
+		}
+		stalled := m.gen == gen && time.Since(latest(m.contact, m.opened)) > mirrorStallProbes*m.opt.ProbeInterval
 		m.mu.Unlock()
-		if silent {
-			m.signalKick(false)
+		if stalled {
+			m.kickStall(gen)
 		}
 	}
 }
 
-// foreign reports a header from another history than the copy's: another cluster, or a raft term (and, from a
-// linearizable read, a revision) lower than the copy has seen. It also records the highest term seen.
-func (m *Mirror) foreign(h *etcdserverpb.ResponseHeader, checkRev bool) bool {
+// otherCluster reports a header from another cluster than the one the copy was listed from.
+func (m *Mirror) otherCluster(h *etcdserverpb.ResponseHeader) bool {
 	if h == nil {
 		return false
 	}
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.stats.Lists == 0 {
+	listed := m.clusterID
+	m.mu.Unlock()
+	if h.ClusterId == listed {
 		return false
 	}
-	switch {
-	case h.ClusterId != m.clusterID:
-		m.logInfo(fmt.Sprintf("cluster %x replaced by %x, relisting", m.clusterID, h.ClusterId))
-	case h.RaftTerm < m.term:
-		m.logInfo(fmt.Sprintf("raft term went back from %d to %d, relisting", m.term, h.RaftTerm))
-	case checkRev && h.Revision < m.rev:
-		m.logInfo(fmt.Sprintf("revision went back from %d to %d, relisting", m.rev, h.Revision))
-	default:
-		m.term = max(m.term, h.RaftTerm)
-		return false
-	}
+	m.logWarn(fmt.Sprintf("cluster %x answered where %x was listed, relisting", h.ClusterId, listed))
 	return true
 }
 
-func (m *Mirror) signalKick(relist bool) {
+func (m *Mirror) askRelist() {
 	m.mu.Lock()
-	m.relist = m.relist || relist
+	m.relistAsked++
 	m.mu.Unlock()
+	m.sendKick()
+}
+
+func (m *Mirror) kickStall(gen uint64) {
+	m.mu.Lock()
+	m.kickGen = gen
+	m.mu.Unlock()
+	m.sendKick()
+}
+
+func (m *Mirror) sendKick() {
 	select {
 	case m.kick <- struct{}{}:
 	default:
@@ -477,8 +515,9 @@ func (m *Mirror) signalKick(relist bool) {
 }
 
 // replace swaps in a fresh list and marks every key that differs from the old copy. Entries are compared whole:
-// after a cluster was replaced, equal mod revisions say nothing.
-func (m *Mirror) replace(h *etcdserverpb.ResponseHeader, entries map[string]Entry) {
+// after a cluster was replaced, equal mod revisions say nothing. asked is relistAsked when the list started; sent is
+// when its first page was sent.
+func (m *Mirror) replace(h *etcdserverpb.ResponseHeader, entries map[string]Entry, asked uint64, sent time.Time) {
 	m.mu.Lock()
 	changed := m.stats.Lists == 0 // the first list signals even when the prefix is empty
 	for k, e := range entries {
@@ -497,8 +536,8 @@ func (m *Mirror) replace(h *etcdserverpb.ResponseHeader, entries map[string]Entr
 	m.setRev(h.Revision)
 	m.clusterID = h.ClusterId
 	m.term = h.RaftTerm
-	m.contact = time.Now()
-	m.relist = false
+	m.contact = sent
+	m.relistDone = max(m.relistDone, asked)
 	m.stats.Lists++
 	first := m.stats.Lists == 1
 	m.mu.Unlock()
@@ -513,12 +552,13 @@ func (m *Mirror) replace(h *etcdserverpb.ResponseHeader, entries map[string]Entr
 
 // apply applies one watch response. Events at or below the copy's revision are already in it and are dropped. The
 // resume point is the last event's revision, not the header's: the header can be ahead of events the server has
-// not sent yet. Only a progress notification vouches for its header.
+// not sent yet (a watch still catching up), so only a response that brings the copy up to its header, or a
+// progress notification, counts as contact.
 func (m *Mirror) apply(resp clientv3.WatchResponse) {
 	m.mu.Lock()
-	m.contact = time.Now()
 	if resp.IsProgressNotify() {
 		m.setRev(max(m.rev, resp.Header.Revision))
+		m.contact = time.Now()
 		m.mu.Unlock()
 		return
 	}
@@ -539,6 +579,9 @@ func (m *Mirror) apply(resp clientv3.WatchResponse) {
 		rev = max(rev, ev.Kv.ModRevision)
 	}
 	m.setRev(rev)
+	if resp.Header != nil && m.rev >= resp.Header.Revision {
+		m.contact = time.Now()
+	}
 	m.mu.Unlock()
 	if applied {
 		m.signal()
@@ -574,6 +617,12 @@ func (m *Mirror) failed(what string, err error) {
 func (m *Mirror) logInfo(msg string) {
 	if m.opt.Log != nil {
 		m.opt.Log.Info().Str("prefix", m.prefix).Msg(msg)
+	}
+}
+
+func (m *Mirror) logWarn(msg string) {
+	if m.opt.Log != nil {
+		m.opt.Log.Warn().Str("prefix", m.prefix).Msg(msg)
 	}
 }
 

@@ -525,7 +525,7 @@ func TestMirrorResumePoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.replace(&etcdserverpb.ResponseHeader{Revision: 10}, map[string]Entry{})
+	m.replace(&etcdserverpb.ResponseHeader{Revision: 10}, map[string]Entry{}, 0, time.Now())
 	m.apply(clientv3.WatchResponse{
 		Header: &etcdserverpb.ResponseHeader{Revision: 100},
 		Events: []*clientv3.Event{{Type: mvccpb.PUT, Kv: &mvccpb.KeyValue{Key: []byte("/p/a"), ModRevision: 50, CreateRevision: 50, Version: 1}}},
@@ -1012,6 +1012,92 @@ func TestMirrorQuietSharedStream(t *testing.T) {
 		}
 		if got := m.Rev(); got != rev {
 			t.Errorf("%s: rev %d, want the cluster's %d", name, got, rev)
+		}
+	}
+}
+
+// slowReader answers every Get late, as a cluster in another region would.
+type slowReader struct {
+	Reader
+	delay time.Duration
+}
+
+func (s slowReader) Get(ctx context.Context, key string, opts ...clientv3.OpOption) (*clientv3.GetResponse, error) {
+	resp, err := s.Reader.Get(ctx, key, opts...)
+	time.Sleep(s.delay)
+	return resp, err
+}
+
+// Under a steady stream of writes the watch applies events while a probe's read is in flight, so the read's
+// revision is below the copy's by the time it answers. That is not a cluster going back: no relist.
+func TestMirrorProbeUnderLoad(t *testing.T) {
+	ctx := testCtx(t)
+	s, topo := singleRegion(t, "td-tw-1")
+	raw := s.Client(t)
+	direct, err := newClusters(t, topo, nil, nil).Reader("tw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := startMirror(t, slowReader{direct, 30 * time.Millisecond}, TDLeasePrefix("td-tw-1"), MirrorOptions{ProbeInterval: 50 * time.Millisecond})
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	for w := range 4 {
+		wg.Go(func() {
+			for n := 0; ; n++ {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				if _, err := raw.Put(ctx, leaseKey(n%10), fmt.Sprintf("w%d-%d", w, n)); err != nil && ctx.Err() == nil {
+					t.Error(err)
+					return
+				}
+			}
+		})
+	}
+	time.Sleep(3 * time.Second)
+	close(stop)
+	wg.Wait()
+	waitConverged(t, ctx, m, raw, 20*time.Second)
+	if st := m.Stats(); st.Lists != 1 || st.Errors != 0 {
+		t.Fatalf("stats %+v: a busy, healthy cluster was taken for a rolled-back one", st)
+	}
+}
+
+// Two quiet mirrors sharing a stream, cut off and reconnected. clientv3 resumes their watches by itself, possibly
+// beyond the cluster's revision, which withholds progress notifications; with nothing newer in the cluster than the
+// copies, the probe alone shows they are current: fresh again soon, and no watch reopened as stalled.
+func TestMirrorQuietAfterReconnect(t *testing.T) {
+	ctx := testCtx(t)
+	_, p, raw, r := proxied(t)
+	mustPut(t, ctx, raw, leaseKey(0), "the last write")
+	const probe = 200 * time.Millisecond
+	opt := MirrorOptions{ProbeInterval: probe, MaxBackoff: probe}
+	mirrors := map[string]*Mirror{
+		"leases": startMirror(t, r, TDLeasePrefix("td-tw-1"), opt),
+		"acks":   startMirror(t, r, TDAckPrefix("td-tw-1"), opt),
+	}
+	time.Sleep(5 * probe)
+
+	p.Cut()
+	time.Sleep(300 * time.Millisecond)
+	p.Restore()
+	for name, m := range mirrors {
+		for deadline := time.Now().Add(15 * time.Second); time.Since(m.LastContact()) > 3*probe; time.Sleep(20 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("%s: last contact %s ago after reconnecting, stats %+v", name, time.Since(m.LastContact()), m.Stats())
+			}
+		}
+	}
+	time.Sleep(10 * probe) // long enough for a stall kick, were one coming
+	for name, m := range mirrors {
+		if ago := time.Since(m.LastContact()); ago > 3*probe {
+			t.Errorf("%s: last contact %s ago on a quiet, connected cluster", name, ago)
+		}
+		if st := m.Stats(); st.Errors != 0 || st.Lists != 1 {
+			t.Errorf("%s: stats %+v, want no reopened watch and no relist", name, st)
 		}
 	}
 }
