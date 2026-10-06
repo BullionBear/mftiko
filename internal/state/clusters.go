@@ -46,6 +46,9 @@ func AgentRegions(t Topology, p Plane, inst string) ([]string, error) {
 type Reader interface {
 	Get(ctx context.Context, key string, opts ...clientv3.OpOption) (*clientv3.GetResponse, error)
 	Watch(ctx context.Context, key string, opts ...clientv3.OpOption) clientv3.WatchChan
+	// Done is closed once the client is closed (Clusters.Close). A closed client fails Get only after its retries
+	// and ends a watch without an error, so a long-running reader such as Mirror checks this instead.
+	Done() <-chan struct{}
 }
 
 // Clusters holds one client per regional cluster, dialled lazily on first use (PROTOCOL §3, D17). With a single
@@ -163,3 +166,5 @@ func (r reader) Get(ctx context.Context, key string, opts ...clientv3.OpOption) 
 func (r reader) Watch(ctx context.Context, key string, opts ...clientv3.OpOption) clientv3.WatchChan {
 	return r.c.Watch(ctx, key, opts...)
 }
+
+func (r reader) Done() <-chan struct{} { return r.c.Ctx().Done() }

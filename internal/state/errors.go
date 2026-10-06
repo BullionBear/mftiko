@@ -18,7 +18,8 @@ var (
 	// ErrClustersClosed: Clusters.Close was called.
 	ErrClustersClosed = errors.New("state: clusters closed")
 
-	// ErrBadOptions: TermOptions without an ID or with a negative TTL.
+	// ErrBadOptions: TermOptions without an ID or with a negative TTL; a Mirror without a reader or prefix, or with
+	// a negative option.
 	ErrBadOptions = errors.New("state: bad term options")
 	// ErrBadEpoch: the stored epoch is not a 20-digit decimal, or cannot be incremented.
 	ErrBadEpoch = errors.New("state: bad epoch")

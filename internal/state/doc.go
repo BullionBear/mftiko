@@ -22,6 +22,10 @@
 //   - Incarnations (incarnation.go): LoadIncarnations reads the agent's counters once per term; Next takes a
 //     worker key's next number in one fenced txn before the spawn (W6, D8), so a superseded agent gets none;
 //     Forget deletes an STS session's counter once it is terminal.
+//   - Mirrors (mirror.go): Mirror keeps an in-memory copy of one prefix of one cluster (W4): a paged list at one
+//     revision, a watch from the next revision, a relist when the watch reports compaction (which drops keys whose
+//     deletes were compacted away), a rewatch from the last applied event when the watch breaks. The watch
+//     requires a leader. Readers act level-triggered on Notify, Snapshot and Take.
 //
 // Not yet: the etcd leases that lease entries and acks are bound to (PROTOCOL §3.3), auth and RBAC (E1-08).
 package state
