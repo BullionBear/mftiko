@@ -20,7 +20,7 @@ var (
 
 	// ErrBadOptions: TermOptions without an ID or with a negative TTL; a Mirror without a reader or prefix, or with
 	// a negative option.
-	ErrBadOptions = errors.New("state: bad term options")
+	ErrBadOptions = errors.New("state: bad options")
 	// ErrBadEpoch: the stored epoch is not a 20-digit decimal, or cannot be incremented.
 	ErrBadEpoch = errors.New("state: bad epoch")
 	// ErrSessionLost: the election session's lease is gone; this process is no longer the leader. The term has

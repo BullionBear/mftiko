@@ -1,6 +1,6 @@
 // Package etcdtest runs a throwaway single-member etcd for tests of package state. It is imported by tests only.
-// A Server can be stopped and restarted on the same data and ports; a Proxy in front of it can cut its clients
-// off while etcd keeps running.
+// A Server can be stopped and restarted on the same data and ports, or rebuilt from nothing; a Proxy in front of it
+// can cut its clients off while etcd keeps running, or send them to another server.
 //
 // The binary is $MFTIKO_ETCD_BIN, else etcd on PATH; a test without either is skipped. No auth yet (E1-08).
 package etcdtest
@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -33,6 +34,7 @@ type Server struct {
 	endpoints []string
 	bin       string
 	args      []string
+	dataDir   string
 	out       *lockedBuffer
 
 	mu   sync.Mutex
@@ -100,6 +102,28 @@ func (s *Server) Stop() {
 func (s *Server) Restart(t testing.TB) {
 	t.Helper()
 	s.Stop()
+	s.relaunch(t)
+}
+
+// Rebuild kills the member, deletes its data and starts it again with the same name, token and ports: the same
+// cluster ID, but every key gone and revisions starting over, as a cluster rebuilt from scratch would be.
+func (s *Server) Rebuild(t testing.TB) {
+	t.Helper()
+	s.Stop()
+	entries, err := os.ReadDir(s.dataDir)
+	if err != nil {
+		t.Fatalf("etcdtest: rebuild: %v", err)
+	}
+	for _, e := range entries {
+		if err := os.RemoveAll(filepath.Join(s.dataDir, e.Name())); err != nil {
+			t.Fatalf("etcdtest: rebuild: %v", err)
+		}
+	}
+	s.relaunch(t)
+}
+
+func (s *Server) relaunch(t testing.TB) {
+	t.Helper()
 	var errs []error
 	for range startTries { // the old process's ports can take a moment to be free
 		s.mu.Lock()
@@ -127,10 +151,10 @@ func start(t testing.TB, bin string) (*Server, error) {
 	clientURL := "http://" + client
 	peerURL := "http://" + peer
 
-	s := &Server{endpoints: []string{clientURL}, bin: bin, out: &lockedBuffer{}}
+	s := &Server{endpoints: []string{clientURL}, bin: bin, dataDir: t.TempDir(), out: &lockedBuffer{}}
 	s.args = []string{
 		"--name", name,
-		"--data-dir", t.TempDir(),
+		"--data-dir", s.dataDir,
 		"--listen-client-urls", clientURL,
 		"--advertise-client-urls", clientURL,
 		"--listen-peer-urls", peerURL,

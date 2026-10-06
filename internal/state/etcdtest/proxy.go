@@ -12,12 +12,12 @@ import (
 // network partition between the clients behind the proxy and etcd would; etcd itself keeps running, so other
 // clients can write and compact meanwhile.
 type Proxy struct {
-	target string
-	l      net.Listener
+	l net.Listener
 
-	mu    sync.Mutex
-	cut   bool
-	conns map[net.Conn]struct{}
+	mu     sync.Mutex
+	target string
+	cut    bool
+	conns  map[net.Conn]struct{}
 }
 
 // NewProxy listens on a free localhost port and forwards to s. It is closed when the test ends.
@@ -54,6 +54,17 @@ func (p *Proxy) Cut() {
 	clear(p.conns)
 }
 
+// SetTarget sends new connections to s from now on; open ones stay where they are until cut.
+func (p *Proxy) SetTarget(s *Server) {
+	u, err := url.Parse(s.Endpoints()[0])
+	if err != nil {
+		panic(err) // Endpoints are built by this package
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.target = u.Host
+}
+
 // Restore lets new connections through again.
 func (p *Proxy) Restore() {
 	p.mu.Lock()
@@ -76,7 +87,10 @@ func (p *Proxy) forward(in net.Conn) {
 		in.Close()
 		return
 	}
-	out, err := net.Dial("tcp", p.target)
+	p.mu.Lock()
+	target := p.target
+	p.mu.Unlock()
+	out, err := net.Dial("tcp", target)
 	if err != nil {
 		p.untrack(in)
 		in.Close()

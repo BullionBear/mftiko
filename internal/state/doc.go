@@ -23,9 +23,10 @@
 //     worker key's next number in one fenced txn before the spawn (W6, D8), so a superseded agent gets none;
 //     Forget deletes an STS session's counter once it is terminal.
 //   - Mirrors (mirror.go): Mirror keeps an in-memory copy of one prefix of one cluster (W4): a paged list at one
-//     revision, a watch from the next revision, a relist when the watch reports compaction (which drops keys whose
-//     deletes were compacted away), a rewatch from the last applied event when the watch breaks. The watch
-//     requires a leader. Readers act level-triggered on Notify, Snapshot and Take.
+//     revision, then a watch that requires a leader. A compacted watch relists (dropping keys whose deletes were
+//     compacted away); a broken one is reopened from the last applied event. A probe relists when the cluster was
+//     replaced or rebuilt, and reopens a watch that went silent. Readers act level-triggered on Notify, Snapshot
+//     and Take; LastContact says how fresh the copy is, WaitRev waits for a revision.
 //
 // Not yet: the etcd leases that lease entries and acks are bound to (PROTOCOL §3.3), auth and RBAC (E1-08).
 package state

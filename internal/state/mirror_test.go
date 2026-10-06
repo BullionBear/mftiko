@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -408,6 +409,9 @@ func TestMirrorReconnects(t *testing.T) {
 			t.Fatal(err)
 		}
 		time.Sleep(300 * time.Millisecond)
+		if _, ok := m.Get(leaseKey(round + 1)); ok { // the cut is real: nothing gets through
+			t.Fatalf("round %d: a write made while cut off reached the mirror", round)
+		}
 		p.Restore()
 		waitConverged(t, ctx, m, raw, 30*time.Second)
 	}
@@ -521,7 +525,7 @@ func TestMirrorResumePoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.replace(10, map[string]Entry{})
+	m.replace(&etcdserverpb.ResponseHeader{Revision: 10}, map[string]Entry{})
 	m.apply(clientv3.WatchResponse{
 		Header: &etcdserverpb.ResponseHeader{Revision: 100},
 		Events: []*clientv3.Event{{Type: mvccpb.PUT, Kv: &mvccpb.KeyValue{Key: []byte("/p/a"), ModRevision: 50, CreateRevision: 50, Version: 1}}},
@@ -529,19 +533,46 @@ func TestMirrorResumePoint(t *testing.T) {
 	if got := m.Rev(); got != 50 {
 		t.Fatalf("rev after events = %d, want the last event's 50", got)
 	}
+	// Replayed events, at or below the copy's revision, are already in it.
+	m.Take()
+	m.apply(clientv3.WatchResponse{
+		Header: &etcdserverpb.ResponseHeader{Revision: 100},
+		Events: []*clientv3.Event{{Type: mvccpb.DELETE, Kv: &mvccpb.KeyValue{Key: []byte("/p/a"), ModRevision: 50}}},
+	})
+	if _, ok := m.Get("/p/a"); !ok {
+		t.Fatal("a replayed event at the copy's revision was applied again")
+	}
+	if _, changed := m.Take(); len(changed) != 0 {
+		t.Fatalf("a replayed event marked %v changed", changed)
+	}
+	select {
+	case <-m.Notify():
+	default:
+	}
+	m.apply(clientv3.WatchResponse{
+		Header: &etcdserverpb.ResponseHeader{Revision: 100},
+		Events: []*clientv3.Event{{Type: mvccpb.DELETE, Kv: &mvccpb.KeyValue{Key: []byte("/p/a"), ModRevision: 40}}},
+	})
+	select {
+	case <-m.Notify():
+		t.Fatal("a response with only replayed events signalled")
+	default:
+	}
 	m.apply(clientv3.WatchResponse{Header: &etcdserverpb.ResponseHeader{Revision: 120}}) // progress notification
 	if got := m.Rev(); got != 120 {
 		t.Fatalf("rev after a progress notification = %d, want 120", got)
 	}
 }
 
-// Writes, deletes, multi-key txns, leases that expire, keys outside the prefix, compactions and network cuts, all
-// at once. Afterwards the mirror must hold exactly what etcd holds, and its revision never goes back.
+// Writes, deletes, multi-key txns, leases that expire, keys outside the prefix, compactions, network cuts, broken
+// and stalled watches, all at once. Every view sampled meanwhile must be exactly etcd at the view's revision, the
+// revision never goes back, and afterwards the mirror holds exactly what etcd holds.
 func TestMirrorRandomized(t *testing.T) {
 	ctx := testCtx(t)
 	_, p, raw, r := proxied(t)
+	b := &breakableReader{Reader: r}
 	prefix := TDLeasePrefix("td-tw-1")
-	m := startMirror(t, r, prefix, MirrorOptions{PageSize: 7, MaxBackoff: 300 * time.Millisecond})
+	m := startMirror(t, b, prefix, MirrorOptions{PageSize: 7, MaxBackoff: 300 * time.Millisecond, ProbeInterval: 200 * time.Millisecond})
 
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
@@ -620,26 +651,60 @@ func TestMirrorRandomized(t *testing.T) {
 			p.Restore()
 		}
 	})
-	wg.Go(func() { // the view's revision never goes back, and no entry is newer than it
+	wg.Go(func() { // breaks the mirror's watch (with a compaction while it is down) or freezes it
+		rng := rand.New(rand.NewPCG(7, 1))
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(time.Duration(300+rng.IntN(400)) * time.Millisecond):
+			}
+			if rng.IntN(3) == 0 {
+				b.freeze() // the probe must notice the silence and reopen the watch
+				continue
+			}
+			release := b.breakAndHold()
+			time.Sleep(time.Duration(50+rng.IntN(150)) * time.Millisecond)
+			if resp, err := raw.Get(ctx, "compact"); err == nil { // the resume point is gone: a relist follows
+				if _, err := raw.Compact(ctx, resp.Header.Revision); err != nil && !errors.Is(err, rpctypes.ErrCompacted) {
+					report(err)
+				}
+			}
+			release()
+		}
+	})
+	wg.Go(func() { // every view is etcd at its revision; the revision never goes back
 		var last int64
 		for {
 			select {
 			case <-stop:
 				return
-			case <-time.After(5 * time.Millisecond):
+			case <-time.After(20 * time.Millisecond):
 			}
 			v := m.Snapshot()
 			if v.Rev < last {
 				report(fmt.Errorf("view rev went back from %d to %d", last, v.Rev))
 			}
 			last = v.Rev
-			for k, e := range v.Entries {
-				if e.ModRevision > v.Rev {
-					report(fmt.Errorf("%s at %d is newer than the view's rev %d", k, e.ModRevision, v.Rev))
-				}
+			for k := range v.Entries {
 				if !strings.HasPrefix(k, prefix) {
 					report(fmt.Errorf("%s is outside the prefix", k))
 				}
+			}
+			resp, err := raw.Get(ctx, prefix, clientv3.WithPrefix(), clientv3.WithRev(v.Rev))
+			if errors.Is(err, rpctypes.ErrCompacted) {
+				continue // that revision is gone: nothing to compare with
+			}
+			if err != nil {
+				report(err)
+				continue
+			}
+			want := map[string]Entry{}
+			for _, kv := range resp.Kvs {
+				want[string(kv.Key)] = entryOf(kv)
+			}
+			if d := diffEntries(v.Entries, want); d != "" {
+				report(fmt.Errorf("view at rev %d is not etcd at that revision: %s", v.Rev, d))
 			}
 		}
 	})
@@ -653,7 +718,11 @@ func TestMirrorRandomized(t *testing.T) {
 		t.Error(err)
 	}
 	waitConverged(t, ctx, m, raw, 60*time.Second) // leases granted at the end expire meanwhile: polled until stable
-	t.Logf("stats %+v", m.Stats())
+	st := m.Stats()
+	t.Logf("stats %+v", st)
+	if st.Lists < 2 || st.Errors < 1 {
+		t.Fatalf("stats %+v: the relist and rewatch paths were not exercised", st)
+	}
 }
 
 // breakableReader forwards watches and can end them all at once, as a cancelled watch or a closed stream would;
@@ -663,8 +732,9 @@ type breakableReader struct {
 
 	mu     sync.Mutex
 	stops  []context.CancelFunc
-	held   chan struct{} // non-nil: new watches wait for it to close
-	starts []int64       // the start revision of every watch
+	frozen []*atomic.Bool // per open watch: drop every response, keep the channel open
+	held   chan struct{}  // non-nil: new watches wait for it to close
+	starts []int64        // the start revision of every watch
 }
 
 func (b *breakableReader) Watch(ctx context.Context, key string, opts ...clientv3.OpOption) clientv3.WatchChan {
@@ -680,8 +750,10 @@ func (b *breakableReader) Watch(ctx context.Context, key string, opts ...clientv
 		}
 	}
 	wctx, cancel := context.WithCancel(ctx)
+	frozen := &atomic.Bool{}
 	b.mu.Lock()
 	b.stops = append(b.stops, cancel)
+	b.frozen = append(b.frozen, frozen)
 	b.mu.Unlock()
 	in := b.Reader.Watch(wctx, key, opts...)
 	out := make(chan clientv3.WatchResponse)
@@ -692,6 +764,9 @@ func (b *breakableReader) Watch(ctx context.Context, key string, opts ...clientv
 			case resp, ok := <-in:
 				if !ok {
 					return
+				}
+				if frozen.Load() {
+					continue
 				}
 				select {
 				case out <- resp:
@@ -722,6 +797,16 @@ func (b *breakableReader) breakAndHold() (release func()) {
 		b.mu.Unlock()
 		close(held)
 	}
+}
+
+// freeze makes every open watch go silent without ending, as a stuck stream would; later watches work.
+func (b *breakableReader) freeze() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, f := range b.frozen {
+		f.Store(true)
+	}
+	b.frozen = nil
 }
 
 func (b *breakableReader) watchStarts() []int64 {
@@ -756,10 +841,177 @@ func TestMirrorRewatchesAfterBrokenWatch(t *testing.T) {
 
 	waitConverged(t, ctx, m, raw, 20*time.Second)
 	starts := b.watchStarts()
-	if len(starts) < 2 || starts[len(starts)-1] != last+1 {
-		t.Fatalf("watch starts %v, want the last one at %d (after the last event applied)", starts, last+1)
+	if len(starts) < 2 || starts[len(starts)-1] != last {
+		t.Fatalf("watch starts %v, want the last one at %d (the last event applied)", starts, last)
 	}
 	if st := m.Stats(); st.Lists != 1 || st.Errors < 1 {
 		t.Fatalf("stats %+v, want a rewatch without a relist", st)
+	}
+}
+
+// The proxy now leads to a different cluster, with fewer revisions than the mirror has seen. Its watch would wait
+// for a revision that cluster has not reached; the probe sees another cluster ID and the mirror lists again.
+func TestMirrorClusterReplaced(t *testing.T) {
+	ctx := testCtx(t)
+	_, p, rawA, r := proxied(t)
+	b := etcdtest.Start(t)
+	rawB := b.Client(t)
+	for i := range 20 {
+		mustPut(t, ctx, rawA, leaseKey(i), "from A")
+	}
+	mustPut(t, ctx, rawB, leaseKey(0), "from B")
+	m := startMirror(t, r, TDLeasePrefix("td-tw-1"), MirrorOptions{MaxBackoff: 200 * time.Millisecond, ProbeInterval: 200 * time.Millisecond})
+	m.Take()
+
+	p.Cut()
+	p.SetTarget(b)
+	p.Restore()
+	waitConverged(t, ctx, m, rawB, 30*time.Second)
+	v, changed := m.Take()
+	if len(v.Entries) != 1 || len(changed) != 20 {
+		t.Fatalf("view %d keys, changed %d; want B's one key and all 20 marked", len(v.Entries), len(changed))
+	}
+	if st := m.Stats(); st.Lists < 2 {
+		t.Fatalf("stats %+v, want a relist", st)
+	}
+}
+
+// The cluster is rebuilt from nothing: same cluster ID, revisions start over. The probe sees the revision go back.
+func TestMirrorClusterRebuilt(t *testing.T) {
+	ctx := testCtx(t)
+	s, topo := singleRegion(t, "td-tw-1")
+	raw := s.Client(t)
+	r, err := newClusters(t, topo, nil, nil).Reader("tw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 20 {
+		mustPut(t, ctx, raw, leaseKey(i), "old")
+	}
+	m := startMirror(t, r, TDLeasePrefix("td-tw-1"), MirrorOptions{MaxBackoff: 200 * time.Millisecond, ProbeInterval: 200 * time.Millisecond})
+	before := m.Rev()
+
+	s.Rebuild(t)
+	mustPut(t, ctx, raw, leaseKey(3), "new")
+	waitConverged(t, ctx, m, raw, 30*time.Second)
+	if got := m.Rev(); got >= before {
+		t.Fatalf("rev %d after the rebuild, the old cluster was at %d", got, before)
+	}
+	if st := m.Stats(); st.Lists < 2 {
+		t.Fatalf("stats %+v, want a relist", st)
+	}
+}
+
+// With nothing written, progress notifications keep LastContact fresh; cut off, it stops; back, it resumes.
+func TestMirrorLastContact(t *testing.T) {
+	ctx := testCtx(t)
+	_, p, raw, r := proxied(t)
+	mustPut(t, ctx, raw, leaseKey(0), "v1")
+	const probe = 200 * time.Millisecond
+	m := startMirror(t, r, TDLeasePrefix("td-tw-1"), MirrorOptions{MaxBackoff: 200 * time.Millisecond, ProbeInterval: probe})
+	fresh := func(within time.Duration) bool { return time.Since(m.LastContact()) < within }
+	waitFor := func(what string, cond func() bool) {
+		t.Helper()
+		for deadline := time.Now().Add(30 * time.Second); !cond(); time.Sleep(20 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("%s: last contact %s ago, stats %+v", what, time.Since(m.LastContact()), m.Stats())
+			}
+		}
+	}
+
+	time.Sleep(5 * probe) // longer than the list's contact lasts
+	waitFor("quiet but connected", func() bool { return fresh(3 * probe) })
+	p.Cut()
+	time.Sleep(6 * probe)
+	if fresh(4 * probe) {
+		t.Fatalf("cut off for %s, yet last contact %s ago", 6*probe, time.Since(m.LastContact()))
+	}
+	p.Restore()
+	waitFor("reconnected", func() bool { return fresh(3 * probe) })
+}
+
+func TestMirrorWaitRev(t *testing.T) {
+	ctx := testCtx(t)
+	s, topo := singleRegion(t, "td-tw-1")
+	raw := s.Client(t)
+	r, err := newClusters(t, topo, nil, nil).Reader("tw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := startMirror(t, r, TDLeasePrefix("td-tw-1"), MirrorOptions{ProbeInterval: 200 * time.Millisecond})
+
+	rev := mustPut(t, ctx, raw, leaseKey(1), "mine")
+	if err := m.WaitRev(ctx, rev); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m.Get(leaseKey(1)); !ok {
+		t.Fatal("WaitRev returned before the write it waited for was in the view")
+	}
+	// A write outside the prefix is reached through a progress notification.
+	rev = mustPut(t, ctx, raw, AccountKey("td-tw-1", 1), "elsewhere")
+	if err := m.WaitRev(ctx, rev); err != nil {
+		t.Fatalf("WaitRev past a write outside the prefix: %v", err)
+	}
+	short, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+	defer cancel()
+	if err := m.WaitRev(short, rev+1000); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("WaitRev for a revision nobody wrote: %v", err)
+	}
+}
+
+// A watch that goes silent without ending, while the cluster answers: the probe reopens it from the last applied
+// revision, and what was written meanwhile arrives.
+func TestMirrorStalledWatch(t *testing.T) {
+	ctx := testCtx(t)
+	s, topo := singleRegion(t, "td-tw-1")
+	raw := s.Client(t)
+	direct, err := newClusters(t, topo, nil, nil).Reader("tw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &breakableReader{Reader: direct}
+	m := startMirror(t, b, TDLeasePrefix("td-tw-1"), MirrorOptions{ProbeInterval: 200 * time.Millisecond})
+	mustPut(t, ctx, raw, leaseKey(0), "v1")
+	waitConverged(t, ctx, m, raw, 20*time.Second)
+
+	b.freeze()
+	mustPut(t, ctx, raw, leaseKey(1), "while stalled")
+	if _, err := raw.Delete(ctx, leaseKey(0)); err != nil {
+		t.Fatal(err)
+	}
+	waitConverged(t, ctx, m, raw, 20*time.Second)
+	if st := m.Stats(); st.Lists != 1 || st.Watches < 2 {
+		t.Fatalf("stats %+v, want the watch reopened without a relist", st)
+	}
+}
+
+// Two mirrors on one client share its watch stream, opened on a quiet cluster and left quiet. A watch that started
+// beyond the cluster's revision would make etcd withhold progress notifications from the whole stream; both mirrors
+// must stay fresh, and neither watch may be reopened as stalled.
+func TestMirrorQuietSharedStream(t *testing.T) {
+	ctx := testCtx(t)
+	s, topo := singleRegion(t, "td-tw-1")
+	raw := s.Client(t)
+	r, err := newClusters(t, topo, nil, nil).Reader("tw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev := mustPut(t, ctx, raw, leaseKey(0), "the last write") // before the mirrors: they open at the cluster's rev
+	const probe = 200 * time.Millisecond
+	opt := MirrorOptions{ProbeInterval: probe}
+	leases := startMirror(t, r, TDLeasePrefix("td-tw-1"), opt)
+	acks := startMirror(t, r, TDAckPrefix("td-tw-1"), opt)
+
+	time.Sleep(15 * probe)
+	for name, m := range map[string]*Mirror{"leases": leases, "acks": acks} {
+		if ago := time.Since(m.LastContact()); ago > 3*probe {
+			t.Errorf("%s: last contact %s ago on a connected, quiet cluster", name, ago)
+		}
+		if st := m.Stats(); st.Watches != 1 || st.Errors != 0 {
+			t.Errorf("%s: stats %+v, want one watch and no reopen", name, st)
+		}
+		if got := m.Rev(); got != rev {
+			t.Errorf("%s: rev %d, want the cluster's %d", name, got, rev)
+		}
 	}
 }
