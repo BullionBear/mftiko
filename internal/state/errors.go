@@ -40,7 +40,7 @@ var (
 	// keys fencing relies on (election, epoch, writer) and incarnations outside Incarnations.
 	ErrNotWriter = errors.New("state: not this agent's key")
 
-	// ErrBadIncarnation: a stored incarnation is not a decimal uint32.
+	// ErrBadIncarnation: a stored incarnation is not a uint32 in canonical decimal form.
 	ErrBadIncarnation = errors.New("state: bad incarnation")
 	// ErrIncarnationConflict: the stored incarnation kept changing under Next (PROTOCOL §3.2 W6.3).
 	ErrIncarnationConflict = errors.New("state: incarnation conflict")

@@ -198,10 +198,12 @@ func TestIncarnationBadValues(t *testing.T) {
 	if n, err := inc.Next(ctx, "td/2"); !errors.Is(err, ErrBadIncarnation) {
 		t.Fatalf("Next over a bad value = %d, %v", n, err)
 	}
-	// A value that never equals its own canonical form keeps the compare failing: retries are bounded.
-	put("td/3", "07")
-	if n, err := inc.Next(ctx, "td/3"); !errors.Is(err, ErrIncarnationConflict) {
-		t.Fatalf("Next with a value that never matches = %d, %v", n, err)
+	// Not what formatIncarnation writes: Next's compare could never match, so it is bad, not a conflict.
+	for _, v := range []string{"07", "+7", " 7", "7\n"} {
+		put("td/3", v)
+		if n, err := inc.Next(ctx, "td/3"); !errors.Is(err, ErrBadIncarnation) {
+			t.Fatalf("Next over %q = %d, %v", v, n, err)
+		}
 	}
 	if !running(term) {
 		t.Fatalf("a bad stored value ended the term: %v", term.Err())
@@ -209,6 +211,12 @@ func TestIncarnationBadValues(t *testing.T) {
 
 	if _, err := LoadIncarnations(ctx, term); !errors.Is(err, ErrBadIncarnation) {
 		t.Fatalf("LoadIncarnations over a bad value: %v", err)
+	}
+	// Only a non-canonical one left: the load still refuses it.
+	put("td/2", "2")
+	put("td/3", "07")
+	if _, err := LoadIncarnations(ctx, term); !errors.Is(err, ErrBadIncarnation) {
+		t.Fatalf("LoadIncarnations over %q: %v", "07", err)
 	}
 }
 

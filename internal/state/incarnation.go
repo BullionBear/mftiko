@@ -28,7 +28,7 @@ type Incarnations struct {
 
 // LoadIncarnations lists IncarnationPrefix(plane, inst) in the home region into memory (W6.1). Call once per Term,
 // before the first spawn. The prefix has a single writer (this agent), so no watch. A stored value that is not a
-// decimal uint32 fails the load with ErrBadIncarnation.
+// uint32 in canonical decimal form fails the load with ErrBadIncarnation.
 func LoadIncarnations(ctx context.Context, t *Term) (*Incarnations, error) {
 	if err := t.Err(); err != nil {
 		return nil, err
@@ -160,7 +160,15 @@ func (c *Incarnations) scope() writeScope {
 
 func formatIncarnation(n uint32) string { return strconv.FormatUint(uint64(n), 10) }
 
+// parseIncarnation accepts only what formatIncarnation writes. Next compares the stored bytes against
+// formatIncarnation(n), so a value such as "07" or "+7" would fail that compare forever.
 func parseIncarnation(v []byte) (uint32, error) {
 	n, err := strconv.ParseUint(string(v), 10, 32)
-	return uint32(n), err
+	if err != nil {
+		return 0, err
+	}
+	if formatIncarnation(uint32(n)) != string(v) {
+		return 0, fmt.Errorf("state: %q is not in canonical decimal form", v)
+	}
+	return uint32(n), nil
 }
