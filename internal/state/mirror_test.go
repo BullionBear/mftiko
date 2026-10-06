@@ -733,6 +733,7 @@ type breakableReader struct {
 	mu     sync.Mutex
 	stops  []context.CancelFunc
 	frozen []*atomic.Bool // per open watch: drop every response, keep the channel open
+	lagged []*atomic.Bool // per open watch: drop events, keep sending progress for the last revision it passed
 	held   chan struct{}  // non-nil: new watches wait for it to close
 	starts []int64        // the start revision of every watch
 }
@@ -750,29 +751,42 @@ func (b *breakableReader) Watch(ctx context.Context, key string, opts ...clientv
 		}
 	}
 	wctx, cancel := context.WithCancel(ctx)
-	frozen := &atomic.Bool{}
+	frozen, lagged := &atomic.Bool{}, &atomic.Bool{}
 	b.mu.Lock()
 	b.stops = append(b.stops, cancel)
 	b.frozen = append(b.frozen, frozen)
+	b.lagged = append(b.lagged, lagged)
 	b.mu.Unlock()
 	in := b.Reader.Watch(wctx, key, opts...)
 	out := make(chan clientv3.WatchResponse)
 	go func() {
 		defer close(out)
+		tick := time.NewTicker(50 * time.Millisecond)
+		defer tick.Stop()
+		var last *etcdserverpb.ResponseHeader
 		for {
+			var resp clientv3.WatchResponse
 			select {
-			case resp, ok := <-in:
+			case r, ok := <-in:
 				if !ok {
 					return
 				}
-				if frozen.Load() {
+				if frozen.Load() || lagged.Load() {
 					continue
 				}
-				select {
-				case out <- resp:
-				case <-wctx.Done():
-					return
+				resp, last = r, r.Header
+			case <-tick.C:
+				if !lagged.Load() || last == nil {
+					continue
 				}
+				resp = clientv3.WatchResponse{Header: &etcdserverpb.ResponseHeader{
+					ClusterId: last.ClusterId, MemberId: last.MemberId, Revision: last.Revision, RaftTerm: last.RaftTerm,
+				}} // a progress notification from a member stuck at that revision
+			case <-wctx.Done():
+				return
+			}
+			select {
+			case out <- resp:
 			case <-wctx.Done():
 				return
 			}
@@ -807,6 +821,17 @@ func (b *breakableReader) freeze() {
 		f.Store(true)
 	}
 	b.frozen = nil
+}
+
+// lagBehind makes every open watch behave like a member that has stopped applying but still has a leader: events
+// stop, progress notifications for its last revision go on. Later watches work.
+func (b *breakableReader) lagBehind() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, l := range b.lagged {
+		l.Store(true)
+	}
+	b.lagged = nil
 }
 
 func (b *breakableReader) watchStarts() []int64 {
@@ -1099,5 +1124,36 @@ func TestMirrorQuietAfterReconnect(t *testing.T) {
 		if st := m.Stats(); st.Errors != 0 || st.Lists != 1 {
 			t.Errorf("%s: stats %+v, want no reopened watch and no relist", name, st)
 		}
+	}
+}
+
+// The watch's member stops applying but keeps reporting progress at its last revision. Its progress must not count
+// as contact: the probe's linearizable reads show the cluster moving on, LastContact goes stale, the watch is
+// reopened, and the copy catches up.
+func TestMirrorLaggingMember(t *testing.T) {
+	ctx := testCtx(t)
+	s, topo := singleRegion(t, "td-tw-1")
+	raw := s.Client(t)
+	direct, err := newClusters(t, topo, nil, nil).Reader("tw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &breakableReader{Reader: direct}
+	const probe = 200 * time.Millisecond
+	m := startMirror(t, b, TDLeasePrefix("td-tw-1"), MirrorOptions{ProbeInterval: probe})
+	rev := mustPut(t, ctx, raw, leaseKey(0), "v1")
+	if err := m.WaitRev(ctx, rev); err != nil {
+		t.Fatal(err)
+	}
+
+	b.lagBehind()
+	lagFrom := time.Now()
+	mustPut(t, ctx, raw, leaseKey(1), "while lagging")
+	waitConverged(t, ctx, m, raw, 20*time.Second)
+	if st := m.Stats(); st.Watches < 2 || st.Lists != 1 {
+		t.Fatalf("stats %+v, want the lagging watch reopened without a relist", st)
+	}
+	if took := time.Since(lagFrom); took < mirrorStallProbes*probe {
+		t.Fatalf("caught up after %s, sooner than a stall can be detected: the lag was not simulated", took)
 	}
 }

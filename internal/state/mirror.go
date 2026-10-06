@@ -87,10 +87,12 @@ type MirrorStats struct {
 //     so Run lists again. Watch responses are checked for the cluster ID too. A restore that keeps the cluster ID
 //     must not reuse revisions (etcdutl snapshot restore --bump-revision --mark-compacted): one that reused them
 //     and overtook the copy's revision within a probe interval would not be noticed.
-//   - Staleness: LastContact is the last time the copy was known to be current: a list, a progress notification,
-//     a watch response that brought the copy up to the response's revision, or a probe that found nothing in the
-//     cluster newer than the copy. The probe also asks the watch stream for a progress notification; a watch that
-//     stays silent for 3 probe intervals while the cluster has moved past the copy is reopened.
+//   - Staleness: LastContact is the latest time T such that the copy is known to hold everything committed before
+//     T. Only linearizable reads set it: the list, and each probe's read once the copy has reached the read's
+//     revision. Events and progress notifications only move the copy's revision, so a member that serves the watch
+//     but lags behind the cluster cannot make the copy look fresh. The probe also asks the watch stream for a
+//     progress notification; a watch that stays silent for 3 probe intervals while the cluster has moved past the
+//     copy is reopened.
 //
 // Readers act level-triggered: Notify says that something changed, Snapshot or Take says what is there now.
 // Notify and Take are for one consumer: Take consumes the set of changed keys. Safe for concurrent use; Run is
@@ -112,6 +114,8 @@ type Mirror struct {
 	clusterID   uint64    // of the cluster the copy was listed from
 	term        uint64    // highest raft term seen
 	contact     time.Time // see LastContact
+	probeRev    int64     // a probe's read revision the copy has not reached yet; 0 if none
+	probeSent   time.Time // when that read was sent
 	gen         uint64    // the current watch's generation
 	opened      time.Time // when it was opened
 	kickGen     uint64    // the generation a stall kick is for
@@ -199,9 +203,9 @@ func (m *Mirror) WaitRev(ctx context.Context, rev int64) error {
 	}
 }
 
-// LastContact is the last time the mirror knew it was current: a list completed, or the watch delivered events
-// or a progress notification. A consumer that must not act on stale state compares it with its own tolerance;
-// expect it to lag by up to a ProbeInterval while all is well. Zero before the first list.
+// LastContact is the latest time T such that the copy is known to hold everything committed in the cluster before
+// T (see the type's comment). A consumer that must not act on stale state compares it with its own tolerance;
+// while all is well it lags real time by up to a ProbeInterval. Zero before the first list.
 func (m *Mirror) LastContact() time.Time {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -465,11 +469,12 @@ func (m *Mirror) probe(pctx context.Context) {
 		}
 		m.mu.Lock()
 		m.term = max(m.term, h.RaftTerm)
-		if h.Revision == revBefore { // nothing newer in the cluster than the copy: it was current when sent
+		if h.Revision <= m.rev { // the copy already holds everything committed before the read was sent
 			m.contact = latest(m.contact, sent)
 			m.mu.Unlock()
 			continue
 		}
+		m.probeRev, m.probeSent = h.Revision, sent // contact once the watch brings the copy this far
 		stalled := m.gen == gen && time.Since(latest(m.contact, m.opened)) > mirrorStallProbes*m.opt.ProbeInterval
 		m.mu.Unlock()
 		if stalled {
@@ -537,6 +542,7 @@ func (m *Mirror) replace(h *etcdserverpb.ResponseHeader, entries map[string]Entr
 	m.clusterID = h.ClusterId
 	m.term = h.RaftTerm
 	m.contact = sent
+	m.probeRev = 0 // a probe of the previous copy says nothing about this one
 	m.relistDone = max(m.relistDone, asked)
 	m.stats.Lists++
 	first := m.stats.Lists == 1
@@ -552,13 +558,12 @@ func (m *Mirror) replace(h *etcdserverpb.ResponseHeader, entries map[string]Entr
 
 // apply applies one watch response. Events at or below the copy's revision are already in it and are dropped. The
 // resume point is the last event's revision, not the header's: the header can be ahead of events the server has
-// not sent yet (a watch still catching up), so only a response that brings the copy up to its header, or a
-// progress notification, counts as contact.
+// not sent yet. Only a progress notification vouches for its header. Neither sets LastContact by itself: reaching
+// a probe's revision does.
 func (m *Mirror) apply(resp clientv3.WatchResponse) {
 	m.mu.Lock()
 	if resp.IsProgressNotify() {
 		m.setRev(max(m.rev, resp.Header.Revision))
-		m.contact = time.Now()
 		m.mu.Unlock()
 		return
 	}
@@ -579,16 +584,14 @@ func (m *Mirror) apply(resp clientv3.WatchResponse) {
 		rev = max(rev, ev.Kv.ModRevision)
 	}
 	m.setRev(rev)
-	if resp.Header != nil && m.rev >= resp.Header.Revision {
-		m.contact = time.Now()
-	}
 	m.mu.Unlock()
 	if applied {
 		m.signal()
 	}
 }
 
-// setRev moves the revision and wakes WaitRev. Called with m.mu held.
+// setRev moves the revision, wakes WaitRev, and turns a probe's read the copy has now reached into contact. Called
+// with m.mu held.
 func (m *Mirror) setRev(rev int64) {
 	if rev == m.rev {
 		return
@@ -596,6 +599,10 @@ func (m *Mirror) setRev(rev int64) {
 	m.rev = rev
 	close(m.revCh)
 	m.revCh = make(chan struct{})
+	if m.probeRev != 0 && m.rev >= m.probeRev {
+		m.contact = latest(m.contact, m.probeSent)
+		m.probeRev = 0
+	}
 }
 
 func (m *Mirror) signal() {
