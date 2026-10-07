@@ -69,11 +69,12 @@ func TestCampaignArgs(t *testing.T) {
 		opt  TermOptions
 		want error
 	}{
-		"unknown plane":      {"xx", "md-tw-1", TermOptions{ID: "a"}, ErrUnknownPlane},
-		"no ID":              {PlaneMD, "md-tw-1", TermOptions{}, ErrBadOptions},
-		"negative TTL":       {PlaneMD, "md-tw-1", TermOptions{ID: "a", SessionTTL: -time.Second}, ErrBadOptions},
-		"unknown instance":   {PlaneMD, "md-kr-1", TermOptions{ID: "a"}, ErrUnknownInstance},
-		"home not reachable": {PlaneMD, "md-jp-1", TermOptions{ID: "a"}, ErrRegionNotAllowed},
+		"unknown plane":          {"xx", "md-tw-1", TermOptions{ID: "a"}, ErrUnknownPlane},
+		"controller, other name": {PlaneCtl, "ctl-tw-1", TermOptions{ID: "a"}, ErrNotController},
+		"no ID":                  {PlaneMD, "md-tw-1", TermOptions{}, ErrBadOptions},
+		"negative TTL":           {PlaneMD, "md-tw-1", TermOptions{ID: "a", SessionTTL: -time.Second}, ErrBadOptions},
+		"unknown instance":       {PlaneMD, "md-kr-1", TermOptions{ID: "a"}, ErrUnknownInstance},
+		"home not reachable":     {PlaneMD, "md-jp-1", TermOptions{ID: "a"}, ErrRegionNotAllowed},
 	} {
 		if _, err := Campaign(ctx, cl, c.p, c.inst, c.opt); !errors.Is(err, c.want) {
 			t.Errorf("%s: %v, want %v", name, err, c.want)
@@ -303,9 +304,9 @@ func TestFenceTwoRegions(t *testing.T) {
 	ctx := testCtx(t)
 	tw, jp, topo := twoServers(t)
 	raws := map[string]*clientv3.Client{"tw": tw.Client(t), "jp": jp.Client(t)}
-	key := WriterKey(PlaneCtl, "ctl-tw-1")
+	key := WriterKey(PlaneCtl, ControllerInstance)
 
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, "ctl-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{})
 	if kvs := mustGet(t, ctx, raws["jp"], key).Kvs; len(kvs) != 0 {
 		t.Fatal("jp's writer key acquired before first use")
 	}
@@ -345,9 +346,9 @@ func TestFenceSupersededAtAcquisition(t *testing.T) {
 	ctx := testCtx(t)
 	_, jp, topo := twoServers(t)
 	rawJP := jp.Client(t)
-	key := WriterKey(PlaneCtl, "ctl-tw-1")
+	key := WriterKey(PlaneCtl, ControllerInstance)
 
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, "ctl-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{})
 	newer := formatEpoch(term.Epoch() + 1)
 	if _, err := rawJP.Put(ctx, key, newer); err != nil {
 		t.Fatal(err)
@@ -374,9 +375,9 @@ func TestFenceEqualEpochNotOurs(t *testing.T) {
 	ctx := testCtx(t)
 	_, jp, topo := twoServers(t)
 	rawJP := jp.Client(t)
-	key := WriterKey(PlaneCtl, "ctl-tw-1")
+	key := WriterKey(PlaneCtl, ControllerInstance)
 
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, "ctl-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{})
 	put, err := rawJP.Put(ctx, key, formatEpoch(term.Epoch()))
 	if err != nil {
 		t.Fatal(err)
@@ -396,11 +397,11 @@ func TestFenceInconsistentTopologies(t *testing.T) {
 	ctx := testCtx(t)
 	tw, jp, _ := twoServers(t)
 	servers := map[string]*etcdtest.Server{"tw": tw, "jp": jp}
-	inTW := topologyOf(servers, map[string]string{"ctl-x-1": "tw"})
-	inJP := topologyOf(servers, map[string]string{"ctl-x-1": "jp"})
+	inTW := topologyOf(servers, map[string]string{ControllerInstance: "tw"})
+	inJP := topologyOf(servers, map[string]string{ControllerInstance: "jp"})
 
-	a := campaign(t, ctx, newClusters(t, inTW, nil, nil), PlaneCtl, "ctl-x-1", TermOptions{ID: "a"})
-	b := campaign(t, ctx, newClusters(t, inJP, nil, nil), PlaneCtl, "ctl-x-1", TermOptions{ID: "b"})
+	a := campaign(t, ctx, newClusters(t, inTW, nil, nil), PlaneCtl, ControllerInstance, TermOptions{ID: "a"})
+	b := campaign(t, ctx, newClusters(t, inJP, nil, nil), PlaneCtl, ControllerInstance, TermOptions{ID: "b"})
 	if a.Epoch() != 1 || b.Epoch() != 1 {
 		t.Fatalf("epochs %d and %d, want 1 and 1", a.Epoch(), b.Epoch())
 	}
@@ -417,7 +418,7 @@ func TestFenceLostReply(t *testing.T) {
 	ctx := testCtx(t)
 	_, jp, topo := twoServers(t)
 	rawJP := jp.Client(t)
-	key := WriterKey(PlaneCtl, "ctl-tw-1")
+	key := WriterKey(PlaneCtl, ControllerInstance)
 
 	errLost := errors.New("reply lost")
 	dropped := 0
@@ -428,7 +429,7 @@ func TestFenceLostReply(t *testing.T) {
 		}
 		return resp, err
 	}}
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, "ctl-tw-1", TermOptions{hooks: hooks})
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{hooks: hooks})
 
 	if _, err := term.Fence(ctx, "jp"); !errors.Is(err, errLost) {
 		t.Fatalf("first Fence(jp): %v, want the lost reply", err)
@@ -456,13 +457,13 @@ func TestFenceOlderWriter(t *testing.T) {
 	ctx := testCtx(t)
 	_, jp, topo := twoServers(t)
 	rawJP := jp.Client(t)
-	key := WriterKey(PlaneCtl, "ctl-tw-1")
+	key := WriterKey(PlaneCtl, ControllerInstance)
 
 	// A writer key left behind by an older epoch is taken over (W2 step 3: smaller or absent).
 	if _, err := rawJP.Put(ctx, key, formatEpoch(0)); err != nil {
 		t.Fatal(err)
 	}
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, "ctl-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{})
 	r, err := term.Fence(ctx, "jp")
 	if err != nil {
 		t.Fatal(err)
@@ -488,7 +489,7 @@ func TestFenceConcurrentFirstUse(t *testing.T) {
 	ctx := testCtx(t)
 	_, jp, topo := twoServers(t)
 	rawJP := jp.Client(t)
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, "ctl-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{})
 
 	const n = 16
 	revs := make(chan int64, n)
@@ -510,7 +511,7 @@ func TestFenceConcurrentFirstUse(t *testing.T) {
 	for err := range errs {
 		t.Fatal(err)
 	}
-	kvs := mustGet(t, ctx, rawJP, WriterKey(PlaneCtl, "ctl-tw-1")).Kvs
+	kvs := mustGet(t, ctx, rawJP, WriterKey(PlaneCtl, ControllerInstance)).Kvs
 	if len(kvs) != 1 || kvs[0].Version != 1 {
 		t.Fatalf("jp writer %v: want exactly one put", kvs)
 	}
@@ -588,7 +589,7 @@ func TestFenceWaitHonoursCtx(t *testing.T) {
 		Regions:   map[string]Region{"tw": {Endpoints: tw.Endpoints()}, "jp": {Endpoints: []string{unusedEndpoint(t)}}},
 		Instances: twoRegions().Instances,
 	}
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, "ctl-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{})
 
 	stuckCtx, cancelStuck := context.WithCancel(ctx)
 	defer cancelStuck()

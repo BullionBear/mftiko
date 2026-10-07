@@ -14,7 +14,7 @@ import (
 
 func TestRouteTxn(t *testing.T) {
 	topo := twoRegions()
-	ctl := writeScope{plane: PlaneCtl, inst: "ctl-tw-1"}
+	ctl := writeScope{plane: PlaneCtl, inst: ControllerInstance}
 	const sid, entry = "a1b2c3", "feed/trade.BinanceUM_Perp_BTCUSDT"
 	spec := SessionSpecKey("sts-tw-1", sid)
 	demand := SessionDemandKey("sts-tw-1", sid)
@@ -95,6 +95,7 @@ func TestWriteScope(t *testing.T) {
 			WriterKey(p, inst),
 			IncarnationKey(p, inst, h),
 			instPrefix(p, inst) + "other",
+			AgentKey(p, inst) + "/sub", // an exact key is not a prefix
 		}
 	}
 	cases := []struct {
@@ -120,7 +121,7 @@ func TestWriteScope(t *testing.T) {
 				TDAckKey("td-jp-1", sid, 42),
 				WriterKey(PlaneMD, "md-tw-1"),
 				AgentKey(PlaneMD, "md-tw-1"),
-				AgentKey(PlaneCtl, "ctl-tw-1"),
+				AgentKey(PlaneCtl, ControllerInstance),
 			),
 		},
 		{
@@ -157,16 +158,16 @@ func TestWriteScope(t *testing.T) {
 			),
 		},
 		{
-			scope: writeScope{plane: PlaneCtl, inst: "ctl-tw-1"},
+			scope: writeScope{plane: PlaneCtl, inst: ControllerInstance},
 			writable: []string{
 				SessionDemandKey("sts-tw-1", sid),
 				SessionDemandKey("sts-tw-2", sid),
 				MDDemandKey("md-jp-1", sid, entry), // another region's MD instance
 				MDDemandKey("md-tw-1", sid, "select/top10"),
 				TDDemandKey("td-jp-1", sid, 42),
-				AgentKey(PlaneCtl, "ctl-tw-1"),
+				AgentKey(PlaneCtl, ControllerInstance),
 			},
-			denied: append(reserved(PlaneCtl, "ctl-tw-1"),
+			denied: append(reserved(PlaneCtl, ControllerInstance),
 				SessionSpecKey("sts-tw-1", sid), // the API server's
 				AccountKey("td-jp-1", 42),
 				SessionStatusKey("sts-tw-1", sid), // the agents' own keys
@@ -177,9 +178,23 @@ func TestWriteScope(t *testing.T) {
 				SelectorKey("md-tw-1", "s1"),
 				IncarnationKey(PlaneTD, "td-tw-1", h),
 				WriterKey(PlaneMD, "md-jp-1"),
-				AgentKey(PlaneCtl, "ctl-tw-2"), // another controller instance
+				WorkerStatusKey(PlaneCtl, ControllerInstance, h), // the controller has no workers
+				DemandPrefix(PlaneCtl, ControllerInstance)+"x",   // nor demands of its own
+				AgentKey(PlaneCtl, "ctl-tw-2"),                   // a name that is not the controller's
 				EpochKey(PlaneCtl, "ctl-tw-2"),
+				DemandPrefix(PlaneCtl, "ctl-tw-2")+"x",
 			),
+		},
+		{
+			// A controller scope under any other name writes nothing (Campaign refuses the name in the first place).
+			scope: writeScope{plane: PlaneCtl, inst: "ctl-tw-2"},
+			denied: []string{
+				SessionDemandKey("sts-tw-1", sid),
+				MDDemandKey("md-jp-1", sid, entry),
+				TDDemandKey("td-tw-1", sid, 42),
+				AgentKey(PlaneCtl, "ctl-tw-2"),
+				AgentKey(PlaneCtl, ControllerInstance),
+			},
 		},
 		{
 			scope:    writeScope{plane: PlaneTD, inst: "td-tw-1", incarnations: true},
@@ -227,7 +242,7 @@ func TestWriteScope(t *testing.T) {
 		}
 	}
 	sts := rangeDel(writeScope{plane: PlaneSTS, inst: "sts-tw-1"})
-	ctl := rangeDel(writeScope{plane: PlaneCtl, inst: "ctl-tw-1"})
+	ctl := rangeDel(writeScope{plane: PlaneCtl, inst: ControllerInstance})
 	for name, err := range map[string]error{
 		"STS: all statuses":                    sts(SessionStatusPrefix("sts-tw-1"), clientv3.WithPrefix()),
 		"STS: range up to the prefix's end":    sts(SessionStatusKey("sts-tw-1", "a"), clientv3.WithRange(clientv3.GetPrefixRangeEnd(SessionStatusPrefix("sts-tw-1")))),
@@ -249,7 +264,7 @@ func TestWriteScope(t *testing.T) {
 		"controller: whole MD instance":         ctl(instPrefix(PlaneMD, "md-jp-1"), clientv3.WithPrefix()),
 		"controller: demand prefix, no slash":   ctl(instPrefix(PlaneMD, "md-jp-1")+"demand", clientv3.WithPrefix()), // covers demandX
 		"controller: demands into incarnations": ctl(DemandPrefix(PlaneMD, "md-jp-1"), clientv3.WithRange(PlacementPrefix("md-jp-1"))),
-		"controller: its own record as prefix":  ctl(AgentKey(PlaneCtl, "ctl-tw-1"), clientv3.WithPrefix()),
+		"controller: its own record as prefix":  ctl(AgentKey(PlaneCtl, ControllerInstance), clientv3.WithPrefix()),
 	} {
 		if !errors.Is(err, ErrNotWriter) {
 			t.Errorf("ranged delete, %s: %v, want ErrNotWriter", name, err)
@@ -497,7 +512,7 @@ func TestWritesTwoRegions(t *testing.T) {
 	spec := SessionSpecKey("sts-tw-1", "a1b2c3")
 	jpDemand := MDDemandKey("md-jp-1", "a1b2c3", "feed/trade.BinanceUM_Perp_BTCUSDT")
 
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, "ctl-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{})
 
 	// Cross-cluster: refused before any I/O, nothing written, jp not even fenced, term goes on.
 	_, err := term.Txn(ctx,
@@ -511,7 +526,7 @@ func TestWritesTwoRegions(t *testing.T) {
 			t.Fatalf("%s written in tw", key)
 		}
 	}
-	for _, key := range []string{spec, jpDemand, WriterKey(PlaneCtl, "ctl-tw-1")} {
+	for _, key := range []string{spec, jpDemand, WriterKey(PlaneCtl, ControllerInstance)} {
 		if kvs := mustGet(t, ctx, rawJP, key).Kvs; len(kvs) != 0 {
 			t.Fatalf("%s written in jp", key)
 		}
@@ -531,7 +546,7 @@ func TestWritesTwoRegions(t *testing.T) {
 	if kvs := mustGet(t, ctx, rawTW, jpDemand).Kvs; len(kvs) != 0 {
 		t.Fatal("jp demand entry also in tw")
 	}
-	if kvs := mustGet(t, ctx, rawJP, WriterKey(PlaneCtl, "ctl-tw-1")).Kvs; len(kvs) != 1 {
+	if kvs := mustGet(t, ctx, rawJP, WriterKey(PlaneCtl, ControllerInstance)).Kvs; len(kvs) != 1 {
 		t.Fatal("jp writer key not acquired by the first jp write")
 	}
 
@@ -545,9 +560,12 @@ func TestWritesTwoRegions(t *testing.T) {
 		t.Fatalf("a refused write ended the term: %v", md.Err())
 	}
 
-	// A key the controller may write, in a region its Clusters may not reach: refused by Clusters.
-	topo.Instances["ctl-tw-2"] = "tw"
-	twOnly := campaign(t, ctx, newClusters(t, topo, []string{"tw"}, nil), PlaneCtl, "ctl-tw-2", TermOptions{})
+	// A key the controller may write, in a region its Clusters may not reach: refused by Clusters. The next
+	// controller campaigns once this one is gone.
+	if err := term.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	twOnly := campaign(t, ctx, newClusters(t, topo, []string{"tw"}, nil), PlaneCtl, ControllerInstance, TermOptions{})
 	if err := twOnly.Put(ctx, MDDemandKey("md-jp-1", "a1b2c3", "feed/x"), "demand"); !errors.Is(err, ErrRegionNotAllowed) {
 		t.Fatalf("controller limited to tw writing a jp demand: %v", err)
 	}

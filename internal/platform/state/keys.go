@@ -24,6 +24,11 @@ const (
 	PlaneCtl Plane = "ctl"
 )
 
+// ControllerInstance is the controller's instance name. Every controller process uses it, so two of them fence
+// each other in every cluster even when their topologies disagree on the home region (PROTOCOL §3.2 W2, D33).
+// Topology.Instances[ControllerInstance] is the home region.
+const ControllerInstance = "controller"
+
 func (p Plane) valid() bool { return p.agent() || p == PlaneCtl }
 
 // agent reports whether p is one of the three agent planes, the ones with workers.

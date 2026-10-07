@@ -16,7 +16,7 @@ func twoRegions() Topology {
 			"jp": {Endpoints: []string{"http://127.0.0.1:2"}},
 		},
 		Instances: map[string]string{
-			"sts-tw-1": "tw", "md-tw-1": "tw", "td-tw-1": "tw", "ctl-tw-1": "tw",
+			"sts-tw-1": "tw", "md-tw-1": "tw", "td-tw-1": "tw", ControllerInstance: "tw",
 			"md-jp-1": "jp", "td-jp-1": "jp",
 		},
 	}
@@ -57,10 +57,10 @@ func TestKeys(t *testing.T) {
 			r + "/td/td-jp-1/ack/a1b2c3/42", PlaneTD, "td-jp-1", "jp",
 		},
 		// The controller's own keys, in its home region (D33).
-		{ElectionPrefix(PlaneCtl, "ctl-tw-1"), r + "/ctl/ctl-tw-1/election", PlaneCtl, "ctl-tw-1", "tw"},
-		{EpochKey(PlaneCtl, "ctl-tw-1"), r + "/ctl/ctl-tw-1/epoch", PlaneCtl, "ctl-tw-1", "tw"},
-		{WriterKey(PlaneCtl, "ctl-tw-1"), r + "/ctl/ctl-tw-1/writer", PlaneCtl, "ctl-tw-1", "tw"},
-		{AgentKey(PlaneCtl, "ctl-tw-1"), r + "/ctl/ctl-tw-1/agent", PlaneCtl, "ctl-tw-1", "tw"},
+		{ElectionPrefix(PlaneCtl, ControllerInstance), r + "/ctl/controller/election", PlaneCtl, ControllerInstance, "tw"},
+		{EpochKey(PlaneCtl, ControllerInstance), r + "/ctl/controller/epoch", PlaneCtl, ControllerInstance, "tw"},
+		{WriterKey(PlaneCtl, ControllerInstance), r + "/ctl/controller/writer", PlaneCtl, ControllerInstance, "tw"},
+		{AgentKey(PlaneCtl, ControllerInstance), r + "/ctl/controller/agent", PlaneCtl, ControllerInstance, "tw"},
 		{ElectionPrefix(PlaneMD, "md-jp-1"), r + "/md/md-jp-1/election", PlaneMD, "md-jp-1", "jp"},
 		{EpochKey(PlaneSTS, "sts-tw-1"), r + "/sts/sts-tw-1/epoch", PlaneSTS, "sts-tw-1", "tw"},
 		{WriterKey(PlaneTD, "td-tw-1"), r + "/td/td-tw-1/writer", PlaneTD, "td-tw-1", "tw"},

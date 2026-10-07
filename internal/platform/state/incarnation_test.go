@@ -157,8 +157,8 @@ func TestIncarnationForgetSTS(t *testing.T) {
 // The controller campaigns like an agent but has no workers, so no incarnations either.
 func TestIncarnationControllerHasNone(t *testing.T) {
 	ctx := testCtx(t)
-	_, topo := singleRegion(t, "ctl-tw-1")
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, "ctl-tw-1", TermOptions{})
+	_, topo := singleRegion(t, ControllerInstance)
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{})
 	if _, err := LoadIncarnations(ctx, term); !errors.Is(err, ErrNoWorkers) {
 		t.Fatalf("LoadIncarnations for the controller: %v", err)
 	}

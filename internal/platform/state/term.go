@@ -92,6 +92,9 @@ func Campaign(ctx context.Context, cl *Clusters, p Plane, inst string, opt TermO
 	if !p.valid() {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownPlane, p)
 	}
+	if p == PlaneCtl && inst != ControllerInstance {
+		return nil, fmt.Errorf("%w: %q", ErrNotController, inst)
+	}
 	if opt.ID == "" {
 		return nil, fmt.Errorf("%w: ID is required", ErrBadOptions)
 	}

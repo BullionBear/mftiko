@@ -202,17 +202,17 @@ enum TimeInForce {
 | `/{plane}/{inst}/incarnation/{h}` | 十進位，這個 worker key 最近取到的 incarnation（§3.2 W6） | agent | — | — |
 | `/md/{inst}/selector/{spec_hash}` | `SelectorState` | MD agent | — | — |
 | `/md/{inst}/placement/{atom_hash}` | `Placement` | MD agent | — | — |
-| `/ctl/{inst}/election` | etcd election | controller | — | controller 的 |
-| `/ctl/{inst}/epoch` | 20 位補零的十進位 epoch | controller | — | — |
-| `/ctl/{inst}/writer` | 同 agent 的 writer；在 controller 會寫入的每一個 cluster 各有一份 | controller | — | — |
-| `/ctl/{inst}/agent` | `AgentRecord`（`plane` 是 `ctl`） | controller | API server | controller 的 |
+| `/ctl/controller/election` | etcd election | controller | — | controller 的 |
+| `/ctl/controller/epoch` | 20 位補零的十進位 epoch | controller | — | — |
+| `/ctl/controller/writer` | 同 agent 的 writer；在 controller 會寫入的每一個 cluster 各有一份 | controller | — | — |
+| `/ctl/controller/agent` | `AgentRecord`（`plane` 是 `ctl`） | controller | API server | controller 的 |
 
-`{plane}` 是 `sts`、`md`、`td`。MD 的 `{entry}` 是 `feed/{feed key}` 或 `select/{selector 名稱}`。需求與 ack 的 key 不再帶 `{sts_inst}`：寫入者是 controller，`session_id` 對所有歷史唯一，足以當 owner 的身分。
+`{plane}` 是 `sts`、`md`、`td`。controller 的 instance 名稱固定是 `controller`：每個 controller 進程都用它，即使兩個進程對 home region 的設定不一致，也會在每個 cluster 搶同一把 writer key，互相 fence（W2）。MD 的 `{entry}` 是 `feed/{feed key}` 或 `select/{selector 名稱}`。需求與 ack 的 key 不再帶 `{sts_inst}`：寫入者是 controller，`session_id` 對所有歷史唯一，足以當 owner 的身分。
 
 ### 3.2 寫入規則
 
 - **W1 單一寫入者。** 每個前綴只有表中的那一個寫入者。API server 不參選，它的寫入怎麼滿足 W1 見 §10。
-- **W2 寫入以 writer key 為條件。** agent 與 controller 都照這個流程；controller 的 key 在 `/ctl/{inst}/` 底下，在 home region 參選。
+- **W2 寫入以 writer key 為條件。** agent 與 controller 都照這個流程；controller 的 key 在 `/ctl/controller/` 底下，在 home region 參選。
   1. agent 在自己 region 的 cluster 參選 `/{plane}/{inst}/election`（etcd `concurrency.Election`）。
   2. 當選後以 txn 把 `/{plane}/{inst}/epoch` 加 1，得到 epoch E。這也是 C3 `Attach` 帶的 epoch。
   3. 在每一個要寫入的 cluster，以 txn 把 `/{plane}/{inst}/writer` 改成 E，條件是原值小於 E 或不存在（值是 20 位補零的十進位，位元組比較就等於數值比較），並記下這次寫入的 `mod_revision` R。

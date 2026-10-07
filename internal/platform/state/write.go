@@ -203,6 +203,9 @@ func (w writeScope) areas(p Plane, inst string) (prefixes, exact []string) {
 			prefixes = []string{IncarnationPrefix(w.plane, w.inst)}
 		}
 	case w.plane == PlaneCtl:
+		if w.inst != ControllerInstance {
+			break // Campaign refuses any other name; a scope that has one writes nothing
+		}
 		switch {
 		case p == PlaneCtl && inst == w.inst:
 			exact = []string{AgentKey(PlaneCtl, w.inst)}

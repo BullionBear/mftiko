@@ -521,6 +521,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   5. 每次當選、每次全量 resync 都比對並回收孤兒（D9）。
 - **controller 只到資源這一層，不碰進程。** 它寫「session S 需要 feed F」「session S 跑在 STS instance X」，不寫「起哪個 worker」。進程的生命週期只有 agent 碰（D1、D2）。它也不 import exchange、不查 SYM：商品是否存在由 MD、TD 解析後以 `REJECTED` 回報。
 - **controller 要 fencing，和 agent 一樣（PROTOCOL §3.2 W2）。** 在 home region 的 cluster 參選，當選後 epoch 加 1，在每一個要寫入的 cluster 放 writer key，之後每次寫入都以它為條件。被取代的舊 controller 寫不進去。home region 是部署設定。
+  - instance 名稱固定是 `controller`。名稱可以設定的話，兩個名稱不同的 controller 各有各的 writer key，會同時寫同一批需求；名稱固定，兩個進程即使對 home region 的設定不一致，也會在每個 cluster 搶同一把 writer key。
 - **controller 不在交易的路徑上。** 它停機或輪換時，需求與指派原樣保留，跑著的 session 照跑，只有新的起停要等它回來。
 - API server 不參選。它的寫入怎麼滿足 W1（例如 spec 只用 create-only 的 txn、帳號以 `mod_revision` 做 CAS），在 E10 定（PROTOCOL §10）。
 

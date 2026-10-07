@@ -186,7 +186,7 @@ func TestClustersTwoRegions(t *testing.T) {
 
 	// The controller, at home in tw: every region allowed (D17 rule 2).
 	d := newDialCounter()
-	allowed, err := AgentRegions(topo, PlaneCtl, "ctl-tw-1")
+	allowed, err := AgentRegions(topo, PlaneCtl, ControllerInstance)
 	if err != nil || allowed != nil {
 		t.Fatalf("controller's regions: %v, %v; want all", allowed, err)
 	}
