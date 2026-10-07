@@ -16,9 +16,16 @@ import (
 // Clusters lock held, so it must not wait for the cluster to answer (clientv3.New without auth does not).
 type DialFunc func(region string, endpoints []string) (*clientv3.Client, error)
 
-// DefaultDial is clientv3.New with a 5s dial timeout.
+// DefaultDial is clientv3.New with a 5s dial timeout and gRPC keepalive: a connection whose peer stops answering
+// (a hung member, a dropped route) is closed within about 15s and reconnected, instead of being trusted forever.
+// 10s is above etcd's default minimum ping interval (--grpc-keepalive-min-time, 5s).
 func DefaultDial(region string, endpoints []string) (*clientv3.Client, error) {
-	c, err := clientv3.New(clientv3.Config{Endpoints: endpoints, DialTimeout: 5 * time.Second})
+	c, err := clientv3.New(clientv3.Config{
+		Endpoints:            endpoints,
+		DialTimeout:          5 * time.Second,
+		DialKeepAliveTime:    10 * time.Second,
+		DialKeepAliveTimeout: 5 * time.Second,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("state: dial %s: %w", region, err)
 	}
@@ -46,6 +53,15 @@ func AgentRegions(t Topology, p Plane, inst string) ([]string, error) {
 type Reader interface {
 	Get(ctx context.Context, key string, opts ...clientv3.OpOption) (*clientv3.GetResponse, error)
 	Watch(ctx context.Context, key string, opts ...clientv3.OpOption) clientv3.WatchChan
+	// Done is closed once the client is closed (Clusters.Close). A closed client fails Get only after its retries
+	// and ends a watch without an error, so a long-running reader such as Mirror checks this instead.
+	Done() <-chan struct{}
+	// RequestProgress asks the watch stream that ctx's metadata selects for a progress notification: once every
+	// watch on it has caught up, and none starts beyond the current revision, each receives that revision
+	// (clientv3.Watcher.RequestProgress). Every watch on the stream gets the notification, so N mirrors probing one
+	// client make N² of them per interval. With no stream for that metadata, clientv3 opens one that lasts until
+	// the client closes; while the stream reconnects, the call waits for ctx.
+	RequestProgress(ctx context.Context) error
 }
 
 // Clusters holds one client per regional cluster, dialled lazily on first use (PROTOCOL §3, D17). With a single
@@ -163,3 +179,7 @@ func (r reader) Get(ctx context.Context, key string, opts ...clientv3.OpOption) 
 func (r reader) Watch(ctx context.Context, key string, opts ...clientv3.OpOption) clientv3.WatchChan {
 	return r.c.Watch(ctx, key, opts...)
 }
+
+func (r reader) Done() <-chan struct{} { return r.c.Ctx().Done() }
+
+func (r reader) RequestProgress(ctx context.Context) error { return r.c.RequestProgress(ctx) }

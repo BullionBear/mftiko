@@ -1,4 +1,6 @@
 // Package etcdtest runs a throwaway single-member etcd for tests of package state. It is imported by tests only.
+// A Server can be stopped and restarted on the same data and ports, or rebuilt from nothing; a Proxy in front of it
+// can cut its clients off while etcd keeps running, or send them to another server.
 //
 // The binary is $MFTIKO_ETCD_BIN, else etcd on PATH; a test without either is skipped. No auth yet (E1-08).
 package etcdtest
@@ -11,6 +13,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -26,9 +29,16 @@ const (
 
 var seq atomic.Int64
 
-// Server is one running etcd member. It is killed when the test that started it ends.
+// Server is one etcd member. It is killed when the test that started it ends.
 type Server struct {
 	endpoints []string
+	bin       string
+	args      []string
+	dataDir   string
+	out       *lockedBuffer
+
+	mu   sync.Mutex
+	stop func() // kills the running process and waits for it; nil while stopped
 }
 
 // Start launches etcd with a fresh data dir and free localhost ports and waits until it serves reads. It skips the
@@ -77,6 +87,57 @@ func binary() string {
 	return ""
 }
 
+// Stop kills the member, as a crash would. Its data dir and ports are kept for Restart.
+func (s *Server) Stop() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stop != nil {
+		s.stop()
+		s.stop = nil
+	}
+}
+
+// Restart kills the member if it runs and starts it again on the same data dir and ports, then waits until it
+// serves reads. Clients keep their endpoints and reconnect.
+func (s *Server) Restart(t testing.TB) {
+	t.Helper()
+	s.Stop()
+	s.relaunch(t)
+}
+
+// Rebuild kills the member, deletes its data and starts it again with the same name, token and ports: the same
+// cluster ID, but every key gone and revisions starting over, as a cluster rebuilt from scratch would be.
+func (s *Server) Rebuild(t testing.TB) {
+	t.Helper()
+	s.Stop()
+	entries, err := os.ReadDir(s.dataDir)
+	if err != nil {
+		t.Fatalf("etcdtest: rebuild: %v", err)
+	}
+	for _, e := range entries {
+		if err := os.RemoveAll(filepath.Join(s.dataDir, e.Name())); err != nil {
+			t.Fatalf("etcdtest: rebuild: %v", err)
+		}
+	}
+	s.relaunch(t)
+}
+
+func (s *Server) relaunch(t testing.TB) {
+	t.Helper()
+	var errs []error
+	for range startTries { // the old process's ports can take a moment to be free
+		s.mu.Lock()
+		err := s.launch()
+		s.mu.Unlock()
+		if err == nil {
+			return
+		}
+		errs = append(errs, err)
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("etcdtest: etcd did not restart: %v", errors.Join(errs...))
+}
+
 func start(t testing.TB, bin string) (*Server, error) {
 	client, err := freePort()
 	if err != nil {
@@ -90,23 +151,38 @@ func start(t testing.TB, bin string) (*Server, error) {
 	clientURL := "http://" + client
 	peerURL := "http://" + peer
 
-	out := &lockedBuffer{}
-	cmd := exec.Command(bin,
+	s := &Server{endpoints: []string{clientURL}, bin: bin, dataDir: t.TempDir(), out: &lockedBuffer{}}
+	s.args = []string{
 		"--name", name,
-		"--data-dir", t.TempDir(),
+		"--data-dir", s.dataDir,
 		"--listen-client-urls", clientURL,
 		"--advertise-client-urls", clientURL,
 		"--listen-peer-urls", peerURL,
 		"--initial-advertise-peer-urls", peerURL,
-		"--initial-cluster", name+"="+peerURL,
+		"--initial-cluster", name + "=" + peerURL,
 		"--initial-cluster-state", "new",
 		"--initial-cluster-token", name,
 		"--log-level=error",
-	)
-	cmd.Stdout = out
-	cmd.Stderr = out
+	}
+	if err := s.launch(); err != nil {
+		return nil, err
+	}
+	t.Cleanup(func() {
+		s.Stop()
+		if t.Failed() {
+			t.Logf("etcd %s output:\n%s", name, s.out.String())
+		}
+	})
+	return s, nil
+}
+
+// launch starts the process and waits until it serves reads. Called with s.mu held, or before s is shared.
+func (s *Server) launch() error {
+	cmd := exec.Command(s.bin, s.args...)
+	cmd.Stdout = s.out
+	cmd.Stderr = s.out
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("etcdtest: start %s: %w", bin, err)
+		return fmt.Errorf("etcdtest: start %s: %w", s.bin, err)
 	}
 	exited := make(chan struct{})
 	var waitErr error
@@ -118,19 +194,12 @@ func start(t testing.TB, bin string) (*Server, error) {
 		_ = cmd.Process.Kill()
 		<-exited
 	}
-
-	s := &Server{endpoints: []string{clientURL}}
 	if err := waitReady(s.endpoints, exited); err != nil {
 		stop()
-		return nil, fmt.Errorf("%w (exit: %v)\n%s", err, waitErr, out.String())
+		return fmt.Errorf("%w (exit: %v)\n%s", err, waitErr, s.out.String())
 	}
-	t.Cleanup(func() {
-		stop()
-		if t.Failed() {
-			t.Logf("etcd %s output:\n%s", name, out.String())
-		}
-	})
-	return s, nil
+	s.stop = stop
+	return nil
 }
 
 func waitReady(endpoints []string, exited <-chan struct{}) error {
