@@ -1,7 +1,7 @@
 # Local development only: `make dev-up` starts both services and waits until they are healthy; then
 # `make migrate-up`. Ports are bound to 127.0.0.1, so nothing outside this machine can connect, and neither service
 # asks for credentials: PostgreSQL trusts local connections, etcd has no auth yet (E1-08 adds it).
-# Tests do not use these: internal/state's tests start their own etcd (etcdtest).
+# Tests do not use these: internal/platform/state's tests start their own etcd (etcdtest).
 services:
   postgres:
     image: postgres:17

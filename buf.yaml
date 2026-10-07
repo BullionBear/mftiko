@@ -1,7 +1,7 @@
-# buf v2 workspace. Protos live under proto/; packages are mftiko.<contract>.v<major> (PROTOCOL §1).
+# buf v2 workspace. Protos live under contract/proto/; packages are mftiko.<contract>.v<major> (PROTOCOL §1).
 version: v2
 modules:
-  - path: proto
+  - path: contract/proto
 lint:
   use:
     - STANDARD
@@ -9,3 +9,17 @@ breaking:
   # Each contract evolves compatibly within a major (PROTOCOL §1). CI runs `make proto-breaking`.
   use:
     - FILE
+  # Drafts (DECISIONS D36, the table in PROTOCOL §1): free to change until the epic that finalizes them takes them off
+  # this list, as part of its done criteria. Every contract is a draft today; C3 and C4 come off first, when E1 ends.
+  ignore:
+    - contract/proto/mftiko/state/v1/state.proto # E: agent records in E1; demands, assignments, acks in E9
+    - contract/proto/mftiko/shim/v1/shim.proto # C3: E1
+    - contract/proto/mftiko/worker/v1/worker.proto # C4: E1
+    - contract/proto/mftiko/common/v1/common.proto # C4: E1
+    - contract/proto/mftiko/mdctl/v1/mdctl.proto # C5: E4
+    - contract/proto/mftiko/tdctl/v1/tdctl.proto # C5: E6
+    - contract/proto/mftiko/stsctl/v1/stsctl.proto # C5: E8, E9
+    - contract/proto/mftiko/md/v1/md.proto # C6: E4
+    - contract/proto/mftiko/md/v1/read.proto # C6: E4
+    - contract/proto/mftiko/td/v1/td.proto # C6: E6
+    - contract/proto/mftiko/sym/v1/sym.proto # C6: E2

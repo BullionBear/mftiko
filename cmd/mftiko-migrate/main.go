@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/BullionBear/mftiko/internal/buildinfo"
-	"github.com/BullionBear/mftiko/internal/logger"
+	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
+	"github.com/BullionBear/mftiko/internal/platform/logger"
 	"github.com/BullionBear/mftiko/migrations"
 )
 
