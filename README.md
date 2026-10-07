@@ -30,7 +30,7 @@ examples/strategies/      hello, tape-keeper
 proto/mftiko/<pkg>/v1/    protobuf contracts; source of truth is docs/PROTOCOL.md
 gen/                      generated Go (make proto; committed, do not edit)
 migrations/               PostgreSQL schema: NNNN_name.up.sql / .down.sql, embedded into mftiko-migrate
-deploy/dev/               local development services (PostgreSQL)
+deploy/dev/               local development services (PostgreSQL, etcd)
 web/                      SvelteKit console (single-page app served by mftiko-api)
 docs/                     DECISIONS.md, PROTOCOL.md
 ```
@@ -49,13 +49,13 @@ docs/                     DECISIONS.md, PROTOCOL.md
 | `make test` / `make test-race` / `make vet` | Go tests / with the race detector, uncached / vet |
 | `make check` | everything CI runs: `proto-lint`, `proto-breaking`, `gen-check`, `vet`, `build`, `test-race`, `web-check` |
 | `make web` / `make web-dev` / `make web-check` | build, dev server, svelte-check |
-| `make db-up` / `make db-down` | start / stop a local PostgreSQL (Docker) |
+| `make dev-up` / `make dev-down` | start / stop a local PostgreSQL and etcd (Docker); `dev-up` waits until both are healthy |
 | `make migrate-up` / `make migrate-down` / `make migrate-status` | apply / roll back one / list migrations against `$DATABASE_URL` |
 | `make migrate-new NAME=...` | creates the next `NNNN_<name>.up.sql` / `.down.sql` pair |
 | `make clean` | removes `bin/` and web build output |
 | `make help` | lists targets |
 
-Building and testing the Go code need only Go 1.26+: the generated code is committed. `make proto`, `make web` and `make check` also need Node 22+ and npm; Docker only for `make db-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`.
+Building and testing the Go code need only Go 1.26+: the generated code is committed. `make proto`, `make web` and `make check` also need Node 22+ and npm; Docker only for `make dev-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`; its etcd is at `http://127.0.0.1:2379`, one member with no auth.
 
 ## Tests
 
