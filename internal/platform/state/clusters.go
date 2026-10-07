@@ -32,8 +32,8 @@ func DefaultDial(region string, endpoints []string) (*clientv3.Client, error) {
 	return c, nil
 }
 
-// AgentRegions is the set of regions an agent may connect to (D17 rule 2): MD and TD only their own;
-// STS (nil = every region in the topology).
+// AgentRegions is the set of regions a process of (p, inst) may connect to (D17 rule 2): an agent only its own;
+// the controller every region in the topology (nil).
 func AgentRegions(t Topology, p Plane, inst string) ([]string, error) {
 	if !p.valid() {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownPlane, p)
@@ -42,7 +42,7 @@ func AgentRegions(t Topology, p Plane, inst string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	if p == PlaneSTS {
+	if p == PlaneCtl {
 		return nil, nil
 	}
 	return []string{home}, nil

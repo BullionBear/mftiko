@@ -82,6 +82,160 @@ func (Outcome) EnumDescriptor() ([]byte, []int) {
 	return file_mftiko_common_v1_common_proto_rawDescGZIP(), []int{0}
 }
 
+// 交易共用的 enum：行情的成交與強平、TD 的訂單、exchange 的 adaptor、SDK 都用這一份（DECISIONS D35）。
+type Side int32
+
+const (
+	Side_SIDE_UNSPECIFIED Side = 0
+	Side_SIDE_BUY         Side = 1
+	Side_SIDE_SELL        Side = 2
+)
+
+// Enum value maps for Side.
+var (
+	Side_name = map[int32]string{
+		0: "SIDE_UNSPECIFIED",
+		1: "SIDE_BUY",
+		2: "SIDE_SELL",
+	}
+	Side_value = map[string]int32{
+		"SIDE_UNSPECIFIED": 0,
+		"SIDE_BUY":         1,
+		"SIDE_SELL":        2,
+	}
+)
+
+func (x Side) Enum() *Side {
+	p := new(Side)
+	*p = x
+	return p
+}
+
+func (x Side) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Side) Descriptor() protoreflect.EnumDescriptor {
+	return file_mftiko_common_v1_common_proto_enumTypes[1].Descriptor()
+}
+
+func (Side) Type() protoreflect.EnumType {
+	return &file_mftiko_common_v1_common_proto_enumTypes[1]
+}
+
+func (x Side) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Side.Descriptor instead.
+func (Side) EnumDescriptor() ([]byte, []int) {
+	return file_mftiko_common_v1_common_proto_rawDescGZIP(), []int{1}
+}
+
+type OrderType int32
+
+const (
+	OrderType_ORDER_TYPE_UNSPECIFIED OrderType = 0
+	OrderType_ORDER_TYPE_LIMIT       OrderType = 1
+	OrderType_ORDER_TYPE_MARKET      OrderType = 2
+)
+
+// Enum value maps for OrderType.
+var (
+	OrderType_name = map[int32]string{
+		0: "ORDER_TYPE_UNSPECIFIED",
+		1: "ORDER_TYPE_LIMIT",
+		2: "ORDER_TYPE_MARKET",
+	}
+	OrderType_value = map[string]int32{
+		"ORDER_TYPE_UNSPECIFIED": 0,
+		"ORDER_TYPE_LIMIT":       1,
+		"ORDER_TYPE_MARKET":      2,
+	}
+)
+
+func (x OrderType) Enum() *OrderType {
+	p := new(OrderType)
+	*p = x
+	return p
+}
+
+func (x OrderType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (OrderType) Descriptor() protoreflect.EnumDescriptor {
+	return file_mftiko_common_v1_common_proto_enumTypes[2].Descriptor()
+}
+
+func (OrderType) Type() protoreflect.EnumType {
+	return &file_mftiko_common_v1_common_proto_enumTypes[2]
+}
+
+func (x OrderType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use OrderType.Descriptor instead.
+func (OrderType) EnumDescriptor() ([]byte, []int) {
+	return file_mftiko_common_v1_common_proto_rawDescGZIP(), []int{2}
+}
+
+type TimeInForce int32
+
+const (
+	TimeInForce_TIME_IN_FORCE_UNSPECIFIED TimeInForce = 0
+	TimeInForce_TIME_IN_FORCE_GTC         TimeInForce = 1
+	TimeInForce_TIME_IN_FORCE_IOC         TimeInForce = 2
+	TimeInForce_TIME_IN_FORCE_FOK         TimeInForce = 3
+	TimeInForce_TIME_IN_FORCE_POST_ONLY   TimeInForce = 4
+)
+
+// Enum value maps for TimeInForce.
+var (
+	TimeInForce_name = map[int32]string{
+		0: "TIME_IN_FORCE_UNSPECIFIED",
+		1: "TIME_IN_FORCE_GTC",
+		2: "TIME_IN_FORCE_IOC",
+		3: "TIME_IN_FORCE_FOK",
+		4: "TIME_IN_FORCE_POST_ONLY",
+	}
+	TimeInForce_value = map[string]int32{
+		"TIME_IN_FORCE_UNSPECIFIED": 0,
+		"TIME_IN_FORCE_GTC":         1,
+		"TIME_IN_FORCE_IOC":         2,
+		"TIME_IN_FORCE_FOK":         3,
+		"TIME_IN_FORCE_POST_ONLY":   4,
+	}
+)
+
+func (x TimeInForce) Enum() *TimeInForce {
+	p := new(TimeInForce)
+	*p = x
+	return p
+}
+
+func (x TimeInForce) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (TimeInForce) Descriptor() protoreflect.EnumDescriptor {
+	return file_mftiko_common_v1_common_proto_enumTypes[3].Descriptor()
+}
+
+func (TimeInForce) Type() protoreflect.EnumType {
+	return &file_mftiko_common_v1_common_proto_enumTypes[3]
+}
+
+func (x TimeInForce) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use TimeInForce.Descriptor instead.
+func (TimeInForce) EnumDescriptor() ([]byte, []int) {
+	return file_mftiko_common_v1_common_proto_rawDescGZIP(), []int{3}
+}
+
 type WorkerRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
@@ -454,7 +608,21 @@ const file_mftiko_common_v1_common_proto_rawDesc = "" +
 	"\x13OUTCOME_INIT_FAILED\x10\x02\x12\x12\n" +
 	"\x0eOUTCOME_FAILED\x10\x03\x12\x13\n" +
 	"\x0fOUTCOME_CRASHED\x10\x04\x12\x10\n" +
-	"\fOUTCOME_HUNG\x10\x05BFZDgithub.com/BullionBear/mftiko/contract/gen/mftiko/common/v1;commonv1b\x06proto3"
+	"\fOUTCOME_HUNG\x10\x05*9\n" +
+	"\x04Side\x12\x14\n" +
+	"\x10SIDE_UNSPECIFIED\x10\x00\x12\f\n" +
+	"\bSIDE_BUY\x10\x01\x12\r\n" +
+	"\tSIDE_SELL\x10\x02*T\n" +
+	"\tOrderType\x12\x1a\n" +
+	"\x16ORDER_TYPE_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10ORDER_TYPE_LIMIT\x10\x01\x12\x15\n" +
+	"\x11ORDER_TYPE_MARKET\x10\x02*\x8e\x01\n" +
+	"\vTimeInForce\x12\x1d\n" +
+	"\x19TIME_IN_FORCE_UNSPECIFIED\x10\x00\x12\x15\n" +
+	"\x11TIME_IN_FORCE_GTC\x10\x01\x12\x15\n" +
+	"\x11TIME_IN_FORCE_IOC\x10\x02\x12\x15\n" +
+	"\x11TIME_IN_FORCE_FOK\x10\x03\x12\x1b\n" +
+	"\x17TIME_IN_FORCE_POST_ONLY\x10\x04BFZDgithub.com/BullionBear/mftiko/contract/gen/mftiko/common/v1;commonv1b\x06proto3"
 
 var (
 	file_mftiko_common_v1_common_proto_rawDescOnce sync.Once
@@ -468,19 +636,22 @@ func file_mftiko_common_v1_common_proto_rawDescGZIP() []byte {
 	return file_mftiko_common_v1_common_proto_rawDescData
 }
 
-var file_mftiko_common_v1_common_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_mftiko_common_v1_common_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
 var file_mftiko_common_v1_common_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_mftiko_common_v1_common_proto_goTypes = []any{
 	(Outcome)(0),      // 0: mftiko.common.v1.Outcome
-	(*WorkerRef)(nil), // 1: mftiko.common.v1.WorkerRef
-	(*Version)(nil),   // 2: mftiko.common.v1.Version
-	(*Condition)(nil), // 3: mftiko.common.v1.Condition
-	(*Error)(nil),     // 4: mftiko.common.v1.Error
-	(*ExitInfo)(nil),  // 5: mftiko.common.v1.ExitInfo
-	nil,               // 6: mftiko.common.v1.Error.DetailsEntry
+	(Side)(0),         // 1: mftiko.common.v1.Side
+	(OrderType)(0),    // 2: mftiko.common.v1.OrderType
+	(TimeInForce)(0),  // 3: mftiko.common.v1.TimeInForce
+	(*WorkerRef)(nil), // 4: mftiko.common.v1.WorkerRef
+	(*Version)(nil),   // 5: mftiko.common.v1.Version
+	(*Condition)(nil), // 6: mftiko.common.v1.Condition
+	(*Error)(nil),     // 7: mftiko.common.v1.Error
+	(*ExitInfo)(nil),  // 8: mftiko.common.v1.ExitInfo
+	nil,               // 9: mftiko.common.v1.Error.DetailsEntry
 }
 var file_mftiko_common_v1_common_proto_depIdxs = []int32{
-	6, // 0: mftiko.common.v1.Error.details:type_name -> mftiko.common.v1.Error.DetailsEntry
+	9, // 0: mftiko.common.v1.Error.details:type_name -> mftiko.common.v1.Error.DetailsEntry
 	0, // 1: mftiko.common.v1.ExitInfo.outcome:type_name -> mftiko.common.v1.Outcome
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
@@ -499,7 +670,7 @@ func file_mftiko_common_v1_common_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mftiko_common_v1_common_proto_rawDesc), len(file_mftiko_common_v1_common_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      4,
 			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,

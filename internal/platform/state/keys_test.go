@@ -16,7 +16,7 @@ func twoRegions() Topology {
 			"jp": {Endpoints: []string{"http://127.0.0.1:2"}},
 		},
 		Instances: map[string]string{
-			"sts-tw-1": "tw", "md-tw-1": "tw", "td-tw-1": "tw",
+			"sts-tw-1": "tw", "md-tw-1": "tw", "td-tw-1": "tw", ControllerInstance: "tw",
 			"md-jp-1": "jp", "td-jp-1": "jp",
 		},
 	}
@@ -33,27 +33,34 @@ func TestKeys(t *testing.T) {
 		{SessionSpecKey("sts-tw-1", "a1b2c3"), r + "/sts/sts-tw-1/spec/a1b2c3", PlaneSTS, "sts-tw-1", "tw"},
 		{SessionStatusKey("sts-tw-1", "a1b2c3"), r + "/sts/sts-tw-1/status/a1b2c3", PlaneSTS, "sts-tw-1", "tw"},
 		{AccountKey("td-jp-1", 42), r + "/td/td-jp-1/account/42", PlaneTD, "td-jp-1", "jp"},
-		// A TW STS asking for JP market data writes into JP's cluster; JP's MD acks there (D17 rule 1).
+		{SessionDemandKey("sts-tw-1", "a1b2c3"), r + "/sts/sts-tw-1/demand/a1b2c3", PlaneSTS, "sts-tw-1", "tw"},
+		// A TW session asking for JP market data: the controller writes the demand into JP's cluster; JP's MD
+		// acks there (D17 rule 1).
 		{
-			MDLeaseKey("md-jp-1", "sts-tw-1", "a1b2c3", "feed/trade.BinanceUM_Perp_BTCUSDT"),
-			r + "/md/md-jp-1/lease/sts-tw-1/a1b2c3/feed/trade.BinanceUM_Perp_BTCUSDT", PlaneMD, "md-jp-1", "jp",
+			MDDemandKey("md-jp-1", "a1b2c3", "feed/trade.BinanceUM_Perp_BTCUSDT"),
+			r + "/md/md-jp-1/demand/a1b2c3/feed/trade.BinanceUM_Perp_BTCUSDT", PlaneMD, "md-jp-1", "jp",
 		},
 		{
-			MDLeaseKey("md-tw-1", "sts-tw-1", "a1b2c3", "select/top10"),
-			r + "/md/md-tw-1/lease/sts-tw-1/a1b2c3/select/top10", PlaneMD, "md-tw-1", "tw",
+			MDDemandKey("md-tw-1", "a1b2c3", "select/top10"),
+			r + "/md/md-tw-1/demand/a1b2c3/select/top10", PlaneMD, "md-tw-1", "tw",
 		},
 		{
-			TDLeaseKey("td-jp-1", "sts-tw-1", "a1b2c3", 42),
-			r + "/td/td-jp-1/lease/sts-tw-1/a1b2c3/42", PlaneTD, "td-jp-1", "jp",
+			TDDemandKey("td-jp-1", "a1b2c3", 42),
+			r + "/td/td-jp-1/demand/a1b2c3/42", PlaneTD, "td-jp-1", "jp",
 		},
 		{
-			MDAckKey("md-jp-1", "sts-tw-1", "a1b2c3", "feed/trade.BinanceUM_Perp_BTCUSDT"),
-			r + "/md/md-jp-1/ack/sts-tw-1/a1b2c3/feed/trade.BinanceUM_Perp_BTCUSDT", PlaneMD, "md-jp-1", "jp",
+			MDAckKey("md-jp-1", "a1b2c3", "feed/trade.BinanceUM_Perp_BTCUSDT"),
+			r + "/md/md-jp-1/ack/a1b2c3/feed/trade.BinanceUM_Perp_BTCUSDT", PlaneMD, "md-jp-1", "jp",
 		},
 		{
-			TDAckKey("td-jp-1", "sts-tw-1", "a1b2c3", 42),
-			r + "/td/td-jp-1/ack/sts-tw-1/a1b2c3/42", PlaneTD, "td-jp-1", "jp",
+			TDAckKey("td-jp-1", "a1b2c3", 42),
+			r + "/td/td-jp-1/ack/a1b2c3/42", PlaneTD, "td-jp-1", "jp",
 		},
+		// The controller's own keys, in its home region (D33).
+		{ElectionPrefix(PlaneCtl, ControllerInstance), r + "/ctl/controller/election", PlaneCtl, ControllerInstance, "tw"},
+		{EpochKey(PlaneCtl, ControllerInstance), r + "/ctl/controller/epoch", PlaneCtl, ControllerInstance, "tw"},
+		{WriterKey(PlaneCtl, ControllerInstance), r + "/ctl/controller/writer", PlaneCtl, ControllerInstance, "tw"},
+		{AgentKey(PlaneCtl, ControllerInstance), r + "/ctl/controller/agent", PlaneCtl, ControllerInstance, "tw"},
 		{ElectionPrefix(PlaneMD, "md-jp-1"), r + "/md/md-jp-1/election", PlaneMD, "md-jp-1", "jp"},
 		{EpochKey(PlaneSTS, "sts-tw-1"), r + "/sts/sts-tw-1/epoch", PlaneSTS, "sts-tw-1", "tw"},
 		{WriterKey(PlaneTD, "td-tw-1"), r + "/td/td-tw-1/writer", PlaneTD, "td-tw-1", "tw"},
@@ -66,8 +73,9 @@ func TestKeys(t *testing.T) {
 		{SessionSpecPrefix("sts-tw-1"), r + "/sts/sts-tw-1/spec/", PlaneSTS, "sts-tw-1", "tw"},
 		{SessionStatusPrefix("sts-tw-1"), r + "/sts/sts-tw-1/status/", PlaneSTS, "sts-tw-1", "tw"},
 		{AccountPrefix("td-tw-1"), r + "/td/td-tw-1/account/", PlaneTD, "td-tw-1", "tw"},
-		{MDLeasePrefix("md-jp-1"), r + "/md/md-jp-1/lease/", PlaneMD, "md-jp-1", "jp"},
-		{TDLeasePrefix("td-jp-1"), r + "/td/td-jp-1/lease/", PlaneTD, "td-jp-1", "jp"},
+		{DemandPrefix(PlaneSTS, "sts-tw-1"), r + "/sts/sts-tw-1/demand/", PlaneSTS, "sts-tw-1", "tw"},
+		{DemandPrefix(PlaneMD, "md-jp-1"), r + "/md/md-jp-1/demand/", PlaneMD, "md-jp-1", "jp"},
+		{DemandPrefix(PlaneTD, "td-jp-1"), r + "/td/td-jp-1/demand/", PlaneTD, "td-jp-1", "jp"},
 		{MDAckPrefix("md-jp-1"), r + "/md/md-jp-1/ack/", PlaneMD, "md-jp-1", "jp"},
 		{TDAckPrefix("td-tw-1"), r + "/td/td-tw-1/ack/", PlaneTD, "td-tw-1", "tw"},
 		{IncarnationPrefix(PlaneMD, "md-jp-1"), r + "/md/md-jp-1/incarnation/", PlaneMD, "md-jp-1", "jp"},

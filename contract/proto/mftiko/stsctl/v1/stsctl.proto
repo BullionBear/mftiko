@@ -4,7 +4,7 @@ syntax = "proto3";
 package mftiko.stsctl.v1;
 
 import "mftiko/common/v1/common.proto";
-import "mftiko/state/v1/state.proto";
+import "mftiko/session/v1/session.proto";
 
 option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/stsctl/v1;stsctlv1";
 
@@ -13,10 +13,10 @@ message InitPayload {
   uint32 incarnation = 2;
   string sts_instance = 3;
   string name = 4;
-  mftiko.state.v1.StrategyRef strategy = 5;
+  mftiko.session.v1.StrategyRef strategy = 5;
   bytes params = 6;
-  repeated mftiko.state.v1.FeedDecl feeds = 7;
-  repeated mftiko.state.v1.AccountDecl accounts = 8;
+  repeated mftiko.session.v1.FeedDecl feeds = 7;
+  repeated mftiko.session.v1.AccountDecl accounts = 8;
   NatsCredentials nats = 9; // 這個 session 專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D30）
 }
 
@@ -42,7 +42,7 @@ message Fail {
   string reason = 1;
 }
 
-// ack 的完整快照，由 STS agent 從 etcd 整理後轉送。
+// ack 的完整快照：controller 整理進 SessionDemand.bindings（§3.3），STS agent 轉成這個格式送給 worker。
 message Bindings {
   mftiko.common.v1.Version version = 1; // STS agent 為每個 session 產生，不是 etcd revision
   repeated FeedBinding feeds = 2;
@@ -54,20 +54,20 @@ message FeedBinding {
   string feed = 1;
   string md_instance = 2;
   string subject = 3;
-  mftiko.state.v1.EntryState state = 4;
+  BindingState state = 4;
 }
 
 message SelectorBinding {
   string name = 1;
   string md_instance = 2;
-  mftiko.state.v1.Universe universe = 3;
+  Universe universe = 3;
   string subject_prefix = 4; // 成員的 subject 是 {subject_prefix}.{topic}.{ticker}
 }
 
 message AccountBinding {
   string name = 1;
   int64 api_id = 2;
-  mftiko.state.v1.EntryState state = 3;
+  BindingState state = 3;
   mftiko.common.v1.WorkerRef worker = 4;
 }
 
@@ -85,4 +85,22 @@ message QueueStat {
   uint32 depth = 2;
   uint64 dropped = 3;    // md：因超過 recv_window_ms 或 buffer 滿而丟掉的則數
   uint32 max_age_ms = 4; // 上一個回報週期內，交給 hook 的事件中最老的那則的年齡
+}
+
+// 綁定的狀態，對應 provider 的 ack（§3.5）。值與 state.v1.EntryState 相同；stsctl 自己定義，策略的契約才不綁在 etcd 的
+// schema 上（DECISIONS D36）。
+enum BindingState {
+  BINDING_STATE_UNSPECIFIED = 0; // provider 沒有 ack（沉默）
+  BINDING_STATE_PENDING = 1;
+  BINDING_STATE_READY = 2;
+  BINDING_STATE_REJECTED = 3;
+  BINDING_STATE_DEAD = 4;
+}
+
+// selector 目前的成員。欄位與 state.v1.Universe 相同。
+message Universe {
+  uint64 epoch = 1;
+  repeated string members = 2; // UniversalTicker
+  string current = 3;          // 只有 rolling_future
+  repeated string topics = 4;
 }

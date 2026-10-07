@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mftiko/common/v1/common.proto.
  */
 export const file_mftiko_common_v1_common: GenFile = /*@__PURE__*/
-  fileDesc("Ch1tZnRpa28vY29tbW9uL3YxL2NvbW1vbi5wcm90bxIQbWZ0aWtvLmNvbW1vbi52MSItCglXb3JrZXJSZWYSCwoDa2V5GAEgASgJEhMKC2luY2FybmF0aW9uGAIgASgNIiUKB1ZlcnNpb24SDQoFZXBvY2gYASABKAMSCwoDc2VxGAIgASgEIlkKCUNvbmRpdGlvbhIMCgR0eXBlGAEgASgJEg4KBnN0YXR1cxgCIAEoCBIOCgZyZWFzb24YAyABKAkSDwoHbWVzc2FnZRgEIAEoCRINCgVhdF9ucxgFIAEoAyKgAQoFRXJyb3ISDAoEY29kZRgBIAEoCRIPCgdtZXNzYWdlGAIgASgJEhEKCXJldHJ5YWJsZRgDIAEoCBI1CgdkZXRhaWxzGAQgAygLMiQubWZ0aWtvLmNvbW1vbi52MS5FcnJvci5EZXRhaWxzRW50cnkaLgoMRGV0YWlsc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEijgEKCEV4aXRJbmZvEgwKBGNvZGUYASABKAUSDgoGc2lnbmFsGAIgASgFEg0KBWF0X25zGAMgASgDEioKB291dGNvbWUYBCABKA4yGS5tZnRpa28uY29tbW9uLnYxLk91dGNvbWUSDgoGcmVhc29uGAUgASgJEhkKEW9uX3N0b3BfY29tcGxldGVkGAYgASgIKogBCgdPdXRjb21lEhcKE09VVENPTUVfVU5TUEVDSUZJRUQQABIQCgxPVVRDT01FX0RPTkUQARIXChNPVVRDT01FX0lOSVRfRkFJTEVEEAISEgoOT1VUQ09NRV9GQUlMRUQQAxITCg9PVVRDT01FX0NSQVNIRUQQBBIQCgxPVVRDT01FX0hVTkcQBUJGWkRnaXRodWIuY29tL0J1bGxpb25CZWFyL21mdGlrby9jb250cmFjdC9nZW4vbWZ0aWtvL2NvbW1vbi92MTtjb21tb252MWIGcHJvdG8z");
+  fileDesc("Ch1tZnRpa28vY29tbW9uL3YxL2NvbW1vbi5wcm90bxIQbWZ0aWtvLmNvbW1vbi52MSItCglXb3JrZXJSZWYSCwoDa2V5GAEgASgJEhMKC2luY2FybmF0aW9uGAIgASgNIiUKB1ZlcnNpb24SDQoFZXBvY2gYASABKAMSCwoDc2VxGAIgASgEIlkKCUNvbmRpdGlvbhIMCgR0eXBlGAEgASgJEg4KBnN0YXR1cxgCIAEoCBIOCgZyZWFzb24YAyABKAkSDwoHbWVzc2FnZRgEIAEoCRINCgVhdF9ucxgFIAEoAyKgAQoFRXJyb3ISDAoEY29kZRgBIAEoCRIPCgdtZXNzYWdlGAIgASgJEhEKCXJldHJ5YWJsZRgDIAEoCBI1CgdkZXRhaWxzGAQgAygLMiQubWZ0aWtvLmNvbW1vbi52MS5FcnJvci5EZXRhaWxzRW50cnkaLgoMRGV0YWlsc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEijgEKCEV4aXRJbmZvEgwKBGNvZGUYASABKAUSDgoGc2lnbmFsGAIgASgFEg0KBWF0X25zGAMgASgDEioKB291dGNvbWUYBCABKA4yGS5tZnRpa28uY29tbW9uLnYxLk91dGNvbWUSDgoGcmVhc29uGAUgASgJEhkKEW9uX3N0b3BfY29tcGxldGVkGAYgASgIKogBCgdPdXRjb21lEhcKE09VVENPTUVfVU5TUEVDSUZJRUQQABIQCgxPVVRDT01FX0RPTkUQARIXChNPVVRDT01FX0lOSVRfRkFJTEVEEAISEgoOT1VUQ09NRV9GQUlMRUQQAxITCg9PVVRDT01FX0NSQVNIRUQQBBIQCgxPVVRDT01FX0hVTkcQBSo5CgRTaWRlEhQKEFNJREVfVU5TUEVDSUZJRUQQABIMCghTSURFX0JVWRABEg0KCVNJREVfU0VMTBACKlQKCU9yZGVyVHlwZRIaChZPUkRFUl9UWVBFX1VOU1BFQ0lGSUVEEAASFAoQT1JERVJfVFlQRV9MSU1JVBABEhUKEU9SREVSX1RZUEVfTUFSS0VUEAIqjgEKC1RpbWVJbkZvcmNlEh0KGVRJTUVfSU5fRk9SQ0VfVU5TUEVDSUZJRUQQABIVChFUSU1FX0lOX0ZPUkNFX0dUQxABEhUKEVRJTUVfSU5fRk9SQ0VfSU9DEAISFQoRVElNRV9JTl9GT1JDRV9GT0sQAxIbChdUSU1FX0lOX0ZPUkNFX1BPU1RfT05MWRAEQkZaRGdpdGh1Yi5jb20vQnVsbGlvbkJlYXIvbWZ0aWtvL2NvbnRyYWN0L2dlbi9tZnRpa28vY29tbW9uL3YxO2NvbW1vbnYxYgZwcm90bzM");
 
 /**
  * @generated from message mftiko.common.v1.WorkerRef
@@ -230,4 +230,94 @@ export enum Outcome {
  */
 export const OutcomeSchema: GenEnum<Outcome> = /*@__PURE__*/
   enumDesc(file_mftiko_common_v1_common, 0);
+
+/**
+ * 交易共用的 enum：行情的成交與強平、TD 的訂單、exchange 的 adaptor、SDK 都用這一份（DECISIONS D35）。
+ *
+ * @generated from enum mftiko.common.v1.Side
+ */
+export enum Side {
+  /**
+   * @generated from enum value: SIDE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: SIDE_BUY = 1;
+   */
+  BUY = 1,
+
+  /**
+   * @generated from enum value: SIDE_SELL = 2;
+   */
+  SELL = 2,
+}
+
+/**
+ * Describes the enum mftiko.common.v1.Side.
+ */
+export const SideSchema: GenEnum<Side> = /*@__PURE__*/
+  enumDesc(file_mftiko_common_v1_common, 1);
+
+/**
+ * @generated from enum mftiko.common.v1.OrderType
+ */
+export enum OrderType {
+  /**
+   * @generated from enum value: ORDER_TYPE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: ORDER_TYPE_LIMIT = 1;
+   */
+  LIMIT = 1,
+
+  /**
+   * @generated from enum value: ORDER_TYPE_MARKET = 2;
+   */
+  MARKET = 2,
+}
+
+/**
+ * Describes the enum mftiko.common.v1.OrderType.
+ */
+export const OrderTypeSchema: GenEnum<OrderType> = /*@__PURE__*/
+  enumDesc(file_mftiko_common_v1_common, 2);
+
+/**
+ * @generated from enum mftiko.common.v1.TimeInForce
+ */
+export enum TimeInForce {
+  /**
+   * @generated from enum value: TIME_IN_FORCE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: TIME_IN_FORCE_GTC = 1;
+   */
+  GTC = 1,
+
+  /**
+   * @generated from enum value: TIME_IN_FORCE_IOC = 2;
+   */
+  IOC = 2,
+
+  /**
+   * @generated from enum value: TIME_IN_FORCE_FOK = 3;
+   */
+  FOK = 3,
+
+  /**
+   * @generated from enum value: TIME_IN_FORCE_POST_ONLY = 4;
+   */
+  POST_ONLY = 4,
+}
+
+/**
+ * Describes the enum mftiko.common.v1.TimeInForce.
+ */
+export const TimeInForceSchema: GenEnum<TimeInForce> = /*@__PURE__*/
+  enumDesc(file_mftiko_common_v1_common, 3);
 

@@ -4,19 +4,19 @@
 // @generated from file mftiko/stsctl/v1/stsctl.proto (package mftiko.stsctl.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
+import { enumDesc, fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Version, WorkerRef } from "../../common/v1/common_pb";
 import { file_mftiko_common_v1_common } from "../../common/v1/common_pb";
-import type { AccountDecl, EntryState, FeedDecl, StrategyRef, Universe } from "../../state/v1/state_pb";
-import { file_mftiko_state_v1_state } from "../../state/v1/state_pb";
+import type { AccountDecl, FeedDecl, StrategyRef } from "../../session/v1/session_pb";
+import { file_mftiko_session_v1_session } from "../../session/v1/session_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file mftiko/stsctl/v1/stsctl.proto.
  */
 export const file_mftiko_stsctl_v1_stsctl: GenFile = /*@__PURE__*/
-  fileDesc("Ch1tZnRpa28vc3RzY3RsL3YxL3N0c2N0bC5wcm90bxIQbWZ0aWtvLnN0c2N0bC52MSKlAgoLSW5pdFBheWxvYWQSEgoKc2Vzc2lvbl9pZBgBIAEoCRITCgtpbmNhcm5hdGlvbhgCIAEoDRIUCgxzdHNfaW5zdGFuY2UYAyABKAkSDAoEbmFtZRgEIAEoCRIuCghzdHJhdGVneRgFIAEoCzIcLm1mdGlrby5zdGF0ZS52MS5TdHJhdGVneVJlZhIOCgZwYXJhbXMYBiABKAwSKAoFZmVlZHMYByADKAsyGS5tZnRpa28uc3RhdGUudjEuRmVlZERlY2wSLgoIYWNjb3VudHMYCCADKAsyHC5tZnRpa28uc3RhdGUudjEuQWNjb3VudERlY2wSLwoEbmF0cxgJIAEoCzIhLm1mdGlrby5zdHNjdGwudjEuTmF0c0NyZWRlbnRpYWxzIkcKD05hdHNDcmVkZW50aWFscxIQCgh1c2VyX2p3dBgBIAEoCRIMCgRzZWVkGAIgASgJEhQKDGluYm94X3ByZWZpeBgDIAEoCSI8CgxTdGFydFBheWxvYWQSLAoIYmluZGluZ3MYASABKAsyGi5tZnRpa28uc3RzY3RsLnYxLkJpbmRpbmdzImgKB0NvbW1hbmQSLgoIYmluZGluZ3MYASABKAsyGi5tZnRpa28uc3RzY3RsLnYxLkJpbmRpbmdzSAASJgoEZmFpbBgCIAEoCzIWLm1mdGlrby5zdHNjdGwudjEuRmFpbEgAQgUKA2NtZCIWCgRGYWlsEg4KBnJlYXNvbhgBIAEoCSLOAQoIQmluZGluZ3MSKgoHdmVyc2lvbhgBIAEoCzIZLm1mdGlrby5jb21tb24udjEuVmVyc2lvbhIsCgVmZWVkcxgCIAMoCzIdLm1mdGlrby5zdHNjdGwudjEuRmVlZEJpbmRpbmcSNAoJc2VsZWN0b3JzGAMgAygLMiEubWZ0aWtvLnN0c2N0bC52MS5TZWxlY3RvckJpbmRpbmcSMgoIYWNjb3VudHMYBCADKAsyIC5tZnRpa28uc3RzY3RsLnYxLkFjY291bnRCaW5kaW5nIm0KC0ZlZWRCaW5kaW5nEgwKBGZlZWQYASABKAkSEwoLbWRfaW5zdGFuY2UYAiABKAkSDwoHc3ViamVjdBgDIAEoCRIqCgVzdGF0ZRgEIAEoDjIbLm1mdGlrby5zdGF0ZS52MS5FbnRyeVN0YXRlInkKD1NlbGVjdG9yQmluZGluZxIMCgRuYW1lGAEgASgJEhMKC21kX2luc3RhbmNlGAIgASgJEisKCHVuaXZlcnNlGAMgASgLMhkubWZ0aWtvLnN0YXRlLnYxLlVuaXZlcnNlEhYKDnN1YmplY3RfcHJlZml4GAQgASgJIocBCg5BY2NvdW50QmluZGluZxIMCgRuYW1lGAEgASgJEg4KBmFwaV9pZBgCIAEoAxIqCgVzdGF0ZRgDIAEoDjIbLm1mdGlrby5zdGF0ZS52MS5FbnRyeVN0YXRlEisKBndvcmtlchgEIAEoCzIbLm1mdGlrby5jb21tb24udjEuV29ya2VyUmVmIqQBCgZSZXBvcnQSMwoQYmluZGluZ3NfYXBwbGllZBgBIAEoCzIZLm1mdGlrby5jb21tb24udjEuVmVyc2lvbhIMCgRob29rGAIgASgJEhcKD2hvb2tfYmxvY2tlZF9tcxgDIAEoBBIRCglob29rX3Nsb3cYBCABKAQSKwoGcXVldWVzGAUgAygLMhsubWZ0aWtvLnN0c2N0bC52MS5RdWV1ZVN0YXQiTQoJUXVldWVTdGF0EgwKBG5hbWUYASABKAkSDQoFZGVwdGgYAiABKA0SDwoHZHJvcHBlZBgDIAEoBBISCgptYXhfYWdlX21zGAQgASgNQkZaRGdpdGh1Yi5jb20vQnVsbGlvbkJlYXIvbWZ0aWtvL2NvbnRyYWN0L2dlbi9tZnRpa28vc3RzY3RsL3YxO3N0c2N0bHYxYgZwcm90bzM", [file_mftiko_common_v1_common, file_mftiko_state_v1_state]);
+  fileDesc("Ch1tZnRpa28vc3RzY3RsL3YxL3N0c2N0bC5wcm90bxIQbWZ0aWtvLnN0c2N0bC52MSKrAgoLSW5pdFBheWxvYWQSEgoKc2Vzc2lvbl9pZBgBIAEoCRITCgtpbmNhcm5hdGlvbhgCIAEoDRIUCgxzdHNfaW5zdGFuY2UYAyABKAkSDAoEbmFtZRgEIAEoCRIwCghzdHJhdGVneRgFIAEoCzIeLm1mdGlrby5zZXNzaW9uLnYxLlN0cmF0ZWd5UmVmEg4KBnBhcmFtcxgGIAEoDBIqCgVmZWVkcxgHIAMoCzIbLm1mdGlrby5zZXNzaW9uLnYxLkZlZWREZWNsEjAKCGFjY291bnRzGAggAygLMh4ubWZ0aWtvLnNlc3Npb24udjEuQWNjb3VudERlY2wSLwoEbmF0cxgJIAEoCzIhLm1mdGlrby5zdHNjdGwudjEuTmF0c0NyZWRlbnRpYWxzIkcKD05hdHNDcmVkZW50aWFscxIQCgh1c2VyX2p3dBgBIAEoCRIMCgRzZWVkGAIgASgJEhQKDGluYm94X3ByZWZpeBgDIAEoCSI8CgxTdGFydFBheWxvYWQSLAoIYmluZGluZ3MYASABKAsyGi5tZnRpa28uc3RzY3RsLnYxLkJpbmRpbmdzImgKB0NvbW1hbmQSLgoIYmluZGluZ3MYASABKAsyGi5tZnRpa28uc3RzY3RsLnYxLkJpbmRpbmdzSAASJgoEZmFpbBgCIAEoCzIWLm1mdGlrby5zdHNjdGwudjEuRmFpbEgAQgUKA2NtZCIWCgRGYWlsEg4KBnJlYXNvbhgBIAEoCSLOAQoIQmluZGluZ3MSKgoHdmVyc2lvbhgBIAEoCzIZLm1mdGlrby5jb21tb24udjEuVmVyc2lvbhIsCgVmZWVkcxgCIAMoCzIdLm1mdGlrby5zdHNjdGwudjEuRmVlZEJpbmRpbmcSNAoJc2VsZWN0b3JzGAMgAygLMiEubWZ0aWtvLnN0c2N0bC52MS5TZWxlY3RvckJpbmRpbmcSMgoIYWNjb3VudHMYBCADKAsyIC5tZnRpa28uc3RzY3RsLnYxLkFjY291bnRCaW5kaW5nInAKC0ZlZWRCaW5kaW5nEgwKBGZlZWQYASABKAkSEwoLbWRfaW5zdGFuY2UYAiABKAkSDwoHc3ViamVjdBgDIAEoCRItCgVzdGF0ZRgEIAEoDjIeLm1mdGlrby5zdHNjdGwudjEuQmluZGluZ1N0YXRlInoKD1NlbGVjdG9yQmluZGluZxIMCgRuYW1lGAEgASgJEhMKC21kX2luc3RhbmNlGAIgASgJEiwKCHVuaXZlcnNlGAMgASgLMhoubWZ0aWtvLnN0c2N0bC52MS5Vbml2ZXJzZRIWCg5zdWJqZWN0X3ByZWZpeBgEIAEoCSKKAQoOQWNjb3VudEJpbmRpbmcSDAoEbmFtZRgBIAEoCRIOCgZhcGlfaWQYAiABKAMSLQoFc3RhdGUYAyABKA4yHi5tZnRpa28uc3RzY3RsLnYxLkJpbmRpbmdTdGF0ZRIrCgZ3b3JrZXIYBCABKAsyGy5tZnRpa28uY29tbW9uLnYxLldvcmtlclJlZiKkAQoGUmVwb3J0EjMKEGJpbmRpbmdzX2FwcGxpZWQYASABKAsyGS5tZnRpa28uY29tbW9uLnYxLlZlcnNpb24SDAoEaG9vaxgCIAEoCRIXCg9ob29rX2Jsb2NrZWRfbXMYAyABKAQSEQoJaG9va19zbG93GAQgASgEEisKBnF1ZXVlcxgFIAMoCzIbLm1mdGlrby5zdHNjdGwudjEuUXVldWVTdGF0Ik0KCVF1ZXVlU3RhdBIMCgRuYW1lGAEgASgJEg0KBWRlcHRoGAIgASgNEg8KB2Ryb3BwZWQYAyABKAQSEgoKbWF4X2FnZV9tcxgEIAEoDSJLCghVbml2ZXJzZRINCgVlcG9jaBgBIAEoBBIPCgdtZW1iZXJzGAIgAygJEg8KB2N1cnJlbnQYAyABKAkSDgoGdG9waWNzGAQgAygJKpUBCgxCaW5kaW5nU3RhdGUSHQoZQklORElOR19TVEFURV9VTlNQRUNJRklFRBAAEhkKFUJJTkRJTkdfU1RBVEVfUEVORElORxABEhcKE0JJTkRJTkdfU1RBVEVfUkVBRFkQAhIaChZCSU5ESU5HX1NUQVRFX1JFSkVDVEVEEAMSFgoSQklORElOR19TVEFURV9ERUFEEARCRlpEZ2l0aHViLmNvbS9CdWxsaW9uQmVhci9tZnRpa28vY29udHJhY3QvZ2VuL21mdGlrby9zdHNjdGwvdjE7c3RzY3RsdjFiBnByb3RvMw", [file_mftiko_common_v1_common, file_mftiko_session_v1_session]);
 
 /**
  * @generated from message mftiko.stsctl.v1.InitPayload
@@ -43,7 +43,7 @@ export type InitPayload = Message<"mftiko.stsctl.v1.InitPayload"> & {
   name: string;
 
   /**
-   * @generated from field: mftiko.state.v1.StrategyRef strategy = 5;
+   * @generated from field: mftiko.session.v1.StrategyRef strategy = 5;
    */
   strategy?: StrategyRef | undefined;
 
@@ -53,12 +53,12 @@ export type InitPayload = Message<"mftiko.stsctl.v1.InitPayload"> & {
   params: Uint8Array;
 
   /**
-   * @generated from field: repeated mftiko.state.v1.FeedDecl feeds = 7;
+   * @generated from field: repeated mftiko.session.v1.FeedDecl feeds = 7;
    */
   feeds: FeedDecl[];
 
   /**
-   * @generated from field: repeated mftiko.state.v1.AccountDecl accounts = 8;
+   * @generated from field: repeated mftiko.session.v1.AccountDecl accounts = 8;
    */
   accounts: AccountDecl[];
 
@@ -176,7 +176,7 @@ export const FailSchema: GenMessage<Fail> = /*@__PURE__*/
   messageDesc(file_mftiko_stsctl_v1_stsctl, 4);
 
 /**
- * ack 的完整快照，由 STS agent 從 etcd 整理後轉送。
+ * ack 的完整快照：controller 整理進 SessionDemand.bindings（§3.3），STS agent 轉成這個格式送給 worker。
  *
  * @generated from message mftiko.stsctl.v1.Bindings
  */
@@ -231,9 +231,9 @@ export type FeedBinding = Message<"mftiko.stsctl.v1.FeedBinding"> & {
   subject: string;
 
   /**
-   * @generated from field: mftiko.state.v1.EntryState state = 4;
+   * @generated from field: mftiko.stsctl.v1.BindingState state = 4;
    */
-  state: EntryState;
+  state: BindingState;
 };
 
 /**
@@ -258,7 +258,7 @@ export type SelectorBinding = Message<"mftiko.stsctl.v1.SelectorBinding"> & {
   mdInstance: string;
 
   /**
-   * @generated from field: mftiko.state.v1.Universe universe = 3;
+   * @generated from field: mftiko.stsctl.v1.Universe universe = 3;
    */
   universe?: Universe | undefined;
 
@@ -292,9 +292,9 @@ export type AccountBinding = Message<"mftiko.stsctl.v1.AccountBinding"> & {
   apiId: bigint;
 
   /**
-   * @generated from field: mftiko.state.v1.EntryState state = 3;
+   * @generated from field: mftiko.stsctl.v1.BindingState state = 3;
    */
-  state: EntryState;
+  state: BindingState;
 
   /**
    * @generated from field: mftiko.common.v1.WorkerRef worker = 4;
@@ -383,4 +383,83 @@ export type QueueStat = Message<"mftiko.stsctl.v1.QueueStat"> & {
  */
 export const QueueStatSchema: GenMessage<QueueStat> = /*@__PURE__*/
   messageDesc(file_mftiko_stsctl_v1_stsctl, 10);
+
+/**
+ * selector 目前的成員。欄位與 state.v1.Universe 相同。
+ *
+ * @generated from message mftiko.stsctl.v1.Universe
+ */
+export type Universe = Message<"mftiko.stsctl.v1.Universe"> & {
+  /**
+   * @generated from field: uint64 epoch = 1;
+   */
+  epoch: bigint;
+
+  /**
+   * UniversalTicker
+   *
+   * @generated from field: repeated string members = 2;
+   */
+  members: string[];
+
+  /**
+   * 只有 rolling_future
+   *
+   * @generated from field: string current = 3;
+   */
+  current: string;
+
+  /**
+   * @generated from field: repeated string topics = 4;
+   */
+  topics: string[];
+};
+
+/**
+ * Describes the message mftiko.stsctl.v1.Universe.
+ * Use `create(UniverseSchema)` to create a new message.
+ */
+export const UniverseSchema: GenMessage<Universe> = /*@__PURE__*/
+  messageDesc(file_mftiko_stsctl_v1_stsctl, 11);
+
+/**
+ * 綁定的狀態，對應 provider 的 ack（§3.5）。值與 state.v1.EntryState 相同；stsctl 自己定義，策略的契約才不綁在 etcd 的
+ * schema 上（DECISIONS D36）。
+ *
+ * @generated from enum mftiko.stsctl.v1.BindingState
+ */
+export enum BindingState {
+  /**
+   * provider 沒有 ack（沉默）
+   *
+   * @generated from enum value: BINDING_STATE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: BINDING_STATE_PENDING = 1;
+   */
+  PENDING = 1,
+
+  /**
+   * @generated from enum value: BINDING_STATE_READY = 2;
+   */
+  READY = 2,
+
+  /**
+   * @generated from enum value: BINDING_STATE_REJECTED = 3;
+   */
+  REJECTED = 3,
+
+  /**
+   * @generated from enum value: BINDING_STATE_DEAD = 4;
+   */
+  DEAD = 4,
+}
+
+/**
+ * Describes the enum mftiko.stsctl.v1.BindingState.
+ */
+export const BindingStateSchema: GenEnum<BindingState> = /*@__PURE__*/
+  enumDesc(file_mftiko_stsctl_v1_stsctl, 0);
 

@@ -14,11 +14,12 @@ import (
 
 func TestRouteTxn(t *testing.T) {
 	topo := twoRegions()
-	sts := writeScope{plane: PlaneSTS, inst: "sts-tw-1"}
-	spec := SessionSpecKey("sts-tw-1", "a1b2c3")
-	status := SessionStatusKey("sts-tw-1", "a1b2c3")
-	jpLease := MDLeaseKey("md-jp-1", "sts-tw-1", "a1b2c3", "feed/trade.BinanceUM_Perp_BTCUSDT")
-	jpAck := MDAckKey("md-jp-1", "sts-tw-1", "a1b2c3", "feed/trade.BinanceUM_Perp_BTCUSDT")
+	ctl := writeScope{plane: PlaneCtl, inst: ControllerInstance}
+	const sid, entry = "a1b2c3", "feed/trade.BinanceUM_Perp_BTCUSDT"
+	spec := SessionSpecKey("sts-tw-1", sid)
+	demand := SessionDemandKey("sts-tw-1", sid)
+	jpDemand := MDDemandKey("md-jp-1", sid, entry)
+	jpAck := MDAckKey("md-jp-1", sid, entry)
 	twAgent := AgentKey(PlaneMD, "md-tw-1") // another instance, same region
 	put := func(k string) clientv3.Op { return clientv3.OpPut(k, "v") }
 	get := func(k string) clientv3.Op { return clientv3.OpGet(k) }
@@ -30,20 +31,20 @@ func TestRouteTxn(t *testing.T) {
 		els  []clientv3.Op
 		want string
 	}{
-		{"one put", nil, []clientv3.Op{put(jpLease)}, nil, "jp"},
+		{"one put", nil, []clientv3.Op{put(jpDemand)}, nil, "jp"},
 		{"same region, two instances", []clientv3.Cmp{clientv3.Compare(clientv3.Version(spec), ">", 0)},
-			[]clientv3.Op{put(status)}, []clientv3.Op{get(twAgent)}, "tw"},
-		{"lease and ack of one provider", []clientv3.Cmp{clientv3.Compare(clientv3.CreateRevision(jpAck), "=", 0)},
-			[]clientv3.Op{put(jpLease)}, nil, "jp"},
+			[]clientv3.Op{put(demand)}, []clientv3.Op{get(twAgent)}, "tw"},
+		{"demand and ack of one provider", []clientv3.Cmp{clientv3.Compare(clientv3.CreateRevision(jpAck), "=", 0)},
+			[]clientv3.Op{put(jpDemand)}, nil, "jp"},
 		{"prefix delete inside the instance", nil,
-			[]clientv3.Op{clientv3.OpDelete(MDLeasePrefix("md-jp-1")+"sts-tw-1/a1b2c3/", clientv3.WithPrefix())}, nil, "jp"},
+			[]clientv3.Op{clientv3.OpDelete(DemandPrefix(PlaneMD, "md-jp-1")+sid+"/", clientv3.WithPrefix())}, nil, "jp"},
 		{"whole instance", nil,
 			[]clientv3.Op{clientv3.OpGet(instPrefix(PlaneMD, "md-jp-1"), clientv3.WithPrefix())}, nil, "jp"},
 		{"nested txn", nil,
-			[]clientv3.Op{clientv3.OpTxn(nil, []clientv3.Op{put(status)}, []clientv3.Op{get(spec)})}, nil, "tw"},
+			[]clientv3.Op{clientv3.OpTxn(nil, []clientv3.Op{put(demand)}, []clientv3.Op{get(spec)})}, nil, "tw"},
 	}
 	for _, c := range ok {
-		if got, err := routeTxn(topo, sts, c.cmps, c.then, c.els); err != nil || got != c.want {
+		if got, err := routeTxn(topo, ctl, c.cmps, c.then, c.els); err != nil || got != c.want {
 			t.Errorf("%s: %s, %v; want %s", c.name, got, err, c.want)
 		}
 	}
@@ -56,36 +57,36 @@ func TestRouteTxn(t *testing.T) {
 		want error
 	}{
 		{"compare tw, write jp", []clientv3.Cmp{clientv3.Compare(clientv3.Version(spec), ">", 0)},
-			[]clientv3.Op{put(jpLease)}, nil, ErrCrossCluster},
-		{"then tw, else jp", nil, []clientv3.Op{put(status)}, []clientv3.Op{put(jpLease)}, ErrCrossCluster},
+			[]clientv3.Op{put(jpDemand)}, nil, ErrCrossCluster},
+		{"then tw, else jp", nil, []clientv3.Op{put(demand)}, []clientv3.Op{put(jpDemand)}, ErrCrossCluster},
 		{"jp inside a nested txn", nil,
-			[]clientv3.Op{clientv3.OpTxn(nil, []clientv3.Op{put(status)}, []clientv3.Op{put(jpLease)})}, nil, ErrCrossCluster},
+			[]clientv3.Op{clientv3.OpTxn(nil, []clientv3.Op{put(demand)}, []clientv3.Op{put(jpDemand)})}, nil, ErrCrossCluster},
 		{"range compare leaving the instance", []clientv3.Cmp{clientv3.Compare(clientv3.Version(spec), ">", 0).WithRange(Root + "/td/")},
-			[]clientv3.Op{put(status)}, nil, ErrCrossCluster},
-		{"from-key delete", nil, []clientv3.Op{clientv3.OpDelete(status, clientv3.WithFromKey())}, nil, ErrCrossCluster},
+			[]clientv3.Op{put(demand)}, nil, ErrCrossCluster},
+		{"from-key delete", nil, []clientv3.Op{clientv3.OpDelete(demand, clientv3.WithFromKey())}, nil, ErrCrossCluster},
 		{"range past the instance", nil,
-			[]clientv3.Op{clientv3.OpDelete(status, clientv3.WithRange(Root+"/sts/sts-tw-2/"))}, nil, ErrCrossCluster},
+			[]clientv3.Op{clientv3.OpDelete(demand, clientv3.WithRange(Root+"/sts/sts-tw-2/"))}, nil, ErrCrossCluster},
 		{"no keys", nil, nil, nil, ErrBadKey},
 		{"key outside Root", nil, []clientv3.Op{put("/elsewhere")}, nil, ErrBadKey},
 		{"unknown instance", nil, []clientv3.Op{put(AgentKey(PlaneMD, "md-kr-1"))}, nil, ErrUnknownInstance},
 	}
 	for _, c := range bad {
-		if got, err := routeTxn(topo, sts, c.cmps, c.then, c.els); !errors.Is(err, c.want) {
+		if got, err := routeTxn(topo, ctl, c.cmps, c.then, c.els); !errors.Is(err, c.want) {
 			t.Errorf("%s: %s, %v; want %v", c.name, got, err, c.want)
 		}
 	}
 }
 
-// W1: each agent writes only the rows of PROTOCOL §3.1 whose writer it is.
+// W1: each agent, and the controller, writes only the rows of PROTOCOL §3.1 whose writer it is.
 func TestWriteScope(t *testing.T) {
 	topo := twoRegions()
-	for _, inst := range []string{"sts-tw-2", "md-tw-2", "td-tw-2"} {
+	for _, inst := range []string{"sts-tw-2", "md-tw-2", "td-tw-2", "ctl-tw-2"} {
 		topo.Instances[inst] = "tw"
 	}
 	const sid, entry = "a1b2c3", "feed/trade.BinanceUM_Perp_BTCUSDT"
 	h := WorkerHash("w")
 
-	// reserved are the keys no agent writes through the write API: what fencing relies on, the API's
+	// reserved are the keys no process writes through the write API: what fencing relies on, the API server's
 	// declarations, and incarnations outside Incarnations.
 	reserved := func(p Plane, inst string) []string {
 		return []string{
@@ -94,6 +95,7 @@ func TestWriteScope(t *testing.T) {
 			WriterKey(p, inst),
 			IncarnationKey(p, inst, h),
 			instPrefix(p, inst) + "other",
+			AgentKey(p, inst) + "/sub", // an exact key is not a prefix
 		}
 	}
 	cases := []struct {
@@ -107,33 +109,33 @@ func TestWriteScope(t *testing.T) {
 				SessionStatusKey("sts-tw-1", sid),
 				AgentKey(PlaneSTS, "sts-tw-1"),
 				WorkerStatusKey(PlaneSTS, "sts-tw-1", h),
-				MDLeaseKey("md-jp-1", "sts-tw-1", sid, entry), // another region's MD instance
-				MDLeaseKey("md-tw-1", "sts-tw-1", sid, "select/top10"),
-				TDLeaseKey("td-jp-1", "sts-tw-1", sid, 42),
 			},
 			denied: append(reserved(PlaneSTS, "sts-tw-1"),
-				SessionSpecKey("sts-tw-1", sid), // the API's
+				SessionSpecKey("sts-tw-1", sid),   // the API server's
+				SessionDemandKey("sts-tw-1", sid), // the controller's: STS only reads its assignments
 				SessionStatusKey("sts-tw-2", sid),
 				AgentKey(PlaneSTS, "sts-tw-2"),
-				MDLeaseKey("md-jp-1", "sts-tw-2", sid, entry), // another STS's entries
-				MDAckKey("md-jp-1", "sts-tw-1", sid, entry),   // the provider's
-				TDAckKey("td-jp-1", "sts-tw-1", sid, 42),
+				MDDemandKey("md-jp-1", sid, entry), // no longer the STS agent's to write (D9)
+				TDDemandKey("td-tw-1", sid, 42),
+				MDAckKey("md-jp-1", sid, entry), // the provider's
+				TDAckKey("td-jp-1", sid, 42),
 				WriterKey(PlaneMD, "md-tw-1"),
 				AgentKey(PlaneMD, "md-tw-1"),
+				AgentKey(PlaneCtl, ControllerInstance),
 			),
 		},
 		{
 			scope: writeScope{plane: PlaneMD, inst: "md-tw-1"},
 			writable: []string{
-				MDAckKey("md-tw-1", "sts-tw-1", sid, entry),
+				MDAckKey("md-tw-1", sid, entry),
 				SelectorKey("md-tw-1", "s1"),
 				PlacementKey("md-tw-1", "a1"),
 				WorkerStatusKey(PlaneMD, "md-tw-1", h),
 				AgentKey(PlaneMD, "md-tw-1"),
 			},
 			denied: append(reserved(PlaneMD, "md-tw-1"),
-				MDLeaseKey("md-tw-1", "sts-tw-1", sid, entry), // providers only read lease entries (L5)
-				MDAckKey("md-tw-2", "sts-tw-1", sid, entry),
+				MDDemandKey("md-tw-1", sid, entry), // providers only read demands (PROTOCOL §3.3 N7)
+				MDAckKey("md-tw-2", sid, entry),
 				SelectorKey("md-tw-2", "s1"),
 				AgentKey(PlaneMD, "md-tw-2"),
 				AgentKey(PlaneTD, "td-tw-1"),
@@ -143,17 +145,56 @@ func TestWriteScope(t *testing.T) {
 		{
 			scope: writeScope{plane: PlaneTD, inst: "td-tw-1"},
 			writable: []string{
-				TDAckKey("td-tw-1", "sts-tw-1", sid, 42),
+				TDAckKey("td-tw-1", sid, 42),
 				WorkerStatusKey(PlaneTD, "td-tw-1", h),
 				AgentKey(PlaneTD, "td-tw-1"),
 			},
 			denied: append(reserved(PlaneTD, "td-tw-1"),
-				AccountKey("td-tw-1", 42), // the API's
-				TDLeaseKey("td-tw-1", "sts-tw-1", sid, 42),
-				TDAckKey("td-tw-2", "sts-tw-1", sid, 42),
+				AccountKey("td-tw-1", 42), // the API server's
+				TDDemandKey("td-tw-1", sid, 42),
+				TDAckKey("td-tw-2", sid, 42),
 				WorkerStatusKey(PlaneTD, "td-tw-2", h),
-				MDAckKey("md-tw-1", "sts-tw-1", sid, entry),
+				MDAckKey("md-tw-1", sid, entry),
 			),
+		},
+		{
+			scope: writeScope{plane: PlaneCtl, inst: ControllerInstance},
+			writable: []string{
+				SessionDemandKey("sts-tw-1", sid),
+				SessionDemandKey("sts-tw-2", sid),
+				MDDemandKey("md-jp-1", sid, entry), // another region's MD instance
+				MDDemandKey("md-tw-1", sid, "select/top10"),
+				TDDemandKey("td-jp-1", sid, 42),
+				AgentKey(PlaneCtl, ControllerInstance),
+			},
+			denied: append(reserved(PlaneCtl, ControllerInstance),
+				SessionSpecKey("sts-tw-1", sid), // the API server's
+				AccountKey("td-jp-1", 42),
+				SessionStatusKey("sts-tw-1", sid), // the agents' own keys
+				MDAckKey("md-jp-1", sid, entry),
+				TDAckKey("td-tw-1", sid, 42),
+				AgentKey(PlaneMD, "md-tw-1"),
+				WorkerStatusKey(PlaneSTS, "sts-tw-1", h),
+				SelectorKey("md-tw-1", "s1"),
+				IncarnationKey(PlaneTD, "td-tw-1", h),
+				WriterKey(PlaneMD, "md-jp-1"),
+				WorkerStatusKey(PlaneCtl, ControllerInstance, h), // the controller has no workers
+				DemandPrefix(PlaneCtl, ControllerInstance)+"x",   // nor demands of its own
+				AgentKey(PlaneCtl, "ctl-tw-2"),                   // a name that is not the controller's
+				EpochKey(PlaneCtl, "ctl-tw-2"),
+				DemandPrefix(PlaneCtl, "ctl-tw-2")+"x",
+			),
+		},
+		{
+			// A controller scope under any other name writes nothing (Campaign refuses the name in the first place).
+			scope: writeScope{plane: PlaneCtl, inst: "ctl-tw-2"},
+			denied: []string{
+				SessionDemandKey("sts-tw-1", sid),
+				MDDemandKey("md-jp-1", sid, entry),
+				TDDemandKey("td-tw-1", sid, 42),
+				AgentKey(PlaneCtl, "ctl-tw-2"),
+				AgentKey(PlaneCtl, ControllerInstance),
+			},
 		},
 		{
 			scope:    writeScope{plane: PlaneTD, inst: "td-tw-1", incarnations: true},
@@ -194,33 +235,39 @@ func TestWriteScope(t *testing.T) {
 	}
 
 	// Ranged deletes: within one writable prefix only; exact keys take no range.
-	sts := writeScope{plane: PlaneSTS, inst: "sts-tw-1"}
-	del := func(key string, opts ...clientv3.OpOption) error {
-		_, err := routeTxn(topo, sts, nil, []clientv3.Op{clientv3.OpDelete(key, opts...)}, nil)
-		return err
+	rangeDel := func(scope writeScope) func(key string, opts ...clientv3.OpOption) error {
+		return func(key string, opts ...clientv3.OpOption) error {
+			_, err := routeTxn(topo, scope, nil, []clientv3.Op{clientv3.OpDelete(key, opts...)}, nil)
+			return err
+		}
 	}
+	sts := rangeDel(writeScope{plane: PlaneSTS, inst: "sts-tw-1"})
+	ctl := rangeDel(writeScope{plane: PlaneCtl, inst: ControllerInstance})
 	for name, err := range map[string]error{
-		"all statuses":                  del(SessionStatusPrefix("sts-tw-1"), clientv3.WithPrefix()),
-		"this STS's leases at md-jp-1":  del(MDLeasePrefix("md-jp-1")+"sts-tw-1/", clientv3.WithPrefix()),
-		"one session's leases":          del(MDLeasePrefix("md-jp-1")+"sts-tw-1/"+sid+"/", clientv3.WithPrefix()),
-		"range up to the prefix's end":  del(SessionStatusKey("sts-tw-1", "a"), clientv3.WithRange(clientv3.GetPrefixRangeEnd(SessionStatusPrefix("sts-tw-1")))),
-		"workers between two hashes":    del(WorkerStatusKey(PlaneSTS, "sts-tw-1", "0"), clientv3.WithRange(WorkerStatusKey(PlaneSTS, "sts-tw-1", "8"))),
-		"one TD session's lease prefix": del(TDLeasePrefix("td-jp-1")+"sts-tw-1/"+sid+"/", clientv3.WithPrefix()),
+		"STS: all statuses":                    sts(SessionStatusPrefix("sts-tw-1"), clientv3.WithPrefix()),
+		"STS: range up to the prefix's end":    sts(SessionStatusKey("sts-tw-1", "a"), clientv3.WithRange(clientv3.GetPrefixRangeEnd(SessionStatusPrefix("sts-tw-1")))),
+		"STS: workers between two hashes":      sts(WorkerStatusKey(PlaneSTS, "sts-tw-1", "0"), clientv3.WithRange(WorkerStatusKey(PlaneSTS, "sts-tw-1", "8"))),
+		"controller: one session's MD demands": ctl(DemandPrefix(PlaneMD, "md-jp-1")+sid+"/", clientv3.WithPrefix()),
+		"controller: every demand of md-jp-1":  ctl(DemandPrefix(PlaneMD, "md-jp-1"), clientv3.WithPrefix()),
+		"controller: one session's TD demands": ctl(DemandPrefix(PlaneTD, "td-jp-1")+sid+"/", clientv3.WithPrefix()),
 	} {
 		if err != nil {
-			t.Errorf("STS ranged delete %s: %v", name, err)
+			t.Errorf("ranged delete, %s: %v", name, err)
 		}
 	}
 	for name, err := range map[string]error{
-		"whole instance":                del(instPrefix(PlaneSTS, "sts-tw-1"), clientv3.WithPrefix()),
-		"status into worker":            del(SessionStatusKey("sts-tw-1", "a"), clientv3.WithRange(WorkerStatusPrefix(PlaneSTS, "sts-tw-1")+"x")),
-		"past the status prefix":        del(SessionStatusKey("sts-tw-1", "a"), clientv3.WithRange(instPrefix(PlaneSTS, "sts-tw-1")+"statut")),
-		"agent as a prefix":             del(AgentKey(PlaneSTS, "sts-tw-1"), clientv3.WithPrefix()),
-		"every STS's leases at md-jp-1": del(MDLeasePrefix("md-jp-1"), clientv3.WithPrefix()),
-		"this STS's prefix, no slash":   del(MDLeasePrefix("md-jp-1")+"sts-tw-1", clientv3.WithPrefix()), // covers sts-tw-10
+		"STS: whole instance":                   sts(instPrefix(PlaneSTS, "sts-tw-1"), clientv3.WithPrefix()),
+		"STS: status into worker":               sts(SessionStatusKey("sts-tw-1", "a"), clientv3.WithRange(WorkerStatusPrefix(PlaneSTS, "sts-tw-1")+"x")),
+		"STS: past the status prefix":           sts(SessionStatusKey("sts-tw-1", "a"), clientv3.WithRange(instPrefix(PlaneSTS, "sts-tw-1")+"statut")),
+		"STS: agent as a prefix":                sts(AgentKey(PlaneSTS, "sts-tw-1"), clientv3.WithPrefix()),
+		"STS: its own demands":                  sts(DemandPrefix(PlaneSTS, "sts-tw-1"), clientv3.WithPrefix()),
+		"controller: whole MD instance":         ctl(instPrefix(PlaneMD, "md-jp-1"), clientv3.WithPrefix()),
+		"controller: demand prefix, no slash":   ctl(instPrefix(PlaneMD, "md-jp-1")+"demand", clientv3.WithPrefix()), // covers demandX
+		"controller: demands into incarnations": ctl(DemandPrefix(PlaneMD, "md-jp-1"), clientv3.WithRange(PlacementPrefix("md-jp-1"))),
+		"controller: its own record as prefix":  ctl(AgentKey(PlaneCtl, ControllerInstance), clientv3.WithPrefix()),
 	} {
 		if !errors.Is(err, ErrNotWriter) {
-			t.Errorf("STS ranged delete %s: %v, want ErrNotWriter", name, err)
+			t.Errorf("ranged delete, %s: %v, want ErrNotWriter", name, err)
 		}
 	}
 }
@@ -463,23 +510,23 @@ func TestWritesTwoRegions(t *testing.T) {
 	tw, jp, topo := twoServers(t)
 	rawTW, rawJP := tw.Client(t), jp.Client(t)
 	spec := SessionSpecKey("sts-tw-1", "a1b2c3")
-	jpLease := MDLeaseKey("md-jp-1", "sts-tw-1", "a1b2c3", "feed/trade.BinanceUM_Perp_BTCUSDT")
+	jpDemand := MDDemandKey("md-jp-1", "a1b2c3", "feed/trade.BinanceUM_Perp_BTCUSDT")
 
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneSTS, "sts-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{})
 
 	// Cross-cluster: refused before any I/O, nothing written, jp not even fenced, term goes on.
 	_, err := term.Txn(ctx,
 		[]clientv3.Cmp{clientv3.Compare(clientv3.CreateRevision(spec), "=", 0)},
-		[]clientv3.Op{clientv3.OpPut(jpLease, "lease")}, nil)
+		[]clientv3.Op{clientv3.OpPut(jpDemand, "demand")}, nil)
 	if !errors.Is(err, ErrCrossCluster) {
 		t.Fatalf("cross-cluster Txn: %v", err)
 	}
-	for _, key := range []string{spec, jpLease} {
+	for _, key := range []string{spec, jpDemand} {
 		if kvs := mustGet(t, ctx, rawTW, key).Kvs; len(kvs) != 0 {
 			t.Fatalf("%s written in tw", key)
 		}
 	}
-	for _, key := range []string{spec, jpLease, WriterKey(PlaneSTS, "sts-tw-1")} {
+	for _, key := range []string{spec, jpDemand, WriterKey(PlaneCtl, ControllerInstance)} {
 		if kvs := mustGet(t, ctx, rawJP, key).Kvs; len(kvs) != 0 {
 			t.Fatalf("%s written in jp", key)
 		}
@@ -488,40 +535,39 @@ func TestWritesTwoRegions(t *testing.T) {
 		t.Fatalf("a cross-cluster refusal ended the term: %v", term.Err())
 	}
 
-	// The TW STS writes its JP lease entry, bound to its JP etcd lease, into JP's cluster (PROTOCOL §3.3 L1).
-	jpEtcdLease, err := rawJP.Grant(ctx, 60)
-	if err != nil {
+	// The controller writes a TW session's JP demand into JP's cluster, bound to no lease (PROTOCOL §3.3).
+	if err := term.Put(ctx, jpDemand, "demand"); err != nil {
 		t.Fatal(err)
 	}
-	if err := term.Put(ctx, jpLease, "lease", clientv3.WithLease(jpEtcdLease.ID)); err != nil {
-		t.Fatal(err)
+	kvs := mustGet(t, ctx, rawJP, jpDemand).Kvs
+	if len(kvs) != 1 || kvs[0].Lease != 0 {
+		t.Fatalf("jp demand entry: %v", kvs)
 	}
-	kvs := mustGet(t, ctx, rawJP, jpLease).Kvs
-	if len(kvs) != 1 || clientv3.LeaseID(kvs[0].Lease) != jpEtcdLease.ID {
-		t.Fatalf("jp lease entry: %v", kvs)
+	if kvs := mustGet(t, ctx, rawTW, jpDemand).Kvs; len(kvs) != 0 {
+		t.Fatal("jp demand entry also in tw")
 	}
-	if kvs := mustGet(t, ctx, rawTW, jpLease).Kvs; len(kvs) != 0 {
-		t.Fatal("jp lease entry also in tw")
-	}
-	if kvs := mustGet(t, ctx, rawJP, WriterKey(PlaneSTS, "sts-tw-1")).Kvs; len(kvs) != 1 {
+	if kvs := mustGet(t, ctx, rawJP, WriterKey(PlaneCtl, ControllerInstance)).Kvs; len(kvs) != 1 {
 		t.Fatal("jp writer key not acquired by the first jp write")
 	}
 
 	// An MD agent in tw writes nothing in jp: no key there is its to write (W1).
 	allowed, _ := AgentRegions(topo, PlaneMD, "md-tw-1")
 	md := campaign(t, ctx, newClusters(t, topo, allowed, nil), PlaneMD, "md-tw-1", TermOptions{})
-	if err := md.Put(ctx, MDAckKey("md-jp-1", "sts-tw-1", "a1b2c3", "feed/x"), "READY"); !errors.Is(err, ErrNotWriter) {
+	if err := md.Put(ctx, MDAckKey("md-jp-1", "a1b2c3", "feed/x"), "READY"); !errors.Is(err, ErrNotWriter) {
 		t.Fatalf("MD agent in tw writing jp's ack: %v", err)
 	}
 	if !running(md) {
 		t.Fatalf("a refused write ended the term: %v", md.Err())
 	}
 
-	// A key the agent may write, in a region its Clusters may not reach: refused by Clusters.
-	topo.Instances["sts-tw-2"] = "tw"
-	twOnly := campaign(t, ctx, newClusters(t, topo, []string{"tw"}, nil), PlaneSTS, "sts-tw-2", TermOptions{})
-	if err := twOnly.Put(ctx, MDLeaseKey("md-jp-1", "sts-tw-2", "a1b2c3", "feed/x"), "lease"); !errors.Is(err, ErrRegionNotAllowed) {
-		t.Fatalf("STS limited to tw writing a jp lease: %v", err)
+	// A key the controller may write, in a region its Clusters may not reach: refused by Clusters. The next
+	// controller campaigns once this one is gone.
+	if err := term.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	twOnly := campaign(t, ctx, newClusters(t, topo, []string{"tw"}, nil), PlaneCtl, ControllerInstance, TermOptions{})
+	if err := twOnly.Put(ctx, MDDemandKey("md-jp-1", "a1b2c3", "feed/x"), "demand"); !errors.Is(err, ErrRegionNotAllowed) {
+		t.Fatalf("controller limited to tw writing a jp demand: %v", err)
 	}
 	if !running(twOnly) {
 		t.Fatalf("a refused region ended the term: %v", twOnly.Err())
