@@ -32,7 +32,6 @@ go.work.sum
 # .idea/
 # .vscode/
 
-# mftiko build outputs and generated code (make proto / make build / make web)
+# mftiko build outputs (make build / make web). The generated code in gen/ and web/src/lib/gen/ is committed
+# (see .gitattributes).
 /bin/
-/gen/
-/web/src/lib/gen/
