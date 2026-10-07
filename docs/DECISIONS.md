@@ -433,7 +433,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   - tape 保溫：跑一個 tape keeper 策略（D29），tape 跟著它的生命週期走。
 - **預設值：**
   - linger：5 秒。
-  - agent 自己的 etcd lease（AgentRecord、WorkerStatus、ack 綁在上面，D14）：TTL 60 秒，keepalive 間隔是 TTL 的三分之一。它只決定 controller 多久之後看到「沉默」，沉默時 controller 維持現狀（D9），所以不會因此回收資源。
+  - agent 自己的 etcd lease（AgentRecord、WorkerStatus、ack 綁在上面，D14；規則在 PROTOCOL §3.2 W7）：TTL 60 秒，keepalive 間隔是 TTL 的三分之一。它只決定 controller 多久之後看到「沉默」，沉默時 controller 維持現狀（D9），所以不會因此回收資源。agent 停下或輪換時不 revoke，ack 撐到 TTL 或被下一個 term 重寫，輪換不會讓 controller 看到一段沉默。
 - 這些值是 MD、TD、STS instance 的部署設定，不放進 session spec。
 
 ### D29 沒有常駐訂閱，行情只由策略持有

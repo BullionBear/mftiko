@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -104,13 +105,11 @@ func TestWriteScope(t *testing.T) {
 		denied   []string
 	}{
 		{
-			scope: writeScope{plane: PlaneSTS, inst: "sts-tw-1"},
-			writable: []string{
-				SessionStatusKey("sts-tw-1", sid),
-				AgentKey(PlaneSTS, "sts-tw-1"),
-				WorkerStatusKey(PlaneSTS, "sts-tw-1", h),
-			},
+			scope:    writeScope{plane: PlaneSTS, inst: "sts-tw-1"},
+			writable: []string{SessionStatusKey("sts-tw-1", sid)},
 			denied: append(reserved(PlaneSTS, "sts-tw-1"),
+				AgentKey(PlaneSTS, "sts-tw-1"), // bound to the lease: Presence only (W7)
+				WorkerStatusKey(PlaneSTS, "sts-tw-1", h),
 				SessionSpecKey("sts-tw-1", sid),   // the API server's
 				SessionDemandKey("sts-tw-1", sid), // the controller's: STS only reads its assignments
 				SessionStatusKey("sts-tw-2", sid),
@@ -127,13 +126,13 @@ func TestWriteScope(t *testing.T) {
 		{
 			scope: writeScope{plane: PlaneMD, inst: "md-tw-1"},
 			writable: []string{
-				MDAckKey("md-tw-1", sid, entry),
 				SelectorKey("md-tw-1", "s1"),
 				PlacementKey("md-tw-1", "a1"),
-				WorkerStatusKey(PlaneMD, "md-tw-1", h),
-				AgentKey(PlaneMD, "md-tw-1"),
 			},
 			denied: append(reserved(PlaneMD, "md-tw-1"),
+				MDAckKey("md-tw-1", sid, entry), // bound to the lease
+				WorkerStatusKey(PlaneMD, "md-tw-1", h),
+				AgentKey(PlaneMD, "md-tw-1"),
 				MDDemandKey("md-tw-1", sid, entry), // providers only read demands (PROTOCOL §3.3 N7)
 				MDAckKey("md-tw-2", sid, entry),
 				SelectorKey("md-tw-2", "s1"),
@@ -143,13 +142,12 @@ func TestWriteScope(t *testing.T) {
 			),
 		},
 		{
+			// Everything a TD agent writes in etcd is bound to its lease.
 			scope: writeScope{plane: PlaneTD, inst: "td-tw-1"},
-			writable: []string{
+			denied: append(reserved(PlaneTD, "td-tw-1"),
 				TDAckKey("td-tw-1", sid, 42),
 				WorkerStatusKey(PlaneTD, "td-tw-1", h),
 				AgentKey(PlaneTD, "td-tw-1"),
-			},
-			denied: append(reserved(PlaneTD, "td-tw-1"),
 				AccountKey("td-tw-1", 42), // the API server's
 				TDDemandKey("td-tw-1", sid, 42),
 				TDAckKey("td-tw-2", sid, 42),
@@ -165,10 +163,10 @@ func TestWriteScope(t *testing.T) {
 				MDDemandKey("md-jp-1", sid, entry), // another region's MD instance
 				MDDemandKey("md-tw-1", sid, "select/top10"),
 				TDDemandKey("td-jp-1", sid, 42),
-				AgentKey(PlaneCtl, ControllerInstance),
 			},
 			denied: append(reserved(PlaneCtl, ControllerInstance),
-				SessionSpecKey("sts-tw-1", sid), // the API server's
+				AgentKey(PlaneCtl, ControllerInstance), // bound to the lease
+				SessionSpecKey("sts-tw-1", sid),        // the API server's
 				AccountKey("td-jp-1", 42),
 				SessionStatusKey("sts-tw-1", sid), // the agents' own keys
 				MDAckKey("md-jp-1", sid, entry),
@@ -196,6 +194,63 @@ func TestWriteScope(t *testing.T) {
 				AgentKey(PlaneCtl, ControllerInstance),
 			},
 		},
+		// The keys bound to the lease, written by Presence alone (W7).
+		{
+			scope:    writeScope{plane: PlaneSTS, inst: "sts-tw-1", presence: true},
+			writable: []string{AgentKey(PlaneSTS, "sts-tw-1"), WorkerStatusKey(PlaneSTS, "sts-tw-1", h)},
+			denied: append(reserved(PlaneSTS, "sts-tw-1"),
+				SessionStatusKey("sts-tw-1", sid), // the agent's, but not bound to its lease
+				SessionDemandKey("sts-tw-1", sid),
+				AgentKey(PlaneSTS, "sts-tw-2"),
+				WorkerStatusKey(PlaneSTS, "sts-tw-2", h),
+				MDAckKey("md-tw-1", sid, entry),
+				AgentKey(PlaneCtl, ControllerInstance),
+			),
+		},
+		{
+			scope: writeScope{plane: PlaneMD, inst: "md-tw-1", presence: true},
+			writable: []string{
+				AgentKey(PlaneMD, "md-tw-1"),
+				WorkerStatusKey(PlaneMD, "md-tw-1", h),
+				MDAckKey("md-tw-1", sid, entry),
+			},
+			denied: append(reserved(PlaneMD, "md-tw-1"),
+				SelectorKey("md-tw-1", "s1"),
+				PlacementKey("md-tw-1", "a1"),
+				MDDemandKey("md-tw-1", sid, entry),
+				MDAckKey("md-tw-2", sid, entry),
+				TDAckKey("td-tw-1", sid, 42),
+			),
+		},
+		{
+			scope: writeScope{plane: PlaneTD, inst: "td-tw-1", presence: true},
+			writable: []string{
+				AgentKey(PlaneTD, "td-tw-1"),
+				WorkerStatusKey(PlaneTD, "td-tw-1", h),
+				TDAckKey("td-tw-1", sid, 42),
+			},
+			denied: append(reserved(PlaneTD, "td-tw-1"),
+				AccountKey("td-tw-1", 42),
+				TDDemandKey("td-tw-1", sid, 42),
+				TDAckKey("td-tw-2", sid, 42),
+				MDAckKey("md-tw-1", sid, entry),
+			),
+		},
+		{
+			scope:    writeScope{plane: PlaneCtl, inst: ControllerInstance, presence: true},
+			writable: []string{AgentKey(PlaneCtl, ControllerInstance)},
+			denied: append(reserved(PlaneCtl, ControllerInstance),
+				WorkerStatusKey(PlaneCtl, ControllerInstance, h), // no workers
+				SessionDemandKey("sts-tw-1", sid),                // demands are not bound to any lease (PROTOCOL §3.3)
+				MDDemandKey("md-jp-1", sid, entry),
+				AgentKey(PlaneMD, "md-tw-1"),
+				AgentKey(PlaneCtl, "ctl-tw-2"),
+			),
+		},
+		{
+			scope:  writeScope{plane: PlaneCtl, inst: "ctl-tw-2", presence: true},
+			denied: []string{AgentKey(PlaneCtl, "ctl-tw-2"), AgentKey(PlaneCtl, ControllerInstance)},
+		},
 		{
 			scope:    writeScope{plane: PlaneTD, inst: "td-tw-1", incarnations: true},
 			writable: []string{IncarnationKey(PlaneTD, "td-tw-1", h)},
@@ -207,7 +262,7 @@ func TestWriteScope(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		name := fmt.Sprintf("%s/%s(incarnations=%v)", c.scope.plane, c.scope.inst, c.scope.incarnations)
+		name := fmt.Sprintf("%s/%s(incarnations=%v, presence=%v)", c.scope.plane, c.scope.inst, c.scope.incarnations, c.scope.presence)
 		for _, k := range c.writable {
 			for _, op := range []clientv3.Op{clientv3.OpPut(k, "v"), clientv3.OpDelete(k)} {
 				if _, err := routeTxn(topo, c.scope, nil, []clientv3.Op{op}, nil); err != nil {
@@ -246,7 +301,6 @@ func TestWriteScope(t *testing.T) {
 	for name, err := range map[string]error{
 		"STS: all statuses":                    sts(SessionStatusPrefix("sts-tw-1"), clientv3.WithPrefix()),
 		"STS: range up to the prefix's end":    sts(SessionStatusKey("sts-tw-1", "a"), clientv3.WithRange(clientv3.GetPrefixRangeEnd(SessionStatusPrefix("sts-tw-1")))),
-		"STS: workers between two hashes":      sts(WorkerStatusKey(PlaneSTS, "sts-tw-1", "0"), clientv3.WithRange(WorkerStatusKey(PlaneSTS, "sts-tw-1", "8"))),
 		"controller: one session's MD demands": ctl(DemandPrefix(PlaneMD, "md-jp-1")+sid+"/", clientv3.WithPrefix()),
 		"controller: every demand of md-jp-1":  ctl(DemandPrefix(PlaneMD, "md-jp-1"), clientv3.WithPrefix()),
 		"controller: one session's TD demands": ctl(DemandPrefix(PlaneTD, "td-jp-1")+sid+"/", clientv3.WithPrefix()),
@@ -257,6 +311,7 @@ func TestWriteScope(t *testing.T) {
 	}
 	for name, err := range map[string]error{
 		"STS: whole instance":                   sts(instPrefix(PlaneSTS, "sts-tw-1"), clientv3.WithPrefix()),
+		"STS: workers between two hashes":       sts(WorkerStatusKey(PlaneSTS, "sts-tw-1", "0"), clientv3.WithRange(WorkerStatusKey(PlaneSTS, "sts-tw-1", "8"))),
 		"STS: status into worker":               sts(SessionStatusKey("sts-tw-1", "a"), clientv3.WithRange(WorkerStatusPrefix(PlaneSTS, "sts-tw-1")+"x")),
 		"STS: past the status prefix":           sts(SessionStatusKey("sts-tw-1", "a"), clientv3.WithRange(instPrefix(PlaneSTS, "sts-tw-1")+"statut")),
 		"STS: agent as a prefix":                sts(AgentKey(PlaneSTS, "sts-tw-1"), clientv3.WithPrefix()),
@@ -305,7 +360,7 @@ func TestSupersededWritesFail(t *testing.T) {
 			inst := insts[i] // a fresh instance per case: its writer key is bumped for good
 			cl := newClusters(t, topo, nil, nil)
 			term := campaign(t, ctx, cl, PlaneMD, inst, TermOptions{})
-			key := WorkerStatusKey(PlaneMD, inst, WorkerHash("md/BinanceUM/default/1"))
+			key := PlacementKey(inst, "a1")
 			if _, err := raw.Put(ctx, key, "orig"); err != nil {
 				t.Fatal(err)
 			}
@@ -350,18 +405,18 @@ func TestSupersededWritesFail(t *testing.T) {
 // reaches etcd and is refused by the server-side fence alone.
 func TestSupersededByNewLeader(t *testing.T) {
 	ctx := testCtx(t)
-	s, topo := singleRegion(t, "td-tw-1")
+	s, topo := singleRegion(t, "md-tw-1")
 	raw := s.Client(t)
-	key := WorkerStatusKey(PlaneTD, "td-tw-1", WorkerHash("td/42"))
+	key := PlacementKey("md-tw-1", "a1")
 
-	a := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{ID: "a"})
+	a := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{ID: "a"})
 	if err := a.Put(ctx, key, "a"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := raw.Delete(ctx, a.election.Key()); err != nil {
 		t.Fatal(err)
 	}
-	b := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{ID: "b"})
+	b := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{ID: "b"})
 	if b.Epoch() != a.Epoch()+1 {
 		t.Fatalf("epochs a=%d b=%d", a.Epoch(), b.Epoch())
 	}
@@ -390,11 +445,11 @@ func TestSupersededByNewLeader(t *testing.T) {
 // The other order: A's lease goes and A notices first. A stops writing on its own, before etcd is asked.
 func TestSessionLostThenNewLeader(t *testing.T) {
 	ctx := testCtx(t)
-	s, topo := singleRegion(t, "td-tw-1")
+	s, topo := singleRegion(t, "md-tw-1")
 	raw := s.Client(t)
-	key := WorkerStatusKey(PlaneTD, "td-tw-1", WorkerHash("td/42"))
+	key := PlacementKey("md-tw-1", "a1")
 
-	a := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{ID: "a", SessionTTL: 2 * time.Second})
+	a := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{ID: "a", SessionTTL: 2 * time.Second})
 	if err := a.Put(ctx, key, "a"); err != nil {
 		t.Fatal(err)
 	}
@@ -402,7 +457,7 @@ func TestSessionLostThenNewLeader(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitDone(t, a, 15*time.Second)
-	b := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{ID: "b"})
+	b := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{ID: "b"})
 	if err := b.Put(ctx, key, "b"); err != nil {
 		t.Fatal(err)
 	}
@@ -420,23 +475,23 @@ func TestWrites(t *testing.T) {
 	raw := s.Client(t)
 	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneSTS, "sts-tw-1", TermOptions{})
 	status := SessionStatusKey("sts-tw-1", "a1b2c3")
-	agent := AgentKey(PlaneSTS, "sts-tw-1")
+	other := SessionStatusKey("sts-tw-1", "d4e5f6")
 
 	// Put with a lease, then Delete.
 	lease, err := raw.Grant(ctx, 60)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := term.Put(ctx, agent, "record", clientv3.WithLease(lease.ID)); err != nil {
+	if err := term.Put(ctx, other, "record", clientv3.WithLease(lease.ID)); err != nil {
 		t.Fatal(err)
 	}
-	if kvs := mustGet(t, ctx, raw, agent).Kvs; len(kvs) != 1 || string(kvs[0].Value) != "record" || clientv3.LeaseID(kvs[0].Lease) != lease.ID {
+	if kvs := mustGet(t, ctx, raw, other).Kvs; len(kvs) != 1 || string(kvs[0].Value) != "record" || clientv3.LeaseID(kvs[0].Lease) != lease.ID {
 		t.Fatalf("after Put with lease: %v", kvs)
 	}
-	if err := term.Delete(ctx, agent); err != nil {
+	if err := term.Delete(ctx, other); err != nil {
 		t.Fatal(err)
 	}
-	if kvs := mustGet(t, ctx, raw, agent).Kvs; len(kvs) != 0 {
+	if kvs := mustGet(t, ctx, raw, other).Kvs; len(kvs) != 0 {
 		t.Fatalf("after Delete: %v", kvs)
 	}
 
@@ -444,7 +499,7 @@ func TestWrites(t *testing.T) {
 	resp, err := term.Txn(ctx,
 		[]clientv3.Cmp{clientv3.Compare(clientv3.Value(status), "=", "nope")},
 		[]clientv3.Op{clientv3.OpPut(status, "then")},
-		[]clientv3.Op{clientv3.OpPut(agent, "else")})
+		[]clientv3.Op{clientv3.OpPut(other, "else")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -457,14 +512,14 @@ func TestWrites(t *testing.T) {
 	if kvs := mustGet(t, ctx, raw, status).Kvs; len(kvs) != 0 {
 		t.Fatal("Then ran on a false compare")
 	}
-	if kvs := mustGet(t, ctx, raw, agent).Kvs; len(kvs) != 1 || string(kvs[0].Value) != "else" {
+	if kvs := mustGet(t, ctx, raw, other).Kvs; len(kvs) != 1 || string(kvs[0].Value) != "else" {
 		t.Fatalf("Else did not run: %v", kvs)
 	}
 
 	// Caller's compare true: Then runs, its responses come back.
 	resp, err = term.Txn(ctx,
 		[]clientv3.Cmp{clientv3.Compare(clientv3.CreateRevision(status), "=", 0)},
-		[]clientv3.Op{clientv3.OpPut(status, "then"), clientv3.OpGet(agent)},
+		[]clientv3.Op{clientv3.OpPut(status, "then"), clientv3.OpGet(other)},
 		nil)
 	if err != nil {
 		t.Fatal(err)
@@ -485,6 +540,12 @@ func TestWrites(t *testing.T) {
 	}
 	if kvs := mustGet(t, ctx, raw, status).Kvs; len(kvs) != 0 {
 		t.Fatal("prefix delete left the key")
+	}
+
+	// The agent's own record is bound to its lease: Presence writes it, not Put (W7).
+	err = term.Put(ctx, AgentKey(PlaneSTS, "sts-tw-1"), "record")
+	if !errors.Is(err, ErrNotWriter) || !strings.Contains(err.Error(), "through Presence") {
+		t.Fatalf("Put of the AgentRecord: %v", err)
 	}
 
 	// Bad options and unroutable writes are refused before any I/O and do not end the term.

@@ -18,10 +18,15 @@
 //     and run as one txn conditioned on that cluster's writer key still having rev R (W2 step 4); a caller's
 //     Txn is nested inside it. A failed condition ends the term with ErrSuperseded, without retry. They also
 //     enforce W1: a term puts and deletes only the keys whose writer it is in §3.1 (ErrNotWriter otherwise). An
-//     agent writes its own status, ack and bookkeeping keys; the controller writes every agent instance's
-//     demands and its own record. No write reaches the election, epoch or writer keys, incarnations outside
-//     Incarnations, another process's keys, or the API server's. These are the only write path: Clusters exposes
-//     readers only.
+//     agent writes its session status and MD bookkeeping keys; the controller writes every agent instance's
+//     demands. No write reaches the election, epoch or writer keys, incarnations outside Incarnations, the keys
+//     bound to the lease outside Presence, another process's keys, or the API server's. These are the only write
+//     path: Clusters exposes readers only.
+//   - Presence (presence.go): the agent's own lease (W7), separate from the election session. AgentRecord,
+//     WorkerStatus and acks are written only through it, always bound to it, and never with the value etcd already
+//     holds for them on the lease. When etcd drops the lease, a new one is granted and every wanted key rewritten
+//     before any other put. Nothing is revoked when the term ends: the keys live out the TTL or are rewritten by
+//     the next term.
 //   - Incarnations (incarnation.go): LoadIncarnations reads the agent's counters once per term; Next takes a
 //     worker key's next number in one fenced txn before the spawn (W6, D8), so a superseded agent gets none;
 //     Forget deletes an STS session's counter once it is terminal.
@@ -31,6 +36,5 @@
 //     replaced or rebuilt, and reopens a watch that went silent. Readers act level-triggered on Notify, Snapshot
 //     and Take; LastContact says how fresh the copy is, WaitRev waits for a revision.
 //
-// Not yet: the agent's own etcd lease that AgentRecord, WorkerStatus and acks are bound to (E1-07), auth and RBAC
-// (E1-08). Demands are not bound to any lease (PROTOCOL §3.3).
+// Not yet: auth and RBAC (E1-08). Demands are not bound to any lease (PROTOCOL §3.3).
 package state

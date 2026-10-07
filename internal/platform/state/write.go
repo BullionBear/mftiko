@@ -15,7 +15,8 @@ import (
 // exits and systemd restarts it). There is no other write path: Clusters hands out readers only.
 //
 // They also enforce W1 (PROTOCOL §3.2, the writer column of §3.1): a term puts and deletes only keys its agent is
-// the writer of, so it can neither touch the keys fencing relies on nor another agent's or the API's keys.
+// the writer of, so it can neither touch the keys fencing relies on nor another agent's or the API's keys. Of its
+// own keys, the incarnations and the keys bound to its lease are left to Incarnations and Presence.
 // Reads (gets and compares) may name any key in the same cluster.
 
 // Put writes key behind the writer condition. opts are put options, e.g. clientv3.WithLease.
@@ -187,42 +188,53 @@ func (r *router) key(key, end []byte) error {
 
 // writeScope is what a term of (plane, inst) may put and delete: the rows of PROTOCOL §3.1 whose writer is that
 // agent or the controller (W1). The election, epoch and writer keys are not among them; Term writes those itself.
-// Incarnation keys are written only through Incarnations, whose scope is incarnations alone.
+// Two kinds of keys have a writer of their own besides the term's general one: incarnation keys are written only
+// through Incarnations (W6), the keys bound to the agent's lease only through Presence (W7). Each of those writes
+// its kind alone, and Term.Put, Delete and Txn write neither.
 type writeScope struct {
 	plane        Plane
 	inst         string
 	incarnations bool
+	presence     bool
 }
 
 // areas are the writable prefixes and exact keys of the scope that fall under the instance (p, inst) a key
 // belongs to.
 func (w writeScope) areas(p Plane, inst string) (prefixes, exact []string) {
+	own := p == w.plane && inst == w.inst
+	if w.plane == PlaneCtl && w.inst != ControllerInstance {
+		return nil, nil // Campaign refuses any other name; a scope that has one writes nothing
+	}
 	switch {
 	case w.incarnations:
-		if p == w.plane && inst == w.inst {
+		if own && w.plane.agent() {
 			prefixes = []string{IncarnationPrefix(w.plane, w.inst)}
 		}
-	case w.plane == PlaneCtl:
-		if w.inst != ControllerInstance {
-			break // Campaign refuses any other name; a scope that has one writes nothing
+	case w.presence:
+		if !own {
+			break
 		}
-		switch {
-		case p == PlaneCtl && inst == w.inst:
-			exact = []string{AgentKey(PlaneCtl, w.inst)}
-		case p.agent():
+		exact = []string{AgentKey(w.plane, w.inst)}
+		if w.plane.agent() {
+			prefixes = []string{WorkerStatusPrefix(w.plane, w.inst)}
+		}
+		switch w.plane {
+		case PlaneMD:
+			prefixes = append(prefixes, MDAckPrefix(w.inst))
+		case PlaneTD:
+			prefixes = append(prefixes, TDAckPrefix(w.inst))
+		}
+	case w.plane == PlaneCtl:
+		if p.agent() {
 			// Every agent instance's demands, in every region: the controller is their only writer (PROTOCOL §3.3).
 			prefixes = []string{DemandPrefix(p, inst)}
 		}
-	case p == w.plane && inst == w.inst:
-		exact = []string{AgentKey(w.plane, w.inst)}
-		prefixes = []string{WorkerStatusPrefix(w.plane, w.inst)}
+	case own:
 		switch w.plane {
 		case PlaneSTS:
-			prefixes = append(prefixes, SessionStatusPrefix(w.inst))
+			prefixes = []string{SessionStatusPrefix(w.inst)}
 		case PlaneMD:
-			prefixes = append(prefixes, MDAckPrefix(w.inst), SelectorPrefix(w.inst), PlacementPrefix(w.inst))
-		case PlaneTD:
-			prefixes = append(prefixes, TDAckPrefix(w.inst))
+			prefixes = []string{SelectorPrefix(w.inst), PlacementPrefix(w.inst)}
 		}
 	}
 	return prefixes, exact
@@ -248,8 +260,30 @@ func (w writeScope) check(key, end []byte) error {
 			return nil
 		}
 	}
-	if len(end) > 0 {
-		return fmt.Errorf("%w: %s/%s may not delete [%q, %q)", ErrNotWriter, w.plane, w.inst, k, end)
+	via := ""
+	switch {
+	case w.incarnations:
+		via = " through Incarnations"
+	case w.presence:
+		via = " through Presence"
+	case (writeScope{plane: w.plane, inst: w.inst, presence: true}).allows(k):
+		via = ": it is bound to the agent's lease, write it through Presence"
 	}
-	return fmt.Errorf("%w: %s/%s may not write %q", ErrNotWriter, w.plane, w.inst, k)
+	if len(end) > 0 {
+		return fmt.Errorf("%w: %s/%s may not delete [%q, %q)%s", ErrNotWriter, w.plane, w.inst, k, end, via)
+	}
+	return fmt.Errorf("%w: %s/%s may not write %q%s", ErrNotWriter, w.plane, w.inst, k, via)
+}
+
+// allows reports whether a put of the single key k lies within the scope.
+func (w writeScope) allows(k string) bool {
+	p, inst, err := Owner(k)
+	if err != nil {
+		return false
+	}
+	prefixes, exact := w.areas(p, inst)
+	if slices.Contains(exact, k) {
+		return true
+	}
+	return slices.ContainsFunc(prefixes, func(pre string) bool { return strings.HasPrefix(k, pre) })
 }

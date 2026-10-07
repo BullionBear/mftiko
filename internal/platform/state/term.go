@@ -72,6 +72,8 @@ type Term struct {
 
 	closeOnce sync.Once
 	closeErr  error
+
+	presence atomic.Bool // NewPresence was called: one Presence per term
 }
 
 // fence is the writer key this term holds in one cluster.

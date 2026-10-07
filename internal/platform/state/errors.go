@@ -38,7 +38,8 @@ var (
 	// ErrBadOp: an option that a put or delete cannot take (clientv3 would panic on it).
 	ErrBadOp = errors.New("state: bad op")
 	// ErrNotWriter: the write touches a key this agent or controller is not the writer of (PROTOCOL §3.2 W1),
-	// including the keys fencing relies on (election, epoch, writer) and incarnations outside Incarnations.
+	// including the keys fencing relies on (election, epoch, writer), incarnations outside Incarnations, and the
+	// keys bound to the agent's lease outside Presence.
 	ErrNotWriter = errors.New("state: not this writer's key")
 
 	// ErrBadIncarnation: a stored incarnation is not a uint32 in canonical decimal form.
@@ -53,4 +54,9 @@ var (
 	ErrNotController = errors.New("state: the controller's instance is " + ControllerInstance)
 	// ErrNoWorkers: incarnations belong to the agent planes; the controller has no workers.
 	ErrNoWorkers = errors.New("state: plane has no workers")
+
+	// ErrPresenceExists: NewPresence was already called for this term (one lease per term, PROTOCOL §3.2 W7).
+	ErrPresenceExists = errors.New("state: the term already has a presence")
+	// ErrPresenceClosed: Presence.Close was called.
+	ErrPresenceClosed = errors.New("state: presence closed")
 )
