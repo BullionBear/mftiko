@@ -47,7 +47,7 @@ tools: $(TOOLS)/protoc-gen-go web-install ## Install codegen tools
 $(TOOLS)/protoc-gen-go:
 	GOBIN=$(TOOLS) $(GO) install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION)
 
-proto: tools ## Generate gen/ (Go) and web/src/lib/gen/ (TypeScript) from proto/
+proto: tools ## Regenerate gen/ (Go) and web/src/lib/gen/ (TypeScript) from proto/; commit the result
 	rm -rf gen $(WEB)/src/lib/gen
 	buf generate
 	$(GO) get google.golang.org/protobuf@$(PROTOC_GEN_GO_VERSION)
@@ -121,5 +121,5 @@ migrate-new: ## Create the next up/down pair: make migrate-new NAME=add_cash_flo
 
 # ---------- misc ----------
 
-clean: ## Remove build outputs and generated code
-	rm -rf $(BIN) gen $(WEB)/build $(WEB)/.svelte-kit $(WEB)/src/lib/gen
+clean: ## Remove build outputs (the generated code is committed and stays)
+	rm -rf $(BIN) $(WEB)/build $(WEB)/.svelte-kit

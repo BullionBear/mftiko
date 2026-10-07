@@ -28,7 +28,7 @@ internal/                 platform packages (agent skeleton, planes, shim, worke
 sdk/                      Go strategy SDK, the reference implementation of PROTOCOL §9
 examples/strategies/      hello, tape-keeper
 proto/mftiko/<pkg>/v1/    protobuf contracts; source of truth is docs/PROTOCOL.md
-gen/                      generated Go (make proto, not committed)
+gen/                      generated Go (make proto; committed, do not edit)
 migrations/               PostgreSQL schema: NNNN_name.up.sql / .down.sql, embedded into mftiko-migrate
 deploy/dev/               local development services (PostgreSQL)
 web/                      SvelteKit console (single-page app served by mftiko-api)
@@ -41,7 +41,7 @@ docs/                     DECISIONS.md, PROTOCOL.md
 |---|---|
 | `make` | `proto`, `build`, `examples`, `web` |
 | `make tools` | installs protoc-gen-go into `bin/tools`; buf and protoc-gen-es come from `web/node_modules` |
-| `make proto` | generates `gen/` and `web/src/lib/gen/` from `proto/` |
+| `make proto` | regenerates `gen/` and `web/src/lib/gen/` from `proto/`; commit the result with the `.proto` change |
 | `make proto-lint` / `make proto-breaking` | buf lint / buf breaking against `main` |
 | `make build` | every command into `bin/` |
 | `make examples` | example strategies into `bin/examples/` |
@@ -50,10 +50,10 @@ docs/                     DECISIONS.md, PROTOCOL.md
 | `make db-up` / `make db-down` | start / stop a local PostgreSQL (Docker) |
 | `make migrate-up` / `make migrate-down` / `make migrate-status` | apply / roll back one / list migrations against `$DATABASE_URL` |
 | `make migrate-new NAME=...` | creates the next `NNNN_<name>.up.sql` / `.down.sql` pair |
-| `make clean` | removes `bin/`, `gen/`, web build output and generated TS |
+| `make clean` | removes `bin/` and web build output |
 | `make help` | lists targets |
 
-Requires Go 1.26+, Node 22+ and npm; Docker only for `make db-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`.
+Building and testing the Go code need only Go 1.26+: the generated code is committed. `make proto`, `make web` and `make check` also need Node 22+ and npm; Docker only for `make db-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`.
 
 ## Logging and build identity
 
