@@ -68,11 +68,10 @@ type MirrorStats struct {
 // Mirror keeps an in-memory copy of every key under one prefix of one cluster (PROTOCOL §3.2 W4).
 //
 // Run lists the prefix in pages, all at the first page's revision, then watches and applies each watch response
-// whole, so a view never shows half of a txn. W4 says to watch from the list's revision + 1; Run watches from the
-// revision itself and drops events at or below the copy's revision, which are already in it. The effect is the
-// same, but Run's own watches never start beyond the cluster's current revision: etcd withholds progress
-// notifications from every watch on a stream while one of them does, which on a quiet cluster would be
-// indefinitely. (clientv3 still does so when it resumes a watch by itself after a progress notification; see
+// whole, so a view never shows half of a txn. As W4 says, the watch starts at the list's revision itself, not + 1,
+// and drops events at or below the copy's revision, which are already in it. The effect is that of + 1, but Run's
+// own watches never start beyond the cluster's current revision: etcd withholds progress notifications from every
+// watch on a stream while one of them does, which on a quiet cluster would be indefinitely. (clientv3 still does so when it resumes a watch by itself after a progress notification; see
 // Staleness.) The watch requires a leader (clientv3.WithRequireLeader): a member cut off from its leader cancels
 // it rather than going quiet.
 //
