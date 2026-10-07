@@ -99,7 +99,10 @@ vet: ## go vet
 fmt: ## go fmt
 	$(GO) fmt ./...
 
-check: proto-lint proto-breaking gen-check vet build test-race web-check ## Everything CI runs
+# CI runs these one step each (.github/workflows/ci.yml), in this order: keep the two lists the same.
+CHECKS := proto-lint proto-breaking gen-check vet build test-race web-check
+
+check: $(CHECKS) ## Everything CI runs
 
 # ---------- web ----------
 
