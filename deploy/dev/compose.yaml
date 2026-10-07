@@ -1,5 +1,7 @@
-# Local development only: `make db-up`, then `make migrate-up`.
-# No password: trust auth, with the port bound to 127.0.0.1 so nothing outside this machine can connect.
+# Local development only: `make dev-up` starts both services and waits until they are healthy; then
+# `make migrate-up`. Ports are bound to 127.0.0.1, so nothing outside this machine can connect, and neither service
+# asks for credentials: PostgreSQL trusts local connections, etcd has no auth yet (E1-08 adds it).
+# Tests do not use these: internal/state's tests start their own etcd (etcdtest).
 services:
   postgres:
     image: postgres:17
@@ -11,6 +13,38 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "mftiko", "-d", "mftiko"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # One member, the same version the tests and CI use. A region's control plane in production is a cluster of its
+  # own (D17); locally there is one region and so one etcd, at http://127.0.0.1:2379.
+  etcd:
+    image: gcr.io/etcd-development/etcd:v3.7.2
+    command:
+      - /usr/local/bin/etcd
+      - --name=dev
+      - --data-dir=/var/lib/etcd/data
+      - --listen-client-urls=http://0.0.0.0:2379 # inside the container; the port mapping limits it to this machine
+      - --advertise-client-urls=http://127.0.0.1:2379
+      - --listen-peer-urls=http://127.0.0.1:2380
+      - --initial-advertise-peer-urls=http://127.0.0.1:2380
+      - --initial-cluster=dev=http://127.0.0.1:2380
+      - --initial-cluster-state=new
+      - --initial-cluster-token=mftiko-dev
+      - --log-level=warn
+    ports:
+      - "127.0.0.1:2379:2379"
+    volumes:
+      - etcddata:/var/lib/etcd
+    healthcheck: # the image is distroless: no shell, so exec form
+      test: ["CMD", "/usr/local/bin/etcdctl", "--endpoints=http://127.0.0.1:2379", "endpoint", "health"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
 
 volumes:
   pgdata:
+  etcddata:

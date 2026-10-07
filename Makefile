@@ -35,7 +35,7 @@ BUF_AGAINST ?= .git\#branch=main
 export PATH := $(TOOLS):$(NODE_BIN):$(PATH)
 
 .PHONY: all help tools proto proto-lint proto-breaking gen-check build examples test test-race vet fmt check \
-        web-install web web-check web-dev db-up db-down migrate-up migrate-down migrate-status \
+        web-install web web-check web-dev dev-up dev-down migrate-up migrate-down migrate-status \
         migrate-new clean
 
 all: proto build examples web ## Generate code, build every binary, the example strategies and the web console
@@ -123,10 +123,10 @@ web-dev: web-install ## Dev server; proxies /api to mftiko-api on :8080
 
 # ---------- database ----------
 
-db-up: ## Start a local PostgreSQL (deploy/dev/compose.yaml)
-	$(COMPOSE) up -d postgres
+dev-up: ## Start the local PostgreSQL and etcd (deploy/dev/compose.yaml) and wait until both are healthy
+	$(COMPOSE) up -d --wait
 
-db-down: ## Stop the local PostgreSQL (keeps its volume)
+dev-down: ## Stop the local PostgreSQL and etcd (keeps their volumes)
 	$(COMPOSE) down
 
 migrate-up: build ## Apply every pending migration to DATABASE_URL
