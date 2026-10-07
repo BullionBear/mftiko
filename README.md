@@ -42,10 +42,12 @@ docs/                     DECISIONS.md, PROTOCOL.md
 | `make` | `proto`, `build`, `examples`, `web` |
 | `make tools` | installs protoc-gen-go into `bin/tools`; buf and protoc-gen-es come from `web/node_modules` |
 | `make proto` | regenerates `gen/` and `web/src/lib/gen/` from `proto/`; commit the result with the `.proto` change |
-| `make proto-lint` / `make proto-breaking` | buf lint / buf breaking against `main` |
+| `make proto-lint` / `make proto-breaking` | buf lint / buf breaking against `main` (`BUF_AGAINST=` another buf input) |
+| `make gen-check` | fails if `gen/`, `web/src/lib/gen/`, `go.mod` or `go.sum` are not what `make proto` produces |
 | `make build` | every command into `bin/` |
 | `make examples` | example strategies into `bin/examples/` |
-| `make test` / `make vet` / `make check` | Go tests / vet / everything CI runs |
+| `make test` / `make test-race` / `make vet` | Go tests / with the race detector, uncached / vet |
+| `make check` | everything CI runs: `proto-lint`, `proto-breaking`, `gen-check`, `vet`, `build`, `test-race`, `web-check` |
 | `make web` / `make web-dev` / `make web-check` | build, dev server, svelte-check |
 | `make db-up` / `make db-down` | start / stop a local PostgreSQL (Docker) |
 | `make migrate-up` / `make migrate-down` / `make migrate-status` | apply / roll back one / list migrations against `$DATABASE_URL` |
@@ -54,6 +56,12 @@ docs/                     DECISIONS.md, PROTOCOL.md
 | `make help` | lists targets |
 
 Building and testing the Go code need only Go 1.26+: the generated code is committed. `make proto`, `make web` and `make check` also need Node 22+ and npm; Docker only for `make db-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`.
+
+## Tests
+
+The tests of `internal/state` run a real etcd (v3.7.2). They find it through `MFTIKO_ETCD_BIN`, else `etcd` on `PATH`, and are skipped when there is neither. Set `MFTIKO_REQUIRE_ETCD=1` to make a missing etcd a failure instead; CI does, so a run that skipped them cannot pass.
+
+CI (`.github/workflows/ci.yml`) runs `make check` on every pull request and on `main`, with etcd downloaded from its release and checked against the release's `SHA256SUMS`, and `buf breaking` compared with the pull request's base.
 
 ## Logging and build identity
 

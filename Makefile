@@ -27,11 +27,14 @@ COMPOSE      := docker compose -f deploy/dev/compose.yaml
 
 PROTOC_GEN_GO_VERSION := v1.36.12
 
+# What proto-breaking compares against: a buf input. CI points it at the pull request's base.
+BUF_AGAINST ?= .git\#branch=main
+
 # buf and protoc-gen-es come from web/node_modules (npm devDependencies);
 # protoc-gen-go is installed into bin/tools.
 export PATH := $(TOOLS):$(NODE_BIN):$(PATH)
 
-.PHONY: all help tools proto proto-lint proto-breaking build examples test vet fmt check \
+.PHONY: all help tools proto proto-lint proto-breaking gen-check build examples test test-race vet fmt check \
         web-install web web-check web-dev db-up db-down migrate-up migrate-down migrate-status \
         migrate-new clean
 
@@ -56,8 +59,25 @@ proto: tools ## Regenerate gen/ (Go) and web/src/lib/gen/ (TypeScript) from prot
 proto-lint: web-install ## buf lint (STANDARD)
 	buf lint
 
-proto-breaking: web-install ## buf breaking against main: compatible changes only within a major (PROTOCOL §1)
-	buf breaking --against '.git#branch=main'
+proto-breaking: web-install ## buf breaking against main (or BUF_AGAINST): compatible changes only within a major (PROTOCOL §1)
+	buf breaking --against '$(BUF_AGAINST)'
+
+# Regenerates, then compares with what was there before: fails if gen/, web/src/lib/gen/, go.mod or go.sum were not
+# what make proto makes from proto/. The fresh output stays in place, ready to commit.
+gen-check: tools ## Fail if the generated code (or go.mod) is stale
+	@before=$$(mktemp -d) && trap 'rm -rf "$$before"' EXIT && \
+	cp -R gen "$$before/gen" && cp -R $(WEB)/src/lib/gen "$$before/webgen" && cp go.mod go.sum "$$before/" && \
+	$(MAKE) --no-print-directory proto >/dev/null && \
+	if diff -r "$$before/gen" gen >/dev/null && diff -r "$$before/webgen" $(WEB)/src/lib/gen >/dev/null && \
+	   cmp -s "$$before/go.mod" go.mod && cmp -s "$$before/go.sum" go.sum; then \
+	  echo "generated code is up to date"; \
+	else \
+	  echo "generated code is stale: run make proto and commit the result" >&2; \
+	  diff -ru "$$before/gen" gen | head -60 >&2; \
+	  diff -ru "$$before/webgen" $(WEB)/src/lib/gen | head -60 >&2; \
+	  diff -u "$$before/go.mod" go.mod >&2; \
+	  exit 1; \
+	fi
 
 # ---------- Go ----------
 
@@ -70,13 +90,19 @@ examples: ## Build the example strategies into bin/examples/
 test: ## go test
 	$(GO) test ./...
 
+test-race: ## go test with the race detector, uncached
+	$(GO) test -race -count=1 ./...
+
 vet: ## go vet
 	$(GO) vet ./...
 
 fmt: ## go fmt
 	$(GO) fmt ./...
 
-check: proto-lint vet test web-check ## Everything CI runs
+# CI runs these one step each (.github/workflows/ci.yml), in this order: keep the two lists the same.
+CHECKS := proto-lint proto-breaking gen-check vet build test-race web-check
+
+check: $(CHECKS) ## Everything CI runs
 
 # ---------- web ----------
 

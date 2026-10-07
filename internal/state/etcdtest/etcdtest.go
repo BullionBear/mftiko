@@ -2,7 +2,9 @@
 // A Server can be stopped and restarted on the same data and ports, or rebuilt from nothing; a Proxy in front of it
 // can cut its clients off while etcd keeps running, or send them to another server.
 //
-// The binary is $MFTIKO_ETCD_BIN, else etcd on PATH; a test without either is skipped. No auth yet (E1-08).
+// The binary is $MFTIKO_ETCD_BIN, else etcd on PATH; a test without either is skipped, unless $MFTIKO_REQUIRE_ETCD
+// is set (CI sets it), in which case it fails: a run that skipped every etcd test must not look green. No auth yet
+// (E1-08).
 package etcdtest
 
 import (
@@ -20,6 +22,14 @@ import (
 	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
+)
+
+// Environment variables read by Start.
+const (
+	// EnvBin is the etcd binary to run.
+	EnvBin = "MFTIKO_ETCD_BIN"
+	// EnvRequire, when set to anything, turns a missing binary into a test failure instead of a skip.
+	EnvRequire = "MFTIKO_REQUIRE_ETCD"
 )
 
 const (
@@ -47,7 +57,10 @@ func Start(t testing.TB) *Server {
 	t.Helper()
 	bin := binary()
 	if bin == "" {
-		t.Skip("etcd not found: set MFTIKO_ETCD_BIN or put etcd on PATH")
+		if os.Getenv(EnvRequire) != "" {
+			t.Fatalf("etcdtest: etcd not found and %s is set: set %s or put etcd on PATH", EnvRequire, EnvBin)
+		}
+		t.Skipf("etcd not found: set %s or put etcd on PATH", EnvBin)
 	}
 	var errs []error
 	for range startTries {
@@ -76,7 +89,7 @@ func (s *Server) Client(t testing.TB) *clientv3.Client {
 }
 
 func binary() string {
-	if p := os.Getenv("MFTIKO_ETCD_BIN"); p != "" {
+	if p := os.Getenv(EnvBin); p != "" {
 		if p, err := exec.LookPath(p); err == nil {
 			return p
 		}
