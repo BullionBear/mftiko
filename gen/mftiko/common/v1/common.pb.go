@@ -85,7 +85,7 @@ func (Outcome) EnumDescriptor() ([]byte, []int) {
 type WorkerRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	Incarnation   uint32                 `protobuf:"varint,2,opt,name=incarnation,proto3" json:"incarnation,omitempty"`
+	Incarnation   string                 `protobuf:"bytes,2,opt,name=incarnation,proto3" json:"incarnation,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -127,11 +127,11 @@ func (x *WorkerRef) GetKey() string {
 	return ""
 }
 
-func (x *WorkerRef) GetIncarnation() uint32 {
+func (x *WorkerRef) GetIncarnation() string {
 	if x != nil {
 		return x.Incarnation
 	}
-	return 0
+	return ""
 }
 
 // agent 推給 worker 的指令版本，以 (epoch, seq) 的字典序比較。
@@ -423,7 +423,7 @@ const file_mftiko_common_v1_common_proto_rawDesc = "" +
 	"\x1dmftiko/common/v1/common.proto\x12\x10mftiko.common.v1\"?\n" +
 	"\tWorkerRef\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12 \n" +
-	"\vincarnation\x18\x02 \x01(\rR\vincarnation\"1\n" +
+	"\vincarnation\x18\x02 \x01(\tR\vincarnation\"1\n" +
 	"\aVersion\x12\x14\n" +
 	"\x05epoch\x18\x01 \x01(\x03R\x05epoch\x12\x10\n" +
 	"\x03seq\x18\x02 \x01(\x04R\x03seq\"~\n" +

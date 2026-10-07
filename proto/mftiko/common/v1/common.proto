@@ -7,7 +7,7 @@ option go_package = "github.com/BullionBear/mftiko/gen/mftiko/common/v1;commonv1
 
 message WorkerRef {
   string key = 1;
-  uint32 incarnation = 2;
+  string incarnation = 2;
 }
 
 // agent 推給 worker 的指令版本，以 (epoch, seq) 的字典序比較。
