@@ -11,11 +11,12 @@ COMMIT_HASH := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 # -u: UTC, avoid builder timezone skew
 BUILD_TIMESTAMP := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
 
-LDFLAGS := -X '$(PACKAGE)/internal/buildinfo.Version=$(VERSION)' \
-           -X '$(PACKAGE)/internal/buildinfo.CommitHash=$(COMMIT_HASH)' \
-           -X '$(PACKAGE)/internal/buildinfo.BuildTime=$(BUILD_TIMESTAMP)'
+LDFLAGS := -X '$(PACKAGE)/internal/platform/buildinfo.Version=$(VERSION)' \
+           -X '$(PACKAGE)/internal/platform/buildinfo.CommitHash=$(COMMIT_HASH)' \
+           -X '$(PACKAGE)/internal/platform/buildinfo.BuildTime=$(BUILD_TIMESTAMP)'
 
 BIN      := bin
+GEN      := contract/gen
 TOOLS    := $(abspath $(BIN)/tools)
 WEB      := web
 NODE_BIN := $(abspath $(WEB)/node_modules/.bin)
@@ -50,8 +51,8 @@ tools: $(TOOLS)/protoc-gen-go web-install ## Install codegen tools
 $(TOOLS)/protoc-gen-go:
 	GOBIN=$(TOOLS) $(GO) install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION)
 
-proto: tools ## Regenerate gen/ (Go) and web/src/lib/gen/ (TypeScript) from proto/; commit the result
-	rm -rf gen $(WEB)/src/lib/gen
+proto: tools ## Regenerate contract/gen/ (Go) and web/src/lib/gen/ (TypeScript) from contract/proto/; commit the result
+	rm -rf $(GEN) $(WEB)/src/lib/gen
 	buf generate
 	$(GO) get google.golang.org/protobuf@$(PROTOC_GEN_GO_VERSION)
 	$(GO) mod tidy
@@ -62,18 +63,18 @@ proto-lint: web-install ## buf lint (STANDARD)
 proto-breaking: web-install ## buf breaking against main (or BUF_AGAINST): compatible changes only within a major (PROTOCOL §1)
 	buf breaking --against '$(BUF_AGAINST)'
 
-# Regenerates, then compares with what was there before: fails if gen/, web/src/lib/gen/, go.mod or go.sum were not
-# what make proto makes from proto/. The fresh output stays in place, ready to commit.
+# Regenerates, then compares with what was there before: fails if contract/gen/, web/src/lib/gen/, go.mod or go.sum
+# were not what make proto makes from contract/proto/. The fresh output stays in place, ready to commit.
 gen-check: tools ## Fail if the generated code (or go.mod) is stale
 	@before=$$(mktemp -d) && trap 'rm -rf "$$before"' EXIT && \
-	cp -R gen "$$before/gen" && cp -R $(WEB)/src/lib/gen "$$before/webgen" && cp go.mod go.sum "$$before/" && \
+	cp -R $(GEN) "$$before/gen" && cp -R $(WEB)/src/lib/gen "$$before/webgen" && cp go.mod go.sum "$$before/" && \
 	$(MAKE) --no-print-directory proto >/dev/null && \
-	if diff -r "$$before/gen" gen >/dev/null && diff -r "$$before/webgen" $(WEB)/src/lib/gen >/dev/null && \
+	if diff -r "$$before/gen" $(GEN) >/dev/null && diff -r "$$before/webgen" $(WEB)/src/lib/gen >/dev/null && \
 	   cmp -s "$$before/go.mod" go.mod && cmp -s "$$before/go.sum" go.sum; then \
 	  echo "generated code is up to date"; \
 	else \
 	  echo "generated code is stale: run make proto and commit the result" >&2; \
-	  diff -ru "$$before/gen" gen | head -60 >&2; \
+	  diff -ru "$$before/gen" $(GEN) | head -60 >&2; \
 	  diff -ru "$$before/webgen" $(WEB)/src/lib/gen | head -60 >&2; \
 	  diff -u "$$before/go.mod" go.mod >&2; \
 	  exit 1; \

@@ -1,0 +1,242 @@
+// Source of truth: docs/PROTOCOL.md. Keep the two in sync.
+syntax = "proto3";
+
+package mftiko.state.v1;
+
+import "mftiko/common/v1/common.proto";
+
+option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1;statev1";
+
+// ---------- 宣告（API 寫）----------
+
+message SessionSpec {
+  string name = 1;
+  map<string, string> labels = 2;
+  DesiredState desired_state = 3;
+  StrategyRef strategy = 4;
+  bytes params = 5; // 策略自己的參數，平台不解讀
+  repeated FeedDecl feeds = 6;
+  repeated SelectorDecl selectors = 7;
+  repeated AccountDecl accounts = 8;
+  RestartPolicy restart = 9; // 語意見 DECISIONS D24
+  uint32 deps_timeout_s = 10;
+  uint32 start_timeout_s = 11;
+  Limits limits = 12;
+  repeated InputDecl inputs = 13; // 資料 artifact（DECISIONS D23）
+  // MD 事件在 buffer 裡的最長壽命，以 envelope 的 md_ts_ns 計（D24）。0 = STS 的預設值。
+  // 跨 region 的 session 要比 WAN 延遲大。
+  uint32 recv_window_ms = 14;
+  reserved 15; // 草案 v0.11 的 algo_id：改到 AccountDecl.algo_ids（D25）
+  reserved "algo_id";
+}
+
+// 唯讀注入的資料 artifact，解到 $MFTIKO_INPUT_DIR/<name>/（§8.4）。
+message InputDecl {
+  string name = 1;       // 目錄名，^[a-z0-9][a-z0-9_-]{0,63}$，同一個 spec 內唯一
+  string digest = 2;     // 資料 artifact 的 OCI manifest digest（"sha256:…"）
+  string repository = 3; // 拉取用的 OCI repository
+}
+
+enum DesiredState {
+  DESIRED_STATE_UNSPECIFIED = 0;
+  DESIRED_STATE_RUNNING = 1;
+  DESIRED_STATE_ENDED = 2;
+}
+
+message StrategyRef {
+  string name = 1;
+  string code = 2;       // 策略 artifact 的 OCI image digest（"sha256:…"），session 生命週期內不變
+  string repository = 3; // 拉取用的 OCI repository
+}
+
+message FeedDecl {
+  string feed = 1;        // 正規 feed key
+  string md_instance = 2; // API 解析後一律填
+  reserved 3;             // 原本的 delivery：背壓改由 recv_window_ms 處理（D24）
+  reserved "delivery";
+}
+
+message SelectorDecl {
+  string name = 1;
+  string md_instance = 2;
+  string venue = 3;
+  string underlying = 4;
+  repeated string topics = 5;
+  oneof kind {
+    OptionChain option_chain = 10;
+    RollingFuture rolling_future = 11;
+  }
+}
+
+message OptionChain {
+  string ref_feed = 1;
+  uint32 nearest_expiries = 2;
+  uint32 min_tte_s = 3;
+  uint32 atm_strikes = 4;
+  repeated string sides = 5; // "C"、"P"
+  uint32 recenter_strikes = 6;
+  uint32 recenter_min_dwell_s = 7;
+}
+
+message RollingFuture {
+  string tenor = 1; // weekly | monthly | quarterly
+  uint32 roll_before_s = 2;
+}
+
+message AccountDecl {
+  string name = 1;
+  int64 api_id = 2;
+  string td_instance = 3;
+  // 這個 session 在這個帳號上可以使用的 algo_id，每個 1–1023（D25）。
+  // 同一個帳號上和其他非 terminal 的 session 重疊時，TD 的 ack 是 REJECTED（algo_conflict）。
+  repeated uint32 algo_ids = 4;
+}
+
+message RestartPolicy {
+  RestartMode mode = 1;
+  uint32 max_restarts = 2;
+  uint32 window_s = 3;
+}
+
+enum RestartMode {
+  RESTART_MODE_UNSPECIFIED = 0;
+  RESTART_MODE_NEVER = 1;
+  RESTART_MODE_ON_FAILURE = 2;
+}
+
+message Limits {
+  uint32 memory_mb = 1;
+  uint32 gomaxprocs = 2;
+  uint32 volume_mb = 3; // session volume 的上限（D23）；0 = STS 的預設值。超過就以 FAILED 結束（volume_over_limit）
+  uint32 hook_timeout_s = 4; // 單一 hook 的硬上限（D24）；0 = STS 的預設值。超過判定 HUNG
+}
+
+message Account {
+  string name = 1;
+  // 帳號種類（DECISIONS D32），不是 venue：BinancePM 可以交易 Binance、BinanceUM、BinanceCM 的商品。
+  // 兩個 enum 的名稱可能相同（帳號種類 BinanceUM 交易 venue BinanceUM），不可互查。
+  string kind = 2;
+  bytes sealed_credentials = 3; // 以 TD instance 的公鑰封裝；etcd 裡不放明文
+  AccountSettings settings = 4;
+  bool enabled = 5;
+}
+
+message AccountSettings {
+  uint32 cancel_on_disconnect_s = 1; // 0 = 關閉
+  // 歷史補正（DECISIONS D20）。
+  uint32 backfill_interval_s = 2; // 另加 jitter；0 = TD agent 的預設值。必須短於交易所成交歷史的保留期
+  // 手動觸發：比 TD agent 上次處理過的值新，就提前跑一輪。agent 重啟後可能多跑一次，無害。
+  int64 backfill_requested_at_ns = 3;
+}
+
+// ---------- STS agent 寫 ----------
+
+enum Phase {
+  PHASE_UNSPECIFIED = 0;
+  PHASE_PENDING = 1;
+  PHASE_WAITING = 2; // 等 ack
+  PHASE_STARTING = 3;
+  PHASE_RUNNING = 4;
+  PHASE_STOPPING = 5;
+  PHASE_RESTARTING = 6;
+  PHASE_DONE = 7;
+  PHASE_FAILED = 8;
+}
+
+message SessionStatus {
+  int64 observed_generation = 1;
+  Phase phase = 2;
+  repeated mftiko.common.v1.Condition conditions = 3;
+  uint32 incarnation = 4; // 顯示用；權威值在 /sts/{inst}/incarnation/{h}（PROTOCOL §3.2 W6）
+  uint32 restart_count = 5;
+  string reason = 6;
+  mftiko.common.v1.ExitInfo last_exit = 7;
+  int64 updated_at_ns = 8;
+  StateSnapshot state_out = 9; // session terminal 之後 volume 的快照（D23）；推送完成前不填
+}
+
+message StateSnapshot {
+  string digest = 1;     // 資料 artifact 的 OCI manifest digest；新 session 以 InputDecl 引用
+  string repository = 2;
+  bool clean = 3;        // 最後一個 incarnation 的 ExitInfo.on_stop_completed
+  uint32 incarnation = 4;
+  int64 at_ns = 5;
+  uint64 size_bytes = 6;
+}
+
+// 綁在 STS agent 的 etcd lease 上。
+message LeaseEntry {
+  oneof target {
+    string feed = 1;
+    SelectorDecl selector = 2;
+    int64 api_id = 3;
+  }
+  int64 spec_revision = 10; // 推導自哪一版 session spec；只供除錯，可能來自另一個 cluster，不做比較
+  repeated uint32 algo_ids = 11; // 只有帳號項目：同 AccountDecl.algo_ids，TD agent 用來檢查衝突（D25）
+}
+
+// ---------- provider agent 寫 ----------
+
+enum EntryState {
+  ENTRY_STATE_UNSPECIFIED = 0;
+  ENTRY_STATE_PENDING = 1;
+  ENTRY_STATE_READY = 2;
+  ENTRY_STATE_REJECTED = 3;
+  ENTRY_STATE_DEAD = 4;
+}
+
+// 綁在 provider agent 的 etcd lease 上。
+message EntryStatus {
+  EntryState state = 1;
+  string reason = 2;
+  // feed：完整的 subject（今天是 md.f.{inst}.{topic}.{ticker}）；selector：成員 subject 的前綴（今天是 md.f.{inst}）；
+  // 帳號：td.order.{api_id}。由 provider 決定，訂閱端不自己組（PROTOCOL §7、DECISIONS D8）。
+  string subject = 3;
+  mftiko.common.v1.WorkerRef worker = 4;
+  Universe universe = 5; // 只有 selector
+  int64 updated_at_ns = 6;
+}
+
+message Universe {
+  uint64 epoch = 1;
+  repeated string members = 2; // UniversalTicker
+  string current = 3;          // 只有 rolling_future
+  repeated string topics = 4;
+}
+
+// ---------- agent 自己 ----------
+
+message AgentRecord {
+  string plane = 1;
+  string instance = 2;
+  int64 epoch = 3;
+  string release = 4;
+  int64 started_at_ns = 5;
+}
+
+message WorkerStatus {
+  mftiko.common.v1.WorkerRef worker = 1;
+  string phase = 2; // STARTING | RUNNING | STOPPING | BACKOFF | EXITED | LOST
+  string stage = 3; // worker 回報的生命週期階段
+  string release = 4;
+  string shim_release = 5;
+  uint32 restarts = 6;
+  int64 rss_bytes = 7;
+  int64 started_at_ns = 8;
+  mftiko.common.v1.ExitInfo last_exit = 9;
+}
+
+// ---------- MD agent 不能重新推導的狀態 ----------
+
+message SelectorState {
+  SelectorDecl spec = 1;
+  uint64 epoch = 2;
+  repeated string members = 3;
+  string current = 4;
+  string center = 5; // 置中的 strike
+  int64 center_at_ns = 6;
+}
+
+message Placement {
+  string conn = 1; // atom 所在的 conn worker key
+}

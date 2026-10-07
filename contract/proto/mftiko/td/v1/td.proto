@@ -1,0 +1,259 @@
+// Source of truth: docs/PROTOCOL.md. Keep the two in sync.
+syntax = "proto3";
+
+package mftiko.td.v1;
+
+import "mftiko/common/v1/common.proto";
+import "mftiko/md/v1/md.proto";
+
+option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1;tdv1";
+
+enum OrderType {
+  ORDER_TYPE_UNSPECIFIED = 0;
+  ORDER_TYPE_LIMIT = 1;
+  ORDER_TYPE_MARKET = 2;
+}
+
+enum TimeInForce {
+  TIME_IN_FORCE_UNSPECIFIED = 0;
+  TIME_IN_FORCE_GTC = 1;
+  TIME_IN_FORCE_IOC = 2;
+  TIME_IN_FORCE_FOK = 3;
+  TIME_IN_FORCE_POST_ONLY = 4;
+}
+
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ORDER_STATUS_PENDING_NEW = 1;
+  ORDER_STATUS_NEW = 2;
+  ORDER_STATUS_PARTIALLY_FILLED = 3;
+  ORDER_STATUS_FILLED = 4;
+  ORDER_STATUS_PENDING_CANCEL = 5;
+  ORDER_STATUS_CANCELLED = 6;
+  ORDER_STATUS_REJECTED = 7;
+  ORDER_STATUS_EXPIRED = 8;
+  ORDER_STATUS_UNKNOWN = 9;
+}
+
+// ---------- td.order.{api_id} ----------
+
+message OrderRequest {
+  oneof req {
+    Submit submit = 1;
+    Cancel cancel = 2;
+    BatchCancel batch_cancel = 4;
+  }
+  reserved 3; // 原本的 cancel_session：平台不替策略撤單（D25）
+  reserved "cancel_session";
+}
+
+message Submit {
+  string session_id = 1;
+  string ticker = 2;
+  mftiko.md.v1.Side side = 3;
+  OrderType order_type = 4;
+  optional string qty = 5;
+  optional string quote_qty = 6;
+  optional string price = 7;
+  TimeInForce tif = 8;
+  bool reduce_only = 9;
+  string client_order_id = 10;
+  map<string, string> params = 11;
+  uint32 algo_id = 12; // 必須等於 client_order_id 的 algo 欄位（D25）
+}
+
+message Cancel {
+  string session_id = 1;
+  string ticker = 2;
+  string client_order_id = 3;
+  string order_id = 4;
+  uint32 algo_id = 5; // 目標單的 client_order_id 的 algo 欄位必須等於它；沒有 client_order_id 的單一律拒絕（D25）
+}
+
+// 撤掉這個帳號上 client_order_id 的 algo 欄位等於 algo_id 的所有掛單（D25）。
+// 只看 algo 欄位，不分 session、incarnation：上一個進程或上一個 session 留下的也算。
+message BatchCancel {
+  uint32 algo_id = 1;
+  repeated string tickers = 2; // 空 = 全部商品
+  uint32 timeout_ms = 3;
+}
+
+message OrderReply {
+  oneof reply {
+    OrderAck ack = 1;
+    mftiko.common.v1.Error error = 3;
+    BatchCancelResult batch_cancel = 4;
+  }
+  reserved 2; // 原本的 cancel_session
+  reserved "cancel_session";
+}
+
+message OrderAck {
+  string client_order_id = 1;
+  bool accepted = 2; // TD 收下了請求，不代表交易所接受
+  int32 code = 3;
+  string reason = 4;
+}
+
+message BatchCancelResult {
+  uint32 algo_id = 1;
+  bool confirmed = 2;               // 全部撤掉並確認
+  repeated string cancelled = 3;    // client_order_id
+  repeated string unconfirmed = 4;  // 逾時前沒確認的 client_order_id
+}
+
+// ---------- td.view.{api_id} ----------
+
+message ViewRequest {
+  oneof req {
+    OmsViewRequest oms = 1;
+    LedgerViewRequest ledger = 2;
+    EnsureLeverageRequest leverage = 3;
+  }
+}
+
+message OmsViewRequest {
+  string session_id = 1;
+  bool settled = 2;
+  uint32 algo_id = 3; // 非 0 時改以 algo 篩選，涵蓋上一個進程、上一個 session 留下的單（D25）
+}
+
+message LedgerViewRequest {}
+
+message EnsureLeverageRequest {
+  string ticker = 1;
+}
+
+message ViewReply {
+  oneof reply {
+    OmsView oms = 1;
+    LedgerView ledger = 2;
+    LeverageInfo leverage = 3;
+    mftiko.common.v1.Error error = 4;
+  }
+}
+
+message OmsView {
+  repeated Order orders = 1;
+  uint32 incarnation = 2;
+  int64 as_of_ns = 3;
+}
+
+message LedgerView {
+  repeated Balance balances = 1;
+  repeated Position positions = 2;
+  uint32 incarnation = 3;
+  int64 as_of_ns = 4;
+}
+
+message LeverageInfo {
+  string ticker = 1;
+  string leverage = 2;
+}
+
+// ---------- td.evt.{api_id} ----------
+
+message AccountEvent {
+  uint64 seq = 1; // 每個 incarnation 從 1 起算
+  mftiko.common.v1.WorkerRef source = 2;
+  oneof event {
+    Order order_update = 10;
+    Fill fill = 11;
+    OrderReject order_reject = 12;
+    CancelReject cancel_reject = 13;
+    BalanceUpdate balance_update = 14;
+    PositionUpdate position_update = 15;
+    Recon recon = 17;
+  }
+  reserved 16; // 原本的 account_reset：由 Recon 取代（D27）
+  reserved "account_reset";
+}
+
+message Order {
+  string ticker = 1;
+  string order_id = 2;
+  string client_order_id = 3;
+  mftiko.md.v1.Side side = 4;
+  OrderType order_type = 5;
+  OrderStatus status = 6;
+  string qty = 7;
+  optional string quote_qty = 8;
+  optional string price = 9;
+  string filled_qty = 10;
+  optional string avg_price = 11;
+  string reject_reason = 12;
+  int64 exch_ts_ns = 13;
+  int64 td_ts_ns = 14;
+}
+
+message Fill {
+  string ticker = 1;
+  // 交易所的 trade id。WS 與 REST 必須給同一個值：落庫以 (api_id, fill_id) 去重（D20）。
+  string fill_id = 2;
+  string order_id = 3;
+  string client_order_id = 4;
+  mftiko.md.v1.Side side = 5;
+  string price = 6;
+  string qty = 7;
+  string fee = 8;
+  string fee_asset = 9;
+  string liquidity = 10;
+  int64 exch_ts_ns = 11;
+}
+
+message OrderReject {
+  string client_order_id = 1;
+  string order_id = 2;
+  string ticker = 3;
+  int32 code = 4;
+  string reason = 5;
+}
+
+message CancelReject {
+  string client_order_id = 1;
+  string order_id = 2;
+  int32 code = 3;
+  string reason = 4;
+}
+
+message Balance {
+  string asset = 1;
+  string free = 2;
+  string locked = 3;
+  string prelock = 4;
+}
+
+message Position {
+  string ticker = 1;
+  string size = 2;
+  optional string entry_price = 3;
+  optional string mark_price = 4;
+  optional string unrealized_pnl = 5;
+  optional string leverage = 6;
+}
+
+message BalanceUpdate {
+  repeated Balance balances = 1;
+}
+
+message PositionUpdate {
+  repeated Position positions = 1;
+}
+
+// 帳號狀態的整份快照（DECISIONS D27）。SDK 把它交給策略的 OnRecon：
+// open_orders 先篩成自己宣告的 algo_id，positions、balances 原樣給。
+// 和其他事件共用 seq；策略整份換掉自己的狀態，之後的事件照常疊上去。
+message Recon {
+  uint32 incarnation = 1;
+  ReconReason reason = 2;
+  repeated Order open_orders = 3;
+  repeated Position positions = 4;
+  repeated Balance balances = 5;
+  int64 as_of_ns = 6;
+}
+
+enum ReconReason {
+  RECON_REASON_UNSPECIFIED = 0;
+  RECON_REASON_RECONNECT = 1;   // 私有 websocket 重連並 recon 之後
+  RECON_REASON_INCARNATION = 2; // account worker 換了 incarnation
+}

@@ -1,0 +1,87 @@
+// Source of truth: docs/PROTOCOL.md. Keep the two in sync.
+syntax = "proto3";
+
+package mftiko.sym.v1;
+
+option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/sym/v1;symv1";
+
+// ---------- sym ----------
+// Served by SYM (queue group, any replica answers). Read-only except Refresh.
+
+message Request {
+  oneof req {
+    GetRequest get = 1;
+    ListRequest list = 2;
+    ReverseRequest reverse = 3;
+    RefreshRequest refresh = 4;
+  }
+}
+
+// One instrument by exact ticker: a single row, never a venue table.
+message GetRequest {
+  string universal_ticker = 1;
+  bool include_inactive = 2; // MD's expiry watch needs settled contracts; nothing else should
+}
+
+// One (venue, category) table, paged. A page stays under NATS's 1 MiB with every filter.
+message ListRequest {
+  string venue = 1;
+  string category = 2;
+  uint32 limit = 3; // at most 500
+  uint32 offset = 4;
+  bool include_inactive = 5;
+}
+
+// The venue's spelling -> the ticker. Category is required: on a unified-account venue the
+// spelling alone is ambiguous (Bybit's spot and linear "BTCUSDT").
+message ReverseRequest {
+  string venue = 1;
+  string category = 2;
+  string exch_ticker = 3;
+}
+
+// Re-pull one venue's listings now, or every venue when venue is empty.
+message RefreshRequest {
+  string venue = 1;
+}
+
+message Reply {
+  string error = 1; // empty = success; invalid | not_found | unavailable
+  string reason = 2;
+  oneof result {
+    SymbolInfo info = 10;     // get, reverse
+    SymbolList list = 11;     // list
+    RefreshResult refresh = 12;
+  }
+}
+
+message SymbolInfo {
+  string universal_ticker = 1;
+  string exch_ticker = 2;
+  string base = 3;
+  string quote = 4;
+  optional string contract_size = 5;
+  optional string settle = 6;
+  int64 expiry_ns = 7; // 0 = does not expire
+  optional string strike = 8;
+  string option_type = 9; // C | P | ""
+  bool active = 10;
+  // name -> bound. A key with an absent value: the venue publishes the restriction, no bound.
+  map<string, Bound> filters = 11;
+  int64 updated_at_ns = 12;
+}
+
+message Bound {
+  optional string value = 1;
+}
+
+message SymbolList {
+  repeated SymbolInfo symbols = 1;
+  uint32 total = 2;
+}
+
+message RefreshResult {
+  map<string, uint32> refreshed = 1;   // venue -> instruments seen
+  map<string, uint32> deactivated = 2; // venue -> rows marked inactive
+  map<string, string> failed = 3;      // venue -> reason, per category
+}

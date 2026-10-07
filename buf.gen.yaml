@@ -2,7 +2,7 @@
 # web/node_modules present (installed by `make web-install`). No remote plugins.
 version: v2
 plugins:
-  # Go: gen/mftiko/<pkg>/v1/*.pb.go, matching each file's go_package.
+  # Go: contract/gen/mftiko/<pkg>/v1/*.pb.go, matching each file's go_package.
   - local: protoc-gen-go
     out: .
     opt: module=github.com/BullionBear/mftiko
@@ -11,4 +11,4 @@ plugins:
     out: web/src/lib/gen
     opt: target=ts
 inputs:
-  - directory: proto
+  - directory: contract/proto
