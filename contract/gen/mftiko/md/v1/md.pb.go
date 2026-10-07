@@ -9,6 +9,7 @@
 package mdv1
 
 import (
+	v1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -22,55 +23,6 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
-
-type Side int32
-
-const (
-	Side_SIDE_UNSPECIFIED Side = 0
-	Side_SIDE_BUY         Side = 1
-	Side_SIDE_SELL        Side = 2
-)
-
-// Enum value maps for Side.
-var (
-	Side_name = map[int32]string{
-		0: "SIDE_UNSPECIFIED",
-		1: "SIDE_BUY",
-		2: "SIDE_SELL",
-	}
-	Side_value = map[string]int32{
-		"SIDE_UNSPECIFIED": 0,
-		"SIDE_BUY":         1,
-		"SIDE_SELL":        2,
-	}
-)
-
-func (x Side) Enum() *Side {
-	p := new(Side)
-	*p = x
-	return p
-}
-
-func (x Side) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (Side) Descriptor() protoreflect.EnumDescriptor {
-	return file_mftiko_md_v1_md_proto_enumTypes[0].Descriptor()
-}
-
-func (Side) Type() protoreflect.EnumType {
-	return &file_mftiko_md_v1_md_proto_enumTypes[0]
-}
-
-func (x Side) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use Side.Descriptor instead.
-func (Side) EnumDescriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{0}
-}
 
 // seq、conn_epoch、md_ts_ns 移到 envelope（上表）。
 type Meta struct {
@@ -457,7 +409,7 @@ type Trade struct {
 	TradeId       string                 `protobuf:"bytes,2,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
 	Price         string                 `protobuf:"bytes,3,opt,name=price,proto3" json:"price,omitempty"`
 	Qty           string                 `protobuf:"bytes,4,opt,name=qty,proto3" json:"qty,omitempty"`
-	Side          Side                   `protobuf:"varint,5,opt,name=side,proto3,enum=mftiko.md.v1.Side" json:"side,omitempty"` // taker
+	Side          v1.Side                `protobuf:"varint,5,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"` // taker
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -520,11 +472,11 @@ func (x *Trade) GetQty() string {
 	return ""
 }
 
-func (x *Trade) GetSide() Side {
+func (x *Trade) GetSide() v1.Side {
 	if x != nil {
 		return x.Side
 	}
-	return Side_SIDE_UNSPECIFIED
+	return v1.Side(0)
 }
 
 type AggTrade struct {
@@ -533,7 +485,7 @@ type AggTrade struct {
 	TradeId       string                 `protobuf:"bytes,2,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
 	Price         string                 `protobuf:"bytes,3,opt,name=price,proto3" json:"price,omitempty"`
 	Qty           string                 `protobuf:"bytes,4,opt,name=qty,proto3" json:"qty,omitempty"`
-	Side          Side                   `protobuf:"varint,5,opt,name=side,proto3,enum=mftiko.md.v1.Side" json:"side,omitempty"`
+	Side          v1.Side                `protobuf:"varint,5,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"`
 	FirstTradeId  string                 `protobuf:"bytes,6,opt,name=first_trade_id,json=firstTradeId,proto3" json:"first_trade_id,omitempty"`
 	LastTradeId   string                 `protobuf:"bytes,7,opt,name=last_trade_id,json=lastTradeId,proto3" json:"last_trade_id,omitempty"`
 	MatchCount    uint32                 `protobuf:"varint,8,opt,name=match_count,json=matchCount,proto3" json:"match_count,omitempty"`
@@ -599,11 +551,11 @@ func (x *AggTrade) GetQty() string {
 	return ""
 }
 
-func (x *AggTrade) GetSide() Side {
+func (x *AggTrade) GetSide() v1.Side {
 	if x != nil {
 		return x.Side
 	}
-	return Side_SIDE_UNSPECIFIED
+	return v1.Side(0)
 }
 
 func (x *AggTrade) GetFirstTradeId() string {
@@ -1039,7 +991,7 @@ func (x *Ticker) GetChangePct_24H() string {
 type Liquidation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Meta          *Meta                  `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
-	Side          Side                   `protobuf:"varint,2,opt,name=side,proto3,enum=mftiko.md.v1.Side" json:"side,omitempty"` // 被平倉部位的方向
+	Side          v1.Side                `protobuf:"varint,2,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"` // 被平倉部位的方向
 	Price         string                 `protobuf:"bytes,3,opt,name=price,proto3" json:"price,omitempty"`
 	Qty           string                 `protobuf:"bytes,4,opt,name=qty,proto3" json:"qty,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1083,11 +1035,11 @@ func (x *Liquidation) GetMeta() *Meta {
 	return nil
 }
 
-func (x *Liquidation) GetSide() Side {
+func (x *Liquidation) GetSide() v1.Side {
 	if x != nil {
 		return x.Side
 	}
-	return Side_SIDE_UNSPECIFIED
+	return v1.Side(0)
 }
 
 func (x *Liquidation) GetPrice() string {
@@ -1472,7 +1424,7 @@ var File_mftiko_md_v1_md_proto protoreflect.FileDescriptor
 
 const file_mftiko_md_v1_md_proto_rawDesc = "" +
 	"\n" +
-	"\x15mftiko/md/v1/md.proto\x12\fmftiko.md.v1\"Q\n" +
+	"\x15mftiko/md/v1/md.proto\x12\fmftiko.md.v1\x1a\x1dmftiko/common/v1/common.proto\"Q\n" +
 	"\x04Meta\x12\x1c\n" +
 	"\n" +
 	"exch_ts_ns\x18\x03 \x01(\x03R\bexchTsNsJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x04\x10\x05R\x03seqR\n" +
@@ -1501,19 +1453,19 @@ const file_mftiko_md_v1_md_proto_rawDesc = "" +
 	"\x03bid\x18\x02 \x01(\tR\x03bid\x12\x17\n" +
 	"\abid_qty\x18\x03 \x01(\tR\x06bidQty\x12\x10\n" +
 	"\x03ask\x18\x04 \x01(\tR\x03ask\x12\x17\n" +
-	"\aask_qty\x18\x05 \x01(\tR\x06askQty\"\x9a\x01\n" +
+	"\aask_qty\x18\x05 \x01(\tR\x06askQty\"\x9e\x01\n" +
 	"\x05Trade\x12&\n" +
 	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12\x19\n" +
 	"\btrade_id\x18\x02 \x01(\tR\atradeId\x12\x14\n" +
 	"\x05price\x18\x03 \x01(\tR\x05price\x12\x10\n" +
-	"\x03qty\x18\x04 \x01(\tR\x03qty\x12&\n" +
-	"\x04side\x18\x05 \x01(\x0e2\x12.mftiko.md.v1.SideR\x04side\"\x88\x02\n" +
+	"\x03qty\x18\x04 \x01(\tR\x03qty\x12*\n" +
+	"\x04side\x18\x05 \x01(\x0e2\x16.mftiko.common.v1.SideR\x04side\"\x8c\x02\n" +
 	"\bAggTrade\x12&\n" +
 	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12\x19\n" +
 	"\btrade_id\x18\x02 \x01(\tR\atradeId\x12\x14\n" +
 	"\x05price\x18\x03 \x01(\tR\x05price\x12\x10\n" +
-	"\x03qty\x18\x04 \x01(\tR\x03qty\x12&\n" +
-	"\x04side\x18\x05 \x01(\x0e2\x12.mftiko.md.v1.SideR\x04side\x12$\n" +
+	"\x03qty\x18\x04 \x01(\tR\x03qty\x12*\n" +
+	"\x04side\x18\x05 \x01(\x0e2\x16.mftiko.common.v1.SideR\x04side\x12$\n" +
 	"\x0efirst_trade_id\x18\x06 \x01(\tR\ffirstTradeId\x12\"\n" +
 	"\rlast_trade_id\x18\a \x01(\tR\vlastTradeId\x12\x1f\n" +
 	"\vmatch_count\x18\b \x01(\rR\n" +
@@ -1562,10 +1514,10 @@ const file_mftiko_md_v1_md_proto_rawDesc = "" +
 	"\b_low_24hB\r\n" +
 	"\v_volume_24hB\x13\n" +
 	"\x11_quote_volume_24hB\x11\n" +
-	"\x0f_change_pct_24h\"\x85\x01\n" +
+	"\x0f_change_pct_24h\"\x89\x01\n" +
 	"\vLiquidation\x12&\n" +
-	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12&\n" +
-	"\x04side\x18\x02 \x01(\x0e2\x12.mftiko.md.v1.SideR\x04side\x12\x14\n" +
+	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12*\n" +
+	"\x04side\x18\x02 \x01(\x0e2\x16.mftiko.common.v1.SideR\x04side\x12\x14\n" +
 	"\x05price\x18\x03 \x01(\tR\x05price\x12\x10\n" +
 	"\x03qty\x18\x04 \x01(\tR\x03qty\"\xa4\x01\n" +
 	"\vFundingRate\x12&\n" +
@@ -1614,11 +1566,7 @@ const file_mftiko_md_v1_md_proto_rawDesc = "" +
 	"\f_index_price\"6\n" +
 	"\aFeedEnd\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason\x12\x13\n" +
-	"\x05at_ns\x18\x02 \x01(\x03R\x04atNs*9\n" +
-	"\x04Side\x12\x14\n" +
-	"\x10SIDE_UNSPECIFIED\x10\x00\x12\f\n" +
-	"\bSIDE_BUY\x10\x01\x12\r\n" +
-	"\tSIDE_SELL\x10\x02B>Z<github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1;mdv1b\x06proto3"
+	"\x05at_ns\x18\x02 \x01(\x03R\x04atNsB>Z<github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1;mdv1b\x06proto3"
 
 var (
 	file_mftiko_md_v1_md_proto_rawDescOnce sync.Once
@@ -1632,60 +1580,59 @@ func file_mftiko_md_v1_md_proto_rawDescGZIP() []byte {
 	return file_mftiko_md_v1_md_proto_rawDescData
 }
 
-var file_mftiko_md_v1_md_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_mftiko_md_v1_md_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_mftiko_md_v1_md_proto_goTypes = []any{
-	(Side)(0),              // 0: mftiko.md.v1.Side
-	(*Meta)(nil),           // 1: mftiko.md.v1.Meta
-	(*FeedEvent)(nil),      // 2: mftiko.md.v1.FeedEvent
-	(*BestQuote)(nil),      // 3: mftiko.md.v1.BestQuote
-	(*Trade)(nil),          // 4: mftiko.md.v1.Trade
-	(*AggTrade)(nil),       // 5: mftiko.md.v1.AggTrade
-	(*Level)(nil),          // 6: mftiko.md.v1.Level
-	(*OrderBook)(nil),      // 7: mftiko.md.v1.OrderBook
-	(*OrderBookDelta)(nil), // 8: mftiko.md.v1.OrderBookDelta
-	(*Kline)(nil),          // 9: mftiko.md.v1.Kline
-	(*Ticker)(nil),         // 10: mftiko.md.v1.Ticker
-	(*Liquidation)(nil),    // 11: mftiko.md.v1.Liquidation
-	(*FundingRate)(nil),    // 12: mftiko.md.v1.FundingRate
-	(*OpenInterest)(nil),   // 13: mftiko.md.v1.OpenInterest
-	(*Greeks)(nil),         // 14: mftiko.md.v1.Greeks
-	(*MarkPrice)(nil),      // 15: mftiko.md.v1.MarkPrice
-	(*FeedEnd)(nil),        // 16: mftiko.md.v1.FeedEnd
+	(*Meta)(nil),           // 0: mftiko.md.v1.Meta
+	(*FeedEvent)(nil),      // 1: mftiko.md.v1.FeedEvent
+	(*BestQuote)(nil),      // 2: mftiko.md.v1.BestQuote
+	(*Trade)(nil),          // 3: mftiko.md.v1.Trade
+	(*AggTrade)(nil),       // 4: mftiko.md.v1.AggTrade
+	(*Level)(nil),          // 5: mftiko.md.v1.Level
+	(*OrderBook)(nil),      // 6: mftiko.md.v1.OrderBook
+	(*OrderBookDelta)(nil), // 7: mftiko.md.v1.OrderBookDelta
+	(*Kline)(nil),          // 8: mftiko.md.v1.Kline
+	(*Ticker)(nil),         // 9: mftiko.md.v1.Ticker
+	(*Liquidation)(nil),    // 10: mftiko.md.v1.Liquidation
+	(*FundingRate)(nil),    // 11: mftiko.md.v1.FundingRate
+	(*OpenInterest)(nil),   // 12: mftiko.md.v1.OpenInterest
+	(*Greeks)(nil),         // 13: mftiko.md.v1.Greeks
+	(*MarkPrice)(nil),      // 14: mftiko.md.v1.MarkPrice
+	(*FeedEnd)(nil),        // 15: mftiko.md.v1.FeedEnd
+	(v1.Side)(0),           // 16: mftiko.common.v1.Side
 }
 var file_mftiko_md_v1_md_proto_depIdxs = []int32{
-	3,  // 0: mftiko.md.v1.FeedEvent.best_quote:type_name -> mftiko.md.v1.BestQuote
-	4,  // 1: mftiko.md.v1.FeedEvent.trade:type_name -> mftiko.md.v1.Trade
-	5,  // 2: mftiko.md.v1.FeedEvent.agg_trade:type_name -> mftiko.md.v1.AggTrade
-	7,  // 3: mftiko.md.v1.FeedEvent.order_book:type_name -> mftiko.md.v1.OrderBook
-	9,  // 4: mftiko.md.v1.FeedEvent.kline:type_name -> mftiko.md.v1.Kline
-	10, // 5: mftiko.md.v1.FeedEvent.ticker:type_name -> mftiko.md.v1.Ticker
-	11, // 6: mftiko.md.v1.FeedEvent.liquidation:type_name -> mftiko.md.v1.Liquidation
-	12, // 7: mftiko.md.v1.FeedEvent.funding_rate:type_name -> mftiko.md.v1.FundingRate
-	13, // 8: mftiko.md.v1.FeedEvent.open_interest:type_name -> mftiko.md.v1.OpenInterest
-	14, // 9: mftiko.md.v1.FeedEvent.greeks:type_name -> mftiko.md.v1.Greeks
-	15, // 10: mftiko.md.v1.FeedEvent.mark_price:type_name -> mftiko.md.v1.MarkPrice
-	8,  // 11: mftiko.md.v1.FeedEvent.order_book_delta:type_name -> mftiko.md.v1.OrderBookDelta
-	16, // 12: mftiko.md.v1.FeedEvent.feed_end:type_name -> mftiko.md.v1.FeedEnd
-	1,  // 13: mftiko.md.v1.BestQuote.meta:type_name -> mftiko.md.v1.Meta
-	1,  // 14: mftiko.md.v1.Trade.meta:type_name -> mftiko.md.v1.Meta
-	0,  // 15: mftiko.md.v1.Trade.side:type_name -> mftiko.md.v1.Side
-	1,  // 16: mftiko.md.v1.AggTrade.meta:type_name -> mftiko.md.v1.Meta
-	0,  // 17: mftiko.md.v1.AggTrade.side:type_name -> mftiko.md.v1.Side
-	1,  // 18: mftiko.md.v1.OrderBook.meta:type_name -> mftiko.md.v1.Meta
-	6,  // 19: mftiko.md.v1.OrderBook.bids:type_name -> mftiko.md.v1.Level
-	6,  // 20: mftiko.md.v1.OrderBook.asks:type_name -> mftiko.md.v1.Level
-	1,  // 21: mftiko.md.v1.OrderBookDelta.meta:type_name -> mftiko.md.v1.Meta
-	6,  // 22: mftiko.md.v1.OrderBookDelta.bids:type_name -> mftiko.md.v1.Level
-	6,  // 23: mftiko.md.v1.OrderBookDelta.asks:type_name -> mftiko.md.v1.Level
-	1,  // 24: mftiko.md.v1.Kline.meta:type_name -> mftiko.md.v1.Meta
-	1,  // 25: mftiko.md.v1.Ticker.meta:type_name -> mftiko.md.v1.Meta
-	1,  // 26: mftiko.md.v1.Liquidation.meta:type_name -> mftiko.md.v1.Meta
-	0,  // 27: mftiko.md.v1.Liquidation.side:type_name -> mftiko.md.v1.Side
-	1,  // 28: mftiko.md.v1.FundingRate.meta:type_name -> mftiko.md.v1.Meta
-	1,  // 29: mftiko.md.v1.OpenInterest.meta:type_name -> mftiko.md.v1.Meta
-	1,  // 30: mftiko.md.v1.Greeks.meta:type_name -> mftiko.md.v1.Meta
-	1,  // 31: mftiko.md.v1.MarkPrice.meta:type_name -> mftiko.md.v1.Meta
+	2,  // 0: mftiko.md.v1.FeedEvent.best_quote:type_name -> mftiko.md.v1.BestQuote
+	3,  // 1: mftiko.md.v1.FeedEvent.trade:type_name -> mftiko.md.v1.Trade
+	4,  // 2: mftiko.md.v1.FeedEvent.agg_trade:type_name -> mftiko.md.v1.AggTrade
+	6,  // 3: mftiko.md.v1.FeedEvent.order_book:type_name -> mftiko.md.v1.OrderBook
+	8,  // 4: mftiko.md.v1.FeedEvent.kline:type_name -> mftiko.md.v1.Kline
+	9,  // 5: mftiko.md.v1.FeedEvent.ticker:type_name -> mftiko.md.v1.Ticker
+	10, // 6: mftiko.md.v1.FeedEvent.liquidation:type_name -> mftiko.md.v1.Liquidation
+	11, // 7: mftiko.md.v1.FeedEvent.funding_rate:type_name -> mftiko.md.v1.FundingRate
+	12, // 8: mftiko.md.v1.FeedEvent.open_interest:type_name -> mftiko.md.v1.OpenInterest
+	13, // 9: mftiko.md.v1.FeedEvent.greeks:type_name -> mftiko.md.v1.Greeks
+	14, // 10: mftiko.md.v1.FeedEvent.mark_price:type_name -> mftiko.md.v1.MarkPrice
+	7,  // 11: mftiko.md.v1.FeedEvent.order_book_delta:type_name -> mftiko.md.v1.OrderBookDelta
+	15, // 12: mftiko.md.v1.FeedEvent.feed_end:type_name -> mftiko.md.v1.FeedEnd
+	0,  // 13: mftiko.md.v1.BestQuote.meta:type_name -> mftiko.md.v1.Meta
+	0,  // 14: mftiko.md.v1.Trade.meta:type_name -> mftiko.md.v1.Meta
+	16, // 15: mftiko.md.v1.Trade.side:type_name -> mftiko.common.v1.Side
+	0,  // 16: mftiko.md.v1.AggTrade.meta:type_name -> mftiko.md.v1.Meta
+	16, // 17: mftiko.md.v1.AggTrade.side:type_name -> mftiko.common.v1.Side
+	0,  // 18: mftiko.md.v1.OrderBook.meta:type_name -> mftiko.md.v1.Meta
+	5,  // 19: mftiko.md.v1.OrderBook.bids:type_name -> mftiko.md.v1.Level
+	5,  // 20: mftiko.md.v1.OrderBook.asks:type_name -> mftiko.md.v1.Level
+	0,  // 21: mftiko.md.v1.OrderBookDelta.meta:type_name -> mftiko.md.v1.Meta
+	5,  // 22: mftiko.md.v1.OrderBookDelta.bids:type_name -> mftiko.md.v1.Level
+	5,  // 23: mftiko.md.v1.OrderBookDelta.asks:type_name -> mftiko.md.v1.Level
+	0,  // 24: mftiko.md.v1.Kline.meta:type_name -> mftiko.md.v1.Meta
+	0,  // 25: mftiko.md.v1.Ticker.meta:type_name -> mftiko.md.v1.Meta
+	0,  // 26: mftiko.md.v1.Liquidation.meta:type_name -> mftiko.md.v1.Meta
+	16, // 27: mftiko.md.v1.Liquidation.side:type_name -> mftiko.common.v1.Side
+	0,  // 28: mftiko.md.v1.FundingRate.meta:type_name -> mftiko.md.v1.Meta
+	0,  // 29: mftiko.md.v1.OpenInterest.meta:type_name -> mftiko.md.v1.Meta
+	0,  // 30: mftiko.md.v1.Greeks.meta:type_name -> mftiko.md.v1.Meta
+	0,  // 31: mftiko.md.v1.MarkPrice.meta:type_name -> mftiko.md.v1.Meta
 	32, // [32:32] is the sub-list for method output_type
 	32, // [32:32] is the sub-list for method input_type
 	32, // [32:32] is the sub-list for extension type_name
@@ -1724,14 +1671,13 @@ func file_mftiko_md_v1_md_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mftiko_md_v1_md_proto_rawDesc), len(file_mftiko_md_v1_md_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      0,
 			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_mftiko_md_v1_md_proto_goTypes,
 		DependencyIndexes: file_mftiko_md_v1_md_proto_depIdxs,
-		EnumInfos:         file_mftiko_md_v1_md_proto_enumTypes,
 		MessageInfos:      file_mftiko_md_v1_md_proto_msgTypes,
 	}.Build()
 	File_mftiko_md_v1_md_proto = out.File

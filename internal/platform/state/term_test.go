@@ -303,9 +303,9 @@ func TestFenceTwoRegions(t *testing.T) {
 	ctx := testCtx(t)
 	tw, jp, topo := twoServers(t)
 	raws := map[string]*clientv3.Client{"tw": tw.Client(t), "jp": jp.Client(t)}
-	key := WriterKey(PlaneSTS, "sts-tw-1")
+	key := WriterKey(PlaneCtl, "ctl-tw-1")
 
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneSTS, "sts-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, "ctl-tw-1", TermOptions{})
 	if kvs := mustGet(t, ctx, raws["jp"], key).Kvs; len(kvs) != 0 {
 		t.Fatal("jp's writer key acquired before first use")
 	}
@@ -345,9 +345,9 @@ func TestFenceSupersededAtAcquisition(t *testing.T) {
 	ctx := testCtx(t)
 	_, jp, topo := twoServers(t)
 	rawJP := jp.Client(t)
-	key := WriterKey(PlaneSTS, "sts-tw-1")
+	key := WriterKey(PlaneCtl, "ctl-tw-1")
 
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneSTS, "sts-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, "ctl-tw-1", TermOptions{})
 	newer := formatEpoch(term.Epoch() + 1)
 	if _, err := rawJP.Put(ctx, key, newer); err != nil {
 		t.Fatal(err)
@@ -374,9 +374,9 @@ func TestFenceEqualEpochNotOurs(t *testing.T) {
 	ctx := testCtx(t)
 	_, jp, topo := twoServers(t)
 	rawJP := jp.Client(t)
-	key := WriterKey(PlaneSTS, "sts-tw-1")
+	key := WriterKey(PlaneCtl, "ctl-tw-1")
 
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneSTS, "sts-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, "ctl-tw-1", TermOptions{})
 	put, err := rawJP.Put(ctx, key, formatEpoch(term.Epoch()))
 	if err != nil {
 		t.Fatal(err)
@@ -396,11 +396,11 @@ func TestFenceInconsistentTopologies(t *testing.T) {
 	ctx := testCtx(t)
 	tw, jp, _ := twoServers(t)
 	servers := map[string]*etcdtest.Server{"tw": tw, "jp": jp}
-	inTW := topologyOf(servers, map[string]string{"sts-x-1": "tw"})
-	inJP := topologyOf(servers, map[string]string{"sts-x-1": "jp"})
+	inTW := topologyOf(servers, map[string]string{"ctl-x-1": "tw"})
+	inJP := topologyOf(servers, map[string]string{"ctl-x-1": "jp"})
 
-	a := campaign(t, ctx, newClusters(t, inTW, nil, nil), PlaneSTS, "sts-x-1", TermOptions{ID: "a"})
-	b := campaign(t, ctx, newClusters(t, inJP, nil, nil), PlaneSTS, "sts-x-1", TermOptions{ID: "b"})
+	a := campaign(t, ctx, newClusters(t, inTW, nil, nil), PlaneCtl, "ctl-x-1", TermOptions{ID: "a"})
+	b := campaign(t, ctx, newClusters(t, inJP, nil, nil), PlaneCtl, "ctl-x-1", TermOptions{ID: "b"})
 	if a.Epoch() != 1 || b.Epoch() != 1 {
 		t.Fatalf("epochs %d and %d, want 1 and 1", a.Epoch(), b.Epoch())
 	}
@@ -417,7 +417,7 @@ func TestFenceLostReply(t *testing.T) {
 	ctx := testCtx(t)
 	_, jp, topo := twoServers(t)
 	rawJP := jp.Client(t)
-	key := WriterKey(PlaneSTS, "sts-tw-1")
+	key := WriterKey(PlaneCtl, "ctl-tw-1")
 
 	errLost := errors.New("reply lost")
 	dropped := 0
@@ -428,7 +428,7 @@ func TestFenceLostReply(t *testing.T) {
 		}
 		return resp, err
 	}}
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneSTS, "sts-tw-1", TermOptions{hooks: hooks})
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, "ctl-tw-1", TermOptions{hooks: hooks})
 
 	if _, err := term.Fence(ctx, "jp"); !errors.Is(err, errLost) {
 		t.Fatalf("first Fence(jp): %v, want the lost reply", err)
@@ -447,7 +447,7 @@ func TestFenceLostReply(t *testing.T) {
 	if kvs := mustGet(t, ctx, rawJP, key).Kvs; kvs[0].Version != 1 {
 		t.Fatalf("writer key put %d times, want once", kvs[0].Version)
 	}
-	if err := term.Put(ctx, MDLeaseKey("md-jp-1", "sts-tw-1", "a1b2c3", "feed/x"), "lease"); err != nil {
+	if err := term.Put(ctx, MDDemandKey("md-jp-1", "a1b2c3", "feed/x"), "demand"); err != nil {
 		t.Fatalf("write behind the adopted fence: %v", err)
 	}
 }
@@ -456,13 +456,13 @@ func TestFenceOlderWriter(t *testing.T) {
 	ctx := testCtx(t)
 	_, jp, topo := twoServers(t)
 	rawJP := jp.Client(t)
-	key := WriterKey(PlaneSTS, "sts-tw-1")
+	key := WriterKey(PlaneCtl, "ctl-tw-1")
 
 	// A writer key left behind by an older epoch is taken over (W2 step 3: smaller or absent).
 	if _, err := rawJP.Put(ctx, key, formatEpoch(0)); err != nil {
 		t.Fatal(err)
 	}
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneSTS, "sts-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, "ctl-tw-1", TermOptions{})
 	r, err := term.Fence(ctx, "jp")
 	if err != nil {
 		t.Fatal(err)
@@ -488,7 +488,7 @@ func TestFenceConcurrentFirstUse(t *testing.T) {
 	ctx := testCtx(t)
 	_, jp, topo := twoServers(t)
 	rawJP := jp.Client(t)
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneSTS, "sts-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, "ctl-tw-1", TermOptions{})
 
 	const n = 16
 	revs := make(chan int64, n)
@@ -510,7 +510,7 @@ func TestFenceConcurrentFirstUse(t *testing.T) {
 	for err := range errs {
 		t.Fatal(err)
 	}
-	kvs := mustGet(t, ctx, rawJP, WriterKey(PlaneSTS, "sts-tw-1")).Kvs
+	kvs := mustGet(t, ctx, rawJP, WriterKey(PlaneCtl, "ctl-tw-1")).Kvs
 	if len(kvs) != 1 || kvs[0].Version != 1 {
 		t.Fatalf("jp writer %v: want exactly one put", kvs)
 	}
@@ -588,7 +588,7 @@ func TestFenceWaitHonoursCtx(t *testing.T) {
 		Regions:   map[string]Region{"tw": {Endpoints: tw.Endpoints()}, "jp": {Endpoints: []string{unusedEndpoint(t)}}},
 		Instances: twoRegions().Instances,
 	}
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneSTS, "sts-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, "ctl-tw-1", TermOptions{})
 
 	stuckCtx, cancelStuck := context.WithCancel(ctx)
 	defer cancelStuck()
@@ -603,7 +603,7 @@ func TestFenceWaitHonoursCtx(t *testing.T) {
 		}
 	}
 
-	key := MDLeaseKey("md-jp-1", "sts-tw-1", "abc123", "feed/trade.Binance_Spot_BTCUSDT")
+	key := MDDemandKey("md-jp-1", "abc123", "feed/trade.Binance_Spot_BTCUSDT")
 	calls := []struct {
 		name string
 		call func(context.Context) error

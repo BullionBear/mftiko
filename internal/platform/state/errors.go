@@ -37,8 +37,8 @@ var (
 	ErrCrossCluster = errors.New("state: write spans clusters")
 	// ErrBadOp: an option that a put or delete cannot take (clientv3 would panic on it).
 	ErrBadOp = errors.New("state: bad op")
-	// ErrNotWriter: the write touches a key this agent is not the writer of (PROTOCOL §3.2 W1), including the
-	// keys fencing relies on (election, epoch, writer) and incarnations outside Incarnations.
+	// ErrNotWriter: the write touches a key this agent or controller is not the writer of (PROTOCOL §3.2 W1),
+	// including the keys fencing relies on (election, epoch, writer) and incarnations outside Incarnations.
 	ErrNotWriter = errors.New("state: not this agent's key")
 
 	// ErrBadIncarnation: a stored incarnation is not a uint32 in canonical decimal form.
@@ -49,4 +49,6 @@ var (
 	ErrIncarnationExhausted = errors.New("state: incarnations exhausted")
 	// ErrNotSTS: only the STS agent deletes incarnation keys (PROTOCOL §3.2 W6.5).
 	ErrNotSTS = errors.New("state: only STS forgets incarnations")
+	// ErrNoWorkers: incarnations belong to the agent planes; the controller has no workers.
+	ErrNoWorkers = errors.New("state: plane has no workers")
 )

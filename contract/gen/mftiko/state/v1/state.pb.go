@@ -10,6 +10,7 @@ package statev1
 
 import (
 	v1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
+	v11 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -23,104 +24,6 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
-
-type DesiredState int32
-
-const (
-	DesiredState_DESIRED_STATE_UNSPECIFIED DesiredState = 0
-	DesiredState_DESIRED_STATE_RUNNING     DesiredState = 1
-	DesiredState_DESIRED_STATE_ENDED       DesiredState = 2
-)
-
-// Enum value maps for DesiredState.
-var (
-	DesiredState_name = map[int32]string{
-		0: "DESIRED_STATE_UNSPECIFIED",
-		1: "DESIRED_STATE_RUNNING",
-		2: "DESIRED_STATE_ENDED",
-	}
-	DesiredState_value = map[string]int32{
-		"DESIRED_STATE_UNSPECIFIED": 0,
-		"DESIRED_STATE_RUNNING":     1,
-		"DESIRED_STATE_ENDED":       2,
-	}
-)
-
-func (x DesiredState) Enum() *DesiredState {
-	p := new(DesiredState)
-	*p = x
-	return p
-}
-
-func (x DesiredState) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (DesiredState) Descriptor() protoreflect.EnumDescriptor {
-	return file_mftiko_state_v1_state_proto_enumTypes[0].Descriptor()
-}
-
-func (DesiredState) Type() protoreflect.EnumType {
-	return &file_mftiko_state_v1_state_proto_enumTypes[0]
-}
-
-func (x DesiredState) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use DesiredState.Descriptor instead.
-func (DesiredState) EnumDescriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{0}
-}
-
-type RestartMode int32
-
-const (
-	RestartMode_RESTART_MODE_UNSPECIFIED RestartMode = 0
-	RestartMode_RESTART_MODE_NEVER       RestartMode = 1
-	RestartMode_RESTART_MODE_ON_FAILURE  RestartMode = 2
-)
-
-// Enum value maps for RestartMode.
-var (
-	RestartMode_name = map[int32]string{
-		0: "RESTART_MODE_UNSPECIFIED",
-		1: "RESTART_MODE_NEVER",
-		2: "RESTART_MODE_ON_FAILURE",
-	}
-	RestartMode_value = map[string]int32{
-		"RESTART_MODE_UNSPECIFIED": 0,
-		"RESTART_MODE_NEVER":       1,
-		"RESTART_MODE_ON_FAILURE":  2,
-	}
-)
-
-func (x RestartMode) Enum() *RestartMode {
-	p := new(RestartMode)
-	*p = x
-	return p
-}
-
-func (x RestartMode) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (RestartMode) Descriptor() protoreflect.EnumDescriptor {
-	return file_mftiko_state_v1_state_proto_enumTypes[1].Descriptor()
-}
-
-func (RestartMode) Type() protoreflect.EnumType {
-	return &file_mftiko_state_v1_state_proto_enumTypes[1]
-}
-
-func (x RestartMode) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use RestartMode.Descriptor instead.
-func (RestartMode) EnumDescriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{1}
-}
 
 type Phase int32
 
@@ -173,11 +76,11 @@ func (x Phase) String() string {
 }
 
 func (Phase) Descriptor() protoreflect.EnumDescriptor {
-	return file_mftiko_state_v1_state_proto_enumTypes[2].Descriptor()
+	return file_mftiko_state_v1_state_proto_enumTypes[0].Descriptor()
 }
 
 func (Phase) Type() protoreflect.EnumType {
-	return &file_mftiko_state_v1_state_proto_enumTypes[2]
+	return &file_mftiko_state_v1_state_proto_enumTypes[0]
 }
 
 func (x Phase) Number() protoreflect.EnumNumber {
@@ -186,7 +89,7 @@ func (x Phase) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Phase.Descriptor instead.
 func (Phase) EnumDescriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{2}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{0}
 }
 
 type EntryState int32
@@ -228,11 +131,11 @@ func (x EntryState) String() string {
 }
 
 func (EntryState) Descriptor() protoreflect.EnumDescriptor {
-	return file_mftiko_state_v1_state_proto_enumTypes[3].Descriptor()
+	return file_mftiko_state_v1_state_proto_enumTypes[1].Descriptor()
 }
 
 func (EntryState) Type() protoreflect.EnumType {
-	return &file_mftiko_state_v1_state_proto_enumTypes[3]
+	return &file_mftiko_state_v1_state_proto_enumTypes[1]
 }
 
 func (x EntryState) Number() protoreflect.EnumNumber {
@@ -241,794 +144,7 @@ func (x EntryState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EntryState.Descriptor instead.
 func (EntryState) EnumDescriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{3}
-}
-
-type SessionSpec struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Labels        map[string]string      `protobuf:"bytes,2,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	DesiredState  DesiredState           `protobuf:"varint,3,opt,name=desired_state,json=desiredState,proto3,enum=mftiko.state.v1.DesiredState" json:"desired_state,omitempty"`
-	Strategy      *StrategyRef           `protobuf:"bytes,4,opt,name=strategy,proto3" json:"strategy,omitempty"`
-	Params        []byte                 `protobuf:"bytes,5,opt,name=params,proto3" json:"params,omitempty"` // 策略自己的參數，平台不解讀
-	Feeds         []*FeedDecl            `protobuf:"bytes,6,rep,name=feeds,proto3" json:"feeds,omitempty"`
-	Selectors     []*SelectorDecl        `protobuf:"bytes,7,rep,name=selectors,proto3" json:"selectors,omitempty"`
-	Accounts      []*AccountDecl         `protobuf:"bytes,8,rep,name=accounts,proto3" json:"accounts,omitempty"`
-	Restart       *RestartPolicy         `protobuf:"bytes,9,opt,name=restart,proto3" json:"restart,omitempty"` // 語意見 DECISIONS D24
-	DepsTimeoutS  uint32                 `protobuf:"varint,10,opt,name=deps_timeout_s,json=depsTimeoutS,proto3" json:"deps_timeout_s,omitempty"`
-	StartTimeoutS uint32                 `protobuf:"varint,11,opt,name=start_timeout_s,json=startTimeoutS,proto3" json:"start_timeout_s,omitempty"`
-	Limits        *Limits                `protobuf:"bytes,12,opt,name=limits,proto3" json:"limits,omitempty"`
-	Inputs        []*InputDecl           `protobuf:"bytes,13,rep,name=inputs,proto3" json:"inputs,omitempty"` // 資料 artifact（DECISIONS D23）
-	// MD 事件在 buffer 裡的最長壽命，以 envelope 的 md_ts_ns 計（D24）。0 = STS 的預設值。
-	// 跨 region 的 session 要比 WAN 延遲大。
-	RecvWindowMs  uint32 `protobuf:"varint,14,opt,name=recv_window_ms,json=recvWindowMs,proto3" json:"recv_window_ms,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SessionSpec) Reset() {
-	*x = SessionSpec{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SessionSpec) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SessionSpec) ProtoMessage() {}
-
-func (x *SessionSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SessionSpec.ProtoReflect.Descriptor instead.
-func (*SessionSpec) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *SessionSpec) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *SessionSpec) GetLabels() map[string]string {
-	if x != nil {
-		return x.Labels
-	}
-	return nil
-}
-
-func (x *SessionSpec) GetDesiredState() DesiredState {
-	if x != nil {
-		return x.DesiredState
-	}
-	return DesiredState_DESIRED_STATE_UNSPECIFIED
-}
-
-func (x *SessionSpec) GetStrategy() *StrategyRef {
-	if x != nil {
-		return x.Strategy
-	}
-	return nil
-}
-
-func (x *SessionSpec) GetParams() []byte {
-	if x != nil {
-		return x.Params
-	}
-	return nil
-}
-
-func (x *SessionSpec) GetFeeds() []*FeedDecl {
-	if x != nil {
-		return x.Feeds
-	}
-	return nil
-}
-
-func (x *SessionSpec) GetSelectors() []*SelectorDecl {
-	if x != nil {
-		return x.Selectors
-	}
-	return nil
-}
-
-func (x *SessionSpec) GetAccounts() []*AccountDecl {
-	if x != nil {
-		return x.Accounts
-	}
-	return nil
-}
-
-func (x *SessionSpec) GetRestart() *RestartPolicy {
-	if x != nil {
-		return x.Restart
-	}
-	return nil
-}
-
-func (x *SessionSpec) GetDepsTimeoutS() uint32 {
-	if x != nil {
-		return x.DepsTimeoutS
-	}
-	return 0
-}
-
-func (x *SessionSpec) GetStartTimeoutS() uint32 {
-	if x != nil {
-		return x.StartTimeoutS
-	}
-	return 0
-}
-
-func (x *SessionSpec) GetLimits() *Limits {
-	if x != nil {
-		return x.Limits
-	}
-	return nil
-}
-
-func (x *SessionSpec) GetInputs() []*InputDecl {
-	if x != nil {
-		return x.Inputs
-	}
-	return nil
-}
-
-func (x *SessionSpec) GetRecvWindowMs() uint32 {
-	if x != nil {
-		return x.RecvWindowMs
-	}
-	return 0
-}
-
-// 唯讀注入的資料 artifact，解到 $MFTIKO_INPUT_DIR/<name>/（§8.4）。
-type InputDecl struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`             // 目錄名，^[a-z0-9][a-z0-9_-]{0,63}$，同一個 spec 內唯一
-	Digest        string                 `protobuf:"bytes,2,opt,name=digest,proto3" json:"digest,omitempty"`         // 資料 artifact 的 OCI manifest digest（"sha256:…"）
-	Repository    string                 `protobuf:"bytes,3,opt,name=repository,proto3" json:"repository,omitempty"` // 拉取用的 OCI repository
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *InputDecl) Reset() {
-	*x = InputDecl{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *InputDecl) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*InputDecl) ProtoMessage() {}
-
-func (x *InputDecl) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use InputDecl.ProtoReflect.Descriptor instead.
-func (*InputDecl) Descriptor() ([]byte, []int) {
 	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *InputDecl) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *InputDecl) GetDigest() string {
-	if x != nil {
-		return x.Digest
-	}
-	return ""
-}
-
-func (x *InputDecl) GetRepository() string {
-	if x != nil {
-		return x.Repository
-	}
-	return ""
-}
-
-type StrategyRef struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Code          string                 `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`             // 策略 artifact 的 OCI image digest（"sha256:…"），session 生命週期內不變
-	Repository    string                 `protobuf:"bytes,3,opt,name=repository,proto3" json:"repository,omitempty"` // 拉取用的 OCI repository
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *StrategyRef) Reset() {
-	*x = StrategyRef{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *StrategyRef) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*StrategyRef) ProtoMessage() {}
-
-func (x *StrategyRef) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use StrategyRef.ProtoReflect.Descriptor instead.
-func (*StrategyRef) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *StrategyRef) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *StrategyRef) GetCode() string {
-	if x != nil {
-		return x.Code
-	}
-	return ""
-}
-
-func (x *StrategyRef) GetRepository() string {
-	if x != nil {
-		return x.Repository
-	}
-	return ""
-}
-
-type FeedDecl struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Feed          string                 `protobuf:"bytes,1,opt,name=feed,proto3" json:"feed,omitempty"`                               // 正規 feed key
-	MdInstance    string                 `protobuf:"bytes,2,opt,name=md_instance,json=mdInstance,proto3" json:"md_instance,omitempty"` // API 解析後一律填
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *FeedDecl) Reset() {
-	*x = FeedDecl{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *FeedDecl) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*FeedDecl) ProtoMessage() {}
-
-func (x *FeedDecl) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use FeedDecl.ProtoReflect.Descriptor instead.
-func (*FeedDecl) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *FeedDecl) GetFeed() string {
-	if x != nil {
-		return x.Feed
-	}
-	return ""
-}
-
-func (x *FeedDecl) GetMdInstance() string {
-	if x != nil {
-		return x.MdInstance
-	}
-	return ""
-}
-
-type SelectorDecl struct {
-	state      protoimpl.MessageState `protogen:"open.v1"`
-	Name       string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	MdInstance string                 `protobuf:"bytes,2,opt,name=md_instance,json=mdInstance,proto3" json:"md_instance,omitempty"`
-	Venue      string                 `protobuf:"bytes,3,opt,name=venue,proto3" json:"venue,omitempty"`
-	Underlying string                 `protobuf:"bytes,4,opt,name=underlying,proto3" json:"underlying,omitempty"`
-	Topics     []string               `protobuf:"bytes,5,rep,name=topics,proto3" json:"topics,omitempty"`
-	// Types that are valid to be assigned to Kind:
-	//
-	//	*SelectorDecl_OptionChain
-	//	*SelectorDecl_RollingFuture
-	Kind          isSelectorDecl_Kind `protobuf_oneof:"kind"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SelectorDecl) Reset() {
-	*x = SelectorDecl{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SelectorDecl) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SelectorDecl) ProtoMessage() {}
-
-func (x *SelectorDecl) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SelectorDecl.ProtoReflect.Descriptor instead.
-func (*SelectorDecl) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *SelectorDecl) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *SelectorDecl) GetMdInstance() string {
-	if x != nil {
-		return x.MdInstance
-	}
-	return ""
-}
-
-func (x *SelectorDecl) GetVenue() string {
-	if x != nil {
-		return x.Venue
-	}
-	return ""
-}
-
-func (x *SelectorDecl) GetUnderlying() string {
-	if x != nil {
-		return x.Underlying
-	}
-	return ""
-}
-
-func (x *SelectorDecl) GetTopics() []string {
-	if x != nil {
-		return x.Topics
-	}
-	return nil
-}
-
-func (x *SelectorDecl) GetKind() isSelectorDecl_Kind {
-	if x != nil {
-		return x.Kind
-	}
-	return nil
-}
-
-func (x *SelectorDecl) GetOptionChain() *OptionChain {
-	if x != nil {
-		if x, ok := x.Kind.(*SelectorDecl_OptionChain); ok {
-			return x.OptionChain
-		}
-	}
-	return nil
-}
-
-func (x *SelectorDecl) GetRollingFuture() *RollingFuture {
-	if x != nil {
-		if x, ok := x.Kind.(*SelectorDecl_RollingFuture); ok {
-			return x.RollingFuture
-		}
-	}
-	return nil
-}
-
-type isSelectorDecl_Kind interface {
-	isSelectorDecl_Kind()
-}
-
-type SelectorDecl_OptionChain struct {
-	OptionChain *OptionChain `protobuf:"bytes,10,opt,name=option_chain,json=optionChain,proto3,oneof"`
-}
-
-type SelectorDecl_RollingFuture struct {
-	RollingFuture *RollingFuture `protobuf:"bytes,11,opt,name=rolling_future,json=rollingFuture,proto3,oneof"`
-}
-
-func (*SelectorDecl_OptionChain) isSelectorDecl_Kind() {}
-
-func (*SelectorDecl_RollingFuture) isSelectorDecl_Kind() {}
-
-type OptionChain struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	RefFeed           string                 `protobuf:"bytes,1,opt,name=ref_feed,json=refFeed,proto3" json:"ref_feed,omitempty"`
-	NearestExpiries   uint32                 `protobuf:"varint,2,opt,name=nearest_expiries,json=nearestExpiries,proto3" json:"nearest_expiries,omitempty"`
-	MinTteS           uint32                 `protobuf:"varint,3,opt,name=min_tte_s,json=minTteS,proto3" json:"min_tte_s,omitempty"`
-	AtmStrikes        uint32                 `protobuf:"varint,4,opt,name=atm_strikes,json=atmStrikes,proto3" json:"atm_strikes,omitempty"`
-	Sides             []string               `protobuf:"bytes,5,rep,name=sides,proto3" json:"sides,omitempty"` // "C"、"P"
-	RecenterStrikes   uint32                 `protobuf:"varint,6,opt,name=recenter_strikes,json=recenterStrikes,proto3" json:"recenter_strikes,omitempty"`
-	RecenterMinDwellS uint32                 `protobuf:"varint,7,opt,name=recenter_min_dwell_s,json=recenterMinDwellS,proto3" json:"recenter_min_dwell_s,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
-}
-
-func (x *OptionChain) Reset() {
-	*x = OptionChain{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *OptionChain) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*OptionChain) ProtoMessage() {}
-
-func (x *OptionChain) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use OptionChain.ProtoReflect.Descriptor instead.
-func (*OptionChain) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *OptionChain) GetRefFeed() string {
-	if x != nil {
-		return x.RefFeed
-	}
-	return ""
-}
-
-func (x *OptionChain) GetNearestExpiries() uint32 {
-	if x != nil {
-		return x.NearestExpiries
-	}
-	return 0
-}
-
-func (x *OptionChain) GetMinTteS() uint32 {
-	if x != nil {
-		return x.MinTteS
-	}
-	return 0
-}
-
-func (x *OptionChain) GetAtmStrikes() uint32 {
-	if x != nil {
-		return x.AtmStrikes
-	}
-	return 0
-}
-
-func (x *OptionChain) GetSides() []string {
-	if x != nil {
-		return x.Sides
-	}
-	return nil
-}
-
-func (x *OptionChain) GetRecenterStrikes() uint32 {
-	if x != nil {
-		return x.RecenterStrikes
-	}
-	return 0
-}
-
-func (x *OptionChain) GetRecenterMinDwellS() uint32 {
-	if x != nil {
-		return x.RecenterMinDwellS
-	}
-	return 0
-}
-
-type RollingFuture struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Tenor         string                 `protobuf:"bytes,1,opt,name=tenor,proto3" json:"tenor,omitempty"` // weekly | monthly | quarterly
-	RollBeforeS   uint32                 `protobuf:"varint,2,opt,name=roll_before_s,json=rollBeforeS,proto3" json:"roll_before_s,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RollingFuture) Reset() {
-	*x = RollingFuture{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RollingFuture) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RollingFuture) ProtoMessage() {}
-
-func (x *RollingFuture) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RollingFuture.ProtoReflect.Descriptor instead.
-func (*RollingFuture) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *RollingFuture) GetTenor() string {
-	if x != nil {
-		return x.Tenor
-	}
-	return ""
-}
-
-func (x *RollingFuture) GetRollBeforeS() uint32 {
-	if x != nil {
-		return x.RollBeforeS
-	}
-	return 0
-}
-
-type AccountDecl struct {
-	state      protoimpl.MessageState `protogen:"open.v1"`
-	Name       string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	ApiId      int64                  `protobuf:"varint,2,opt,name=api_id,json=apiId,proto3" json:"api_id,omitempty"`
-	TdInstance string                 `protobuf:"bytes,3,opt,name=td_instance,json=tdInstance,proto3" json:"td_instance,omitempty"`
-	// 這個 session 在這個帳號上可以使用的 algo_id，每個 1–1023（D25）。
-	// 同一個帳號上和其他非 terminal 的 session 重疊時，TD 的 ack 是 REJECTED（algo_conflict）。
-	AlgoIds       []uint32 `protobuf:"varint,4,rep,packed,name=algo_ids,json=algoIds,proto3" json:"algo_ids,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AccountDecl) Reset() {
-	*x = AccountDecl{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[7]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AccountDecl) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AccountDecl) ProtoMessage() {}
-
-func (x *AccountDecl) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[7]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AccountDecl.ProtoReflect.Descriptor instead.
-func (*AccountDecl) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{7}
-}
-
-func (x *AccountDecl) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *AccountDecl) GetApiId() int64 {
-	if x != nil {
-		return x.ApiId
-	}
-	return 0
-}
-
-func (x *AccountDecl) GetTdInstance() string {
-	if x != nil {
-		return x.TdInstance
-	}
-	return ""
-}
-
-func (x *AccountDecl) GetAlgoIds() []uint32 {
-	if x != nil {
-		return x.AlgoIds
-	}
-	return nil
-}
-
-type RestartPolicy struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Mode          RestartMode            `protobuf:"varint,1,opt,name=mode,proto3,enum=mftiko.state.v1.RestartMode" json:"mode,omitempty"`
-	MaxRestarts   uint32                 `protobuf:"varint,2,opt,name=max_restarts,json=maxRestarts,proto3" json:"max_restarts,omitempty"`
-	WindowS       uint32                 `protobuf:"varint,3,opt,name=window_s,json=windowS,proto3" json:"window_s,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RestartPolicy) Reset() {
-	*x = RestartPolicy{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[8]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RestartPolicy) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RestartPolicy) ProtoMessage() {}
-
-func (x *RestartPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[8]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RestartPolicy.ProtoReflect.Descriptor instead.
-func (*RestartPolicy) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{8}
-}
-
-func (x *RestartPolicy) GetMode() RestartMode {
-	if x != nil {
-		return x.Mode
-	}
-	return RestartMode_RESTART_MODE_UNSPECIFIED
-}
-
-func (x *RestartPolicy) GetMaxRestarts() uint32 {
-	if x != nil {
-		return x.MaxRestarts
-	}
-	return 0
-}
-
-func (x *RestartPolicy) GetWindowS() uint32 {
-	if x != nil {
-		return x.WindowS
-	}
-	return 0
-}
-
-type Limits struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	MemoryMb      uint32                 `protobuf:"varint,1,opt,name=memory_mb,json=memoryMb,proto3" json:"memory_mb,omitempty"`
-	Gomaxprocs    uint32                 `protobuf:"varint,2,opt,name=gomaxprocs,proto3" json:"gomaxprocs,omitempty"`
-	VolumeMb      uint32                 `protobuf:"varint,3,opt,name=volume_mb,json=volumeMb,proto3" json:"volume_mb,omitempty"`               // session volume 的上限（D23）；0 = STS 的預設值。超過就以 FAILED 結束（volume_over_limit）
-	HookTimeoutS  uint32                 `protobuf:"varint,4,opt,name=hook_timeout_s,json=hookTimeoutS,proto3" json:"hook_timeout_s,omitempty"` // 單一 hook 的硬上限（D24）；0 = STS 的預設值。超過判定 HUNG
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Limits) Reset() {
-	*x = Limits{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[9]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Limits) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Limits) ProtoMessage() {}
-
-func (x *Limits) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[9]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Limits.ProtoReflect.Descriptor instead.
-func (*Limits) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{9}
-}
-
-func (x *Limits) GetMemoryMb() uint32 {
-	if x != nil {
-		return x.MemoryMb
-	}
-	return 0
-}
-
-func (x *Limits) GetGomaxprocs() uint32 {
-	if x != nil {
-		return x.Gomaxprocs
-	}
-	return 0
-}
-
-func (x *Limits) GetVolumeMb() uint32 {
-	if x != nil {
-		return x.VolumeMb
-	}
-	return 0
-}
-
-func (x *Limits) GetHookTimeoutS() uint32 {
-	if x != nil {
-		return x.HookTimeoutS
-	}
-	return 0
 }
 
 type Account struct {
@@ -1046,7 +162,7 @@ type Account struct {
 
 func (x *Account) Reset() {
 	*x = Account{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[10]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1058,7 +174,7 @@ func (x *Account) String() string {
 func (*Account) ProtoMessage() {}
 
 func (x *Account) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[10]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1071,7 +187,7 @@ func (x *Account) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Account.ProtoReflect.Descriptor instead.
 func (*Account) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{10}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Account) GetName() string {
@@ -1122,7 +238,7 @@ type AccountSettings struct {
 
 func (x *AccountSettings) Reset() {
 	*x = AccountSettings{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[11]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1134,7 +250,7 @@ func (x *AccountSettings) String() string {
 func (*AccountSettings) ProtoMessage() {}
 
 func (x *AccountSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[11]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1147,7 +263,7 @@ func (x *AccountSettings) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccountSettings.ProtoReflect.Descriptor instead.
 func (*AccountSettings) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{11}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *AccountSettings) GetCancelOnDisconnectS() uint32 {
@@ -1188,7 +304,7 @@ type SessionStatus struct {
 
 func (x *SessionStatus) Reset() {
 	*x = SessionStatus{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[12]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1200,7 +316,7 @@ func (x *SessionStatus) String() string {
 func (*SessionStatus) ProtoMessage() {}
 
 func (x *SessionStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[12]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1213,7 +329,7 @@ func (x *SessionStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionStatus.ProtoReflect.Descriptor instead.
 func (*SessionStatus) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{12}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *SessionStatus) GetObservedGeneration() int64 {
@@ -1293,7 +409,7 @@ type StateSnapshot struct {
 
 func (x *StateSnapshot) Reset() {
 	*x = StateSnapshot{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[13]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1305,7 +421,7 @@ func (x *StateSnapshot) String() string {
 func (*StateSnapshot) ProtoMessage() {}
 
 func (x *StateSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[13]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1318,7 +434,7 @@ func (x *StateSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StateSnapshot.ProtoReflect.Descriptor instead.
 func (*StateSnapshot) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{13}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *StateSnapshot) GetDigest() string {
@@ -1363,36 +479,36 @@ func (x *StateSnapshot) GetSizeBytes() uint64 {
 	return 0
 }
 
-// 綁在 STS agent 的 etcd lease 上。
-type LeaseEntry struct {
+// MD、TD 的需求項目（§3.3）。
+type DemandEntry struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Target:
 	//
-	//	*LeaseEntry_Feed
-	//	*LeaseEntry_Selector
-	//	*LeaseEntry_ApiId
-	Target        isLeaseEntry_Target `protobuf_oneof:"target"`
-	SpecRevision  int64               `protobuf:"varint,10,opt,name=spec_revision,json=specRevision,proto3" json:"spec_revision,omitempty"` // 推導自哪一版 session spec；只供除錯，可能來自另一個 cluster，不做比較
-	AlgoIds       []uint32            `protobuf:"varint,11,rep,packed,name=algo_ids,json=algoIds,proto3" json:"algo_ids,omitempty"`         // 只有帳號項目：同 AccountDecl.algo_ids，TD agent 用來檢查衝突（D25）
+	//	*DemandEntry_Feed
+	//	*DemandEntry_Selector
+	//	*DemandEntry_ApiId
+	Target        isDemandEntry_Target `protobuf_oneof:"target"`
+	SpecRevision  int64                `protobuf:"varint,10,opt,name=spec_revision,json=specRevision,proto3" json:"spec_revision,omitempty"` // 推導自哪一版 session spec；只供除錯，可能來自另一個 cluster，不做比較
+	AlgoIds       []uint32             `protobuf:"varint,11,rep,packed,name=algo_ids,json=algoIds,proto3" json:"algo_ids,omitempty"`         // 只有帳號項目：同 AccountDecl.algo_ids，TD agent 用來檢查衝突（D25）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *LeaseEntry) Reset() {
-	*x = LeaseEntry{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[14]
+func (x *DemandEntry) Reset() {
+	*x = DemandEntry{}
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *LeaseEntry) String() string {
+func (x *DemandEntry) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*LeaseEntry) ProtoMessage() {}
+func (*DemandEntry) ProtoMessage() {}
 
-func (x *LeaseEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[14]
+func (x *DemandEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1403,80 +519,280 @@ func (x *LeaseEntry) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use LeaseEntry.ProtoReflect.Descriptor instead.
-func (*LeaseEntry) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{14}
+// Deprecated: Use DemandEntry.ProtoReflect.Descriptor instead.
+func (*DemandEntry) Descriptor() ([]byte, []int) {
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *LeaseEntry) GetTarget() isLeaseEntry_Target {
+func (x *DemandEntry) GetTarget() isDemandEntry_Target {
 	if x != nil {
 		return x.Target
 	}
 	return nil
 }
 
-func (x *LeaseEntry) GetFeed() string {
+func (x *DemandEntry) GetFeed() string {
 	if x != nil {
-		if x, ok := x.Target.(*LeaseEntry_Feed); ok {
+		if x, ok := x.Target.(*DemandEntry_Feed); ok {
 			return x.Feed
 		}
 	}
 	return ""
 }
 
-func (x *LeaseEntry) GetSelector() *SelectorDecl {
+func (x *DemandEntry) GetSelector() *v11.SelectorDecl {
 	if x != nil {
-		if x, ok := x.Target.(*LeaseEntry_Selector); ok {
+		if x, ok := x.Target.(*DemandEntry_Selector); ok {
 			return x.Selector
 		}
 	}
 	return nil
 }
 
-func (x *LeaseEntry) GetApiId() int64 {
+func (x *DemandEntry) GetApiId() int64 {
 	if x != nil {
-		if x, ok := x.Target.(*LeaseEntry_ApiId); ok {
+		if x, ok := x.Target.(*DemandEntry_ApiId); ok {
 			return x.ApiId
 		}
 	}
 	return 0
 }
 
-func (x *LeaseEntry) GetSpecRevision() int64 {
+func (x *DemandEntry) GetSpecRevision() int64 {
 	if x != nil {
 		return x.SpecRevision
 	}
 	return 0
 }
 
-func (x *LeaseEntry) GetAlgoIds() []uint32 {
+func (x *DemandEntry) GetAlgoIds() []uint32 {
 	if x != nil {
 		return x.AlgoIds
 	}
 	return nil
 }
 
-type isLeaseEntry_Target interface {
-	isLeaseEntry_Target()
+type isDemandEntry_Target interface {
+	isDemandEntry_Target()
 }
 
-type LeaseEntry_Feed struct {
+type DemandEntry_Feed struct {
 	Feed string `protobuf:"bytes,1,opt,name=feed,proto3,oneof"`
 }
 
-type LeaseEntry_Selector struct {
-	Selector *SelectorDecl `protobuf:"bytes,2,opt,name=selector,proto3,oneof"`
+type DemandEntry_Selector struct {
+	Selector *v11.SelectorDecl `protobuf:"bytes,2,opt,name=selector,proto3,oneof"`
 }
 
-type LeaseEntry_ApiId struct {
+type DemandEntry_ApiId struct {
 	ApiId int64 `protobuf:"varint,3,opt,name=api_id,json=apiId,proto3,oneof"`
 }
 
-func (*LeaseEntry_Feed) isLeaseEntry_Target() {}
+func (*DemandEntry_Feed) isDemandEntry_Target() {}
 
-func (*LeaseEntry_Selector) isLeaseEntry_Target() {}
+func (*DemandEntry_Selector) isDemandEntry_Target() {}
 
-func (*LeaseEntry_ApiId) isLeaseEntry_Target() {}
+func (*DemandEntry_ApiId) isDemandEntry_Target() {}
+
+// STS 的指派（§3.3）。STS agent 只跑有指派的 session。
+type SessionDemand struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Desired       v11.DesiredState       `protobuf:"varint,1,opt,name=desired,proto3,enum=mftiko.session.v1.DesiredState" json:"desired,omitempty"` // RUNNING：spawn 並送 Init；ENDED：停掉 worker
+	Start         bool                   `protobuf:"varint,2,opt,name=start,proto3" json:"start,omitempty"`                                         // 所有 MD、TD 需求都 READY，STS agent 可以送 Start（D15）
+	EndReason     string                 `protobuf:"bytes,3,opt,name=end_reason,json=endReason,proto3" json:"end_reason,omitempty"`                 // desired 是 ENDED 時：ended_by_spec、deps_failed、deps_timeout
+	Bindings      []*Binding             `protobuf:"bytes,4,rep,name=bindings,proto3" json:"bindings,omitempty"`
+	SpecRevision  int64                  `protobuf:"varint,5,opt,name=spec_revision,json=specRevision,proto3" json:"spec_revision,omitempty"` // 推導自哪一版 session spec；只供除錯
+	UpdatedAtNs   int64                  `protobuf:"varint,6,opt,name=updated_at_ns,json=updatedAtNs,proto3" json:"updated_at_ns,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SessionDemand) Reset() {
+	*x = SessionDemand{}
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SessionDemand) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SessionDemand) ProtoMessage() {}
+
+func (x *SessionDemand) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SessionDemand.ProtoReflect.Descriptor instead.
+func (*SessionDemand) Descriptor() ([]byte, []int) {
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *SessionDemand) GetDesired() v11.DesiredState {
+	if x != nil {
+		return x.Desired
+	}
+	return v11.DesiredState(0)
+}
+
+func (x *SessionDemand) GetStart() bool {
+	if x != nil {
+		return x.Start
+	}
+	return false
+}
+
+func (x *SessionDemand) GetEndReason() string {
+	if x != nil {
+		return x.EndReason
+	}
+	return ""
+}
+
+func (x *SessionDemand) GetBindings() []*Binding {
+	if x != nil {
+		return x.Bindings
+	}
+	return nil
+}
+
+func (x *SessionDemand) GetSpecRevision() int64 {
+	if x != nil {
+		return x.SpecRevision
+	}
+	return 0
+}
+
+func (x *SessionDemand) GetUpdatedAtNs() int64 {
+	if x != nil {
+		return x.UpdatedAtNs
+	}
+	return 0
+}
+
+// 一個需求項目目前的 ack，由 controller 從 provider 的 EntryStatus 抄來。
+type Binding struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Target:
+	//
+	//	*Binding_Feed
+	//	*Binding_Selector
+	//	*Binding_ApiId
+	Target        isBinding_Target `protobuf_oneof:"target"`
+	Instance      string           `protobuf:"bytes,4,opt,name=instance,proto3" json:"instance,omitempty"` // 提供這個資源的 MD 或 TD instance
+	Status        *EntryStatus     `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`     // provider 沒有 ack（沉默）時不填
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Binding) Reset() {
+	*x = Binding{}
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Binding) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Binding) ProtoMessage() {}
+
+func (x *Binding) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Binding.ProtoReflect.Descriptor instead.
+func (*Binding) Descriptor() ([]byte, []int) {
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *Binding) GetTarget() isBinding_Target {
+	if x != nil {
+		return x.Target
+	}
+	return nil
+}
+
+func (x *Binding) GetFeed() string {
+	if x != nil {
+		if x, ok := x.Target.(*Binding_Feed); ok {
+			return x.Feed
+		}
+	}
+	return ""
+}
+
+func (x *Binding) GetSelector() string {
+	if x != nil {
+		if x, ok := x.Target.(*Binding_Selector); ok {
+			return x.Selector
+		}
+	}
+	return ""
+}
+
+func (x *Binding) GetApiId() int64 {
+	if x != nil {
+		if x, ok := x.Target.(*Binding_ApiId); ok {
+			return x.ApiId
+		}
+	}
+	return 0
+}
+
+func (x *Binding) GetInstance() string {
+	if x != nil {
+		return x.Instance
+	}
+	return ""
+}
+
+func (x *Binding) GetStatus() *EntryStatus {
+	if x != nil {
+		return x.Status
+	}
+	return nil
+}
+
+type isBinding_Target interface {
+	isBinding_Target()
+}
+
+type Binding_Feed struct {
+	Feed string `protobuf:"bytes,1,opt,name=feed,proto3,oneof"`
+}
+
+type Binding_Selector struct {
+	Selector string `protobuf:"bytes,2,opt,name=selector,proto3,oneof"` // SelectorDecl.name
+}
+
+type Binding_ApiId struct {
+	ApiId int64 `protobuf:"varint,3,opt,name=api_id,json=apiId,proto3,oneof"`
+}
+
+func (*Binding_Feed) isBinding_Target() {}
+
+func (*Binding_Selector) isBinding_Target() {}
+
+func (*Binding_ApiId) isBinding_Target() {}
 
 // 綁在 provider agent 的 etcd lease 上。
 type EntryStatus struct {
@@ -1495,7 +811,7 @@ type EntryStatus struct {
 
 func (x *EntryStatus) Reset() {
 	*x = EntryStatus{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[15]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1507,7 +823,7 @@ func (x *EntryStatus) String() string {
 func (*EntryStatus) ProtoMessage() {}
 
 func (x *EntryStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[15]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1520,7 +836,7 @@ func (x *EntryStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EntryStatus.ProtoReflect.Descriptor instead.
 func (*EntryStatus) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{15}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *EntryStatus) GetState() EntryState {
@@ -1577,7 +893,7 @@ type Universe struct {
 
 func (x *Universe) Reset() {
 	*x = Universe{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[16]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1589,7 +905,7 @@ func (x *Universe) String() string {
 func (*Universe) ProtoMessage() {}
 
 func (x *Universe) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[16]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1602,7 +918,7 @@ func (x *Universe) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Universe.ProtoReflect.Descriptor instead.
 func (*Universe) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{16}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Universe) GetEpoch() uint64 {
@@ -1646,7 +962,7 @@ type AgentRecord struct {
 
 func (x *AgentRecord) Reset() {
 	*x = AgentRecord{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[17]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1658,7 +974,7 @@ func (x *AgentRecord) String() string {
 func (*AgentRecord) ProtoMessage() {}
 
 func (x *AgentRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[17]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1671,7 +987,7 @@ func (x *AgentRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentRecord.ProtoReflect.Descriptor instead.
 func (*AgentRecord) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{17}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *AgentRecord) GetPlane() string {
@@ -1726,7 +1042,7 @@ type WorkerStatus struct {
 
 func (x *WorkerStatus) Reset() {
 	*x = WorkerStatus{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[18]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1738,7 +1054,7 @@ func (x *WorkerStatus) String() string {
 func (*WorkerStatus) ProtoMessage() {}
 
 func (x *WorkerStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[18]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1751,7 +1067,7 @@ func (x *WorkerStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerStatus.ProtoReflect.Descriptor instead.
 func (*WorkerStatus) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{18}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *WorkerStatus) GetWorker() *v1.WorkerRef {
@@ -1819,7 +1135,7 @@ func (x *WorkerStatus) GetLastExit() *v1.ExitInfo {
 
 type SelectorState struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Spec          *SelectorDecl          `protobuf:"bytes,1,opt,name=spec,proto3" json:"spec,omitempty"`
+	Spec          *v11.SelectorDecl      `protobuf:"bytes,1,opt,name=spec,proto3" json:"spec,omitempty"`
 	Epoch         uint64                 `protobuf:"varint,2,opt,name=epoch,proto3" json:"epoch,omitempty"`
 	Members       []string               `protobuf:"bytes,3,rep,name=members,proto3" json:"members,omitempty"`
 	Current       string                 `protobuf:"bytes,4,opt,name=current,proto3" json:"current,omitempty"`
@@ -1831,7 +1147,7 @@ type SelectorState struct {
 
 func (x *SelectorState) Reset() {
 	*x = SelectorState{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[19]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1843,7 +1159,7 @@ func (x *SelectorState) String() string {
 func (*SelectorState) ProtoMessage() {}
 
 func (x *SelectorState) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[19]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1856,10 +1172,10 @@ func (x *SelectorState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SelectorState.ProtoReflect.Descriptor instead.
 func (*SelectorState) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{19}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{11}
 }
 
-func (x *SelectorState) GetSpec() *SelectorDecl {
+func (x *SelectorState) GetSpec() *v11.SelectorDecl {
 	if x != nil {
 		return x.Spec
 	}
@@ -1910,7 +1226,7 @@ type Placement struct {
 
 func (x *Placement) Reset() {
 	*x = Placement{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[20]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1922,7 +1238,7 @@ func (x *Placement) String() string {
 func (*Placement) ProtoMessage() {}
 
 func (x *Placement) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[20]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1935,7 +1251,7 @@ func (x *Placement) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Placement.ProtoReflect.Descriptor instead.
 func (*Placement) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{20}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Placement) GetConn() string {
@@ -1949,84 +1265,7 @@ var File_mftiko_state_v1_state_proto protoreflect.FileDescriptor
 
 const file_mftiko_state_v1_state_proto_rawDesc = "" +
 	"\n" +
-	"\x1bmftiko/state/v1/state.proto\x12\x0fmftiko.state.v1\x1a\x1dmftiko/common/v1/common.proto\"\xfe\x05\n" +
-	"\vSessionSpec\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12@\n" +
-	"\x06labels\x18\x02 \x03(\v2(.mftiko.state.v1.SessionSpec.LabelsEntryR\x06labels\x12B\n" +
-	"\rdesired_state\x18\x03 \x01(\x0e2\x1d.mftiko.state.v1.DesiredStateR\fdesiredState\x128\n" +
-	"\bstrategy\x18\x04 \x01(\v2\x1c.mftiko.state.v1.StrategyRefR\bstrategy\x12\x16\n" +
-	"\x06params\x18\x05 \x01(\fR\x06params\x12/\n" +
-	"\x05feeds\x18\x06 \x03(\v2\x19.mftiko.state.v1.FeedDeclR\x05feeds\x12;\n" +
-	"\tselectors\x18\a \x03(\v2\x1d.mftiko.state.v1.SelectorDeclR\tselectors\x128\n" +
-	"\baccounts\x18\b \x03(\v2\x1c.mftiko.state.v1.AccountDeclR\baccounts\x128\n" +
-	"\arestart\x18\t \x01(\v2\x1e.mftiko.state.v1.RestartPolicyR\arestart\x12$\n" +
-	"\x0edeps_timeout_s\x18\n" +
-	" \x01(\rR\fdepsTimeoutS\x12&\n" +
-	"\x0fstart_timeout_s\x18\v \x01(\rR\rstartTimeoutS\x12/\n" +
-	"\x06limits\x18\f \x01(\v2\x17.mftiko.state.v1.LimitsR\x06limits\x122\n" +
-	"\x06inputs\x18\r \x03(\v2\x1a.mftiko.state.v1.InputDeclR\x06inputs\x12$\n" +
-	"\x0erecv_window_ms\x18\x0e \x01(\rR\frecvWindowMs\x1a9\n" +
-	"\vLabelsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x0f\x10\x10R\aalgo_id\"W\n" +
-	"\tInputDecl\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
-	"\x06digest\x18\x02 \x01(\tR\x06digest\x12\x1e\n" +
-	"\n" +
-	"repository\x18\x03 \x01(\tR\n" +
-	"repository\"U\n" +
-	"\vStrategyRef\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
-	"\x04code\x18\x02 \x01(\tR\x04code\x12\x1e\n" +
-	"\n" +
-	"repository\x18\x03 \x01(\tR\n" +
-	"repository\"O\n" +
-	"\bFeedDecl\x12\x12\n" +
-	"\x04feed\x18\x01 \x01(\tR\x04feed\x12\x1f\n" +
-	"\vmd_instance\x18\x02 \x01(\tR\n" +
-	"mdInstanceJ\x04\b\x03\x10\x04R\bdelivery\"\xa5\x02\n" +
-	"\fSelectorDecl\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1f\n" +
-	"\vmd_instance\x18\x02 \x01(\tR\n" +
-	"mdInstance\x12\x14\n" +
-	"\x05venue\x18\x03 \x01(\tR\x05venue\x12\x1e\n" +
-	"\n" +
-	"underlying\x18\x04 \x01(\tR\n" +
-	"underlying\x12\x16\n" +
-	"\x06topics\x18\x05 \x03(\tR\x06topics\x12A\n" +
-	"\foption_chain\x18\n" +
-	" \x01(\v2\x1c.mftiko.state.v1.OptionChainH\x00R\voptionChain\x12G\n" +
-	"\x0erolling_future\x18\v \x01(\v2\x1e.mftiko.state.v1.RollingFutureH\x00R\rrollingFutureB\x06\n" +
-	"\x04kind\"\x82\x02\n" +
-	"\vOptionChain\x12\x19\n" +
-	"\bref_feed\x18\x01 \x01(\tR\arefFeed\x12)\n" +
-	"\x10nearest_expiries\x18\x02 \x01(\rR\x0fnearestExpiries\x12\x1a\n" +
-	"\tmin_tte_s\x18\x03 \x01(\rR\aminTteS\x12\x1f\n" +
-	"\vatm_strikes\x18\x04 \x01(\rR\n" +
-	"atmStrikes\x12\x14\n" +
-	"\x05sides\x18\x05 \x03(\tR\x05sides\x12)\n" +
-	"\x10recenter_strikes\x18\x06 \x01(\rR\x0frecenterStrikes\x12/\n" +
-	"\x14recenter_min_dwell_s\x18\a \x01(\rR\x11recenterMinDwellS\"I\n" +
-	"\rRollingFuture\x12\x14\n" +
-	"\x05tenor\x18\x01 \x01(\tR\x05tenor\x12\"\n" +
-	"\rroll_before_s\x18\x02 \x01(\rR\vrollBeforeS\"t\n" +
-	"\vAccountDecl\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x15\n" +
-	"\x06api_id\x18\x02 \x01(\x03R\x05apiId\x12\x1f\n" +
-	"\vtd_instance\x18\x03 \x01(\tR\n" +
-	"tdInstance\x12\x19\n" +
-	"\balgo_ids\x18\x04 \x03(\rR\aalgoIds\"\x7f\n" +
-	"\rRestartPolicy\x120\n" +
-	"\x04mode\x18\x01 \x01(\x0e2\x1c.mftiko.state.v1.RestartModeR\x04mode\x12!\n" +
-	"\fmax_restarts\x18\x02 \x01(\rR\vmaxRestarts\x12\x19\n" +
-	"\bwindow_s\x18\x03 \x01(\rR\awindowS\"\x88\x01\n" +
-	"\x06Limits\x12\x1b\n" +
-	"\tmemory_mb\x18\x01 \x01(\rR\bmemoryMb\x12\x1e\n" +
-	"\n" +
-	"gomaxprocs\x18\x02 \x01(\rR\n" +
-	"gomaxprocs\x12\x1b\n" +
-	"\tvolume_mb\x18\x03 \x01(\rR\bvolumeMb\x12$\n" +
-	"\x0ehook_timeout_s\x18\x04 \x01(\rR\fhookTimeoutS\"\xb8\x01\n" +
+	"\x1bmftiko/state/v1/state.proto\x12\x0fmftiko.state.v1\x1a\x1dmftiko/common/v1/common.proto\x1a\x1fmftiko/session/v1/session.proto\"\xb8\x01\n" +
 	"\aAccount\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12-\n" +
@@ -2058,15 +1297,29 @@ const file_mftiko_state_v1_state_proto_rawDesc = "" +
 	"\vincarnation\x18\x04 \x01(\rR\vincarnation\x12\x13\n" +
 	"\x05at_ns\x18\x05 \x01(\x03R\x04atNs\x12\x1d\n" +
 	"\n" +
-	"size_bytes\x18\x06 \x01(\x04R\tsizeBytes\"\xc2\x01\n" +
-	"\n" +
-	"LeaseEntry\x12\x14\n" +
-	"\x04feed\x18\x01 \x01(\tH\x00R\x04feed\x12;\n" +
-	"\bselector\x18\x02 \x01(\v2\x1d.mftiko.state.v1.SelectorDeclH\x00R\bselector\x12\x17\n" +
+	"size_bytes\x18\x06 \x01(\x04R\tsizeBytes\"\xc5\x01\n" +
+	"\vDemandEntry\x12\x14\n" +
+	"\x04feed\x18\x01 \x01(\tH\x00R\x04feed\x12=\n" +
+	"\bselector\x18\x02 \x01(\v2\x1f.mftiko.session.v1.SelectorDeclH\x00R\bselector\x12\x17\n" +
 	"\x06api_id\x18\x03 \x01(\x03H\x00R\x05apiId\x12#\n" +
 	"\rspec_revision\x18\n" +
 	" \x01(\x03R\fspecRevision\x12\x19\n" +
 	"\balgo_ids\x18\v \x03(\rR\aalgoIdsB\b\n" +
+	"\x06target\"\xfe\x01\n" +
+	"\rSessionDemand\x129\n" +
+	"\adesired\x18\x01 \x01(\x0e2\x1f.mftiko.session.v1.DesiredStateR\adesired\x12\x14\n" +
+	"\x05start\x18\x02 \x01(\bR\x05start\x12\x1d\n" +
+	"\n" +
+	"end_reason\x18\x03 \x01(\tR\tendReason\x124\n" +
+	"\bbindings\x18\x04 \x03(\v2\x18.mftiko.state.v1.BindingR\bbindings\x12#\n" +
+	"\rspec_revision\x18\x05 \x01(\x03R\fspecRevision\x12\"\n" +
+	"\rupdated_at_ns\x18\x06 \x01(\x03R\vupdatedAtNs\"\xb2\x01\n" +
+	"\aBinding\x12\x14\n" +
+	"\x04feed\x18\x01 \x01(\tH\x00R\x04feed\x12\x1c\n" +
+	"\bselector\x18\x02 \x01(\tH\x00R\bselector\x12\x17\n" +
+	"\x06api_id\x18\x03 \x01(\x03H\x00R\x05apiId\x12\x1a\n" +
+	"\binstance\x18\x04 \x01(\tR\binstance\x124\n" +
+	"\x06status\x18\x05 \x01(\v2\x1c.mftiko.state.v1.EntryStatusR\x06statusB\b\n" +
 	"\x06target\"\x82\x02\n" +
 	"\vEntryStatus\x121\n" +
 	"\x05state\x18\x01 \x01(\x0e2\x1b.mftiko.state.v1.EntryStateR\x05state\x12\x16\n" +
@@ -2095,9 +1348,9 @@ const file_mftiko_state_v1_state_proto_rawDesc = "" +
 	"\brestarts\x18\x06 \x01(\rR\brestarts\x12\x1b\n" +
 	"\trss_bytes\x18\a \x01(\x03R\brssBytes\x12\"\n" +
 	"\rstarted_at_ns\x18\b \x01(\x03R\vstartedAtNs\x127\n" +
-	"\tlast_exit\x18\t \x01(\v2\x1a.mftiko.common.v1.ExitInfoR\blastExit\"\xc6\x01\n" +
-	"\rSelectorState\x121\n" +
-	"\x04spec\x18\x01 \x01(\v2\x1d.mftiko.state.v1.SelectorDeclR\x04spec\x12\x14\n" +
+	"\tlast_exit\x18\t \x01(\v2\x1a.mftiko.common.v1.ExitInfoR\blastExit\"\xc8\x01\n" +
+	"\rSelectorState\x123\n" +
+	"\x04spec\x18\x01 \x01(\v2\x1f.mftiko.session.v1.SelectorDeclR\x04spec\x12\x14\n" +
 	"\x05epoch\x18\x02 \x01(\x04R\x05epoch\x12\x18\n" +
 	"\amembers\x18\x03 \x03(\tR\amembers\x12\x18\n" +
 	"\acurrent\x18\x04 \x01(\tR\acurrent\x12\x16\n" +
@@ -2105,15 +1358,7 @@ const file_mftiko_state_v1_state_proto_rawDesc = "" +
 	"\fcenter_at_ns\x18\x06 \x01(\x03R\n" +
 	"centerAtNs\"\x1f\n" +
 	"\tPlacement\x12\x12\n" +
-	"\x04conn\x18\x01 \x01(\tR\x04conn*a\n" +
-	"\fDesiredState\x12\x1d\n" +
-	"\x19DESIRED_STATE_UNSPECIFIED\x10\x00\x12\x19\n" +
-	"\x15DESIRED_STATE_RUNNING\x10\x01\x12\x17\n" +
-	"\x13DESIRED_STATE_ENDED\x10\x02*`\n" +
-	"\vRestartMode\x12\x1c\n" +
-	"\x18RESTART_MODE_UNSPECIFIED\x10\x00\x12\x16\n" +
-	"\x12RESTART_MODE_NEVER\x10\x01\x12\x1b\n" +
-	"\x17RESTART_MODE_ON_FAILURE\x10\x02*\xb7\x01\n" +
+	"\x04conn\x18\x01 \x01(\tR\x04conn*\xb7\x01\n" +
 	"\x05Phase\x12\x15\n" +
 	"\x11PHASE_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rPHASE_PENDING\x10\x01\x12\x11\n" +
@@ -2145,69 +1390,51 @@ func file_mftiko_state_v1_state_proto_rawDescGZIP() []byte {
 	return file_mftiko_state_v1_state_proto_rawDescData
 }
 
-var file_mftiko_state_v1_state_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_mftiko_state_v1_state_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_mftiko_state_v1_state_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_mftiko_state_v1_state_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_mftiko_state_v1_state_proto_goTypes = []any{
-	(DesiredState)(0),       // 0: mftiko.state.v1.DesiredState
-	(RestartMode)(0),        // 1: mftiko.state.v1.RestartMode
-	(Phase)(0),              // 2: mftiko.state.v1.Phase
-	(EntryState)(0),         // 3: mftiko.state.v1.EntryState
-	(*SessionSpec)(nil),     // 4: mftiko.state.v1.SessionSpec
-	(*InputDecl)(nil),       // 5: mftiko.state.v1.InputDecl
-	(*StrategyRef)(nil),     // 6: mftiko.state.v1.StrategyRef
-	(*FeedDecl)(nil),        // 7: mftiko.state.v1.FeedDecl
-	(*SelectorDecl)(nil),    // 8: mftiko.state.v1.SelectorDecl
-	(*OptionChain)(nil),     // 9: mftiko.state.v1.OptionChain
-	(*RollingFuture)(nil),   // 10: mftiko.state.v1.RollingFuture
-	(*AccountDecl)(nil),     // 11: mftiko.state.v1.AccountDecl
-	(*RestartPolicy)(nil),   // 12: mftiko.state.v1.RestartPolicy
-	(*Limits)(nil),          // 13: mftiko.state.v1.Limits
-	(*Account)(nil),         // 14: mftiko.state.v1.Account
-	(*AccountSettings)(nil), // 15: mftiko.state.v1.AccountSettings
-	(*SessionStatus)(nil),   // 16: mftiko.state.v1.SessionStatus
-	(*StateSnapshot)(nil),   // 17: mftiko.state.v1.StateSnapshot
-	(*LeaseEntry)(nil),      // 18: mftiko.state.v1.LeaseEntry
-	(*EntryStatus)(nil),     // 19: mftiko.state.v1.EntryStatus
-	(*Universe)(nil),        // 20: mftiko.state.v1.Universe
-	(*AgentRecord)(nil),     // 21: mftiko.state.v1.AgentRecord
-	(*WorkerStatus)(nil),    // 22: mftiko.state.v1.WorkerStatus
-	(*SelectorState)(nil),   // 23: mftiko.state.v1.SelectorState
-	(*Placement)(nil),       // 24: mftiko.state.v1.Placement
-	nil,                     // 25: mftiko.state.v1.SessionSpec.LabelsEntry
-	(*v1.Condition)(nil),    // 26: mftiko.common.v1.Condition
-	(*v1.ExitInfo)(nil),     // 27: mftiko.common.v1.ExitInfo
-	(*v1.WorkerRef)(nil),    // 28: mftiko.common.v1.WorkerRef
+	(Phase)(0),               // 0: mftiko.state.v1.Phase
+	(EntryState)(0),          // 1: mftiko.state.v1.EntryState
+	(*Account)(nil),          // 2: mftiko.state.v1.Account
+	(*AccountSettings)(nil),  // 3: mftiko.state.v1.AccountSettings
+	(*SessionStatus)(nil),    // 4: mftiko.state.v1.SessionStatus
+	(*StateSnapshot)(nil),    // 5: mftiko.state.v1.StateSnapshot
+	(*DemandEntry)(nil),      // 6: mftiko.state.v1.DemandEntry
+	(*SessionDemand)(nil),    // 7: mftiko.state.v1.SessionDemand
+	(*Binding)(nil),          // 8: mftiko.state.v1.Binding
+	(*EntryStatus)(nil),      // 9: mftiko.state.v1.EntryStatus
+	(*Universe)(nil),         // 10: mftiko.state.v1.Universe
+	(*AgentRecord)(nil),      // 11: mftiko.state.v1.AgentRecord
+	(*WorkerStatus)(nil),     // 12: mftiko.state.v1.WorkerStatus
+	(*SelectorState)(nil),    // 13: mftiko.state.v1.SelectorState
+	(*Placement)(nil),        // 14: mftiko.state.v1.Placement
+	(*v1.Condition)(nil),     // 15: mftiko.common.v1.Condition
+	(*v1.ExitInfo)(nil),      // 16: mftiko.common.v1.ExitInfo
+	(*v11.SelectorDecl)(nil), // 17: mftiko.session.v1.SelectorDecl
+	(v11.DesiredState)(0),    // 18: mftiko.session.v1.DesiredState
+	(*v1.WorkerRef)(nil),     // 19: mftiko.common.v1.WorkerRef
 }
 var file_mftiko_state_v1_state_proto_depIdxs = []int32{
-	25, // 0: mftiko.state.v1.SessionSpec.labels:type_name -> mftiko.state.v1.SessionSpec.LabelsEntry
-	0,  // 1: mftiko.state.v1.SessionSpec.desired_state:type_name -> mftiko.state.v1.DesiredState
-	6,  // 2: mftiko.state.v1.SessionSpec.strategy:type_name -> mftiko.state.v1.StrategyRef
-	7,  // 3: mftiko.state.v1.SessionSpec.feeds:type_name -> mftiko.state.v1.FeedDecl
-	8,  // 4: mftiko.state.v1.SessionSpec.selectors:type_name -> mftiko.state.v1.SelectorDecl
-	11, // 5: mftiko.state.v1.SessionSpec.accounts:type_name -> mftiko.state.v1.AccountDecl
-	12, // 6: mftiko.state.v1.SessionSpec.restart:type_name -> mftiko.state.v1.RestartPolicy
-	13, // 7: mftiko.state.v1.SessionSpec.limits:type_name -> mftiko.state.v1.Limits
-	5,  // 8: mftiko.state.v1.SessionSpec.inputs:type_name -> mftiko.state.v1.InputDecl
-	9,  // 9: mftiko.state.v1.SelectorDecl.option_chain:type_name -> mftiko.state.v1.OptionChain
-	10, // 10: mftiko.state.v1.SelectorDecl.rolling_future:type_name -> mftiko.state.v1.RollingFuture
-	1,  // 11: mftiko.state.v1.RestartPolicy.mode:type_name -> mftiko.state.v1.RestartMode
-	15, // 12: mftiko.state.v1.Account.settings:type_name -> mftiko.state.v1.AccountSettings
-	2,  // 13: mftiko.state.v1.SessionStatus.phase:type_name -> mftiko.state.v1.Phase
-	26, // 14: mftiko.state.v1.SessionStatus.conditions:type_name -> mftiko.common.v1.Condition
-	27, // 15: mftiko.state.v1.SessionStatus.last_exit:type_name -> mftiko.common.v1.ExitInfo
-	17, // 16: mftiko.state.v1.SessionStatus.state_out:type_name -> mftiko.state.v1.StateSnapshot
-	8,  // 17: mftiko.state.v1.LeaseEntry.selector:type_name -> mftiko.state.v1.SelectorDecl
-	3,  // 18: mftiko.state.v1.EntryStatus.state:type_name -> mftiko.state.v1.EntryState
-	28, // 19: mftiko.state.v1.EntryStatus.worker:type_name -> mftiko.common.v1.WorkerRef
-	20, // 20: mftiko.state.v1.EntryStatus.universe:type_name -> mftiko.state.v1.Universe
-	28, // 21: mftiko.state.v1.WorkerStatus.worker:type_name -> mftiko.common.v1.WorkerRef
-	27, // 22: mftiko.state.v1.WorkerStatus.last_exit:type_name -> mftiko.common.v1.ExitInfo
-	8,  // 23: mftiko.state.v1.SelectorState.spec:type_name -> mftiko.state.v1.SelectorDecl
-	24, // [24:24] is the sub-list for method output_type
-	24, // [24:24] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	3,  // 0: mftiko.state.v1.Account.settings:type_name -> mftiko.state.v1.AccountSettings
+	0,  // 1: mftiko.state.v1.SessionStatus.phase:type_name -> mftiko.state.v1.Phase
+	15, // 2: mftiko.state.v1.SessionStatus.conditions:type_name -> mftiko.common.v1.Condition
+	16, // 3: mftiko.state.v1.SessionStatus.last_exit:type_name -> mftiko.common.v1.ExitInfo
+	5,  // 4: mftiko.state.v1.SessionStatus.state_out:type_name -> mftiko.state.v1.StateSnapshot
+	17, // 5: mftiko.state.v1.DemandEntry.selector:type_name -> mftiko.session.v1.SelectorDecl
+	18, // 6: mftiko.state.v1.SessionDemand.desired:type_name -> mftiko.session.v1.DesiredState
+	8,  // 7: mftiko.state.v1.SessionDemand.bindings:type_name -> mftiko.state.v1.Binding
+	9,  // 8: mftiko.state.v1.Binding.status:type_name -> mftiko.state.v1.EntryStatus
+	1,  // 9: mftiko.state.v1.EntryStatus.state:type_name -> mftiko.state.v1.EntryState
+	19, // 10: mftiko.state.v1.EntryStatus.worker:type_name -> mftiko.common.v1.WorkerRef
+	10, // 11: mftiko.state.v1.EntryStatus.universe:type_name -> mftiko.state.v1.Universe
+	19, // 12: mftiko.state.v1.WorkerStatus.worker:type_name -> mftiko.common.v1.WorkerRef
+	16, // 13: mftiko.state.v1.WorkerStatus.last_exit:type_name -> mftiko.common.v1.ExitInfo
+	17, // 14: mftiko.state.v1.SelectorState.spec:type_name -> mftiko.session.v1.SelectorDecl
+	15, // [15:15] is the sub-list for method output_type
+	15, // [15:15] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_mftiko_state_v1_state_proto_init() }
@@ -2216,21 +1443,22 @@ func file_mftiko_state_v1_state_proto_init() {
 		return
 	}
 	file_mftiko_state_v1_state_proto_msgTypes[4].OneofWrappers = []any{
-		(*SelectorDecl_OptionChain)(nil),
-		(*SelectorDecl_RollingFuture)(nil),
+		(*DemandEntry_Feed)(nil),
+		(*DemandEntry_Selector)(nil),
+		(*DemandEntry_ApiId)(nil),
 	}
-	file_mftiko_state_v1_state_proto_msgTypes[14].OneofWrappers = []any{
-		(*LeaseEntry_Feed)(nil),
-		(*LeaseEntry_Selector)(nil),
-		(*LeaseEntry_ApiId)(nil),
+	file_mftiko_state_v1_state_proto_msgTypes[6].OneofWrappers = []any{
+		(*Binding_Feed)(nil),
+		(*Binding_Selector)(nil),
+		(*Binding_ApiId)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mftiko_state_v1_state_proto_rawDesc), len(file_mftiko_state_v1_state_proto_rawDesc)),
-			NumEnums:      4,
-			NumMessages:   22,
+			NumEnums:      2,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

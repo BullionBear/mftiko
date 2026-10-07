@@ -1,8 +1,8 @@
 # PROTOCOL — 協議與契約
 
-> **狀態：草案 v0.24（2026-10-07）。** 依據 [DECISIONS.md](DECISIONS.md)。v0.3 把控制面改到 etcd（D14），依賴改成 agent 層級的 lease（D9），shim 與 worker 之間加入生命週期動詞（D15），資料面拿掉給策略看的可用性廣播（D16）。v0.4 依 D17 改成每個 region 一個 etcd cluster：路由函數、每個 cluster 各自的 writer key、版本號不依賴 etcd revision；並依 D18 加入策略 artifact 的格式（§8）。v0.5 依 D20 加入歷史補正：`AccountSettings` 加 interval 與手動觸發，TD agent 訂閱 `td.evt` 落庫，`Fill.fill_id` 規定為交易所的 trade id。v0.6 依 D21：md.proto 加 `OrderBookDelta`，新增 `read.proto`（`md.view`、`md.fetch`），tape 不再用 Redis（拿掉 `tape_url` 與 `StandingSubscription.record`）。v0.7 依 D8：行情的 subject 一律由 MD agent 給，`SelectorBinding` 加 `subject_prefix`。v0.8 依 D22 拿掉 `stsctl.SubscribeRequest`：一期策略完全宣告式。v0.9 依 D23 加入 session volume 與資料 artifact：`SessionSpec.inputs`、`Limits.volume_mb`、`SessionStatus.state_out`、兩個環境變數、§8.4。v0.10 依 D24：`md.f` 加 envelope（`seq`、`conn_epoch`、`md_ts_ns` 從 `Meta` 移過去），拿掉 `Delivery`，加 `SessionSpec.recv_window_ms`、`Limits.hook_timeout_s`、`QueueStat.max_age_ms`。v0.11 依 D25：加 `algo_id`（由 spec 在每個帳號上宣告，可以多個，TD agent 以 lease 檢查衝突），`client_order_id` 的 session 欄位換成 algo，`CancelSession` 換成策略自己發的 `BatchCancel`，STS agent 不再有 `td.order` 的權限。v0.12：`client_order_id` 改成 `ver(4) | algo(10) | ts_ms(40) | seq(10)`。v0.13 依 D26：MD 連線的身分改成 `(venue, route, n)`，endpoint 變成 `mdctl.InitPayload.url` 這個參數，atom id 拿掉 endpoint。v0.14 依 D27：`td.evt` 的 `AccountReset` 換成帶快照的 `Recon`，TD 降級時拒新單、放行撤單。v0.15 依 D28：只有一層 linger，連線在最後一個 atom 退訂時就停；lease 的 TTL 統一 60 秒。v0.16 依 D29 拿掉常駐訂閱（`StandingSubscription` 與 `/md/{inst}/standing/`）：MD 的 owner 只有 session 的 lease 項目。v0.17 依 D20：`tdctl.Report` 加 `first_submit_ns`，backfill 的範圍從下單決定。v0.18 依 D30：session worker 的 NATS 憑證每個 session 一份（`stsctl.InitPayload.nats`），權限見 §7。v0.19 依 D19：一期只做 Go SDK，拿掉 Python 綁 Go 的設計；新增 §9，寫明其他語言的 SDK 要遵守的契約，以及 STS agent 以 `Beat` 逾時判定 `HUNG` 的保險。v0.20 依 D31：UniversalTicker 是佔位，經 SYM 解析之後才決定訂閱什麼；atom id 改成 `<venue>:<route>:<channel>`；加入 topic 表與 SYM 的契約（§7.3，`mftiko.sym.v1`）。v0.21 依 D32：帳號種類和 venue 分成兩個 enum，`state.v1.Account.venue`、`tdctl.InitPayload.venue` 改為 `kind`；BinancePM 是帳號種類，不是 venue。v0.22 依 D8：incarnation 存在不綁 lease 的 `/{plane}/{inst}/incarnation/{h}`，spawn 前以 txn 取號（§3.2 W6）。v0.23：W4 的 watch 改從 list 的 revision（含）開始，不再加 1。v0.24 依 D33–D36：控制平面分成 API server 與 controller；跨平面的依賴改由 controller 以宣告式的需求表達，不綁 TTL（D9、D28），lease 項目改名需求項目，key 拿掉 `{sts_inst}`；新增 STS 的指派 `/sts/{inst}/demand/{session_id}`，Gate 與綁定的整理移到 controller；ack 由 controller watch；SYM 改成啟動時整表載入、跟著變更重載，使用者是 STS、MD、TD；三種 worker 都從 artifact 起（§8）；契約分成草案與定案（§1）。還沒定的寫在 [§10](#10-待定)。
+> **狀態：草案 v0.24（2026-10-07）。** 依據 [DECISIONS.md](DECISIONS.md)。v0.3 把控制面改到 etcd（D14），依賴改成 agent 層級的 lease（D9），shim 與 worker 之間加入生命週期動詞（D15），資料面拿掉給策略看的可用性廣播（D16）。v0.4 依 D17 改成每個 region 一個 etcd cluster：路由函數、每個 cluster 各自的 writer key、版本號不依賴 etcd revision；並依 D18 加入策略 artifact 的格式（§8）。v0.5 依 D20 加入歷史補正：`AccountSettings` 加 interval 與手動觸發，TD agent 訂閱 `td.evt` 落庫，`Fill.fill_id` 規定為交易所的 trade id。v0.6 依 D21：md.proto 加 `OrderBookDelta`，新增 `read.proto`（`md.view`、`md.fetch`），tape 不再用 Redis（拿掉 `tape_url` 與 `StandingSubscription.record`）。v0.7 依 D8：行情的 subject 一律由 MD agent 給，`SelectorBinding` 加 `subject_prefix`。v0.8 依 D22 拿掉 `stsctl.SubscribeRequest`：一期策略完全宣告式。v0.9 依 D23 加入 session volume 與資料 artifact：`SessionSpec.inputs`、`Limits.volume_mb`、`SessionStatus.state_out`、兩個環境變數、§8.4。v0.10 依 D24：`md.f` 加 envelope（`seq`、`conn_epoch`、`md_ts_ns` 從 `Meta` 移過去），拿掉 `Delivery`，加 `SessionSpec.recv_window_ms`、`Limits.hook_timeout_s`、`QueueStat.max_age_ms`。v0.11 依 D25：加 `algo_id`（由 spec 在每個帳號上宣告，可以多個，TD agent 以 lease 檢查衝突），`client_order_id` 的 session 欄位換成 algo，`CancelSession` 換成策略自己發的 `BatchCancel`，STS agent 不再有 `td.order` 的權限。v0.12：`client_order_id` 改成 `ver(4) | algo(10) | ts_ms(40) | seq(10)`。v0.13 依 D26：MD 連線的身分改成 `(venue, route, n)`，endpoint 變成 `mdctl.InitPayload.url` 這個參數，atom id 拿掉 endpoint。v0.14 依 D27：`td.evt` 的 `AccountReset` 換成帶快照的 `Recon`，TD 降級時拒新單、放行撤單。v0.15 依 D28：只有一層 linger，連線在最後一個 atom 退訂時就停；lease 的 TTL 統一 60 秒。v0.16 依 D29 拿掉常駐訂閱（`StandingSubscription` 與 `/md/{inst}/standing/`）：MD 的 owner 只有 session 的 lease 項目。v0.17 依 D20：`tdctl.Report` 加 `first_submit_ns`，backfill 的範圍從下單決定。v0.18 依 D30：session worker 的 NATS 憑證每個 session 一份（`stsctl.InitPayload.nats`），權限見 §7。v0.19 依 D19：一期只做 Go SDK，拿掉 Python 綁 Go 的設計；新增 §9，寫明其他語言的 SDK 要遵守的契約，以及 STS agent 以 `Beat` 逾時判定 `HUNG` 的保險。v0.20 依 D31：UniversalTicker 是佔位，經 SYM 解析之後才決定訂閱什麼；atom id 改成 `<venue>:<route>:<channel>`；加入 topic 表與 SYM 的契約（§7.3，`mftiko.sym.v1`）。v0.21 依 D32：帳號種類和 venue 分成兩個 enum，`state.v1.Account.venue`、`tdctl.InitPayload.venue` 改為 `kind`；BinancePM 是帳號種類，不是 venue。v0.22 依 D8：incarnation 存在不綁 lease 的 `/{plane}/{inst}/incarnation/{h}`，spawn 前以 txn 取號（§3.2 W6）。v0.23：W4 的 watch 改從 list 的 revision（含）開始，不再加 1。v0.24 依 D33–D36：控制平面分成 API server 與 controller；跨平面的依賴改由 controller 以宣告式的需求表達，不綁 TTL（D9、D28），lease 項目改名需求項目，key 拿掉 `{sts_inst}`；新增 STS 的指派 `/sts/{inst}/demand/{session_id}`，Gate 與綁定的整理移到 controller；ack 由 controller watch；SYM 改成啟動時整表載入、跟著變更重載，使用者是 STS、MD、TD；三種 worker 都從 artifact 起（§8）；契約分成草案與定案（§1）；session 的宣告抽成 `mftiko.session.v1`，`stsctl.v1` 不再 import `state.v1`，改用自己的 `BindingState`、`Universe`；`Side`、`OrderType`、`TimeInForce` 移到 `common.v1`，`td.v1` 不再 import `md.v1`。還沒定的寫在 [§10](#10-待定)。
 >
-> proto 區塊開頭的 `// file:` 是它在 `contract/proto/` 下的路徑。全部區塊以 `protoc` 編譯驗證過。v0.24 的 proto 區塊先於 `contract/proto/` 修改（§3.6 的 `DemandEntry`、`SessionDemand`、`Binding`）；`contract/proto/` 與 `internal/platform/state` 在 D36 生效之後的 PR 跟上。
+> proto 區塊開頭的 `// file:` 是它在 `contract/proto/` 下的路徑。全部區塊以 `protoc` 編譯驗證過，`contract/proto/` 的檔案與它們逐字相同（第一行除外）。
 
 ## 0. 總覽
 
@@ -21,7 +21,7 @@
 
 | 契約 | 兩端 | 傳輸 | 內容 | 擁有者 |
 |---|---|---|---|---|
-| E | API server、controller、agent ⇄ etcd | etcd key ＋ watch | 宣告、需求項目、STS 的指派、ack／nack、agent 狀態（`mftiko.state.v1`） | 依前綴，見 §3.1 |
+| E | API server、controller、agent ⇄ etcd | etcd key ＋ watch | 宣告、需求項目、STS 的指派、ack／nack、agent 狀態（`mftiko.state.v1`；session 的宣告在 `mftiko.session.v1`） | 依前綴，見 §3.1 |
 | C3 | agent ⇄ shim | unix socket | attach、生命週期、事件、信號（`mftiko.shim.v1`） | 平台 |
 | C4 | shim ⇄ worker | socketpair（worker 的 fd 3） | 生命週期、心跳、回報、結束方式（`mftiko.worker.v1`） | 平台 |
 | C5 | agent ⇄ worker（包在 C3、C4 裡） | — | 各平面的 payload（`stsctl`、`mdctl`、`tdctl`） | 各平面 |
@@ -52,6 +52,7 @@ shim 與 worker 會比 agent 活得久（D4），所以**版本偏差是常態**
 | 契約 | 檔案 | 兩端 | 狀態 | 定案 |
 |---|---|---|---|---|
 | E | `state.proto` | API server、controller、三種 agent | 草案 | agent 紀錄在 E1；需求、指派、ack 在 E9 |
+| E、C5 | `session.proto` | API server、controller、STS agent、session worker | 草案 | E9 |
 | C3 | `shim.proto` | agent ⇄ shim | 草案 | E1 |
 | C4 | `worker.proto`、`common.proto` | shim ⇄ worker | 草案 | E1 |
 | C5 | `mdctl.proto` | MD agent ⇄ conn worker | 草案 | E4 |
@@ -141,6 +142,27 @@ message ExitInfo {
   Outcome outcome = 4;
   string reason = 5;
   bool on_stop_completed = 6;
+}
+
+// 交易共用的 enum：行情的成交與強平、TD 的訂單、exchange 的 adaptor、SDK 都用這一份（DECISIONS D35）。
+enum Side {
+  SIDE_UNSPECIFIED = 0;
+  SIDE_BUY = 1;
+  SIDE_SELL = 2;
+}
+
+enum OrderType {
+  ORDER_TYPE_UNSPECIFIED = 0;
+  ORDER_TYPE_LIMIT = 1;
+  ORDER_TYPE_MARKET = 2;
+}
+
+enum TimeInForce {
+  TIME_IN_FORCE_UNSPECIFIED = 0;
+  TIME_IN_FORCE_GTC = 1;
+  TIME_IN_FORCE_IOC = 2;
+  TIME_IN_FORCE_FOK = 3;
+  TIME_IN_FORCE_POST_ONLY = 4;
 }
 ```
 
@@ -257,17 +279,18 @@ controller watch 這些 key，依上表決定 session 的去留，並把每個�
 
 ### 3.6 值
 
+session 的宣告在 `mftiko.session.v1`，三份契約共用（DECISIONS D36）；其餘 etcd 的值在 `mftiko.state.v1`。
+
 ```proto
-// file: mftiko/state/v1/state.proto
+// file: mftiko/session/v1/session.proto
 syntax = "proto3";
 
-package mftiko.state.v1;
+package mftiko.session.v1;
 
-import "mftiko/common/v1/common.proto";
+option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1;sessionv1";
 
-option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1;statev1";
-
-// ---------- 宣告（API server 寫）----------
+// session 的宣告：使用者經 API server 寫進 etcd（§3.1）；controller 依它推導需求，STS agent 依它起 worker，策略在
+// InitPayload 拿到自己宣告的那一份（§6.1）。歸 STS 擁有；state.v1、stsctl.v1 與 API 的契約都 import 它（DECISIONS D36）。
 
 message SessionSpec {
   string name = 1;
@@ -370,6 +393,20 @@ message Limits {
   uint32 volume_mb = 3; // session volume 的上限（D23）；0 = STS 的預設值。超過就以 FAILED 結束（volume_over_limit）
   uint32 hook_timeout_s = 4; // 單一 hook 的硬上限（D24）；0 = STS 的預設值。超過判定 HUNG
 }
+```
+
+```proto
+// file: mftiko/state/v1/state.proto
+syntax = "proto3";
+
+package mftiko.state.v1;
+
+import "mftiko/common/v1/common.proto";
+import "mftiko/session/v1/session.proto";
+
+option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1;statev1";
+
+// ---------- 帳號的宣告（API server 寫）----------
 
 message Account {
   string name = 1;
@@ -430,7 +467,7 @@ message StateSnapshot {
 message DemandEntry {
   oneof target {
     string feed = 1;
-    SelectorDecl selector = 2;
+    mftiko.session.v1.SelectorDecl selector = 2;
     int64 api_id = 3;
   }
   int64 spec_revision = 10; // 推導自哪一版 session spec；只供除錯，可能來自另一個 cluster，不做比較
@@ -439,7 +476,7 @@ message DemandEntry {
 
 // STS 的指派（§3.3）。STS agent 只跑有指派的 session。
 message SessionDemand {
-  DesiredState desired = 1; // RUNNING：spawn 並送 Init；ENDED：停掉 worker
+  mftiko.session.v1.DesiredState desired = 1; // RUNNING：spawn 並送 Init；ENDED：停掉 worker
   bool start = 2;           // 所有 MD、TD 需求都 READY，STS agent 可以送 Start（D15）
   string end_reason = 3;    // desired 是 ENDED 時：ended_by_spec、deps_failed、deps_timeout
   repeated Binding bindings = 4;
@@ -512,7 +549,7 @@ message WorkerStatus {
 // ---------- MD agent 不能重新推導的狀態 ----------
 
 message SelectorState {
-  SelectorDecl spec = 1;
+  mftiko.session.v1.SelectorDecl spec = 1;
   uint64 epoch = 2;
   repeated string members = 3;
   string current = 4;
@@ -880,7 +917,7 @@ syntax = "proto3";
 package mftiko.stsctl.v1;
 
 import "mftiko/common/v1/common.proto";
-import "mftiko/state/v1/state.proto";
+import "mftiko/session/v1/session.proto";
 
 option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/stsctl/v1;stsctlv1";
 
@@ -889,10 +926,10 @@ message InitPayload {
   uint32 incarnation = 2;
   string sts_instance = 3;
   string name = 4;
-  mftiko.state.v1.StrategyRef strategy = 5;
+  mftiko.session.v1.StrategyRef strategy = 5;
   bytes params = 6;
-  repeated mftiko.state.v1.FeedDecl feeds = 7;
-  repeated mftiko.state.v1.AccountDecl accounts = 8;
+  repeated mftiko.session.v1.FeedDecl feeds = 7;
+  repeated mftiko.session.v1.AccountDecl accounts = 8;
   NatsCredentials nats = 9; // 這個 session 專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D30）
 }
 
@@ -930,20 +967,20 @@ message FeedBinding {
   string feed = 1;
   string md_instance = 2;
   string subject = 3;
-  mftiko.state.v1.EntryState state = 4;
+  BindingState state = 4;
 }
 
 message SelectorBinding {
   string name = 1;
   string md_instance = 2;
-  mftiko.state.v1.Universe universe = 3;
+  Universe universe = 3;
   string subject_prefix = 4; // 成員的 subject 是 {subject_prefix}.{topic}.{ticker}
 }
 
 message AccountBinding {
   string name = 1;
   int64 api_id = 2;
-  mftiko.state.v1.EntryState state = 3;
+  BindingState state = 3;
   mftiko.common.v1.WorkerRef worker = 4;
 }
 
@@ -961,6 +998,24 @@ message QueueStat {
   uint32 depth = 2;
   uint64 dropped = 3;    // md：因超過 recv_window_ms 或 buffer 滿而丟掉的則數
   uint32 max_age_ms = 4; // 上一個回報週期內，交給 hook 的事件中最老的那則的年齡
+}
+
+// 綁定的狀態，對應 provider 的 ack（§3.5）。值與 state.v1.EntryState 相同；stsctl 自己定義，策略的契約才不綁在 etcd 的
+// schema 上（DECISIONS D36）。
+enum BindingState {
+  BINDING_STATE_UNSPECIFIED = 0; // provider 沒有 ack（沉默）
+  BINDING_STATE_PENDING = 1;
+  BINDING_STATE_READY = 2;
+  BINDING_STATE_REJECTED = 3;
+  BINDING_STATE_DEAD = 4;
+}
+
+// selector 目前的成員。欄位與 state.v1.Universe 相同。
+message Universe {
+  uint64 epoch = 1;
+  repeated string members = 2; // UniversalTicker
+  string current = 3;          // 只有 rolling_future
+  repeated string topics = 4;
 }
 ```
 
@@ -1155,13 +1210,9 @@ syntax = "proto3";
 
 package mftiko.md.v1;
 
-option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1;mdv1";
+import "mftiko/common/v1/common.proto";
 
-enum Side {
-  SIDE_UNSPECIFIED = 0;
-  SIDE_BUY = 1;
-  SIDE_SELL = 2;
-}
+option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1;mdv1";
 
 // seq、conn_epoch、md_ts_ns 移到 envelope（上表）。
 message Meta {
@@ -1201,7 +1252,7 @@ message Trade {
   string trade_id = 2;
   string price = 3;
   string qty = 4;
-  Side side = 5; // taker
+  mftiko.common.v1.Side side = 5; // taker
 }
 
 message AggTrade {
@@ -1209,7 +1260,7 @@ message AggTrade {
   string trade_id = 2;
   string price = 3;
   string qty = 4;
-  Side side = 5;
+  mftiko.common.v1.Side side = 5;
   string first_trade_id = 6;
   string last_trade_id = 7;
   uint32 match_count = 8;
@@ -1265,7 +1316,7 @@ message Ticker {
 
 message Liquidation {
   Meta meta = 1;
-  Side side = 2; // 被平倉部位的方向
+  mftiko.common.v1.Side side = 2; // 被平倉部位的方向
   string price = 3;
   string qty = 4;
 }
@@ -1417,23 +1468,8 @@ syntax = "proto3";
 package mftiko.td.v1;
 
 import "mftiko/common/v1/common.proto";
-import "mftiko/md/v1/md.proto";
 
 option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1;tdv1";
-
-enum OrderType {
-  ORDER_TYPE_UNSPECIFIED = 0;
-  ORDER_TYPE_LIMIT = 1;
-  ORDER_TYPE_MARKET = 2;
-}
-
-enum TimeInForce {
-  TIME_IN_FORCE_UNSPECIFIED = 0;
-  TIME_IN_FORCE_GTC = 1;
-  TIME_IN_FORCE_IOC = 2;
-  TIME_IN_FORCE_FOK = 3;
-  TIME_IN_FORCE_POST_ONLY = 4;
-}
 
 enum OrderStatus {
   ORDER_STATUS_UNSPECIFIED = 0;
@@ -1463,12 +1499,12 @@ message OrderRequest {
 message Submit {
   string session_id = 1;
   string ticker = 2;
-  mftiko.md.v1.Side side = 3;
-  OrderType order_type = 4;
+  mftiko.common.v1.Side side = 3;
+  mftiko.common.v1.OrderType order_type = 4;
   optional string qty = 5;
   optional string quote_qty = 6;
   optional string price = 7;
-  TimeInForce tif = 8;
+  mftiko.common.v1.TimeInForce tif = 8;
   bool reduce_only = 9;
   string client_order_id = 10;
   map<string, string> params = 11;
@@ -1586,8 +1622,8 @@ message Order {
   string ticker = 1;
   string order_id = 2;
   string client_order_id = 3;
-  mftiko.md.v1.Side side = 4;
-  OrderType order_type = 5;
+  mftiko.common.v1.Side side = 4;
+  mftiko.common.v1.OrderType order_type = 5;
   OrderStatus status = 6;
   string qty = 7;
   optional string quote_qty = 8;
@@ -1605,7 +1641,7 @@ message Fill {
   string fill_id = 2;
   string order_id = 3;
   string client_order_id = 4;
-  mftiko.md.v1.Side side = 5;
+  mftiko.common.v1.Side side = 5;
   string price = 6;
   string qty = 7;
   string fee = 8;
@@ -1942,4 +1978,4 @@ P1–P5 已依 DECISIONS 定案：P1 見 D24 與 §1，P2 見 D21，P3 見 D22�
 - **P7 SYM 的變更通知（E2）。** subject（例如 `sym.changed.{venue}`）、訊息內容（revision、哪些 category 變了），以及進程在兩次通知之間漏掉一次時怎麼發現（例如定期比對 revision）。
 - **P8 API server 的寫入怎麼滿足 W1（E10）。** API server 不參選、可以多個。候選：spec 只用 create-only 的 txn（`create_revision == 0`），帳號以 `mod_revision` 做 CAS。
 - **P9 MD、TD 的 artifact 版本放在哪裡（E4、E6）。** controller 的部署設定，或 etcd 裡一個由 controller 讀的 key；以及換版時 agent 怎麼排程換 incarnation（DECISIONS D8）。
-- **P10 `stsctl.v1` 與 `state.v1` 拆開（DECISIONS D36）。** session 的宣告抽成獨立的套件（暫名 `mftiko.session.v1`），`Side`、`OrderType`、`TimeInForce` 搬到 `common.v1`（D35）。在 D36 生效之後的 proto PR 做。
+- **P10** 已在 v0.24 完成：session 的宣告抽成 `mftiko.session.v1`，`Side`、`OrderType`、`TimeInForce` 在 `common.v1`。

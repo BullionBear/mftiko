@@ -13,6 +13,7 @@ breaking:
   # this list, as part of its done criteria. Every contract is a draft today; C3 and C4 come off first, when E1 ends.
   ignore:
     - contract/proto/mftiko/state/v1/state.proto # E: agent records in E1; demands, assignments, acks in E9
+    - contract/proto/mftiko/session/v1/session.proto # E and C5: E9
     - contract/proto/mftiko/shim/v1/shim.proto # C3: E1
     - contract/proto/mftiko/worker/v1/worker.proto # C4: E1
     - contract/proto/mftiko/common/v1/common.proto # C4: E1

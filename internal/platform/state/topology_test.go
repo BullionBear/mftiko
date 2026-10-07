@@ -79,7 +79,8 @@ func TestAgentRegions(t *testing.T) {
 	}{
 		{PlaneMD, "md-jp-1", []string{"jp"}},
 		{PlaneTD, "td-tw-1", []string{"tw"}},
-		{PlaneSTS, "sts-tw-1", nil},
+		{PlaneSTS, "sts-tw-1", []string{"tw"}}, // the controller writes its demands; it no longer writes elsewhere
+		{PlaneCtl, "ctl-tw-1", nil},
 	} {
 		got, err := AgentRegions(topo, c.p, c.inst)
 		if err != nil || !slices.Equal(got, c.want) || (c.want == nil) != (got == nil) {

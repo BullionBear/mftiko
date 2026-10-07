@@ -9,8 +9,7 @@
 package tdv1
 
 import (
-	v11 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
-	v1 "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1"
+	v1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -24,110 +23,6 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
-
-type OrderType int32
-
-const (
-	OrderType_ORDER_TYPE_UNSPECIFIED OrderType = 0
-	OrderType_ORDER_TYPE_LIMIT       OrderType = 1
-	OrderType_ORDER_TYPE_MARKET      OrderType = 2
-)
-
-// Enum value maps for OrderType.
-var (
-	OrderType_name = map[int32]string{
-		0: "ORDER_TYPE_UNSPECIFIED",
-		1: "ORDER_TYPE_LIMIT",
-		2: "ORDER_TYPE_MARKET",
-	}
-	OrderType_value = map[string]int32{
-		"ORDER_TYPE_UNSPECIFIED": 0,
-		"ORDER_TYPE_LIMIT":       1,
-		"ORDER_TYPE_MARKET":      2,
-	}
-)
-
-func (x OrderType) Enum() *OrderType {
-	p := new(OrderType)
-	*p = x
-	return p
-}
-
-func (x OrderType) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (OrderType) Descriptor() protoreflect.EnumDescriptor {
-	return file_mftiko_td_v1_td_proto_enumTypes[0].Descriptor()
-}
-
-func (OrderType) Type() protoreflect.EnumType {
-	return &file_mftiko_td_v1_td_proto_enumTypes[0]
-}
-
-func (x OrderType) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use OrderType.Descriptor instead.
-func (OrderType) EnumDescriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{0}
-}
-
-type TimeInForce int32
-
-const (
-	TimeInForce_TIME_IN_FORCE_UNSPECIFIED TimeInForce = 0
-	TimeInForce_TIME_IN_FORCE_GTC         TimeInForce = 1
-	TimeInForce_TIME_IN_FORCE_IOC         TimeInForce = 2
-	TimeInForce_TIME_IN_FORCE_FOK         TimeInForce = 3
-	TimeInForce_TIME_IN_FORCE_POST_ONLY   TimeInForce = 4
-)
-
-// Enum value maps for TimeInForce.
-var (
-	TimeInForce_name = map[int32]string{
-		0: "TIME_IN_FORCE_UNSPECIFIED",
-		1: "TIME_IN_FORCE_GTC",
-		2: "TIME_IN_FORCE_IOC",
-		3: "TIME_IN_FORCE_FOK",
-		4: "TIME_IN_FORCE_POST_ONLY",
-	}
-	TimeInForce_value = map[string]int32{
-		"TIME_IN_FORCE_UNSPECIFIED": 0,
-		"TIME_IN_FORCE_GTC":         1,
-		"TIME_IN_FORCE_IOC":         2,
-		"TIME_IN_FORCE_FOK":         3,
-		"TIME_IN_FORCE_POST_ONLY":   4,
-	}
-)
-
-func (x TimeInForce) Enum() *TimeInForce {
-	p := new(TimeInForce)
-	*p = x
-	return p
-}
-
-func (x TimeInForce) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (TimeInForce) Descriptor() protoreflect.EnumDescriptor {
-	return file_mftiko_td_v1_td_proto_enumTypes[1].Descriptor()
-}
-
-func (TimeInForce) Type() protoreflect.EnumType {
-	return &file_mftiko_td_v1_td_proto_enumTypes[1]
-}
-
-func (x TimeInForce) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use TimeInForce.Descriptor instead.
-func (TimeInForce) EnumDescriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{1}
-}
 
 type OrderStatus int32
 
@@ -183,11 +78,11 @@ func (x OrderStatus) String() string {
 }
 
 func (OrderStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_mftiko_td_v1_td_proto_enumTypes[2].Descriptor()
+	return file_mftiko_td_v1_td_proto_enumTypes[0].Descriptor()
 }
 
 func (OrderStatus) Type() protoreflect.EnumType {
-	return &file_mftiko_td_v1_td_proto_enumTypes[2]
+	return &file_mftiko_td_v1_td_proto_enumTypes[0]
 }
 
 func (x OrderStatus) Number() protoreflect.EnumNumber {
@@ -196,7 +91,7 @@ func (x OrderStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use OrderStatus.Descriptor instead.
 func (OrderStatus) EnumDescriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{2}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{0}
 }
 
 type ReconReason int32
@@ -232,11 +127,11 @@ func (x ReconReason) String() string {
 }
 
 func (ReconReason) Descriptor() protoreflect.EnumDescriptor {
-	return file_mftiko_td_v1_td_proto_enumTypes[3].Descriptor()
+	return file_mftiko_td_v1_td_proto_enumTypes[1].Descriptor()
 }
 
 func (ReconReason) Type() protoreflect.EnumType {
-	return &file_mftiko_td_v1_td_proto_enumTypes[3]
+	return &file_mftiko_td_v1_td_proto_enumTypes[1]
 }
 
 func (x ReconReason) Number() protoreflect.EnumNumber {
@@ -245,7 +140,7 @@ func (x ReconReason) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ReconReason.Descriptor instead.
 func (ReconReason) EnumDescriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{3}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{1}
 }
 
 type OrderRequest struct {
@@ -350,12 +245,12 @@ type Submit struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	Ticker        string                 `protobuf:"bytes,2,opt,name=ticker,proto3" json:"ticker,omitempty"`
-	Side          v1.Side                `protobuf:"varint,3,opt,name=side,proto3,enum=mftiko.md.v1.Side" json:"side,omitempty"`
-	OrderType     OrderType              `protobuf:"varint,4,opt,name=order_type,json=orderType,proto3,enum=mftiko.td.v1.OrderType" json:"order_type,omitempty"`
+	Side          v1.Side                `protobuf:"varint,3,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"`
+	OrderType     v1.OrderType           `protobuf:"varint,4,opt,name=order_type,json=orderType,proto3,enum=mftiko.common.v1.OrderType" json:"order_type,omitempty"`
 	Qty           *string                `protobuf:"bytes,5,opt,name=qty,proto3,oneof" json:"qty,omitempty"`
 	QuoteQty      *string                `protobuf:"bytes,6,opt,name=quote_qty,json=quoteQty,proto3,oneof" json:"quote_qty,omitempty"`
 	Price         *string                `protobuf:"bytes,7,opt,name=price,proto3,oneof" json:"price,omitempty"`
-	Tif           TimeInForce            `protobuf:"varint,8,opt,name=tif,proto3,enum=mftiko.td.v1.TimeInForce" json:"tif,omitempty"`
+	Tif           v1.TimeInForce         `protobuf:"varint,8,opt,name=tif,proto3,enum=mftiko.common.v1.TimeInForce" json:"tif,omitempty"`
 	ReduceOnly    bool                   `protobuf:"varint,9,opt,name=reduce_only,json=reduceOnly,proto3" json:"reduce_only,omitempty"`
 	ClientOrderId string                 `protobuf:"bytes,10,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
 	Params        map[string]string      `protobuf:"bytes,11,rep,name=params,proto3" json:"params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -415,11 +310,11 @@ func (x *Submit) GetSide() v1.Side {
 	return v1.Side(0)
 }
 
-func (x *Submit) GetOrderType() OrderType {
+func (x *Submit) GetOrderType() v1.OrderType {
 	if x != nil {
 		return x.OrderType
 	}
-	return OrderType_ORDER_TYPE_UNSPECIFIED
+	return v1.OrderType(0)
 }
 
 func (x *Submit) GetQty() string {
@@ -443,11 +338,11 @@ func (x *Submit) GetPrice() string {
 	return ""
 }
 
-func (x *Submit) GetTif() TimeInForce {
+func (x *Submit) GetTif() v1.TimeInForce {
 	if x != nil {
 		return x.Tif
 	}
-	return TimeInForce_TIME_IN_FORCE_UNSPECIFIED
+	return v1.TimeInForce(0)
 }
 
 func (x *Submit) GetReduceOnly() bool {
@@ -674,7 +569,7 @@ func (x *OrderReply) GetAck() *OrderAck {
 	return nil
 }
 
-func (x *OrderReply) GetError() *v11.Error {
+func (x *OrderReply) GetError() *v1.Error {
 	if x != nil {
 		if x, ok := x.Reply.(*OrderReply_Error); ok {
 			return x.Error
@@ -701,7 +596,7 @@ type OrderReply_Ack struct {
 }
 
 type OrderReply_Error struct {
-	Error *v11.Error `protobuf:"bytes,3,opt,name=error,proto3,oneof"`
+	Error *v1.Error `protobuf:"bytes,3,opt,name=error,proto3,oneof"`
 }
 
 type OrderReply_BatchCancel struct {
@@ -1165,7 +1060,7 @@ func (x *ViewReply) GetLeverage() *LeverageInfo {
 	return nil
 }
 
-func (x *ViewReply) GetError() *v11.Error {
+func (x *ViewReply) GetError() *v1.Error {
 	if x != nil {
 		if x, ok := x.Reply.(*ViewReply_Error); ok {
 			return x.Error
@@ -1191,7 +1086,7 @@ type ViewReply_Leverage struct {
 }
 
 type ViewReply_Error struct {
-	Error *v11.Error `protobuf:"bytes,4,opt,name=error,proto3,oneof"`
+	Error *v1.Error `protobuf:"bytes,4,opt,name=error,proto3,oneof"`
 }
 
 func (*ViewReply_Oms) isViewReply_Reply() {}
@@ -1385,7 +1280,7 @@ func (x *LeverageInfo) GetLeverage() string {
 type AccountEvent struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Seq    uint64                 `protobuf:"varint,1,opt,name=seq,proto3" json:"seq,omitempty"` // 每個 incarnation 從 1 起算
-	Source *v11.WorkerRef         `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	Source *v1.WorkerRef          `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
 	// Types that are valid to be assigned to Event:
 	//
 	//	*AccountEvent_OrderUpdate
@@ -1437,7 +1332,7 @@ func (x *AccountEvent) GetSeq() uint64 {
 	return 0
 }
 
-func (x *AccountEvent) GetSource() *v11.WorkerRef {
+func (x *AccountEvent) GetSource() *v1.WorkerRef {
 	if x != nil {
 		return x.Source
 	}
@@ -1565,8 +1460,8 @@ type Order struct {
 	Ticker        string                 `protobuf:"bytes,1,opt,name=ticker,proto3" json:"ticker,omitempty"`
 	OrderId       string                 `protobuf:"bytes,2,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
 	ClientOrderId string                 `protobuf:"bytes,3,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
-	Side          v1.Side                `protobuf:"varint,4,opt,name=side,proto3,enum=mftiko.md.v1.Side" json:"side,omitempty"`
-	OrderType     OrderType              `protobuf:"varint,5,opt,name=order_type,json=orderType,proto3,enum=mftiko.td.v1.OrderType" json:"order_type,omitempty"`
+	Side          v1.Side                `protobuf:"varint,4,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"`
+	OrderType     v1.OrderType           `protobuf:"varint,5,opt,name=order_type,json=orderType,proto3,enum=mftiko.common.v1.OrderType" json:"order_type,omitempty"`
 	Status        OrderStatus            `protobuf:"varint,6,opt,name=status,proto3,enum=mftiko.td.v1.OrderStatus" json:"status,omitempty"`
 	Qty           string                 `protobuf:"bytes,7,opt,name=qty,proto3" json:"qty,omitempty"`
 	QuoteQty      *string                `protobuf:"bytes,8,opt,name=quote_qty,json=quoteQty,proto3,oneof" json:"quote_qty,omitempty"`
@@ -1638,11 +1533,11 @@ func (x *Order) GetSide() v1.Side {
 	return v1.Side(0)
 }
 
-func (x *Order) GetOrderType() OrderType {
+func (x *Order) GetOrderType() v1.OrderType {
 	if x != nil {
 		return x.OrderType
 	}
-	return OrderType_ORDER_TYPE_UNSPECIFIED
+	return v1.OrderType(0)
 }
 
 func (x *Order) GetStatus() OrderStatus {
@@ -1715,7 +1610,7 @@ type Fill struct {
 	FillId        string  `protobuf:"bytes,2,opt,name=fill_id,json=fillId,proto3" json:"fill_id,omitempty"`
 	OrderId       string  `protobuf:"bytes,3,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
 	ClientOrderId string  `protobuf:"bytes,4,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
-	Side          v1.Side `protobuf:"varint,5,opt,name=side,proto3,enum=mftiko.md.v1.Side" json:"side,omitempty"`
+	Side          v1.Side `protobuf:"varint,5,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"`
 	Price         string  `protobuf:"bytes,6,opt,name=price,proto3" json:"price,omitempty"`
 	Qty           string  `protobuf:"bytes,7,opt,name=qty,proto3" json:"qty,omitempty"`
 	Fee           string  `protobuf:"bytes,8,opt,name=fee,proto3" json:"fee,omitempty"`
@@ -2308,23 +2203,23 @@ var File_mftiko_td_v1_td_proto protoreflect.FileDescriptor
 
 const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\n" +
-	"\x15mftiko/td/v1/td.proto\x12\fmftiko.td.v1\x1a\x1dmftiko/common/v1/common.proto\x1a\x15mftiko/md/v1/md.proto\"\xcb\x01\n" +
+	"\x15mftiko/td/v1/td.proto\x12\fmftiko.td.v1\x1a\x1dmftiko/common/v1/common.proto\"\xcb\x01\n" +
 	"\fOrderRequest\x12.\n" +
 	"\x06submit\x18\x01 \x01(\v2\x14.mftiko.td.v1.SubmitH\x00R\x06submit\x12.\n" +
 	"\x06cancel\x18\x02 \x01(\v2\x14.mftiko.td.v1.CancelH\x00R\x06cancel\x12>\n" +
 	"\fbatch_cancel\x18\x04 \x01(\v2\x19.mftiko.td.v1.BatchCancelH\x00R\vbatchCancelB\x05\n" +
-	"\x03reqJ\x04\b\x03\x10\x04R\x0ecancel_session\"\x97\x04\n" +
+	"\x03reqJ\x04\b\x03\x10\x04R\x0ecancel_session\"\xa3\x04\n" +
 	"\x06Submit\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x16\n" +
-	"\x06ticker\x18\x02 \x01(\tR\x06ticker\x12&\n" +
-	"\x04side\x18\x03 \x01(\x0e2\x12.mftiko.md.v1.SideR\x04side\x126\n" +
+	"\x06ticker\x18\x02 \x01(\tR\x06ticker\x12*\n" +
+	"\x04side\x18\x03 \x01(\x0e2\x16.mftiko.common.v1.SideR\x04side\x12:\n" +
 	"\n" +
-	"order_type\x18\x04 \x01(\x0e2\x17.mftiko.td.v1.OrderTypeR\torderType\x12\x15\n" +
+	"order_type\x18\x04 \x01(\x0e2\x1b.mftiko.common.v1.OrderTypeR\torderType\x12\x15\n" +
 	"\x03qty\x18\x05 \x01(\tH\x00R\x03qty\x88\x01\x01\x12 \n" +
 	"\tquote_qty\x18\x06 \x01(\tH\x01R\bquoteQty\x88\x01\x01\x12\x19\n" +
-	"\x05price\x18\a \x01(\tH\x02R\x05price\x88\x01\x01\x12+\n" +
-	"\x03tif\x18\b \x01(\x0e2\x19.mftiko.td.v1.TimeInForceR\x03tif\x12\x1f\n" +
+	"\x05price\x18\a \x01(\tH\x02R\x05price\x88\x01\x01\x12/\n" +
+	"\x03tif\x18\b \x01(\x0e2\x1d.mftiko.common.v1.TimeInForceR\x03tif\x12\x1f\n" +
 	"\vreduce_only\x18\t \x01(\bR\n" +
 	"reduceOnly\x12&\n" +
 	"\x0fclient_order_id\x18\n" +
@@ -2409,14 +2304,14 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\x0ebalance_update\x18\x0e \x01(\v2\x1b.mftiko.td.v1.BalanceUpdateH\x00R\rbalanceUpdate\x12G\n" +
 	"\x0fposition_update\x18\x0f \x01(\v2\x1c.mftiko.td.v1.PositionUpdateH\x00R\x0epositionUpdate\x12+\n" +
 	"\x05recon\x18\x11 \x01(\v2\x13.mftiko.td.v1.ReconH\x00R\x05reconB\a\n" +
-	"\x05eventJ\x04\b\x10\x10\x11R\raccount_reset\"\x88\x04\n" +
+	"\x05eventJ\x04\b\x10\x10\x11R\raccount_reset\"\x90\x04\n" +
 	"\x05Order\x12\x16\n" +
 	"\x06ticker\x18\x01 \x01(\tR\x06ticker\x12\x19\n" +
 	"\border_id\x18\x02 \x01(\tR\aorderId\x12&\n" +
-	"\x0fclient_order_id\x18\x03 \x01(\tR\rclientOrderId\x12&\n" +
-	"\x04side\x18\x04 \x01(\x0e2\x12.mftiko.md.v1.SideR\x04side\x126\n" +
+	"\x0fclient_order_id\x18\x03 \x01(\tR\rclientOrderId\x12*\n" +
+	"\x04side\x18\x04 \x01(\x0e2\x16.mftiko.common.v1.SideR\x04side\x12:\n" +
 	"\n" +
-	"order_type\x18\x05 \x01(\x0e2\x17.mftiko.td.v1.OrderTypeR\torderType\x121\n" +
+	"order_type\x18\x05 \x01(\x0e2\x1b.mftiko.common.v1.OrderTypeR\torderType\x121\n" +
 	"\x06status\x18\x06 \x01(\x0e2\x19.mftiko.td.v1.OrderStatusR\x06status\x12\x10\n" +
 	"\x03qty\x18\a \x01(\tR\x03qty\x12 \n" +
 	"\tquote_qty\x18\b \x01(\tH\x00R\bquoteQty\x88\x01\x01\x12\x19\n" +
@@ -2433,13 +2328,13 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"_quote_qtyB\b\n" +
 	"\x06_priceB\f\n" +
 	"\n" +
-	"_avg_price\"\xb5\x02\n" +
+	"_avg_price\"\xb9\x02\n" +
 	"\x04Fill\x12\x16\n" +
 	"\x06ticker\x18\x01 \x01(\tR\x06ticker\x12\x17\n" +
 	"\afill_id\x18\x02 \x01(\tR\x06fillId\x12\x19\n" +
 	"\border_id\x18\x03 \x01(\tR\aorderId\x12&\n" +
-	"\x0fclient_order_id\x18\x04 \x01(\tR\rclientOrderId\x12&\n" +
-	"\x04side\x18\x05 \x01(\x0e2\x12.mftiko.md.v1.SideR\x04side\x12\x14\n" +
+	"\x0fclient_order_id\x18\x04 \x01(\tR\rclientOrderId\x12*\n" +
+	"\x04side\x18\x05 \x01(\x0e2\x16.mftiko.common.v1.SideR\x04side\x12\x14\n" +
 	"\x05price\x18\x06 \x01(\tR\x05price\x12\x10\n" +
 	"\x03qty\x18\a \x01(\tR\x03qty\x12\x10\n" +
 	"\x03fee\x18\b \x01(\tR\x03fee\x12\x1b\n" +
@@ -2488,17 +2383,7 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"openOrders\x124\n" +
 	"\tpositions\x18\x04 \x03(\v2\x16.mftiko.td.v1.PositionR\tpositions\x121\n" +
 	"\bbalances\x18\x05 \x03(\v2\x15.mftiko.td.v1.BalanceR\bbalances\x12\x18\n" +
-	"\bas_of_ns\x18\x06 \x01(\x03R\x06asOfNs*T\n" +
-	"\tOrderType\x12\x1a\n" +
-	"\x16ORDER_TYPE_UNSPECIFIED\x10\x00\x12\x14\n" +
-	"\x10ORDER_TYPE_LIMIT\x10\x01\x12\x15\n" +
-	"\x11ORDER_TYPE_MARKET\x10\x02*\x8e\x01\n" +
-	"\vTimeInForce\x12\x1d\n" +
-	"\x19TIME_IN_FORCE_UNSPECIFIED\x10\x00\x12\x15\n" +
-	"\x11TIME_IN_FORCE_GTC\x10\x01\x12\x15\n" +
-	"\x11TIME_IN_FORCE_IOC\x10\x02\x12\x15\n" +
-	"\x11TIME_IN_FORCE_FOK\x10\x03\x12\x1b\n" +
-	"\x17TIME_IN_FORCE_POST_ONLY\x10\x04*\xa7\x02\n" +
+	"\bas_of_ns\x18\x06 \x01(\x03R\x06asOfNs*\xa7\x02\n" +
 	"\vOrderStatus\x12\x1c\n" +
 	"\x18ORDER_STATUS_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18ORDER_STATUS_PENDING_NEW\x10\x01\x12\x14\n" +
@@ -2527,82 +2412,82 @@ func file_mftiko_td_v1_td_proto_rawDescGZIP() []byte {
 	return file_mftiko_td_v1_td_proto_rawDescData
 }
 
-var file_mftiko_td_v1_td_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_mftiko_td_v1_td_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_mftiko_td_v1_td_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_mftiko_td_v1_td_proto_goTypes = []any{
-	(OrderType)(0),                // 0: mftiko.td.v1.OrderType
-	(TimeInForce)(0),              // 1: mftiko.td.v1.TimeInForce
-	(OrderStatus)(0),              // 2: mftiko.td.v1.OrderStatus
-	(ReconReason)(0),              // 3: mftiko.td.v1.ReconReason
-	(*OrderRequest)(nil),          // 4: mftiko.td.v1.OrderRequest
-	(*Submit)(nil),                // 5: mftiko.td.v1.Submit
-	(*Cancel)(nil),                // 6: mftiko.td.v1.Cancel
-	(*BatchCancel)(nil),           // 7: mftiko.td.v1.BatchCancel
-	(*OrderReply)(nil),            // 8: mftiko.td.v1.OrderReply
-	(*OrderAck)(nil),              // 9: mftiko.td.v1.OrderAck
-	(*BatchCancelResult)(nil),     // 10: mftiko.td.v1.BatchCancelResult
-	(*ViewRequest)(nil),           // 11: mftiko.td.v1.ViewRequest
-	(*OmsViewRequest)(nil),        // 12: mftiko.td.v1.OmsViewRequest
-	(*LedgerViewRequest)(nil),     // 13: mftiko.td.v1.LedgerViewRequest
-	(*EnsureLeverageRequest)(nil), // 14: mftiko.td.v1.EnsureLeverageRequest
-	(*ViewReply)(nil),             // 15: mftiko.td.v1.ViewReply
-	(*OmsView)(nil),               // 16: mftiko.td.v1.OmsView
-	(*LedgerView)(nil),            // 17: mftiko.td.v1.LedgerView
-	(*LeverageInfo)(nil),          // 18: mftiko.td.v1.LeverageInfo
-	(*AccountEvent)(nil),          // 19: mftiko.td.v1.AccountEvent
-	(*Order)(nil),                 // 20: mftiko.td.v1.Order
-	(*Fill)(nil),                  // 21: mftiko.td.v1.Fill
-	(*OrderReject)(nil),           // 22: mftiko.td.v1.OrderReject
-	(*CancelReject)(nil),          // 23: mftiko.td.v1.CancelReject
-	(*Balance)(nil),               // 24: mftiko.td.v1.Balance
-	(*Position)(nil),              // 25: mftiko.td.v1.Position
-	(*BalanceUpdate)(nil),         // 26: mftiko.td.v1.BalanceUpdate
-	(*PositionUpdate)(nil),        // 27: mftiko.td.v1.PositionUpdate
-	(*Recon)(nil),                 // 28: mftiko.td.v1.Recon
-	nil,                           // 29: mftiko.td.v1.Submit.ParamsEntry
-	(v1.Side)(0),                  // 30: mftiko.md.v1.Side
-	(*v11.Error)(nil),             // 31: mftiko.common.v1.Error
-	(*v11.WorkerRef)(nil),         // 32: mftiko.common.v1.WorkerRef
+	(OrderStatus)(0),              // 0: mftiko.td.v1.OrderStatus
+	(ReconReason)(0),              // 1: mftiko.td.v1.ReconReason
+	(*OrderRequest)(nil),          // 2: mftiko.td.v1.OrderRequest
+	(*Submit)(nil),                // 3: mftiko.td.v1.Submit
+	(*Cancel)(nil),                // 4: mftiko.td.v1.Cancel
+	(*BatchCancel)(nil),           // 5: mftiko.td.v1.BatchCancel
+	(*OrderReply)(nil),            // 6: mftiko.td.v1.OrderReply
+	(*OrderAck)(nil),              // 7: mftiko.td.v1.OrderAck
+	(*BatchCancelResult)(nil),     // 8: mftiko.td.v1.BatchCancelResult
+	(*ViewRequest)(nil),           // 9: mftiko.td.v1.ViewRequest
+	(*OmsViewRequest)(nil),        // 10: mftiko.td.v1.OmsViewRequest
+	(*LedgerViewRequest)(nil),     // 11: mftiko.td.v1.LedgerViewRequest
+	(*EnsureLeverageRequest)(nil), // 12: mftiko.td.v1.EnsureLeverageRequest
+	(*ViewReply)(nil),             // 13: mftiko.td.v1.ViewReply
+	(*OmsView)(nil),               // 14: mftiko.td.v1.OmsView
+	(*LedgerView)(nil),            // 15: mftiko.td.v1.LedgerView
+	(*LeverageInfo)(nil),          // 16: mftiko.td.v1.LeverageInfo
+	(*AccountEvent)(nil),          // 17: mftiko.td.v1.AccountEvent
+	(*Order)(nil),                 // 18: mftiko.td.v1.Order
+	(*Fill)(nil),                  // 19: mftiko.td.v1.Fill
+	(*OrderReject)(nil),           // 20: mftiko.td.v1.OrderReject
+	(*CancelReject)(nil),          // 21: mftiko.td.v1.CancelReject
+	(*Balance)(nil),               // 22: mftiko.td.v1.Balance
+	(*Position)(nil),              // 23: mftiko.td.v1.Position
+	(*BalanceUpdate)(nil),         // 24: mftiko.td.v1.BalanceUpdate
+	(*PositionUpdate)(nil),        // 25: mftiko.td.v1.PositionUpdate
+	(*Recon)(nil),                 // 26: mftiko.td.v1.Recon
+	nil,                           // 27: mftiko.td.v1.Submit.ParamsEntry
+	(v1.Side)(0),                  // 28: mftiko.common.v1.Side
+	(v1.OrderType)(0),             // 29: mftiko.common.v1.OrderType
+	(v1.TimeInForce)(0),           // 30: mftiko.common.v1.TimeInForce
+	(*v1.Error)(nil),              // 31: mftiko.common.v1.Error
+	(*v1.WorkerRef)(nil),          // 32: mftiko.common.v1.WorkerRef
 }
 var file_mftiko_td_v1_td_proto_depIdxs = []int32{
-	5,  // 0: mftiko.td.v1.OrderRequest.submit:type_name -> mftiko.td.v1.Submit
-	6,  // 1: mftiko.td.v1.OrderRequest.cancel:type_name -> mftiko.td.v1.Cancel
-	7,  // 2: mftiko.td.v1.OrderRequest.batch_cancel:type_name -> mftiko.td.v1.BatchCancel
-	30, // 3: mftiko.td.v1.Submit.side:type_name -> mftiko.md.v1.Side
-	0,  // 4: mftiko.td.v1.Submit.order_type:type_name -> mftiko.td.v1.OrderType
-	1,  // 5: mftiko.td.v1.Submit.tif:type_name -> mftiko.td.v1.TimeInForce
-	29, // 6: mftiko.td.v1.Submit.params:type_name -> mftiko.td.v1.Submit.ParamsEntry
-	9,  // 7: mftiko.td.v1.OrderReply.ack:type_name -> mftiko.td.v1.OrderAck
+	3,  // 0: mftiko.td.v1.OrderRequest.submit:type_name -> mftiko.td.v1.Submit
+	4,  // 1: mftiko.td.v1.OrderRequest.cancel:type_name -> mftiko.td.v1.Cancel
+	5,  // 2: mftiko.td.v1.OrderRequest.batch_cancel:type_name -> mftiko.td.v1.BatchCancel
+	28, // 3: mftiko.td.v1.Submit.side:type_name -> mftiko.common.v1.Side
+	29, // 4: mftiko.td.v1.Submit.order_type:type_name -> mftiko.common.v1.OrderType
+	30, // 5: mftiko.td.v1.Submit.tif:type_name -> mftiko.common.v1.TimeInForce
+	27, // 6: mftiko.td.v1.Submit.params:type_name -> mftiko.td.v1.Submit.ParamsEntry
+	7,  // 7: mftiko.td.v1.OrderReply.ack:type_name -> mftiko.td.v1.OrderAck
 	31, // 8: mftiko.td.v1.OrderReply.error:type_name -> mftiko.common.v1.Error
-	10, // 9: mftiko.td.v1.OrderReply.batch_cancel:type_name -> mftiko.td.v1.BatchCancelResult
-	12, // 10: mftiko.td.v1.ViewRequest.oms:type_name -> mftiko.td.v1.OmsViewRequest
-	13, // 11: mftiko.td.v1.ViewRequest.ledger:type_name -> mftiko.td.v1.LedgerViewRequest
-	14, // 12: mftiko.td.v1.ViewRequest.leverage:type_name -> mftiko.td.v1.EnsureLeverageRequest
-	16, // 13: mftiko.td.v1.ViewReply.oms:type_name -> mftiko.td.v1.OmsView
-	17, // 14: mftiko.td.v1.ViewReply.ledger:type_name -> mftiko.td.v1.LedgerView
-	18, // 15: mftiko.td.v1.ViewReply.leverage:type_name -> mftiko.td.v1.LeverageInfo
+	8,  // 9: mftiko.td.v1.OrderReply.batch_cancel:type_name -> mftiko.td.v1.BatchCancelResult
+	10, // 10: mftiko.td.v1.ViewRequest.oms:type_name -> mftiko.td.v1.OmsViewRequest
+	11, // 11: mftiko.td.v1.ViewRequest.ledger:type_name -> mftiko.td.v1.LedgerViewRequest
+	12, // 12: mftiko.td.v1.ViewRequest.leverage:type_name -> mftiko.td.v1.EnsureLeverageRequest
+	14, // 13: mftiko.td.v1.ViewReply.oms:type_name -> mftiko.td.v1.OmsView
+	15, // 14: mftiko.td.v1.ViewReply.ledger:type_name -> mftiko.td.v1.LedgerView
+	16, // 15: mftiko.td.v1.ViewReply.leverage:type_name -> mftiko.td.v1.LeverageInfo
 	31, // 16: mftiko.td.v1.ViewReply.error:type_name -> mftiko.common.v1.Error
-	20, // 17: mftiko.td.v1.OmsView.orders:type_name -> mftiko.td.v1.Order
-	24, // 18: mftiko.td.v1.LedgerView.balances:type_name -> mftiko.td.v1.Balance
-	25, // 19: mftiko.td.v1.LedgerView.positions:type_name -> mftiko.td.v1.Position
+	18, // 17: mftiko.td.v1.OmsView.orders:type_name -> mftiko.td.v1.Order
+	22, // 18: mftiko.td.v1.LedgerView.balances:type_name -> mftiko.td.v1.Balance
+	23, // 19: mftiko.td.v1.LedgerView.positions:type_name -> mftiko.td.v1.Position
 	32, // 20: mftiko.td.v1.AccountEvent.source:type_name -> mftiko.common.v1.WorkerRef
-	20, // 21: mftiko.td.v1.AccountEvent.order_update:type_name -> mftiko.td.v1.Order
-	21, // 22: mftiko.td.v1.AccountEvent.fill:type_name -> mftiko.td.v1.Fill
-	22, // 23: mftiko.td.v1.AccountEvent.order_reject:type_name -> mftiko.td.v1.OrderReject
-	23, // 24: mftiko.td.v1.AccountEvent.cancel_reject:type_name -> mftiko.td.v1.CancelReject
-	26, // 25: mftiko.td.v1.AccountEvent.balance_update:type_name -> mftiko.td.v1.BalanceUpdate
-	27, // 26: mftiko.td.v1.AccountEvent.position_update:type_name -> mftiko.td.v1.PositionUpdate
-	28, // 27: mftiko.td.v1.AccountEvent.recon:type_name -> mftiko.td.v1.Recon
-	30, // 28: mftiko.td.v1.Order.side:type_name -> mftiko.md.v1.Side
-	0,  // 29: mftiko.td.v1.Order.order_type:type_name -> mftiko.td.v1.OrderType
-	2,  // 30: mftiko.td.v1.Order.status:type_name -> mftiko.td.v1.OrderStatus
-	30, // 31: mftiko.td.v1.Fill.side:type_name -> mftiko.md.v1.Side
-	24, // 32: mftiko.td.v1.BalanceUpdate.balances:type_name -> mftiko.td.v1.Balance
-	25, // 33: mftiko.td.v1.PositionUpdate.positions:type_name -> mftiko.td.v1.Position
-	3,  // 34: mftiko.td.v1.Recon.reason:type_name -> mftiko.td.v1.ReconReason
-	20, // 35: mftiko.td.v1.Recon.open_orders:type_name -> mftiko.td.v1.Order
-	25, // 36: mftiko.td.v1.Recon.positions:type_name -> mftiko.td.v1.Position
-	24, // 37: mftiko.td.v1.Recon.balances:type_name -> mftiko.td.v1.Balance
+	18, // 21: mftiko.td.v1.AccountEvent.order_update:type_name -> mftiko.td.v1.Order
+	19, // 22: mftiko.td.v1.AccountEvent.fill:type_name -> mftiko.td.v1.Fill
+	20, // 23: mftiko.td.v1.AccountEvent.order_reject:type_name -> mftiko.td.v1.OrderReject
+	21, // 24: mftiko.td.v1.AccountEvent.cancel_reject:type_name -> mftiko.td.v1.CancelReject
+	24, // 25: mftiko.td.v1.AccountEvent.balance_update:type_name -> mftiko.td.v1.BalanceUpdate
+	25, // 26: mftiko.td.v1.AccountEvent.position_update:type_name -> mftiko.td.v1.PositionUpdate
+	26, // 27: mftiko.td.v1.AccountEvent.recon:type_name -> mftiko.td.v1.Recon
+	28, // 28: mftiko.td.v1.Order.side:type_name -> mftiko.common.v1.Side
+	29, // 29: mftiko.td.v1.Order.order_type:type_name -> mftiko.common.v1.OrderType
+	0,  // 30: mftiko.td.v1.Order.status:type_name -> mftiko.td.v1.OrderStatus
+	28, // 31: mftiko.td.v1.Fill.side:type_name -> mftiko.common.v1.Side
+	22, // 32: mftiko.td.v1.BalanceUpdate.balances:type_name -> mftiko.td.v1.Balance
+	23, // 33: mftiko.td.v1.PositionUpdate.positions:type_name -> mftiko.td.v1.Position
+	1,  // 34: mftiko.td.v1.Recon.reason:type_name -> mftiko.td.v1.ReconReason
+	18, // 35: mftiko.td.v1.Recon.open_orders:type_name -> mftiko.td.v1.Order
+	23, // 36: mftiko.td.v1.Recon.positions:type_name -> mftiko.td.v1.Position
+	22, // 37: mftiko.td.v1.Recon.balances:type_name -> mftiko.td.v1.Balance
 	38, // [38:38] is the sub-list for method output_type
 	38, // [38:38] is the sub-list for method input_type
 	38, // [38:38] is the sub-list for extension type_name
@@ -2653,7 +2538,7 @@ func file_mftiko_td_v1_td_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mftiko_td_v1_td_proto_rawDesc), len(file_mftiko_td_v1_td_proto_rawDesc)),
-			NumEnums:      4,
+			NumEnums:      2,
 			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   0,

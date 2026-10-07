@@ -183,8 +183,9 @@ func mustCompact(t *testing.T, ctx context.Context, raw *clientv3.Client) int64 
 
 func errOf[T any](_ T, err error) error { return err }
 
-func leaseKey(i int) string {
-	return TDLeaseKey("td-tw-1", "sts-tw-1", fmt.Sprintf("%06x", i), int64(i+1))
+// ackKey is a TD ack, the kind of key the controller mirrors; acks are bound to the TD agent's etcd lease.
+func ackKey(i int) string {
+	return TDAckKey("td-tw-1", fmt.Sprintf("%06x", i), int64(i+1))
 }
 
 func TestNewMirrorArgs(t *testing.T) {
@@ -213,10 +214,10 @@ func TestMirrorListThenWatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prefix := TDLeasePrefix("td-tw-1")
+	prefix := TDAckPrefix("td-tw-1")
 	noise := AccountKey("td-tw-1", 7) // same instance, another prefix
 	for i := range 5 {
-		mustPut(t, ctx, raw, leaseKey(i), fmt.Sprint(i))
+		mustPut(t, ctx, raw, ackKey(i), fmt.Sprint(i))
 	}
 	listed := mustPut(t, ctx, raw, noise, "account")
 
@@ -237,8 +238,8 @@ func TestMirrorListThenWatch(t *testing.T) {
 
 	// One txn: two keys of the prefix and one outside it. The view takes it whole.
 	resp, err := raw.Txn(ctx).Then(
-		clientv3.OpPut(leaseKey(9), "nine"),
-		clientv3.OpDelete(leaseKey(0)),
+		clientv3.OpPut(ackKey(9), "nine"),
+		clientv3.OpDelete(ackKey(0)),
 		clientv3.OpPut(noise, "changed"),
 	).Commit()
 	if err != nil {
@@ -253,13 +254,13 @@ func TestMirrorListThenWatch(t *testing.T) {
 	if v.Rev != resp.Header.Revision {
 		t.Fatalf("view rev %d, txn at %d", v.Rev, resp.Header.Revision)
 	}
-	if !slices.Equal(changed, []string{leaseKey(0), leaseKey(9)}) {
+	if !slices.Equal(changed, []string{ackKey(0), ackKey(9)}) {
 		t.Fatalf("changed %v", changed)
 	}
-	if _, ok := m.Get(leaseKey(0)); ok {
+	if _, ok := m.Get(ackKey(0)); ok {
 		t.Fatal("deleted key still in the mirror")
 	}
-	if e, ok := m.Get(leaseKey(9)); !ok || string(e.Value) != "nine" {
+	if e, ok := m.Get(ackKey(9)); !ok || string(e.Value) != "nine" {
 		t.Fatalf("Get = %+v, %v", e, ok)
 	}
 	if st := m.Stats(); st.Lists != 1 || st.Watches != 1 || st.Errors != 0 {
@@ -278,15 +279,15 @@ func TestMirrorListIsOneRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := range 6 {
-		mustPut(t, ctx, raw, leaseKey(i), "v1")
+		mustPut(t, ctx, raw, ackKey(i), "v1")
 	}
 	g := &gatedReader{Reader: direct, gate: make(chan struct{})}
 	g.beforeGet = func(n int) {
 		if n == 2 { // between the first and second page; on Run's goroutine, so t.Error, not t.Fatal
 			for _, err := range []error{
-				errOf(raw.Put(ctx, leaseKey(1), "v2")),
-				errOf(raw.Put(ctx, leaseKey(8), "late")),
-				errOf(raw.Delete(ctx, leaseKey(5))),
+				errOf(raw.Put(ctx, ackKey(1), "v2")),
+				errOf(raw.Put(ctx, ackKey(8), "late")),
+				errOf(raw.Delete(ctx, ackKey(5))),
 			} {
 				if err != nil {
 					t.Error(err)
@@ -294,7 +295,7 @@ func TestMirrorListIsOneRevision(t *testing.T) {
 			}
 		}
 	}
-	m := startMirror(t, g, TDLeasePrefix("td-tw-1"), MirrorOptions{PageSize: 2})
+	m := startMirror(t, g, TDAckPrefix("td-tw-1"), MirrorOptions{PageSize: 2})
 	v := m.Snapshot()
 	atRev, _ := etcdEntries(t, ctx, raw, m.Prefix(), clientv3.WithRev(v.Rev))
 	if d := diffEntries(v.Entries, atRev); d != "" {
@@ -321,12 +322,12 @@ func TestMirrorCompactedMidList(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := range 6 {
-		mustPut(t, ctx, raw, leaseKey(i), "v1")
+		mustPut(t, ctx, raw, ackKey(i), "v1")
 	}
 	g := &gatedReader{Reader: direct}
 	g.beforeGet = func(n int) {
 		if n == 2 { // on Run's goroutine, so t.Error, not t.Fatal
-			resp, err := raw.Delete(ctx, leaseKey(4))
+			resp, err := raw.Delete(ctx, ackKey(4))
 			if err == nil {
 				_, err = raw.Compact(ctx, resp.Header.Revision, clientv3.WithCompactPhysical())
 			}
@@ -335,9 +336,9 @@ func TestMirrorCompactedMidList(t *testing.T) {
 			}
 		}
 	}
-	m := startMirror(t, g, TDLeasePrefix("td-tw-1"), MirrorOptions{PageSize: 2})
+	m := startMirror(t, g, TDAckPrefix("td-tw-1"), MirrorOptions{PageSize: 2})
 	waitConverged(t, ctx, m, raw, 20*time.Second)
-	if _, ok := m.Get(leaseKey(4)); ok {
+	if _, ok := m.Get(ackKey(4)); ok {
 		t.Fatal("a key deleted before the restarted list is in the view")
 	}
 	if st := m.Stats(); st.Lists != 1 || st.Errors != 1 {
@@ -365,29 +366,29 @@ func TestMirrorCompactedWhileCut(t *testing.T) {
 	ctx := testCtx(t)
 	_, p, raw, r := proxied(t)
 	for i := range 4 {
-		mustPut(t, ctx, raw, leaseKey(i), "v1")
+		mustPut(t, ctx, raw, ackKey(i), "v1")
 	}
-	m := startMirror(t, r, TDLeasePrefix("td-tw-1"), MirrorOptions{MaxBackoff: 500 * time.Millisecond})
+	m := startMirror(t, r, TDAckPrefix("td-tw-1"), MirrorOptions{MaxBackoff: 500 * time.Millisecond})
 	m.Take()
 
 	p.Cut()
-	mustPut(t, ctx, raw, leaseKey(1), "v2")
-	mustPut(t, ctx, raw, leaseKey(7), "new")
-	if _, err := raw.Delete(ctx, leaseKey(2)); err != nil {
+	mustPut(t, ctx, raw, ackKey(1), "v2")
+	mustPut(t, ctx, raw, ackKey(7), "new")
+	if _, err := raw.Delete(ctx, ackKey(2)); err != nil {
 		t.Fatal(err)
 	}
 	compacted := mustCompact(t, ctx, raw)
 	p.Restore()
 
 	waitConverged(t, ctx, m, raw, 30*time.Second)
-	if _, ok := m.Get(leaseKey(2)); ok {
+	if _, ok := m.Get(ackKey(2)); ok {
 		t.Fatal("a key deleted while cut off survived the compaction")
 	}
 	v, changed := m.Take()
 	if v.Rev < compacted {
 		t.Fatalf("view rev %d, before the compaction at %d", v.Rev, compacted)
 	}
-	if !slices.Equal(changed, []string{leaseKey(1), leaseKey(2), leaseKey(7)}) {
+	if !slices.Equal(changed, []string{ackKey(1), ackKey(2), ackKey(7)}) {
 		t.Fatalf("changed %v, want exactly the keys changed while cut off", changed)
 	}
 	if st := m.Stats(); st.Lists != 2 {
@@ -399,17 +400,17 @@ func TestMirrorCompactedWhileCut(t *testing.T) {
 func TestMirrorReconnects(t *testing.T) {
 	ctx := testCtx(t)
 	_, p, raw, r := proxied(t)
-	mustPut(t, ctx, raw, leaseKey(0), "v1")
-	m := startMirror(t, r, TDLeasePrefix("td-tw-1"), MirrorOptions{MaxBackoff: 500 * time.Millisecond})
+	mustPut(t, ctx, raw, ackKey(0), "v1")
+	m := startMirror(t, r, TDAckPrefix("td-tw-1"), MirrorOptions{MaxBackoff: 500 * time.Millisecond})
 
 	for round := range 3 {
 		p.Cut()
-		mustPut(t, ctx, raw, leaseKey(round+1), "v1")
-		if _, err := raw.Delete(ctx, leaseKey(round)); err != nil {
+		mustPut(t, ctx, raw, ackKey(round+1), "v1")
+		if _, err := raw.Delete(ctx, ackKey(round)); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(300 * time.Millisecond)
-		if _, ok := m.Get(leaseKey(round + 1)); ok { // the cut is real: nothing gets through
+		if _, ok := m.Get(ackKey(round + 1)); ok { // the cut is real: nothing gets through
 			t.Fatalf("round %d: a write made while cut off reached the mirror", round)
 		}
 		p.Restore()
@@ -429,12 +430,12 @@ func TestMirrorServerRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mustPut(t, ctx, raw, leaseKey(0), "v1")
-	m := startMirror(t, r, TDLeasePrefix("td-tw-1"), MirrorOptions{MaxBackoff: 500 * time.Millisecond})
+	mustPut(t, ctx, raw, ackKey(0), "v1")
+	m := startMirror(t, r, TDAckPrefix("td-tw-1"), MirrorOptions{MaxBackoff: 500 * time.Millisecond})
 
 	s.Restart(t)
-	mustPut(t, ctx, raw, leaseKey(1), "after restart")
-	if _, err := raw.Delete(ctx, leaseKey(0)); err != nil {
+	mustPut(t, ctx, raw, ackKey(1), "after restart")
+	if _, err := raw.Delete(ctx, ackKey(0)); err != nil {
 		t.Fatal(err)
 	}
 	waitConverged(t, ctx, m, raw, 30*time.Second)
@@ -453,15 +454,15 @@ func TestMirrorLeaseExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mustPut(t, ctx, raw, leaseKey(0), "leased", clientv3.WithLease(lease.ID))
-	mustPut(t, ctx, raw, leaseKey(1), "kept")
-	m := startMirror(t, r, TDLeasePrefix("td-tw-1"), MirrorOptions{})
-	if e, ok := m.Get(leaseKey(0)); !ok || e.Lease != int64(lease.ID) {
+	mustPut(t, ctx, raw, ackKey(0), "leased", clientv3.WithLease(lease.ID))
+	mustPut(t, ctx, raw, ackKey(1), "kept")
+	m := startMirror(t, r, TDAckPrefix("td-tw-1"), MirrorOptions{})
+	if e, ok := m.Get(ackKey(0)); !ok || e.Lease != int64(lease.ID) {
 		t.Fatalf("leased key = %+v, %v", e, ok)
 	}
 	deadline := time.Now().Add(20 * time.Second)
 	for {
-		if _, ok := m.Get(leaseKey(0)); !ok {
+		if _, ok := m.Get(ackKey(0)); !ok {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -486,7 +487,7 @@ func TestMirrorRunExits(t *testing.T) {
 	}
 
 	// ctx done: Run returns its error promptly.
-	m, _ := NewMirror(r, TDLeasePrefix("td-tw-1"), MirrorOptions{})
+	m, _ := NewMirror(r, TDAckPrefix("td-tw-1"), MirrorOptions{})
 	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() { done <- m.Run(runCtx) }()
@@ -504,7 +505,7 @@ func TestMirrorRunExits(t *testing.T) {
 	}
 
 	// The client closed under a live ctx: Run gives up with ErrClustersClosed instead of retrying forever.
-	m2, _ := NewMirror(r, TDLeasePrefix("td-tw-1"), MirrorOptions{})
+	m2, _ := NewMirror(r, TDAckPrefix("td-tw-1"), MirrorOptions{})
 	go func() { done <- m2.Run(ctx) }()
 	<-m2.Synced()
 	cl.Close()
@@ -571,7 +572,7 @@ func TestMirrorRandomized(t *testing.T) {
 	ctx := testCtx(t)
 	_, p, raw, r := proxied(t)
 	b := &breakableReader{Reader: r}
-	prefix := TDLeasePrefix("td-tw-1")
+	prefix := TDAckPrefix("td-tw-1")
 	m := startMirror(t, b, prefix, MirrorOptions{PageSize: 7, MaxBackoff: 300 * time.Millisecond, ProbeInterval: 200 * time.Millisecond})
 
 	stop := make(chan struct{})
@@ -595,7 +596,7 @@ func TestMirrorRandomized(t *testing.T) {
 					return
 				default:
 				}
-				k := leaseKey(rng.IntN(keys))
+				k := ackKey(rng.IntN(keys))
 				var err error
 				switch op := rng.IntN(10); {
 				case op < 4:
@@ -607,7 +608,7 @@ func TestMirrorRandomized(t *testing.T) {
 					if a == b {
 						continue
 					}
-					_, err = raw.Txn(ctx).Then(clientv3.OpPut(leaseKey(a), "txn"), clientv3.OpDelete(leaseKey(b))).Commit()
+					_, err = raw.Txn(ctx).Then(clientv3.OpPut(ackKey(a), "txn"), clientv3.OpDelete(ackKey(b))).Commit()
 				case op < 9:
 					_, err = raw.Put(ctx, AccountKey("td-tw-1", int64(rng.IntN(keys))), "noise")
 				default:
@@ -851,15 +852,15 @@ func TestMirrorRewatchesAfterBrokenWatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	b := &breakableReader{Reader: direct}
-	mustPut(t, ctx, raw, leaseKey(0), "v1")
-	m := startMirror(t, b, TDLeasePrefix("td-tw-1"), MirrorOptions{MaxBackoff: 200 * time.Millisecond})
-	last := mustPut(t, ctx, raw, leaseKey(1), "v1")
+	mustPut(t, ctx, raw, ackKey(0), "v1")
+	m := startMirror(t, b, TDAckPrefix("td-tw-1"), MirrorOptions{MaxBackoff: 200 * time.Millisecond})
+	last := mustPut(t, ctx, raw, ackKey(1), "v1")
 	waitConverged(t, ctx, m, raw, 20*time.Second)
 	mustPut(t, ctx, raw, AccountKey("td-tw-1", 1), "noise") // advances the cluster, not the prefix
 
 	release := b.breakAndHold()
-	mustPut(t, ctx, raw, leaseKey(2), "while broken")
-	if _, err := raw.Delete(ctx, leaseKey(0)); err != nil {
+	mustPut(t, ctx, raw, ackKey(2), "while broken")
+	if _, err := raw.Delete(ctx, ackKey(0)); err != nil {
 		t.Fatal(err)
 	}
 	release()
@@ -882,10 +883,10 @@ func TestMirrorClusterReplaced(t *testing.T) {
 	b := etcdtest.Start(t)
 	rawB := b.Client(t)
 	for i := range 20 {
-		mustPut(t, ctx, rawA, leaseKey(i), "from A")
+		mustPut(t, ctx, rawA, ackKey(i), "from A")
 	}
-	mustPut(t, ctx, rawB, leaseKey(0), "from B")
-	m := startMirror(t, r, TDLeasePrefix("td-tw-1"), MirrorOptions{MaxBackoff: 200 * time.Millisecond, ProbeInterval: 200 * time.Millisecond})
+	mustPut(t, ctx, rawB, ackKey(0), "from B")
+	m := startMirror(t, r, TDAckPrefix("td-tw-1"), MirrorOptions{MaxBackoff: 200 * time.Millisecond, ProbeInterval: 200 * time.Millisecond})
 	m.Take()
 
 	p.Cut()
@@ -911,13 +912,13 @@ func TestMirrorClusterRebuilt(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := range 20 {
-		mustPut(t, ctx, raw, leaseKey(i), "old")
+		mustPut(t, ctx, raw, ackKey(i), "old")
 	}
-	m := startMirror(t, r, TDLeasePrefix("td-tw-1"), MirrorOptions{MaxBackoff: 200 * time.Millisecond, ProbeInterval: 200 * time.Millisecond})
+	m := startMirror(t, r, TDAckPrefix("td-tw-1"), MirrorOptions{MaxBackoff: 200 * time.Millisecond, ProbeInterval: 200 * time.Millisecond})
 	before := m.Rev()
 
 	s.Rebuild(t)
-	mustPut(t, ctx, raw, leaseKey(3), "new")
+	mustPut(t, ctx, raw, ackKey(3), "new")
 	waitConverged(t, ctx, m, raw, 30*time.Second)
 	if got := m.Rev(); got >= before {
 		t.Fatalf("rev %d after the rebuild, the old cluster was at %d", got, before)
@@ -931,9 +932,9 @@ func TestMirrorClusterRebuilt(t *testing.T) {
 func TestMirrorLastContact(t *testing.T) {
 	ctx := testCtx(t)
 	_, p, raw, r := proxied(t)
-	mustPut(t, ctx, raw, leaseKey(0), "v1")
+	mustPut(t, ctx, raw, ackKey(0), "v1")
 	const probe = 200 * time.Millisecond
-	m := startMirror(t, r, TDLeasePrefix("td-tw-1"), MirrorOptions{MaxBackoff: 200 * time.Millisecond, ProbeInterval: probe})
+	m := startMirror(t, r, TDAckPrefix("td-tw-1"), MirrorOptions{MaxBackoff: 200 * time.Millisecond, ProbeInterval: probe})
 	fresh := func(within time.Duration) bool { return time.Since(m.LastContact()) < within }
 	waitFor := func(what string, cond func() bool) {
 		t.Helper()
@@ -963,13 +964,13 @@ func TestMirrorWaitRev(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := startMirror(t, r, TDLeasePrefix("td-tw-1"), MirrorOptions{ProbeInterval: 200 * time.Millisecond})
+	m := startMirror(t, r, TDAckPrefix("td-tw-1"), MirrorOptions{ProbeInterval: 200 * time.Millisecond})
 
-	rev := mustPut(t, ctx, raw, leaseKey(1), "mine")
+	rev := mustPut(t, ctx, raw, ackKey(1), "mine")
 	if err := m.WaitRev(ctx, rev); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := m.Get(leaseKey(1)); !ok {
+	if _, ok := m.Get(ackKey(1)); !ok {
 		t.Fatal("WaitRev returned before the write it waited for was in the view")
 	}
 	// A write outside the prefix is reached through a progress notification.
@@ -995,13 +996,13 @@ func TestMirrorStalledWatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	b := &breakableReader{Reader: direct}
-	m := startMirror(t, b, TDLeasePrefix("td-tw-1"), MirrorOptions{ProbeInterval: 200 * time.Millisecond})
-	mustPut(t, ctx, raw, leaseKey(0), "v1")
+	m := startMirror(t, b, TDAckPrefix("td-tw-1"), MirrorOptions{ProbeInterval: 200 * time.Millisecond})
+	mustPut(t, ctx, raw, ackKey(0), "v1")
 	waitConverged(t, ctx, m, raw, 20*time.Second)
 
 	b.freeze()
-	mustPut(t, ctx, raw, leaseKey(1), "while stalled")
-	if _, err := raw.Delete(ctx, leaseKey(0)); err != nil {
+	mustPut(t, ctx, raw, ackKey(1), "while stalled")
+	if _, err := raw.Delete(ctx, ackKey(0)); err != nil {
 		t.Fatal(err)
 	}
 	waitConverged(t, ctx, m, raw, 20*time.Second)
@@ -1021,10 +1022,10 @@ func TestMirrorQuietSharedStream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rev := mustPut(t, ctx, raw, leaseKey(0), "the last write") // before the mirrors: they open at the cluster's rev
+	rev := mustPut(t, ctx, raw, ackKey(0), "the last write") // before the mirrors: they open at the cluster's rev
 	const probe = 200 * time.Millisecond
 	opt := MirrorOptions{ProbeInterval: probe}
-	leases := startMirror(t, r, TDLeasePrefix("td-tw-1"), opt)
+	leases := startMirror(t, r, TDAckPrefix("td-tw-1"), opt)
 	acks := startMirror(t, r, TDAckPrefix("td-tw-1"), opt)
 
 	time.Sleep(15 * probe)
@@ -1063,7 +1064,7 @@ func TestMirrorProbeUnderLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := startMirror(t, slowReader{direct, 30 * time.Millisecond}, TDLeasePrefix("td-tw-1"), MirrorOptions{ProbeInterval: 50 * time.Millisecond})
+	m := startMirror(t, slowReader{direct, 30 * time.Millisecond}, TDAckPrefix("td-tw-1"), MirrorOptions{ProbeInterval: 50 * time.Millisecond})
 
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
@@ -1075,7 +1076,7 @@ func TestMirrorProbeUnderLoad(t *testing.T) {
 					return
 				default:
 				}
-				if _, err := raw.Put(ctx, leaseKey(n%10), fmt.Sprintf("w%d-%d", w, n)); err != nil && ctx.Err() == nil {
+				if _, err := raw.Put(ctx, ackKey(n%10), fmt.Sprintf("w%d-%d", w, n)); err != nil && ctx.Err() == nil {
 					t.Error(err)
 					return
 				}
@@ -1097,11 +1098,11 @@ func TestMirrorProbeUnderLoad(t *testing.T) {
 func TestMirrorQuietAfterReconnect(t *testing.T) {
 	ctx := testCtx(t)
 	_, p, raw, r := proxied(t)
-	mustPut(t, ctx, raw, leaseKey(0), "the last write")
+	mustPut(t, ctx, raw, ackKey(0), "the last write")
 	const probe = 200 * time.Millisecond
 	opt := MirrorOptions{ProbeInterval: probe, MaxBackoff: probe}
 	mirrors := map[string]*Mirror{
-		"leases": startMirror(t, r, TDLeasePrefix("td-tw-1"), opt),
+		"leases": startMirror(t, r, TDAckPrefix("td-tw-1"), opt),
 		"acks":   startMirror(t, r, TDAckPrefix("td-tw-1"), opt),
 	}
 	time.Sleep(5 * probe)
@@ -1140,15 +1141,15 @@ func TestMirrorLaggingMember(t *testing.T) {
 	}
 	b := &breakableReader{Reader: direct}
 	const probe = 200 * time.Millisecond
-	m := startMirror(t, b, TDLeasePrefix("td-tw-1"), MirrorOptions{ProbeInterval: probe})
-	rev := mustPut(t, ctx, raw, leaseKey(0), "v1")
+	m := startMirror(t, b, TDAckPrefix("td-tw-1"), MirrorOptions{ProbeInterval: probe})
+	rev := mustPut(t, ctx, raw, ackKey(0), "v1")
 	if err := m.WaitRev(ctx, rev); err != nil {
 		t.Fatal(err)
 	}
 
 	b.lagBehind()
 	lagFrom := time.Now()
-	mustPut(t, ctx, raw, leaseKey(1), "while lagging")
+	mustPut(t, ctx, raw, ackKey(1), "while lagging")
 	waitConverged(t, ctx, m, raw, 20*time.Second)
 	if st := m.Stats(); st.Watches < 2 || st.Lists != 1 {
 		t.Fatalf("stats %+v, want the lagging watch reopened without a relist", st)

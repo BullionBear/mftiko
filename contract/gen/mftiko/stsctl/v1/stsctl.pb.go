@@ -10,7 +10,7 @@ package stsctlv1
 
 import (
 	v11 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
-	v1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
+	v1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -24,6 +24,63 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
+
+// 綁定的狀態，對應 provider 的 ack（§3.5）。值與 state.v1.EntryState 相同；stsctl 自己定義，策略的契約才不綁在 etcd 的
+// schema 上（DECISIONS D36）。
+type BindingState int32
+
+const (
+	BindingState_BINDING_STATE_UNSPECIFIED BindingState = 0 // provider 沒有 ack（沉默）
+	BindingState_BINDING_STATE_PENDING     BindingState = 1
+	BindingState_BINDING_STATE_READY       BindingState = 2
+	BindingState_BINDING_STATE_REJECTED    BindingState = 3
+	BindingState_BINDING_STATE_DEAD        BindingState = 4
+)
+
+// Enum value maps for BindingState.
+var (
+	BindingState_name = map[int32]string{
+		0: "BINDING_STATE_UNSPECIFIED",
+		1: "BINDING_STATE_PENDING",
+		2: "BINDING_STATE_READY",
+		3: "BINDING_STATE_REJECTED",
+		4: "BINDING_STATE_DEAD",
+	}
+	BindingState_value = map[string]int32{
+		"BINDING_STATE_UNSPECIFIED": 0,
+		"BINDING_STATE_PENDING":     1,
+		"BINDING_STATE_READY":       2,
+		"BINDING_STATE_REJECTED":    3,
+		"BINDING_STATE_DEAD":        4,
+	}
+)
+
+func (x BindingState) Enum() *BindingState {
+	p := new(BindingState)
+	*p = x
+	return p
+}
+
+func (x BindingState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (BindingState) Descriptor() protoreflect.EnumDescriptor {
+	return file_mftiko_stsctl_v1_stsctl_proto_enumTypes[0].Descriptor()
+}
+
+func (BindingState) Type() protoreflect.EnumType {
+	return &file_mftiko_stsctl_v1_stsctl_proto_enumTypes[0]
+}
+
+func (x BindingState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use BindingState.Descriptor instead.
+func (BindingState) EnumDescriptor() ([]byte, []int) {
+	return file_mftiko_stsctl_v1_stsctl_proto_rawDescGZIP(), []int{0}
+}
 
 type InitPayload struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -364,7 +421,7 @@ func (x *Fail) GetReason() string {
 	return ""
 }
 
-// ack 的完整快照，由 STS agent 從 etcd 整理後轉送。
+// ack 的完整快照：controller 整理進 SessionDemand.bindings（§3.3），STS agent 轉成這個格式送給 worker。
 type Bindings struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Version       *v11.Version           `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"` // STS agent 為每個 session 產生，不是 etcd revision
@@ -438,7 +495,7 @@ type FeedBinding struct {
 	Feed          string                 `protobuf:"bytes,1,opt,name=feed,proto3" json:"feed,omitempty"`
 	MdInstance    string                 `protobuf:"bytes,2,opt,name=md_instance,json=mdInstance,proto3" json:"md_instance,omitempty"`
 	Subject       string                 `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
-	State         v1.EntryState          `protobuf:"varint,4,opt,name=state,proto3,enum=mftiko.state.v1.EntryState" json:"state,omitempty"`
+	State         BindingState           `protobuf:"varint,4,opt,name=state,proto3,enum=mftiko.stsctl.v1.BindingState" json:"state,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -494,18 +551,18 @@ func (x *FeedBinding) GetSubject() string {
 	return ""
 }
 
-func (x *FeedBinding) GetState() v1.EntryState {
+func (x *FeedBinding) GetState() BindingState {
 	if x != nil {
 		return x.State
 	}
-	return v1.EntryState(0)
+	return BindingState_BINDING_STATE_UNSPECIFIED
 }
 
 type SelectorBinding struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	MdInstance    string                 `protobuf:"bytes,2,opt,name=md_instance,json=mdInstance,proto3" json:"md_instance,omitempty"`
-	Universe      *v1.Universe           `protobuf:"bytes,3,opt,name=universe,proto3" json:"universe,omitempty"`
+	Universe      *Universe              `protobuf:"bytes,3,opt,name=universe,proto3" json:"universe,omitempty"`
 	SubjectPrefix string                 `protobuf:"bytes,4,opt,name=subject_prefix,json=subjectPrefix,proto3" json:"subject_prefix,omitempty"` // 成員的 subject 是 {subject_prefix}.{topic}.{ticker}
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -555,7 +612,7 @@ func (x *SelectorBinding) GetMdInstance() string {
 	return ""
 }
 
-func (x *SelectorBinding) GetUniverse() *v1.Universe {
+func (x *SelectorBinding) GetUniverse() *Universe {
 	if x != nil {
 		return x.Universe
 	}
@@ -573,7 +630,7 @@ type AccountBinding struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	ApiId         int64                  `protobuf:"varint,2,opt,name=api_id,json=apiId,proto3" json:"api_id,omitempty"`
-	State         v1.EntryState          `protobuf:"varint,3,opt,name=state,proto3,enum=mftiko.state.v1.EntryState" json:"state,omitempty"`
+	State         BindingState           `protobuf:"varint,3,opt,name=state,proto3,enum=mftiko.stsctl.v1.BindingState" json:"state,omitempty"`
 	Worker        *v11.WorkerRef         `protobuf:"bytes,4,opt,name=worker,proto3" json:"worker,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -623,11 +680,11 @@ func (x *AccountBinding) GetApiId() int64 {
 	return 0
 }
 
-func (x *AccountBinding) GetState() v1.EntryState {
+func (x *AccountBinding) GetState() BindingState {
 	if x != nil {
 		return x.State
 	}
-	return v1.EntryState(0)
+	return BindingState_BINDING_STATE_UNSPECIFIED
 }
 
 func (x *AccountBinding) GetWorker() *v11.WorkerRef {
@@ -782,21 +839,90 @@ func (x *QueueStat) GetMaxAgeMs() uint32 {
 	return 0
 }
 
+// selector 目前的成員。欄位與 state.v1.Universe 相同。
+type Universe struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Epoch         uint64                 `protobuf:"varint,1,opt,name=epoch,proto3" json:"epoch,omitempty"`
+	Members       []string               `protobuf:"bytes,2,rep,name=members,proto3" json:"members,omitempty"` // UniversalTicker
+	Current       string                 `protobuf:"bytes,3,opt,name=current,proto3" json:"current,omitempty"` // 只有 rolling_future
+	Topics        []string               `protobuf:"bytes,4,rep,name=topics,proto3" json:"topics,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Universe) Reset() {
+	*x = Universe{}
+	mi := &file_mftiko_stsctl_v1_stsctl_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Universe) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Universe) ProtoMessage() {}
+
+func (x *Universe) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_stsctl_v1_stsctl_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Universe.ProtoReflect.Descriptor instead.
+func (*Universe) Descriptor() ([]byte, []int) {
+	return file_mftiko_stsctl_v1_stsctl_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *Universe) GetEpoch() uint64 {
+	if x != nil {
+		return x.Epoch
+	}
+	return 0
+}
+
+func (x *Universe) GetMembers() []string {
+	if x != nil {
+		return x.Members
+	}
+	return nil
+}
+
+func (x *Universe) GetCurrent() string {
+	if x != nil {
+		return x.Current
+	}
+	return ""
+}
+
+func (x *Universe) GetTopics() []string {
+	if x != nil {
+		return x.Topics
+	}
+	return nil
+}
+
 var File_mftiko_stsctl_v1_stsctl_proto protoreflect.FileDescriptor
 
 const file_mftiko_stsctl_v1_stsctl_proto_rawDesc = "" +
 	"\n" +
-	"\x1dmftiko/stsctl/v1/stsctl.proto\x12\x10mftiko.stsctl.v1\x1a\x1dmftiko/common/v1/common.proto\x1a\x1bmftiko/state/v1/state.proto\"\xf9\x02\n" +
+	"\x1dmftiko/stsctl/v1/stsctl.proto\x12\x10mftiko.stsctl.v1\x1a\x1dmftiko/common/v1/common.proto\x1a\x1fmftiko/session/v1/session.proto\"\xff\x02\n" +
 	"\vInitPayload\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12 \n" +
 	"\vincarnation\x18\x02 \x01(\rR\vincarnation\x12!\n" +
 	"\fsts_instance\x18\x03 \x01(\tR\vstsInstance\x12\x12\n" +
-	"\x04name\x18\x04 \x01(\tR\x04name\x128\n" +
-	"\bstrategy\x18\x05 \x01(\v2\x1c.mftiko.state.v1.StrategyRefR\bstrategy\x12\x16\n" +
-	"\x06params\x18\x06 \x01(\fR\x06params\x12/\n" +
-	"\x05feeds\x18\a \x03(\v2\x19.mftiko.state.v1.FeedDeclR\x05feeds\x128\n" +
-	"\baccounts\x18\b \x03(\v2\x1c.mftiko.state.v1.AccountDeclR\baccounts\x125\n" +
+	"\x04name\x18\x04 \x01(\tR\x04name\x12:\n" +
+	"\bstrategy\x18\x05 \x01(\v2\x1e.mftiko.session.v1.StrategyRefR\bstrategy\x12\x16\n" +
+	"\x06params\x18\x06 \x01(\fR\x06params\x121\n" +
+	"\x05feeds\x18\a \x03(\v2\x1b.mftiko.session.v1.FeedDeclR\x05feeds\x12:\n" +
+	"\baccounts\x18\b \x03(\v2\x1e.mftiko.session.v1.AccountDeclR\baccounts\x125\n" +
 	"\x04nats\x18\t \x01(\v2!.mftiko.stsctl.v1.NatsCredentialsR\x04nats\"c\n" +
 	"\x0fNatsCredentials\x12\x19\n" +
 	"\buser_jwt\x18\x01 \x01(\tR\auserJwt\x12\x12\n" +
@@ -814,23 +940,23 @@ const file_mftiko_stsctl_v1_stsctl_proto_rawDesc = "" +
 	"\aversion\x18\x01 \x01(\v2\x19.mftiko.common.v1.VersionR\aversion\x123\n" +
 	"\x05feeds\x18\x02 \x03(\v2\x1d.mftiko.stsctl.v1.FeedBindingR\x05feeds\x12?\n" +
 	"\tselectors\x18\x03 \x03(\v2!.mftiko.stsctl.v1.SelectorBindingR\tselectors\x12<\n" +
-	"\baccounts\x18\x04 \x03(\v2 .mftiko.stsctl.v1.AccountBindingR\baccounts\"\x8f\x01\n" +
+	"\baccounts\x18\x04 \x03(\v2 .mftiko.stsctl.v1.AccountBindingR\baccounts\"\x92\x01\n" +
 	"\vFeedBinding\x12\x12\n" +
 	"\x04feed\x18\x01 \x01(\tR\x04feed\x12\x1f\n" +
 	"\vmd_instance\x18\x02 \x01(\tR\n" +
 	"mdInstance\x12\x18\n" +
-	"\asubject\x18\x03 \x01(\tR\asubject\x121\n" +
-	"\x05state\x18\x04 \x01(\x0e2\x1b.mftiko.state.v1.EntryStateR\x05state\"\xa4\x01\n" +
+	"\asubject\x18\x03 \x01(\tR\asubject\x124\n" +
+	"\x05state\x18\x04 \x01(\x0e2\x1e.mftiko.stsctl.v1.BindingStateR\x05state\"\xa5\x01\n" +
 	"\x0fSelectorBinding\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1f\n" +
 	"\vmd_instance\x18\x02 \x01(\tR\n" +
-	"mdInstance\x125\n" +
-	"\buniverse\x18\x03 \x01(\v2\x19.mftiko.state.v1.UniverseR\buniverse\x12%\n" +
-	"\x0esubject_prefix\x18\x04 \x01(\tR\rsubjectPrefix\"\xa3\x01\n" +
+	"mdInstance\x126\n" +
+	"\buniverse\x18\x03 \x01(\v2\x1a.mftiko.stsctl.v1.UniverseR\buniverse\x12%\n" +
+	"\x0esubject_prefix\x18\x04 \x01(\tR\rsubjectPrefix\"\xa6\x01\n" +
 	"\x0eAccountBinding\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x15\n" +
-	"\x06api_id\x18\x02 \x01(\x03R\x05apiId\x121\n" +
-	"\x05state\x18\x03 \x01(\x0e2\x1b.mftiko.state.v1.EntryStateR\x05state\x123\n" +
+	"\x06api_id\x18\x02 \x01(\x03R\x05apiId\x124\n" +
+	"\x05state\x18\x03 \x01(\x0e2\x1e.mftiko.stsctl.v1.BindingStateR\x05state\x123\n" +
 	"\x06worker\x18\x04 \x01(\v2\x1b.mftiko.common.v1.WorkerRefR\x06worker\"\xdc\x01\n" +
 	"\x06Report\x12D\n" +
 	"\x10bindings_applied\x18\x01 \x01(\v2\x19.mftiko.common.v1.VersionR\x0fbindingsApplied\x12\x12\n" +
@@ -843,7 +969,18 @@ const file_mftiko_stsctl_v1_stsctl_proto_rawDesc = "" +
 	"\x05depth\x18\x02 \x01(\rR\x05depth\x12\x18\n" +
 	"\adropped\x18\x03 \x01(\x04R\adropped\x12\x1c\n" +
 	"\n" +
-	"max_age_ms\x18\x04 \x01(\rR\bmaxAgeMsBFZDgithub.com/BullionBear/mftiko/contract/gen/mftiko/stsctl/v1;stsctlv1b\x06proto3"
+	"max_age_ms\x18\x04 \x01(\rR\bmaxAgeMs\"l\n" +
+	"\bUniverse\x12\x14\n" +
+	"\x05epoch\x18\x01 \x01(\x04R\x05epoch\x12\x18\n" +
+	"\amembers\x18\x02 \x03(\tR\amembers\x12\x18\n" +
+	"\acurrent\x18\x03 \x01(\tR\acurrent\x12\x16\n" +
+	"\x06topics\x18\x04 \x03(\tR\x06topics*\x95\x01\n" +
+	"\fBindingState\x12\x1d\n" +
+	"\x19BINDING_STATE_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15BINDING_STATE_PENDING\x10\x01\x12\x17\n" +
+	"\x13BINDING_STATE_READY\x10\x02\x12\x1a\n" +
+	"\x16BINDING_STATE_REJECTED\x10\x03\x12\x16\n" +
+	"\x12BINDING_STATE_DEAD\x10\x04BFZDgithub.com/BullionBear/mftiko/contract/gen/mftiko/stsctl/v1;stsctlv1b\x06proto3"
 
 var (
 	file_mftiko_stsctl_v1_stsctl_proto_rawDescOnce sync.Once
@@ -857,45 +994,46 @@ func file_mftiko_stsctl_v1_stsctl_proto_rawDescGZIP() []byte {
 	return file_mftiko_stsctl_v1_stsctl_proto_rawDescData
 }
 
-var file_mftiko_stsctl_v1_stsctl_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_mftiko_stsctl_v1_stsctl_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_mftiko_stsctl_v1_stsctl_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_mftiko_stsctl_v1_stsctl_proto_goTypes = []any{
-	(*InitPayload)(nil),     // 0: mftiko.stsctl.v1.InitPayload
-	(*NatsCredentials)(nil), // 1: mftiko.stsctl.v1.NatsCredentials
-	(*StartPayload)(nil),    // 2: mftiko.stsctl.v1.StartPayload
-	(*Command)(nil),         // 3: mftiko.stsctl.v1.Command
-	(*Fail)(nil),            // 4: mftiko.stsctl.v1.Fail
-	(*Bindings)(nil),        // 5: mftiko.stsctl.v1.Bindings
-	(*FeedBinding)(nil),     // 6: mftiko.stsctl.v1.FeedBinding
-	(*SelectorBinding)(nil), // 7: mftiko.stsctl.v1.SelectorBinding
-	(*AccountBinding)(nil),  // 8: mftiko.stsctl.v1.AccountBinding
-	(*Report)(nil),          // 9: mftiko.stsctl.v1.Report
-	(*QueueStat)(nil),       // 10: mftiko.stsctl.v1.QueueStat
-	(*v1.StrategyRef)(nil),  // 11: mftiko.state.v1.StrategyRef
-	(*v1.FeedDecl)(nil),     // 12: mftiko.state.v1.FeedDecl
-	(*v1.AccountDecl)(nil),  // 13: mftiko.state.v1.AccountDecl
-	(*v11.Version)(nil),     // 14: mftiko.common.v1.Version
-	(v1.EntryState)(0),      // 15: mftiko.state.v1.EntryState
-	(*v1.Universe)(nil),     // 16: mftiko.state.v1.Universe
+	(BindingState)(0),       // 0: mftiko.stsctl.v1.BindingState
+	(*InitPayload)(nil),     // 1: mftiko.stsctl.v1.InitPayload
+	(*NatsCredentials)(nil), // 2: mftiko.stsctl.v1.NatsCredentials
+	(*StartPayload)(nil),    // 3: mftiko.stsctl.v1.StartPayload
+	(*Command)(nil),         // 4: mftiko.stsctl.v1.Command
+	(*Fail)(nil),            // 5: mftiko.stsctl.v1.Fail
+	(*Bindings)(nil),        // 6: mftiko.stsctl.v1.Bindings
+	(*FeedBinding)(nil),     // 7: mftiko.stsctl.v1.FeedBinding
+	(*SelectorBinding)(nil), // 8: mftiko.stsctl.v1.SelectorBinding
+	(*AccountBinding)(nil),  // 9: mftiko.stsctl.v1.AccountBinding
+	(*Report)(nil),          // 10: mftiko.stsctl.v1.Report
+	(*QueueStat)(nil),       // 11: mftiko.stsctl.v1.QueueStat
+	(*Universe)(nil),        // 12: mftiko.stsctl.v1.Universe
+	(*v1.StrategyRef)(nil),  // 13: mftiko.session.v1.StrategyRef
+	(*v1.FeedDecl)(nil),     // 14: mftiko.session.v1.FeedDecl
+	(*v1.AccountDecl)(nil),  // 15: mftiko.session.v1.AccountDecl
+	(*v11.Version)(nil),     // 16: mftiko.common.v1.Version
 	(*v11.WorkerRef)(nil),   // 17: mftiko.common.v1.WorkerRef
 }
 var file_mftiko_stsctl_v1_stsctl_proto_depIdxs = []int32{
-	11, // 0: mftiko.stsctl.v1.InitPayload.strategy:type_name -> mftiko.state.v1.StrategyRef
-	12, // 1: mftiko.stsctl.v1.InitPayload.feeds:type_name -> mftiko.state.v1.FeedDecl
-	13, // 2: mftiko.stsctl.v1.InitPayload.accounts:type_name -> mftiko.state.v1.AccountDecl
-	1,  // 3: mftiko.stsctl.v1.InitPayload.nats:type_name -> mftiko.stsctl.v1.NatsCredentials
-	5,  // 4: mftiko.stsctl.v1.StartPayload.bindings:type_name -> mftiko.stsctl.v1.Bindings
-	5,  // 5: mftiko.stsctl.v1.Command.bindings:type_name -> mftiko.stsctl.v1.Bindings
-	4,  // 6: mftiko.stsctl.v1.Command.fail:type_name -> mftiko.stsctl.v1.Fail
-	14, // 7: mftiko.stsctl.v1.Bindings.version:type_name -> mftiko.common.v1.Version
-	6,  // 8: mftiko.stsctl.v1.Bindings.feeds:type_name -> mftiko.stsctl.v1.FeedBinding
-	7,  // 9: mftiko.stsctl.v1.Bindings.selectors:type_name -> mftiko.stsctl.v1.SelectorBinding
-	8,  // 10: mftiko.stsctl.v1.Bindings.accounts:type_name -> mftiko.stsctl.v1.AccountBinding
-	15, // 11: mftiko.stsctl.v1.FeedBinding.state:type_name -> mftiko.state.v1.EntryState
-	16, // 12: mftiko.stsctl.v1.SelectorBinding.universe:type_name -> mftiko.state.v1.Universe
-	15, // 13: mftiko.stsctl.v1.AccountBinding.state:type_name -> mftiko.state.v1.EntryState
+	13, // 0: mftiko.stsctl.v1.InitPayload.strategy:type_name -> mftiko.session.v1.StrategyRef
+	14, // 1: mftiko.stsctl.v1.InitPayload.feeds:type_name -> mftiko.session.v1.FeedDecl
+	15, // 2: mftiko.stsctl.v1.InitPayload.accounts:type_name -> mftiko.session.v1.AccountDecl
+	2,  // 3: mftiko.stsctl.v1.InitPayload.nats:type_name -> mftiko.stsctl.v1.NatsCredentials
+	6,  // 4: mftiko.stsctl.v1.StartPayload.bindings:type_name -> mftiko.stsctl.v1.Bindings
+	6,  // 5: mftiko.stsctl.v1.Command.bindings:type_name -> mftiko.stsctl.v1.Bindings
+	5,  // 6: mftiko.stsctl.v1.Command.fail:type_name -> mftiko.stsctl.v1.Fail
+	16, // 7: mftiko.stsctl.v1.Bindings.version:type_name -> mftiko.common.v1.Version
+	7,  // 8: mftiko.stsctl.v1.Bindings.feeds:type_name -> mftiko.stsctl.v1.FeedBinding
+	8,  // 9: mftiko.stsctl.v1.Bindings.selectors:type_name -> mftiko.stsctl.v1.SelectorBinding
+	9,  // 10: mftiko.stsctl.v1.Bindings.accounts:type_name -> mftiko.stsctl.v1.AccountBinding
+	0,  // 11: mftiko.stsctl.v1.FeedBinding.state:type_name -> mftiko.stsctl.v1.BindingState
+	12, // 12: mftiko.stsctl.v1.SelectorBinding.universe:type_name -> mftiko.stsctl.v1.Universe
+	0,  // 13: mftiko.stsctl.v1.AccountBinding.state:type_name -> mftiko.stsctl.v1.BindingState
 	17, // 14: mftiko.stsctl.v1.AccountBinding.worker:type_name -> mftiko.common.v1.WorkerRef
-	14, // 15: mftiko.stsctl.v1.Report.bindings_applied:type_name -> mftiko.common.v1.Version
-	10, // 16: mftiko.stsctl.v1.Report.queues:type_name -> mftiko.stsctl.v1.QueueStat
+	16, // 15: mftiko.stsctl.v1.Report.bindings_applied:type_name -> mftiko.common.v1.Version
+	11, // 16: mftiko.stsctl.v1.Report.queues:type_name -> mftiko.stsctl.v1.QueueStat
 	17, // [17:17] is the sub-list for method output_type
 	17, // [17:17] is the sub-list for method input_type
 	17, // [17:17] is the sub-list for extension type_name
@@ -917,13 +1055,14 @@ func file_mftiko_stsctl_v1_stsctl_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mftiko_stsctl_v1_stsctl_proto_rawDesc), len(file_mftiko_stsctl_v1_stsctl_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   11,
+			NumEnums:      1,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_mftiko_stsctl_v1_stsctl_proto_goTypes,
 		DependencyIndexes: file_mftiko_stsctl_v1_stsctl_proto_depIdxs,
+		EnumInfos:         file_mftiko_stsctl_v1_stsctl_proto_enumTypes,
 		MessageInfos:      file_mftiko_stsctl_v1_stsctl_proto_msgTypes,
 	}.Build()
 	File_mftiko_stsctl_v1_stsctl_proto = out.File

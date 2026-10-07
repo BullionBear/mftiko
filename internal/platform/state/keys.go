@@ -12,16 +12,22 @@ import (
 // Root is the prefix of every key (PROTOCOL §3.1). An incompatible change moves to /mftiko/v2/.
 const Root = "/mftiko/v1"
 
-// Plane is the first path segment after Root: which kind of agent an instance is (DECISIONS D1).
+// Plane is the first path segment after Root: which kind of agent an instance is (DECISIONS D1), or the
+// controller (D33).
 type Plane string
 
 const (
 	PlaneSTS Plane = "sts"
 	PlaneMD  Plane = "md"
 	PlaneTD  Plane = "td"
+	// PlaneCtl is the controller. It campaigns and fences like an agent but has no workers.
+	PlaneCtl Plane = "ctl"
 )
 
-func (p Plane) valid() bool { return p == PlaneSTS || p == PlaneMD || p == PlaneTD }
+func (p Plane) valid() bool { return p.agent() || p == PlaneCtl }
+
+// agent reports whether p is one of the three agent planes, the ones with workers.
+func (p Plane) agent() bool { return p == PlaneSTS || p == PlaneMD || p == PlaneTD }
 
 // instanceName is the instance name syntax (PROTOCOL §2).
 var instanceName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
@@ -36,13 +42,15 @@ func instPrefix(p Plane, inst string) string { return Root + "/" + string(p) + "
 
 func apiIDString(id int64) string { return strconv.FormatInt(id, 10) }
 
-// SessionSpecKey is the session spec, written by the API, watched by the STS agent (PROTOCOL §3.1).
+// SessionSpecKey is the session spec, written by the API server, watched by the controller and the STS agent
+// (PROTOCOL §3.1).
 func SessionSpecKey(stsInst, sessionID string) string { return SessionSpecPrefix(stsInst) + sessionID }
 
 // SessionSpecPrefix lists every session spec of an STS instance.
 func SessionSpecPrefix(stsInst string) string { return instPrefix(PlaneSTS, stsInst) + "spec/" }
 
-// SessionStatusKey is the session status, written by the STS agent, watched by the API (PROTOCOL §3.1).
+// SessionStatusKey is the session status, written by the STS agent, watched by the controller and the API server
+// (PROTOCOL §3.1).
 func SessionStatusKey(stsInst, sessionID string) string {
 	return SessionStatusPrefix(stsInst) + sessionID
 }
@@ -50,55 +58,59 @@ func SessionStatusKey(stsInst, sessionID string) string {
 // SessionStatusPrefix lists every session status of an STS instance.
 func SessionStatusPrefix(stsInst string) string { return instPrefix(PlaneSTS, stsInst) + "status/" }
 
-// AccountKey is an account declaration, written by the API, watched by the TD agent (PROTOCOL §3.1).
+// AccountKey is an account declaration, written by the API server, watched by the TD agent (PROTOCOL §3.1).
 func AccountKey(tdInst string, apiID int64) string { return AccountPrefix(tdInst) + apiIDString(apiID) }
 
 // AccountPrefix lists every account of a TD instance.
 func AccountPrefix(tdInst string) string { return instPrefix(PlaneTD, tdInst) + "account/" }
 
-// MDLeaseKey is an MD lease entry, written by the STS agent into the MD instance's cluster (PROTOCOL §3.1, D17).
+// DemandPrefix lists every demand the controller wrote for an agent instance (PROTOCOL §3.3): an STS instance's
+// SessionDemands, an MD or TD instance's DemandEntries.
+func DemandPrefix(p Plane, inst string) string { return instPrefix(p, inst) + "demand/" }
+
+// SessionDemandKey is the controller's assignment of a session to an STS instance (PROTOCOL §3.1, §3.3).
+func SessionDemandKey(stsInst, sessionID string) string {
+	return DemandPrefix(PlaneSTS, stsInst) + sessionID
+}
+
+// MDDemandKey is an MD demand entry, written by the controller into the MD instance's cluster (PROTOCOL §3.1, D17).
 // entry is feed/{feed key} or select/{name}, appended verbatim.
-func MDLeaseKey(mdInst, stsInst, sessionID, entry string) string {
-	return MDLeasePrefix(mdInst) + stsInst + "/" + sessionID + "/" + entry
+func MDDemandKey(mdInst, sessionID, entry string) string {
+	return DemandPrefix(PlaneMD, mdInst) + sessionID + "/" + entry
 }
 
-// MDLeasePrefix lists every lease entry an MD instance serves.
-func MDLeasePrefix(mdInst string) string { return instPrefix(PlaneMD, mdInst) + "lease/" }
-
-// TDLeaseKey is a TD lease entry, written by the STS agent into the TD instance's cluster (PROTOCOL §3.1, D17).
-func TDLeaseKey(tdInst, stsInst, sessionID string, apiID int64) string {
-	return TDLeasePrefix(tdInst) + stsInst + "/" + sessionID + "/" + apiIDString(apiID)
+// TDDemandKey is a TD demand entry, written by the controller into the TD instance's cluster (PROTOCOL §3.1, D17).
+func TDDemandKey(tdInst, sessionID string, apiID int64) string {
+	return DemandPrefix(PlaneTD, tdInst) + sessionID + "/" + apiIDString(apiID)
 }
 
-// TDLeasePrefix lists every lease entry a TD instance serves.
-func TDLeasePrefix(tdInst string) string { return instPrefix(PlaneTD, tdInst) + "lease/" }
-
-// MDAckKey is the MD agent's EntryStatus for one lease entry (PROTOCOL §3.1, §3.5).
-func MDAckKey(mdInst, stsInst, sessionID, entry string) string {
-	return MDAckPrefix(mdInst) + stsInst + "/" + sessionID + "/" + entry
+// MDAckKey is the MD agent's EntryStatus for one demand entry (PROTOCOL §3.1, §3.5).
+func MDAckKey(mdInst, sessionID, entry string) string {
+	return MDAckPrefix(mdInst) + sessionID + "/" + entry
 }
 
 // MDAckPrefix lists every ack of an MD instance.
 func MDAckPrefix(mdInst string) string { return instPrefix(PlaneMD, mdInst) + "ack/" }
 
-// TDAckKey is the TD agent's EntryStatus for one lease entry (PROTOCOL §3.1, §3.5).
-func TDAckKey(tdInst, stsInst, sessionID string, apiID int64) string {
-	return TDAckPrefix(tdInst) + stsInst + "/" + sessionID + "/" + apiIDString(apiID)
+// TDAckKey is the TD agent's EntryStatus for one demand entry (PROTOCOL §3.1, §3.5).
+func TDAckKey(tdInst, sessionID string, apiID int64) string {
+	return TDAckPrefix(tdInst) + sessionID + "/" + apiIDString(apiID)
 }
 
 // TDAckPrefix lists every ack of a TD instance.
 func TDAckPrefix(tdInst string) string { return instPrefix(PlaneTD, tdInst) + "ack/" }
 
-// ElectionPrefix is where an instance's agents campaign (PROTOCOL §3.2 W2). concurrency.Election appends the "/".
+// ElectionPrefix is where an instance's agents, or the controller's processes, campaign (PROTOCOL §3.2 W2).
+// concurrency.Election appends the "/".
 func ElectionPrefix(p Plane, inst string) string { return instPrefix(p, inst) + "election" }
 
-// EpochKey holds the instance's agent epoch, 20-digit zero-padded decimal (PROTOCOL §2, §3.2 W2).
+// EpochKey holds the instance's epoch, 20-digit zero-padded decimal (PROTOCOL §2, §3.2 W2).
 func EpochKey(p Plane, inst string) string { return instPrefix(p, inst) + "epoch" }
 
-// WriterKey is the fencing key, one copy in every cluster the instance's agent writes to (PROTOCOL §3.2 W2).
+// WriterKey is the fencing key, one copy in every cluster the instance writes to (PROTOCOL §3.2 W2).
 func WriterKey(p Plane, inst string) string { return instPrefix(p, inst) + "writer" }
 
-// AgentKey is the agent's AgentRecord (PROTOCOL §3.1).
+// AgentKey is the AgentRecord of an agent or of the controller (PROTOCOL §3.1).
 func AgentKey(p Plane, inst string) string { return instPrefix(p, inst) + "agent" }
 
 // WorkerStatusKey is one worker's WorkerStatus; h is WorkerHash of the worker key (PROTOCOL §3.1).
@@ -127,7 +139,8 @@ func PlacementPrefix(mdInst string) string { return instPrefix(PlaneMD, mdInst) 
 
 // Owner returns the plane and instance a key belongs to: the two path segments after Root. Every key in
 // PROTOCOL §3.1 is /{plane}/{inst}/..., and that instance is the one the routing rule (PROTOCOL §3, D17) names:
-// session spec/status -> the STS instance, lease and ack -> the provider, everything else -> the instance.
+// session spec, demand and status -> the STS instance, demand entry and ack -> the provider, everything else -> the
+// instance.
 // A prefix that ends right after the instance (Root/{plane}/{inst}/) also resolves.
 func Owner(key string) (Plane, string, error) {
 	rest, ok := strings.CutPrefix(key, Root+"/")

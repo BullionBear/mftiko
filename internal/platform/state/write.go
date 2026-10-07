@@ -186,8 +186,8 @@ func (r *router) key(key, end []byte) error {
 }
 
 // writeScope is what a term of (plane, inst) may put and delete: the rows of PROTOCOL §3.1 whose writer is that
-// agent (W1). The election, epoch and writer keys are not among them; Term writes those itself. Incarnation keys
-// are written only through Incarnations, whose scope is incarnations alone.
+// agent or the controller (W1). The election, epoch and writer keys are not among them; Term writes those itself.
+// Incarnation keys are written only through Incarnations, whose scope is incarnations alone.
 type writeScope struct {
 	plane        Plane
 	inst         string
@@ -202,6 +202,14 @@ func (w writeScope) areas(p Plane, inst string) (prefixes, exact []string) {
 		if p == w.plane && inst == w.inst {
 			prefixes = []string{IncarnationPrefix(w.plane, w.inst)}
 		}
+	case w.plane == PlaneCtl:
+		switch {
+		case p == PlaneCtl && inst == w.inst:
+			exact = []string{AgentKey(PlaneCtl, w.inst)}
+		case p.agent():
+			// Every agent instance's demands, in every region: the controller is their only writer (PROTOCOL §3.3).
+			prefixes = []string{DemandPrefix(p, inst)}
+		}
 	case p == w.plane && inst == w.inst:
 		exact = []string{AgentKey(w.plane, w.inst)}
 		prefixes = []string{WorkerStatusPrefix(w.plane, w.inst)}
@@ -213,10 +221,6 @@ func (w writeScope) areas(p Plane, inst string) (prefixes, exact []string) {
 		case PlaneTD:
 			prefixes = append(prefixes, TDAckPrefix(w.inst))
 		}
-	case w.plane == PlaneSTS && p == PlaneMD:
-		prefixes = []string{MDLeasePrefix(inst) + w.inst + "/"} // this STS's entries only
-	case w.plane == PlaneSTS && p == PlaneTD:
-		prefixes = []string{TDLeasePrefix(inst) + w.inst + "/"}
 	}
 	return prefixes, exact
 }

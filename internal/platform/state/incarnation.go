@@ -30,6 +30,9 @@ type Incarnations struct {
 // before the first spawn. The prefix has a single writer (this agent), so no watch. A stored value that is not a
 // uint32 in canonical decimal form fails the load with ErrBadIncarnation.
 func LoadIncarnations(ctx context.Context, t *Term) (*Incarnations, error) {
+	if !t.plane.agent() {
+		return nil, fmt.Errorf("%w: %s", ErrNoWorkers, t.plane)
+	}
 	if err := t.Err(); err != nil {
 		return nil, err
 	}

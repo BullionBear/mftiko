@@ -84,7 +84,7 @@ func TestClustersAllowedAndLazy(t *testing.T) {
 	if _, err := cl.Reader("jp"); !errors.Is(err, ErrRegionNotAllowed) {
 		t.Fatalf("Reader(jp) for an MD agent in tw: %v", err)
 	}
-	if _, err := cl.ReaderFor(MDAckKey("md-jp-1", "sts-tw-1", "a1b2c3", "feed/x")); !errors.Is(err, ErrRegionNotAllowed) {
+	if _, err := cl.ReaderFor(MDAckKey("md-jp-1", "a1b2c3", "feed/x")); !errors.Is(err, ErrRegionNotAllowed) {
 		t.Fatalf("ReaderFor(jp key) for an MD agent in tw: %v", err)
 	}
 	if _, err := cl.Reader("kr"); !errors.Is(err, ErrUnknownRegion) {
@@ -184,16 +184,16 @@ func TestClustersTwoRegions(t *testing.T) {
 	topo := topologyOf(map[string]*etcdtest.Server{"tw": tw, "jp": jp}, twoRegions().Instances)
 	rawTW, rawJP := tw.Client(t), jp.Client(t)
 
-	// STS agent in tw: every region allowed.
+	// The controller, at home in tw: every region allowed (D17 rule 2).
 	d := newDialCounter()
-	allowed, err := AgentRegions(topo, PlaneSTS, "sts-tw-1")
-	if err != nil {
-		t.Fatal(err)
+	allowed, err := AgentRegions(topo, PlaneCtl, "ctl-tw-1")
+	if err != nil || allowed != nil {
+		t.Fatalf("controller's regions: %v, %v; want all", allowed, err)
 	}
 	cl := newClusters(t, topo, allowed, d.dial)
 
-	// The TW STS writes its JP market-data lease into JP's cluster (D17 rule 1).
-	key := MDLeaseKey("md-jp-1", "sts-tw-1", "a1b2c3", "feed/trade.BinanceUM_Perp_BTCUSDT")
+	// It writes a TW session's JP market-data demand into JP's cluster (D17 rule 1).
+	key := MDDemandKey("md-jp-1", "a1b2c3", "feed/trade.BinanceUM_Perp_BTCUSDT")
 	region, err := topo.RegionOfKey(key)
 	if err != nil || region != "jp" {
 		t.Fatalf("RegionOfKey = %s, %v", region, err)
@@ -202,7 +202,7 @@ func TestClustersTwoRegions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := cli.Put(ctx, key, "lease"); err != nil {
+	if _, err := cli.Put(ctx, key, "demand"); err != nil {
 		t.Fatal(err)
 	}
 	if got := mustGet(t, ctx, rawJP, key); len(got.Kvs) != 1 {

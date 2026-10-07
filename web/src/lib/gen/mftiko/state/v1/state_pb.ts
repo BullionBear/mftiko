@@ -8,421 +8,15 @@ import type { GenEnum, GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2"
 import { enumDesc, fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Condition, ExitInfo, WorkerRef } from "../../common/v1/common_pb";
 import { file_mftiko_common_v1_common } from "../../common/v1/common_pb";
+import type { DesiredState, SelectorDecl } from "../../session/v1/session_pb";
+import { file_mftiko_session_v1_session } from "../../session/v1/session_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file mftiko/state/v1/state.proto.
  */
 export const file_mftiko_state_v1_state: GenFile = /*@__PURE__*/
-  fileDesc("ChttZnRpa28vc3RhdGUvdjEvc3RhdGUucHJvdG8SD21mdGlrby5zdGF0ZS52MSLkBAoLU2Vzc2lvblNwZWMSDAoEbmFtZRgBIAEoCRI4CgZsYWJlbHMYAiADKAsyKC5tZnRpa28uc3RhdGUudjEuU2Vzc2lvblNwZWMuTGFiZWxzRW50cnkSNAoNZGVzaXJlZF9zdGF0ZRgDIAEoDjIdLm1mdGlrby5zdGF0ZS52MS5EZXNpcmVkU3RhdGUSLgoIc3RyYXRlZ3kYBCABKAsyHC5tZnRpa28uc3RhdGUudjEuU3RyYXRlZ3lSZWYSDgoGcGFyYW1zGAUgASgMEigKBWZlZWRzGAYgAygLMhkubWZ0aWtvLnN0YXRlLnYxLkZlZWREZWNsEjAKCXNlbGVjdG9ycxgHIAMoCzIdLm1mdGlrby5zdGF0ZS52MS5TZWxlY3RvckRlY2wSLgoIYWNjb3VudHMYCCADKAsyHC5tZnRpa28uc3RhdGUudjEuQWNjb3VudERlY2wSLwoHcmVzdGFydBgJIAEoCzIeLm1mdGlrby5zdGF0ZS52MS5SZXN0YXJ0UG9saWN5EhYKDmRlcHNfdGltZW91dF9zGAogASgNEhcKD3N0YXJ0X3RpbWVvdXRfcxgLIAEoDRInCgZsaW1pdHMYDCABKAsyFy5tZnRpa28uc3RhdGUudjEuTGltaXRzEioKBmlucHV0cxgNIAMoCzIaLm1mdGlrby5zdGF0ZS52MS5JbnB1dERlY2wSFgoOcmVjdl93aW5kb3dfbXMYDiABKA0aLQoLTGFiZWxzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4AUoECA8QEFIHYWxnb19pZCI9CglJbnB1dERlY2wSDAoEbmFtZRgBIAEoCRIOCgZkaWdlc3QYAiABKAkSEgoKcmVwb3NpdG9yeRgDIAEoCSI9CgtTdHJhdGVneVJlZhIMCgRuYW1lGAEgASgJEgwKBGNvZGUYAiABKAkSEgoKcmVwb3NpdG9yeRgDIAEoCSI9CghGZWVkRGVjbBIMCgRmZWVkGAEgASgJEhMKC21kX2luc3RhbmNlGAIgASgJSgQIAxAEUghkZWxpdmVyeSLcAQoMU2VsZWN0b3JEZWNsEgwKBG5hbWUYASABKAkSEwoLbWRfaW5zdGFuY2UYAiABKAkSDQoFdmVudWUYAyABKAkSEgoKdW5kZXJseWluZxgEIAEoCRIOCgZ0b3BpY3MYBSADKAkSNAoMb3B0aW9uX2NoYWluGAogASgLMhwubWZ0aWtvLnN0YXRlLnYxLk9wdGlvbkNoYWluSAASOAoOcm9sbGluZ19mdXR1cmUYCyABKAsyHi5tZnRpa28uc3RhdGUudjEuUm9sbGluZ0Z1dHVyZUgAQgYKBGtpbmQiqAEKC09wdGlvbkNoYWluEhAKCHJlZl9mZWVkGAEgASgJEhgKEG5lYXJlc3RfZXhwaXJpZXMYAiABKA0SEQoJbWluX3R0ZV9zGAMgASgNEhMKC2F0bV9zdHJpa2VzGAQgASgNEg0KBXNpZGVzGAUgAygJEhgKEHJlY2VudGVyX3N0cmlrZXMYBiABKA0SHAoUcmVjZW50ZXJfbWluX2R3ZWxsX3MYByABKA0iNQoNUm9sbGluZ0Z1dHVyZRINCgV0ZW5vchgBIAEoCRIVCg1yb2xsX2JlZm9yZV9zGAIgASgNIlIKC0FjY291bnREZWNsEgwKBG5hbWUYASABKAkSDgoGYXBpX2lkGAIgASgDEhMKC3RkX2luc3RhbmNlGAMgASgJEhAKCGFsZ29faWRzGAQgAygNImMKDVJlc3RhcnRQb2xpY3kSKgoEbW9kZRgBIAEoDjIcLm1mdGlrby5zdGF0ZS52MS5SZXN0YXJ0TW9kZRIUCgxtYXhfcmVzdGFydHMYAiABKA0SEAoId2luZG93X3MYAyABKA0iWgoGTGltaXRzEhEKCW1lbW9yeV9tYhgBIAEoDRISCgpnb21heHByb2NzGAIgASgNEhEKCXZvbHVtZV9tYhgDIAEoDRIWCg5ob29rX3RpbWVvdXRfcxgEIAEoDSKGAQoHQWNjb3VudBIMCgRuYW1lGAEgASgJEgwKBGtpbmQYAiABKAkSGgoSc2VhbGVkX2NyZWRlbnRpYWxzGAMgASgMEjIKCHNldHRpbmdzGAQgASgLMiAubWZ0aWtvLnN0YXRlLnYxLkFjY291bnRTZXR0aW5ncxIPCgdlbmFibGVkGAUgASgIInAKD0FjY291bnRTZXR0aW5ncxIeChZjYW5jZWxfb25fZGlzY29ubmVjdF9zGAEgASgNEhsKE2JhY2tmaWxsX2ludGVydmFsX3MYAiABKA0SIAoYYmFja2ZpbGxfcmVxdWVzdGVkX2F0X25zGAMgASgDIrkCCg1TZXNzaW9uU3RhdHVzEhsKE29ic2VydmVkX2dlbmVyYXRpb24YASABKAMSJQoFcGhhc2UYAiABKA4yFi5tZnRpa28uc3RhdGUudjEuUGhhc2USLwoKY29uZGl0aW9ucxgDIAMoCzIbLm1mdGlrby5jb21tb24udjEuQ29uZGl0aW9uEhMKC2luY2FybmF0aW9uGAQgASgNEhUKDXJlc3RhcnRfY291bnQYBSABKA0SDgoGcmVhc29uGAYgASgJEi0KCWxhc3RfZXhpdBgHIAEoCzIaLm1mdGlrby5jb21tb24udjEuRXhpdEluZm8SFQoNdXBkYXRlZF9hdF9ucxgIIAEoAxIxCglzdGF0ZV9vdXQYCSABKAsyHi5tZnRpa28uc3RhdGUudjEuU3RhdGVTbmFwc2hvdCJ6Cg1TdGF0ZVNuYXBzaG90Eg4KBmRpZ2VzdBgBIAEoCRISCgpyZXBvc2l0b3J5GAIgASgJEg0KBWNsZWFuGAMgASgIEhMKC2luY2FybmF0aW9uGAQgASgNEg0KBWF0X25zGAUgASgDEhIKCnNpemVfYnl0ZXMYBiABKAQilAEKCkxlYXNlRW50cnkSDgoEZmVlZBgBIAEoCUgAEjEKCHNlbGVjdG9yGAIgASgLMh0ubWZ0aWtvLnN0YXRlLnYxLlNlbGVjdG9yRGVjbEgAEhAKBmFwaV9pZBgDIAEoA0gAEhUKDXNwZWNfcmV2aXNpb24YCiABKAMSEAoIYWxnb19pZHMYCyADKA1CCAoGdGFyZ2V0IssBCgtFbnRyeVN0YXR1cxIqCgVzdGF0ZRgBIAEoDjIbLm1mdGlrby5zdGF0ZS52MS5FbnRyeVN0YXRlEg4KBnJlYXNvbhgCIAEoCRIPCgdzdWJqZWN0GAMgASgJEisKBndvcmtlchgEIAEoCzIbLm1mdGlrby5jb21tb24udjEuV29ya2VyUmVmEisKCHVuaXZlcnNlGAUgASgLMhkubWZ0aWtvLnN0YXRlLnYxLlVuaXZlcnNlEhUKDXVwZGF0ZWRfYXRfbnMYBiABKAMiSwoIVW5pdmVyc2USDQoFZXBvY2gYASABKAQSDwoHbWVtYmVycxgCIAMoCRIPCgdjdXJyZW50GAMgASgJEg4KBnRvcGljcxgEIAMoCSJlCgtBZ2VudFJlY29yZBINCgVwbGFuZRgBIAEoCRIQCghpbnN0YW5jZRgCIAEoCRINCgVlcG9jaBgDIAEoAxIPCgdyZWxlYXNlGAQgASgJEhUKDXN0YXJ0ZWRfYXRfbnMYBSABKAMi6wEKDFdvcmtlclN0YXR1cxIrCgZ3b3JrZXIYASABKAsyGy5tZnRpa28uY29tbW9uLnYxLldvcmtlclJlZhINCgVwaGFzZRgCIAEoCRINCgVzdGFnZRgDIAEoCRIPCgdyZWxlYXNlGAQgASgJEhQKDHNoaW1fcmVsZWFzZRgFIAEoCRIQCghyZXN0YXJ0cxgGIAEoDRIRCglyc3NfYnl0ZXMYByABKAMSFQoNc3RhcnRlZF9hdF9ucxgIIAEoAxItCglsYXN0X2V4aXQYCSABKAsyGi5tZnRpa28uY29tbW9uLnYxLkV4aXRJbmZvIpMBCg1TZWxlY3RvclN0YXRlEisKBHNwZWMYASABKAsyHS5tZnRpa28uc3RhdGUudjEuU2VsZWN0b3JEZWNsEg0KBWVwb2NoGAIgASgEEg8KB21lbWJlcnMYAyADKAkSDwoHY3VycmVudBgEIAEoCRIOCgZjZW50ZXIYBSABKAkSFAoMY2VudGVyX2F0X25zGAYgASgDIhkKCVBsYWNlbWVudBIMCgRjb25uGAEgASgJKmEKDERlc2lyZWRTdGF0ZRIdChlERVNJUkVEX1NUQVRFX1VOU1BFQ0lGSUVEEAASGQoVREVTSVJFRF9TVEFURV9SVU5OSU5HEAESFwoTREVTSVJFRF9TVEFURV9FTkRFRBACKmAKC1Jlc3RhcnRNb2RlEhwKGFJFU1RBUlRfTU9ERV9VTlNQRUNJRklFRBAAEhYKElJFU1RBUlRfTU9ERV9ORVZFUhABEhsKF1JFU1RBUlRfTU9ERV9PTl9GQUlMVVJFEAIqtwEKBVBoYXNlEhUKEVBIQVNFX1VOU1BFQ0lGSUVEEAASEQoNUEhBU0VfUEVORElORxABEhEKDVBIQVNFX1dBSVRJTkcQAhISCg5QSEFTRV9TVEFSVElORxADEhEKDVBIQVNFX1JVTk5JTkcQBBISCg5QSEFTRV9TVE9QUElORxAFEhQKEFBIQVNFX1JFU1RBUlRJTkcQBhIOCgpQSEFTRV9ET05FEAcSEAoMUEhBU0VfRkFJTEVEEAgqiQEKCkVudHJ5U3RhdGUSGwoXRU5UUllfU1RBVEVfVU5TUEVDSUZJRUQQABIXChNFTlRSWV9TVEFURV9QRU5ESU5HEAESFQoRRU5UUllfU1RBVEVfUkVBRFkQAhIYChRFTlRSWV9TVEFURV9SRUpFQ1RFRBADEhQKEEVOVFJZX1NUQVRFX0RFQUQQBEJEWkJnaXRodWIuY29tL0J1bGxpb25CZWFyL21mdGlrby9jb250cmFjdC9nZW4vbWZ0aWtvL3N0YXRlL3YxO3N0YXRldjFiBnByb3RvMw", [file_mftiko_common_v1_common]);
-
-/**
- * @generated from message mftiko.state.v1.SessionSpec
- */
-export type SessionSpec = Message<"mftiko.state.v1.SessionSpec"> & {
-  /**
-   * @generated from field: string name = 1;
-   */
-  name: string;
-
-  /**
-   * @generated from field: map<string, string> labels = 2;
-   */
-  labels: { [key: string]: string };
-
-  /**
-   * @generated from field: mftiko.state.v1.DesiredState desired_state = 3;
-   */
-  desiredState: DesiredState;
-
-  /**
-   * @generated from field: mftiko.state.v1.StrategyRef strategy = 4;
-   */
-  strategy?: StrategyRef | undefined;
-
-  /**
-   * 策略自己的參數，平台不解讀
-   *
-   * @generated from field: bytes params = 5;
-   */
-  params: Uint8Array;
-
-  /**
-   * @generated from field: repeated mftiko.state.v1.FeedDecl feeds = 6;
-   */
-  feeds: FeedDecl[];
-
-  /**
-   * @generated from field: repeated mftiko.state.v1.SelectorDecl selectors = 7;
-   */
-  selectors: SelectorDecl[];
-
-  /**
-   * @generated from field: repeated mftiko.state.v1.AccountDecl accounts = 8;
-   */
-  accounts: AccountDecl[];
-
-  /**
-   * 語意見 DECISIONS D24
-   *
-   * @generated from field: mftiko.state.v1.RestartPolicy restart = 9;
-   */
-  restart?: RestartPolicy | undefined;
-
-  /**
-   * @generated from field: uint32 deps_timeout_s = 10;
-   */
-  depsTimeoutS: number;
-
-  /**
-   * @generated from field: uint32 start_timeout_s = 11;
-   */
-  startTimeoutS: number;
-
-  /**
-   * @generated from field: mftiko.state.v1.Limits limits = 12;
-   */
-  limits?: Limits | undefined;
-
-  /**
-   * 資料 artifact（DECISIONS D23）
-   *
-   * @generated from field: repeated mftiko.state.v1.InputDecl inputs = 13;
-   */
-  inputs: InputDecl[];
-
-  /**
-   * MD 事件在 buffer 裡的最長壽命，以 envelope 的 md_ts_ns 計（D24）。0 = STS 的預設值。
-   * 跨 region 的 session 要比 WAN 延遲大。
-   *
-   * @generated from field: uint32 recv_window_ms = 14;
-   */
-  recvWindowMs: number;
-};
-
-/**
- * Describes the message mftiko.state.v1.SessionSpec.
- * Use `create(SessionSpecSchema)` to create a new message.
- */
-export const SessionSpecSchema: GenMessage<SessionSpec> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 0);
-
-/**
- * 唯讀注入的資料 artifact，解到 $MFTIKO_INPUT_DIR/<name>/（§8.4）。
- *
- * @generated from message mftiko.state.v1.InputDecl
- */
-export type InputDecl = Message<"mftiko.state.v1.InputDecl"> & {
-  /**
-   * 目錄名，^[a-z0-9][a-z0-9_-]{0,63}$，同一個 spec 內唯一
-   *
-   * @generated from field: string name = 1;
-   */
-  name: string;
-
-  /**
-   * 資料 artifact 的 OCI manifest digest（"sha256:…"）
-   *
-   * @generated from field: string digest = 2;
-   */
-  digest: string;
-
-  /**
-   * 拉取用的 OCI repository
-   *
-   * @generated from field: string repository = 3;
-   */
-  repository: string;
-};
-
-/**
- * Describes the message mftiko.state.v1.InputDecl.
- * Use `create(InputDeclSchema)` to create a new message.
- */
-export const InputDeclSchema: GenMessage<InputDecl> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 1);
-
-/**
- * @generated from message mftiko.state.v1.StrategyRef
- */
-export type StrategyRef = Message<"mftiko.state.v1.StrategyRef"> & {
-  /**
-   * @generated from field: string name = 1;
-   */
-  name: string;
-
-  /**
-   * 策略 artifact 的 OCI image digest（"sha256:…"），session 生命週期內不變
-   *
-   * @generated from field: string code = 2;
-   */
-  code: string;
-
-  /**
-   * 拉取用的 OCI repository
-   *
-   * @generated from field: string repository = 3;
-   */
-  repository: string;
-};
-
-/**
- * Describes the message mftiko.state.v1.StrategyRef.
- * Use `create(StrategyRefSchema)` to create a new message.
- */
-export const StrategyRefSchema: GenMessage<StrategyRef> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 2);
-
-/**
- * @generated from message mftiko.state.v1.FeedDecl
- */
-export type FeedDecl = Message<"mftiko.state.v1.FeedDecl"> & {
-  /**
-   * 正規 feed key
-   *
-   * @generated from field: string feed = 1;
-   */
-  feed: string;
-
-  /**
-   * API 解析後一律填
-   *
-   * @generated from field: string md_instance = 2;
-   */
-  mdInstance: string;
-};
-
-/**
- * Describes the message mftiko.state.v1.FeedDecl.
- * Use `create(FeedDeclSchema)` to create a new message.
- */
-export const FeedDeclSchema: GenMessage<FeedDecl> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 3);
-
-/**
- * @generated from message mftiko.state.v1.SelectorDecl
- */
-export type SelectorDecl = Message<"mftiko.state.v1.SelectorDecl"> & {
-  /**
-   * @generated from field: string name = 1;
-   */
-  name: string;
-
-  /**
-   * @generated from field: string md_instance = 2;
-   */
-  mdInstance: string;
-
-  /**
-   * @generated from field: string venue = 3;
-   */
-  venue: string;
-
-  /**
-   * @generated from field: string underlying = 4;
-   */
-  underlying: string;
-
-  /**
-   * @generated from field: repeated string topics = 5;
-   */
-  topics: string[];
-
-  /**
-   * @generated from oneof mftiko.state.v1.SelectorDecl.kind
-   */
-  kind: {
-    /**
-     * @generated from field: mftiko.state.v1.OptionChain option_chain = 10;
-     */
-    value: OptionChain;
-    case: "optionChain";
-  } | {
-    /**
-     * @generated from field: mftiko.state.v1.RollingFuture rolling_future = 11;
-     */
-    value: RollingFuture;
-    case: "rollingFuture";
-  } | { case: undefined; value?: undefined };
-};
-
-/**
- * Describes the message mftiko.state.v1.SelectorDecl.
- * Use `create(SelectorDeclSchema)` to create a new message.
- */
-export const SelectorDeclSchema: GenMessage<SelectorDecl> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 4);
-
-/**
- * @generated from message mftiko.state.v1.OptionChain
- */
-export type OptionChain = Message<"mftiko.state.v1.OptionChain"> & {
-  /**
-   * @generated from field: string ref_feed = 1;
-   */
-  refFeed: string;
-
-  /**
-   * @generated from field: uint32 nearest_expiries = 2;
-   */
-  nearestExpiries: number;
-
-  /**
-   * @generated from field: uint32 min_tte_s = 3;
-   */
-  minTteS: number;
-
-  /**
-   * @generated from field: uint32 atm_strikes = 4;
-   */
-  atmStrikes: number;
-
-  /**
-   * "C"、"P"
-   *
-   * @generated from field: repeated string sides = 5;
-   */
-  sides: string[];
-
-  /**
-   * @generated from field: uint32 recenter_strikes = 6;
-   */
-  recenterStrikes: number;
-
-  /**
-   * @generated from field: uint32 recenter_min_dwell_s = 7;
-   */
-  recenterMinDwellS: number;
-};
-
-/**
- * Describes the message mftiko.state.v1.OptionChain.
- * Use `create(OptionChainSchema)` to create a new message.
- */
-export const OptionChainSchema: GenMessage<OptionChain> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 5);
-
-/**
- * @generated from message mftiko.state.v1.RollingFuture
- */
-export type RollingFuture = Message<"mftiko.state.v1.RollingFuture"> & {
-  /**
-   * weekly | monthly | quarterly
-   *
-   * @generated from field: string tenor = 1;
-   */
-  tenor: string;
-
-  /**
-   * @generated from field: uint32 roll_before_s = 2;
-   */
-  rollBeforeS: number;
-};
-
-/**
- * Describes the message mftiko.state.v1.RollingFuture.
- * Use `create(RollingFutureSchema)` to create a new message.
- */
-export const RollingFutureSchema: GenMessage<RollingFuture> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 6);
-
-/**
- * @generated from message mftiko.state.v1.AccountDecl
- */
-export type AccountDecl = Message<"mftiko.state.v1.AccountDecl"> & {
-  /**
-   * @generated from field: string name = 1;
-   */
-  name: string;
-
-  /**
-   * @generated from field: int64 api_id = 2;
-   */
-  apiId: bigint;
-
-  /**
-   * @generated from field: string td_instance = 3;
-   */
-  tdInstance: string;
-
-  /**
-   * 這個 session 在這個帳號上可以使用的 algo_id，每個 1–1023（D25）。
-   * 同一個帳號上和其他非 terminal 的 session 重疊時，TD 的 ack 是 REJECTED（algo_conflict）。
-   *
-   * @generated from field: repeated uint32 algo_ids = 4;
-   */
-  algoIds: number[];
-};
-
-/**
- * Describes the message mftiko.state.v1.AccountDecl.
- * Use `create(AccountDeclSchema)` to create a new message.
- */
-export const AccountDeclSchema: GenMessage<AccountDecl> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 7);
-
-/**
- * @generated from message mftiko.state.v1.RestartPolicy
- */
-export type RestartPolicy = Message<"mftiko.state.v1.RestartPolicy"> & {
-  /**
-   * @generated from field: mftiko.state.v1.RestartMode mode = 1;
-   */
-  mode: RestartMode;
-
-  /**
-   * @generated from field: uint32 max_restarts = 2;
-   */
-  maxRestarts: number;
-
-  /**
-   * @generated from field: uint32 window_s = 3;
-   */
-  windowS: number;
-};
-
-/**
- * Describes the message mftiko.state.v1.RestartPolicy.
- * Use `create(RestartPolicySchema)` to create a new message.
- */
-export const RestartPolicySchema: GenMessage<RestartPolicy> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 8);
-
-/**
- * @generated from message mftiko.state.v1.Limits
- */
-export type Limits = Message<"mftiko.state.v1.Limits"> & {
-  /**
-   * @generated from field: uint32 memory_mb = 1;
-   */
-  memoryMb: number;
-
-  /**
-   * @generated from field: uint32 gomaxprocs = 2;
-   */
-  gomaxprocs: number;
-
-  /**
-   * session volume 的上限（D23）；0 = STS 的預設值。超過就以 FAILED 結束（volume_over_limit）
-   *
-   * @generated from field: uint32 volume_mb = 3;
-   */
-  volumeMb: number;
-
-  /**
-   * 單一 hook 的硬上限（D24）；0 = STS 的預設值。超過判定 HUNG
-   *
-   * @generated from field: uint32 hook_timeout_s = 4;
-   */
-  hookTimeoutS: number;
-};
-
-/**
- * Describes the message mftiko.state.v1.Limits.
- * Use `create(LimitsSchema)` to create a new message.
- */
-export const LimitsSchema: GenMessage<Limits> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 9);
+  fileDesc("ChttZnRpa28vc3RhdGUvdjEvc3RhdGUucHJvdG8SD21mdGlrby5zdGF0ZS52MSKGAQoHQWNjb3VudBIMCgRuYW1lGAEgASgJEgwKBGtpbmQYAiABKAkSGgoSc2VhbGVkX2NyZWRlbnRpYWxzGAMgASgMEjIKCHNldHRpbmdzGAQgASgLMiAubWZ0aWtvLnN0YXRlLnYxLkFjY291bnRTZXR0aW5ncxIPCgdlbmFibGVkGAUgASgIInAKD0FjY291bnRTZXR0aW5ncxIeChZjYW5jZWxfb25fZGlzY29ubmVjdF9zGAEgASgNEhsKE2JhY2tmaWxsX2ludGVydmFsX3MYAiABKA0SIAoYYmFja2ZpbGxfcmVxdWVzdGVkX2F0X25zGAMgASgDIrkCCg1TZXNzaW9uU3RhdHVzEhsKE29ic2VydmVkX2dlbmVyYXRpb24YASABKAMSJQoFcGhhc2UYAiABKA4yFi5tZnRpa28uc3RhdGUudjEuUGhhc2USLwoKY29uZGl0aW9ucxgDIAMoCzIbLm1mdGlrby5jb21tb24udjEuQ29uZGl0aW9uEhMKC2luY2FybmF0aW9uGAQgASgNEhUKDXJlc3RhcnRfY291bnQYBSABKA0SDgoGcmVhc29uGAYgASgJEi0KCWxhc3RfZXhpdBgHIAEoCzIaLm1mdGlrby5jb21tb24udjEuRXhpdEluZm8SFQoNdXBkYXRlZF9hdF9ucxgIIAEoAxIxCglzdGF0ZV9vdXQYCSABKAsyHi5tZnRpa28uc3RhdGUudjEuU3RhdGVTbmFwc2hvdCJ6Cg1TdGF0ZVNuYXBzaG90Eg4KBmRpZ2VzdBgBIAEoCRISCgpyZXBvc2l0b3J5GAIgASgJEg0KBWNsZWFuGAMgASgIEhMKC2luY2FybmF0aW9uGAQgASgNEg0KBWF0X25zGAUgASgDEhIKCnNpemVfYnl0ZXMYBiABKAQilwEKC0RlbWFuZEVudHJ5Eg4KBGZlZWQYASABKAlIABIzCghzZWxlY3RvchgCIAEoCzIfLm1mdGlrby5zZXNzaW9uLnYxLlNlbGVjdG9yRGVjbEgAEhAKBmFwaV9pZBgDIAEoA0gAEhUKDXNwZWNfcmV2aXNpb24YCiABKAMSEAoIYWxnb19pZHMYCyADKA1CCAoGdGFyZ2V0Ir4BCg1TZXNzaW9uRGVtYW5kEjAKB2Rlc2lyZWQYASABKA4yHy5tZnRpa28uc2Vzc2lvbi52MS5EZXNpcmVkU3RhdGUSDQoFc3RhcnQYAiABKAgSEgoKZW5kX3JlYXNvbhgDIAEoCRIqCghiaW5kaW5ncxgEIAMoCzIYLm1mdGlrby5zdGF0ZS52MS5CaW5kaW5nEhUKDXNwZWNfcmV2aXNpb24YBSABKAMSFQoNdXBkYXRlZF9hdF9ucxgGIAEoAyKJAQoHQmluZGluZxIOCgRmZWVkGAEgASgJSAASEgoIc2VsZWN0b3IYAiABKAlIABIQCgZhcGlfaWQYAyABKANIABIQCghpbnN0YW5jZRgEIAEoCRIsCgZzdGF0dXMYBSABKAsyHC5tZnRpa28uc3RhdGUudjEuRW50cnlTdGF0dXNCCAoGdGFyZ2V0IssBCgtFbnRyeVN0YXR1cxIqCgVzdGF0ZRgBIAEoDjIbLm1mdGlrby5zdGF0ZS52MS5FbnRyeVN0YXRlEg4KBnJlYXNvbhgCIAEoCRIPCgdzdWJqZWN0GAMgASgJEisKBndvcmtlchgEIAEoCzIbLm1mdGlrby5jb21tb24udjEuV29ya2VyUmVmEisKCHVuaXZlcnNlGAUgASgLMhkubWZ0aWtvLnN0YXRlLnYxLlVuaXZlcnNlEhUKDXVwZGF0ZWRfYXRfbnMYBiABKAMiSwoIVW5pdmVyc2USDQoFZXBvY2gYASABKAQSDwoHbWVtYmVycxgCIAMoCRIPCgdjdXJyZW50GAMgASgJEg4KBnRvcGljcxgEIAMoCSJlCgtBZ2VudFJlY29yZBINCgVwbGFuZRgBIAEoCRIQCghpbnN0YW5jZRgCIAEoCRINCgVlcG9jaBgDIAEoAxIPCgdyZWxlYXNlGAQgASgJEhUKDXN0YXJ0ZWRfYXRfbnMYBSABKAMi6wEKDFdvcmtlclN0YXR1cxIrCgZ3b3JrZXIYASABKAsyGy5tZnRpa28uY29tbW9uLnYxLldvcmtlclJlZhINCgVwaGFzZRgCIAEoCRINCgVzdGFnZRgDIAEoCRIPCgdyZWxlYXNlGAQgASgJEhQKDHNoaW1fcmVsZWFzZRgFIAEoCRIQCghyZXN0YXJ0cxgGIAEoDRIRCglyc3NfYnl0ZXMYByABKAMSFQoNc3RhcnRlZF9hdF9ucxgIIAEoAxItCglsYXN0X2V4aXQYCSABKAsyGi5tZnRpa28uY29tbW9uLnYxLkV4aXRJbmZvIpUBCg1TZWxlY3RvclN0YXRlEi0KBHNwZWMYASABKAsyHy5tZnRpa28uc2Vzc2lvbi52MS5TZWxlY3RvckRlY2wSDQoFZXBvY2gYAiABKAQSDwoHbWVtYmVycxgDIAMoCRIPCgdjdXJyZW50GAQgASgJEg4KBmNlbnRlchgFIAEoCRIUCgxjZW50ZXJfYXRfbnMYBiABKAMiGQoJUGxhY2VtZW50EgwKBGNvbm4YASABKAkqtwEKBVBoYXNlEhUKEVBIQVNFX1VOU1BFQ0lGSUVEEAASEQoNUEhBU0VfUEVORElORxABEhEKDVBIQVNFX1dBSVRJTkcQAhISCg5QSEFTRV9TVEFSVElORxADEhEKDVBIQVNFX1JVTk5JTkcQBBISCg5QSEFTRV9TVE9QUElORxAFEhQKEFBIQVNFX1JFU1RBUlRJTkcQBhIOCgpQSEFTRV9ET05FEAcSEAoMUEhBU0VfRkFJTEVEEAgqiQEKCkVudHJ5U3RhdGUSGwoXRU5UUllfU1RBVEVfVU5TUEVDSUZJRUQQABIXChNFTlRSWV9TVEFURV9QRU5ESU5HEAESFQoRRU5UUllfU1RBVEVfUkVBRFkQAhIYChRFTlRSWV9TVEFURV9SRUpFQ1RFRBADEhQKEEVOVFJZX1NUQVRFX0RFQUQQBEJEWkJnaXRodWIuY29tL0J1bGxpb25CZWFyL21mdGlrby9jb250cmFjdC9nZW4vbWZ0aWtvL3N0YXRlL3YxO3N0YXRldjFiBnByb3RvMw", [file_mftiko_common_v1_common, file_mftiko_session_v1_session]);
 
 /**
  * @generated from message mftiko.state.v1.Account
@@ -464,7 +58,7 @@ export type Account = Message<"mftiko.state.v1.Account"> & {
  * Use `create(AccountSchema)` to create a new message.
  */
 export const AccountSchema: GenMessage<Account> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 10);
+  messageDesc(file_mftiko_state_v1_state, 0);
 
 /**
  * @generated from message mftiko.state.v1.AccountSettings
@@ -499,7 +93,7 @@ export type AccountSettings = Message<"mftiko.state.v1.AccountSettings"> & {
  * Use `create(AccountSettingsSchema)` to create a new message.
  */
 export const AccountSettingsSchema: GenMessage<AccountSettings> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 11);
+  messageDesc(file_mftiko_state_v1_state, 1);
 
 /**
  * @generated from message mftiko.state.v1.SessionStatus
@@ -560,7 +154,7 @@ export type SessionStatus = Message<"mftiko.state.v1.SessionStatus"> & {
  * Use `create(SessionStatusSchema)` to create a new message.
  */
 export const SessionStatusSchema: GenMessage<SessionStatus> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 12);
+  messageDesc(file_mftiko_state_v1_state, 2);
 
 /**
  * @generated from message mftiko.state.v1.StateSnapshot
@@ -606,16 +200,16 @@ export type StateSnapshot = Message<"mftiko.state.v1.StateSnapshot"> & {
  * Use `create(StateSnapshotSchema)` to create a new message.
  */
 export const StateSnapshotSchema: GenMessage<StateSnapshot> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 13);
+  messageDesc(file_mftiko_state_v1_state, 3);
 
 /**
- * 綁在 STS agent 的 etcd lease 上。
+ * MD、TD 的需求項目（§3.3）。
  *
- * @generated from message mftiko.state.v1.LeaseEntry
+ * @generated from message mftiko.state.v1.DemandEntry
  */
-export type LeaseEntry = Message<"mftiko.state.v1.LeaseEntry"> & {
+export type DemandEntry = Message<"mftiko.state.v1.DemandEntry"> & {
   /**
-   * @generated from oneof mftiko.state.v1.LeaseEntry.target
+   * @generated from oneof mftiko.state.v1.DemandEntry.target
    */
   target: {
     /**
@@ -625,7 +219,7 @@ export type LeaseEntry = Message<"mftiko.state.v1.LeaseEntry"> & {
     case: "feed";
   } | {
     /**
-     * @generated from field: mftiko.state.v1.SelectorDecl selector = 2;
+     * @generated from field: mftiko.session.v1.SelectorDecl selector = 2;
      */
     value: SelectorDecl;
     case: "selector";
@@ -653,11 +247,116 @@ export type LeaseEntry = Message<"mftiko.state.v1.LeaseEntry"> & {
 };
 
 /**
- * Describes the message mftiko.state.v1.LeaseEntry.
- * Use `create(LeaseEntrySchema)` to create a new message.
+ * Describes the message mftiko.state.v1.DemandEntry.
+ * Use `create(DemandEntrySchema)` to create a new message.
  */
-export const LeaseEntrySchema: GenMessage<LeaseEntry> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 14);
+export const DemandEntrySchema: GenMessage<DemandEntry> = /*@__PURE__*/
+  messageDesc(file_mftiko_state_v1_state, 4);
+
+/**
+ * STS 的指派（§3.3）。STS agent 只跑有指派的 session。
+ *
+ * @generated from message mftiko.state.v1.SessionDemand
+ */
+export type SessionDemand = Message<"mftiko.state.v1.SessionDemand"> & {
+  /**
+   * RUNNING：spawn 並送 Init；ENDED：停掉 worker
+   *
+   * @generated from field: mftiko.session.v1.DesiredState desired = 1;
+   */
+  desired: DesiredState;
+
+  /**
+   * 所有 MD、TD 需求都 READY，STS agent 可以送 Start（D15）
+   *
+   * @generated from field: bool start = 2;
+   */
+  start: boolean;
+
+  /**
+   * desired 是 ENDED 時：ended_by_spec、deps_failed、deps_timeout
+   *
+   * @generated from field: string end_reason = 3;
+   */
+  endReason: string;
+
+  /**
+   * @generated from field: repeated mftiko.state.v1.Binding bindings = 4;
+   */
+  bindings: Binding[];
+
+  /**
+   * 推導自哪一版 session spec；只供除錯
+   *
+   * @generated from field: int64 spec_revision = 5;
+   */
+  specRevision: bigint;
+
+  /**
+   * @generated from field: int64 updated_at_ns = 6;
+   */
+  updatedAtNs: bigint;
+};
+
+/**
+ * Describes the message mftiko.state.v1.SessionDemand.
+ * Use `create(SessionDemandSchema)` to create a new message.
+ */
+export const SessionDemandSchema: GenMessage<SessionDemand> = /*@__PURE__*/
+  messageDesc(file_mftiko_state_v1_state, 5);
+
+/**
+ * 一個需求項目目前的 ack，由 controller 從 provider 的 EntryStatus 抄來。
+ *
+ * @generated from message mftiko.state.v1.Binding
+ */
+export type Binding = Message<"mftiko.state.v1.Binding"> & {
+  /**
+   * @generated from oneof mftiko.state.v1.Binding.target
+   */
+  target: {
+    /**
+     * @generated from field: string feed = 1;
+     */
+    value: string;
+    case: "feed";
+  } | {
+    /**
+     * SelectorDecl.name
+     *
+     * @generated from field: string selector = 2;
+     */
+    value: string;
+    case: "selector";
+  } | {
+    /**
+     * @generated from field: int64 api_id = 3;
+     */
+    value: bigint;
+    case: "apiId";
+  } | { case: undefined; value?: undefined };
+
+  /**
+   * 提供這個資源的 MD 或 TD instance
+   *
+   * @generated from field: string instance = 4;
+   */
+  instance: string;
+
+  /**
+   * provider 沒有 ack（沉默）時不填
+   *
+   * @generated from field: mftiko.state.v1.EntryStatus status = 5;
+   */
+  status?: EntryStatus | undefined;
+};
+
+/**
+ * Describes the message mftiko.state.v1.Binding.
+ * Use `create(BindingSchema)` to create a new message.
+ */
+export const BindingSchema: GenMessage<Binding> = /*@__PURE__*/
+  messageDesc(file_mftiko_state_v1_state, 6);
 
 /**
  * 綁在 provider agent 的 etcd lease 上。
@@ -706,7 +405,7 @@ export type EntryStatus = Message<"mftiko.state.v1.EntryStatus"> & {
  * Use `create(EntryStatusSchema)` to create a new message.
  */
 export const EntryStatusSchema: GenMessage<EntryStatus> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 15);
+  messageDesc(file_mftiko_state_v1_state, 7);
 
 /**
  * @generated from message mftiko.state.v1.Universe
@@ -742,7 +441,7 @@ export type Universe = Message<"mftiko.state.v1.Universe"> & {
  * Use `create(UniverseSchema)` to create a new message.
  */
 export const UniverseSchema: GenMessage<Universe> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 16);
+  messageDesc(file_mftiko_state_v1_state, 8);
 
 /**
  * @generated from message mftiko.state.v1.AgentRecord
@@ -779,7 +478,7 @@ export type AgentRecord = Message<"mftiko.state.v1.AgentRecord"> & {
  * Use `create(AgentRecordSchema)` to create a new message.
  */
 export const AgentRecordSchema: GenMessage<AgentRecord> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 17);
+  messageDesc(file_mftiko_state_v1_state, 9);
 
 /**
  * @generated from message mftiko.state.v1.WorkerStatus
@@ -840,14 +539,14 @@ export type WorkerStatus = Message<"mftiko.state.v1.WorkerStatus"> & {
  * Use `create(WorkerStatusSchema)` to create a new message.
  */
 export const WorkerStatusSchema: GenMessage<WorkerStatus> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 18);
+  messageDesc(file_mftiko_state_v1_state, 10);
 
 /**
  * @generated from message mftiko.state.v1.SelectorState
  */
 export type SelectorState = Message<"mftiko.state.v1.SelectorState"> & {
   /**
-   * @generated from field: mftiko.state.v1.SelectorDecl spec = 1;
+   * @generated from field: mftiko.session.v1.SelectorDecl spec = 1;
    */
   spec?: SelectorDecl | undefined;
 
@@ -884,7 +583,7 @@ export type SelectorState = Message<"mftiko.state.v1.SelectorState"> & {
  * Use `create(SelectorStateSchema)` to create a new message.
  */
 export const SelectorStateSchema: GenMessage<SelectorState> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 19);
+  messageDesc(file_mftiko_state_v1_state, 11);
 
 /**
  * @generated from message mftiko.state.v1.Placement
@@ -903,59 +602,7 @@ export type Placement = Message<"mftiko.state.v1.Placement"> & {
  * Use `create(PlacementSchema)` to create a new message.
  */
 export const PlacementSchema: GenMessage<Placement> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 20);
-
-/**
- * @generated from enum mftiko.state.v1.DesiredState
- */
-export enum DesiredState {
-  /**
-   * @generated from enum value: DESIRED_STATE_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
-
-  /**
-   * @generated from enum value: DESIRED_STATE_RUNNING = 1;
-   */
-  RUNNING = 1,
-
-  /**
-   * @generated from enum value: DESIRED_STATE_ENDED = 2;
-   */
-  ENDED = 2,
-}
-
-/**
- * Describes the enum mftiko.state.v1.DesiredState.
- */
-export const DesiredStateSchema: GenEnum<DesiredState> = /*@__PURE__*/
-  enumDesc(file_mftiko_state_v1_state, 0);
-
-/**
- * @generated from enum mftiko.state.v1.RestartMode
- */
-export enum RestartMode {
-  /**
-   * @generated from enum value: RESTART_MODE_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
-
-  /**
-   * @generated from enum value: RESTART_MODE_NEVER = 1;
-   */
-  NEVER = 1,
-
-  /**
-   * @generated from enum value: RESTART_MODE_ON_FAILURE = 2;
-   */
-  ON_FAILURE = 2,
-}
-
-/**
- * Describes the enum mftiko.state.v1.RestartMode.
- */
-export const RestartModeSchema: GenEnum<RestartMode> = /*@__PURE__*/
-  enumDesc(file_mftiko_state_v1_state, 1);
+  messageDesc(file_mftiko_state_v1_state, 12);
 
 /**
  * @generated from enum mftiko.state.v1.Phase
@@ -1013,7 +660,7 @@ export enum Phase {
  * Describes the enum mftiko.state.v1.Phase.
  */
 export const PhaseSchema: GenEnum<Phase> = /*@__PURE__*/
-  enumDesc(file_mftiko_state_v1_state, 2);
+  enumDesc(file_mftiko_state_v1_state, 0);
 
 /**
  * @generated from enum mftiko.state.v1.EntryState
@@ -1049,5 +696,5 @@ export enum EntryState {
  * Describes the enum mftiko.state.v1.EntryState.
  */
 export const EntryStateSchema: GenEnum<EntryState> = /*@__PURE__*/
-  enumDesc(file_mftiko_state_v1_state, 3);
+  enumDesc(file_mftiko_state_v1_state, 1);
 
