@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strconv"
 	"sync"
 	"syscall"
@@ -252,15 +253,27 @@ func (s *server) read(c *agentConn) {
 }
 
 // write writes what is queued for c until the queue is closed, then closes the connection.
+//
+// An agent that stops reading has its connection closed after writeTimeout. One that has gone (the write fails any
+// other way, most often EPIPE) may still have requests in the socket: a Stop sent just before it exited. Those are
+// still read and run, until the read side ends; what would go back to it is dropped.
 func (s *server) write(c *agentConn) {
 	defer c.nc.Close()
 	w := frame.NewWriter(c.nc)
 	for m := range c.out {
 		c.nc.SetWriteDeadline(time.Now().Add(writeTimeout)) //nolint:errcheck // fails only once nc is closed
-		if err := w.Write(m); err != nil {
+		err := w.Write(m)
+		switch {
+		case err == nil:
+			continue
+		case errors.Is(err, os.ErrDeadlineExceeded):
 			s.drop(c, fmt.Errorf("write: %w", err))
 			return
 		}
+		s.log.Info().Err(err).Uint64("conn", c.id).Msg("agent stopped reading its connection; still running what it sent")
+		for range c.out { // drain, so that sends never fill the queue; read ends the connection at EOF
+		}
+		return
 	}
 }
 

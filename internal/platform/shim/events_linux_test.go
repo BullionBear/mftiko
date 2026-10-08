@@ -84,6 +84,7 @@ func TestC3EventsWhileAway(t *testing.T) {
 
 	p.waitLog("worker exited", map[string]any{"code": float64(fakeworker.CodeDone)})
 	b := dial(t, p.socket())
+	b.pollNext(last + 3) // the reap can come before the shim has read the worker's last words
 	at := b.attachFrom(2, last+1)
 	if at.GetOldestSeq() != last+1 || at.GetNextSeq() != last+3 {
 		t.Errorf("attached oldest %d next %d, want %d and %d", at.GetOldestSeq(), at.GetNextSeq(), last+1, last+3)
@@ -143,8 +144,10 @@ func TestC3ReportLatest(t *testing.T) {
 	waitFor(t, func() bool {
 		return countSent(p, func(m *workerv1.WorkerUp) bool { return m.GetReport() != nil }) == reports
 	})
-
+	// The worker wrote the last Report; the shim has read it once it has read a Beat sent after it (fd 3 is in order).
+	sent := time.Now().UnixNano()
 	b := dial(t, p.socket())
+	waitFor(t, func() bool { return b.pollNext(0).GetLastBeatAtNs() > sent })
 	b.attachFrom(2, b.pollNext(0).GetNextSeq())
 	first := b.event()
 	if first.GetReport() == nil || string(first.GetReport().GetPayload()) != strconv.Itoa(reports) || first.GetSeq() != 0 {
@@ -202,23 +205,30 @@ func TestC3WorkerRelay(t *testing.T) {
 	if !strings.HasPrefix(string(relay.GetRelay().GetCorrId()), "ask-") || relay.GetSeq() != 0 {
 		t.Fatalf("relay %v", relay)
 	}
-	before := len(p.undeliverables())
 	a.until("another Relay", func(ev *shimv1.Event) bool { return ev.GetRelay() != nil })
-	a.until("another Relay", func(ev *shimv1.Event) bool { return ev.GetRelay() != nil })
-	if after := len(p.undeliverables()); after > before+1 { // one may have crossed the Attach
-		t.Errorf("undeliverable went on with a controller: %d then %d", before, after)
-	}
 	a.c.Close()
-	waitFor(t, func() bool { return len(p.undeliverables()) > before+2 })
+	n := len(p.undeliverables())
+	waitFor(t, func() bool { return len(p.undeliverables()) > n+1 })
 
+	// In what the worker got: Undeliverable before the agent came, at most one more after it was told of the agent
+	// (an ask in flight at the Attach), and Undeliverable again once told it is gone.
 	var told []string
+	during, agent := 0, false
 	for _, m := range p.downsAll() {
-		if c := m.GetController(); c != nil {
+		switch {
+		case m.GetController() != nil:
+			c := m.GetController()
 			told = append(told, strconv.FormatBool(c.GetAttached())+"/"+strconv.FormatInt(c.GetEpoch(), 10))
+			agent = c.GetAttached()
+		case m.GetUndeliverable() != nil && agent:
+			during++
 		}
 	}
 	if strings.Join(told, " ") != "true/1 false/1" {
 		t.Errorf("the worker was told %v, want an agent at epoch 1, then none", told)
+	}
+	if during > 1 {
+		t.Errorf("%d Undeliverable while an agent was there", during)
 	}
 }
 

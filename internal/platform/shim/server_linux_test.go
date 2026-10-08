@@ -815,3 +815,18 @@ func TestAckThroughC3(t *testing.T) {
 	}
 	wantErr(t, a.call(ackReq(9)), CodeBadRequest)
 }
+
+// An agent that has stopped reading (it is exiting) still has what it sent run: a Stop sent last of all reaches the
+// worker even though the shim can no longer write to it.
+func TestRequestsRunAfterAgentStopsReading(t *testing.T) {
+	path, fw := startServer(t, os.Geteuid())
+	a := dial(t, path)
+	wantOK(t, a.call(attachFromReq(1, 0, Major)))
+	if err := a.c.(*net.UnixConn).CloseRead(); err != nil {
+		t.Fatal(err)
+	}
+	appendStages(fw.Events(), 3) // the shim writes them, and the write fails
+	time.Sleep(50 * time.Millisecond)
+	a.send(stopReq(100, 100))
+	waitFor(t, func() bool { return slices.Contains(fw.gotVerbs(), "stop") })
+}
