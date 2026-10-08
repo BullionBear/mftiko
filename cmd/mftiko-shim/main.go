@@ -1,6 +1,6 @@
 // Command mftiko-shim is the per-worker shim: the sole parent of one worker and the point where a new agent adopts it after a rotation (DECISIONS D3-D7, PROTOCOL §4).
 //
-// Shape only: not implemented yet.
+// The agent execs it and writes one Launch frame on its stdin (PROTOCOL §4.6).
 package main
 
 import (
@@ -10,6 +10,7 @@ import (
 
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/logger"
+	"github.com/BullionBear/mftiko/internal/platform/shim"
 )
 
 func main() {
@@ -19,7 +20,5 @@ func main() {
 		fmt.Println(buildinfo.String())
 		return
 	}
-	log := logger.New("mftiko-shim")
-	log.Error().Msg("not implemented")
-	os.Exit(1)
+	os.Exit(shim.Run(logger.New("mftiko-shim")))
 }

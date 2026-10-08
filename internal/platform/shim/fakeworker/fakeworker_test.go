@@ -402,6 +402,18 @@ func TestUndeclaredEndings(t *testing.T) {
 			t.Fatalf("exit %d", code)
 		}
 	})
+	t.Run("done before hello", func(t *testing.T) {
+		p := start(t, fakeworker.Script{Exit: fakeworker.ExitDone, ExitAt: fakeworker.AtHello})
+		if m := p.next(); m.GetExiting().GetOutcome() != commonv1.Outcome_OUTCOME_DONE {
+			t.Fatalf("first message %v, want Exiting(DONE) and no Hello", m)
+		}
+		if m := p.next(); m.GetStopped() == nil {
+			t.Fatalf("then %v, want Stopped", m)
+		}
+		if code, _ := p.wait(); code != fakeworker.CodeDone {
+			t.Fatalf("exit %d", code)
+		}
+	})
 	t.Run("before hello", func(t *testing.T) {
 		p := start(t, fakeworker.Script{Exit: fakeworker.ExitKilled, ExitAt: fakeworker.AtHello})
 		if m := p.next(); m != nil {
@@ -459,12 +471,13 @@ func TestBeatsStop(t *testing.T) {
 }
 
 func TestSIGTERM(t *testing.T) {
-	t.Run("default", func(t *testing.T) {
+	t.Run("default is a Stop", func(t *testing.T) {
 		p := start(t, fakeworker.Script{})
 		p.hello()
 		p.cmd.Process.Signal(syscall.SIGTERM)
-		if _, sig := p.wait(); sig != syscall.SIGTERM {
-			t.Fatalf("signal %v", sig)
+		p.ending(commonv1.Outcome_OUTCOME_DONE, false, fakeworker.CodeDone) // a Stop before Start: no OnStop
+		if !slices.ContainsFunc(p.entries(), func(e fakeworker.Entry) bool { return e.Event == "sigterm" }) {
+			t.Fatal("sigterm not journalled")
 		}
 	})
 	t.Run("ignored", func(t *testing.T) {
