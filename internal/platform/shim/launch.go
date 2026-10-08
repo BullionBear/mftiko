@@ -37,11 +37,14 @@ func ReadLaunch(r io.Reader) (*shimv1.Launch, error) {
 
 // CheckLaunch is step 3 of PROTOCOL §4.6.
 func CheckLaunch(l *shimv1.Launch) error {
-	if l.GetPath() == "" || !filepath.IsAbs(l.GetPath()) {
-		return fmt.Errorf("%w: path %q is not absolute", ErrBadLaunch, l.GetPath())
-	}
-	if l.GetDir() != "" && !filepath.IsAbs(l.GetDir()) {
+	if !filepath.IsAbs(l.GetDir()) {
 		return fmt.Errorf("%w: dir %q is not absolute", ErrBadLaunch, l.GetDir())
+	}
+	// The rootfs and its entrypoint (PROTOCOL §4.6): the executable is in the directory, compared as written.
+	dir := filepath.Clean(l.GetDir())
+	if !filepath.IsAbs(l.GetPath()) || l.GetPath() != filepath.Clean(l.GetPath()) ||
+		!strings.HasPrefix(l.GetPath(), strings.TrimSuffix(dir, "/")+"/") {
+		return fmt.Errorf("%w: path %q is not a clean absolute path under dir %q", ErrBadLaunch, l.GetPath(), dir)
 	}
 	seen := map[string]bool{}
 	for _, kv := range l.GetEnv() {

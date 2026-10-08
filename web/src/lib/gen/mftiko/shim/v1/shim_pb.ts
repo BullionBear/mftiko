@@ -47,35 +47,37 @@ export type Launch = Message<"mftiko.shim.v1.Launch"> & {
   specHash: string;
 
   /**
-   * worker 的執行檔，絕對路徑
+   * 以下由 artifact 的 manifest 換算（§4.6 的對應表）
+   *
+   * rootfs ＋ entrypoint[0]，絕對路徑
    *
    * @generated from field: string path = 5;
    */
   path: string;
 
   /**
-   * argv[1:]；argv[0] 是 path
+   * entrypoint[1:]；argv[0] 是 path
    *
    * @generated from field: repeated string args = 6;
    */
   args: string[];
 
   /**
-   * KEY=VALUE（§5.4）；shim 自己加上 MFTIKO_CTL_FD=3
+   * manifest 的 env，之後是 §5.4 的平台變數；KEY=VALUE。shim 自己加上 MFTIKO_CTL_FD=3
    *
    * @generated from field: repeated string env = 7;
    */
   env: string[];
 
   /**
-   * 工作目錄；空字串表示沿用 shim 的
+   * rootfs，絕對路徑；path 必須在它底下
    *
    * @generated from field: string dir = 8;
    */
   dir: string;
 
   /**
-   * 沒有就沿用 shim 的身分
+   * 平面決定，不來自 manifest；沒有就沿用 shim 的身分
    *
    * @generated from field: mftiko.shim.v1.Credential cred = 9;
    */

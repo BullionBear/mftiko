@@ -84,11 +84,12 @@ type Launch struct {
 	AgentInstance string                 `protobuf:"bytes,2,opt,name=agent_instance,json=agentInstance,proto3" json:"agent_instance,omitempty"`
 	Worker        *v1.WorkerRef          `protobuf:"bytes,3,opt,name=worker,proto3" json:"worker,omitempty"`
 	SpecHash      string                 `protobuf:"bytes,4,opt,name=spec_hash,json=specHash,proto3" json:"spec_hash,omitempty"` // agent 給的，shim 不解讀，Attached 原樣帶回
-	Path          string                 `protobuf:"bytes,5,opt,name=path,proto3" json:"path,omitempty"`                         // worker 的執行檔，絕對路徑
-	Args          []string               `protobuf:"bytes,6,rep,name=args,proto3" json:"args,omitempty"`                         // argv[1:]；argv[0] 是 path
-	Env           []string               `protobuf:"bytes,7,rep,name=env,proto3" json:"env,omitempty"`                           // KEY=VALUE（§5.4）；shim 自己加上 MFTIKO_CTL_FD=3
-	Dir           string                 `protobuf:"bytes,8,opt,name=dir,proto3" json:"dir,omitempty"`                           // 工作目錄；空字串表示沿用 shim 的
-	Cred          *Credential            `protobuf:"bytes,9,opt,name=cred,proto3" json:"cred,omitempty"`                         // 沒有就沿用 shim 的身分
+	// 以下由 artifact 的 manifest 換算（§4.6 的對應表）
+	Path          string      `protobuf:"bytes,5,opt,name=path,proto3" json:"path,omitempty"` // rootfs ＋ entrypoint[0]，絕對路徑
+	Args          []string    `protobuf:"bytes,6,rep,name=args,proto3" json:"args,omitempty"` // entrypoint[1:]；argv[0] 是 path
+	Env           []string    `protobuf:"bytes,7,rep,name=env,proto3" json:"env,omitempty"`   // manifest 的 env，之後是 §5.4 的平台變數；KEY=VALUE。shim 自己加上 MFTIKO_CTL_FD=3
+	Dir           string      `protobuf:"bytes,8,opt,name=dir,proto3" json:"dir,omitempty"`   // rootfs，絕對路徑；path 必須在它底下
+	Cred          *Credential `protobuf:"bytes,9,opt,name=cred,proto3" json:"cred,omitempty"` // 平面決定，不來自 manifest；沒有就沿用 shim 的身分
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

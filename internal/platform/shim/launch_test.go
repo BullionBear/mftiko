@@ -18,14 +18,22 @@ func TestCheckLaunch(t *testing.T) {
 	if err := CheckLaunch(ok()); err != nil {
 		t.Fatalf("a good launch: %v", err)
 	}
+	if err := CheckLaunch(&shimv1.Launch{Dir: "/opt/rootfs/", Path: "/opt/rootfs/bin/w"}); err != nil {
+		t.Fatalf("a dir with a trailing slash: %v", err)
+	}
 	for name, mut := range map[string]func(*shimv1.Launch){
-		"no path":       func(l *shimv1.Launch) { l.Path = "" },
-		"relative path": func(l *shimv1.Launch) { l.Path = "bin/true" },
-		"relative dir":  func(l *shimv1.Launch) { l.Dir = "tmp" },
-		"no =":          func(l *shimv1.Launch) { l.Env = append(l.Env, "MFTIKO_PLANE") },
-		"empty key":     func(l *shimv1.Launch) { l.Env = append(l.Env, "=x") },
-		"ctl fd":        func(l *shimv1.Launch) { l.Env = append(l.Env, EnvCtlFD+"=4") },
-		"twice":         func(l *shimv1.Launch) { l.Env = append(l.Env, "MFTIKO_PLANE=md") },
+		"no path":        func(l *shimv1.Launch) { l.Path = "" },
+		"relative path":  func(l *shimv1.Launch) { l.Path = "bin/true" },
+		"no dir":         func(l *shimv1.Launch) { l.Dir = "" },
+		"relative dir":   func(l *shimv1.Launch) { l.Dir = "tmp" },
+		"outside dir":    func(l *shimv1.Launch) { l.Dir = "/opt/rootfs" },
+		"sibling prefix": func(l *shimv1.Launch) { l.Dir, l.Path = "/opt/root", "/opt/rootfs/bin/w" },
+		"unclean path":   func(l *shimv1.Launch) { l.Dir, l.Path = "/opt/rootfs", "/opt/rootfs/../etc/w" },
+		"path is dir":    func(l *shimv1.Launch) { l.Dir, l.Path = "/opt/rootfs", "/opt/rootfs" },
+		"no =":           func(l *shimv1.Launch) { l.Env = append(l.Env, "MFTIKO_PLANE") },
+		"empty key":      func(l *shimv1.Launch) { l.Env = append(l.Env, "=x") },
+		"ctl fd":         func(l *shimv1.Launch) { l.Env = append(l.Env, EnvCtlFD+"=4") },
+		"twice":          func(l *shimv1.Launch) { l.Env = append(l.Env, "MFTIKO_PLANE=md") },
 	} {
 		l := ok()
 		mut(l)
@@ -37,7 +45,7 @@ func TestCheckLaunch(t *testing.T) {
 
 // ReadLaunch takes one frame and not a byte more: whatever follows stays in the stream.
 func TestReadLaunch(t *testing.T) {
-	want := &shimv1.Launch{Plane: "td", AgentInstance: "td-tw-1", Path: "/bin/true",
+	want := &shimv1.Launch{Plane: "td", AgentInstance: "td-tw-1", Path: "/bin/true", Dir: "/",
 		Worker: &commonv1.WorkerRef{Key: "td/42", Incarnation: 3}}
 	var buf bytes.Buffer
 	if err := frame.NewWriter(&buf).Write(want); err != nil {
@@ -59,7 +67,7 @@ func TestReadLaunch(t *testing.T) {
 		t.Fatal("no frame read as a launch")
 	}
 	buf.Reset()
-	if err := frame.NewWriter(&buf).Write(&shimv1.Launch{Path: "true"}); err != nil {
+	if err := frame.NewWriter(&buf).Write(&shimv1.Launch{Path: "true", Dir: "/"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := ReadLaunch(&buf); !errors.Is(err, ErrBadLaunch) {
