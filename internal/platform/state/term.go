@@ -314,6 +314,28 @@ func (t *Term) acquire(ctx context.Context, cli *clientv3.Client, region string,
 	return 0, fmt.Errorf("state: fence %s: %s disappeared %d times", region, key, writerAttempts)
 }
 
+// PutRecord writes this agent's (or the controller's) AgentRecord, bound to the election session's lease
+// (PROTOCOL §3.2 W7), so whoever reads it knows the instance has a live agent, and which term. Put it once per term,
+// after the first reconcile of the agent's worker and ack keys (W7.3): readers take those keys as fresh while the
+// record is there.
+//
+// The record goes with the term: when the term ends the session stops being renewed and etcd drops the record
+// within the session TTL, and Close revokes the lease and drops it at once. A lease etcd no longer knows ends the
+// term with ErrSessionLost. The AgentRecord is written only here: Put, Delete and Txn refuse it. Fenced like every
+// write.
+func (t *Term) PutRecord(ctx context.Context, val string) error {
+	if err := t.Err(); err != nil {
+		return err
+	}
+	op := clientv3.OpPut(AgentKey(t.plane, t.inst), val, clientv3.WithLease(t.session.Lease()))
+	_, err := t.txn(ctx, writeScope{plane: t.plane, inst: t.inst, record: true}, nil, []clientv3.Op{op}, nil)
+	if errors.Is(err, rpctypes.ErrLeaseNotFound) {
+		t.end(fmt.Errorf("%w: the session's lease is gone: %v", ErrSessionLost, err))
+		return t.Err()
+	}
+	return err
+}
+
 // Plane is the plane this term leads.
 func (t *Term) Plane() Plane { return t.plane }
 
@@ -366,15 +388,22 @@ func (t *Term) Close(ctx context.Context) error {
 }
 
 // end ends the term with cause, unless it has already ended. Only the first cause is kept.
+//
+// Unless Close is ending it, the session also stops being renewed: its lease, and the AgentRecord on it, run out
+// within the TTL even if the process lingers after the term (W7). Close revokes the lease instead, at once.
 func (t *Term) end(cause error) {
 	t.mu.Lock()
-	defer t.mu.Unlock()
 	if t.err != nil {
+		t.mu.Unlock()
 		return
 	}
 	t.err = cause
 	close(t.done)
 	t.cancel()
+	t.mu.Unlock()
+	if t.session != nil && !errors.Is(cause, ErrClosed) {
+		go t.session.Orphan()
+	}
 }
 
 // cause is the term's error if it has ended, else err: a call cut short by the term ending reports why it ended.

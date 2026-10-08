@@ -107,7 +107,7 @@ enum EntryState {
   ENTRY_STATE_DEAD = 4;
 }
 
-// 綁在 provider agent 的 etcd lease 上。
+// 不綁 lease（§3.2 W7）。provider 的 AgentRecord 不在時，是它最後寫下的狀態。
 message EntryStatus {
   EntryState state = 1;
   string reason = 2;
@@ -128,6 +128,7 @@ message Universe {
 
 // ---------- agent 自己 ----------
 
+// 綁在選主 session 的 lease 上（§3.2 W7）：存在就表示這個 instance 有活著的 agent。
 message AgentRecord {
   string plane = 1;
   string instance = 2;
@@ -136,6 +137,7 @@ message AgentRecord {
   int64 started_at_ns = 5;
 }
 
+// 不綁 lease（§3.2 W7），只在階段改變時寫；worker 確定不在之後由 agent 刪除。
 message WorkerStatus {
   mftiko.common.v1.WorkerRef worker = 1;
   string phase = 2; // STARTING | RUNNING | STOPPING | BACKOFF | EXITED | LOST
@@ -143,7 +145,7 @@ message WorkerStatus {
   string release = 4;
   string shim_release = 5;
   uint32 restarts = 6;
-  int64 rss_bytes = 7;
+  int64 rss_bytes = 7; // 寫入當下的值，只是快照：WorkerStatus 只在階段改變時寫（§3.2 W7）
   int64 started_at_ns = 8;
   mftiko.common.v1.ExitInfo last_exit = 9;
 }

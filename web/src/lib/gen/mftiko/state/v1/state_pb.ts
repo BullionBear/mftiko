@@ -359,7 +359,7 @@ export const BindingSchema: GenMessage<Binding> = /*@__PURE__*/
   messageDesc(file_mftiko_state_v1_state, 6);
 
 /**
- * 綁在 provider agent 的 etcd lease 上。
+ * 不綁 lease（§3.2 W7）。provider 的 AgentRecord 不在時，是它最後寫下的狀態。
  *
  * @generated from message mftiko.state.v1.EntryStatus
  */
@@ -444,6 +444,8 @@ export const UniverseSchema: GenMessage<Universe> = /*@__PURE__*/
   messageDesc(file_mftiko_state_v1_state, 8);
 
 /**
+ * 綁在選主 session 的 lease 上（§3.2 W7）：存在就表示這個 instance 有活著的 agent。
+ *
  * @generated from message mftiko.state.v1.AgentRecord
  */
 export type AgentRecord = Message<"mftiko.state.v1.AgentRecord"> & {
@@ -481,6 +483,8 @@ export const AgentRecordSchema: GenMessage<AgentRecord> = /*@__PURE__*/
   messageDesc(file_mftiko_state_v1_state, 9);
 
 /**
+ * 不綁 lease（§3.2 W7），只在階段改變時寫；worker 確定不在之後由 agent 刪除。
+ *
  * @generated from message mftiko.state.v1.WorkerStatus
  */
 export type WorkerStatus = Message<"mftiko.state.v1.WorkerStatus"> & {
@@ -519,6 +523,8 @@ export type WorkerStatus = Message<"mftiko.state.v1.WorkerStatus"> & {
   restarts: number;
 
   /**
+   * 寫入當下的值，只是快照：WorkerStatus 只在階段改變時寫（§3.2 W7）
+   *
    * @generated from field: int64 rss_bytes = 7;
    */
   rssBytes: bigint;
