@@ -91,6 +91,9 @@ type Script struct {
 	BeatMS   int `json:"beat_ms,omitempty"`   // Beat interval, from Hello on; default 100
 	Beats    int `json:"beats,omitempty"`     // stop beating after this many; 0 = never
 	ReportMS int `json:"report_ms,omitempty"` // Report interval once running; 0 = no Reports
+	Reports  int `json:"reports,omitempty"`   // stop reporting after this many; 0 = never. The payload is the count
+	Stages   int `json:"stages,omitempty"`    // send this many Stage("stage-<n>") right after Hello
+	AskMS    int `json:"ask_ms,omitempty"`    // send the agent a Relay (corr_id "ask-<n>") this often; 0 = never
 	OnStopMS int `json:"on_stop_ms,omitempty"`
 
 	IgnoreSIGTERM bool   `json:"ignore_sigterm,omitempty"` // by default SIGTERM is a Stop, as the SDK makes it
@@ -241,6 +244,12 @@ func run() int {
 		Kind: kind, Release: release, Contracts: []string{Contract}, Pid: int32(os.Getpid()),
 	}}})
 	go w.beat()
+	for i := 1; i <= w.s.Stages; i++ {
+		w.send(&workerv1.WorkerUp{Msg: &workerv1.WorkerUp_Stage{Stage: &workerv1.Stage{Name: "stage-" + strconv.Itoa(i)}}})
+	}
+	if w.s.AskMS > 0 {
+		go w.ask()
+	}
 	if w.s.FloodBytes > 0 && w.s.FloodAt == AtHello {
 		w.flood()
 	}
@@ -250,6 +259,7 @@ func run() int {
 // loop is the worker's main thread: the hooks run here, so a hung hook stops it while Beat goes on.
 func (w *worker) loop() int {
 	started := false
+	reported := 0
 	var exitTimer <-chan time.Time
 	var reports <-chan time.Time
 	for {
@@ -296,9 +306,13 @@ func (w *worker) loop() int {
 			w.record(Entry{Event: "sigterm"})
 			return w.finish(commonv1.Outcome_OUTCOME_DONE, "SIGTERM", started, CodeDone)
 		case <-reports:
+			reported++
 			w.send(&workerv1.WorkerUp{Msg: &workerv1.WorkerUp_Report{Report: &workerv1.Report{
-				Contract: Contract, Payload: []byte(time.Now().Format(time.RFC3339Nano)),
+				Contract: Contract, Payload: []byte(strconv.Itoa(reported)),
 			}}})
+			if w.s.Reports > 0 && reported >= w.s.Reports {
+				reports = nil
+			}
 		}
 	}
 }
@@ -391,6 +405,18 @@ func (w *worker) read(ctl io.Reader) {
 		b, _ := protojson.Marshal(m)
 		w.record(Entry{Event: "down", Msg: b})
 		w.down <- m
+	}
+}
+
+// ask sends the agent a Relay every AskMS: the shim passes it on, or answers Undeliverable when no agent is there.
+func (w *worker) ask() {
+	t := time.NewTicker(time.Duration(w.s.AskMS) * time.Millisecond)
+	defer t.Stop()
+	for n := 1; ; n++ {
+		<-t.C
+		w.send(&workerv1.WorkerUp{Msg: &workerv1.WorkerUp_Relay{Relay: &workerv1.Relay{
+			Contract: Contract, CorrId: []byte("ask-" + strconv.Itoa(n)),
+		}}})
 	}
 }
 

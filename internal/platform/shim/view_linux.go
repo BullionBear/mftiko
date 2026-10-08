@@ -82,7 +82,20 @@ type view struct {
 	phase      shimv1.Phase
 	exiting    bool // the worker sent Exiting: it is ending on its own, or on a Stop it already had
 	stopping   bool // a Stop's timers are running
+	sink       sink // where Beat, Report and the worker's Relay go; nil until set
+
+	events *eventLog // what an agent reads back (PROTOCOL §4.4); its own lock
 }
+
+// sink is the C3 server as the view needs it: something that hands an event to the controller now, if there is one
+// that streams events.
+type sink interface {
+	// Deliver sends ev to the controller and reports whether there was one to send it to.
+	Deliver(ev *shimv1.Event) bool
+}
+
+// beatEvery is how often at most a Beat goes on to the agent (PROTOCOL §4.4).
+const beatEvery = time.Second
 
 func newView(log zerolog.Logger, w *Worker) *view {
 	return newViewOf(log, w, w.Pid, w.Pgid, w.StartTime, w.Conn)
@@ -91,9 +104,39 @@ func newView(log zerolog.Logger, w *Worker) *view {
 // newViewOf is a view of p, which writes to the worker on conn.
 func newViewOf(log zerolog.Logger, p proc, pid, pgid int, startTime uint64, conn io.Writer) *view {
 	v := &view{log: log, p: p, pid: pid, pgid: pgid, startTime: startTime,
-		down: make(chan *workerv1.WorkerDown, downQueue), phase: shimv1.Phase_PHASE_NEW}
+		down: make(chan *workerv1.WorkerDown, downQueue), phase: shimv1.Phase_PHASE_NEW, events: newEventLog()}
+	v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Started{Started: &shimv1.Started{
+		Pid: int32(pid), Pgid: int32(pgid), StartTime: startTime,
+	}}})
 	go v.write(conn)
 	return v
+}
+
+// Events is the log of what the worker said.
+func (v *view) Events() *eventLog { return v.events }
+
+// SetSink sets where the events that are not kept go. Before it is set, they go nowhere, and the worker's Relay is
+// answered Undeliverable.
+func (v *view) SetSink(s sink) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.sink = s
+}
+
+// Controller tells the worker whether an agent is there to take its Relay (PROTOCOL §5.2), when that changes or the
+// epoch does. It never blocks: a worker that does not read fd 3 misses it, and its Relay still gets Undeliverable
+// from the shim.
+func (v *view) Controller(attached bool, epoch int64) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.exited() {
+		return
+	}
+	if !v.sendLocked(&workerv1.WorkerDown{Msg: &workerv1.WorkerDown_Controller{Controller: &workerv1.Controller{
+		Attached: attached, Epoch: epoch,
+	}}}) {
+		v.log.Warn().Bool("attached", attached).Msg("controller: the worker is not reading fd 3")
+	}
 }
 
 // Signal sends sig to the worker's process group.
@@ -115,6 +158,7 @@ func (v *view) Attached() *shimv1.Attached {
 	v.mu.Lock()
 	a.Hello, a.Stage, a.LastBeatAtNs, a.Phase = proto.CloneOf(v.hello), v.stage, v.lastBeatNs, v.phase
 	v.mu.Unlock()
+	a.OldestSeq, a.NextSeq = v.events.Bounds()
 	switch {
 	case v.exited():
 		a.State = shimv1.WorkerState_WORKER_STATE_EXITED
@@ -261,10 +305,13 @@ func (v *view) write(conn io.Writer) {
 	}
 }
 
-// follow reads the worker's messages until it closes its end, so the worker never blocks on a full socket, and keeps
-// what Attached reports and what moves the phase: Done and Exiting.
+// follow reads the worker's messages until it closes its end, so the worker never blocks on a full socket. It keeps
+// what Attached reports and what moves the phase (Done, Exiting), numbers into the event log what an agent reads
+// back, and passes on the rest: the latest Report, a Beat a second, and the worker's Relay, which gets Undeliverable
+// when there is no controller to take it.
 func (v *view) follow(conn io.Reader) {
 	r := newFrameReader(conn)
+	var lastBeat time.Time
 	for {
 		m := &workerv1.WorkerUp{}
 		if err := r.Read(m); err != nil {
@@ -290,8 +337,46 @@ func (v *view) follow(conn io.Reader) {
 			v.exiting = true
 			v.phase = shimv1.Phase_PHASE_STOPPING
 		}
+		out := v.sink
 		v.mu.Unlock()
 		v.log.Debug().Str("msg", fmt.Sprintf("%T", m.GetMsg())).Msg("from worker")
+
+		// Not under v.mu: Deliver takes the server's lock, which is held while it calls into the view.
+		deliver := func(ev *shimv1.Event) bool { return out != nil && out.Deliver(ev) }
+		switch m := m.GetMsg().(type) {
+		case *workerv1.WorkerUp_Hello:
+			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Hello{Hello: m.Hello}})
+		case *workerv1.WorkerUp_Done:
+			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Done{Done: m.Done}})
+		case *workerv1.WorkerUp_Stage:
+			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Stage{Stage: m.Stage}})
+		case *workerv1.WorkerUp_Exiting:
+			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Exiting{Exiting: m.Exiting}})
+		case *workerv1.WorkerUp_Stopped:
+			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Stopped{Stopped: m.Stopped}})
+		case *workerv1.WorkerUp_Report:
+			deliver(v.events.SetReport(&shimv1.Event{Kind: &shimv1.Event_Report{Report: m.Report}}))
+		case *workerv1.WorkerUp_Beat:
+			if now := time.Now(); now.Sub(lastBeat) >= beatEvery {
+				lastBeat = now
+				deliver(v.events.Transient(&shimv1.Event{Kind: &shimv1.Event_Beat{Beat: m.Beat}}))
+			}
+		case *workerv1.WorkerUp_Relay:
+			if !deliver(v.events.Transient(&shimv1.Event{Kind: &shimv1.Event_Relay{Relay: m.Relay}})) {
+				v.undeliverable(m.Relay.GetCorrId())
+			}
+		}
+	}
+}
+
+// undeliverable answers a Relay of the worker that no agent can take (PROTOCOL §4.4).
+func (v *view) undeliverable(corrID []byte) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if !v.sendLocked(&workerv1.WorkerDown{Msg: &workerv1.WorkerDown_Undeliverable{
+		Undeliverable: &workerv1.Undeliverable{CorrId: corrID},
+	}}) {
+		v.log.Warn().Msg("undeliverable: the worker is not reading fd 3")
 	}
 }
 

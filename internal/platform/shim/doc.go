@@ -2,5 +2,6 @@
 //
 // Implemented so far: the Launch on stdin and the spawn (PROTOCOL §4.6, E1-10); the C3 socket, Attach with epoch
 // fencing and major negotiation, and Signal (§4.1, §4.2, E1-09); the lifecycle verbs, Stop's timers and the
-// shim's own SIGTERM (§4.3, E1-11). Linux only.
+// shim's own SIGTERM (§4.3, E1-11); the event ring, Ack and the replay from resume_from (§4.4, E1-12); the worker's
+// output (§4.5 S4, E1-14). Linux only.
 package shim

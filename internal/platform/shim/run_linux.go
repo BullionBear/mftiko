@@ -15,8 +15,9 @@ import (
 // exit code.
 //
 // Of C3 it does Attach, fencing and Signal (E1-09), and the lifecycle (E1-11): Init, Start and Relay go to the
-// worker, Stop is timed here, Release ends the shim once the worker has been reaped. Ack is answered unimplemented
-// and nothing is buffered for the agent yet (E1-12); there is no exit file (E1-13). The worker's stdout and stderr go
+// worker, Stop is timed here, Release ends the shim once the worker has been reaped. What the worker says is kept
+// for an agent that is away and replayed from where it asks, until it acknowledges it (E1-12). There is no exit file
+// yet (E1-13). The worker's stdout and stderr go
 // to rotated files under ${WORK_DIR}/log/{plane} (E1-14).
 //
 // SIGTERM or SIGINT stops the worker as a Stop would, with shutdownGrace and shutdownKillAfter, and the shim ends
@@ -104,6 +105,7 @@ func Run(log zerolog.Logger) int {
 	v := newView(log, w)
 	go v.follow(w.Conn)
 	srv := newServer(log, ln, l, v, os.Geteuid())
+	v.SetSink(srv)
 	srv.start()
 	done, stopping := w.Done(), false
 	for {

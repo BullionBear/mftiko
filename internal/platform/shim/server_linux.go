@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	// outQueue is how many messages a connection may have waiting to be written. An agent that lets more pile up
-	// is not reading, and its connection is closed.
-	outQueue = 256
+	// outQueue is how many messages a connection may have waiting to be written: room for a whole replay of the
+	// ring after Attach and then some. An agent that lets more pile up is not reading, and its connection is closed.
+	outQueue = 2 * RingSize
 	// writeTimeout bounds one write to an agent, so that a connection that stopped reading ends.
 	writeTimeout = 5 * time.Second
 	// maxSignal is SIGRTMAX on Linux: signals are 1 to 64.
@@ -33,6 +33,12 @@ const (
 
 // supportedMajors are the C3 majors this shim speaks (PROTOCOL §1).
 var supportedMajors = []uint32{Major}
+
+// workerTold is what Controller last told the worker.
+type workerTold struct {
+	attached bool
+	epoch    int64
+}
 
 // controlled is what the C3 server needs of the worker: the view in view_linux.go, or a fake in tests.
 type controlled interface {
@@ -50,6 +56,10 @@ type controlled interface {
 	Stop(reason string, grace, killAfter time.Duration) (first bool, err error)
 	// Release is nil once the worker has been reaped, ErrRunning before.
 	Release() error
+	// Events is what the worker said that an agent reads back (PROTOCOL §4.4).
+	Events() *eventLog
+	// Controller tells the worker whether an agent is there to take its Relay, and which epoch (PROTOCOL §5.2).
+	Controller(attached bool, epoch int64)
 }
 
 // server is the shim's C3 server (PROTOCOL §4.1, §4.2). It accepts any number of connections from the agent's uid,
@@ -75,6 +85,8 @@ type server struct {
 	closed bool
 
 	released     chan struct{} // closed on the first Release accepted: the shim then ends (§4.3)
+	quit         chan struct{} // closed by close: ends stream
+	told         workerTold    // what the worker was last told by Controller
 	releasedOnce sync.Once
 }
 
@@ -87,25 +99,89 @@ type agentConn struct {
 	closing bool
 	epoch   int64  // of the Attach that made it the controller
 	major   uint32 // negotiated by that Attach; 0 when there was no common major, which allows only Signal
+	next    uint64 // the seq of the next event to send it; events stream only to a controller with a common major
+	replay  bool   // an Attach was just accepted: after its response, the latest Report and the events from next
 }
 
 func newServer(log zerolog.Logger, ln *net.UnixListener, l *shimv1.Launch, w controlled, uid int) *server {
 	return &server{log: log, ln: ln, launch: l, worker: w, uid: uid, conns: map[*agentConn]struct{}{},
-		released: make(chan struct{})}
+		released: make(chan struct{}), quit: make(chan struct{})}
 }
 
 // Released is closed once the controller's Release has been accepted: the shim closes the server and ends.
 func (s *server) Released() <-chan struct{} { return s.released }
 
-// start accepts connections until close.
-func (s *server) start() { s.wg.Go(s.serve) }
+// start accepts connections until close, and streams events to the controller as they are appended.
+func (s *server) start() {
+	s.wg.Go(s.serve)
+	s.wg.Go(s.stream)
+}
+
+// stream sends the controller what the log has past its cursor, each time the log says it has more.
+func (s *server) stream() {
+	for {
+		select {
+		case <-s.quit:
+			return
+		case <-s.worker.Events().Notify():
+		}
+		s.mu.Lock()
+		if c := s.ctl; c != nil && c.major != 0 {
+			s.pumpLocked(c)
+		}
+		s.mu.Unlock()
+	}
+}
+
+// pumpLocked sends c the kept events from its cursor on, and moves the cursor past them.
+func (s *server) pumpLocked(c *agentConn) {
+	evs, next := s.worker.Events().Since(c.next)
+	for _, ev := range evs {
+		s.sendLocked(c, eventMsg(ev))
+	}
+	c.next = next
+}
+
+// Deliver sends ev to the controller now, if there is one that streams events: a Report, a Beat or the worker's
+// Relay, none of them kept (PROTOCOL §4.4). It reports whether there was one.
+func (s *server) Deliver(ev *shimv1.Event) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c := s.ctl
+	if c == nil || c.major == 0 || c.closing {
+		return false
+	}
+	s.sendLocked(c, eventMsg(ev))
+	return true
+}
+
+// tellLocked tells the worker whether a controller that takes its Relay is there, when that or the epoch changed
+// since it was last told. Before the first agent it was never told anything, which means no agent.
+func (s *server) tellLocked(attached bool, epoch int64) {
+	if !attached {
+		epoch = s.told.epoch // nobody there: the epoch is not news
+	}
+	t := workerTold{attached, epoch}
+	if t == s.told {
+		return
+	}
+	s.told = t
+	s.worker.Controller(attached, epoch)
+}
+
+func eventMsg(ev *shimv1.Event) *shimv1.ShimMessage {
+	return &shimv1.ShimMessage{Msg: &shimv1.ShimMessage_Event{Event: ev}}
+}
 
 // close stops accepting, closes every connection and the listener, which removes the socket, and waits for the
 // server's goroutines. What is queued for a connection is written first, the response to a Release among it; a
 // connection that does not take it ends after writeTimeout.
 func (s *server) close() {
 	s.mu.Lock()
-	s.closed = true
+	if !s.closed {
+		s.closed = true
+		close(s.quit)
+	}
 	for c := range s.conns {
 		s.closeLocked(c, true)
 	}
@@ -204,7 +280,8 @@ func (s *server) drop(c *agentConn, err error) {
 }
 
 // closeLocked ends c. With flush the queue is written first, a Preempted last; without, the connection closes now.
-// A controller that goes leaves no controller, and the epoch it attached with stays the one to beat.
+// A controller that goes leaves no controller, and the epoch it attached with stays the one to beat; the worker is
+// told that no agent is there.
 func (s *server) closeLocked(c *agentConn, flush bool) {
 	if c.closing {
 		return
@@ -214,6 +291,7 @@ func (s *server) closeLocked(c *agentConn, flush bool) {
 	delete(s.conns, c)
 	if s.ctl == c {
 		s.ctl = nil
+		s.tellLocked(false, s.epoch)
 	}
 	if !flush {
 		c.nc.Close()
@@ -243,6 +321,13 @@ func (s *server) handle(c *agentConn, req *shimv1.ShimRequest) {
 	resp := s.respondLocked(c, req)
 	resp.Id = req.GetId()
 	s.sendLocked(c, &shimv1.ShimMessage{Msg: &shimv1.ShimMessage_Response{Response: resp}})
+	if c.replay { // after Attached, and before anything else: the latest Report, then the events it asked for
+		c.replay = false
+		if r := s.worker.Events().Report(); r != nil {
+			s.sendLocked(c, eventMsg(r))
+		}
+		s.pumpLocked(c)
+	}
 }
 
 func (s *server) respondLocked(c *agentConn, req *shimv1.ShimRequest) *shimv1.Response {
@@ -272,8 +357,12 @@ func (s *server) respondLocked(c *agentConn, req *shimv1.ShimRequest) *shimv1.Re
 		return s.stop(c, op.Stop)
 	case *shimv1.ShimRequest_Release:
 		return s.releaseLocked(c)
+	case *shimv1.ShimRequest_Ack:
+		if err := s.worker.Events().Ack(op.Ack.GetSeq()); err != nil {
+			return fail(CodeBadRequest, err.Error())
+		}
+		return &shimv1.Response{Ok: true}
 	}
-	// Ack comes with E1-12.
 	return fail(CodeUnimplemented, opName(req)+" is not implemented yet")
 }
 
@@ -354,16 +443,22 @@ func (s *server) attachLocked(c *agentConn, a *shimv1.Attach) *shimv1.Response {
 		r.Error.Details = map[string]string{"epoch": strconv.FormatInt(s.epoch, 10)}
 		return r
 	}
-	if old := s.ctl; old != nil && old != c {
+	old := s.ctl
+	s.ctl, s.epoch = c, a.GetEpoch() // before closing the old one: the worker is not told of a moment without an agent
+	if old != nil && old != c {
 		s.sendLocked(old, &shimv1.ShimMessage{Msg: &shimv1.ShimMessage_Preempted{
 			Preempted: &shimv1.Preempted{ByEpoch: a.GetEpoch()},
 		}})
 		s.closeLocked(old, true)
 		log.Info().Uint64("preempted_conn", old.id).Int64("preempted_epoch", old.epoch).Msg("controller preempted")
 	}
-	s.ctl, s.epoch = c, a.GetEpoch()
 	c.epoch, c.major = a.GetEpoch(), negotiate(a.GetShimMajors())
-	log.Info().Uint32("shim_major", c.major).Str("agent_release", a.GetAgentRelease()).Msg("agent attached")
+	if c.major != 0 {
+		c.next, c.replay = a.GetResumeFrom(), true
+	}
+	s.tellLocked(c.major != 0, c.epoch)
+	log.Info().Uint32("shim_major", c.major).Uint64("resume_from", a.GetResumeFrom()).
+		Str("agent_release", a.GetAgentRelease()).Msg("agent attached")
 
 	at := s.worker.Attached()
 	at.ShimRelease = buildinfo.Version
