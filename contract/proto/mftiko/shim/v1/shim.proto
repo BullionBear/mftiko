@@ -23,12 +23,19 @@ message Launch {
   string dir = 8;           // rootfs，絕對路徑；path 必須在它底下
   Credential cred = 9;      // 平面決定，不來自 manifest；沒有就沿用 shim 的身分
   string work_dir = 10;     // ${WORK_DIR}，絕對路徑；C3 的 socket 在 run/{plane}/{h}.sock（§4.1）
+  Output output = 11;       // worker 的 stdout、stderr 怎麼輪替（§4.5 S4）；沒有就用預設
 }
 
 message Credential {
   uint32 uid = 1;
   uint32 gid = 2;
   repeated uint32 groups = 3; // 附加群組；空的表示沒有
+}
+
+// worker 的輸出寫在 log/{plane}/{h}.stdout、{h}.stderr，各自輪替（§4.5 S4）。0 表示用預設。
+message Output {
+  uint64 max_bytes = 1; // 一個檔案的上限；預設 64 MiB，不得小於 64 KiB
+  uint32 keep = 2;      // 每個 stream 保留幾個檔案，含目前寫的那個；預設 5，最多 100
 }
 
 // ---------- agent → shim ----------

@@ -279,7 +279,7 @@ func procStatus(t *testing.T, pid int, field string) string {
 }
 
 // The worker gets fd 3, the §5.4 environment and nothing of the shim's, its own process group in the shim's
-// session, the shim as parent, and /dev/null on fds 0 to 2.
+// session, the shim as parent, /dev/null on fd 0 and pipes to the shim on fds 1 and 2.
 func TestSpawnEnvironment(t *testing.T) {
 	p := startShim(t, fakeworker.Script{}, "", "", nil)
 	shimPid := p.cmd.Process.Pid
@@ -305,10 +305,25 @@ func TestSpawnEnvironment(t *testing.T) {
 	if ids.PID != pid || ids.PPID != shimPid || ids.PGID != pid || ids.SID != shimPid {
 		t.Errorf("ids %+v: want pid %d, the shim %d as parent and session, a group of its own", ids, pid, shimPid)
 	}
-	for fd := range 3 {
-		if target, err := os.Readlink(fmt.Sprintf("/proc/%d/fd/%d", pid, fd)); err != nil || target != os.DevNull {
-			t.Errorf("fd %d is %q (%v), want /dev/null", fd, target, err)
+	if target, err := os.Readlink(fmt.Sprintf("/proc/%d/fd/0", pid)); err != nil || target != os.DevNull {
+		t.Errorf("fd 0 is %q (%v), want /dev/null", target, err)
+	}
+	// fds 1 and 2 are pipes, each its own, and the shim holds their read ends (S4).
+	shimFDs := fdTargets(t, shimPid)
+	var pipes []string
+	for _, fd := range []int{1, 2} {
+		target, err := os.Readlink(fmt.Sprintf("/proc/%d/fd/%d", pid, fd))
+		if err != nil || !strings.HasPrefix(target, "pipe:") {
+			t.Errorf("fd %d is %q (%v), want a pipe", fd, target, err)
+			continue
 		}
+		if !slices.Contains(shimFDs, target) {
+			t.Errorf("fd %d is %s, which the shim does not hold", fd, target)
+		}
+		pipes = append(pipes, target)
+	}
+	if len(pipes) == 2 && pipes[0] == pipes[1] {
+		t.Errorf("stdout and stderr share %s", pipes[0])
 	}
 	// The shim reads the worker's side: the Hello it sent went through.
 	if e := p.waitJournal("sent"); !strings.Contains(string(e.Msg), "hello") {
@@ -558,4 +573,21 @@ func copyFile(t *testing.T, from, to string, mode os.FileMode) {
 	if err := out.Close(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// fdTargets is what every fd of pid points to.
+func fdTargets(t *testing.T, pid int) []string {
+	t.Helper()
+	dir := fmt.Sprintf("/proc/%d/fd", pid)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, e := range entries {
+		if target, err := os.Readlink(filepath.Join(dir, e.Name())); err == nil {
+			out = append(out, target)
+		}
+	}
+	return out
 }

@@ -67,10 +67,10 @@ const (
 
 // Points where Script.Exit or Script.Hang happens.
 const (
-	AtHello   = "hello"   // before Hello (Exit only)
+	AtHello   = "hello"   // before Hello (Exit); right after it (FloodAt)
 	AtInit    = "init"    // on Init, instead of Done
 	AtStart   = "start"   // on Start, instead of Done
-	AtRunning = "running" // ExitAfterMS after Start succeeded (Exit only; the default)
+	AtRunning = "running" // ExitAfterMS after Start succeeded (Exit, FloodAt; the default)
 	AtStop    = "stop"    // in OnStop (Hang only): Exiting is sent, Stopped never is
 )
 
@@ -93,10 +93,11 @@ type Script struct {
 	ReportMS int `json:"report_ms,omitempty"` // Report interval once running; 0 = no Reports
 	OnStopMS int `json:"on_stop_ms,omitempty"`
 
-	IgnoreSIGTERM bool `json:"ignore_sigterm,omitempty"` // by default SIGTERM is a Stop, as the SDK makes it
-	IgnoreEOF     bool `json:"ignore_eof,omitempty"`     // keep running when fd 3 ends, so only Pdeathsig kills it
-	Grandchild    bool `json:"grandchild,omitempty"`     // start a process that outlives the worker
-	FloodBytes    int  `json:"flood_bytes,omitempty"`    // write this much to stdout and to stderr once running
+	IgnoreSIGTERM bool   `json:"ignore_sigterm,omitempty"` // by default SIGTERM is a Stop, as the SDK makes it
+	IgnoreEOF     bool   `json:"ignore_eof,omitempty"`     // keep running when fd 3 ends, so only Pdeathsig kills it
+	Grandchild    bool   `json:"grandchild,omitempty"`     // start a process that outlives the worker
+	FloodBytes    int    `json:"flood_bytes,omitempty"`    // write this much to stdout and to stderr once running
+	FloodAt       string `json:"flood_at,omitempty"`       // AtRunning (default), or AtHello: right after Hello
 }
 
 // Env is the environment that makes a re-executed test binary this fake: append it to the shim's spawn
@@ -240,6 +241,9 @@ func run() int {
 		Kind: kind, Release: release, Contracts: []string{Contract}, Pid: int32(os.Getpid()),
 	}}})
 	go w.beat()
+	if w.s.FloodBytes > 0 && w.s.FloodAt == AtHello {
+		w.flood()
+	}
 	return w.loop()
 }
 
@@ -278,7 +282,7 @@ func (w *worker) loop() int {
 					defer t.Stop()
 					reports = t.C
 				}
-				if w.s.FloodBytes > 0 {
+				if w.s.FloodBytes > 0 && (w.s.FloodAt == "" || w.s.FloodAt == AtRunning) {
 					w.flood()
 				}
 			case *workerv1.WorkerDown_Stop:
