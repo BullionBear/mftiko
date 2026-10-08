@@ -20,6 +20,9 @@ const (
 	CodeUnimplemented = "unimplemented"   // an operation the shim does not know, or does not do yet
 	CodeExited        = "exited"          // the worker has been reaped
 	CodeSignalFailed  = "signal_failed"   // kill failed; the message says why
+	CodeRunning       = "running"         // Release before the worker has been reaped
+	CodeBadStage      = "bad_stage"       // Init or Start in a phase that does not allow it; details["phase"] is the phase
+	CodeWorkerBusy    = "worker_busy"     // the queue to the worker is full: it has stopped reading fd 3
 )
 
 // RunDir is where a plane's shims keep their sockets: ${WORK_DIR}/run/{plane} (PROTOCOL §4.1).

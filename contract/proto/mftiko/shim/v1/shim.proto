@@ -103,6 +103,18 @@ message Attached {
   uint64 oldest_seq = 11;
   uint64 next_seq = 12;
   int64 last_beat_at_ns = 13;
+  Phase phase = 14; // 生命週期的階段（§4.3）；worker 結束後是結束前的最後一個
+}
+
+// shim 記下的生命週期階段（§4.3）。
+enum Phase {
+  PHASE_UNSPECIFIED = 0;
+  PHASE_NEW = 1;          // 還沒 Init
+  PHASE_INITIALIZING = 2; // Init 已轉給 worker，還沒 Done
+  PHASE_INITIALIZED = 3;  // Done(INIT, ok)
+  PHASE_STARTING = 4;     // Start 已轉給 worker，還沒 Done
+  PHASE_STARTED = 5;      // Done(START, ok)
+  PHASE_STOPPING = 6;     // 收到 Stop、shim 收到 SIGTERM、Done 失敗，或 worker 送了 Exiting
 }
 
 enum WorkerState {

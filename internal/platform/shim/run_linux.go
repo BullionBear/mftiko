@@ -14,10 +14,14 @@ import (
 // stdin, opens its C3 socket, spawns the worker, serves agents and reaps (PROTOCOL §4.6). It returns the process's
 // exit code.
 //
-// Of C3 it does Attach, fencing and Signal (E1-09); the other requests are answered unimplemented. For now it
-// forwards nothing (E1-11, E1-12), writes no exit file (E1-13) and sends the worker's output to /dev/null (E1-14).
-// It reads what the worker sends, so that the worker never blocks on a full socket, and it stays until SIGTERM or
-// SIGINT, reaping grandchildren after the worker is gone; then it removes its socket.
+// Of C3 it does Attach, fencing and Signal (E1-09), and the lifecycle (E1-11): Init, Start and Relay go to the
+// worker, Stop is timed here, Release ends the shim once the worker has been reaped. Ack is answered unimplemented
+// and nothing is buffered for the agent yet (E1-12); there is no exit file (E1-13) and the worker's output goes to
+// /dev/null (E1-14).
+//
+// SIGTERM or SIGINT stops the worker as a Stop would, with shutdownGrace and shutdownKillAfter, and the shim ends
+// once the worker has been reaped; one that comes after the worker is gone ends the shim at once. Either way it
+// removes its socket.
 func Run(log zerolog.Logger) int {
 	// stderr is the agent's to connect, and may be a pipe whose reader is gone: a log line must then fail, not kill
 	// the shim. A handled signal, unlike an ignored one, goes back to its default in the worker.
@@ -81,24 +85,49 @@ func Run(log zerolog.Logger) int {
 		}
 	}()
 
-	v := newView(w)
-	go v.follow(log, w.Conn)
+	v := newView(log, w)
+	go v.follow(w.Conn)
 	srv := newServer(log, ln, l, v, os.Geteuid())
 	srv.start()
-	done := w.Done()
+	done, stopping := w.Done(), false
 	for {
 		select {
 		case <-done:
 			st := w.Status()
 			log.Info().Int("pid", w.Pid).Int("code", st.ExitStatus()).Int("signal", signalOf(st)).Msg("worker exited")
 			done = nil // seen; grandchildren are still reaped
+			if stopping {
+				log.Info().Msg("shim stopping: the worker is gone")
+				srv.close()
+				return 0
+			}
 		case s := <-stop:
-			log.Info().Str("signal", s.String()).Msg("shim stopping")
+			if done == nil {
+				log.Info().Str("signal", s.String()).Msg("shim stopping")
+				srv.close()
+				return 0
+			}
+			// Not before the worker: it gets a Stop, runs its OnStop, and the shim ends when it is reaped (§4.3).
+			stopping = true
+			if first, _ := v.Stop("shim: "+s.String(), shutdownGrace, shutdownKillAfter); first {
+				log.Info().Str("signal", s.String()).Msg("shim stopping: stopping the worker first")
+			} else {
+				log.Info().Str("signal", s.String()).Msg("shim stopping: the worker is already stopping")
+			}
+		case <-srv.Released():
+			log.Info().Msg("shim released")
 			srv.close()
 			return 0
 		}
 	}
 }
+
+// What the shim's own SIGTERM gives the worker (PROTOCOL §4.3): the grace before SIGTERM, then before SIGKILL. A
+// host shutting down waits for the shim; these keep that wait bounded, and give OnStop the larger part of it.
+const (
+	shutdownGrace     = 10 * time.Second
+	shutdownKillAfter = 5 * time.Second
+)
 
 // launchTimeout bounds the wait for the Launch: an agent that started the shim and then wrote nothing is gone.
 const launchTimeout = 10 * time.Second

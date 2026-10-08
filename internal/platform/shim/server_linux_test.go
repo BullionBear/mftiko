@@ -151,6 +151,14 @@ type fakeWorker struct {
 	mu      sync.Mutex
 	signals []syscall.Signal
 	err     error // what Signal returns, instead of recording the signal
+	verbs   []string
+	verbErr error // what Init, Start, Relay, Stop and Release return
+	stops   []fakeStop
+}
+
+type fakeStop struct {
+	reason           string
+	grace, killAfter time.Duration
 }
 
 func (f *fakeWorker) Signal(sig syscall.Signal) error {
@@ -165,7 +173,44 @@ func (f *fakeWorker) Signal(sig syscall.Signal) error {
 
 func (f *fakeWorker) Attached() *shimv1.Attached {
 	return &shimv1.Attached{State: shimv1.WorkerState_WORKER_STATE_RUNNING, Pid: 4242, Pgid: 4242, StartTime: 77,
-		Stage: "running", LastBeatAtNs: 5}
+		Stage: "running", LastBeatAtNs: 5, Phase: shimv1.Phase_PHASE_STARTED}
+}
+
+func (f *fakeWorker) verb(name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.verbErr != nil {
+		return f.verbErr
+	}
+	f.verbs = append(f.verbs, name)
+	return nil
+}
+
+func (f *fakeWorker) Init(*workerv1.Init) error   { return f.verb("init") }
+func (f *fakeWorker) Start(*workerv1.Start) error { return f.verb("start") }
+func (f *fakeWorker) Relay(*workerv1.Relay) error { return f.verb("relay") }
+func (f *fakeWorker) Release() error              { return f.verb("release") }
+
+func (f *fakeWorker) Stop(reason string, grace, killAfter time.Duration) (bool, error) {
+	if err := f.verb("stop"); err != nil {
+		return false, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stops = append(f.stops, fakeStop{reason, grace, killAfter})
+	return len(f.stops) == 1, nil
+}
+
+func (f *fakeWorker) setVerbErr(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.verbErr = err
+}
+
+func (f *fakeWorker) gotVerbs() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.verbs)
 }
 
 func (f *fakeWorker) got() []syscall.Signal {
@@ -182,6 +227,13 @@ func testLaunch(workDir string) *shimv1.Launch {
 // startServer runs a C3 server in the test process, for a fake worker, accepting the peer uid given. It returns the
 // socket's path.
 func startServer(t *testing.T, uid int) (string, *fakeWorker) {
+	t.Helper()
+	path, fw, _ := startServerAt(t, uid)
+	return path, fw
+}
+
+// startServerAt is startServer, returning the server too.
+func startServerAt(t *testing.T, uid int) (string, *fakeWorker, *server) {
 	t.Helper()
 	l := testLaunch(workDir(t))
 	ln, err := listen(l)
@@ -200,7 +252,7 @@ func startServer(t *testing.T, uid int) (string, *fakeWorker) {
 			t.Error("the server did not close")
 		}
 	})
-	return SocketPath(l.GetWorkDir(), l.GetPlane(), l.GetWorker().GetKey()), fw
+	return SocketPath(l.GetWorkDir(), l.GetPlane(), l.GetWorker().GetKey()), fw, s
 }
 
 // Done criterion 1: agents with different epochs contend for one shim, and only the largest epoch takes effect.
@@ -345,7 +397,7 @@ func TestNoCommonMajor(t *testing.T) {
 	if r.GetAttached().GetShimMajor() != Major {
 		t.Fatalf("shim_major %d, want %d", r.GetAttached().GetShimMajor(), Major)
 	}
-	wantErr(t, c.call(initReq()), CodeUnimplemented) // E1-11
+	wantOK(t, c.call(initReq()))
 }
 
 // Attached carries the shim's release and major, the worker of the Launch, its spec hash and what the worker view
@@ -361,7 +413,8 @@ func TestAttached(t *testing.T) {
 		t.Errorf("attached %v", at)
 	}
 	if at.GetPid() != 4242 || at.GetPgid() != 4242 || at.GetStartTime() != 77 || at.GetStage() != "running" ||
-		at.GetState() != shimv1.WorkerState_WORKER_STATE_RUNNING || at.GetLastBeatAtNs() != 5 {
+		at.GetState() != shimv1.WorkerState_WORKER_STATE_RUNNING || at.GetLastBeatAtNs() != 5 ||
+		at.GetPhase() != shimv1.Phase_PHASE_STARTED {
 		t.Errorf("attached %v: not the worker's", at)
 	}
 }
@@ -384,9 +437,9 @@ func TestControllerRequests(t *testing.T) {
 	a := dial(t, path)
 	wantOK(t, a.attach(1, Major))
 	wantErr(t, a.call(&shimv1.ShimRequest{}), CodeUnimplemented) // an op this shim does not know
-	r := a.call(initReq())
+	r := a.call(&shimv1.ShimRequest{Op: &shimv1.ShimRequest_Ack{Ack: &shimv1.Ack{Seq: 1}}})
 	wantErr(t, r, CodeUnimplemented)
-	if r.GetError().GetMessage() != "init is not implemented yet" {
+	if r.GetError().GetMessage() != "ack is not implemented yet" {
 		t.Errorf("message %q", r.GetError().GetMessage())
 	}
 	wantErr(t, a.signal(0), CodeBadRequest)
@@ -456,4 +509,110 @@ func TestAgentNotReading(t *testing.T) {
 		t.Errorf("attach took %v", d)
 	}
 	stuck.eof()
+}
+
+func startReq() *shimv1.ShimRequest {
+	return &shimv1.ShimRequest{Op: &shimv1.ShimRequest_Start{Start: &workerv1.Start{Contract: "fake.v1"}}}
+}
+
+func relayReq(payload string) *shimv1.ShimRequest {
+	return &shimv1.ShimRequest{Op: &shimv1.ShimRequest_Relay{Relay: &workerv1.Relay{
+		Contract: "fake.v1", CorrId: []byte("c1"), Payload: []byte(payload),
+	}}}
+}
+
+func stopReq(graceMs, killAfterMs uint32) *shimv1.ShimRequest {
+	return &shimv1.ShimRequest{Op: &shimv1.ShimRequest_Stop{Stop: &shimv1.Stop{
+		Reason: "test", GraceMs: graceMs, KillAfterMs: killAfterMs,
+	}}}
+}
+
+func releaseReq() *shimv1.ShimRequest {
+	return &shimv1.ShimRequest{Op: &shimv1.ShimRequest_Release{Release: &shimv1.Release{}}}
+}
+
+// The lifecycle requests reach the worker, in the order sent, and its refusals come back as the codes of §4.2.
+func TestLifecycleRequests(t *testing.T) {
+	path, fw := startServer(t, os.Geteuid())
+	a := dial(t, path)
+	wantOK(t, a.attach(1, Major))
+
+	wantOK(t, a.call(initReq()))
+	wantOK(t, a.call(startReq()))
+	wantOK(t, a.call(relayReq("x")))
+	wantOK(t, a.call(stopReq(1500, 2500)))
+	wantOK(t, a.call(stopReq(1, 1))) // a second Stop is accepted, and keeps the first one's timers
+	if got, want := fw.gotVerbs(), []string{"init", "start", "relay", "stop", "stop"}; !slices.Equal(got, want) {
+		t.Fatalf("verbs %v, want %v", got, want)
+	}
+	if fw.stops[0] != (fakeStop{"test", 1500 * time.Millisecond, 2500 * time.Millisecond}) {
+		t.Errorf("stop %+v", fw.stops[0])
+	}
+
+	for _, c := range []struct {
+		err  error
+		code string
+	}{
+		{ErrExited, CodeExited},
+		{ErrRunning, CodeRunning},
+		{ErrWorkerBusy, CodeWorkerBusy},
+	} {
+		fw.setVerbErr(c.err)
+		for _, req := range []*shimv1.ShimRequest{initReq(), startReq(), relayReq("x"), stopReq(1, 1), releaseReq()} {
+			wantErr(t, a.call(req), c.code)
+		}
+	}
+	fw.setVerbErr(&stageError{verb: "start", phase: shimv1.Phase_PHASE_INITIALIZING})
+	r := a.call(startReq())
+	wantErr(t, r, CodeBadStage)
+	if got := r.GetError().GetDetails()["phase"]; got != "initializing" {
+		t.Errorf("bad_stage details %v", r.GetError().GetDetails())
+	}
+}
+
+// Only the controller's lifecycle requests run.
+func TestLifecycleNotController(t *testing.T) {
+	path, fw := startServer(t, os.Geteuid())
+	ctl := dial(t, path)
+	wantOK(t, ctl.attach(2, Major))
+	old := dial(t, path)
+	wantErr(t, old.attach(1, Major), CodeStaleEpoch)
+	for _, req := range []*shimv1.ShimRequest{initReq(), startReq(), relayReq("x"), stopReq(1, 1), releaseReq()} {
+		wantErr(t, old.call(req), CodeNotController)
+	}
+	if got := fw.gotVerbs(); len(got) != 0 {
+		t.Fatalf("verbs %v", got)
+	}
+}
+
+// A Release accepted closes Released, and the response reaches the agent even though the shim closes the server
+// right after.
+func TestReleaseEndsServer(t *testing.T) {
+	path, fw, srv := startServerAt(t, os.Geteuid())
+	a := dial(t, path)
+	wantOK(t, a.attach(1, Major))
+
+	fw.setVerbErr(ErrRunning)
+	wantErr(t, a.call(releaseReq()), CodeRunning)
+	select {
+	case <-srv.Released():
+		t.Fatal("released while the worker runs")
+	default:
+	}
+
+	fw.setVerbErr(nil)
+	id := a.send(releaseReq())
+	select {
+	case <-srv.Released():
+	case <-time.After(5 * time.Second):
+		t.Fatal("Released not closed")
+	}
+	srv.close() // as Run does
+	if r := a.next().GetResponse(); r.GetId() != id || !r.GetOk() {
+		t.Fatalf("release response %v", r)
+	}
+	a.eof()
+	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("socket left behind: %v", err)
+	}
 }
