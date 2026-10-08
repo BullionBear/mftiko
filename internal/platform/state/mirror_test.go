@@ -1020,6 +1020,115 @@ func TestMirrorStalledWatch(t *testing.T) {
 	}
 }
 
+// unconfirmedReader holds back every response of a watch, etcd's confirmation first, for hold after the watch is
+// asked for, as a watch on a new gRPC stream waits for the stream to authenticate. With hold < 0 the first watch
+// never answers and later ones answer at once.
+type unconfirmedReader struct {
+	Reader
+	hold    time.Duration
+	watches atomic.Int32
+}
+
+func (u *unconfirmedReader) Watch(ctx context.Context, key string, opts ...clientv3.OpOption) clientv3.WatchChan {
+	in := u.Reader.Watch(ctx, key, opts...)
+	first := u.watches.Add(1) == 1
+	out := make(chan clientv3.WatchResponse)
+	go func() {
+		defer close(out)
+		switch {
+		case u.hold < 0 && first:
+			<-ctx.Done()
+			return
+		case u.hold > 0:
+			select {
+			case <-time.After(u.hold):
+			case <-ctx.Done():
+				return
+			}
+		}
+		for r := range in {
+			select {
+			case out <- r:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out
+}
+
+// writeUntil puts acks as fast as it can until stop closes, as four writers.
+func writeUntil(t *testing.T, ctx context.Context, raw *clientv3.Client, stop <-chan struct{}) *sync.WaitGroup {
+	t.Helper()
+	var wg sync.WaitGroup
+	for w := range 4 {
+		wg.Go(func() {
+			for n := 0; ; n++ {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				if _, err := raw.Put(ctx, ackKey(n%10), fmt.Sprintf("w%d-%d", w, n)); err != nil && ctx.Err() == nil {
+					t.Error(err)
+					return
+				}
+			}
+		})
+	}
+	return &wg
+}
+
+// etcd confirms the watch only after many probe intervals, while the cluster moves on: the watch is not taken for
+// a stalled one, because its silence counts from the confirmation. Before that, every reopen started the wait over
+// (under auth, a new stream authenticates first), and the mirror could reopen the watch again and again.
+func TestMirrorSlowWatchCreation(t *testing.T) {
+	ctx := testCtx(t)
+	s, topo := singleRegion(t, "td-tw-1")
+	raw := s.Client(t)
+	direct, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const probe = 50 * time.Millisecond
+	m := startMirror(t, &unconfirmedReader{Reader: direct, hold: 10 * probe}, TDAckPrefix("td-tw-1"), MirrorOptions{ProbeInterval: probe})
+
+	stop := make(chan struct{})
+	wg := writeUntil(t, ctx, raw, stop)
+	time.Sleep(20 * probe)
+	close(stop)
+	wg.Wait()
+	waitConverged(t, ctx, m, raw, 20*time.Second)
+	if st := m.Stats(); st.Lists != 1 || st.Watches != 1 || st.Errors != 0 {
+		t.Fatalf("stats %+v: a watch waiting for its confirmation was reopened", st)
+	}
+}
+
+// A watch etcd never confirms is reopened once the create timeout has passed, not before.
+func TestMirrorWatchNeverCreated(t *testing.T) {
+	ctx := testCtx(t)
+	s, topo := singleRegion(t, "td-tw-1")
+	raw := s.Client(t)
+	direct, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const probe, timeout = 50 * time.Millisecond, time.Second
+	m := startMirror(t, &unconfirmedReader{Reader: direct, hold: -1}, TDAckPrefix("td-tw-1"),
+		MirrorOptions{ProbeInterval: probe, createTimeout: timeout})
+	opened := time.Now()
+	mustPut(t, ctx, raw, ackKey(0), "v1")
+
+	time.Sleep(timeout / 2)
+	if st := m.Stats(); st.Watches != 1 {
+		t.Fatalf("stats %+v after %s: reopened before the create timeout", st, time.Since(opened))
+	}
+	waitConverged(t, ctx, m, raw, 20*time.Second)
+	if st := m.Stats(); st.Lists != 1 || st.Watches != 2 || st.Errors != 1 {
+		t.Fatalf("stats %+v, want the watch reopened once, without a relist", st)
+	}
+}
+
 // Two mirrors on one client share its watch stream, opened on a quiet cluster and left quiet. A watch that started
 // beyond the cluster's revision would make etcd withhold progress notifications from the whole stream; both mirrors
 // must stay fresh, and neither watch may be reopened as stalled.
@@ -1076,22 +1185,7 @@ func TestMirrorProbeUnderLoad(t *testing.T) {
 	m := startMirror(t, slowReader{direct, 30 * time.Millisecond}, TDAckPrefix("td-tw-1"), MirrorOptions{ProbeInterval: 50 * time.Millisecond})
 
 	stop := make(chan struct{})
-	var wg sync.WaitGroup
-	for w := range 4 {
-		wg.Go(func() {
-			for n := 0; ; n++ {
-				select {
-				case <-stop:
-					return
-				default:
-				}
-				if _, err := raw.Put(ctx, ackKey(n%10), fmt.Sprintf("w%d-%d", w, n)); err != nil && ctx.Err() == nil {
-					t.Error(err)
-					return
-				}
-			}
-		})
-	}
+	wg := writeUntil(t, ctx, raw, stop)
 	time.Sleep(3 * time.Second)
 	close(stop)
 	wg.Wait()
