@@ -190,7 +190,7 @@ func ackKey(i int) string {
 
 func TestNewMirrorArgs(t *testing.T) {
 	_, topo := singleRegion(t, "td-tw-1")
-	r, err := newClusters(t, topo, nil, nil).Reader("tw")
+	r, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestMirrorListThenWatch(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
 	raw := s.Client(t)
-	r, err := newClusters(t, topo, nil, nil).Reader("tw")
+	r, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,7 @@ func TestMirrorListIsOneRevision(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
 	raw := s.Client(t)
-	direct, err := newClusters(t, topo, nil, nil).Reader("tw")
+	direct, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +317,7 @@ func TestMirrorCompactedMidList(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
 	raw := s.Client(t)
-	direct, err := newClusters(t, topo, nil, nil).Reader("tw")
+	direct, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +353,7 @@ func proxied(t *testing.T) (*etcdtest.Server, *etcdtest.Proxy, *clientv3.Client,
 	s := etcdtest.Start(t)
 	p := etcdtest.NewProxy(t, s)
 	topo := Topology{Regions: map[string]Region{"tw": {Endpoints: p.Endpoints()}}, Instances: map[string]string{"td-tw-1": "tw"}}
-	r, err := newClusters(t, topo, nil, nil).Reader("tw")
+	r, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,7 +426,7 @@ func TestMirrorServerRestart(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
 	raw := s.Client(t)
-	r, err := newClusters(t, topo, nil, nil).Reader("tw")
+	r, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,7 +446,7 @@ func TestMirrorLeaseExpiry(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
 	raw := s.Client(t)
-	r, err := newClusters(t, topo, nil, nil).Reader("tw")
+	r, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,7 +476,7 @@ func TestMirrorLeaseExpiry(t *testing.T) {
 func TestMirrorRunExits(t *testing.T) {
 	ctx := testCtx(t)
 	_, topo := singleRegion(t, "td-tw-1")
-	cl, err := NewClusters(topo, nil, nil)
+	cl, err := NewClusters(topo, nil, as(t, topo, UserAPI))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -847,7 +847,7 @@ func TestMirrorRewatchesAfterBrokenWatch(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
 	raw := s.Client(t)
-	direct, err := newClusters(t, topo, nil, nil).Reader("tw")
+	direct, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -882,6 +882,11 @@ func TestMirrorClusterReplaced(t *testing.T) {
 	_, p, rawA, r := proxied(t)
 	b := etcdtest.Start(t)
 	rawB := b.Client(t)
+	// B is a cluster of the same deployment: it has the same users and roles.
+	topoB := Topology{Regions: map[string]Region{"tw": {Endpoints: b.Endpoints()}}, Instances: map[string]string{"td-tw-1": "tw"}}
+	if _, err := as(t, topoB, UserAPI)("tw", b.Endpoints()); err != nil {
+		t.Fatal(err)
+	}
 	for i := range 20 {
 		mustPut(t, ctx, rawA, ackKey(i), "from A")
 	}
@@ -907,7 +912,7 @@ func TestMirrorClusterRebuilt(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
 	raw := s.Client(t)
-	r, err := newClusters(t, topo, nil, nil).Reader("tw")
+	r, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -918,6 +923,10 @@ func TestMirrorClusterRebuilt(t *testing.T) {
 	before := m.Rev()
 
 	s.Rebuild(t)
+	// Users and roles went with the data: put them back, as deployment would for a rebuilt cluster.
+	if _, err := as(t, topo, UserAPI)("tw", s.Endpoints()); err != nil {
+		t.Fatal(err)
+	}
 	mustPut(t, ctx, raw, ackKey(3), "new")
 	waitConverged(t, ctx, m, raw, 30*time.Second)
 	if got := m.Rev(); got >= before {
@@ -960,7 +969,7 @@ func TestMirrorWaitRev(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
 	raw := s.Client(t)
-	r, err := newClusters(t, topo, nil, nil).Reader("tw")
+	r, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -991,7 +1000,7 @@ func TestMirrorStalledWatch(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
 	raw := s.Client(t)
-	direct, err := newClusters(t, topo, nil, nil).Reader("tw")
+	direct, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1018,7 +1027,7 @@ func TestMirrorQuietSharedStream(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
 	raw := s.Client(t)
-	r, err := newClusters(t, topo, nil, nil).Reader("tw")
+	r, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1060,7 +1069,7 @@ func TestMirrorProbeUnderLoad(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
 	raw := s.Client(t)
-	direct, err := newClusters(t, topo, nil, nil).Reader("tw")
+	direct, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1135,7 +1144,7 @@ func TestMirrorLaggingMember(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
 	raw := s.Client(t)
-	direct, err := newClusters(t, topo, nil, nil).Reader("tw")
+	direct, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
 	if err != nil {
 		t.Fatal(err)
 	}

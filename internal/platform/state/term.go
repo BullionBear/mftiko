@@ -110,7 +110,7 @@ func Campaign(ctx context.Context, cl *Clusters, p Plane, inst string, opt TermO
 	if err != nil {
 		return nil, err
 	}
-	cli, err := cl.client(home)
+	cli, err := cl.client(ctx, home)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +219,7 @@ func (t *Term) Fence(ctx context.Context, region string) (int64, error) {
 	if err := t.Err(); err != nil {
 		return 0, err
 	}
-	cli, err := t.cl.client(region)
+	cli, err := t.cl.client(ctx, region)
 	if err != nil {
 		return 0, err
 	}

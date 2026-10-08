@@ -8,6 +8,7 @@ import (
 	"maps"
 	"math/rand/v2"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"google.golang.org/grpc/metadata"
 )
 
 // Mirror defaults.
@@ -116,6 +118,8 @@ type Mirror struct {
 	probeRev    int64     // a probe's read revision the copy has not reached yet; 0 if none
 	probeSent   time.Time // when that read was sent
 	gen         uint64    // the current watch's generation
+	id          uint64    // this mirror, for its gRPC stream
+	streamN     uint64    // the stream's number: moves on when the stream's token is refused
 	opened      time.Time // when it was opened
 	kickGen     uint64    // the generation a stall kick is for
 	relistAsked uint64    // relists the probe asked for, counted
@@ -152,6 +156,7 @@ func NewMirror(r Reader, prefix string, opt MirrorOptions) (*Mirror, error) {
 		opt.ProbeInterval = DefaultMirrorProbeInterval
 	}
 	return &Mirror{
+		id:      mirrorIDs.Add(1),
 		r:       r,
 		prefix:  prefix,
 		end:     clientv3.GetPrefixRangeEnd(prefix),
@@ -363,11 +368,33 @@ func (m *Mirror) list(ctx context.Context) error {
 
 var errKicked = errors.New("watch silent while the cluster moved on")
 
+// mirrorIDs numbers the mirrors of this process, to give each of them a gRPC stream of its own.
+var mirrorIDs atomic.Uint64
+
+// stream is ctx for this mirror's watches and progress requests: it requires a leader, and carries metadata that
+// gives the mirror a gRPC stream of its own (clientv3 shares one stream among the watches whose metadata match), so
+// its progress requests reach its own watch only. Under auth the stream also bounds a failure (E1-08): etcd checks
+// the token when a watch is created on a stream, against the token the stream was opened with, and clientv3 does
+// not reopen a stream whose token has expired or predates a change to users and roles. A watch refused for that
+// reason moves the mirror to a new stream (rotateStream), which authenticates afresh. The metadata changes only
+// then: a progress request between watches opens the stream the next watch reuses, not one that lingers.
+func (m *Mirror) stream(ctx context.Context, n uint64) context.Context {
+	ctx = metadata.AppendToOutgoingContext(ctx, "mftiko-watch", fmt.Sprintf("%d.%d", m.id, n))
+	return clientv3.WithRequireLeader(ctx)
+}
+
+// authRefused reports whether a watch was cancelled because its stream's token is no longer accepted.
+func authRefused(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, rpctypes.ErrInvalidAuthToken.Error()) || strings.Contains(msg, rpctypes.ErrAuthOldRevision.Error())
+}
+
 // watch applies events after Rev() until the watch ends. progressed: at least one response was applied. relist:
 // the copy must be listed again (compaction, or another cluster's history).
 func (m *Mirror) watch(ctx context.Context) (progressed, relist bool, err error) {
-	wctx, cancel := context.WithCancel(clientv3.WithRequireLeader(ctx))
-	defer cancel()
 	m.mu.Lock()
 	select { // a kick sent before now was decided about an older watch, or asks for a relist that stays counted
 	case <-m.kick:
@@ -379,11 +406,13 @@ func (m *Mirror) watch(ctx context.Context) (progressed, relist bool, err error)
 	}
 	from := m.rev // not +1: see the type's comment; apply drops what the copy already has
 	m.gen++
-	gen := m.gen
+	gen, streamN := m.gen, m.streamN
 	m.opened = time.Now()
 	m.stats.Watches++
 	m.mu.Unlock()
 
+	wctx, cancel := context.WithCancel(m.stream(ctx, streamN))
+	defer cancel()
 	wch := m.r.Watch(wctx, m.prefix, clientv3.WithRange(m.end), clientv3.WithRev(from))
 	for {
 		select {
@@ -396,6 +425,11 @@ func (m *Mirror) watch(ctx context.Context) (progressed, relist bool, err error)
 				return progressed, true, nil
 			}
 			if err := resp.Err(); err != nil {
+				if authRefused(err) {
+					m.mu.Lock()
+					m.streamN = max(m.streamN, streamN+1)
+					m.mu.Unlock()
+				}
 				return progressed, false, err
 			}
 			if m.otherCluster(resp.Header) {
@@ -419,8 +453,8 @@ func (m *Mirror) watch(ctx context.Context) (progressed, relist bool, err error)
 	}
 }
 
-// probe checks the cluster and the watch every ProbeInterval until pctx ends. pctx derives from Run's ctx, so the
-// progress request carries the same metadata as the watch's ctx and reaches the same stream.
+// probe checks the cluster and the watch every ProbeInterval until pctx ends. The progress request carries the
+// mirror's stream metadata, so it reaches the mirror's own watch and no other.
 func (m *Mirror) probe(pctx context.Context) {
 	t := time.NewTicker(m.opt.ProbeInterval)
 	defer t.Stop()
@@ -440,13 +474,13 @@ func (m *Mirror) probe(pctx context.Context) {
 		// What the copy had seen before the read was sent: a linearizable read is at least that, while events
 		// applied during the read may already be past it.
 		m.mu.Lock()
-		revBefore, termBefore, gen := m.rev, m.term, m.gen
+		revBefore, termBefore, gen, streamN := m.rev, m.term, m.gen, m.streamN
 		m.mu.Unlock()
 		sent := time.Now()
 		ctx, cancel := context.WithTimeout(pctx, m.opt.ProbeInterval)
 		resp, err := m.r.Get(ctx, m.prefix) // one key, only for the header
 		if err == nil {
-			_ = m.r.RequestProgress(clientv3.WithRequireLeader(ctx))
+			_ = m.r.RequestProgress(m.stream(ctx, streamN))
 		}
 		cancel()
 		if err != nil {

@@ -3,13 +3,23 @@
 // can cut its clients off while etcd keeps running, or send them to another server.
 //
 // The binary is $MFTIKO_ETCD_BIN, else etcd on PATH; a test without either is skipped, unless $MFTIKO_REQUIRE_ETCD
-// is set (CI sets it), in which case it fails: a run that skipped every etcd test must not look green. No auth yet
-// (E1-08).
+// is set (CI sets it), in which case it fails: a run that skipped every etcd test must not look green.
+//
+// Auth is on, as in production (E1-08): etcd issues JWT tokens (ES256), and a root user exists whose password is
+// RootPassword. Client returns a root client; tests create the other users and roles themselves, with Password.
 package etcdtest
 
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/hex"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net"
@@ -39,6 +49,57 @@ const (
 
 var seq atomic.Int64
 
+// RootUser is etcd's root user, which enables auth and manages users and roles.
+const RootUser = "root"
+
+// DefaultTokenTTL is the lifetime of the JWT tokens etcd issues, unless Start is given TokenTTL.
+const DefaultTokenTTL = 5 * time.Minute
+
+// secret is random per test binary: every password derives from it, so none is written down anywhere.
+var secret = sync.OnceValue(func() []byte {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+	return b
+})
+
+// Password is the test password of user, the same for every server of this test binary.
+func Password(user string) string {
+	m := hmac.New(sha256.New, secret())
+	m.Write([]byte(user))
+	return hex.EncodeToString(m.Sum(nil))
+}
+
+// RootPassword is the root user's password.
+func RootPassword() string { return Password(RootUser) }
+
+// signingKey is the ES256 key pair etcd signs its tokens with, PEM-encoded; one per test binary.
+var signingKey = sync.OnceValues(func() (priv, pub []byte) {
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	der, err := x509.MarshalECPrivateKey(k)
+	if err != nil {
+		panic(err)
+	}
+	pubDER, err := x509.MarshalPKIXPublicKey(&k.PublicKey)
+	if err != nil {
+		panic(err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der}),
+		pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})
+})
+
+// Option configures Start.
+type Option func(*options)
+
+type options struct{ tokenTTL time.Duration }
+
+// TokenTTL sets how long the tokens etcd issues stay valid; clients must authenticate again after it.
+func TokenTTL(d time.Duration) Option { return func(o *options) { o.tokenTTL = d } }
+
 // Server is one etcd member. It is killed when the test that started it ends.
 type Server struct {
 	endpoints []string
@@ -47,13 +108,14 @@ type Server struct {
 	dataDir   string
 	out       *lockedBuffer
 
-	mu   sync.Mutex
-	stop func() // kills the running process and waits for it; nil while stopped
+	mu     sync.Mutex
+	stop   func() // kills the running process and waits for it; nil while stopped
+	authOn bool   // the data dir has auth enabled: readiness is checked as root
 }
 
-// Start launches etcd with a fresh data dir and free localhost ports and waits until it serves reads. It skips the
-// test if no etcd binary is found, and fails it if etcd does not come up.
-func Start(t testing.TB) *Server {
+// Start launches etcd with a fresh data dir and free localhost ports, turns auth on and waits until it serves reads.
+// It skips the test if no etcd binary is found, and fails it if etcd does not come up.
+func Start(t testing.TB, opts ...Option) *Server {
 	t.Helper()
 	bin := binary()
 	if bin == "" {
@@ -62,9 +124,13 @@ func Start(t testing.TB) *Server {
 		}
 		t.Skipf("etcd not found: set %s or put etcd on PATH", EnvBin)
 	}
+	o := options{tokenTTL: DefaultTokenTTL}
+	for _, f := range opts {
+		f(&o)
+	}
 	var errs []error
 	for range startTries {
-		s, err := start(t, bin)
+		s, err := start(t, bin, o)
 		if err == nil {
 			return s
 		}
@@ -77,12 +143,22 @@ func Start(t testing.TB) *Server {
 // Endpoints is the client URL of the server.
 func (s *Server) Endpoints() []string { return append([]string(nil), s.endpoints...) }
 
-// Client returns a raw client, for assertions and for simulating other writers. It is closed when the test ends.
+// Client returns a raw root client, for assertions, for simulating other writers, and for managing users and
+// roles. It is closed when the test ends.
 func (s *Server) Client(t testing.TB) *clientv3.Client {
 	t.Helper()
-	c, err := clientv3.New(clientv3.Config{Endpoints: s.Endpoints(), DialTimeout: 5 * time.Second})
+	return ClientAs(t, s.Endpoints(), RootUser)
+}
+
+// ClientAs returns a raw client authenticated as user, whose password is Password(user), at endpoints. It is
+// closed when the test ends.
+func ClientAs(t testing.TB, endpoints []string, user string) *clientv3.Client {
+	t.Helper()
+	c, err := clientv3.New(clientv3.Config{
+		Endpoints: endpoints, DialTimeout: 5 * time.Second, Username: user, Password: Password(user),
+	})
 	if err != nil {
-		t.Fatalf("etcdtest: client: %v", err)
+		t.Fatalf("etcdtest: client as %s: %v", user, err)
 	}
 	t.Cleanup(func() { c.Close() })
 	return c
@@ -119,10 +195,14 @@ func (s *Server) Restart(t testing.TB) {
 }
 
 // Rebuild kills the member, deletes its data and starts it again with the same name, token and ports: the same
-// cluster ID, but every key gone and revisions starting over, as a cluster rebuilt from scratch would be.
+// cluster ID, but every key gone and revisions starting over, as a cluster rebuilt from scratch would be. Auth is
+// turned on again with the root user only: users and roles are gone with the data.
 func (s *Server) Rebuild(t testing.TB) {
 	t.Helper()
 	s.Stop()
+	s.mu.Lock()
+	s.authOn = false
+	s.mu.Unlock()
 	entries, err := os.ReadDir(s.dataDir)
 	if err != nil {
 		t.Fatalf("etcdtest: rebuild: %v", err)
@@ -133,6 +213,12 @@ func (s *Server) Rebuild(t testing.TB) {
 		}
 	}
 	s.relaunch(t)
+	if err := enableAuth(s.endpoints); err != nil {
+		t.Fatalf("etcdtest: rebuild: %v", err)
+	}
+	s.mu.Lock()
+	s.authOn = true
+	s.mu.Unlock()
 }
 
 func (s *Server) relaunch(t testing.TB) {
@@ -151,7 +237,7 @@ func (s *Server) relaunch(t testing.TB) {
 	t.Fatalf("etcdtest: etcd did not restart: %v", errors.Join(errs...))
 }
 
-func start(t testing.TB, bin string) (*Server, error) {
+func start(t testing.TB, bin string, o options) (*Server, error) {
 	client, err := freePort()
 	if err != nil {
 		return nil, err
@@ -165,6 +251,15 @@ func start(t testing.TB, bin string) (*Server, error) {
 	peerURL := "http://" + peer
 
 	s := &Server{endpoints: []string{clientURL}, bin: bin, dataDir: t.TempDir(), out: &lockedBuffer{}}
+	keyDir := t.TempDir()
+	priv, pub := signingKey()
+	privPath, pubPath := filepath.Join(keyDir, "jwt.key"), filepath.Join(keyDir, "jwt.pub")
+	if err := os.WriteFile(privPath, priv, 0o600); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(pubPath, pub, 0o600); err != nil {
+		return nil, err
+	}
 	s.args = []string{
 		"--name", name,
 		"--data-dir", s.dataDir,
@@ -176,10 +271,16 @@ func start(t testing.TB, bin string) (*Server, error) {
 		"--initial-cluster-state", "new",
 		"--initial-cluster-token", name,
 		"--log-level=error",
+		fmt.Sprintf("--auth-token=jwt,pub-key=%s,priv-key=%s,sign-method=ES256,ttl=%s", pubPath, privPath, o.tokenTTL),
 	}
 	if err := s.launch(); err != nil {
 		return nil, err
 	}
+	if err := enableAuth(s.endpoints); err != nil {
+		s.Stop()
+		return nil, err
+	}
+	s.authOn = true
 	t.Cleanup(func() {
 		s.Stop()
 		if t.Failed() {
@@ -207,7 +308,7 @@ func (s *Server) launch() error {
 		_ = cmd.Process.Kill()
 		<-exited
 	}
-	if err := waitReady(s.endpoints, exited); err != nil {
+	if err := waitReady(s.endpoints, exited, s.authOn); err != nil {
 		stop()
 		return fmt.Errorf("%w (exit: %v)\n%s", err, waitErr, s.out.String())
 	}
@@ -215,17 +316,33 @@ func (s *Server) launch() error {
 	return nil
 }
 
-func waitReady(endpoints []string, exited <-chan struct{}) error {
-	c, err := clientv3.New(clientv3.Config{Endpoints: endpoints, DialTimeout: 2 * time.Second})
+// enableAuth creates the root user and turns auth on, on a member that has neither.
+func enableAuth(endpoints []string) error {
+	c, err := clientv3.New(clientv3.Config{Endpoints: endpoints, DialTimeout: 5 * time.Second})
 	if err != nil {
 		return fmt.Errorf("etcdtest: client: %w", err)
 	}
 	defer c.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), readyTimeout)
+	defer cancel()
+	if _, err := c.UserAdd(ctx, RootUser, RootPassword()); err != nil {
+		return fmt.Errorf("etcdtest: add root: %w", err)
+	}
+	if _, err := c.UserGrantRole(ctx, RootUser, "root"); err != nil {
+		return fmt.Errorf("etcdtest: grant root: %w", err)
+	}
+	if _, err := c.AuthEnable(ctx); err != nil {
+		return fmt.Errorf("etcdtest: enable auth: %w", err)
+	}
+	return nil
+}
+
+// waitReady waits until the member has a leader. With auth on, it asks as root: a client with credentials only
+// comes up once the member answers, so it is retried until then.
+func waitReady(endpoints []string, exited <-chan struct{}, auth bool) error {
 	deadline := time.Now().Add(readyTimeout)
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		_, err := c.Get(ctx, "etcdtest-ready")
-		cancel()
+		err := ready(endpoints, auth)
 		if err == nil {
 			return nil
 		}
@@ -239,6 +356,28 @@ func waitReady(endpoints []string, exited <-chan struct{}) error {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+func ready(endpoints []string, auth bool) error {
+	cfg := clientv3.Config{Endpoints: endpoints, DialTimeout: time.Second}
+	if auth {
+		cfg.Username, cfg.Password = RootUser, RootPassword()
+	}
+	c, err := clientv3.New(cfg)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	resp, err := c.Status(ctx, endpoints[0])
+	if err != nil {
+		return err
+	}
+	if resp.Leader == 0 {
+		return errors.New("no leader yet")
+	}
+	return nil
 }
 
 func freePort() (string, error) {

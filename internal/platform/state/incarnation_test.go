@@ -49,7 +49,7 @@ func TestIncarnationCounts(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
 	raw := s.Client(t)
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{})
 	inc := loadIncarnations(t, ctx, term)
 
 	if _, ok := inc.Current("td/42"); ok {
@@ -68,7 +68,7 @@ func TestIncarnationSuperseded(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
 	raw := s.Client(t)
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{})
 	inc := loadIncarnations(t, ctx, term)
 	next(t, ctx, inc, "td/42", 1)
 
@@ -93,7 +93,7 @@ func TestIncarnationContinuesAcrossAgents(t *testing.T) {
 	ctx := testCtx(t)
 	_, topo := singleRegion(t, "td-tw-1")
 
-	a := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{ID: "a"})
+	a := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{ID: "a"})
 	incA := loadIncarnations(t, ctx, a)
 	for want := uint32(1); want <= 3; want++ {
 		next(t, ctx, incA, "td/42", want)
@@ -102,7 +102,7 @@ func TestIncarnationContinuesAcrossAgents(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	b := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{ID: "b"})
+	b := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{ID: "b"})
 	incB := loadIncarnations(t, ctx, b)
 	if cur, ok := incB.Current("td/42"); !ok || cur != 3 {
 		t.Fatalf("loaded %d, %v; want 3", cur, ok)
@@ -114,7 +114,7 @@ func TestIncarnationWorkerComesBack(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "md-tw-1")
 	raw := s.Client(t)
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "md-tw-1")), PlaneMD, "md-tw-1", TermOptions{})
 	inc := loadIncarnations(t, ctx, term)
 	const conn = "md/BinanceUM/default/1"
 
@@ -134,7 +134,7 @@ func TestIncarnationForgetSTS(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "sts-tw-1")
 	raw := s.Client(t)
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneSTS, "sts-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "sts-tw-1")), PlaneSTS, "sts-tw-1", TermOptions{})
 	inc := loadIncarnations(t, ctx, term)
 
 	next(t, ctx, inc, "sts/a1b2c3", 1)
@@ -158,7 +158,7 @@ func TestIncarnationForgetSTS(t *testing.T) {
 func TestIncarnationControllerHasNone(t *testing.T) {
 	ctx := testCtx(t)
 	_, topo := singleRegion(t, ControllerInstance)
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, ControllerInstance)), PlaneCtl, ControllerInstance, TermOptions{})
 	if _, err := LoadIncarnations(ctx, term); !errors.Is(err, ErrNoWorkers) {
 		t.Fatalf("LoadIncarnations for the controller: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestIncarnationStaleCache(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
 	raw := s.Client(t)
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{})
 	first := loadIncarnations(t, ctx, term)
 	second := loadIncarnations(t, ctx, term)
 
@@ -192,7 +192,7 @@ func TestIncarnationBadValues(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
 	raw := s.Client(t)
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{})
 	put := func(workerKey, v string) {
 		t.Helper()
 		if _, err := raw.Put(ctx, IncarnationKey(PlaneTD, "td-tw-1", WorkerHash(workerKey)), v); err != nil {
@@ -236,7 +236,7 @@ func TestIncarnationBadValues(t *testing.T) {
 func TestIncarnationConcurrent(t *testing.T) {
 	ctx := testCtx(t)
 	_, topo := singleRegion(t, "td-tw-1")
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{})
 	inc := loadIncarnations(t, ctx, term)
 
 	const workers, each = 8, 5
@@ -278,7 +278,7 @@ func TestIncarnationConcurrent(t *testing.T) {
 func TestIncarnationWaitHonoursCtx(t *testing.T) {
 	ctx := testCtx(t)
 	_, topo := singleRegion(t, "td-tw-1")
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{})
 	inc := loadIncarnations(t, ctx, term)
 
 	inc.sem <- struct{}{}

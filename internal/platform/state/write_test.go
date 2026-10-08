@@ -338,7 +338,7 @@ func TestSupersededWritesFail(t *testing.T) {
 		t.Run(w.name, func(t *testing.T) {
 			ctx := testCtx(t)
 			inst := insts[i] // a fresh instance per case: its writer key is bumped for good
-			cl := newClusters(t, topo, nil, nil)
+			cl := newClusters(t, topo, nil, as(t, topo, inst))
 			term := campaign(t, ctx, cl, PlaneMD, inst, TermOptions{})
 			key := WorkerStatusKey(PlaneMD, inst, WorkerHash("md/BinanceUM/default/1"))
 			if _, err := raw.Put(ctx, key, "orig"); err != nil {
@@ -389,14 +389,14 @@ func TestSupersededByNewLeader(t *testing.T) {
 	raw := s.Client(t)
 	key := WorkerStatusKey(PlaneTD, "td-tw-1", WorkerHash("td/42"))
 
-	a := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{ID: "a"})
+	a := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{ID: "a"})
 	if err := a.Put(ctx, key, "a"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := raw.Delete(ctx, a.election.Key()); err != nil {
 		t.Fatal(err)
 	}
-	b := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{ID: "b"})
+	b := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{ID: "b"})
 	if b.Epoch() != a.Epoch()+1 {
 		t.Fatalf("epochs a=%d b=%d", a.Epoch(), b.Epoch())
 	}
@@ -429,7 +429,7 @@ func TestSessionLostThenNewLeader(t *testing.T) {
 	raw := s.Client(t)
 	key := WorkerStatusKey(PlaneTD, "td-tw-1", WorkerHash("td/42"))
 
-	a := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{ID: "a", SessionTTL: 2 * time.Second})
+	a := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{ID: "a", SessionTTL: 2 * time.Second})
 	if err := a.Put(ctx, key, "a"); err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +437,7 @@ func TestSessionLostThenNewLeader(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitDone(t, a, 15*time.Second)
-	b := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{ID: "b"})
+	b := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{ID: "b"})
 	if err := b.Put(ctx, key, "b"); err != nil {
 		t.Fatal(err)
 	}
@@ -453,7 +453,7 @@ func TestWrites(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "sts-tw-1")
 	raw := s.Client(t)
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneSTS, "sts-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "sts-tw-1")), PlaneSTS, "sts-tw-1", TermOptions{})
 	status := SessionStatusKey("sts-tw-1", "a1b2c3")
 	other := WorkerStatusKey(PlaneSTS, "sts-tw-1", WorkerHash("a1b2c3"))
 
@@ -553,7 +553,7 @@ func TestWritesTwoRegions(t *testing.T) {
 	spec := SessionSpecKey("sts-tw-1", "a1b2c3")
 	jpDemand := MDDemandKey("md-jp-1", "a1b2c3", "feed/trade.BinanceUM_Perp_BTCUSDT")
 
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, ControllerInstance)), PlaneCtl, ControllerInstance, TermOptions{})
 
 	// Cross-cluster: refused before any I/O, nothing written, jp not even fenced, term goes on.
 	_, err := term.Txn(ctx,
@@ -593,7 +593,7 @@ func TestWritesTwoRegions(t *testing.T) {
 
 	// An MD agent in tw writes nothing in jp: no key there is its to write (W1).
 	allowed, _ := AgentRegions(topo, PlaneMD, "md-tw-1")
-	md := campaign(t, ctx, newClusters(t, topo, allowed, nil), PlaneMD, "md-tw-1", TermOptions{})
+	md := campaign(t, ctx, newClusters(t, topo, allowed, as(t, topo, "md-tw-1")), PlaneMD, "md-tw-1", TermOptions{})
 	if err := md.Put(ctx, MDAckKey("md-jp-1", "a1b2c3", "feed/x"), "READY"); !errors.Is(err, ErrNotWriter) {
 		t.Fatalf("MD agent in tw writing jp's ack: %v", err)
 	}
@@ -606,7 +606,7 @@ func TestWritesTwoRegions(t *testing.T) {
 	if err := term.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
-	twOnly := campaign(t, ctx, newClusters(t, topo, []string{"tw"}, nil), PlaneCtl, ControllerInstance, TermOptions{})
+	twOnly := campaign(t, ctx, newClusters(t, topo, []string{"tw"}, as(t, topo, ControllerInstance)), PlaneCtl, ControllerInstance, TermOptions{})
 	if err := twOnly.Put(ctx, MDDemandKey("md-jp-1", "a1b2c3", "feed/x"), "demand"); !errors.Is(err, ErrRegionNotAllowed) {
 		t.Fatalf("controller limited to tw writing a jp demand: %v", err)
 	}
@@ -634,9 +634,9 @@ func TestWriteAPICannotTouchFencing(t *testing.T) {
 		return m
 	}
 
-	md := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{})
-	sts := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneSTS, "sts-tw-1", TermOptions{})
-	td := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{})
+	md := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "md-tw-1")), PlaneMD, "md-tw-1", TermOptions{})
+	sts := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "sts-tw-1")), PlaneSTS, "sts-tw-1", TermOptions{})
+	td := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{})
 	inc := loadIncarnations(t, ctx, td)
 	next(t, ctx, inc, "td/42", 1)
 

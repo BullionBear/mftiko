@@ -71,7 +71,7 @@ func (t *Term) txn(ctx context.Context, scope writeScope, cmps []clientv3.Cmp, t
 	if err != nil {
 		return nil, err
 	}
-	cli, err := t.cl.client(region)
+	cli, err := t.cl.client(ctx, region)
 	if err != nil {
 		return nil, err
 	}

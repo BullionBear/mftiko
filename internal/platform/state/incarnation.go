@@ -36,7 +36,7 @@ func LoadIncarnations(ctx context.Context, t *Term) (*Incarnations, error) {
 	if err := t.Err(); err != nil {
 		return nil, err
 	}
-	cli, err := t.cl.client(t.home)
+	cli, err := t.cl.client(ctx, t.home)
 	if err != nil {
 		return nil, err
 	}

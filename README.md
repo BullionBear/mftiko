@@ -37,6 +37,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-sym              symbol service
   mftiko-migrate          applies the PostgreSQL migrations (a deploy step)
   mftiko-pack             builds a strategy artifact (OCI image + mftiko manifest)
+  mftiko-etcd-roles       prints each region's etcd users and roles, derived from the instance list
   mftiko-conformance      SDK conformance suite
 examples/strategies/      hello, tape-keeper; import only sdk and contract, as an outside author would
 migrations/               PostgreSQL schema: NNNN_name.up.sql / .down.sql, embedded into mftiko-migrate

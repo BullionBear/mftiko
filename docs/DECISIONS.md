@@ -154,6 +154,7 @@ UniversalTicker（`<Venue>_<Category>_<SYMBOL>`）、`Parse` 嚴格／`Resolve` 
 
 - 宣告、需求項目、STS 的指派、ack／nack、不能重新推導的 agent 狀態，全部放 etcd。agent 和 controller 在本機都不留狀態：desired 從 etcd 讀，worker 的實際狀態從 shim 取回。
 - API server → etcd、controller → agent、agent → controller 都是「寫 etcd、對方 watch」，沒有 NATS request-reply。控制面的契約就是 etcd 的 key 結構，加上每個前綴的寫入者。
+- 每個前綴的寫入者由 etcd 的 RBAC 強制，不只靠程式自律：每個進程有自己的使用者，角色從 instance 清單產生（PROTOCOL §3.2 W1）。被取代的舊 agent 靠 writer key 擋（W2），寫錯前綴的程式靠 RBAC 擋，兩道各自獨立。
 - **etcd lease 只有一種：選主 session（PROTOCOL §3.2 W2、W7）。** agent 與 controller 的 `AgentRecord` 綁在自己的選主 session 上：它在，就表示這個 instance 有活著的 agent，以及是哪一個 term。需求項目（D9）、ack／nack、`WorkerStatus` 都不綁 lease，只會被它的寫入者刪掉。讀的一方把 ack、`WorkerStatus` 和寫入者的 `AgentRecord` 一起看：`AgentRecord` 不在時，那些值是最後一次已知的狀態。
 - **2026-10-08 拿掉 agent 自己的 lease（E1-07 的第一版，PR #51）。** 那個設計讓 AgentRecord、WorkerStatus、ack 綁在一個 TTL 60 秒的 lease 上，agent 消失就由 etcd 刪掉。拿掉的理由：
   - controller 對沉默維持現狀，TTL 不影響它的任何決定，只讓它晚一點看到沉默。
