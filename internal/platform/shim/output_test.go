@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -157,38 +158,60 @@ func TestStreamNeverBlocks(t *testing.T) {
 	if !dst.closed {
 		t.Error("file not closed")
 	}
-	if !strings.Contains(got, "bytes of stdout lost here") {
-		t.Fatal("no note of what was dropped")
-	}
 	if !strings.HasSuffix(got, "tail\n") {
 		t.Errorf("the file does not end with the tail: %q", got[max(0, len(got)-120):])
 	}
-	// The note sits where the gap is: after the queued chunks, and before whatever got through once the disk came
-	// back (what was still in the pipe then, if anything, and the tail).
-	note := strings.Index(got, "[mftiko-shim]")
-	if note < outputQueue*1024 || strings.Count(got, "[mftiko-shim]") != 1 {
-		t.Errorf("note at %d (%d notes): want one, after the queued chunks", note, strings.Count(got, "[mftiko-shim]"))
+	// Every byte the worker wrote is either in the file or counted in a note at the point it went missing: the notes
+	// and the data add up exactly.
+	notes := noteRE.FindAllStringSubmatch(got, -1)
+	if len(notes) == 0 {
+		t.Fatal("nothing was dropped, or no note says so")
 	}
-	if len(got) >= total {
-		t.Errorf("wrote %d bytes: nothing was dropped", len(got))
+	var lost int
+	for _, m := range notes {
+		n, _ := strconv.Atoi(m[1])
+		lost += n
+	}
+	kept := strings.Count(got, "x")
+	if kept+lost != total {
+		t.Errorf("%d bytes kept + %d noted lost = %d, want the %d written", kept, lost, kept+lost, total)
+	}
+	if first := strings.Index(got, "[mftiko-shim]"); first < outputQueue*1024 {
+		t.Errorf("first note at %d: before the queued chunks", first)
 	}
 }
 
+var noteRE = regexp.MustCompile(`\[mftiko-shim\] (\d+) bytes of stdout lost here`)
+
 // A file that fails (a full disk) loses what it cannot write and goes on draining; once it works again, the note
-// says how much is missing.
+// says how much is missing, counting the worker's bytes and not its own. Failures at the very end are noted too.
 func TestStreamWriteFails(t *testing.T) {
-	pr, pw, _ := os.Pipe()
-	dst := &failingWriter{fail: 2}
-	s := copyStream(zerolog.Nop(), "stderr", pr, dst)
-	for _, line := range []string{"one\n", "two\n", "three\n"} {
-		pw.Write([]byte(line))            //nolint:errcheck
-		time.Sleep(20 * time.Millisecond) // one read each
+	for _, c := range []struct {
+		fail int
+		want string
+	}{
+		{2, "\n[mftiko-shim] 8 bytes of stderr lost here: the disk fell behind or failed\nthree\n"},
+		{3, "\n[mftiko-shim] 14 bytes of stderr lost here: the disk fell behind or failed\n"},
+	} {
+		dst := &failingWriter{fail: c.fail}
+		s := copyStream(zerolog.Nop(), "stderr", &lineReader{lines: []string{"one\n", "two\n", "three\n"}}, dst)
+		<-s.Done()
+		if got := dst.buf.String(); got != c.want {
+			t.Errorf("%d failures: wrote %q, want %q", c.fail, got, c.want)
+		}
 	}
-	pw.Close()
-	<-s.Done()
-	if got := dst.buf.String(); !strings.Contains(got, "8 bytes of stderr lost here") || !strings.HasSuffix(got, "three\n") {
-		t.Fatalf("wrote %q", got)
+}
+
+// lineReader returns one line per Read, then EOF: reads never run together, however busy the machine.
+type lineReader struct{ lines []string }
+
+func (r *lineReader) Read(p []byte) (int, error) {
+	if len(r.lines) == 0 {
+		return 0, io.EOF
 	}
+	n := copy(p, r.lines[0])
+	r.lines = r.lines[1:]
+	return n, nil
 }
 
 type failingWriter struct {

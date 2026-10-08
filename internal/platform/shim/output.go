@@ -222,8 +222,7 @@ func (s *stream) write() {
 		lost := carry + c.lost
 		out := c.b
 		if lost > 0 {
-			out = append(fmt.Appendf(nil, "\n[mftiko-shim] %d bytes of %s lost here: the disk fell behind or failed\n",
-				lost, s.name), c.b...)
+			out = append(lostNote(lost, s.name), c.b...)
 		}
 		if _, err := s.dst.Write(out); err != nil {
 			if carry == 0 { // a full disk: say so once, keep draining the pipe
@@ -237,6 +236,14 @@ func (s *stream) write() {
 		}
 		carry = 0
 	}
+	if carry > 0 { // the last writes failed: one more try, so the file says what it is missing
+		s.dst.Write(lostNote(carry, s.name)) //nolint:errcheck // nothing left to do if this fails too
+	}
+}
+
+// lostNote is the line that marks where n bytes of a stream went missing.
+func lostNote(n int64, stream string) []byte {
+	return fmt.Appendf(nil, "\n[mftiko-shim] %d bytes of %s lost here: the disk fell behind or failed\n", n, stream)
 }
 
 // workerOutput is the worker's stdout and stderr: the pipes' write ends for the spawn, and the copies to the files.
