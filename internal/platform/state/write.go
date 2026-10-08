@@ -15,10 +15,12 @@ import (
 // exits and systemd restarts it). There is no other write path: Clusters hands out readers only.
 //
 // They also enforce W1 (PROTOCOL §3.2, the writer column of §3.1): a term puts and deletes only keys its agent is
-// the writer of, so it can neither touch the keys fencing relies on nor another agent's or the API's keys.
+// the writer of, so it can neither touch the keys fencing relies on nor another agent's or the API's keys. Of its
+// own keys, the incarnations and the AgentRecord are left to Incarnations and PutRecord.
 // Reads (gets and compares) may name any key in the same cluster.
 
-// Put writes key behind the writer condition. opts are put options, e.g. clientv3.WithLease.
+// Put writes key behind the writer condition. opts are put options. None of the keys Put may write is bound to a
+// lease (PROTOCOL §3.1): the one that is, the AgentRecord, has PutRecord.
 func (t *Term) Put(ctx context.Context, key, val string, opts ...clientv3.OpOption) error {
 	if err := t.Err(); err != nil {
 		return err
@@ -187,34 +189,38 @@ func (r *router) key(key, end []byte) error {
 
 // writeScope is what a term of (plane, inst) may put and delete: the rows of PROTOCOL §3.1 whose writer is that
 // agent or the controller (W1). The election, epoch and writer keys are not among them; Term writes those itself.
-// Incarnation keys are written only through Incarnations, whose scope is incarnations alone.
+// Two of its keys have a writer of their own: incarnation keys are written only through Incarnations (W6), the
+// AgentRecord only through PutRecord, bound to the election session (W7). Each of those writes its kind alone, and
+// Term.Put, Delete and Txn write neither.
 type writeScope struct {
 	plane        Plane
 	inst         string
 	incarnations bool
+	record       bool
 }
 
 // areas are the writable prefixes and exact keys of the scope that fall under the instance (p, inst) a key
 // belongs to.
 func (w writeScope) areas(p Plane, inst string) (prefixes, exact []string) {
+	own := p == w.plane && inst == w.inst
+	if w.plane == PlaneCtl && w.inst != ControllerInstance {
+		return nil, nil // Campaign refuses any other name; a scope that has one writes nothing
+	}
 	switch {
 	case w.incarnations:
-		if p == w.plane && inst == w.inst {
+		if own && w.plane.agent() {
 			prefixes = []string{IncarnationPrefix(w.plane, w.inst)}
 		}
-	case w.plane == PlaneCtl:
-		if w.inst != ControllerInstance {
-			break // Campaign refuses any other name; a scope that has one writes nothing
+	case w.record:
+		if own {
+			exact = []string{AgentKey(w.plane, w.inst)}
 		}
-		switch {
-		case p == PlaneCtl && inst == w.inst:
-			exact = []string{AgentKey(PlaneCtl, w.inst)}
-		case p.agent():
+	case w.plane == PlaneCtl:
+		if p.agent() {
 			// Every agent instance's demands, in every region: the controller is their only writer (PROTOCOL §3.3).
 			prefixes = []string{DemandPrefix(p, inst)}
 		}
-	case p == w.plane && inst == w.inst:
-		exact = []string{AgentKey(w.plane, w.inst)}
+	case own:
 		prefixes = []string{WorkerStatusPrefix(w.plane, w.inst)}
 		switch w.plane {
 		case PlaneSTS:
@@ -248,8 +254,17 @@ func (w writeScope) check(key, end []byte) error {
 			return nil
 		}
 	}
-	if len(end) > 0 {
-		return fmt.Errorf("%w: %s/%s may not delete [%q, %q)", ErrNotWriter, w.plane, w.inst, k, end)
+	via := ""
+	switch {
+	case w.incarnations:
+		via = " through Incarnations"
+	case w.record:
+		via = " through PutRecord"
+	case p == w.plane && inst == w.inst && k == AgentKey(p, inst):
+		via = ": the AgentRecord is bound to the election session; PutRecord writes it and Close revokes it"
 	}
-	return fmt.Errorf("%w: %s/%s may not write %q", ErrNotWriter, w.plane, w.inst, k)
+	if len(end) > 0 {
+		return fmt.Errorf("%w: %s/%s may not delete [%q, %q)%s", ErrNotWriter, w.plane, w.inst, k, end, via)
+	}
+	return fmt.Errorf("%w: %s/%s may not write %q%s", ErrNotWriter, w.plane, w.inst, k, via)
 }

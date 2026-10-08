@@ -1,6 +1,6 @@
 # PROTOCOL — 協議與契約
 
-> **狀態：草案 v0.24（2026-10-07）。** 依據 [DECISIONS.md](DECISIONS.md)。v0.3 把控制面改到 etcd（D14），依賴改成 agent 層級的 lease（D9），shim 與 worker 之間加入生命週期動詞（D15），資料面拿掉給策略看的可用性廣播（D16）。v0.4 依 D17 改成每個 region 一個 etcd cluster：路由函數、每個 cluster 各自的 writer key、版本號不依賴 etcd revision；並依 D18 加入策略 artifact 的格式（§8）。v0.5 依 D20 加入歷史補正：`AccountSettings` 加 interval 與手動觸發，TD agent 訂閱 `td.evt` 落庫，`Fill.fill_id` 規定為交易所的 trade id。v0.6 依 D21：md.proto 加 `OrderBookDelta`，新增 `read.proto`（`md.view`、`md.fetch`），tape 不再用 Redis（拿掉 `tape_url` 與 `StandingSubscription.record`）。v0.7 依 D8：行情的 subject 一律由 MD agent 給，`SelectorBinding` 加 `subject_prefix`。v0.8 依 D22 拿掉 `stsctl.SubscribeRequest`：一期策略完全宣告式。v0.9 依 D23 加入 session volume 與資料 artifact：`SessionSpec.inputs`、`Limits.volume_mb`、`SessionStatus.state_out`、兩個環境變數、§8.4。v0.10 依 D24：`md.f` 加 envelope（`seq`、`conn_epoch`、`md_ts_ns` 從 `Meta` 移過去），拿掉 `Delivery`，加 `SessionSpec.recv_window_ms`、`Limits.hook_timeout_s`、`QueueStat.max_age_ms`。v0.11 依 D25：加 `algo_id`（由 spec 在每個帳號上宣告，可以多個，TD agent 以 lease 檢查衝突），`client_order_id` 的 session 欄位換成 algo，`CancelSession` 換成策略自己發的 `BatchCancel`，STS agent 不再有 `td.order` 的權限。v0.12：`client_order_id` 改成 `ver(4) | algo(10) | ts_ms(40) | seq(10)`。v0.13 依 D26：MD 連線的身分改成 `(venue, route, n)`，endpoint 變成 `mdctl.InitPayload.url` 這個參數，atom id 拿掉 endpoint。v0.14 依 D27：`td.evt` 的 `AccountReset` 換成帶快照的 `Recon`，TD 降級時拒新單、放行撤單。v0.15 依 D28：只有一層 linger，連線在最後一個 atom 退訂時就停；lease 的 TTL 統一 60 秒。v0.16 依 D29 拿掉常駐訂閱（`StandingSubscription` 與 `/md/{inst}/standing/`）：MD 的 owner 只有 session 的 lease 項目。v0.17 依 D20：`tdctl.Report` 加 `first_submit_ns`，backfill 的範圍從下單決定。v0.18 依 D30：session worker 的 NATS 憑證每個 session 一份（`stsctl.InitPayload.nats`），權限見 §7。v0.19 依 D19：一期只做 Go SDK，拿掉 Python 綁 Go 的設計；新增 §9，寫明其他語言的 SDK 要遵守的契約，以及 STS agent 以 `Beat` 逾時判定 `HUNG` 的保險。v0.20 依 D31：UniversalTicker 是佔位，經 SYM 解析之後才決定訂閱什麼；atom id 改成 `<venue>:<route>:<channel>`；加入 topic 表與 SYM 的契約（§7.3，`mftiko.sym.v1`）。v0.21 依 D32：帳號種類和 venue 分成兩個 enum，`state.v1.Account.venue`、`tdctl.InitPayload.venue` 改為 `kind`；BinancePM 是帳號種類，不是 venue。v0.22 依 D8：incarnation 存在不綁 lease 的 `/{plane}/{inst}/incarnation/{h}`，spawn 前以 txn 取號（§3.2 W6）。v0.23：W4 的 watch 改從 list 的 revision（含）開始，不再加 1。v0.24 依 D33–D36：控制平面分成 API server 與 controller；跨平面的依賴改由 controller 以宣告式的需求表達，不綁 TTL（D9、D28），lease 項目改名需求項目，key 拿掉 `{sts_inst}`；新增 STS 的指派 `/sts/{inst}/demand/{session_id}`，Gate 與綁定的整理移到 controller；ack 由 controller watch；SYM 改成啟動時整表載入、跟著變更重載，使用者是 STS、MD、TD；三種 worker 都從 artifact 起（§8）；契約分成草案與定案（§1）；session 的宣告抽成 `mftiko.session.v1`，`stsctl.v1` 不再 import `state.v1`，改用自己的 `BindingState`、`Universe`；`Side`、`OrderType`、`TimeInForce` 移到 `common.v1`，`td.v1` 不再 import `md.v1`。還沒定的寫在 [§10](#10-待定)。
+> **狀態：草案 v0.25（2026-10-08）。** 依據 [DECISIONS.md](DECISIONS.md)。v0.3 把控制面改到 etcd（D14），依賴改成 agent 層級的 lease（D9），shim 與 worker 之間加入生命週期動詞（D15），資料面拿掉給策略看的可用性廣播（D16）。v0.4 依 D17 改成每個 region 一個 etcd cluster：路由函數、每個 cluster 各自的 writer key、版本號不依賴 etcd revision；並依 D18 加入策略 artifact 的格式（§8）。v0.5 依 D20 加入歷史補正：`AccountSettings` 加 interval 與手動觸發，TD agent 訂閱 `td.evt` 落庫，`Fill.fill_id` 規定為交易所的 trade id。v0.6 依 D21：md.proto 加 `OrderBookDelta`，新增 `read.proto`（`md.view`、`md.fetch`），tape 不再用 Redis（拿掉 `tape_url` 與 `StandingSubscription.record`）。v0.7 依 D8：行情的 subject 一律由 MD agent 給，`SelectorBinding` 加 `subject_prefix`。v0.8 依 D22 拿掉 `stsctl.SubscribeRequest`：一期策略完全宣告式。v0.9 依 D23 加入 session volume 與資料 artifact：`SessionSpec.inputs`、`Limits.volume_mb`、`SessionStatus.state_out`、兩個環境變數、§8.4。v0.10 依 D24：`md.f` 加 envelope（`seq`、`conn_epoch`、`md_ts_ns` 從 `Meta` 移過去），拿掉 `Delivery`，加 `SessionSpec.recv_window_ms`、`Limits.hook_timeout_s`、`QueueStat.max_age_ms`。v0.11 依 D25：加 `algo_id`（由 spec 在每個帳號上宣告，可以多個，TD agent 以 lease 檢查衝突），`client_order_id` 的 session 欄位換成 algo，`CancelSession` 換成策略自己發的 `BatchCancel`，STS agent 不再有 `td.order` 的權限。v0.12：`client_order_id` 改成 `ver(4) | algo(10) | ts_ms(40) | seq(10)`。v0.13 依 D26：MD 連線的身分改成 `(venue, route, n)`，endpoint 變成 `mdctl.InitPayload.url` 這個參數，atom id 拿掉 endpoint。v0.14 依 D27：`td.evt` 的 `AccountReset` 換成帶快照的 `Recon`，TD 降級時拒新單、放行撤單。v0.15 依 D28：只有一層 linger，連線在最後一個 atom 退訂時就停；lease 的 TTL 統一 60 秒。v0.16 依 D29 拿掉常駐訂閱（`StandingSubscription` 與 `/md/{inst}/standing/`）：MD 的 owner 只有 session 的 lease 項目。v0.17 依 D20：`tdctl.Report` 加 `first_submit_ns`，backfill 的範圍從下單決定。v0.18 依 D30：session worker 的 NATS 憑證每個 session 一份（`stsctl.InitPayload.nats`），權限見 §7。v0.19 依 D19：一期只做 Go SDK，拿掉 Python 綁 Go 的設計；新增 §9，寫明其他語言的 SDK 要遵守的契約，以及 STS agent 以 `Beat` 逾時判定 `HUNG` 的保險。v0.20 依 D31：UniversalTicker 是佔位，經 SYM 解析之後才決定訂閱什麼；atom id 改成 `<venue>:<route>:<channel>`；加入 topic 表與 SYM 的契約（§7.3，`mftiko.sym.v1`）。v0.21 依 D32：帳號種類和 venue 分成兩個 enum，`state.v1.Account.venue`、`tdctl.InitPayload.venue` 改為 `kind`；BinancePM 是帳號種類，不是 venue。v0.22 依 D8：incarnation 存在不綁 lease 的 `/{plane}/{inst}/incarnation/{h}`，spawn 前以 txn 取號（§3.2 W6）。v0.23：W4 的 watch 改從 list 的 revision（含）開始，不再加 1。v0.24 依 D33–D36：控制平面分成 API server 與 controller；跨平面的依賴改由 controller 以宣告式的需求表達，不綁 TTL（D9、D28），lease 項目改名需求項目，key 拿掉 `{sts_inst}`；新增 STS 的指派 `/sts/{inst}/demand/{session_id}`，Gate 與綁定的整理移到 controller；ack 由 controller watch；SYM 改成啟動時整表載入、跟著變更重載，使用者是 STS、MD、TD；三種 worker 都從 artifact 起（§8）；契約分成草案與定案（§1）；session 的宣告抽成 `mftiko.session.v1`，`stsctl.v1` 不再 import `state.v1`，改用自己的 `BindingState`、`Universe`；`Side`、`OrderType`、`TimeInForce` 移到 `common.v1`，`td.v1` 不再 import `md.v1`。v0.25 依 D14：etcd lease 只有選主 session 一種；`AgentRecord` 綁在它上面，agent 在不在就看它；ack、`WorkerStatus` 不綁 lease，由 agent 自己維護（§3.2 W7）。還沒定的寫在 [§10](#10-待定)。
 >
 > proto 區塊開頭的 `// file:` 是它在 `contract/proto/` 下的路徑。全部區塊以 `protoc` 編譯驗證過，`contract/proto/` 的檔案與它們逐字相同（第一行除外）。
 
@@ -84,7 +84,7 @@ shim 與 worker 會比 agent 活得久（D4），所以**版本偏差是常態**
 | feed key | `<topic>.<UniversalTicker>` | — |
 | atom id | `<venue>:<route>:<channel>`，只出現在 MD 內部與 `mdctl`。channel 是交易所的訂閱參數，逐字照抄，可能含 `:` 與 `.`，所以只切前兩個 `:`。route 是身分的一部分：同一個 channel 字串可能出現在不同 route（Bybit 現貨與 linear 的 `publicTrade.BTCUSDT`）（D31） | MD adapter（由解析後的商品推得） |
 | route | 同一個 venue 裡 atom 所屬的 WS 路徑，一個小寫單字，例如 OKX 的 `public`、`business`，Bybit 的 `spot`、`linear`；只有一條路徑的 venue 是 `default`（D26） | MD adapter |
-| `algo_id` | `uint32`，1–1023（10 bits），0 保留。訂單的命名空間，跨 session 不變；一個 session 可以有多個。只需在同一個帳號內唯一；同一個帳號上同時只屬於一個非 terminal 的 session，由 TD agent 以 lease 檢查（DECISIONS D25） | spec（`AccountDecl.algo_ids`） |
+| `algo_id` | `uint32`，1–1023（10 bits），0 保留。訂單的命名空間，跨 session 不變；一個 session 可以有多個。只需在同一個帳號內唯一；同一個帳號上同時只屬於一個非 terminal 的 session，由 TD agent 依需求項目檢查（DECISIONS D25） | spec（`AccountDecl.algo_ids`） |
 | `client_order_id` | uint64 `ver(4) \| algo(10) \| ts_ms(40) \| seq(10)`，以十進位字串傳。`ts_ms` 自 2026-01-01 UTC 起算；`seq` 每個進程每毫秒 1024 個；`ver` 只用 1–7，最高位為 0（D25） | session worker |
 
 - 十進位數一律是字串，不用浮點。時間一律是 `int64` unix 奈秒，欄位名以 `_ns` 結尾。
@@ -182,7 +182,7 @@ enum TimeInForce {
 
 ### 3.1 key 結構
 
-根是 `/mftiko/v1`。表中「綁 lease」指 key 綁在哪個 etcd lease 上：該 lease 過期，key 由 etcd 自動刪除。
+根是 `/mftiko/v1`。表中「綁 lease」指 key 綁在哪個 etcd lease 上：該 lease 過期，key 由 etcd 自動刪除。只有一種 lease，就是 W2 參選用的選主 session（W7）。
 
 | key | 值 | 寫入者 | watch 者 | 綁 lease |
 |---|---|---|---|---|
@@ -192,20 +192,20 @@ enum TimeInForce {
 | `/td/{inst}/account/{api_id}` | `Account` | API server | TD agent | — |
 | `/md/{inst}/demand/{session_id}/{entry}` | `DemandEntry` | controller | MD agent | — |
 | `/td/{inst}/demand/{session_id}/{api_id}` | `DemandEntry` | controller | TD agent | — |
-| `/md/{inst}/ack/{session_id}/{entry}` | `EntryStatus` | MD agent | controller | MD agent 的 |
-| `/td/{inst}/ack/{session_id}/{api_id}` | `EntryStatus` | TD agent | controller | TD agent 的 |
-| `/{plane}/{inst}/election` | etcd election | agent | — | 該 agent 的 |
+| `/md/{inst}/ack/{session_id}/{entry}` | `EntryStatus` | MD agent | controller | — |
+| `/td/{inst}/ack/{session_id}/{api_id}` | `EntryStatus` | TD agent | controller | — |
+| `/{plane}/{inst}/election` | etcd election | agent | — | 選主 session |
 | `/{plane}/{inst}/epoch` | 20 位補零的十進位 epoch | agent | — | — |
 | `/{plane}/{inst}/writer` | 20 位補零的十進位 epoch；在這個 agent 會寫入的**每一個** cluster 各有一份 | agent | — | — |
-| `/{plane}/{inst}/agent` | `AgentRecord` | agent | controller、API server | 該 agent 的 |
-| `/{plane}/{inst}/worker/{h}` | `WorkerStatus` | agent | controller、API server | 該 agent 的 |
+| `/{plane}/{inst}/agent` | `AgentRecord` | agent | controller、API server | 選主 session |
+| `/{plane}/{inst}/worker/{h}` | `WorkerStatus` | agent | controller、API server | — |
 | `/{plane}/{inst}/incarnation/{h}` | 十進位，這個 worker key 最近取到的 incarnation（§3.2 W6） | agent | — | — |
 | `/md/{inst}/selector/{spec_hash}` | `SelectorState` | MD agent | — | — |
 | `/md/{inst}/placement/{atom_hash}` | `Placement` | MD agent | — | — |
-| `/ctl/controller/election` | etcd election | controller | — | controller 的 |
+| `/ctl/controller/election` | etcd election | controller | — | 選主 session |
 | `/ctl/controller/epoch` | 20 位補零的十進位 epoch | controller | — | — |
 | `/ctl/controller/writer` | 同 agent 的 writer；在 controller 會寫入的每一個 cluster 各有一份 | controller | — | — |
-| `/ctl/controller/agent` | `AgentRecord`（`plane` 是 `ctl`） | controller | API server | controller 的 |
+| `/ctl/controller/agent` | `AgentRecord`（`plane` 是 `ctl`） | controller | API server | 選主 session |
 
 `{plane}` 是 `sts`、`md`、`td`。controller 的 instance 名稱固定是 `controller`：每個 controller 進程都用它，即使兩個進程對 home region 的設定不一致，也會在每個 cluster 搶同一把 writer key，互相 fence（W2）。MD 的 `{entry}` 是 `feed/{feed key}` 或 `select/{selector 名稱}`。需求與 ack 的 key 不再帶 `{sts_inst}`：寫入者是 controller，`session_id` 對所有歷史唯一，足以當 owner 的身分。
 
@@ -229,6 +229,14 @@ enum TimeInForce {
   4. 取號之後 spawn 失敗，這個號碼就作廢，下次取新的。
   5. key 不刪：worker 停掉之後，同一個 worker key 還會再起來（MD 重新開到同一個連線編號、refcount 又回到 1 的 `api_id`）。刪掉的話它會從 1 重來，下游記得的號碼比它大，新進程的訊息會被當成遲到的舊訊息丟掉。唯一的例外是 STS：`session_id` 對所有歷史唯一，session 進入 terminal 之後同一個 key 不會再起來，所以最後一個 incarnation 確認消失之後，由 STS agent 刪掉。
   6. `SessionStatus.incarnation`、`WorkerStatus.worker.incarnation` 只是顯示，值從這裡來。
+- **W7 agent 在不在，看 `AgentRecord`（DECISIONS D14）。** agent 與 controller 都只有一個 etcd lease，就是 W2 參選用的選主 session。
+  1. ack 與 `WorkerStatus` 不綁 lease，只有它的寫入者會刪它，所以「不存在」只有一種意思。
+     - `WorkerStatus` 在 worker 確定不在之後才刪：`Release` 完成，或 shim 的 socket 與進程都已不存在。attach 失敗、逾時都不算，key 保留。
+     - ack 在需求項目消失之後才刪。
+  2. 只在值改變時寫：`WorkerStatus` 在階段改變時才寫，`Beat`、`Report` 不進 etcd。
+  3. agent 每次當選，在第一次 reconcile 之前 list 自己的 `worker/` 與 `ack/`，和收養得到的 worker（§4.2）、目前的需求比對：有差異的重寫，多出來的照 1 的條件刪掉。和 controller 的 N5 是同一套做法。
+  4. 比對完才寫 `AgentRecord`，綁在選主 session 的 lease 上。只有這一個寫入點，agent 的其他寫入碰不到它（實作是 `internal/platform/state` 的 `Term.PutRecord`）。term 一結束（session 斷了、被取代），session 就不再續約，`AgentRecord` 最晚在一個 TTL 之後消失；agent 正常停下時 revoke 這個 lease，立刻消失。`epoch` 說明是哪一個 term。
+  5. 讀的一方把 ack、`WorkerStatus` 和寫入者的 `AgentRecord` 一起看：`AgentRecord` 在，值是新的（已經比對過）；不在，值是最後一次已知的狀態，可能已經過時。controller 對兩種情況的處理相同（§3.5）。instance 永久下線的程序見 §10 P11。
 
 ### 3.3 需求與 STS 的指派
 
@@ -261,7 +269,7 @@ TD 的對應（DECISIONS D9）：每個 `api_id` 一個 owner 集合，refcount 
 
 ### 3.5 ack／nack
 
-每個需求項目，provider 寫一個對應的 `EntryStatus`。它綁在 provider agent 自己的 etcd lease 上，所以三種狀態直接對應 key 的狀態：
+每個需求項目，provider 寫一個對應的 `EntryStatus`，不綁 lease（W7）。key 的狀態對應 ack／nack／沉默：
 
 | key | 意思 | controller 怎麼處理 |
 |---|---|---|
@@ -269,7 +277,9 @@ TD 的對應（DECISIONS D9）：每個 `api_id` 一個 owner 集合，refcount 
 | 存在，`PENDING` | 還在建立 | 繼續等；`start` 之前超過 `deps_timeout_s` 就以 `deps_timeout` 結束 session |
 | 存在，`REJECTED` | 這個項目不可能成立（venue 沒有這個 topic、商品不存在、帳號不存在、algo_id 與同帳號其他 session 衝突） | 以 `deps_failed` 結束 session（§3.3 N3） |
 | 存在，`DEAD` | nack：provider 透過 shim 明確知道資源死了（worker 結束、連線斷） | 以 `deps_failed` 結束 session。DEAD 的確切時機見 §10 |
-| 不存在 | 不知道：provider agent 不在，可能只是在輪換 | 維持現狀 |
+| 不存在 | 不知道：provider 還沒處理這個項目 | 維持現狀；`start` 之前照常計 `deps_timeout_s` |
+
+provider 的 `AgentRecord` 不在時，上表的值是它最後寫下的狀態：agent 可能只是在輪換，worker 照跑。controller 照值處理，不把「agent 不在」當成 nack，也不因此改變 session。沒有對應需求項目的 ack（N4 刪掉需求之後，provider 不在、還沒刪的）controller 不理會。
 
 - feed 的 `READY`：它的 atom 在 RUNNING 的 conn worker 上已被交易所 ack。
 - selector 的 `READY`：已算出 universe，且每個成員的 atom 都已 ack。
@@ -505,7 +515,7 @@ enum EntryState {
   ENTRY_STATE_DEAD = 4;
 }
 
-// 綁在 provider agent 的 etcd lease 上。
+// 不綁 lease（§3.2 W7）。provider 的 AgentRecord 不在時，是它最後寫下的狀態。
 message EntryStatus {
   EntryState state = 1;
   string reason = 2;
@@ -526,6 +536,7 @@ message Universe {
 
 // ---------- agent 自己 ----------
 
+// 綁在選主 session 的 lease 上（§3.2 W7）：存在就表示這個 instance 有活著的 agent。
 message AgentRecord {
   string plane = 1;
   string instance = 2;
@@ -534,6 +545,7 @@ message AgentRecord {
   int64 started_at_ns = 5;
 }
 
+// 不綁 lease（§3.2 W7），只在階段改變時寫；worker 確定不在之後由 agent 刪除。
 message WorkerStatus {
   mftiko.common.v1.WorkerRef worker = 1;
   string phase = 2; // STARTING | RUNNING | STOPPING | BACKOFF | EXITED | LOST
@@ -541,7 +553,7 @@ message WorkerStatus {
   string release = 4;
   string shim_release = 5;
   uint32 restarts = 6;
-  int64 rss_bytes = 7;
+  int64 rss_bytes = 7; // 寫入當下的值，只是快照：WorkerStatus 只在階段改變時寫（§3.2 W7）
   int64 started_at_ns = 8;
   mftiko.common.v1.ExitInfo last_exit = 9;
 }
@@ -577,7 +589,7 @@ unix socket `${WORK_DIR}/run/{plane}/{h}.sock`。frame 是 4 bytes big-endian �
 
 ### 4.3 生命週期（D15）
 
-agent 經 shim 送 `Init`、`Start`、`Stop`。shim 把 `Init`、`Start` 原樣轉給 worker，自己只記下 worker 目前的階段。生命週期是兩段（DECISIONS D15）：`Init` 在 spawn 後立刻送，不等任何 lease；`Start` 在該 worker 依賴的所有 lease 都 READY 之後才送（STS 依 §3.5 的 ack 判斷；MD、TD 的 worker 沒有跨平面依賴，`Init` 完成就送）。
+agent 經 shim 送 `Init`、`Start`、`Stop`。shim 把 `Init`、`Start` 原樣轉給 worker，自己只記下 worker 目前的階段。生命週期是兩段（DECISIONS D15）：`Init` 在 spawn 後立刻送，不等任何需求；`Start` 在依賴都就緒之後才送（STS 等 controller 把指派的 `start` 設成 true，§3.3 N2；MD、TD 的 worker 沒有跨平面依賴，`Init` 完成就送）。
 
 | 指令 | shim 做什麼 |
 |---|---|
@@ -1972,10 +1984,11 @@ STS 主機上：
 
 ## 10. 待定
 
-P1–P5 已依 DECISIONS 定案：P1 見 D24 與 §1，P2 見 D21，P3 見 D22，P4 見 D30，P5 見 D24。v0.24 新增的待定事項：
+P1–P5 已依 DECISIONS 定案：P1 見 D24 與 §1，P2 見 D21，P3 見 D22，P4 見 D30，P5 見 D24。v0.24 新增 P6–P10，v0.25 新增 P11：
 
 - **P6 `DEAD` 的確切時機（E4、E6 之前）。** 現在的定義是 worker 一結束、連線一斷就 `DEAD`，而 controller 收到 `DEAD` 就結束 session（§3.5）。MD、TD 會自動重拉 worker，照這個定義，一條 conn worker crash 就會結束這條連線上所有的 session。另一種定義是 provider 自動重拉期間維持 `PENDING`，放棄時才 `DEAD`。
 - **P7 SYM 的變更通知（E2）。** subject（例如 `sym.changed.{venue}`）、訊息內容（revision、哪些 category 變了），以及進程在兩次通知之間漏掉一次時怎麼發現（例如定期比對 revision）。
 - **P8 API server 的寫入怎麼滿足 W1（E10）。** API server 不參選、可以多個。候選：spec 只用 create-only 的 txn（`create_revision == 0`），帳號以 `mod_revision` 做 CAS。
 - **P9 MD、TD 的 artifact 版本放在哪裡（E4、E6）。** controller 的部署設定，或 etcd 裡一個由 controller 讀的 key；以及換版時 agent 怎麼排程換 incarnation（DECISIONS D8）。
 - **P10** 已在 v0.24 完成：session 的宣告抽成 `mftiko.session.v1`，`Side`、`OrderType`、`TimeInForce` 在 `common.v1`。
+- **P11 instance 永久下線的程序（E12）。** ack、`WorkerStatus`、`SessionStatus` 不綁 lease，instance 不再回來時會一直留著：非 terminal 的 `SessionStatus` 加上 `RUNNING` 的 `WorkerStatus`，會讓 controller 的 N4 一直等，MD、TD 的需求與 `algo_id` 的佔用都不會釋放。這些 key 的寫入者是那個 agent（W1），維運也不該直接改。候選：API 宣告某個 instance 已退役，controller 據此把它的 session 當成 terminal，再由一次性的工具以該 instance 的身分清掉它的前綴。

@@ -794,7 +794,7 @@ func (*Binding_Selector) isBinding_Target() {}
 
 func (*Binding_ApiId) isBinding_Target() {}
 
-// 綁在 provider agent 的 etcd lease 上。
+// 不綁 lease（§3.2 W7）。provider 的 AgentRecord 不在時，是它最後寫下的狀態。
 type EntryStatus struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	State  EntryState             `protobuf:"varint,1,opt,name=state,proto3,enum=mftiko.state.v1.EntryState" json:"state,omitempty"`
@@ -949,6 +949,7 @@ func (x *Universe) GetTopics() []string {
 	return nil
 }
 
+// 綁在選主 session 的 lease 上（§3.2 W7）：存在就表示這個 instance 有活著的 agent。
 type AgentRecord struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Plane         string                 `protobuf:"bytes,1,opt,name=plane,proto3" json:"plane,omitempty"`
@@ -1025,6 +1026,7 @@ func (x *AgentRecord) GetStartedAtNs() int64 {
 	return 0
 }
 
+// 不綁 lease（§3.2 W7），只在階段改變時寫；worker 確定不在之後由 agent 刪除。
 type WorkerStatus struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Worker        *v1.WorkerRef          `protobuf:"bytes,1,opt,name=worker,proto3" json:"worker,omitempty"`
@@ -1033,7 +1035,7 @@ type WorkerStatus struct {
 	Release       string                 `protobuf:"bytes,4,opt,name=release,proto3" json:"release,omitempty"`
 	ShimRelease   string                 `protobuf:"bytes,5,opt,name=shim_release,json=shimRelease,proto3" json:"shim_release,omitempty"`
 	Restarts      uint32                 `protobuf:"varint,6,opt,name=restarts,proto3" json:"restarts,omitempty"`
-	RssBytes      int64                  `protobuf:"varint,7,opt,name=rss_bytes,json=rssBytes,proto3" json:"rss_bytes,omitempty"`
+	RssBytes      int64                  `protobuf:"varint,7,opt,name=rss_bytes,json=rssBytes,proto3" json:"rss_bytes,omitempty"` // 寫入當下的值，只是快照：WorkerStatus 只在階段改變時寫（§3.2 W7）
 	StartedAtNs   int64                  `protobuf:"varint,8,opt,name=started_at_ns,json=startedAtNs,proto3" json:"started_at_ns,omitempty"`
 	LastExit      *v1.ExitInfo           `protobuf:"bytes,9,opt,name=last_exit,json=lastExit,proto3" json:"last_exit,omitempty"`
 	unknownFields protoimpl.UnknownFields

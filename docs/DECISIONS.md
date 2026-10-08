@@ -69,7 +69,7 @@ agent 每次啟動帶 epoch。shim 只接受 epoch 最大的 agent 的指令；�
 
 - 同一個 worker 身分下，實體進程（shim ＋ worker）的計數。每換一個進程加 1。
 - **計數存在 etcd，不綁 lease。** key 是 `/{plane}/{inst}/incarnation/{h}`，寫入者是該平面的 agent，三個平面共用同一套（PROTOCOL §3.2 W6）。spawn 前先以 txn 取號，條件是 writer key 的 rev（§3.2 W2）：被取代的 agent 取不到號，也就 spawn 不了。
-  - 不放 `WorkerStatus`：它綁在 agent 的 lease 上，agent 一死就消失。舊 shim 都 Release 之後 agent 再起來，號碼會從 1 重來，和舊進程的 `td.evt` seq、`Recon` 撞號。
+  - 不放 `WorkerStatus`：worker Release 之後它就被刪掉。同一個 worker key 再起來時，號碼會從 1 重來，和舊進程的 `td.evt` seq、`Recon` 撞號。
   - 不放 `/td/{inst}/account/{api_id}`：那是 API 寫的宣告（W1）。TD agent 寫進去會和 API 搶同一個 key，每次 spawn 都改動宣告的 revision，RBAC 也得讓 TD agent 能寫放憑證的前綴。MD 也沒有對應的宣告可放。
   - 不由 `(epoch, 本機 seq)` 推導：incarnation 和 epoch 就不再是兩個獨立的計數（見本節最後一條），型別也要從 `uint32` 改成兩個欄位。
   - 不用雜湊：雜湊只分得出不同，分不出新舊，「舊的晚到就丟」需要比大小。
@@ -112,7 +112,7 @@ STS、MD、TD ─────▶ SYM
 - **ack／nack 是三種狀態，粒度是資源：**
   - ack：資源正常。
   - nack：provider agent 明確知道某個資源不成立或死了（它透過 shim 管 worker，所以知道）。controller 收到 nack 就結束 session（D33）。
-  - 沉默：不知道。ack 綁在 provider agent 自己的 etcd lease 上，agent 消失超過 TTL 時 ack 消失；可能只是在輪換，worker 照跑。controller 維持現狀，不能當成 nack。
+  - 沉默：不知道。ack 不存在表示 provider 還沒處理這個項目。provider 的 agent 不在（`AgentRecord` 不在，D14）時，ack 是它最後寫下的狀態；可能只是在輪換，worker 照跑。兩種情況 controller 都維持現狀，不能當成 nack。
 - 資料面的依賴（session worker ⇄ conn worker、account worker）走 NATS，不經過 agent。
 - **為什麼不再由 STS agent 發綁 TTL 的 lease：**
   - TTL 把「需求還在不在」綁在「發送者還活不活著」上。發送者只是斷線，TTL 一到，正在交易的資源就被收掉。controller 只有一個、橫跨所有 region（D17），綁 TTL 的話，跨 region 的網路一抖就會停掉遠端 region 的交易。
@@ -154,9 +154,14 @@ UniversalTicker（`<Venue>_<Category>_<SYMBOL>`）、`Parse` 嚴格／`Resolve` 
 
 - 宣告、需求項目、STS 的指派、ack／nack、不能重新推導的 agent 狀態，全部放 etcd。agent 和 controller 在本機都不留狀態：desired 從 etcd 讀，worker 的實際狀態從 shim 取回。
 - API server → etcd、controller → agent、agent → controller 都是「寫 etcd、對方 watch」，沒有 NATS request-reply。控制面的契約就是 etcd 的 key 結構，加上每個前綴的寫入者。
-- **需求項目不綁 etcd lease（D9）。** etcd lease 只用在「回報自己還活著」的 key：agent 的 AgentRecord、WorkerStatus、ack／nack 綁在該 agent 自己的 etcd lease 上，agent 消失超過 TTL 時自動刪除，對應「沉默 = 不知道」。選主（W2）也用 etcd lease。
+- **etcd lease 只有一種：選主 session（PROTOCOL §3.2 W2、W7）。** agent 與 controller 的 `AgentRecord` 綁在自己的選主 session 上：它在，就表示這個 instance 有活著的 agent，以及是哪一個 term。需求項目（D9）、ack／nack、`WorkerStatus` 都不綁 lease，只會被它的寫入者刪掉。讀的一方把 ack、`WorkerStatus` 和寫入者的 `AgentRecord` 一起看：`AgentRecord` 不在時，那些值是最後一次已知的狀態。
+- **2026-10-08 拿掉 agent 自己的 lease（E1-07 的第一版，PR #51）。** 那個設計讓 AgentRecord、WorkerStatus、ack 綁在一個 TTL 60 秒的 lease 上，agent 消失就由 etcd 刪掉。拿掉的理由：
+  - controller 對沉默維持現狀，TTL 不影響它的任何決定，只讓它晚一點看到沉默。
+  - 「key 不存在」因此有兩種意思：寫入者刪了，或 lease 到期。STS agent 掛掉超過 TTL，`WorkerStatus` 消失，controller 依 PROTOCOL §3.3 N4 可能誤以為 session worker 已經消失而刪掉需求；shim 底下的 worker 其實還在跑。
+  - agent 在不在，選主 session 本來就知道，不需要第二個 lease。
+- **也不改成由 API server 輪詢 agent。** 那要讓 agent 開 server、做服務發現與認證，違反本條；量到的是 API 到 agent 的網路，不是 agent 自己能不能工作（TW 的 API 輪詢 JP 的 agent，WAN 一斷就把健康的 agent 當成死了，正是 D17 要避免的）；API server 有多個副本，結果不一致，也沒有地方放（PROTOCOL §3.2 W1）。
 - agent 重啟時 list 加 watch，owner 集合立刻完整恢復，不需要寬限期。
-- etcd 本身故障不會造成 agent 的 lease 大量過期：沒有 leader 時 lease 不會過期，新 leader 會把所有 lease 延長一個 TTL。
+- etcd 本身故障不會造成選主 session 大量過期：沒有 leader 時 lease 不會過期，新 leader 會把所有 lease 延長一個 TTL。
 - etcd 不在時，controller 和所有 agent 都不能改狀態，但資料面照跑。
 - NATS 只負責資料面。
 
@@ -184,7 +189,7 @@ UniversalTicker（`<Venue>_<Category>_<SYMBOL>`）、`Parse` 嚴格／`Resolve` 
 
 ### D17 每個 region 一個 etcd cluster
 
-一開始就每個 region 各架一個 cluster，不先用全域的。理由是故障範圍要和實際的依賴對齊：全域 etcd 在 TW、JP 斷線超過 TTL 時，少數方 region 的 agent lease 會被健康的 leader 判定過期，恢復時造成大量回收；每個 region 一個，則只有真的跨 region 的依賴受影響，而那些依賴的資料面（NATS）在同一次斷線裡本來就斷了。
+一開始就每個 region 各架一個 cluster，不先用全域的。理由是故障範圍要和實際的依賴對齊：全域 etcd 在 TW、JP 斷線超過 TTL 時，少數方 region 的 agent 連不到 etcd，選主 session 被健康的 leader 判定過期，整個 region 的控制面停擺，連只用本地資源的 session 也起停不了；每個 region 一個，則只有真的跨 region 的依賴受影響，而那些依賴的資料面（NATS）在同一次斷線裡本來就斷了。
 
 1. **key 放在「會依據它行動」的 agent 所在的 region。** session spec、STS 的指派與 status 在 STS 的 region；需求項目與 ack／nack 在 provider（MD／TD）的 region；其他 key 在該 instance 的 region。所有存取經過路由函數 `clusterFor(instance)`。
 2. **只有 controller 和 API server 連多個 cluster。** 三種 agent 都只連自己 region 的 cluster。
@@ -433,7 +438,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   - tape 保溫：跑一個 tape keeper 策略（D29），tape 跟著它的生命週期走。
 - **預設值：**
   - linger：5 秒。
-  - agent 自己的 etcd lease（AgentRecord、WorkerStatus、ack 綁在上面，D14）：TTL 60 秒，keepalive 間隔是 TTL 的三分之一。它只決定 controller 多久之後看到「沉默」，沉默時 controller 維持現狀（D9），所以不會因此回收資源。
+  - 選主 session 的 TTL：15 秒。`AgentRecord` 綁在它上面（D14），所以它也決定 controller、API 多久之後看到 agent 不在。ack、`WorkerStatus` 不綁 lease，agent 不在時照樣留著，controller 維持現狀（D9），不會因此回收資源。
 - 這些值是 MD、TD、STS instance 的部署設定，不放進 session spec。
 
 ### D29 沒有常駐訂閱，行情只由策略持有
@@ -515,7 +520,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   4. 依這些狀態管理 session：
      - 所有 MD、TD 需求都 `READY`，才在指派上放行 `Start`。這就是原本 STS agent 的 Gate。
      - 收到 nack（`REJECTED`、`DEAD`）就結束 session，以 `FAILED` 記下 ack 的原因。
-     - 沉默時維持現狀（D9）。暫時性的降級照 D27 留給策略處理，不停 session。
+     - 沉默時維持現狀：還沒有 ack，或 provider 的 agent 不在、ack 是最後已知的狀態（D9）。暫時性的降級照 D27 留給策略處理，不停 session。
      - `Start` 之前等超過 `deps_timeout_s`，以 `FAILED` 結束。
      - session 結束時依 D9 的順序撤指派、刪需求。
   5. 每次當選、每次全量 resync 都比對並回收孤兒（D9）。
