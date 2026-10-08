@@ -16,7 +16,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mftiko/shim/v1/shim.proto.
  */
 export const file_mftiko_shim_v1_shim: GenFile = /*@__PURE__*/
-  fileDesc("ChltZnRpa28vc2hpbS92MS9zaGltLnByb3RvEg5tZnRpa28uc2hpbS52MSLhAQoGTGF1bmNoEg0KBXBsYW5lGAEgASgJEhYKDmFnZW50X2luc3RhbmNlGAIgASgJEisKBndvcmtlchgDIAEoCzIbLm1mdGlrby5jb21tb24udjEuV29ya2VyUmVmEhEKCXNwZWNfaGFzaBgEIAEoCRIMCgRwYXRoGAUgASgJEgwKBGFyZ3MYBiADKAkSCwoDZW52GAcgAygJEgsKA2RpchgIIAEoCRIoCgRjcmVkGAkgASgLMhoubWZ0aWtvLnNoaW0udjEuQ3JlZGVudGlhbBIQCgh3b3JrX2RpchgKIAEoCSI2CgpDcmVkZW50aWFsEgsKA3VpZBgBIAEoDRILCgNnaWQYAiABKA0SDgoGZ3JvdXBzGAMgAygNIuUCCgtTaGltUmVxdWVzdBIKCgJpZBgBIAEoBBIoCgZhdHRhY2gYCiABKAsyFi5tZnRpa28uc2hpbS52MS5BdHRhY2hIABIiCgNhY2sYCyABKAsyEy5tZnRpa28uc2hpbS52MS5BY2tIABIoCgZzaWduYWwYDCABKAsyFi5tZnRpa28uc2hpbS52MS5TaWduYWxIABImCgRpbml0GA0gASgLMhYubWZ0aWtvLndvcmtlci52MS5Jbml0SAASKAoFc3RhcnQYDiABKAsyFy5tZnRpa28ud29ya2VyLnYxLlN0YXJ0SAASJAoEc3RvcBgPIAEoCzIULm1mdGlrby5zaGltLnYxLlN0b3BIABIoCgVyZWxheRgQIAEoCzIXLm1mdGlrby53b3JrZXIudjEuUmVsYXlIABIqCgdyZWxlYXNlGBEgASgLMhcubWZ0aWtvLnNoaW0udjEuUmVsZWFzZUgAQgQKAm9wIn8KBkF0dGFjaBINCgVwbGFuZRgBIAEoCRIWCg5hZ2VudF9pbnN0YW5jZRgCIAEoCRINCgVlcG9jaBgDIAEoAxIVCg1hZ2VudF9yZWxlYXNlGAQgASgJEhMKC3NoaW1fbWFqb3JzGAUgAygNEhMKC3Jlc3VtZV9mcm9tGAYgASgEIhIKA0FjaxILCgNzZXEYASABKAQiFwoGU2lnbmFsEg0KBXNpZ25vGAEgASgFIj8KBFN0b3ASDgoGcmVhc29uGAEgASgJEhAKCGdyYWNlX21zGAIgASgNEhUKDWtpbGxfYWZ0ZXJfbXMYAyABKA0iCQoHUmVsZWFzZSKaAQoLU2hpbU1lc3NhZ2USLAoIcmVzcG9uc2UYASABKAsyGC5tZnRpa28uc2hpbS52MS5SZXNwb25zZUgAEiYKBWV2ZW50GAIgASgLMhUubWZ0aWtvLnNoaW0udjEuRXZlbnRIABIuCglwcmVlbXB0ZWQYAyABKAsyGS5tZnRpa28uc2hpbS52MS5QcmVlbXB0ZWRIAEIFCgNtc2cidgoIUmVzcG9uc2USCgoCaWQYASABKAQSCgoCb2sYAiABKAgSJgoFZXJyb3IYAyABKAsyFy5tZnRpa28uY29tbW9uLnYxLkVycm9yEioKCGF0dGFjaGVkGAQgASgLMhgubWZ0aWtvLnNoaW0udjEuQXR0YWNoZWQi6wIKCEF0dGFjaGVkEhQKDHNoaW1fcmVsZWFzZRgBIAEoCRISCgpzaGltX21ham9yGAIgASgNEisKBndvcmtlchgDIAEoCzIbLm1mdGlrby5jb21tb24udjEuV29ya2VyUmVmEhEKCXNwZWNfaGFzaBgEIAEoCRIqCgVzdGF0ZRgFIAEoDjIbLm1mdGlrby5zaGltLnYxLldvcmtlclN0YXRlEg0KBXN0YWdlGAYgASgJEgsKA3BpZBgHIAEoBRIMCgRwZ2lkGAggASgFEhIKCnN0YXJ0X3RpbWUYCSABKAQSJgoFaGVsbG8YCiABKAsyFy5tZnRpa28ud29ya2VyLnYxLkhlbGxvEhIKCm9sZGVzdF9zZXEYCyABKAQSEAoIbmV4dF9zZXEYDCABKAQSFwoPbGFzdF9iZWF0X2F0X25zGA0gASgDEiQKBXBoYXNlGA4gASgOMhUubWZ0aWtvLnNoaW0udjEuUGhhc2Ui5AMKBUV2ZW50EgsKA3NlcRgBIAEoBBINCgVhdF9ucxgCIAEoAxILCgNnYXAYAyABKAgSKgoHc3RhcnRlZBgKIAEoCzIXLm1mdGlrby5zaGltLnYxLlN0YXJ0ZWRIABIoCgVoZWxsbxgLIAEoCzIXLm1mdGlrby53b3JrZXIudjEuSGVsbG9IABImCgRkb25lGAwgASgLMhYubWZ0aWtvLndvcmtlci52MS5Eb25lSAASKAoFc3RhZ2UYDSABKAsyFy5tZnRpa28ud29ya2VyLnYxLlN0YWdlSAASJgoEYmVhdBgOIAEoCzIWLm1mdGlrby53b3JrZXIudjEuQmVhdEgAEioKBnJlcG9ydBgPIAEoCzIYLm1mdGlrby53b3JrZXIudjEuUmVwb3J0SAASKAoFcmVsYXkYECABKAsyFy5tZnRpa28ud29ya2VyLnYxLlJlbGF5SAASLAoHZXhpdGluZxgRIAEoCzIZLm1mdGlrby53b3JrZXIudjEuRXhpdGluZ0gAEiwKB3N0b3BwZWQYEiABKAsyGS5tZnRpa28ud29ya2VyLnYxLlN0b3BwZWRIABIoCgZleGl0ZWQYEyABKAsyFi5tZnRpa28uc2hpbS52MS5FeGl0ZWRIAEIGCgRraW5kIjgKB1N0YXJ0ZWQSCwoDcGlkGAEgASgFEgwKBHBnaWQYAiABKAUSEgoKc3RhcnRfdGltZRgDIAEoBCIyCgZFeGl0ZWQSKAoEZXhpdBgBIAEoCzIaLm1mdGlrby5jb21tb24udjEuRXhpdEluZm8iHQoJUHJlZW1wdGVkEhAKCGJ5X2Vwb2NoGAEgASgDKpcBCgVQaGFzZRIVChFQSEFTRV9VTlNQRUNJRklFRBAAEg0KCVBIQVNFX05FVxABEhYKElBIQVNFX0lOSVRJQUxJWklORxACEhUKEVBIQVNFX0lOSVRJQUxJWkVEEAMSEgoOUEhBU0VfU1RBUlRJTkcQBBIRCg1QSEFTRV9TVEFSVEVEEAUSEgoOUEhBU0VfU1RPUFBJTkcQBip5CgtXb3JrZXJTdGF0ZRIcChhXT1JLRVJfU1RBVEVfVU5TUEVDSUZJRUQQABIZChVXT1JLRVJfU1RBVEVfU1RBUlRJTkcQARIYChRXT1JLRVJfU1RBVEVfUlVOTklORxACEhcKE1dPUktFUl9TVEFURV9FWElURUQQA0JCWkBnaXRodWIuY29tL0J1bGxpb25CZWFyL21mdGlrby9jb250cmFjdC9nZW4vbWZ0aWtvL3NoaW0vdjE7c2hpbXYxYgZwcm90bzM", [file_mftiko_common_v1_common, file_mftiko_worker_v1_worker]);
+  fileDesc("ChltZnRpa28vc2hpbS92MS9zaGltLnByb3RvEg5tZnRpa28uc2hpbS52MSKJAgoGTGF1bmNoEg0KBXBsYW5lGAEgASgJEhYKDmFnZW50X2luc3RhbmNlGAIgASgJEisKBndvcmtlchgDIAEoCzIbLm1mdGlrby5jb21tb24udjEuV29ya2VyUmVmEhEKCXNwZWNfaGFzaBgEIAEoCRIMCgRwYXRoGAUgASgJEgwKBGFyZ3MYBiADKAkSCwoDZW52GAcgAygJEgsKA2RpchgIIAEoCRIoCgRjcmVkGAkgASgLMhoubWZ0aWtvLnNoaW0udjEuQ3JlZGVudGlhbBIQCgh3b3JrX2RpchgKIAEoCRImCgZvdXRwdXQYCyABKAsyFi5tZnRpa28uc2hpbS52MS5PdXRwdXQiNgoKQ3JlZGVudGlhbBILCgN1aWQYASABKA0SCwoDZ2lkGAIgASgNEg4KBmdyb3VwcxgDIAMoDSIpCgZPdXRwdXQSEQoJbWF4X2J5dGVzGAEgASgEEgwKBGtlZXAYAiABKA0i5QIKC1NoaW1SZXF1ZXN0EgoKAmlkGAEgASgEEigKBmF0dGFjaBgKIAEoCzIWLm1mdGlrby5zaGltLnYxLkF0dGFjaEgAEiIKA2FjaxgLIAEoCzITLm1mdGlrby5zaGltLnYxLkFja0gAEigKBnNpZ25hbBgMIAEoCzIWLm1mdGlrby5zaGltLnYxLlNpZ25hbEgAEiYKBGluaXQYDSABKAsyFi5tZnRpa28ud29ya2VyLnYxLkluaXRIABIoCgVzdGFydBgOIAEoCzIXLm1mdGlrby53b3JrZXIudjEuU3RhcnRIABIkCgRzdG9wGA8gASgLMhQubWZ0aWtvLnNoaW0udjEuU3RvcEgAEigKBXJlbGF5GBAgASgLMhcubWZ0aWtvLndvcmtlci52MS5SZWxheUgAEioKB3JlbGVhc2UYESABKAsyFy5tZnRpa28uc2hpbS52MS5SZWxlYXNlSABCBAoCb3AifwoGQXR0YWNoEg0KBXBsYW5lGAEgASgJEhYKDmFnZW50X2luc3RhbmNlGAIgASgJEg0KBWVwb2NoGAMgASgDEhUKDWFnZW50X3JlbGVhc2UYBCABKAkSEwoLc2hpbV9tYWpvcnMYBSADKA0SEwoLcmVzdW1lX2Zyb20YBiABKAQiEgoDQWNrEgsKA3NlcRgBIAEoBCIXCgZTaWduYWwSDQoFc2lnbm8YASABKAUiPwoEU3RvcBIOCgZyZWFzb24YASABKAkSEAoIZ3JhY2VfbXMYAiABKA0SFQoNa2lsbF9hZnRlcl9tcxgDIAEoDSIJCgdSZWxlYXNlIpoBCgtTaGltTWVzc2FnZRIsCghyZXNwb25zZRgBIAEoCzIYLm1mdGlrby5zaGltLnYxLlJlc3BvbnNlSAASJgoFZXZlbnQYAiABKAsyFS5tZnRpa28uc2hpbS52MS5FdmVudEgAEi4KCXByZWVtcHRlZBgDIAEoCzIZLm1mdGlrby5zaGltLnYxLlByZWVtcHRlZEgAQgUKA21zZyJ2CghSZXNwb25zZRIKCgJpZBgBIAEoBBIKCgJvaxgCIAEoCBImCgVlcnJvchgDIAEoCzIXLm1mdGlrby5jb21tb24udjEuRXJyb3ISKgoIYXR0YWNoZWQYBCABKAsyGC5tZnRpa28uc2hpbS52MS5BdHRhY2hlZCLrAgoIQXR0YWNoZWQSFAoMc2hpbV9yZWxlYXNlGAEgASgJEhIKCnNoaW1fbWFqb3IYAiABKA0SKwoGd29ya2VyGAMgASgLMhsubWZ0aWtvLmNvbW1vbi52MS5Xb3JrZXJSZWYSEQoJc3BlY19oYXNoGAQgASgJEioKBXN0YXRlGAUgASgOMhsubWZ0aWtvLnNoaW0udjEuV29ya2VyU3RhdGUSDQoFc3RhZ2UYBiABKAkSCwoDcGlkGAcgASgFEgwKBHBnaWQYCCABKAUSEgoKc3RhcnRfdGltZRgJIAEoBBImCgVoZWxsbxgKIAEoCzIXLm1mdGlrby53b3JrZXIudjEuSGVsbG8SEgoKb2xkZXN0X3NlcRgLIAEoBBIQCghuZXh0X3NlcRgMIAEoBBIXCg9sYXN0X2JlYXRfYXRfbnMYDSABKAMSJAoFcGhhc2UYDiABKA4yFS5tZnRpa28uc2hpbS52MS5QaGFzZSLkAwoFRXZlbnQSCwoDc2VxGAEgASgEEg0KBWF0X25zGAIgASgDEgsKA2dhcBgDIAEoCBIqCgdzdGFydGVkGAogASgLMhcubWZ0aWtvLnNoaW0udjEuU3RhcnRlZEgAEigKBWhlbGxvGAsgASgLMhcubWZ0aWtvLndvcmtlci52MS5IZWxsb0gAEiYKBGRvbmUYDCABKAsyFi5tZnRpa28ud29ya2VyLnYxLkRvbmVIABIoCgVzdGFnZRgNIAEoCzIXLm1mdGlrby53b3JrZXIudjEuU3RhZ2VIABImCgRiZWF0GA4gASgLMhYubWZ0aWtvLndvcmtlci52MS5CZWF0SAASKgoGcmVwb3J0GA8gASgLMhgubWZ0aWtvLndvcmtlci52MS5SZXBvcnRIABIoCgVyZWxheRgQIAEoCzIXLm1mdGlrby53b3JrZXIudjEuUmVsYXlIABIsCgdleGl0aW5nGBEgASgLMhkubWZ0aWtvLndvcmtlci52MS5FeGl0aW5nSAASLAoHc3RvcHBlZBgSIAEoCzIZLm1mdGlrby53b3JrZXIudjEuU3RvcHBlZEgAEigKBmV4aXRlZBgTIAEoCzIWLm1mdGlrby5zaGltLnYxLkV4aXRlZEgAQgYKBGtpbmQiOAoHU3RhcnRlZBILCgNwaWQYASABKAUSDAoEcGdpZBgCIAEoBRISCgpzdGFydF90aW1lGAMgASgEIjIKBkV4aXRlZBIoCgRleGl0GAEgASgLMhoubWZ0aWtvLmNvbW1vbi52MS5FeGl0SW5mbyIdCglQcmVlbXB0ZWQSEAoIYnlfZXBvY2gYASABKAMqlwEKBVBoYXNlEhUKEVBIQVNFX1VOU1BFQ0lGSUVEEAASDQoJUEhBU0VfTkVXEAESFgoSUEhBU0VfSU5JVElBTElaSU5HEAISFQoRUEhBU0VfSU5JVElBTElaRUQQAxISCg5QSEFTRV9TVEFSVElORxAEEhEKDVBIQVNFX1NUQVJURUQQBRISCg5QSEFTRV9TVE9QUElORxAGKnkKC1dvcmtlclN0YXRlEhwKGFdPUktFUl9TVEFURV9VTlNQRUNJRklFRBAAEhkKFVdPUktFUl9TVEFURV9TVEFSVElORxABEhgKFFdPUktFUl9TVEFURV9SVU5OSU5HEAISFwoTV09SS0VSX1NUQVRFX0VYSVRFRBADQkJaQGdpdGh1Yi5jb20vQnVsbGlvbkJlYXIvbWZ0aWtvL2NvbnRyYWN0L2dlbi9tZnRpa28vc2hpbS92MTtzaGltdjFiBnByb3RvMw", [file_mftiko_common_v1_common, file_mftiko_worker_v1_worker]);
 
 /**
  * agent exec shim 之後寫進它 stdin 的唯一一個 frame。
@@ -89,6 +89,13 @@ export type Launch = Message<"mftiko.shim.v1.Launch"> & {
    * @generated from field: string work_dir = 10;
    */
   workDir: string;
+
+  /**
+   * worker 的 stdout、stderr 怎麼輪替（§4.5 S4）；沒有就用預設
+   *
+   * @generated from field: mftiko.shim.v1.Output output = 11;
+   */
+  output?: Output | undefined;
 };
 
 /**
@@ -126,6 +133,34 @@ export type Credential = Message<"mftiko.shim.v1.Credential"> & {
  */
 export const CredentialSchema: GenMessage<Credential> = /*@__PURE__*/
   messageDesc(file_mftiko_shim_v1_shim, 1);
+
+/**
+ * worker 的輸出寫在 log/{plane}/{h}.stdout、{h}.stderr，各自輪替（§4.5 S4）。0 表示用預設。
+ *
+ * @generated from message mftiko.shim.v1.Output
+ */
+export type Output = Message<"mftiko.shim.v1.Output"> & {
+  /**
+   * 一個檔案的上限；預設 64 MiB，不得小於 64 KiB
+   *
+   * @generated from field: uint64 max_bytes = 1;
+   */
+  maxBytes: bigint;
+
+  /**
+   * 每個 stream 保留幾個檔案，含目前寫的那個；預設 5，最多 100
+   *
+   * @generated from field: uint32 keep = 2;
+   */
+  keep: number;
+};
+
+/**
+ * Describes the message mftiko.shim.v1.Output.
+ * Use `create(OutputSchema)` to create a new message.
+ */
+export const OutputSchema: GenMessage<Output> = /*@__PURE__*/
+  messageDesc(file_mftiko_shim_v1_shim, 2);
 
 /**
  * @generated from message mftiko.shim.v1.ShimRequest
@@ -195,7 +230,7 @@ export type ShimRequest = Message<"mftiko.shim.v1.ShimRequest"> & {
  * Use `create(ShimRequestSchema)` to create a new message.
  */
 export const ShimRequestSchema: GenMessage<ShimRequest> = /*@__PURE__*/
-  messageDesc(file_mftiko_shim_v1_shim, 2);
+  messageDesc(file_mftiko_shim_v1_shim, 3);
 
 /**
  * @generated from message mftiko.shim.v1.Attach
@@ -237,7 +272,7 @@ export type Attach = Message<"mftiko.shim.v1.Attach"> & {
  * Use `create(AttachSchema)` to create a new message.
  */
 export const AttachSchema: GenMessage<Attach> = /*@__PURE__*/
-  messageDesc(file_mftiko_shim_v1_shim, 3);
+  messageDesc(file_mftiko_shim_v1_shim, 4);
 
 /**
  * @generated from message mftiko.shim.v1.Ack
@@ -254,7 +289,7 @@ export type Ack = Message<"mftiko.shim.v1.Ack"> & {
  * Use `create(AckSchema)` to create a new message.
  */
 export const AckSchema: GenMessage<Ack> = /*@__PURE__*/
-  messageDesc(file_mftiko_shim_v1_shim, 4);
+  messageDesc(file_mftiko_shim_v1_shim, 5);
 
 /**
  * @generated from message mftiko.shim.v1.Signal
@@ -271,7 +306,7 @@ export type Signal = Message<"mftiko.shim.v1.Signal"> & {
  * Use `create(SignalSchema)` to create a new message.
  */
 export const SignalSchema: GenMessage<Signal> = /*@__PURE__*/
-  messageDesc(file_mftiko_shim_v1_shim, 5);
+  messageDesc(file_mftiko_shim_v1_shim, 6);
 
 /**
  * @generated from message mftiko.shim.v1.Stop
@@ -298,7 +333,7 @@ export type Stop = Message<"mftiko.shim.v1.Stop"> & {
  * Use `create(StopSchema)` to create a new message.
  */
 export const StopSchema: GenMessage<Stop> = /*@__PURE__*/
-  messageDesc(file_mftiko_shim_v1_shim, 6);
+  messageDesc(file_mftiko_shim_v1_shim, 7);
 
 /**
  * @generated from message mftiko.shim.v1.Release
@@ -311,7 +346,7 @@ export type Release = Message<"mftiko.shim.v1.Release"> & {
  * Use `create(ReleaseSchema)` to create a new message.
  */
 export const ReleaseSchema: GenMessage<Release> = /*@__PURE__*/
-  messageDesc(file_mftiko_shim_v1_shim, 7);
+  messageDesc(file_mftiko_shim_v1_shim, 8);
 
 /**
  * @generated from message mftiko.shim.v1.ShimMessage
@@ -346,7 +381,7 @@ export type ShimMessage = Message<"mftiko.shim.v1.ShimMessage"> & {
  * Use `create(ShimMessageSchema)` to create a new message.
  */
 export const ShimMessageSchema: GenMessage<ShimMessage> = /*@__PURE__*/
-  messageDesc(file_mftiko_shim_v1_shim, 8);
+  messageDesc(file_mftiko_shim_v1_shim, 9);
 
 /**
  * @generated from message mftiko.shim.v1.Response
@@ -380,7 +415,7 @@ export type Response = Message<"mftiko.shim.v1.Response"> & {
  * Use `create(ResponseSchema)` to create a new message.
  */
 export const ResponseSchema: GenMessage<Response> = /*@__PURE__*/
-  messageDesc(file_mftiko_shim_v1_shim, 9);
+  messageDesc(file_mftiko_shim_v1_shim, 10);
 
 /**
  * @generated from message mftiko.shim.v1.Attached
@@ -470,7 +505,7 @@ export type Attached = Message<"mftiko.shim.v1.Attached"> & {
  * Use `create(AttachedSchema)` to create a new message.
  */
 export const AttachedSchema: GenMessage<Attached> = /*@__PURE__*/
-  messageDesc(file_mftiko_shim_v1_shim, 10);
+  messageDesc(file_mftiko_shim_v1_shim, 11);
 
 /**
  * @generated from message mftiko.shim.v1.Event
@@ -562,7 +597,7 @@ export type Event = Message<"mftiko.shim.v1.Event"> & {
  * Use `create(EventSchema)` to create a new message.
  */
 export const EventSchema: GenMessage<Event> = /*@__PURE__*/
-  messageDesc(file_mftiko_shim_v1_shim, 11);
+  messageDesc(file_mftiko_shim_v1_shim, 12);
 
 /**
  * @generated from message mftiko.shim.v1.Started
@@ -589,7 +624,7 @@ export type Started = Message<"mftiko.shim.v1.Started"> & {
  * Use `create(StartedSchema)` to create a new message.
  */
 export const StartedSchema: GenMessage<Started> = /*@__PURE__*/
-  messageDesc(file_mftiko_shim_v1_shim, 12);
+  messageDesc(file_mftiko_shim_v1_shim, 13);
 
 /**
  * @generated from message mftiko.shim.v1.Exited
@@ -606,7 +641,7 @@ export type Exited = Message<"mftiko.shim.v1.Exited"> & {
  * Use `create(ExitedSchema)` to create a new message.
  */
 export const ExitedSchema: GenMessage<Exited> = /*@__PURE__*/
-  messageDesc(file_mftiko_shim_v1_shim, 13);
+  messageDesc(file_mftiko_shim_v1_shim, 14);
 
 /**
  * @generated from message mftiko.shim.v1.Preempted
@@ -623,7 +658,7 @@ export type Preempted = Message<"mftiko.shim.v1.Preempted"> & {
  * Use `create(PreemptedSchema)` to create a new message.
  */
 export const PreemptedSchema: GenMessage<Preempted> = /*@__PURE__*/
-  messageDesc(file_mftiko_shim_v1_shim, 14);
+  messageDesc(file_mftiko_shim_v1_shim, 15);
 
 /**
  * shim 記下的生命週期階段（§4.3）。

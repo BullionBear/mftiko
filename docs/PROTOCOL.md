@@ -1,6 +1,6 @@
 # PROTOCOL — 協議與契約
 
-> **狀態：草案 v0.29（2026-10-08）。** 依據 [DECISIONS.md](DECISIONS.md)。v0.3 把控制面改到 etcd（D14），依賴改成 agent 層級的 lease（D9），shim 與 worker 之間加入生命週期動詞（D15），資料面拿掉給策略看的可用性廣播（D16）。v0.4 依 D17 改成每個 region 一個 etcd cluster：路由函數、每個 cluster 各自的 writer key、版本號不依賴 etcd revision；並依 D18 加入策略 artifact 的格式（§8）。v0.5 依 D20 加入歷史補正：`AccountSettings` 加 interval 與手動觸發，TD agent 訂閱 `td.evt` 落庫，`Fill.fill_id` 規定為交易所的 trade id。v0.6 依 D21：md.proto 加 `OrderBookDelta`，新增 `read.proto`（`md.view`、`md.fetch`），tape 不再用 Redis（拿掉 `tape_url` 與 `StandingSubscription.record`）。v0.7 依 D8：行情的 subject 一律由 MD agent 給，`SelectorBinding` 加 `subject_prefix`。v0.8 依 D22 拿掉 `stsctl.SubscribeRequest`：一期策略完全宣告式。v0.9 依 D23 加入 session volume 與資料 artifact：`SessionSpec.inputs`、`Limits.volume_mb`、`SessionStatus.state_out`、兩個環境變數、§8.4。v0.10 依 D24：`md.f` 加 envelope（`seq`、`conn_epoch`、`md_ts_ns` 從 `Meta` 移過去），拿掉 `Delivery`，加 `SessionSpec.recv_window_ms`、`Limits.hook_timeout_s`、`QueueStat.max_age_ms`。v0.11 依 D25：加 `algo_id`（由 spec 在每個帳號上宣告，可以多個，TD agent 以 lease 檢查衝突），`client_order_id` 的 session 欄位換成 algo，`CancelSession` 換成策略自己發的 `BatchCancel`，STS agent 不再有 `td.order` 的權限。v0.12：`client_order_id` 改成 `ver(4) | algo(10) | ts_ms(40) | seq(10)`。v0.13 依 D26：MD 連線的身分改成 `(venue, route, n)`，endpoint 變成 `mdctl.InitPayload.url` 這個參數，atom id 拿掉 endpoint。v0.14 依 D27：`td.evt` 的 `AccountReset` 換成帶快照的 `Recon`，TD 降級時拒新單、放行撤單。v0.15 依 D28：只有一層 linger，連線在最後一個 atom 退訂時就停；lease 的 TTL 統一 60 秒。v0.16 依 D29 拿掉常駐訂閱（`StandingSubscription` 與 `/md/{inst}/standing/`）：MD 的 owner 只有 session 的 lease 項目。v0.17 依 D20：`tdctl.Report` 加 `first_submit_ns`，backfill 的範圍從下單決定。v0.18 依 D30：session worker 的 NATS 憑證每個 session 一份（`stsctl.InitPayload.nats`），權限見 §7。v0.19 依 D19：一期只做 Go SDK，拿掉 Python 綁 Go 的設計；新增 §9，寫明其他語言的 SDK 要遵守的契約，以及 STS agent 以 `Beat` 逾時判定 `HUNG` 的保險。v0.20 依 D31：UniversalTicker 是佔位，經 SYM 解析之後才決定訂閱什麼；atom id 改成 `<venue>:<route>:<channel>`；加入 topic 表與 SYM 的契約（§7.3，`mftiko.sym.v1`）。v0.21 依 D32：帳號種類和 venue 分成兩個 enum，`state.v1.Account.venue`、`tdctl.InitPayload.venue` 改為 `kind`；BinancePM 是帳號種類，不是 venue。v0.22 依 D8：incarnation 存在不綁 lease 的 `/{plane}/{inst}/incarnation/{h}`，spawn 前以 txn 取號（§3.2 W6）。v0.23：W4 的 watch 改從 list 的 revision（含）開始，不再加 1。v0.24 依 D33–D36：控制平面分成 API server 與 controller；跨平面的依賴改由 controller 以宣告式的需求表達，不綁 TTL（D9、D28），lease 項目改名需求項目，key 拿掉 `{sts_inst}`；新增 STS 的指派 `/sts/{inst}/demand/{session_id}`，Gate 與綁定的整理移到 controller；ack 由 controller watch；SYM 改成啟動時整表載入、跟著變更重載，使用者是 STS、MD、TD；三種 worker 都從 artifact 起（§8）；契約分成草案與定案（§1）；session 的宣告抽成 `mftiko.session.v1`，`stsctl.v1` 不再 import `state.v1`，改用自己的 `BindingState`、`Universe`；`Side`、`OrderType`、`TimeInForce` 移到 `common.v1`，`td.v1` 不再 import `md.v1`。v0.25 依 D14：etcd lease 只有選主 session 一種；`AgentRecord` 綁在它上面，agent 在不在就看它；ack、`WorkerStatus` 不綁 lease，由 agent 自己維護（§3.2 W7）。v0.26：W1 由 etcd 的 auth 與 RBAC 強制，角色表由 instance 清單產生（§3.2 W1）。v0.27：shim 的啟動參數 `Launch` 由 agent 經 shim 的 stdin 送入，欄位由 artifact 的 manifest 換算而來（§4.6、§8.3）。v0.28：C3 的 server（E1-09）：`Launch` 加 `work_dir`，socket 的權限、只收同一個 uid 的連線、殘留與重複的處理（§4.1）；attach 的檢查順序、shim 記住接受過的最大 epoch、錯誤碼表、major 沒有交集時只能 `Signal` 與跨 major 不變的欄位（§4.2）；worker 被 reap 之後 `Signal` 回 `exited`（§4.3）；新增 §10 P12。v0.29：生命週期指令（E1-11）：shim 記下的階段 `Phase` 放進 `Attached`，`Init`、`Start` 只在對應的階段接受，`Stop` 的計時與重複的 `Stop`、`Release` 的條件、shim 自己收到 SIGTERM 時的 grace，錯誤碼加 `worker_busy`（§4.2、§4.3）；`cred` 的 uid 和 shim 不同而 shim 沒有 `CAP_KILL` 時不 spawn（§4.6）。還沒定的寫在 [§10](#10-待定)。
+> **狀態：草案 v0.30（2026-10-09）。** 依據 [DECISIONS.md](DECISIONS.md)。v0.3 把控制面改到 etcd（D14），依賴改成 agent 層級的 lease（D9），shim 與 worker 之間加入生命週期動詞（D15），資料面拿掉給策略看的可用性廣播（D16）。v0.4 依 D17 改成每個 region 一個 etcd cluster：路由函數、每個 cluster 各自的 writer key、版本號不依賴 etcd revision；並依 D18 加入策略 artifact 的格式（§8）。v0.5 依 D20 加入歷史補正：`AccountSettings` 加 interval 與手動觸發，TD agent 訂閱 `td.evt` 落庫，`Fill.fill_id` 規定為交易所的 trade id。v0.6 依 D21：md.proto 加 `OrderBookDelta`，新增 `read.proto`（`md.view`、`md.fetch`），tape 不再用 Redis（拿掉 `tape_url` 與 `StandingSubscription.record`）。v0.7 依 D8：行情的 subject 一律由 MD agent 給，`SelectorBinding` 加 `subject_prefix`。v0.8 依 D22 拿掉 `stsctl.SubscribeRequest`：一期策略完全宣告式。v0.9 依 D23 加入 session volume 與資料 artifact：`SessionSpec.inputs`、`Limits.volume_mb`、`SessionStatus.state_out`、兩個環境變數、§8.4。v0.10 依 D24：`md.f` 加 envelope（`seq`、`conn_epoch`、`md_ts_ns` 從 `Meta` 移過去），拿掉 `Delivery`，加 `SessionSpec.recv_window_ms`、`Limits.hook_timeout_s`、`QueueStat.max_age_ms`。v0.11 依 D25：加 `algo_id`（由 spec 在每個帳號上宣告，可以多個，TD agent 以 lease 檢查衝突），`client_order_id` 的 session 欄位換成 algo，`CancelSession` 換成策略自己發的 `BatchCancel`，STS agent 不再有 `td.order` 的權限。v0.12：`client_order_id` 改成 `ver(4) | algo(10) | ts_ms(40) | seq(10)`。v0.13 依 D26：MD 連線的身分改成 `(venue, route, n)`，endpoint 變成 `mdctl.InitPayload.url` 這個參數，atom id 拿掉 endpoint。v0.14 依 D27：`td.evt` 的 `AccountReset` 換成帶快照的 `Recon`，TD 降級時拒新單、放行撤單。v0.15 依 D28：只有一層 linger，連線在最後一個 atom 退訂時就停；lease 的 TTL 統一 60 秒。v0.16 依 D29 拿掉常駐訂閱（`StandingSubscription` 與 `/md/{inst}/standing/`）：MD 的 owner 只有 session 的 lease 項目。v0.17 依 D20：`tdctl.Report` 加 `first_submit_ns`，backfill 的範圍從下單決定。v0.18 依 D30：session worker 的 NATS 憑證每個 session 一份（`stsctl.InitPayload.nats`），權限見 §7。v0.19 依 D19：一期只做 Go SDK，拿掉 Python 綁 Go 的設計；新增 §9，寫明其他語言的 SDK 要遵守的契約，以及 STS agent 以 `Beat` 逾時判定 `HUNG` 的保險。v0.20 依 D31：UniversalTicker 是佔位，經 SYM 解析之後才決定訂閱什麼；atom id 改成 `<venue>:<route>:<channel>`；加入 topic 表與 SYM 的契約（§7.3，`mftiko.sym.v1`）。v0.21 依 D32：帳號種類和 venue 分成兩個 enum，`state.v1.Account.venue`、`tdctl.InitPayload.venue` 改為 `kind`；BinancePM 是帳號種類，不是 venue。v0.22 依 D8：incarnation 存在不綁 lease 的 `/{plane}/{inst}/incarnation/{h}`，spawn 前以 txn 取號（§3.2 W6）。v0.23：W4 的 watch 改從 list 的 revision（含）開始，不再加 1。v0.24 依 D33–D36：控制平面分成 API server 與 controller；跨平面的依賴改由 controller 以宣告式的需求表達，不綁 TTL（D9、D28），lease 項目改名需求項目，key 拿掉 `{sts_inst}`；新增 STS 的指派 `/sts/{inst}/demand/{session_id}`，Gate 與綁定的整理移到 controller；ack 由 controller watch；SYM 改成啟動時整表載入、跟著變更重載，使用者是 STS、MD、TD；三種 worker 都從 artifact 起（§8）；契約分成草案與定案（§1）；session 的宣告抽成 `mftiko.session.v1`，`stsctl.v1` 不再 import `state.v1`，改用自己的 `BindingState`、`Universe`；`Side`、`OrderType`、`TimeInForce` 移到 `common.v1`，`td.v1` 不再 import `md.v1`。v0.25 依 D14：etcd lease 只有選主 session 一種；`AgentRecord` 綁在它上面，agent 在不在就看它；ack、`WorkerStatus` 不綁 lease，由 agent 自己維護（§3.2 W7）。v0.26：W1 由 etcd 的 auth 與 RBAC 強制，角色表由 instance 清單產生（§3.2 W1）。v0.27：shim 的啟動參數 `Launch` 由 agent 經 shim 的 stdin 送入，欄位由 artifact 的 manifest 換算而來（§4.6、§8.3）。v0.28：C3 的 server（E1-09）：`Launch` 加 `work_dir`，socket 的權限、只收同一個 uid 的連線、殘留與重複的處理（§4.1）；attach 的檢查順序、shim 記住接受過的最大 epoch、錯誤碼表、major 沒有交集時只能 `Signal` 與跨 major 不變的欄位（§4.2）；worker 被 reap 之後 `Signal` 回 `exited`（§4.3）；新增 §10 P12。v0.29：生命週期指令（E1-11）：shim 記下的階段 `Phase` 放進 `Attached`，`Init`、`Start` 只在對應的階段接受，`Stop` 的計時與重複的 `Stop`、`Release` 的條件、shim 自己收到 SIGTERM 時的 grace，錯誤碼加 `worker_busy`（§4.2、§4.3）；`cred` 的 uid 和 shim 不同而 shim 沒有 `CAP_KILL` 時不 spawn（§4.6）。v0.30：worker 的輸出（E1-14）：`Launch.output`，檔案放在 `${WORK_DIR}/log/{plane}/{h}.stdout`、`{h}.stderr`，依大小輪替，寫不及時丟棄並在檔案裡註明，不讓 worker 阻塞（§4.5 S4、§4.6）。還沒定的寫在 [§10](#10-待定)。
 >
 > proto 區塊開頭的 `// file:` 是它在 `contract/proto/` 下的路徑。全部區塊以 `protoc` 編譯驗證過，`contract/proto/` 的檔案與它們逐字相同（第一行除外）。
 
@@ -670,7 +670,13 @@ agent 以 `Ack{seq}` 確認。
 - **S1** shim 是 worker 唯一的父進程；Linux 上以 `PR_SET_CHILD_SUBREAPER` 收孫進程；shim 以 `setsid` 開新 session，由 init 收養。
 - **S2** shim 消失時 worker 自行 graceful stop：socketpair 讀到 EOF；Linux 上另有 `Pdeathsig` 當備援（spawn worker 的 goroutine 必須 `LockOSThread`）。
 - **S3** shim reap 之後寫 exit 檔，等 `Release` 才退出。
-- **S4** shim 持有 worker 的 stdout／stderr，寫成檔並輪替。
+- **S4** shim 持有 worker 的 stdout／stderr，寫成檔並輪替：
+  - 檔案是 `${WORK_DIR}/log/{plane}/{h}.stdout` 與 `{h}.stderr`，`h` 同 §4.1 的 socket。目錄不存在就以 0700 建立，檔案是 0600。
+  - 依 worker key、不依 incarnation：新的 incarnation 接在同一組檔案後面寫，開頭一行 `[mftiko-shim] <時間> worker <key> incarnation <n>`。同一個 worker key 同時只有一個 shim（§4.1），所以每個檔案只有一個寫入者。
+  - 檔案到了 `Launch.output.max_bytes` 就輪替：`{h}.stdout` 改名成 `.1`，原來的 `.1` 改成 `.2`，依此類推；每個 stream 只留 `keep` 個檔案（含目前寫的那個），最舊的刪掉。沒有任何檔案超過 `max_bytes`。預設 64 MiB、5 個。
+  - worker 絕不因為輸出而阻塞：shim 一直讀 pipe，寫檔在另一個執行緒。寫檔跟不上（最多暫存 2 MiB）或寫入失敗（磁碟滿）時丟棄，並在恢復寫入的位置插入一行 `[mftiko-shim] N bytes of stdout lost here: …`。
+  - worker 被 reap 之後，shim 退出前最多等 2 秒把剩下的輸出寫完；worker 留下的孫進程若還拿著 pipe，不等它。
+  - 檔案不隨 `Release` 刪除。STS 的 worker key 不會重用，session 結束後由 STS agent 清掉。
 - **S5** shim 不認識任何平面，不解讀 C5，不連 NATS，不連 etcd，不做重啟決策。
 
 ```proto
@@ -699,12 +705,19 @@ message Launch {
   string dir = 8;           // rootfs，絕對路徑；path 必須在它底下
   Credential cred = 9;      // 平面決定，不來自 manifest；沒有就沿用 shim 的身分
   string work_dir = 10;     // ${WORK_DIR}，絕對路徑；C3 的 socket 在 run/{plane}/{h}.sock（§4.1）
+  Output output = 11;       // worker 的 stdout、stderr 怎麼輪替（§4.5 S4）；沒有就用預設
 }
 
 message Credential {
   uint32 uid = 1;
   uint32 gid = 2;
   repeated uint32 groups = 3; // 附加群組；空的表示沒有
+}
+
+// worker 的輸出寫在 log/{plane}/{h}.stdout、{h}.stderr，各自輪替（§4.5 S4）。0 表示用預設。
+message Output {
+  uint64 max_bytes = 1; // 一個檔案的上限；預設 64 MiB，不得小於 64 KiB
+  uint32 keep = 2;      // 每個 stream 保留幾個檔案，含目前寫的那個；預設 5，最多 100
 }
 
 // ---------- agent → shim ----------
@@ -849,16 +862,17 @@ agent exec `mftiko-shim`，在它的 stdin 寫一個 `Launch` frame 後關掉。
 | `args` | `entrypoint[1:]` |
 | `env` | manifest 的 `env`（依 key 排序），之後是 §5.4 平台注入的變數。manifest 設了 `MFTIKO_` 開頭的變數就不 spawn |
 | `cred` | 平面決定，不來自 manifest |
-| `work_dir` | agent 的設定（`${WORK_DIR}`）；C3 的 socket 在它底下（§4.1） |
+| `work_dir` | agent 的設定（`${WORK_DIR}`）；C3 的 socket 與 worker 的輸出都在它底下（§4.1、§4.5 S4） |
+| `output` | agent 的設定；不設就用預設（§4.5 S4） |
 
 shim：
 
 1. `setsid`（已經是 session leader 就略過），再設 `PR_SET_CHILD_SUBREAPER`（S1）。agent 起 shim 時要嘛讓它開新 session（Go 是 `SysProcAttr.Setsid`），要嘛什麼都不設；只設 `Setpgid` 會讓 shim 成為 process group leader，`setsid` 就會失敗。fd 3 以上全部設成 close-on-exec，agent 讓 shim 繼承的 fd 不會傳到 worker。
 2. 從 stdin 讀一個 frame，之後 stdin 換成 `/dev/null`。10 秒內沒讀到就以 1 結束。
-3. 檢查 `Launch`：`dir` 是絕對路徑，`path` 是 `dir` 底下的絕對路徑（逐字比對，不解 symlink），`env` 每項都是 `KEY=VALUE`、同一個 key 不出現兩次，且不自己設 `MFTIKO_CTL_FD`。`plane`、`agent_instance` 符合 instance 名稱的語法（§2），`worker.key` 不是空的，`work_dir` 是乾淨的絕對路徑，socket 的路徑不超過 107 bytes（`sun_path` 的上限）。不符就以 1 結束，不 spawn。
-4. 開 C3 的 socket（§4.1）。不成就以 1 結束，不 spawn。
+3. 檢查 `Launch`：`dir` 是絕對路徑，`path` 是 `dir` 底下的絕對路徑（逐字比對，不解 symlink），`env` 每項都是 `KEY=VALUE`、同一個 key 不出現兩次，且不自己設 `MFTIKO_CTL_FD`。`plane`、`agent_instance` 符合 instance 名稱的語法（§2），`worker.key` 不是空的，`work_dir` 是乾淨的絕對路徑，socket 的路徑不超過 107 bytes（`sun_path` 的上限）。`output.max_bytes` 是 0 或至少 64 KiB，`output.keep` 不超過 100。不符就以 1 結束，不 spawn。
+4. 開 C3 的 socket（§4.1），再開 worker 的兩個輸出檔、寫入這個 incarnation 的標頭（§4.5 S4）。任何一步不成就以 1 結束，不 spawn。
 5. 建 socketpair，exec worker：
-   - fd 0 是 `/dev/null`，fd 1、2 由 shim 持有（S4），fd 3 是 socketpair 的一端；其他 fd 一律不繼承。
+   - fd 0 是 `/dev/null`，fd 1、2 各是一條 pipe，讀端在 shim（S4），fd 3 是 socketpair 的一端；其他 fd 一律不繼承。
    - 環境只有 `env` 加上 `MFTIKO_CTL_FD=3`，不繼承 shim 自己的。rlimit、umask 與被忽略的信號則沿用 shim 的，也就是 agent 起 shim 時的設定。
    - worker 自成一個 process group，`Signal` 送給這個 group（§4.3）；它留在 shim 的 session 裡。
    - `Pdeathsig` 是 SIGTERM（S2）。fork 它的執行緒一直活到 worker 被 reap，否則 kernel 會把那個執行緒結束當成 parent 死了。

@@ -36,6 +36,9 @@ func ReadLaunch(r io.Reader) (*shimv1.Launch, error) {
 	if err := checkIdentity(l); err != nil {
 		return nil, err
 	}
+	if err := checkOutput(l.GetOutput()); err != nil {
+		return nil, err
+	}
 	return l, nil
 }
 

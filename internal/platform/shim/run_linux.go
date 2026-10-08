@@ -16,12 +16,12 @@ import (
 //
 // Of C3 it does Attach, fencing and Signal (E1-09), and the lifecycle (E1-11): Init, Start and Relay go to the
 // worker, Stop is timed here, Release ends the shim once the worker has been reaped. Ack is answered unimplemented
-// and nothing is buffered for the agent yet (E1-12); there is no exit file (E1-13) and the worker's output goes to
-// /dev/null (E1-14).
+// and nothing is buffered for the agent yet (E1-12); there is no exit file (E1-13). The worker's stdout and stderr go
+// to rotated files under ${WORK_DIR}/log/{plane} (E1-14).
 //
 // SIGTERM or SIGINT stops the worker as a Stop would, with shutdownGrace and shutdownKillAfter, and the shim ends
 // once the worker has been reaped; one that comes after the worker is gone ends the shim at once. Either way it
-// removes its socket.
+// removes its socket, and once the worker is reaped it writes out the last of its output first.
 func Run(log zerolog.Logger) int {
 	// stderr is the agent's to connect, and may be a pipe whose reader is gone: a log line must then fail, not kill
 	// the shim. A handled signal, unlike an ignored one, goes back to its default in the worker.
@@ -63,18 +63,34 @@ func Run(log zerolog.Logger) int {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
 
+	out, err := openOutput(log, l, outputHeader(l, time.Now())) // before the spawn: its output must have a place
+	if err != nil {
+		log.Error().Err(err).Msg("no output files")
+		return 1
+	}
+
 	// The reaper must not block, and a log line can: it hands over, and drops what does not fit.
 	reaped := make(chan Reaped, 64)
-	w, err := Spawn(l, null, null, func(r Reaped) {
+	w, err := Spawn(l, out.Stdout, out.Stderr, func(r Reaped) {
 		select {
 		case reaped <- r:
 		default:
 		}
 	})
+	out.spawned()
 	if err != nil {
 		log.Error().Err(err).Msg("spawn failed")
 		return 1
 	}
+	defer func() {
+		select {
+		case <-w.Done(): // the worker's last words reach the file before the shim goes
+			if !out.wait(outputDrain) {
+				log.Warn().Dur("after", outputDrain).Msg("worker output still open: something the worker started holds it")
+			}
+		default: // still running: it keeps writing until it sees the shim gone, and nothing will read it
+		}
+	}()
 	log.Info().Int("pid", w.Pid).Int("pgid", w.Pgid).Uint64("start_time", w.StartTime).Msg("worker started")
 	if w.StartTime == 0 {
 		log.Warn().Int("pid", w.Pid).Msg("no start time in /proc: the worker cannot be told from a later process with its pid")
@@ -128,6 +144,9 @@ const (
 	shutdownGrace     = 10 * time.Second
 	shutdownKillAfter = 5 * time.Second
 )
+
+// outputDrain bounds how long an ending shim waits for the worker's output to be written out.
+const outputDrain = 2 * time.Second
 
 // launchTimeout bounds the wait for the Launch: an agent that started the shim and then wrote nothing is gone.
 const launchTimeout = 10 * time.Second
