@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ import (
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	shimv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/shim/v1"
 	"github.com/BullionBear/mftiko/contract/wire/frame"
+	"github.com/BullionBear/mftiko/internal/platform/artifact"
 	"github.com/BullionBear/mftiko/internal/platform/shim/fakeworker"
 )
 
@@ -62,7 +64,17 @@ func startShim(t *testing.T, s fakeworker.Script, path, dir string, cred *shimv1
 		Plane: "td", AgentInstance: "td-tw-1", Worker: &commonv1.WorkerRef{Key: "td/42", Incarnation: 3},
 		Path: path, Env: append(append([]string{}, identity...), fake...), Dir: "/", Cred: cred,
 	}
+	return runShim(t, l, journal, extra...)
+}
 
+// runShim starts a shim, the way an agent does, and writes l on its stdin. journal is where the fake worker of l
+// writes.
+func runShim(t *testing.T, l *shimv1.Launch, journal string, extra ...*os.File) *shimProc {
+	t.Helper()
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
 	cmd := exec.Command(self)
 	cmd.ExtraFiles = extra
 	// The shim's own environment, which the worker must not see.
@@ -446,6 +458,69 @@ func socketFDs(t *testing.T, pid int) []string {
 		}
 	}
 	return socks
+}
+
+// A worker started the way every worker is (PROTOCOL §4.6, §8.3): from an unpacked rootfs, with the Launch built
+// from its manifest. Everything but fetching and unpacking the artifact: the rootfs is made by hand.
+func TestSpawnFromRootfs(t *testing.T) {
+	rootfs := filepath.Join(t.TempDir(), "rootfs")
+	if err := os.MkdirAll(filepath.Join(rootfs, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	self, _ := os.Executable()
+	copyFile(t, self, filepath.Join(rootfs, "bin", "worker"), 0o755)
+
+	var m artifact.Manifest
+	if err := json.Unmarshal([]byte(`{"schema": "mftiko.worker.v1", "kind": "td.account", "os": "linux",
+		"entrypoint": ["bin/worker", "--mode", "fake"], "env": {"ZETA": "z", "ALPHA": "a"}}`), &m); err != nil {
+		t.Fatal(err)
+	}
+	journal := filepath.Join(t.TempDir(), "journal")
+	fake, err := fakeworker.Env(fakeworker.Script{}, journal) // the test's own variables, passed as the platform's
+	if err != nil {
+		t.Fatal(err)
+	}
+	platform := append(append([]string{}, identity...), fake...)
+	l, err := m.Launch(rootfs, platform)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.Plane, l.AgentInstance, l.Worker = "td", "td-tw-1", &commonv1.WorkerRef{Key: "td/42", Incarnation: 3}
+
+	p := runShim(t, l, journal)
+	pid := p.workerPid()
+	if e := p.waitJournal("sent"); !strings.Contains(string(e.Msg), "hello") {
+		t.Fatalf("first message sent: %s", e.Msg)
+	}
+
+	proc := func(name string) string {
+		s, err := os.Readlink(fmt.Sprintf("/proc/%d/%s", pid, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	if cwd := proc("cwd"); cwd != rootfs {
+		t.Errorf("worker cwd %q, want the rootfs %q", cwd, rootfs)
+	}
+	if exe := proc("exe"); exe != filepath.Join(rootfs, "bin", "worker") {
+		t.Errorf("worker executable %q, want the entrypoint in the rootfs", exe)
+	}
+	nulSplit := func(name string) []string {
+		b, err := os.ReadFile(fmt.Sprintf("/proc/%d/%s", pid, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Split(strings.TrimSuffix(string(b), "\x00"), "\x00")
+	}
+	wantArgv := []string{filepath.Join(rootfs, "bin", "worker"), "--mode", "fake"}
+	if argv := nulSplit("cmdline"); !slices.Equal(argv, wantArgv) {
+		t.Errorf("worker argv %q, want %q", argv, wantArgv)
+	}
+	wantEnv := append(append([]string{"ALPHA=a", "ZETA=z"}, platform...), EnvCtlFD+"=3")
+	if env := nulSplit("environ"); !slices.Equal(env, wantEnv) {
+		t.Errorf("worker environment, in order:\n%q\nwant the manifest's, the platform's, then the control fd:\n%q", env, wantEnv)
+	}
 }
 
 func copyFile(t *testing.T, from, to string, mode os.FileMode) {
