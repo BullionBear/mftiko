@@ -12,24 +12,47 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-// DialFunc opens a client to one regional cluster. It is called at most once per region, on first use, with the
-// Clusters lock held, so it must not wait for the cluster to answer (clientv3.New without auth does not).
+// DialFunc opens a client to one regional cluster. Clusters calls it on first use of the region, outside its lock
+// and on a goroutine of its own, so it may wait for the cluster; it should give up within a bounded time (the dial
+// timeout). A failed dial is not remembered: the next use of the region dials again.
 type DialFunc func(region string, endpoints []string) (*clientv3.Client, error)
 
-// DefaultDial is clientv3.New with a 5s dial timeout and gRPC keepalive: a connection whose peer stops answering
-// (a hung member, a dropped route) is closed within about 15s and reconnected, instead of being trusted forever.
-// 10s is above etcd's default minimum ping interval (--grpc-keepalive-min-time, 5s).
+// DialTimeout bounds a dial: with credentials, connecting and authenticating.
+const DialTimeout = 5 * time.Second
+
+// DefaultDial is a dial without credentials, for clusters with auth off: AuthDial with no user.
 func DefaultDial(region string, endpoints []string) (*clientv3.Client, error) {
-	c, err := clientv3.New(clientv3.Config{
-		Endpoints:            endpoints,
-		DialTimeout:          5 * time.Second,
-		DialKeepAliveTime:    10 * time.Second,
-		DialKeepAliveTimeout: 5 * time.Second,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("state: dial %s: %w", region, err)
+	return AuthDial("", "")(region, endpoints)
+}
+
+// AuthDial returns a dial that authenticates as user (E1-08, PROTOCOL §3.2 W1). Every process has a user of its
+// own in every cluster it connects to: an agent its instance name, the controller "controller", the API server
+// "api" (AuthTables). The cluster issues tokens (JWT in production); the client authenticates when it is created,
+// and again whenever the cluster rejects its token as expired or as older than the cluster's last change to users
+// and roles. With no user it is a plain client.
+//
+// The client has gRPC keepalive: a connection whose peer stops answering (a hung member, a dropped route) is closed
+// within about 15s and reconnected, instead of being trusted forever. 10s is above etcd's default minimum ping
+// interval (--grpc-keepalive-min-time, 5s).
+func AuthDial(user, password string) DialFunc {
+	return func(region string, endpoints []string) (*clientv3.Client, error) {
+		if (user == "") != (password == "") {
+			// clientv3 would silently not authenticate, and every request would fail as from an unknown user.
+			return nil, fmt.Errorf("state: dial %s: a user needs a password, and a password a user", region)
+		}
+		c, err := clientv3.New(clientv3.Config{
+			Endpoints:            endpoints,
+			DialTimeout:          DialTimeout,
+			DialKeepAliveTime:    10 * time.Second,
+			DialKeepAliveTimeout: 5 * time.Second,
+			Username:             user,
+			Password:             password,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("state: dial %s: %w", region, err)
+		}
+		return c, nil
 	}
-	return c, nil
 }
 
 // AgentRegions is the set of regions a process of (p, inst) may connect to (D17 rule 2): an agent only its own;
@@ -58,9 +81,9 @@ type Reader interface {
 	Done() <-chan struct{}
 	// RequestProgress asks the watch stream that ctx's metadata selects for a progress notification: once every
 	// watch on it has caught up, and none starts beyond the current revision, each receives that revision
-	// (clientv3.Watcher.RequestProgress). Every watch on the stream gets the notification, so N mirrors probing one
-	// client make N² of them per interval. With no stream for that metadata, clientv3 opens one that lasts until
-	// the client closes; while the stream reconnects, the call waits for ctx.
+	// (clientv3.Watcher.RequestProgress). Every watch on the stream gets the notification; Mirror gives each mirror
+	// a stream of its own. With no stream for that metadata, clientv3 opens one that lasts until the client closes;
+	// while the stream reconnects, the call waits for ctx.
 	RequestProgress(ctx context.Context) error
 }
 
@@ -73,7 +96,15 @@ type Clusters struct {
 
 	mu      sync.Mutex
 	clients map[string]*clientv3.Client
+	dialing map[string]*dialing // regions being dialled now
 	closed  bool
+}
+
+// dialing is one dial in progress; done is closed when cli and err are set.
+type dialing struct {
+	done chan struct{}
+	cli  *clientv3.Client
+	err  error
 }
 
 // NewClusters validates t and returns a Clusters that may connect to the regions in allowed (nil = all regions,
@@ -89,7 +120,10 @@ func NewClusters(t Topology, allowed []string, dial DialFunc) (*Clusters, error)
 	if len(allowed) == 0 {
 		return nil, fmt.Errorf("%w: empty allowed region list (nil means all)", ErrRegionNotAllowed)
 	}
-	c := &Clusters{topo: t, allowed: map[string]bool{}, dial: dial, clients: map[string]*clientv3.Client{}}
+	c := &Clusters{
+		topo: t, allowed: map[string]bool{}, dial: dial,
+		clients: map[string]*clientv3.Client{}, dialing: map[string]*dialing{},
+	}
 	for _, r := range allowed {
 		if _, ok := t.Regions[r]; !ok {
 			return nil, fmt.Errorf("%w: allowed region %q", ErrUnknownRegion, r)
@@ -105,9 +139,13 @@ func NewClusters(t Topology, allowed []string, dial DialFunc) (*Clusters, error)
 // Topology returns a copy of the topology.
 func (c *Clusters) Topology() Topology { return c.topo.clone() }
 
-// Reader is the read side of region's cluster. ErrRegionNotAllowed for regions outside the allowed set.
+// Reader is the read side of region's cluster. ErrRegionNotAllowed for regions outside the allowed set. The first
+// use of a region dials it, which with credentials waits up to DialTimeout for the cluster to authenticate the
+// client; an unreachable cluster then fails the call, and the next one dials again.
 func (c *Clusters) Reader(region string) (Reader, error) {
-	cli, err := c.client(region)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*DialTimeout)
+	defer cancel()
+	cli, err := c.client(ctx, region)
 	if err != nil {
 		return nil, err
 	}
@@ -141,8 +179,10 @@ func (c *Clusters) Close() error {
 	return errors.Join(errs...)
 }
 
-// client is the raw client of region's cluster, dialled on first use. Only Term writes through it.
-func (c *Clusters) client(region string) (*clientv3.Client, error) {
+// client is the raw client of region's cluster, dialled on first use. Only Term writes through it. The dial runs on
+// its own goroutine: a caller waits for it only as long as ctx allows, and a dial in progress is shared by every
+// caller of that region.
+func (c *Clusters) client(ctx context.Context, region string) (*clientv3.Client, error) {
 	r, ok := c.topo.Regions[region]
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownRegion, region)
@@ -151,22 +191,49 @@ func (c *Clusters) client(region string) (*clientv3.Client, error) {
 		return nil, fmt.Errorf("%w: %s", ErrRegionNotAllowed, region)
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.closed {
+		c.mu.Unlock()
 		return nil, ErrClustersClosed
 	}
 	if cli, ok := c.clients[region]; ok {
+		c.mu.Unlock()
 		return cli, nil
 	}
-	cli, err := c.dial(region, slices.Clone(r.Endpoints))
-	if err != nil {
-		return nil, err
+	d, ok := c.dialing[region]
+	if !ok {
+		d = &dialing{done: make(chan struct{})}
+		c.dialing[region] = d
+		go c.dialRegion(region, slices.Clone(r.Endpoints), d)
 	}
-	if cli == nil {
-		return nil, fmt.Errorf("state: dial %s returned no client", region)
+	c.mu.Unlock()
+	select {
+	case <-d.done:
+		return d.cli, d.err
+	case <-ctx.Done():
+		return nil, fmt.Errorf("state: waiting for the dial of %s: %w", region, ctx.Err())
 	}
-	c.clients[region] = cli
-	return cli, nil
+}
+
+// dialRegion dials region and publishes the outcome: a client is kept unless Clusters closed meanwhile, an error is
+// handed to the callers waiting now and then forgotten.
+func (c *Clusters) dialRegion(region string, endpoints []string, d *dialing) {
+	cli, err := c.dial(region, endpoints)
+	if err == nil && cli == nil {
+		err = fmt.Errorf("state: dial %s returned no client", region)
+	}
+	c.mu.Lock()
+	delete(c.dialing, region)
+	switch {
+	case err != nil:
+	case c.closed:
+		cli.Close()
+		cli, err = nil, ErrClustersClosed
+	default:
+		c.clients[region] = cli
+	}
+	c.mu.Unlock()
+	d.cli, d.err = cli, err
+	close(d.done)
 }
 
 // reader hides the client behind Reader, so a type assertion cannot recover it.

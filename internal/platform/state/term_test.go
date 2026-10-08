@@ -91,7 +91,7 @@ func TestCampaignOneLeader(t *testing.T) {
 	}
 	results := make(chan result, 2)
 	for _, id := range []string{"a", "b"} {
-		cl := newClusters(t, topo, nil, nil) // one process each
+		cl := newClusters(t, topo, nil, as(t, topo, "md-tw-1")) // one process each
 		go func() {
 			term, err := Campaign(ctx, cl, PlaneMD, "md-tw-1", TermOptions{ID: id})
 			results <- result{term, err}
@@ -134,7 +134,7 @@ func TestEpochPersists(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
 	raw := s.Client(t)
-	cl := newClusters(t, topo, nil, nil)
+	cl := newClusters(t, topo, nil, as(t, topo, "td-tw-1"))
 	for want := int64(1); want <= 3; want++ {
 		term := campaign(t, ctx, cl, PlaneTD, "td-tw-1", TermOptions{})
 		if term.Epoch() != want || term.Plane() != PlaneTD || term.Instance() != "td-tw-1" {
@@ -165,11 +165,11 @@ func TestCampaignCancelled(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "md-tw-1")
 	raw := s.Client(t)
-	campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{ID: "leader"})
+	campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "md-tw-1")), PlaneMD, "md-tw-1", TermOptions{ID: "leader"})
 
 	cctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
-	if _, err := Campaign(cctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{ID: "late"}); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := Campaign(cctx, newClusters(t, topo, nil, as(t, topo, "md-tw-1")), PlaneMD, "md-tw-1", TermOptions{ID: "late"}); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Campaign past its deadline: %v", err)
 	}
 	// The losing candidate withdrew: only the leader's key is left.
@@ -188,7 +188,7 @@ func TestCloseLeaseAlreadyGone(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "md-tw-1")
 	raw := s.Client(t)
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "md-tw-1")), PlaneMD, "md-tw-1", TermOptions{})
 	if _, err := raw.Revoke(ctx, term.session.Lease()); err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestBumpEpochLeaderLost(t *testing.T) {
 			t.Error(err)
 		}
 	}}
-	if _, err := Campaign(ctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{ID: "a", hooks: hooks}); !errors.Is(err, ErrSessionLost) {
+	if _, err := Campaign(ctx, newClusters(t, topo, nil, as(t, topo, "md-tw-1")), PlaneMD, "md-tw-1", TermOptions{ID: "a", hooks: hooks}); !errors.Is(err, ErrSessionLost) {
 		t.Fatalf("Campaign after losing the election key: %v, want ErrSessionLost", err)
 	}
 	for _, key := range []string{EpochKey(PlaneMD, "md-tw-1"), WriterKey(PlaneMD, "md-tw-1")} {
@@ -235,7 +235,7 @@ func TestBumpEpochRetry(t *testing.T) {
 			}
 		}
 	}}
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{hooks: hooks})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "md-tw-1")), PlaneMD, "md-tw-1", TermOptions{hooks: hooks})
 	if term.Epoch() != 42 || !slices.Equal(attempts, []int{0, 1}) {
 		t.Fatalf("epoch %d after attempts %v, want 42 after [0 1]", term.Epoch(), attempts)
 	}
@@ -256,7 +256,7 @@ func TestBumpEpochGivesUp(t *testing.T) {
 			t.Error(err)
 		}
 	}}
-	if _, err := Campaign(ctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{ID: "a", hooks: hooks}); !errors.Is(err, ErrSuperseded) {
+	if _, err := Campaign(ctx, newClusters(t, topo, nil, as(t, topo, "md-tw-1")), PlaneMD, "md-tw-1", TermOptions{ID: "a", hooks: hooks}); !errors.Is(err, ErrSuperseded) {
 		t.Fatalf("Campaign with a moving epoch: %v, want ErrSuperseded", err)
 	}
 	if calls != epochAttempts {
@@ -271,7 +271,7 @@ func TestSessionLost(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "sts-tw-1")
 	raw := s.Client(t)
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneSTS, "sts-tw-1", TermOptions{SessionTTL: 2 * time.Second})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "sts-tw-1")), PlaneSTS, "sts-tw-1", TermOptions{SessionTTL: 2 * time.Second})
 	if !running(term) {
 		t.Fatalf("fresh term not running: %v", term.Err())
 	}
@@ -306,7 +306,7 @@ func TestFenceTwoRegions(t *testing.T) {
 	raws := map[string]*clientv3.Client{"tw": tw.Client(t), "jp": jp.Client(t)}
 	key := WriterKey(PlaneCtl, ControllerInstance)
 
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, ControllerInstance)), PlaneCtl, ControllerInstance, TermOptions{})
 	if kvs := mustGet(t, ctx, raws["jp"], key).Kvs; len(kvs) != 0 {
 		t.Fatal("jp's writer key acquired before first use")
 	}
@@ -333,7 +333,7 @@ func TestFenceTwoRegions(t *testing.T) {
 
 	// An MD agent never reaches beyond its own region (D17 rule 2).
 	allowed, _ := AgentRegions(topo, PlaneMD, "md-tw-1")
-	md := campaign(t, ctx, newClusters(t, topo, allowed, nil), PlaneMD, "md-tw-1", TermOptions{})
+	md := campaign(t, ctx, newClusters(t, topo, allowed, as(t, topo, "md-tw-1")), PlaneMD, "md-tw-1", TermOptions{})
 	if _, err := md.Fence(ctx, "jp"); !errors.Is(err, ErrRegionNotAllowed) {
 		t.Fatalf("MD agent Fence(jp): %v", err)
 	}
@@ -348,7 +348,7 @@ func TestFenceSupersededAtAcquisition(t *testing.T) {
 	rawJP := jp.Client(t)
 	key := WriterKey(PlaneCtl, ControllerInstance)
 
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, ControllerInstance)), PlaneCtl, ControllerInstance, TermOptions{})
 	newer := formatEpoch(term.Epoch() + 1)
 	if _, err := rawJP.Put(ctx, key, newer); err != nil {
 		t.Fatal(err)
@@ -377,7 +377,7 @@ func TestFenceEqualEpochNotOurs(t *testing.T) {
 	rawJP := jp.Client(t)
 	key := WriterKey(PlaneCtl, ControllerInstance)
 
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, ControllerInstance)), PlaneCtl, ControllerInstance, TermOptions{})
 	put, err := rawJP.Put(ctx, key, formatEpoch(term.Epoch()))
 	if err != nil {
 		t.Fatal(err)
@@ -400,8 +400,8 @@ func TestFenceInconsistentTopologies(t *testing.T) {
 	inTW := topologyOf(servers, map[string]string{ControllerInstance: "tw"})
 	inJP := topologyOf(servers, map[string]string{ControllerInstance: "jp"})
 
-	a := campaign(t, ctx, newClusters(t, inTW, nil, nil), PlaneCtl, ControllerInstance, TermOptions{ID: "a"})
-	b := campaign(t, ctx, newClusters(t, inJP, nil, nil), PlaneCtl, ControllerInstance, TermOptions{ID: "b"})
+	a := campaign(t, ctx, newClusters(t, inTW, nil, as(t, inTW, ControllerInstance)), PlaneCtl, ControllerInstance, TermOptions{ID: "a"})
+	b := campaign(t, ctx, newClusters(t, inJP, nil, as(t, inJP, ControllerInstance)), PlaneCtl, ControllerInstance, TermOptions{ID: "b"})
 	if a.Epoch() != 1 || b.Epoch() != 1 {
 		t.Fatalf("epochs %d and %d, want 1 and 1", a.Epoch(), b.Epoch())
 	}
@@ -429,7 +429,7 @@ func TestFenceLostReply(t *testing.T) {
 		}
 		return resp, err
 	}}
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{hooks: hooks})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, ControllerInstance)), PlaneCtl, ControllerInstance, TermOptions{hooks: hooks})
 
 	if _, err := term.Fence(ctx, "jp"); !errors.Is(err, errLost) {
 		t.Fatalf("first Fence(jp): %v, want the lost reply", err)
@@ -463,7 +463,7 @@ func TestFenceOlderWriter(t *testing.T) {
 	if _, err := rawJP.Put(ctx, key, formatEpoch(0)); err != nil {
 		t.Fatal(err)
 	}
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, ControllerInstance)), PlaneCtl, ControllerInstance, TermOptions{})
 	r, err := term.Fence(ctx, "jp")
 	if err != nil {
 		t.Fatal(err)
@@ -489,7 +489,7 @@ func TestFenceConcurrentFirstUse(t *testing.T) {
 	ctx := testCtx(t)
 	_, jp, topo := twoServers(t)
 	rawJP := jp.Client(t)
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, ControllerInstance)), PlaneCtl, ControllerInstance, TermOptions{})
 
 	const n = 16
 	revs := make(chan int64, n)
@@ -589,7 +589,16 @@ func TestFenceWaitHonoursCtx(t *testing.T) {
 		Regions:   map[string]Region{"tw": {Endpoints: tw.Endpoints()}, "jp": {Endpoints: []string{unusedEndpoint(t)}}},
 		Instances: twoRegions().Instances,
 	}
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{})
+	// Nothing listens in jp: a dial there without credentials returns at once and the client never gets ready, which
+	// is what this test needs. An authenticating dial would fail after DialTimeout instead.
+	authed := as(t, topo, ControllerInstance)
+	dial := func(region string, eps []string) (*clientv3.Client, error) {
+		if region == "jp" {
+			return DefaultDial(region, eps)
+		}
+		return authed(region, eps)
+	}
+	term := campaign(t, ctx, newClusters(t, topo, nil, dial), PlaneCtl, ControllerInstance, TermOptions{})
 
 	stuckCtx, cancelStuck := context.WithCancel(ctx)
 	defer cancelStuck()

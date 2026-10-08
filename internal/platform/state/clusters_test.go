@@ -31,19 +31,25 @@ func topologyOf(servers map[string]*etcdtest.Server, instances map[string]string
 	return t
 }
 
-// dialCounter is a DialFunc that counts dials per region.
+// dialCounter is a DialFunc that counts dials per region, then dials with inner (DefaultDial if nil).
 type dialCounter struct {
-	mu sync.Mutex
-	n  map[string]int
+	inner DialFunc
+	mu    sync.Mutex
+	n     map[string]int
 }
 
-func newDialCounter() *dialCounter { return &dialCounter{n: map[string]int{}} }
+func newDialCounter(inner DialFunc) *dialCounter {
+	if inner == nil {
+		inner = DefaultDial
+	}
+	return &dialCounter{inner: inner, n: map[string]int{}}
+}
 
 func (d *dialCounter) dial(region string, eps []string) (*clientv3.Client, error) {
 	d.mu.Lock()
 	d.n[region]++
 	d.mu.Unlock()
-	return DefaultDial(region, eps)
+	return d.inner(region, eps)
 }
 
 func (d *dialCounter) count(region string) int {
@@ -74,7 +80,7 @@ func mustGet(t *testing.T, ctx context.Context, c *clientv3.Client, key string) 
 // No etcd needed: nothing is dialled until a region is used.
 func TestClustersAllowedAndLazy(t *testing.T) {
 	topo := twoRegions()
-	d := newDialCounter()
+	d := newDialCounter(nil) // nothing listens: a dial without credentials does not wait
 	allowed, err := AgentRegions(topo, PlaneMD, "md-tw-1")
 	if err != nil {
 		t.Fatal(err)
@@ -139,14 +145,14 @@ func TestClustersSingleRegion(t *testing.T) {
 	ctx := testCtx(t)
 	s := etcdtest.Start(t)
 	topo := topologyOf(map[string]*etcdtest.Server{"tw": s}, map[string]string{"sts-tw-1": "tw", "md-tw-1": "tw"})
-	cl := newClusters(t, topo, nil, nil)
+	cl := newClusters(t, topo, nil, as(t, topo, "md-tw-1"))
 
 	key := AgentKey(PlaneMD, "md-tw-1")
 	region, err := cl.Topology().RegionOfKey(key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cli, err := cl.client(region)
+	cli, err := cl.client(ctx, region)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +191,7 @@ func TestClustersTwoRegions(t *testing.T) {
 	rawTW, rawJP := tw.Client(t), jp.Client(t)
 
 	// The controller, at home in tw: every region allowed (D17 rule 2).
-	d := newDialCounter()
+	d := newDialCounter(as(t, topo, ControllerInstance))
 	allowed, err := AgentRegions(topo, PlaneCtl, ControllerInstance)
 	if err != nil || allowed != nil {
 		t.Fatalf("controller's regions: %v, %v; want all", allowed, err)
@@ -198,7 +204,7 @@ func TestClustersTwoRegions(t *testing.T) {
 	if err != nil || region != "jp" {
 		t.Fatalf("RegionOfKey = %s, %v", region, err)
 	}
-	cli, err := cl.client(region)
+	cli, err := cl.client(ctx, region)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +245,7 @@ func TestClustersTwoRegions(t *testing.T) {
 	}
 
 	// MD agent in tw: only tw.
-	md := newDialCounter()
+	md := newDialCounter(as(t, topo, "md-tw-1"))
 	allowed, err = AgentRegions(topo, PlaneMD, "md-tw-1")
 	if err != nil {
 		t.Fatal(err)

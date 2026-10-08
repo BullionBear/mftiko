@@ -49,7 +49,7 @@ func TestPutRecord(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "md-tw-1")
 	raw := s.Client(t)
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "md-tw-1")), PlaneMD, "md-tw-1", TermOptions{})
 	record, worker, ack := mdKeys("md-tw-1")
 
 	if err := term.PutRecord(ctx, "record"); err != nil {
@@ -95,7 +95,7 @@ func TestRecordGoesWithTheAgent(t *testing.T) {
 	proxy := etcdtest.NewProxy(t, s)
 	raw := s.Client(t)
 	topo := Topology{Regions: map[string]Region{"tw": {Endpoints: proxy.Endpoints()}}, Instances: map[string]string{"td-tw-1": "tw"}}
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{SessionTTL: 2 * time.Second})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{SessionTTL: 2 * time.Second})
 	record := AgentKey(PlaneTD, "td-tw-1")
 	worker := WorkerStatusKey(PlaneTD, "td-tw-1", WorkerHash("td/42"))
 	ack := TDAckKey("td-tw-1", "a1b2c3", 42)
@@ -136,7 +136,7 @@ func TestRecordHandover(t *testing.T) {
 	raw := s.Client(t)
 	record, _, ack := mdKeys("md-tw-1")
 
-	a := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{ID: "a"})
+	a := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "md-tw-1")), PlaneMD, "md-tw-1", TermOptions{ID: "a"})
 	if err := a.PutRecord(ctx, fmt.Sprint(a.Epoch())); err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestRecordHandover(t *testing.T) {
 	if _, err := raw.Delete(ctx, a.election.Key()); err != nil { // as in TestSupersededByNewLeader
 		t.Fatal(err)
 	}
-	b := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneMD, "md-tw-1", TermOptions{ID: "b"})
+	b := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "md-tw-1")), PlaneMD, "md-tw-1", TermOptions{ID: "b"})
 	if err := b.PutRecord(ctx, fmt.Sprint(b.Epoch())); err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestRecordGoesWithSupersededTerm(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "sts-tw-1")
 	raw := s.Client(t)
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneSTS, "sts-tw-1", TermOptions{SessionTTL: 2 * time.Second})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "sts-tw-1")), PlaneSTS, "sts-tw-1", TermOptions{SessionTTL: 2 * time.Second})
 	record := AgentKey(PlaneSTS, "sts-tw-1")
 	if err := term.PutRecord(ctx, "record"); err != nil {
 		t.Fatal(err)
@@ -191,7 +191,7 @@ func TestPutRecordLeaseGone(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
 	raw := s.Client(t)
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneTD, "td-tw-1", TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{})
 	if _, err := raw.Revoke(ctx, term.session.Lease()); err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestPutRecordLeaseGone(t *testing.T) {
 func TestPutRecordController(t *testing.T) {
 	ctx := testCtx(t)
 	tw, jp, topo := twoServers(t)
-	term := campaign(t, ctx, newClusters(t, topo, nil, nil), PlaneCtl, ControllerInstance, TermOptions{})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, ControllerInstance)), PlaneCtl, ControllerInstance, TermOptions{})
 	if err := term.PutRecord(ctx, "record"); err != nil {
 		t.Fatal(err)
 	}
