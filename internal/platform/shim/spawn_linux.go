@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"syscall"
 
@@ -25,6 +26,26 @@ type Worker struct {
 
 	done   chan struct{}
 	status syscall.WaitStatus
+
+	// mu is held to reap and to signal. Signal sends only while the worker is not reaped, and the reaper reaps only
+	// under mu: a signal therefore always goes to a group whose leader still holds its pid, the group's id, which
+	// no other process can have been given.
+	mu     sync.Mutex
+	reaped bool
+}
+
+// ErrExited is a signal to a worker that has already been reaped.
+var ErrExited = errors.New("shim: the worker has exited")
+
+// Signal sends sig to the worker's process group (PROTOCOL §4.3): the worker and whatever it started that stayed in
+// its group. Once the worker has been reaped it sends nothing and returns ErrExited.
+func (w *Worker) Signal(sig syscall.Signal) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.reaped {
+		return ErrExited
+	}
+	return unix.Kill(-w.Pgid, sig)
 }
 
 // Done is closed once the worker has been reaped.
@@ -82,7 +103,7 @@ func cloexecFrom(first int) error {
 
 var spawned atomic.Bool
 
-// Spawn execs the worker of l (PROTOCOL §4.6 step 4). stdout and stderr become its fd 1 and 2; nil is /dev/null.
+// Spawn execs the worker of l (PROTOCOL §4.6 step 5). stdout and stderr become its fd 1 and 2; nil is /dev/null.
 //
 // From then on Spawn's goroutine reaps every child of the process, not only the worker, so a shim spawns once and
 // starts no other child: one that did would be reaped from under it. Each grandchild reaped goes to reaped, which
@@ -152,23 +173,51 @@ func Spawn(l *shimv1.Launch, stdout, stderr *os.File, reaped func(Reaped)) (*Wor
 }
 
 // reap waits for every child of the process until none is left. A subreaper only inherits orphans from below it,
-// so once the worker and every grandchild are reaped no child can appear again.
+// so once the worker and every grandchild are reaped no child can appear again; and no child is gone before the
+// worker is reaped, because the worker is one.
+//
+// It waits without reaping (waitid with WNOWAIT), then reaps what has ended under w.mu, so that the worker is never
+// reaped while Signal is sending to its group.
 func reap(w *Worker, reaped func(Reaped)) {
 	for {
-		var ws syscall.WaitStatus
-		pid, err := syscall.Wait4(-1, &ws, 0, nil)
+		var info unix.Siginfo
+		err := unix.Waitid(unix.P_ALL, 0, &info, unix.WEXITED|unix.WNOWAIT, nil)
 		switch {
 		case errors.Is(err, syscall.EINTR):
 			continue
 		case errors.Is(err, syscall.ECHILD):
-			return // the worker was reaped before: it was a child
+			return
 		case err != nil:
-			panic(fmt.Sprintf("shim: wait4: %v", err)) // EINVAL or EFAULT: a bug here
+			panic(fmt.Sprintf("shim: waitid: %v", err)) // EINVAL or EFAULT: a bug here
+		}
+		for _, r := range reapEnded(w) {
+			if reaped != nil {
+				reaped(r)
+			}
+		}
+	}
+}
+
+// reapEnded reaps, under w.mu, every child that has ended, and returns those other than the worker.
+func reapEnded(w *Worker) []Reaped {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	var others []Reaped
+	for {
+		var ws syscall.WaitStatus
+		pid, err := syscall.Wait4(-1, &ws, syscall.WNOHANG, nil)
+		switch {
+		case errors.Is(err, syscall.EINTR):
+			continue
+		case errors.Is(err, syscall.ECHILD), err == nil && pid == 0:
+			return others
+		case err != nil:
+			panic(fmt.Sprintf("shim: wait4: %v", err))
 		case pid == w.Pid:
-			w.status = ws
+			w.status, w.reaped = ws, true
 			close(w.done)
-		case reaped != nil:
-			reaped(Reaped{Pid: pid, Status: ws})
+		default:
+			others = append(others, Reaped{Pid: pid, Status: ws})
 		}
 	}
 }
