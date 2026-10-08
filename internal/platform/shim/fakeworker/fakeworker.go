@@ -93,10 +93,10 @@ type Script struct {
 	ReportMS int `json:"report_ms,omitempty"` // Report interval once running; 0 = no Reports
 	OnStopMS int `json:"on_stop_ms,omitempty"`
 
-	IgnoreSIGTERM bool `json:"ignore_sigterm,omitempty"`
-	IgnoreEOF     bool `json:"ignore_eof,omitempty"`  // keep running when fd 3 ends, so only Pdeathsig kills it
-	Grandchild    bool `json:"grandchild,omitempty"`  // start a process that outlives the worker
-	FloodBytes    int  `json:"flood_bytes,omitempty"` // write this much to stdout and to stderr once running
+	IgnoreSIGTERM bool `json:"ignore_sigterm,omitempty"` // by default SIGTERM is a Stop, as the SDK makes it
+	IgnoreEOF     bool `json:"ignore_eof,omitempty"`     // keep running when fd 3 ends, so only Pdeathsig kills it
+	Grandchild    bool `json:"grandchild,omitempty"`     // start a process that outlives the worker
+	FloodBytes    int  `json:"flood_bytes,omitempty"`    // write this much to stdout and to stderr once running
 }
 
 // Env is the environment that makes a re-executed test binary this fake: append it to the shim's spawn
@@ -179,6 +179,7 @@ type worker struct {
 	out     *frame.Writer
 	down    chan *workerv1.WorkerDown // closed at EOF
 	running chan struct{}             // closed once Start succeeded
+	sigterm chan os.Signal            // nil when SIGTERM is ignored
 	beats   int
 }
 
@@ -203,14 +204,10 @@ func run() int {
 
 	if w.s.IgnoreSIGTERM {
 		signal.Ignore(syscall.SIGTERM)
+	} else { // SIGTERM is a Stop (PROTOCOL §9.2 rule 6)
+		w.sigterm = make(chan os.Signal, 1)
+		signal.Notify(w.sigterm, syscall.SIGTERM)
 	}
-	if w.s.Grandchild {
-		w.startGrandchild()
-	}
-	if w.s.Exit != "" && w.s.ExitAt == AtHello {
-		return w.end()
-	}
-
 	fd := 3
 	if v := os.Getenv("MFTIKO_CTL_FD"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
@@ -222,7 +219,14 @@ func run() int {
 		fmt.Fprintln(os.Stderr, "fakeworker: no fd", fd)
 		return 1
 	}
+	syscall.CloseOnExec(fd) // the grandchild must not hold the control socket (PROTOCOL §9.2 rule 1)
+	if w.s.Grandchild {
+		w.startGrandchild()
+	}
 	w.out = frame.NewWriter(ctl)
+	if w.s.Exit != "" && w.s.ExitAt == AtHello { // after w.out: end may send Exiting and Stopped
+		return w.end()
+	}
 	go w.read(ctl)
 
 	kind, release := w.s.Kind, w.s.Release
@@ -284,6 +288,9 @@ func (w *worker) loop() int {
 			}
 		case <-exitTimer:
 			return w.end()
+		case <-w.sigterm:
+			w.record(Entry{Event: "sigterm"})
+			return w.finish(commonv1.Outcome_OUTCOME_DONE, "SIGTERM", started, CodeDone)
 		case <-reports:
 			w.send(&workerv1.WorkerUp{Msg: &workerv1.WorkerUp_Report{Report: &workerv1.Report{
 				Contract: Contract, Payload: []byte(time.Now().Format(time.RFC3339Nano)),

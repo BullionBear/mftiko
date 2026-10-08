@@ -8,6 +8,27 @@ import "mftiko/worker/v1/worker.proto";
 
 option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/shim/v1;shimv1";
 
+// ---------- agent 啟動 shim（§4.6） ----------
+
+// agent exec shim 之後寫進它 stdin 的唯一一個 frame。
+message Launch {
+  string plane = 1;
+  string agent_instance = 2;
+  mftiko.common.v1.WorkerRef worker = 3;
+  string spec_hash = 4;     // agent 給的，shim 不解讀，Attached 原樣帶回
+  string path = 5;          // worker 的執行檔，絕對路徑
+  repeated string args = 6; // argv[1:]；argv[0] 是 path
+  repeated string env = 7;  // KEY=VALUE（§5.4）；shim 自己加上 MFTIKO_CTL_FD=3
+  string dir = 8;           // 工作目錄；空字串表示沿用 shim 的
+  Credential cred = 9;      // 沒有就沿用 shim 的身分
+}
+
+message Credential {
+  uint32 uid = 1;
+  uint32 gid = 2;
+  repeated uint32 groups = 3; // 附加群組；空的表示沒有
+}
+
 // ---------- agent → shim ----------
 
 message ShimRequest {
