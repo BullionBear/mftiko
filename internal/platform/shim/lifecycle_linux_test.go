@@ -48,8 +48,21 @@ func (a *agent) started(epoch int64) {
 	a.waitPhase(epoch, shimv1.Phase_PHASE_STARTED)
 }
 
-// downs is what the fake worker received, in order.
+// downs is what the fake worker received, in order, but for Controller, which comes and goes with the agent's
+// connection: see downsAll.
 func (p *shimProc) downs() []*workerv1.WorkerDown {
+	p.t.Helper()
+	var out []*workerv1.WorkerDown
+	for _, m := range p.downsAll() {
+		if m.GetController() == nil {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// downsAll is everything the fake worker received, in order.
+func (p *shimProc) downsAll() []*workerv1.WorkerDown {
 	p.t.Helper()
 	entries, err := fakeworker.ReadJournal(p.journal)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -33,6 +34,7 @@ type agent struct {
 	w      *frame.Writer
 	r      *frame.Reader
 	nextID uint64
+	events []*shimv1.Event // events read while waiting for something else, oldest first
 }
 
 // dial connects to the shim's socket, waiting for it to appear.
@@ -63,8 +65,8 @@ func (a *agent) send(req *shimv1.ShimRequest) uint64 {
 	return req.Id
 }
 
-// next reads the next message from the shim.
-func (a *agent) next() *shimv1.ShimMessage {
+// read reads the next message from the shim, whatever it is.
+func (a *agent) read() *shimv1.ShimMessage {
 	a.t.Helper()
 	a.c.SetReadDeadline(time.Now().Add(10 * time.Second)) //nolint:errcheck
 	m := &shimv1.ShimMessage{}
@@ -74,7 +76,35 @@ func (a *agent) next() *shimv1.ShimMessage {
 	return m
 }
 
-// call sends req and returns the response to it, which must be the next message.
+// next reads the next message that is not an event, setting events aside, as an agent that streams them would.
+func (a *agent) next() *shimv1.ShimMessage {
+	a.t.Helper()
+	for {
+		m := a.read()
+		if ev := m.GetEvent(); ev != nil {
+			a.events = append(a.events, ev)
+			continue
+		}
+		return m
+	}
+}
+
+// event returns the next event: one set aside, else the next message, which must be one.
+func (a *agent) event() *shimv1.Event {
+	a.t.Helper()
+	if len(a.events) > 0 {
+		ev := a.events[0]
+		a.events = a.events[1:]
+		return ev
+	}
+	m := a.read()
+	if m.GetEvent() == nil {
+		a.t.Fatalf("want an event, got %v", m)
+	}
+	return m.GetEvent()
+}
+
+// call sends req and returns the response to it, which must be the next message other than an event.
 func (a *agent) call(req *shimv1.ShimRequest) *shimv1.Response {
 	a.t.Helper()
 	id := a.send(req)
@@ -154,6 +184,35 @@ type fakeWorker struct {
 	verbs   []string
 	verbErr error // what Init, Start, Relay, Stop and Release return
 	stops   []fakeStop
+	events  *eventLog // empty unless a test appends to it
+	ctl     []fakeCtl // what Controller was told, in order
+	server  *server   // for tests that deliver as the view does
+}
+
+type fakeCtl struct {
+	attached bool
+	epoch    int64
+}
+
+func (f *fakeWorker) Events() *eventLog {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.events == nil {
+		f.events = newEventLog()
+	}
+	return f.events
+}
+
+func (f *fakeWorker) Controller(attached bool, epoch int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.ctl = append(f.ctl, fakeCtl{attached, epoch})
+}
+
+func (f *fakeWorker) gotCtl() []fakeCtl {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.ctl)
 }
 
 type fakeStop struct {
@@ -242,6 +301,7 @@ func startServerAt(t *testing.T, uid int) (string, *fakeWorker, *server) {
 	}
 	fw := &fakeWorker{}
 	s := newServer(zerolog.New(zerolog.NewTestWriter(t)), ln, l, fw, uid)
+	fw.server = s
 	s.start()
 	t.Cleanup(func() { // close ends every goroutine of the server, and promptly
 		closed := make(chan struct{})
@@ -437,9 +497,10 @@ func TestControllerRequests(t *testing.T) {
 	a := dial(t, path)
 	wantOK(t, a.attach(1, Major))
 	wantErr(t, a.call(&shimv1.ShimRequest{}), CodeUnimplemented) // an op this shim does not know
-	r := a.call(&shimv1.ShimRequest{Op: &shimv1.ShimRequest_Ack{Ack: &shimv1.Ack{Seq: 1}}})
-	wantErr(t, r, CodeUnimplemented)
-	if r.GetError().GetMessage() != "ack is not implemented yet" {
+	wantOK(t, a.call(ackReq(0)))
+	r := a.call(ackReq(1)) // nothing has been sent yet
+	wantErr(t, r, CodeBadRequest)
+	if !strings.Contains(r.GetError().GetMessage(), "not yet sent") {
 		t.Errorf("message %q", r.GetError().GetMessage())
 	}
 	wantErr(t, a.signal(0), CodeBadRequest)
@@ -615,4 +676,157 @@ func TestReleaseEndsServer(t *testing.T) {
 	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("socket left behind: %v", err)
 	}
+}
+
+func ackReq(seq uint64) *shimv1.ShimRequest {
+	return &shimv1.ShimRequest{Op: &shimv1.ShimRequest_Ack{Ack: &shimv1.Ack{Seq: seq}}}
+}
+
+func attachFromReq(epoch int64, resume uint64, majors ...uint32) *shimv1.ShimRequest {
+	r := attachReq(testPlane, testInstance, epoch, majors...)
+	r.GetAttach().ResumeFrom = resume
+	return r
+}
+
+// The agent's end of the stream: after Attached, the latest Report, then the kept events from resume_from, then
+// each new one as it is appended. Nothing is missed or sent twice across the replay and the live stream.
+func TestStreamReplayThenLive(t *testing.T) {
+	path, fw := startServer(t, os.Geteuid())
+	log := fw.Events()
+	appendStages(log, 5)
+	log.SetReport(&shimv1.Event{Kind: &shimv1.Event_Report{Report: &workerv1.Report{Payload: []byte("r1")}}})
+
+	a := dial(t, path)
+	wantOK(t, a.call(attachFromReq(1, 3, Major)))
+	if r := a.event(); r.GetReport() == nil || r.GetSeq() != 0 {
+		t.Fatalf("first after Attached: %v, want the Report", r)
+	}
+	for want := uint64(3); want <= 5; want++ {
+		if ev := a.event(); ev.GetSeq() != want || ev.GetGap() {
+			t.Fatalf("replay: %v, want seq %d", ev, want)
+		}
+	}
+	appendStages(log, 2) // live: 6, 7
+	for want := uint64(6); want <= 7; want++ {
+		if ev := a.event(); ev.GetSeq() != want {
+			t.Fatalf("live: %v, want seq %d", ev, want)
+		}
+	}
+	// What is not kept goes straight to the controller.
+	if !fw.deliver(t, a) {
+		t.Fatal("no controller to deliver to")
+	}
+}
+
+// deliver sends a Beat through the server the way the view does, and checks the agent got it.
+func (f *fakeWorker) deliver(t *testing.T, a *agent) bool {
+	t.Helper()
+	srv := f.server
+	if srv == nil {
+		t.Fatal("no server")
+	}
+	ok := srv.Deliver(f.Events().Transient(&shimv1.Event{Kind: &shimv1.Event_Beat{Beat: &workerv1.Beat{Seq: 9}}}))
+	if ok && a != nil {
+		if ev := a.event(); ev.GetBeat().GetSeq() != 9 || ev.GetSeq() != 0 {
+			t.Fatalf("delivered %v", ev)
+		}
+	}
+	return ok
+}
+
+// A new controller streams from its own resume_from; the one it preempted gets nothing more. A controller with no
+// common major gets no events at all, and nothing is delivered while it controls.
+func TestStreamControllers(t *testing.T) {
+	path, fw := startServer(t, os.Geteuid())
+	log := fw.Events()
+	appendStages(log, 3)
+
+	a := dial(t, path)
+	wantOK(t, a.call(attachFromReq(1, 0, Major)))
+	for want := uint64(1); want <= 3; want++ {
+		if ev := a.event(); ev.GetSeq() != want {
+			t.Fatalf("a: %v", ev)
+		}
+	}
+	b := dial(t, path)
+	wantOK(t, b.call(attachFromReq(2, 2, Major)))
+	a.preempted(2)
+	appendStages(log, 1) // 4
+	for want := uint64(2); want <= 4; want++ {
+		if ev := b.event(); ev.GetSeq() != want {
+			t.Fatalf("b: %v, want %d", ev, want)
+		}
+	}
+
+	c := dial(t, path)
+	wantOK(t, c.call(attachFromReq(3, 0, Major+1))) // no common major
+	b.preempted(3)
+	appendStages(log, 1)
+	if fw.deliver(t, nil) {
+		t.Fatal("delivered to a controller with no common major")
+	}
+	wantOK(t, c.signal(syscall.SIGTERM)) // the next message is the response: no event came before it
+	if len(c.events) != 0 {
+		t.Fatalf("events to a controller with no common major: %v", c.events)
+	}
+}
+
+// The worker is told when an agent that takes its Relay comes and goes, and when the epoch changes; not when the
+// same controller attaches again, nor for a controller with no common major.
+func TestControllerToWorker(t *testing.T) {
+	path, fw := startServer(t, os.Geteuid())
+	a := dial(t, path)
+	wantOK(t, a.attach(1, Major))
+	wantOK(t, a.attach(1, Major))
+	b := dial(t, path)
+	wantOK(t, b.attach(2, Major))
+	a.preempted(2)
+	b.c.Close()
+	waitFor(t, func() bool { return len(fw.gotCtl()) >= 3 })
+	c := dial(t, path)
+	wantOK(t, c.attach(3, Major+1))
+	time.Sleep(50 * time.Millisecond)
+	want := []fakeCtl{{true, 1}, {true, 2}, {false, 2}}
+	if got := fw.gotCtl(); !slices.Equal(got, want) {
+		t.Fatalf("told %v, want %v", got, want)
+	}
+}
+
+func waitFor(t *testing.T, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatal("timed out")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// Ack frees what the controller has, through C3.
+func TestAckThroughC3(t *testing.T) {
+	path, fw := startServer(t, os.Geteuid())
+	appendStages(fw.Events(), 4)
+	a := dial(t, path)
+	wantOK(t, a.call(attachFromReq(1, 0, Major)))
+	wantOK(t, a.call(ackReq(3)))
+	if oldest, _ := fw.Events().Bounds(); oldest != 4 {
+		t.Fatalf("oldest %d after ack 3", oldest)
+	}
+	wantErr(t, a.call(ackReq(9)), CodeBadRequest)
+}
+
+// An agent that has stopped reading (it is exiting) still has what it sent run: a Stop sent last of all reaches the
+// worker even though the shim can no longer write to it.
+func TestRequestsRunAfterAgentStopsReading(t *testing.T) {
+	path, fw := startServer(t, os.Geteuid())
+	a := dial(t, path)
+	wantOK(t, a.call(attachFromReq(1, 0, Major)))
+	if err := a.c.(*net.UnixConn).CloseRead(); err != nil {
+		t.Fatal(err)
+	}
+	appendStages(fw.Events(), 3) // the shim writes them, and the write fails
+	time.Sleep(50 * time.Millisecond)
+	a.send(stopReq(100, 100))
+	waitFor(t, func() bool { return slices.Contains(fw.gotVerbs(), "stop") })
 }
