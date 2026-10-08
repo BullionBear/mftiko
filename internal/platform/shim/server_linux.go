@@ -16,6 +16,7 @@ import (
 
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	shimv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/shim/v1"
+	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
 	"github.com/BullionBear/mftiko/contract/wire/frame"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 )
@@ -37,9 +38,18 @@ var supportedMajors = []uint32{Major}
 type controlled interface {
 	// Signal sends sig to the worker's process group; ErrExited once the worker has been reaped.
 	Signal(sig syscall.Signal) error
-	// Attached is what Attached says of the worker now: its state, last stage, pid, pgid, start time, Hello and
-	// last Beat. The server fills in the rest.
+	// Attached is what Attached says of the worker now: its state, phase, last stage, pid, pgid, start time, Hello
+	// and last Beat. The server fills in the rest.
 	Attached() *shimv1.Attached
+	// Init, Start and Relay pass the request to the worker; Init and Start only in the phase they need, else a
+	// *stageError. ErrWorkerBusy when the worker is not reading, ErrExited once it has been reaped.
+	Init(*workerv1.Init) error
+	Start(*workerv1.Start) error
+	Relay(*workerv1.Relay) error
+	// Stop starts stopping the worker; first is false when a Stop was already under way, which keeps its timers.
+	Stop(reason string, grace, killAfter time.Duration) (first bool, err error)
+	// Release is nil once the worker has been reaped, ErrRunning before.
+	Release() error
 }
 
 // server is the shim's C3 server (PROTOCOL §4.1, §4.2). It accepts any number of connections from the agent's uid,
@@ -63,6 +73,9 @@ type server struct {
 	epoch  int64      // the largest epoch attached so far, 0 before the first. Kept when its agent goes (§4.2)
 	nextID uint64
 	closed bool
+
+	released     chan struct{} // closed on the first Release accepted: the shim then ends (§4.3)
+	releasedOnce sync.Once
 }
 
 // agentConn is one connection from an agent. Its fields other than id and nc are guarded by server.mu.
@@ -77,19 +90,24 @@ type agentConn struct {
 }
 
 func newServer(log zerolog.Logger, ln *net.UnixListener, l *shimv1.Launch, w controlled, uid int) *server {
-	return &server{log: log, ln: ln, launch: l, worker: w, uid: uid, conns: map[*agentConn]struct{}{}}
+	return &server{log: log, ln: ln, launch: l, worker: w, uid: uid, conns: map[*agentConn]struct{}{},
+		released: make(chan struct{})}
 }
+
+// Released is closed once the controller's Release has been accepted: the shim closes the server and ends.
+func (s *server) Released() <-chan struct{} { return s.released }
 
 // start accepts connections until close.
 func (s *server) start() { s.wg.Go(s.serve) }
 
 // close stops accepting, closes every connection and the listener, which removes the socket, and waits for the
-// server's goroutines.
+// server's goroutines. What is queued for a connection is written first, the response to a Release among it; a
+// connection that does not take it ends after writeTimeout.
 func (s *server) close() {
 	s.mu.Lock()
 	s.closed = true
 	for c := range s.conns {
-		s.closeLocked(c, false)
+		s.closeLocked(c, true)
 	}
 	s.mu.Unlock()
 	s.ln.Close()
@@ -243,8 +261,78 @@ func (s *server) respondLocked(c *agentConn, req *shimv1.ShimRequest) *shimv1.Re
 	if c.major == 0 {
 		return fail(CodeNoCommonMajor, "no common shim major: only Signal")
 	}
-	// Init, Start, Stop, Relay and Release come with E1-11, Ack with E1-12.
+	switch op := req.GetOp().(type) {
+	case *shimv1.ShimRequest_Init:
+		return s.lifecycle(c, "init", s.worker.Init(op.Init))
+	case *shimv1.ShimRequest_Start:
+		return s.lifecycle(c, "start", s.worker.Start(op.Start))
+	case *shimv1.ShimRequest_Relay:
+		return s.lifecycle(c, "relay", s.worker.Relay(op.Relay))
+	case *shimv1.ShimRequest_Stop:
+		return s.stop(c, op.Stop)
+	case *shimv1.ShimRequest_Release:
+		return s.releaseLocked(c)
+	}
+	// Ack comes with E1-12.
 	return fail(CodeUnimplemented, opName(req)+" is not implemented yet")
+}
+
+// lifecycle answers a request passed to the worker.
+func (s *server) lifecycle(c *agentConn, verb string, err error) *shimv1.Response {
+	if r := failure(err); r != nil {
+		s.log.Info().Uint64("conn", c.id).Str("verb", verb).Str("code", r.GetError().GetCode()).
+			Str("error", r.GetError().GetMessage()).Msg("lifecycle request refused")
+		return r
+	}
+	if verb != "relay" { // a Relay is C5 traffic, too much to log
+		s.log.Info().Uint64("conn", c.id).Str("verb", verb).Msg("passed to the worker")
+	}
+	return &shimv1.Response{Ok: true}
+}
+
+// stop answers Stop. The timers are the shim's from here on: the connection may go, and they still run (§4.3).
+func (s *server) stop(c *agentConn, st *shimv1.Stop) *shimv1.Response {
+	grace := time.Duration(st.GetGraceMs()) * time.Millisecond
+	killAfter := time.Duration(st.GetKillAfterMs()) * time.Millisecond
+	first, err := s.worker.Stop(st.GetReason(), grace, killAfter)
+	if r := failure(err); r != nil {
+		return r
+	}
+	if !first {
+		s.log.Info().Uint64("conn", c.id).Msg("stop: already stopping; the first Stop's timers stand")
+	}
+	return &shimv1.Response{Ok: true}
+}
+
+// releaseLocked answers Release: accepted once the worker has been reaped, after which the shim ends.
+func (s *server) releaseLocked(c *agentConn) *shimv1.Response {
+	if r := failure(s.worker.Release()); r != nil {
+		return r
+	}
+	s.log.Info().Uint64("conn", c.id).Msg("released")
+	s.releasedOnce.Do(func() { close(s.released) })
+	return &shimv1.Response{Ok: true}
+}
+
+// failure is the response to a request the worker refused, nil when err is nil.
+func failure(err error) *shimv1.Response {
+	var stage *stageError
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, ErrExited):
+		return fail(CodeExited, "the worker has exited")
+	case errors.Is(err, ErrRunning):
+		return fail(CodeRunning, "the worker has not exited")
+	case errors.Is(err, ErrWorkerBusy):
+		return fail(CodeWorkerBusy, err.Error())
+	case errors.As(err, &stage):
+		r := fail(CodeBadStage, err.Error())
+		r.Error.Details = map[string]string{"phase": phaseName(stage.phase)}
+		return r
+	default:
+		return fail(CodeUnimplemented, err.Error()) // not reached: the view returns only the errors above
+	}
 }
 
 // attachLocked is PROTOCOL §4.2 steps 2-5: a refused Attach changes nothing; an accepted one makes c the

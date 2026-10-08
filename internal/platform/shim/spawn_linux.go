@@ -104,6 +104,7 @@ func cloexecFrom(first int) error {
 var spawned atomic.Bool
 
 // Spawn execs the worker of l (PROTOCOL §4.6 step 5). stdout and stderr become its fd 1 and 2; nil is /dev/null.
+// A worker the shim could not signal is not spawned: see checkKill.
 //
 // From then on Spawn's goroutine reaps every child of the process, not only the worker, so a shim spawns once and
 // starts no other child: one that did would be reaped from under it. Each grandchild reaped goes to reaped, which
@@ -114,6 +115,9 @@ var spawned atomic.Bool
 // returns: forking on a thread another goroutine had locked would tie the worker to that goroutine.
 func Spawn(l *shimv1.Launch, stdout, stderr *os.File, reaped func(Reaped)) (*Worker, error) {
 	if err := CheckLaunch(l); err != nil {
+		return nil, err
+	}
+	if err := checkKill(l.GetCred()); err != nil {
 		return nil, err
 	}
 	if !spawned.CompareAndSwap(false, true) {
@@ -220,6 +224,39 @@ func reapEnded(w *Worker) []Reaped {
 			others = append(others, Reaped{Pid: pid, Status: ws})
 		}
 	}
+}
+
+// ErrNoCapKill is a Launch whose cred runs the worker as a uid the shim may not signal.
+var ErrNoCapKill = errors.New("shim: the worker's uid differs from the shim's and the shim lacks CAP_KILL")
+
+// checkKill refuses a cred whose worker the shim could not signal (PROTOCOL §4.6 step 5): Signal, and the SIGTERM
+// and SIGKILL of a Stop, would fail with EPERM, and that would show only when the worker has to be stopped.
+//
+// kill(2) lets a process signal another when its real or effective uid is the other's real or saved uid, the worker's
+// both being cred's uid; failing that, it takes CAP_KILL in the effective set.
+func checkKill(c *shimv1.Credential) error {
+	if c == nil || int(c.GetUid()) == os.Getuid() || int(c.GetUid()) == os.Geteuid() {
+		return nil
+	}
+	ok, err := hasEffectiveCap(unix.CAP_KILL)
+	if err != nil {
+		return fmt.Errorf("shim: read capabilities: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("%w: uid %d, shim uid %d euid %d", ErrNoCapKill, c.GetUid(), os.Getuid(), os.Geteuid())
+	}
+	return nil
+}
+
+// hasEffectiveCap reports whether capability cp is in the calling thread's effective set. The shim changes no
+// capability, so every thread has the same.
+func hasEffectiveCap(cp int) (bool, error) {
+	hdr := unix.CapUserHeader{Version: unix.LINUX_CAPABILITY_VERSION_3}
+	var data [2]unix.CapUserData
+	if err := unix.Capget(&hdr, &data[0]); err != nil {
+		return false, err
+	}
+	return data[cp/32].Effective&(1<<(uint(cp)%32)) != 0, nil
 }
 
 // sameGroups reports whether groups are the process's supplementary groups, in any order.

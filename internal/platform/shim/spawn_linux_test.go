@@ -46,6 +46,13 @@ var identity = []string{"MFTIKO_PLANE=td", "MFTIKO_INSTANCE=td-tw-1", "MFTIKO_WO
 // inherits extra from fd 3 on, as if the agent had left them open.
 func startShim(t *testing.T, s fakeworker.Script, path, dir string, cred *shimv1.Credential, extra ...*os.File) *shimProc {
 	t.Helper()
+	l, journal := fakeLaunch(t, s, path, dir, cred)
+	return runShim(t, l, journal, extra...)
+}
+
+// fakeLaunch is the Launch startShim gives, and the journal its fake worker writes.
+func fakeLaunch(t *testing.T, s fakeworker.Script, path, dir string, cred *shimv1.Credential) (*shimv1.Launch, string) {
+	t.Helper()
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -61,16 +68,22 @@ func startShim(t *testing.T, s fakeworker.Script, path, dir string, cred *shimv1
 	if err != nil {
 		t.Fatal(err)
 	}
-	l := &shimv1.Launch{
+	return &shimv1.Launch{
 		Plane: "td", AgentInstance: "td-tw-1", Worker: &commonv1.WorkerRef{Key: "td/42", Incarnation: 3},
 		Path: path, Env: append(append([]string{}, identity...), fake...), Dir: "/", Cred: cred,
-	}
-	return runShim(t, l, journal, extra...)
+	}, journal
 }
 
 // runShim starts a shim, the way an agent does, and writes l on its stdin. journal is where the fake worker of l
 // writes. A Launch without a work dir gets a new one.
 func runShim(t *testing.T, l *shimv1.Launch, journal string, extra ...*os.File) *shimProc {
+	t.Helper()
+	return runShimVia(t, nil, l, journal, extra...)
+}
+
+// runShimVia is runShim, with the shim started through wrap: a command that execs the rest of its arguments, such
+// as setpriv.
+func runShimVia(t *testing.T, wrap []string, l *shimv1.Launch, journal string, extra ...*os.File) *shimProc {
 	t.Helper()
 	if l.WorkDir == "" {
 		l.WorkDir = workDir(t)
@@ -80,6 +93,9 @@ func runShim(t *testing.T, l *shimv1.Launch, journal string, extra ...*os.File) 
 		t.Fatal(err)
 	}
 	cmd := exec.Command(self)
+	if len(wrap) > 0 {
+		cmd = exec.Command(wrap[0], append(append([]string{}, wrap[1:]...), self)...)
+	}
 	cmd.ExtraFiles = extra
 	// The shim's own environment, which the worker must not see.
 	cmd.Env = append(os.Environ(), envTestShim+"=1", "MFTIKO_SHIM_ONLY=1")
@@ -346,18 +362,7 @@ func TestSpawnCredential(t *testing.T) {
 		t.Skip("needs root to change ids")
 	}
 	const nobody = 65534
-	// The worker, as nobody, must reach its executable and its journal.
-	dir, err := os.MkdirTemp("", "shim-cred-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
-	if err := os.Chmod(dir, 0o777); err != nil {
-		t.Fatal(err)
-	}
-	self, _ := os.Executable()
-	bin := filepath.Join(dir, "worker")
-	copyFile(t, self, bin, 0o755)
+	dir, bin := worldDir(t)
 
 	for _, groups := range [][]uint32{nil, {100}} {
 		p := startShim(t, fakeworker.Script{}, bin, dir, &shimv1.Credential{Uid: nobody, Gid: nobody, Groups: groups})
@@ -376,12 +381,16 @@ func TestSpawnCredential(t *testing.T) {
 	}
 }
 
-// Without the capability to change ids, a credential fails the spawn and the shim exits 1.
+// Without the capability to change ids, a credential fails the spawn and the shim exits 1. The uid is the shim's
+// own, so that the CAP_KILL check passes and setgid is what fails.
 func TestSpawnCredentialRefused(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root may change ids")
 	}
-	p := startShim(t, fakeworker.Script{}, "", "", &shimv1.Credential{Uid: 0, Gid: 0})
+	if os.Getegid() == 0 {
+		t.Skip("needs a gid other than 0 to ask for")
+	}
+	p := startShim(t, fakeworker.Script{}, "", "", &shimv1.Credential{Uid: uint32(os.Geteuid()), Gid: 0})
 	p.waitLog("spawn failed", nil)
 	var exit *exec.ExitError
 	if err := p.cmd.Wait(); !errors.As(err, &exit) || exit.ExitCode() != 1 {
@@ -424,21 +433,6 @@ func TestGrandchildReaped(t *testing.T) {
 	if _, err := os.Stat("/proc/" + strconv.Itoa(gc.PID)); !os.IsNotExist(err) {
 		t.Fatalf("grandchild %d still in /proc after the shim reaped it", gc.PID)
 	}
-}
-
-// SIGTERM ends this shim for now (Stop comes with E1-11), and the worker follows on EOF.
-func TestShimSIGTERM(t *testing.T) {
-	p := startShim(t, fakeworker.Script{IgnoreSIGTERM: true}, "", "", nil)
-	pid := p.workerPid()
-	p.waitJournal("sent")
-	if err := p.cmd.Process.Signal(syscall.SIGTERM); err != nil {
-		t.Fatal(err)
-	}
-	if err := p.cmd.Wait(); err != nil {
-		t.Fatalf("shim: %v", err)
-	}
-	p.waitJournal("eof")
-	waitGone(t, pid)
 }
 
 // An fd the agent left open in the shim does not reach the worker.
