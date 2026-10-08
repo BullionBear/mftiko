@@ -1,9 +1,6 @@
 package shim
 
 import (
-	"errors"
-	"fmt"
-	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,16 +8,16 @@ import (
 
 	"github.com/rs/zerolog"
 	"golang.org/x/sys/unix"
-
-	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
 )
 
 // Run is the shim process (cmd/mftiko-shim): it becomes a session leader and subreaper, reads its Launch from
-// stdin, spawns the worker and reaps (PROTOCOL §4.6). It returns the process's exit code.
+// stdin, opens its C3 socket, spawns the worker, serves agents and reaps (PROTOCOL §4.6). It returns the process's
+// exit code.
 //
-// For now it serves no agent (C3, E1-09), forwards nothing (E1-11, E1-12), writes no exit file (E1-13) and sends
-// the worker's output to /dev/null (E1-14). It reads and logs what the worker sends, so that the worker never
-// blocks on a full socket, and it stays until SIGTERM or SIGINT, reaping grandchildren after the worker is gone.
+// Of C3 it does Attach, fencing and Signal (E1-09); the other requests are answered unimplemented. For now it
+// forwards nothing (E1-11, E1-12), writes no exit file (E1-13) and sends the worker's output to /dev/null (E1-14).
+// It reads what the worker sends, so that the worker never blocks on a full socket, and it stays until SIGTERM or
+// SIGINT, reaping grandchildren after the worker is gone; then it removes its socket.
 func Run(log zerolog.Logger) int {
 	// stderr is the agent's to connect, and may be a pipe whose reader is gone: a log line must then fail, not kill
 	// the shim. A handled signal, unlike an ignored one, goes back to its default in the worker.
@@ -51,6 +48,14 @@ func Run(log zerolog.Logger) int {
 	log = log.With().Str("plane", l.GetPlane()).Str("instance", l.GetAgentInstance()).
 		Str("worker", l.GetWorker().GetKey()).Uint32("incarnation", l.GetWorker().GetIncarnation()).Logger()
 
+	ln, err := listen(l) // before the spawn: a worker no agent can reach must not start
+	if err != nil {
+		log.Error().Err(err).Msg("no socket")
+		return 1
+	}
+	defer ln.Close() // removes the socket
+	log.Info().Str("socket", ln.Addr().String()).Msg("listening")
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
 
@@ -76,7 +81,10 @@ func Run(log zerolog.Logger) int {
 		}
 	}()
 
-	go drain(log, w.Conn)
+	v := newView(w)
+	go v.follow(log, w.Conn)
+	srv := newServer(log, ln, l, v, os.Geteuid())
+	srv.start()
 	done := w.Done()
 	for {
 		select {
@@ -86,6 +94,7 @@ func Run(log zerolog.Logger) int {
 			done = nil // seen; grandchildren are still reaped
 		case s := <-stop:
 			log.Info().Str("signal", s.String()).Msg("shim stopping")
+			srv.close()
 			return 0
 		}
 	}
@@ -93,22 +102,6 @@ func Run(log zerolog.Logger) int {
 
 // launchTimeout bounds the wait for the Launch: an agent that started the shim and then wrote nothing is gone.
 const launchTimeout = 10 * time.Second
-
-// drain reads the worker's messages until it closes its end.
-func drain(log zerolog.Logger, conn io.Reader) {
-	r := newFrameReader(conn)
-	for {
-		m := &workerv1.WorkerUp{}
-		if err := r.Read(m); err != nil {
-			if !errors.Is(err, io.EOF) {
-				log.Warn().Err(err).Msg("worker channel")
-			}
-			log.Info().Msg("worker channel closed")
-			return
-		}
-		log.Debug().Str("msg", fmt.Sprintf("%T", m.GetMsg())).Msg("from worker")
-	}
-}
 
 func signalOf(st syscall.WaitStatus) int {
 	if st.Signaled() {

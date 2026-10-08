@@ -22,6 +22,7 @@ message Launch {
   repeated string env = 7;  // manifest 的 env，之後是 §5.4 的平台變數；KEY=VALUE。shim 自己加上 MFTIKO_CTL_FD=3
   string dir = 8;           // rootfs，絕對路徑；path 必須在它底下
   Credential cred = 9;      // 平面決定，不來自 manifest；沒有就沿用 shim 的身分
+  string work_dir = 10;     // ${WORK_DIR}，絕對路徑；C3 的 socket 在 run/{plane}/{h}.sock（§4.1）
 }
 
 message Credential {
@@ -84,13 +85,13 @@ message ShimMessage {
 message Response {
   uint64 id = 1;
   bool ok = 2;
-  mftiko.common.v1.Error error = 3; // stale_epoch | not_controller | wrong_agent | running | bad_stage
+  mftiko.common.v1.Error error = 3; // code 見 §4.2 的表
   Attached attached = 4;
 }
 
 message Attached {
   string shim_release = 1;
-  uint32 shim_major = 2;
+  uint32 shim_major = 2; // 協商出的 major；0 表示沒有交集，只能 Signal（§4.2）
   mftiko.common.v1.WorkerRef worker = 3;
   string spec_hash = 4;
   WorkerState state = 5;

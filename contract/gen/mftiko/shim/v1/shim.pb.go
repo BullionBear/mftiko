@@ -85,11 +85,12 @@ type Launch struct {
 	Worker        *v1.WorkerRef          `protobuf:"bytes,3,opt,name=worker,proto3" json:"worker,omitempty"`
 	SpecHash      string                 `protobuf:"bytes,4,opt,name=spec_hash,json=specHash,proto3" json:"spec_hash,omitempty"` // agent 給的，shim 不解讀，Attached 原樣帶回
 	// 以下由 artifact 的 manifest 換算（§4.6 的對應表）
-	Path          string      `protobuf:"bytes,5,opt,name=path,proto3" json:"path,omitempty"` // rootfs ＋ entrypoint[0]，絕對路徑
-	Args          []string    `protobuf:"bytes,6,rep,name=args,proto3" json:"args,omitempty"` // entrypoint[1:]；argv[0] 是 path
-	Env           []string    `protobuf:"bytes,7,rep,name=env,proto3" json:"env,omitempty"`   // manifest 的 env，之後是 §5.4 的平台變數；KEY=VALUE。shim 自己加上 MFTIKO_CTL_FD=3
-	Dir           string      `protobuf:"bytes,8,opt,name=dir,proto3" json:"dir,omitempty"`   // rootfs，絕對路徑；path 必須在它底下
-	Cred          *Credential `protobuf:"bytes,9,opt,name=cred,proto3" json:"cred,omitempty"` // 平面決定，不來自 manifest；沒有就沿用 shim 的身分
+	Path          string      `protobuf:"bytes,5,opt,name=path,proto3" json:"path,omitempty"`                       // rootfs ＋ entrypoint[0]，絕對路徑
+	Args          []string    `protobuf:"bytes,6,rep,name=args,proto3" json:"args,omitempty"`                       // entrypoint[1:]；argv[0] 是 path
+	Env           []string    `protobuf:"bytes,7,rep,name=env,proto3" json:"env,omitempty"`                         // manifest 的 env，之後是 §5.4 的平台變數；KEY=VALUE。shim 自己加上 MFTIKO_CTL_FD=3
+	Dir           string      `protobuf:"bytes,8,opt,name=dir,proto3" json:"dir,omitempty"`                         // rootfs，絕對路徑；path 必須在它底下
+	Cred          *Credential `protobuf:"bytes,9,opt,name=cred,proto3" json:"cred,omitempty"`                       // 平面決定，不來自 manifest；沒有就沿用 shim 的身分
+	WorkDir       string      `protobuf:"bytes,10,opt,name=work_dir,json=workDir,proto3" json:"work_dir,omitempty"` // ${WORK_DIR}，絕對路徑；C3 的 socket 在 run/{plane}/{h}.sock（§4.1）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -185,6 +186,13 @@ func (x *Launch) GetCred() *Credential {
 		return x.Cred
 	}
 	return nil
+}
+
+func (x *Launch) GetWorkDir() string {
+	if x != nil {
+		return x.WorkDir
+	}
+	return ""
 }
 
 type Credential struct {
@@ -803,7 +811,7 @@ type Response struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	Ok            bool                   `protobuf:"varint,2,opt,name=ok,proto3" json:"ok,omitempty"`
-	Error         *v1.Error              `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"` // stale_epoch | not_controller | wrong_agent | running | bad_stage
+	Error         *v1.Error              `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"` // code 見 §4.2 的表
 	Attached      *Attached              `protobuf:"bytes,4,opt,name=attached,proto3" json:"attached,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -870,7 +878,7 @@ func (x *Response) GetAttached() *Attached {
 type Attached struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ShimRelease   string                 `protobuf:"bytes,1,opt,name=shim_release,json=shimRelease,proto3" json:"shim_release,omitempty"`
-	ShimMajor     uint32                 `protobuf:"varint,2,opt,name=shim_major,json=shimMajor,proto3" json:"shim_major,omitempty"`
+	ShimMajor     uint32                 `protobuf:"varint,2,opt,name=shim_major,json=shimMajor,proto3" json:"shim_major,omitempty"` // 協商出的 major；0 表示沒有交集，只能 Signal（§4.2）
 	Worker        *v1.WorkerRef          `protobuf:"bytes,3,opt,name=worker,proto3" json:"worker,omitempty"`
 	SpecHash      string                 `protobuf:"bytes,4,opt,name=spec_hash,json=specHash,proto3" json:"spec_hash,omitempty"`
 	State         WorkerState            `protobuf:"varint,5,opt,name=state,proto3,enum=mftiko.shim.v1.WorkerState" json:"state,omitempty"`
@@ -1393,7 +1401,7 @@ var File_mftiko_shim_v1_shim_proto protoreflect.FileDescriptor
 
 const file_mftiko_shim_v1_shim_proto_rawDesc = "" +
 	"\n" +
-	"\x19mftiko/shim/v1/shim.proto\x12\x0emftiko.shim.v1\x1a\x1dmftiko/common/v1/common.proto\x1a\x1dmftiko/worker/v1/worker.proto\"\x93\x02\n" +
+	"\x19mftiko/shim/v1/shim.proto\x12\x0emftiko.shim.v1\x1a\x1dmftiko/common/v1/common.proto\x1a\x1dmftiko/worker/v1/worker.proto\"\xae\x02\n" +
 	"\x06Launch\x12\x14\n" +
 	"\x05plane\x18\x01 \x01(\tR\x05plane\x12%\n" +
 	"\x0eagent_instance\x18\x02 \x01(\tR\ragentInstance\x123\n" +
@@ -1403,7 +1411,9 @@ const file_mftiko_shim_v1_shim_proto_rawDesc = "" +
 	"\x04args\x18\x06 \x03(\tR\x04args\x12\x10\n" +
 	"\x03env\x18\a \x03(\tR\x03env\x12\x10\n" +
 	"\x03dir\x18\b \x01(\tR\x03dir\x12.\n" +
-	"\x04cred\x18\t \x01(\v2\x1a.mftiko.shim.v1.CredentialR\x04cred\"H\n" +
+	"\x04cred\x18\t \x01(\v2\x1a.mftiko.shim.v1.CredentialR\x04cred\x12\x19\n" +
+	"\bwork_dir\x18\n" +
+	" \x01(\tR\aworkDir\"H\n" +
 	"\n" +
 	"Credential\x12\x10\n" +
 	"\x03uid\x18\x01 \x01(\rR\x03uid\x12\x10\n" +

@@ -31,6 +31,7 @@ import (
 type shimProc struct {
 	t       *testing.T
 	cmd     *exec.Cmd
+	launch  *shimv1.Launch
 	journal string
 
 	mu   sync.Mutex
@@ -68,9 +69,12 @@ func startShim(t *testing.T, s fakeworker.Script, path, dir string, cred *shimv1
 }
 
 // runShim starts a shim, the way an agent does, and writes l on its stdin. journal is where the fake worker of l
-// writes.
+// writes. A Launch without a work dir gets a new one.
 func runShim(t *testing.T, l *shimv1.Launch, journal string, extra ...*os.File) *shimProc {
 	t.Helper()
+	if l.WorkDir == "" {
+		l.WorkDir = workDir(t)
+	}
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +94,7 @@ func runShim(t *testing.T, l *shimv1.Launch, journal string, extra ...*os.File) 
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	p := &shimProc{t: t, cmd: cmd, journal: journal}
+	p := &shimProc{t: t, cmd: cmd, launch: l, journal: journal}
 	go p.collect(stderr)
 	t.Cleanup(func() {
 		if pid, ok := p.logged("worker started"); ok {
@@ -104,6 +108,26 @@ func runShim(t *testing.T, l *shimv1.Launch, journal string, extra ...*os.File) 
 	}
 	stdin.Close()
 	return p
+}
+
+// workDir is a new WORK_DIR, short enough for a socket path under it.
+func workDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if len(SocketPath(dir, "plane", "")) <= maxSocketPath {
+		return dir
+	}
+	dir, err := os.MkdirTemp("/tmp", "shim-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return dir
+}
+
+// socket is the path of the shim's C3 socket.
+func (p *shimProc) socket() string {
+	return SocketPath(p.launch.GetWorkDir(), p.launch.GetPlane(), p.launch.GetWorker().GetKey())
 }
 
 func (p *shimProc) collect(r io.Reader) {
