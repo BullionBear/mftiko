@@ -30,6 +30,10 @@ const (
 
 	// A watch silent for this many probe intervals, while the cluster answers the probe, is reopened.
 	mirrorStallProbes = 3
+	// A watch etcd has not confirmed within this long, nor within the stall window if that is longer, is reopened.
+	// Until then its silence is not counted: on a new gRPC stream clientv3 authenticates first, and etcd checks the
+	// password with bcrypt, which takes tens of milliseconds on an idle server and more on a busy one.
+	DefaultMirrorCreateTimeout = 10 * time.Second
 	// Lists restarted this many times in a row by a mid-list compaction back off before the next try.
 	mirrorCompactedLists = 3
 )
@@ -58,6 +62,8 @@ type MirrorOptions struct {
 	MaxBackoff    time.Duration   // longest wait; default 5s
 	ProbeInterval time.Duration   // how often to check the cluster and the watch; default 5s
 	Log           *zerolog.Logger // failures and relists; nil logs nothing
+
+	createTimeout time.Duration // DefaultMirrorCreateTimeout; tests shorten it
 }
 
 // MirrorStats counts what Run has done.
@@ -93,7 +99,10 @@ type MirrorStats struct {
 //     revision. Events and progress notifications only move the copy's revision, so a member that serves the watch
 //     but lags behind the cluster cannot make the copy look fresh. The probe also asks the watch stream for a
 //     progress notification; a watch that stays silent for 3 probe intervals while the cluster has moved past the
-//     copy is reopened.
+//     copy is reopened. Silence counts from when etcd confirmed the watch (clientv3.WithCreatedNotify), not from when
+//     it was asked for: opening the watch's gRPC stream authenticates first, which can take longer than 3 probe
+//     intervals, and each reopen would start that over. A watch not confirmed within DefaultMirrorCreateTimeout is
+//     reopened anyway.
 //
 // Readers act level-triggered: Notify says that something changed, Snapshot or Take says what is there now.
 // Notify and Take are for one consumer: Take consumes the set of changed keys. Safe for concurrent use; Run is
@@ -120,7 +129,8 @@ type Mirror struct {
 	gen         uint64    // the current watch's generation
 	id          uint64    // this mirror, for its gRPC stream
 	streamN     uint64    // the stream's number: moves on when the stream's token is refused
-	opened      time.Time // when it was opened
+	opened      time.Time // when it was asked for, then when etcd confirmed it
+	created     bool      // etcd has confirmed it
 	kickGen     uint64    // the generation a stall kick is for
 	relistAsked uint64    // relists the probe asked for, counted
 	relistDone  uint64    // relistAsked as of the start of the last completed list
@@ -154,6 +164,9 @@ func NewMirror(r Reader, prefix string, opt MirrorOptions) (*Mirror, error) {
 	}
 	if opt.ProbeInterval == 0 {
 		opt.ProbeInterval = DefaultMirrorProbeInterval
+	}
+	if opt.createTimeout == 0 {
+		opt.createTimeout = DefaultMirrorCreateTimeout
 	}
 	return &Mirror{
 		id:      mirrorIDs.Add(1),
@@ -407,13 +420,13 @@ func (m *Mirror) watch(ctx context.Context) (progressed, relist bool, err error)
 	from := m.rev // not +1: see the type's comment; apply drops what the copy already has
 	m.gen++
 	gen, streamN := m.gen, m.streamN
-	m.opened = time.Now()
+	m.opened, m.created = time.Now(), false
 	m.stats.Watches++
 	m.mu.Unlock()
 
 	wctx, cancel := context.WithCancel(m.stream(ctx, streamN))
 	defer cancel()
-	wch := m.r.Watch(wctx, m.prefix, clientv3.WithRange(m.end), clientv3.WithRev(from))
+	wch := m.r.Watch(wctx, m.prefix, clientv3.WithRange(m.end), clientv3.WithRev(from), clientv3.WithCreatedNotify())
 	for {
 		select {
 		case resp, ok := <-wch:
@@ -434,6 +447,14 @@ func (m *Mirror) watch(ctx context.Context) (progressed, relist bool, err error)
 			}
 			if m.otherCluster(resp.Header) {
 				return progressed, true, nil
+			}
+			if resp.Created { // no events; its header is the revision when etcd took the watch, not one it vouches for
+				m.mu.Lock()
+				if m.gen == gen {
+					m.opened, m.created = time.Now(), true
+				}
+				m.mu.Unlock()
+				continue
 			}
 			m.apply(resp)
 			progressed = true
@@ -508,7 +529,11 @@ func (m *Mirror) probe(pctx context.Context) {
 			continue
 		}
 		m.probeRev, m.probeSent = h.Revision, sent // contact once the watch brings the copy this far
-		stalled := m.gen == gen && time.Since(latest(m.contact, m.opened)) > mirrorStallProbes*m.opt.ProbeInterval
+		silent, window := latest(m.contact, m.opened), mirrorStallProbes*m.opt.ProbeInterval
+		if !m.created {
+			silent, window = m.opened, max(window, m.opt.createTimeout)
+		}
+		stalled := m.gen == gen && time.Since(silent) > window
 		m.mu.Unlock()
 		if stalled {
 			m.kickStall(gen)
