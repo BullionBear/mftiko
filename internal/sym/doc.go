@@ -75,7 +75,9 @@
 //
 // Resolver implements symbol.Resolver without the SYM service and without PostgreSQL.
 // At startup it calls PublicREST.Listing for each configured (venue, category), keeps
-// the rows that pass Listing.Validate, and serves them from memory. The indexes are
+// the rows that pass Listing.Validate, and serves them from memory. A row that passes
+// Validate but fails Ticker is skipped: the failure is logged and counted, and the
+// rest of that venue still loads. The indexes are
 // UID to Info, ticker to UID, and ExchKey to UID. A reload builds the next snapshot
 // completely and publishes it once, so a reader sees the previous snapshot or the next
 // one, never a mix of the two. A ticker that is still listed keeps its UID. A ticker

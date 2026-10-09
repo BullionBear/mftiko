@@ -1,6 +1,7 @@
 package sym
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strconv"
@@ -8,6 +9,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/rs/zerolog"
 
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/exchange"
@@ -317,18 +320,6 @@ func TestResolverRejects(t *testing.T) {
 		t.Fatalf("duplicate ticker err = %v", err)
 	}
 
-	bad := &sliceREST{rows: map[symbol.Category][]symbol.Listing{
-		symbol.Future: {{
-			Venue: "Bybit", Category: symbol.Future, Base: "BTC", Quote: "USDT", ExchTicker: "BTCUSDT",
-			ContractSize: "1", ContractValueCcy: "BTC", PriceCcy: "USDT", Settle: "USDT",
-		}},
-	}}
-	if _, err := NewResolver(ctx, []VenueListing{{
-		Venue: "Bybit", REST: bad, Categories: []symbol.Category{symbol.Future},
-	}}, nil); !errors.Is(err, symbol.ErrInvalidTicker) {
-		t.Fatalf("ticker err = %v", err)
-	}
-
 	wrong := &sliceREST{rows: map[symbol.Category][]symbol.Listing{
 		symbol.Spot: {{
 			Venue: "Okx", Category: symbol.Spot, Base: "BTC", Quote: "USDT", ExchTicker: "BTC-USDT",
@@ -338,6 +329,71 @@ func TestResolverRejects(t *testing.T) {
 		Venue: "Bybit", REST: wrong, Categories: []symbol.Category{symbol.Spot},
 	}}, nil); err == nil || !strings.Contains(err.Error(), "Okx") {
 		t.Fatalf("venue mismatch err = %v", err)
+	}
+}
+
+// A row that passes Validate but fails Ticker is omitted. The rest of the venue
+// still loads, the skip is logged, and it does not take a UID.
+func TestResolverSkipsBadTicker(t *testing.T) {
+	ctx := context.Background()
+	var buf bytes.Buffer
+	seq := &script{uids: []uint32{1, 2, 3}}
+	src := &sliceREST{rows: map[symbol.Category][]symbol.Listing{
+		symbol.Spot: {bybitSpot("BTC", "BTCUSDT", true)},
+		symbol.Future: {
+			{
+				Venue: "Bybit", Category: symbol.Future, Base: "BTC", Quote: "USDT", ExchTicker: "BTCUSDT-BAD",
+				ContractSize: "1", ContractValueCcy: "BTC", PriceCcy: "USDT", Settle: "USDT",
+			},
+			bybitFuture("BTC", "BTCUSDT-26DEC25", "261225"),
+		},
+	}}
+	r, err := newResolver(ctx, []VenueListing{{
+		Venue: "Bybit", REST: src, Categories: []symbol.Category{symbol.Spot, symbol.Future},
+	}}, seq, zerolog.New(&buf))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.skipped != 1 {
+		t.Fatalf("skipped = %d, want 1", r.skipped)
+	}
+	if !strings.Contains(buf.String(), "listing skipped") || !strings.Contains(buf.String(), "BTCUSDT-BAD") {
+		t.Fatalf("log = %s", buf.String())
+	}
+	if seq.n != 2 {
+		t.Fatalf("drew %d uids, want 2", seq.n)
+	}
+	spot, err := r.Get(ctx, symbol.UniversalTicker{Venue: "Bybit", Category: symbol.Spot, Symbol: "BTCUSDT"}, false)
+	if err != nil || spot.UID != 1 {
+		t.Fatalf("spot = %+v %v", spot, err)
+	}
+	fut, err := r.Get(ctx, symbol.UniversalTicker{Venue: "Bybit", Category: symbol.Future, Symbol: "BTCUSDT-261225"}, false)
+	if err != nil || fut.UID != 2 {
+		t.Fatalf("future = %+v %v", fut, err)
+	}
+	if _, err := r.Reverse(ctx, symbol.ExchKey{Venue: "Bybit", Category: symbol.Future, ExchTicker: "BTCUSDT-BAD"}); !errors.Is(err, symbol.ErrNotFound) {
+		t.Fatalf("bad ticker err = %v", err)
+	}
+	if got := listedTickers(mustList(t, r, "Bybit", symbol.Future)); len(got) != 1 || got[0] != "Bybit_Future_BTCUSDT-261225" {
+		t.Fatalf("futures = %v", got)
+	}
+
+	src.rows[symbol.Future] = []symbol.Listing{
+		bybitFuture("BTC", "BTCUSDT-26DEC25", "261225"),
+		{
+			Venue: "Bybit", Category: symbol.Future, Base: "ETH", Quote: "USDT", ExchTicker: "ETHUSDT-BAD",
+			ContractSize: "1", ContractValueCcy: "ETH", PriceCcy: "USDT", Settle: "USDT",
+		},
+	}
+	r.Invalidate("Bybit")
+	if _, err := r.List(ctx, "Bybit", symbol.Future); err != nil {
+		t.Fatal(err)
+	}
+	if r.skipped != 2 {
+		t.Fatalf("skipped after reload = %d, want 2", r.skipped)
+	}
+	if again, err := r.Get(ctx, fut.Ticker, false); err != nil || again.UID != 2 {
+		t.Fatalf("future after reload = %+v %v", again, err)
 	}
 }
 
@@ -565,12 +621,29 @@ func bybitSpot(base, exch string, active bool) symbol.Listing {
 	}
 }
 
+func bybitFuture(base, exch, expiry string) symbol.Listing {
+	return symbol.Listing{
+		Venue: "Bybit", Category: symbol.Future, Base: base, Quote: "USDT",
+		ExchTicker: exch, ExpiryCode: expiry, Active: true,
+		ContractSize: "1", ContractValueCcy: base, PriceCcy: "USDT", Settle: "USDT",
+	}
+}
+
 func bybitPerp(base, quote, exch string) symbol.Listing {
 	return symbol.Listing{
 		Venue: "Bybit", Category: symbol.Perp, Base: base, Quote: quote,
 		ExchTicker: exch, Active: true,
 		ContractSize: "1", ContractValueCcy: base, PriceCcy: quote, Settle: quote,
 	}
+}
+
+func mustList(t *testing.T, r *Resolver, venue string, c symbol.Category) []symbol.Info {
+	t.Helper()
+	list, err := r.List(context.Background(), venue, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return list
 }
 
 func listedTickers(list []symbol.Info) []string {

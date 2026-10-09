@@ -10,8 +10,11 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/rs/zerolog"
+
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/exchange"
+	"github.com/BullionBear/mftiko/internal/platform/logger"
 )
 
 // ErrRealVenue is returned when a listing source is not an in-process fake.
@@ -42,15 +45,17 @@ type VenueListing struct {
 // Safe for concurrent use. A reload builds the next snapshot in full and
 // publishes it once. Readers see the previous snapshot or the next one.
 type Resolver struct {
-	mu     sync.Mutex
-	venues []venueSrc
-	uids   Source
-	snap   atomic.Pointer[snapshot]
-	live   map[symbol.UniversalTicker]uint32
-	used   map[uint32]struct{}
-	dirty  map[string]struct{}
-	fail   map[string]error
-	all    bool
+	mu      sync.Mutex
+	venues  []venueSrc
+	uids    Source
+	snap    atomic.Pointer[snapshot]
+	live    map[symbol.UniversalTicker]uint32
+	used    map[uint32]struct{}
+	dirty   map[string]struct{}
+	fail    map[string]error
+	all     bool
+	log     zerolog.Logger
+	skipped uint64 // listings skipped because Ticker failed; not a venue failure
 }
 
 type venueSrc struct {
@@ -82,6 +87,10 @@ type prepared struct {
 // The draw is not persisted. A source that is not an InProcessUIDSource is
 // ErrRealVenue.
 func NewResolver(ctx context.Context, sources []VenueListing, uids Source) (*Resolver, error) {
+	return newResolver(ctx, sources, uids, logger.New("sym"))
+}
+
+func newResolver(ctx context.Context, sources []VenueListing, uids Source, log zerolog.Logger) (*Resolver, error) {
 	venues, err := checkSources(sources)
 	if err != nil {
 		return nil, err
@@ -97,6 +106,7 @@ func NewResolver(ctx context.Context, sources []VenueListing, uids Source) (*Res
 		dirty:  map[string]struct{}{},
 		fail:   map[string]error{},
 		all:    true,
+		log:    log,
 	}
 	r.snap.Store(newSnapshot())
 	if err := r.refresh(ctx); err != nil {
@@ -252,7 +262,9 @@ func ctxErr(err error) bool {
 // call back into the Resolver. One venue is all-or-nothing: every configured
 // category is fetched, then that venue's rows replace the previous ones in a
 // single snapshot. A venue whose listing fails keeps its previous rows.
-// Successful venues are still published when another venue fails.
+// A row that passes Validate but fails Ticker is skipped, logged and counted;
+// it does not fail the venue. Successful venues are still published when
+// another venue fails.
 func (r *Resolver) refresh(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -316,7 +328,8 @@ func (r *Resolver) loadVenue(ctx context.Context, src venueSrc, cur state) (stat
 		if err != nil {
 			return cur, fmt.Errorf("sym: list %s %s: %w", src.venue, cat, err)
 		}
-		rows, err := prepare(src.venue, cat, listed)
+		rows, n, err := prepare(r.log, src.venue, cat, listed)
+		r.skipped += uint64(n)
 		if err != nil {
 			return cur, fmt.Errorf("sym: list %s %s: %w", src.venue, cat, err)
 		}
@@ -335,38 +348,52 @@ func (r *Resolver) loadVenue(ctx context.Context, src venueSrc, cur state) (stat
 }
 
 // prepare keeps rows that pass Validate and drops the rest (quanto, a
-// non-canonical asset, a spot settlement). A row that cannot be named, or that
-// repeats a ticker or an exchange spelling, fails the venue reload.
-func prepare(venue string, cat symbol.Category, listed []symbol.Listing) ([]prepared, error) {
+// non-canonical asset, a spot settlement). A row that passes Validate but
+// fails Ticker is skipped: it is logged, counted, and omitted. It does not
+// fail the venue. A venue or category mismatch, or a repeated ticker or
+// exchange spelling, fails the venue reload.
+func prepare(log zerolog.Logger, venue string, cat symbol.Category, listed []symbol.Listing) ([]prepared, int, error) {
 	out := make([]prepared, 0, len(listed))
 	seenT := map[symbol.UniversalTicker]struct{}{}
 	seenE := map[string]struct{}{}
+	skipped := 0
 	for _, l := range listed {
 		if err := l.Validate(); err != nil {
 			continue
 		}
 		if l.Venue != venue || l.Category != cat {
-			return nil, fmt.Errorf("listing %s is %s %s", l.ExchTicker, l.Venue, l.Category)
+			return nil, skipped, fmt.Errorf("listing %s is %s %s", l.ExchTicker, l.Venue, l.Category)
 		}
 		ticker, err := l.Ticker()
 		if err != nil {
-			return nil, err
+			skipped++
+			logSkipTicker(log, venue, cat, l, err)
+			continue
 		}
 		if _, ok := seenT[ticker]; ok {
-			return nil, fmt.Errorf("duplicate ticker %s", ticker)
+			return nil, skipped, fmt.Errorf("duplicate ticker %s", ticker)
 		}
 		if _, ok := seenE[l.ExchTicker]; ok {
-			return nil, fmt.Errorf("duplicate exch ticker %s", l.ExchTicker)
+			return nil, skipped, fmt.Errorf("duplicate exch ticker %s", l.ExchTicker)
 		}
 		seenT[ticker] = struct{}{}
 		seenE[l.ExchTicker] = struct{}{}
 		info, err := infoFrom(l, ticker)
 		if err != nil {
-			return nil, err
+			return nil, skipped, err
 		}
 		out = append(out, prepared{info: info})
 	}
-	return out, nil
+	return out, skipped, nil
+}
+
+func logSkipTicker(log zerolog.Logger, venue string, cat symbol.Category, l symbol.Listing, err error) {
+	log.Warn().
+		Str("venue", venue).
+		Str("category", string(cat)).
+		Str("exch_ticker", l.ExchTicker).
+		Err(err).
+		Msg("listing skipped")
 }
 
 func infoFrom(l symbol.Listing, ticker symbol.UniversalTicker) (symbol.Info, error) {
