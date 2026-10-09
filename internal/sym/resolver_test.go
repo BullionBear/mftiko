@@ -20,9 +20,9 @@ import (
 func TestResolverFakeSource(t *testing.T) {
 	ctx := context.Background()
 	src := mustFake(t, "Bybit")
-	btc := bybitSpot("BTC", "BTCUSDT", true)
+	btc := bybitSpot("BTC", "BTCUSDT", symbol.Tradable)
 	btc.Filters = map[string]string{symbol.PriceTick: "0.1", symbol.MaxQty: ""}
-	eth := bybitSpot("ETH", "ETHUSDT", false)
+	eth := bybitSpot("ETH", "ETHUSDT", symbol.Halted)
 	if err := src.Add(btc); err != nil {
 		t.Fatal(err)
 	}
@@ -32,20 +32,22 @@ func TestResolverFakeSource(t *testing.T) {
 	if err := src.Add(bybitPerp("BTC", "USDT", "BTCUSDT")); err != nil {
 		t.Fatal(err)
 	}
-	// Filtered by Validate: not canonical, spot settlement, quanto.
+	// Filtered: an asset code that is not an asset, spot settlement, quanto.
 	if err := src.Add(symbol.Listing{
-		Venue: "Bybit", Category: symbol.Spot, Base: "sol", Quote: "USDT", ExchTicker: "solusdt",
+		Venue: "Bybit", Category: symbol.Spot, Base: "SO/L", Quote: "USDT", ExchTicker: "solusdt",
+		Status: symbol.Tradable,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := src.Add(symbol.Listing{
 		Venue: "Bybit", Category: symbol.Spot, Base: "SOL", Quote: "USDT", ExchTicker: "SOLUSDT", Settle: "USDT",
+		Status: symbol.Tradable,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := src.Add(symbol.Listing{
 		Venue: "Bybit", Category: symbol.Perp, Base: "BTC", Quote: "USD", ExchTicker: "BTCUSD",
-		ContractSize: "1", ContractValueCcy: "BTC", PriceCcy: "USD", Settle: "USDC", Active: true,
+		ContractSize: "1", ContractValueCcy: "BTC", PriceCcy: "USD", Settle: "USDC", Status: symbol.Tradable,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +71,7 @@ func TestResolverFakeSource(t *testing.T) {
 	if spot.ExchTicker != "BTCUSDT" || perp.ExchTicker != "BTCUSDT" {
 		t.Fatalf("exch %s %s", spot.ExchTicker, perp.ExchTicker)
 	}
-	if !spot.Active || !perp.Active || perp.ContractSize != "1" || perp.Settle != "USDT" {
+	if !spot.IsTradable() || !perp.IsTradable() || perp.ContractSize != "1" || perp.Settle != "USDT" {
 		t.Fatalf("spot %+v perp %+v", spot, perp)
 	}
 	if spot.Filters[symbol.PriceTick] != "0.1" || spot.Filters[symbol.MaxQty] != "" {
@@ -92,7 +94,7 @@ func TestResolverFakeSource(t *testing.T) {
 	}
 
 	halted, err := r.Get(ctx, symbol.UniversalTicker{Venue: "Bybit", Category: symbol.Spot, Symbol: "ETHUSDT"}, true)
-	if err != nil || halted.UID != 11 || halted.Active {
+	if err != nil || halted.UID != 11 || halted.Status != symbol.Halted || halted.IsTradable() {
 		t.Fatalf("halted = %+v %v", halted, err)
 	}
 
@@ -134,7 +136,7 @@ func TestResolverOptionStrike(t *testing.T) {
 		ExpiryCode: "261225", Strike: "6400.0", OptionType: "c",
 		ExchTicker:   "BTC-USD-261225-6400-C",
 		ContractSize: "1", ContractValueCcy: "BTC", PriceCcy: "BTC", Settle: "BTC",
-		Active: true,
+		Status: symbol.Tradable,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +153,7 @@ func TestResolverOptionStrike(t *testing.T) {
 func TestResolverUIDStableAcrossReload(t *testing.T) {
 	ctx := context.Background()
 	src := mustFake(t, "Bybit")
-	if err := src.Add(bybitSpot("BTC", "BTCUSDT", true)); err != nil {
+	if err := src.Add(bybitSpot("BTC", "BTCUSDT", symbol.Tradable)); err != nil {
 		t.Fatal(err)
 	}
 	if err := src.Add(bybitPerp("BTC", "USDT", "BTCUSDT")); err != nil {
@@ -161,7 +163,7 @@ func TestResolverUIDStableAcrossReload(t *testing.T) {
 	btc := symbol.UniversalTicker{Venue: "Bybit", Category: symbol.Spot, Symbol: "BTCUSDT"}
 	perp := symbol.UniversalTicker{Venue: "Bybit", Category: symbol.Perp, Symbol: "BTCUSDT"}
 
-	if err := src.Add(bybitSpot("ETH", "ETHUSDT", true)); err != nil {
+	if err := src.Add(bybitSpot("ETH", "ETHUSDT", symbol.Tradable)); err != nil {
 		t.Fatal(err)
 	}
 	r.Invalidate("Bybit")
@@ -191,7 +193,7 @@ func TestResolverUIDStableAcrossReload(t *testing.T) {
 		t.Fatalf("perp after spot delist = %+v %v", p, err)
 	}
 
-	if err := src.Add(bybitSpot("BTC", "BTCUSDT", true)); err != nil {
+	if err := src.Add(bybitSpot("BTC", "BTCUSDT", symbol.Tradable)); err != nil {
 		t.Fatal(err)
 	}
 	r.Invalidate("Bybit")
@@ -207,12 +209,12 @@ func TestResolverUIDStableAcrossReload(t *testing.T) {
 func TestResolverReloadFailureKeepsTable(t *testing.T) {
 	ctx := context.Background()
 	src := mustFake(t, "Bybit")
-	if err := src.Add(bybitSpot("BTC", "BTCUSDT", true)); err != nil {
+	if err := src.Add(bybitSpot("BTC", "BTCUSDT", symbol.Tradable)); err != nil {
 		t.Fatal(err)
 	}
 	r := mustResolver(t, "Bybit", src, []symbol.Category{symbol.Spot}, &script{uids: []uint32{1, 2}})
 	btc := symbol.UniversalTicker{Venue: "Bybit", Category: symbol.Spot, Symbol: "BTCUSDT"}
-	if err := src.Add(bybitSpot("ETH", "ETHUSDT", true)); err != nil {
+	if err := src.Add(bybitSpot("ETH", "ETHUSDT", symbol.Tradable)); err != nil {
 		t.Fatal(err)
 	}
 	down := errors.New("down")
@@ -247,11 +249,11 @@ func TestResolverOtherVenueStillServes(t *testing.T) {
 	ctx := context.Background()
 	bybit := mustFake(t, "Bybit")
 	okx := mustFake(t, "Okx")
-	if err := bybit.Add(bybitSpot("BTC", "BTCUSDT", true)); err != nil {
+	if err := bybit.Add(bybitSpot("BTC", "BTCUSDT", symbol.Tradable)); err != nil {
 		t.Fatal(err)
 	}
 	if err := okx.Add(symbol.Listing{
-		Venue: "Okx", Category: symbol.Spot, Base: "BTC", Quote: "USDT", ExchTicker: "BTC-USDT", Active: true,
+		Venue: "Okx", Category: symbol.Spot, Base: "BTC", Quote: "USDT", ExchTicker: "BTC-USDT", Status: symbol.Tradable,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +264,7 @@ func TestResolverOtherVenueStillServes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := bybit.Add(bybitSpot("ETH", "ETHUSDT", true)); err != nil {
+	if err := bybit.Add(bybitSpot("ETH", "ETHUSDT", symbol.Tradable)); err != nil {
 		t.Fatal(err)
 	}
 	down := errors.New("okx down")
@@ -310,8 +312,8 @@ func TestResolverRejects(t *testing.T) {
 
 	dup := &sliceREST{rows: map[symbol.Category][]symbol.Listing{
 		symbol.Spot: {
-			bybitSpot("BTC", "BTCUSDT", true),
-			bybitSpot("BTC", "XBTUSDT", true),
+			bybitSpot("BTC", "BTCUSDT", symbol.Tradable),
+			bybitSpot("BTC", "XBTUSDT", symbol.Tradable),
 		},
 	}}
 	if _, err := NewResolver(ctx, []VenueListing{{
@@ -339,11 +341,12 @@ func TestResolverSkipsBadTicker(t *testing.T) {
 	var buf bytes.Buffer
 	seq := &script{uids: []uint32{1, 2, 3}}
 	src := &sliceREST{rows: map[symbol.Category][]symbol.Listing{
-		symbol.Spot: {bybitSpot("BTC", "BTCUSDT", true)},
+		symbol.Spot: {bybitSpot("BTC", "BTCUSDT", symbol.Tradable)},
 		symbol.Future: {
 			{
 				Venue: "Bybit", Category: symbol.Future, Base: "BTC", Quote: "USDT", ExchTicker: "BTCUSDT-BAD",
 				ContractSize: "1", ContractValueCcy: "BTC", PriceCcy: "USDT", Settle: "USDT",
+				Status: symbol.Tradable,
 			},
 			bybitFuture("BTC", "BTCUSDT-26DEC25", "261225"),
 		},
@@ -383,6 +386,7 @@ func TestResolverSkipsBadTicker(t *testing.T) {
 		{
 			Venue: "Bybit", Category: symbol.Future, Base: "ETH", Quote: "USDT", ExchTicker: "ETHUSDT-BAD",
 			ContractSize: "1", ContractValueCcy: "ETH", PriceCcy: "USDT", Settle: "USDT",
+			Status: symbol.Tradable,
 		},
 	}
 	r.Invalidate("Bybit")
@@ -397,13 +401,87 @@ func TestResolverSkipsBadTicker(t *testing.T) {
 	}
 }
 
+func TestResolverAppliesAlias(t *testing.T) {
+	ctx := context.Background()
+	src := mustFake(t, "Bybit")
+	if err := src.Add(symbol.Listing{
+		Venue: "Bybit", Category: symbol.Spot, Base: "xbt", Quote: "usdt", ExchTicker: "XBTUSDT",
+		Status: symbol.Tradable,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r := mustResolver(t, "Bybit", src, []symbol.Category{symbol.Spot}, &script{uids: []uint32{1}})
+	info, err := r.Get(ctx, symbol.UniversalTicker{Venue: "Bybit", Category: symbol.Spot, Symbol: "BTCUSDT"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.UID != 1 || info.Base != "BTC" || info.Quote != "USDT" || info.ExchTicker != "XBTUSDT" || !info.IsTradable() {
+		t.Fatalf("alias = %+v", info)
+	}
+}
+
+func TestResolverCachesActiveStatuses(t *testing.T) {
+	ctx := context.Background()
+	seq := &script{uids: []uint32{1, 2, 3, 4, 5, 6}}
+	src := &sliceREST{rows: map[symbol.Category][]symbol.Listing{
+		symbol.Spot: {
+			bybitSpot("BTC", "BTCUSDT", symbol.Tradable),
+			bybitSpot("ETH", "ETHUSDT", symbol.Halted),
+			bybitSpot("SOL", "SOLUSDT", symbol.Prelisting),
+			bybitSpot("XRP", "XRPUSDT", symbol.Settling),
+			bybitSpot("DOGE", "DOGEUSDT", symbol.Unknown),
+			bybitSpot("LTC", "LTCUSDT", symbol.Expired),
+			bybitSpot("BCH", "BCHUSDT", symbol.Delisted),
+			bybitSpot("ADA", "ADAUSDT", symbol.Unspecified),
+		},
+	}}
+	r, err := NewResolver(ctx, []VenueListing{{
+		Venue: "Bybit", REST: src, Categories: []symbol.Category{symbol.Spot},
+	}}, seq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seq.n != 5 {
+		t.Fatalf("drew %d uids, want 5", seq.n)
+	}
+	want := []struct {
+		symbol string
+		status symbol.Status
+	}{
+		{"BTCUSDT", symbol.Tradable},
+		{"DOGEUSDT", symbol.Unknown},
+		{"ETHUSDT", symbol.Halted},
+		{"SOLUSDT", symbol.Prelisting},
+		{"XRPUSDT", symbol.Settling},
+	}
+	list := mustList(t, r, "Bybit", symbol.Spot)
+	if len(list) != len(want) {
+		t.Fatalf("list = %v", listedTickers(list))
+	}
+	for i, w := range want {
+		if list[i].Ticker.Symbol != w.symbol || list[i].Status != w.status {
+			t.Fatalf("row %d = %+v, want %s %s", i, list[i], w.symbol, w.status)
+		}
+		tradable := w.status == symbol.Tradable
+		if list[i].IsTradable() != tradable {
+			t.Fatalf("%s tradable = %v", w.symbol, list[i].IsTradable())
+		}
+	}
+	for _, symbolName := range []string{"LTCUSDT", "BCHUSDT", "ADAUSDT"} {
+		_, err := r.Get(ctx, symbol.UniversalTicker{Venue: "Bybit", Category: symbol.Spot, Symbol: symbolName}, true)
+		if !errors.Is(err, symbol.ErrNotFound) {
+			t.Fatalf("%s err = %v", symbolName, err)
+		}
+	}
+}
+
 func TestResolverSkipsInvalidUID(t *testing.T) {
 	ctx := context.Background()
 	src := mustFake(t, "Bybit")
-	if err := src.Add(bybitSpot("BTC", "BTCUSDT", true)); err != nil {
+	if err := src.Add(bybitSpot("BTC", "BTCUSDT", symbol.Tradable)); err != nil {
 		t.Fatal(err)
 	}
-	if err := src.Add(bybitSpot("ETH", "ETHUSDT", true)); err != nil {
+	if err := src.Add(bybitSpot("ETH", "ETHUSDT", symbol.Tradable)); err != nil {
 		t.Fatal(err)
 	}
 	r := mustResolver(t, "Bybit", src, []symbol.Category{symbol.Spot}, &script{uids: []uint32{0, 4, 4, 5}})
@@ -420,7 +498,7 @@ func TestResolverSkipsInvalidUID(t *testing.T) {
 func TestResolverDefaultDrawIsValid(t *testing.T) {
 	ctx := context.Background()
 	src := mustFake(t, "Bybit")
-	if err := src.Add(bybitSpot("BTC", "BTCUSDT", true)); err != nil {
+	if err := src.Add(bybitSpot("BTC", "BTCUSDT", symbol.Tradable)); err != nil {
 		t.Fatal(err)
 	}
 	if err := src.Add(bybitPerp("BTC", "USDT", "BTCUSDT")); err != nil {
@@ -614,17 +692,17 @@ func mustResolver(t *testing.T, venue string, rest exchange.PublicREST, cats []s
 	return r
 }
 
-func bybitSpot(base, exch string, active bool) symbol.Listing {
+func bybitSpot(base, exch string, status symbol.Status) symbol.Listing {
 	return symbol.Listing{
 		Venue: "Bybit", Category: symbol.Spot, Base: base, Quote: "USDT",
-		ExchTicker: exch, Active: active,
+		ExchTicker: exch, Status: status,
 	}
 }
 
 func bybitFuture(base, exch, expiry string) symbol.Listing {
 	return symbol.Listing{
 		Venue: "Bybit", Category: symbol.Future, Base: base, Quote: "USDT",
-		ExchTicker: exch, ExpiryCode: expiry, Active: true,
+		ExchTicker: exch, ExpiryCode: expiry, Status: symbol.Tradable,
 		ContractSize: "1", ContractValueCcy: base, PriceCcy: "USDT", Settle: "USDT",
 	}
 }
@@ -632,7 +710,7 @@ func bybitFuture(base, exch, expiry string) symbol.Listing {
 func bybitPerp(base, quote, exch string) symbol.Listing {
 	return symbol.Listing{
 		Venue: "Bybit", Category: symbol.Perp, Base: base, Quote: quote,
-		ExchTicker: exch, Active: true,
+		ExchTicker: exch, Status: symbol.Tradable,
 		ContractSize: "1", ContractValueCcy: base, PriceCcy: quote, Settle: quote,
 	}
 }
@@ -719,9 +797,9 @@ func (g *genREST) spot() []symbol.Listing {
 	gen := strconv.Itoa(g.gen)
 	var rows []symbol.Listing
 	if g.gen%2 == 0 {
-		rows = []symbol.Listing{bybitSpot("BTC", "BTCUSDT", true), bybitSpot("ETH", "ETHUSDT", true)}
+		rows = []symbol.Listing{bybitSpot("BTC", "BTCUSDT", symbol.Tradable), bybitSpot("ETH", "ETHUSDT", symbol.Tradable)}
 	} else {
-		rows = []symbol.Listing{bybitSpot("SOL", "SOLUSDT", true), bybitSpot("XRP", "XRPUSDT", true)}
+		rows = []symbol.Listing{bybitSpot("SOL", "SOLUSDT", symbol.Tradable), bybitSpot("XRP", "XRPUSDT", symbol.Tradable)}
 	}
 	for i := range rows {
 		rows[i].Filters = map[string]string{"gen": gen}

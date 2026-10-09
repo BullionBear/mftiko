@@ -74,10 +74,13 @@
 // In-process Resolver (E2-05), for tests and local development only:
 //
 // Resolver implements symbol.Resolver without the SYM service and without PostgreSQL.
-// At startup it calls PublicREST.Listing for each configured (venue, category), keeps
-// the rows that pass Listing.Validate, and serves them from memory. A row that passes
-// Validate but fails Ticker is skipped: the failure is logged and counted, and the
-// rest of that venue still loads. The indexes are
+// At startup it calls PublicREST.Listing for each configured (venue, category).
+// It canonicalizes asset codes with normalizeAssets, the same helper SYM refresh
+// uses, then keeps rows that pass Listing.Validate and whose status is on the
+// active table: PRELISTING, TRADABLE, HALTED, SETTLING, UNKNOWN. EXPIRED and
+// DELISTED are not cached. UNSPECIFIED is invalid. Only TRADABLE may trade.
+// A row that passes Validate but fails Ticker is skipped: the failure is logged
+// and counted, and the rest of that venue still loads. The indexes are
 // UID to Info, ticker to UID, and ExchKey to UID. A reload builds the next snapshot
 // completely and publishes it once, so a reader sees the previous snapshot or the next
 // one, never a mix of the two. A ticker that is still listed keeps its UID. A ticker
@@ -91,11 +94,9 @@
 // exchangetest.Source is the implementation that does. cmd injects this Resolver or the
 // NATS client (E2-09). Only this one allocates.
 //
-// The contract status is still bool. A row that passes Validate is kept, including
-// Active == false, which is how a non-tradable active status is spelled until the enum
-// exists. Only Active == true may trade. This process keeps no terminal table, so
-// includeInactive does not widen a lookup. EXPIRED and DELISTED are the rows the next
-// listing omits.
+// This process keeps no terminal table, so includeInactive does not widen a lookup.
+// A row whose status is EXPIRED or DELISTED is omitted even when the listing still
+// returns it. Only TRADABLE may trade.
 //
 // The sym subject is not served yet.
 package sym

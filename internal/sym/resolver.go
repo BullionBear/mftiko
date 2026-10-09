@@ -78,7 +78,7 @@ type state struct {
 	used map[uint32]struct{}
 }
 
-type prepared struct {
+type cached struct {
 	info symbol.Info
 }
 
@@ -204,8 +204,9 @@ func (r *Resolver) Reverse(ctx context.Context, key symbol.ExchKey) (*symbol.Inf
 	return &info, nil
 }
 
-// List is the active table of one (venue, category), including non-tradable rows.
-// Only Info.Active (TRADABLE) may trade. The result is ordered by UniversalTicker.
+// List is the active table of one (venue, category): PRELISTING, TRADABLE,
+// HALTED, SETTLING and UNKNOWN. Only TRADABLE may trade. The result is ordered
+// by UniversalTicker.
 func (r *Resolver) List(ctx context.Context, venue string, c symbol.Category) ([]symbol.Info, error) {
 	snap, err := r.serve(ctx, venue)
 	if err != nil {
@@ -263,8 +264,8 @@ func ctxErr(err error) bool {
 // category is fetched, then that venue's rows replace the previous ones in a
 // single snapshot. A venue whose listing fails keeps its previous rows.
 // A row that passes Validate but fails Ticker is skipped, logged and counted;
-// it does not fail the venue. Successful venues are still published when
-// another venue fails.
+// it does not fail the venue. EXPIRED, DELISTED and an invalid status are not
+// cached. Successful venues are still published when another venue fails.
 func (r *Resolver) refresh(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -317,7 +318,7 @@ func (r *Resolver) refresh(ctx context.Context) error {
 func (r *Resolver) loadVenue(ctx context.Context, src venueSrc, cur state) (state, error) {
 	type batch struct {
 		cat  symbol.Category
-		rows []prepared
+		rows []cached
 	}
 	batches := make([]batch, 0, len(src.cats))
 	for _, cat := range src.cats {
@@ -347,22 +348,31 @@ func (r *Resolver) loadVenue(ctx context.Context, src venueSrc, cur state) (stat
 	return next, nil
 }
 
-// prepare keeps rows that pass Validate and drops the rest (quanto, a
-// non-canonical asset, a spot settlement). A row that passes Validate but
-// fails Ticker is skipped: it is logged, counted, and omitted. It does not
-// fail the venue. A venue or category mismatch, or a repeated ticker or
-// exchange spelling, fails the venue reload.
-func prepare(log zerolog.Logger, venue string, cat symbol.Category, listed []symbol.Listing) ([]prepared, int, error) {
-	out := make([]prepared, 0, len(listed))
+// prepare keeps active-table rows that pass Validate. Asset codes are
+// canonicalized with normalizeAssets, the same helper SYM refresh uses,
+// before Validate. Quanto, a bad asset code, a spot settlement, an invalid
+// status (including UNSPECIFIED), and EXPIRED or DELISTED are omitted.
+// A row that passes Validate but fails Ticker is skipped: it is logged,
+// counted, and omitted. It does not fail the venue. A venue or category
+// mismatch, or a repeated ticker or exchange spelling, fails the venue reload.
+// This process does not infer EXPIRED from ExpiryNs; that move is SYM refresh.
+func prepare(log zerolog.Logger, venue string, cat symbol.Category, listed []symbol.Listing) ([]cached, int, error) {
+	out := make([]cached, 0, len(listed))
 	seenT := map[symbol.UniversalTicker]struct{}{}
 	seenE := map[string]struct{}{}
 	skipped := 0
 	for _, l := range listed {
+		if l.Venue != venue || l.Category != cat {
+			return nil, skipped, fmt.Errorf("listing %s is %s %s", l.ExchTicker, l.Venue, l.Category)
+		}
+		if err := normalizeAssets(&l); err != nil {
+			continue
+		}
 		if err := l.Validate(); err != nil {
 			continue
 		}
-		if l.Venue != venue || l.Category != cat {
-			return nil, skipped, fmt.Errorf("listing %s is %s %s", l.ExchTicker, l.Venue, l.Category)
+		if !l.Status.Active() {
+			continue
 		}
 		ticker, err := l.Ticker()
 		if err != nil {
@@ -382,7 +392,7 @@ func prepare(log zerolog.Logger, venue string, cat symbol.Category, listed []sym
 		if err != nil {
 			return nil, skipped, err
 		}
-		out = append(out, prepared{info: info})
+		out = append(out, cached{info: info})
 	}
 	return out, skipped, nil
 }
@@ -421,14 +431,14 @@ func infoFrom(l symbol.Listing, ticker symbol.UniversalTicker) (symbol.Info, err
 		ExpiryNs:         l.ExpiryNs,
 		Strike:           strike,
 		OptionType:       opt,
-		Active:           l.Active,
+		Status:           l.Status,
 		Filters:          maps.Clone(l.Filters),
 	}, nil
 }
 
 // replace swaps one (venue, category) inside s. A ticker that was already live
 // keeps its UID. A new ticker draws one. UIDs that leave the table stay in used.
-func (s *state) replace(venue string, cat symbol.Category, rows []prepared, uids Source) error {
+func (s *state) replace(venue string, cat symbol.Category, rows []cached, uids Source) error {
 	prev := map[symbol.UniversalTicker]uint32{}
 	for ticker, uid := range s.live {
 		if ticker.Venue == venue && ticker.Category == cat {
@@ -442,7 +452,7 @@ func (s *state) replace(venue string, cat symbol.Category, rows []prepared, uids
 		delete(s.snap.byExch, info.Exch())
 		delete(s.live, ticker)
 	}
-	slices.SortFunc(rows, func(a, b prepared) int {
+	slices.SortFunc(rows, func(a, b cached) int {
 		return strings.Compare(a.info.Ticker.String(), b.info.Ticker.String())
 	})
 	for _, row := range rows {
