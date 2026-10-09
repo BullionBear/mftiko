@@ -54,6 +54,27 @@ func planeOf(path string) string {
 	return ""
 }
 
+// agentPlanes are the planes whose root package holds the agent's decisions: the Planner, the Policy and the
+// domain types (DECISIONS D40). The wiring to etcd, NATS and the shims is in their daemon subpackage.
+var agentPlanes = []string{"internal/sts", "internal/md", "internal/td"}
+
+// pureAgent reports whether a package must link no I/O: an agent plane's root package, or the skeleton's decisions
+// (internal/platform/agent) that they build on.
+func pureAgent(path string) bool {
+	return path == "internal/platform/agent" || slices.Contains(agentPlanes, path)
+}
+
+// forbiddenInPureAgent reports whether a pure agent package must not link the package: etcd, NATS, or the platform
+// packages that reach them or the shims.
+func forbiddenInPureAgent(importPath string) bool {
+	if under(importPath, "go.etcd.io", "github.com/nats-io") {
+		return true
+	}
+	r, own := rel(importPath)
+	return own && under(r, "internal/platform/state", "internal/platform/natsx", "internal/platform/shim",
+		"internal/platform/agent/c3", "internal/platform/agent/runner")
+}
+
 // forbiddenInStrategy reports whether a strategy binary, which links sdk, must not contain the package.
 func forbiddenInStrategy(importPath string) bool {
 	if under(importPath, "go.etcd.io", "github.com/jackc", "github.com/lib/pq") {
@@ -117,6 +138,13 @@ func check(pkgs []pkg, std map[string]bool) []string {
 				}
 			}
 		}
+		if pureAgent(from) {
+			for _, d := range p.Deps {
+				if forbiddenInPureAgent(d) {
+					out = append(out, fmt.Sprintf("%s links %s: decisions do no I/O; the wiring is in a subpackage", from, d))
+				}
+			}
+		}
 		if under(from, "sdk") {
 			for _, d := range p.Deps {
 				if forbiddenInStrategy(d) {
@@ -173,6 +201,7 @@ func TestDependencyRules(t *testing.T) {
 	}
 	// The rules key on paths; if a block moved, they would pass by matching nothing.
 	for _, want := range []string{"contract/symbol", "contract/wire/frame", "exchange", "sdk", "internal/platform/state",
+		"internal/platform/agent", "internal/platform/agent/runner", "internal/platform/natsx", "internal/platform/shim",
 		"internal/md", "internal/td", "internal/sts", "internal/sym", "internal/api"} {
 		if !slices.Contains(own, want) {
 			t.Fatalf("package %s not found: update the rules in this file (DECISIONS D35) to the new layout", want)
@@ -199,6 +228,11 @@ func TestCheckReportsViolations(t *testing.T) {
 		{ImportPath: m("sdk"), Imports: []string{m("contract/wire/frame"), m("internal/platform/natsx")},
 			Deps: []string{"fmt", m("contract/wire/frame"), "go.etcd.io/etcd/client/v3", m("exchange"), m("sdk/internal/c4")}},
 		{ImportPath: m("examples/strategies/x"), Imports: []string{m("sdk"), m("internal/md")}},
+		{ImportPath: m("internal/td"), Imports: []string{m("internal/platform/agent")},
+			Deps: []string{m("internal/platform/agent"), m("internal/platform/agent/runner"), "github.com/nats-io/nats.go"}},
+		{ImportPath: m("internal/td/daemon"), Imports: []string{m("internal/platform/agent/runner")}, // the wiring: free
+			Deps: []string{m("internal/platform/agent/runner"), m("internal/platform/state"), "go.etcd.io/etcd/client/v3"}},
+		{ImportPath: m("internal/platform/agent"), Deps: []string{m("internal/platform/shim")}},
 		{ImportPath: m("cmd/mftiko-md-agent"), Imports: []string{m("exchange/all"), m("internal/md"), m("internal/td")}},
 		{ImportPath: "go.etcd.io/etcd/client/v3", Imports: []string{m("internal/md")}}, // outside the module: ignored
 	}
@@ -218,6 +252,9 @@ func TestCheckReportsViolations(t *testing.T) {
 		"sdk links go.etcd.io/etcd/client/v3",
 		"sdk links " + m("exchange"),
 		"examples/strategies/x imports " + m("internal/md"),
+		"internal/td links " + m("internal/platform/agent/runner"),
+		"internal/td links github.com/nats-io/nats.go",
+		"internal/platform/agent links " + m("internal/platform/shim"),
 	}
 	if len(got) != len(want) {
 		t.Errorf("%d violations, want %d:\n%s", len(got), len(want), strings.Join(got, "\n"))
