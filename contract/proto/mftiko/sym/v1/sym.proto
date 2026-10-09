@@ -29,8 +29,9 @@ message GetRequest {
 // 系統內部的查詢（D203）。STS、TD、MD 持有 UID，用它拿這一列的欄位。
 // 預設只讀活躍表；include_inactive 才含終結表。0 不是合法 UID。
 message GetByUidRequest {
-  // 契約型別 uint64，0 非法。寬度與範圍仍開放（PROTOCOL §10 P13）：Postgres BIGINT 有號，建議 1..2^63-1。
-  uint64 uid = 1;
+  // 契約型別 uint32，範圍 1..4294967295（1..2^32-1），0 非法（PROTOCOL §10 P13）。
+  // Postgres 欄位是 bigint，CHECK (uid BETWEEN 1 AND 4294967295)。
+  uint32 uid = 1;
   bool include_inactive = 2; // 同 GetRequest.include_inactive（D203）
 }
 
@@ -85,9 +86,9 @@ message SymbolInfo {
   int64 updated_at_ns = 12;
   // SYM 分配的隨機整數：跨活躍表與終結表唯一、永不重用，跟列持久化，不是單調序號（D203）。
   // 重啟與重載不改它。下架再上市是新的 UID。碰撞時 SYM 重試。
-  // 契約型別 uint64，0 非法。寬度與範圍仍開放（PROTOCOL §10 P13）：Postgres BIGINT 有號，建議 1..2^63-1。
-  // 這一版的 SQL 還沒有這個欄位。
-  uint64 uid = 13;
+  // 契約型別 uint32，範圍 1..4294967295（1..2^32-1），0 非法（PROTOCOL §10 P13）。
+  // Postgres 欄位是 bigint，CHECK (uid BETWEEN 1 AND 4294967295)。
+  uint32 uid = 13;
 }
 
 message Bound {

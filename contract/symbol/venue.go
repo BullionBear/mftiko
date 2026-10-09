@@ -17,5 +17,9 @@ type Venue struct {
 
 // Venues is the venue registry as Resolve sees it. exchange's Registry implements it.
 type Venues interface {
+	// Lookup finds a venue by its canonical name.
 	Lookup(name string) (Venue, bool)
+	// Names lists every venue's canonical name. Resolve folds case against this
+	// list: "binanceum" is BinanceUM, which Lookup alone cannot spell.
+	Names() []string
 }

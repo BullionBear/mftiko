@@ -1,9 +1,12 @@
 package all
 
 import (
+	"errors"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/BullionBear/mftiko/contract/symbol"
 )
 
 var (
@@ -49,5 +52,20 @@ func TestRegistry(t *testing.T) {
 	}
 	if pm.CanTrade("BinanceEO") {
 		t.Error("BinancePM trades BinanceEO")
+	}
+
+	// Resolve folds case against the registry (D201). Binance is spot only.
+	got, err := symbol.Resolve("binanceum_future_btcusdt250926", r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.String() != "BinanceUM_Future_BTCUSDT-250926" {
+		t.Fatalf("got %s", got.String())
+	}
+	if _, err := symbol.Resolve("bybit_perp_btc/usdt", r); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := symbol.Resolve("binance_perp_btcusdt", r); !errors.Is(err, symbol.ErrCategory) {
+		t.Fatalf("binance perp: %v", err)
 	}
 }

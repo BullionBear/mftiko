@@ -98,6 +98,10 @@ func check(pkgs []pkg, std map[string]bool) []string {
 			to, own := rel(imp)
 			external := !own && !std[imp]
 			switch {
+			case from == "contract/symbol":
+				if !std[imp] {
+					bad(imp, "contract/symbol depends only on the standard library")
+				}
 			case under(from, "contract"):
 				if own && !under(to, "contract") {
 					bad(imp, "contract depends on nothing else in the repository")
@@ -247,6 +251,7 @@ func TestCheckReportsViolations(t *testing.T) {
 		"internal/platform/agent imports " + m("internal/sts"),
 		"internal/platform/agent imports " + m("exchange"),
 		"exchange/okx imports " + m("internal/platform/state"),
+		"contract/symbol imports google.golang.org/protobuf/proto",
 		"contract/symbol imports github.com/rs/zerolog",
 		"contract/symbol imports " + m("exchange"),
 		"sdk imports " + m("internal/platform/natsx"),

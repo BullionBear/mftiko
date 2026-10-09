@@ -212,8 +212,9 @@ func (x *GetRequest) GetIncludeInactive() bool {
 // 預設只讀活躍表；include_inactive 才含終結表。0 不是合法 UID。
 type GetByUidRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 契約型別 uint64，0 非法。寬度與範圍仍開放（PROTOCOL §10 P13）：Postgres BIGINT 有號，建議 1..2^63-1。
-	Uid             uint64 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"`
+	// 契約型別 uint32，範圍 1..4294967295（1..2^32-1），0 非法（PROTOCOL §10 P13）。
+	// Postgres 欄位是 bigint，CHECK (uid BETWEEN 1 AND 4294967295)。
+	Uid             uint32 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"`
 	IncludeInactive bool   `protobuf:"varint,2,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // 同 GetRequest.include_inactive（D203）
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
@@ -249,7 +250,7 @@ func (*GetByUidRequest) Descriptor() ([]byte, []int) {
 	return file_mftiko_sym_v1_sym_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *GetByUidRequest) GetUid() uint64 {
+func (x *GetByUidRequest) GetUid() uint32 {
 	if x != nil {
 		return x.Uid
 	}
@@ -581,9 +582,9 @@ type SymbolInfo struct {
 	UpdatedAtNs int64             `protobuf:"varint,12,opt,name=updated_at_ns,json=updatedAtNs,proto3" json:"updated_at_ns,omitempty"`
 	// SYM 分配的隨機整數：跨活躍表與終結表唯一、永不重用，跟列持久化，不是單調序號（D203）。
 	// 重啟與重載不改它。下架再上市是新的 UID。碰撞時 SYM 重試。
-	// 契約型別 uint64，0 非法。寬度與範圍仍開放（PROTOCOL §10 P13）：Postgres BIGINT 有號，建議 1..2^63-1。
-	// 這一版的 SQL 還沒有這個欄位。
-	Uid           uint64 `protobuf:"varint,13,opt,name=uid,proto3" json:"uid,omitempty"`
+	// 契約型別 uint32，範圍 1..4294967295（1..2^32-1），0 非法（PROTOCOL §10 P13）。
+	// Postgres 欄位是 bigint，CHECK (uid BETWEEN 1 AND 4294967295)。
+	Uid           uint32 `protobuf:"varint,13,opt,name=uid,proto3" json:"uid,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -702,7 +703,7 @@ func (x *SymbolInfo) GetUpdatedAtNs() int64 {
 	return 0
 }
 
-func (x *SymbolInfo) GetUid() uint64 {
+func (x *SymbolInfo) GetUid() uint32 {
 	if x != nil {
 		return x.Uid
 	}
@@ -883,7 +884,7 @@ const file_mftiko_sym_v1_sym_proto_rawDesc = "" +
 	"\x10universal_ticker\x18\x01 \x01(\tR\x0funiversalTicker\x12)\n" +
 	"\x10include_inactive\x18\x02 \x01(\bR\x0fincludeInactive\"N\n" +
 	"\x0fGetByUidRequest\x12\x10\n" +
-	"\x03uid\x18\x01 \x01(\x04R\x03uid\x12)\n" +
+	"\x03uid\x18\x01 \x01(\rR\x03uid\x12)\n" +
 	"\x10include_inactive\x18\x02 \x01(\bR\x0fincludeInactive\"\x98\x01\n" +
 	"\vListRequest\x12\x14\n" +
 	"\x05venue\x18\x01 \x01(\tR\x05venue\x12\x1a\n" +
@@ -923,7 +924,7 @@ const file_mftiko_sym_v1_sym_proto_rawDesc = "" +
 	" \x01(\bR\x06active\x12@\n" +
 	"\afilters\x18\v \x03(\v2&.mftiko.sym.v1.SymbolInfo.FiltersEntryR\afilters\x12\"\n" +
 	"\rupdated_at_ns\x18\f \x01(\x03R\vupdatedAtNs\x12\x10\n" +
-	"\x03uid\x18\r \x01(\x04R\x03uid\x1aP\n" +
+	"\x03uid\x18\r \x01(\rR\x03uid\x1aP\n" +
 	"\fFiltersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12*\n" +
 	"\x05value\x18\x02 \x01(\v2\x14.mftiko.sym.v1.BoundR\x05value:\x028\x01B\x10\n" +
