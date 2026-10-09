@@ -165,11 +165,11 @@ func (v *view) record() {
 			v.log.Error().Err(err).Msg("exit file not written")
 		}
 	}
+	v.mu.Lock() // the Exited event, the exit and EXITED: one moment for Attached
 	v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Exited{Exited: &shimv1.Exited{Exit: info}}})
-	v.mu.Lock()
 	v.exit = info
-	v.mu.Unlock()
 	close(v.recorded)
+	v.mu.Unlock()
 	v.log.Info().Str("outcome", info.GetOutcome().String()).Int32("code", info.GetCode()).Int32("signal", info.GetSignal()).
 		Str("reason", info.GetReason()).Bool("on_stop_completed", info.GetOnStopCompleted()).Msg("exit recorded")
 }
@@ -224,15 +224,19 @@ func (v *view) exited() bool {
 	}
 }
 
-// Attached reports the worker. Its state is EXITED once reaped, RUNNING once it said Hello, STARTING before.
+// Attached reports the worker: everything an agent decides by (DECISIONS D37). Its state is EXITED once the exit is
+// recorded, with the ExitInfo; RUNNING once it said Hello; STARTING before.
 func (v *view) Attached() *shimv1.Attached {
 	a := &shimv1.Attached{Pid: int32(v.pid), Pgid: int32(v.pgid), StartTime: v.startTime}
+	// One moment (PROTOCOL §4.4): what follow and record change, and the events they append, change together under
+	// v.mu, so next_seq is exactly where this state stands.
 	v.mu.Lock()
+	defer v.mu.Unlock()
 	a.Hello, a.Stage, a.LastBeatAtNs, a.Phase = proto.CloneOf(v.hello), v.stage, v.lastBeatNs, v.phase
-	v.mu.Unlock()
+	a.Exiting, a.Exit = proto.CloneOf(v.exitingMsg), proto.CloneOf(v.exit) // exit is set only once recorded
 	a.OldestSeq, a.NextSeq = v.events.Bounds()
 	switch {
-	case v.isRecorded(): // not merely reaped: Exited is in the events, and Release is accepted
+	case v.exit != nil: // recorded, not merely reaped: Exited is in the events, and Release is accepted
 		a.State = shimv1.WorkerState_WORKER_STATE_EXITED
 	case a.Hello != nil:
 		a.State = shimv1.WorkerState_WORKER_STATE_RUNNING
@@ -396,58 +400,60 @@ func (v *view) follow(conn io.Reader) {
 			return
 		}
 		v.mu.Lock()
-		switch m := m.GetMsg().(type) {
-		case *workerv1.WorkerUp_Hello:
-			if v.hello == nil { // the first one counts; a worker says Hello once
-				v.hello = m.Hello
-			}
-		case *workerv1.WorkerUp_Stage:
-			v.stage = m.Stage.GetName()
-		case *workerv1.WorkerUp_Beat:
-			v.lastBeatNs = time.Now().UnixNano()
-		case *workerv1.WorkerUp_Done:
-			v.doneLocked(m.Done)
-		case *workerv1.WorkerUp_Exiting:
-			v.exiting = true
-			v.phase = shimv1.Phase_PHASE_STOPPING
-			if v.exitingMsg == nil { // the first one counts
-				v.exitingMsg = m.Exiting
-			}
-		case *workerv1.WorkerUp_Stopped:
-			if v.stoppedMsg == nil {
-				v.stoppedMsg = m.Stopped
-			}
-		}
+		pass, relay := v.takeLocked(m, &lastBeat)
 		out := v.sink
 		v.mu.Unlock()
 		v.log.Debug().Str("msg", fmt.Sprintf("%T", m.GetMsg())).Msg("from worker")
 
 		// Not under v.mu: Deliver takes the server's lock, which is held while it calls into the view.
-		deliver := func(ev *shimv1.Event) bool { return out != nil && out.Deliver(ev) }
-		switch m := m.GetMsg().(type) {
-		case *workerv1.WorkerUp_Hello:
-			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Hello{Hello: m.Hello}})
-		case *workerv1.WorkerUp_Done:
-			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Done{Done: m.Done}})
-		case *workerv1.WorkerUp_Stage:
-			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Stage{Stage: m.Stage}})
-		case *workerv1.WorkerUp_Exiting:
-			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Exiting{Exiting: m.Exiting}})
-		case *workerv1.WorkerUp_Stopped:
-			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Stopped{Stopped: m.Stopped}})
-		case *workerv1.WorkerUp_Report:
-			deliver(v.events.SetReport(&shimv1.Event{Kind: &shimv1.Event_Report{Report: m.Report}}))
-		case *workerv1.WorkerUp_Beat:
-			if now := time.Now(); now.Sub(lastBeat) >= beatEvery {
-				lastBeat = now
-				deliver(v.events.Transient(&shimv1.Event{Kind: &shimv1.Event_Beat{Beat: m.Beat}}))
-			}
-		case *workerv1.WorkerUp_Relay:
-			if !deliver(v.events.Transient(&shimv1.Event{Kind: &shimv1.Event_Relay{Relay: m.Relay}})) {
-				v.undeliverable(m.Relay.GetCorrId())
-			}
+		if pass != nil && !(out != nil && out.Deliver(pass)) && relay != nil {
+			v.undeliverable(relay.GetCorrId())
 		}
 	}
+}
+
+// takeLocked is what one message of the worker does, under v.mu. The state and the event that tells of it change
+// together, so that Attached reads both at one moment (PROTOCOL §4.4). It returns what goes to the controller once
+// v.mu is released: a Report, a Beat a second, or the worker's Relay, which is also returned so that it can be
+// answered Undeliverable when there is no controller to take it.
+func (v *view) takeLocked(m *workerv1.WorkerUp, lastBeat *time.Time) (pass *shimv1.Event, relay *workerv1.Relay) {
+	switch m := m.GetMsg().(type) {
+	case *workerv1.WorkerUp_Hello:
+		if v.hello == nil { // the first one counts; a worker says Hello once
+			v.hello = m.Hello
+		}
+		v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Hello{Hello: m.Hello}})
+	case *workerv1.WorkerUp_Stage:
+		v.stage = m.Stage.GetName()
+		v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Stage{Stage: m.Stage}})
+	case *workerv1.WorkerUp_Done:
+		v.doneLocked(m.Done)
+		v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Done{Done: m.Done}})
+	case *workerv1.WorkerUp_Exiting:
+		v.exiting = true
+		v.phase = shimv1.Phase_PHASE_STOPPING
+		if v.exitingMsg == nil { // the first one counts
+			v.exitingMsg = m.Exiting
+		}
+		v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Exiting{Exiting: m.Exiting}})
+	case *workerv1.WorkerUp_Stopped:
+		if v.stoppedMsg == nil {
+			v.stoppedMsg = m.Stopped
+		}
+		v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Stopped{Stopped: m.Stopped}})
+	case *workerv1.WorkerUp_Beat:
+		now := time.Now()
+		v.lastBeatNs = now.UnixNano()
+		if now.Sub(*lastBeat) >= beatEvery {
+			*lastBeat = now
+			return v.events.Transient(&shimv1.Event{Kind: &shimv1.Event_Beat{Beat: m.Beat}}), nil
+		}
+	case *workerv1.WorkerUp_Report:
+		return v.events.SetReport(&shimv1.Event{Kind: &shimv1.Event_Report{Report: m.Report}}), nil
+	case *workerv1.WorkerUp_Relay:
+		return v.events.Transient(&shimv1.Event{Kind: &shimv1.Event_Relay{Relay: m.Relay}}), m.Relay
+	}
+	return nil, nil
 }
 
 // undeliverable answers a Relay of the worker that no agent can take (PROTOCOL §4.4).

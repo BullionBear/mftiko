@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-07 更新：controller 與宣告式的需求，D33–D36）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-09 更新：agent 以快照恢復，D37）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 
@@ -576,6 +576,15 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **趁還是草案，拿掉兩條跨契約的 import：**
   - `stsctl.v1` 不再 import `state.v1`。策略的契約版本偏差最久（PROTOCOL §1），etcd 的 schema 卻是不相容就換 key 根，兩者不該綁在一起。session 的宣告（`SessionSpec` 與它的組成）抽成獨立的套件 `mftiko.session.v1`，歸 STS；`state.v1`、`stsctl.v1` 與 E10 的 API 契約都 import 它。`EntryState`、`Universe` 在 `stsctl` 裡另定綁定自己的型別。
   - `td.v1` 不再為了 `Side` import `md.v1`：`Side` 搬到 `common.v1`（D35）。
+
+### D37 agent 以快照恢復，shim 的事件只是通知
+
+- **agent 做任何決策所依據的事實，都必須在 `Attached`（或結束檔）裡有最新值。** agent 不在時（輪換、crash、斷線），shim 發出的事件可能沒人收；agent 回來 attach，拿快照和 etcd、需求比對，有差異就改。這是 level-triggered，和 W4、`Mirror` 同一套思路。
+- **事件是降低延遲的通知，不是正確性的來源。** agent 不在時遺失的事件，只少了歷史（互相抵銷的轉換、轉換的時間點），不影響決策。
+- **shim 不需要知道 agent 做完了沒有。** `Ack` 只讓 shim 提早釋放記憶體，不是提交；環一律最多保留 1024 則，`gap` 只說明歷史不完整。
+- 不能等 agent 回來的事都在 shim：`Stop` 的計時、自己收到 SIGTERM 時送 `Stop`、結束的記錄、對 worker 的 `Relay` 回 `Undeliverable`。其餘的判斷（例如要不要重啟）本來就要等 agent，事件保留得再完整也不會更快。
+- 不採用的做法：`Ack` 當成提交（agent 把效果寫進 etcd 之後才 Ack，未 Ack 的事件等於 etcd 還沒反映的部分）。它讓 shim 的保留語意綁上 agent 何時持久化，agent 還得處理 at-least-once 的冪等；而只要快照完整，這些都不需要。
+- 因此 `Attached` 帶 `exiting`（worker 正在跑 OnStop 時，原本打算怎麼結束）與 `exit`（記錄完的 `ExitInfo`）。
 
 ## 待討論
 
