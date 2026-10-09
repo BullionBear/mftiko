@@ -1,7 +1,7 @@
-# Local development only: `make dev-up` starts both services and waits until they are healthy; then
-# `make migrate-up`. Ports are bound to 127.0.0.1, so nothing outside this machine can connect, and neither service
-# asks for credentials: PostgreSQL trusts local connections, etcd has no auth yet (E1-08 adds it).
-# Tests do not use these: internal/platform/state's tests start their own etcd (etcdtest).
+# Local development only: `make dev-up` starts every service and waits until they are healthy; then
+# `make migrate-up`. Ports are bound to 127.0.0.1, so nothing outside this machine can connect, and no service
+# asks for credentials: PostgreSQL trusts local connections, etcd has no auth yet (E1-08 adds it), and NATS has
+# none either. Tests do not use these: state starts its own etcd (etcdtest), natsx its own server (natsxtest).
 services:
   postgres:
     image: postgres:17
@@ -41,6 +41,31 @@ services:
       - etcddata:/var/lib/etcd
     healthcheck: # the image is distroless: no shell, so exec form
       test: ["CMD", "/usr/local/bin/etcdctl", "--endpoints=http://127.0.0.1:2379", "endpoint", "health"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Core NATS only, one server, the same release the tests embed
+  # (github.com/nats-io/nats-server/v2 v2.15.0). The data plane (D7, D14): no JetStream, no cluster,
+  # no authentication. The image's own config is not used; it opens a cluster port with a fixed route
+  # password. Clients use nats://127.0.0.1:4222. The alpine image, not scratch, because the healthcheck
+  # needs wget, which is busybox in that image. The monitor port stays inside the container.
+  nats:
+    image: nats:2.15.0-alpine
+    command:
+      - nats-server
+      - --port
+      - "4222"
+      - --addr
+      - 0.0.0.0 # inside the container; the port mapping limits it to this machine
+      - --http_port
+      - "8222"
+      - --name
+      - dev
+    ports:
+      - "127.0.0.1:4222:4222"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8222/healthz"]
       interval: 2s
       timeout: 3s
       retries: 30

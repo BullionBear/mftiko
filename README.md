@@ -41,7 +41,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-conformance      SDK conformance suite
 examples/strategies/      hello, tape-keeper; import only sdk and contract, as an outside author would
 migrations/               PostgreSQL schema: NNNN_name.up.sql / .down.sql, embedded into mftiko-migrate
-deploy/dev/               local development services (PostgreSQL, etcd)
+deploy/dev/               local development services (PostgreSQL, etcd, NATS)
 web/                      SvelteKit console (single-page app served by mftiko-api)
 docs/                     DECISIONS.md, PROTOCOL.md
 ```
@@ -60,17 +60,19 @@ docs/                     DECISIONS.md, PROTOCOL.md
 | `make test` / `make test-race` / `make vet` | Go tests / with the race detector, uncached / vet |
 | `make check` | everything CI runs: `proto-lint`, `proto-breaking`, `gen-check`, `vet`, `build`, `test-race`, `web-check` |
 | `make web` / `make web-dev` / `make web-check` | build, dev server, svelte-check |
-| `make dev-up` / `make dev-down` | start / stop a local PostgreSQL and etcd (Docker); `dev-up` waits until both are healthy |
+| `make dev-up` / `make dev-down` | start / stop a local PostgreSQL, etcd and NATS (Docker); `dev-up` waits until all are healthy |
 | `make migrate-up` / `make migrate-down` / `make migrate-status` | apply / roll back one / list migrations against `$DATABASE_URL` |
 | `make migrate-new NAME=...` | creates the next `NNNN_<name>.up.sql` / `.down.sql` pair |
 | `make clean` | removes `bin/` and web build output |
 | `make help` | lists targets |
 
-Building and testing the Go code need only Go 1.26+: the generated code is committed. `make proto`, `make web` and `make check` also need Node 22+ and npm; Docker only for `make dev-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`; its etcd is at `http://127.0.0.1:2379`, one member with no auth.
+Building and testing the Go code need only Go 1.26+: the generated code is committed. `make proto`, `make web` and `make check` also need Node 22+ and npm; Docker only for `make dev-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`; its etcd is at `http://127.0.0.1:2379`, one member with no auth. Its NATS is at `nats://127.0.0.1:4222`, core NATS only, no auth.
 
 ## Tests
 
 The tests of `internal/platform/state` run a real etcd (v3.7.2). They find it through `MFTIKO_ETCD_BIN`, else `etcd` on `PATH`, and are skipped when there is neither. Set `MFTIKO_REQUIRE_ETCD=1` to make a missing etcd a failure instead; CI does, so a run that skipped them cannot pass.
+
+The tests of `internal/platform/natsx` start an embedded core NATS server (`natsxtest`, nats-server v2.15.0, the same release as the dev image). They do not use the compose service and need no extra binary.
 
 CI (`.github/workflows/ci.yml`) runs `make check` on every pull request and on `main`, with etcd downloaded from its release and checked against the release's `SHA256SUMS`, and `buf breaking` compared with the pull request's base.
 
