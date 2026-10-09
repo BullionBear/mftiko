@@ -281,7 +281,7 @@ export const LevelSchema: GenMessage<Level> = /*@__PURE__*/
   messageDesc(file_mftiko_md_v1_md, 5);
 
 /**
- * orderbook：conn worker 本地全量 book 的 top-N，top-N 有變才推（D21）。
+ * orderbook：conn worker 本地全量 book 的 top-N，top-N 有變才推（D402）。
  *
  * @generated from message mftiko.md.v1.OrderBook
  */
@@ -315,7 +315,7 @@ export const OrderBookSchema: GenMessage<OrderBook> = /*@__PURE__*/
   messageDesc(file_mftiko_md_v1_md, 6);
 
 /**
- * orderbook_delta：本地全量 book 的增量（D21）。qty 為 "0" 表示刪除該價位。
+ * orderbook_delta：本地全量 book 的增量（D402）。qty 為 "0" 表示刪除該價位。
  * reset 為 true 時，bids／asks 是完整的 book，取代本地狀態（conn worker 對交易所重新同步之後）。
  * 晚加入的接法見 read.proto 的 md.view。
  *
@@ -413,7 +413,7 @@ export const KlineSchema: GenMessage<Kline> = /*@__PURE__*/
   messageDesc(file_mftiko_md_v1_md, 8);
 
 /**
- * 只有 24h 統計（D12）；venue 不推的欄位不填。
+ * 只有 24h 統計（D401）；venue 不推的欄位不填。
  *
  * @generated from message mftiko.md.v1.Ticker
  */

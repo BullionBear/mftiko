@@ -9,7 +9,7 @@ const (
 )
 
 // Credentials are an api_id's unsealed API key. They reach the account worker only through the
-// socketpair in Init, and the TD agent only to build a History (D20); never env, files or etcd.
+// socketpair in Init, and the TD agent only to build a History (D601); never env, files or etcd.
 //
 // Every formatting path redacts them, so a stray log field or %v cannot leak a secret.
 type Credentials struct {

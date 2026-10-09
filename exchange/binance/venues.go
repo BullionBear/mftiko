@@ -7,7 +7,7 @@ import (
 
 const Exchange = "binance"
 
-// Venue names. The account kinds below reuse four of them as their own names: two enums (D32).
+// Venue names. The account kinds below reuse four of them as their own names: two enums (D301).
 const (
 	VenueSpot = "Binance"
 	VenueUM   = "BinanceUM"
@@ -58,7 +58,7 @@ var (
 	kindCM   = kind{name: "BinanceCM", label: "Binance COIN-M", trades: []string{VenueCM}}
 	kindEO   = kind{name: "BinanceEO", label: "Binance Options", trades: []string{VenueEO}}
 	// Portfolio Margin: one account over spot margin, USDⓈ-M and COIN-M, all through papi. Its
-	// adapter routes each request by the ticker's venue (D32).
+	// adapter routes each request by the ticker's venue (D301).
 	kindPM = kind{name: "BinancePM", label: "Binance Portfolio Margin", trades: []string{VenueSpot, VenueUM, VenueCM}}
 )
 

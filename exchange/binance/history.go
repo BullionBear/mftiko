@@ -15,7 +15,7 @@ func historyFactory(k kind) exchange.HistoryFactory {
 
 // history reads myTrades (spot) / userTrades (futures; papi's um and cm userTrades for BinancePM) by
 // fromId, ascending; the trade id is the same "id" the private stream reports as "t", which is
-// what D20 needs for fill_id.
+// what D601 needs for fill_id.
 type history struct {
 	k   kind
 	cfg exchange.AccountConfig

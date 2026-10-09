@@ -17,7 +17,7 @@ message InitPayload {
   bytes params = 6;
   repeated mftiko.session.v1.FeedDecl feeds = 7;
   repeated mftiko.session.v1.AccountDecl accounts = 8;
-  NatsCredentials nats = 9; // 這個 session 專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D30）
+  NatsCredentials nats = 9; // 這個 session 專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D906）
 }
 
 // STS agent 為這個 session 簽的 user JWT。權限見 PROTOCOL §7。
@@ -61,7 +61,7 @@ message SelectorBinding {
   string name = 1;
   string md_instance = 2;
   Universe universe = 3;
-  string subject_prefix = 4; // 成員的 subject 是 {subject_prefix}.{topic}.{ticker}。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（D38、§10 P14）
+  string subject_prefix = 4; // 成員的 subject 是 {subject_prefix}.{topic}.{ticker}。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（D203、§10 P14）
 }
 
 message AccountBinding {
@@ -79,7 +79,7 @@ message Report {
   repeated QueueStat queues = 5;
 }
 
-// name 是 td 或 md（D24）。
+// name 是 td 或 md（D803）。
 message QueueStat {
   string name = 1;
   uint32 depth = 2;
@@ -88,7 +88,7 @@ message QueueStat {
 }
 
 // 綁定的狀態，對應 provider 的 ack（§3.5）。值與 state.v1.EntryState 相同；stsctl 自己定義，策略的契約才不綁在 etcd 的
-// schema 上（DECISIONS D36）。
+// schema 上（DECISIONS D007）。
 enum BindingState {
   BINDING_STATE_UNSPECIFIED = 0; // provider 沒有 ack（沉默）
   BINDING_STATE_PENDING = 1;
@@ -100,7 +100,7 @@ enum BindingState {
 // selector 目前的成員。欄位與 state.v1.Universe 相同。
 message Universe {
   uint64 epoch = 1;
-  repeated string members = 2; // 今天是 UniversalTicker。改成 UID 是後續（D38）
-  string current = 3;          // 只有 rolling_future
+  repeated string members = 2; // 成員是商品。今天是 UniversalTicker；改成商品 UID 是後續（D203）。selector 本身沒有 UID
+  string current = 3;          // 只有 rolling_future。這是 selector，尚未定，不在 D203 的範圍；selector 沒有 UID
   repeated string topics = 4;
 }

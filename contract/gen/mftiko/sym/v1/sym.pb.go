@@ -153,13 +153,13 @@ func (*Request_Refresh) isRequest_Req() {}
 
 func (*Request_GetByUid) isRequest_Req() {}
 
-// Spec 與設定載入的邊界（D38）：人寫的 UniversalTicker 在這裡解成 UID。
+// Spec 與設定載入的邊界（D203）：人寫的 UniversalTicker 在這裡解成 UID。
 // 平面之間不走這條，它們已經持有 UID，用 GetByUidRequest。
 // One instrument by exact ticker: a single row, never a venue table.
 type GetRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	UniversalTicker string                 `protobuf:"bytes,1,opt,name=universal_ticker,json=universalTicker,proto3" json:"universal_ticker,omitempty"`
-	IncludeInactive bool                   `protobuf:"varint,2,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // D38：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢，含 MD 的到期監看。Resolver 與熱路徑不設。表還沒拆
+	IncludeInactive bool                   `protobuf:"varint,2,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // D203：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢，含 MD 的到期監看。Resolver 與熱路徑不設。表還沒拆
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -208,12 +208,13 @@ func (x *GetRequest) GetIncludeInactive() bool {
 	return false
 }
 
-// 系統內部的查詢（D38）。STS、TD、MD 持有 UID，用它拿這一列的欄位。
+// 系統內部的查詢（D203）。STS、TD、MD 持有 UID，用它拿這一列的欄位。
 // 預設只讀活躍表；include_inactive 才含終結表。0 不是合法 UID。
 type GetByUidRequest struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Uid             uint64                 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"`                                                // 寬度暫定（PROTOCOL §10 P13）。契約暫用 uint64
-	IncludeInactive bool                   `protobuf:"varint,2,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // 同 GetRequest.include_inactive（D38）
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 契約型別 uint64，0 非法。寬度與範圍仍開放（PROTOCOL §10 P13）：Postgres BIGINT 有號，建議 1..2^63-1。
+	Uid             uint64 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"`
+	IncludeInactive bool   `protobuf:"varint,2,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // 同 GetRequest.include_inactive（D203）
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -262,14 +263,16 @@ func (x *GetByUidRequest) GetIncludeInactive() bool {
 	return false
 }
 
-// One (venue, category) table, paged. A page stays under NATS's 1 MiB with every filter.
+// One (venue, category) table, paged by offset and limit. A page stays under NATS's 1 MiB
+// with every filter. A row may move or appear between pages; that inconsistency is accepted
+// (D203, PROTOCOL §10 P13).
 type ListRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Venue           string                 `protobuf:"bytes,1,opt,name=venue,proto3" json:"venue,omitempty"`
 	Category        string                 `protobuf:"bytes,2,opt,name=category,proto3" json:"category,omitempty"`
 	Limit           uint32                 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"` // at most 500
 	Offset          uint32                 `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
-	IncludeInactive bool                   `protobuf:"varint,5,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // 同 GetRequest.include_inactive（D38）
+	IncludeInactive bool                   `protobuf:"varint,5,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // 同 GetRequest.include_inactive（D203）
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -339,7 +342,7 @@ func (x *ListRequest) GetIncludeInactive() bool {
 	return false
 }
 
-// The venue's spelling -> the listing. Callers keep SymbolInfo.uid (D38). Category is required:
+// The venue's spelling -> the listing. Callers keep SymbolInfo.uid (D203). Category is required:
 // on a unified-account venue the spelling alone is ambiguous (Bybit's spot and linear "BTCUSDT").
 type ReverseRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -562,22 +565,24 @@ func (*Reply_Refresh) isReply_Result() {}
 
 type SymbolInfo struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
-	UniversalTicker string                 `protobuf:"bytes,1,opt,name=universal_ticker,json=universalTicker,proto3" json:"universal_ticker,omitempty"` // 給人看的字串。系統內部用 uid（D38）
+	UniversalTicker string                 `protobuf:"bytes,1,opt,name=universal_ticker,json=universalTicker,proto3" json:"universal_ticker,omitempty"` // 給人看的字串。系統內部用 uid（D203）
 	ExchTicker      string                 `protobuf:"bytes,2,opt,name=exch_ticker,json=exchTicker,proto3" json:"exch_ticker,omitempty"`
 	Base            string                 `protobuf:"bytes,3,opt,name=base,proto3" json:"base,omitempty"`
 	Quote           string                 `protobuf:"bytes,4,opt,name=quote,proto3" json:"quote,omitempty"`
-	ContractSize    *string                `protobuf:"bytes,5,opt,name=contract_size,json=contractSize,proto3,oneof" json:"contract_size,omitempty"` // 一張的面值。qty = 張數 × 此值，單位是 contract_value_ccy：linear 與期權是 base，inverse 是 quote（D38）
-	Settle          *string                `protobuf:"bytes,6,opt,name=settle,proto3,oneof" json:"settle,omitempty"`                                 // 損益結算幣（settlement_asset），不是保證金幣。空 = 現貨。quanto（既不是 base 也不是 quote）一期不入庫（D38）
+	ContractSize    *string                `protobuf:"bytes,5,opt,name=contract_size,json=contractSize,proto3,oneof" json:"contract_size,omitempty"` // 一張的面值。qty = 張數 × 此值，單位是 contract_value_ccy：linear 與期權是 base，inverse 是 quote（D203）
+	Settle          *string                `protobuf:"bytes,6,opt,name=settle,proto3,oneof" json:"settle,omitempty"`                                 // 損益結算幣（settlement_asset），不是保證金幣。空 = 現貨。quanto（既不是 base 也不是 quote）一期不入庫（D203）
 	ExpiryNs        int64                  `protobuf:"varint,7,opt,name=expiry_ns,json=expiryNs,proto3" json:"expiry_ns,omitempty"`                  // 0 = does not expire
-	Strike          *string                `protobuf:"bytes,8,opt,name=strike,proto3,oneof" json:"strike,omitempty"`                                 // SYM 先依 spell_strike 正規化再推 ticker：6400.0 與 6400 相同（D38）
+	Strike          *string                `protobuf:"bytes,8,opt,name=strike,proto3,oneof" json:"strike,omitempty"`                                 // SYM 先依 spell_strike 正規化再推 ticker：6400.0 與 6400 相同（D203）
 	OptionType      string                 `protobuf:"bytes,9,opt,name=option_type,json=optionType,proto3" json:"option_type,omitempty"`             // C | P | ""
-	Active          bool                   `protobuf:"varint,10,opt,name=active,proto3" json:"active,omitempty"`                                     // 暫定（D38）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。定案前仍是 bool，表也還沒拆
+	Active          bool                   `protobuf:"varint,10,opt,name=active,proto3" json:"active,omitempty"`                                     // 暫定（D203）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。定案前仍是 bool，表也還沒拆
 	// name -> bound. A key with an absent value: the venue publishes the restriction, no bound.
-	// price_tick is price_ccy; qty_step, min_qty, max_qty are contract_value_ccy (D38).
+	// price_tick is price_ccy; qty_step, min_qty, max_qty are contract_value_ccy (D203).
 	Filters     map[string]*Bound `protobuf:"bytes,11,rep,name=filters,proto3" json:"filters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	UpdatedAtNs int64             `protobuf:"varint,12,opt,name=updated_at_ns,json=updatedAtNs,proto3" json:"updated_at_ns,omitempty"`
-	// 兩張表的主鍵，跨表唯一（D38）。搬到終結表時不變。同一個 ticker 下架再上市是新的 UID。
-	// 寬度暫定，見 PROTOCOL §10 P13。契約暫用 uint64，0 不分配。這一版的 SQL 還沒有這個欄位。
+	// SYM 分配的隨機整數：跨活躍表與終結表唯一、永不重用，跟列持久化，不是單調序號（D203）。
+	// 重啟與重載不改它。下架再上市是新的 UID。碰撞時 SYM 重試。
+	// 契約型別 uint64，0 非法。寬度與範圍仍開放（PROTOCOL §10 P13）：Postgres BIGINT 有號，建議 1..2^63-1。
+	// 這一版的 SQL 還沒有這個欄位。
 	Uid           uint64 `protobuf:"varint,13,opt,name=uid,proto3" json:"uid,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

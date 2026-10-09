@@ -1,4 +1,4 @@
-// Command mftiko-sym is the symbol service (sym), following mftik's symbol model (DECISIONS D11).
+// Command mftiko-sym is the symbol service (sym), following mftik's symbol model (DECISIONS D201).
 //
 // Shape only: not implemented yet.
 package main

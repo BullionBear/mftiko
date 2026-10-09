@@ -24,7 +24,7 @@ export type InitPayload = Message<"mftiko.tdctl.v1.InitPayload"> & {
   apiId: bigint;
 
   /**
-   * 帳號種類（D32），同 state.v1.Account.kind
+   * 帳號種類（D301），同 state.v1.Account.kind
    *
    * @generated from field: string kind = 2;
    */
@@ -181,7 +181,7 @@ export type Report = Message<"mftiko.tdctl.v1.Report"> & {
   draining: boolean;
 
   /**
-   * 這個 incarnation 下過單的商品 → 第一次 Submit 的時間（DECISIONS D20）。TD agent 據此建 backfill 的 scope。
+   * 這個 incarnation 下過單的商品 → 第一次 Submit 的時間（DECISIONS D601）。TD agent 據此建 backfill 的 scope。
    * 新商品的第一筆單：worker 先送出含它的 Report，再送單。
    *
    * @generated from field: map<string, int64> first_submit_ns = 7;
@@ -211,7 +211,7 @@ export enum AccountState {
   READY = 1,
 
   /**
-   * 私有 websocket 斷線：新單以 1xx 拒絕，撤單照常（D27）
+   * 私有 websocket 斷線：新單以 1xx 拒絕，撤單照常（D603）
    *
    * @generated from enum value: ACCOUNT_STATE_DEGRADED = 2;
    */

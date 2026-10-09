@@ -14,15 +14,15 @@ const RouteDefault = "default"
 // The planning half (Topics, Atom, Routes, Budget, Cost) is pure: no I/O, no state, safe to call from
 // the MD agent's planner. The connection half (Endpoint, NewSession, Book) is used by the conn worker.
 type Market interface {
-	// Topics is the capability table (D12). A topic missing here is unsupported on this venue.
+	// Topics is the capability table (D401). A topic missing here is unsupported on this venue.
 	Topics() []TopicCaps
 
-	// Atom maps a feed to its atom (D12, D31, D38). A spec names the feed with a UniversalTicker; the
+	// Atom maps a feed to its atom (D401, D202, D203). A spec names the feed with a UniversalTicker; the
 	// caller resolves that to *symbol.Info at load (symbol.Resolver.Get) and passes what came back,
 	// so this stays a pure function. The Info's UID is the instrument inside the system. The answer
 	// is the venue channel to subscribe and the route (websocket
-	// path) it lives on (D26); several topics may land on one atom (orderbook and orderbook_delta,
-	// D21; Bybit's linear tickers carry ticker, funding, open interest and mark price).
+	// path) it lives on (D403); several topics may land on one atom (orderbook and orderbook_delta,
+	// D402; Bybit's linear tickers carry ticker, funding, open interest and mark price).
 	// ErrUnsupported when the venue does not push this topic: the lease item becomes REJECTED
 	// (PROTOCOL §3.5), and query-only values go to md.fetch instead.
 	Atom(topic Topic, inst *symbol.Info) (AtomRef, error)
@@ -32,13 +32,13 @@ type Market interface {
 
 	// Budget is how much one connection on route can carry; Cost is what one channel takes out of it.
 	// A new atom goes on the lowest n of (venue, route) with room left; n+1 opens only when all are
-	// full (D26). Binance counts streams (cost 1, budget 1024); Bybit limits the total length of the
+	// full (D403). Binance counts streams (cost 1, budget 1024); Bybit limits the total length of the
 	// subscribed args. Budget <= 0 means the venue sets no limit.
 	Budget(route string) int
 	Cost(channel string) int
 
 	// Endpoint is the websocket URL for route. override is mdctl.InitPayload.url when the MD instance
-	// picked an alternative host of the same venue (D26); empty means the default.
+	// picked an alternative host of the same venue (D403); empty means the default.
 	Endpoint(route, override string) (string, error)
 
 	// NewSession returns the codec state of one connection. Not safe for concurrent use: one per
@@ -50,7 +50,7 @@ type Market interface {
 }
 
 // AtomRef is an atom's identity within its venue: one subscribe and one venue ack on one
-// connection (D12). The atom id is <venue>:<route>:<channel> (D31). Route is part of it because a
+// connection (D401). The atom id is <venue>:<route>:<channel> (D202). Route is part of it because a
 // channel string can repeat across routes: Bybit's "publicTrade.BTCUSDT" is both a spot and a linear
 // atom.
 type AtomRef struct {
@@ -72,7 +72,7 @@ type Session interface {
 	Ping() []byte
 
 	// Decode parses one text or binary frame and calls sink once per event in it. One frame can carry
-	// several events of several kinds (atom -> events is 1:N, D12).
+	// several events of several kinds (atom -> events is 1:N, D401).
 	Decode(frame []byte, sink Sink) error
 }
 
@@ -106,7 +106,7 @@ type Keepalive struct {
 	Timeout    time.Duration // no frame for this long = connection dead
 }
 
-// SnapshotSource says where a book's first full state comes from (D21).
+// SnapshotSource says where a book's first full state comes from (D402).
 type SnapshotSource uint8
 
 const (
@@ -119,7 +119,7 @@ const (
 )
 
 // BookSync holds a venue's book sequencing rules. The local full book and the fold live in the conn
-// worker (D21); the adapter only judges each update against the sequence state.
+// worker (D402); the adapter only judges each update against the sequence state.
 type BookSync interface {
 	Snapshot() SnapshotSource
 	// Depth is the REST snapshot depth to ask for under SnapshotREST.

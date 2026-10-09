@@ -17,7 +17,7 @@ const incarnationRetries = 3
 // Incarnations hands out incarnation numbers for one agent's workers (PROTOCOL §3.2 W6).
 //
 // A worker key's counter is IncarnationKey(plane, inst, WorkerHash(worker key)) in the home region: decimal, not
-// bound to any lease, written only by this agent and only behind its writer key (D8). Safe for concurrent use.
+// bound to any lease, written only by this agent and only behind its writer key (D106). Safe for concurrent use.
 type Incarnations struct {
 	t   *Term
 	sem chan struct{} // one slot: one Next or Forget at a time; waiting for it honours ctx and the term
@@ -120,7 +120,7 @@ func (c *Incarnations) Current(workerKey string) (n uint32, ok bool) {
 // returns ErrNotSTS for other planes. Fenced like every write.
 //
 // MD and TD keys stay forever: their worker keys come back, and a counter restarting at 1 would make the new
-// process's messages look older than the last one's (D8).
+// process's messages look older than the last one's (D106).
 func (c *Incarnations) Forget(ctx context.Context, workerKey string) error {
 	if c.t.plane != PlaneSTS {
 		return fmt.Errorf("%w: %s agent, worker %s", ErrNotSTS, c.t.plane, workerKey)

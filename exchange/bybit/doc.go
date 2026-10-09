@@ -1,5 +1,5 @@
 // Package bybit is the Bybit adapter: one venue and one account kind, both named Bybit (two enums,
-// D32), a unified account (D26). The category
+// D301), a unified account (D403). The category
 // (spot, linear, inverse, option) is part of every request and of every public websocket path.
 //
 // Facts the implementation must honor. Checked 2026-10-05 against bybit-exchange.github.io/docs/v5;
@@ -9,7 +9,7 @@
 //     own path too and is not modeled yet. Private data is on /v5/private, after auth.
 //   - The same channel string exists on several routes: "publicTrade.BTCUSDT" is both a spot and a
 //     linear atom. The route comes from the resolved instrument's category, and it is part of the
-//     atom id <venue>:<route>:<channel> (D31).
+//     atom id <venue>:<route>:<channel> (D202).
 //   - Capacity is characters, not streams: the args of one public connection may total at most
 //     21,000 characters. Cost is len(channel), Budget is 21000.
 //   - Spot takes at most 10 args per subscribe request (SessionLimits.PerRequest); options at most

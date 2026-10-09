@@ -55,7 +55,7 @@ func AuthDial(user, password string) DialFunc {
 	}
 }
 
-// AgentRegions is the set of regions a process of (p, inst) may connect to (D17 rule 2): an agent only its own;
+// AgentRegions is the set of regions a process of (p, inst) may connect to (D005 rule 2): an agent only its own;
 // the controller every region in the topology (nil).
 func AgentRegions(t Topology, p Plane, inst string) ([]string, error) {
 	if !p.valid() {
@@ -87,8 +87,8 @@ type Reader interface {
 	RequestProgress(ctx context.Context) error
 }
 
-// Clusters holds one client per regional cluster, dialled lazily on first use (PROTOCOL §3, D17). With a single
-// region it is a single cluster and nothing else changes (D17 rule 7). Safe for concurrent use.
+// Clusters holds one client per regional cluster, dialled lazily on first use (PROTOCOL §3, D005). With a single
+// region it is a single cluster and nothing else changes (D005 rule 7). Safe for concurrent use.
 type Clusters struct {
 	topo    Topology
 	allowed map[string]bool

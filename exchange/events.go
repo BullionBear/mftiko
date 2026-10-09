@@ -69,7 +69,7 @@ type Kline struct {
 	Closed                 bool
 }
 
-// Ticker is 24h statistics only (D12).
+// Ticker is 24h statistics only (D401).
 type Ticker struct {
 	ExchTsNs                  int64
 	Last                      string

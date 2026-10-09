@@ -28,7 +28,7 @@ type AccountState int32
 const (
 	AccountState_ACCOUNT_STATE_UNSPECIFIED AccountState = 0
 	AccountState_ACCOUNT_STATE_READY       AccountState = 1
-	AccountState_ACCOUNT_STATE_DEGRADED    AccountState = 2 // 私有 websocket 斷線：新單以 1xx 拒絕，撤單照常（D27）
+	AccountState_ACCOUNT_STATE_DEGRADED    AccountState = 2 // 私有 websocket 斷線：新單以 1xx 拒絕，撤單照常（D603）
 	AccountState_ACCOUNT_STATE_UNAVAILABLE AccountState = 3
 )
 
@@ -78,7 +78,7 @@ func (AccountState) EnumDescriptor() ([]byte, []int) {
 type InitPayload struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	ApiId               int64                  `protobuf:"varint,1,opt,name=api_id,json=apiId,proto3" json:"api_id,omitempty"`
-	Kind                string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"` // 帳號種類（D32），同 state.v1.Account.kind
+	Kind                string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"` // 帳號種類（D301），同 state.v1.Account.kind
 	TdInstance          string                 `protobuf:"bytes,3,opt,name=td_instance,json=tdInstance,proto3" json:"td_instance,omitempty"`
 	CancelOnDisconnectS uint32                 `protobuf:"varint,4,opt,name=cancel_on_disconnect_s,json=cancelOnDisconnectS,proto3" json:"cancel_on_disconnect_s,omitempty"`
 	Credentials         *Credentials           `protobuf:"bytes,5,opt,name=credentials,proto3" json:"credentials,omitempty"` // 只經 socketpair 送進去
@@ -375,7 +375,7 @@ type Report struct {
 	OpenOrders     uint32                 `protobuf:"varint,4,opt,name=open_orders,json=openOrders,proto3" json:"open_orders,omitempty"`
 	Inflight       uint32                 `protobuf:"varint,5,opt,name=inflight,proto3" json:"inflight,omitempty"`
 	Draining       bool                   `protobuf:"varint,6,opt,name=draining,proto3" json:"draining,omitempty"`
-	// 這個 incarnation 下過單的商品 → 第一次 Submit 的時間（DECISIONS D20）。TD agent 據此建 backfill 的 scope。
+	// 這個 incarnation 下過單的商品 → 第一次 Submit 的時間（DECISIONS D601）。TD agent 據此建 backfill 的 scope。
 	// 新商品的第一筆單：worker 先送出含它的 Report，再送單。
 	FirstSubmitNs map[string]int64 `protobuf:"bytes,7,rep,name=first_submit_ns,json=firstSubmitNs,proto3" json:"first_submit_ns,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields

@@ -1,4 +1,4 @@
-// Command mftiko-td-agent is the execution-plane agent. It starts account workers by refcount, runs the backfill scheduler, and drains history into Postgres (DECISIONS D9, D20).
+// Command mftiko-td-agent is the execution-plane agent. It starts account workers by refcount, runs the backfill scheduler, and drains history into Postgres (DECISIONS D901, D601).
 //
 // Shape only: not implemented yet.
 package main

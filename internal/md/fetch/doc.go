@@ -1,4 +1,4 @@
-// Package fetch is the stateless md.fetch service (D21).
+// Package fetch is the stateless md.fetch service (D402).
 //
 // Answers with exchange PublicREST: Klines, OpenInterest.
 //

@@ -61,7 +61,7 @@ export type SessionSpec = Message<"mftiko.session.v1.SessionSpec"> & {
   accounts: AccountDecl[];
 
   /**
-   * 語意見 DECISIONS D24
+   * 語意見 DECISIONS D803
    *
    * @generated from field: mftiko.session.v1.RestartPolicy restart = 9;
    */
@@ -83,14 +83,14 @@ export type SessionSpec = Message<"mftiko.session.v1.SessionSpec"> & {
   limits?: Limits | undefined;
 
   /**
-   * 資料 artifact（DECISIONS D23）
+   * 資料 artifact（DECISIONS D904）
    *
    * @generated from field: repeated mftiko.session.v1.InputDecl inputs = 13;
    */
   inputs: InputDecl[];
 
   /**
-   * MD 事件在 buffer 裡的最長壽命，以 envelope 的 md_ts_ns 計（D24）。0 = STS 的預設值。
+   * MD 事件在 buffer 裡的最長壽命，以 envelope 的 md_ts_ns 計（D803）。0 = STS 的預設值。
    * 跨 region 的 session 要比 WAN 延遲大。
    *
    * @generated from field: uint32 recv_window_ms = 14;
@@ -172,7 +172,7 @@ export const StrategyRefSchema: GenMessage<StrategyRef> = /*@__PURE__*/
   messageDesc(file_mftiko_session_v1_session, 2);
 
 /**
- * 人寫的規格。feed key 裡是 UniversalTicker，不是 UID（D38）。
+ * 人寫的規格。feed key 裡是 UniversalTicker，不是 UID（D203）。
  * ticker 解成 UID 發生在 spec 載入時（sym.GetRequest），不在這份宣告裡。
  *
  * @generated from message mftiko.session.v1.FeedDecl
@@ -347,7 +347,7 @@ export type AccountDecl = Message<"mftiko.session.v1.AccountDecl"> & {
   tdInstance: string;
 
   /**
-   * 這個 session 在這個帳號上可以使用的 algo_id，每個 1–1023（D25）。
+   * 這個 session 在這個帳號上可以使用的 algo_id，每個 1–1023（D602）。
    * 同一個帳號上和其他非 terminal 的 session 重疊時，TD 的 ack 是 REJECTED（algo_conflict）。
    *
    * @generated from field: repeated uint32 algo_ids = 4;
@@ -404,14 +404,14 @@ export type Limits = Message<"mftiko.session.v1.Limits"> & {
   gomaxprocs: number;
 
   /**
-   * session volume 的上限（D23）；0 = STS 的預設值。超過就以 FAILED 結束（volume_over_limit）
+   * session volume 的上限（D904）；0 = STS 的預設值。超過就以 FAILED 結束（volume_over_limit）
    *
    * @generated from field: uint32 volume_mb = 3;
    */
   volumeMb: number;
 
   /**
-   * 單一 hook 的硬上限（D24）；0 = STS 的預設值。超過判定 HUNG
+   * 單一 hook 的硬上限（D803）；0 = STS 的預設值。超過判定 HUNG
    *
    * @generated from field: uint32 hook_timeout_s = 4;
    */

@@ -6,7 +6,7 @@ import (
 	"slices"
 )
 
-// Topology is the deployment's etcd layout: one cluster per region, and the region of every instance (D17).
+// Topology is the deployment's etcd layout: one cluster per region, and the region of every instance (D005).
 // Loading it from a file is E12.
 type Topology struct {
 	Regions   map[string]Region `json:"regions"`   // region -> its cluster
@@ -57,7 +57,7 @@ func (t Topology) RegionOf(inst string) (string, error) {
 	return r, nil
 }
 
-// RegionOfKey is the region whose cluster holds key: the region of its Owner (PROTOCOL §3, D17 rule 1).
+// RegionOfKey is the region whose cluster holds key: the region of its Owner (PROTOCOL §3, D005 rule 1).
 func (t Topology) RegionOfKey(key string) (string, error) {
 	_, inst, err := Owner(key)
 	if err != nil {

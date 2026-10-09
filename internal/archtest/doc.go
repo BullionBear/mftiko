@@ -1,4 +1,4 @@
-// Package archtest checks the dependency rules between the blocks of the repository (DECISIONS D35). It has no
+// Package archtest checks the dependency rules between the blocks of the repository (DECISIONS D006). It has no
 // code of its own: the rules run as a test, so `make check` and CI enforce them.
 //
 //   - contract depends on nothing else in the repository, and outside it only on protobuf and the standard library.
@@ -11,7 +11,7 @@
 //   - The agent planes' root packages (internal/sts, md, td) and the skeleton's decisions (internal/platform/agent)
 //     link no etcd, NATS, state, natsx, shim, or the skeleton's I/O (agent/c3, agent/runner): they hold the
 //     Planner, the Policy and the domain types, testable without a cluster. The wiring is in internal/{plane}/daemon
-//     (DECISIONS D40).
+//     (DECISIONS D110).
 //
 // cmd, migrations and this package are free.
 package archtest

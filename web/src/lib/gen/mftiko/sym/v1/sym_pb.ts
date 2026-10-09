@@ -62,7 +62,7 @@ export const RequestSchema: GenMessage<Request> = /*@__PURE__*/
   messageDesc(file_mftiko_sym_v1_sym, 0);
 
 /**
- * Spec 與設定載入的邊界（D38）：人寫的 UniversalTicker 在這裡解成 UID。
+ * Spec 與設定載入的邊界（D203）：人寫的 UniversalTicker 在這裡解成 UID。
  * 平面之間不走這條，它們已經持有 UID，用 GetByUidRequest。
  * One instrument by exact ticker: a single row, never a venue table.
  *
@@ -75,7 +75,7 @@ export type GetRequest = Message<"mftiko.sym.v1.GetRequest"> & {
   universalTicker: string;
 
   /**
-   * D38：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢，含 MD 的到期監看。Resolver 與熱路徑不設。表還沒拆
+   * D203：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢，含 MD 的到期監看。Resolver 與熱路徑不設。表還沒拆
    *
    * @generated from field: bool include_inactive = 2;
    */
@@ -90,21 +90,21 @@ export const GetRequestSchema: GenMessage<GetRequest> = /*@__PURE__*/
   messageDesc(file_mftiko_sym_v1_sym, 1);
 
 /**
- * 系統內部的查詢（D38）。STS、TD、MD 持有 UID，用它拿這一列的欄位。
+ * 系統內部的查詢（D203）。STS、TD、MD 持有 UID，用它拿這一列的欄位。
  * 預設只讀活躍表；include_inactive 才含終結表。0 不是合法 UID。
  *
  * @generated from message mftiko.sym.v1.GetByUidRequest
  */
 export type GetByUidRequest = Message<"mftiko.sym.v1.GetByUidRequest"> & {
   /**
-   * 寬度暫定（PROTOCOL §10 P13）。契約暫用 uint64
+   * 契約型別 uint64，0 非法。寬度與範圍仍開放（PROTOCOL §10 P13）：Postgres BIGINT 有號，建議 1..2^63-1。
    *
    * @generated from field: uint64 uid = 1;
    */
   uid: bigint;
 
   /**
-   * 同 GetRequest.include_inactive（D38）
+   * 同 GetRequest.include_inactive（D203）
    *
    * @generated from field: bool include_inactive = 2;
    */
@@ -119,7 +119,9 @@ export const GetByUidRequestSchema: GenMessage<GetByUidRequest> = /*@__PURE__*/
   messageDesc(file_mftiko_sym_v1_sym, 2);
 
 /**
- * One (venue, category) table, paged. A page stays under NATS's 1 MiB with every filter.
+ * One (venue, category) table, paged by offset and limit. A page stays under NATS's 1 MiB
+ * with every filter. A row may move or appear between pages; that inconsistency is accepted
+ * (D203, PROTOCOL §10 P13).
  *
  * @generated from message mftiko.sym.v1.ListRequest
  */
@@ -147,7 +149,7 @@ export type ListRequest = Message<"mftiko.sym.v1.ListRequest"> & {
   offset: number;
 
   /**
-   * 同 GetRequest.include_inactive（D38）
+   * 同 GetRequest.include_inactive（D203）
    *
    * @generated from field: bool include_inactive = 5;
    */
@@ -162,7 +164,7 @@ export const ListRequestSchema: GenMessage<ListRequest> = /*@__PURE__*/
   messageDesc(file_mftiko_sym_v1_sym, 3);
 
 /**
- * The venue's spelling -> the listing. Callers keep SymbolInfo.uid (D38). Category is required:
+ * The venue's spelling -> the listing. Callers keep SymbolInfo.uid (D203). Category is required:
  * on a unified-account venue the spelling alone is ambiguous (Bybit's spot and linear "BTCUSDT").
  *
  * @generated from message mftiko.sym.v1.ReverseRequest
@@ -266,7 +268,7 @@ export const ReplySchema: GenMessage<Reply> = /*@__PURE__*/
  */
 export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
   /**
-   * 給人看的字串。系統內部用 uid（D38）
+   * 給人看的字串。系統內部用 uid（D203）
    *
    * @generated from field: string universal_ticker = 1;
    */
@@ -288,14 +290,14 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
   quote: string;
 
   /**
-   * 一張的面值。qty = 張數 × 此值，單位是 contract_value_ccy：linear 與期權是 base，inverse 是 quote（D38）
+   * 一張的面值。qty = 張數 × 此值，單位是 contract_value_ccy：linear 與期權是 base，inverse 是 quote（D203）
    *
    * @generated from field: optional string contract_size = 5;
    */
   contractSize?: string | undefined;
 
   /**
-   * 損益結算幣（settlement_asset），不是保證金幣。空 = 現貨。quanto（既不是 base 也不是 quote）一期不入庫（D38）
+   * 損益結算幣（settlement_asset），不是保證金幣。空 = 現貨。quanto（既不是 base 也不是 quote）一期不入庫（D203）
    *
    * @generated from field: optional string settle = 6;
    */
@@ -309,7 +311,7 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
   expiryNs: bigint;
 
   /**
-   * SYM 先依 spell_strike 正規化再推 ticker：6400.0 與 6400 相同（D38）
+   * SYM 先依 spell_strike 正規化再推 ticker：6400.0 與 6400 相同（D203）
    *
    * @generated from field: optional string strike = 8;
    */
@@ -323,7 +325,7 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
   optionType: string;
 
   /**
-   * 暫定（D38）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。定案前仍是 bool，表也還沒拆
+   * 暫定（D203）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。定案前仍是 bool，表也還沒拆
    *
    * @generated from field: bool active = 10;
    */
@@ -331,7 +333,7 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
 
   /**
    * name -> bound. A key with an absent value: the venue publishes the restriction, no bound.
-   * price_tick is price_ccy; qty_step, min_qty, max_qty are contract_value_ccy (D38).
+   * price_tick is price_ccy; qty_step, min_qty, max_qty are contract_value_ccy (D203).
    *
    * @generated from field: map<string, mftiko.sym.v1.Bound> filters = 11;
    */
@@ -343,8 +345,10 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
   updatedAtNs: bigint;
 
   /**
-   * 兩張表的主鍵，跨表唯一（D38）。搬到終結表時不變。同一個 ticker 下架再上市是新的 UID。
-   * 寬度暫定，見 PROTOCOL §10 P13。契約暫用 uint64，0 不分配。這一版的 SQL 還沒有這個欄位。
+   * SYM 分配的隨機整數：跨活躍表與終結表唯一、永不重用，跟列持久化，不是單調序號（D203）。
+   * 重啟與重載不改它。下架再上市是新的 UID。碰撞時 SYM 重試。
+   * 契約型別 uint64，0 非法。寬度與範圍仍開放（PROTOCOL §10 P13）：Postgres BIGINT 有號，建議 1..2^63-1。
+   * 這一版的 SQL 還沒有這個欄位。
    *
    * @generated from field: uint64 uid = 13;
    */

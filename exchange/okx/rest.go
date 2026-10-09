@@ -28,7 +28,7 @@ func (r *rest) Klines(context.Context, *symbol.Info, string, int) ([]exchange.Kl
 
 func (r *rest) KlinePage() int { return 0 }
 
-// OpenInterest: OKX pushes open-interest, so this is ErrUnsupported once implemented (D12).
+// OpenInterest: OKX pushes open-interest, so this is ErrUnsupported once implemented (D401).
 func (r *rest) OpenInterest(context.Context, *symbol.Info) (*exchange.OpenInterest, error) {
 	return nil, exchange.ErrNotImplemented
 }

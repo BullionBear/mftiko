@@ -29,7 +29,7 @@ func (r *rest) Klines(context.Context, *symbol.Info, string, int) ([]exchange.Kl
 func (r *rest) KlinePage() int { return 0 }
 
 // OpenInterest: the linear and inverse tickers stream carries open interest, so this is
-// ErrUnsupported there once implemented (D12).
+// ErrUnsupported there once implemented (D401).
 func (r *rest) OpenInterest(context.Context, *symbol.Info) (*exchange.OpenInterest, error) {
 	return nil, exchange.ErrNotImplemented
 }

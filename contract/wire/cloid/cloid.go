@@ -13,7 +13,7 @@ const (
 	// EpochMs is 2026-01-01T00:00:00Z in unix milliseconds. 40 bits of ms last until 2060-11.
 	EpochMs int64 = 1767225600000
 
-	// AlgoMin and AlgoMax bound a declared algo_id; 0 is reserved (DECISIONS D25).
+	// AlgoMin and AlgoMax bound a declared algo_id; 0 is reserved (DECISIONS D602).
 	AlgoMin = 1
 	AlgoMax = 1<<AlgoBits - 1
 )

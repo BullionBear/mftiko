@@ -131,10 +131,10 @@ func (AtomState) EnumDescriptor() ([]byte, []int) {
 type InitPayload struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	Venue      string                 `protobuf:"bytes,1,opt,name=venue,proto3" json:"venue,omitempty"`
-	Route      string                 `protobuf:"bytes,2,opt,name=route,proto3" json:"route,omitempty"` // 由 adapter 從解析後的商品推得（D26、D31）
+	Route      string                 `protobuf:"bytes,2,opt,name=route,proto3" json:"route,omitempty"` // 由 adapter 從解析後的商品推得（D403、D202）
 	N          uint32                 `protobuf:"varint,3,opt,name=n,proto3" json:"n,omitempty"`
 	MdInstance string                 `protobuf:"bytes,4,opt,name=md_instance,json=mdInstance,proto3" json:"md_instance,omitempty"`
-	// 實際連線的 URL。host 由 MD instance 的設定選：預設，或交易所提供的替代 endpoint（D26）。換 URL 要換 incarnation。
+	// 實際連線的 URL。host 由 MD instance 的設定選：預設，或交易所提供的替代 endpoint（D403）。換 URL 要換 incarnation。
 	Url           string `protobuf:"bytes,6,opt,name=url,proto3" json:"url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -365,7 +365,7 @@ type AtomAssignment struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AtomId        string                 `protobuf:"bytes,1,opt,name=atom_id,json=atomId,proto3" json:"atom_id,omitempty"`
 	Feeds         []string               `protobuf:"bytes,2,rep,name=feeds,proto3" json:"feeds,omitempty"`    // 這個 atom 要發佈的 feed（atom → 事件 1:N）
-	Record        bool                   `protobuf:"varint,3,opt,name=record,proto3" json:"record,omitempty"` // 錄 tape；MD agent 依 topic 推導（D21）
+	Record        bool                   `protobuf:"varint,3,opt,name=record,proto3" json:"record,omitempty"` // 錄 tape；MD agent 依 topic 推導（D402）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

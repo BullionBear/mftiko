@@ -16,9 +16,9 @@ type Hashed interface {
 	Hash() string
 }
 
-// Plan is what a Planner wants for one worker (D2). Changing Spawn needs a new incarnation; Live is pushed to the
+// Plan is what a Planner wants for one worker (D101). Changing Spawn needs a new incarnation; Live is pushed to the
 // running worker. Start says that the worker may be sent Start once it is initialized: at once on MD and TD, on
-// STS once the controller sets start (D15, PROTOCOL §3.3 N2).
+// STS once the controller sets start (D107, PROTOCOL §3.3 N2).
 type Plan[S, L Hashed] struct {
 	Spawn S
 	Live  L
@@ -35,7 +35,7 @@ type Demand[I any] struct {
 }
 
 // Stale reports whether the demand is older than after at now: no contact with etcd since then, or none yet.
-// While it is stale the agent changes nothing by it (DECISIONS D39).
+// While it is stale the agent changes nothing by it (DECISIONS D109).
 func (d Demand[I]) Stale(now time.Time, after time.Duration) bool {
 	return d.LastContact.IsZero() || now.Sub(d.LastContact) > after
 }
@@ -83,7 +83,7 @@ func (s State) String() string {
 func (s State) ended() bool { return s == StateExited || s == StateLost }
 
 // Observed is one worker as the Fleet sees it: what it was spawned with, what was pushed to it, and its state,
-// from its shim's Attached and events (D37).
+// from its shim's Attached and events (D108).
 type Observed struct {
 	Key         WorkerKey
 	Incarnation uint32

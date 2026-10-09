@@ -7,7 +7,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange"
 )
 
-// history reads /api/v5/trade/fills-history, newest first: HistoryTraits.Descending (D20).
+// history reads /api/v5/trade/fills-history, newest first: HistoryTraits.Descending (D601).
 // fill_id is tradeId, the same field the orders channel pushes.
 type history struct{ cfg exchange.AccountConfig }
 

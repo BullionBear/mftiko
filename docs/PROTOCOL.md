@@ -1,6 +1,6 @@
 # PROTOCOL — 協議與契約
 
-> **狀態：草案 v0.35（2026-10-09）。** 依據 [DECISIONS.md](DECISIONS.md)。v0.3 把控制面改到 etcd（D14），依賴改成 agent 層級的 lease（D9），shim 與 worker 之間加入生命週期動詞（D15），資料面拿掉給策略看的可用性廣播（D16）。v0.4 依 D17 改成每個 region 一個 etcd cluster：路由函數、每個 cluster 各自的 writer key、版本號不依賴 etcd revision；並依 D18 加入策略 artifact 的格式（§8）。v0.5 依 D20 加入歷史補正：`AccountSettings` 加 interval 與手動觸發，TD agent 訂閱 `td.evt` 落庫，`Fill.fill_id` 規定為交易所的 trade id。v0.6 依 D21：md.proto 加 `OrderBookDelta`，新增 `read.proto`（`md.view`、`md.fetch`），tape 不再用 Redis（拿掉 `tape_url` 與 `StandingSubscription.record`）。v0.7 依 D8：行情的 subject 一律由 MD agent 給，`SelectorBinding` 加 `subject_prefix`。v0.8 依 D22 拿掉 `stsctl.SubscribeRequest`：一期策略完全宣告式。v0.9 依 D23 加入 session volume 與資料 artifact：`SessionSpec.inputs`、`Limits.volume_mb`、`SessionStatus.state_out`、兩個環境變數、§8.4。v0.10 依 D24：`md.f` 加 envelope（`seq`、`conn_epoch`、`md_ts_ns` 從 `Meta` 移過去），拿掉 `Delivery`，加 `SessionSpec.recv_window_ms`、`Limits.hook_timeout_s`、`QueueStat.max_age_ms`。v0.11 依 D25：加 `algo_id`（由 spec 在每個帳號上宣告，可以多個，TD agent 以 lease 檢查衝突），`client_order_id` 的 session 欄位換成 algo，`CancelSession` 換成策略自己發的 `BatchCancel`，STS agent 不再有 `td.order` 的權限。v0.12：`client_order_id` 改成 `ver(4) | algo(10) | ts_ms(40) | seq(10)`。v0.13 依 D26：MD 連線的身分改成 `(venue, route, n)`，endpoint 變成 `mdctl.InitPayload.url` 這個參數，atom id 拿掉 endpoint。v0.14 依 D27：`td.evt` 的 `AccountReset` 換成帶快照的 `Recon`，TD 降級時拒新單、放行撤單。v0.15 依 D28：只有一層 linger，連線在最後一個 atom 退訂時就停；lease 的 TTL 統一 60 秒。v0.16 依 D29 拿掉常駐訂閱（`StandingSubscription` 與 `/md/{inst}/standing/`）：MD 的 owner 只有 session 的 lease 項目。v0.17 依 D20：`tdctl.Report` 加 `first_submit_ns`，backfill 的範圍從下單決定。v0.18 依 D30：session worker 的 NATS 憑證每個 session 一份（`stsctl.InitPayload.nats`），權限見 §7。v0.19 依 D19：一期只做 Go SDK，拿掉 Python 綁 Go 的設計；新增 §9，寫明其他語言的 SDK 要遵守的契約，以及 STS agent 以 `Beat` 逾時判定 `HUNG` 的保險。v0.20 依 D31：UniversalTicker 是佔位，經 SYM 解析之後才決定訂閱什麼；atom id 改成 `<venue>:<route>:<channel>`；加入 topic 表與 SYM 的契約（§7.3，`mftiko.sym.v1`）。v0.21 依 D32：帳號種類和 venue 分成兩個 enum，`state.v1.Account.venue`、`tdctl.InitPayload.venue` 改為 `kind`；BinancePM 是帳號種類，不是 venue。v0.22 依 D8：incarnation 存在不綁 lease 的 `/{plane}/{inst}/incarnation/{h}`，spawn 前以 txn 取號（§3.2 W6）。v0.23：W4 的 watch 改從 list 的 revision（含）開始，不再加 1。v0.24 依 D33–D36：控制平面分成 API server 與 controller；跨平面的依賴改由 controller 以宣告式的需求表達，不綁 TTL（D9、D28），lease 項目改名需求項目，key 拿掉 `{sts_inst}`；新增 STS 的指派 `/sts/{inst}/demand/{session_id}`，Gate 與綁定的整理移到 controller；ack 由 controller watch；SYM 改成啟動時整表載入、跟著變更重載，使用者是 STS、MD、TD；三種 worker 都從 artifact 起（§8）；契約分成草案與定案（§1）；session 的宣告抽成 `mftiko.session.v1`，`stsctl.v1` 不再 import `state.v1`，改用自己的 `BindingState`、`Universe`；`Side`、`OrderType`、`TimeInForce` 移到 `common.v1`，`td.v1` 不再 import `md.v1`。v0.25 依 D14：etcd lease 只有選主 session 一種；`AgentRecord` 綁在它上面，agent 在不在就看它；ack、`WorkerStatus` 不綁 lease，由 agent 自己維護（§3.2 W7）。v0.26：W1 由 etcd 的 auth 與 RBAC 強制，角色表由 instance 清單產生（§3.2 W1）。v0.27：shim 的啟動參數 `Launch` 由 agent 經 shim 的 stdin 送入，欄位由 artifact 的 manifest 換算而來（§4.6、§8.3）。v0.28：C3 的 server（E1-09）：`Launch` 加 `work_dir`，socket 的權限、只收同一個 uid 的連線、殘留與重複的處理（§4.1）；attach 的檢查順序、shim 記住接受過的最大 epoch、錯誤碼表、major 沒有交集時只能 `Signal` 與跨 major 不變的欄位（§4.2）；worker 被 reap 之後 `Signal` 回 `exited`（§4.3）；新增 §10 P12。v0.29：生命週期指令（E1-11）：shim 記下的階段 `Phase` 放進 `Attached`，`Init`、`Start` 只在對應的階段接受，`Stop` 的計時與重複的 `Stop`、`Release` 的條件、shim 自己收到 SIGTERM 時的 grace，錯誤碼加 `worker_busy`（§4.2、§4.3）；`cred` 的 uid 和 shim 不同而 shim 沒有 `CAP_KILL` 時不 spawn（§4.6）。v0.30：worker 的輸出（E1-14）：`Launch.output`，檔案放在 `${WORK_DIR}/log/{plane}/{h}.stdout`、`{h}.stderr`，依大小輪替，寫不及時丟棄並在檔案裡註明，不讓 worker 阻塞（§4.5 S4、§4.6）。v0.31：事件緩衝與補送（E1-12）：只有進環狀緩衝的事件有 seq；`Ack` 釋放已確認的事件，環的 1024 則只算未確認的；`gap` 只標在 agent 要的事件被溢出丟掉時；attach 之後先送最新的 `Report` 再補送；控制者換人或離開時，shim 對 worker 送 `Controller`；agent 送完指令就關閉連線時，已送出的指令照樣執行（§4.1、§4.2、§4.4）。v0.32：結束檔與 `Exited`（E1-13）：新增 `ExitRecord`；`ExitInfo` 的合成規則（code、signal 一律依 wait status，outcome、reason 有 `Exiting` 就依它，沒有就依 exit code）；reap 之後讀完 fd 3 才記錄，記錄完才是 `EXITED`、才接受 `Release`；有前一個 incarnation 沒收走的結束檔時 shim 不啟動（§4.3、§4.5 S3、§4.6、§5.3）。v0.33 依 D37：agent 以快照恢復，事件只是通知；`Attached` 加 `exiting`、`exit`，且 `next_seq` 是快照的時間點；`Ack` 不是提交（§4.4）。v0.34 依 D38：幣與數量的單位。qty 的單位是 `contract_value_ccy`（張數 × `contract_size`）：linear 與期權是 base，inverse 是 quote，不是張數；`price_ccy` 是 price、`price_tick` 與權利金的幣，現貨與期貨（含 inverse）是 quote，幣本位期權是 base，U 本位期權是 quote；`settlement_asset` 是損益結算幣，不是保證金幣，三個欄位由 adapter 從原生欄位填，下游不推導。別名只在 SYM 收（一律大寫，例如 XBT→BTC），先正規化再判定 quanto 再推 ticker；strike 先依 `spell_strike`（`6400.0` 與 `6400` 是同一個 ticker）。`USD`、`USDC`、`USDT` 不合併，報價 USD 而結算 USDC 是 quanto，一期不入庫、需求 `REJECTED`。狀態 enum 暫定（`PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`EXPIRED`、`DELISTED`、`UNKNOWN`），契約仍是 `bool active`，交易路徑只接受 `TRADABLE`。SYM 的 listing 預定分兩張表：活躍表是狀態還會變的（`PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`UNKNOWN`），Resolver 與熱路徑只讀它；終結表是 `EXPIRED`、`DELISTED`，狀態不再變，不再刷新，給歷史查詢，可以歸檔；搬過去時 UniversalTicker 字串不變。這一版不拆表。UniversalTicker 只給人寫 spec；系統內部用 UID，是兩張表的主鍵，跨表唯一，搬表時不變，下架再上市拿新的 UID。`SymbolInfo` 加 `uid`（寬度暫定，契約暫用 `uint64`，0 不分配）與 `GetByUidRequest`。寬度、分配方式、重啟是否沿用還沒定；建議方向是一條 Postgres sequence（例如 `symbol_uid_seq`）餵兩張表的 `uid` 主鍵，`symbol_filter` 以 uid 為鍵，終結時整列連 uid 搬走（§10 P13），這一版不實作。NATS subject 用人讀的名字，不用 UID；確切拼法還沒定（§10 P14），這一版仍是 `md.f.{inst}.{topic}.{ticker}`。策略 hook 看 ticker 還是 UID 還沒定（§10 P15）。`td.order` 等仍是 ticker。`td.proto` 的數量欄位註上單位（§7.2、§7.3）。v0.35 依 D39：需求過舊（`LastContact` 超過門檻，預設 15 秒）時，agent 不依需求停 worker、替換、推 live config，也不寫 `WorkerStatus`；重啟結束的 worker 與送 `Start` 由各平面的 Policy 決定（§3.2 W8）。還沒定的寫在 [§10](#10-待定)。
+> **狀態：草案 v0.36（2026-10-09）。** 依據 [DECISIONS.md](DECISIONS.md)。v0.3 把控制面改到 etcd（D004），依賴改成 agent 層級的 lease（D901），shim 與 worker 之間加入生命週期動詞（D107），資料面拿掉給策略看的可用性廣播（D801）。v0.4 依 D005 改成每個 region 一個 etcd cluster：路由函數、每個 cluster 各自的 writer key、版本號不依賴 etcd revision；並依 D902 加入策略 artifact 的格式（§8）。v0.5 依 D601 加入歷史補正：`AccountSettings` 加 interval 與手動觸發，TD agent 訂閱 `td.evt` 落庫，`Fill.fill_id` 規定為交易所的 trade id。v0.6 依 D402：md.proto 加 `OrderBookDelta`，新增 `read.proto`（`md.view`、`md.fetch`），tape 不再用 Redis（拿掉 `tape_url` 與 `StandingSubscription.record`）。v0.7 依 D106：行情的 subject 一律由 MD agent 給，`SelectorBinding` 加 `subject_prefix`。v0.8 依 D903 拿掉 `stsctl.SubscribeRequest`：一期策略完全宣告式。v0.9 依 D904 加入 session volume 與資料 artifact：`SessionSpec.inputs`、`Limits.volume_mb`、`SessionStatus.state_out`、兩個環境變數、§8.4。v0.10 依 D803：`md.f` 加 envelope（`seq`、`conn_epoch`、`md_ts_ns` 從 `Meta` 移過去），拿掉 `Delivery`，加 `SessionSpec.recv_window_ms`、`Limits.hook_timeout_s`、`QueueStat.max_age_ms`。v0.11 依 D602：加 `algo_id`（由 spec 在每個帳號上宣告，可以多個，TD agent 以 lease 檢查衝突），`client_order_id` 的 session 欄位換成 algo，`CancelSession` 換成策略自己發的 `BatchCancel`，STS agent 不再有 `td.order` 的權限。v0.12：`client_order_id` 改成 `ver(4) | algo(10) | ts_ms(40) | seq(10)`。v0.13 依 D403：MD 連線的身分改成 `(venue, route, n)`，endpoint 變成 `mdctl.InitPayload.url` 這個參數，atom id 拿掉 endpoint。v0.14 依 D603：`td.evt` 的 `AccountReset` 換成帶快照的 `Recon`，TD 降級時拒新單、放行撤單。v0.15 依 D905：只有一層 linger，連線在最後一個 atom 退訂時就停；lease 的 TTL 統一 60 秒。v0.16 依 D404 拿掉常駐訂閱（`StandingSubscription` 與 `/md/{inst}/standing/`）：MD 的 owner 只有 session 的 lease 項目。v0.17 依 D601：`tdctl.Report` 加 `first_submit_ns`，backfill 的範圍從下單決定。v0.18 依 D906：session worker 的 NATS 憑證每個 session 一份（`stsctl.InitPayload.nats`），權限見 §7。v0.19 依 D802：一期只做 Go SDK，拿掉 Python 綁 Go 的設計；新增 §9，寫明其他語言的 SDK 要遵守的契約，以及 STS agent 以 `Beat` 逾時判定 `HUNG` 的保險。v0.20 依 D202：UniversalTicker 是佔位，經 SYM 解析之後才決定訂閱什麼；atom id 改成 `<venue>:<route>:<channel>`；加入 topic 表與 SYM 的契約（§7.3，`mftiko.sym.v1`）。v0.21 依 D301：帳號種類和 venue 分成兩個 enum，`state.v1.Account.venue`、`tdctl.InitPayload.venue` 改為 `kind`；BinancePM 是帳號種類，不是 venue。v0.22 依 D106：incarnation 存在不綁 lease 的 `/{plane}/{inst}/incarnation/{h}`，spawn 前以 txn 取號（§3.2 W6）。v0.23：W4 的 watch 改從 list 的 revision（含）開始，不再加 1。v0.24 依 D907–D908、D006–D007：控制平面分成 API server 與 controller；跨平面的依賴改由 controller 以宣告式的需求表達，不綁 TTL（D901、D905），lease 項目改名需求項目，key 拿掉 `{sts_inst}`；新增 STS 的指派 `/sts/{inst}/demand/{session_id}`，Gate 與綁定的整理移到 controller；ack 由 controller watch；SYM 改成啟動時整表載入、跟著變更重載，使用者是 STS、MD、TD；三種 worker 都從 artifact 起（§8）；契約分成草案與定案（§1）；session 的宣告抽成 `mftiko.session.v1`，`stsctl.v1` 不再 import `state.v1`，改用自己的 `BindingState`、`Universe`；`Side`、`OrderType`、`TimeInForce` 移到 `common.v1`，`td.v1` 不再 import `md.v1`。v0.25 依 D004：etcd lease 只有選主 session 一種；`AgentRecord` 綁在它上面，agent 在不在就看它；ack、`WorkerStatus` 不綁 lease，由 agent 自己維護（§3.2 W7）。v0.26：W1 由 etcd 的 auth 與 RBAC 強制，角色表由 instance 清單產生（§3.2 W1）。v0.27：shim 的啟動參數 `Launch` 由 agent 經 shim 的 stdin 送入，欄位由 artifact 的 manifest 換算而來（§4.6、§8.3）。v0.28：C3 的 server（E1-09）：`Launch` 加 `work_dir`，socket 的權限、只收同一個 uid 的連線、殘留與重複的處理（§4.1）；attach 的檢查順序、shim 記住接受過的最大 epoch、錯誤碼表、major 沒有交集時只能 `Signal` 與跨 major 不變的欄位（§4.2）；worker 被 reap 之後 `Signal` 回 `exited`（§4.3）；新增 §10 P12。v0.29：生命週期指令（E1-11）：shim 記下的階段 `Phase` 放進 `Attached`，`Init`、`Start` 只在對應的階段接受，`Stop` 的計時與重複的 `Stop`、`Release` 的條件、shim 自己收到 SIGTERM 時的 grace，錯誤碼加 `worker_busy`（§4.2、§4.3）；`cred` 的 uid 和 shim 不同而 shim 沒有 `CAP_KILL` 時不 spawn（§4.6）。v0.30：worker 的輸出（E1-14）：`Launch.output`，檔案放在 `${WORK_DIR}/log/{plane}/{h}.stdout`、`{h}.stderr`，依大小輪替，寫不及時丟棄並在檔案裡註明，不讓 worker 阻塞（§4.5 S4、§4.6）。v0.31：事件緩衝與補送（E1-12）：只有進環狀緩衝的事件有 seq；`Ack` 釋放已確認的事件，環的 1024 則只算未確認的；`gap` 只標在 agent 要的事件被溢出丟掉時；attach 之後先送最新的 `Report` 再補送；控制者換人或離開時，shim 對 worker 送 `Controller`；agent 送完指令就關閉連線時，已送出的指令照樣執行（§4.1、§4.2、§4.4）。v0.32：結束檔與 `Exited`（E1-13）：新增 `ExitRecord`；`ExitInfo` 的合成規則（code、signal 一律依 wait status，outcome、reason 有 `Exiting` 就依它，沒有就依 exit code）；reap 之後讀完 fd 3 才記錄，記錄完才是 `EXITED`、才接受 `Release`；有前一個 incarnation 沒收走的結束檔時 shim 不啟動（§4.3、§4.5 S3、§4.6、§5.3）。v0.33 依 D108：agent 以快照恢復，事件只是通知；`Attached` 加 `exiting`、`exit`，且 `next_seq` 是快照的時間點；`Ack` 不是提交（§4.4）。v0.34 依 D203：幣與數量的單位。qty 的單位是 `contract_value_ccy`（張數 × `contract_size`）：linear 與期權是 base，inverse 是 quote，不是張數；`price_ccy` 是 price、`price_tick` 與權利金的幣，現貨與期貨（含 inverse）是 quote，幣本位期權是 base，U 本位期權是 quote；`settlement_asset` 是損益結算幣，不是保證金幣，三個欄位由 adapter 從原生欄位填，下游不推導。別名只在 SYM 收（一律大寫，例如 XBT→BTC），先正規化再判定 quanto 再推 ticker；strike 先依 `spell_strike`（`6400.0` 與 `6400` 是同一個 ticker）。`USD`、`USDC`、`USDT` 不合併，報價 USD 而結算 USDC 是 quanto，一期不入庫、需求 `REJECTED`。狀態 enum 暫定（`PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`EXPIRED`、`DELISTED`、`UNKNOWN`），契約仍是 `bool active`，交易路徑只接受 `TRADABLE`。SYM 的 listing 預定分兩張表：活躍表是狀態還會變的（`PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`UNKNOWN`），Resolver 與熱路徑只讀它；終結表是 `EXPIRED`、`DELISTED`，狀態不再變，不再刷新，給歷史查詢，可以歸檔；搬過去時 UniversalTicker 字串不變。這一版不拆表。UniversalTicker 只給人寫 spec；系統內部用 UID，是兩張表的主鍵，跨表唯一，搬表時不變，下架再上市拿新的 UID。`SymbolInfo` 加 `uid`（寬度暫定，契約暫用 `uint64`，0 不分配）與 `GetByUidRequest`。寬度、分配方式、重啟是否沿用還沒定；建議方向是一條 Postgres sequence（例如 `symbol_uid_seq`）餵兩張表的 `uid` 主鍵，`symbol_filter` 以 uid 為鍵，終結時整列連 uid 搬走（§10 P13），這一版不實作。NATS subject 用人讀的名字，不用 UID；確切拼法還沒定（§10 P14），這一版仍是 `md.f.{inst}.{topic}.{ticker}`。策略 hook 看 ticker 還是 UID 還沒定（§10 P15）。`td.order` 等仍是 ticker。`td.proto` 的數量欄位註上單位（§7.2、§7.3）。v0.35 依 D109：需求過舊（`LastContact` 超過門檻，預設 15 秒）時，agent 不依需求停 worker、替換、推 live config，也不寫 `WorkerStatus`；重啟結束的 worker 與送 `Start` 由各平面的 Policy 決定（§3.2 W8）。v0.36 改寫 §10 P13：UID 由 SYM 分配，是隨機、唯一、永不重用的整數，不是單調序號，也不是 Postgres sequence；跟列一起持久化，重啟與重載不變，下架再上市拿新的，碰撞就重試。契約型別是 `uint64`，0 非法。寬度與範圍仍開放，Postgres BIGINT 有號，建議 `1..2^63-1`。`symbol_filter` 也分活躍表與終結表，終結時跟列一起搬。SYM `List` 以 offset＋limit 分頁，跨頁不一致可以接受。`Universe.current` 是 selector，尚未定，不在 D203；selector 沒有 UID。P14、P15 仍開放。還沒定的寫在 [§10](#10-待定)。
 >
 > proto 區塊開頭的 `// file:` 是它在 `contract/proto/` 下的路徑。全部區塊以 `protoc` 編譯驗證過，`contract/proto/` 的檔案與它們逐字相同（第一行除外）。
 
@@ -17,7 +17,7 @@
         session worker ◀── C6（NATS）──▶ conn worker、account worker
 ```
 
-控制流只走垂直方向：API server 寫宣告，controller 推導需求與指派，agent 照著起停 worker（DECISIONS D9、D33）。agent 之間沒有控制流，平面之間只有 C6 的資料流。
+控制流只走垂直方向：API server 寫宣告，controller 推導需求與指派，agent 照著起停 worker（DECISIONS D901、D907）。agent 之間沒有控制流，平面之間只有 C6 的資料流。
 
 | 契約 | 兩端 | 傳輸 | 內容 | 擁有者 |
 |---|---|---|---|---|
@@ -31,7 +31,7 @@
 
 ## 1. 版本與相容
 
-shim 與 worker 會比 agent 活得久（D4），所以**版本偏差是常態**，沒有全域的 `pv`。
+shim 與 worker 會比 agent 活得久（D103），所以**版本偏差是常態**，沒有全域的 `pv`。
 
 - 每份契約是一個 protobuf package：`mftiko.<contract>.v<major>`。
 - **同一個 major 內只做相容擴充**：加欄位、加 oneof 分支、加 enum 值。讀取端必須容忍未知欄位與未知 enum 值。CI 對每個 release 跑 `buf breaking`。
@@ -45,9 +45,9 @@ shim 與 worker 會比 agent 活得久（D4），所以**版本偏差是常態**
 | C5 | agent 依 `Hello` 選擇；都不支援時只做信號級的管理 | 目前與前一個 major |
 | C6 | 不協商。只做相容擴充；不相容時換 subject 根 | — |
 
-編碼一律是 protobuf，理由是 `buf breaking` 能機械地檢查相容性。唯一的例外是 `md.f`：protobuf 前面加一段固定長度的二進位 envelope，給 SDK 的 prehook 不解碼就能讀（§7.1、DECISIONS D24）。
+編碼一律是 protobuf，理由是 `buf breaking` 能機械地檢查相容性。唯一的例外是 `md.f`：protobuf 前面加一段固定長度的二進位 envelope，給 SDK 的 prehook 不解碼就能讀（§7.1、DECISIONS D803）。
 
-**草案與定案（DECISIONS D36）。** 上面的相容規則只約束定案的契約。草案可以自由改：`buf.yaml` 的 `breaking.ignore` 列出草案的檔案，CI 不擋；定案的 EPIC 把自己的檔案移出清單，寫進完成標準。目前全部是草案。
+**草案與定案（DECISIONS D007）。** 上面的相容規則只約束定案的契約。草案可以自由改：`buf.yaml` 的 `breaking.ignore` 列出草案的檔案，CI 不擋；定案的 EPIC 把自己的檔案移出清單，寫進完成標準。目前全部是草案。
 
 | 契約 | 檔案 | 兩端 | 狀態 | 定案 |
 |---|---|---|---|---|
@@ -62,7 +62,7 @@ shim 與 worker 會比 agent 活得久（D4），所以**版本偏差是常態**
 | C6 | `td.proto`、`client_order_id`（§2） | account worker ⇄ session worker、TD agent | 草案 | E6 |
 | C6 | `sym.proto` | SYM ⇄ STS、MD、TD | 草案 | E2 |
 | §8 | artifact manifest | `mftiko-pack`、CI ⇄ 三種 agent | 草案 | E9 |
-| — | exchange 的 adaptor 介面（DECISIONS D35） | exchange ⇄ MD、TD、SYM | 草案 | E3 |
+| — | exchange 的 adaptor 介面（DECISIONS D006） | exchange ⇄ MD、TD、SYM | 草案 | E3 |
 
 ## 2. 識別碼與慣例
 
@@ -71,22 +71,22 @@ shim 與 worker 會比 agent 活得久（D4），所以**版本偏差是常態**
 | instance 名稱 | `^[a-z][a-z0-9-]{0,63}$`，慣例是 `{plane}-{region}-{n}`（`md-tw-1`），拆 region 後仍然全域唯一 | 部署設定 |
 | `session_id` | 6 個小寫 hex，對所有歷史 session 唯一 | API |
 | `api_id` | `int64`，大於 0 | API |
-| worker key | `sts/<session_id>`、`td/<api_id>`、`md/<venue>/<route>/<n>`（DECISIONS D26） | 各 agent |
+| worker key | `sts/<session_id>`、`td/<api_id>`、`md/<venue>/<route>/<n>`（DECISIONS D403） | 各 agent |
 | incarnation | `uint32`，每個 worker key 從 1 起各自遞增；只保證遞增，可以跳號。存在 `/{plane}/{inst}/incarnation/{h}`，spawn 前取號（§3.2 W6） | 各 agent |
 | agent epoch | `int64`，持久化在 `/{plane}/{inst}/epoch`，agent 每次當選加 1（§3.2）。不用 etcd revision：不同 cluster 的 revision 不能比較，cluster 重建時 revision 也會從頭開始 | agent |
 | `Version` | `(epoch, seq)`，字典序比較。agent 推給 worker 的指令都帶它；`seq` 在同一個 agent 進程內遞增 | agent |
 | generation | session spec key 的 `mod_revision`（§3.2），只在該 key 所在的 cluster 內比較 | etcd |
-| UniversalTicker | `<Venue>_<Category>_<SYMBOL>`，照抄 mftik（D11）。給人寫設定與 spec 的字串（D38）。系統內部不拿它當商品身分，載入 spec 時解成 UID。Venue 是 CamelCase（`BinanceUM`、`Okx`）；Category 是 `Spot`、`Perp`、`Inverse`、`Future`、`Option`；SYMBOL 是 base＋quote 不加分隔，到期合約加 `-YYMMDD`，期權再加 `-STRIKE-C`／`-P`。strike 先依 `spell_strike` 正規化再拼（D38）：`6400.0` 與 `6400` 是同一個 ticker，小數點寫成 `D`（`6D4`）。不含 `_` 以外的分隔、不含 `.` | SYM（由 listing 推得） |
-| symbol UID | 整數。活躍表與終結表的主鍵，兩張表合在一起唯一（D38）。STS、TD、MD 之間用它。搬到終結表時不變；同一個 ticker 下架再上市是新的 UID。寬度暫定，契約暫用 `uint64`，0 不分配；寬度、分配方式、重啟是否沿用都還沒定（§10 P13） | SYM |
-| venue | 市場，UniversalTicker 的第一段，CamelCase：`Binance`、`BinanceUM`、`BinanceCM`、`BinanceEO`、`Okx`、`Bybit`。一條連線的公開行情、一組商品（D26） | 程式（`internal/exchange`） |
-| 帳號種類 | api_id 是什麼：收哪種憑證、可以交易哪些 venue 的商品：`Binance`、`BinanceUM`、`BinanceCM`、`BinanceEO`、`BinancePM`、`Okx`、`Bybit`。和 venue 是兩個獨立的 enum，名稱可能相同，不可互查。`BinancePM` 只是帳號種類，交易 `Binance`、`BinanceUM`、`BinanceCM` 的商品，依 ticker 的 venue 路由，沒有 `BinancePM_*` 這種 ticker（D32） | 程式（`internal/exchange`） |
+| UniversalTicker | `<Venue>_<Category>_<SYMBOL>`，照抄 mftik（D201）。給人寫設定與 spec 的字串（D203）。系統內部不拿它當商品身分，載入 spec 時解成 UID。Venue 是 CamelCase（`BinanceUM`、`Okx`）；Category 是 `Spot`、`Perp`、`Inverse`、`Future`、`Option`；SYMBOL 是 base＋quote 不加分隔，到期合約加 `-YYMMDD`，期權再加 `-STRIKE-C`／`-P`。strike 先依 `spell_strike` 正規化再拼（D203）：`6400.0` 與 `6400` 是同一個 ticker，小數點寫成 `D`（`6D4`）。不含 `_` 以外的分隔、不含 `.` | SYM（由 listing 推得） |
+| symbol UID | SYM 分配的隨機整數，唯一且永不重用，不是單調序號（D203）。活躍表與終結表的主鍵，兩張表合在一起唯一，跟列一起持久化：重啟與重載都不改它。搬到終結表時不變；同一個 ticker 下架再上市是新的 UID；碰撞時 SYM 重試。契約型別 `uint64`，0 非法。寬度與範圍仍開放：Postgres BIGINT 有號，建議 `1..2^63-1`（§10 P13） | SYM |
+| venue | 市場，UniversalTicker 的第一段，CamelCase：`Binance`、`BinanceUM`、`BinanceCM`、`BinanceEO`、`Okx`、`Bybit`。一條連線的公開行情、一組商品（D403） | 程式（`internal/exchange`） |
+| 帳號種類 | api_id 是什麼：收哪種憑證、可以交易哪些 venue 的商品：`Binance`、`BinanceUM`、`BinanceCM`、`BinanceEO`、`BinancePM`、`Okx`、`Bybit`。和 venue 是兩個獨立的 enum，名稱可能相同，不可互查。`BinancePM` 只是帳號種類，交易 `Binance`、`BinanceUM`、`BinanceCM` 的商品，依 ticker 的 venue 路由，沒有 `BinancePM_*` 這種 ticker（D301） | 程式（`internal/exchange`） |
 | exch_ticker | 交易所自己的寫法，只出現在 adapter 與 SYM。反查要帶 venue 與 category：一個帳號種類可能交易多個 venue（BinancePM），統一帳戶的 venue 上同一個寫法可能是兩個商品（Bybit 現貨與 linear 的 `BTCUSDT`） | 交易所 |
-| topic | `bestquote`、`trade`、`aggtrade`、`orderbook`、`orderbook_delta`、`ticker`、`liquidation`、`funding_rate`、`open_interest`、`greeks`、`mark_price`、`kline_<interval>`（interval 是 `1m`、`4h`、`1mo` 這類正規寫法）。前面幾個沿用 mftik 的名稱（D31） | — |
-| feed key | `<topic>.<UniversalTicker>`。spec 裡寫這個字串；載入時 ticker 才解成 UID（D38）。NATS subject 用人讀的名字，不用 UID；確切拼法還沒定（§10 P14），這一版的 `md.f` 仍是 `md.f.{inst}.{topic}.{ticker}` | — |
-| atom id | `<venue>:<route>:<channel>`，只出現在 MD 內部與 `mdctl`。channel 是交易所的訂閱參數，逐字照抄，可能含 `:` 與 `.`，所以只切前兩個 `:`。route 是身分的一部分：同一個 channel 字串可能出現在不同 route（Bybit 現貨與 linear 的 `publicTrade.BTCUSDT`）（D31） | MD adapter（由解析後的商品推得） |
-| route | 同一個 venue 裡 atom 所屬的 WS 路徑，一個小寫單字，例如 OKX 的 `public`、`business`，Bybit 的 `spot`、`linear`；只有一條路徑的 venue 是 `default`（D26） | MD adapter |
-| `algo_id` | `uint32`，1–1023（10 bits），0 保留。訂單的命名空間，跨 session 不變；一個 session 可以有多個。只需在同一個帳號內唯一；同一個帳號上同時只屬於一個非 terminal 的 session，由 TD agent 依需求項目檢查（DECISIONS D25） | spec（`AccountDecl.algo_ids`） |
-| `client_order_id` | uint64 `ver(4) \| algo(10) \| ts_ms(40) \| seq(10)`，以十進位字串傳。`ts_ms` 自 2026-01-01 UTC 起算；`seq` 每個進程每毫秒 1024 個；`ver` 只用 1–7，最高位為 0（D25） | session worker |
+| topic | `bestquote`、`trade`、`aggtrade`、`orderbook`、`orderbook_delta`、`ticker`、`liquidation`、`funding_rate`、`open_interest`、`greeks`、`mark_price`、`kline_<interval>`（interval 是 `1m`、`4h`、`1mo` 這類正規寫法）。前面幾個沿用 mftik 的名稱（D202） | — |
+| feed key | `<topic>.<UniversalTicker>`。spec 裡寫這個字串；載入時 ticker 才解成 UID（D203）。NATS subject 用人讀的名字，不用 UID；確切拼法還沒定（§10 P14），這一版的 `md.f` 仍是 `md.f.{inst}.{topic}.{ticker}` | — |
+| atom id | `<venue>:<route>:<channel>`，只出現在 MD 內部與 `mdctl`。channel 是交易所的訂閱參數，逐字照抄，可能含 `:` 與 `.`，所以只切前兩個 `:`。route 是身分的一部分：同一個 channel 字串可能出現在不同 route（Bybit 現貨與 linear 的 `publicTrade.BTCUSDT`）（D202） | MD adapter（由解析後的商品推得） |
+| route | 同一個 venue 裡 atom 所屬的 WS 路徑，一個小寫單字，例如 OKX 的 `public`、`business`，Bybit 的 `spot`、`linear`；只有一條路徑的 venue 是 `default`（D403） | MD adapter |
+| `algo_id` | `uint32`，1–1023（10 bits），0 保留。訂單的命名空間，跨 session 不變；一個 session 可以有多個。只需在同一個帳號內唯一；同一個帳號上同時只屬於一個非 terminal 的 session，由 TD agent 依需求項目檢查（DECISIONS D602） | spec（`AccountDecl.algo_ids`） |
+| `client_order_id` | uint64 `ver(4) \| algo(10) \| ts_ms(40) \| seq(10)`，以十進位字串傳。`ts_ms` 自 2026-01-01 UTC 起算；`seq` 每個進程每毫秒 1024 個；`ver` 只用 1–7，最高位為 0（D602） | session worker |
 
 - 十進位數一律是字串，不用浮點。時間一律是 `int64` unix 奈秒，欄位名以 `_ns` 結尾。
 - worker 的本機檔名與 etcd key 用 `h = hex(sha256(worker key))[:16]`。
@@ -126,7 +126,7 @@ message Error {
   map<string, string> details = 4;
 }
 
-// worker 宣告的結束方式（D15）。
+// worker 宣告的結束方式（D107）。
 enum Outcome {
   OUTCOME_UNSPECIFIED = 0; // 沒有宣告：被殺，或在 Hello 之前就死了
   OUTCOME_DONE = 1;        // 正常結束：Stop，或策略呼叫 Exit
@@ -145,7 +145,7 @@ message ExitInfo {
   bool on_stop_completed = 6;
 }
 
-// 交易共用的 enum：行情的成交與強平、TD 的訂單、exchange 的 adaptor、SDK 都用這一份（DECISIONS D35）。
+// 交易共用的 enum：行情的成交與強平、TD 的訂單、exchange 的 adaptor、SDK 都用這一份（DECISIONS D006）。
 enum Side {
   SIDE_UNSPECIFIED = 0;
   SIDE_BUY = 1;
@@ -169,13 +169,13 @@ enum TimeInForce {
 
 ## 3. 控制面：etcd
 
-**cluster 與路由（D17）。** 每個 region 一個 etcd cluster。所有存取經過路由函數 `clusterFor(instance)`，依 key 歸屬的 instance 所在的 region 決定連哪個 cluster。歸屬的規則是「會依據這個 key 行動的那個 agent」：
+**cluster 與路由（D005）。** 每個 region 一個 etcd cluster。所有存取經過路由函數 `clusterFor(instance)`，依 key 歸屬的 instance 所在的 region 決定連哪個 cluster。歸屬的規則是「會依據這個 key 行動的那個 agent」：
 
 | key | 歸屬 |
 |---|---|
 | session spec、STS 的指派、status | STS 所在的 region |
 | 需求項目、ack／nack | provider（MD／TD）所在的 region。TW 的 session 要 JP 的行情，controller 就寫進 JP 的 cluster |
-| controller 的 election、epoch、agent | controller 的 home region（部署設定，DECISIONS D33） |
+| controller 的 election、epoch、agent | controller 的 home region（部署設定，DECISIONS D907） |
 | controller 的 writer | 每一個 controller 會寫入的 cluster 各一份 |
 | 其他（election、epoch、writer、agent、worker、incarnation、selector、placement、帳號） | 該 instance 所在的 region |
 
@@ -226,14 +226,14 @@ enum TimeInForce {
 - **W3 generation 就是 revision。** session spec 的 generation 是該 key 的 `mod_revision`。`SessionStatus.observed_generation` 是 STS agent 處理過的那個 `mod_revision`。
 - **W4 list ＋ watch。** 讀取端先 list 前綴，再從該 revision（含）開始 watch，revision 不大於副本的事件直接丟掉。效果等同從加 1 開始，但 watch 的起點不會超過 cluster 目前的 revision；起點超過的話，etcd 會停發整條連線的 progress notification，cluster 安靜時就一直停著。收到 compacted 錯誤就重新 list。處理邏輯是 level-triggered 的。實作是 `internal/platform/state` 的 `Mirror`。
 - **W5 terminal 是吸收態。** session 進入 `DONE` 或 `FAILED` 之後，spec 再怎麼改都沒有效果。API 可以在保留期之後刪掉 spec 和 status。
-- **W6 incarnation 先取號再 spawn（DECISIONS D8）。**
+- **W6 incarnation 先取號再 spawn（DECISIONS D106）。**
   1. agent 當選後 list `/{plane}/{inst}/incarnation/`，把每個 worker key 目前的號碼記在記憶體裡。這個前綴只有它寫，不需要 watch。
   2. spawn 前以一個 txn 取號。條件有兩個：writer key 的 `mod_revision` 仍是 R（W2）；incarnation key 的值仍是記憶體裡的 n，第一次 spawn 則是 `create_revision == 0`。成立就寫入 n＋1。
   3. txn 成功才 spawn，以 n＋1 當這個進程的 incarnation。writer 的條件不成立表示 agent 已被取代，不 spawn。incarnation key 的條件不成立表示記憶體裡的值錯了，重讀後重試。
   4. 取號之後 spawn 失敗，這個號碼就作廢，下次取新的。
   5. key 不刪：worker 停掉之後，同一個 worker key 還會再起來（MD 重新開到同一個連線編號、refcount 又回到 1 的 `api_id`）。刪掉的話它會從 1 重來，下游記得的號碼比它大，新進程的訊息會被當成遲到的舊訊息丟掉。唯一的例外是 STS：`session_id` 對所有歷史唯一，session 進入 terminal 之後同一個 key 不會再起來，所以最後一個 incarnation 確認消失之後，由 STS agent 刪掉。
   6. `SessionStatus.incarnation`、`WorkerStatus.worker.incarnation` 只是顯示，值從這裡來。
-- **W7 agent 在不在，看 `AgentRecord`（DECISIONS D14）。** agent 與 controller 都只有一個 etcd lease，就是 W2 參選用的選主 session。
+- **W7 agent 在不在，看 `AgentRecord`（DECISIONS D004）。** agent 與 controller 都只有一個 etcd lease，就是 W2 參選用的選主 session。
   1. ack 與 `WorkerStatus` 不綁 lease，只有它的寫入者會刪它，所以「不存在」只有一種意思。
      - `WorkerStatus` 在 worker 確定不在之後才刪：`Release` 完成，或 shim 的 socket 與進程都已不存在。attach 失敗、逾時都不算，key 保留。
      - ack 在需求項目消失之後才刪。
@@ -241,7 +241,7 @@ enum TimeInForce {
   3. agent 每次當選，在第一次 reconcile 之前 list 自己的 `worker/` 與 `ack/`，和收養得到的 worker（§4.2）、目前的需求比對：有差異的重寫，多出來的照 1 的條件刪掉。和 controller 的 N5 是同一套做法。
   4. 比對完才寫 `AgentRecord`，綁在選主 session 的 lease 上。只有這一個寫入點，agent 的其他寫入碰不到它（實作是 `internal/platform/state` 的 `Term.PutRecord`）。term 一結束（session 斷了、被取代），session 就不再續約，`AgentRecord` 最晚在一個 TTL 之後消失；agent 正常停下時 revoke 這個 lease，立刻消失。`epoch` 說明是哪一個 term。
   5. 讀的一方把 ack、`WorkerStatus` 和寫入者的 `AgentRecord` 一起看：`AgentRecord` 在，值是新的（已經比對過）；不在，值是最後一次已知的狀態，可能已經過時。controller 對兩種情況的處理相同（§3.5）。instance 永久下線的程序見 §10 P11。
-- **W8 需求過舊時保持現狀（DECISIONS D39）。** agent 的 `demand/` 副本的 `LastContact` 超過門檻（預設 15 秒，部署設定）就是過舊。過舊時：
+- **W8 需求過舊時保持現狀（DECISIONS D109）。** agent 的 `demand/` 副本的 `LastContact` 超過門檻（預設 15 秒，部署設定）就是過舊。過舊時：
   1. 不依需求停 worker、不因為 spawn spec 變了而替換、不推 live config。恢復聯繫之後的下一輪才做。
   2. 重啟結束的 worker、對已初始化的 worker 送 `Start`，只在該平面的 Policy 允許時做（`KeepWhileStale`）。
   3. 不寫 `WorkerStatus`；恢復之後只寫有改變的（W7.2）。
@@ -249,32 +249,32 @@ enum TimeInForce {
 
 ### 3.3 需求與 STS 的指派
 
-需求項目與 STS 的指派都由 controller 寫，是宣告式的：不綁 etcd lease，存在的理由是「controller 決定它應該存在」，和 controller 活著與否無關（DECISIONS D9、D33）。
+需求項目與 STS 的指派都由 controller 寫，是宣告式的：不綁 etcd lease，存在的理由是「controller 決定它應該存在」，和 controller 活著與否無關（DECISIONS D901、D907）。
 
 - **N1 由 session spec 推導。** 每個非 terminal 的 session，controller 寫：
   - 一個 `SessionDemand`，在 STS 的 cluster；
   - 每個 feed、每個 selector 一個 MD 的 `DemandEntry`，在 `FeedDecl.md_instance`、`SelectorDecl.md_instance` 的 cluster；
   - 每個帳號一個 TD 的 `DemandEntry`，在 `AccountDecl.td_instance` 的 cluster。
 
-  需求只來自 spec，一期沒有執行中加減訂閱的介面（DECISIONS D22）。
-- **N2 STS 的指派一開始就發。** `desired` 是 `RUNNING`，`start` 是 false：STS agent 立刻 spawn 並送 `Init`，`OnInit` 和需求的建立並行（DECISIONS D15）。controller 把每個需求項目目前的 ack 抄進 `bindings`；全部 `READY` 時把 `start` 設成 true，STS agent 才送 `Start`。之後的 ack 變化照樣更新 `bindings`，STS agent 轉成 `stsctl.Bindings` 送給 worker（§6.1）。
-- **N3 controller 結束 session 的方式是把 `desired` 改成 `ENDED`，並寫明 `end_reason`：** spec 要求結束、`deps_failed`（收到 nack，§3.5）、`deps_timeout`（`start` 之前超過 `deps_timeout_s`）。STS agent 停掉 worker，寫入 terminal 的 `SessionStatus`。`SessionStatus` 只有 STS agent 寫（W1）：worker 自己結束、重啟次數用完、volume 超量（DECISIONS D23、D24）這些 terminal 也由它判定。
-- **N4 刪除的順序。** controller 看到 `SessionStatus` 進入 terminal，且 `WorkerStatus` 確認 session worker 已經消失之後，才刪掉這個 session 的 MD、TD 需求項目，最後刪 `SessionDemand`。平台不替策略撤單（DECISIONS D25）。`SessionDemand` 不見了，STS agent 一律當成 `ENDED`。
+  需求只來自 spec，一期沒有執行中加減訂閱的介面（DECISIONS D903）。
+- **N2 STS 的指派一開始就發。** `desired` 是 `RUNNING`，`start` 是 false：STS agent 立刻 spawn 並送 `Init`，`OnInit` 和需求的建立並行（DECISIONS D107）。controller 把每個需求項目目前的 ack 抄進 `bindings`；全部 `READY` 時把 `start` 設成 true，STS agent 才送 `Start`。之後的 ack 變化照樣更新 `bindings`，STS agent 轉成 `stsctl.Bindings` 送給 worker（§6.1）。
+- **N3 controller 結束 session 的方式是把 `desired` 改成 `ENDED`，並寫明 `end_reason`：** spec 要求結束、`deps_failed`（收到 nack，§3.5）、`deps_timeout`（`start` 之前超過 `deps_timeout_s`）。STS agent 停掉 worker，寫入 terminal 的 `SessionStatus`。`SessionStatus` 只有 STS agent 寫（W1）：worker 自己結束、重啟次數用完、volume 超量（DECISIONS D904、D803）這些 terminal 也由它判定。
+- **N4 刪除的順序。** controller 看到 `SessionStatus` 進入 terminal，且 `WorkerStatus` 確認 session worker 已經消失之後，才刪掉這個 session 的 MD、TD 需求項目，最後刪 `SessionDemand`。平台不替策略撤單（DECISIONS D602）。`SessionDemand` 不見了，STS agent 一律當成 `ENDED`。
 - **N5 孤兒靠比對回收。** controller 每次當選、每次全量 resync，都比對「應該存在的」與「實際存在的」。需求的 key 帶 `session_id`，掃前綴就知道哪些項目的 session 不存在或已經 terminal，依 N4 刪掉。
-- **N6 controller 停機或輪換時，需求與指派原樣保留。** 新 leader 先 relist 再比對，只改有差異的項目，不先全部刪掉再重建。萬一刪掉又馬上加回，MD、TD 的 linger 會吸收（DECISIONS D28）。
+- **N6 controller 停機或輪換時，需求與指派原樣保留。** 新 leader 先 relist 再比對，只改有差異的項目，不先全部刪掉再重建。萬一刪掉又馬上加回，MD、TD 的 linger 會吸收（DECISIONS D905）。
 - **N7 provider 只讀。** MD、TD agent 不寫需求項目；STS agent 不寫 `SessionDemand`。
 
 ### 3.4 MD 的推導與 refcount
 
-- **owner** 只有 `{session_id}/{entry}`（需求項目）。沒有常駐訂閱；要保持行情或 tape，跑一個 tape keeper 策略（DECISIONS D29）。
-- **推導：** feed → 一個 atom（D12）；selector → 成員 → 每個成員、每個 topic 一個 atom。先解析再推導（D31）：MD agent 在已載入的商品表裡解析 feed 的 UniversalTicker（§7.3），找不到、已下架、已到期，或不是可交易（D38：熱路徑只讀活躍表，不是 `TRADABLE` 就拒；`EXPIRED` 與 `DELISTED` 在終結表；quanto 一期不入庫，解析不到）就是 `REJECTED`；再把解析結果交給 adapter，由它決定 route 與 channel。adapter 是純函數，不查 SYM。selector 的成員從已載入的表裡挑。selector 的狀態（universe、epoch、置中點）存在 `/md/{inst}/selector/{spec_hash}`，規格相同的 selector 只算一份。
+- **owner** 只有 `{session_id}/{entry}`（需求項目）。沒有常駐訂閱；要保持行情或 tape，跑一個 tape keeper 策略（DECISIONS D404）。
+- **推導：** feed → 一個 atom（D401）；selector → 成員 → 每個成員、每個 topic 一個 atom。先解析再推導（D202）：MD agent 在已載入的商品表裡解析 feed 的 UniversalTicker（§7.3），找不到、已下架、已到期，或不是可交易（D203：熱路徑只讀活躍表，不是 `TRADABLE` 就拒；`EXPIRED` 與 `DELISTED` 在終結表；quanto 一期不入庫，解析不到）就是 `REJECTED`；再把解析結果交給 adapter，由它決定 route 與 channel。adapter 是純函數，不查 SYM。selector 的成員從已載入的表裡挑。selector 的狀態（universe、epoch、置中點）存在 `/md/{inst}/selector/{spec_hash}`，規格相同的 selector 只算一份。
 - **atom 的 refcount 是 owner 集合的大小。**
-  - 0→1：加入 desired，放進同一個 `(venue, route)` 下還有空間、n 最小的連線；都滿了才開 n+1（容量由 adapter 宣告，DECISIONS D26）。有黏性，記在 `/md/{inst}/placement/`，推給 conn worker。不整併。
+  - 0→1：加入 desired，放進同一個 `(venue, route)` 下還有空間、n 最小的連線；都滿了才開 n+1（容量由 adapter 宣告，DECISIONS D403）。有黏性，記在 `/md/{inst}/placement/`，推給 conn worker。不整併。
   - 1→0：linger 之後才從 desired 移除。
-- **連線在最後一個 atom 退訂時就送 `Stop`**，沒有另外的 linger：最後一個 atom 的 linger 就是連線的 linger（DECISIONS D28）。linger 預設 5 秒，是 MD instance 的部署設定。
+- **連線在最後一個 atom 退訂時就送 `Stop`**，沒有另外的 linger：最後一個 atom 的 linger 就是連線的 linger（DECISIONS D905）。linger 預設 5 秒，是 MD instance 的部署設定。
 - **重啟：** list ＋ watch 讀回全部 owner、selector 狀態與 placement，再從 shim 取回每條連線實際訂了哪些 atom，然後才開始 reconcile。
 
-TD 的對應（DECISIONS D9）：每個 `api_id` 一個 owner 集合，refcount 是它的大小。0→1 時 spawn account worker；1→0 時 linger 之後才送 `Stop`，並排一次歷史補正（D20）。account worker 存在與否就等於「這個帳號可以交易」，沒有另外的交易層開關。
+TD 的對應（DECISIONS D901）：每個 `api_id` 一個 owner 集合，refcount 是它的大小。0→1 時 spawn account worker；1→0 時 linger 之後才送 `Stop`，並排一次歷史補正（D601）。account worker 存在與否就等於「這個帳號可以交易」，沒有另外的交易層開關。
 
 ### 3.5 ack／nack
 
@@ -298,7 +298,7 @@ controller watch 這些 key，依上表決定 session 的去留，並把每個�
 
 ### 3.6 值
 
-session 的宣告在 `mftiko.session.v1`，三份契約共用（DECISIONS D36）；其餘 etcd 的值在 `mftiko.state.v1`。
+session 的宣告在 `mftiko.session.v1`，三份契約共用（DECISIONS D007）；其餘 etcd 的值在 `mftiko.state.v1`。
 
 ```proto
 // file: mftiko/session/v1/session.proto
@@ -309,8 +309,8 @@ package mftiko.session.v1;
 option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1;sessionv1";
 
 // session 的宣告：使用者經 API server 寫進 etcd（§3.1）；controller 依它推導需求，STS agent 依它起 worker，策略在
-// InitPayload 拿到自己宣告的那一份（§6.1）。歸 STS 擁有；state.v1、stsctl.v1 與 API 的契約都 import 它（DECISIONS D36）。
-// 商品在這裡寫 UniversalTicker，不寫 UID（D38）。ticker 解成 UID 發生在這份 spec 載入時，不在這份宣告裡。
+// InitPayload 拿到自己宣告的那一份（§6.1）。歸 STS 擁有；state.v1、stsctl.v1 與 API 的契約都 import 它（DECISIONS D007）。
+// 商品在這裡寫 UniversalTicker，不寫 UID（D203）。ticker 解成 UID 發生在這份 spec 載入時，不在這份宣告裡。
 
 message SessionSpec {
   string name = 1;
@@ -321,15 +321,15 @@ message SessionSpec {
   repeated FeedDecl feeds = 6;
   repeated SelectorDecl selectors = 7;
   repeated AccountDecl accounts = 8;
-  RestartPolicy restart = 9; // 語意見 DECISIONS D24
+  RestartPolicy restart = 9; // 語意見 DECISIONS D803
   uint32 deps_timeout_s = 10;
   uint32 start_timeout_s = 11;
   Limits limits = 12;
-  repeated InputDecl inputs = 13; // 資料 artifact（DECISIONS D23）
-  // MD 事件在 buffer 裡的最長壽命，以 envelope 的 md_ts_ns 計（D24）。0 = STS 的預設值。
+  repeated InputDecl inputs = 13; // 資料 artifact（DECISIONS D904）
+  // MD 事件在 buffer 裡的最長壽命，以 envelope 的 md_ts_ns 計（D803）。0 = STS 的預設值。
   // 跨 region 的 session 要比 WAN 延遲大。
   uint32 recv_window_ms = 14;
-  reserved 15; // 草案 v0.11 的 algo_id：改到 AccountDecl.algo_ids（D25）
+  reserved 15; // 草案 v0.11 的 algo_id：改到 AccountDecl.algo_ids（D602）
   reserved "algo_id";
 }
 
@@ -352,12 +352,12 @@ message StrategyRef {
   string repository = 3; // 拉取用的 OCI repository
 }
 
-// 人寫的規格。feed key 裡是 UniversalTicker，不是 UID（D38）。
+// 人寫的規格。feed key 裡是 UniversalTicker，不是 UID（D203）。
 // ticker 解成 UID 發生在 spec 載入時（sym.GetRequest），不在這份宣告裡。
 message FeedDecl {
   string feed = 1;        // 正規 feed key（<topic>.<UniversalTicker>）。載入邊界才解成 UID
   string md_instance = 2; // API 解析後一律填
-  reserved 3;             // 原本的 delivery：背壓改由 recv_window_ms 處理（D24）
+  reserved 3;             // 原本的 delivery：背壓改由 recv_window_ms 處理（D803）
   reserved "delivery";
 }
 
@@ -392,7 +392,7 @@ message AccountDecl {
   string name = 1;
   int64 api_id = 2;
   string td_instance = 3;
-  // 這個 session 在這個帳號上可以使用的 algo_id，每個 1–1023（D25）。
+  // 這個 session 在這個帳號上可以使用的 algo_id，每個 1–1023（D602）。
   // 同一個帳號上和其他非 terminal 的 session 重疊時，TD 的 ack 是 REJECTED（algo_conflict）。
   repeated uint32 algo_ids = 4;
 }
@@ -412,8 +412,8 @@ enum RestartMode {
 message Limits {
   uint32 memory_mb = 1;
   uint32 gomaxprocs = 2;
-  uint32 volume_mb = 3; // session volume 的上限（D23）；0 = STS 的預設值。超過就以 FAILED 結束（volume_over_limit）
-  uint32 hook_timeout_s = 4; // 單一 hook 的硬上限（D24）；0 = STS 的預設值。超過判定 HUNG
+  uint32 volume_mb = 3; // session volume 的上限（D904）；0 = STS 的預設值。超過就以 FAILED 結束（volume_over_limit）
+  uint32 hook_timeout_s = 4; // 單一 hook 的硬上限（D803）；0 = STS 的預設值。超過判定 HUNG
 }
 ```
 
@@ -432,7 +432,7 @@ option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1;
 
 message Account {
   string name = 1;
-  // 帳號種類（DECISIONS D32），不是 venue：BinancePM 可以交易 Binance、BinanceUM、BinanceCM 的商品。
+  // 帳號種類（DECISIONS D301），不是 venue：BinancePM 可以交易 Binance、BinanceUM、BinanceCM 的商品。
   // 兩個 enum 的名稱可能相同（帳號種類 BinanceUM 交易 venue BinanceUM），不可互查。
   string kind = 2;
   bytes sealed_credentials = 3; // 以 TD instance 的公鑰封裝；etcd 裡不放明文
@@ -442,7 +442,7 @@ message Account {
 
 message AccountSettings {
   uint32 cancel_on_disconnect_s = 1; // 0 = 關閉
-  // 歷史補正（DECISIONS D20）。
+  // 歷史補正（DECISIONS D601）。
   uint32 backfill_interval_s = 2; // 另加 jitter；0 = TD agent 的預設值。必須短於交易所成交歷史的保留期
   // 手動觸發：比 TD agent 上次處理過的值新，就提前跑一輪。agent 重啟後可能多跑一次，無害。
   int64 backfill_requested_at_ns = 3;
@@ -471,7 +471,7 @@ message SessionStatus {
   string reason = 6;
   mftiko.common.v1.ExitInfo last_exit = 7;
   int64 updated_at_ns = 8;
-  StateSnapshot state_out = 9; // session terminal 之後 volume 的快照（D23）；推送完成前不填
+  StateSnapshot state_out = 9; // session terminal 之後 volume 的快照（D904）；推送完成前不填
 }
 
 message StateSnapshot {
@@ -483,7 +483,7 @@ message StateSnapshot {
   uint64 size_bytes = 6;
 }
 
-// ---------- controller 寫（不綁 lease，DECISIONS D9、D33）----------
+// ---------- controller 寫（不綁 lease，DECISIONS D901、D907）----------
 
 // MD、TD 的需求項目（§3.3）。
 message DemandEntry {
@@ -493,13 +493,13 @@ message DemandEntry {
     int64 api_id = 3;
   }
   int64 spec_revision = 10; // 推導自哪一版 session spec；只供除錯，可能來自另一個 cluster，不做比較
-  repeated uint32 algo_ids = 11; // 只有帳號項目：同 AccountDecl.algo_ids，TD agent 用來檢查衝突（D25）
+  repeated uint32 algo_ids = 11; // 只有帳號項目：同 AccountDecl.algo_ids，TD agent 用來檢查衝突（D602）
 }
 
 // STS 的指派（§3.3）。STS agent 只跑有指派的 session。
 message SessionDemand {
   mftiko.session.v1.DesiredState desired = 1; // RUNNING：spawn 並送 Init；ENDED：停掉 worker
-  bool start = 2;           // 所有 MD、TD 需求都 READY，STS agent 可以送 Start（D15）
+  bool start = 2;           // 所有 MD、TD 需求都 READY，STS agent 可以送 Start（D107）
   string end_reason = 3;    // desired 是 ENDED 時：ended_by_spec、deps_failed、deps_timeout
   repeated Binding bindings = 4;
   int64 spec_revision = 5;  // 推導自哪一版 session spec；只供除錯
@@ -509,7 +509,7 @@ message SessionDemand {
 // 一個需求項目目前的 ack，由 controller 從 provider 的 EntryStatus 抄來。
 message Binding {
   oneof target {
-    string feed = 1; // feed key。spec 載入時才把其中的 ticker 解成 UID（D38）；這個欄位今天仍是字串
+    string feed = 1; // feed key。spec 載入時才把其中的 ticker 解成 UID（D203）；這個欄位今天仍是字串
     string selector = 2; // SelectorDecl.name
     int64 api_id = 3;
   }
@@ -532,7 +532,7 @@ message EntryStatus {
   EntryState state = 1;
   string reason = 2;
   // feed：完整的 subject（今天是 md.f.{inst}.{topic}.{ticker}）。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（§10 P14）。selector：成員 subject 的前綴（今天是 md.f.{inst}）；
-  // 帳號：td.order.{api_id}。由 provider 決定，訂閱端不自己組（PROTOCOL §7、DECISIONS D8）。
+  // 帳號：td.order.{api_id}。由 provider 決定，訂閱端不自己組（PROTOCOL §7、DECISIONS D106）。
   string subject = 3;
   mftiko.common.v1.WorkerRef worker = 4;
   Universe universe = 5; // 只有 selector
@@ -541,8 +541,8 @@ message EntryStatus {
 
 message Universe {
   uint64 epoch = 1;
-  repeated string members = 2; // 今天是 UniversalTicker。改成 UID 是後續（D38）
-  string current = 3;          // 只有 rolling_future
+  repeated string members = 2; // 成員是商品。今天是 UniversalTicker；改成商品 UID 是後續（D203）。selector 本身沒有 UID
+  string current = 3;          // 只有 rolling_future。這是 selector，尚未定，不在 D203 的範圍；selector 沒有 UID
   repeated string topics = 4;
 }
 
@@ -575,8 +575,8 @@ message WorkerStatus {
 message SelectorState {
   mftiko.session.v1.SelectorDecl spec = 1;
   uint64 epoch = 2;
-  repeated string members = 3;
-  string current = 4;
+  repeated string members = 3; // 同 Universe.members：商品。今天是 UniversalTicker
+  string current = 4;           // 同 Universe.current：selector，尚未定，不在 D203；selector 沒有 UID
   string center = 5; // 置中的 strike
   int64 center_at_ns = 6;
 }
@@ -596,11 +596,11 @@ unix socket `${WORK_DIR}/run/{plane}/{h}.sock`，`WORK_DIR` 是 `Launch.work_dir
 - 權限只給 agent 的 uid。shim 由 agent exec，沿用 agent 的 uid，所以 agent 的 uid 就是 shim 自己的 uid：
   - `run/{plane}` 不存在就以 0700 建立；已經存在的必須是 shim 的 uid 擁有、group 與 other 沒有任何權限，否則以 1 結束。socket 是 0600。
   - 每條連線以 `SO_PEERCRED` 檢查，uid 不同就直接關掉。root 也一樣，除非 shim 自己是 root。
-- 路徑上已經有 socket 時先 connect：連得上表示另一個 shim 還在服務同一個 worker key，以 1 結束。換 incarnation 是 delete-before-create（D8），舊的 shim 要先 `Release`。連不上就是殘留（shim 被 SIGKILL），刪掉重建。路徑上是別種檔案時以 1 結束，不刪。
+- 路徑上已經有 socket 時先 connect：連得上表示另一個 shim 還在服務同一個 worker key，以 1 結束。換 incarnation 是 delete-before-create（D106），舊的 shim 要先 `Release`。連不上就是殘留（shim 被 SIGKILL），刪掉重建。路徑上是別種檔案時以 1 結束，不刪。
 - shim 結束時刪掉自己的 socket。
 - 同時可以掛多條連線，只有一條是控制者（§4.2）。每條連線的送出有自己的佇列，寫入有逾時；agent 不讀，佇列滿了或逾時，shim 就關掉這條連線，不會因此卡住其他連線。寫入因為 agent 已經關閉（例如送完 `Stop` 就退出）而失敗時，shim 不再寫，但照樣讀完並執行它已經送出的指令，直到讀到 EOF。
 
-### 4.2 attach 與 fencing（D6）
+### 4.2 attach 與 fencing（D105）
 
 1. agent 送 `Attach{plane, agent_instance, epoch, shim_majors, resume_from}`，`epoch` 是 §3.2 W2 的值，從 1 起。
 2. 依序檢查。不通過就回錯誤，什麼都不改，原來的控制者照舊：
@@ -632,9 +632,9 @@ unix socket `${WORK_DIR}/run/{plane}/{h}.sock`，`WORK_DIR` 是 `Launch.work_dir
 - `ShimRequest` 的 `id`（1）、`attach`（10）、`signal`（12）；`Attach` 的 `plane`、`agent_instance`、`epoch`、`shim_majors`（1、2、3、5）；`Signal.signo`（1）。
 - `ShimMessage` 的 `response`（1）、`preempted`（3）；`Response` 的 `id`、`ok`、`error`、`attached`（1–4）；`Attached` 的 `shim_release`、`shim_major`、`worker`、`state`、`pid`、`pgid`、`start_time`（1–3、5、7–9）；`Preempted.by_epoch`（1）。
 
-### 4.3 生命週期（D15）
+### 4.3 生命週期（D107）
 
-agent 經 shim 送 `Init`、`Start`、`Stop`。shim 把 `Init`、`Start` 原樣轉給 worker，自己只記下 worker 目前的階段。生命週期是兩段（DECISIONS D15）：`Init` 在 spawn 後立刻送，不等任何需求；`Start` 在依賴都就緒之後才送（STS 等 controller 把指派的 `start` 設成 true，§3.3 N2；MD、TD 的 worker 沒有跨平面依賴，`Init` 完成就送）。
+agent 經 shim 送 `Init`、`Start`、`Stop`。shim 把 `Init`、`Start` 原樣轉給 worker，自己只記下 worker 目前的階段。生命週期是兩段（DECISIONS D107）：`Init` 在 spawn 後立刻送，不等任何需求；`Start` 在依賴都就緒之後才送（STS 等 controller 把指派的 `start` 設成 true，§3.3 N2；MD、TD 的 worker 沒有跨平面依賴，`Init` 完成就送）。
 
 shim 記下的階段是 `Attached.phase`。新的 agent 收養 worker 時以它決定接著送什麼，不必從事件推回來：
 
@@ -672,7 +672,7 @@ shim 收到 SIGTERM（例如主機關機）時，自己對 worker 送 `Stop`，�
 | `Relay`（worker 的請求） | 不緩衝；沒有控制者時，shim 立刻對 worker 回 `Undeliverable` |
 | `Exited` | 環狀緩衝，另外落檔 `run/{plane}/{h}.exit.pb`，直到 `Release`（S3） |
 
-- **快照為準（DECISIONS D37）。** agent 做任何決策所依據的事實，都必須在 `Attached`（或結束檔）裡有最新值：state、phase、最後一個 stage、`Hello`、最後一次 `Beat` 的時間、`exiting`（worker 送的第一則 `Exiting`）、`exit`（記錄完的 `ExitInfo`），加上 attach 時先送的最新 `Report`。事件是降低延遲的通知；agent 不在時遺失的事件只少了歷史，不影響它回來之後的判斷。
+- **快照為準（DECISIONS D108）。** agent 做任何決策所依據的事實，都必須在 `Attached`（或結束檔）裡有最新值：state、phase、最後一個 stage、`Hello`、最後一次 `Beat` 的時間、`exiting`（worker 送的第一則 `Exiting`）、`exit`（記錄完的 `ExitInfo`），加上 attach 時先送的最新 `Report`。事件是降低延遲的通知；agent 不在時遺失的事件只少了歷史，不影響它回來之後的判斷。
 - **seq。** 進環狀緩衝的事件依序編號，從 1 起，一個 shim 一個序列。`Started` 是 1。`Report`、`Beat`、`Relay` 不進緩衝，`seq` 是 0。`at_ns` 是 shim 收到的時間。
 - **Ack。** `Ack{seq}` 表示 agent 不再需要 seq 以前（含）的事件，shim 提早把它們從環裡釋放；環最多保留 1024 則還沒釋放的。它不是提交：shim 不需要知道 agent 處理完了沒有，agent 也不必等持久化才送，收到就可以 Ack，或者完全不送。確認過的 seq 再送一次不改變什麼；還沒產生的 seq 回 `bad_request`。只有控制者能送，且要有共同的 major。
 - **補送。** attach 成功之後，shim 先回 `Attached`（`oldest_seq` 是環裡最舊的 seq，`next_seq` 是下一則會拿到的 seq；環是空的時兩者相同。`Attached` 是同一個時間點的快照：它反映了 seq < `next_seq` 的每一則事件，不含 seq ≥ `next_seq` 的任何一則，所以 agent 拿到快照之後只需要 seq ≥ `next_seq` 的事件，更早的可以略過），接著送最新的 `Report`（有的話），再從 `resume_from` 開始送環裡的事件（0 等於 1），之後新的事件一產生就送。補送與即時的事件走同一個游標，不會漏也不會重複。控制者自己再 `Attach` 也一樣，從新的 `resume_from` 重送。沒有共同 major 的控制者不收事件。
@@ -913,7 +913,7 @@ exec 失敗（找不到執行檔、沒有權限）時 shim 以 1 結束，agent 
 
 shim 自己的 log 寫 stderr，由 agent 決定接到哪裡；接檔案比接 pipe 好，pipe 的讀端隨 agent 消失。讀端不在時 shim 的寫入失敗，但 shim 不會因此結束。
 
-部署時 shim 不能和 agent 放在會一起被殺的 cgroup 或 systemd unit 裡，否則 agent 重啟時 shim 和 worker 會跟著死，D3–D5 就不成立。
+部署時 shim 不能和 agent 放在會一起被殺的 cgroup 或 systemd unit 裡，否則 agent 重啟時 shim 和 worker 會跟著死，D102–D104 就不成立。
 
 ## 5. C4：shim ⇄ worker
 
@@ -970,10 +970,10 @@ shim 是 parent，wait status 一定拿得到；`Exiting` 和 wait status 一起
 | `MFTIKO_PLANE`、`MFTIKO_INSTANCE` | 所屬 agent |
 | `MFTIKO_CTL_FD` | `3` |
 | `MFTIKO_NATS_URL` | NATS 的位址。worker 沒有 etcd 的存取權 |
-| `MFTIKO_NATS_CREDS` | 只有 MD、TD：所屬 instance 的 NATS 憑證。STS 的 session worker 沒有這個變數，它的憑證每個 session 一份，經 `Init` 送進去（DECISIONS D30） |
+| `MFTIKO_NATS_CREDS` | 只有 MD、TD：所屬 instance 的 NATS 憑證。STS 的 session worker 沒有這個變數，它的憑證每個 session 一份，經 `Init` 送進去（DECISIONS D906） |
 | `GOMEMLIMIT`、`GOMAXPROCS` | Go runtime |
-| `MFTIKO_VOLUME_DIR` | 只有 STS：session 的可寫目錄，跨 incarnation 保留（D23） |
-| `MFTIKO_INPUT_DIR` | 只有 STS：`inputs` 解開的位置，每個 input 一個子目錄（D23）。worker 不應寫入 |
+| `MFTIKO_VOLUME_DIR` | 只有 STS：session 的可寫目錄，跨 incarnation 保留（D904） |
+| `MFTIKO_INPUT_DIR` | 只有 STS：`inputs` 解開的位置，每個 input 一個子目錄（D904）。worker 不應寫入 |
 
 spawn spec 和憑證不走環境變數，也不落檔：都在 `Init` 的 payload 裡，經 socketpair 送進去。
 
@@ -1117,7 +1117,7 @@ message InitPayload {
   bytes params = 6;
   repeated mftiko.session.v1.FeedDecl feeds = 7;
   repeated mftiko.session.v1.AccountDecl accounts = 8;
-  NatsCredentials nats = 9; // 這個 session 專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D30）
+  NatsCredentials nats = 9; // 這個 session 專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D906）
 }
 
 // STS agent 為這個 session 簽的 user JWT。權限見 PROTOCOL §7。
@@ -1161,7 +1161,7 @@ message SelectorBinding {
   string name = 1;
   string md_instance = 2;
   Universe universe = 3;
-  string subject_prefix = 4; // 成員的 subject 是 {subject_prefix}.{topic}.{ticker}。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（D38、§10 P14）
+  string subject_prefix = 4; // 成員的 subject 是 {subject_prefix}.{topic}.{ticker}。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（D203、§10 P14）
 }
 
 message AccountBinding {
@@ -1179,7 +1179,7 @@ message Report {
   repeated QueueStat queues = 5;
 }
 
-// name 是 td 或 md（D24）。
+// name 是 td 或 md（D803）。
 message QueueStat {
   string name = 1;
   uint32 depth = 2;
@@ -1188,7 +1188,7 @@ message QueueStat {
 }
 
 // 綁定的狀態，對應 provider 的 ack（§3.5）。值與 state.v1.EntryState 相同；stsctl 自己定義，策略的契約才不綁在 etcd 的
-// schema 上（DECISIONS D36）。
+// schema 上（DECISIONS D007）。
 enum BindingState {
   BINDING_STATE_UNSPECIFIED = 0; // provider 沒有 ack（沉默）
   BINDING_STATE_PENDING = 1;
@@ -1200,8 +1200,8 @@ enum BindingState {
 // selector 目前的成員。欄位與 state.v1.Universe 相同。
 message Universe {
   uint64 epoch = 1;
-  repeated string members = 2; // 今天是 UniversalTicker。改成 UID 是後續（D38）
-  string current = 3;          // 只有 rolling_future
+  repeated string members = 2; // 成員是商品。今天是 UniversalTicker；改成商品 UID 是後續（D203）。selector 本身沒有 UID
+  string current = 3;          // 只有 rolling_future。這是 selector，尚未定，不在 D203 的範圍；selector 沒有 UID
   repeated string topics = 4;
 }
 ```
@@ -1220,12 +1220,12 @@ option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/mdctl/v1;
 
 message InitPayload {
   string venue = 1;
-  string route = 2; // 由 adapter 從解析後的商品推得（D26、D31）
+  string route = 2; // 由 adapter 從解析後的商品推得（D403、D202）
   uint32 n = 3;
   string md_instance = 4;
-  reserved 5; // 原本的 tape_url：tape 在 worker 記憶體（D21）
+  reserved 5; // 原本的 tape_url：tape 在 worker 記憶體（D402）
   reserved "tape_url";
-  // 實際連線的 URL。host 由 MD instance 的設定選：預設，或交易所提供的替代 endpoint（D26）。換 URL 要換 incarnation。
+  // 實際連線的 URL。host 由 MD instance 的設定選：預設，或交易所提供的替代 endpoint（D403）。換 URL 要換 incarnation。
   string url = 6;
 }
 
@@ -1247,7 +1247,7 @@ message Desired {
 message AtomAssignment {
   string atom_id = 1;
   repeated string feeds = 2; // 這個 atom 要發佈的 feed（atom → 事件 1:N）
-  bool record = 3;           // 錄 tape；MD agent 依 topic 推導（D21）
+  bool record = 3;           // 錄 tape；MD agent 依 topic 推導（D402）
 }
 
 message Report {
@@ -1296,7 +1296,7 @@ option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/tdctl/v1;
 
 message InitPayload {
   int64 api_id = 1;
-  string kind = 2; // 帳號種類（D32），同 state.v1.Account.kind
+  string kind = 2; // 帳號種類（D301），同 state.v1.Account.kind
   string td_instance = 3;
   uint32 cancel_on_disconnect_s = 4;
   Credentials credentials = 5; // 只經 socketpair 送進去
@@ -1330,7 +1330,7 @@ message Report {
   uint32 open_orders = 4;
   uint32 inflight = 5;
   bool draining = 6;
-  // 這個 incarnation 下過單的商品 → 第一次 Submit 的時間（DECISIONS D20）。TD agent 據此建 backfill 的 scope。
+  // 這個 incarnation 下過單的商品 → 第一次 Submit 的時間（DECISIONS D601）。TD agent 據此建 backfill 的 scope。
   // 新商品的第一筆單：worker 先送出含它的 Report，再送單。
   map<string, int64> first_submit_ns = 7;
 }
@@ -1338,7 +1338,7 @@ message Report {
 enum AccountState {
   ACCOUNT_STATE_UNSPECIFIED = 0;
   ACCOUNT_STATE_READY = 1;
-  ACCOUNT_STATE_DEGRADED = 2; // 私有 websocket 斷線：新單以 1xx 拒絕，撤單照常（D27）
+  ACCOUNT_STATE_DEGRADED = 2; // 私有 websocket 斷線：新單以 1xx 拒絕，撤單照常（D603）
   ACCOUNT_STATE_UNAVAILABLE = 3;
 }
 ```
@@ -1356,27 +1356,27 @@ enum AccountState {
 | `log.{plane}.{id}` | pub | 全部 | API |
 | `sym` | req | SYM（queue group） | session worker（經 SDK）、MD agent、TD agent、account worker、md.fetch（§7.3）。API 不查 |
 
-- 資料面不用 NATS header：subject 決定訊息種類，payload 是該種類的 wrapper。`md.f` 的 payload 前面多一段固定長度的 envelope（§7.1），給 SDK 的 prehook 不解碼就能讀（D24）。
-- 沒有給策略看的可用性廣播（D16）。存活由 controller 依 ack／nack 處理（§3.5）。
-- `md.f` 的 subject 直接是 feed：feed 對 atom 1:1（D12），所以 atom 不出現在資料面上。UniversalTicker 不含 `.`，可以直接當 token。
-- **行情的 subject 由 MD agent 給，SDK 不自己組（D8）。** feed 用 `FeedBinding.subject`；selector 成員用 `SelectorBinding.subject_prefix` 加上 `.{topic}.{ticker}`；`md.view` 是把開頭的 `md.f.` 換成 `md.view.`。之後要讓新舊版 conn worker 並存，MD agent 在 subject 裡加版號即可，SDK 不用改。
-- **`md.view` 由持有 atom 的 conn worker 服務（D21）**，它在 atom 加入時訂閱、移除時退訂。沒有 responder 就是沒有 worker 持有這個 atom。
-- **`md.fetch` 是無狀態服務（D21）**，和 SYM 一樣不歸任何 agent 管。conn worker 自己要快照時在進程內呼叫 REST reader，不經過 `md.fetch`。
-- **TD 壞掉時下單失敗並帶原因（D16）：** `td.order.{api_id}` 沒有 responder（account worker 不在）或逾時，SDK 轉成一筆 `OrderReject`，code 落在 1xx（TD 本地拒絕）。account worker 自己拒絕的（drain 中、帳號不可用）也走同一條路。
-- **TD 降級（D27）。** 私有 websocket 斷線期間，`Submit` 以 1xx 拒絕（`account_degraded`），`Cancel`、`BatchCancel` 照常走 HTTP。重連並 recon 之後，在 `td.evt` 發一則 `Recon`，之後才恢復接受新單。account worker 換 incarnation 之後也發一則 `Recon`。TD 的 ack 維持 `READY`。
-- **第一份 `Recon` 由 SDK 自己取得（D27）：** `OnStart` 之後，SDK 以 `td.view`（ledger 加上依 algo 篩選的 OMS）組出一份，當作第一次 `OnRecon` 交給策略。
-- **session worker 的 NATS 權限（D30）。** 每個 session 一份 user JWT，由 STS agent 依 spec 簽發：
+- 資料面不用 NATS header：subject 決定訊息種類，payload 是該種類的 wrapper。`md.f` 的 payload 前面多一段固定長度的 envelope（§7.1），給 SDK 的 prehook 不解碼就能讀（D803）。
+- 沒有給策略看的可用性廣播（D801）。存活由 controller 依 ack／nack 處理（§3.5）。
+- `md.f` 的 subject 直接是 feed：feed 對 atom 1:1（D401），所以 atom 不出現在資料面上。UniversalTicker 不含 `.`，可以直接當 token。
+- **行情的 subject 由 MD agent 給，SDK 不自己組（D106）。** feed 用 `FeedBinding.subject`；selector 成員用 `SelectorBinding.subject_prefix` 加上 `.{topic}.{ticker}`；`md.view` 是把開頭的 `md.f.` 換成 `md.view.`。之後要讓新舊版 conn worker 並存，MD agent 在 subject 裡加版號即可，SDK 不用改。
+- **`md.view` 由持有 atom 的 conn worker 服務（D402）**，它在 atom 加入時訂閱、移除時退訂。沒有 responder 就是沒有 worker 持有這個 atom。
+- **`md.fetch` 是無狀態服務（D402）**，和 SYM 一樣不歸任何 agent 管。conn worker 自己要快照時在進程內呼叫 REST reader，不經過 `md.fetch`。
+- **TD 壞掉時下單失敗並帶原因（D801）：** `td.order.{api_id}` 沒有 responder（account worker 不在）或逾時，SDK 轉成一筆 `OrderReject`，code 落在 1xx（TD 本地拒絕）。account worker 自己拒絕的（drain 中、帳號不可用）也走同一條路。
+- **TD 降級（D603）。** 私有 websocket 斷線期間，`Submit` 以 1xx 拒絕（`account_degraded`），`Cancel`、`BatchCancel` 照常走 HTTP。重連並 recon 之後，在 `td.evt` 發一則 `Recon`，之後才恢復接受新單。account worker 換 incarnation 之後也發一則 `Recon`。TD 的 ack 維持 `READY`。
+- **第一份 `Recon` 由 SDK 自己取得（D603）：** `OnStart` 之後，SDK 以 `td.view`（ledger 加上依 algo 篩選的 OMS）組出一份，當作第一次 `OnRecon` 交給策略。
+- **session worker 的 NATS 權限（D906）。** 每個 session 一份 user JWT，由 STS agent 依 spec 簽發：
   - publish：`td.order.{綁定的 api_id}`、`td.view.{綁定的 api_id}`、`md.view.{綁定的 MD instance}.>`、`md.fetch`、`sym`、`log.sts.{session_id}`。
   - subscribe：`md.f.{綁定的 MD instance}.>`、`td.evt.{綁定的 api_id}`、`_INBOX_{session_id}.>`。
   - 授權只在連線時做一次，訊息不帶 token。對沒綁定的帳號發 `td.order`，broker 直接拒絕。
-- **帳號只交易它的種類可交易的 venue（D32）。** `Submit` 的 ticker 所屬的 venue 不在帳號種類的清單裡，account worker 以 1xx 拒絕（`venue_not_tradable`），不送出。
-- **數量與價格的單位（D38）。** `qty`、`filled_qty`、`Fill.qty`、`Position.size` 的單位是 `contract_value_ccy`（qty = 張數 × `contract_size`）：linear 與期權是 base，inverse 是 quote，不是張數。`quote_qty` 的單位是 quote。`price`、`avg_price`、持倉的 `entry_price` 與 `mark_price`，以及 `price_tick`，用 `price_ccy`：現貨與期貨（含 inverse）是 quote，幣本位期權是 base，U 本位期權是 quote（穩定幣）。`unrealized_pnl` 用 `settlement_asset`（契約欄位 `settle`），是損益結算幣，不是保證金幣。不是 `TRADABLE` 的商品，交易路徑拒單。見 §7.3。
-- **策略只能動自己的單（D25）。** TD 檢查 `Submit`、`Cancel`、`BatchCancel` 帶的 `algo_id` 與 `client_order_id` 的 algo 欄位一致，不符就以 1xx 拒絕。沒有 `client_order_id` 的單（人工下的）不屬於任何策略。SDK 只允許使用 spec 裡宣告給該帳號的 algo_id；這是防呆，不是防惡意。平台不替策略撤單，STS agent 沒有 `td.order` 的權限。
-- **TD agent 訂閱 `td.evt` 落庫（D20）。** 所有 `Fill`，以及終態且 `filled_qty > 0` 的 `Order`，以 provisional 進 agent 的 queue。走 core NATS：漏收的由歷史補正讀回，不用 JetStream。
+- **帳號只交易它的種類可交易的 venue（D301）。** `Submit` 的 ticker 所屬的 venue 不在帳號種類的清單裡，account worker 以 1xx 拒絕（`venue_not_tradable`），不送出。
+- **數量與價格的單位（D203）。** `qty`、`filled_qty`、`Fill.qty`、`Position.size` 的單位是 `contract_value_ccy`（qty = 張數 × `contract_size`）：linear 與期權是 base，inverse 是 quote，不是張數。`quote_qty` 的單位是 quote。`price`、`avg_price`、持倉的 `entry_price` 與 `mark_price`，以及 `price_tick`，用 `price_ccy`：現貨與期貨（含 inverse）是 quote，幣本位期權是 base，U 本位期權是 quote（穩定幣）。`unrealized_pnl` 用 `settlement_asset`（契約欄位 `settle`），是損益結算幣，不是保證金幣。不是 `TRADABLE` 的商品，交易路徑拒單。見 §7.3。
+- **策略只能動自己的單（D602）。** TD 檢查 `Submit`、`Cancel`、`BatchCancel` 帶的 `algo_id` 與 `client_order_id` 的 algo 欄位一致，不符就以 1xx 拒絕。沒有 `client_order_id` 的單（人工下的）不屬於任何策略。SDK 只允許使用 spec 裡宣告給該帳號的 algo_id；這是防呆，不是防惡意。平台不替策略撤單，STS agent 沒有 `td.order` 的權限。
+- **TD agent 訂閱 `td.evt` 落庫（D601）。** 所有 `Fill`，以及終態且 `filled_qty > 0` 的 `Order`，以 provisional 進 agent 的 queue。走 core NATS：漏收的由歷史補正讀回，不用 JetStream。
 
 ### 7.1 MD
 
-**`md.f` 的訊息 = envelope ＋ protobuf `FeedEvent`（D24）。** envelope 是固定位置的 little-endian 欄位，每個欄位對齊 8 bytes，可以直接 unsafe 讀：
+**`md.f` 的訊息 = envelope ＋ protobuf `FeedEvent`（D803）。** envelope 是固定位置的 little-endian 欄位，每個欄位對齊 8 bytes，可以直接 unsafe 讀：
 
 | offset | 長度 | 欄位 |
 |---|---|---|
@@ -1459,7 +1459,7 @@ message Level {
   string qty = 2;
 }
 
-// orderbook：conn worker 本地全量 book 的 top-N，top-N 有變才推（D21）。
+// orderbook：conn worker 本地全量 book 的 top-N，top-N 有變才推（D402）。
 message OrderBook {
   Meta meta = 1;
   repeated Level bids = 2;
@@ -1467,7 +1467,7 @@ message OrderBook {
   uint32 depth = 4;
 }
 
-// orderbook_delta：本地全量 book 的增量（D21）。qty 為 "0" 表示刪除該價位。
+// orderbook_delta：本地全量 book 的增量（D402）。qty 為 "0" 表示刪除該價位。
 // reset 為 true 時，bids／asks 是完整的 book，取代本地狀態（conn worker 對交易所重新同步之後）。
 // 晚加入的接法見 read.proto 的 md.view。
 message OrderBookDelta {
@@ -1490,7 +1490,7 @@ message Kline {
   bool closed = 10;
 }
 
-// 只有 24h 統計（D12）；venue 不推的欄位不填。
+// 只有 24h 統計（D401）；venue 不推的欄位不填。
 message Ticker {
   Meta meta = 1;
   optional string last = 2;
@@ -1548,10 +1548,10 @@ message FeedEnd {
 }
 ```
 
-**行情讀取（D21）。** `md.view` 問持有 atom 的 conn worker，回答它記憶體裡的狀態；`md.fetch` 問無狀態服務，轉發交易所的公開 REST。
+**行情讀取（D402）。** `md.view` 問持有 atom 的 conn worker，回答它記憶體裡的狀態；`md.fetch` 問無狀態服務，轉發交易所的公開 REST。
 
 - **tape 的接法：** 先訂 `md.f`，記下第一筆 live 的 `(conn_epoch, seq)`；再從 `md.view` 由新到舊讀 tape，丟掉不小於它的部分。
-- **`orderbook_delta` 的接法（SDK 的可選小工具）：** 先訂 `md.f` 並緩衝；向 `md.view` 要 book，得到 seq S；丟掉緩衝裡 seq ≤ S 的增量，之後依序套用。seq 跳號（包括被 prehook 丟掉，D24）或 `conn_epoch` 改變時，重新要一次。收到 `reset` 就整本取代。
+- **`orderbook_delta` 的接法（SDK 的可選小工具）：** 先訂 `md.f` 並緩衝；向 `md.view` 要 book，得到 seq S；丟掉緩衝裡 seq ≤ S 的增量，之後依序套用。seq 跳號（包括被 prehook 丟掉，D803）或 `conn_epoch` 改變時，重新要一次。收到 `reset` 就整本取代。
 - **K 線的接法：** `md.fetch` 拿最近 N 根已收盤的，再接 live 的 kline feed，以 `open_time_ns` 對齊。
 
 ```proto
@@ -1565,7 +1565,7 @@ import "mftiko/md/v1/md.proto";
 option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1;mdv1";
 
 // ---------- md.view.{inst}.{topic}.{ticker} ----------
-// subject 最後一段今天是 UniversalTicker。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（D38、§10 P14）。
+// subject 最後一段今天是 UniversalTicker。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（D203、§10 P14）。
 // 由持有該 atom 的 conn worker 回答。回什麼由 subject 的 topic 決定：
 // trade、aggtrade、liquidation 回 tape；orderbook_delta 回 book。其他 topic 回 error = "unsupported"。
 
@@ -1618,12 +1618,12 @@ message BookSnapshot {
 message FetchRequest {
   oneof req {
     FetchKlines klines = 1;
-    FetchOpenInterest open_interest = 2; // 交易所不推送、只能查詢的值（D12）
+    FetchOpenInterest open_interest = 2; // 交易所不推送、只能查詢的值（D401）
   }
 }
 
 message FetchKlines {
-  string ticker = 1;   // 今天是 UniversalTicker。改成 UID 是後續（D38）。subject 用人讀的名字，拼法還沒定（§10 P14）
+  string ticker = 1;   // 今天是 UniversalTicker。改成 UID 是後續（D203）。subject 用人讀的名字，拼法還沒定（§10 P14）
   string interval = 2; // 正規寫法：1m、4h、1mo
   uint32 limit = 3;    // 最近 N 根已收盤的；超過交易所單次上限時由服務分頁
 }
@@ -1681,23 +1681,23 @@ message OrderRequest {
     Cancel cancel = 2;
     BatchCancel batch_cancel = 4;
   }
-  reserved 3; // 原本的 cancel_session：平台不替策略撤單（D25）
+  reserved 3; // 原本的 cancel_session：平台不替策略撤單（D602）
   reserved "cancel_session";
 }
 
 message Submit {
   string session_id = 1;
-  string ticker = 2; // 今天是 UniversalTicker。平面之間改傳 UID 是後續（D38），這一版不改 td 的欄位
+  string ticker = 2; // 今天是 UniversalTicker。平面之間改傳 UID 是後續（D203），這一版不改 td 的欄位
   mftiko.common.v1.Side side = 3;
   mftiko.common.v1.OrderType order_type = 4;
-  optional string qty = 5; // 單位是 contract_value_ccy（D38）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數
-  optional string quote_qty = 6; // quote 資產的金額，單位是 quote，不是 contract_value_ccy（D38）
-  optional string price = 7; // 單位是 price_ccy（D38）：現貨與期貨（含 inverse）是 quote；幣本位期權的權利金是 base；U 本位期權的權利金是 quote（穩定幣）
+  optional string qty = 5; // 單位是 contract_value_ccy（D203）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數
+  optional string quote_qty = 6; // quote 資產的金額，單位是 quote，不是 contract_value_ccy（D203）
+  optional string price = 7; // 單位是 price_ccy（D203）：現貨與期貨（含 inverse）是 quote；幣本位期權的權利金是 base；U 本位期權的權利金是 quote（穩定幣）
   mftiko.common.v1.TimeInForce tif = 8;
   bool reduce_only = 9;
   string client_order_id = 10;
   map<string, string> params = 11;
-  uint32 algo_id = 12; // 必須等於 client_order_id 的 algo 欄位（D25）
+  uint32 algo_id = 12; // 必須等於 client_order_id 的 algo 欄位（D602）
 }
 
 message Cancel {
@@ -1705,10 +1705,10 @@ message Cancel {
   string ticker = 2;
   string client_order_id = 3;
   string order_id = 4;
-  uint32 algo_id = 5; // 目標單的 client_order_id 的 algo 欄位必須等於它；沒有 client_order_id 的單一律拒絕（D25）
+  uint32 algo_id = 5; // 目標單的 client_order_id 的 algo 欄位必須等於它；沒有 client_order_id 的單一律拒絕（D602）
 }
 
-// 撤掉這個帳號上 client_order_id 的 algo 欄位等於 algo_id 的所有掛單（D25）。
+// 撤掉這個帳號上 client_order_id 的 algo 欄位等於 algo_id 的所有掛單（D602）。
 // 只看 algo 欄位，不分 session、incarnation：上一個進程或上一個 session 留下的也算。
 message BatchCancel {
   uint32 algo_id = 1;
@@ -1753,7 +1753,7 @@ message ViewRequest {
 message OmsViewRequest {
   string session_id = 1;
   bool settled = 2;
-  uint32 algo_id = 3; // 非 0 時改以 algo 篩選，涵蓋上一個進程、上一個 session 留下的單（D25）
+  uint32 algo_id = 3; // 非 0 時改以 algo 篩選，涵蓋上一個進程、上一個 session 留下的單（D602）
 }
 
 message LedgerViewRequest {}
@@ -1803,7 +1803,7 @@ message AccountEvent {
     PositionUpdate position_update = 15;
     Recon recon = 17;
   }
-  reserved 16; // 原本的 account_reset：由 Recon 取代（D27）
+  reserved 16; // 原本的 account_reset：由 Recon 取代（D603）
   reserved "account_reset";
 }
 
@@ -1814,11 +1814,11 @@ message Order {
   mftiko.common.v1.Side side = 4;
   mftiko.common.v1.OrderType order_type = 5;
   OrderStatus status = 6;
-  string qty = 7; // 同 Submit.qty，單位是 contract_value_ccy（D38）
-  optional string quote_qty = 8; // 同 Submit.quote_qty（D38）
-  optional string price = 9; // 同 Submit.price，單位是 price_ccy（D38）
-  string filled_qty = 10; // 已成交數量，單位同 qty（contract_value_ccy，D38）
-  optional string avg_price = 11; // 同 Submit.price，單位是 price_ccy（D38）
+  string qty = 7; // 同 Submit.qty，單位是 contract_value_ccy（D203）
+  optional string quote_qty = 8; // 同 Submit.quote_qty（D203）
+  optional string price = 9; // 同 Submit.price，單位是 price_ccy（D203）
+  string filled_qty = 10; // 已成交數量，單位同 qty（contract_value_ccy，D203）
+  optional string avg_price = 11; // 同 Submit.price，單位是 price_ccy（D203）
   string reject_reason = 12;
   int64 exch_ts_ns = 13;
   int64 td_ts_ns = 14;
@@ -1826,13 +1826,13 @@ message Order {
 
 message Fill {
   string ticker = 1;
-  // 交易所的 trade id。WS 與 REST 必須給同一個值：落庫以 (api_id, fill_id) 去重（D20）。
+  // 交易所的 trade id。WS 與 REST 必須給同一個值：落庫以 (api_id, fill_id) 去重（D601）。
   string fill_id = 2;
   string order_id = 3;
   string client_order_id = 4;
   mftiko.common.v1.Side side = 5;
-  string price = 6; // 同 Submit.price，單位是 price_ccy（D38）
-  string qty = 7; // 成交數量，單位同 Submit.qty（contract_value_ccy，D38）
+  string price = 6; // 同 Submit.price，單位是 price_ccy（D203）
+  string qty = 7; // 成交數量，單位同 Submit.qty（contract_value_ccy，D203）
   string fee = 8;
   string fee_asset = 9;
   string liquidity = 10;
@@ -1863,10 +1863,10 @@ message Balance {
 
 message Position {
   string ticker = 1;
-  string size = 2; // 持倉數量，單位同 Submit.qty（contract_value_ccy，D38）
-  optional string entry_price = 3; // 同 Submit.price，單位是 price_ccy（D38）
-  optional string mark_price = 4; // 同 Submit.price，單位是 price_ccy（D38）
-  optional string unrealized_pnl = 5; // 損益結算幣 settlement_asset（欄位 settle），不是保證金幣（D38）
+  string size = 2; // 持倉數量，單位同 Submit.qty（contract_value_ccy，D203）
+  optional string entry_price = 3; // 同 Submit.price，單位是 price_ccy（D203）
+  optional string mark_price = 4; // 同 Submit.price，單位是 price_ccy（D203）
+  optional string unrealized_pnl = 5; // 損益結算幣 settlement_asset（欄位 settle），不是保證金幣（D203）
   optional string leverage = 6;
 }
 
@@ -1878,7 +1878,7 @@ message PositionUpdate {
   repeated Position positions = 1;
 }
 
-// 帳號狀態的整份快照（DECISIONS D27）。SDK 把它交給策略的 OnRecon：
+// 帳號狀態的整份快照（DECISIONS D603）。SDK 把它交給策略的 OnRecon：
 // open_orders 先篩成自己宣告的 algo_id，positions、balances 原樣給。
 // 和其他事件共用 seq；策略整份換掉自己的狀態，之後的事件照常疊上去。
 message Recon {
@@ -1899,13 +1899,13 @@ enum ReconReason {
 
 ### 7.3 SYM
 
-照 mftik 的 symbol plane（DECISIONS D11、D31）。SYM 是商品資料的權威：交易所怎麼寫一個商品、它的交易限制是什麼。翻譯是查表，不是字串轉換。
+照 mftik 的 symbol plane（DECISIONS D201、D202）。SYM 是商品資料的權威：交易所怎麼寫一個商品、它的交易限制是什麼。翻譯是查表，不是字串轉換。
 
-- **不是 agent。** 每個 region 部署，NATS queue group，任何 replica 都能回答；沒有 lease、fencing。只有 SYM 寫。listing 預定分兩張表，看狀態還會不會變（D38，enum 仍暫定）：活躍表是 `PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`UNKNOWN`，Resolver 與熱路徑只讀它，只有 `TRADABLE` 可交易；終結表是 `EXPIRED`、`DELISTED`，狀態不再變，給歷史查詢（舊成交、持倉、依 UID 或 ticker 反查），不再刷新，可以歸檔。兩張表的主鍵都是 UID，合在一起唯一。列進了終結狀態就從活躍表搬到終結表，UniversalTicker 與 UID 都不變。同一個 ticker 下架再上市是新的 UID。這一版的遷移仍是一張 `symbol_ticker` 加 `symbol_filter`，主鍵仍是該表自己的 `id`，拆表與共用 UID 還沒做。
+- **不是 agent。** 每個 region 部署，NATS queue group，任何 replica 都能回答；沒有 lease、fencing。只有 SYM 寫。listing 預定分兩張表，看狀態還會不會變（D203，enum 仍暫定）：活躍表是 `PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`UNKNOWN`，Resolver 與熱路徑只讀它，只有 `TRADABLE` 可交易；終結表是 `EXPIRED`、`DELISTED`，狀態不再變，給歷史查詢（舊成交、持倉、依 UID 或 ticker 反查），不再刷新，可以歸檔。兩張表的主鍵都是 UID，合在一起唯一。UID 是 SYM 分配的隨機整數，永不重用，不是單調序號，跟列一起持久化。列進了終結狀態就從活躍表搬到終結表，UniversalTicker 與 UID 都不變。`symbol_filter` 也分活躍表與終結表，跟列一起搬。同一個 ticker 下架再上市是新的 UID。這一版的遷移仍是一張 `symbol_ticker` 加一張 `symbol_filter`，主鍵仍是該表自己的 `id`，拆表、filter 跟列搬、以及隨機 UID 都還沒做。
 - **刷新的單位是 `(venue, category)`。** 每個單位一個來源（adapter 的 `PublicREST.Listing`），各自刷新，一個 venue 掛了不影響其他。這次沒出現的列標成 `DELISTED`，只在同一個 `(venue, category)` 裡判斷：現貨的刷新不會讓 perp 下架。`EXPIRED` 或 `DELISTED` 都搬進終結表，之後不再刷新。ticker 字串與 UID 都不變。分頁的 listing 要讀完才算數，讀一半就當失敗。預設每小時一次，也可以 `RefreshRequest`。
-- **使用者是 STS、MD、TD，API 不查（D31）。**
-- **啟動時載入活躍表，之後跟著變更重載（D38）。** 進程啟動時，以 `ListRequest` 把用得到的每個 `(venue, category)` 的未終結列分頁讀進記憶體，每頁最多 500 筆，壓在 NATS 的 1 MiB 以下。Resolver 與熱路徑只查這份記憶體，不打 SYM，也不讀終結表。歷史查詢（舊成交、持倉、依 UID 反查，以及 MD 的到期監看）才讀終結表。SYM 刷新出差異時發變更通知，帶 revision；收到的進程重載那個 `(venue, category)` 的活躍列。通知的 subject 與訊息見 §10。`GetRequest` 是 spec 載入時把 ticker 解成 UID 的那一次；`GetByUidRequest` 是之後各平面用 UID 拿欄位；`ReverseRequest` 把交易所寫法換回 listing（回覆帶 UID）。三者都留著，給載入、熱路徑找不到、或要查終結列時用。
-- **誰載入什麼（D31）：**
+- **使用者是 STS、MD、TD，API 不查（D202）。**
+- **啟動時載入活躍表，之後跟著變更重載（D203）。** 進程啟動時，以 `ListRequest` 把用得到的每個 `(venue, category)` 的未終結列分頁讀進記憶體，每頁最多 500 筆，壓在 NATS 的 1 MiB 以下。分頁是 offset＋limit。翻頁之間列可能搬表或新上市，跨頁不一致可以接受（§10 P13）。Resolver 與熱路徑只查這份記憶體，不打 SYM，也不讀終結表。歷史查詢（舊成交、持倉、依 UID 反查，以及 MD 的到期監看）才讀終結表。SYM 刷新出差異時發變更通知，帶 revision；收到的進程重載那個 `(venue, category)` 的活躍列。通知的 subject 與訊息見 §10。`GetRequest` 是 spec 載入時把 ticker 解成 UID 的那一次；`GetByUidRequest` 是之後各平面用 UID 拿欄位；`ReverseRequest` 把交易所寫法換回 listing（回覆帶 UID）。三者都留著，給載入、熱路徑找不到、或要查終結列時用。
+- **誰載入什麼（D202）：**
   - session worker：SDK 在啟動時載入 spec 裡用到的 venue，讓策略拿到 tick、qty step 這類 filter 做下單取整。權限見 §7 的 `sym`。
   - MD agent：載入 instance 服務的 venue。需求項目進來時在表裡解析 feed；selector 的成員從表裡挑。
   - account worker：載入帳號種類可交易的 venue。私有事件帶回交易所的寫法，反查得到 UID。
@@ -1913,7 +1913,7 @@ enum ReconReason {
   - md.fetch：載入它服務的 venue。
   - conn worker 不解析：它依 `AtomAssignment` 的 feed 在事件蓋上身分。今天蓋的是 ticker；事件改蓋 UID 是後續。`md.f` 的 subject 用人讀的名字，不用 UID；拼法還沒定（§10 P14），這一版仍是 ticker。
 
-**幣與數量（D38）。** `contract_value_ccy`、`price_ccy`、`settlement_asset` 由 adapter 從交易所的原生欄位填（例如 OKX 的 `ctValCcy`、Deribit 期權的 `quote_currency`），下游不推導。不沿用 mftik 的 `reservations.is_linear_margin`，也不為 Deribit 開特例。這一節的三個欄位還沒進 `SymbolInfo`；結算欄位仍叫 `settle`。
+**幣與數量（D203）。** `contract_value_ccy`、`price_ccy`、`settlement_asset` 由 adapter 從交易所的原生欄位填（例如 OKX 的 `ctValCcy`、Deribit 期權的 `quote_currency`），下游不推導。不沿用 mftik 的 `reservations.is_linear_margin`，也不為 Deribit 開特例。這一節的三個欄位還沒進 `SymbolInfo`；結算欄位仍叫 `settle`。
 
 `contract_value_ccy` 是 qty 的單位。qty = 張數 × `contract_size`，以它計：linear 是 base，inverse 是 quote，期權是 base（標的）。inverse 的 qty 是 quote，不是張數。平台上的 qty 已經是這個乘積。現貨沒有張數，qty 是 base。
 
@@ -1943,7 +1943,7 @@ quanto（`settlement_asset` 既不是 base 也不是 quote）不入庫。解析�
 
 分表跟著這個暫定的切法：活躍表是 `PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`UNKNOWN`；終結表是 `EXPIRED`、`DELISTED`。Resolver 與熱路徑只讀活躍表。終結列狀態不再變，不再刷新，可以歸檔；搬過去時 ticker 字串與 UID 都不變。拆表還沒做。
 
-**UID（D38）。** UniversalTicker 只出現在人寫的設定與 spec。載入 spec 時，`GetRequest` 把 feed key 裡的 ticker 解成 UID；這是唯一的翻譯邊界。之後 STS、TD、MD 傳 UID，要 base、filter、狀態時用 `GetByUidRequest` 查，不傳 ticker。UID 是兩張表的主鍵，跨表唯一，0 不分配。搬到終結表不換 UID。同一個 ticker 下架再上市拿新的 UID，舊資料仍指著舊的。`SymbolInfo.uid` 暫用 `uint64`，寬度暫定。寬度、誰分配、重啟或重載是否沿用，以及落表的建議方向（`symbol_uid_seq`、`symbol_filter` 以 uid 為鍵、終結時整列連 uid 搬走），見 §10 P13。這一節不實作。NATS subject 用人讀的名字，不用 UID；確切拼法見 §10 P14，這一版的 `md.f` 仍是 `md.f.{inst}.{topic}.{ticker}`。策略 hook 看 ticker 還是 UID 見 §10 P15。`td.order`、需求項目、selector 成員這一版仍是 ticker 字串。
+**UID（D203）。** UniversalTicker 只出現在人寫的設定與 spec。載入 spec 時，`GetRequest` 把 feed key 裡的 ticker 解成 UID；這是唯一的翻譯邊界。之後 STS、TD、MD 傳 UID，要 base、filter、狀態時用 `GetByUidRequest` 查，不傳 ticker。UID 由 SYM 分配，是隨機整數：唯一、永不重用，不是單調序號，也不是 Postgres sequence。它是兩張表的主鍵，跨表唯一，跟列一起持久化，所以重啟與重載都不改它。搬到終結表不換 UID。同一個 ticker 下架再上市拿新的 UID，舊資料仍指著舊的。碰撞時 SYM 重試。`symbol_filter` 也分活躍表與終結表，終結時跟列一起搬。`List` 以 offset＋limit 分頁，跨頁不一致可以接受。selector 沒有 UID；`Universe.current` 是 selector，尚未定，不在這一條。契約型別是 `uint64`，0 非法。寬度與範圍仍開放（§10 P13）：Postgres BIGINT 有號，建議 `1..2^63-1`。這一節不實作。NATS subject 用人讀的名字，不用 UID；確切拼法見 §10 P14，這一版的 `md.f` 仍是 `md.f.{inst}.{topic}.{ticker}`。策略 hook 看 ticker 還是 UID 見 §10 P15。`td.order`、需求項目、selector 成員這一版仍是 ticker 字串。
 
 ```proto
 // file: mftiko/sym/v1/sym.proto
@@ -1966,31 +1966,34 @@ message Request {
   }
 }
 
-// Spec 與設定載入的邊界（D38）：人寫的 UniversalTicker 在這裡解成 UID。
+// Spec 與設定載入的邊界（D203）：人寫的 UniversalTicker 在這裡解成 UID。
 // 平面之間不走這條，它們已經持有 UID，用 GetByUidRequest。
 // One instrument by exact ticker: a single row, never a venue table.
 message GetRequest {
   string universal_ticker = 1;
-  bool include_inactive = 2; // D38：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢，含 MD 的到期監看。Resolver 與熱路徑不設。表還沒拆
+  bool include_inactive = 2; // D203：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢，含 MD 的到期監看。Resolver 與熱路徑不設。表還沒拆
 }
 
-// 系統內部的查詢（D38）。STS、TD、MD 持有 UID，用它拿這一列的欄位。
+// 系統內部的查詢（D203）。STS、TD、MD 持有 UID，用它拿這一列的欄位。
 // 預設只讀活躍表；include_inactive 才含終結表。0 不是合法 UID。
 message GetByUidRequest {
-  uint64 uid = 1; // 寬度暫定（PROTOCOL §10 P13）。契約暫用 uint64
-  bool include_inactive = 2; // 同 GetRequest.include_inactive（D38）
+  // 契約型別 uint64，0 非法。寬度與範圍仍開放（PROTOCOL §10 P13）：Postgres BIGINT 有號，建議 1..2^63-1。
+  uint64 uid = 1;
+  bool include_inactive = 2; // 同 GetRequest.include_inactive（D203）
 }
 
-// One (venue, category) table, paged. A page stays under NATS's 1 MiB with every filter.
+// One (venue, category) table, paged by offset and limit. A page stays under NATS's 1 MiB
+// with every filter. A row may move or appear between pages; that inconsistency is accepted
+// (D203, PROTOCOL §10 P13).
 message ListRequest {
   string venue = 1;
   string category = 2;
   uint32 limit = 3; // at most 500
   uint32 offset = 4;
-  bool include_inactive = 5; // 同 GetRequest.include_inactive（D38）
+  bool include_inactive = 5; // 同 GetRequest.include_inactive（D203）
 }
 
-// The venue's spelling -> the listing. Callers keep SymbolInfo.uid (D38). Category is required:
+// The venue's spelling -> the listing. Callers keep SymbolInfo.uid (D203). Category is required:
 // on a unified-account venue the spelling alone is ambiguous (Bybit's spot and linear "BTCUSDT").
 message ReverseRequest {
   string venue = 1;
@@ -2014,22 +2017,24 @@ message Reply {
 }
 
 message SymbolInfo {
-  string universal_ticker = 1; // 給人看的字串。系統內部用 uid（D38）
+  string universal_ticker = 1; // 給人看的字串。系統內部用 uid（D203）
   string exch_ticker = 2;
   string base = 3;
   string quote = 4;
-  optional string contract_size = 5; // 一張的面值。qty = 張數 × 此值，單位是 contract_value_ccy：linear 與期權是 base，inverse 是 quote（D38）
-  optional string settle = 6; // 損益結算幣（settlement_asset），不是保證金幣。空 = 現貨。quanto（既不是 base 也不是 quote）一期不入庫（D38）
+  optional string contract_size = 5; // 一張的面值。qty = 張數 × 此值，單位是 contract_value_ccy：linear 與期權是 base，inverse 是 quote（D203）
+  optional string settle = 6; // 損益結算幣（settlement_asset），不是保證金幣。空 = 現貨。quanto（既不是 base 也不是 quote）一期不入庫（D203）
   int64 expiry_ns = 7; // 0 = does not expire
-  optional string strike = 8; // SYM 先依 spell_strike 正規化再推 ticker：6400.0 與 6400 相同（D38）
+  optional string strike = 8; // SYM 先依 spell_strike 正規化再推 ticker：6400.0 與 6400 相同（D203）
   string option_type = 9; // C | P | ""
-  bool active = 10; // 暫定（D38）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。定案前仍是 bool，表也還沒拆
+  bool active = 10; // 暫定（D203）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。定案前仍是 bool，表也還沒拆
   // name -> bound. A key with an absent value: the venue publishes the restriction, no bound.
-  // price_tick is price_ccy; qty_step, min_qty, max_qty are contract_value_ccy (D38).
+  // price_tick is price_ccy; qty_step, min_qty, max_qty are contract_value_ccy (D203).
   map<string, Bound> filters = 11;
   int64 updated_at_ns = 12;
-  // 兩張表的主鍵，跨表唯一（D38）。搬到終結表時不變。同一個 ticker 下架再上市是新的 UID。
-  // 寬度暫定，見 PROTOCOL §10 P13。契約暫用 uint64，0 不分配。這一版的 SQL 還沒有這個欄位。
+  // SYM 分配的隨機整數：跨活躍表與終結表唯一、永不重用，跟列持久化，不是單調序號（D203）。
+  // 重啟與重載不改它。下架再上市是新的 UID。碰撞時 SYM 重試。
+  // 契約型別 uint64，0 非法。寬度與範圍仍開放（PROTOCOL §10 P13）：Postgres BIGINT 有號，建議 1..2^63-1。
+  // 這一版的 SQL 還沒有這個欄位。
   uint64 uid = 13;
 }
 
@@ -2049,9 +2054,9 @@ message RefreshResult {
 }
 ```
 
-## 8. artifact（D18、D23）
+## 8. artifact（D902、D904）
 
-三種 worker 都從 artifact 起（DECISIONS D18）：策略 artifact（STS 的 session worker），以及這個 repo 的 conn worker、account worker 由 CI 打包的 artifact。它們是同一個格式的 OCI image，只當打包格式用，不跑容器，manifest 的 `kind` 區分種類。資料 artifact（§8.4）放在同一個 registry，用另一種 mediaType。
+三種 worker 都從 artifact 起（DECISIONS D902）：策略 artifact（STS 的 session worker），以及這個 repo 的 conn worker、account worker 由 CI 打包的 artifact。它們是同一個格式的 OCI image，只當打包格式用，不跑容器，manifest 的 `kind` 區分種類。資料 artifact（§8.4）放在同一個 registry，用另一種 mediaType。
 
 ### 8.1 結構
 
@@ -2093,7 +2098,7 @@ message RefreshResult {
 
 ### 8.3 主機上的處理
 
-三種 agent 都照這個流程，程式共用（`internal/platform/artifact`，DECISIONS D35）。
+三種 agent 都照這個流程，程式共用（`internal/platform/artifact`，DECISIONS D006）。
 
 1. 取得 image manifest 與 config，檢查 `schema`、`kind`、`os`／`arch`、`contracts`、總大小。不符就不 spawn；策略以 `INIT_FAILED` 結束 session。
 2. 缺少的層下載到 `${DATA}/layers/<digest>`，逐層驗證 sha256。
@@ -2101,7 +2106,7 @@ message RefreshResult {
 4. 依 §4.6 的對應表換算成 `Launch` 交給 shim；shim 以 rootfs 為工作目錄執行 `entrypoint`。
 5. GC：策略的 rootfs 沒有被非 terminal session 釘住、也不是目錄裡的最新版，就刪；MD、TD 的 rootfs 沒有進程在用、也不是 controller 指定的版本，就刪；層沒有任何 rootfs 引用，就刪。
 
-### 8.4 資料 artifact（D23）
+### 8.4 資料 artifact（D904）
 
 | OCI 物件 | 內容 |
 |---|---|
@@ -2118,7 +2123,7 @@ STS 主機上：
 
 ## 9. session worker 的實作契約（給其他語言的 SDK）
 
-平台只出 Go SDK，它是參考實作（DECISIONS D19）。其他語言（例如另外實作的 Python SDK）只要做到本節的每一條，就能在平台上跑，平台不需要為它改任何東西。
+平台只出 Go SDK，它是參考實作（DECISIONS D802）。其他語言（例如另外實作的 Python SDK）只要做到本節的每一條，就能在平台上跑，平台不需要為它改任何東西。
 
 - **必須**：契約。違反時平台會判定失敗、拒絕請求，或行為與其他策略不一致。
 - **建議**：讓行為和 Go SDK 一致，或避開已知的坑。
@@ -2128,7 +2133,7 @@ STS 主機上：
 1. **必須**以 §8 的 OCI 格式打包。manifest 填 `runtime`、`entrypoint`、`sdk`、`contracts`；`contracts` 列出實作的 major（`worker.v1`、`stsctl.v1`、`md.v1`、`td.v1`），STS 在 spawn 前比對。
 2. **必須**把解譯器、SDK、第三方套件全部放進 artifact。不得假設主機上有任何語言 runtime 或套件。
 3. **必須**從 §5.4 的環境變數取得身分與位址，不得覆蓋 `MFTIKO_*`。憑證不在環境變數裡，在 `Init` 的 payload 裡。
-4. **必須**只寫 `MFTIKO_VOLUME_DIR`（與系統暫存目錄）；`MFTIKO_INPUT_DIR` 唯讀（DECISIONS D23）。**建議**寫 volume 一律用原子寫入（暫存檔加 rename）。
+4. **必須**只寫 `MFTIKO_VOLUME_DIR`（與系統暫存目錄）；`MFTIKO_INPUT_DIR` 唯讀（DECISIONS D904）。**建議**寫 volume 一律用原子寫入（暫存檔加 rename）。
 5. **必須**讓自己開的子進程跟著 worker 一起結束。shim 對 worker 的 process group 送信號（§4.3）。
 
 ### 9.2 C4：fd 3
@@ -2155,18 +2160,18 @@ STS 主機上：
 
 ### 9.4 C6：NATS
 
-1. **連線**：用 `InitPayload.nats` 的 `user_jwt` 與 `seed`；reply inbox 前綴設成 `inbox_prefix`。不得使用其他憑證（DECISIONS D30）。
-2. **subject 一律用 binding 給的，不自己組**（DECISIONS D8）：
+1. **連線**：用 `InitPayload.nats` 的 `user_jwt` 與 `seed`；reply inbox 前綴設成 `inbox_prefix`。不得使用其他憑證（DECISIONS D906）。
+2. **subject 一律用 binding 給的，不自己組**（DECISIONS D106）：
    - feed：`FeedBinding.subject`。
    - selector 成員：`SelectorBinding.subject_prefix` 加上 `.{topic}.{ticker}`。
    - `md.view`：把 feed subject 開頭的 `md.f.` 換成 `md.view.`。
 3. **`md.f` 的訊息**：先讀 envelope（§7.1）。payload 一律從 envelope 長度欄位指的 offset 開始讀，容忍比 32 bytes 長的 envelope。
-4. **下單**：`Submit`、`Cancel`、`BatchCancel` 必須帶 `session_id` 與 `algo_id`；`algo_id` 只能用 `AccountDecl.algo_ids` 裡宣告給該帳號的（DECISIONS D25）。
+4. **下單**：`Submit`、`Cancel`、`BatchCancel` 必須帶 `session_id` 與 `algo_id`；`algo_id` 只能用 `AccountDecl.algo_ids` 裡宣告給該帳號的（DECISIONS D602）。
 5. **`client_order_id`**：照 §2 的版面 `ver(4) | algo(10) | ts_ms(40) | seq(10)`，`ver` 填 1，以十進位字串傳。同一個進程內 `ts_ms` 單調；同一毫秒的 `seq` 用完時，`ts_ms` 往前借一毫秒。
-6. **`td.order` 沒有 responder 或逾時**：轉成本地的 `OrderReject`，code 落在 1xx，交給策略（§7、DECISIONS D16）。TD 回的 1xx 拒單（例如 `account_degraded`）原樣交給策略。
+6. **`td.order` 沒有 responder 或逾時**：轉成本地的 `OrderReject`，code 落在 1xx，交給策略（§7、DECISIONS D801）。TD 回的 1xx 拒單（例如 `account_degraded`）原樣交給策略。
 7. **商品資料**：要提供 tick、qty step 這類 filter 時，在啟動時以 `sym` 的 `ListRequest` 載入 spec 用到的 venue，收到變更通知時重載（§7.3、§10 P7）。不要每次下單都問 SYM。
 
-### 9.5 交付語意（DECISIONS D24）
+### 9.5 交付語意（DECISIONS D803）
 
 1. **單一 dispatcher**：hook 一次一個、依序執行。策略程式碼不需要鎖。跨執行緒只有 `Post` 一個入口。
 2. **兩個 buffer：**
@@ -2179,11 +2184,11 @@ STS 主機上：
    - hook 拋出例外：送 `Exiting(CRASHED)`，跑 `OnStop`，exit 20。
 6. `QueueStat` 的 `depth`、`dropped`、`max_age_ms` 照實回報。
 
-### 9.6 帳號狀態（DECISIONS D27）
+### 9.6 帳號狀態（DECISIONS D603）
 
 1. `OnStart` 之後，以 `td.view`（ledger，加上依自己 `algo_ids` 篩選的 OMS）組出第一份 `Recon`，交給策略的 `OnRecon`。
 2. `td.evt` 的 `Recon`：`open_orders` 篩成自己的 `algo_ids`；`positions`、`balances` 原樣交給 `OnRecon`。
-3. 不提供可用性 hook（DECISIONS D16）。策略只會拿到拒單與新的帳號狀態。
+3. 不提供可用性 hook（DECISIONS D801）。策略只會拿到拒單與新的帳號狀態。
 
 ### 9.7 平台的保險：不依賴 SDK
 
@@ -2207,15 +2212,17 @@ STS 主機上：
 
 ## 10. 待定
 
-P1–P5 已依 DECISIONS 定案：P1 見 D24 與 §1，P2 見 D21，P3 見 D22，P4 見 D30，P5 見 D24。v0.24 新增 P6–P10，v0.25 新增 P11，v0.28 新增 P12，v0.34 新增 P13–P15：
+P1–P5 已依 DECISIONS 定案：P1 見 D803 與 §1，P2 見 D402，P3 見 D903，P4 見 D906，P5 見 D803。v0.24 新增 P6–P10，v0.25 新增 P11，v0.28 新增 P12，v0.34 新增 P13–P15，v0.36 改寫 P13：
 
 - **P6 `DEAD` 的確切時機（E4、E6 之前）。** 現在的定義是 worker 一結束、連線一斷就 `DEAD`，而 controller 收到 `DEAD` 就結束 session（§3.5）。MD、TD 會自動重拉 worker，照這個定義，一條 conn worker crash 就會結束這條連線上所有的 session。另一種定義是 provider 自動重拉期間維持 `PENDING`，放棄時才 `DEAD`。
 - **P7 SYM 的變更通知（E2）。** subject（例如 `sym.changed.{venue}`）、訊息內容（revision、哪些 category 變了），以及進程在兩次通知之間漏掉一次時怎麼發現（例如定期比對 revision）。
 - **P8 API server 的寫入怎麼滿足 W1（E10）。** API server 不參選、可以多個。候選：spec 只用 create-only 的 txn（`create_revision == 0`），帳號以 `mod_revision` 做 CAS。
-- **P9 MD、TD 的 artifact 版本放在哪裡（E4、E6）。** controller 的部署設定，或 etcd 裡一個由 controller 讀的 key；以及換版時 agent 怎麼排程換 incarnation（DECISIONS D8）。
+- **P9 MD、TD 的 artifact 版本放在哪裡（E4、E6）。** controller 的部署設定，或 etcd 裡一個由 controller 讀的 key；以及換版時 agent 怎麼排程換 incarnation（DECISIONS D106）。
 - **P10** 已在 v0.24 完成：session 的宣告抽成 `mftiko.session.v1`，`Side`、`OrderType`、`TimeInForce` 在 `common.v1`。
 - **P11 instance 永久下線的程序（E12）。** ack、`WorkerStatus`、`SessionStatus` 不綁 lease，instance 不再回來時會一直留著：非 terminal 的 `SessionStatus` 加上 `RUNNING` 的 `WorkerStatus`，會讓 controller 的 N4 一直等，MD、TD 的需求與 `algo_id` 的佔用都不會釋放。這些 key 的寫入者是那個 agent（W1），維運也不該直接改。候選：API 宣告某個 instance 已退役，controller 據此把它的 session 當成 terminal，再由一次性的工具以該 instance 的身分清掉它的前綴。
 - **P12 沒有共同 major 時怎麼收尾（E1-13）。** agent 只能 `Signal`（§4.2）。worker 結束之後，shim 依 S3 等 `Release` 才退出；在那之前，同一個 worker key 的下一個 shim 會因為 socket 還有人服務而起不來（§4.1）。候選：`Release` 也列入跨 major 不變的部分。
-- **P13 symbol UID 的寬度、分配與重啟（D38）。** 還沒定。已經定的是：UID 是兩張 SYM 表的主鍵、跨表唯一、搬表不換、下架再上市拿新的。契約上 `SymbolInfo.uid` 暫用 `uint64`，寬度暫定，0 不分配。建議方向，這一票不實作：一條 Postgres sequence（例如 `symbol_uid_seq`）發號，餵活躍表與終結表的 `uid` 主鍵；`symbol_filter` 以 uid 為鍵；列進了終結狀態，整列連 uid 一起搬到終結表。`td.order` 等欄位這一版仍是 ticker。NATS subject 不用 UID，見 P14。策略 hook 見 P15。
-- **P14 NATS topic 的拼法（D38）。** 已經定的是：NATS 的 topic 用人讀的名字，不用 UID。`md.f`、`md.view` 都不改成 UID。確切的拼法還沒定。這一版維持 `md.f.{inst}.{topic}.{ticker}` 與 `md.view.{inst}.{topic}.{ticker}`。
-- **P15 策略 hook 看 ticker 還是 UID（D38）。** spec 已定用 UniversalTicker。平面之間已定用 UID。策略回呼算人機介面還是系統內部，還沒定。這一票不改 SDK。
+- **P13 symbol UID 的寬度與範圍（D203，2026-10-09）。** 分配與落表已定，寫在 D203 與 §7.3。仍開放的只有寬度與數值範圍。
+  - **已定。** UID 是 SYM 分配的隨機整數：唯一、永不重用，不是單調序號，也不是 Postgres sequence。活躍表與終結表合在一起唯一。UID 跟列一起持久化，重啟與重載都不改它。同一個 ticker 下架再上市拿新的 UID。碰撞時 SYM 重試。契約型別是 `uint64`，0 非法。`symbol_filter` 也拆成活躍表與終結表，列進終結狀態時跟列一起搬。SYM 的 `List` 用 offset＋limit 分頁，跨頁不一致可以接受。`Universe.current` 是 selector，尚未定，不在 D203 的範圍；selector 沒有 UID。
+  - **仍開放：寬度與範圍。** Postgres 的 BIGINT 是有號的，建議範圍是 `1..2^63-1`。寬度與範圍仍待確認，這一版不實作。NATS subject 不用 UID，見 P14。策略 hook 見 P15。
+- **P14 NATS topic 的拼法（D203）。** 已經定的是：NATS 的 topic 用人讀的名字，不用 UID。`md.f`、`md.view` 都不改成 UID。確切的拼法還沒定。這一版維持 `md.f.{inst}.{topic}.{ticker}` 與 `md.view.{inst}.{topic}.{ticker}`。
+- **P15 策略 hook 看 ticker 還是 UID（D203）。** spec 已定用 UniversalTicker。平面之間已定用 UID。策略回呼算人機介面還是系統內部，還沒定。這一票不改 SDK。

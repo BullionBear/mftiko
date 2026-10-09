@@ -61,7 +61,7 @@ export type Submit = Message<"mftiko.td.v1.Submit"> & {
   sessionId: string;
 
   /**
-   * 今天是 UniversalTicker。平面之間改傳 UID 是後續（D38），這一版不改 td 的欄位
+   * 今天是 UniversalTicker。平面之間改傳 UID 是後續（D203），這一版不改 td 的欄位
    *
    * @generated from field: string ticker = 2;
    */
@@ -78,21 +78,21 @@ export type Submit = Message<"mftiko.td.v1.Submit"> & {
   orderType: OrderType;
 
   /**
-   * 單位是 contract_value_ccy（D38）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數
+   * 單位是 contract_value_ccy（D203）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數
    *
    * @generated from field: optional string qty = 5;
    */
   qty?: string | undefined;
 
   /**
-   * quote 資產的金額，單位是 quote，不是 contract_value_ccy（D38）
+   * quote 資產的金額，單位是 quote，不是 contract_value_ccy（D203）
    *
    * @generated from field: optional string quote_qty = 6;
    */
   quoteQty?: string | undefined;
 
   /**
-   * 單位是 price_ccy（D38）：現貨與期貨（含 inverse）是 quote；幣本位期權的權利金是 base；U 本位期權的權利金是 quote（穩定幣）
+   * 單位是 price_ccy（D203）：現貨與期貨（含 inverse）是 quote；幣本位期權的權利金是 base；U 本位期權的權利金是 quote（穩定幣）
    *
    * @generated from field: optional string price = 7;
    */
@@ -119,7 +119,7 @@ export type Submit = Message<"mftiko.td.v1.Submit"> & {
   params: { [key: string]: string };
 
   /**
-   * 必須等於 client_order_id 的 algo 欄位（D25）
+   * 必須等於 client_order_id 的 algo 欄位（D602）
    *
    * @generated from field: uint32 algo_id = 12;
    */
@@ -158,7 +158,7 @@ export type Cancel = Message<"mftiko.td.v1.Cancel"> & {
   orderId: string;
 
   /**
-   * 目標單的 client_order_id 的 algo 欄位必須等於它；沒有 client_order_id 的單一律拒絕（D25）
+   * 目標單的 client_order_id 的 algo 欄位必須等於它；沒有 client_order_id 的單一律拒絕（D602）
    *
    * @generated from field: uint32 algo_id = 5;
    */
@@ -173,7 +173,7 @@ export const CancelSchema: GenMessage<Cancel> = /*@__PURE__*/
   messageDesc(file_mftiko_td_v1_td, 2);
 
 /**
- * 撤掉這個帳號上 client_order_id 的 algo 欄位等於 algo_id 的所有掛單（D25）。
+ * 撤掉這個帳號上 client_order_id 的 algo 欄位等於 algo_id 的所有掛單（D602）。
  * 只看 algo 欄位，不分 session、incarnation：上一個進程或上一個 session 留下的也算。
  *
  * @generated from message mftiko.td.v1.BatchCancel
@@ -361,7 +361,7 @@ export type OmsViewRequest = Message<"mftiko.td.v1.OmsViewRequest"> & {
   settled: boolean;
 
   /**
-   * 非 0 時改以 algo 篩選，涵蓋上一個進程、上一個 session 留下的單（D25）
+   * 非 0 時改以 algo 篩選，涵蓋上一個進程、上一個 session 留下的單（D602）
    *
    * @generated from field: uint32 algo_id = 3;
    */
@@ -633,35 +633,35 @@ export type Order = Message<"mftiko.td.v1.Order"> & {
   status: OrderStatus;
 
   /**
-   * 同 Submit.qty，單位是 contract_value_ccy（D38）
+   * 同 Submit.qty，單位是 contract_value_ccy（D203）
    *
    * @generated from field: string qty = 7;
    */
   qty: string;
 
   /**
-   * 同 Submit.quote_qty（D38）
+   * 同 Submit.quote_qty（D203）
    *
    * @generated from field: optional string quote_qty = 8;
    */
   quoteQty?: string | undefined;
 
   /**
-   * 同 Submit.price，單位是 price_ccy（D38）
+   * 同 Submit.price，單位是 price_ccy（D203）
    *
    * @generated from field: optional string price = 9;
    */
   price?: string | undefined;
 
   /**
-   * 已成交數量，單位同 qty（contract_value_ccy，D38）
+   * 已成交數量，單位同 qty（contract_value_ccy，D203）
    *
    * @generated from field: string filled_qty = 10;
    */
   filledQty: string;
 
   /**
-   * 同 Submit.price，單位是 price_ccy（D38）
+   * 同 Submit.price，單位是 price_ccy（D203）
    *
    * @generated from field: optional string avg_price = 11;
    */
@@ -700,7 +700,7 @@ export type Fill = Message<"mftiko.td.v1.Fill"> & {
   ticker: string;
 
   /**
-   * 交易所的 trade id。WS 與 REST 必須給同一個值：落庫以 (api_id, fill_id) 去重（D20）。
+   * 交易所的 trade id。WS 與 REST 必須給同一個值：落庫以 (api_id, fill_id) 去重（D601）。
    *
    * @generated from field: string fill_id = 2;
    */
@@ -722,14 +722,14 @@ export type Fill = Message<"mftiko.td.v1.Fill"> & {
   side: Side;
 
   /**
-   * 同 Submit.price，單位是 price_ccy（D38）
+   * 同 Submit.price，單位是 price_ccy（D203）
    *
    * @generated from field: string price = 6;
    */
   price: string;
 
   /**
-   * 成交數量，單位同 Submit.qty（contract_value_ccy，D38）
+   * 成交數量，單位同 Submit.qty（contract_value_ccy，D203）
    *
    * @generated from field: string qty = 7;
    */
@@ -874,28 +874,28 @@ export type Position = Message<"mftiko.td.v1.Position"> & {
   ticker: string;
 
   /**
-   * 持倉數量，單位同 Submit.qty（contract_value_ccy，D38）
+   * 持倉數量，單位同 Submit.qty（contract_value_ccy，D203）
    *
    * @generated from field: string size = 2;
    */
   size: string;
 
   /**
-   * 同 Submit.price，單位是 price_ccy（D38）
+   * 同 Submit.price，單位是 price_ccy（D203）
    *
    * @generated from field: optional string entry_price = 3;
    */
   entryPrice?: string | undefined;
 
   /**
-   * 同 Submit.price，單位是 price_ccy（D38）
+   * 同 Submit.price，單位是 price_ccy（D203）
    *
    * @generated from field: optional string mark_price = 4;
    */
   markPrice?: string | undefined;
 
   /**
-   * 損益結算幣 settlement_asset（欄位 settle），不是保證金幣（D38）
+   * 損益結算幣 settlement_asset（欄位 settle），不是保證金幣（D203）
    *
    * @generated from field: optional string unrealized_pnl = 5;
    */
@@ -949,7 +949,7 @@ export const PositionUpdateSchema: GenMessage<PositionUpdate> = /*@__PURE__*/
   messageDesc(file_mftiko_td_v1_td, 23);
 
 /**
- * 帳號狀態的整份快照（DECISIONS D27）。SDK 把它交給策略的 OnRecon：
+ * 帳號狀態的整份快照（DECISIONS D603）。SDK 把它交給策略的 OnRecon：
  * open_orders 先篩成自己宣告的 algo_id，positions、balances 原樣給。
  * 和其他事件共用 seq；策略整份換掉自己的狀態，之後的事件照常疊上去。
  *

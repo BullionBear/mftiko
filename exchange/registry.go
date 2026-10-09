@@ -15,7 +15,7 @@ type Declaration struct {
 	AccountKinds []AccountKind
 }
 
-// Venue is one market (D11, D26): its registry entry and its public adapters. A nil part means the
+// Venue is one market (D201, D403): its registry entry and its public adapters. A nil part means the
 // venue does not have it.
 type Venue struct {
 	symbol.Venue            // Name, Categories: what Resolve and the API check tickers against
@@ -23,7 +23,7 @@ type Venue struct {
 	REST         PublicREST // public REST reader
 }
 
-// AccountKind is what an api_id is (D32): the credential it takes, the venues whose instruments it
+// AccountKind is what an api_id is (D301): the credential it takes, the venues whose instruments it
 // can trade, and the private adapters that trade them.
 //
 // Account kinds and venues are two independent enums whose names may coincide: the account kind

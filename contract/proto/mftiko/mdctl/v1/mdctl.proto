@@ -9,12 +9,12 @@ option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/mdctl/v1;
 
 message InitPayload {
   string venue = 1;
-  string route = 2; // 由 adapter 從解析後的商品推得（D26、D31）
+  string route = 2; // 由 adapter 從解析後的商品推得（D403、D202）
   uint32 n = 3;
   string md_instance = 4;
-  reserved 5; // 原本的 tape_url：tape 在 worker 記憶體（D21）
+  reserved 5; // 原本的 tape_url：tape 在 worker 記憶體（D402）
   reserved "tape_url";
-  // 實際連線的 URL。host 由 MD instance 的設定選：預設，或交易所提供的替代 endpoint（D26）。換 URL 要換 incarnation。
+  // 實際連線的 URL。host 由 MD instance 的設定選：預設，或交易所提供的替代 endpoint（D403）。換 URL 要換 incarnation。
   string url = 6;
 }
 
@@ -36,7 +36,7 @@ message Desired {
 message AtomAssignment {
   string atom_id = 1;
   repeated string feeds = 2; // 這個 atom 要發佈的 feed（atom → 事件 1:N）
-  bool record = 3;           // 錄 tape；MD agent 依 topic 推導（D21）
+  bool record = 3;           // 錄 tape；MD agent 依 topic 推導（D402）
 }
 
 message Report {

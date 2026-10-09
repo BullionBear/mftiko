@@ -1,4 +1,4 @@
-// Command mftiko-md-fetch is the stateless md.fetch service. It forwards public REST reads such as klines (DECISIONS D21).
+// Command mftiko-md-fetch is the stateless md.fetch service. It forwards public REST reads such as klines (DECISIONS D402).
 //
 // Shape only: not implemented yet.
 package main

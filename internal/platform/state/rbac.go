@@ -11,7 +11,7 @@ import (
 
 // Users that are not agent instances. An agent's user is its instance name; the controller's is ControllerInstance.
 const (
-	UserAPI  = "api"  // the API server, every replica (DECISIONS D33)
+	UserAPI  = "api"  // the API server, every replica (DECISIONS D907)
 	UserRoot = "root" // etcd's own administrator, used only to apply the tables; it is not in them
 )
 

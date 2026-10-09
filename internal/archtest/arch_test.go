@@ -55,7 +55,7 @@ func planeOf(path string) string {
 }
 
 // agentPlanes are the planes whose root package holds the agent's decisions: the Planner, the Policy and the
-// domain types (DECISIONS D40). The wiring to etcd, NATS and the shims is in their daemon subpackage.
+// domain types (DECISIONS D110). The wiring to etcd, NATS and the shims is in their daemon subpackage.
 var agentPlanes = []string{"internal/sts", "internal/md", "internal/td"}
 
 // pureAgent reports whether a package must link no I/O: an agent plane's root package, or the skeleton's decisions
@@ -204,7 +204,7 @@ func TestDependencyRules(t *testing.T) {
 		"internal/platform/agent", "internal/platform/agent/runner", "internal/platform/natsx", "internal/platform/shim",
 		"internal/md", "internal/td", "internal/sts", "internal/sym", "internal/api"} {
 		if !slices.Contains(own, want) {
-			t.Fatalf("package %s not found: update the rules in this file (DECISIONS D35) to the new layout", want)
+			t.Fatalf("package %s not found: update the rules in this file (DECISIONS D006) to the new layout", want)
 		}
 	}
 	for _, v := range check(pkgs, std) {

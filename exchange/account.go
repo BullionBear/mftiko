@@ -12,7 +12,7 @@ type AccountConfig struct {
 	APIID       int64
 	Credentials Credentials
 	// RESTEndpoint and StreamEndpoint override the venue's default hosts, the way
-	// mdctl.InitPayload.url does for market data (D26). Empty means the default.
+	// mdctl.InitPayload.url does for market data (D403). Empty means the default.
 	RESTEndpoint   string
 	StreamEndpoint string
 }
@@ -25,11 +25,11 @@ type AccountFactory func(cfg AccountConfig) (Account, error)
 //
 // Instruments go in resolved (*symbol.Info, cached by the worker) and come out as the venue names
 // them (symbol.ExchKey); the worker maps them back with symbol.Resolver.Reverse and keeps Info.UID
-// (D31, D38). td.order still carries a UniversalTicker; switching that field to UID is later work.
+// (D202, D203). td.order still carries a UniversalTicker; switching that field to UID is later work.
 // The worker has already checked AccountKind.CanTrade; a kind that trades several venues (BinancePM)
-// routes each request by inst.Ticker.Venue (D32).
+// routes each request by inst.Ticker.Venue (D301).
 //
-// It knows nothing about algo_id (D25). The worker checks algo ownership, and translates
+// It knows nothing about algo_id (D602). The worker checks algo ownership, and translates
 // BatchCancel(algo_id) by filtering its OMS for open orders whose client_order_id carries that algo,
 // then calling CancelBatch in chunks of Limits().CancelBatch.
 type Account interface {
@@ -45,7 +45,7 @@ type Account interface {
 	// entry per ref, nil for success; the second return is for a failure of the whole request.
 	CancelBatch(ctx context.Context, refs []CancelRef) ([]error, error)
 
-	// Snapshot is the recon read (D27): open orders, positions, balances.
+	// Snapshot is the recon read (D603): open orders, positions, balances.
 	Snapshot(ctx context.Context) (*AccountSnapshot, error)
 
 	// Leverage answers td.view's EnsureLeverage.
@@ -57,7 +57,7 @@ type Account interface {
 
 // AccountLimits are the venue's rules for one api_id.
 type AccountLimits struct {
-	ClientOrderIDMaxLen int         // the D25 client_order_id is at most 19 decimal digits
+	ClientOrderIDMaxLen int         // the D602 client_order_id is at most 19 decimal digits
 	CancelBatch         int         // orders per CancelBatch; 1 = the venue has no batch cancel
 	OrderRate           []RateLimit // order requests, all must hold
 }
@@ -80,7 +80,7 @@ type OrderRequest struct {
 	QuoteQty      string
 	Price         string // "" for market orders
 	ReduceOnly    bool
-	ClientOrderID string            // contract/wire/cloid, decimal (D25)
+	ClientOrderID string            // contract/wire/cloid, decimal (D602)
 	Params        map[string]string // td.v1.Submit.params, venue-specific, passed through
 }
 
@@ -92,7 +92,7 @@ type OrderResult struct {
 }
 
 // CancelRef names an order. Either id is enough; the platform always has ClientOrderID for its own
-// orders (D25).
+// orders (D602).
 type CancelRef struct {
 	Instrument    *symbol.Info
 	OrderID       string
@@ -125,7 +125,7 @@ type OrderUpdate struct {
 	ExchTsNs      int64
 }
 
-// Fill follows td.v1.Fill. FillID must be the same value here and in History (D20).
+// Fill follows td.v1.Fill. FillID must be the same value here and in History (D601).
 type Fill struct {
 	Exch          symbol.ExchKey
 	FillID        string
@@ -184,7 +184,7 @@ type StreamLimits struct {
 // AccountSink receives what PrivateStream.Decode finds. Pointers are valid only during the call.
 type AccountSink interface {
 	// Ready: login and subscriptions acknowledged, the stream is live. The account worker recons
-	// next and only then accepts new orders again (D27).
+	// next and only then accepts new orders again (D603).
 	Ready()
 	// Expired: the venue ended the stream on purpose (listenKey expired). Reconnect.
 	Expired(reason string)

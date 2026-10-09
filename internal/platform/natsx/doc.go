@@ -1,6 +1,6 @@
 // Package natsx is the core-NATS client for the data plane.
 //
-// NATS carries strategy data only: market data, orders, account events, symbol data (D7, D14). It does
+// NATS carries strategy data only: market data, orders, account events, symbol data (D002, D004). It does
 // not orchestrate processes. This package never enables JetStream, knows no business subject, and has no
 // streaming RPC: Request and Serve are one request and one reply.
 //
@@ -8,5 +8,5 @@
 // and is not framed here. Disconnects, reconnects, closes, and asynchronous errors are logged to
 // Options.Logger.
 //
-// Operator and account credentials, and each session's inbox prefix, are not set here (D30).
+// Operator and account credentials, and each session's inbox prefix, are not set here (D906).
 package natsx

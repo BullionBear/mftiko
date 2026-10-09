@@ -6,11 +6,11 @@ import (
 	"github.com/BullionBear/mftiko/contract/symbol"
 )
 
-// PublicREST is a venue's public REST reader. It is code, not a service (D21): the conn worker calls
+// PublicREST is a venue's public REST reader. It is code, not a service (D402): the conn worker calls
 // it in process for book snapshots, md.fetch calls it to answer FetchRequest, SYM calls it for the
 // listing. Safe for concurrent use.
 type PublicREST interface {
-	// Listing is every instrument the venue lists in one category, canonicalized (D11). One
+	// Listing is every instrument the venue lists in one category, canonicalized (D201). One
 	// (venue, category) is the unit SYM refreshes and delists within: a spot refresh must not
 	// deactivate perp rows just because they were not in a spot response. A paginated listing is
 	// read to the end or fails; a partial one would make SYM delist the rest.
@@ -25,7 +25,7 @@ type PublicREST interface {
 	Klines(ctx context.Context, inst *symbol.Info, interval string, limit int) ([]Kline, error)
 	KlinePage() int
 
-	// OpenInterest is a query-only value on venues that do not push it (D12). ErrUnsupported
+	// OpenInterest is a query-only value on venues that do not push it (D401). ErrUnsupported
 	// elsewhere.
 	OpenInterest(ctx context.Context, inst *symbol.Info) (*OpenInterest, error)
 }

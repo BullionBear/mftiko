@@ -28,7 +28,7 @@ export type Account = Message<"mftiko.state.v1.Account"> & {
   name: string;
 
   /**
-   * 帳號種類（DECISIONS D32），不是 venue：BinancePM 可以交易 Binance、BinanceUM、BinanceCM 的商品。
+   * 帳號種類（DECISIONS D301），不是 venue：BinancePM 可以交易 Binance、BinanceUM、BinanceCM 的商品。
    * 兩個 enum 的名稱可能相同（帳號種類 BinanceUM 交易 venue BinanceUM），不可互查。
    *
    * @generated from field: string kind = 2;
@@ -72,7 +72,7 @@ export type AccountSettings = Message<"mftiko.state.v1.AccountSettings"> & {
   cancelOnDisconnectS: number;
 
   /**
-   * 歷史補正（DECISIONS D20）。
+   * 歷史補正（DECISIONS D601）。
    *
    * 另加 jitter；0 = TD agent 的預設值。必須短於交易所成交歷史的保留期
    *
@@ -142,7 +142,7 @@ export type SessionStatus = Message<"mftiko.state.v1.SessionStatus"> & {
   updatedAtNs: bigint;
 
   /**
-   * session terminal 之後 volume 的快照（D23）；推送完成前不填
+   * session terminal 之後 volume 的快照（D904）；推送完成前不填
    *
    * @generated from field: mftiko.state.v1.StateSnapshot state_out = 9;
    */
@@ -239,7 +239,7 @@ export type DemandEntry = Message<"mftiko.state.v1.DemandEntry"> & {
   specRevision: bigint;
 
   /**
-   * 只有帳號項目：同 AccountDecl.algo_ids，TD agent 用來檢查衝突（D25）
+   * 只有帳號項目：同 AccountDecl.algo_ids，TD agent 用來檢查衝突（D602）
    *
    * @generated from field: repeated uint32 algo_ids = 11;
    */
@@ -267,7 +267,7 @@ export type SessionDemand = Message<"mftiko.state.v1.SessionDemand"> & {
   desired: DesiredState;
 
   /**
-   * 所有 MD、TD 需求都 READY，STS agent 可以送 Start（D15）
+   * 所有 MD、TD 需求都 READY，STS agent 可以送 Start（D107）
    *
    * @generated from field: bool start = 2;
    */
@@ -316,7 +316,7 @@ export type Binding = Message<"mftiko.state.v1.Binding"> & {
    */
   target: {
     /**
-     * feed key。spec 載入時才把其中的 ticker 解成 UID（D38）；這個欄位今天仍是字串
+     * feed key。spec 載入時才把其中的 ticker 解成 UID（D203）；這個欄位今天仍是字串
      *
      * @generated from field: string feed = 1;
      */
@@ -378,7 +378,7 @@ export type EntryStatus = Message<"mftiko.state.v1.EntryStatus"> & {
 
   /**
    * feed：完整的 subject（今天是 md.f.{inst}.{topic}.{ticker}）。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（§10 P14）。selector：成員 subject 的前綴（今天是 md.f.{inst}）；
-   * 帳號：td.order.{api_id}。由 provider 決定，訂閱端不自己組（PROTOCOL §7、DECISIONS D8）。
+   * 帳號：td.order.{api_id}。由 provider 決定，訂閱端不自己組（PROTOCOL §7、DECISIONS D106）。
    *
    * @generated from field: string subject = 3;
    */
@@ -419,14 +419,14 @@ export type Universe = Message<"mftiko.state.v1.Universe"> & {
   epoch: bigint;
 
   /**
-   * 今天是 UniversalTicker。改成 UID 是後續（D38）
+   * 成員是商品。今天是 UniversalTicker；改成商品 UID 是後續（D203）。selector 本身沒有 UID
    *
    * @generated from field: repeated string members = 2;
    */
   members: string[];
 
   /**
-   * 只有 rolling_future
+   * 只有 rolling_future。這是 selector，尚未定，不在 D203 的範圍；selector 沒有 UID
    *
    * @generated from field: string current = 3;
    */
@@ -564,11 +564,15 @@ export type SelectorState = Message<"mftiko.state.v1.SelectorState"> & {
   epoch: bigint;
 
   /**
+   * 同 Universe.members：商品。今天是 UniversalTicker
+   *
    * @generated from field: repeated string members = 3;
    */
   members: string[];
 
   /**
+   * 同 Universe.current：selector，尚未定，不在 D203；selector 沒有 UID
+   *
    * @generated from field: string current = 4;
    */
   current: string;

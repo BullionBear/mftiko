@@ -1,4 +1,4 @@
-// Command mftiko-sts-agent is the strategy-plane agent. It reconciles session specs, writes leases to MD and TD, signs each session's NATS credentials, and spawns session workers through shims (DECISIONS D1, D2, D9, D30).
+// Command mftiko-sts-agent is the strategy-plane agent. It reconciles session specs, writes leases to MD and TD, signs each session's NATS credentials, and spawns session workers through shims (DECISIONS D001, D101, D901, D906).
 //
 // Shape only: not implemented yet.
 package main

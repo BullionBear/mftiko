@@ -7,7 +7,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange"
 )
 
-// history reads /v5/execution/list; fill_id is execId (D20).
+// history reads /v5/execution/list; fill_id is execId (D601).
 type history struct{ cfg exchange.AccountConfig }
 
 var _ exchange.History = (*history)(nil)

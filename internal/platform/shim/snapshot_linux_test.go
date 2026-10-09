@@ -10,7 +10,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/shim/fakeworker"
 )
 
-// E1-21's done criteria: an agent decides from Attached alone (DECISIONS D37).
+// E1-21's done criteria: an agent decides from Attached alone (DECISIONS D108).
 
 // snapshot attaches with no common major, which streams nothing, until ok accepts what Attached says.
 func (a *agent) snapshot(what string, ok func(*shimv1.Attached) bool) *shimv1.Attached {

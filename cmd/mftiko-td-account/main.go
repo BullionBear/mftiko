@@ -1,4 +1,4 @@
-// Command mftiko-td-account is the TD account worker for one api_id: private websocket, HTTP pool, OMS, ledger and recon (DECISIONS D9, D27).
+// Command mftiko-td-account is the TD account worker for one api_id: private websocket, HTTP pool, OMS, ledger and recon (DECISIONS D901, D603).
 //
 // Shape only: not implemented yet.
 package main

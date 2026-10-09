@@ -9,7 +9,7 @@ breaking:
   # Each contract evolves compatibly within a major (PROTOCOL §1). CI runs `make proto-breaking`.
   use:
     - FILE
-  # Drafts (DECISIONS D36, the table in PROTOCOL §1): free to change until the epic that finalizes them takes them off
+  # Drafts (DECISIONS D007, the table in PROTOCOL §1): free to change until the epic that finalizes them takes them off
   # this list, as part of its done criteria. Every contract is a draft today; C3 and C4 come off first, when E1 ends.
   ignore:
     - contract/proto/mftiko/state/v1/state.proto # E: agent records in E1; demands, assignments, acks in E9

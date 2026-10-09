@@ -1,16 +1,16 @@
--- History owned by the TD agent (DECISIONS D20, D25). First draft: columns follow what the
+-- History owned by the TD agent (DECISIONS D601, D602). First draft: columns follow what the
 -- decisions fix; adjust while implementing.
 --
 -- Conventions (PROTOCOL §2): times are int64 unix nanoseconds in *_ns columns; decimals are NUMERIC
 -- (the wire uses decimal strings); identifiers from venues are TEXT.
 
 -- Terminal orders that have at least one fill. Cancelled, rejected or expired orders without a fill
--- are not stored (D20).
+-- are not stored (D601).
 CREATE TABLE orders (
     api_id          BIGINT  NOT NULL,
     order_id        TEXT    NOT NULL,
     client_order_id TEXT,              -- NULL for manual orders
-    algo_id         INTEGER,           -- decoded from client_order_id (D25); NULL for manual orders
+    algo_id         INTEGER,           -- decoded from client_order_id (D602); NULL for manual orders
     ticker          TEXT    NOT NULL,  -- UniversalTicker
     side            TEXT    NOT NULL CHECK (side IN ('buy', 'sell')),
     order_type      TEXT    NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE orders (
 CREATE INDEX orders_algo_ts ON orders (api_id, algo_id, exch_ts_ns);
 
 -- Fills, deduplicated by the venue trade id. A provisional row (from td.evt) never overwrites a
--- confirmed one (from REST); a confirmed row overwrites fee, fee_asset and liquidity (D20).
+-- confirmed one (from REST); a confirmed row overwrites fee, fee_asset and liquidity (D601).
 CREATE TABLE fills (
     api_id          BIGINT  NOT NULL,
     fill_id         TEXT    NOT NULL,  -- venue trade id, identical on websocket and REST
@@ -53,7 +53,7 @@ CREATE INDEX fills_order ON fills (api_id, order_id);
 CREATE INDEX fills_algo_ts ON fills (api_id, algo_id, exch_ts_ns);
 
 -- What backfill reads. A scope is created on the first submit of a ticker; since only moves earlier
--- (LEAST), so a restart never skips history (D20).
+-- (LEAST), so a restart never skips history (D601).
 CREATE TABLE backfill_scopes (
     api_id   BIGINT NOT NULL,
     ticker   TEXT   NOT NULL,
@@ -62,7 +62,7 @@ CREATE TABLE backfill_scopes (
 );
 
 -- Where backfill has got to. While catching up it resumes from the venue id (last_id); once caught up
--- it rereads from confirmed_through_ns, which never passes now - SAFETY_LAG (D20). Advanced in the
+-- it rereads from confirmed_through_ns, which never passes now - SAFETY_LAG (D601). Advanced in the
 -- same transaction as the rows it covers.
 CREATE TABLE backfill_cursors (
     api_id               BIGINT NOT NULL,
@@ -75,7 +75,7 @@ CREATE TABLE backfill_cursors (
 );
 
 -- Which session held an algo_id on an account, and when. Resolves (api_id, algo_id, ts_ms) from a
--- client_order_id to a session (D25). At most one open holding per (api_id, algo_id).
+-- client_order_id to a session (D602). At most one open holding per (api_id, algo_id).
 CREATE TABLE algo_ownership (
     api_id         BIGINT  NOT NULL,
     algo_id        INTEGER NOT NULL CHECK (algo_id BETWEEN 1 AND 1023),

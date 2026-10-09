@@ -29,7 +29,7 @@ func (r *rest) Klines(context.Context, *symbol.Info, string, int) ([]exchange.Kl
 
 func (r *rest) KlinePage() int { return 0 }
 
-// OpenInterest: UM and CM do not push open interest (D12), so it is query-only here.
+// OpenInterest: UM and CM do not push open interest (D401), so it is query-only here.
 func (r *rest) OpenInterest(context.Context, *symbol.Info) (*exchange.OpenInterest, error) {
 	return nil, exchange.ErrNotImplemented
 }

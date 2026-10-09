@@ -26,7 +26,7 @@ export type InitPayload = Message<"mftiko.mdctl.v1.InitPayload"> & {
   venue: string;
 
   /**
-   * 由 adapter 從解析後的商品推得（D26、D31）
+   * 由 adapter 從解析後的商品推得（D403、D202）
    *
    * @generated from field: string route = 2;
    */
@@ -43,7 +43,7 @@ export type InitPayload = Message<"mftiko.mdctl.v1.InitPayload"> & {
   mdInstance: string;
 
   /**
-   * 實際連線的 URL。host 由 MD instance 的設定選：預設，或交易所提供的替代 endpoint（D26）。換 URL 要換 incarnation。
+   * 實際連線的 URL。host 由 MD instance 的設定選：預設，或交易所提供的替代 endpoint（D403）。換 URL 要換 incarnation。
    *
    * @generated from field: string url = 6;
    */
@@ -136,7 +136,7 @@ export type AtomAssignment = Message<"mftiko.mdctl.v1.AtomAssignment"> & {
   feeds: string[];
 
   /**
-   * 錄 tape；MD agent 依 topic 推導（D21）
+   * 錄 tape；MD agent 依 topic 推導（D402）
    *
    * @generated from field: bool record = 3;
    */

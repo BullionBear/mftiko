@@ -63,7 +63,7 @@ export type InitPayload = Message<"mftiko.stsctl.v1.InitPayload"> & {
   accounts: AccountDecl[];
 
   /**
-   * 這個 session 專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D30）
+   * 這個 session 專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D906）
    *
    * @generated from field: mftiko.stsctl.v1.NatsCredentials nats = 9;
    */
@@ -263,7 +263,7 @@ export type SelectorBinding = Message<"mftiko.stsctl.v1.SelectorBinding"> & {
   universe?: Universe | undefined;
 
   /**
-   * 成員的 subject 是 {subject_prefix}.{topic}.{ticker}。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（D38、§10 P14）
+   * 成員的 subject 是 {subject_prefix}.{topic}.{ticker}。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（D203、§10 P14）
    *
    * @generated from field: string subject_prefix = 4;
    */
@@ -347,7 +347,7 @@ export const ReportSchema: GenMessage<Report> = /*@__PURE__*/
   messageDesc(file_mftiko_stsctl_v1_stsctl, 9);
 
 /**
- * name 是 td 或 md（D24）。
+ * name 是 td 或 md（D803）。
  *
  * @generated from message mftiko.stsctl.v1.QueueStat
  */
@@ -396,14 +396,14 @@ export type Universe = Message<"mftiko.stsctl.v1.Universe"> & {
   epoch: bigint;
 
   /**
-   * 今天是 UniversalTicker。改成 UID 是後續（D38）
+   * 成員是商品。今天是 UniversalTicker；改成商品 UID 是後續（D203）。selector 本身沒有 UID
    *
    * @generated from field: repeated string members = 2;
    */
   members: string[];
 
   /**
-   * 只有 rolling_future
+   * 只有 rolling_future。這是 selector，尚未定，不在 D203 的範圍；selector 沒有 UID
    *
    * @generated from field: string current = 3;
    */
@@ -424,7 +424,7 @@ export const UniverseSchema: GenMessage<Universe> = /*@__PURE__*/
 
 /**
  * 綁定的狀態，對應 provider 的 ack（§3.5）。值與 state.v1.EntryState 相同；stsctl 自己定義，策略的契約才不綁在 etcd 的
- * schema 上（DECISIONS D36）。
+ * schema 上（DECISIONS D007）。
  *
  * @generated from enum mftiko.stsctl.v1.BindingState
  */

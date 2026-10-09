@@ -1,4 +1,4 @@
-// Command mftiko-md-agent is the market-data-plane agent. It derives atoms from leases, places them on connections, and spawns conn workers (DECISIONS D9, D12, D26).
+// Command mftiko-md-agent is the market-data-plane agent. It derives atoms from leases, places them on connections, and spawns conn workers (DECISIONS D901, D401, D403).
 //
 // Shape only: not implemented yet.
 package main
