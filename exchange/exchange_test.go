@@ -2,6 +2,7 @@ package exchange
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -30,6 +31,44 @@ func TestCredentialsNeverFormat(t *testing.T) {
 			if strings.Contains(out, secret) {
 				t.Errorf("leaked %q in %s", secret, out)
 			}
+		}
+	}
+}
+
+func TestHTTPRequestHeadersNeverFormat(t *testing.T) {
+	req := HTTPRequest{Method: "GET", Base: "https://api.example", Path: "/api/v5/account/balance", Query: []byte("ccy=BTC"),
+		Header: []Header{{Name: "OK-ACCESS-KEY", Value: "k-visible"}, {Name: "OK-ACCESS-PASSPHRASE", Value: "pp-visible"}}}
+	call := Call[int]{Req: req}
+
+	var outs []string
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q", "%x", "%X", "%d", "%t", "%10.3v"} {
+		outs = append(outs, fmt.Sprintf(verb, req), fmt.Sprintf(verb, &req), fmt.Sprintf(verb, call))
+	}
+	for _, out := range outs {
+		for _, v := range []string{"k-visible", "pp-visible"} {
+			for _, secret := range []string{v, hex.EncodeToString([]byte(v)), strings.ToUpper(hex.EncodeToString([]byte(v)))} {
+				if strings.Contains(out, secret) {
+					t.Errorf("leaked %q in %s", secret, out)
+				}
+			}
+		}
+	}
+
+	// Only the values go: the rest of the request stays readable, and the request itself is untouched.
+	got := fmt.Sprintf("%+v", req)
+	for _, want := range []string{"Method:GET", "/api/v5/account/balance", "Name:OK-ACCESS-PASSPHRASE Value:REDACTED"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("%s lacks %q", got, want)
+		}
+	}
+	if req.Header[0].Value != "k-visible" {
+		t.Errorf("Format changed the request: %s", req.Header[0].Value)
+	}
+	type plain HTTPRequest
+	bare := HTTPRequest{Method: "GET", Path: "/p", Query: []byte("a=1"), Mutates: true}
+	for _, verb := range []string{"%v", "%+v", "%s"} {
+		if got, want := fmt.Sprintf(verb, bare), fmt.Sprintf(verb, plain(bare)); got != want {
+			t.Errorf("%s without headers: %s, want %s", verb, got, want)
 		}
 	}
 }

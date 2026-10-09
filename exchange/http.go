@@ -46,6 +46,20 @@ type HTTPRequest struct {
 	Mutates bool
 }
 
+// Format masks every header value, under every verb: headers carry the API key and OKX's passphrase.
+// The rest prints as fmt would print the struct. A transport logs no headers at all, masked or not.
+func (r HTTPRequest) Format(f fmt.State, verb rune) {
+	type maskedRequest HTTPRequest // no methods, so fmt prints it field by field
+	m := maskedRequest(r)
+	if r.Header != nil {
+		m.Header = make([]Header, len(r.Header))
+		for i, h := range r.Header {
+			m.Header[i] = Header{Name: h.Name, Value: "REDACTED"}
+		}
+	}
+	_, _ = fmt.Fprintf(f, fmt.FormatString(f, verb), m)
+}
+
 // HTTPResponse is what came back. Body is lent to Parse for the duration of the call: anything Parse
 // keeps it copies (D302).
 type HTTPResponse struct {
