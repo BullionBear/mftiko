@@ -5,12 +5,12 @@
     "Base": "BTC",
     "Quote": "USDT",
     "ExchTicker": "BTCUSDT",
-    "ContractSize": "1",
+    "ContractSize": 1,
     "Settle": "USDT",
     "Status": "TRADABLE",
     "Filters": {
-      "price_tick": "0.01",
-      "qty_step": "0.00001"
+      "price_tick": 0.01,
+      "qty_step": 0.00001
     }
   },
   {
@@ -19,12 +19,12 @@
     "Base": "BTC",
     "Quote": "USDT",
     "ExchTicker": "BTCUSDT",
-    "ContractSize": "1",
+    "ContractSize": 1,
     "Settle": "USDT",
     "Status": "TRADABLE",
     "Filters": {
-      "price_tick": "0.1",
-      "qty_step": "0.001"
+      "price_tick": 0.1,
+      "qty_step": 0.001
     }
   }
 ]

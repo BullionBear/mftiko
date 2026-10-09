@@ -76,9 +76,9 @@ type OrderRequest struct {
 	Side          Side
 	Type          OrderType
 	TIF           TimeInForce
-	Qty           string // "" when QuoteQty is used
-	QuoteQty      string
-	Price         string // "" for market orders
+	Qty           float64 // decimal.Absent when QuoteQty is used
+	QuoteQty      float64 // decimal.Absent unless used
+	Price         float64 // decimal.Absent for market orders
 	ReduceOnly    bool
 	ClientOrderID string            // contract/wire/cloid, decimal (D602)
 	Params        map[string]string // td.v1.Submit.params, venue-specific, passed through
@@ -116,11 +116,11 @@ type OrderUpdate struct {
 	Side          Side
 	Type          OrderType
 	Status        OrderStatus
-	Qty           string
-	QuoteQty      string
-	Price         string
-	FilledQty     string
-	AvgPrice      string
+	Qty           float64
+	QuoteQty      float64 // optional
+	Price         float64 // optional
+	FilledQty     float64
+	AvgPrice      float64 // optional
 	RejectReason  string
 	ExchTsNs      int64
 }
@@ -132,8 +132,9 @@ type Fill struct {
 	OrderID       string
 	ClientOrderID string // "" when the venue does not send it (REST history usually does not)
 	Side          Side
-	Price, Qty    string
-	Fee, FeeAsset string
+	Price, Qty    float64
+	Fee           float64
+	FeeAsset      string
 	Liquidity     string // maker | taker
 	ExchTsNs      int64
 }
@@ -141,17 +142,17 @@ type Fill struct {
 // Balance follows td.v1.Balance without prelock, which the account worker computes.
 type Balance struct {
 	Asset  string
-	Free   string
-	Locked string
+	Free   float64
+	Locked float64
 }
 
 type Position struct {
 	Exch          symbol.ExchKey
-	Size          string // signed: negative is short
-	EntryPrice    string
-	MarkPrice     string
-	UnrealizedPnl string
-	Leverage      string
+	Size          float64 // signed: negative is short
+	EntryPrice    float64 // each optional from here
+	MarkPrice     float64
+	UnrealizedPnl float64
+	Leverage      float64
 }
 
 // PrivateStream is the codec of one private websocket connection. Not safe for concurrent use.

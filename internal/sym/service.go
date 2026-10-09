@@ -13,6 +13,7 @@ import (
 
 	symv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/sym/v1"
 	"github.com/BullionBear/mftiko/contract/symbol"
+	"github.com/BullionBear/mftiko/contract/wire/decimal"
 	"github.com/BullionBear/mftiko/internal/platform/natsx"
 )
 
@@ -420,12 +421,12 @@ func infoMessage(info symbol.Info) (*symv1.SymbolInfo, error) {
 		ExchTicker:       info.ExchTicker,
 		Base:             info.Base,
 		Quote:            info.Quote,
-		ContractSize:     opt(info.ContractSize),
+		ContractSize:     optNumber(info.ContractSize),
 		ContractValueCcy: info.ContractValueCcy,
 		PriceCcy:         info.PriceCcy,
 		Settle:           opt(info.Settle),
 		ExpiryNs:         info.ExpiryNs,
-		Strike:           opt(info.Strike),
+		Strike:           optNumber(info.Strike),
 		OptionType:       info.OptionType,
 		Status:           st,
 		UpdatedAtNs:      info.UpdatedAtNs,
@@ -468,11 +469,19 @@ func opt(s string) *string {
 	return &s
 }
 
-// bound carries one filter. An empty value is a published restriction with no
-// bound, which is a present key and an absent Bound.value.
-func bound(v string) *symv1.Bound {
+// optNumber is a contract size or strike: 0 is none, an unset field.
+func optNumber(v float64) *float64 {
+	if v == 0 {
+		return nil
+	}
+	return &v
+}
+
+// bound carries one filter. An absent value (NaN, D008) is a published
+// restriction with no bound, which is a present key and an unset Bound.value.
+func bound(v float64) *symv1.Bound {
 	b := &symv1.Bound{}
-	if v != "" {
+	if decimal.Has(v) {
 		b.Value = &v
 	}
 	return b

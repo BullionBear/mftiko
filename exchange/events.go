@@ -22,26 +22,26 @@ type Sink interface {
 	FeedEnd(ch string, e *FeedEnd)
 }
 
-// The event types follow md.v1 field for field, except where noted. An optional decimal the venue
-// does not send is "".
+// The event types follow md.v1 field for field, except where noted. Numbers are float64 (D008); an
+// optional one the venue does not send is decimal.Absent (NaN), an unset field in md.v1.
 
 type BestQuote struct {
 	ExchTsNs    int64
-	Bid, BidQty string
-	Ask, AskQty string
+	Bid, BidQty float64
+	Ask, AskQty float64
 }
 
 type Trade struct {
 	ExchTsNs   int64
 	TradeID    string
-	Price, Qty string
+	Price, Qty float64
 	Side       Side // taker
 }
 
 type AggTrade struct {
 	ExchTsNs                  int64
 	TradeID                   string
-	Price, Qty                string
+	Price, Qty                float64
 	Side                      Side
 	FirstTradeID, LastTradeID string
 	MatchCount                uint32
@@ -63,51 +63,51 @@ type Kline struct {
 	ExchTsNs               int64
 	Interval               string // canonical: 1m, 4h, 1mo
 	OpenTimeNs             int64
-	Open, High, Low, Close string
-	Volume                 string
-	QuoteVolume            string
+	Open, High, Low, Close float64
+	Volume                 float64
+	QuoteVolume            float64 // optional
 	Closed                 bool
 }
 
 // Ticker is 24h statistics only (D401).
 type Ticker struct {
 	ExchTsNs                  int64
-	Last                      string
-	Open24h, High24h, Low24h  string
-	Volume24h, QuoteVolume24h string
-	ChangePct24h              string
+	Last                      float64 // each optional
+	Open24h, High24h, Low24h  float64
+	Volume24h, QuoteVolume24h float64
+	ChangePct24h              float64
 }
 
 type Liquidation struct {
 	ExchTsNs   int64
 	Side       Side // side of the liquidated position
-	Price, Qty string
+	Price, Qty float64
 }
 
 type FundingRate struct {
 	ExchTsNs      int64
-	Rate          string
+	Rate          float64
 	NextFundingNs int64
 	IntervalS     uint32 // 0 = not sent
 }
 
 type OpenInterest struct {
 	ExchTsNs          int64
-	OpenInterest      string
-	OpenInterestValue string
+	OpenInterest      float64
+	OpenInterestValue float64 // optional
 }
 
 type Greeks struct {
 	ExchTsNs                       int64
-	Delta, Gamma, Vega, Theta, Rho string
-	MarkIV, BidIV, AskIV           string
-	MarkPrice, UnderlyingPrice     string
+	Delta, Gamma, Vega, Theta, Rho float64 // each optional
+	MarkIV, BidIV, AskIV           float64
+	MarkPrice, UnderlyingPrice     float64
 }
 
 type MarkPrice struct {
 	ExchTsNs   int64
-	MarkPrice  string
-	IndexPrice string
+	MarkPrice  float64
+	IndexPrice float64 // optional
 }
 
 // FeedEnd: the instrument stopped trading.

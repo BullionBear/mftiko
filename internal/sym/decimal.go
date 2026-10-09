@@ -2,6 +2,7 @@ package sym
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 	"strings"
@@ -28,6 +29,20 @@ func canonicalDecimal(s string) (string, error) {
 		return "", fmt.Errorf("sym: decimal %q", s)
 	}
 	return formatDecimal(r), nil
+}
+
+// numberText is a listing number (a float64, D008) as the column's text: its shortest decimal form,
+// canonical as canonicalDecimal has it, so that "0.1" from the venue, 0.1 here and NUMERIC 0.1 in
+// Postgres are one value. NaN (decimal.Absent) is "", stored as NULL; so is 0 when zeroAbsent is set,
+// as a contract size or strike of 0 is none.
+func numberText(v float64, zeroAbsent bool) (string, error) {
+	switch {
+	case math.IsNaN(v), zeroAbsent && v == 0:
+		return "", nil
+	case math.IsInf(v, 0):
+		return "", fmt.Errorf("sym: number %v", v)
+	}
+	return canonicalDecimal(strconv.FormatFloat(v, 'f', -1, 64))
 }
 
 // parseDecimal reads a base-10 literal, including an exponent (1e-8, 7E4).

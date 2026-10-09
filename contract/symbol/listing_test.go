@@ -1,7 +1,9 @@
 package symbol_test
 
 import (
+	"encoding/json"
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/BullionBear/mftiko/contract/symbol"
@@ -49,7 +51,7 @@ func TestListingTicker(t *testing.T) {
 			name: "option decimal strike",
 			l: symbol.Listing{
 				Venue: "Okx", Category: symbol.Option, Base: "BTC", Quote: "USD",
-				ExpiryCode: "261225", Strike: "6.4", OptionType: "c",
+				ExpiryCode: "261225", Strike: 6.4, OptionType: "c",
 				ExchTicker: "BTC-USD-261225-6.4-C",
 			},
 			want: "Okx_Option_BTCUSD-261225-6D4-C",
@@ -58,17 +60,17 @@ func TestListingTicker(t *testing.T) {
 			name: "option integer trailing zeros",
 			l: symbol.Listing{
 				Venue: "Okx", Category: symbol.Option, Base: "BTC", Quote: "USD",
-				ExpiryCode: "261225", Strike: "6400.0", OptionType: "P",
+				ExpiryCode: "261225", Strike: 6400.0, OptionType: "P",
 			},
 			want: "Okx_Option_BTCUSD-261225-6400-P",
 		},
 		{
-			name: "option thousands and scientific",
+			name: "option fractional strike below one",
 			l: symbol.Listing{
-				Venue: "Bybit", Category: symbol.Option, Base: "BTC", Quote: "USDT",
-				ExpiryCode: "260905", Strike: "10_000", OptionType: "C",
+				Venue: "Bybit", Category: symbol.Option, Base: "DOGE", Quote: "USDT",
+				ExpiryCode: "260905", Strike: 0.125, OptionType: "C",
 			},
-			want: "Bybit_Option_BTCUSDT-260905-10000-C",
+			want: "Bybit_Option_DOGEUSDT-260905-0D125-C",
 		},
 		{
 			name: "cjk spot",
@@ -101,7 +103,7 @@ func TestListingTickerRejects(t *testing.T) {
 		{name: "future without date", l: symbol.Listing{Venue: "BinanceUM", Category: symbol.Future, Base: "BTC", Quote: "USDT"}},
 		{name: "bad date", l: symbol.Listing{Venue: "BinanceUM", Category: symbol.Future, Base: "BTC", Quote: "USDT", ExpiryCode: "2609"}},
 		{name: "option without strike", l: symbol.Listing{Venue: "Okx", Category: symbol.Option, Base: "BTC", Quote: "USD", ExpiryCode: "261225", OptionType: "C"}},
-		{name: "bad option type", l: symbol.Listing{Venue: "Okx", Category: symbol.Option, Base: "BTC", Quote: "USD", ExpiryCode: "261225", Strike: "1", OptionType: "call"}},
+		{name: "bad option type", l: symbol.Listing{Venue: "Okx", Category: symbol.Option, Base: "BTC", Quote: "USD", ExpiryCode: "261225", Strike: 1, OptionType: "call"}},
 		{name: "lowercase venue", l: symbol.Listing{Venue: "bybit", Category: symbol.Perp, Base: "BTC", Quote: "USDT"}},
 		{name: "empty asset", l: symbol.Listing{Venue: "Bybit", Category: symbol.Perp, Base: "", Quote: "USDT"}},
 	} {
@@ -117,8 +119,8 @@ func TestListingTickerRejects(t *testing.T) {
 // also derive linear / inverse / quanto and 幣本位 / U 本位.
 func TestValidateD203(t *testing.T) {
 	contract := func(l symbol.Listing) symbol.Listing {
-		if l.ContractSize == "" {
-			l.ContractSize = "1"
+		if l.ContractSize == 0 {
+			l.ContractSize = 1
 		}
 		if l.Status == "" {
 			l.Status = symbol.Tradable
@@ -164,7 +166,7 @@ func TestValidateD203(t *testing.T) {
 			name: "U margined option",
 			l: contract(symbol.Listing{
 				Venue: "BinanceEO", Category: symbol.Option, Base: "BTC", Quote: "USDT",
-				ExpiryCode: "261226", Strike: "100000", OptionType: "C",
+				ExpiryCode: "261226", Strike: 100000, OptionType: "C",
 				ContractValueCcy: "BTC", PriceCcy: "USDT", Settle: "USDT",
 			}),
 			wantTicker: "BinanceEO_Option_BTCUSDT-261226-100000-C",
@@ -174,7 +176,7 @@ func TestValidateD203(t *testing.T) {
 			name: "coin margined option",
 			l: contract(symbol.Listing{
 				Venue: "Okx", Category: symbol.Option, Base: "BTC", Quote: "USD",
-				ExpiryCode: "261225", Strike: "100000", OptionType: "C",
+				ExpiryCode: "261225", Strike: 100000, OptionType: "C",
 				ContractValueCcy: "BTC", PriceCcy: "BTC", Settle: "BTC",
 			}),
 			wantTicker: "Okx_Option_BTCUSD-261225-100000-C",
@@ -223,7 +225,7 @@ func TestValidateD203(t *testing.T) {
 func TestValidateRejects(t *testing.T) {
 	ok := symbol.Listing{
 		Venue: "BinanceUM", Category: symbol.Perp, Base: "BTC", Quote: "USDT",
-		ContractSize: "0.001", ContractValueCcy: "BTC", PriceCcy: "USDT", Settle: "USDT",
+		ContractSize: 0.001, ContractValueCcy: "BTC", PriceCcy: "USDT", Settle: "USDT",
 		Status: symbol.Tradable,
 	}
 	if err := ok.Validate(); err != nil {
@@ -241,33 +243,33 @@ func TestValidateRejects(t *testing.T) {
 			wantErr: symbol.ErrInvalidListing,
 		},
 		{
-			name:    "blank contract size",
-			l:       symbol.Listing{Category: symbol.Perp, Base: "BTC", Quote: "USDT", ContractSize: "  ", ContractValueCcy: "BTC", PriceCcy: "USDT", Settle: "USDT"},
+			name:    "negative contract size",
+			l:       symbol.Listing{Category: symbol.Perp, Base: "BTC", Quote: "USDT", ContractSize: -1, ContractValueCcy: "BTC", PriceCcy: "USDT", Settle: "USDT"},
 			wantErr: symbol.ErrInvalidListing,
 		},
 		{
 			name:    "missing price ccy",
-			l:       symbol.Listing{Category: symbol.Future, Base: "BTC", Quote: "USDT", ContractSize: "1", ContractValueCcy: "BTC", Settle: "USDT"},
+			l:       symbol.Listing{Category: symbol.Future, Base: "BTC", Quote: "USDT", ContractSize: 1, ContractValueCcy: "BTC", Settle: "USDT"},
 			wantErr: symbol.ErrInvalidListing,
 		},
 		{
 			name:    "missing settlement",
-			l:       symbol.Listing{Category: symbol.Inverse, Base: "BTC", Quote: "USD", ContractSize: "1", ContractValueCcy: "USD", PriceCcy: "USD"},
+			l:       symbol.Listing{Category: symbol.Inverse, Base: "BTC", Quote: "USD", ContractSize: 1, ContractValueCcy: "USD", PriceCcy: "USD"},
 			wantErr: symbol.ErrInvalidListing,
 		},
 		{
 			name:    "missing value ccy",
-			l:       symbol.Listing{Category: symbol.Option, Base: "BTC", Quote: "USDT", ContractSize: "1", PriceCcy: "USDT", Settle: "USDT"},
+			l:       symbol.Listing{Category: symbol.Option, Base: "BTC", Quote: "USDT", ContractSize: 1, PriceCcy: "USDT", Settle: "USDT"},
 			wantErr: symbol.ErrInvalidListing,
 		},
 		{
 			name:    "lowercase asset",
-			l:       symbol.Listing{Category: symbol.Perp, Base: "btc", Quote: "USDT", ContractSize: "1", ContractValueCcy: "BTC", PriceCcy: "USDT", Settle: "USDT"},
+			l:       symbol.Listing{Category: symbol.Perp, Base: "btc", Quote: "USDT", ContractSize: 1, ContractValueCcy: "BTC", PriceCcy: "USDT", Settle: "USDT"},
 			wantErr: symbol.ErrAsset,
 		},
 		{
 			name:    "alias not applied",
-			l:       symbol.Listing{Category: symbol.Inverse, Base: "XBT", Quote: "USD", ContractSize: "1", ContractValueCcy: "USD", PriceCcy: "USD", Settle: "BTC"},
+			l:       symbol.Listing{Category: symbol.Inverse, Base: "XBT", Quote: "USD", ContractSize: 1, ContractValueCcy: "USD", PriceCcy: "USD", Settle: "BTC"},
 			wantErr: symbol.ErrAsset,
 		},
 		{
@@ -332,5 +334,44 @@ func TestValidateRejects(t *testing.T) {
 	}
 	if info := (symbol.Info{Base: "BTC", Quote: "USDT"}); info.Linear() || info.Inverse() || info.Quanto() || info.CoinMargined() || info.UMargined() {
 		t.Fatal("spot grouped as a contract")
+	}
+}
+
+func TestStrikeSpelling(t *testing.T) {
+	for v, want := range map[float64]string{6400.0: "6400", 6.4: "6D4", 0.125: "0D125", 1e5: "100000", 0.00001: "0D00001"} {
+		got, err := symbol.StrikeSpelling(v)
+		if err != nil || got != want {
+			t.Errorf("StrikeSpelling(%v) = %q, %v; want %q", v, got, err, want)
+		}
+	}
+	for _, v := range []float64{0, -1, math.NaN(), math.Inf(1)} {
+		if got, err := symbol.StrikeSpelling(v); !errors.Is(err, symbol.ErrInvalidTicker) {
+			t.Errorf("StrikeSpelling(%v) = %q, %v; want ErrInvalidTicker", v, got, err)
+		}
+	}
+}
+
+// TestFiltersJSON: an absent bound is null in JSON and NaN in Go, and Equal takes two of them as equal.
+func TestFiltersJSON(t *testing.T) {
+	f := symbol.Filters{symbol.PriceTick: 0.1, symbol.QtyStep: 0.00001, symbol.MaxQty: math.NaN()}
+	b, err := json.Marshal(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"max_qty":null,"price_tick":0.1,"qty_step":1e-05}`; string(b) != want {
+		t.Fatalf("Marshal = %s", b)
+	}
+	var g symbol.Filters
+	if err := json.Unmarshal(b, &g); err != nil {
+		t.Fatal(err)
+	}
+	if !f.Equal(g) || !g.Equal(f) {
+		t.Fatalf("round trip: %v != %v", g, f)
+	}
+	if f.Equal(symbol.Filters{symbol.PriceTick: 0.1, symbol.QtyStep: 0.00001, symbol.MaxQty: 1}) {
+		t.Fatal("an absent bound equals 1")
+	}
+	if _, err := json.Marshal(symbol.Filters{"x": math.Inf(1)}); err == nil {
+		t.Fatal("Inf marshalled")
 	}
 }

@@ -37,8 +37,8 @@ type Order struct {
 	Ticker     string // UniversalTicker
 	Side       Side
 	Type       OrderType
-	Qty        string // decimal string
-	Price      string // decimal string, empty for market orders
+	Qty        float64 // contract_value_ccy (D203); snapped to the instrument's qty_step by TD (D008)
+	Price      float64 // price_ccy; decimal.Absent (NaN) for market orders
 	ReduceOnly bool
 }
 

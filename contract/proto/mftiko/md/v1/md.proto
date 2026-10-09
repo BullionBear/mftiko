@@ -34,25 +34,25 @@ message FeedEvent {
 
 message BestQuote {
   Meta meta = 1;
-  string bid = 2;
-  string bid_qty = 3;
-  string ask = 4;
-  string ask_qty = 5;
+  double bid = 2;
+  double bid_qty = 3;
+  double ask = 4;
+  double ask_qty = 5;
 }
 
 message Trade {
   Meta meta = 1;
   string trade_id = 2;
-  string price = 3;
-  string qty = 4;
+  double price = 3;
+  double qty = 4;
   mftiko.common.v1.Side side = 5; // taker
 }
 
 message AggTrade {
   Meta meta = 1;
   string trade_id = 2;
-  string price = 3;
-  string qty = 4;
+  double price = 3;
+  double qty = 4;
   mftiko.common.v1.Side side = 5;
   string first_trade_id = 6;
   string last_trade_id = 7;
@@ -60,8 +60,8 @@ message AggTrade {
 }
 
 message Level {
-  string price = 1;
-  string qty = 2;
+  double price = 1;
+  double qty = 2;
 }
 
 // orderbook：conn worker 本地全量 book 的 top-N，top-N 有變才推（D402）。
@@ -72,7 +72,7 @@ message OrderBook {
   uint32 depth = 4;
 }
 
-// orderbook_delta：本地全量 book 的增量（D402）。qty 為 "0" 表示刪除該價位。
+// orderbook_delta：本地全量 book 的增量（D402）。qty 為 0 表示刪除該價位。
 // reset 為 true 時，bids／asks 是完整的 book，取代本地狀態（conn worker 對交易所重新同步之後）。
 // 晚加入的接法見 read.proto 的 md.view。
 message OrderBookDelta {
@@ -86,65 +86,65 @@ message Kline {
   Meta meta = 1;
   string interval = 2;
   int64 open_time_ns = 3;
-  string open = 4;
-  string high = 5;
-  string low = 6;
-  string close = 7;
-  string volume = 8;
-  optional string quote_volume = 9;
+  double open = 4;
+  double high = 5;
+  double low = 6;
+  double close = 7;
+  double volume = 8;
+  optional double quote_volume = 9;
   bool closed = 10;
 }
 
 // 只有 24h 統計（D401）；venue 不推的欄位不填。
 message Ticker {
   Meta meta = 1;
-  optional string last = 2;
-  optional string open_24h = 3;
-  optional string high_24h = 4;
-  optional string low_24h = 5;
-  optional string volume_24h = 6;
-  optional string quote_volume_24h = 7;
-  optional string change_pct_24h = 8;
+  optional double last = 2;
+  optional double open_24h = 3;
+  optional double high_24h = 4;
+  optional double low_24h = 5;
+  optional double volume_24h = 6;
+  optional double quote_volume_24h = 7;
+  optional double change_pct_24h = 8;
 }
 
 message Liquidation {
   Meta meta = 1;
   mftiko.common.v1.Side side = 2; // 被平倉部位的方向
-  string price = 3;
-  string qty = 4;
+  double price = 3;
+  double qty = 4;
 }
 
 message FundingRate {
   Meta meta = 1;
-  string rate = 2;
+  double rate = 2;
   int64 next_funding_ns = 3;
   optional uint32 interval_s = 4;
 }
 
 message OpenInterest {
   Meta meta = 1;
-  string open_interest = 2;
-  optional string open_interest_value = 3;
+  double open_interest = 2;
+  optional double open_interest_value = 3;
 }
 
 message Greeks {
   Meta meta = 1;
-  optional string delta = 2;
-  optional string gamma = 3;
-  optional string vega = 4;
-  optional string theta = 5;
-  optional string rho = 6;
-  optional string mark_iv = 7;
-  optional string bid_iv = 8;
-  optional string ask_iv = 9;
-  optional string mark_price = 10;
-  optional string underlying_price = 11;
+  optional double delta = 2;
+  optional double gamma = 3;
+  optional double vega = 4;
+  optional double theta = 5;
+  optional double rho = 6;
+  optional double mark_iv = 7;
+  optional double bid_iv = 8;
+  optional double ask_iv = 9;
+  optional double mark_price = 10;
+  optional double underlying_price = 11;
 }
 
 message MarkPrice {
   Meta meta = 1;
-  string mark_price = 2;
-  optional string index_price = 3;
+  double mark_price = 2;
+  optional double index_price = 3;
 }
 
 message FeedEnd {

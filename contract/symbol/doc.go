@@ -25,8 +25,8 @@
 //
 // CanonicalAsset and AssetAliases live here so every adapter shares one table (D203).
 // SYM applies them before it judges quanto and derives the ticker. Adapters pass native
-// codes and do not keep a table of their own. Strikes are normalized with SpellStrike
-// first, so 6400.0 and 6400 are one ticker.
+// codes and do not keep a table of their own. A strike is a float64 (D008), spelled with
+// StrikeSpelling, so 6400.0 and 6400 are one ticker.
 // USD, USDC and USDT are three assets. Quanto (a settlement asset that is neither base nor quote)
 // is not stored in phase 1, and the demand is REJECTED. qty is in contract_value_ccy (contracts
 // times contract_size): base on linear and options, quote on inverse, not a contract count.

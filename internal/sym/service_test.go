@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -44,11 +45,11 @@ func TestSymService(t *testing.T) {
 		if info.GetUid() != fx.btc || info.GetStatus() != symv1.SymbolStatus_SYMBOL_STATUS_DELISTED {
 			t.Fatalf("terminal %+v, want uid %d DELISTED", info, fx.btc)
 		}
-		if info.GetFilters()["price_tick"].GetValue() != "0.5" {
+		if info.GetFilters()["price_tick"].GetValue() != 0.5 {
 			t.Fatalf("price_tick %+v", info.GetFilters()["price_tick"])
 		}
-		if bound, ok := info.GetFilters()["max_qty"]; !ok || bound.GetValue() != "" {
-			t.Fatalf("max_qty present=%v value %q", ok, bound.GetValue())
+		if bound, ok := info.GetFilters()["max_qty"]; !ok || bound.Value != nil {
+			t.Fatalf("max_qty present=%v value %v", ok, bound.GetValue())
 		}
 	})
 
@@ -83,7 +84,7 @@ func TestSymService(t *testing.T) {
 		if perp.GetUid() == fx.btc || perp.GetUniversalTicker() != "Bybit_Perp_BTCUSDT" {
 			t.Fatalf("reverse perp %+v", perp)
 		}
-		if perp.GetContractSize() != "1" || perp.GetSettle() != "USDT" || perp.GetContractValueCcy() != "BTC" || perp.GetPriceCcy() != "USDT" {
+		if perp.GetContractSize() != 1 || perp.GetSettle() != "USDT" || perp.GetContractValueCcy() != "BTC" || perp.GetPriceCcy() != "USDT" {
 			t.Fatalf("perp currencies %+v", perp)
 		}
 		if perp.GetStatus() != symv1.SymbolStatus_SYMBOL_STATUS_TRADABLE {
@@ -379,7 +380,7 @@ func newSymFixture(t *testing.T) *symFixture {
 		t.Fatal(err)
 	}
 	btc := spotL("BTC", "USDT", "BTCUSDT")
-	btc.Filters = map[string]string{"price_tick": "0.5", "max_qty": ""}
+	btc.Filters = symbol.Filters{"price_tick": 0.5, "max_qty": math.NaN()}
 	for _, row := range []symbol.Listing{
 		btc,
 		spotL("ETH", "USDT", "ETHUSDT"),

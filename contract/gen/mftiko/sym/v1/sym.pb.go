@@ -655,12 +655,12 @@ type SymbolInfo struct {
 	ExchTicker      string                 `protobuf:"bytes,2,opt,name=exch_ticker,json=exchTicker,proto3" json:"exch_ticker,omitempty"`
 	Base            string                 `protobuf:"bytes,3,opt,name=base,proto3" json:"base,omitempty"`
 	Quote           string                 `protobuf:"bytes,4,opt,name=quote,proto3" json:"quote,omitempty"`
-	ContractSize    *string                `protobuf:"bytes,5,opt,name=contract_size,json=contractSize,proto3,oneof" json:"contract_size,omitempty"` // 一張的面值。qty = 張數 × 此值，單位是 contract_value_ccy：linear 與期權是 base，inverse 是 quote（D203）
-	Settle          *string                `protobuf:"bytes,6,opt,name=settle,proto3,oneof" json:"settle,omitempty"`                                 // 損益結算幣（settlement_asset），不是保證金幣。空 = 現貨。quanto（既不是 base 也不是 quote）一期不入庫（D203）
-	ExpiryNs        int64                  `protobuf:"varint,7,opt,name=expiry_ns,json=expiryNs,proto3" json:"expiry_ns,omitempty"`                  // 0 = does not expire
-	Strike          *string                `protobuf:"bytes,8,opt,name=strike,proto3,oneof" json:"strike,omitempty"`                                 // SYM 先依 spell_strike 正規化再推 ticker：6400.0 與 6400 相同（D203）
-	OptionType      string                 `protobuf:"bytes,9,opt,name=option_type,json=optionType,proto3" json:"option_type,omitempty"`             // C | P | ""
-	Status          SymbolStatus           `protobuf:"varint,10,opt,name=status,proto3,enum=mftiko.sym.v1.SymbolStatus" json:"status,omitempty"`     // 暫定（D203）。UNSPECIFIED 非法、不可交易。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。列舉仍暫定，契約已用這個 enum。表已拆成 symbol_active 與 symbol_terminal
+	ContractSize    *float64               `protobuf:"fixed64,5,opt,name=contract_size,json=contractSize,proto3,oneof" json:"contract_size,omitempty"` // 一張的面值。qty = 張數 × 此值，單位是 contract_value_ccy：linear 與期權是 base，inverse 是 quote（D203）
+	Settle          *string                `protobuf:"bytes,6,opt,name=settle,proto3,oneof" json:"settle,omitempty"`                                   // 損益結算幣（settlement_asset），不是保證金幣。空 = 現貨。quanto（既不是 base 也不是 quote）一期不入庫（D203）
+	ExpiryNs        int64                  `protobuf:"varint,7,opt,name=expiry_ns,json=expiryNs,proto3" json:"expiry_ns,omitempty"`                    // 0 = does not expire
+	Strike          *float64               `protobuf:"fixed64,8,opt,name=strike,proto3,oneof" json:"strike,omitempty"`                                 // ticker 裡的拼法由此值的最短十進位表示推出（spell_strike，D203、D008）：6400.0 與 6400 是同一個值
+	OptionType      string                 `protobuf:"bytes,9,opt,name=option_type,json=optionType,proto3" json:"option_type,omitempty"`               // C | P | ""
+	Status          SymbolStatus           `protobuf:"varint,10,opt,name=status,proto3,enum=mftiko.sym.v1.SymbolStatus" json:"status,omitempty"`       // 暫定（D203）。UNSPECIFIED 非法、不可交易。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。列舉仍暫定，契約已用這個 enum。表已拆成 symbol_active 與 symbol_terminal
 	// name -> bound. A key with an absent value: the venue publishes the restriction, no bound.
 	// price_tick is price_ccy; qty_step, min_qty, max_qty are contract_value_ccy (D203).
 	Filters     map[string]*Bound `protobuf:"bytes,11,rep,name=filters,proto3" json:"filters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -739,11 +739,11 @@ func (x *SymbolInfo) GetQuote() string {
 	return ""
 }
 
-func (x *SymbolInfo) GetContractSize() string {
+func (x *SymbolInfo) GetContractSize() float64 {
 	if x != nil && x.ContractSize != nil {
 		return *x.ContractSize
 	}
-	return ""
+	return 0
 }
 
 func (x *SymbolInfo) GetSettle() string {
@@ -760,11 +760,11 @@ func (x *SymbolInfo) GetExpiryNs() int64 {
 	return 0
 }
 
-func (x *SymbolInfo) GetStrike() string {
+func (x *SymbolInfo) GetStrike() float64 {
 	if x != nil && x.Strike != nil {
 		return *x.Strike
 	}
-	return ""
+	return 0
 }
 
 func (x *SymbolInfo) GetOptionType() string {
@@ -818,7 +818,7 @@ func (x *SymbolInfo) GetPriceCcy() string {
 
 type Bound struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Value         *string                `protobuf:"bytes,1,opt,name=value,proto3,oneof" json:"value,omitempty"`
+	Value         *float64               `protobuf:"fixed64,1,opt,name=value,proto3,oneof" json:"value,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -853,11 +853,11 @@ func (*Bound) Descriptor() ([]byte, []int) {
 	return file_mftiko_sym_v1_sym_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *Bound) GetValue() string {
+func (x *Bound) GetValue() float64 {
 	if x != nil && x.Value != nil {
 		return *x.Value
 	}
-	return ""
+	return 0
 }
 
 type SymbolList struct {
@@ -1021,10 +1021,10 @@ const file_mftiko_sym_v1_sym_proto_rawDesc = "" +
 	"exchTicker\x12\x12\n" +
 	"\x04base\x18\x03 \x01(\tR\x04base\x12\x14\n" +
 	"\x05quote\x18\x04 \x01(\tR\x05quote\x12(\n" +
-	"\rcontract_size\x18\x05 \x01(\tH\x00R\fcontractSize\x88\x01\x01\x12\x1b\n" +
+	"\rcontract_size\x18\x05 \x01(\x01H\x00R\fcontractSize\x88\x01\x01\x12\x1b\n" +
 	"\x06settle\x18\x06 \x01(\tH\x01R\x06settle\x88\x01\x01\x12\x1b\n" +
 	"\texpiry_ns\x18\a \x01(\x03R\bexpiryNs\x12\x1b\n" +
-	"\x06strike\x18\b \x01(\tH\x02R\x06strike\x88\x01\x01\x12\x1f\n" +
+	"\x06strike\x18\b \x01(\x01H\x02R\x06strike\x88\x01\x01\x12\x1f\n" +
 	"\voption_type\x18\t \x01(\tR\n" +
 	"optionType\x123\n" +
 	"\x06status\x18\n" +
@@ -1041,7 +1041,7 @@ const file_mftiko_sym_v1_sym_proto_rawDesc = "" +
 	"\a_settleB\t\n" +
 	"\a_strike\",\n" +
 	"\x05Bound\x12\x19\n" +
-	"\x05value\x18\x01 \x01(\tH\x00R\x05value\x88\x01\x01B\b\n" +
+	"\x05value\x18\x01 \x01(\x01H\x00R\x05value\x88\x01\x01B\b\n" +
 	"\x06_value\"W\n" +
 	"\n" +
 	"SymbolList\x123\n" +

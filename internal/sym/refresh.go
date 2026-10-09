@@ -337,11 +337,11 @@ func prepareListing(venue string, category symbol.Category, l symbol.Listing, at
 	if err != nil {
 		return prepared{}, err
 	}
-	size, err := canonicalDecimal(l.ContractSize)
+	size, err := numberText(l.ContractSize, true)
 	if err != nil {
 		return prepared{}, err
 	}
-	strike, err := canonicalStrike(l.Strike)
+	strike, err := numberText(l.Strike, true)
 	if err != nil {
 		return prepared{}, err
 	}
@@ -437,18 +437,7 @@ func rowExpired(category symbol.Category, expiry *int64, atNs int64) bool {
 	return expiry != nil && *expiry > 0 && *expiry <= atNs
 }
 
-func canonicalStrike(s string) (string, error) {
-	if strings.TrimSpace(s) == "" {
-		return "", nil
-	}
-	spelled, err := symbol.SpellStrike(s)
-	if err != nil {
-		return "", err
-	}
-	return strings.ReplaceAll(spelled, symbol.StrikeDecimal, "."), nil
-}
-
-func canonicalFilters(in map[string]string) ([]Filter, error) {
+func canonicalFilters(in symbol.Filters) ([]Filter, error) {
 	names := make([]string, 0, len(in))
 	for name := range in {
 		names = append(names, name)
@@ -459,7 +448,7 @@ func canonicalFilters(in map[string]string) ([]Filter, error) {
 		if strings.TrimSpace(name) == "" {
 			return nil, fmt.Errorf("sym: filter name is empty")
 		}
-		c, err := canonicalDecimal(in[name])
+		c, err := numberText(in[name], false)
 		if err != nil {
 			return nil, err
 		}

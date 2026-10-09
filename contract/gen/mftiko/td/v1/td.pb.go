@@ -247,9 +247,9 @@ type Submit struct {
 	Ticker        string                 `protobuf:"bytes,2,opt,name=ticker,proto3" json:"ticker,omitempty"` // 今天是 UniversalTicker。平面之間改傳 UID 是後續（D203），這一版不改 td 的欄位
 	Side          v1.Side                `protobuf:"varint,3,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"`
 	OrderType     v1.OrderType           `protobuf:"varint,4,opt,name=order_type,json=orderType,proto3,enum=mftiko.common.v1.OrderType" json:"order_type,omitempty"`
-	Qty           *string                `protobuf:"bytes,5,opt,name=qty,proto3,oneof" json:"qty,omitempty"`                           // 單位是 contract_value_ccy（D203）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數
-	QuoteQty      *string                `protobuf:"bytes,6,opt,name=quote_qty,json=quoteQty,proto3,oneof" json:"quote_qty,omitempty"` // quote 資產的金額，單位是 quote，不是 contract_value_ccy（D203）
-	Price         *string                `protobuf:"bytes,7,opt,name=price,proto3,oneof" json:"price,omitempty"`                       // 單位是 price_ccy（D203）：現貨與期貨（含 inverse）是 quote；幣本位期權的權利金是 base；U 本位期權的權利金是 quote（穩定幣）
+	Qty           *float64               `protobuf:"fixed64,5,opt,name=qty,proto3,oneof" json:"qty,omitempty"`                           // 單位是 contract_value_ccy（D203）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數
+	QuoteQty      *float64               `protobuf:"fixed64,6,opt,name=quote_qty,json=quoteQty,proto3,oneof" json:"quote_qty,omitempty"` // quote 資產的金額，單位是 quote，不是 contract_value_ccy（D203）
+	Price         *float64               `protobuf:"fixed64,7,opt,name=price,proto3,oneof" json:"price,omitempty"`                       // 單位是 price_ccy（D203）：現貨與期貨（含 inverse）是 quote；幣本位期權的權利金是 base；U 本位期權的權利金是 quote（穩定幣）
 	Tif           v1.TimeInForce         `protobuf:"varint,8,opt,name=tif,proto3,enum=mftiko.common.v1.TimeInForce" json:"tif,omitempty"`
 	ReduceOnly    bool                   `protobuf:"varint,9,opt,name=reduce_only,json=reduceOnly,proto3" json:"reduce_only,omitempty"`
 	ClientOrderId string                 `protobuf:"bytes,10,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
@@ -317,25 +317,25 @@ func (x *Submit) GetOrderType() v1.OrderType {
 	return v1.OrderType(0)
 }
 
-func (x *Submit) GetQty() string {
+func (x *Submit) GetQty() float64 {
 	if x != nil && x.Qty != nil {
 		return *x.Qty
 	}
-	return ""
+	return 0
 }
 
-func (x *Submit) GetQuoteQty() string {
+func (x *Submit) GetQuoteQty() float64 {
 	if x != nil && x.QuoteQty != nil {
 		return *x.QuoteQty
 	}
-	return ""
+	return 0
 }
 
-func (x *Submit) GetPrice() string {
+func (x *Submit) GetPrice() float64 {
 	if x != nil && x.Price != nil {
 		return *x.Price
 	}
-	return ""
+	return 0
 }
 
 func (x *Submit) GetTif() v1.TimeInForce {
@@ -1228,7 +1228,7 @@ func (x *LedgerView) GetAsOfNs() int64 {
 type LeverageInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ticker        string                 `protobuf:"bytes,1,opt,name=ticker,proto3" json:"ticker,omitempty"`
-	Leverage      string                 `protobuf:"bytes,2,opt,name=leverage,proto3" json:"leverage,omitempty"`
+	Leverage      float64                `protobuf:"fixed64,2,opt,name=leverage,proto3" json:"leverage,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1270,11 +1270,11 @@ func (x *LeverageInfo) GetTicker() string {
 	return ""
 }
 
-func (x *LeverageInfo) GetLeverage() string {
+func (x *LeverageInfo) GetLeverage() float64 {
 	if x != nil {
 		return x.Leverage
 	}
-	return ""
+	return 0
 }
 
 type AccountEvent struct {
@@ -1463,11 +1463,11 @@ type Order struct {
 	Side          v1.Side                `protobuf:"varint,4,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"`
 	OrderType     v1.OrderType           `protobuf:"varint,5,opt,name=order_type,json=orderType,proto3,enum=mftiko.common.v1.OrderType" json:"order_type,omitempty"`
 	Status        OrderStatus            `protobuf:"varint,6,opt,name=status,proto3,enum=mftiko.td.v1.OrderStatus" json:"status,omitempty"`
-	Qty           string                 `protobuf:"bytes,7,opt,name=qty,proto3" json:"qty,omitempty"`                                  // 同 Submit.qty，單位是 contract_value_ccy（D203）
-	QuoteQty      *string                `protobuf:"bytes,8,opt,name=quote_qty,json=quoteQty,proto3,oneof" json:"quote_qty,omitempty"`  // 同 Submit.quote_qty（D203）
-	Price         *string                `protobuf:"bytes,9,opt,name=price,proto3,oneof" json:"price,omitempty"`                        // 同 Submit.price，單位是 price_ccy（D203）
-	FilledQty     string                 `protobuf:"bytes,10,opt,name=filled_qty,json=filledQty,proto3" json:"filled_qty,omitempty"`    // 已成交數量，單位同 qty（contract_value_ccy，D203）
-	AvgPrice      *string                `protobuf:"bytes,11,opt,name=avg_price,json=avgPrice,proto3,oneof" json:"avg_price,omitempty"` // 同 Submit.price，單位是 price_ccy（D203）
+	Qty           float64                `protobuf:"fixed64,7,opt,name=qty,proto3" json:"qty,omitempty"`                                  // 同 Submit.qty，單位是 contract_value_ccy（D203）
+	QuoteQty      *float64               `protobuf:"fixed64,8,opt,name=quote_qty,json=quoteQty,proto3,oneof" json:"quote_qty,omitempty"`  // 同 Submit.quote_qty（D203）
+	Price         *float64               `protobuf:"fixed64,9,opt,name=price,proto3,oneof" json:"price,omitempty"`                        // 同 Submit.price，單位是 price_ccy（D203）
+	FilledQty     float64                `protobuf:"fixed64,10,opt,name=filled_qty,json=filledQty,proto3" json:"filled_qty,omitempty"`    // 已成交數量，單位同 qty（contract_value_ccy，D203）
+	AvgPrice      *float64               `protobuf:"fixed64,11,opt,name=avg_price,json=avgPrice,proto3,oneof" json:"avg_price,omitempty"` // 同 Submit.price，單位是 price_ccy（D203）
 	RejectReason  string                 `protobuf:"bytes,12,opt,name=reject_reason,json=rejectReason,proto3" json:"reject_reason,omitempty"`
 	ExchTsNs      int64                  `protobuf:"varint,13,opt,name=exch_ts_ns,json=exchTsNs,proto3" json:"exch_ts_ns,omitempty"`
 	TdTsNs        int64                  `protobuf:"varint,14,opt,name=td_ts_ns,json=tdTsNs,proto3" json:"td_ts_ns,omitempty"`
@@ -1547,39 +1547,39 @@ func (x *Order) GetStatus() OrderStatus {
 	return OrderStatus_ORDER_STATUS_UNSPECIFIED
 }
 
-func (x *Order) GetQty() string {
+func (x *Order) GetQty() float64 {
 	if x != nil {
 		return x.Qty
 	}
-	return ""
+	return 0
 }
 
-func (x *Order) GetQuoteQty() string {
+func (x *Order) GetQuoteQty() float64 {
 	if x != nil && x.QuoteQty != nil {
 		return *x.QuoteQty
 	}
-	return ""
+	return 0
 }
 
-func (x *Order) GetPrice() string {
+func (x *Order) GetPrice() float64 {
 	if x != nil && x.Price != nil {
 		return *x.Price
 	}
-	return ""
+	return 0
 }
 
-func (x *Order) GetFilledQty() string {
+func (x *Order) GetFilledQty() float64 {
 	if x != nil {
 		return x.FilledQty
 	}
-	return ""
+	return 0
 }
 
-func (x *Order) GetAvgPrice() string {
+func (x *Order) GetAvgPrice() float64 {
 	if x != nil && x.AvgPrice != nil {
 		return *x.AvgPrice
 	}
-	return ""
+	return 0
 }
 
 func (x *Order) GetRejectReason() string {
@@ -1611,9 +1611,9 @@ type Fill struct {
 	OrderId       string  `protobuf:"bytes,3,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
 	ClientOrderId string  `protobuf:"bytes,4,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
 	Side          v1.Side `protobuf:"varint,5,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"`
-	Price         string  `protobuf:"bytes,6,opt,name=price,proto3" json:"price,omitempty"` // 同 Submit.price，單位是 price_ccy（D203）
-	Qty           string  `protobuf:"bytes,7,opt,name=qty,proto3" json:"qty,omitempty"`     // 成交數量，單位同 Submit.qty（contract_value_ccy，D203）
-	Fee           string  `protobuf:"bytes,8,opt,name=fee,proto3" json:"fee,omitempty"`
+	Price         float64 `protobuf:"fixed64,6,opt,name=price,proto3" json:"price,omitempty"` // 同 Submit.price，單位是 price_ccy（D203）
+	Qty           float64 `protobuf:"fixed64,7,opt,name=qty,proto3" json:"qty,omitempty"`     // 成交數量，單位同 Submit.qty（contract_value_ccy，D203）
+	Fee           float64 `protobuf:"fixed64,8,opt,name=fee,proto3" json:"fee,omitempty"`
 	FeeAsset      string  `protobuf:"bytes,9,opt,name=fee_asset,json=feeAsset,proto3" json:"fee_asset,omitempty"`
 	Liquidity     string  `protobuf:"bytes,10,opt,name=liquidity,proto3" json:"liquidity,omitempty"`
 	ExchTsNs      int64   `protobuf:"varint,11,opt,name=exch_ts_ns,json=exchTsNs,proto3" json:"exch_ts_ns,omitempty"`
@@ -1686,25 +1686,25 @@ func (x *Fill) GetSide() v1.Side {
 	return v1.Side(0)
 }
 
-func (x *Fill) GetPrice() string {
+func (x *Fill) GetPrice() float64 {
 	if x != nil {
 		return x.Price
 	}
-	return ""
+	return 0
 }
 
-func (x *Fill) GetQty() string {
+func (x *Fill) GetQty() float64 {
 	if x != nil {
 		return x.Qty
 	}
-	return ""
+	return 0
 }
 
-func (x *Fill) GetFee() string {
+func (x *Fill) GetFee() float64 {
 	if x != nil {
 		return x.Fee
 	}
-	return ""
+	return 0
 }
 
 func (x *Fill) GetFeeAsset() string {
@@ -1875,9 +1875,9 @@ func (x *CancelReject) GetReason() string {
 type Balance struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Asset         string                 `protobuf:"bytes,1,opt,name=asset,proto3" json:"asset,omitempty"`
-	Free          string                 `protobuf:"bytes,2,opt,name=free,proto3" json:"free,omitempty"`
-	Locked        string                 `protobuf:"bytes,3,opt,name=locked,proto3" json:"locked,omitempty"`
-	Prelock       string                 `protobuf:"bytes,4,opt,name=prelock,proto3" json:"prelock,omitempty"`
+	Free          float64                `protobuf:"fixed64,2,opt,name=free,proto3" json:"free,omitempty"`
+	Locked        float64                `protobuf:"fixed64,3,opt,name=locked,proto3" json:"locked,omitempty"`
+	Prelock       float64                `protobuf:"fixed64,4,opt,name=prelock,proto3" json:"prelock,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1919,35 +1919,35 @@ func (x *Balance) GetAsset() string {
 	return ""
 }
 
-func (x *Balance) GetFree() string {
+func (x *Balance) GetFree() float64 {
 	if x != nil {
 		return x.Free
 	}
-	return ""
+	return 0
 }
 
-func (x *Balance) GetLocked() string {
+func (x *Balance) GetLocked() float64 {
 	if x != nil {
 		return x.Locked
 	}
-	return ""
+	return 0
 }
 
-func (x *Balance) GetPrelock() string {
+func (x *Balance) GetPrelock() float64 {
 	if x != nil {
 		return x.Prelock
 	}
-	return ""
+	return 0
 }
 
 type Position struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ticker        string                 `protobuf:"bytes,1,opt,name=ticker,proto3" json:"ticker,omitempty"`
-	Size          string                 `protobuf:"bytes,2,opt,name=size,proto3" json:"size,omitempty"`                                              // 持倉數量，單位同 Submit.qty（contract_value_ccy，D203）
-	EntryPrice    *string                `protobuf:"bytes,3,opt,name=entry_price,json=entryPrice,proto3,oneof" json:"entry_price,omitempty"`          // 同 Submit.price，單位是 price_ccy（D203）
-	MarkPrice     *string                `protobuf:"bytes,4,opt,name=mark_price,json=markPrice,proto3,oneof" json:"mark_price,omitempty"`             // 同 Submit.price，單位是 price_ccy（D203）
-	UnrealizedPnl *string                `protobuf:"bytes,5,opt,name=unrealized_pnl,json=unrealizedPnl,proto3,oneof" json:"unrealized_pnl,omitempty"` // 損益結算幣 settlement_asset（欄位 settle），不是保證金幣（D203）
-	Leverage      *string                `protobuf:"bytes,6,opt,name=leverage,proto3,oneof" json:"leverage,omitempty"`
+	Size          float64                `protobuf:"fixed64,2,opt,name=size,proto3" json:"size,omitempty"`                                              // 持倉數量，單位同 Submit.qty（contract_value_ccy，D203）
+	EntryPrice    *float64               `protobuf:"fixed64,3,opt,name=entry_price,json=entryPrice,proto3,oneof" json:"entry_price,omitempty"`          // 同 Submit.price，單位是 price_ccy（D203）
+	MarkPrice     *float64               `protobuf:"fixed64,4,opt,name=mark_price,json=markPrice,proto3,oneof" json:"mark_price,omitempty"`             // 同 Submit.price，單位是 price_ccy（D203）
+	UnrealizedPnl *float64               `protobuf:"fixed64,5,opt,name=unrealized_pnl,json=unrealizedPnl,proto3,oneof" json:"unrealized_pnl,omitempty"` // 損益結算幣 settlement_asset（欄位 settle），不是保證金幣（D203）
+	Leverage      *float64               `protobuf:"fixed64,6,opt,name=leverage,proto3,oneof" json:"leverage,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1989,39 +1989,39 @@ func (x *Position) GetTicker() string {
 	return ""
 }
 
-func (x *Position) GetSize() string {
+func (x *Position) GetSize() float64 {
 	if x != nil {
 		return x.Size
 	}
-	return ""
+	return 0
 }
 
-func (x *Position) GetEntryPrice() string {
+func (x *Position) GetEntryPrice() float64 {
 	if x != nil && x.EntryPrice != nil {
 		return *x.EntryPrice
 	}
-	return ""
+	return 0
 }
 
-func (x *Position) GetMarkPrice() string {
+func (x *Position) GetMarkPrice() float64 {
 	if x != nil && x.MarkPrice != nil {
 		return *x.MarkPrice
 	}
-	return ""
+	return 0
 }
 
-func (x *Position) GetUnrealizedPnl() string {
+func (x *Position) GetUnrealizedPnl() float64 {
 	if x != nil && x.UnrealizedPnl != nil {
 		return *x.UnrealizedPnl
 	}
-	return ""
+	return 0
 }
 
-func (x *Position) GetLeverage() string {
+func (x *Position) GetLeverage() float64 {
 	if x != nil && x.Leverage != nil {
 		return *x.Leverage
 	}
-	return ""
+	return 0
 }
 
 type BalanceUpdate struct {
@@ -2216,9 +2216,9 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\x04side\x18\x03 \x01(\x0e2\x16.mftiko.common.v1.SideR\x04side\x12:\n" +
 	"\n" +
 	"order_type\x18\x04 \x01(\x0e2\x1b.mftiko.common.v1.OrderTypeR\torderType\x12\x15\n" +
-	"\x03qty\x18\x05 \x01(\tH\x00R\x03qty\x88\x01\x01\x12 \n" +
-	"\tquote_qty\x18\x06 \x01(\tH\x01R\bquoteQty\x88\x01\x01\x12\x19\n" +
-	"\x05price\x18\a \x01(\tH\x02R\x05price\x88\x01\x01\x12/\n" +
+	"\x03qty\x18\x05 \x01(\x01H\x00R\x03qty\x88\x01\x01\x12 \n" +
+	"\tquote_qty\x18\x06 \x01(\x01H\x01R\bquoteQty\x88\x01\x01\x12\x19\n" +
+	"\x05price\x18\a \x01(\x01H\x02R\x05price\x88\x01\x01\x12/\n" +
 	"\x03tif\x18\b \x01(\x0e2\x1d.mftiko.common.v1.TimeInForceR\x03tif\x12\x1f\n" +
 	"\vreduce_only\x18\t \x01(\bR\n" +
 	"reduceOnly\x12&\n" +
@@ -2292,7 +2292,7 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\bas_of_ns\x18\x04 \x01(\x03R\x06asOfNs\"B\n" +
 	"\fLeverageInfo\x12\x16\n" +
 	"\x06ticker\x18\x01 \x01(\tR\x06ticker\x12\x1a\n" +
-	"\bleverage\x18\x02 \x01(\tR\bleverage\"\x96\x04\n" +
+	"\bleverage\x18\x02 \x01(\x01R\bleverage\"\x96\x04\n" +
 	"\fAccountEvent\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\x04R\x03seq\x123\n" +
 	"\x06source\x18\x02 \x01(\v2\x1b.mftiko.common.v1.WorkerRefR\x06source\x128\n" +
@@ -2313,13 +2313,13 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\n" +
 	"order_type\x18\x05 \x01(\x0e2\x1b.mftiko.common.v1.OrderTypeR\torderType\x121\n" +
 	"\x06status\x18\x06 \x01(\x0e2\x19.mftiko.td.v1.OrderStatusR\x06status\x12\x10\n" +
-	"\x03qty\x18\a \x01(\tR\x03qty\x12 \n" +
-	"\tquote_qty\x18\b \x01(\tH\x00R\bquoteQty\x88\x01\x01\x12\x19\n" +
-	"\x05price\x18\t \x01(\tH\x01R\x05price\x88\x01\x01\x12\x1d\n" +
+	"\x03qty\x18\a \x01(\x01R\x03qty\x12 \n" +
+	"\tquote_qty\x18\b \x01(\x01H\x00R\bquoteQty\x88\x01\x01\x12\x19\n" +
+	"\x05price\x18\t \x01(\x01H\x01R\x05price\x88\x01\x01\x12\x1d\n" +
 	"\n" +
 	"filled_qty\x18\n" +
-	" \x01(\tR\tfilledQty\x12 \n" +
-	"\tavg_price\x18\v \x01(\tH\x02R\bavgPrice\x88\x01\x01\x12#\n" +
+	" \x01(\x01R\tfilledQty\x12 \n" +
+	"\tavg_price\x18\v \x01(\x01H\x02R\bavgPrice\x88\x01\x01\x12#\n" +
 	"\rreject_reason\x18\f \x01(\tR\frejectReason\x12\x1c\n" +
 	"\n" +
 	"exch_ts_ns\x18\r \x01(\x03R\bexchTsNs\x12\x18\n" +
@@ -2335,9 +2335,9 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\border_id\x18\x03 \x01(\tR\aorderId\x12&\n" +
 	"\x0fclient_order_id\x18\x04 \x01(\tR\rclientOrderId\x12*\n" +
 	"\x04side\x18\x05 \x01(\x0e2\x16.mftiko.common.v1.SideR\x04side\x12\x14\n" +
-	"\x05price\x18\x06 \x01(\tR\x05price\x12\x10\n" +
-	"\x03qty\x18\a \x01(\tR\x03qty\x12\x10\n" +
-	"\x03fee\x18\b \x01(\tR\x03fee\x12\x1b\n" +
+	"\x05price\x18\x06 \x01(\x01R\x05price\x12\x10\n" +
+	"\x03qty\x18\a \x01(\x01R\x03qty\x12\x10\n" +
+	"\x03fee\x18\b \x01(\x01R\x03fee\x12\x1b\n" +
 	"\tfee_asset\x18\t \x01(\tR\bfeeAsset\x12\x1c\n" +
 	"\tliquidity\x18\n" +
 	" \x01(\tR\tliquidity\x12\x1c\n" +
@@ -2356,18 +2356,18 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\x06reason\x18\x04 \x01(\tR\x06reason\"e\n" +
 	"\aBalance\x12\x14\n" +
 	"\x05asset\x18\x01 \x01(\tR\x05asset\x12\x12\n" +
-	"\x04free\x18\x02 \x01(\tR\x04free\x12\x16\n" +
-	"\x06locked\x18\x03 \x01(\tR\x06locked\x12\x18\n" +
-	"\aprelock\x18\x04 \x01(\tR\aprelock\"\x8c\x02\n" +
+	"\x04free\x18\x02 \x01(\x01R\x04free\x12\x16\n" +
+	"\x06locked\x18\x03 \x01(\x01R\x06locked\x12\x18\n" +
+	"\aprelock\x18\x04 \x01(\x01R\aprelock\"\x8c\x02\n" +
 	"\bPosition\x12\x16\n" +
 	"\x06ticker\x18\x01 \x01(\tR\x06ticker\x12\x12\n" +
-	"\x04size\x18\x02 \x01(\tR\x04size\x12$\n" +
-	"\ventry_price\x18\x03 \x01(\tH\x00R\n" +
+	"\x04size\x18\x02 \x01(\x01R\x04size\x12$\n" +
+	"\ventry_price\x18\x03 \x01(\x01H\x00R\n" +
 	"entryPrice\x88\x01\x01\x12\"\n" +
 	"\n" +
-	"mark_price\x18\x04 \x01(\tH\x01R\tmarkPrice\x88\x01\x01\x12*\n" +
-	"\x0eunrealized_pnl\x18\x05 \x01(\tH\x02R\runrealizedPnl\x88\x01\x01\x12\x1f\n" +
-	"\bleverage\x18\x06 \x01(\tH\x03R\bleverage\x88\x01\x01B\x0e\n" +
+	"mark_price\x18\x04 \x01(\x01H\x01R\tmarkPrice\x88\x01\x01\x12*\n" +
+	"\x0eunrealized_pnl\x18\x05 \x01(\x01H\x02R\runrealizedPnl\x88\x01\x01\x12\x1f\n" +
+	"\bleverage\x18\x06 \x01(\x01H\x03R\bleverage\x88\x01\x01B\x0e\n" +
 	"\f_entry_priceB\r\n" +
 	"\v_mark_priceB\x11\n" +
 	"\x0f_unrealized_pnlB\v\n" +
