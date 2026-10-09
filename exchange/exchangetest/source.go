@@ -39,6 +39,12 @@ type Source struct {
 }
 
 var _ exchange.PublicREST = (*Source)(nil)
+var _ exchange.InProcessUIDSource = (*Source)(nil)
+
+// InProcessUIDs marks Source as a fake venue. The in-process Resolver may allocate
+// UIDs for its listings. Those UIDs are not assigned by SYM and must not leave the
+// process that allocated them.
+func (*Source) InProcessUIDs() {}
 
 // New returns a fake PublicREST for venue. venue is the venue name in a UniversalTicker, such as
 // "Bybit". It must be non-empty: one Source is one venue, matching PublicREST.
