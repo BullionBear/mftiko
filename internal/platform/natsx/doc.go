@@ -1,4 +1,12 @@
-// Package natsx holds NATS helpers: connections, custom inbox prefixes, and user JWT signing for session workers (D30).
+// Package natsx is the core-NATS client for the data plane.
 //
-// Shape only: not implemented yet.
+// NATS carries strategy data only: market data, orders, account events, symbol data (D7, D14). It does
+// not orchestrate processes. This package never enables JetStream, knows no business subject, and has no
+// streaming RPC: Request and Serve are one request and one reply.
+//
+// Publish and Subscribe pass bytes through unchanged. The md.f envelope lives in contract/wire/envelope
+// and is not framed here. Disconnects, reconnects, closes, and asynchronous errors are logged to
+// Options.Logger.
+//
+// Operator and account credentials, and each session's inbox prefix, are not set here (D30).
 package natsx

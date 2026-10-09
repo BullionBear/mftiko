@@ -124,10 +124,10 @@ web-dev: web-install ## Dev server; proxies /api to mftiko-api on :8080
 
 # ---------- database ----------
 
-dev-up: ## Start the local PostgreSQL and etcd (deploy/dev/compose.yaml) and wait until both are healthy
+dev-up: ## Start the local PostgreSQL, etcd and NATS (deploy/dev/compose.yaml) and wait until all are healthy
 	$(COMPOSE) up -d --wait
 
-dev-down: ## Stop the local PostgreSQL and etcd (keeps their volumes)
+dev-down: ## Stop the local PostgreSQL, etcd and NATS (keeps PostgreSQL and etcd volumes)
 	$(COMPOSE) down
 
 migrate-up: build ## Apply every pending migration to DATABASE_URL
