@@ -599,7 +599,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **`price_ccy` 是 price、`price_tick`、權利金的單位。** 現貨與期貨（含 inverse）是 quote。幣本位期權是 base。U 本位期權是 quote（那個穩定幣）。
 - **`settlement_asset` 是損益結算幣，不是保證金幣。** mftik 在這裡語意不一致：Binance 的 listing 填 `marginAsset`，Bitget 直接寫成 quote。這裡不沿用那兩種填法。`unrealized_pnl` 以 `settlement_asset` 計；契約欄位仍是 `settle`。現貨沒有這個欄位。
 - **幣本位／U 本位是推導出來的，只給顯示與分組。** 入庫的合約與期權：`settlement_asset == base` 是幣本位，否則是 U 本位。交易路徑不看這個標籤，只看上面三個欄位。
-- **quanto 一期不支援。** `settlement_asset` 既不是 base 也不是 quote（例如報價 USD、結算 USDC）就不入庫，需求項目 `REJECTED`。不留一列、也不把 `active` 設成 false 來表示它。
+- **quanto 一期不支援。** `settlement_asset` 既不是 base 也不是 quote（例如報價 USD、結算 USDC）就不入庫，需求項目 `REJECTED`。不留一列、也不用非 `TRADABLE` 狀態來表示它。
 
 | 類 | 例子 | contract_value_ccy | price_ccy | settlement_asset | qty |
 |---|---|---|---|---|---|
@@ -611,11 +611,11 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 `Bybit_Perp_BTCUSDC` 與 `Bybit_Perp_BTCUSDT` 是兩個商品。表裡的三個幣是 adapter 填進去的值，不是下游拿類別回推的公式。
 
-- **資產代碼一律大寫，別名只在 SYM 套。** 別名表例如 `XBT` → `BTC`。adapter 傳交易所原生代碼，不自行改名。各 venue 的別名在做 venue integration 時補進 SYM。順序固定：先大寫並套別名，再做 quanto 判斷，再推 ticker。先比再收會把同一個幣看成兩種資產。
+- **資產代碼一律大寫，別名只在 SYM 套。** 別名表例如 `XBT` → `BTC`，放在 `contract/symbol`，各 adapter 共用這一張，不各自留表。adapter 傳交易所原生代碼，不自行改名。各 venue 的別名在做 venue integration 時補進這張表。順序固定：SYM 在 `Validate` 之前先大寫並套別名，再做 quanto 判斷，再推 ticker。交易所拼法留在 `exch_ticker`（Bitmex 的 `XBTUSDT` 入庫為 `Bitmex_Spot_BTCUSDT`）。先比再收會把同一個幣看成兩種資產。
 - **`USD`、`USDC`、`USDT` 是三種資產，別名表不合併。** 報價 USD、結算 USDC 依 quanto 那條，一期不入庫、需求 `REJECTED`。這是刻意的。
 - **strike 先依 `spell_strike` 正規化，再推 ticker。** 整數去掉尾端的小數零，`6400.0` 與 `6400` 是同一個 ticker。有小數的 strike 把小數點寫成 `D`（PROTOCOL §2，`6.4` 是 `6D4`）。
 - **filter。** `price_tick` 用 `price_ccy`。`qty_step`、`min_qty`、`max_qty` 與 qty 同一個單位（`contract_value_ccy`）。
-- **交易狀態，暫定。** `bool active` 會換成 status enum：`PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`EXPIRED`、`DELISTED`、`UNKNOWN`。完整列舉還沒定案，這一票標暫定。交易路徑只接受 `TRADABLE`，其他狀態拒單。之後新增 enum 值不會讓原本不可交易的變成可交易。交易所的原生狀態對不上，記成 `UNKNOWN`，不可交易。各 venue 的原生狀態對照在做 venue integration 時補。enum 定案前，契約維持 `bool active`。
+- **交易狀態，暫定。** 契約用 status enum，不再是 `bool active`：`PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`EXPIRED`、`DELISTED`、`UNKNOWN`，再加上 proto 的零值 `UNSPECIFIED`（非法、不可交易、不入庫）。完整列舉還沒定案，這一票標暫定。交易路徑只接受 `TRADABLE`，其他狀態拒單。之後新增 enum 值不會讓原本不可交易的變成可交易。交易所的原生狀態對不上，記成 `UNKNOWN`，不可交易。各 venue 的原生狀態對照在做 venue integration 時補。活躍表的 CHECK 是 `PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`UNKNOWN`；終結表是 `EXPIRED`、`DELISTED`。
 - **SYM 的 listing 分兩張表，看狀態還會不會變。** 期權與到期合約會讓 ticker 變多，熱路徑不該掃已終結的列。enum 仍是暫定，分表跟著這個暫定的切法。
   - **活躍表：** `PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`UNKNOWN`。狀態還可能變。Resolver 與熱路徑只讀這張表。裡面只有 `TRADABLE` 可以交易。
   - **終結表：** `EXPIRED`、`DELISTED`。一到這裡，狀態就不再變。留給歷史查詢：舊的成交與持倉，以及依 UID 反查。不再刷新，可以歸檔。
@@ -632,7 +632,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   - NATS 的 subject 用人讀的名字，不用 UID。確切拼法還沒定（PROTOCOL §10 P14）。這一版維持 `md.f.{inst}.{topic}.{ticker}`，不改 subject。策略 hook 看 ticker 還是 UID 見 P15。
   - 契約型別是 `uint32`，範圍 `1..4294967295`（`1..2^32-1`），0 非法（PROTOCOL §10 P13）。Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`。E2-03 的 store 照這個範圍抽號，先插入 `symbol_uid`，撞到 unique violation 就換一個再插。`symbol_reject_shared_uid` 仍擋兩張 listing 同時持有同一個 uid；搬表在同一個交易裡先刪活躍列再插入終結列。
 
-- **不採用：** adapter 自行改名，或在 adapter 裡收別名；下游用類別回推三個幣欄；沿用 `reservations.is_linear_margin`，或為 Deribit 開特例；把 `settlement_asset` 當成保證金幣（Binance 的 `marginAsset`、Bitget 寫成 quote）；inverse 的 qty 用張數；quanto 入庫並把 `active` 設成 false；把 `USD`、`USDC`、`USDT` 收成同一個；已終結的列留在熱路徑讀的那張表；搬表時改寫 UniversalTicker 或重發 UID；下架再上市沿用舊 UID；用單調序號或 Postgres sequence（`symbol_uid_seq`）當 UID；重啟或重載時重發 UID；給 selector 一個 UID；系統內部繼續用 ticker 字串當商品身分；NATS subject 用 UID。
+- **不採用：** adapter 自行改名，或在 adapter 裡收別名；下游用類別回推三個幣欄；沿用 `reservations.is_linear_margin`，或為 Deribit 開特例；把 `settlement_asset` 當成保證金幣（Binance 的 `marginAsset`、Bitget 寫成 quote）；inverse 的 qty 用張數；quanto 入庫並用非 `TRADABLE` 狀態表示；把 `USD`、`USDC`、`USDT` 收成同一個；已終結的列留在熱路徑讀的那張表；搬表時改寫 UniversalTicker 或重發 UID；下架再上市沿用舊 UID；用單調序號或 Postgres sequence（`symbol_uid_seq`）當 UID；重啟或重載時重發 UID；給 selector 一個 UID；系統內部繼續用 ticker 字串當商品身分；NATS subject 用 UID。
 
 ### D109 需求過舊時保持現狀
 

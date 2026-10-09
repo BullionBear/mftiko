@@ -30,15 +30,19 @@ type Info struct {
 	ExpiryNs         int64
 	Strike           string // SYM applies spell_strike before the ticker (D203)
 	OptionType       string
-	// Active is tentative (D203): only TRADABLE trades. The enum is PRELISTING,
-	// TRADABLE, HALTED, SETTLING, EXPIRED, DELISTED, UNKNOWN. Non-terminal statuses
-	// stay on the active table the Resolver reads; EXPIRED and DELISTED move to the
-	// terminal table without changing the ticker or the UID. This stays bool until
-	// that enum is final. The store tables are already split (migrations/0002_symbol).
-	Active      bool
+	// Status is the trading state (D203). The set is still provisional. Only
+	// Tradable may trade. Non-terminal statuses stay on the active table the
+	// Resolver reads; Expired and Delisted move to the terminal table without
+	// changing the ticker or the UID. The tables are already split
+	// (migrations/0002_symbol).
+	Status      Status
 	Filters     map[string]string
 	UpdatedAtNs int64
 }
+
+// IsTradable reports whether an order in this instrument may be sent.
+// Only Tradable may trade.
+func (i Info) IsTradable() bool { return i.Status.IsTradable() }
 
 // ValidUID reports whether uid may identify an instrument.
 func ValidUID(uid uint32) bool {

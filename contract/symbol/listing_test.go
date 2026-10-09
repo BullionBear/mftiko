@@ -120,6 +120,9 @@ func TestValidateD203(t *testing.T) {
 		if l.ContractSize == "" {
 			l.ContractSize = "1"
 		}
+		if l.Status == "" {
+			l.Status = symbol.Tradable
+		}
 		return l
 	}
 	for _, tc := range []struct {
@@ -221,14 +224,16 @@ func TestValidateRejects(t *testing.T) {
 	ok := symbol.Listing{
 		Venue: "BinanceUM", Category: symbol.Perp, Base: "BTC", Quote: "USDT",
 		ContractSize: "0.001", ContractValueCcy: "BTC", PriceCcy: "USDT", Settle: "USDT",
+		Status: symbol.Tradable,
 	}
 	if err := ok.Validate(); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
-		name    string
-		l       symbol.Listing
-		wantErr error
+		name       string
+		l          symbol.Listing
+		keepStatus bool
+		wantErr    error
 	}{
 		{
 			name:    "missing contract size",
@@ -272,21 +277,56 @@ func TestValidateRejects(t *testing.T) {
 		},
 		{
 			name:    "unknown category",
-			l:       symbol.Listing{Category: "Swap", Base: "BTC", Quote: "USDT"},
+			l:       symbol.Listing{Category: "Swap", Base: "BTC", Quote: "USDT", Status: symbol.Tradable},
+			wantErr: symbol.ErrInvalidListing,
+		},
+		{
+			name:       "unspecified status",
+			l:          symbol.Listing{Category: symbol.Spot, Base: "BTC", Quote: "USDT"},
+			keepStatus: true,
+			wantErr:    symbol.ErrInvalidListing,
+		},
+		{
+			name:    "status string unspecified",
+			l:       symbol.Listing{Category: symbol.Spot, Base: "BTC", Quote: "USDT", Status: "UNSPECIFIED"},
+			wantErr: symbol.ErrInvalidListing,
+		},
+		{
+			name:    "unknown status",
+			l:       symbol.Listing{Category: symbol.Spot, Base: "BTC", Quote: "USDT", Status: "NOPE"},
 			wantErr: symbol.ErrInvalidListing,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := tc.l.Validate(); !errors.Is(err, tc.wantErr) {
+			l := tc.l
+			if !tc.keepStatus && l.Status == "" {
+				l.Status = symbol.Tradable
+			}
+			if err := l.Validate(); !errors.Is(err, tc.wantErr) {
 				t.Fatalf("err = %v, want %v", err, tc.wantErr)
 			}
 		})
 	}
-	spot := symbol.Listing{Category: symbol.Spot, Base: "BTC", Quote: "USDT"}
+	for _, st := range []symbol.Status{symbol.Expired, symbol.Delisted, symbol.Halted, symbol.Unknown, symbol.Prelisting, symbol.Settling} {
+		l := symbol.Listing{Category: symbol.Spot, Base: "BTC", Quote: "USDT", Status: st}
+		if err := l.Validate(); err != nil {
+			t.Fatalf("%s: %v", st, err)
+		}
+		if l.IsTradable() {
+			t.Fatalf("%s is tradable", st)
+		}
+	}
+	spot := symbol.Listing{Category: symbol.Spot, Base: "BTC", Quote: "USDT", Status: symbol.Tradable}
 	if err := spot.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	cjk := symbol.Listing{Category: symbol.Spot, Base: "龙虾", Quote: "USDT"}
+	if !spot.IsTradable() || !(symbol.Info{Status: symbol.Tradable}).IsTradable() {
+		t.Fatal("TRADABLE is not tradable")
+	}
+	if (*symbol.Listing)(nil).IsTradable() {
+		t.Fatal("nil listing is tradable")
+	}
+	cjk := symbol.Listing{Category: symbol.Spot, Base: "龙虾", Quote: "USDT", Status: symbol.Tradable}
 	if err := cjk.Validate(); err != nil {
 		t.Fatal(err)
 	}

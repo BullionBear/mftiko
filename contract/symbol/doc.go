@@ -44,5 +44,6 @@
 // PROTOCOL §10 P13). Zero is invalid. Postgres stores the column as bigint with
 // CHECK (uid BETWEEN 1 AND 4294967295). ValidUID applies that range. The tables
 // and the allocator are internal/sym; this package does not allocate UIDs.
-// Active stays bool until the status enum is final (D203).
+// Status is the provisional enum (D203): Unspecified is invalid, and only
+// Tradable may trade. The store tables are already split on that enum.
 package symbol

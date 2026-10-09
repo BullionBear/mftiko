@@ -12,32 +12,19 @@ import (
 	"github.com/BullionBear/mftiko/contract/symbol"
 )
 
-// Status is the provisional listing enum (D203). The contract still carries a
-// bool; this is the column the tables check.
-type Status string
+// Status is the listing enum (D203). The contract and the CHECK constraints
+// use these spellings. Unspecified is invalid and is not stored.
+type Status = symbol.Status
 
 const (
-	Prelisting Status = "PRELISTING"
-	Tradable   Status = "TRADABLE"
-	Halted     Status = "HALTED"
-	Settling   Status = "SETTLING"
-	Unknown    Status = "UNKNOWN"
-	Expired    Status = "EXPIRED"
-	Delisted   Status = "DELISTED"
+	Prelisting = symbol.Prelisting
+	Tradable   = symbol.Tradable
+	Halted     = symbol.Halted
+	Settling   = symbol.Settling
+	Unknown    = symbol.Unknown
+	Expired    = symbol.Expired
+	Delisted   = symbol.Delisted
 )
-
-// Active reports whether the status stays on symbol_active.
-func (s Status) Active() bool {
-	switch s {
-	case Prelisting, Tradable, Halted, Settling, Unknown:
-		return true
-	default:
-		return false
-	}
-}
-
-// Terminal reports whether the status belongs on symbol_terminal.
-func (s Status) Terminal() bool { return s == Expired || s == Delisted }
 
 // Filter is one trading restriction. A nil Value means the venue publishes the
 // restriction and sets no bound, which is not the same as omitting the filter.
@@ -148,7 +135,9 @@ func (s *Store) Insert(ctx context.Context, l Listing) (uint32, error) {
 // transaction. The uid and the UniversalTicker do not change. The old active
 // row is deleted in that same transaction, so the uid is never on both tables.
 // status must be EXPIRED or DELISTED. atNs is the terminal row's updated_at_ns
-// and the revision's refreshed_at_ns.
+// and the revision's refreshed_at_ns. Refresh moves many rows and bumps
+// symbol_revision once for the whole (venue, category); it calls moveTx and
+// does not use this per-row bump.
 func (s *Store) Move(ctx context.Context, uid uint32, status Status, atNs int64) error {
 	if !status.Terminal() {
 		return fmt.Errorf("%w: %s is not a terminal status", ErrStatus, status)
@@ -159,32 +148,10 @@ func (s *Store) Move(ctx context.Context, uid uint32, status Status, atNs int64)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	row, err := lockActive(ctx, tx, uid)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ErrNotFound
-	}
-	if err != nil {
-		return fmt.Errorf("sym: move: %w", err)
-	}
-	filters, err := readFilters(ctx, tx, "symbol_filter_active", uid)
-	if err != nil {
-		return fmt.Errorf("sym: move: %w", err)
-	}
-	// Delete before the terminal insert. symbol_reject_shared_uid refuses a uid
-	// that is still on the other table; the registry row stays, so it does not
-	// itself make the move legal. The delete rolls back with the transaction
-	// if the insert fails, so a failed move leaves the active row in place.
-	tag, err := tx.Exec(ctx, `DELETE FROM symbol_active WHERE uid = $1`, uid)
-	if err != nil {
-		return fmt.Errorf("sym: move: %w", err)
-	}
-	if tag.RowsAffected() != 1 {
-		return ErrNotFound
-	}
-	if err := insertListing(ctx, tx, "symbol_terminal", uid, status, row, atNs); err != nil {
-		return fmt.Errorf("sym: move: %w", err)
-	}
-	if err := insertFilters(ctx, tx, "symbol_filter_terminal", uid, filters); err != nil {
+	if err := moveTx(ctx, tx, uid, status, atNs); err != nil {
+		if errors.Is(err, ErrNotFound) || errors.Is(err, ErrStatus) {
+			return err
+		}
 		return fmt.Errorf("sym: move: %w", err)
 	}
 	if err := bumpRevision(ctx, tx, "symbol_terminal", uid, atNs); err != nil {
@@ -194,6 +161,40 @@ func (s *Store) Move(ctx context.Context, uid uint32, status Status, atNs int64)
 		return fmt.Errorf("sym: move: %w", err)
 	}
 	return nil
+}
+
+// moveTx copies one active row and its filters onto the terminal table. It does
+// not commit and does not bump symbol_revision. The caller holds the transaction.
+func moveTx(ctx context.Context, tx pgx.Tx, uid uint32, status Status, atNs int64) error {
+	if !status.Terminal() {
+		return fmt.Errorf("%w: %s is not a terminal status", ErrStatus, status)
+	}
+	row, err := lockActive(ctx, tx, uid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	filters, err := readFilters(ctx, tx, "symbol_filter_active", uid)
+	if err != nil {
+		return err
+	}
+	// Delete before the terminal insert. symbol_reject_shared_uid refuses a uid
+	// that is still on the other table; the registry row stays, so it does not
+	// itself make the move legal. The delete rolls back with the transaction
+	// if the insert fails, so a failed move leaves the active row in place.
+	tag, err := tx.Exec(ctx, `DELETE FROM symbol_active WHERE uid = $1`, uid)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrNotFound
+	}
+	if err := insertListing(ctx, tx, "symbol_terminal", uid, status, row, atNs); err != nil {
+		return err
+	}
+	return insertFilters(ctx, tx, "symbol_filter_terminal", uid, filters)
 }
 
 func (s *Store) insertActive(ctx context.Context, uid uint32, l Listing) error {

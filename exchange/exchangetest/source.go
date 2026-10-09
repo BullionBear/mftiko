@@ -142,8 +142,8 @@ func (s *Source) FailPage(page int, err error) error {
 }
 
 // Listing implements exchange.PublicREST. It returns this venue's instruments in c, sorted by
-// ExchTicker, read in pages of the configured size. Active is not a filter: an inactive instrument
-// is returned as it was stored. If a reached page is set to fail, or ctx is done, Listing returns
+// ExchTicker, read in pages of the configured size. Status is not a filter: the instrument is
+// returned as it was stored, including one that is not tradable. If a reached page is set to fail, or ctx is done, Listing returns
 // that error and no instruments. A done context is reported before the page error. Instruments of
 // other categories are neither included nor affected. The returned listings are copies.
 func (s *Source) Listing(ctx context.Context, c symbol.Category) ([]symbol.Listing, error) {

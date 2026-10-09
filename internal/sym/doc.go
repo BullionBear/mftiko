@@ -5,23 +5,38 @@
 // group; any replica answers. Its lifetime is not tied to any session, because "what is the tick
 // size" must have an answer whether or not anything is trading.
 //
-// Refresh:
+// Refresh (Store.Refresh, Runner):
 //
-//   - One source per (venue, category), from the venue's adapter (exchange PublicREST.Listing). That
+//   - One feed per (venue, category), from the venue's adapter (exchange PublicREST.Listing). That
 //     is the unit a refresh may delist within: a spot refresh never deactivates perp rows.
-//   - Each source is refreshed on its own; one venue being down does not stop the others. Failures
-//     are reported, not raised.
-//   - Every listed instrument is upserted. Rows of that (venue, category) that are missing from the
-//     response become DELISTED. EXPIRED and DELISTED move to the terminal table and are not refreshed
-//     again (D203). The UniversalTicker string and the UID stay the same, so historical rows do
-//     not re-key. The same ticker listed again after delisting gets a new UID.
-//   - Hourly by default, plus on request.
+//   - Each feed is refreshed on its own. Runner waits jitter before the first pass and then
+//     DefaultInterval plus a fresh jitter draw. Trigger runs one venue, or every feed when the
+//     venue is empty. One feed's error does not stop the others. Failures are reported, not raised.
+//   - A listing read that fails, including a page that fails halfway, is discarded before the
+//     transaction starts. No row is delisted and symbol_revision does not change.
+//   - Listings that fail Listing.Validate, or whose ticker or decimals cannot be derived, are not
+//     written. They are logged and counted. When the payload can be tied to an active row of this
+//     same unit, that row is left as it was: a bad payload is not absence.
+//   - The writes are one transaction: upsert every listing that passed the gate, move active rows
+//     this feed did not return, and increment symbol_revision by one when any of that changed.
+//     An unchanged feed does not advance the revision. Insert and Move, the single-row primitives,
+//     each bump on their own; Refresh does not use those bumps.
+//   - A missing active row becomes DELISTED. A Future or Option whose expiry is already past becomes
+//     EXPIRED, including one the venue still returns. EXPIRED and DELISTED move to the terminal
+//     table with their filters and are not updated again (D203). The UniversalTicker string and the
+//     UID stay the same. The same ticker listed again after delisting gets a new UID. A contract
+//     that is still expired is not inserted again.
+//   - The listing's status is stored as given. PRELISTING, TRADABLE, HALTED, SETTLING and UNKNOWN
+//     stay on the active table. EXPIRED and DELISTED move. Changing from one non-terminal status
+//     to another is a content change. Unspecified is invalid and is not written.
+//   - The change notification itself is not sent; its subject is still open (PROTOCOL §10 P7).
+//     The revision row is what a later notification will carry.
 //
 // Storage is PostgreSQL (migrations/0002_symbol). symbol_active holds PRELISTING, TRADABLE,
 // HALTED, SETTLING and UNKNOWN, which the Resolver and hot paths read. symbol_terminal holds
 // EXPIRED and DELISTED, for historical lookup of old fills and positions and for reverse lookup
 // by UID. UID is the primary key of both. Terminal rows can be archived. The status enum is
-// still provisional; the contract field stays bool.
+// still provisional; the contract uses it, and Unspecified is not stored.
 //
 // Insert allocates a UID by drawing from Source (RandomSource in production). It inserts that
 // uid into symbol_uid first and retries when the insert reports a unique violation on the uid.
@@ -39,11 +54,16 @@
 // Only this service writes the tables.
 //
 // It is also the only place that uppercases asset codes and applies the alias table (XBT to BTC,
-// D203): normalize first, then judge quanto, then derive the ticker. Adapters pass native codes.
+// D203): normalize first, then Validate (quanto), then derive the ticker. Adapters pass native
+// codes. The exchange spelling is stored unchanged, so Bitmex XBTUSDT is Bitmex_Spot_BTCUSDT
+// with exch_ticker XBTUSDT.
 // Strikes go through spell_strike before the ticker, so 6400.0 and 6400 are one ticker. USD, USDC
 // and USDT stay distinct. A USD quote settled in USDC is quanto: it is not stored in phase 1, and
 // the demand is REJECTED. Adapters fill contract_value_ccy, price_ccy and the PnL settlement
-// asset from native venue fields; this service does not derive them.
+// asset from native venue fields. Spot may leave the two currency columns empty and still pass
+// Listing.Validate; those columns are NOT NULL, so an empty spot value is stored as base and an
+// empty spot price as quote, which is the spot row of the D203 table. A contract that omits them
+// fails Validate and is not stored. Settle stays NULL on spot.
 //
 // Reads (PROTOCOL §7.3): the Resolver and hot paths read the active table only. One instrument by
 // exact UniversalTicker at spec load (a single row, never a venue table), then by UID; a

@@ -69,6 +69,22 @@ message Reply {
   }
 }
 
+// 交易狀態（D203）。列舉仍暫定。UNSPECIFIED 是 proto 的零值，非法且不可交易。
+// 只有 TRADABLE 可交易。交易所原生狀態對不上時記 UNKNOWN，不可交易。
+// 之後新增的值不會讓原本不可交易的變成可交易。
+// 活躍表：PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN。
+// 終結表：EXPIRED、DELISTED。搬過去時 ticker 與 uid 都不變。
+enum SymbolStatus {
+  SYMBOL_STATUS_UNSPECIFIED = 0;
+  SYMBOL_STATUS_PRELISTING = 1;
+  SYMBOL_STATUS_TRADABLE = 2;
+  SYMBOL_STATUS_HALTED = 3;
+  SYMBOL_STATUS_SETTLING = 4;
+  SYMBOL_STATUS_EXPIRED = 5;
+  SYMBOL_STATUS_DELISTED = 6;
+  SYMBOL_STATUS_UNKNOWN = 7;
+}
+
 message SymbolInfo {
   string universal_ticker = 1; // 給人看的字串。系統內部用 uid（D203）
   string exch_ticker = 2;
@@ -79,7 +95,7 @@ message SymbolInfo {
   int64 expiry_ns = 7; // 0 = does not expire
   optional string strike = 8; // SYM 先依 spell_strike 正規化再推 ticker：6400.0 與 6400 相同（D203）
   string option_type = 9; // C | P | ""
-  bool active = 10; // 暫定（D203）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。定案前契約仍是 bool。表已拆成 symbol_active 與 symbol_terminal
+  SymbolStatus status = 10; // 暫定（D203）。UNSPECIFIED 非法、不可交易。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。列舉仍暫定，契約已用這個 enum。表已拆成 symbol_active 與 symbol_terminal
   // name -> bound. A key with an absent value: the venue publishes the restriction, no bound.
   // price_tick is price_ccy; qty_step, min_qty, max_qty are contract_value_ccy (D203).
   map<string, Bound> filters = 11;

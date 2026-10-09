@@ -23,6 +23,75 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// 交易狀態（D203）。列舉仍暫定。UNSPECIFIED 是 proto 的零值，非法且不可交易。
+// 只有 TRADABLE 可交易。交易所原生狀態對不上時記 UNKNOWN，不可交易。
+// 之後新增的值不會讓原本不可交易的變成可交易。
+// 活躍表：PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN。
+// 終結表：EXPIRED、DELISTED。搬過去時 ticker 與 uid 都不變。
+type SymbolStatus int32
+
+const (
+	SymbolStatus_SYMBOL_STATUS_UNSPECIFIED SymbolStatus = 0
+	SymbolStatus_SYMBOL_STATUS_PRELISTING  SymbolStatus = 1
+	SymbolStatus_SYMBOL_STATUS_TRADABLE    SymbolStatus = 2
+	SymbolStatus_SYMBOL_STATUS_HALTED      SymbolStatus = 3
+	SymbolStatus_SYMBOL_STATUS_SETTLING    SymbolStatus = 4
+	SymbolStatus_SYMBOL_STATUS_EXPIRED     SymbolStatus = 5
+	SymbolStatus_SYMBOL_STATUS_DELISTED    SymbolStatus = 6
+	SymbolStatus_SYMBOL_STATUS_UNKNOWN     SymbolStatus = 7
+)
+
+// Enum value maps for SymbolStatus.
+var (
+	SymbolStatus_name = map[int32]string{
+		0: "SYMBOL_STATUS_UNSPECIFIED",
+		1: "SYMBOL_STATUS_PRELISTING",
+		2: "SYMBOL_STATUS_TRADABLE",
+		3: "SYMBOL_STATUS_HALTED",
+		4: "SYMBOL_STATUS_SETTLING",
+		5: "SYMBOL_STATUS_EXPIRED",
+		6: "SYMBOL_STATUS_DELISTED",
+		7: "SYMBOL_STATUS_UNKNOWN",
+	}
+	SymbolStatus_value = map[string]int32{
+		"SYMBOL_STATUS_UNSPECIFIED": 0,
+		"SYMBOL_STATUS_PRELISTING":  1,
+		"SYMBOL_STATUS_TRADABLE":    2,
+		"SYMBOL_STATUS_HALTED":      3,
+		"SYMBOL_STATUS_SETTLING":    4,
+		"SYMBOL_STATUS_EXPIRED":     5,
+		"SYMBOL_STATUS_DELISTED":    6,
+		"SYMBOL_STATUS_UNKNOWN":     7,
+	}
+)
+
+func (x SymbolStatus) Enum() *SymbolStatus {
+	p := new(SymbolStatus)
+	*p = x
+	return p
+}
+
+func (x SymbolStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SymbolStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_mftiko_sym_v1_sym_proto_enumTypes[0].Descriptor()
+}
+
+func (SymbolStatus) Type() protoreflect.EnumType {
+	return &file_mftiko_sym_v1_sym_proto_enumTypes[0]
+}
+
+func (x SymbolStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SymbolStatus.Descriptor instead.
+func (SymbolStatus) EnumDescriptor() ([]byte, []int) {
+	return file_mftiko_sym_v1_sym_proto_rawDescGZIP(), []int{0}
+}
+
 type Request struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Req:
@@ -575,7 +644,7 @@ type SymbolInfo struct {
 	ExpiryNs        int64                  `protobuf:"varint,7,opt,name=expiry_ns,json=expiryNs,proto3" json:"expiry_ns,omitempty"`                  // 0 = does not expire
 	Strike          *string                `protobuf:"bytes,8,opt,name=strike,proto3,oneof" json:"strike,omitempty"`                                 // SYM 先依 spell_strike 正規化再推 ticker：6400.0 與 6400 相同（D203）
 	OptionType      string                 `protobuf:"bytes,9,opt,name=option_type,json=optionType,proto3" json:"option_type,omitempty"`             // C | P | ""
-	Active          bool                   `protobuf:"varint,10,opt,name=active,proto3" json:"active,omitempty"`                                     // 暫定（D203）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。定案前契約仍是 bool。表已拆成 symbol_active 與 symbol_terminal
+	Status          SymbolStatus           `protobuf:"varint,10,opt,name=status,proto3,enum=mftiko.sym.v1.SymbolStatus" json:"status,omitempty"`     // 暫定（D203）。UNSPECIFIED 非法、不可交易。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。列舉仍暫定，契約已用這個 enum。表已拆成 symbol_active 與 symbol_terminal
 	// name -> bound. A key with an absent value: the venue publishes the restriction, no bound.
 	// price_tick is price_ccy; qty_step, min_qty, max_qty are contract_value_ccy (D203).
 	Filters     map[string]*Bound `protobuf:"bytes,11,rep,name=filters,proto3" json:"filters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -683,11 +752,11 @@ func (x *SymbolInfo) GetOptionType() string {
 	return ""
 }
 
-func (x *SymbolInfo) GetActive() bool {
+func (x *SymbolInfo) GetStatus() SymbolStatus {
 	if x != nil {
-		return x.Active
+		return x.Status
 	}
-	return false
+	return SymbolStatus_SYMBOL_STATUS_UNSPECIFIED
 }
 
 func (x *SymbolInfo) GetFilters() map[string]*Bound {
@@ -907,7 +976,7 @@ const file_mftiko_sym_v1_sym_proto_rawDesc = "" +
 	" \x01(\v2\x19.mftiko.sym.v1.SymbolInfoH\x00R\x04info\x12/\n" +
 	"\x04list\x18\v \x01(\v2\x19.mftiko.sym.v1.SymbolListH\x00R\x04list\x128\n" +
 	"\arefresh\x18\f \x01(\v2\x1c.mftiko.sym.v1.RefreshResultH\x00R\arefreshB\b\n" +
-	"\x06result\"\xae\x04\n" +
+	"\x06result\"\xcb\x04\n" +
 	"\n" +
 	"SymbolInfo\x12)\n" +
 	"\x10universal_ticker\x18\x01 \x01(\tR\x0funiversalTicker\x12\x1f\n" +
@@ -920,9 +989,9 @@ const file_mftiko_sym_v1_sym_proto_rawDesc = "" +
 	"\texpiry_ns\x18\a \x01(\x03R\bexpiryNs\x12\x1b\n" +
 	"\x06strike\x18\b \x01(\tH\x02R\x06strike\x88\x01\x01\x12\x1f\n" +
 	"\voption_type\x18\t \x01(\tR\n" +
-	"optionType\x12\x16\n" +
-	"\x06active\x18\n" +
-	" \x01(\bR\x06active\x12@\n" +
+	"optionType\x123\n" +
+	"\x06status\x18\n" +
+	" \x01(\x0e2\x1b.mftiko.sym.v1.SymbolStatusR\x06status\x12@\n" +
 	"\afilters\x18\v \x03(\v2&.mftiko.sym.v1.SymbolInfo.FiltersEntryR\afilters\x12\"\n" +
 	"\rupdated_at_ns\x18\f \x01(\x03R\vupdatedAtNs\x12\x10\n" +
 	"\x03uid\x18\r \x01(\rR\x03uid\x1aP\n" +
@@ -951,7 +1020,16 @@ const file_mftiko_sym_v1_sym_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\rR\x05value:\x028\x01\x1a9\n" +
 	"\vFailedEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B@Z>github.com/BullionBear/mftiko/contract/gen/mftiko/sym/v1;symv1b\x06proto3"
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\xef\x01\n" +
+	"\fSymbolStatus\x12\x1d\n" +
+	"\x19SYMBOL_STATUS_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18SYMBOL_STATUS_PRELISTING\x10\x01\x12\x1a\n" +
+	"\x16SYMBOL_STATUS_TRADABLE\x10\x02\x12\x18\n" +
+	"\x14SYMBOL_STATUS_HALTED\x10\x03\x12\x1a\n" +
+	"\x16SYMBOL_STATUS_SETTLING\x10\x04\x12\x19\n" +
+	"\x15SYMBOL_STATUS_EXPIRED\x10\x05\x12\x1a\n" +
+	"\x16SYMBOL_STATUS_DELISTED\x10\x06\x12\x19\n" +
+	"\x15SYMBOL_STATUS_UNKNOWN\x10\aB@Z>github.com/BullionBear/mftiko/contract/gen/mftiko/sym/v1;symv1b\x06proto3"
 
 var (
 	file_mftiko_sym_v1_sym_proto_rawDescOnce sync.Once
@@ -965,44 +1043,47 @@ func file_mftiko_sym_v1_sym_proto_rawDescGZIP() []byte {
 	return file_mftiko_sym_v1_sym_proto_rawDescData
 }
 
+var file_mftiko_sym_v1_sym_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_mftiko_sym_v1_sym_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_mftiko_sym_v1_sym_proto_goTypes = []any{
-	(*Request)(nil),         // 0: mftiko.sym.v1.Request
-	(*GetRequest)(nil),      // 1: mftiko.sym.v1.GetRequest
-	(*GetByUidRequest)(nil), // 2: mftiko.sym.v1.GetByUidRequest
-	(*ListRequest)(nil),     // 3: mftiko.sym.v1.ListRequest
-	(*ReverseRequest)(nil),  // 4: mftiko.sym.v1.ReverseRequest
-	(*RefreshRequest)(nil),  // 5: mftiko.sym.v1.RefreshRequest
-	(*Reply)(nil),           // 6: mftiko.sym.v1.Reply
-	(*SymbolInfo)(nil),      // 7: mftiko.sym.v1.SymbolInfo
-	(*Bound)(nil),           // 8: mftiko.sym.v1.Bound
-	(*SymbolList)(nil),      // 9: mftiko.sym.v1.SymbolList
-	(*RefreshResult)(nil),   // 10: mftiko.sym.v1.RefreshResult
-	nil,                     // 11: mftiko.sym.v1.SymbolInfo.FiltersEntry
-	nil,                     // 12: mftiko.sym.v1.RefreshResult.RefreshedEntry
-	nil,                     // 13: mftiko.sym.v1.RefreshResult.DeactivatedEntry
-	nil,                     // 14: mftiko.sym.v1.RefreshResult.FailedEntry
+	(SymbolStatus)(0),       // 0: mftiko.sym.v1.SymbolStatus
+	(*Request)(nil),         // 1: mftiko.sym.v1.Request
+	(*GetRequest)(nil),      // 2: mftiko.sym.v1.GetRequest
+	(*GetByUidRequest)(nil), // 3: mftiko.sym.v1.GetByUidRequest
+	(*ListRequest)(nil),     // 4: mftiko.sym.v1.ListRequest
+	(*ReverseRequest)(nil),  // 5: mftiko.sym.v1.ReverseRequest
+	(*RefreshRequest)(nil),  // 6: mftiko.sym.v1.RefreshRequest
+	(*Reply)(nil),           // 7: mftiko.sym.v1.Reply
+	(*SymbolInfo)(nil),      // 8: mftiko.sym.v1.SymbolInfo
+	(*Bound)(nil),           // 9: mftiko.sym.v1.Bound
+	(*SymbolList)(nil),      // 10: mftiko.sym.v1.SymbolList
+	(*RefreshResult)(nil),   // 11: mftiko.sym.v1.RefreshResult
+	nil,                     // 12: mftiko.sym.v1.SymbolInfo.FiltersEntry
+	nil,                     // 13: mftiko.sym.v1.RefreshResult.RefreshedEntry
+	nil,                     // 14: mftiko.sym.v1.RefreshResult.DeactivatedEntry
+	nil,                     // 15: mftiko.sym.v1.RefreshResult.FailedEntry
 }
 var file_mftiko_sym_v1_sym_proto_depIdxs = []int32{
-	1,  // 0: mftiko.sym.v1.Request.get:type_name -> mftiko.sym.v1.GetRequest
-	3,  // 1: mftiko.sym.v1.Request.list:type_name -> mftiko.sym.v1.ListRequest
-	4,  // 2: mftiko.sym.v1.Request.reverse:type_name -> mftiko.sym.v1.ReverseRequest
-	5,  // 3: mftiko.sym.v1.Request.refresh:type_name -> mftiko.sym.v1.RefreshRequest
-	2,  // 4: mftiko.sym.v1.Request.get_by_uid:type_name -> mftiko.sym.v1.GetByUidRequest
-	7,  // 5: mftiko.sym.v1.Reply.info:type_name -> mftiko.sym.v1.SymbolInfo
-	9,  // 6: mftiko.sym.v1.Reply.list:type_name -> mftiko.sym.v1.SymbolList
-	10, // 7: mftiko.sym.v1.Reply.refresh:type_name -> mftiko.sym.v1.RefreshResult
-	11, // 8: mftiko.sym.v1.SymbolInfo.filters:type_name -> mftiko.sym.v1.SymbolInfo.FiltersEntry
-	7,  // 9: mftiko.sym.v1.SymbolList.symbols:type_name -> mftiko.sym.v1.SymbolInfo
-	12, // 10: mftiko.sym.v1.RefreshResult.refreshed:type_name -> mftiko.sym.v1.RefreshResult.RefreshedEntry
-	13, // 11: mftiko.sym.v1.RefreshResult.deactivated:type_name -> mftiko.sym.v1.RefreshResult.DeactivatedEntry
-	14, // 12: mftiko.sym.v1.RefreshResult.failed:type_name -> mftiko.sym.v1.RefreshResult.FailedEntry
-	8,  // 13: mftiko.sym.v1.SymbolInfo.FiltersEntry.value:type_name -> mftiko.sym.v1.Bound
-	14, // [14:14] is the sub-list for method output_type
-	14, // [14:14] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	2,  // 0: mftiko.sym.v1.Request.get:type_name -> mftiko.sym.v1.GetRequest
+	4,  // 1: mftiko.sym.v1.Request.list:type_name -> mftiko.sym.v1.ListRequest
+	5,  // 2: mftiko.sym.v1.Request.reverse:type_name -> mftiko.sym.v1.ReverseRequest
+	6,  // 3: mftiko.sym.v1.Request.refresh:type_name -> mftiko.sym.v1.RefreshRequest
+	3,  // 4: mftiko.sym.v1.Request.get_by_uid:type_name -> mftiko.sym.v1.GetByUidRequest
+	8,  // 5: mftiko.sym.v1.Reply.info:type_name -> mftiko.sym.v1.SymbolInfo
+	10, // 6: mftiko.sym.v1.Reply.list:type_name -> mftiko.sym.v1.SymbolList
+	11, // 7: mftiko.sym.v1.Reply.refresh:type_name -> mftiko.sym.v1.RefreshResult
+	0,  // 8: mftiko.sym.v1.SymbolInfo.status:type_name -> mftiko.sym.v1.SymbolStatus
+	12, // 9: mftiko.sym.v1.SymbolInfo.filters:type_name -> mftiko.sym.v1.SymbolInfo.FiltersEntry
+	8,  // 10: mftiko.sym.v1.SymbolList.symbols:type_name -> mftiko.sym.v1.SymbolInfo
+	13, // 11: mftiko.sym.v1.RefreshResult.refreshed:type_name -> mftiko.sym.v1.RefreshResult.RefreshedEntry
+	14, // 12: mftiko.sym.v1.RefreshResult.deactivated:type_name -> mftiko.sym.v1.RefreshResult.DeactivatedEntry
+	15, // 13: mftiko.sym.v1.RefreshResult.failed:type_name -> mftiko.sym.v1.RefreshResult.FailedEntry
+	9,  // 14: mftiko.sym.v1.SymbolInfo.FiltersEntry.value:type_name -> mftiko.sym.v1.Bound
+	15, // [15:15] is the sub-list for method output_type
+	15, // [15:15] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_mftiko_sym_v1_sym_proto_init() }
@@ -1029,13 +1110,14 @@ func file_mftiko_sym_v1_sym_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mftiko_sym_v1_sym_proto_rawDesc), len(file_mftiko_sym_v1_sym_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_mftiko_sym_v1_sym_proto_goTypes,
 		DependencyIndexes: file_mftiko_sym_v1_sym_proto_depIdxs,
+		EnumInfos:         file_mftiko_sym_v1_sym_proto_enumTypes,
 		MessageInfos:      file_mftiko_sym_v1_sym_proto_msgTypes,
 	}.Build()
 	File_mftiko_sym_v1_sym_proto = out.File

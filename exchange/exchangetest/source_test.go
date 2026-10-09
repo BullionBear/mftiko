@@ -33,7 +33,7 @@ func inst(cat symbol.Category, base, ticker string) symbol.Listing {
 		ExchTicker:   ticker,
 		ContractSize: "1",
 		Settle:       "USDT",
-		Active:       true,
+		Status:       symbol.Tradable,
 		Filters:      map[string]string{symbol.PriceTick: "0.1", symbol.QtyStep: "0.001"},
 	}
 }
@@ -135,14 +135,14 @@ func TestAddRemoveModify(t *testing.T) {
 			add:  []symbol.Listing{btcPerp, ethPerp},
 			modify: []symbol.Listing{{
 				Venue: "Bybit", Category: symbol.Perp, Base: "BTC", Quote: "USDT",
-				ExchTicker: "BTCUSDT", ContractSize: "0.01", Settle: "USDC", Active: false,
+				ExchTicker: "BTCUSDT", ContractSize: "0.01", Settle: "USDC", Status: symbol.Halted,
 				Filters: map[string]string{symbol.MinQty: "1"},
 			}},
 			wantCat: symbol.Perp,
 			want: []symbol.Listing{
 				{
 					Venue: "Bybit", Category: symbol.Perp, Base: "BTC", Quote: "USDT",
-					ExchTicker: "BTCUSDT", ContractSize: "0.01", Settle: "USDC", Active: false,
+					ExchTicker: "BTCUSDT", ContractSize: "0.01", Settle: "USDC", Status: symbol.Halted,
 					Filters: map[string]string{symbol.MinQty: "1"},
 				},
 				ethPerp,
@@ -234,7 +234,7 @@ func TestAddFillsVenueAndCopies(t *testing.T) {
 		t.Fatal(err)
 	}
 	l.Venue = "Okx"
-	l.Active = false
+	l.Status = symbol.Halted
 	l.Filters[symbol.PriceTick] = "mutated"
 	l.Filters["extra"] = "1"
 
@@ -242,22 +242,22 @@ func TestAddFillsVenueAndCopies(t *testing.T) {
 	want := inst(symbol.Perp, "BTC", "BTCUSDT")
 	equalList(t, got, []symbol.Listing{want})
 
-	got[0].Active = false
+	got[0].Status = symbol.Halted
 	got[0].Filters[symbol.PriceTick] = "also"
 	equalList(t, listed(t, s, symbol.Perp), []symbol.Listing{want})
 
 	// Modify stores a copy too: mutating the argument afterwards does not stick.
 	changed := want
-	changed.Active = false
+	changed.Status = symbol.Halted
 	changed.Filters = map[string]string{symbol.MinQty: "1"}
 	if err := s.Modify(changed); err != nil {
 		t.Fatal(err)
 	}
-	changed.Active = true
+	changed.Status = symbol.Tradable
 	changed.Filters[symbol.MinQty] = "mutated"
 	equalList(t, listed(t, s, symbol.Perp), []symbol.Listing{{
 		Venue: "Bybit", Category: symbol.Perp, Base: "BTC", Quote: "USDT",
-		ExchTicker: "BTCUSDT", ContractSize: "1", Settle: "USDT", Active: false,
+		ExchTicker: "BTCUSDT", ContractSize: "1", Settle: "USDT", Status: symbol.Halted,
 		Filters: map[string]string{symbol.MinQty: "1"},
 	}})
 }
@@ -543,7 +543,7 @@ func TestConcurrentUse(t *testing.T) {
 			if _, err := s.Listing(context.Background(), symbol.Perp); err != nil {
 				t.Error(err)
 			}
-			l.Active = false
+			l.Status = symbol.Halted
 			if err := s.Modify(l); err != nil {
 				t.Error(err)
 				return

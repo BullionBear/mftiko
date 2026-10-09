@@ -4,15 +4,15 @@
 // @generated from file mftiko/sym/v1/sym.proto (package mftiko.sym.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
+import { enumDesc, fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file mftiko/sym/v1/sym.proto.
  */
 export const file_mftiko_sym_v1_sym: GenFile = /*@__PURE__*/
-  fileDesc("ChdtZnRpa28vc3ltL3YxL3N5bS5wcm90bxINbWZ0aWtvLnN5bS52MSKAAgoHUmVxdWVzdBIoCgNnZXQYASABKAsyGS5tZnRpa28uc3ltLnYxLkdldFJlcXVlc3RIABIqCgRsaXN0GAIgASgLMhoubWZ0aWtvLnN5bS52MS5MaXN0UmVxdWVzdEgAEjAKB3JldmVyc2UYAyABKAsyHS5tZnRpa28uc3ltLnYxLlJldmVyc2VSZXF1ZXN0SAASMAoHcmVmcmVzaBgEIAEoCzIdLm1mdGlrby5zeW0udjEuUmVmcmVzaFJlcXVlc3RIABI0CgpnZXRfYnlfdWlkGAUgASgLMh4ubWZ0aWtvLnN5bS52MS5HZXRCeVVpZFJlcXVlc3RIAEIFCgNyZXEiQAoKR2V0UmVxdWVzdBIYChB1bml2ZXJzYWxfdGlja2VyGAEgASgJEhgKEGluY2x1ZGVfaW5hY3RpdmUYAiABKAgiOAoPR2V0QnlVaWRSZXF1ZXN0EgsKA3VpZBgBIAEoDRIYChBpbmNsdWRlX2luYWN0aXZlGAIgASgIImcKC0xpc3RSZXF1ZXN0Eg0KBXZlbnVlGAEgASgJEhAKCGNhdGVnb3J5GAIgASgJEg0KBWxpbWl0GAMgASgNEg4KBm9mZnNldBgEIAEoDRIYChBpbmNsdWRlX2luYWN0aXZlGAUgASgIIkYKDlJldmVyc2VSZXF1ZXN0Eg0KBXZlbnVlGAEgASgJEhAKCGNhdGVnb3J5GAIgASgJEhMKC2V4Y2hfdGlja2VyGAMgASgJIh8KDlJlZnJlc2hSZXF1ZXN0Eg0KBXZlbnVlGAEgASgJIrcBCgVSZXBseRINCgVlcnJvchgBIAEoCRIOCgZyZWFzb24YAiABKAkSKQoEaW5mbxgKIAEoCzIZLm1mdGlrby5zeW0udjEuU3ltYm9sSW5mb0gAEikKBGxpc3QYCyABKAsyGS5tZnRpa28uc3ltLnYxLlN5bWJvbExpc3RIABIvCgdyZWZyZXNoGAwgASgLMhwubWZ0aWtvLnN5bS52MS5SZWZyZXNoUmVzdWx0SABCCAoGcmVzdWx0IqEDCgpTeW1ib2xJbmZvEhgKEHVuaXZlcnNhbF90aWNrZXIYASABKAkSEwoLZXhjaF90aWNrZXIYAiABKAkSDAoEYmFzZRgDIAEoCRINCgVxdW90ZRgEIAEoCRIaCg1jb250cmFjdF9zaXplGAUgASgJSACIAQESEwoGc2V0dGxlGAYgASgJSAGIAQESEQoJZXhwaXJ5X25zGAcgASgDEhMKBnN0cmlrZRgIIAEoCUgCiAEBEhMKC29wdGlvbl90eXBlGAkgASgJEg4KBmFjdGl2ZRgKIAEoCBI3CgdmaWx0ZXJzGAsgAygLMiYubWZ0aWtvLnN5bS52MS5TeW1ib2xJbmZvLkZpbHRlcnNFbnRyeRIVCg11cGRhdGVkX2F0X25zGAwgASgDEgsKA3VpZBgNIAEoDRpECgxGaWx0ZXJzRW50cnkSCwoDa2V5GAEgASgJEiMKBXZhbHVlGAIgASgLMhQubWZ0aWtvLnN5bS52MS5Cb3VuZDoCOAFCEAoOX2NvbnRyYWN0X3NpemVCCQoHX3NldHRsZUIJCgdfc3RyaWtlIiUKBUJvdW5kEhIKBXZhbHVlGAEgASgJSACIAQFCCAoGX3ZhbHVlIkcKClN5bWJvbExpc3QSKgoHc3ltYm9scxgBIAMoCzIZLm1mdGlrby5zeW0udjEuU3ltYm9sSW5mbxINCgV0b3RhbBgCIAEoDSLiAgoNUmVmcmVzaFJlc3VsdBI+CglyZWZyZXNoZWQYASADKAsyKy5tZnRpa28uc3ltLnYxLlJlZnJlc2hSZXN1bHQuUmVmcmVzaGVkRW50cnkSQgoLZGVhY3RpdmF0ZWQYAiADKAsyLS5tZnRpa28uc3ltLnYxLlJlZnJlc2hSZXN1bHQuRGVhY3RpdmF0ZWRFbnRyeRI4CgZmYWlsZWQYAyADKAsyKC5tZnRpa28uc3ltLnYxLlJlZnJlc2hSZXN1bHQuRmFpbGVkRW50cnkaMAoOUmVmcmVzaGVkRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgNOgI4ARoyChBEZWFjdGl2YXRlZEVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoDToCOAEaLQoLRmFpbGVkRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4AUJAWj5naXRodWIuY29tL0J1bGxpb25CZWFyL21mdGlrby9jb250cmFjdC9nZW4vbWZ0aWtvL3N5bS92MTtzeW12MWIGcHJvdG8z");
+  fileDesc("ChdtZnRpa28vc3ltL3YxL3N5bS5wcm90bxINbWZ0aWtvLnN5bS52MSKAAgoHUmVxdWVzdBIoCgNnZXQYASABKAsyGS5tZnRpa28uc3ltLnYxLkdldFJlcXVlc3RIABIqCgRsaXN0GAIgASgLMhoubWZ0aWtvLnN5bS52MS5MaXN0UmVxdWVzdEgAEjAKB3JldmVyc2UYAyABKAsyHS5tZnRpa28uc3ltLnYxLlJldmVyc2VSZXF1ZXN0SAASMAoHcmVmcmVzaBgEIAEoCzIdLm1mdGlrby5zeW0udjEuUmVmcmVzaFJlcXVlc3RIABI0CgpnZXRfYnlfdWlkGAUgASgLMh4ubWZ0aWtvLnN5bS52MS5HZXRCeVVpZFJlcXVlc3RIAEIFCgNyZXEiQAoKR2V0UmVxdWVzdBIYChB1bml2ZXJzYWxfdGlja2VyGAEgASgJEhgKEGluY2x1ZGVfaW5hY3RpdmUYAiABKAgiOAoPR2V0QnlVaWRSZXF1ZXN0EgsKA3VpZBgBIAEoDRIYChBpbmNsdWRlX2luYWN0aXZlGAIgASgIImcKC0xpc3RSZXF1ZXN0Eg0KBXZlbnVlGAEgASgJEhAKCGNhdGVnb3J5GAIgASgJEg0KBWxpbWl0GAMgASgNEg4KBm9mZnNldBgEIAEoDRIYChBpbmNsdWRlX2luYWN0aXZlGAUgASgIIkYKDlJldmVyc2VSZXF1ZXN0Eg0KBXZlbnVlGAEgASgJEhAKCGNhdGVnb3J5GAIgASgJEhMKC2V4Y2hfdGlja2VyGAMgASgJIh8KDlJlZnJlc2hSZXF1ZXN0Eg0KBXZlbnVlGAEgASgJIrcBCgVSZXBseRINCgVlcnJvchgBIAEoCRIOCgZyZWFzb24YAiABKAkSKQoEaW5mbxgKIAEoCzIZLm1mdGlrby5zeW0udjEuU3ltYm9sSW5mb0gAEikKBGxpc3QYCyABKAsyGS5tZnRpa28uc3ltLnYxLlN5bWJvbExpc3RIABIvCgdyZWZyZXNoGAwgASgLMhwubWZ0aWtvLnN5bS52MS5SZWZyZXNoUmVzdWx0SABCCAoGcmVzdWx0Ir4DCgpTeW1ib2xJbmZvEhgKEHVuaXZlcnNhbF90aWNrZXIYASABKAkSEwoLZXhjaF90aWNrZXIYAiABKAkSDAoEYmFzZRgDIAEoCRINCgVxdW90ZRgEIAEoCRIaCg1jb250cmFjdF9zaXplGAUgASgJSACIAQESEwoGc2V0dGxlGAYgASgJSAGIAQESEQoJZXhwaXJ5X25zGAcgASgDEhMKBnN0cmlrZRgIIAEoCUgCiAEBEhMKC29wdGlvbl90eXBlGAkgASgJEisKBnN0YXR1cxgKIAEoDjIbLm1mdGlrby5zeW0udjEuU3ltYm9sU3RhdHVzEjcKB2ZpbHRlcnMYCyADKAsyJi5tZnRpa28uc3ltLnYxLlN5bWJvbEluZm8uRmlsdGVyc0VudHJ5EhUKDXVwZGF0ZWRfYXRfbnMYDCABKAMSCwoDdWlkGA0gASgNGkQKDEZpbHRlcnNFbnRyeRILCgNrZXkYASABKAkSIwoFdmFsdWUYAiABKAsyFC5tZnRpa28uc3ltLnYxLkJvdW5kOgI4AUIQCg5fY29udHJhY3Rfc2l6ZUIJCgdfc2V0dGxlQgkKB19zdHJpa2UiJQoFQm91bmQSEgoFdmFsdWUYASABKAlIAIgBAUIICgZfdmFsdWUiRwoKU3ltYm9sTGlzdBIqCgdzeW1ib2xzGAEgAygLMhkubWZ0aWtvLnN5bS52MS5TeW1ib2xJbmZvEg0KBXRvdGFsGAIgASgNIuICCg1SZWZyZXNoUmVzdWx0Ej4KCXJlZnJlc2hlZBgBIAMoCzIrLm1mdGlrby5zeW0udjEuUmVmcmVzaFJlc3VsdC5SZWZyZXNoZWRFbnRyeRJCCgtkZWFjdGl2YXRlZBgCIAMoCzItLm1mdGlrby5zeW0udjEuUmVmcmVzaFJlc3VsdC5EZWFjdGl2YXRlZEVudHJ5EjgKBmZhaWxlZBgDIAMoCzIoLm1mdGlrby5zeW0udjEuUmVmcmVzaFJlc3VsdC5GYWlsZWRFbnRyeRowCg5SZWZyZXNoZWRFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKA06AjgBGjIKEERlYWN0aXZhdGVkRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgNOgI4ARotCgtGYWlsZWRFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBKu8BCgxTeW1ib2xTdGF0dXMSHQoZU1lNQk9MX1NUQVRVU19VTlNQRUNJRklFRBAAEhwKGFNZTUJPTF9TVEFUVVNfUFJFTElTVElORxABEhoKFlNZTUJPTF9TVEFUVVNfVFJBREFCTEUQAhIYChRTWU1CT0xfU1RBVFVTX0hBTFRFRBADEhoKFlNZTUJPTF9TVEFUVVNfU0VUVExJTkcQBBIZChVTWU1CT0xfU1RBVFVTX0VYUElSRUQQBRIaChZTWU1CT0xfU1RBVFVTX0RFTElTVEVEEAYSGQoVU1lNQk9MX1NUQVRVU19VTktOT1dOEAdCQFo+Z2l0aHViLmNvbS9CdWxsaW9uQmVhci9tZnRpa28vY29udHJhY3QvZ2VuL21mdGlrby9zeW0vdjE7c3ltdjFiBnByb3RvMw");
 
 /**
  * @generated from message mftiko.sym.v1.Request
@@ -326,11 +326,11 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
   optionType: string;
 
   /**
-   * 暫定（D203）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。定案前契約仍是 bool。表已拆成 symbol_active 與 symbol_terminal
+   * 暫定（D203）。UNSPECIFIED 非法、不可交易。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。列舉仍暫定，契約已用這個 enum。表已拆成 symbol_active 與 symbol_terminal
    *
-   * @generated from field: bool active = 10;
+   * @generated from field: mftiko.sym.v1.SymbolStatus status = 10;
    */
-  active: boolean;
+  status: SymbolStatus;
 
   /**
    * name -> bound. A key with an absent value: the venue publishes the restriction, no bound.
@@ -435,4 +435,61 @@ export type RefreshResult = Message<"mftiko.sym.v1.RefreshResult"> & {
  */
 export const RefreshResultSchema: GenMessage<RefreshResult> = /*@__PURE__*/
   messageDesc(file_mftiko_sym_v1_sym, 10);
+
+/**
+ * 交易狀態（D203）。列舉仍暫定。UNSPECIFIED 是 proto 的零值，非法且不可交易。
+ * 只有 TRADABLE 可交易。交易所原生狀態對不上時記 UNKNOWN，不可交易。
+ * 之後新增的值不會讓原本不可交易的變成可交易。
+ * 活躍表：PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN。
+ * 終結表：EXPIRED、DELISTED。搬過去時 ticker 與 uid 都不變。
+ *
+ * @generated from enum mftiko.sym.v1.SymbolStatus
+ */
+export enum SymbolStatus {
+  /**
+   * @generated from enum value: SYMBOL_STATUS_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: SYMBOL_STATUS_PRELISTING = 1;
+   */
+  PRELISTING = 1,
+
+  /**
+   * @generated from enum value: SYMBOL_STATUS_TRADABLE = 2;
+   */
+  TRADABLE = 2,
+
+  /**
+   * @generated from enum value: SYMBOL_STATUS_HALTED = 3;
+   */
+  HALTED = 3,
+
+  /**
+   * @generated from enum value: SYMBOL_STATUS_SETTLING = 4;
+   */
+  SETTLING = 4,
+
+  /**
+   * @generated from enum value: SYMBOL_STATUS_EXPIRED = 5;
+   */
+  EXPIRED = 5,
+
+  /**
+   * @generated from enum value: SYMBOL_STATUS_DELISTED = 6;
+   */
+  DELISTED = 6,
+
+  /**
+   * @generated from enum value: SYMBOL_STATUS_UNKNOWN = 7;
+   */
+  UNKNOWN = 7,
+}
+
+/**
+ * Describes the enum mftiko.sym.v1.SymbolStatus.
+ */
+export const SymbolStatusSchema: GenEnum<SymbolStatus> = /*@__PURE__*/
+  enumDesc(file_mftiko_sym_v1_sym, 0);
 

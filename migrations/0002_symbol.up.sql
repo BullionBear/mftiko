@@ -37,8 +37,9 @@
 -- symbol_revision is the per-(venue, category) counter change notifications compare (PROTOCOL §10 P7).
 -- The subject and the message are still open; this table is only the counter.
 --
--- The status enum is still provisional. It is TEXT plus a CHECK, not a Postgres enum, so adding a
--- value is a change to the check. The contract stays bool active until the enum is final.
+-- The status enum is still provisional as a set. It is TEXT plus a CHECK, not a Postgres enum,
+-- so adding a value is a change to the check. The contract uses this enum. UNSPECIFIED is not a
+-- stored value. Only TRADABLE may trade.
 --
 -- Conventions as in 0001: times are *_ns BIGINT, decimals NUMERIC, venue identifiers TEXT.
 

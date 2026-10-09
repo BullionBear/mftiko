@@ -32,15 +32,15 @@ func TestLoadFixture(t *testing.T) {
 		{
 			name: "two categories",
 			json: `[
-				{"Venue":"Bybit","Category":"Perp","Base":"BTC","Quote":"USDT","ExchTicker":"BTCUSDT","ContractSize":"1","Settle":"USDT","Active":true,"Filters":{"price_tick":"0.1","qty_step":"0.001"}},
-				{"Venue":"Bybit","Category":"Spot","Base":"BTC","Quote":"USDT","ExchTicker":"BTCUSDT","ContractSize":"1","Settle":"USDT","Active":true,"Filters":{"price_tick":"0.1","qty_step":"0.001"}}
+				{"Venue":"Bybit","Category":"Perp","Base":"BTC","Quote":"USDT","ExchTicker":"BTCUSDT","ContractSize":"1","Settle":"USDT","Status":"TRADABLE","Filters":{"price_tick":"0.1","qty_step":"0.001"}},
+				{"Venue":"Bybit","Category":"Spot","Base":"BTC","Quote":"USDT","ExchTicker":"BTCUSDT","ContractSize":"1","Settle":"USDT","Status":"TRADABLE","Filters":{"price_tick":"0.1","qty_step":"0.001"}}
 			]`,
 			want: []symbol.Listing{btc},
 			spot: []symbol.Listing{spot},
 		},
 		{
 			name: "omitted venue is the source venue",
-			json: `[{"Category":"Perp","Base":"ETH","Quote":"USDT","ExchTicker":"ETHUSDT","ContractSize":"1","Settle":"USDT","Active":true,"Filters":{"price_tick":"0.1","qty_step":"0.001"}}]`,
+			json: `[{"Category":"Perp","Base":"ETH","Quote":"USDT","ExchTicker":"ETHUSDT","ContractSize":"1","Settle":"USDT","Status":"TRADABLE","Filters":{"price_tick":"0.1","qty_step":"0.001"}}]`,
 			want: []symbol.Listing{inst(symbol.Perp, "ETH", "ETHUSDT")},
 		},
 		{
@@ -50,7 +50,7 @@ func TestLoadFixture(t *testing.T) {
 			want:  []symbol.Listing{btc},
 		},
 		{
-			name: "omitted active stays false and omitted filters stay nil",
+			name: "omitted status stays unspecified and omitted filters stay nil",
 			json: `[{"Venue":"Bybit","Category":"Perp","Base":"BTC","Quote":"USDT","ExchTicker":"BTCUSDT"}]`,
 			want: []symbol.Listing{{
 				Venue: "Bybit", Category: symbol.Perp, Base: "BTC", Quote: "USDT", ExchTicker: "BTCUSDT",
@@ -73,9 +73,9 @@ func TestLoadFixture(t *testing.T) {
 		},
 		{
 			name: "different case matches the exported field",
-			json: `[{"Venue":"Bybit","Category":"Perp","Base":"BTC","Quote":"USDT","ExchTicker":"BTCUSDT","active":true}]`,
+			json: `[{"Venue":"Bybit","Category":"Perp","Base":"BTC","Quote":"USDT","ExchTicker":"BTCUSDT","status":"TRADABLE"}]`,
 			want: []symbol.Listing{{
-				Venue: "Bybit", Category: symbol.Perp, Base: "BTC", Quote: "USDT", ExchTicker: "BTCUSDT", Active: true,
+				Venue: "Bybit", Category: symbol.Perp, Base: "BTC", Quote: "USDT", ExchTicker: "BTCUSDT", Status: symbol.Tradable,
 			}},
 		},
 		{
@@ -123,7 +123,7 @@ func TestLoadFixture(t *testing.T) {
 		},
 		{
 			name:    "duplicate inside the file applies nothing",
-			json:    `[{"Venue":"Bybit","Category":"Perp","Base":"ETH","Quote":"USDT","ExchTicker":"ETHUSDT","Active":true},{"Venue":"Bybit","Category":"Perp","ExchTicker":"ETHUSDT"}]`,
+			json:    `[{"Venue":"Bybit","Category":"Perp","Base":"ETH","Quote":"USDT","ExchTicker":"ETHUSDT","Status":"TRADABLE"},{"Venue":"Bybit","Category":"Perp","ExchTicker":"ETHUSDT"}]`,
 			wantErr: exchangetest.ErrDuplicate,
 			substr:  "row 1",
 			prior:   []symbol.Listing{btc},
@@ -131,7 +131,7 @@ func TestLoadFixture(t *testing.T) {
 		},
 		{
 			name:    "duplicate of an instrument already stored",
-			json:    `[{"Venue":"Bybit","Category":"Perp","Base":"ETH","Quote":"USDT","ExchTicker":"ETHUSDT","Active":true},{"Venue":"Bybit","Category":"Perp","ExchTicker":"BTCUSDT"}]`,
+			json:    `[{"Venue":"Bybit","Category":"Perp","Base":"ETH","Quote":"USDT","ExchTicker":"ETHUSDT","Status":"TRADABLE"},{"Venue":"Bybit","Category":"Perp","ExchTicker":"BTCUSDT"}]`,
 			wantErr: exchangetest.ErrDuplicate,
 			substr:  "row 1",
 			prior:   []symbol.Listing{btc},
@@ -149,12 +149,12 @@ func TestLoadFixture(t *testing.T) {
 			path: filepath.Join("testdata", "listing.json"),
 			want: []symbol.Listing{{
 				Venue: "Bybit", Category: symbol.Perp, Base: "BTC", Quote: "USDT",
-				ExchTicker: "BTCUSDT", ContractSize: "1", Settle: "USDT", Active: true,
+				ExchTicker: "BTCUSDT", ContractSize: "1", Settle: "USDT", Status: symbol.Tradable,
 				Filters: map[string]string{symbol.PriceTick: "0.1", symbol.QtyStep: "0.001"},
 			}},
 			spot: []symbol.Listing{{
 				Venue: "Bybit", Category: symbol.Spot, Base: "BTC", Quote: "USDT",
-				ExchTicker: "BTCUSDT", ContractSize: "1", Settle: "USDT", Active: true,
+				ExchTicker: "BTCUSDT", ContractSize: "1", Settle: "USDT", Status: symbol.Tradable,
 				Filters: map[string]string{symbol.PriceTick: "0.01", symbol.QtyStep: "0.00001"},
 			}},
 		},
@@ -198,7 +198,7 @@ func TestLoadFixtureDoesNotSeeAPartialApply(t *testing.T) {
 	// A duplicate on row 1 must not leave row 0 behind.
 	s := newSource(t)
 	body := `[
-		{"Venue":"Bybit","Category":"Perp","Base":"ETH","Quote":"USDT","ExchTicker":"ETHUSDT","Active":true,"Filters":{"price_tick":"9"}},
+		{"Venue":"Bybit","Category":"Perp","Base":"ETH","Quote":"USDT","ExchTicker":"ETHUSDT","Status":"TRADABLE","Filters":{"price_tick":"9"}},
 		{"Venue":"Bybit","Category":"Perp","ExchTicker":"ETHUSDT","Filters":{"price_tick":"1"}}
 	]`
 	if err := s.LoadFixture(strings.NewReader(body)); !errors.Is(err, exchangetest.ErrDuplicate) {
