@@ -3,9 +3,10 @@
 //
 // UniversalTicker is the human-facing name, used only when writing configs and specs (D38).
 // Inside the system the instrument is a UID: STS, TD and MD pass that integer, and each plane
-// loads the fields it needs with GetByUID. Lease items, md.f subjects and td.order still carry
-// the ticker string; switching them is later work, and the md.f subject key is not decided
-// (PROTOCOL §10 P13). A venue's own spelling (ExchTicker) appears in two places only: in the
+// loads the fields it needs with GetByUID. Lease items and td.order still carry the ticker
+// string; switching those fields to UID is later work. NATS subjects stay human-readable, not
+// UID; the exact spelling is not final (PROTOCOL §10 P14), so md.f is still
+// md.f.{inst}.{topic}.{ticker}. A venue's own spelling (ExchTicker) appears in two places only: in the
 // exchange adapters and in SYM's tables.
 //
 // Getting from one to the other is a lookup, never string surgery. "BTCUSDT" does not carry its
@@ -17,8 +18,8 @@
 //
 // Callers resolve before they call an adapter, and adapters never call SYM: adapter functions stay
 // pure (D31). The market-data hot path does no lookup at all: a conn worker stamps each event with
-// the instrument of the feed it serves (mdctl.AtomAssignment). That stamp is still the ticker;
-// the UID stamp and the subject key are not in this package.
+// the instrument of the feed it serves (mdctl.AtomAssignment). That stamp is still the ticker.
+// Subjects stay human-readable; their exact spelling is PROTOCOL §10 P14.
 //
 // The plane itself (refresh, tables, the sym subject) is internal/sym.
 //
