@@ -72,8 +72,7 @@ type Session interface {
 	Ping() []byte
 
 	// Decode parses one text or binary frame and calls sink once per event in it. One frame can carry
-	// several events of several kinds (atom -> events is 1:N, D401). frame is lent for the call: it is
-	// a pooled buffer the conn worker releases once Decode returns (D302).
+	// several events of several kinds (atom -> events is 1:N, D401).
 	Decode(frame []byte, sink Sink) error
 }
 

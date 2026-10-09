@@ -3,7 +3,6 @@ package sym
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/exchange"
@@ -16,12 +15,12 @@ import (
 // A venue the registry does not know, a category that venue does not list, a
 // missing reader, a duplicate, or any other spelling is an error: the process
 // should not start serving a feed it cannot name.
-func SelectFeeds(reg *exchange.Registry, spec string, http exchange.Doer) ([]Feed, error) {
+func SelectFeeds(reg *exchange.Registry, spec string) ([]Feed, error) {
 	if reg == nil {
 		return nil, fmt.Errorf("sym: nil registry")
 	}
 	if strings.TrimSpace(spec) == "" {
-		feeds := FeedsFromRegistry(reg, http)
+		feeds := FeedsFromRegistry(reg)
 		if len(feeds) == 0 {
 			return nil, fmt.Errorf("sym: no feeds")
 		}
@@ -57,7 +56,7 @@ func SelectFeeds(reg *exchange.Registry, spec string, http exchange.Doer) ([]Fee
 			return nil, fmt.Errorf("sym: duplicate feed %s", key)
 		}
 		seen[key] = struct{}{}
-		out = append(out, Feed{Venue: venue, Category: cat, REST: exchange.ListingOver(v.REST, http, time.Now)})
+		out = append(out, Feed{Venue: venue, Category: cat, REST: v.REST})
 	}
 	if len(out) == 0 {
 		return nil, fmt.Errorf("sym: no feeds")

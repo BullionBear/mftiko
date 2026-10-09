@@ -17,7 +17,7 @@ func TestSelectFeeds(t *testing.T) {
 	reg, err := exchange.NewRegistry(exchange.Declaration{
 		Exchange: "test",
 		Venues: []exchange.Venue{
-			{Venue: symbol.Venue{Name: "Bybit", Categories: []symbol.Category{symbol.Spot, symbol.Perp}}, REST: src.REST()},
+			{Venue: symbol.Venue{Name: "Bybit", Categories: []symbol.Category{symbol.Spot, symbol.Perp}}, REST: src},
 			{Venue: symbol.Venue{Name: "Okx", Categories: []symbol.Category{symbol.Spot}}},
 		},
 	})
@@ -25,7 +25,7 @@ func TestSelectFeeds(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	all, err := SelectFeeds(reg, "", src)
+	all, err := SelectFeeds(reg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestSelectFeeds(t *testing.T) {
 		t.Fatalf("feeds %d, want the venue that has a reader", len(all))
 	}
 
-	one, err := SelectFeeds(reg, "Bybit/Perp", src)
+	one, err := SelectFeeds(reg, "Bybit/Perp")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestSelectFeeds(t *testing.T) {
 	}
 
 	for _, spec := range []string{"Bybit", "Bybit/Option", "Okx/Spot", "Nope/Spot", "Bybit/Spot,Bybit/Spot", "Bybit/Spot,", "/Spot"} {
-		if _, err := SelectFeeds(reg, spec, src); err == nil {
+		if _, err := SelectFeeds(reg, spec); err == nil {
 			t.Fatalf("spec %q was accepted", spec)
 		}
 	}

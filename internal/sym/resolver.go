@@ -23,16 +23,16 @@ var ErrRealVenue = errors.New("sym: real venue; UIDs come from SYM, not this pro
 
 // VenueListing is one fake venue the in-process Resolver loads.
 // REST must implement exchange.InProcessUIDSource (exchangetest).
-// Categories are the (venue, category) units read with Listing.
+// Categories are the (venue, category) units read with PublicREST.Listing.
 type VenueListing struct {
 	Venue      string
-	REST       exchange.Lister
+	REST       exchange.PublicREST
 	Categories []symbol.Category
 }
 
 // Resolver is the in-process symbol.Resolver (E2-05).
 //
-// It is for tests and local development. It loads Listing itself and
+// It is for tests and local development. It loads PublicREST.Listing itself and
 // does not call the SYM service or PostgreSQL. cmd injects this or the NATS
 // client (E2-09); both implement symbol.Resolver.
 //
@@ -60,7 +60,7 @@ type Resolver struct {
 
 type venueSrc struct {
 	venue string
-	rest  exchange.Lister
+	rest  exchange.PublicREST
 	cats  []symbol.Category
 }
 

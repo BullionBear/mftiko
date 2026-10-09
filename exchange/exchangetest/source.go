@@ -25,8 +25,8 @@ var (
 	ErrVenueMismatch = errors.New("exchangetest: instrument belongs to another venue")
 )
 
-// Source is an in-memory listing of one venue: an exchange.Lister, what SYM reads. Listing is served
-// from instruments the test adds. The zero Source is not usable; call New.
+// Source is an in-memory exchange.PublicREST for one venue. Listing is served from instruments the
+// test adds. The other reads are not implemented. The zero Source is not usable; call New.
 //
 // A Source is safe for concurrent use. Listing returns copies, and Add, Remove and Modify copy what
 // they are given, so a caller can reuse or mutate its own listing afterwards.
@@ -38,7 +38,7 @@ type Source struct {
 	items    map[symbol.Category]map[string]symbol.Listing
 }
 
-var _ exchange.Lister = (*Source)(nil)
+var _ exchange.PublicREST = (*Source)(nil)
 var _ exchange.InProcessUIDSource = (*Source)(nil)
 
 // InProcessUIDs marks Source as a fake venue. The in-process Resolver may allocate
@@ -46,8 +46,8 @@ var _ exchange.InProcessUIDSource = (*Source)(nil)
 // process that allocated them.
 func (*Source) InProcessUIDs() {}
 
-// New returns a fake listing for venue. venue is the venue name in a UniversalTicker, such as
-// "Bybit". It must be non-empty: one Source is one venue, as a venue's PublicREST is.
+// New returns a fake PublicREST for venue. venue is the venue name in a UniversalTicker, such as
+// "Bybit". It must be non-empty: one Source is one venue, matching PublicREST.
 func New(venue string) (*Source, error) {
 	if venue == "" {
 		return nil, errors.New("exchangetest: venue is empty")
@@ -147,7 +147,7 @@ func (s *Source) FailPage(page int, err error) error {
 	return nil
 }
 
-// Listing implements exchange.Lister. It returns this venue's instruments in c, sorted by
+// Listing implements exchange.PublicREST. It returns this venue's instruments in c, sorted by
 // ExchTicker, read in pages of the configured size. Status is not a filter: the instrument is
 // returned as it was stored, including one that is not tradable. If a reached page is set to fail, or ctx is done, Listing returns
 // that error and no instruments. A done context is reported before the page error. Instruments of
@@ -180,6 +180,24 @@ func (s *Source) Listing(ctx context.Context, c symbol.Category) ([]symbol.Listi
 		start = end
 	}
 	return out, nil
+}
+
+// Depth returns exchange.ErrNotImplemented.
+func (s *Source) Depth(context.Context, *symbol.Info, int) (*exchange.BookUpdate, error) {
+	return nil, exchange.ErrNotImplemented
+}
+
+// Klines returns exchange.ErrNotImplemented.
+func (s *Source) Klines(context.Context, *symbol.Info, string, int) ([]exchange.Kline, error) {
+	return nil, exchange.ErrNotImplemented
+}
+
+// KlinePage is zero: kline paging is not implemented.
+func (s *Source) KlinePage() int { return 0 }
+
+// OpenInterest returns exchange.ErrNotImplemented.
+func (s *Source) OpenInterest(context.Context, *symbol.Info) (*exchange.OpenInterest, error) {
+	return nil, exchange.ErrNotImplemented
 }
 
 // prepare checks l and returns the copy the source stores. It reads only s.venue, which New sets

@@ -688,7 +688,7 @@ func mustFake(t *testing.T, venue string) *exchangetest.Source {
 	return src
 }
 
-func mustResolver(t *testing.T, venue string, rest exchange.Lister, cats []symbol.Category, uids Source) *Resolver {
+func mustResolver(t *testing.T, venue string, rest exchange.PublicREST, cats []symbol.Category, uids Source) *Resolver {
 	t.Helper()
 	r, err := NewResolver(context.Background(), []VenueListing{{
 		Venue: venue, REST: rest, Categories: cats,
