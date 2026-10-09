@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-09 更新：agent 以快照恢復，D37）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-09 更新：幣與數量的單位，D38）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 
@@ -472,6 +472,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 - **平台裡指涉商品一律用 UniversalTicker：** spec、需求項目、`md.f` 的 subject、`td.order`、DB。平面之間交換資料一律用它。交易所的寫法（`exch_ticker`）只出現在 adapter 和 SYM 的表裡。
 - **翻譯是查表，經 SYM 解析，不是字串轉換。** `BTCUSDT` 不帶 base／quote 的切法，交易所的寫法也不一定是 base＋分隔＋quote。
+- **ticker 的 base／quote 是 SYM 收完別名之後的資產（D38）。** 先收別名，再判定 quanto，再推 ticker。這三步只在 SYM。`USD`、`USDC`、`USDT` 不合併。
 - **先解析，再交給 adapter。** MD agent 收到需求項目，先在已載入的商品表裡解析，找不到或已下架就是 `REJECTED`；再把解析結果交給 adapter，由它決定 route 和 channel。
   - adapter 因此是純函數：不查 SYM、不做 I/O，只用資料就能測。
   - mftik 的 adapter 自己帶 SymbolResolver，在裡面查；mftik refactor 的 B7-01 改成先解析再 `atoms_for`。這裡照後者。
@@ -585,6 +586,45 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - 不能等 agent 回來的事都在 shim：`Stop` 的計時、自己收到 SIGTERM 時送 `Stop`、結束的記錄、對 worker 的 `Relay` 回 `Undeliverable`。其餘的判斷（例如要不要重啟）本來就要等 agent，事件保留得再完整也不會更快。
 - 不採用的做法：`Ack` 當成提交（agent 把效果寫進 etcd 之後才 Ack，未 Ack 的事件等於 etcd 還沒反映的部分）。它讓 shim 的保留語意綁上 agent 何時持久化，agent 還得處理 at-least-once 的冪等；而只要快照完整，這些都不需要。
 - 因此 `Attached` 帶 `exiting`（worker 正在跑 OnStop 時，原本打算怎麼結束）與 `exit`（記錄完的 `ExitInfo`）。
+
+### D38 幣與數量的單位
+
+平台上的數量只有一套單位，由商品屬於哪一類決定。交易所的原生單位留在 adapter：在邊界換算，換不出來就不列這筆、不下這張單，不猜 `1`。
+
+- **別名只在 SYM 收。** adapter 把 venue 寫的 base、quote、settle 原樣放進 listing。收別名、判定是不是 quanto、推出 UniversalTicker，三步都只在 SYM，順序固定：先收別名，再判定，再推 ticker。先比再收會把同一個幣看成兩種資產，例如 base 寫 `XBT`、settle 寫 `BTC`。adapter、MD、TD 都不收別名。
+- **`USD`、`USDC`、`USDT` 是三種資產，永不合併，不進別名表。** `Bybit_Perp_BTCUSDC` 與 `Bybit_Perp_BTCUSDT` 是兩個商品。報價 USD、結算 USDC 是 quanto，一期 `REJECTED`，這是故意的。
+- **倍數合約不是別名。** `1000PEPE` 是另一個 base，不是 `PEPE`。
+
+判定用收完別名的 base、quote、settle，加上是不是期權。`Category` 仍由 listing 的來源決定（`Perp`、`Inverse`、`Future`、`Option`、`Spot`）。`Future` 不另成一種保證金：到期合約照 settle 歸 linear 或 inverse。
+
+| 條件 | 類 |
+|---|---|
+| settle 空 | 現貨 |
+| 不是期權，settle 等於 quote | linear（含 USD 本位到期） |
+| 不是期權，settle 等於 base | inverse（含幣本位到期） |
+| 期權，settle 等於 quote | USD 保證金期權 |
+| 期權，settle 等於 base | 幣本位期權 |
+| 其餘 | quanto |
+
+`settle` 就是結算資產（mftik 的 `settlement_asset`），不另開同義欄位。`price_ccy` 是價格的幣，`contract_value_ccy` 是 `contract_size` 的幣。兩者由類別決定：存成欄位時必須和這張表一致，不能各寫各的。
+
+| 類 | 例子 | price_ccy | contract_value_ccy（`contract_size` 的意思） | qty、`filled_qty`、成交 qty、持倉 size | settle | 一期 |
+|---|---|---|---|---|---|---|
+| linear | `BinanceUM_Perp_BTCUSDT`、`Bybit_Perp_BTCUSDC` | quote（與 settle 相同的 USDT 或 USDC） | base。留空當成 1 base | base。venue 用張數報量時，adapter 乘除 `contract_size` | quote | 交易 |
+| inverse | `BinanceCM_Inverse_BTCUSD` | quote（USD） | quote，一張多少 USD（例如 100） | 張數。不乘進 qty：base 數量是 `張數 × contract_size / price`。venue 用 USD 報量時，adapter 除以 `contract_size` | base | 交易 |
+| USD 保證金期權 | `BinanceEO_Option_BTCUSDT-261226-100000-C`（settle 是 USDT） | quote（權利金，與 settle 相同的 USD、USDC 或 USDT） | base。留空當成 1 base | base，換算同 linear | quote | 交易 |
+| 幣本位期權 | `Okx_Option_BTCUSD-261225-100000-C`（settle 是 BTC） | base（權利金是幣）。ticker 的 quote 是 strike 的幣，這裡是 USD | base。留空當成 1 base | base，換算同 linear | base | 交易 |
+| quanto | quote 是 USD、settle 是 USDC 的 BTC 合約 | quote | 不採用 | 不交易 | 既不是 base 也不是 quote | `REJECTED` |
+
+- **現貨。** `qty` 是 base，`price` 是 quote，`quote_qty` 是 quote 的金額。沒有 settle、沒有 `contract_size`。
+- **`quote_qty` 只給現貨下單。** 合約與期權帶了 `quote_qty`，account worker 以 1xx 拒絕（`quote_qty_not_expressible`），不送出。
+- **filter。** `qty_step`、`min_qty`、`max_qty` 與 qty 同一個單位。`min_notional` 是 quote。
+- **行情用同一套單位。** 簿、成交、OI 的數量與下單 qty 相同。inverse 的簿是張數。換算在 adapter，用解析後的商品上的 `contract_size`；conn worker 不查 SYM（D31）。
+- **留空的 `contract_size` 是 1。** venue 用另一種單位報量、卻沒給面值時，adapter 不列這筆，不猜。
+- **quanto 仍推出 ticker，列留在表裡，`active` 為 false。** ticker 用收完別名的 base＋quote，所以報價 USD 的不會變成 `BTCUSDC`。MD 解析到不可交易的商品（含 quanto、已下架）就 `REJECTED`。TD 的 `Submit` 以 1xx 拒絕（`not_tradable`），不送出。
+- **交易路徑只接受可交易。暫定：完整的 status enum 還沒定。** `bool active` 會換成 status enum。只有 `TRADABLE` 可以下單、可以訂閱。交易所的原生狀態對不上任何已知值，記成 `UNKNOWN`，不可交易。`UNKNOWN` 不用來記 quanto：quanto 是認得的，故意不交易。enum 定案前，契約維持 `bool active`；`true` 只表示現在當成可交易。
+
+- **不採用：** 在 adapter 裡收別名；把三種美元穩定幣收成同一個再判斷 quanto；inverse 的 qty 用 base（要價格，取整之後下不回交易所的張數）。
 
 ## 待討論
 

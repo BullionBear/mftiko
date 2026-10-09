@@ -247,11 +247,15 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
   quote: string;
 
   /**
+   * 一張的面值。linear 與期權是 base，inverse 是 quote；空 = 該單位的 1（D38）
+   *
    * @generated from field: optional string contract_size = 5;
    */
   contractSize?: string | undefined;
 
   /**
+   * 結算資產。空 = 現貨。和 base、quote 一起決定類別（D38）
+   *
    * @generated from field: optional string settle = 6;
    */
   settle?: string | undefined;
@@ -276,12 +280,15 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
   optionType: string;
 
   /**
+   * 暫定。D38：將改成 status enum；交易路徑只接受 TRADABLE。對不上的原生狀態是 UNKNOWN，不可交易
+   *
    * @generated from field: bool active = 10;
    */
   active: boolean;
 
   /**
    * name -> bound. A key with an absent value: the venue publishes the restriction, no bound.
+   * qty_step, min_qty, max_qty are in the qty unit; min_notional is quote (D38).
    *
    * @generated from field: map<string, mftiko.sym.v1.Bound> filters = 11;
    */

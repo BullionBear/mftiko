@@ -19,6 +19,10 @@
 // Storage is PostgreSQL, symbol_ticker and symbol_filter (migrations/0002_symbol). Only this
 // service writes them.
 //
+// It is also the only place that normalizes asset aliases (D38): normalize first, then decide
+// quanto, then derive the ticker. USD, USDC and USDT stay distinct. A USD quote settled in USDC
+// is quanto and is not tradable in phase 1.
+//
 // Reads (PROTOCOL §7.3): one instrument by exact UniversalTicker (a single row, never a venue
 // table); a (venue, category) table in pages of symbol.ListPage; the reverse lookup from a
 // venue's spelling. Clients cache through symbol.Resolver.

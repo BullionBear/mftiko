@@ -60,13 +60,14 @@ message SymbolInfo {
   string exch_ticker = 2;
   string base = 3;
   string quote = 4;
-  optional string contract_size = 5;
-  optional string settle = 6;
+  optional string contract_size = 5; // 一張的面值。linear 與期權是 base，inverse 是 quote；空 = 該單位的 1（D38）
+  optional string settle = 6; // 結算資產。空 = 現貨。和 base、quote 一起決定類別（D38）
   int64 expiry_ns = 7; // 0 = does not expire
   optional string strike = 8;
   string option_type = 9; // C | P | ""
-  bool active = 10;
+  bool active = 10; // 暫定。D38：將改成 status enum；交易路徑只接受 TRADABLE。對不上的原生狀態是 UNKNOWN，不可交易
   // name -> bound. A key with an absent value: the venue publishes the restriction, no bound.
+  // qty_step, min_qty, max_qty are in the qty unit; min_notional is quote (D38).
   map<string, Bound> filters = 11;
   int64 updated_at_ns = 12;
 }

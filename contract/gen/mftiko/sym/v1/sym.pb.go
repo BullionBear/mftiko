@@ -494,13 +494,14 @@ type SymbolInfo struct {
 	ExchTicker      string                 `protobuf:"bytes,2,opt,name=exch_ticker,json=exchTicker,proto3" json:"exch_ticker,omitempty"`
 	Base            string                 `protobuf:"bytes,3,opt,name=base,proto3" json:"base,omitempty"`
 	Quote           string                 `protobuf:"bytes,4,opt,name=quote,proto3" json:"quote,omitempty"`
-	ContractSize    *string                `protobuf:"bytes,5,opt,name=contract_size,json=contractSize,proto3,oneof" json:"contract_size,omitempty"`
-	Settle          *string                `protobuf:"bytes,6,opt,name=settle,proto3,oneof" json:"settle,omitempty"`
-	ExpiryNs        int64                  `protobuf:"varint,7,opt,name=expiry_ns,json=expiryNs,proto3" json:"expiry_ns,omitempty"` // 0 = does not expire
+	ContractSize    *string                `protobuf:"bytes,5,opt,name=contract_size,json=contractSize,proto3,oneof" json:"contract_size,omitempty"` // 一張的面值。linear 與期權是 base，inverse 是 quote；空 = 該單位的 1（D38）
+	Settle          *string                `protobuf:"bytes,6,opt,name=settle,proto3,oneof" json:"settle,omitempty"`                                 // 結算資產。空 = 現貨。和 base、quote 一起決定類別（D38）
+	ExpiryNs        int64                  `protobuf:"varint,7,opt,name=expiry_ns,json=expiryNs,proto3" json:"expiry_ns,omitempty"`                  // 0 = does not expire
 	Strike          *string                `protobuf:"bytes,8,opt,name=strike,proto3,oneof" json:"strike,omitempty"`
 	OptionType      string                 `protobuf:"bytes,9,opt,name=option_type,json=optionType,proto3" json:"option_type,omitempty"` // C | P | ""
-	Active          bool                   `protobuf:"varint,10,opt,name=active,proto3" json:"active,omitempty"`
+	Active          bool                   `protobuf:"varint,10,opt,name=active,proto3" json:"active,omitempty"`                         // 暫定。D38：將改成 status enum；交易路徑只接受 TRADABLE。對不上的原生狀態是 UNKNOWN，不可交易
 	// name -> bound. A key with an absent value: the venue publishes the restriction, no bound.
+	// qty_step, min_qty, max_qty are in the qty unit; min_notional is quote (D38).
 	Filters       map[string]*Bound `protobuf:"bytes,11,rep,name=filters,proto3" json:"filters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	UpdatedAtNs   int64             `protobuf:"varint,12,opt,name=updated_at_ns,json=updatedAtNs,proto3" json:"updated_at_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields

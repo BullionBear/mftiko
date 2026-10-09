@@ -2,18 +2,20 @@ package symbol
 
 // Info is one instrument as SYM serves it: the golden record every plane reads.
 type Info struct {
-	Ticker       UniversalTicker
-	ExchTicker   string
-	Base         string
-	Quote        string
+	Ticker     UniversalTicker
+	ExchTicker string
+	Base       string
+	Quote      string
+	// ContractSize and Settle use the D38 units. See Listing.
 	ContractSize string
 	Settle       string
 	ExpiryNs     int64
 	Strike       string
 	OptionType   string
-	Active       bool
-	Filters      map[string]string
-	UpdatedAtNs  int64
+	// Active is tentative (D38): the trading path accepts only what will be TRADABLE.
+	Active      bool
+	Filters     map[string]string
+	UpdatedAtNs int64
 }
 
 // Exch is the venue-side key of the instrument.

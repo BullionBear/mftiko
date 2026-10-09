@@ -76,16 +76,22 @@ export type Submit = Message<"mftiko.td.v1.Submit"> & {
   orderType: OrderType;
 
   /**
+   * 下單數量，單位見 D38：現貨、linear、期權是 base；inverse 是張數
+   *
    * @generated from field: optional string qty = 5;
    */
   qty?: string | undefined;
 
   /**
+   * quote 資產的金額。只有現貨能用來下單；合約與期權不填（D38）
+   *
    * @generated from field: optional string quote_qty = 6;
    */
   quoteQty?: string | undefined;
 
   /**
+   * 現貨、linear、inverse、USD 保證金期權是 quote；幣本位期權是 base 權利金（D38）
+   *
    * @generated from field: optional string price = 7;
    */
   price?: string | undefined;
@@ -625,26 +631,36 @@ export type Order = Message<"mftiko.td.v1.Order"> & {
   status: OrderStatus;
 
   /**
+   * 同 Submit.qty（D38）
+   *
    * @generated from field: string qty = 7;
    */
   qty: string;
 
   /**
+   * 同 Submit.quote_qty（D38）
+   *
    * @generated from field: optional string quote_qty = 8;
    */
   quoteQty?: string | undefined;
 
   /**
+   * 同 Submit.price（D38）
+   *
    * @generated from field: optional string price = 9;
    */
   price?: string | undefined;
 
   /**
+   * 已成交數量，單位同 qty（D38）
+   *
    * @generated from field: string filled_qty = 10;
    */
   filledQty: string;
 
   /**
+   * 同 Submit.price（D38）
+   *
    * @generated from field: optional string avg_price = 11;
    */
   avgPrice?: string | undefined;
@@ -704,11 +720,15 @@ export type Fill = Message<"mftiko.td.v1.Fill"> & {
   side: Side;
 
   /**
+   * 同 Submit.price（D38）
+   *
    * @generated from field: string price = 6;
    */
   price: string;
 
   /**
+   * 成交數量，單位同 Submit.qty（D38）
+   *
    * @generated from field: string qty = 7;
    */
   qty: string;
@@ -852,21 +872,29 @@ export type Position = Message<"mftiko.td.v1.Position"> & {
   ticker: string;
 
   /**
+   * 持倉數量，單位同 Submit.qty（D38）
+   *
    * @generated from field: string size = 2;
    */
   size: string;
 
   /**
+   * 同 Submit.price（D38）
+   *
    * @generated from field: optional string entry_price = 3;
    */
   entryPrice?: string | undefined;
 
   /**
+   * 同 Submit.price（D38）
+   *
    * @generated from field: optional string mark_price = 4;
    */
   markPrice?: string | undefined;
 
   /**
+   * 結算資產（settle，D38）
+   *
    * @generated from field: optional string unrealized_pnl = 5;
    */
   unrealizedPnl?: string | undefined;

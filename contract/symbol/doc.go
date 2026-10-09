@@ -17,5 +17,9 @@
 //
 // The plane itself (refresh, tables, the sym subject) is internal/sym.
 //
+// Asset aliases are normalized only there, and only before quanto is decided and the ticker is
+// derived (D38). USD, USDC and USDT are three assets. Quantity units depend on the class that
+// decision names.
+//
 // Shape only: types and contracts; the functions return ErrNotImplemented.
 package symbol

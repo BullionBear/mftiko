@@ -37,9 +37,9 @@ message Submit {
   string ticker = 2;
   mftiko.common.v1.Side side = 3;
   mftiko.common.v1.OrderType order_type = 4;
-  optional string qty = 5;
-  optional string quote_qty = 6;
-  optional string price = 7;
+  optional string qty = 5; // 下單數量，單位見 D38：現貨、linear、期權是 base；inverse 是張數
+  optional string quote_qty = 6; // quote 資產的金額。只有現貨能用來下單；合約與期權不填（D38）
+  optional string price = 7; // 現貨、linear、inverse、USD 保證金期權是 quote；幣本位期權是 base 權利金（D38）
   mftiko.common.v1.TimeInForce tif = 8;
   bool reduce_only = 9;
   string client_order_id = 10;
@@ -161,11 +161,11 @@ message Order {
   mftiko.common.v1.Side side = 4;
   mftiko.common.v1.OrderType order_type = 5;
   OrderStatus status = 6;
-  string qty = 7;
-  optional string quote_qty = 8;
-  optional string price = 9;
-  string filled_qty = 10;
-  optional string avg_price = 11;
+  string qty = 7; // 同 Submit.qty（D38）
+  optional string quote_qty = 8; // 同 Submit.quote_qty（D38）
+  optional string price = 9; // 同 Submit.price（D38）
+  string filled_qty = 10; // 已成交數量，單位同 qty（D38）
+  optional string avg_price = 11; // 同 Submit.price（D38）
   string reject_reason = 12;
   int64 exch_ts_ns = 13;
   int64 td_ts_ns = 14;
@@ -178,8 +178,8 @@ message Fill {
   string order_id = 3;
   string client_order_id = 4;
   mftiko.common.v1.Side side = 5;
-  string price = 6;
-  string qty = 7;
+  string price = 6; // 同 Submit.price（D38）
+  string qty = 7; // 成交數量，單位同 Submit.qty（D38）
   string fee = 8;
   string fee_asset = 9;
   string liquidity = 10;
@@ -210,10 +210,10 @@ message Balance {
 
 message Position {
   string ticker = 1;
-  string size = 2;
-  optional string entry_price = 3;
-  optional string mark_price = 4;
-  optional string unrealized_pnl = 5;
+  string size = 2; // 持倉數量，單位同 Submit.qty（D38）
+  optional string entry_price = 3; // 同 Submit.price（D38）
+  optional string mark_price = 4; // 同 Submit.price（D38）
+  optional string unrealized_pnl = 5; // 結算資產（settle，D38）
   optional string leverage = 6;
 }
 
