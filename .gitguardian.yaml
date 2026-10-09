@@ -1,0 +1,8 @@
+# GitGuardian secret detection (ggshield, and GitGuardian's GitHub check where it honors this file).
+# The ignored paths hold only public, documented test vectors, none of them a credential: Binance's
+# example API key and HMAC secret from its API docs, the ed25519 test key from Binance's Java connector,
+# RFC 8032's test keys, OKX's example secret and Bybit's XXXXXXXXXX placeholder.
+version: 2
+secret:
+  ignored_paths:
+    - exchange/internal/codec/sign_test.go
