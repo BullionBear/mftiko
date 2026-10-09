@@ -22,6 +22,8 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -108,16 +110,28 @@ func Dial(ctx context.Context, rawURL string, o Options) (*Conn, error) {
 }
 
 // redact keeps the URL in a handshake error to its host: a private stream's path or query can carry
-// its token (Binance's listenKey).
+// its token (Binance's listenKey). Every error wrapping the *url.Error has the URL in its message
+// already, so the message is rewritten and the *url.Error left out of the chain.
 func redact(err error) error {
 	var ue *url.Error
-	if errors.As(err, &ue) {
-		if u, perr := url.Parse(ue.URL); perr == nil {
-			ue.URL = u.Scheme + "://" + u.Host
-		}
+	if !errors.As(err, &ue) {
+		return err
 	}
-	return err
+	host := "the url"
+	if u, perr := url.Parse(ue.URL); perr == nil {
+		host = u.Scheme + "://" + u.Host
+	}
+	msg := strings.ReplaceAll(err.Error(), strconv.Quote(ue.URL), strconv.Quote(host))
+	return &redacted{msg: strings.ReplaceAll(msg, ue.URL, host), err: ue.Err}
 }
+
+type redacted struct {
+	msg string
+	err error
+}
+
+func (e *redacted) Error() string { return e.msg }
+func (e *redacted) Unwrap() error { return e.err }
 
 // Run reads the connection until it ends and returns why: ctx's error, ErrIdle, ErrLifetime,
 // handle's error, the error of a Close, or the read error when the venue closed or dropped it.

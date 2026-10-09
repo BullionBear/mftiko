@@ -155,6 +155,37 @@ func TestReadLimit(t *testing.T) {
 	}
 }
 
+// A failed dial or a refused handshake shows neither the handshake's headers nor the URL's path and
+// query, which can carry a listenKey.
+func TestDialHidesSecrets(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "no", http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed := "http://" + ln.Addr().String()
+	ln.Close()
+
+	for _, base := range []string{srv.URL, closed} {
+		url := "ws" + strings.TrimPrefix(base, "http") + "/ws/lk-secret?token=t0k-secret"
+		_, err := Dial(context.Background(), url, Options{ReadLimit: 1 << 10, Header: http.Header{"X-Bapi-Api-Key": {"k-visible"}}})
+		if err == nil {
+			t.Fatalf("%s: Dial succeeded", base)
+		}
+		for _, secret := range []string{"k-visible", "lk-secret", "t0k-secret"} {
+			if strings.Contains(err.Error(), secret) {
+				t.Errorf("error shows %q: %v", secret, err)
+			}
+		}
+		if base == closed && !strings.Contains(err.Error(), strings.TrimPrefix(closed, "http://")) {
+			t.Errorf("error lost the host: %v", err)
+		}
+	}
+}
+
 // The venue's pings are answered while Run waits for messages, and they count as traffic: a quiet
 // stream that the venue pings is not idle.
 func TestServerPing(t *testing.T) {
