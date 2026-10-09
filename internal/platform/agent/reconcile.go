@@ -38,7 +38,7 @@ func (k Kind) String() string {
 type Action[S, L Hashed] struct {
 	Kind   Kind
 	Key    WorkerKey
-	Spec   S      // ActSpawn
+	Spec   S      // ActSpawn, ActStart
 	Live   L      // ActSpawn, ActPush
 	Reason string // ActStop
 }
@@ -157,7 +157,7 @@ func (r *Reconciler[S, L]) Step(now time.Time, stale bool, plans map[WorkerKey]P
 				acts = append(acts, Action[S, L]{Kind: ActPush, Key: k, Live: p.Live})
 			}
 			if p.Start && o.State == StateInitialized && keep {
-				acts = append(acts, Action[S, L]{Kind: ActStart, Key: k})
+				acts = append(acts, Action[S, L]{Kind: ActStart, Key: k, Spec: p.Spawn})
 			}
 		}
 	}

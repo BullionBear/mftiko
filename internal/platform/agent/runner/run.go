@@ -45,11 +45,15 @@ type Fleet[S, L agent.Hashed] interface {
 	// Spawn starts a new incarnation of key with spec and live, and sends Init. A worker of key that ended is
 	// released first (delete-before-create, D106).
 	Spawn(ctx context.Context, key agent.WorkerKey, spec S, live L) error
-	Start(ctx context.Context, key agent.WorkerKey) error
+	// Start sends Start; spec is the plan's, which the worker was spawned with (the same Hash).
+	Start(ctx context.Context, key agent.WorkerKey, spec S) error
 	Push(ctx context.Context, key agent.WorkerKey, live L) error
 	Stop(ctx context.Context, key agent.WorkerKey, reason string) error
 	// Release ends the shim of a worker that ended; Observe no longer has it.
 	Release(ctx context.Context, key agent.WorkerKey) error
+	// Unreachable are the worker hashes (h, PROTOCOL §2) of shims that answer but could not be attached: their
+	// workers may be running, so their WorkerStatus stays (W7.1).
+	Unreachable() []string
 }
 
 // Term is the agent's term: a *state.Term.
@@ -246,7 +250,7 @@ func (r *run[I, S, L]) act(ctx context.Context, a agent.Action[S, L]) error {
 		return f.Spawn(ctx, a.Key, a.Spec, a.Live)
 	case agent.ActStart:
 		log.Msg("start")
-		return f.Start(ctx, a.Key)
+		return f.Start(ctx, a.Key, a.Spec)
 	case agent.ActPush:
 		log.Str("live", a.Live.Hash()).Msg("push")
 		return f.Push(ctx, a.Key, a.Live)
@@ -262,7 +266,7 @@ func (r *run[I, S, L]) act(ctx context.Context, a agent.Action[S, L]) error {
 
 // writeStatuses writes the WorkerStatus of every observed worker, and deletes those of workers that are neither
 // observed nor planned: released, or lost and no longer wanted (W7.1). A planned worker the Fleet does not have
-// (waiting to be spawned again) keeps the status it had.
+// (waiting to be spawned again) keeps the status it had, and so does one whose shim could not be attached.
 func (r *run[I, S, L]) writeStatuses(ctx context.Context, plans map[agent.WorkerKey]agent.Plan[S, L],
 	observed map[agent.WorkerKey]agent.Observed) error {
 	want := map[string]string{}
@@ -273,6 +277,9 @@ func (r *run[I, S, L]) writeStatuses(ctx context.Context, plans map[agent.Worker
 	keep := map[string]bool{}
 	for k := range plans {
 		keep[r.st.key(k)] = true
+	}
+	for _, h := range r.cfg.Fleet.Unreachable() {
+		keep[state.WorkerStatusKey(r.cfg.Term.Plane(), r.cfg.Term.Instance(), h)] = true
 	}
 	ctx, cancel := context.WithTimeout(ctx, DefaultWriteTimeout)
 	defer cancel()

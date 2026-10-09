@@ -3,10 +3,17 @@ package testplane
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -17,6 +24,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/protobuf/proto"
 
+	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
 	"github.com/BullionBear/mftiko/internal/platform/agent"
@@ -31,14 +39,48 @@ import (
 // The test plane end to end: etcd with auth and RBAC, the agent skeleton, real shims (this test binary
 // re-executed), fake workers under them (E1-15's done criteria).
 
-const envTestShim = "MFTIKO_TEST_SHIM"
+const (
+	envTestShim  = "MFTIKO_TEST_SHIM"
+	envTestAgent = "MFTIKO_TEST_AGENT" // the JSON of agentArgs: the re-executed test binary is an agent
+)
 
 func TestMain(m *testing.M) {
 	fakeworker.MaybeMain()
 	if os.Getenv(envTestShim) == "1" {
 		os.Exit(shim.Run(logger.NewWithWriter("mftiko-shim", os.Stderr)))
 	}
+	if v := os.Getenv(envTestAgent); v != "" {
+		os.Exit(runAgent(v))
+	}
 	os.Exit(m.Run())
+}
+
+// agentArgs are what an agent in a process of its own needs: what a Config holds, less what JSON cannot carry. The
+// password is passed in: etcdtest derives it from a secret of each process.
+type agentArgs struct {
+	Topology   state.Topology
+	Password   string
+	WorkDir    string
+	Shim       string
+	ShimEnv    []string
+	Program    Program
+	SessionTTL time.Duration
+	Resync     time.Duration
+}
+
+func runAgent(v string) int {
+	var a agentArgs
+	if err := json.Unmarshal([]byte(v), &a); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	err := Run(context.Background(), Config{
+		Topology: a.Topology, Plane: plane, Instance: inst, Dial: state.AuthDial(inst, a.Password),
+		Term: state.TermOptions{ID: "subprocess", SessionTTL: a.SessionTTL}, WorkDir: a.WorkDir, Shim: a.Shim,
+		ShimEnv: a.ShimEnv, Program: a.Program, Resync: a.Resync, Log: zerolog.New(os.Stderr),
+	})
+	fmt.Fprintln(os.Stderr, "agent:", err)
+	return 1
 }
 
 const (
@@ -437,6 +479,133 @@ func TestOneIncarnationAtATime(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.waitStatus("a", "a second incarnation", phase(runner.PhaseRunning, 2))
+}
+
+// killMarked kills every process whose environment holds marker: the shims of an agent the test killed, which
+// nothing else knows the pids of.
+func killMarked(marker string) {
+	dirs, _ := filepath.Glob("/proc/[0-9]*")
+	for _, d := range dirs {
+		b, err := os.ReadFile(d + "/environ")
+		if err != nil || !bytes.Contains(b, []byte(marker+"\x00")) {
+			continue
+		}
+		if pid, err := strconv.Atoi(filepath.Base(d)); err == nil && pid != os.Getpid() {
+			syscall.Kill(pid, syscall.SIGKILL) //nolint:errcheck
+		}
+	}
+}
+
+// count is how many journal entries of the worker named name have this event.
+func (e *env) count(name, event string) int {
+	e.t.Helper()
+	entries, err := fakeworker.ReadJournal(e.cfg.Program.Journal(name))
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	n := 0
+	for _, en := range entries {
+		if en.Event == event {
+			n++
+		}
+	}
+	return n
+}
+
+// The agent is killed with -9 and a new one takes over (E1-17): it adopts every worker, spawns none again, keeps
+// the WorkerStatus of a shim it cannot attach, and controls what it adopted.
+func TestAdoptAfterKill9(t *testing.T) {
+	e := setup(t, nil)
+	b := make([]byte, 8)
+	rand.Read(b) //nolint:errcheck
+	marker := "MFTIKO_TEST_RUN=" + hex.EncodeToString(b)
+	e.cfg.ShimEnv = append(e.cfg.ShimEnv, marker)
+	e.cfg.Term.SessionTTL = 2 * time.Second
+	t.Cleanup(func() { killMarked(marker) })
+
+	args, err := json.Marshal(agentArgs{Topology: e.cfg.Topology, Password: etcdtest.Password(inst), WorkDir: e.cfg.WorkDir,
+		Shim: e.cfg.Shim, ShimEnv: e.cfg.ShimEnv, Program: e.cfg.Program, SessionTTL: 2 * time.Second, Resync: e.cfg.Resync})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := exec.Command(e.cfg.Shim) // this test binary
+	old.Env = append(os.Environ(), envTestAgent+"="+string(args))
+	oldLog := &syncBuf{}
+	old.Stderr = oldLog
+	if err := old.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		old.Process.Kill() //nolint:errcheck
+		old.Wait()         //nolint:errcheck
+		if t.Failed() {
+			t.Logf("old agent log:\n%s", oldLog.String())
+		}
+	})
+
+	e.want("a", Worker{})
+	e.want("b", Worker{Live: "v1"})
+	e.want("held", Worker{Hold: true})
+	e.waitStatus("a", "RUNNING", phase(runner.PhaseRunning, 1))
+	e.waitStatus("b", "RUNNING", phase(runner.PhaseRunning, 1))
+	e.waitStatus("held", "STARTING", phase(runner.PhaseStarting, 1))
+
+	// A shim that answers and never replies, and the WorkerStatus its agent wrote.
+	sock := shim.SocketPath(e.cfg.WorkDir, string(plane), string(Key(plane, "z")))
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			t.Cleanup(func() { c.Close() })
+		}
+	}()
+	zst := &statev1.WorkerStatus{Worker: &commonv1.WorkerRef{Key: string(Key(plane, "z")), Incarnation: 1},
+		Phase: runner.PhaseRunning}
+	zval, _ := proto.Marshal(zst)
+	if _, err := e.root.Put(testCtx(t), statusKey("z"), string(zval)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := old.Process.Signal(syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	old.Wait() //nolint:errcheck
+
+	e.run()
+	deadline := time.Now().Add(30 * time.Second)
+	for e.record().GetEpoch() != 2 {
+		if time.Now().After(deadline) {
+			t.Fatalf("no AgentRecord of epoch 2: %v", e.record())
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	time.Sleep(time.Second) // a few reconciles
+	if !strings.Contains(e.log.String(), `"adopted":3,"unreachable":1`) {
+		t.Fatalf("want 3 shims adopted and 1 held:\n%s", e.log.String())
+	}
+	for _, name := range []string{"a", "b", "held"} {
+		if n := e.count(name, "start"); n != 1 {
+			t.Errorf("worker %s started %d times, want once: adopted, not spawned again", name, n)
+		}
+	}
+	e.waitStatus("a", "RUNNING", phase(runner.PhaseRunning, 1))
+	e.waitStatus("held", "STARTING", phase(runner.PhaseStarting, 1))
+	if st, _ := e.status("z"); st == nil {
+		t.Fatal("the WorkerStatus of a shim that could not be attached was deleted")
+	}
+
+	e.want("held", Worker{}) // the controller allows it: the new agent starts it
+	e.waitStatus("held", "RUNNING", phase(runner.PhaseRunning, 1))
+	e.unwant("a") // and stops what it adopted
+	e.waitDown("a", "Stop", func(m *workerv1.WorkerDown) bool { return m.GetStop() != nil })
+	e.waitStatus("a", "none", gone)
 }
 
 // A worker that stops beating is reported to the Policy past its timeout (E1-18); this Policy has it stopped, and

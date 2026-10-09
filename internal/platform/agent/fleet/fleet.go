@@ -8,7 +8,7 @@
 // Each worker's last Beat is observed (at most one a second, as the shim passes them on), for the Policy's
 // timeout (E1-18).
 //
-// Not yet here: adopting the shims a previous term left (Adopt finds none; E1-17).
+// A new term adopts the shims the last one left (Adopt, E1-17), from their sockets and exit files.
 package fleet
 
 import (
@@ -90,8 +90,9 @@ type Fleet[S, L agent.Hashed] struct {
 	cfg     Config[S, L]
 	changed chan struct{}
 
-	mu      sync.Mutex
-	workers map[agent.WorkerKey]*worker[S]
+	mu          sync.Mutex
+	workers     map[agent.WorkerKey]*worker[S]
+	unreachable map[string]string // worker hash h -> the socket of a shim that answers but could not be attached
 }
 
 // ErrStillRunning: the worker of a lost shim, or that shim, is still running. Its next incarnation waits; the
@@ -100,9 +101,9 @@ var ErrStillRunning = errors.New("fleet: the last incarnation is still running")
 
 // worker is one incarnation and its shim.
 type worker[S agent.Hashed] struct {
-	spec      S
-	conn      *c3.Conn
-	shimDone  <-chan struct{} // closed once the shim this Fleet started has exited
+	conn      *c3.Conn        // nil for an exit file whose shim is gone (Adopt)
+	socket    string          // the shim's C3 socket
+	shimDone  <-chan struct{} // closed once the shim this Fleet started has exited; nil for an adopted one
 	pid       int             // the worker's, and its start time: Attached.pid and start_time
 	startTime uint64
 	obs       agent.Observed // under Fleet.mu
@@ -119,6 +120,8 @@ func (w *worker[S]) gone() error {
 		default:
 			return fmt.Errorf("%w: its shim", ErrStillRunning)
 		}
+	} else if answers(w.socket) { // a shim this agent did not start: gone once nothing listens
+		return fmt.Errorf("%w: its shim answers on %s", ErrStillRunning, w.socket)
 	}
 	if w.pid == 0 {
 		return nil // never started: Attached had no pid
@@ -144,12 +147,9 @@ func New[S, L agent.Hashed](cfg Config[S, L]) *Fleet[S, L] {
 	if cfg.DialTimeout == 0 {
 		cfg.DialTimeout = DefaultDialTimeout
 	}
-	return &Fleet[S, L]{cfg: cfg, changed: make(chan struct{}, 1), workers: map[agent.WorkerKey]*worker[S]{}}
+	return &Fleet[S, L]{cfg: cfg, changed: make(chan struct{}, 1), workers: map[agent.WorkerKey]*worker[S]{},
+		unreachable: map[string]string{}}
 }
-
-// Adopt finds no shims yet: adoption is E1-17. A shim a previous term left keeps its socket, and the next spawn
-// of its worker key fails until it is released.
-func (f *Fleet[S, L]) Adopt(context.Context) error { return nil }
 
 // Observe is every worker as last seen.
 func (f *Fleet[S, L]) Observe() map[agent.WorkerKey]agent.Observed {
@@ -197,7 +197,11 @@ func (f *Fleet[S, L]) update(key agent.WorkerKey, w *worker[S], mod func(*agent.
 func (f *Fleet[S, L]) Spawn(ctx context.Context, key agent.WorkerKey, spec S, live L) error {
 	f.mu.Lock()
 	old := f.workers[key]
+	_, held := f.unreachable[state.WorkerHash(string(key))]
 	f.mu.Unlock()
+	if held {
+		return fmt.Errorf("fleet: spawn %s: %w", key, ErrUnreachable)
+	}
 	if old != nil {
 		if !old.obs.State.Ended() {
 			return fmt.Errorf("fleet: spawn %s: incarnation %d is still %s", key, old.obs.Incarnation, old.obs.State)
@@ -235,15 +239,14 @@ func (f *Fleet[S, L]) Spawn(ctx context.Context, key agent.WorkerKey, spec S, li
 		case <-dctx.Done():
 		}
 	}()
-	conn, err := c3.Dial(dctx, shim.SocketPath(f.cfg.WorkDir, string(f.cfg.Plane), string(key)), c3.Config{
-		Plane: string(f.cfg.Plane), Instance: f.cfg.Instance, Epoch: f.cfg.Epoch, Release: f.cfg.Release, Log: f.cfg.Log,
-	})
+	socket := f.socket(key)
+	conn, err := c3.Dial(dctx, socket, f.attachConfig())
 	cancel()
 	if err != nil {
 		return fmt.Errorf("fleet: spawn %s/%d: attach: %w", key, n, err)
 	}
 	at := conn.Attached()
-	w := &worker[S]{spec: spec, conn: conn, shimDone: shimDone, pid: int(at.GetPid()), startTime: at.GetStartTime(),
+	w := &worker[S]{conn: conn, socket: socket, shimDone: shimDone, pid: int(at.GetPid()), startTime: at.GetStartTime(),
 		obs: agent.Observed{
 			Key: key, Incarnation: n, SpecHash: spec.Hash(), LiveHash: live.Hash(), State: agent.StateInitializing,
 			ShimRelease: at.GetShimRelease(), StartedAt: time.Now(),
@@ -308,8 +311,15 @@ func (f *Fleet[S, L]) startShim(l *shimv1.Launch) (<-chan struct{}, error) {
 // follow applies key's events to its observation until the connection ends. An end that Release did not ask for
 // leaves the worker lost, unless its exit was recorded: in an Exited event, or in the exit file its shim wrote
 // before it went (S3).
+//
+// The events before Attached's next_seq are already in it (D108), so they are skipped: replayed over the snapshot
+// they would take the observation back in time.
 func (f *Fleet[S, L]) follow(key agent.WorkerKey, w *worker[S]) {
+	from := w.conn.Attached().GetNextSeq()
 	for ev := range w.conn.Events() {
+		if ev.GetSeq() != 0 && ev.GetSeq() < from {
+			continue
+		}
 		f.update(key, w, func(o *agent.Observed) { apply(o, ev) })
 	}
 	rec, _ := shim.ReadExitFile(f.exitPath(key)) // a missing or unreadable file: no record
@@ -365,13 +375,16 @@ func apply(o *agent.Observed, ev *shimv1.Event) {
 	}
 }
 
-// Start sends key's worker Start.
-func (f *Fleet[S, L]) Start(ctx context.Context, key agent.WorkerKey) error {
+// Start sends key's worker Start, built from spec: the plan's, which the worker was spawned with.
+func (f *Fleet[S, L]) Start(ctx context.Context, key agent.WorkerKey, spec S) error {
 	w, err := f.get(key)
 	if err != nil {
 		return err
 	}
-	start, err := f.cfg.Program.Start(key, w.spec)
+	if w.conn == nil {
+		return fmt.Errorf("fleet: start %s: its shim is gone", key)
+	}
+	start, err := f.cfg.Program.Start(key, spec)
 	if err != nil {
 		return fmt.Errorf("fleet: start %s: %w", key, err)
 	}
@@ -392,6 +405,9 @@ func (f *Fleet[S, L]) Push(ctx context.Context, key agent.WorkerKey, live L) err
 	if err != nil {
 		return err
 	}
+	if w.conn == nil {
+		return fmt.Errorf("fleet: push %s: its shim is gone", key)
+	}
 	relay, err := f.cfg.Program.Push(key, live)
 	if err != nil {
 		return fmt.Errorf("fleet: push %s: %w", key, err)
@@ -408,6 +424,9 @@ func (f *Fleet[S, L]) Stop(ctx context.Context, key agent.WorkerKey, reason stri
 	w, err := f.get(key)
 	if err != nil {
 		return err
+	}
+	if w.conn == nil {
+		return nil // gone with its shim: nothing to stop
 	}
 	err = w.conn.Stop(ctx, reason, f.cfg.StopGrace, f.cfg.StopKillAfter)
 	if err != nil && c3.CodeOf(err) != shim.CodeExited { // exited meanwhile: its Exited is on the way
@@ -439,7 +458,7 @@ func (f *Fleet[S, L]) Release(ctx context.Context, key agent.WorkerKey) error {
 		w.released = false
 		f.mu.Unlock()
 	}
-	viaShim := state == agent.StateExited && w.conn.Err() == nil
+	viaShim := state == agent.StateExited && w.conn != nil && w.conn.Err() == nil
 	if viaShim {
 		if err := w.conn.Release(ctx); err != nil {
 			unrelease()
@@ -458,16 +477,11 @@ func (f *Fleet[S, L]) Release(ctx context.Context, key agent.WorkerKey) error {
 			}
 		}
 	}
-	w.conn.Close()
-	if viaShim && w.shimDone != nil {
-		t := time.NewTimer(releaseWait)
-		select {
-		case <-w.shimDone:
-		case <-t.C:
-			f.cfg.Log.Warn().Str("worker", string(key)).Msg("released shim still running")
-		case <-ctx.Done():
-		}
-		t.Stop()
+	if w.conn != nil {
+		w.conn.Close()
+	}
+	if viaShim {
+		f.waitShim(ctx, key, w)
 	}
 	f.mu.Lock()
 	if f.workers[key] == w {
@@ -478,12 +492,54 @@ func (f *Fleet[S, L]) Release(ctx context.Context, key agent.WorkerKey) error {
 	return nil
 }
 
+// waitShim waits for a released shim to exit: the one this Fleet started by its exit, an adopted one by its
+// socket, which it removes as it goes (§4.1).
+func (f *Fleet[S, L]) waitShim(ctx context.Context, key agent.WorkerKey, w *worker[S]) {
+	t := time.NewTimer(releaseWait)
+	defer t.Stop()
+	if w.shimDone != nil {
+		select {
+		case <-w.shimDone:
+		case <-t.C:
+			f.cfg.Log.Warn().Str("worker", string(key)).Msg("released shim still running")
+		case <-ctx.Done():
+		}
+		return
+	}
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		if _, err := os.Lstat(w.socket); errors.Is(err, os.ErrNotExist) {
+			return
+		}
+		select {
+		case <-tick.C:
+		case <-t.C:
+			f.cfg.Log.Warn().Str("worker", string(key)).Msg("released shim still running")
+			return
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (f *Fleet[S, L]) socket(key agent.WorkerKey) string {
+	return shim.SocketPath(f.cfg.WorkDir, string(f.cfg.Plane), string(key))
+}
+
+func (f *Fleet[S, L]) attachConfig() c3.Config {
+	return c3.Config{Plane: string(f.cfg.Plane), Instance: f.cfg.Instance, Epoch: f.cfg.Epoch, Release: f.cfg.Release,
+		Log: f.cfg.Log}
+}
+
 // Close closes every connection; the shims and their workers go on, for the next term to adopt (D102).
 func (f *Fleet[S, L]) Close() {
 	f.mu.Lock()
 	ws := maps.Clone(f.workers)
 	f.mu.Unlock()
 	for _, w := range ws {
-		w.conn.Close()
+		if w.conn != nil {
+			w.conn.Close()
+		}
 	}
 }
