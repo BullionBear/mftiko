@@ -51,3 +51,18 @@ func TestApply(t *testing.T) {
 		t.Fatalf("a failed Init: %s, want stopping", o.State)
 	}
 }
+
+// A worker's Hello may come before the Fleet attaches to its new shim: the snapshot has it, and the events of it are
+// skipped, so the observation of a spawned worker starts from the snapshot.
+func TestSpawnedFromSnapshot(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	at := &shimv1.Attached{State: shimv1.WorkerState_WORKER_STATE_RUNNING, Phase: shimv1.Phase_PHASE_NEW,
+		Worker: &commonv1.WorkerRef{Key: "td/1", Incarnation: 4}, SpecHash: "s", ShimRelease: "r",
+		Hello: &workerv1.Hello{Release: "w"}, Stage: "boot", LastBeatAtNs: now.UnixNano()}
+	o := spawned(at, "s", "l", now)
+	if o.Key != "td/1" || o.Incarnation != 4 || o.State != agent.StateInitializing || o.Release != "w" ||
+		o.Stage != "boot" || !o.LastBeat.Equal(now) || o.ShimRelease != "r" || o.SpecHash != "s" ||
+		o.Pushed != "l" || !o.PushedAt.Equal(now) || !o.StartedAt.Equal(now) || o.LiveHash != "" {
+		t.Fatalf("spawned %+v", o)
+	}
+}
