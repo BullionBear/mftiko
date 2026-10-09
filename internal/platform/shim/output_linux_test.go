@@ -110,6 +110,14 @@ func TestWorkerOutputIncarnations(t *testing.T) {
 		if err := p.cmd.Wait(); err != nil {
 			t.Fatalf("shim: %v", err)
 		}
+		// No Release: the exit file stays, and the next shim of the key will not start until the agent collects it.
+		exit := ExitPath(wd, "td", "td/42")
+		if rec, err := ReadExitFile(exit); err != nil || rec.GetWorker().GetIncarnation() != inc {
+			t.Fatalf("exit file %v (%v), want incarnation %d", rec, err, inc)
+		}
+		if err := os.Remove(exit); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for _, stream := range []string{"stdout", "stderr"} {
 		b, err := os.ReadFile(OutputPath(wd, "td", "td/42", stream))

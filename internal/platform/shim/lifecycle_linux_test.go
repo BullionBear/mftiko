@@ -38,6 +38,26 @@ func (a *agent) waitPhase(epoch int64, phase shimv1.Phase) *shimv1.Attached {
 	}
 }
 
+// waitExited attaches until the shim reports the worker EXITED: reaped, and its exit recorded.
+func (a *agent) waitExited(epoch int64, majors ...uint32) *shimv1.Attached {
+	a.t.Helper()
+	if len(majors) == 0 {
+		majors = []uint32{Major}
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		r := a.attach(epoch, majors...)
+		wantOK(a.t, r)
+		if r.GetAttached().GetState() == shimv1.WorkerState_WORKER_STATE_EXITED {
+			return r.GetAttached()
+		}
+		if time.Now().After(deadline) {
+			a.t.Fatalf("state %v, want EXITED", r.GetAttached().GetState())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 // started attaches, sends Init and then Start, each once the shim says the one before is done.
 func (a *agent) started(epoch int64) {
 	a.t.Helper()
@@ -155,9 +175,8 @@ func TestC3Lifecycle(t *testing.T) {
 		t.Errorf("stopped %v: OnStop did not run", s)
 	}
 
-	at := a.waitPhase(1, shimv1.Phase_PHASE_STOPPING)
-	if at.GetState() != shimv1.WorkerState_WORKER_STATE_EXITED {
-		t.Errorf("state %v", at.GetState())
+	if at := a.waitExited(1); at.GetPhase() != shimv1.Phase_PHASE_STOPPING {
+		t.Errorf("phase %v", at.GetPhase())
 	}
 	wantErr(t, a.call(initReq()), CodeExited)
 	wantErr(t, a.call(stopReq(1, 1)), CodeExited)
@@ -193,9 +212,8 @@ func TestC3StopOutlivesAgent(t *testing.T) {
 	}
 
 	b := dial(t, p.socket())
-	at := b.waitPhase(2, shimv1.Phase_PHASE_STOPPING)
-	if at.GetState() != shimv1.WorkerState_WORKER_STATE_EXITED {
-		t.Errorf("state %v", at.GetState())
+	if at := b.waitExited(2); at.GetPhase() != shimv1.Phase_PHASE_STOPPING {
+		t.Errorf("phase %v", at.GetPhase())
 	}
 	wantOK(t, b.call(releaseReq()))
 	p.wantExit(0)

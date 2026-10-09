@@ -159,6 +159,15 @@ message Exited {
   mftiko.common.v1.ExitInfo exit = 1;
 }
 
+// 結束檔 run/{plane}/{h}.exit.pb 的內容（§4.5 S3）：worker 被 reap、ExitInfo 合成之後寫入，Release 時刪除。
+message ExitRecord {
+  mftiko.common.v1.WorkerRef worker = 1; // 哪一個 incarnation
+  string spec_hash = 2;
+  int32 pid = 3;
+  uint64 start_time = 4;
+  mftiko.common.v1.ExitInfo exit = 5;
+}
+
 message Preempted {
   int64 by_epoch = 1;
 }

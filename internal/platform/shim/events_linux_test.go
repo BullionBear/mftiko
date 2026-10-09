@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	shimv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/shim/v1"
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
 	"github.com/BullionBear/mftiko/internal/platform/shim/fakeworker"
@@ -84,17 +85,21 @@ func TestC3EventsWhileAway(t *testing.T) {
 
 	p.waitLog("worker exited", map[string]any{"code": float64(fakeworker.CodeDone)})
 	b := dial(t, p.socket())
-	b.pollNext(last + 3) // the reap can come before the shim has read the worker's last words
+	b.pollNext(last + 4) // Exiting, Stopped, and Exited once the exit is recorded
 	at := b.attachFrom(2, last+1)
-	if at.GetOldestSeq() != last+1 || at.GetNextSeq() != last+3 {
-		t.Errorf("attached oldest %d next %d, want %d and %d", at.GetOldestSeq(), at.GetNextSeq(), last+1, last+3)
+	if at.GetOldestSeq() != last+1 || at.GetNextSeq() != last+4 {
+		t.Errorf("attached oldest %d next %d, want %d and %d", at.GetOldestSeq(), at.GetNextSeq(), last+1, last+4)
 	}
-	exiting, stopped := b.kept(), b.kept()
+	exiting, stopped, exited := b.kept(), b.kept(), b.kept()
 	if exiting.GetSeq() != last+1 || exiting.GetExiting() == nil || exiting.GetGap() {
 		t.Errorf("first after the gap %v, want Exiting at %d", exiting, last+1)
 	}
 	if stopped.GetSeq() != last+2 || !stopped.GetStopped().GetOnStopCompleted() {
 		t.Errorf("then %v, want Stopped at %d", stopped, last+2)
+	}
+	if e := exited.GetExited().GetExit(); exited.GetSeq() != last+3 || e.GetOutcome() != commonv1.Outcome_OUTCOME_DONE ||
+		e.GetCode() != 0 || !e.GetOnStopCompleted() {
+		t.Errorf("then %v, want Exited(DONE, 0, OnStop done) at %d", exited, last+3)
 	}
 }
 
