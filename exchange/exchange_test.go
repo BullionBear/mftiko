@@ -21,10 +21,9 @@ func TestCredentialsNeverFormat(t *testing.T) {
 	log.Info().Interface("cfg", wrapped).Interface("c", c).Msg("x")
 	j, _ := json.Marshal(wrapped)
 
-	outs := []string{
-		fmt.Sprint(c), fmt.Sprintf("%v %+v %#v %s", c, c, c, c),
-		fmt.Sprintf("%v %+v %#v", wrapped, wrapped, wrapped),
-		string(j), buf.String(),
+	outs := []string{fmt.Sprint(c), fmt.Sprint(&c), string(j), buf.String()}
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q", "%x", "%X", "%d", "%t", "%T"} {
+		outs = append(outs, fmt.Sprintf(verb, c), fmt.Sprintf(verb, &c), fmt.Sprintf(verb, wrapped))
 	}
 	for _, out := range outs {
 		for _, secret := range []string{"s3cret", "pp", "k-visible"} {
