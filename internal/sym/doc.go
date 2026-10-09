@@ -33,8 +33,8 @@
 // A later Insert of the same ticker draws a new UID. The old terminal row stays. List pages
 // with offset and limit; inconsistency across pages is accepted. Selectors have no UID.
 // Universe.current is a selector and is still TBD, outside D203.
-// The decided interval is 1..4294967295 and 0 is invalid. uidMin and uidMax are that interval.
-// The store keeps the value as uint64 so it does not depend on the contract field's width.
+// The UID is uint32, the same type as Info.UID. The interval is symbol.MinUID..symbol.MaxUID
+// and 0 is invalid. symbol.ValidUID is that check. The BIGINT columns use the same bounds.
 // The sym subject and GetByUID are not served yet.
 // Only this service writes the tables.
 //

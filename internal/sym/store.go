@@ -8,6 +8,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/BullionBear/mftiko/contract/symbol"
 )
 
 // Status is the provisional listing enum (D203). The contract still carries a
@@ -100,14 +102,14 @@ func (s *Store) Close() { s.db.Close() }
 
 // Insert puts a listing on the active table and allocates its uid.
 //
-// A candidate outside uidMin..uidMax is discarded. Allocation inserts the uid
+// A candidate symbol.ValidUID rejects is discarded. Allocation inserts the uid
 // into symbol_uid first. A unique violation on that registry (or on a listing
 // primary key, or from symbol_reject_shared_uid) is discarded and another uid
 // is drawn. A collision on the ticker or the exchange spelling is returned
 // as-is: that is not a uid collision, and retrying would burn draws. The
 // symbol_uid row is never deleted, so a uid stays taken after the listing is
 // archived.
-func (s *Store) Insert(ctx context.Context, l Listing) (uint64, error) {
+func (s *Store) Insert(ctx context.Context, l Listing) (uint32, error) {
 	if !l.Status.Active() {
 		return 0, fmt.Errorf("%w: %s is not an active status", ErrStatus, l.Status)
 	}
@@ -118,7 +120,7 @@ func (s *Store) Insert(ctx context.Context, l Listing) (uint64, error) {
 		if err != nil {
 			return 0, err
 		}
-		if uid < uidMin || uid > uidMax {
+		if !symbol.ValidUID(uid) {
 			outside++
 			if outside > maxUIDDraws {
 				break
@@ -137,7 +139,7 @@ func (s *Store) Insert(ctx context.Context, l Listing) (uint64, error) {
 		return 0, err
 	}
 	if last == nil {
-		return 0, fmt.Errorf("%w: draws were outside %d..%d", ErrUID, uidMin, uidMax)
+		return 0, fmt.Errorf("%w: draws were outside %d..%d", ErrUID, symbol.MinUID, symbol.MaxUID)
 	}
 	return 0, fmt.Errorf("%w: %v", ErrUID, last)
 }
@@ -147,7 +149,7 @@ func (s *Store) Insert(ctx context.Context, l Listing) (uint64, error) {
 // row is deleted in that same transaction, so the uid is never on both tables.
 // status must be EXPIRED or DELISTED. atNs is the terminal row's updated_at_ns
 // and the revision's refreshed_at_ns.
-func (s *Store) Move(ctx context.Context, uid uint64, status Status, atNs int64) error {
+func (s *Store) Move(ctx context.Context, uid uint32, status Status, atNs int64) error {
 	if !status.Terminal() {
 		return fmt.Errorf("%w: %s is not a terminal status", ErrStatus, status)
 	}
@@ -194,7 +196,7 @@ func (s *Store) Move(ctx context.Context, uid uint64, status Status, atNs int64)
 	return nil
 }
 
-func (s *Store) insertActive(ctx context.Context, uid uint64, l Listing) error {
+func (s *Store) insertActive(ctx context.Context, uid uint32, l Listing) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -248,7 +250,7 @@ type listingRow struct {
 	CreatedAtNs      int64
 }
 
-func lockActive(ctx context.Context, tx pgx.Tx, uid uint64) (listingRow, error) {
+func lockActive(ctx context.Context, tx pgx.Tx, uid uint32) (listingRow, error) {
 	var row listingRow
 	err := tx.QueryRow(ctx, `
 		SELECT universal_ticker, exch_ticker, base, quote,
@@ -264,7 +266,7 @@ func lockActive(ctx context.Context, tx pgx.Tx, uid uint64) (listingRow, error) 
 	return row, err
 }
 
-func insertListing(ctx context.Context, tx pgx.Tx, table string, uid uint64, status Status, row listingRow, updatedAtNs int64) error {
+func insertListing(ctx context.Context, tx pgx.Tx, table string, uid uint32, status Status, row listingRow, updatedAtNs int64) error {
 	if err := knownListingTable(table); err != nil {
 		return err
 	}
@@ -289,7 +291,7 @@ func insertListing(ctx context.Context, tx pgx.Tx, table string, uid uint64, sta
 	return err
 }
 
-func insertFilters(ctx context.Context, tx pgx.Tx, table string, uid uint64, filters []Filter) error {
+func insertFilters(ctx context.Context, tx pgx.Tx, table string, uid uint32, filters []Filter) error {
 	if err := knownFilterTable(table); err != nil {
 		return err
 	}
@@ -302,7 +304,7 @@ func insertFilters(ctx context.Context, tx pgx.Tx, table string, uid uint64, fil
 	return nil
 }
 
-func readFilters(ctx context.Context, tx pgx.Tx, table string, uid uint64) ([]Filter, error) {
+func readFilters(ctx context.Context, tx pgx.Tx, table string, uid uint32) ([]Filter, error) {
 	if err := knownFilterTable(table); err != nil {
 		return nil, err
 	}
@@ -323,7 +325,7 @@ func readFilters(ctx context.Context, tx pgx.Tx, table string, uid uint64) ([]Fi
 	return out, rows.Err()
 }
 
-func bumpRevision(ctx context.Context, tx pgx.Tx, table string, uid uint64, atNs int64) error {
+func bumpRevision(ctx context.Context, tx pgx.Tx, table string, uid uint32, atNs int64) error {
 	if err := knownListingTable(table); err != nil {
 		return err
 	}

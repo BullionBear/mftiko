@@ -1,6 +1,10 @@
 package sym
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/BullionBear/mftiko/contract/symbol"
+)
 
 func TestRandomSourceStaysInInterval(t *testing.T) {
 	src := RandomSource()
@@ -9,8 +13,8 @@ func TestRandomSourceStaysInInterval(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if uid < uidMin || uid > uidMax {
-			t.Fatalf("uid %d outside %d..%d", uid, uidMin, uidMax)
+		if !symbol.ValidUID(uid) {
+			t.Fatalf("uid %d is not a valid UID", uid)
 		}
 	}
 }

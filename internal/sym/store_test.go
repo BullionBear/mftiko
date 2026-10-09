@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/internal/platform/pgtest"
 	"github.com/BullionBear/mftiko/migrations"
 )
@@ -32,7 +33,7 @@ func TestStoreRoundTrip(t *testing.T) {
 
 	t.Run("collision then retry", func(t *testing.T) {
 		truncate(t, ctx, conn)
-		src := &script{uids: []uint64{7, 7, 8}}
+		src := &script{uids: []uint32{7, 7, 8}}
 		st := openStore(t, srv.DSN(), src)
 		first := spot("Bybit_Spot_BTCUSDT", "BTCUSDT")
 		if uid, err := st.Insert(ctx, first); err != nil || uid != 7 {
@@ -50,7 +51,7 @@ func TestStoreRoundTrip(t *testing.T) {
 
 	t.Run("move keeps uid and filters, relist gets a new uid", func(t *testing.T) {
 		truncate(t, ctx, conn)
-		src := &script{uids: []uint64{4, 4, 5}}
+		src := &script{uids: []uint32{4, 4, 5}}
 		st := openStore(t, srv.DSN(), src)
 		tick := "0.5"
 		row := spot("Bybit_Spot_BTCUSDT", "BTCUSDT")
@@ -137,7 +138,7 @@ func TestStoreRoundTrip(t *testing.T) {
 
 	t.Run("archived uid stays registered", func(t *testing.T) {
 		truncate(t, ctx, conn)
-		src := &script{uids: []uint64{6, 6, 7}}
+		src := &script{uids: []uint32{6, 6, 7}}
 		st := openStore(t, srv.DSN(), src)
 		uid, err := st.Insert(ctx, spot("Bybit_Spot_BTCUSDT", "BTCUSDT"))
 		if err != nil || uid != 6 {
@@ -167,10 +168,10 @@ func TestStoreRoundTrip(t *testing.T) {
 
 	t.Run("zero and out of range are not inserted", func(t *testing.T) {
 		truncate(t, ctx, conn)
-		src := &script{uids: []uint64{0, 1 << 32, 9}}
+		src := &script{uids: []uint32{0, symbol.MaxUID}}
 		st := openStore(t, srv.DSN(), src)
 		uid, err := st.Insert(ctx, spot("Okx_Perp_BTCUSDT", "BTC-USDT"))
-		if err != nil || uid != 9 {
+		if err != nil || uid != symbol.MaxUID {
 			t.Fatalf("insert = %d, %v", uid, err)
 		}
 		var n int
@@ -184,7 +185,7 @@ func TestStoreRoundTrip(t *testing.T) {
 
 	t.Run("same spelling in another category is a different instrument", func(t *testing.T) {
 		truncate(t, ctx, conn)
-		src := &script{uids: []uint64{21, 22, 23}}
+		src := &script{uids: []uint32{21, 22, 23}}
 		st := openStore(t, srv.DSN(), src)
 		if _, err := st.Insert(ctx, spot("Bybit_Spot_BTCUSDT", "BTCUSDT")); err != nil {
 			t.Fatal(err)
@@ -203,7 +204,7 @@ func TestStoreRoundTrip(t *testing.T) {
 
 	t.Run("exhausted collisions", func(t *testing.T) {
 		truncate(t, ctx, conn)
-		st := openStore(t, srv.DSN(), &script{uids: []uint64{3}})
+		st := openStore(t, srv.DSN(), &script{uids: []uint32{3}})
 		if _, err := st.Insert(ctx, spot("Bybit_Spot_BTCUSDT", "BTCUSDT")); err != nil {
 			t.Fatal(err)
 		}
@@ -216,7 +217,7 @@ func TestStoreRoundTrip(t *testing.T) {
 
 	t.Run("terminal status is not inserted on the active table", func(t *testing.T) {
 		truncate(t, ctx, conn)
-		src := &script{uids: []uint64{30}}
+		src := &script{uids: []uint32{30}}
 		st := openStore(t, srv.DSN(), src)
 		row := spot("Bybit_Spot_BTCUSDT", "BTCUSDT")
 		row.Status = Delisted
@@ -230,11 +231,11 @@ func TestStoreRoundTrip(t *testing.T) {
 }
 
 type script struct {
-	uids []uint64
+	uids []uint32
 	n    int
 }
 
-func (s *script) NextUID() (uint64, error) {
+func (s *script) NextUID() (uint32, error) {
 	if s.n >= len(s.uids) {
 		return 0, errors.New("sym: scripted uid source exhausted")
 	}
@@ -243,9 +244,9 @@ func (s *script) NextUID() (uint64, error) {
 	return v, nil
 }
 
-type fixed uint64
+type fixed uint32
 
-func (f fixed) NextUID() (uint64, error) { return uint64(f), nil }
+func (f fixed) NextUID() (uint32, error) { return uint32(f), nil }
 
 func openStore(t *testing.T, dsn string, src Source) *Store {
 	t.Helper()
@@ -280,7 +281,7 @@ func truncate(t *testing.T, ctx context.Context, conn *pgx.Conn) {
 	}
 }
 
-func assertGone(t *testing.T, ctx context.Context, conn *pgx.Conn, table string, uid uint64) {
+func assertGone(t *testing.T, ctx context.Context, conn *pgx.Conn, table string, uid uint32) {
 	t.Helper()
 	var n int
 	q := `SELECT count(*) FROM ` + table + ` WHERE uid = $1`
