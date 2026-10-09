@@ -1,7 +1,7 @@
 // Package buildinfo carries the build identity, stamped in by the Makefile via -ldflags -X.
 package buildinfo
 
-// Set at build time. A worker and its shim keep the release of the agent that spawned them (DECISIONS D4).
+// Set at build time. A worker and its shim keep the release of the agent that spawned them (DECISIONS D103).
 var (
 	// Version is `git describe --tags --always --dirty --match='v[0-9]*.[0-9]*.[0-9]*'`.
 	Version = "dev"

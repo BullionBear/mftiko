@@ -1,4 +1,4 @@
-// Command mftiko-conformance runs the SDK conformance suite against a strategy artifact: a fake shim on fd 3, a real nats-server, and fake MD and TD peers (DECISIONS D19, PROTOCOL §9.8).
+// Command mftiko-conformance runs the SDK conformance suite against a strategy artifact: a fake shim on fd 3, a real nats-server, and fake MD and TD peers (DECISIONS D802, PROTOCOL §9.8).
 //
 // Shape only: not implemented yet.
 package main

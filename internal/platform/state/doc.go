@@ -1,4 +1,4 @@
-// Package state is the etcd control plane: key layout under /mftiko/v1, clusterFor routing across regional clusters, writer-key fencing, and leases (D14, D17, PROTOCOL §3).
+// Package state is the etcd control plane: key layout under /mftiko/v1, clusterFor routing across regional clusters, writer-key fencing, and leases (D004, D005, PROTOCOL §3).
 //
 // # Implemented
 //
@@ -6,10 +6,10 @@
 //     WorkerHash (h in PROTOCOL §2), and Owner, the instance a key belongs to.
 //
 //   - Routing (topology.go, clusters.go): Topology maps instances to regions and regions to clusters; Clusters
-//     dials one client per region lazily and hands out read-only Readers routed by key (D17). AgentRegions is
+//     dials one client per region lazily and hands out read-only Readers routed by key (D005). AgentRegions is
 //     the set of clusters an agent (its own region) or the controller (every region) may connect to.
 //
-//   - Terms (term.go): an agent and the controller (PlaneCtl, D33) campaign the same way. Campaign wins the
+//   - Terms (term.go): an agent and the controller (PlaneCtl, D907) campaign the same way. Campaign wins the
 //     instance's election in its home region, bumps the persisted epoch and takes the home writer key; Fence takes
 //     the writer key in another cluster on first use and records its rev R (PROTOCOL §3.2 W2 steps 1-3). A term
 //     ends, once and for good, when its session is lost, a writer key shows a newer epoch, or it is closed.
@@ -30,7 +30,7 @@
 //     path: Clusters exposes readers only.
 //
 //   - Incarnations (incarnation.go): LoadIncarnations reads the agent's counters once per term; Next takes a
-//     worker key's next number in one fenced txn before the spawn (W6, D8), so a superseded agent gets none;
+//     worker key's next number in one fenced txn before the spawn (W6, D106), so a superseded agent gets none;
 //     Forget deletes an STS session's counter once it is terminal.
 //
 //   - Mirrors (mirror.go): Mirror keeps an in-memory copy of one prefix of one cluster (W4): a paged list at one

@@ -1,5 +1,5 @@
 // Package runner runs an agent's term: it waits for the demand, has the Fleet adopt the workers its shims kept,
-// brings WorkerStatus in line, writes the AgentRecord, then reconciles in one loop until the term ends (D2,
+// brings WorkerStatus in line, writes the AgentRecord, then reconciles in one loop until the term ends (D101,
 // PROTOCOL §3.2 W7). The decisions are package agent's Reconciler; this package does the I/O around it.
 package runner
 
@@ -20,7 +20,7 @@ import (
 // Defaults of Config.
 const (
 	// DefaultStaleAfter is how old the demand may be before the agent stops changing anything by it (DECISIONS
-	// D39): 3 of the Mirror's probe intervals, which is how far LastContact lags while all is well.
+	// D109): 3 of the Mirror's probe intervals, which is how far LastContact lags while all is well.
 	DefaultStaleAfter = 15 * time.Second
 	// DefaultResync is the longest the loop sleeps with nothing to wake it: staleness comes and goes with no
 	// notification, and the actions are recomputed from scratch each time, at the cost of a diff in memory.
@@ -33,7 +33,7 @@ const (
 // own error. The agent exits and systemd starts it again; the next process campaigns for a new epoch (E1-05).
 var ErrTermEnded = errors.New("agent: term ended")
 
-// Fleet is the set of shim-backed workers (D2). Its calls start an action and return: Observe reflects each one
+// Fleet is the set of shim-backed workers (D101). Its calls start an action and return: Observe reflects each one
 // from the moment it returns (a spawned worker is initializing, a stopped one stopping), and the rest comes as
 // the shims report it, signalled on Changed. A call must not block for long: the agent has one loop.
 type Fleet[S, L agent.Hashed] interface {
@@ -43,7 +43,7 @@ type Fleet[S, L agent.Hashed] interface {
 	Observe() map[agent.WorkerKey]agent.Observed
 	Changed() <-chan struct{}
 	// Spawn starts a new incarnation of key with spec and live, and sends Init. A worker of key that ended is
-	// released first (delete-before-create, D8).
+	// released first (delete-before-create, D106).
 	Spawn(ctx context.Context, key agent.WorkerKey, spec S, live L) error
 	Start(ctx context.Context, key agent.WorkerKey) error
 	Push(ctx context.Context, key agent.WorkerKey, live L) error

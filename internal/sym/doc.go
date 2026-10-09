@@ -1,5 +1,5 @@
 // Package sym is the symbol plane: the service that keeps the golden record of every venue's
-// instruments and answers the sym subject (D11, D31). It follows mftik's symbol plane.
+// instruments and answers the sym subject (D201, D202). It follows mftik's symbol plane.
 //
 // It is a plain service, not an agent: no lease, no fencing. Every region runs it as a NATS queue
 // group; any replica answers. Its lifetime is not tied to any session, because "what is the tick
@@ -13,24 +13,30 @@
 //     are reported, not raised.
 //   - Every listed instrument is upserted. Rows of that (venue, category) that are missing from the
 //     response become DELISTED. EXPIRED and DELISTED move to the terminal table and are not refreshed
-//     again (D38). The UniversalTicker string and the UID stay the same, so historical rows do
+//     again (D203). The UniversalTicker string and the UID stay the same, so historical rows do
 //     not re-key. The same ticker listed again after delisting gets a new UID.
 //   - Hourly by default, plus on request.
 //
-// Storage is PostgreSQL. The decided shape (D38) is two listing tables: an active table
+// Storage is PostgreSQL. The decided shape (D203) is two listing tables: an active table
 // (PRELISTING, TRADABLE, HALTED, SETTLING, UNKNOWN), which the Resolver and hot paths read, and a
 // terminal table (EXPIRED, DELISTED) for historical lookup of old fills and positions and for
 // reverse lookup by UID. UID is the primary key of both tables and is unique across them.
-// Terminal rows can be archived. The status enum is still provisional. UID width, the allocator,
-// and whether a process restart keeps UIDs are open (PROTOCOL §10 P13). The suggested direction
-// there, not implemented here, is one Postgres sequence (symbol_uid_seq) feeding uid as the
-// primary key of both tables, symbol_filter keyed by uid, and a terminal transition that moves
-// the whole row including uid. migrations/0002_symbol is still one symbol_ticker plus
-// symbol_filter, keyed by that table's own id, not by a shared UID. This service does not
-// implement the split or GetByUID yet. Only this service writes them.
+// Terminal rows can be archived. The status enum is still provisional.
+//
+// SYM allocates each UID as a random integer that is unique and never reused. It is not a
+// monotonic sequence. The UID is stored on the row, so a restart or a reload does not change it.
+// A delist followed by a relist gets a new UID. SYM retries when a candidate collides.
+// symbol_filter is split the same way, and its rows move with the listing on a terminal
+// transition. List pages with offset and limit; inconsistency across pages is accepted.
+// Selectors have no UID. Universe.current is a selector and is still TBD, outside D203.
+// The contract type is uint64 and 0 is invalid. Width and numeric range are still open
+// (PROTOCOL §10 P13): Postgres BIGINT is signed, so the suggested range is 1..2^63-1.
+// migrations/0002_symbol is still one symbol_ticker plus one symbol_filter, keyed by that
+// table's own id, not by a shared UID. This service does not implement the split, the
+// allocator, or GetByUID yet. Only this service writes them.
 //
 // It is also the only place that uppercases asset codes and applies the alias table (XBT to BTC,
-// D38): normalize first, then judge quanto, then derive the ticker. Adapters pass native codes.
+// D203): normalize first, then judge quanto, then derive the ticker. Adapters pass native codes.
 // Strikes go through spell_strike before the ticker, so 6400.0 and 6400 are one ticker. USD, USDC
 // and USDT stay distinct. A USD quote settled in USDC is quanto: it is not stored in phase 1, and
 // the demand is REJECTED. Adapters fill contract_value_ccy, price_ccy and the PnL settlement

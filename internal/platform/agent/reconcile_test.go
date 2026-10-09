@@ -188,7 +188,7 @@ func TestStepGiveUp(t *testing.T) {
 }
 
 // While the demand is stale nothing is stopped or pushed; a worker is spawned or started only if the Policy keeps
-// it (DECISIONS D39).
+// it (DECISIONS D109).
 func TestStepStale(t *testing.T) {
 	pol := &policy{keep: map[WorkerKey]bool{"md/kept": true}}
 	r := &Reconciler[h, h]{Policy: pol}

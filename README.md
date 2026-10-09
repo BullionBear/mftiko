@@ -8,7 +8,7 @@ Design: [docs/DECISIONS.md](docs/DECISIONS.md). Protocols and contracts: [docs/P
 
 ## Layout
 
-Three blocks plus the exchange package (DECISIONS D35); `internal/archtest` checks the dependency rules between them.
+Three blocks plus the exchange package (DECISIONS D006); `internal/archtest` checks the dependency rules between them.
 
 ```
 internal/                 ① the planes, private
@@ -53,7 +53,7 @@ docs/                     DECISIONS.md, PROTOCOL.md
 | `make` | `proto`, `build`, `examples`, `web` |
 | `make tools` | installs protoc-gen-go into `bin/tools`; buf and protoc-gen-es come from `web/node_modules` |
 | `make proto` | regenerates `contract/gen/` and `web/src/lib/gen/` from `contract/proto/`; commit the result with the `.proto` change |
-| `make proto-lint` / `make proto-breaking` | buf lint / buf breaking against `main` (`BUF_AGAINST=` another buf input); drafts listed in `buf.yaml` are exempt (DECISIONS D36) |
+| `make proto-lint` / `make proto-breaking` | buf lint / buf breaking against `main` (`BUF_AGAINST=` another buf input); drafts listed in `buf.yaml` are exempt (DECISIONS D007) |
 | `make gen-check` | fails if `contract/gen/`, `web/src/lib/gen/`, `go.mod` or `go.sum` are not what `make proto` produces |
 | `make build` | every command into `bin/` |
 | `make examples` | example strategies into `bin/examples/` |
@@ -87,4 +87,4 @@ Every binary logs through `internal/platform/logger` (zerolog): JSON, one object
 
 ## Other languages
 
-The platform ships only the Go SDK. A strategy in another language works if its SDK follows PROTOCOL §9 and passes `mftiko-conformance` (DECISIONS D19).
+The platform ships only the Go SDK. A strategy in another language works if its SDK follows PROTOCOL §9 and passes `mftiko-conformance` (DECISIONS D802).

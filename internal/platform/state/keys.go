@@ -12,8 +12,8 @@ import (
 // Root is the prefix of every key (PROTOCOL §3.1). An incompatible change moves to /mftiko/v2/.
 const Root = "/mftiko/v1"
 
-// Plane is the first path segment after Root: which kind of agent an instance is (DECISIONS D1), or the
-// controller (D33).
+// Plane is the first path segment after Root: which kind of agent an instance is (DECISIONS D001), or the
+// controller (D907).
 type Plane string
 
 const (
@@ -25,7 +25,7 @@ const (
 )
 
 // ControllerInstance is the controller's instance name. Every controller process uses it, so two of them fence
-// each other in every cluster even when their topologies disagree on the home region (PROTOCOL §3.2 W2, D33).
+// each other in every cluster even when their topologies disagree on the home region (PROTOCOL §3.2 W2, D907).
 // Topology.Instances[ControllerInstance] is the home region.
 const ControllerInstance = "controller"
 
@@ -78,13 +78,13 @@ func SessionDemandKey(stsInst, sessionID string) string {
 	return DemandPrefix(PlaneSTS, stsInst) + sessionID
 }
 
-// MDDemandKey is an MD demand entry, written by the controller into the MD instance's cluster (PROTOCOL §3.1, D17).
+// MDDemandKey is an MD demand entry, written by the controller into the MD instance's cluster (PROTOCOL §3.1, D005).
 // entry is feed/{feed key} or select/{name}, appended verbatim.
 func MDDemandKey(mdInst, sessionID, entry string) string {
 	return DemandPrefix(PlaneMD, mdInst) + sessionID + "/" + entry
 }
 
-// TDDemandKey is a TD demand entry, written by the controller into the TD instance's cluster (PROTOCOL §3.1, D17).
+// TDDemandKey is a TD demand entry, written by the controller into the TD instance's cluster (PROTOCOL §3.1, D005).
 func TDDemandKey(tdInst, sessionID string, apiID int64) string {
 	return DemandPrefix(PlaneTD, tdInst) + sessionID + "/" + apiIDString(apiID)
 }
@@ -143,7 +143,7 @@ func PlacementKey(mdInst, atomHash string) string { return PlacementPrefix(mdIns
 func PlacementPrefix(mdInst string) string { return instPrefix(PlaneMD, mdInst) + "placement/" }
 
 // Owner returns the plane and instance a key belongs to: the two path segments after Root. Every key in
-// PROTOCOL §3.1 is /{plane}/{inst}/..., and that instance is the one the routing rule (PROTOCOL §3, D17) names:
+// PROTOCOL §3.1 is /{plane}/{inst}/..., and that instance is the one the routing rule (PROTOCOL §3, D005) names:
 // session spec, demand and status -> the STS instance, demand entry and ack -> the provider, everything else -> the
 // instance.
 // A prefix that ends right after the instance (Root/{plane}/{inst}/) also resolves.

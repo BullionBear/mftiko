@@ -23,7 +23,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// worker 宣告的結束方式（D15）。
+// worker 宣告的結束方式（D107）。
 type Outcome int32
 
 const (
@@ -82,7 +82,7 @@ func (Outcome) EnumDescriptor() ([]byte, []int) {
 	return file_mftiko_common_v1_common_proto_rawDescGZIP(), []int{0}
 }
 
-// 交易共用的 enum：行情的成交與強平、TD 的訂單、exchange 的 adaptor、SDK 都用這一份（DECISIONS D35）。
+// 交易共用的 enum：行情的成交與強平、TD 的訂單、exchange 的 adaptor、SDK 都用這一份（DECISIONS D006）。
 type Side int32
 
 const (

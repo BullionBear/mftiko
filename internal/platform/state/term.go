@@ -342,7 +342,7 @@ func (t *Term) Plane() Plane { return t.plane }
 // Instance is the instance this term leads.
 func (t *Term) Instance() string { return t.inst }
 
-// Epoch is E, the epoch this term got (PROTOCOL §2); C3 Attach carries it (D6).
+// Epoch is E, the epoch this term got (PROTOCOL §2); C3 Attach carries it (D105).
 func (t *Term) Epoch() int64 { return t.epoch }
 
 // Done is closed when the term ends: session lost, superseded, or Close.

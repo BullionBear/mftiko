@@ -1,5 +1,5 @@
 // Command tape-keeper holds its feeds open so the MD tapes stay warm. It places no orders and binds
-// no account; the tapes live as long as this session does (DECISIONS D29).
+// no account; the tapes live as long as this session does (DECISIONS D404).
 package main
 
 import "github.com/BullionBear/mftiko/sdk"

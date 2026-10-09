@@ -1,12 +1,12 @@
 // Package okx is the OKX adapter: one venue and one account kind, both named Okx (the CamelCase
-// token of D11; two enums, D32), a unified account (D26). Spot, swap, futures and options share it; the instId tells them apart (BTC-USDT,
+// token of D201; two enums, D301), a unified account (D403). Spot, swap, futures and options share it; the instId tells them apart (BTC-USDT,
 // BTC-USDT-SWAP).
 //
 // Facts the implementation must honor. Checked 2026-10-05 against okx.com/docs-v5; re-check before
 // implementing.
 //
 //   - Routes: "public" (/ws/v5/public) and "business" (/ws/v5/business, candles among others). The
-//     topic decides the route (D26). Private data is on /ws/v5/private, after login.
+//     topic decides the route (D403). Private data is on /ws/v5/private, after login.
 //   - No published cap on channels per connection: Budget is 0. What is limited: 480
 //     subscribe/unsubscribe/login requests per connection per hour (SessionLimits.Rate), 64 KB of
 //     channels per request (PerRequestBytes), 3 new connections per second per IP.

@@ -7,8 +7,8 @@ import (
 
 const Exchange = "okx"
 
-// Name is both OKX's venue and its account kind (D32). The token is "Okx": venue names are
-// CamelCase (D11), so a ticker reads Okx_Perp_BTCUSDT.
+// Name is both OKX's venue and its account kind (D301). The token is "Okx": venue names are
+// CamelCase (D201), so a ticker reads Okx_Perp_BTCUSDT.
 const Name = "Okx"
 
 // Declare is OKX's contribution to exchange.NewRegistry.

@@ -8,29 +8,29 @@ import (
 )
 
 // HistoryFactory builds a History for one api_id. The TD agent calls it for backfill without
-// starting an account worker (D20), so it takes the same AccountConfig.
+// starting an account worker (D601), so it takes the same AccountConfig.
 type HistoryFactory func(cfg AccountConfig) (History, error)
 
-// History is a venue's private trade history over REST, read by the TD agent's backfill jobs (D20).
+// History is a venue's private trade history over REST, read by the TD agent's backfill jobs (D601).
 // Safe for concurrent use. The job owns the cursor; History only reads one page at a time.
 type History interface {
 	Traits() HistoryTraits
 
 	// Fills reads one page of the account's fills on one instrument. A backfill scope is
-	// (api_id, UniversalTicker) (D20); the job resolves it and passes the Info. Continue with
+	// (api_id, UniversalTicker) (D601); the job resolves it and passes the Info. Continue with
 	// FillPage.Next while catching up; once caught up, the job re-reads from the confirmed line by
-	// time (D20).
+	// time (D601).
 	Fills(ctx context.Context, q FillQuery) (*FillPage, error)
 
 	// Order looks up one order by venue id. The job asks for every order_id that has fills but no
-	// terminal row in orders yet, and stores it once terminal with filled_qty > 0 (D20).
+	// terminal row in orders yet, and stores it once terminal with filled_qty > 0 (D601).
 	Order(ctx context.Context, inst *symbol.Info, orderID string) (*OrderUpdate, error)
 }
 
 // HistoryTraits tell the backfill job how to walk a venue's history.
 type HistoryTraits struct {
 	// Descending: pages come newest first. The confirmed line cannot move until a scan reaches its
-	// end (D20).
+	// end (D601).
 	Descending bool
 	// ByID: Fills accepts FillQuery.FromID, so catching up continues by id instead of by time.
 	ByID bool
@@ -38,7 +38,7 @@ type HistoryTraits struct {
 	// 0 = unlimited.
 	MaxWindow time.Duration
 	// Retention is how far back the venue keeps fills. AccountSettings.backfill_interval_s must be
-	// well below it (D20).
+	// well below it (D601).
 	Retention time.Duration
 	PageLimit int
 }

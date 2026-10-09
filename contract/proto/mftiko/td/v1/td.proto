@@ -28,23 +28,23 @@ message OrderRequest {
     Cancel cancel = 2;
     BatchCancel batch_cancel = 4;
   }
-  reserved 3; // 原本的 cancel_session：平台不替策略撤單（D25）
+  reserved 3; // 原本的 cancel_session：平台不替策略撤單（D602）
   reserved "cancel_session";
 }
 
 message Submit {
   string session_id = 1;
-  string ticker = 2; // 今天是 UniversalTicker。平面之間改傳 UID 是後續（D38），這一版不改 td 的欄位
+  string ticker = 2; // 今天是 UniversalTicker。平面之間改傳 UID 是後續（D203），這一版不改 td 的欄位
   mftiko.common.v1.Side side = 3;
   mftiko.common.v1.OrderType order_type = 4;
-  optional string qty = 5; // 單位是 contract_value_ccy（D38）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數
-  optional string quote_qty = 6; // quote 資產的金額，單位是 quote，不是 contract_value_ccy（D38）
-  optional string price = 7; // 單位是 price_ccy（D38）：現貨與期貨（含 inverse）是 quote；幣本位期權的權利金是 base；U 本位期權的權利金是 quote（穩定幣）
+  optional string qty = 5; // 單位是 contract_value_ccy（D203）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數
+  optional string quote_qty = 6; // quote 資產的金額，單位是 quote，不是 contract_value_ccy（D203）
+  optional string price = 7; // 單位是 price_ccy（D203）：現貨與期貨（含 inverse）是 quote；幣本位期權的權利金是 base；U 本位期權的權利金是 quote（穩定幣）
   mftiko.common.v1.TimeInForce tif = 8;
   bool reduce_only = 9;
   string client_order_id = 10;
   map<string, string> params = 11;
-  uint32 algo_id = 12; // 必須等於 client_order_id 的 algo 欄位（D25）
+  uint32 algo_id = 12; // 必須等於 client_order_id 的 algo 欄位（D602）
 }
 
 message Cancel {
@@ -52,10 +52,10 @@ message Cancel {
   string ticker = 2;
   string client_order_id = 3;
   string order_id = 4;
-  uint32 algo_id = 5; // 目標單的 client_order_id 的 algo 欄位必須等於它；沒有 client_order_id 的單一律拒絕（D25）
+  uint32 algo_id = 5; // 目標單的 client_order_id 的 algo 欄位必須等於它；沒有 client_order_id 的單一律拒絕（D602）
 }
 
-// 撤掉這個帳號上 client_order_id 的 algo 欄位等於 algo_id 的所有掛單（D25）。
+// 撤掉這個帳號上 client_order_id 的 algo 欄位等於 algo_id 的所有掛單（D602）。
 // 只看 algo 欄位，不分 session、incarnation：上一個進程或上一個 session 留下的也算。
 message BatchCancel {
   uint32 algo_id = 1;
@@ -100,7 +100,7 @@ message ViewRequest {
 message OmsViewRequest {
   string session_id = 1;
   bool settled = 2;
-  uint32 algo_id = 3; // 非 0 時改以 algo 篩選，涵蓋上一個進程、上一個 session 留下的單（D25）
+  uint32 algo_id = 3; // 非 0 時改以 algo 篩選，涵蓋上一個進程、上一個 session 留下的單（D602）
 }
 
 message LedgerViewRequest {}
@@ -150,7 +150,7 @@ message AccountEvent {
     PositionUpdate position_update = 15;
     Recon recon = 17;
   }
-  reserved 16; // 原本的 account_reset：由 Recon 取代（D27）
+  reserved 16; // 原本的 account_reset：由 Recon 取代（D603）
   reserved "account_reset";
 }
 
@@ -161,11 +161,11 @@ message Order {
   mftiko.common.v1.Side side = 4;
   mftiko.common.v1.OrderType order_type = 5;
   OrderStatus status = 6;
-  string qty = 7; // 同 Submit.qty，單位是 contract_value_ccy（D38）
-  optional string quote_qty = 8; // 同 Submit.quote_qty（D38）
-  optional string price = 9; // 同 Submit.price，單位是 price_ccy（D38）
-  string filled_qty = 10; // 已成交數量，單位同 qty（contract_value_ccy，D38）
-  optional string avg_price = 11; // 同 Submit.price，單位是 price_ccy（D38）
+  string qty = 7; // 同 Submit.qty，單位是 contract_value_ccy（D203）
+  optional string quote_qty = 8; // 同 Submit.quote_qty（D203）
+  optional string price = 9; // 同 Submit.price，單位是 price_ccy（D203）
+  string filled_qty = 10; // 已成交數量，單位同 qty（contract_value_ccy，D203）
+  optional string avg_price = 11; // 同 Submit.price，單位是 price_ccy（D203）
   string reject_reason = 12;
   int64 exch_ts_ns = 13;
   int64 td_ts_ns = 14;
@@ -173,13 +173,13 @@ message Order {
 
 message Fill {
   string ticker = 1;
-  // 交易所的 trade id。WS 與 REST 必須給同一個值：落庫以 (api_id, fill_id) 去重（D20）。
+  // 交易所的 trade id。WS 與 REST 必須給同一個值：落庫以 (api_id, fill_id) 去重（D601）。
   string fill_id = 2;
   string order_id = 3;
   string client_order_id = 4;
   mftiko.common.v1.Side side = 5;
-  string price = 6; // 同 Submit.price，單位是 price_ccy（D38）
-  string qty = 7; // 成交數量，單位同 Submit.qty（contract_value_ccy，D38）
+  string price = 6; // 同 Submit.price，單位是 price_ccy（D203）
+  string qty = 7; // 成交數量，單位同 Submit.qty（contract_value_ccy，D203）
   string fee = 8;
   string fee_asset = 9;
   string liquidity = 10;
@@ -210,10 +210,10 @@ message Balance {
 
 message Position {
   string ticker = 1;
-  string size = 2; // 持倉數量，單位同 Submit.qty（contract_value_ccy，D38）
-  optional string entry_price = 3; // 同 Submit.price，單位是 price_ccy（D38）
-  optional string mark_price = 4; // 同 Submit.price，單位是 price_ccy（D38）
-  optional string unrealized_pnl = 5; // 損益結算幣 settlement_asset（欄位 settle），不是保證金幣（D38）
+  string size = 2; // 持倉數量，單位同 Submit.qty（contract_value_ccy，D203）
+  optional string entry_price = 3; // 同 Submit.price，單位是 price_ccy（D203）
+  optional string mark_price = 4; // 同 Submit.price，單位是 price_ccy（D203）
+  optional string unrealized_pnl = 5; // 損益結算幣 settlement_asset（欄位 settle），不是保證金幣（D203）
   optional string leverage = 6;
 }
 
@@ -225,7 +225,7 @@ message PositionUpdate {
   repeated Position positions = 1;
 }
 
-// 帳號狀態的整份快照（DECISIONS D27）。SDK 把它交給策略的 OnRecon：
+// 帳號狀態的整份快照（DECISIONS D603）。SDK 把它交給策略的 OnRecon：
 // open_orders 先篩成自己宣告的 algo_id，positions、balances 原樣給。
 // 和其他事件共用 seq；策略整份換掉自己的狀態，之後的事件照常疊上去。
 message Recon {

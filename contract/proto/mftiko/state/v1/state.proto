@@ -12,7 +12,7 @@ option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1;
 
 message Account {
   string name = 1;
-  // 帳號種類（DECISIONS D32），不是 venue：BinancePM 可以交易 Binance、BinanceUM、BinanceCM 的商品。
+  // 帳號種類（DECISIONS D301），不是 venue：BinancePM 可以交易 Binance、BinanceUM、BinanceCM 的商品。
   // 兩個 enum 的名稱可能相同（帳號種類 BinanceUM 交易 venue BinanceUM），不可互查。
   string kind = 2;
   bytes sealed_credentials = 3; // 以 TD instance 的公鑰封裝；etcd 裡不放明文
@@ -22,7 +22,7 @@ message Account {
 
 message AccountSettings {
   uint32 cancel_on_disconnect_s = 1; // 0 = 關閉
-  // 歷史補正（DECISIONS D20）。
+  // 歷史補正（DECISIONS D601）。
   uint32 backfill_interval_s = 2; // 另加 jitter；0 = TD agent 的預設值。必須短於交易所成交歷史的保留期
   // 手動觸發：比 TD agent 上次處理過的值新，就提前跑一輪。agent 重啟後可能多跑一次，無害。
   int64 backfill_requested_at_ns = 3;
@@ -51,7 +51,7 @@ message SessionStatus {
   string reason = 6;
   mftiko.common.v1.ExitInfo last_exit = 7;
   int64 updated_at_ns = 8;
-  StateSnapshot state_out = 9; // session terminal 之後 volume 的快照（D23）；推送完成前不填
+  StateSnapshot state_out = 9; // session terminal 之後 volume 的快照（D904）；推送完成前不填
 }
 
 message StateSnapshot {
@@ -63,7 +63,7 @@ message StateSnapshot {
   uint64 size_bytes = 6;
 }
 
-// ---------- controller 寫（不綁 lease，DECISIONS D9、D33）----------
+// ---------- controller 寫（不綁 lease，DECISIONS D901、D907）----------
 
 // MD、TD 的需求項目（§3.3）。
 message DemandEntry {
@@ -73,13 +73,13 @@ message DemandEntry {
     int64 api_id = 3;
   }
   int64 spec_revision = 10; // 推導自哪一版 session spec；只供除錯，可能來自另一個 cluster，不做比較
-  repeated uint32 algo_ids = 11; // 只有帳號項目：同 AccountDecl.algo_ids，TD agent 用來檢查衝突（D25）
+  repeated uint32 algo_ids = 11; // 只有帳號項目：同 AccountDecl.algo_ids，TD agent 用來檢查衝突（D602）
 }
 
 // STS 的指派（§3.3）。STS agent 只跑有指派的 session。
 message SessionDemand {
   mftiko.session.v1.DesiredState desired = 1; // RUNNING：spawn 並送 Init；ENDED：停掉 worker
-  bool start = 2;           // 所有 MD、TD 需求都 READY，STS agent 可以送 Start（D15）
+  bool start = 2;           // 所有 MD、TD 需求都 READY，STS agent 可以送 Start（D107）
   string end_reason = 3;    // desired 是 ENDED 時：ended_by_spec、deps_failed、deps_timeout
   repeated Binding bindings = 4;
   int64 spec_revision = 5;  // 推導自哪一版 session spec；只供除錯
@@ -89,7 +89,7 @@ message SessionDemand {
 // 一個需求項目目前的 ack，由 controller 從 provider 的 EntryStatus 抄來。
 message Binding {
   oneof target {
-    string feed = 1; // feed key。spec 載入時才把其中的 ticker 解成 UID（D38）；這個欄位今天仍是字串
+    string feed = 1; // feed key。spec 載入時才把其中的 ticker 解成 UID（D203）；這個欄位今天仍是字串
     string selector = 2; // SelectorDecl.name
     int64 api_id = 3;
   }
@@ -112,7 +112,7 @@ message EntryStatus {
   EntryState state = 1;
   string reason = 2;
   // feed：完整的 subject（今天是 md.f.{inst}.{topic}.{ticker}）。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（§10 P14）。selector：成員 subject 的前綴（今天是 md.f.{inst}）；
-  // 帳號：td.order.{api_id}。由 provider 決定，訂閱端不自己組（PROTOCOL §7、DECISIONS D8）。
+  // 帳號：td.order.{api_id}。由 provider 決定，訂閱端不自己組（PROTOCOL §7、DECISIONS D106）。
   string subject = 3;
   mftiko.common.v1.WorkerRef worker = 4;
   Universe universe = 5; // 只有 selector
@@ -121,8 +121,8 @@ message EntryStatus {
 
 message Universe {
   uint64 epoch = 1;
-  repeated string members = 2; // 今天是 UniversalTicker。改成 UID 是後續（D38）
-  string current = 3;          // 只有 rolling_future
+  repeated string members = 2; // 成員是商品。今天是 UniversalTicker；改成商品 UID 是後續（D203）。selector 本身沒有 UID
+  string current = 3;          // 只有 rolling_future。這是 selector，尚未定，不在 D203 的範圍；selector 沒有 UID
   repeated string topics = 4;
 }
 
@@ -155,8 +155,8 @@ message WorkerStatus {
 message SelectorState {
   mftiko.session.v1.SelectorDecl spec = 1;
   uint64 epoch = 2;
-  repeated string members = 3;
-  string current = 4;
+  repeated string members = 3; // 同 Universe.members：商品。今天是 UniversalTicker
+  string current = 4;           // 同 Universe.current：selector，尚未定，不在 D203；selector 沒有 UID
   string center = 5; // 置中的 strike
   int64 center_at_ns = 6;
 }

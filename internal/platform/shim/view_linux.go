@@ -224,7 +224,7 @@ func (v *view) exited() bool {
 	}
 }
 
-// Attached reports the worker: everything an agent decides by (DECISIONS D37). Its state is EXITED once the exit is
+// Attached reports the worker: everything an agent decides by (DECISIONS D108). Its state is EXITED once the exit is
 // recorded, with the ExitInfo; RUNNING once it said Hello; STARTING before.
 func (v *view) Attached() *shimv1.Attached {
 	a := &shimv1.Attached{Pid: int32(v.pid), Pgid: int32(v.pgid), StartTime: v.startTime}

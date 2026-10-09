@@ -2,7 +2,7 @@
 // requests, and the stream of events.
 //
 // A Conn is one connection. Dial attaches and returns the shim's Attached, the snapshot an agent decides on
-// (DECISIONS D37); events after it come on Events. The connection ends when the shim closes it (after Release, or
+// (DECISIONS D108); events after it come on Events. The connection ends when the shim closes it (after Release, or
 // when it exits), when another agent with an epoch at least as large attaches (Preempted), when the agent falls
 // behind on events, or on Close. A new connection is a new Dial.
 package c3
@@ -33,7 +33,7 @@ const (
 	// maxQueue is how many events the Conn holds for an agent that is not reading Events. The shim sends at most
 	// the 1024 of its ring on attach, then one event per worker message: an agent this far behind is stuck, and
 	// the connection ends with ErrBehind rather than grow without bound. Nothing is lost by it that matters: the
-	// next Dial's Attached has the state (D37).
+	// next Dial's Attached has the state (D108).
 	maxQueue = 4 * 1024
 	// redial is how long Dial waits between attempts to connect while the socket is not there yet.
 	redial = 20 * time.Millisecond
@@ -82,7 +82,7 @@ type Config struct {
 	Release  string   // Attach.agent_release, for the shim's log
 	Majors   []uint32 // the shim majors the agent speaks; nil is shim.Major
 	// ResumeFrom is the first event wanted (Attach.resume_from); 0 is the oldest the shim kept. The Attached
-	// covers every event before its next_seq (D37), so an agent that wants no history may ignore those.
+	// covers every event before its next_seq (D108), so an agent that wants no history may ignore those.
 	ResumeFrom uint64
 	Log        zerolog.Logger
 }
@@ -175,12 +175,12 @@ func connect(ctx context.Context, path string) (net.Conn, error) {
 }
 
 // Attached is the shim's answer to Dial's Attach: the state of the worker at one moment, covering every event
-// before its next_seq (PROTOCOL §4.4, D37). With shim_major 0 the Conn may only Signal, and gets no events.
+// before its next_seq (PROTOCOL §4.4, D108). With shim_major 0 the Conn may only Signal, and gets no events.
 func (c *Conn) Attached() *shimv1.Attached { return c.attached }
 
 // Events are the shim's events from Attached on, in the order sent: first the latest Report, then the kept events
 // from ResumeFrom, then each new one (PROTOCOL §4.4). An event taken from it is acknowledged to the shim, so that
-// it frees its ring early; Ack is not a commit (D37). The channel is closed after the connection has ended and the
+// it frees its ring early; Ack is not a commit (D108). The channel is closed after the connection has ended and the
 // events read before that are taken, or on Close.
 func (c *Conn) Events() <-chan *shimv1.Event { return c.events }
 
@@ -437,7 +437,7 @@ func (c *Conn) pump(ack bool) {
 }
 
 // ack sends Ack{seq} without waiting for the answer; a refusal is only logged: Ack frees the shim's ring early, and
-// nothing depends on it (D37).
+// nothing depends on it (D108).
 func (c *Conn) ack(seq uint64) {
 	_, err := c.send(&shimv1.ShimRequest{Op: &shimv1.ShimRequest_Ack{Ack: &shimv1.Ack{Seq: seq}}},
 		func(r *shimv1.Response) {

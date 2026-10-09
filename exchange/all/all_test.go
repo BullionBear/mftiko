@@ -7,13 +7,13 @@ import (
 )
 
 var (
-	// A venue name is the first part of a UniversalTicker: CamelCase, no separator (D11).
+	// A venue name is the first part of a UniversalTicker: CamelCase, no separator (D201).
 	camel = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*$`)
 	// A route goes into the worker key md/<venue>/<route>/<n> and the atom id <venue>:<route>:<channel>.
 	word = regexp.MustCompile(`^[a-z][a-z0-9]*$`)
 )
 
-// Both enums are part of the contract (D11, D26, D32).
+// Both enums are part of the contract (D201, D403, D301).
 func TestRegistry(t *testing.T) {
 	r := Registry()
 	if got, want := strings.Join(r.Venues(), ","), "Binance,BinanceCM,BinanceEO,BinanceUM,Bybit,Okx"; got != want {
@@ -37,7 +37,7 @@ func TestRegistry(t *testing.T) {
 		}
 	}
 
-	// BinancePM is an account kind only: it trades three venues and is not one (D32).
+	// BinancePM is an account kind only: it trades three venues and is not one (D301).
 	if _, ok := r.Lookup("BinancePM"); ok {
 		t.Error("BinancePM resolves as a venue")
 	}

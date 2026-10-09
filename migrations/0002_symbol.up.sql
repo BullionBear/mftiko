@@ -1,18 +1,20 @@
--- Symbol plane tables (DECISIONS D11, D31), following mftik. Written only by SYM; everything else
+-- Symbol plane tables (DECISIONS D201, D202), following mftik. Written only by SYM; everything else
 -- reads through the sym subject.
 --
--- D38 will split listings by whether the status can still change. Not in this migration.
+-- D203 will split listings by whether the status can still change. Not in this migration.
 -- Active table: PRELISTING, TRADABLE, HALTED, SETTLING, UNKNOWN. The Resolver and hot paths read
 -- only that table; only TRADABLE may trade. Terminal table: EXPIRED, DELISTED. Once there, the
 -- status never changes; the row is kept for historical lookup (old fills and positions, reverse
 -- lookup by UID), never refreshed, and can be archived. Moving does not change the UID or the
 -- UniversalTicker string. The status enum is still provisional.
--- UID will be that primary key, unique across both tables (D38). This migration's id is a
--- per-table identity and is not that UID. A delisted-then-relisted ticker gets a new UID.
--- Width, allocator, and whether a restart keeps the UID are open (PROTOCOL §10 P13). Suggested
--- direction, not implemented here: one Postgres sequence (symbol_uid_seq) feeds uid as the PK of
--- both tables, symbol_filter is keyed by uid, and a terminal transition moves the whole row
--- including uid. No uid column in this migration.
+-- UID will be that primary key, unique across both tables (D203). This migration's id is a
+-- per-table identity and is not that UID. SYM allocates each UID as a random integer: unique,
+-- never reused, not a monotonic sequence. It is stored on the row, so a restart or reload keeps
+-- it. A delisted-then-relisted ticker gets a new UID. SYM retries on collision. symbol_filter
+-- will split into active and terminal tables and move with the listing row; this migration still
+-- has one symbol_filter, keyed by this table's id. The contract type is uint64 and 0 is invalid.
+-- Width and range are still open (PROTOCOL §10 P13). Postgres BIGINT is signed, so the suggested
+-- range is 1..2^63-1. No uid column in this migration.
 --
 -- Conventions as in 0001: times are *_ns BIGINT, decimals NUMERIC, venue identifiers TEXT.
 
@@ -25,12 +27,12 @@ CREATE TABLE symbol_ticker (
     exch_ticker      TEXT    NOT NULL,         -- the venue's own spelling, what goes on the wire
     base             TEXT    NOT NULL,
     quote            TEXT    NOT NULL,
-    contract_size    NUMERIC,                  -- face value of one contract (D38). Platform qty is contracts × this, in contract_value_ccy: base on linear and options, quote on inverse (not a contract count)
-    settle           TEXT,                     -- PnL settlement asset, not the margin asset (D38); NULL for spot. Quanto (neither base nor quote) is not stored in phase 1
+    contract_size    NUMERIC,                  -- face value of one contract (D203). Platform qty is contracts × this, in contract_value_ccy: base on linear and options, quote on inverse (not a contract count)
+    settle           TEXT,                     -- PnL settlement asset, not the margin asset (D203); NULL for spot. Quanto (neither base nor quote) is not stored in phase 1
     expiry_ns        BIGINT,                   -- dated contracts and options only
-    strike           NUMERIC,                  -- options only. SYM normalizes with spell_strike before the ticker (D38): 6400.0 and 6400 are one ticker
+    strike           NUMERIC,                  -- options only. SYM normalizes with spell_strike before the ticker (D203): 6400.0 and 6400 are one ticker
     option_type      TEXT CHECK (option_type IN ('C', 'P')),
-    -- Stand-in until the status enum and the two-table split (D38). False when it is not
+    -- Stand-in until the status enum and the two-table split (D203). False when it is not
     -- tradable. Quanto is not a row. The boolean becomes PRELISTING, TRADABLE, HALTED,
     -- SETTLING, EXPIRED, DELISTED, UNKNOWN. Only TRADABLE is tradable. An unmapped native
     -- status is UNKNOWN and is not tradable. Adding a value later does not make a

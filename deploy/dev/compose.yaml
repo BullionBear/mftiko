@@ -20,7 +20,7 @@ services:
       retries: 30
 
   # One member, the same version the tests and CI use. A region's control plane in production is a cluster of its
-  # own (D17); locally there is one region and so one etcd, at http://127.0.0.1:2379.
+  # own (D005); locally there is one region and so one etcd, at http://127.0.0.1:2379.
   etcd:
     image: gcr.io/etcd-development/etcd:v3.7.2
     command:
@@ -46,7 +46,7 @@ services:
       retries: 30
 
   # Core NATS only, one server, the same release the tests embed
-  # (github.com/nats-io/nats-server/v2 v2.15.0). The data plane (D7, D14): no JetStream, no cluster,
+  # (github.com/nats-io/nats-server/v2 v2.15.0). The data plane (D002, D004): no JetStream, no cluster,
   # no authentication. The image's own config is not used; it opens a cluster port with a fixed route
   # password. Clients use nats://127.0.0.1:4222. The alpine image, not scratch, because the healthcheck
   # needs wget, which is busybox in that image. The monitor port stays inside the container.

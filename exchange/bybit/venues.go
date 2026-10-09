@@ -7,7 +7,7 @@ import (
 
 const Exchange = "bybit"
 
-// Name is both Bybit's venue and its account kind (D32).
+// Name is both Bybit's venue and its account kind (D301).
 const Name = "Bybit"
 
 // Declare is Bybit's contribution to exchange.NewRegistry.

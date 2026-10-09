@@ -1,4 +1,4 @@
-// Package binance is the Binance adapter. It declares two enums (D32):
+// Package binance is the Binance adapter. It declares two enums (D301):
 //
 //   - Venues (markets): Binance (spot), BinanceUM, BinanceCM, BinanceEO. One market codec serves all
 //     four (same combined-stream JSON).
@@ -13,16 +13,16 @@
 //     /public (bookTicker, depth), /market (aggTrade, markPrice, kline, tickers, forceOrder),
 //     /private (user data). The legacy URLs ended 2026-04-23. These are the routes "public" and
 //     "market"; the private path belongs to the account stream.
-//   - BinanceUM, Binance spot: 1024 streams per connection (D26), so cost 1 and budget 1024.
+//   - BinanceUM, Binance spot: 1024 streams per connection (D403), so cost 1 and budget 1024.
 //   - BinanceCM: the CM-UM integration (rolled out 2026-06-24 to 06-30) kept dapi and
-//     dstream.binance.com, and the CM wallet stays separate, so CM stays its own venue (D32).
+//     dstream.binance.com, and the CM wallet stays separate, so CM stays its own venue (D301).
 //     dstream has no path split: one route, "default". Streams per connection: TODO(verify).
 //   - Since that integration the all-market arrays (!bookTicker, !ticker@arr, !miniTicker@arr,
 //     !forceOrder@arr, !contractInfo) carry UM and CM symbols on both fstream and dstream, tagged
 //     st = 1 (UM) or 2 (CM). The decoder must drop the other venue's rows, or a CM symbol would be
 //     stamped as a BinanceUM ticker. Some single-symbol streams can also be subscribed across hosts;
-//     the platform does not use that (D32: UM and CM never share a connection).
-//   - Also since then, not modelled in the adapter contract (D32): UM and CM share the IP weight
+//     the platform does not use that (D301: UM and CM never share a connection).
+//   - Also since then, not modelled in the adapter contract (D301): UM and CM share the IP weight
 //     budget (2400/min) and the order-count limits (1200/min, 300/10s), share dualSidePosition
 //     (setting it on either flips both), and CM follows UM's self-trade-prevention setting.
 //   - BinanceEO: the options system was rebuilt in 2026; index, kline, mark price and open

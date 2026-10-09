@@ -228,7 +228,7 @@ export type FetchRequest = Message<"mftiko.md.v1.FetchRequest"> & {
     case: "klines";
   } | {
     /**
-     * 交易所不推送、只能查詢的值（D12）
+     * 交易所不推送、只能查詢的值（D401）
      *
      * @generated from field: mftiko.md.v1.FetchOpenInterest open_interest = 2;
      */
@@ -249,7 +249,7 @@ export const FetchRequestSchema: GenMessage<FetchRequest> = /*@__PURE__*/
  */
 export type FetchKlines = Message<"mftiko.md.v1.FetchKlines"> & {
   /**
-   * 今天是 UniversalTicker。改成 UID 是後續（D38）。subject 用人讀的名字，拼法還沒定（§10 P14）
+   * 今天是 UniversalTicker。改成 UID 是後續（D203）。subject 用人讀的名字，拼法還沒定（§10 P14）
    *
    * @generated from field: string ticker = 1;
    */

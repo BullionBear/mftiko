@@ -1,7 +1,7 @@
 package exchange
 
 // Topic is a platform market-data topic: the <topic> of a feed key <topic>.<UniversalTicker> and of
-// the md.f subject (D12). A topic cannot contain '.', it is one NATS subject token.
+// the md.f subject (D401). A topic cannot contain '.', it is one NATS subject token.
 type Topic string
 
 // Platform topics (PROTOCOL §2), mftik's names plus orderbook_delta and mark_price.
@@ -25,7 +25,7 @@ const KlinePrefix = "kline_"
 
 func KlineTopic(interval string) Topic { return Topic(KlinePrefix + interval) }
 
-// TopicCaps is one row of a venue's capability table (D12): the topic is supported, and these
+// TopicCaps is one row of a venue's capability table (D401): the topic is supported, and these
 // optional fields of its event are never filled on this venue.
 type TopicCaps struct {
 	Topic  Topic

@@ -1,4 +1,4 @@
-// Command mftiko-pack builds a strategy artifact: an OCI image carrying the mftiko manifest (DECISIONS D18, PROTOCOL §8).
+// Command mftiko-pack builds a strategy artifact: an OCI image carrying the mftiko manifest (DECISIONS D902, PROTOCOL §8).
 //
 // Shape only: not implemented yet.
 package main

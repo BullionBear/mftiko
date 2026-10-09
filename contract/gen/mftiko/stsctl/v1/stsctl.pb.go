@@ -26,7 +26,7 @@ const (
 )
 
 // 綁定的狀態，對應 provider 的 ack（§3.5）。值與 state.v1.EntryState 相同；stsctl 自己定義，策略的契約才不綁在 etcd 的
-// schema 上（DECISIONS D36）。
+// schema 上（DECISIONS D007）。
 type BindingState int32
 
 const (
@@ -92,7 +92,7 @@ type InitPayload struct {
 	Params        []byte                 `protobuf:"bytes,6,opt,name=params,proto3" json:"params,omitempty"`
 	Feeds         []*v1.FeedDecl         `protobuf:"bytes,7,rep,name=feeds,proto3" json:"feeds,omitempty"`
 	Accounts      []*v1.AccountDecl      `protobuf:"bytes,8,rep,name=accounts,proto3" json:"accounts,omitempty"`
-	Nats          *NatsCredentials       `protobuf:"bytes,9,opt,name=nats,proto3" json:"nats,omitempty"` // 這個 session 專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D30）
+	Nats          *NatsCredentials       `protobuf:"bytes,9,opt,name=nats,proto3" json:"nats,omitempty"` // 這個 session 專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D906）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -563,7 +563,7 @@ type SelectorBinding struct {
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	MdInstance    string                 `protobuf:"bytes,2,opt,name=md_instance,json=mdInstance,proto3" json:"md_instance,omitempty"`
 	Universe      *Universe              `protobuf:"bytes,3,opt,name=universe,proto3" json:"universe,omitempty"`
-	SubjectPrefix string                 `protobuf:"bytes,4,opt,name=subject_prefix,json=subjectPrefix,proto3" json:"subject_prefix,omitempty"` // 成員的 subject 是 {subject_prefix}.{topic}.{ticker}。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（D38、§10 P14）
+	SubjectPrefix string                 `protobuf:"bytes,4,opt,name=subject_prefix,json=subjectPrefix,proto3" json:"subject_prefix,omitempty"` // 成員的 subject 是 {subject_prefix}.{topic}.{ticker}。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（D203、§10 P14）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -770,7 +770,7 @@ func (x *Report) GetQueues() []*QueueStat {
 	return nil
 }
 
-// name 是 td 或 md（D24）。
+// name 是 td 或 md（D803）。
 type QueueStat struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -843,8 +843,8 @@ func (x *QueueStat) GetMaxAgeMs() uint32 {
 type Universe struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Epoch         uint64                 `protobuf:"varint,1,opt,name=epoch,proto3" json:"epoch,omitempty"`
-	Members       []string               `protobuf:"bytes,2,rep,name=members,proto3" json:"members,omitempty"` // 今天是 UniversalTicker。改成 UID 是後續（D38）
-	Current       string                 `protobuf:"bytes,3,opt,name=current,proto3" json:"current,omitempty"` // 只有 rolling_future
+	Members       []string               `protobuf:"bytes,2,rep,name=members,proto3" json:"members,omitempty"` // 成員是商品。今天是 UniversalTicker；改成商品 UID 是後續（D203）。selector 本身沒有 UID
+	Current       string                 `protobuf:"bytes,3,opt,name=current,proto3" json:"current,omitempty"` // 只有 rolling_future。這是 selector，尚未定，不在 D203 的範圍；selector 沒有 UID
 	Topics        []string               `protobuf:"bytes,4,rep,name=topics,proto3" json:"topics,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
