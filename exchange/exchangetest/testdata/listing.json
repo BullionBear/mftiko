@@ -1,0 +1,30 @@
+[
+  {
+    "Venue": "Bybit",
+    "Category": "Spot",
+    "Base": "BTC",
+    "Quote": "USDT",
+    "ExchTicker": "BTCUSDT",
+    "ContractSize": "1",
+    "Settle": "USDT",
+    "Active": true,
+    "Filters": {
+      "price_tick": "0.01",
+      "qty_step": "0.00001"
+    }
+  },
+  {
+    "Venue": "Bybit",
+    "Category": "Perp",
+    "Base": "BTC",
+    "Quote": "USDT",
+    "ExchTicker": "BTCUSDT",
+    "ContractSize": "1",
+    "Settle": "USDT",
+    "Active": true,
+    "Filters": {
+      "price_tick": "0.1",
+      "qty_step": "0.001"
+    }
+  }
+]
