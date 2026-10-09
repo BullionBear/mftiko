@@ -8,9 +8,11 @@
 -- lookup by UID), never refreshed, and can be archived. Moving does not change the UID or the
 -- UniversalTicker string. The status enum is still provisional.
 -- UID will be that primary key, unique across both tables (D38). This migration's id is a
--- per-table identity and is not that UID: a shared sequence has to span the active and terminal
--- tables, and a delisted-then-relisted ticker gets a new UID. Width, allocator, and whether a
--- restart keeps the UID are not final (PROTOCOL §10 P13). No uid column in this migration.
+-- per-table identity and is not that UID. A delisted-then-relisted ticker gets a new UID.
+-- Width, allocator, and whether a restart keeps the UID are open (PROTOCOL §10 P13). Suggested
+-- direction, not implemented here: one Postgres sequence (symbol_uid_seq) feeds uid as the PK of
+-- both tables, symbol_filter is keyed by uid, and a terminal transition moves the whole row
+-- including uid. No uid column in this migration.
 --
 -- Conventions as in 0001: times are *_ns BIGINT, decimals NUMERIC, venue identifiers TEXT.
 

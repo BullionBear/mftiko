@@ -4,8 +4,8 @@ package symbol
 type Info struct {
 	// UID is the primary key of both SYM tables, unique across them (D38). Moving a
 	// listing to the terminal table keeps it. The same ticker listed again after
-	// delisting gets a new UID. Zero is never assigned. The width is uint64 here as
-	// the stand-in and is not final (PROTOCOL §10 P13).
+	// delisting gets a new UID. Zero is never assigned. The width is provisional
+	// (PROTOCOL §10 P13); uint64 is the stand-in on the wire.
 	UID        uint64
 	Ticker     UniversalTicker
 	ExchTicker string

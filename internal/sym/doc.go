@@ -21,11 +21,13 @@
 // (PRELISTING, TRADABLE, HALTED, SETTLING, UNKNOWN), which the Resolver and hot paths read, and a
 // terminal table (EXPIRED, DELISTED) for historical lookup of old fills and positions and for
 // reverse lookup by UID. UID is the primary key of both tables and is unique across them.
-// Terminal rows can be archived. The status enum is still provisional, and so are the UID width,
-// the allocator, and whether a process restart keeps UIDs (PROTOCOL §10 P13).
-// migrations/0002_symbol is still one symbol_ticker plus symbol_filter, keyed by that table's own
-// id, not by a shared UID. This service does not implement the split or GetByUID yet. Only this
-// service writes them.
+// Terminal rows can be archived. The status enum is still provisional. UID width, the allocator,
+// and whether a process restart keeps UIDs are open (PROTOCOL §10 P13). The suggested direction
+// there, not implemented here, is one Postgres sequence (symbol_uid_seq) feeding uid as the
+// primary key of both tables, symbol_filter keyed by uid, and a terminal transition that moves
+// the whole row including uid. migrations/0002_symbol is still one symbol_ticker plus
+// symbol_filter, keyed by that table's own id, not by a shared UID. This service does not
+// implement the split or GetByUID yet. Only this service writes them.
 //
 // It is also the only place that uppercases asset codes and applies the alias table (XBT to BTC,
 // D38): normalize first, then judge quanto, then derive the ticker. Adapters pass native codes.

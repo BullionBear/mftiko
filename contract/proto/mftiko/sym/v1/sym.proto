@@ -29,7 +29,7 @@ message GetRequest {
 // 系統內部的查詢（D38）。STS、TD、MD 持有 UID，用它拿這一列的欄位。
 // 預設只讀活躍表；include_inactive 才含終結表。0 不是合法 UID。
 message GetByUidRequest {
-  uint64 uid = 1; // 暫用 uint64。寬度、誰分配、重啟是否沿用都還沒定（PROTOCOL §10 P13）
+  uint64 uid = 1; // 寬度暫定（PROTOCOL §10 P13）。契約暫用 uint64
   bool include_inactive = 2; // 同 GetRequest.include_inactive（D38）
 }
 
@@ -81,7 +81,7 @@ message SymbolInfo {
   map<string, Bound> filters = 11;
   int64 updated_at_ns = 12;
   // 兩張表的主鍵，跨表唯一（D38）。搬到終結表時不變。同一個 ticker 下架再上市是新的 UID。
-  // 暫用 uint64，0 不分配。寬度還沒定（PROTOCOL §10 P13）。這一版的 SQL 還沒有這個欄位。
+  // 寬度暫定，見 PROTOCOL §10 P13。契約暫用 uint64，0 不分配。這一版的 SQL 還沒有這個欄位。
   uint64 uid = 13;
 }
 

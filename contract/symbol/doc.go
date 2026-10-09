@@ -35,8 +35,8 @@
 // hot paths read, and the terminal table (EXPIRED, DELISTED), kept for historical lookup and never
 // refreshed. A listing moves when it becomes terminal; the UniversalTicker string and the UID stay
 // the same. The same ticker listed again after delisting gets a new UID. UID is the primary key of
-// both tables and is unique across them. The enum is still provisional, the UID width is not final,
-// and this package does not implement the split or the allocator.
+// both tables and is unique across them. The enum is still provisional. UID width is provisional
+// (PROTOCOL §10 P13); this package does not implement the split or the allocator.
 //
 // Shape only: types and contracts; the functions return ErrNotImplemented.
 package symbol

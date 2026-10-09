@@ -625,7 +625,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   - ticker 解成 UID 只發生在設定與 spec 載入的邊界。`SessionSpec` 的 feed 仍寫 UniversalTicker，載入時用 `GetRequest` 換成 UID。
   - 這一版只在 `SymbolInfo` 加上 `uid`，並加 `GetByUidRequest`。`td.order`、需求項目、selector 成員今天仍是 ticker 字串。
   - NATS 的 subject 用人讀的名字，不用 UID。確切拼法還沒定（PROTOCOL §10 P14）。這一版維持 `md.f.{inst}.{topic}.{ticker}`，不改 subject。
-  - 寬度、誰分配、重啟或重載時留不留，都還沒定（PROTOCOL §10 P13）。契約上 `uid` 暫用 `uint64`，0 不分配，只為了先有這個欄位。
+  - 寬度、誰分配、重啟或重載時留不留，都還沒定（PROTOCOL §10 P13）。契約上 `uid` 暫用 `uint64`，寬度暫定，0 不分配。P13 的建議方向是一條 Postgres sequence（例如 `symbol_uid_seq`）餵兩張表的 `uid` 主鍵，`symbol_filter` 以 uid 為鍵，終結時整列連 uid 一起搬。這一票不實作。策略 hook 看 ticker 還是 UID 見 P15。
 
 - **不採用：** adapter 自行改名，或在 adapter 裡收別名；下游用類別回推三個幣欄；沿用 `reservations.is_linear_margin`，或為 Deribit 開特例；把 `settlement_asset` 當成保證金幣（Binance 的 `marginAsset`、Bitget 寫成 quote）；inverse 的 qty 用張數；quanto 入庫並把 `active` 設成 false；把 `USD`、`USDC`、`USDT` 收成同一個；已終結的列留在熱路徑讀的那張表；搬表時改寫 UniversalTicker 或重發 UID；下架再上市沿用舊 UID；系統內部繼續用 ticker 字串當商品身分；NATS subject 用 UID。
 

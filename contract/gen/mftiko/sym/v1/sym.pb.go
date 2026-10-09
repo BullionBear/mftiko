@@ -212,7 +212,7 @@ func (x *GetRequest) GetIncludeInactive() bool {
 // 預設只讀活躍表；include_inactive 才含終結表。0 不是合法 UID。
 type GetByUidRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
-	Uid             uint64                 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"`                                                // 暫用 uint64。寬度、誰分配、重啟是否沿用都還沒定（PROTOCOL §10 P13）
+	Uid             uint64                 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"`                                                // 寬度暫定（PROTOCOL §10 P13）。契約暫用 uint64
 	IncludeInactive bool                   `protobuf:"varint,2,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // 同 GetRequest.include_inactive（D38）
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
@@ -577,7 +577,7 @@ type SymbolInfo struct {
 	Filters     map[string]*Bound `protobuf:"bytes,11,rep,name=filters,proto3" json:"filters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	UpdatedAtNs int64             `protobuf:"varint,12,opt,name=updated_at_ns,json=updatedAtNs,proto3" json:"updated_at_ns,omitempty"`
 	// 兩張表的主鍵，跨表唯一（D38）。搬到終結表時不變。同一個 ticker 下架再上市是新的 UID。
-	// 暫用 uint64，0 不分配。寬度還沒定（PROTOCOL §10 P13）。這一版的 SQL 還沒有這個欄位。
+	// 寬度暫定，見 PROTOCOL §10 P13。契約暫用 uint64，0 不分配。這一版的 SQL 還沒有這個欄位。
 	Uid           uint64 `protobuf:"varint,13,opt,name=uid,proto3" json:"uid,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

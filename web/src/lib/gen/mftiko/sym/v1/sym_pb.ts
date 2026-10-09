@@ -97,7 +97,7 @@ export const GetRequestSchema: GenMessage<GetRequest> = /*@__PURE__*/
  */
 export type GetByUidRequest = Message<"mftiko.sym.v1.GetByUidRequest"> & {
   /**
-   * 暫用 uint64。寬度、誰分配、重啟是否沿用都還沒定（PROTOCOL §10 P13）
+   * 寬度暫定（PROTOCOL §10 P13）。契約暫用 uint64
    *
    * @generated from field: uint64 uid = 1;
    */
@@ -344,7 +344,7 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
 
   /**
    * 兩張表的主鍵，跨表唯一（D38）。搬到終結表時不變。同一個 ticker 下架再上市是新的 UID。
-   * 暫用 uint64，0 不分配。寬度還沒定（PROTOCOL §10 P13）。這一版的 SQL 還沒有這個欄位。
+   * 寬度暫定，見 PROTOCOL §10 P13。契約暫用 uint64，0 不分配。這一版的 SQL 還沒有這個欄位。
    *
    * @generated from field: uint64 uid = 13;
    */
