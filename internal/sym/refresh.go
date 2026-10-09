@@ -61,10 +61,13 @@ type Report struct {
 // expired. EXPIRED and DELISTED move to the terminal table with their filters.
 // The uid and the ticker string stay. Terminal rows are not updated.
 //
-// While the contract status is still a bool, Active true is stored as TRADABLE
-// and Active false as HALTED. Both stay on the active table. symbol_revision
-// advances by one when any row was inserted, updated or moved, and does not
-// advance when the feed matches what is stored.
+// Asset codes are canonicalized (uppercase, alias table) before Validate, so
+// a native code such as XBT is judged and stored as BTC. The exchange spelling
+// is left as published. A dated contract at or past expiry_ns is EXPIRED even
+// when the listing status is still non-terminal. Any other valid status is
+// stored as given: non-terminal statuses stay on the active table, and EXPIRED
+// or DELISTED move. symbol_revision advances by one when any row was inserted,
+// updated or moved, and does not advance when the feed matches what is stored.
 func (s *Store) Refresh(ctx context.Context, f Feed, atNs int64, log zerolog.Logger) (Report, error) {
 	rep := Report{Venue: f.Venue, Category: f.Category}
 	if f.REST == nil || f.Venue == "" || !knownCategory(f.Category) {
@@ -321,6 +324,12 @@ func prepareListing(venue string, category symbol.Category, l symbol.Listing, at
 	if strings.TrimSpace(l.ExchTicker) == "" {
 		return prepared{}, errors.New("sym: exch ticker is empty")
 	}
+	// D203: uppercase and apply the alias table before quanto and the ticker.
+	// Validate requires the canonical spelling, so this runs first. exch_ticker
+	// stays in the venue's own spelling.
+	if err := normalizeAssets(&l); err != nil {
+		return prepared{}, err
+	}
 	if err := l.Validate(); err != nil {
 		return prepared{}, err
 	}
@@ -343,7 +352,8 @@ func prepareListing(venue string, category symbol.Category, l symbol.Listing, at
 	valueCcy := l.ContractValueCcy
 	priceCcy := l.PriceCcy
 	// The columns are NOT NULL. Spot may leave them empty and still pass
-	// Validate; D203's spot row is base for qty and quote for price.
+	// Validate; D203's spot row is base for qty and quote for price. Base and
+	// quote are already canonical.
 	if category == symbol.Spot {
 		if valueCcy == "" {
 			valueCcy = l.Base
@@ -380,17 +390,44 @@ func prepareListing(venue string, category symbol.Category, l symbol.Listing, at
 	}, nil
 }
 
-// listingStatus is the provisional map from the bool contract onto the store
-// enum. A dated contract at or past expiry_ns is EXPIRED even when Active is
-// still set: the venue often keeps the row in the listing after expiry.
+// listingStatus stores the listing's status. A dated contract at or past
+// expiry_ns is EXPIRED even when that status is still non-terminal: the venue
+// often keeps the row in the listing after expiry.
 func listingStatus(l symbol.Listing, atNs int64) Status {
 	if rowExpired(l.Category, &l.ExpiryNs, atNs) && l.ExpiryNs > 0 {
 		return Expired
 	}
-	if l.Active {
-		return Tradable
+	return l.Status
+}
+
+// normalizeAssets uppercases asset codes and applies the alias table (D203).
+// Empty currency fields stay empty: spot may omit them. exch_ticker is not an
+// asset code and is left alone.
+func normalizeAssets(l *symbol.Listing) error {
+	var err error
+	if l.Base, err = symbol.CanonicalAsset(l.Base); err != nil {
+		return err
 	}
-	return Halted
+	if l.Quote, err = symbol.CanonicalAsset(l.Quote); err != nil {
+		return err
+	}
+	if l.ContractValueCcy, err = canonicalAssetOrEmpty(l.ContractValueCcy); err != nil {
+		return err
+	}
+	if l.PriceCcy, err = canonicalAssetOrEmpty(l.PriceCcy); err != nil {
+		return err
+	}
+	if l.Settle, err = canonicalAssetOrEmpty(l.Settle); err != nil {
+		return err
+	}
+	return nil
+}
+
+func canonicalAssetOrEmpty(code string) (string, error) {
+	if strings.TrimSpace(code) == "" {
+		return "", nil
+	}
+	return symbol.CanonicalAsset(code)
 }
 
 func rowExpired(category symbol.Category, expiry *int64, atNs int64) bool {

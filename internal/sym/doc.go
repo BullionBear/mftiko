@@ -26,8 +26,9 @@
 //     table with their filters and are not updated again (D203). The UniversalTicker string and the
 //     UID stay the same. The same ticker listed again after delisting gets a new UID. A contract
 //     that is still expired is not inserted again.
-//   - While the contract field is bool, Active true is stored as TRADABLE and Active false as
-//     HALTED. Both stay on the active table. Changing from one to the other is a content change.
+//   - The listing's status is stored as given. PRELISTING, TRADABLE, HALTED, SETTLING and UNKNOWN
+//     stay on the active table. EXPIRED and DELISTED move. Changing from one non-terminal status
+//     to another is a content change. Unspecified is invalid and is not written.
 //   - The change notification itself is not sent; its subject is still open (PROTOCOL §10 P7).
 //     The revision row is what a later notification will carry.
 //
@@ -35,7 +36,7 @@
 // HALTED, SETTLING and UNKNOWN, which the Resolver and hot paths read. symbol_terminal holds
 // EXPIRED and DELISTED, for historical lookup of old fills and positions and for reverse lookup
 // by UID. UID is the primary key of both. Terminal rows can be archived. The status enum is
-// still provisional; the contract field stays bool.
+// still provisional; the contract uses it, and Unspecified is not stored.
 //
 // Insert allocates a UID by drawing from Source (RandomSource in production). It inserts that
 // uid into symbol_uid first and retries when the insert reports a unique violation on the uid.
@@ -53,7 +54,9 @@
 // Only this service writes the tables.
 //
 // It is also the only place that uppercases asset codes and applies the alias table (XBT to BTC,
-// D203): normalize first, then judge quanto, then derive the ticker. Adapters pass native codes.
+// D203): normalize first, then Validate (quanto), then derive the ticker. Adapters pass native
+// codes. The exchange spelling is stored unchanged, so Bitmex XBTUSDT is Bitmex_Spot_BTCUSDT
+// with exch_ticker XBTUSDT.
 // Strikes go through spell_strike before the ticker, so 6400.0 and 6400 are one ticker. USD, USDC
 // and USDT stay distinct. A USD quote settled in USDC is quanto: it is not stored in phase 1, and
 // the demand is REJECTED. Adapters fill contract_value_ccy, price_ccy and the PnL settlement

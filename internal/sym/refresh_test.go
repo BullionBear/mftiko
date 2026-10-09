@@ -221,7 +221,7 @@ func TestRefresh(t *testing.T) {
 		st := openStore(t, srv.DSN(), &script{uids: []uint32{31}})
 		row := spotL("BTC", "USDT", "BTCUSDT")
 		mustRefresh(t, st, symbol.Spot, 100, []symbol.Listing{row}, zerolog.Nop())
-		row.Active = false
+		row.Status = Halted
 		rep := mustRefresh(t, st, symbol.Spot, 200, []symbol.Listing{row}, zerolog.Nop())
 		if !rep.Changed || rep.Updated != 1 || rep.Delisted != 0 || rep.Revision != 2 {
 			t.Fatalf("halt = %+v", rep)
@@ -240,7 +240,7 @@ func TestRefresh(t *testing.T) {
 		st := openStore(t, srv.DSN(), &script{uids: []uint32{41}})
 		row := symbol.Listing{
 			Venue: "Bybit", Category: symbol.Perp, Base: "BTC", Quote: "USD", ExchTicker: "BTCUSD",
-			ContractSize: "1", ContractValueCcy: "BTC", PriceCcy: "USD", Settle: "USD", Active: true,
+			ContractSize: "1", ContractValueCcy: "BTC", PriceCcy: "USD", Settle: "USD", Status: Tradable,
 		}
 		mustRefresh(t, st, symbol.Perp, 100, []symbol.Listing{row}, zerolog.Nop())
 		var buf bytes.Buffer
@@ -248,7 +248,7 @@ func TestRefresh(t *testing.T) {
 		row.Settle = "USDC"
 		fresh := symbol.Listing{
 			Venue: "Bybit", Category: symbol.Perp, Base: "ETH", Quote: "USD", ExchTicker: "ETHUSD",
-			ContractSize: "1", ContractValueCcy: "ETH", PriceCcy: "USD", Settle: "USDC", Active: true,
+			ContractSize: "1", ContractValueCcy: "ETH", PriceCcy: "USD", Settle: "USDC", Status: Tradable,
 		}
 		rep := mustRefresh(t, st, symbol.Perp, 200, []symbol.Listing{row, fresh}, log)
 		if rep.Rejected != 2 || rep.Changed || rep.Revision != 1 {
@@ -432,7 +432,7 @@ func TestRefresh(t *testing.T) {
 		st := openStore(t, srv.DSN(), &script{uids: []uint32{101}})
 		row := symbol.Listing{
 			Venue: "Bybit", Category: symbol.Spot, Base: "BTC", Quote: "USDT",
-			ExchTicker: "BTCUSDT", Active: true,
+			ExchTicker: "BTCUSDT", Status: Tradable,
 		}
 		rep := mustRefresh(t, st, symbol.Spot, 100, []symbol.Listing{row}, zerolog.Nop())
 		if !rep.Changed || rep.Revision != 1 {
@@ -450,6 +450,135 @@ func TestRefresh(t *testing.T) {
 		rep = mustRefresh(t, st, symbol.Spot, 200, []symbol.Listing{row}, zerolog.Nop())
 		if rep.Changed {
 			t.Fatalf("second = %+v", rep)
+		}
+	})
+
+	t.Run("xbt is stored as btc and the exchange spelling stays", func(t *testing.T) {
+		truncate(t, ctx, conn)
+		st := openStore(t, srv.DSN(), &script{uids: []uint32{111, 112}})
+		spot := symbol.Listing{
+			Venue: "Bitmex", Category: symbol.Spot, Base: "XBT", Quote: "usdt",
+			ExchTicker: "XBTUSDT", Status: Tradable,
+		}
+		rep, err := st.Refresh(ctx, Feed{Venue: "Bitmex", Category: symbol.Spot, REST: listREST{rows: []symbol.Listing{spot}}}, 100, zerolog.Nop())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !rep.Changed || rep.Rejected != 0 || rep.Revision != 1 {
+			t.Fatalf("spot = %+v", rep)
+		}
+		uid, _, status := mustActive(t, ctx, conn, "Bitmex_Spot_BTCUSDT")
+		if uid != 111 || status != string(Tradable) {
+			t.Fatalf("row = %d %s", uid, status)
+		}
+		var base, quote, exch, value, price string
+		var settle *string
+		if err := conn.QueryRow(ctx, `
+			SELECT base, quote, exch_ticker, contract_value_ccy, price_ccy, settle
+			FROM symbol_active WHERE uid = 111`).Scan(&base, &quote, &exch, &value, &price, &settle); err != nil {
+			t.Fatal(err)
+		}
+		if base != "BTC" || quote != "USDT" || exch != "XBTUSDT" || value != "BTC" || price != "USDT" || settle != nil {
+			t.Fatalf("stored = %s %s %s %s %s %v", base, quote, exch, value, price, settle)
+		}
+		rep, err = st.Refresh(ctx, Feed{Venue: "Bitmex", Category: symbol.Spot, REST: listREST{rows: []symbol.Listing{spot}}}, 200, zerolog.Nop())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rep.Changed {
+			t.Fatalf("second = %+v", rep)
+		}
+
+		// Settle and the value currency are aliased before quanto, so XBT is BTC.
+		inv := symbol.Listing{
+			Venue: "Bitmex", Category: symbol.Inverse, Base: "XBT", Quote: "USD",
+			ExchTicker: "XBTUSD", ContractSize: "1",
+			ContractValueCcy: "XBT", PriceCcy: "usd", Settle: "XBT", Status: Tradable,
+		}
+		rep, err = st.Refresh(ctx, Feed{Venue: "Bitmex", Category: symbol.Inverse, REST: listREST{rows: []symbol.Listing{inv}}}, 100, zerolog.Nop())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rep.Rejected != 0 || rep.Inserted != 1 {
+			t.Fatalf("inverse = %+v", rep)
+		}
+		if err := conn.QueryRow(ctx, `
+			SELECT base, quote, exch_ticker, contract_value_ccy, price_ccy, settle
+			FROM symbol_active WHERE universal_ticker = 'Bitmex_Inverse_BTCUSD'`).Scan(&base, &quote, &exch, &value, &price, &settle); err != nil {
+			t.Fatal(err)
+		}
+		if base != "BTC" || quote != "USD" || exch != "XBTUSD" || value != "BTC" || price != "USD" || settle == nil || *settle != "BTC" {
+			t.Fatalf("inverse stored = %s %s %s %s %s %v", base, quote, exch, value, price, settle)
+		}
+	})
+
+	t.Run("unspecified status is rejected and the row stays", func(t *testing.T) {
+		truncate(t, ctx, conn)
+		st := openStore(t, srv.DSN(), &script{uids: []uint32{121}})
+		row := spotL("BTC", "USDT", "BTCUSDT")
+		mustRefresh(t, st, symbol.Spot, 100, []symbol.Listing{row}, zerolog.Nop())
+		row.Status = symbol.Unspecified
+		var buf bytes.Buffer
+		rep := mustRefresh(t, st, symbol.Spot, 200, []symbol.Listing{row}, zerolog.New(&buf))
+		if rep.Rejected != 1 || rep.Changed || rep.Delisted != 0 || rep.Revision != 1 {
+			t.Fatalf("report = %+v", rep)
+		}
+		uid, updated, status := mustActive(t, ctx, conn, "Bybit_Spot_BTCUSDT")
+		if uid != 121 || status != string(Tradable) || updated != 100 {
+			t.Fatalf("row = %d %s %d", uid, status, updated)
+		}
+		if !bytes.Contains(buf.Bytes(), []byte("BTCUSDT")) {
+			t.Fatalf("log = %s", buf.String())
+		}
+	})
+
+	t.Run("unknown stays active", func(t *testing.T) {
+		truncate(t, ctx, conn)
+		st := openStore(t, srv.DSN(), &script{uids: []uint32{131}})
+		row := spotL("BTC", "USDT", "BTCUSDT")
+		mustRefresh(t, st, symbol.Spot, 100, []symbol.Listing{row}, zerolog.Nop())
+		row.Status = Unknown
+		rep := mustRefresh(t, st, symbol.Spot, 200, []symbol.Listing{row}, zerolog.Nop())
+		if !rep.Changed || rep.Updated != 1 || rep.Delisted != 0 || rep.Revision != 2 {
+			t.Fatalf("unknown = %+v", rep)
+		}
+		_, _, status := mustActive(t, ctx, conn, "Bybit_Spot_BTCUSDT")
+		if status != string(Unknown) {
+			t.Fatalf("status = %s", status)
+		}
+		if n := countWhere(t, ctx, conn, `SELECT count(*) FROM symbol_terminal`); n != 0 {
+			t.Fatal("unknown moved the row")
+		}
+	})
+
+	t.Run("listed terminal status moves before expiry", func(t *testing.T) {
+		truncate(t, ctx, conn)
+		st := openStore(t, srv.DSN(), &script{uids: []uint32{141}})
+		row := futureL(5_000)
+		mustRefresh(t, st, symbol.Future, 1_000, []symbol.Listing{row}, zerolog.Nop())
+		row.Status = Delisted
+		rep := mustRefresh(t, st, symbol.Future, 2_000, []symbol.Listing{row}, zerolog.Nop())
+		if rep.Delisted != 1 || rep.Expired != 0 || rep.Revision != 2 {
+			t.Fatalf("delist = %+v", rep)
+		}
+		status, _ := mustTerminal(t, ctx, conn, 141)
+		if status != string(Delisted) {
+			t.Fatalf("status = %s", status)
+		}
+
+		truncate(t, ctx, conn)
+		st = openStore(t, srv.DSN(), &script{uids: []uint32{142}})
+		row = futureL(5_000)
+		row.Status = Tradable
+		mustRefresh(t, st, symbol.Future, 1_000, []symbol.Listing{row}, zerolog.Nop())
+		row.Status = Expired
+		rep = mustRefresh(t, st, symbol.Future, 2_000, []symbol.Listing{row}, zerolog.Nop())
+		if rep.Expired != 1 || rep.Delisted != 0 || rep.Revision != 2 {
+			t.Fatalf("expire = %+v", rep)
+		}
+		status, _ = mustTerminal(t, ctx, conn, 142)
+		if status != string(Expired) {
+			t.Fatalf("status = %s", status)
 		}
 	})
 }
@@ -511,7 +640,7 @@ func mustRefresh(t *testing.T, st *Store, c symbol.Category, atNs int64, rows []
 
 func spotL(base, quote, exch string) symbol.Listing {
 	return symbol.Listing{
-		Venue: "Bybit", Category: symbol.Spot, Base: base, Quote: quote, ExchTicker: exch, Active: true,
+		Venue: "Bybit", Category: symbol.Spot, Base: base, Quote: quote, ExchTicker: exch, Status: Tradable,
 		Filters: map[string]string{"price_tick": "0.5"},
 	}
 }
@@ -519,7 +648,7 @@ func spotL(base, quote, exch string) symbol.Listing {
 func perpL(base, quote, exch string) symbol.Listing {
 	return symbol.Listing{
 		Venue: "Bybit", Category: symbol.Perp, Base: base, Quote: quote, ExchTicker: exch,
-		ContractSize: "1", ContractValueCcy: base, PriceCcy: quote, Settle: quote, Active: true,
+		ContractSize: "1", ContractValueCcy: base, PriceCcy: quote, Settle: quote, Status: Tradable,
 	}
 }
 
@@ -527,7 +656,7 @@ func futureL(expiry int64) symbol.Listing {
 	return symbol.Listing{
 		Venue: "BinanceUM", Category: symbol.Future, Base: "BTC", Quote: "USDT",
 		ExchTicker: "BTCUSDT_260925", ExpiryCode: "260925", ExpiryNs: expiry,
-		ContractSize: "1", ContractValueCcy: "BTC", PriceCcy: "USDT", Settle: "USDT", Active: true,
+		ContractSize: "1", ContractValueCcy: "BTC", PriceCcy: "USDT", Settle: "USDT", Status: Tradable,
 	}
 }
 
@@ -536,7 +665,7 @@ func optionL(strike string) symbol.Listing {
 		Venue: "Okx", Category: symbol.Option, Base: "BTC", Quote: "USD",
 		ExchTicker: "BTC-USD-261225-" + strike + "-C", ExpiryCode: "261225", ExpiryNs: 9_000_000_000,
 		Strike: strike, OptionType: "C",
-		ContractSize: "1", ContractValueCcy: "BTC", PriceCcy: "BTC", Settle: "BTC", Active: true,
+		ContractSize: "1", ContractValueCcy: "BTC", PriceCcy: "BTC", Settle: "BTC", Status: Tradable,
 	}
 }
 

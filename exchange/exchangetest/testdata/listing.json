@@ -7,7 +7,7 @@
     "ExchTicker": "BTCUSDT",
     "ContractSize": "1",
     "Settle": "USDT",
-    "Active": true,
+    "Status": "TRADABLE",
     "Filters": {
       "price_tick": "0.01",
       "qty_step": "0.00001"
@@ -21,7 +21,7 @@
     "ExchTicker": "BTCUSDT",
     "ContractSize": "1",
     "Settle": "USDT",
-    "Active": true,
+    "Status": "TRADABLE",
     "Filters": {
       "price_tick": "0.1",
       "qty_step": "0.001"

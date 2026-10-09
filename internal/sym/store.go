@@ -12,32 +12,19 @@ import (
 	"github.com/BullionBear/mftiko/contract/symbol"
 )
 
-// Status is the provisional listing enum (D203). The contract still carries a
-// bool; this is the column the tables check.
-type Status string
+// Status is the listing enum (D203). The contract and the CHECK constraints
+// use these spellings. Unspecified is invalid and is not stored.
+type Status = symbol.Status
 
 const (
-	Prelisting Status = "PRELISTING"
-	Tradable   Status = "TRADABLE"
-	Halted     Status = "HALTED"
-	Settling   Status = "SETTLING"
-	Unknown    Status = "UNKNOWN"
-	Expired    Status = "EXPIRED"
-	Delisted   Status = "DELISTED"
+	Prelisting = symbol.Prelisting
+	Tradable   = symbol.Tradable
+	Halted     = symbol.Halted
+	Settling   = symbol.Settling
+	Unknown    = symbol.Unknown
+	Expired    = symbol.Expired
+	Delisted   = symbol.Delisted
 )
-
-// Active reports whether the status stays on symbol_active.
-func (s Status) Active() bool {
-	switch s {
-	case Prelisting, Tradable, Halted, Settling, Unknown:
-		return true
-	default:
-		return false
-	}
-}
-
-// Terminal reports whether the status belongs on symbol_terminal.
-func (s Status) Terminal() bool { return s == Expired || s == Delisted }
 
 // Filter is one trading restriction. A nil Value means the venue publishes the
 // restriction and sets no bound, which is not the same as omitting the filter.

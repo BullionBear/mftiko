@@ -54,14 +54,13 @@ type Listing struct {
 	// Coin-margined versus U-margined is display only: Settle equal to Base means
 	// coin-margined. The trading path does not use that label.
 	Settle string
-	// Active is tentative (D203). It becomes a status enum: PRELISTING, TRADABLE, HALTED,
-	// SETTLING, EXPIRED, DELISTED, UNKNOWN. Only TRADABLE trades. A native status that
-	// does not map is UNKNOWN and is not tradable. Adding an enum value later does not
-	// make a non-tradable instrument tradable. PRELISTING, TRADABLE, HALTED, SETTLING and
-	// UNKNOWN stay on the active table; EXPIRED and DELISTED move to the terminal table
-	// and the UniversalTicker string does not change. The contract stays bool until
-	// that enum is final. The store tables are already split (migrations/0002_symbol).
-	Active bool
+	// Status is the trading state (D203). The set is still provisional. Only Tradable
+	// may trade. Unspecified is invalid. A native state that does not map is Unknown
+	// and is not tradable. Adding a value later does not make a non-tradable instrument
+	// tradable. Prelisting, Tradable, Halted, Settling and Unknown stay on the active
+	// table; Expired and Delisted move to the terminal table and the UniversalTicker
+	// string does not change. The tables are already split (migrations/0002_symbol).
+	Status Status
 	// Filters: name -> bound. A present key with "" means the venue publishes the restriction but
 	// sets no limit, which is not the same as leaving it out.
 	Filters map[string]string
@@ -132,11 +131,22 @@ func (l *Listing) Ticker() (UniversalTicker, error) {
 	return t, nil
 }
 
+// IsTradable reports whether an order in this listing may be sent.
+// Only Tradable may trade. A nil listing is not tradable.
+func (l *Listing) IsTradable() bool {
+	return l != nil && l.Status.IsTradable()
+}
+
 // Validate is the gate E2-05 and E2-06 share before a row is stored.
+//
+// Status must be one of the seven stored statuses. Unspecified and any other
+// spelling are invalid. Expired and Delisted are valid so a refresh can move
+// the row; they are not tradable.
 //
 // A contract (anything but spot) needs contract_size and the three currency
 // fields. Asset codes must already be canonical: uppercase, alias applied.
-// Quanto — settlement neither base nor quote — is an error and is not stored.
+// SYM applies CanonicalAsset before it calls Validate. Quanto — settlement
+// neither base nor quote — is an error and is not stored.
 // Spot has no settlement asset.
 func (l *Listing) Validate() error {
 	if l == nil {
@@ -144,6 +154,9 @@ func (l *Listing) Validate() error {
 	}
 	if !l.Category.ok() {
 		return fmt.Errorf("%w: category %q", ErrInvalidListing, l.Category)
+	}
+	if !l.Status.Valid() {
+		return fmt.Errorf("%w: status %q", ErrInvalidListing, l.Status)
 	}
 	for _, code := range []string{l.Base, l.Quote} {
 		if !IsCanonicalAsset(code) {
