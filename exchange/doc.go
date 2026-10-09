@@ -23,12 +23,34 @@
 //	MD conn worker               Market.NewSession, BookSync,        D402, D803
 //	                             PublicREST.Depth (in process)
 //	md.fetch                     PublicREST: Klines, OpenInterest    D402
-//	SYM                          PublicREST.Listing                  D201
+//	SYM                          PublicREST.Listing (ListingOver)    D201
 //	in-process Resolver (dev)    InProcessUIDSource.Listing          E2-05
 //	TD account worker            AccountKind.Account, PrivateStream  D602, D603, D301
 //	TD agent (backfill)          AccountKind.History                 D601, D301
 //
 // Any of a venue's parts may be absent.
+//
+// # Sans-I/O (D302)
+//
+// An adapter is a codec. It turns intents into bytes (a subscribe frame, a signed HTTPRequest) and
+// bytes into events (Session.Decode, PrivateStream.Decode, Call.Parse), and does nothing else: it
+// does not dial, read a clock, sleep, start a goroutine or retry. The worker that owns the connection
+// sends what the adapter built and hands back what came in; a REST Call runs with Run or Collect over a
+// Doer. The time a request is signed at comes in as now.
+//
+// So the transport stays out of this package: websockets are github.com/lxzan/gws and REST is
+// github.com/valyala/fasthttp in the workers and in exchange/transport, and neither type appears in an
+// interface here. JSON is github.com/bytedance/sonic, with one frozen configuration per adapter.
+//
+// Buffers are the worker's and are lent (D302). A frame passed to Decode is a gws message's pooled
+// buffer, closed (returned to the pool) once Decode returns; a response passed to Parse is the
+// transport's. Both are valid until the call returns; anything decoded from them may point into them (sonic does
+// not copy strings), so what a Sink or a caller keeps it copies. A REST Parse decodes with copied
+// strings, because the transport reuses the response.
+//
+// Errors: Parse classifies the venue's answer as a *Reject, a *RateLimited or ErrAuth; the transport
+// classifies what has no answer, ErrUnknownOutcome when the request may have gone out. Rate limits:
+// each HTTPRequest names its Cost, Usage reads what the venue reports, and the worker paces.
 //
 // # Rules every adapter follows
 //
@@ -37,7 +59,10 @@
 //     optional number the venue does not send is decimal.Absent. Nothing compares numbers with ==.
 //   - A request body that is signed is marshalled once; the signature covers those bytes, and those bytes
 //     are what is sent.
-//   - Times are int64 unix nanoseconds, fields end in Ns.
+//   - Times are int64 unix nanoseconds, fields end in Ns. The adapter fills only the venue's own
+//     time (ExchTsNs); the worker stamps when it received a frame.
+//   - The enums (Side, OrderType, TimeInForce, OrderStatus) have the numbers of their common.v1 and
+//     td.v1 namesakes, so the worker converts them by a cast (enums_test.go holds them together).
 //   - Instruments go in resolved and come out venue-named (D202, D203). Specs write a UniversalTicker;
 //     the caller resolves that to *symbol.Info at load (symbol.Resolver.Get) and hands the adapter
 //     the Info, so adapters never call SYM. Inside the system the instrument is Info.UID. What the

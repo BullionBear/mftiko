@@ -508,6 +508,34 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **UM 和 CM 不共用連線。** 整合之後部分 stream 可以跨 host 訂，但連線的身分仍是 `(venue, route, n)`。全市場陣列在兩個 host 上都會送 UM＋CM 合併的內容，以 `st` 區分，adapter 解碼時丟掉另一個 venue 的列。
 - **UM、CM 之間的耦合不寫進 adapter 契約。** 整合之後兩者共用 IP 的 weight 與下單數上限、共用持倉模式（`dualSidePosition`），CM 的 STP 跟著 UM。只記在 Binance adapter 的實作說明。
 
+### D302 adapter 是 sans-I/O 的 codec，技術棧與資料邊界
+
+E3 開工前先定的介面、設計模式與技術棧。各交易所的實作照這一條寫，不各自發明。
+
+- **adapter 不做 I/O。** 它只把意圖變成位元組（訂閱的 frame、簽好名的 `HTTPRequest`），把位元組變成事件（`Session.Decode`、`PrivateStream.Decode`、`Call.Parse`）。不連線、不讀時鐘、不 sleep、不起 goroutine、不重試。擁有連線的 worker 送出 adapter 做好的東西、交回收到的東西。
+  - WS 本來就是這個形狀。REST 也改成這樣：每個方法回傳 `Call[T]`，也就是一個 `HTTPRequest` 加上解析它的回應的 `Parse`；分頁的讀取是 `Page[E]`，`Next` 以送出當下的時間產生下一頁的請求，讓簽名的時間戳是新的。`Run`、`Collect` 經 `Doer` 執行。要先打 REST 才能連的 WS（Binance 的 listenKey）拆成 `PrivateStream.Prepare` 回傳的 `Call`，加上 `Dial`。
+  - 需要時間的地方（簽名）由呼叫者傳入 `now`。public 的請求不簽名，不帶 `now`。
+  - 不採用注入 `Doer` 讓 adapter 自己送：`exchange` 是公開套件（D006），`Doer` 的形狀會把傳輸函式庫的型別帶進介面；而且 adapter 拿得到連線，就擋不住它自己重試。
+  - 好處：測試只需要錄下來的 fixture，`Decode` 與 `Parse` 都能 fuzz；重試、重連、限速只在 worker；傳輸可以換，adapter 不動。代價：有狀態的流程要寫成顯式的步驟。
+- **技術棧：** WS 用 `github.com/lxzan/gws`，REST 用 `github.com/valyala/fasthttp`，JSON 用 `github.com/bytedance/sonic`。三者都只出現在 worker 與 `exchange/transport/*`，`exchange` 的介面裡沒有它們的型別。
+  - sonic 每個 adapter 一份凍結的設定。它碰 runtime 內部，Go 每次升版都要先確認 sonic 跟上了。
+  - fasthttp 沒有 context：以 ctx 的 deadline 呼叫 `DoDeadline`，送出後無法中途取消；`MaxIdemponentCallAttempts` 設 1，重試由 worker 決定。HTTP/1.1。
+  - gws 是事件驅動的：`NewClient(handler, *ClientOption)` 連線，`ReadLoop` 擋住讀取並回呼 handler 的 `OnOpen`、`OnMessage`、`OnPing`、`OnPong`、`OnClose`。一條連線一個 `ReadLoop`，不和 `ReadMessage`、`NextReader` 混用。
+  - `ParallelEnabled` 必須是 false（預設）：同一條連線的訊息照順序交給 `Decode`，book 的序號判斷靠這個。
+  - 沒有 context：握手的逾時是 `HandshakeTimeout`（預設 5 秒），撥號由 `NewDialer` 提供；ctx 結束時由 worker 關閉連線，`ReadLoop` 隨之以 `OnClose` 返回。
+  - ping：`BuiltinEventHandler.OnPing` 回 pong；handler 自己實作 `OnPing` 時要自己呼叫 `WritePong`，否則交易所（例如 Binance）會斷線。應用層的心跳（OKX 的 `"ping"`、Bybit 的 `{"op":"ping"}`）仍是 codec 的事（`Session.Ping`）。
+  - 讀取上限 `ReadMaxPayloadSize` 預設 16 MiB，夠用；venue 需要時再設。permessage-deflate 預設關閉，venue 要求才開。
+  - gws 與 fasthttp 都不走 net/http：proxy（`NewDialer`）、TLS（`TlsConfig`）、DNS 由同一份設定產生，給兩者使用。
+- **緩衝區是 worker 的，借給 adapter。** WS 的 frame 是 gws 從池裡取出的 `Message.Data`：worker 在 `OnMessage` 裡把 `message.Bytes()` 交給 `Decode`，返回之後才 `message.Close()` 把緩衝區還回池，穩態零分配；交給 `Decode` 的 frame、交給 `Parse` 的 response 只在呼叫期間有效。sonic 不複製字串，解出來的字串可能指向緩衝區：Sink 收到的指標與其中的字串只在回呼期間有效，要留的自己複製。REST 的 `Parse` 一律以複製字串的設定解碼（fasthttp 會重用 response），不值得為它借用。conformance 驗證：回呼返回後把緩衝區塗掉，下游拿到的不變。數字是 float64（D008），不受這條影響。
+- **資料邊界：**
+  - 商品：進去的是解析好的 `*symbol.Info`，出來的是 `symbol.ExchKey`（D202、D203），adapter 不碰 SYM。
+  - 時間：`int64` 奈秒。adapter 只填交易所給的時間（`ExchTsNs`）；收到的時間由 worker 蓋。
+  - enum：`exchange` 保留自己的 `Side`、`OrderType`、`TimeInForce`、`OrderStatus`（adapter 不依賴產生碼），數值與 `common.v1`、`td.v1` 逐一相同，worker 以型別轉換映射，`enums_test.go` 鎖住。
+  - 錯誤：`Parse` 判讀交易所的回答：`*Reject`（明確拒絕）、`*RateLimited`、`ErrAuth`（簽名、權限、IP 白名單；不重試，告警）。沒有回答的由傳輸判定：請求可能已送出的是 `ErrUnknownOutcome`；`HTTPRequest.Mutates` 的請求（下單、撤單）遇到它，worker 查單或 recon，不當成被拒。`ErrUnsupported`、`ErrNotImplemented` 不變。
+  - 限速：每個 `HTTPRequest` 宣告它的 `Cost`；交易所在回應裡報的用量由 `Usage` 讀出；節流只在 worker。
+  - `Account.Leverage` 回 float64（D008 的遺漏）。`Account.Snapshot` 是多個可分頁的 `Call`，worker 全部跑完再合併；`AsOfNs` 由 worker 在第一個請求送出前蓋。
+- SYM 讀的是 `exchange.Lister`（整個 category 讀到最後一頁）：真的 venue 是 `ListingOver(PublicREST, Doer, now)`，測試是 `exchangetest.Source`。`exchangetest.Source.REST()` 是它的 sans-I/O 面，`Source` 本身就是回應它的 `Doer`。在 `exchange/transport/fasthttp` 之前，`mftiko-sym` 沒有傳輸，refresh 回 `ErrNoTransport`；各 adapter 的 `Listing` 本來也還是 `ErrNotImplemented`。
+
 ### D907 控制平面：API server 與 controller
 
 控制平面持有所有進程的即時狀態，並依 MD、TD 的狀態管理 STS。它分成兩個進程：

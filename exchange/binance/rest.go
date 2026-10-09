@@ -1,8 +1,6 @@
 package binance
 
 import (
-	"context"
-
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/exchange"
 )
@@ -14,22 +12,24 @@ var _ exchange.PublicREST = (*rest)(nil)
 
 // Listing: exchangeInfo. UM and CM list perpetual and dated contracts together; the category picks
 // them apart by contractType.
-func (r *rest) Listing(context.Context, symbol.Category) ([]symbol.Listing, error) {
-	return nil, exchange.ErrNotImplemented
+func (r *rest) Listing(symbol.Category) (exchange.Call[exchange.Page[symbol.Listing]], error) {
+	return exchange.Call[exchange.Page[symbol.Listing]]{}, exchange.ErrNotImplemented
 }
 
 // Depth: GET depth; Last is lastUpdateId.
-func (r *rest) Depth(context.Context, *symbol.Info, int) (*exchange.BookUpdate, error) {
-	return nil, exchange.ErrNotImplemented
+func (r *rest) Depth(*symbol.Info, int) (exchange.Call[*exchange.BookUpdate], error) {
+	return exchange.Call[*exchange.BookUpdate]{}, exchange.ErrNotImplemented
 }
 
-func (r *rest) Klines(context.Context, *symbol.Info, string, int) ([]exchange.Kline, error) {
-	return nil, exchange.ErrNotImplemented
+func (r *rest) Klines(*symbol.Info, string, int64, int) (exchange.Call[[]exchange.Kline], error) {
+	return exchange.Call[[]exchange.Kline]{}, exchange.ErrNotImplemented
 }
 
 func (r *rest) KlinePage() int { return 0 }
 
 // OpenInterest: UM and CM do not push open interest (D401), so it is query-only here.
-func (r *rest) OpenInterest(context.Context, *symbol.Info) (*exchange.OpenInterest, error) {
-	return nil, exchange.ErrNotImplemented
+func (r *rest) OpenInterest(*symbol.Info) (exchange.Call[*exchange.OpenInterest], error) {
+	return exchange.Call[*exchange.OpenInterest]{}, exchange.ErrNotImplemented
 }
+
+func (r *rest) Usage(*exchange.HTTPResponse) []exchange.Used { return nil }

@@ -1,7 +1,6 @@
 package exchange
 
 import (
-	"context"
 	"time"
 
 	"github.com/BullionBear/mftiko/contract/symbol"
@@ -11,20 +10,24 @@ import (
 // starting an account worker (D601), so it takes the same AccountConfig.
 type HistoryFactory func(cfg AccountConfig) (History, error)
 
-// History is a venue's private trade history over REST, read by the TD agent's backfill jobs (D601).
-// Safe for concurrent use. The job owns the cursor; History only reads one page at a time.
+// History is a venue's private trade history over REST, sans-I/O (D302), read by the TD agent's
+// backfill jobs (D601). Safe for concurrent use. The job owns the cursor; History builds one page's
+// request at a time.
 type History interface {
 	Traits() HistoryTraits
 
-	// Fills reads one page of the account's fills on one instrument. A backfill scope is
+	// Fills is one page of the account's fills on one instrument. A backfill scope is
 	// (api_id, UniversalTicker) (D601); the job resolves it and passes the Info. Continue with
 	// FillPage.Next while catching up; once caught up, the job re-reads from the confirmed line by
-	// time (D601).
-	Fills(ctx context.Context, q FillQuery) (*FillPage, error)
+	// time (D601). The cursor is a string the job stores, not a Page: it outlives the process.
+	Fills(now time.Time, q FillQuery) (Call[*FillPage], error)
 
 	// Order looks up one order by venue id. The job asks for every order_id that has fills but no
 	// terminal row in orders yet, and stores it once terminal with filled_qty > 0 (D601).
-	Order(ctx context.Context, inst *symbol.Info, orderID string) (*OrderUpdate, error)
+	Order(now time.Time, inst *symbol.Info, orderID string) (Call[*OrderUpdate], error)
+
+	// Usage reads the rate-limit usage the venue reports in a response; nil when it reports none.
+	Usage(resp *HTTPResponse) []Used
 }
 
 // HistoryTraits tell the backfill job how to walk a venue's history.
