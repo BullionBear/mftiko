@@ -50,7 +50,13 @@
 // Universe.current is a selector and is still TBD, outside D203.
 // The UID is uint32, the same type as Info.UID. The interval is symbol.MinUID..symbol.MaxUID
 // and 0 is invalid. symbol.ValidUID is that check. The BIGINT columns use the same bounds.
-// The sym subject is not served yet.
+// Service answers the sym subject over natsx: Get, GetByUid, List, Reverse and
+// Refresh. A success is the Reply protobuf. invalid, not_found and unavailable
+// are a natsx error reply (option A): the text is that word, then an optional
+// ": " and a reason. include_inactive reads the terminal table as well as the
+// active one; the default is the active table only. Reverse of a terminal row
+// returns the uid stored on that row. List pages with offset and limit, at most
+// symbol.ListPage rows, and the reply stays under 1 MiB.
 // Only this service writes the tables.
 //
 // It is also the only place that uppercases asset codes and applies the alias table (XBT to BTC,
@@ -98,5 +104,5 @@
 // A row whose status is EXPIRED or DELISTED is omitted even when the listing still
 // returns it. Only TRADABLE may trade.
 //
-// The sym subject is not served yet.
+// This process does not answer the sym subject. Service does, from PostgreSQL.
 package sym
