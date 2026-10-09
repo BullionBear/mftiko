@@ -2,6 +2,11 @@ package symbol
 
 // Info is one instrument as SYM serves it: the golden record every plane reads.
 type Info struct {
+	// UID is the primary key of both SYM tables, unique across them (D38). Moving a
+	// listing to the terminal table keeps it. The same ticker listed again after
+	// delisting gets a new UID. Zero is never assigned. The width is uint64 here as
+	// the stand-in and is not final (PROTOCOL §10 P13).
+	UID        uint64
 	Ticker     UniversalTicker
 	ExchTicker string
 	Base       string
@@ -16,7 +21,7 @@ type Info struct {
 	// Active is tentative (D38): only TRADABLE trades. The enum is PRELISTING,
 	// TRADABLE, HALTED, SETTLING, EXPIRED, DELISTED, UNKNOWN. Non-terminal statuses
 	// stay on the active table the Resolver reads; EXPIRED and DELISTED move to the
-	// terminal table without changing the ticker. This stays bool, and the store stays
+	// terminal table without changing the ticker or the UID. This stays bool, and the store stays
 	// one table, until that design is implemented.
 	Active      bool
 	Filters     map[string]string
@@ -29,8 +34,7 @@ func (i *Info) Exch() ExchKey {
 }
 
 // ExchKey names an instrument the way a venue's messages do. Adapters emit it on the way out
-// (fills, orders, positions); the caller turns it back into a UniversalTicker with
-// Resolver.Reverse.
+// (fills, orders, positions); the caller turns it into a UID with Resolver.Reverse (D38).
 //
 //   - Venue is part of it because one account kind can trade several venues: a BinancePM private
 //     stream carries UM, CM and spot-margin events (D32).

@@ -392,9 +392,11 @@ func (x *StrategyRef) GetRepository() string {
 	return ""
 }
 
+// 人寫的規格。feed key 裡是 UniversalTicker，不是 UID（D38）。
+// ticker 解成 UID 發生在 spec 載入時（sym.GetRequest），不在這份宣告裡。
 type FeedDecl struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Feed          string                 `protobuf:"bytes,1,opt,name=feed,proto3" json:"feed,omitempty"`                               // 正規 feed key
+	Feed          string                 `protobuf:"bytes,1,opt,name=feed,proto3" json:"feed,omitempty"`                               // 正規 feed key（<topic>.<UniversalTicker>）。載入邊界才解成 UID
 	MdInstance    string                 `protobuf:"bytes,2,opt,name=md_instance,json=mdInstance,proto3" json:"md_instance,omitempty"` // API 解析後一律填
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

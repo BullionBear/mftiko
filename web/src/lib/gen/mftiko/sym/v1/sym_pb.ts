@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mftiko/sym/v1/sym.proto.
  */
 export const file_mftiko_sym_v1_sym: GenFile = /*@__PURE__*/
-  fileDesc("ChdtZnRpa28vc3ltL3YxL3N5bS5wcm90bxINbWZ0aWtvLnN5bS52MSLKAQoHUmVxdWVzdBIoCgNnZXQYASABKAsyGS5tZnRpa28uc3ltLnYxLkdldFJlcXVlc3RIABIqCgRsaXN0GAIgASgLMhoubWZ0aWtvLnN5bS52MS5MaXN0UmVxdWVzdEgAEjAKB3JldmVyc2UYAyABKAsyHS5tZnRpa28uc3ltLnYxLlJldmVyc2VSZXF1ZXN0SAASMAoHcmVmcmVzaBgEIAEoCzIdLm1mdGlrby5zeW0udjEuUmVmcmVzaFJlcXVlc3RIAEIFCgNyZXEiQAoKR2V0UmVxdWVzdBIYChB1bml2ZXJzYWxfdGlja2VyGAEgASgJEhgKEGluY2x1ZGVfaW5hY3RpdmUYAiABKAgiZwoLTGlzdFJlcXVlc3QSDQoFdmVudWUYASABKAkSEAoIY2F0ZWdvcnkYAiABKAkSDQoFbGltaXQYAyABKA0SDgoGb2Zmc2V0GAQgASgNEhgKEGluY2x1ZGVfaW5hY3RpdmUYBSABKAgiRgoOUmV2ZXJzZVJlcXVlc3QSDQoFdmVudWUYASABKAkSEAoIY2F0ZWdvcnkYAiABKAkSEwoLZXhjaF90aWNrZXIYAyABKAkiHwoOUmVmcmVzaFJlcXVlc3QSDQoFdmVudWUYASABKAkitwEKBVJlcGx5Eg0KBWVycm9yGAEgASgJEg4KBnJlYXNvbhgCIAEoCRIpCgRpbmZvGAogASgLMhkubWZ0aWtvLnN5bS52MS5TeW1ib2xJbmZvSAASKQoEbGlzdBgLIAEoCzIZLm1mdGlrby5zeW0udjEuU3ltYm9sTGlzdEgAEi8KB3JlZnJlc2gYDCABKAsyHC5tZnRpa28uc3ltLnYxLlJlZnJlc2hSZXN1bHRIAEIICgZyZXN1bHQilAMKClN5bWJvbEluZm8SGAoQdW5pdmVyc2FsX3RpY2tlchgBIAEoCRITCgtleGNoX3RpY2tlchgCIAEoCRIMCgRiYXNlGAMgASgJEg0KBXF1b3RlGAQgASgJEhoKDWNvbnRyYWN0X3NpemUYBSABKAlIAIgBARITCgZzZXR0bGUYBiABKAlIAYgBARIRCglleHBpcnlfbnMYByABKAMSEwoGc3RyaWtlGAggASgJSAKIAQESEwoLb3B0aW9uX3R5cGUYCSABKAkSDgoGYWN0aXZlGAogASgIEjcKB2ZpbHRlcnMYCyADKAsyJi5tZnRpa28uc3ltLnYxLlN5bWJvbEluZm8uRmlsdGVyc0VudHJ5EhUKDXVwZGF0ZWRfYXRfbnMYDCABKAMaRAoMRmlsdGVyc0VudHJ5EgsKA2tleRgBIAEoCRIjCgV2YWx1ZRgCIAEoCzIULm1mdGlrby5zeW0udjEuQm91bmQ6AjgBQhAKDl9jb250cmFjdF9zaXplQgkKB19zZXR0bGVCCQoHX3N0cmlrZSIlCgVCb3VuZBISCgV2YWx1ZRgBIAEoCUgAiAEBQggKBl92YWx1ZSJHCgpTeW1ib2xMaXN0EioKB3N5bWJvbHMYASADKAsyGS5tZnRpa28uc3ltLnYxLlN5bWJvbEluZm8SDQoFdG90YWwYAiABKA0i4gIKDVJlZnJlc2hSZXN1bHQSPgoJcmVmcmVzaGVkGAEgAygLMisubWZ0aWtvLnN5bS52MS5SZWZyZXNoUmVzdWx0LlJlZnJlc2hlZEVudHJ5EkIKC2RlYWN0aXZhdGVkGAIgAygLMi0ubWZ0aWtvLnN5bS52MS5SZWZyZXNoUmVzdWx0LkRlYWN0aXZhdGVkRW50cnkSOAoGZmFpbGVkGAMgAygLMigubWZ0aWtvLnN5bS52MS5SZWZyZXNoUmVzdWx0LkZhaWxlZEVudHJ5GjAKDlJlZnJlc2hlZEVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoDToCOAEaMgoQRGVhY3RpdmF0ZWRFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKA06AjgBGi0KC0ZhaWxlZEVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAFCQFo+Z2l0aHViLmNvbS9CdWxsaW9uQmVhci9tZnRpa28vY29udHJhY3QvZ2VuL21mdGlrby9zeW0vdjE7c3ltdjFiBnByb3RvMw");
+  fileDesc("ChdtZnRpa28vc3ltL3YxL3N5bS5wcm90bxINbWZ0aWtvLnN5bS52MSKAAgoHUmVxdWVzdBIoCgNnZXQYASABKAsyGS5tZnRpa28uc3ltLnYxLkdldFJlcXVlc3RIABIqCgRsaXN0GAIgASgLMhoubWZ0aWtvLnN5bS52MS5MaXN0UmVxdWVzdEgAEjAKB3JldmVyc2UYAyABKAsyHS5tZnRpa28uc3ltLnYxLlJldmVyc2VSZXF1ZXN0SAASMAoHcmVmcmVzaBgEIAEoCzIdLm1mdGlrby5zeW0udjEuUmVmcmVzaFJlcXVlc3RIABI0CgpnZXRfYnlfdWlkGAUgASgLMh4ubWZ0aWtvLnN5bS52MS5HZXRCeVVpZFJlcXVlc3RIAEIFCgNyZXEiQAoKR2V0UmVxdWVzdBIYChB1bml2ZXJzYWxfdGlja2VyGAEgASgJEhgKEGluY2x1ZGVfaW5hY3RpdmUYAiABKAgiOAoPR2V0QnlVaWRSZXF1ZXN0EgsKA3VpZBgBIAEoBBIYChBpbmNsdWRlX2luYWN0aXZlGAIgASgIImcKC0xpc3RSZXF1ZXN0Eg0KBXZlbnVlGAEgASgJEhAKCGNhdGVnb3J5GAIgASgJEg0KBWxpbWl0GAMgASgNEg4KBm9mZnNldBgEIAEoDRIYChBpbmNsdWRlX2luYWN0aXZlGAUgASgIIkYKDlJldmVyc2VSZXF1ZXN0Eg0KBXZlbnVlGAEgASgJEhAKCGNhdGVnb3J5GAIgASgJEhMKC2V4Y2hfdGlja2VyGAMgASgJIh8KDlJlZnJlc2hSZXF1ZXN0Eg0KBXZlbnVlGAEgASgJIrcBCgVSZXBseRINCgVlcnJvchgBIAEoCRIOCgZyZWFzb24YAiABKAkSKQoEaW5mbxgKIAEoCzIZLm1mdGlrby5zeW0udjEuU3ltYm9sSW5mb0gAEikKBGxpc3QYCyABKAsyGS5tZnRpa28uc3ltLnYxLlN5bWJvbExpc3RIABIvCgdyZWZyZXNoGAwgASgLMhwubWZ0aWtvLnN5bS52MS5SZWZyZXNoUmVzdWx0SABCCAoGcmVzdWx0IqEDCgpTeW1ib2xJbmZvEhgKEHVuaXZlcnNhbF90aWNrZXIYASABKAkSEwoLZXhjaF90aWNrZXIYAiABKAkSDAoEYmFzZRgDIAEoCRINCgVxdW90ZRgEIAEoCRIaCg1jb250cmFjdF9zaXplGAUgASgJSACIAQESEwoGc2V0dGxlGAYgASgJSAGIAQESEQoJZXhwaXJ5X25zGAcgASgDEhMKBnN0cmlrZRgIIAEoCUgCiAEBEhMKC29wdGlvbl90eXBlGAkgASgJEg4KBmFjdGl2ZRgKIAEoCBI3CgdmaWx0ZXJzGAsgAygLMiYubWZ0aWtvLnN5bS52MS5TeW1ib2xJbmZvLkZpbHRlcnNFbnRyeRIVCg11cGRhdGVkX2F0X25zGAwgASgDEgsKA3VpZBgNIAEoBBpECgxGaWx0ZXJzRW50cnkSCwoDa2V5GAEgASgJEiMKBXZhbHVlGAIgASgLMhQubWZ0aWtvLnN5bS52MS5Cb3VuZDoCOAFCEAoOX2NvbnRyYWN0X3NpemVCCQoHX3NldHRsZUIJCgdfc3RyaWtlIiUKBUJvdW5kEhIKBXZhbHVlGAEgASgJSACIAQFCCAoGX3ZhbHVlIkcKClN5bWJvbExpc3QSKgoHc3ltYm9scxgBIAMoCzIZLm1mdGlrby5zeW0udjEuU3ltYm9sSW5mbxINCgV0b3RhbBgCIAEoDSLiAgoNUmVmcmVzaFJlc3VsdBI+CglyZWZyZXNoZWQYASADKAsyKy5tZnRpa28uc3ltLnYxLlJlZnJlc2hSZXN1bHQuUmVmcmVzaGVkRW50cnkSQgoLZGVhY3RpdmF0ZWQYAiADKAsyLS5tZnRpa28uc3ltLnYxLlJlZnJlc2hSZXN1bHQuRGVhY3RpdmF0ZWRFbnRyeRI4CgZmYWlsZWQYAyADKAsyKC5tZnRpa28uc3ltLnYxLlJlZnJlc2hSZXN1bHQuRmFpbGVkRW50cnkaMAoOUmVmcmVzaGVkRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgNOgI4ARoyChBEZWFjdGl2YXRlZEVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoDToCOAEaLQoLRmFpbGVkRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4AUJAWj5naXRodWIuY29tL0J1bGxpb25CZWFyL21mdGlrby9jb250cmFjdC9nZW4vbWZ0aWtvL3N5bS92MTtzeW12MWIGcHJvdG8z");
 
 /**
  * @generated from message mftiko.sym.v1.Request
@@ -45,6 +45,12 @@ export type Request = Message<"mftiko.sym.v1.Request"> & {
      */
     value: RefreshRequest;
     case: "refresh";
+  } | {
+    /**
+     * @generated from field: mftiko.sym.v1.GetByUidRequest get_by_uid = 5;
+     */
+    value: GetByUidRequest;
+    case: "getByUid";
   } | { case: undefined; value?: undefined };
 };
 
@@ -56,6 +62,8 @@ export const RequestSchema: GenMessage<Request> = /*@__PURE__*/
   messageDesc(file_mftiko_sym_v1_sym, 0);
 
 /**
+ * Spec 與設定載入的邊界（D38）：人寫的 UniversalTicker 在這裡解成 UID。
+ * 平面之間不走這條，它們已經持有 UID，用 GetByUidRequest。
  * One instrument by exact ticker: a single row, never a venue table.
  *
  * @generated from message mftiko.sym.v1.GetRequest
@@ -80,6 +88,35 @@ export type GetRequest = Message<"mftiko.sym.v1.GetRequest"> & {
  */
 export const GetRequestSchema: GenMessage<GetRequest> = /*@__PURE__*/
   messageDesc(file_mftiko_sym_v1_sym, 1);
+
+/**
+ * 系統內部的查詢（D38）。STS、TD、MD 持有 UID，用它拿這一列的欄位。
+ * 預設只讀活躍表；include_inactive 才含終結表。0 不是合法 UID。
+ *
+ * @generated from message mftiko.sym.v1.GetByUidRequest
+ */
+export type GetByUidRequest = Message<"mftiko.sym.v1.GetByUidRequest"> & {
+  /**
+   * 暫用 uint64。寬度、誰分配、重啟是否沿用都還沒定（PROTOCOL §10 P13）
+   *
+   * @generated from field: uint64 uid = 1;
+   */
+  uid: bigint;
+
+  /**
+   * 同 GetRequest.include_inactive（D38）
+   *
+   * @generated from field: bool include_inactive = 2;
+   */
+  includeInactive: boolean;
+};
+
+/**
+ * Describes the message mftiko.sym.v1.GetByUidRequest.
+ * Use `create(GetByUidRequestSchema)` to create a new message.
+ */
+export const GetByUidRequestSchema: GenMessage<GetByUidRequest> = /*@__PURE__*/
+  messageDesc(file_mftiko_sym_v1_sym, 2);
 
 /**
  * One (venue, category) table, paged. A page stays under NATS's 1 MiB with every filter.
@@ -122,11 +159,11 @@ export type ListRequest = Message<"mftiko.sym.v1.ListRequest"> & {
  * Use `create(ListRequestSchema)` to create a new message.
  */
 export const ListRequestSchema: GenMessage<ListRequest> = /*@__PURE__*/
-  messageDesc(file_mftiko_sym_v1_sym, 2);
+  messageDesc(file_mftiko_sym_v1_sym, 3);
 
 /**
- * The venue's spelling -> the ticker. Category is required: on a unified-account venue the
- * spelling alone is ambiguous (Bybit's spot and linear "BTCUSDT").
+ * The venue's spelling -> the listing. Callers keep SymbolInfo.uid (D38). Category is required:
+ * on a unified-account venue the spelling alone is ambiguous (Bybit's spot and linear "BTCUSDT").
  *
  * @generated from message mftiko.sym.v1.ReverseRequest
  */
@@ -152,7 +189,7 @@ export type ReverseRequest = Message<"mftiko.sym.v1.ReverseRequest"> & {
  * Use `create(ReverseRequestSchema)` to create a new message.
  */
 export const ReverseRequestSchema: GenMessage<ReverseRequest> = /*@__PURE__*/
-  messageDesc(file_mftiko_sym_v1_sym, 3);
+  messageDesc(file_mftiko_sym_v1_sym, 4);
 
 /**
  * Re-pull one venue's listings now, or every venue when venue is empty.
@@ -171,7 +208,7 @@ export type RefreshRequest = Message<"mftiko.sym.v1.RefreshRequest"> & {
  * Use `create(RefreshRequestSchema)` to create a new message.
  */
 export const RefreshRequestSchema: GenMessage<RefreshRequest> = /*@__PURE__*/
-  messageDesc(file_mftiko_sym_v1_sym, 4);
+  messageDesc(file_mftiko_sym_v1_sym, 5);
 
 /**
  * @generated from message mftiko.sym.v1.Reply
@@ -194,7 +231,7 @@ export type Reply = Message<"mftiko.sym.v1.Reply"> & {
    */
   result: {
     /**
-     * get, reverse
+     * get, get_by_uid, reverse
      *
      * @generated from field: mftiko.sym.v1.SymbolInfo info = 10;
      */
@@ -222,13 +259,15 @@ export type Reply = Message<"mftiko.sym.v1.Reply"> & {
  * Use `create(ReplySchema)` to create a new message.
  */
 export const ReplySchema: GenMessage<Reply> = /*@__PURE__*/
-  messageDesc(file_mftiko_sym_v1_sym, 5);
+  messageDesc(file_mftiko_sym_v1_sym, 6);
 
 /**
  * @generated from message mftiko.sym.v1.SymbolInfo
  */
 export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
   /**
+   * 給人看的字串。系統內部用 uid（D38）
+   *
    * @generated from field: string universal_ticker = 1;
    */
   universalTicker: string;
@@ -284,7 +323,7 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
   optionType: string;
 
   /**
-   * 暫定（D38）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 不變。定案前仍是 bool，表也還沒拆
+   * 暫定（D38）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。定案前仍是 bool，表也還沒拆
    *
    * @generated from field: bool active = 10;
    */
@@ -302,6 +341,14 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
    * @generated from field: int64 updated_at_ns = 12;
    */
   updatedAtNs: bigint;
+
+  /**
+   * 兩張表的主鍵，跨表唯一（D38）。搬到終結表時不變。同一個 ticker 下架再上市是新的 UID。
+   * 暫用 uint64，0 不分配。寬度還沒定（PROTOCOL §10 P13）。這一版的 SQL 還沒有這個欄位。
+   *
+   * @generated from field: uint64 uid = 13;
+   */
+  uid: bigint;
 };
 
 /**
@@ -309,7 +356,7 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
  * Use `create(SymbolInfoSchema)` to create a new message.
  */
 export const SymbolInfoSchema: GenMessage<SymbolInfo> = /*@__PURE__*/
-  messageDesc(file_mftiko_sym_v1_sym, 6);
+  messageDesc(file_mftiko_sym_v1_sym, 7);
 
 /**
  * @generated from message mftiko.sym.v1.Bound
@@ -326,7 +373,7 @@ export type Bound = Message<"mftiko.sym.v1.Bound"> & {
  * Use `create(BoundSchema)` to create a new message.
  */
 export const BoundSchema: GenMessage<Bound> = /*@__PURE__*/
-  messageDesc(file_mftiko_sym_v1_sym, 7);
+  messageDesc(file_mftiko_sym_v1_sym, 8);
 
 /**
  * @generated from message mftiko.sym.v1.SymbolList
@@ -348,7 +395,7 @@ export type SymbolList = Message<"mftiko.sym.v1.SymbolList"> & {
  * Use `create(SymbolListSchema)` to create a new message.
  */
 export const SymbolListSchema: GenMessage<SymbolList> = /*@__PURE__*/
-  messageDesc(file_mftiko_sym_v1_sym, 8);
+  messageDesc(file_mftiko_sym_v1_sym, 9);
 
 /**
  * @generated from message mftiko.sym.v1.RefreshResult
@@ -381,5 +428,5 @@ export type RefreshResult = Message<"mftiko.sym.v1.RefreshResult"> & {
  * Use `create(RefreshResultSchema)` to create a new message.
  */
 export const RefreshResultSchema: GenMessage<RefreshResult> = /*@__PURE__*/
-  messageDesc(file_mftiko_sym_v1_sym, 9);
+  messageDesc(file_mftiko_sym_v1_sym, 10);
 

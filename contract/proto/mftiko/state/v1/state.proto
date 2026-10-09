@@ -89,7 +89,7 @@ message SessionDemand {
 // 一個需求項目目前的 ack，由 controller 從 provider 的 EntryStatus 抄來。
 message Binding {
   oneof target {
-    string feed = 1;
+    string feed = 1; // feed key。spec 載入時才把其中的 ticker 解成 UID（D38）；這個欄位今天仍是字串
     string selector = 2; // SelectorDecl.name
     int64 api_id = 3;
   }
@@ -111,7 +111,7 @@ enum EntryState {
 message EntryStatus {
   EntryState state = 1;
   string reason = 2;
-  // feed：完整的 subject（今天是 md.f.{inst}.{topic}.{ticker}）；selector：成員 subject 的前綴（今天是 md.f.{inst}）；
+  // feed：完整的 subject（今天是 md.f.{inst}.{topic}.{ticker}；改成 UID 還沒定，§10 P13）；selector：成員 subject 的前綴（今天是 md.f.{inst}）；
   // 帳號：td.order.{api_id}。由 provider 決定，訂閱端不自己組（PROTOCOL §7、DECISIONS D8）。
   string subject = 3;
   mftiko.common.v1.WorkerRef worker = 4;
@@ -121,7 +121,7 @@ message EntryStatus {
 
 message Universe {
   uint64 epoch = 1;
-  repeated string members = 2; // UniversalTicker
+  repeated string members = 2; // 今天是 UniversalTicker。改成 UID 是後續（D38）
   string current = 3;          // 只有 rolling_future
   repeated string topics = 4;
 }

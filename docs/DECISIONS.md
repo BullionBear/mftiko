@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-09 更新：幣與數量的單位，以及 SYM listing 分活躍表與終結表，D38）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D38）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 
@@ -470,7 +470,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 照 mftik 的 symbol plane（D11）。
 
-- **平台裡指涉商品一律用 UniversalTicker：** spec、需求項目、`md.f` 的 subject、`td.order`、DB。平面之間交換資料一律用它。交易所的寫法（`exch_ticker`）只出現在 adapter 和 SYM 的表裡。
+- **給人寫的是 UniversalTicker，系統內部是 UID（D38）。** spec 與設定寫 ticker 字串，載入時才解成 UID。STS、TD、MD 之間傳這個整數，各平面再用 UID 向 SYM 拿欄位。需求項目、`td.order`、`md.f` 今天仍帶 ticker，換成 UID 是後續；`md.f` 的 subject 用 ticker 還是 UID 還沒定（PROTOCOL §10 P13）。SYM 表的主鍵是 UID。交易所的寫法（`exch_ticker`）只出現在 adapter 和 SYM。
 - **翻譯是查表，經 SYM 解析，不是字串轉換。** `BTCUSDT` 不帶 base／quote 的切法，交易所的寫法也不一定是 base＋分隔＋quote。
 - **ticker 的 base／quote 是 SYM 正規化之後的資產（D38）。** 資產代碼一律大寫，再套別名表（例如 `XBT` → `BTC`），只在 SYM。先正規化，再做 quanto 判斷，再推 ticker；strike 先依 `spell_strike` 正規化，`6400.0` 與 `6400` 是同一個 ticker。`USD`、`USDC`、`USDT` 不合併。quanto 不入庫。
 - **先解析，再交給 adapter。** MD agent 收到需求項目，先在已載入的活躍表裡解析（D38：Resolver 與熱路徑不讀終結表），找不到、已下架、已到期，或不是可交易（不是 `TRADABLE`；quanto 不入庫）就是 `REJECTED`；再把解析結果交給 adapter，由它決定 route 和 channel。
@@ -616,11 +616,17 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **交易狀態，暫定。** `bool active` 會換成 status enum：`PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`EXPIRED`、`DELISTED`、`UNKNOWN`。完整列舉還沒定案，這一票標暫定。交易路徑只接受 `TRADABLE`，其他狀態拒單。之後新增 enum 值不會讓原本不可交易的變成可交易。交易所的原生狀態對不上，記成 `UNKNOWN`，不可交易。各 venue 的原生狀態對照在做 venue integration 時補。enum 定案前，契約維持 `bool active`。
 - **SYM 的 listing 分兩張表，看狀態還會不會變。** 期權與到期合約會讓 ticker 變多，熱路徑不該掃已終結的列。enum 仍是暫定，分表跟著這個暫定的切法。
   - **活躍表：** `PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`UNKNOWN`。狀態還可能變。Resolver 與熱路徑只讀這張表。裡面只有 `TRADABLE` 可以交易。
-  - **終結表：** `EXPIRED`、`DELISTED`。一到這裡，狀態就不再變。留給歷史查詢：舊的成交與持倉，以及依 ticker 反查。不再刷新，可以歸檔。
-  - 列進了終結狀態，就從活躍表搬到終結表。UniversalTicker 的字串完全不變，歷史資料不用重鍵。
-  - 這一票不拆表。`migrations/0002_symbol` 仍是一張 `symbol_ticker`。拆表留給 E2 的 Resolver／SYM store。
+  - **終結表：** `EXPIRED`、`DELISTED`。一到這裡，狀態就不再變。留給歷史查詢：舊的成交與持倉，以及依 UID 反查。不再刷新，可以歸檔。
+  - 列進了終結狀態，就從活躍表搬到終結表。UniversalTicker 的字串不變，UID 也不變。
+  - 這一票不拆表。`migrations/0002_symbol` 仍是一張 `symbol_ticker`，主鍵仍是那張表自己的 `id`。拆表與共用的 UID 留給 E2 的 Resolver／SYM store。
+- **UID 是系統內部的商品身分。** UniversalTicker 是給人看的字串，只用在寫設定與 spec。系統裡面傳商品用 UID（整數）。各平面要欄位時用 UID 向 SYM 查。STS、TD、MD 之間用 UID，不用 ticker 字串。
+  - UID 是活躍表與終結表的主鍵，兩張表合在一起唯一：同一個 UID 不會同時在兩張表。搬到終結表時 UID 跟著列走。
+  - 同一個 ticker 下架之後再上市，是新的一列，拿新的 UID。舊的成交與持倉仍指向舊 UID。
+  - ticker 解成 UID 只發生在設定與 spec 載入的邊界。`SessionSpec` 的 feed 仍寫 UniversalTicker，載入時用 `GetRequest` 換成 UID。
+  - 這一版只在 `SymbolInfo` 加上 `uid`，並加 `GetByUidRequest`。`td.order`、需求項目、selector 成員、`md.f` 今天仍是 ticker 字串。
+  - 寬度、誰分配、重啟或重載時留不留、`md.f` 的 subject 用 UID 還是 ticker，都還沒定（PROTOCOL §10 P13）。契約上 `uid` 暫用 `uint64`，0 不分配，只為了先有這個欄位。
 
-- **不採用：** adapter 自行改名，或在 adapter 裡收別名；下游用類別回推三個幣欄；沿用 `reservations.is_linear_margin`，或為 Deribit 開特例；把 `settlement_asset` 當成保證金幣（Binance 的 `marginAsset`、Bitget 寫成 quote）；inverse 的 qty 用張數；quanto 入庫並把 `active` 設成 false；把 `USD`、`USDC`、`USDT` 收成同一個；已終結的列留在熱路徑讀的那張表；搬表時改寫 UniversalTicker。
+- **不採用：** adapter 自行改名，或在 adapter 裡收別名；下游用類別回推三個幣欄；沿用 `reservations.is_linear_margin`，或為 Deribit 開特例；把 `settlement_asset` 當成保證金幣（Binance 的 `marginAsset`、Bitget 寫成 quote）；inverse 的 qty 用張數；quanto 入庫並把 `active` 設成 false；把 `USD`、`USDC`、`USDT` 收成同一個；已終結的列留在熱路徑讀的那張表；搬表時改寫 UniversalTicker 或重發 UID；下架再上市沿用舊 UID；系統內部繼續用 ticker 字串當商品身分。
 
 ## 待討論
 

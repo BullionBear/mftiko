@@ -263,7 +263,7 @@ export type SelectorBinding = Message<"mftiko.stsctl.v1.SelectorBinding"> & {
   universe?: Universe | undefined;
 
   /**
-   * 成員的 subject 是 {subject_prefix}.{topic}.{ticker}
+   * 成員的 subject 是 {subject_prefix}.{topic}.{ticker}。最後一段改成 UID 還沒定（D38、§10 P13）
    *
    * @generated from field: string subject_prefix = 4;
    */
@@ -396,7 +396,7 @@ export type Universe = Message<"mftiko.stsctl.v1.Universe"> & {
   epoch: bigint;
 
   /**
-   * UniversalTicker
+   * 今天是 UniversalTicker。改成 UID 是後續（D38）
    *
    * @generated from field: repeated string members = 2;
    */

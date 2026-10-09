@@ -34,7 +34,7 @@ message OrderRequest {
 
 message Submit {
   string session_id = 1;
-  string ticker = 2;
+  string ticker = 2; // 今天是 UniversalTicker。平面之間改傳 UID 是後續（D38），這一版不改 td 的欄位
   mftiko.common.v1.Side side = 3;
   mftiko.common.v1.OrderType order_type = 4;
   optional string qty = 5; // 單位是 contract_value_ccy（D38）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數

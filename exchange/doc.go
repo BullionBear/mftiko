@@ -33,11 +33,11 @@
 //
 //   - Decimals are strings exactly as the venue sent them. No float64 anywhere.
 //   - Times are int64 unix nanoseconds, fields end in Ns.
-//   - Instruments go in resolved and come out venue-named (D31). The platform names an instrument
-//     by UniversalTicker, a placeholder: the caller resolves it through SYM (symbol.Resolver.Get)
-//     and hands the adapter the *symbol.Info, so adapters never call SYM and never derive a venue
-//     spelling from a ticker. What the venue sends back carries a symbol.ExchKey, which the caller
-//     turns into a UniversalTicker with symbol.Resolver.Reverse.
+//   - Instruments go in resolved and come out venue-named (D31, D38). Specs write a UniversalTicker;
+//     the caller resolves that to *symbol.Info at load (symbol.Resolver.Get) and hands the adapter
+//     the Info, so adapters never call SYM. Inside the system the instrument is Info.UID. What the
+//     venue sends back carries a symbol.ExchKey, which the caller turns into that UID with
+//     symbol.Resolver.Reverse.
 //   - Fill.FillID is the venue's trade id and must be identical on the private stream and in
 //     History (D20): the database deduplicates on (api_id, fill_id).
 //   - Event pointers passed to a Sink are valid only for the duration of the call.

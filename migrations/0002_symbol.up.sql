@@ -5,8 +5,12 @@
 -- Active table: PRELISTING, TRADABLE, HALTED, SETTLING, UNKNOWN. The Resolver and hot paths read
 -- only that table; only TRADABLE may trade. Terminal table: EXPIRED, DELISTED. Once there, the
 -- status never changes; the row is kept for historical lookup (old fills and positions, reverse
--- lookup by ticker), never refreshed, and can be archived. Moving does not change the
+-- lookup by UID), never refreshed, and can be archived. Moving does not change the UID or the
 -- UniversalTicker string. The status enum is still provisional.
+-- UID will be that primary key, unique across both tables (D38). This migration's id is a
+-- per-table identity and is not that UID: a shared sequence has to span the active and terminal
+-- tables, and a delisted-then-relisted ticker gets a new UID. Width, allocator, and whether a
+-- restart keeps the UID are not final (PROTOCOL §10 P13). No uid column in this migration.
 --
 -- Conventions as in 0001: times are *_ns BIGINT, decimals NUMERIC, venue identifiers TEXT.
 

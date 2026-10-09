@@ -61,6 +61,8 @@ export type Submit = Message<"mftiko.td.v1.Submit"> & {
   sessionId: string;
 
   /**
+   * 今天是 UniversalTicker。平面之間改傳 UID 是後續（D38），這一版不改 td 的欄位
+   *
    * @generated from field: string ticker = 2;
    */
   ticker: string;

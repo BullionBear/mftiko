@@ -1,19 +1,24 @@
 // Package symbol is the platform's instrument identity and the client side of the symbol plane,
 // copied from mftik (DECISIONS D11, D31).
 //
-// UniversalTicker is the placeholder for an instrument everywhere in the platform: session specs,
-// lease items, md.f subjects, td.order, the database. A venue's own spelling (ExchTicker) appears in
-// two places only: in the exchange adapters and in SYM's tables.
+// UniversalTicker is the human-facing name, used only when writing configs and specs (D38).
+// Inside the system the instrument is a UID: STS, TD and MD pass that integer, and each plane
+// loads the fields it needs with GetByUID. Lease items, md.f subjects and td.order still carry
+// the ticker string; switching them is later work, and the md.f subject key is not decided
+// (PROTOCOL §10 P13). A venue's own spelling (ExchTicker) appears in two places only: in the
+// exchange adapters and in SYM's tables.
 //
 // Getting from one to the other is a lookup, never string surgery. "BTCUSDT" does not carry its
 // base/quote split, and venues publish tickers that are not base + separator + quote at all. So:
 //
-//	UniversalTicker ──Resolver.Get──▶ Info (ExchTicker, filters, expiry) ──▶ exchange adapter
-//	exchange adapter ──ExchKey{Venue, Category, ExchTicker}──Resolver.Reverse──▶ UniversalTicker
+//	spec ticker ──Resolver.Get──▶ Info.UID          (config/spec load boundary, D38)
+//	UID ──Resolver.GetByUID──▶ Info                 (every plane, after that)
+//	exchange adapter ──ExchKey──Resolver.Reverse──▶ Info.UID
 //
 // Callers resolve before they call an adapter, and adapters never call SYM: adapter functions stay
 // pure (D31). The market-data hot path does no lookup at all: a conn worker stamps each event with
-// the UniversalTicker of the feed it serves (mdctl.AtomAssignment).
+// the instrument of the feed it serves (mdctl.AtomAssignment). That stamp is still the ticker;
+// the UID stamp and the subject key are not in this package.
 //
 // The plane itself (refresh, tables, the sym subject) is internal/sym.
 //
@@ -27,8 +32,10 @@
 // Listings will be stored in two tables, split by whether the status can still change (D38): the
 // active table (PRELISTING, TRADABLE, HALTED, SETTLING, UNKNOWN), which is all the Resolver and the
 // hot paths read, and the terminal table (EXPIRED, DELISTED), kept for historical lookup and never
-// refreshed. A listing moves when it becomes terminal; the UniversalTicker string stays the same.
-// The enum is still provisional, and this package does not implement the split.
+// refreshed. A listing moves when it becomes terminal; the UniversalTicker string and the UID stay
+// the same. The same ticker listed again after delisting gets a new UID. UID is the primary key of
+// both tables and is unique across them. The enum is still provisional, the UID width is not final,
+// and this package does not implement the split or the allocator.
 //
 // Shape only: types and contracts; the functions return ErrNotImplemented.
 package symbol

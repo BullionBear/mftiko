@@ -563,7 +563,7 @@ type SelectorBinding struct {
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	MdInstance    string                 `protobuf:"bytes,2,opt,name=md_instance,json=mdInstance,proto3" json:"md_instance,omitempty"`
 	Universe      *Universe              `protobuf:"bytes,3,opt,name=universe,proto3" json:"universe,omitempty"`
-	SubjectPrefix string                 `protobuf:"bytes,4,opt,name=subject_prefix,json=subjectPrefix,proto3" json:"subject_prefix,omitempty"` // 成員的 subject 是 {subject_prefix}.{topic}.{ticker}
+	SubjectPrefix string                 `protobuf:"bytes,4,opt,name=subject_prefix,json=subjectPrefix,proto3" json:"subject_prefix,omitempty"` // 成員的 subject 是 {subject_prefix}.{topic}.{ticker}。最後一段改成 UID 還沒定（D38、§10 P13）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -843,7 +843,7 @@ func (x *QueueStat) GetMaxAgeMs() uint32 {
 type Universe struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Epoch         uint64                 `protobuf:"varint,1,opt,name=epoch,proto3" json:"epoch,omitempty"`
-	Members       []string               `protobuf:"bytes,2,rep,name=members,proto3" json:"members,omitempty"` // UniversalTicker
+	Members       []string               `protobuf:"bytes,2,rep,name=members,proto3" json:"members,omitempty"` // 今天是 UniversalTicker。改成 UID 是後續（D38）
 	Current       string                 `protobuf:"bytes,3,opt,name=current,proto3" json:"current,omitempty"` // 只有 rolling_future
 	Topics        []string               `protobuf:"bytes,4,rep,name=topics,proto3" json:"topics,omitempty"`
 	unknownFields protoimpl.UnknownFields

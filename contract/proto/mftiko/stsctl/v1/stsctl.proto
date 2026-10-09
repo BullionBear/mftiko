@@ -61,7 +61,7 @@ message SelectorBinding {
   string name = 1;
   string md_instance = 2;
   Universe universe = 3;
-  string subject_prefix = 4; // 成員的 subject 是 {subject_prefix}.{topic}.{ticker}
+  string subject_prefix = 4; // 成員的 subject 是 {subject_prefix}.{topic}.{ticker}。最後一段改成 UID 還沒定（D38、§10 P13）
 }
 
 message AccountBinding {
@@ -100,7 +100,7 @@ enum BindingState {
 // selector 目前的成員。欄位與 state.v1.Universe 相同。
 message Universe {
   uint64 epoch = 1;
-  repeated string members = 2; // UniversalTicker
+  repeated string members = 2; // 今天是 UniversalTicker。改成 UID 是後續（D38）
   string current = 3;          // 只有 rolling_future
   repeated string topics = 4;
 }

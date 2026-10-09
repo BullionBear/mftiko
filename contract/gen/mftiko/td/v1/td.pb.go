@@ -244,7 +244,7 @@ func (*OrderRequest_BatchCancel) isOrderRequest_Req() {}
 type Submit struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	Ticker        string                 `protobuf:"bytes,2,opt,name=ticker,proto3" json:"ticker,omitempty"`
+	Ticker        string                 `protobuf:"bytes,2,opt,name=ticker,proto3" json:"ticker,omitempty"` // 今天是 UniversalTicker。平面之間改傳 UID 是後續（D38），這一版不改 td 的欄位
 	Side          v1.Side                `protobuf:"varint,3,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"`
 	OrderType     v1.OrderType           `protobuf:"varint,4,opt,name=order_type,json=orderType,proto3,enum=mftiko.common.v1.OrderType" json:"order_type,omitempty"`
 	Qty           *string                `protobuf:"bytes,5,opt,name=qty,proto3,oneof" json:"qty,omitempty"`                           // 單位是 contract_value_ccy（D38）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數

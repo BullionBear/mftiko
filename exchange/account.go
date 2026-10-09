@@ -23,10 +23,11 @@ type AccountFactory func(cfg AccountConfig) (Account, error)
 // Account is a venue's private trading interface for one api_id, owned by the TD account worker.
 // Safe for concurrent use: the worker's HTTP pool calls it from several goroutines.
 //
-// Instruments go in resolved (*symbol.Info, from the order's UniversalTicker, cached by the worker)
-// and come out as the venue names them (symbol.ExchKey); the worker maps them back with
-// symbol.Resolver.Reverse (D31). The worker has already checked AccountKind.CanTrade; a kind that
-// trades several venues (BinancePM) routes each request by inst.Ticker.Venue (D32).
+// Instruments go in resolved (*symbol.Info, cached by the worker) and come out as the venue names
+// them (symbol.ExchKey); the worker maps them back with symbol.Resolver.Reverse and keeps Info.UID
+// (D31, D38). td.order still carries a UniversalTicker; switching that field to UID is later work.
+// The worker has already checked AccountKind.CanTrade; a kind that trades several venues (BinancePM)
+// routes each request by inst.Ticker.Venue (D32).
 //
 // It knows nothing about algo_id (D25). The worker checks algo ownership, and translates
 // BatchCancel(algo_id) by filtering its OMS for open orders whose client_order_id carries that algo,
