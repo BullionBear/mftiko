@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"go.etcd.io/etcd/api/v3/authpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
 
@@ -52,7 +51,7 @@ func testTables(t *testing.T, topo Topology) map[string]AuthTable {
 	return tables
 }
 
-// authMu serialises ensureAuth: tests that start several processes at once would otherwise race to add the same
+// authMu serialises EnsureAuth: tests that start several processes at once would otherwise race to add the same
 // role.
 var authMu sync.Mutex
 
@@ -69,7 +68,7 @@ func as(t *testing.T, topo Topology, user string) DialFunc {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		authMu.Lock()
-		err = ensureAuth(ctx, root, tables[region])
+		err = EnsureAuth(ctx, root, tables[region], etcdtest.Password)
 		authMu.Unlock()
 		cancel()
 		root.Close()
@@ -78,54 +77,6 @@ func as(t *testing.T, topo Topology, user string) DialFunc {
 		}
 		return userDial(region, endpoints)
 	}
-}
-
-// ensureAuth adds what the cluster lacks of table: roles, their permissions, users and their roles. What is there
-// already is left alone, so that a second Clusters on the same topology changes nothing, and does not bump the
-// cluster's auth revision.
-func ensureAuth(ctx context.Context, root *clientv3.Client, table AuthTable) error {
-	for _, role := range table.Roles {
-		got, err := root.RoleGet(ctx, role.Name)
-		if errors.Is(err, rpctypes.ErrRoleNotFound) {
-			if _, err = root.RoleAdd(ctx, role.Name); err != nil {
-				return err
-			}
-			got = &clientv3.AuthRoleGetResponse{}
-		} else if err != nil {
-			return err
-		}
-		have := map[Permission]bool{}
-		for _, p := range got.Perm {
-			have[Permission{Key: string(p.Key), RangeEnd: string(p.RangeEnd), Write: p.PermType == authpb.READWRITE}] = true
-		}
-		for _, p := range role.Permissions {
-			if have[p] {
-				continue
-			}
-			kind := clientv3.PermissionType(clientv3.PermRead)
-			if p.Write {
-				kind = clientv3.PermissionType(clientv3.PermReadWrite)
-			}
-			if _, err := root.RoleGrantPermission(ctx, role.Name, p.Key, p.RangeEnd, kind); err != nil {
-				return err
-			}
-		}
-		user, err := root.UserGet(ctx, role.Name)
-		if errors.Is(err, rpctypes.ErrUserNotFound) {
-			if _, err := root.UserAdd(ctx, role.Name, etcdtest.Password(role.Name)); err != nil {
-				return err
-			}
-			user = &clientv3.AuthUserGetResponse{}
-		} else if err != nil {
-			return err
-		}
-		if !slices.Contains(user.Roles, role.Name) {
-			if _, err := root.UserGrantRole(ctx, role.Name, role.Name); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 func TestAuthTables(t *testing.T) {

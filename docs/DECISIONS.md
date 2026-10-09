@@ -650,8 +650,8 @@ agent 依需求做的改變，前提是需求是新的。Mirror 的 `LastContact
 ### D110 平面的決策與 I/O 分開
 
 - 平面的根套件（`internal/sts`、`md`、`td`）放 Planner、Policy 與 domain 型別，是純的邏輯，不需要 cluster 就能測。接線（Intake 的 Mirror、Fleet 的 shim、NATS）放在子套件 `internal/{plane}/daemon`。cmd 只組裝 daemon。
-- 骨架同樣分開：`internal/platform/agent` 是型別與 `Reconciler`（diff 與重啟的記帳，不做 I/O）；`agent/runner` 是一個 term 的 loop（等需求、收養、比對 `WorkerStatus`、寫 `AgentRecord`、reconcile）；`agent/c3` 是 shim 的 client。
-- `internal/archtest` 檢查：平面的根套件與 `internal/platform/agent` 的依賴閉包裡沒有 etcd、NATS、`state`、`natsx`、`shim`、`agent/c3`、`agent/runner`。
+- 骨架同樣分開：`internal/platform/agent` 是型別與 `Reconciler`（diff 與重啟的記帳，不做 I/O）；`agent/runner` 是一個 term 的 loop（連自己 region、等需求、收養、比對 `WorkerStatus`、寫 `AgentRecord`、reconcile）；`agent/fleet` 是以 shim 為底的 Fleet，平面只提供 `Program`（跑什麼、送什麼）；`agent/c3` 是 shim 的 client；`agent/testplane` 是測試用平面（E1-19），以假 worker 跑完整個骨架。
+- `internal/archtest` 檢查：平面的根套件與 `internal/platform/agent` 的依賴閉包裡沒有 etcd、NATS、`state`、`natsx`、`shim`、`agent/c3`、`agent/fleet`、`agent/runner`、`agent/testplane`。
 - 子套件叫 `daemon`：它是常駐的 agent 進程。不用 `runtime`（遮住標準庫）、`agent`（與 `internal/platform/agent` 同名，平面的接線一定 import 它）、`wire`（與 `contract/wire` 同名）、`adapter`（與 exchange 的 adaptor 混淆）。
 
 ## 待討論

@@ -105,7 +105,7 @@ func (r *Reconciler[S, L]) Step(now time.Time, stale bool, plans map[WorkerKey]P
 		if !planned {
 			delete(r.books, k)
 			switch {
-			case o.State.ended():
+			case o.State.Ended():
 				acts = append(acts, Action[S, L]{Kind: ActRelease, Key: k})
 			case o.State == StateStopping || stale:
 			default:
@@ -120,7 +120,7 @@ func (r *Reconciler[S, L]) Step(now time.Time, stale bool, plans map[WorkerKey]P
 		}
 		keep := !stale || r.Policy.KeepWhileStale(k)
 		switch {
-		case !seen || o.State.ended():
+		case !seen || o.State.Ended():
 			if seen {
 				r.ended(now, k, b, o, p.Spawn.Hash())
 			}
