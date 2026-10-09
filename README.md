@@ -25,6 +25,7 @@ contract/                 ③ what both ends compile against; source of truth is
   wire/                   encodings protobuf cannot express: frame (C3, C4), envelope (md.f), cloid (client_order_id)
   symbol/                 UniversalTicker, venue registry, the Resolver interface
 exchange/                 exchange adapters: interfaces by plane, one package per exchange (binance, okx, bybit)
+  transport/              the workers' network: proxy, TLS and DNS shared by fasthttp/ (REST Doer) and ws/ (websocket conn)
 cmd/                      one directory per binary (bin/<name> after `make build`); the only place that wires them together
   mftiko-api              API server
   mftiko-sts-agent        strategy-plane agent
