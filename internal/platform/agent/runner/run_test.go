@@ -236,6 +236,7 @@ type fleet struct {
 	mu      sync.Mutex
 	obs     map[agent.WorkerKey]agent.Observed
 	block   chan struct{} // Spawn waits on it, or on its ctx, when set
+	held    []string      // Unreachable
 }
 
 func newFleet(j *journal) *fleet {
@@ -283,7 +284,7 @@ func (f *fleet) Spawn(ctx context.Context, k agent.WorkerKey, spec, live h) erro
 	f.j.add("spawn %s %s", k, spec)
 	return nil
 }
-func (f *fleet) Start(_ context.Context, k agent.WorkerKey) error {
+func (f *fleet) Start(_ context.Context, k agent.WorkerKey, _ h) error {
 	f.set(k, func(o *agent.Observed) { o.State = agent.StateStarting })
 	f.j.add("start %s", k)
 	return nil
@@ -297,6 +298,11 @@ func (f *fleet) Stop(_ context.Context, k agent.WorkerKey, reason string) error 
 	f.set(k, func(o *agent.Observed) { o.State = agent.StateStopping })
 	f.j.add("stop %s: %s", k, reason)
 	return nil
+}
+func (f *fleet) Unreachable() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.held)
 }
 func (f *fleet) Release(_ context.Context, k agent.WorkerKey) error {
 	f.mu.Lock()
