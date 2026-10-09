@@ -141,7 +141,7 @@ func (*Request_Refresh) isRequest_Req() {}
 type GetRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	UniversalTicker string                 `protobuf:"bytes,1,opt,name=universal_ticker,json=universalTicker,proto3" json:"universal_ticker,omitempty"`
-	IncludeInactive bool                   `protobuf:"varint,2,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // MD's expiry watch needs settled contracts; nothing else should
+	IncludeInactive bool                   `protobuf:"varint,2,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // D38：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢，含 MD 的到期監看。Resolver 與熱路徑不設。表還沒拆
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -197,7 +197,7 @@ type ListRequest struct {
 	Category        string                 `protobuf:"bytes,2,opt,name=category,proto3" json:"category,omitempty"`
 	Limit           uint32                 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"` // at most 500
 	Offset          uint32                 `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
-	IncludeInactive bool                   `protobuf:"varint,5,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"`
+	IncludeInactive bool                   `protobuf:"varint,5,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // 同 GetRequest.include_inactive（D38）
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -499,7 +499,7 @@ type SymbolInfo struct {
 	ExpiryNs        int64                  `protobuf:"varint,7,opt,name=expiry_ns,json=expiryNs,proto3" json:"expiry_ns,omitempty"`                  // 0 = does not expire
 	Strike          *string                `protobuf:"bytes,8,opt,name=strike,proto3,oneof" json:"strike,omitempty"`                                 // SYM 先依 spell_strike 正規化再推 ticker：6400.0 與 6400 相同（D38）
 	OptionType      string                 `protobuf:"bytes,9,opt,name=option_type,json=optionType,proto3" json:"option_type,omitempty"`             // C | P | ""
-	Active          bool                   `protobuf:"varint,10,opt,name=active,proto3" json:"active,omitempty"`                                     // 暫定（D38）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。定案前仍是 bool
+	Active          bool                   `protobuf:"varint,10,opt,name=active,proto3" json:"active,omitempty"`                                     // 暫定（D38）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 不變。定案前仍是 bool，表也還沒拆
 	// name -> bound. A key with an absent value: the venue publishes the restriction, no bound.
 	// price_tick is price_ccy; qty_step, min_qty, max_qty are contract_value_ccy (D38).
 	Filters       map[string]*Bound `protobuf:"bytes,11,rep,name=filters,proto3" json:"filters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`

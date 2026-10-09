@@ -24,5 +24,11 @@
 // is not stored in phase 1, and the demand is REJECTED. qty is in contract_value_ccy (contracts
 // times contract_size): base on linear and options, quote on inverse, not a contract count.
 //
+// Listings will be stored in two tables, split by whether the status can still change (D38): the
+// active table (PRELISTING, TRADABLE, HALTED, SETTLING, UNKNOWN), which is all the Resolver and the
+// hot paths read, and the terminal table (EXPIRED, DELISTED), kept for historical lookup and never
+// refreshed. A listing moves when it becomes terminal; the UniversalTicker string stays the same.
+// The enum is still provisional, and this package does not implement the split.
+//
 // Shape only: types and contracts; the functions return ErrNotImplemented.
 package symbol

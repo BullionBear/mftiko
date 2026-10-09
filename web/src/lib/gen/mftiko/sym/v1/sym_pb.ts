@@ -67,7 +67,7 @@ export type GetRequest = Message<"mftiko.sym.v1.GetRequest"> & {
   universalTicker: string;
 
   /**
-   * MD's expiry watch needs settled contracts; nothing else should
+   * D38：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢，含 MD 的到期監看。Resolver 與熱路徑不設。表還沒拆
    *
    * @generated from field: bool include_inactive = 2;
    */
@@ -110,6 +110,8 @@ export type ListRequest = Message<"mftiko.sym.v1.ListRequest"> & {
   offset: number;
 
   /**
+   * 同 GetRequest.include_inactive（D38）
+   *
    * @generated from field: bool include_inactive = 5;
    */
   includeInactive: boolean;
@@ -282,7 +284,7 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
   optionType: string;
 
   /**
-   * 暫定（D38）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。定案前仍是 bool
+   * 暫定（D38）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 不變。定案前仍是 bool，表也還沒拆
    *
    * @generated from field: bool active = 10;
    */

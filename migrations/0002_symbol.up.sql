@@ -1,6 +1,13 @@
 -- Symbol plane tables (DECISIONS D11, D31), following mftik. Written only by SYM; everything else
 -- reads through the sym subject.
 --
+-- D38 will split listings by whether the status can still change. Not in this migration.
+-- Active table: PRELISTING, TRADABLE, HALTED, SETTLING, UNKNOWN. The Resolver and hot paths read
+-- only that table; only TRADABLE may trade. Terminal table: EXPIRED, DELISTED. Once there, the
+-- status never changes; the row is kept for historical lookup (old fills and positions, reverse
+-- lookup by ticker), never refreshed, and can be archived. Moving does not change the
+-- UniversalTicker string. The status enum is still provisional.
+--
 -- Conventions as in 0001: times are *_ns BIGINT, decimals NUMERIC, venue identifiers TEXT.
 
 -- One instrument, anywhere. Identity is the UniversalTicker, which already carries venue, category
@@ -17,11 +24,13 @@ CREATE TABLE symbol_ticker (
     expiry_ns        BIGINT,                   -- dated contracts and options only
     strike           NUMERIC,                  -- options only. SYM normalizes with spell_strike before the ticker (D38): 6400.0 and 6400 are one ticker
     option_type      TEXT CHECK (option_type IN ('C', 'P')),
-    -- False when it is not tradable (for example delisted). Rows are never deleted.
-    -- Quanto is not a row. Tentative (D38): this boolean becomes PRELISTING, TRADABLE,
-    -- HALTED, SETTLING, EXPIRED, DELISTED, UNKNOWN. Only TRADABLE is tradable. An unmapped
-    -- native status is UNKNOWN and is not tradable. Adding a value later does not make a
-    -- non-tradable instrument tradable. The column stays boolean until that enum is final.
+    -- Stand-in until the status enum and the two-table split (D38). False when it is not
+    -- tradable. Quanto is not a row. The boolean becomes PRELISTING, TRADABLE, HALTED,
+    -- SETTLING, EXPIRED, DELISTED, UNKNOWN. Only TRADABLE is tradable. An unmapped native
+    -- status is UNKNOWN and is not tradable. Adding a value later does not make a
+    -- non-tradable instrument tradable. EXPIRED and DELISTED will move to the terminal
+    -- table; this migration still keeps every row here. The column stays boolean until
+    -- that enum is final.
     is_active        BOOLEAN NOT NULL DEFAULT TRUE,
     created_at_ns    BIGINT  NOT NULL,
     updated_at_ns    BIGINT  NOT NULL

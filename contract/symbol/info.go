@@ -14,8 +14,10 @@ type Info struct {
 	Strike       string // SYM applies spell_strike before the ticker (D38)
 	OptionType   string
 	// Active is tentative (D38): only TRADABLE trades. The enum is PRELISTING,
-	// TRADABLE, HALTED, SETTLING, EXPIRED, DELISTED, UNKNOWN. This stays bool
-	// until that enum is final.
+	// TRADABLE, HALTED, SETTLING, EXPIRED, DELISTED, UNKNOWN. Non-terminal statuses
+	// stay on the active table the Resolver reads; EXPIRED and DELISTED move to the
+	// terminal table without changing the ticker. This stays bool, and the store stays
+	// one table, until that design is implemented.
 	Active      bool
 	Filters     map[string]string
 	UpdatedAtNs int64

@@ -44,8 +44,10 @@ type Listing struct {
 	// Active is tentative (D38). It becomes a status enum: PRELISTING, TRADABLE, HALTED,
 	// SETTLING, EXPIRED, DELISTED, UNKNOWN. Only TRADABLE trades. A native status that
 	// does not map is UNKNOWN and is not tradable. Adding an enum value later does not
-	// make a non-tradable instrument tradable. The contract stays bool until that enum
-	// is final.
+	// make a non-tradable instrument tradable. PRELISTING, TRADABLE, HALTED, SETTLING and
+	// UNKNOWN stay on the active table; EXPIRED and DELISTED move to the terminal table
+	// and the UniversalTicker string does not change. The contract stays bool, and the
+	// store stays one table, until that enum and the split are implemented.
 	Active bool
 	// Filters: name -> bound. A present key with "" means the venue publishes the restriction but
 	// sets no limit, which is not the same as leaving it out.

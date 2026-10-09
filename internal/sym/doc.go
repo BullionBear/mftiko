@@ -11,13 +11,17 @@
 //     is the unit a refresh may delist within: a spot refresh never deactivates perp rows.
 //   - Each source is refreshed on its own; one venue being down does not stop the others. Failures
 //     are reported, not raised.
-//   - Every listed instrument is upserted; active rows of that (venue, category) missing from the
-//     response are marked inactive. Rows are never deleted: orders and sessions keep referring to
-//     delisted instruments.
+//   - Every listed instrument is upserted. Rows of that (venue, category) that are missing from the
+//     response become DELISTED. EXPIRED and DELISTED move to the terminal table and are not refreshed
+//     again (D38). The UniversalTicker string stays the same, so orders and sessions do not re-key.
 //   - Hourly by default, plus on request.
 //
-// Storage is PostgreSQL, symbol_ticker and symbol_filter (migrations/0002_symbol). Only this
-// service writes them.
+// Storage is PostgreSQL. The decided shape (D38) is two listing tables: an active table
+// (PRELISTING, TRADABLE, HALTED, SETTLING, UNKNOWN), which the Resolver and hot paths read, and a
+// terminal table (EXPIRED, DELISTED) for historical lookup of old fills and positions and for
+// reverse lookup by ticker. Terminal rows can be archived. The status enum is still provisional.
+// migrations/0002_symbol is still one symbol_ticker plus symbol_filter; this service does not
+// implement the split yet. Only this service writes them.
 //
 // It is also the only place that uppercases asset codes and applies the alias table (XBT to BTC,
 // D38): normalize first, then judge quanto, then derive the ticker. Adapters pass native codes.
@@ -26,9 +30,11 @@
 // the demand is REJECTED. Adapters fill contract_value_ccy, price_ccy and the PnL settlement
 // asset from native venue fields; this service does not derive them.
 //
-// Reads (PROTOCOL §7.3): one instrument by exact UniversalTicker (a single row, never a venue
-// table); a (venue, category) table in pages of symbol.ListPage; the reverse lookup from a
-// venue's spelling. Clients cache through symbol.Resolver.
+// Reads (PROTOCOL §7.3): the Resolver and hot paths read the active table only. One instrument by
+// exact UniversalTicker (a single row, never a venue table); a (venue, category) page of
+// symbol.ListPage; the reverse lookup from a venue's spelling. Historical lookup (old fills and
+// positions, reverse lookup of a terminal ticker) reads the terminal table and is not part of that
+// cache. Clients cache through symbol.Resolver.
 //
 // Shape only: not implemented yet.
 package sym

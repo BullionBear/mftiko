@@ -20,7 +20,7 @@ message Request {
 // One instrument by exact ticker: a single row, never a venue table.
 message GetRequest {
   string universal_ticker = 1;
-  bool include_inactive = 2; // MD's expiry watch needs settled contracts; nothing else should
+  bool include_inactive = 2; // D38：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢，含 MD 的到期監看。Resolver 與熱路徑不設。表還沒拆
 }
 
 // One (venue, category) table, paged. A page stays under NATS's 1 MiB with every filter.
@@ -29,7 +29,7 @@ message ListRequest {
   string category = 2;
   uint32 limit = 3; // at most 500
   uint32 offset = 4;
-  bool include_inactive = 5;
+  bool include_inactive = 5; // 同 GetRequest.include_inactive（D38）
 }
 
 // The venue's spelling -> the ticker. Category is required: on a unified-account venue the
@@ -65,7 +65,7 @@ message SymbolInfo {
   int64 expiry_ns = 7; // 0 = does not expire
   optional string strike = 8; // SYM 先依 spell_strike 正規化再推 ticker：6400.0 與 6400 相同（D38）
   string option_type = 9; // C | P | ""
-  bool active = 10; // 暫定（D38）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。定案前仍是 bool
+  bool active = 10; // 暫定（D38）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 不變。定案前仍是 bool，表也還沒拆
   // name -> bound. A key with an absent value: the venue publishes the restriction, no bound.
   // price_tick is price_ccy; qty_step, min_qty, max_qty are contract_value_ccy (D38).
   map<string, Bound> filters = 11;
