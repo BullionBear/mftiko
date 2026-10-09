@@ -5,7 +5,10 @@
 // At most one incarnation of a worker key lives at a time (D106): the next one is spawned only once the last is
 // known to be gone, by its recorded exit or, when its shim was lost, by its pid and start time (E1-16).
 //
-// Not yet here: adopting the shims a previous term left (Adopt finds none; E1-17), and Beat timeouts (E1-18).
+// Each worker's last Beat is observed (at most one a second, as the shim passes them on), for the Policy's
+// timeout (E1-18).
+//
+// Not yet here: adopting the shims a previous term left (Adopt finds none; E1-17).
 package fleet
 
 import (
@@ -339,6 +342,10 @@ func apply(o *agent.Observed, ev *shimv1.Event) {
 		o.Release = k.Hello.GetRelease()
 	case *shimv1.Event_Stage:
 		o.Stage = k.Stage.GetName()
+	case *shimv1.Event_Beat:
+		if ev.GetAtNs() != 0 {
+			o.LastBeat = time.Unix(0, ev.GetAtNs())
+		}
 	case *shimv1.Event_Done:
 		switch {
 		case o.State.Ended() || o.State == agent.StateStopping:

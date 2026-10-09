@@ -25,6 +25,10 @@ type policy struct {
 	max   uint32 // 0: always
 	keep  map[WorkerKey]bool
 	asked []Ended
+
+	beat       time.Duration
+	stopSilent bool
+	silent     []string
 }
 
 func (p *policy) Restart(_ WorkerKey, e Ended) (bool, time.Duration) {
@@ -33,6 +37,13 @@ func (p *policy) Restart(_ WorkerKey, e Ended) (bool, time.Duration) {
 }
 
 func (p *policy) KeepWhileStale(k WorkerKey) bool { return p.keep[k] }
+
+func (p *policy) BeatTimeout(WorkerKey) time.Duration { return p.beat }
+
+func (p *policy) Silent(k WorkerKey, d time.Duration) bool {
+	p.silent = append(p.silent, fmt.Sprintf("%s %s", k, d))
+	return p.stopSilent
+}
 
 // acts renders actions as "kind key", with the spec and live config of a spawn or push, for comparing.
 func acts(as []Action[h, h]) []string {
@@ -271,5 +282,40 @@ func TestDemandStale(t *testing.T) {
 	d.LastContact = t0
 	if d.Stale(t0.Add(15*time.Second), 15*time.Second) || !d.Stale(t0.Add(16*time.Second), 15*time.Second) {
 		t.Error("stale is older than after")
+	}
+}
+
+// A worker silent past the Policy's BeatTimeout is reported once per silence, counted from its start before its
+// first Beat; the Policy may have it stopped. A Beat re-arms it.
+func TestStepSilent(t *testing.T) {
+	pol := &policy{beat: 10 * time.Second}
+	r := &Reconciler[h, h]{Policy: pol}
+	p := plans{"sts/a": {Spawn: "s", Live: "l"}}
+	o := running("sts/a", 1, "s", "l") // started at t0, no Beat yet
+	got, wake := r.Step(t0.Add(5*time.Second), false, p, observed{"sts/a": o})
+	want(t, got)
+	if !wake.Equal(t0.Add(10 * time.Second)) {
+		t.Fatalf("wake %v, want the deadline", wake)
+	}
+	r.Step(t0.Add(11*time.Second), false, p, observed{"sts/a": o})
+	r.Step(t0.Add(20*time.Second), false, p, observed{"sts/a": o}) // the same silence: not again
+	if !slices.Equal(pol.silent, []string{"sts/a 11s"}) {
+		t.Fatalf("Silent %q, want once, 11s after the start", pol.silent)
+	}
+
+	o.LastBeat = t0.Add(30 * time.Second) // it beats again, then goes silent
+	r.Step(t0.Add(35*time.Second), false, p, observed{"sts/a": o})
+	pol.stopSilent = true
+	got, _ = r.Step(t0.Add(41*time.Second), true, p, observed{"sts/a": o}) // stale: stopped all the same
+	want(t, got, "stop sts/a: "+ReasonSilent)
+	if len(pol.silent) != 2 || pol.silent[1] != "sts/a 11s" {
+		t.Fatalf("Silent %q, want a second report", pol.silent)
+	}
+
+	pol.silent = nil
+	o.State = StateStopping // nor while it stops, nor once it has ended
+	r.Step(t0.Add(time.Hour), false, p, observed{"sts/a": o})
+	if len(pol.silent) != 0 {
+		t.Fatalf("Silent %q for a stopping worker", pol.silent)
 	}
 }

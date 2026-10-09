@@ -94,5 +94,6 @@ type Observed struct {
 	Release     string // the worker's, from Hello
 	ShimRelease string
 	StartedAt   time.Time
+	LastBeat    time.Time          // when the shim received the worker's last Beat; zero before the first (E1-18)
 	Exit        *commonv1.ExitInfo // once StateExited
 }

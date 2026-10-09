@@ -27,6 +27,7 @@ func TestApply(t *testing.T) {
 		{&shimv1.Event{Kind: &shimv1.Event_Hello{Hello: &workerv1.Hello{Release: "r1"}}}, agent.StateInitializing},
 		{&shimv1.Event{Kind: &shimv1.Event_Stage{Stage: &workerv1.Stage{Name: "warm"}}}, agent.StateInitializing},
 		{done(workerv1.Verb_VERB_INIT, true), agent.StateInitialized},
+		{&shimv1.Event{AtNs: at.Add(time.Second).UnixNano(), Kind: &shimv1.Event_Beat{Beat: &workerv1.Beat{Seq: 1}}}, agent.StateInitialized},
 		{done(workerv1.Verb_VERB_START, true), agent.StateRunning},
 		{&shimv1.Event{Kind: &shimv1.Event_Exiting{Exiting: &workerv1.Exiting{}}}, agent.StateStopping},
 		{done(workerv1.Verb_VERB_START, true), agent.StateStopping}, // late: stopping stays
@@ -38,7 +39,8 @@ func TestApply(t *testing.T) {
 			t.Fatalf("after %v: %s, want %s", step.ev, o.State, step.want)
 		}
 	}
-	if !o.StartedAt.Equal(at) || o.Release != "r1" || o.Stage != "warm" || o.Exit != exit {
+	if !o.StartedAt.Equal(at) || o.Release != "r1" || o.Stage != "warm" || o.Exit != exit ||
+		!o.LastBeat.Equal(at.Add(time.Second)) {
 		t.Fatalf("observed %+v", o)
 	}
 
