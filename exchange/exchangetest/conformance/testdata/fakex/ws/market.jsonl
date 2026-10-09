@@ -1,0 +1,18 @@
+{"kind":"meta","venue":"Fakex","side":"market","route":"public","note":"hand-written for the conformance framework's own tests"}
+{"kind":"ws.out","frame":"{\"op\":\"sub\",\"id\":1,\"args\":[\"trade:BTCUSDT\",\"book:BTCUSDT\"]}"}
+{"kind":"ws.out","frame":"{\"op\":\"sub\",\"id\":2,\"args\":[\"ticker:BTCUSDT\"]}"}
+{"kind":"ws.in","frame":"{\"op\":\"ack\",\"id\":1}"}
+{"kind":"ws.in","frame":"{\"op\":\"ack\",\"id\":2}"}
+{"kind":"ws.in","frame":"{\"ch\":\"book:BTCUSDT\",\"type\":\"snapshot\",\"ts\":1767225600000,\"seq\":10,\"prev\":0,\"cs\":1206,\"bids\":[[\"100\",\"1\"],[\"99\",\"2\"],[\"98\",\"3\"]],\"asks\":[[\"101\",\"1\"],[\"102\",\"2\"],[\"103\",\"3\"]]}"}
+{"kind":"ws.in","frame":"{\"ch\":\"trade:BTCUSDT\",\"ts\":1767225600001,\"tid\":\"t1\",\"px\":\"100.5\",\"sz\":\"0.25\",\"side\":\"buy\"}"}
+{"kind":"ws.in","frame":"{\"ch\":\"book:BTCUSDT\",\"type\":\"delta\",\"ts\":1767225600010,\"seq\":11,\"prev\":10,\"cs\":1306,\"bids\":[[\"100\",\"2\"]],\"asks\":[]}"}
+{"kind":"ws.in","frame":"{\"ch\":\"book:BTCUSDT\",\"type\":\"delta\",\"ts\":1767225600011,\"seq\":12,\"prev\":11,\"cs\":1205,\"bids\":[],\"asks\":[[\"101\",\"0\"]]}"}
+{"kind":"ws.in","frame":"{\"ch\":\"trade:BTCUSDT\",\"ts\":1767225600020,\"tid\":\"t2\",\"px\":\"100\",\"sz\":\"1.5\",\"side\":\"sell\"}"}
+{"kind":"ws.in","frame":"{\"ch\":\"book:BTCUSDT\",\"type\":\"delta\",\"ts\":1767225600012,\"seq\":13,\"prev\":12,\"cs\":1010,\"bids\":[[\"99.5\",\"1\"]],\"asks\":[]}"}
+{"kind":"ws.in","frame":"{\"ch\":\"book:BTCUSDT\",\"type\":\"delta\",\"ts\":1767225600013,\"seq\":14,\"prev\":13,\"cs\":1416,\"bids\":[],\"asks\":[[\"101.5\",\"4\"]]}"}
+{"kind":"ws.in","frame":"{\"ch\":\"ticker:BTCUSDT\",\"ts\":1767225600030,\"last\":\"100\",\"open\":\"95\",\"high\":\"102\",\"low\":\"94.5\",\"vol\":\"1234.5\"}"}
+{"kind":"ws.in","frame":"{\"ch\":\"book:BTCUSDT\",\"type\":\"delta\",\"ts\":1767225600014,\"seq\":15,\"prev\":14,\"cs\":1416,\"bids\":[[\"98\",\"0\"]],\"asks\":[[\"104\",\"1\"]]}"}
+{"kind":"ws.in","frame":"{\"ch\":\"book:BTCUSDT\",\"type\":\"delta\",\"ts\":1767225600015,\"seq\":16,\"prev\":15,\"cs\":1216,\"bids\":[[\"100\",\"0\"]],\"asks\":[]}"}
+{"kind":"ws.in","frame":"{\"ch\":\"trade:BTCUSDT\",\"ts\":1767225600040,\"tid\":\"t3\",\"px\":\"99.5\",\"sz\":\"0.001\",\"side\":\"buy\"}"}
+{"kind":"ws.in","frame":"{\"ch\":\"ticker:BTCUSDT\",\"ts\":1767225600050,\"last\":\"99.5\",\"open\":\"95\",\"high\":\"102\",\"low\":\"94.5\",\"vol\":\"1240\"}"}
+{"kind":"http","ch":"book:BTCUSDT","check":true,"exchange":{"request":{"method":"GET","base":"https://api.fakex.example","path":"/v1/depth","query":"limit=5&sym=BTCUSDT"},"response":{"status":200,"body":{"seq":16,"bids":[["99.5","1"],["99","2"]],"asks":[["101.5","4"],["102","2"],["103","3"],["104","1"]]}}}}

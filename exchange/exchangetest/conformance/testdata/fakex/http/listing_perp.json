@@ -1,0 +1,27 @@
+{
+  "response": {
+    "status": 200,
+    "body": {
+      "list": [
+        {
+          "sym": "BTCUSDT",
+          "base": "BTC",
+          "quote": "USDT",
+          "tick": "0.5",
+          "step": "0.001",
+          "status": "live",
+          "ct": "1"
+        },
+        {
+          "sym": "ETHUSDT",
+          "base": "ETH",
+          "quote": "USDT",
+          "tick": "0.01",
+          "step": "0.01",
+          "status": "live",
+          "ct": "1"
+        }
+      ]
+    }
+  }
+}

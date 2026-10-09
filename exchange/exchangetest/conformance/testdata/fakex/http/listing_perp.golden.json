@@ -1,0 +1,62 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://api.fakex.example",
+    "path": "/v1/instruments",
+    "query": "cat=Perp",
+    "cost": [
+      {
+        "bucket": "weight",
+        "n": 5
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": {
+    "Items": [
+      {
+        "Base": "BTC",
+        "Category": "Perp",
+        "ContractSize": 1,
+        "ContractValueCcy": "BTC",
+        "ExchTicker": "BTCUSDT",
+        "ExpiryCode": "",
+        "ExpiryNs": 0,
+        "Filters": {
+          "max_qty": null,
+          "price_tick": 0.5,
+          "qty_step": 0.001
+        },
+        "OptionType": "",
+        "PriceCcy": "USDT",
+        "Quote": "USDT",
+        "Settle": "USDT",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "Fakex"
+      },
+      {
+        "Base": "ETH",
+        "Category": "Perp",
+        "ContractSize": 1,
+        "ContractValueCcy": "ETH",
+        "ExchTicker": "ETHUSDT",
+        "ExpiryCode": "",
+        "ExpiryNs": 0,
+        "Filters": {
+          "max_qty": null,
+          "price_tick": 0.01,
+          "qty_step": 0.01
+        },
+        "OptionType": "",
+        "PriceCcy": "USDT",
+        "Quote": "USDT",
+        "Settle": "USDT",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "Fakex"
+      }
+    ],
+    "Next": null
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "response": {
+    "status": 200,
+    "body": {
+      "id": "o1",
+      "status": "NEW",
+      "ts": 1767225600000
+    }
+  }
+}

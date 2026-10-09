@@ -1,0 +1,54 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://api.fakex.example",
+    "path": "/v1/fills",
+    "query": "from=f0&limit=100&ts=1767225600000&sig=7b4f4aab9ae7d02980d839e86f074ab9e4206be39d5894d2aa3d8b44402856c0",
+    "header": [
+      {
+        "name": "X-Key",
+        "value": "conformance-api-key"
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": {
+    "Fills": [
+      {
+        "ClientOrderID": "",
+        "Exch": {
+          "Category": "Perp",
+          "ExchTicker": "BTCUSDT",
+          "Venue": "Fakex"
+        },
+        "ExchTsNs": 1767225600100000000,
+        "Fee": null,
+        "FeeAsset": "",
+        "FillID": "f1",
+        "Liquidity": "taker",
+        "OrderID": "o1",
+        "Price": 65000.5,
+        "Qty": 0.1,
+        "Side": 1
+      },
+      {
+        "ClientOrderID": "",
+        "Exch": {
+          "Category": "Perp",
+          "ExchTicker": "BTCUSDT",
+          "Venue": "Fakex"
+        },
+        "ExchTsNs": 1767225600101000000,
+        "Fee": null,
+        "FeeAsset": "",
+        "FillID": "f2",
+        "Liquidity": "taker",
+        "OrderID": "o1",
+        "Price": 65000.5,
+        "Qty": 0.15,
+        "Side": 1
+      }
+    ],
+    "Next": ""
+  }
+}

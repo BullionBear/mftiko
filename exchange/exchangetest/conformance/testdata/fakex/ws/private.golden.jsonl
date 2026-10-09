@@ -1,0 +1,3 @@
+{"frame":1,"call":"Ready","value":null}
+{"frame":2,"call":"Fill","value":{"ClientOrderID":"","Exch":{"Category":"Perp","ExchTicker":"BTCUSDT","Venue":"Fakex"},"ExchTsNs":1767225600100000000,"Fee":null,"FeeAsset":"","FillID":"f1","Liquidity":"taker","OrderID":"o1","Price":65000.5,"Qty":0.1,"Side":1}}
+{"frame":3,"call":"Fill","value":{"ClientOrderID":"","Exch":{"Category":"Perp","ExchTicker":"BTCUSDT","Venue":"Fakex"},"ExchTsNs":1767225600101000000,"Fee":null,"FeeAsset":"","FillID":"f2","Liquidity":"taker","OrderID":"o1","Price":65000.5,"Qty":0.15,"Side":1}}

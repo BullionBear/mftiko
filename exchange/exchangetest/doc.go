@@ -17,5 +17,5 @@
 // A fixture is a JSON array of symbol.Listing values. Object keys are that struct's exported field
 // names (encoding/json also accepts a different case of the same name), and the loader decodes into
 // the struct itself, so a field added to Listing is picked up here without a new list of fields.
-// Replaying a venue's raw REST payload is left to the E3 adapters.
+// Replaying a venue's raw traffic, REST and websocket, is the conformance subpackage (E3-04).
 package exchangetest

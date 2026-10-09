@@ -1,0 +1,5 @@
+{"kind":"meta","venue":"Fakex","side":"private","note":"hand-written for the conformance framework's own tests"}
+{"kind":"ws.out","frame":"{\"op\":\"login\",\"key\":\"REDACTED\",\"ts\":1767225600000,\"sig\":\"REDACTED\"}"}
+{"kind":"ws.in","frame":"{\"op\":\"login\",\"ok\":true}"}
+{"kind":"ws.in","frame":"{\"e\":\"fill\",\"id\":\"f1\",\"oid\":\"o1\",\"px\":\"65000.5\",\"sz\":\"0.1\",\"side\":\"buy\",\"sym\":\"BTCUSDT\",\"ts\":1767225600100}"}
+{"kind":"ws.in","frame":"{\"e\":\"fill\",\"id\":\"f2\",\"oid\":\"o1\",\"px\":\"65000.5\",\"sz\":\"0.15\",\"side\":\"buy\",\"sym\":\"BTCUSDT\",\"ts\":1767225600101}"}
