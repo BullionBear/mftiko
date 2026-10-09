@@ -1,0 +1,9 @@
+{"frame":3,"call":"Ready","value":null}
+{"frame":6,"call":"Used","value":[{"Bucket":"weight","N":2}]}
+{"frame":6,"call":"Submitted","value":{"error":"reject 201 -2010","id":2,"result":null}}
+{"frame":7,"call":"Used","value":[{"Bucket":"weight","N":3}]}
+{"frame":7,"call":"Submitted","value":{"error":"","id":1,"result":{"ExchTsNs":1767225600000000000,"OrderID":"o1","Status":2}}}
+{"frame":8,"call":"Fill","value":{"ClientOrderID":"","Exch":{"Category":"Perp","ExchTicker":"BTCUSDT","Venue":"Fakex"},"ExchTsNs":1767225600100000000,"Fee":null,"FeeAsset":"","FillID":"f1","Liquidity":"taker","OrderID":"o1","Price":65000.5,"Qty":0.1,"Side":1}}
+{"frame":10,"call":"Fill","value":{"ClientOrderID":"","Exch":{"Category":"Perp","ExchTicker":"BTCUSDT","Venue":"Fakex"},"ExchTsNs":1767225600101000000,"Fee":null,"FeeAsset":"","FillID":"f2","Liquidity":"taker","OrderID":"o1","Price":65000.5,"Qty":0.15,"Side":1}}
+{"frame":11,"call":"Used","value":[{"Bucket":"weight","N":4}]}
+{"frame":11,"call":"Canceled","value":{"error":"","id":3}}

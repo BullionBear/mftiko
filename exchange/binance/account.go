@@ -54,6 +54,11 @@ func (a *account) NewStream() (exchange.PrivateStream, error) {
 	return nil, exchange.ErrNotImplemented
 }
 
+// NewTradeStream: the WebSocket API with an ed25519 session.logon (E3-07, E3-10).
+func (a *account) NewTradeStream() (exchange.TradeStream, error) {
+	return nil, exchange.ErrNotImplemented
+}
+
 // ArmCancelOnDisconnect: countdownCancelAll, per symbol (futures only).
 func (a *account) ArmCancelOnDisconnect(time.Time, time.Duration, []*symbol.Info) (exchange.Call[struct{}], error) {
 	return exchange.Call[struct{}]{}, exchange.ErrNotImplemented

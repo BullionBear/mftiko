@@ -3,6 +3,7 @@ package conformance
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -54,6 +55,17 @@ func (r *runner) replay(s *Session, scribble bool) (*decoded, error) {
 		}
 		d.mkt = &marketSink{}
 		decode = func(b []byte) error { return c.Decode(b, d.mkt) }
+	case SideTrade:
+		if r.env.Account == nil {
+			return nil, fmt.Errorf("%s is a trade session and Spec.Account is nil", s.Name)
+		}
+		c, err := r.env.Account.NewTradeStream()
+		if err != nil {
+			return nil, fmt.Errorf("NewTradeStream: %w", err)
+		}
+		ts := &tradeSink{}
+		d.acct = &ts.accountSink
+		decode = func(b []byte) error { return c.Decode(b, ts) }
 	case SidePriv:
 		if r.env.Account == nil {
 			return nil, fmt.Errorf("%s is a private session and Spec.Account is nil", s.Name)
@@ -196,6 +208,17 @@ func (r *runner) checkUnknown() []Problem {
 		} else {
 			try("private", func(b []byte) (int, error) {
 				s := &accountSink{}
+				err := c.Decode(b, s)
+				return len(s.events), err
+			})
+		}
+		switch c, err := a.NewTradeStream(); {
+		case errors.Is(err, exchange.ErrUnsupported):
+		case err != nil:
+			out = append(out, Problem{"unknown_frames", "trade", err.Error()})
+		default:
+			try("trade", func(b []byte) (int, error) {
+				s := &tradeSink{}
 				err := c.Decode(b, s)
 				return len(s.events), err
 			})

@@ -48,6 +48,25 @@ func FuzzDecodePrivate(f *testing.F, s Spec) {
 	})
 }
 
+// FuzzDecodeTrade is FuzzDecode for the TradeStream (D303).
+func FuzzDecodeTrade(f *testing.F, s Spec) {
+	r, err := newRunner(s)
+	if err != nil {
+		f.Fatal(err)
+	}
+	if ts, err := r.tradeStream(); err != nil || ts == nil {
+		f.Fatalf("conformance: no TradeStream: %v", err)
+	}
+	r.seed(f, func(m Record) bool { return m.Side == SideTrade })
+	f.Fuzz(func(t *testing.T, frame []byte) {
+		c, err := r.env.Account.NewTradeStream()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = c.Decode(frame, &tradeSink{})
+	})
+}
+
 func (r *runner) seed(f *testing.F, keep func(meta Record) bool) {
 	names, err := Sessions(r.fsys)
 	if err != nil {

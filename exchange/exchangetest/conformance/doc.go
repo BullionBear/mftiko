@@ -23,10 +23,11 @@
 // The directory holds two kinds, each beside its golden file:
 //
 //	ws/<name>.jsonl            a recorded websocket session, one Record per line; the first is the
-//	                           meta record (side market with its route, or side private)
+//	                           meta record (side market with its route, private, or trade)
 //	ws/<name>.golden.jsonl     every Sink or AccountSink call the codec made, one per line, copied
 //	                           during the call; "frame" is the record's index after the meta line
 //	ws/private_dial.golden.json  Prepare, Dial and Refresh of the private stream
+//	ws/trade_dial.golden.json    the TradeStream's Dial and the frames of the TradeSamples (D303)
 //	http/<case>.json           a recorded REST response for the case of that name
 //	http/<case>.golden.json    the request the case builds, and what Parse made of the response
 //
@@ -60,8 +61,11 @@
 //   - subscribe: Subscribe and Unsubscribe cover each channel once, within SessionLimits, with
 //     distinct request ids per connection.
 //   - private_dial: the private stream's Prepare, Dial and Refresh match their golden file.
-//   - fills: each fill of a private session is in the paired History case with the same fill_id,
-//     order, side, price and quantity (D601).
+//   - trade_dial: the TradeStream's logon and the frames of Spec.TradeSamples match their golden
+//     file, signatures included (D303).
+//   - trade_answers: in each trade session every request id is answered at most once, and never id 0.
+//   - fills: each fill of a private session, or of a trade session that carries events, is in the
+//     paired History case with the same fill_id, order, side, price and quantity (D601).
 //   - credentials: no secret part of the test credentials appears in anything the adapter produced.
 //
 // The instruments the planning and book checks use are Spec.Instruments plus every valid listing the
@@ -69,9 +73,7 @@
 //
 // # Recording
 //
-// RecordMarket and RecordPrivate record a session over a FrameConn and a Doer; SaveExchange writes
-// one REST case. They are transport-agnostic: the transports of E3-02 plug in, and a command that
+// RecordMarket, RecordPrivate and RecordTrade record a session over a FrameConn and a Doer;
+// SaveExchange writes one REST case. They are transport-agnostic: the transports of E3-02 plug in, and a command that
 // records against a venue is wired once they exist.
-//
-// Not covered yet: the TradeStream of D303 (E3-05) gets its checks with that ticket.
 package conformance
