@@ -1020,39 +1020,22 @@ func TestMirrorStalledWatch(t *testing.T) {
 	}
 }
 
-// unconfirmedReader holds back every response of a watch, etcd's confirmation first, for hold after the watch is
-// asked for, as a watch on a new gRPC stream waits for the stream to authenticate. With hold < 0 the first watch
-// never answers and later ones answer at once.
+// unconfirmedReader never answers the first watch, not even with etcd's confirmation, as a watch whose stream never
+// authenticates; later watches answer at once.
 type unconfirmedReader struct {
 	Reader
-	hold    time.Duration
 	watches atomic.Int32
 }
 
 func (u *unconfirmedReader) Watch(ctx context.Context, key string, opts ...clientv3.OpOption) clientv3.WatchChan {
 	in := u.Reader.Watch(ctx, key, opts...)
-	first := u.watches.Add(1) == 1
-	out := make(chan clientv3.WatchResponse)
+	if u.watches.Add(1) != 1 {
+		return in
+	}
+	out := make(chan clientv3.WatchResponse) // in is never read: whatever etcd sends stays in clientv3's buffer
 	go func() {
 		defer close(out)
-		switch {
-		case u.hold < 0 && first:
-			<-ctx.Done()
-			return
-		case u.hold > 0:
-			select {
-			case <-time.After(u.hold):
-			case <-ctx.Done():
-				return
-			}
-		}
-		for r := range in {
-			select {
-			case out <- r:
-			case <-ctx.Done():
-				return
-			}
-		}
+		<-ctx.Done()
 	}()
 	return out
 }
@@ -1079,9 +1062,14 @@ func writeUntil(t *testing.T, ctx context.Context, raw *clientv3.Client, stop <-
 	return &wg
 }
 
-// etcd confirms the watch only after many probe intervals, while the cluster moves on: the watch is not taken for
-// a stalled one, because its silence counts from the confirmation. Before that, every reopen started the wait over
-// (under auth, a new stream authenticates first), and the mirror could reopen the watch again and again.
+// etcd confirms the watch long after it was opened, while the cluster has moved on: the watch is not taken for a
+// stalled one, because its silence counts from the confirmation (0e6e742). Before that, every reopen started the
+// wait over (under auth, a new stream authenticates first), and the mirror could reopen the watch again and again.
+//
+// The test leaves nothing to how fast etcd delivers (#90). The writes end, and every event is in hand, before the
+// confirmation is let through; the events then follow it by a fixed delay. During that delay the cluster is ahead
+// of the copy, so a mirror that counted silence from the opening (more than the stall window ago) reopens the
+// watch at its next probe, while one that counts from the confirmation (less than the window ago) does not.
 func TestMirrorSlowWatchCreation(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "td-tw-1")
@@ -1090,18 +1078,117 @@ func TestMirrorSlowWatchCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const probe = 50 * time.Millisecond
-	m := startMirror(t, &unconfirmedReader{Reader: direct, hold: 10 * probe}, TDAckPrefix("td-tw-1"), MirrorOptions{ProbeInterval: probe})
+	const (
+		probe  = 50 * time.Millisecond  // probes often, so a wrong reopen comes within the delay
+		window = 400 * time.Millisecond // the stall window, far from both of the times below
+		hold   = 500 * time.Millisecond // opening to confirmation: more than the window
+		delay  = 200 * time.Millisecond // confirmation to events: less than the window
+	)
+	h := &heldReader{Reader: direct, release: make(chan struct{}), delay: delay}
+	m := startMirror(t, h, TDAckPrefix("td-tw-1"), MirrorOptions{ProbeInterval: probe, stallWindow: window})
+	for h.watches.Load() == 0 { // listed, and the watch asked for: what is written now, the copy lacks
+		if ctx.Err() != nil {
+			t.Fatal("no watch opened")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	opened := time.Now()
 
 	stop := make(chan struct{})
 	wg := writeUntil(t, ctx, raw, stop)
-	time.Sleep(20 * probe)
+	time.Sleep(hold / 2)
 	close(stop)
 	wg.Wait()
+	last, err := raw.Get(ctx, ackKey(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for h.seen.Load() < last.Header.Revision {
+		if ctx.Err() != nil {
+			t.Fatalf("etcd delivered up to %d of %d", h.seen.Load(), last.Header.Revision)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(time.Until(opened.Add(hold)))
+	close(h.release)
+
 	waitConverged(t, ctx, m, raw, 20*time.Second)
 	if st := m.Stats(); st.Lists != 1 || st.Watches != 1 || st.Errors != 0 {
 		t.Fatalf("stats %+v: a watch waiting for its confirmation was reopened", st)
 	}
+}
+
+// heldReader holds back every response of the first watch until release is closed, and records the newest
+// revision among the events it holds, so a test knows when etcd has delivered everything. Then it passes on etcd's
+// confirmation at once and the events after delay. Later watches answer at once.
+type heldReader struct {
+	Reader
+	release chan struct{}
+	delay   time.Duration
+	watches atomic.Int32
+	seen    atomic.Int64
+}
+
+func (h *heldReader) Watch(ctx context.Context, key string, opts ...clientv3.OpOption) clientv3.WatchChan {
+	in := h.Reader.Watch(ctx, key, opts...)
+	if h.watches.Add(1) != 1 {
+		return in
+	}
+	out := make(chan clientv3.WatchResponse)
+	send := func(r clientv3.WatchResponse) bool {
+		select {
+		case out <- r:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+	go func() {
+		defer close(out)
+		var created, events []clientv3.WatchResponse
+	hold:
+		for {
+			select {
+			case r, ok := <-in:
+				if !ok {
+					return
+				}
+				if r.Created {
+					created = append(created, r)
+					continue
+				}
+				for _, ev := range r.Events {
+					h.seen.Store(max(h.seen.Load(), ev.Kv.ModRevision))
+				}
+				events = append(events, r)
+			case <-h.release:
+				break hold
+			case <-ctx.Done():
+				return
+			}
+		}
+		for _, r := range created {
+			if !send(r) {
+				return
+			}
+		}
+		select {
+		case <-time.After(h.delay):
+		case <-ctx.Done():
+			return
+		}
+		for _, r := range events {
+			if !send(r) {
+				return
+			}
+		}
+		for r := range in {
+			if !send(r) {
+				return
+			}
+		}
+	}()
+	return out
 }
 
 // A watch etcd never confirms is reopened once the create timeout has passed, not before.
@@ -1114,7 +1201,7 @@ func TestMirrorWatchNeverCreated(t *testing.T) {
 		t.Fatal(err)
 	}
 	const probe, timeout = 50 * time.Millisecond, time.Second
-	m := startMirror(t, &unconfirmedReader{Reader: direct, hold: -1}, TDAckPrefix("td-tw-1"),
+	m := startMirror(t, &unconfirmedReader{Reader: direct}, TDAckPrefix("td-tw-1"),
 		MirrorOptions{ProbeInterval: probe, createTimeout: timeout})
 	opened := time.Now()
 	mustPut(t, ctx, raw, ackKey(0), "v1")

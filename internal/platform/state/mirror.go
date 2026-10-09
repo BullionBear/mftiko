@@ -64,6 +64,7 @@ type MirrorOptions struct {
 	Log           *zerolog.Logger // failures and relists; nil logs nothing
 
 	createTimeout time.Duration // DefaultMirrorCreateTimeout; tests shorten it
+	stallWindow   time.Duration // mirrorStallProbes × ProbeInterval; tests set it apart from the probe's pace
 }
 
 // MirrorStats counts what Run has done.
@@ -167,6 +168,9 @@ func NewMirror(r Reader, prefix string, opt MirrorOptions) (*Mirror, error) {
 	}
 	if opt.createTimeout == 0 {
 		opt.createTimeout = DefaultMirrorCreateTimeout
+	}
+	if opt.stallWindow == 0 {
+		opt.stallWindow = mirrorStallProbes * opt.ProbeInterval
 	}
 	return &Mirror{
 		id:      mirrorIDs.Add(1),
@@ -529,7 +533,7 @@ func (m *Mirror) probe(pctx context.Context) {
 			continue
 		}
 		m.probeRev, m.probeSent = h.Revision, sent // contact once the watch brings the copy this far
-		silent, window := latest(m.contact, m.opened), mirrorStallProbes*m.opt.ProbeInterval
+		silent, window := latest(m.contact, m.opened), m.opt.stallWindow
 		if !m.created {
 			silent, window = m.opened, max(window, m.opt.createTimeout)
 		}
