@@ -17,6 +17,14 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state/etcdtest"
 )
 
+// testTokenTTL and testSessionTTL are what state tests pass to etcdtest.TokenTTL
+// and TermOptions.SessionTTL when the test waits on expiry. Production defaults
+// stay etcdtest.DefaultTokenTTL (5m) and DefaultSessionTTL (15s).
+const (
+	testTokenTTL   = time.Second
+	testSessionTTL = 2 * time.Second
+)
+
 // testPlanes reads the plane off the test instance names ("md-tw-1" is MD). Names that follow no plane get no user.
 func testPlanes(topo Topology) map[string]Plane {
 	planes := map[string]Plane{}
@@ -298,12 +306,11 @@ func TestRBACEnforced(t *testing.T) {
 // keepalives, its watch keeps delivering, and its writes authenticate again.
 func TestTokenExpiry(t *testing.T) {
 	ctx := testCtx(t)
-	s := etcdtest.Start(t, etcdtest.TokenTTL(2*time.Second))
+	s := etcdtest.Start(t, etcdtest.TokenTTL(testTokenTTL))
 	raw := s.Client(t)
 	topo := topologyOf(map[string]*etcdtest.Server{"tw": s}, map[string]string{"md-tw-1": "tw"})
 	cl := newClusters(t, topo, nil, as(t, topo, "md-tw-1"))
-	const sessionTTL = 5 * time.Second
-	term := campaign(t, ctx, cl, PlaneMD, "md-tw-1", TermOptions{SessionTTL: sessionTTL})
+	term := campaign(t, ctx, cl, PlaneMD, "md-tw-1", TermOptions{SessionTTL: testSessionTTL})
 	if err := term.PutRecord(ctx, "record"); err != nil {
 		t.Fatal(err)
 	}
@@ -316,8 +323,8 @@ func TestTokenExpiry(t *testing.T) {
 	wch := r.Watch(wctx, DemandPrefix(PlaneMD, "md-tw-1"), clientv3.WithPrefix())
 
 	// A token issued now is newer than the one the watch and the session were
-	// opened with, so when it is rejected those have expired too. The TTL is
-	// unchanged; the bound is wider than the old two lifetimes.
+	// opened with, so when it is rejected those have expired too. The bound
+	// stays several times testTokenTTL.
 	waitRejected(t, ctx, raw, s.Endpoints(), "md-tw-1", AgentKey(PlaneMD, "md-tw-1"))
 	if _, err := raw.Put(ctx, MDDemandKey("md-tw-1", "a1b2c3", "feed/x"), "d"); err != nil {
 		t.Fatal(err)
@@ -343,10 +350,9 @@ func TestTokenExpiry(t *testing.T) {
 	}
 	// An unrenewed lease of the session TTL has to actually disappear before the
 	// record's survival means the keepalives held it. etcd sweeps expired leases
-	// on its own ticker and later under load. The bound is wider than the old 6s.
-	// The session TTL is unchanged.
+	// on its own ticker and later under load. The bound stays wider than testSessionTTL.
 	canary := "/canary/session-ttl"
-	lease, err := raw.Grant(ctx, int64(sessionTTL/time.Second))
+	lease, err := raw.Grant(ctx, int64(testSessionTTL/time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +407,7 @@ func TestDialWrongPassword(t *testing.T) {
 // the expiry and be refused for good. Each mirror has a stream of its own (Mirror.stream).
 func TestMirrorAfterTokenExpiry(t *testing.T) {
 	ctx := testCtx(t)
-	s := etcdtest.Start(t, etcdtest.TokenTTL(2*time.Second))
+	s := etcdtest.Start(t, etcdtest.TokenTTL(testTokenTTL))
 	raw := s.Client(t)
 	topo := topologyOf(map[string]*etcdtest.Server{"tw": s}, map[string]string{"td-tw-1": "tw"})
 	r, err := newClusters(t, topo, nil, as(t, topo, "td-tw-1")).Reader("tw") // the agent's own, narrow, rights
@@ -413,7 +419,7 @@ func TestMirrorAfterTokenExpiry(t *testing.T) {
 
 	// m's watch keeps the token it was opened with. A token issued after that
 	// watch expires later, so rejection means the watch's token is already
-	// dead. The bound is wider than the old 4s. The TTL is unchanged.
+	// dead. The bound stays wider than testTokenTTL.
 	waitRejected(t, ctx, raw, s.Endpoints(), "td-tw-1", ackKey(0))
 	late := startMirror(t, r, TDAckPrefix("td-tw-1"), MirrorOptions{MaxBackoff: 200 * time.Millisecond})
 	mustPut(t, ctx, raw, ackKey(1), "v1")

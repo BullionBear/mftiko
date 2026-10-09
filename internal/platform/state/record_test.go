@@ -95,7 +95,7 @@ func TestRecordGoesWithTheAgent(t *testing.T) {
 	proxy := etcdtest.NewProxy(t, s)
 	raw := s.Client(t)
 	topo := Topology{Regions: map[string]Region{"tw": {Endpoints: proxy.Endpoints()}}, Instances: map[string]string{"td-tw-1": "tw"}}
-	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{SessionTTL: 2 * time.Second})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{SessionTTL: testSessionTTL})
 	record := AgentKey(PlaneTD, "td-tw-1")
 	worker := WorkerStatusKey(PlaneTD, "td-tw-1", WorkerHash("td/42"))
 	ack := TDAckKey("td-tw-1", "a1b2c3", 42)
@@ -167,7 +167,7 @@ func TestRecordGoesWithSupersededTerm(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "sts-tw-1")
 	raw := s.Client(t)
-	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "sts-tw-1")), PlaneSTS, "sts-tw-1", TermOptions{SessionTTL: 2 * time.Second})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "sts-tw-1")), PlaneSTS, "sts-tw-1", TermOptions{SessionTTL: testSessionTTL})
 	record := AgentKey(PlaneSTS, "sts-tw-1")
 	if err := term.PutRecord(ctx, "record"); err != nil {
 		t.Fatal(err)

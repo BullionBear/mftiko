@@ -271,7 +271,7 @@ func TestSessionLost(t *testing.T) {
 	ctx := testCtx(t)
 	s, topo := singleRegion(t, "sts-tw-1")
 	raw := s.Client(t)
-	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "sts-tw-1")), PlaneSTS, "sts-tw-1", TermOptions{SessionTTL: 2 * time.Second})
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "sts-tw-1")), PlaneSTS, "sts-tw-1", TermOptions{SessionTTL: testSessionTTL})
 	if !running(term) {
 		t.Fatalf("fresh term not running: %v", term.Err())
 	}
