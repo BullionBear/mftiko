@@ -9,6 +9,11 @@
 //
 // Depth, klines and open interest return exchange.ErrNotImplemented.
 //
+// Source implements exchange.InProcessUIDSource. The in-process Resolver may allocate
+// UIDs for these listings. Those UIDs are not SYM's: they stay in that process, are not
+// stored, and must not be sent to another process or plane. A real adapter does not
+// implement the marker.
+//
 // A fixture is a JSON array of symbol.Listing values. Object keys are that struct's exported field
 // names (encoding/json also accepts a different case of the same name), and the loader decodes into
 // the struct itself, so a field added to Listing is picked up here without a new list of fields.

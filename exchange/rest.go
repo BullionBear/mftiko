@@ -29,3 +29,15 @@ type PublicREST interface {
 	// elsewhere.
 	OpenInterest(ctx context.Context, inst *symbol.Info) (*OpenInterest, error)
 }
+
+// InProcessUIDSource is a PublicREST whose listings are not a real venue.
+// The in-process Resolver allocates symbol UIDs only for a source that implements
+// this. exchangetest.Source is that source. Those UIDs exist only inside the
+// process that allocated them: they are not written to a database and must not be
+// sent to another process or plane. A real adapter must not implement this.
+// Its instruments take the UIDs SYM assigns.
+type InProcessUIDSource interface {
+	PublicREST
+	// InProcessUIDs marks the source. It has no behavior.
+	InProcessUIDs()
+}

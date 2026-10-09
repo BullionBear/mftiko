@@ -631,8 +631,9 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   - 這一版只在 `SymbolInfo` 加上 `uid`，並加 `GetByUidRequest`。`td.order`、需求項目、selector 成員今天仍是 ticker 字串。SQL 的兩張表以 `uid` 為主鍵。
   - NATS 的 subject 用人讀的名字，不用 UID。確切拼法還沒定（PROTOCOL §10 P14）。這一版維持 `md.f.{inst}.{topic}.{ticker}`，不改 subject。策略 hook 看 ticker 還是 UID 見 P15。
   - 契約型別是 `uint32`，範圍 `1..4294967295`（`1..2^32-1`），0 非法（PROTOCOL §10 P13）。Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`。E2-03 的 store 照這個範圍抽號，先插入 `symbol_uid`，撞到 unique violation 就換一個再插。`symbol_reject_shared_uid` 仍擋兩張 listing 同時持有同一個 uid；搬表在同一個交易裡先刪活躍列再插入終結列。
+  - **進程內 Resolver（E2-05）只給測試與開發。** 它對設定的每個 `(venue, category)` 直接呼叫 `PublicREST.Listing`，來源必須實作 `exchange.InProcessUIDSource`（`exchangetest`）。載入前先呼叫與 SYM refresh 相同的 `normalizeAssets`（大寫並套別名），再 `Listing.Validate`。只快取活躍表狀態：`PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`UNKNOWN`。`EXPIRED` 與 `DELISTED` 不進這個進程的快取（沒有終結表），`UNSPECIFIED` 非法。只有 `TRADABLE` 可交易。`Validate` 過了但 `Ticker()` 失敗的列略過：記 log、計數，不讓整次 venue 重載失敗。不經過 SYM 服務，也不寫 Postgres。UID 由這個進程自己發；測試注入固定順序，沒注入就用與 SYM 相同的隨機抽號，但抽到的號碼不寫進 `symbol_uid`。這種 UID 不是正式 UID：不落庫，不跨進程、不跨平面傳。真實 venue 的進程等 SYM 分配的 UID。重載在這個進程裡整份換上；還在清單上的 ticker 沿用同一個進程內 UID，從清單消失的不重用，同一個 ticker 再上市拿新的。
 
-- **不採用：** adapter 自行改名，或在 adapter 裡收別名；下游用類別回推三個幣欄；沿用 `reservations.is_linear_margin`，或為 Deribit 開特例；把 `settlement_asset` 當成保證金幣（Binance 的 `marginAsset`、Bitget 寫成 quote）；inverse 的 qty 用張數；quanto 入庫並用非 `TRADABLE` 狀態表示；把 `USD`、`USDC`、`USDT` 收成同一個；已終結的列留在熱路徑讀的那張表；搬表時改寫 UniversalTicker 或重發 UID；下架再上市沿用舊 UID；用單調序號或 Postgres sequence（`symbol_uid_seq`）當 UID；重啟或重載時重發 UID；給 selector 一個 UID；系統內部繼續用 ticker 字串當商品身分；NATS subject 用 UID。
+- **不採用：** adapter 自行改名，或在 adapter 裡收別名；下游用類別回推三個幣欄；沿用 `reservations.is_linear_margin`，或為 Deribit 開特例；把 `settlement_asset` 當成保證金幣（Binance 的 `marginAsset`、Bitget 寫成 quote）；inverse 的 qty 用張數；quanto 入庫並用非 `TRADABLE` 狀態表示；把 `USD`、`USDC`、`USDT` 收成同一個；已終結的列留在熱路徑讀的那張表；搬表時改寫 UniversalTicker 或重發 UID；下架再上市沿用舊 UID；用單調序號或 Postgres sequence（`symbol_uid_seq`）當 UID；重啟或重載時重發 UID；給 selector 一個 UID；系統內部繼續用 ticker 字串當商品身分；NATS subject 用 UID；進程內 Resolver 接真實 venue，或把進程內發的 UID 落庫、傳到別的進程或別的平面。
 
 ### D109 需求過舊時保持現狀
 

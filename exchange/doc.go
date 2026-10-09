@@ -24,6 +24,7 @@
 //	                             PublicREST.Depth (in process)
 //	md.fetch                     PublicREST: Klines, OpenInterest    D402
 //	SYM                          PublicREST.Listing                  D201
+//	in-process Resolver (dev)    InProcessUIDSource.Listing          E2-05
 //	TD account worker            AccountKind.Account, PrivateStream  D602, D603, D301
 //	TD agent (backfill)          AccountKind.History                 D601, D301
 //

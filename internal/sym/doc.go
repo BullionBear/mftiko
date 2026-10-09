@@ -50,7 +50,7 @@
 // Universe.current is a selector and is still TBD, outside D203.
 // The UID is uint32, the same type as Info.UID. The interval is symbol.MinUID..symbol.MaxUID
 // and 0 is invalid. symbol.ValidUID is that check. The BIGINT columns use the same bounds.
-// The sym subject and GetByUID are not served yet.
+// The sym subject is not served yet.
 // Only this service writes the tables.
 //
 // It is also the only place that uppercases asset codes and applies the alias table (XBT to BTC,
@@ -70,6 +70,33 @@
 // (venue, category) page of symbol.ListPage; the reverse lookup from a venue's spelling, which
 // yields the UID. Historical lookup (old fills and positions, reverse lookup of a terminal UID)
 // reads the terminal table and is not part of that cache. Clients cache through symbol.Resolver.
+//
+// In-process Resolver (E2-05), for tests and local development only:
+//
+// Resolver implements symbol.Resolver without the SYM service and without PostgreSQL.
+// At startup it calls PublicREST.Listing for each configured (venue, category).
+// It canonicalizes asset codes with normalizeAssets, the same helper SYM refresh
+// uses, then keeps rows that pass Listing.Validate and whose status is on the
+// active table: PRELISTING, TRADABLE, HALTED, SETTLING, UNKNOWN. EXPIRED and
+// DELISTED are not cached. UNSPECIFIED is invalid. Only TRADABLE may trade.
+// A row that passes Validate but fails Ticker is skipped: the failure is logged
+// and counted, and the rest of that venue still loads. The indexes are
+// UID to Info, ticker to UID, and ExchKey to UID. A reload builds the next snapshot
+// completely and publishes it once, so a reader sees the previous snapshot or the next
+// one, never a mix of the two. A ticker that is still listed keeps its UID. A ticker
+// that drops out is retired, and that UID is not issued again; the same ticker listed
+// again gets a new one.
+//
+// This process allocates those UIDs. Tests pass a Source with a fixed sequence; otherwise
+// the draw is RandomSource. Either way the value is not inserted into symbol_uid and must
+// not be sent to another process or plane. Real venues wait for the UIDs SYM assigns.
+// NewResolver rejects a PublicREST that does not implement exchange.InProcessUIDSource.
+// exchangetest.Source is the implementation that does. cmd injects this Resolver or the
+// NATS client (E2-09). Only this one allocates.
+//
+// This process keeps no terminal table, so includeInactive does not widen a lookup.
+// A row whose status is EXPIRED or DELISTED is omitted even when the listing still
+// returns it. Only TRADABLE may trade.
 //
 // The sym subject is not served yet.
 package sym
