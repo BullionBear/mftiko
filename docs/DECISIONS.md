@@ -629,6 +629,26 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 - **不採用：** adapter 自行改名，或在 adapter 裡收別名；下游用類別回推三個幣欄；沿用 `reservations.is_linear_margin`，或為 Deribit 開特例；把 `settlement_asset` 當成保證金幣（Binance 的 `marginAsset`、Bitget 寫成 quote）；inverse 的 qty 用張數；quanto 入庫並把 `active` 設成 false；把 `USD`、`USDC`、`USDT` 收成同一個；已終結的列留在熱路徑讀的那張表；搬表時改寫 UniversalTicker 或重發 UID；下架再上市沿用舊 UID；系統內部繼續用 ticker 字串當商品身分；NATS subject 用 UID。
 
+### D39 需求過舊時保持現狀
+
+agent 依需求做的改變，前提是需求是新的。Mirror 的 `LastContact` 超過門檻（預設 15 秒，大約是 probe 間隔的 3 倍；各平面的部署設定）就算過舊。這時 view 停在最後一次聯繫的 revision：它曾經為真，只是之後的變化看不到。
+
+- **過舊時不做依據需求的減法，也不改變活著的 worker。** 不停 worker、不因為換 spec 而替換、不推 live config（推的可能是退訂）。恢復聯繫之後的下一輪 reconcile 才做。
+  - 看不到不等於不要：不在舊 view 裡的 worker，可能正是失聯之後才加的需求。
+  - 錯誤的代價不對稱：多跑一個 worker，聯繫恢復後就停掉，會自己修正；停掉一個還需要的 worker，影響傳到系統外（MD 的缺口補不回來，TD 要撤單、對帳，STS 丟掉策略的狀態）。
+  - 故障是相關的：etcd 分區時所有 agent 一起過舊，過舊就減法等於一次 etcd 故障就讓交易全停。控制面的故障不擴散到資料面（fail static）。
+- **維持最後一份需求由 Policy 決定。** 只有兩件事：重啟結束了的 worker、對已初始化的 worker 送 `Start`。`Policy.KeepWhileStale` 說可以才做。MD 可以（唯讀，多一份沒有副作用）；TD 由 Policy 判斷（失聯期間帳號可能被撤銷）；STS 的 `Start` 要等 controller 設 `start`（§3.3 N2），自然最多走到 `Init`。
+- **過舊時不寫 `WorkerStatus`。** 寫入會卡在連不上的 cluster；狀態只在值改變時寫，恢復後一次補上（W7.2）。
+- 骨架只提供「是否過舊」與上面兩類動作的區分（`internal/platform/agent` 的 `Reconciler`），平面的判斷放在 Policy。
+- 不採用：過舊時照常 reconcile；過舊時只禁止減法、加法照常（新的 spawn 也是依據需求的改變，而且 TD 的加法不一定安全）；過舊時停掉一切（就是上面說的故障擴散）。
+
+### D40 平面的決策與 I/O 分開
+
+- 平面的根套件（`internal/sts`、`md`、`td`）放 Planner、Policy 與 domain 型別，是純的邏輯，不需要 cluster 就能測。接線（Intake 的 Mirror、Fleet 的 shim、NATS）放在子套件 `internal/{plane}/daemon`。cmd 只組裝 daemon。
+- 骨架同樣分開：`internal/platform/agent` 是型別與 `Reconciler`（diff 與重啟的記帳，不做 I/O）；`agent/runner` 是一個 term 的 loop（等需求、收養、比對 `WorkerStatus`、寫 `AgentRecord`、reconcile）；`agent/c3` 是 shim 的 client。
+- `internal/archtest` 檢查：平面的根套件與 `internal/platform/agent` 的依賴閉包裡沒有 etcd、NATS、`state`、`natsx`、`shim`、`agent/c3`、`agent/runner`。
+- 子套件叫 `daemon`：它是常駐的 agent 進程。不用 `runtime`（遮住標準庫）、`agent`（與 `internal/platform/agent` 同名，平面的接線一定 import 它）、`wire`（與 `contract/wire` 同名）、`adapter`（與 exchange 的 adaptor 混淆）。
+
 ## 待討論
 
 目前沒有。協議層還沒定的見 PROTOCOL §10。
