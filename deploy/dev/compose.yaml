@@ -1,7 +1,8 @@
 # Local development only: `make dev-up` starts every service and waits until they are healthy; then
 # `make migrate-up`. Ports are bound to 127.0.0.1, so nothing outside this machine can connect, and no service
 # asks for credentials: PostgreSQL trusts local connections, etcd has no auth yet (E1-08 adds it), and NATS has
-# none either. Tests do not use these: state starts its own etcd (etcdtest), natsx its own server (natsxtest).
+# none either. Tests do not use these: state starts its own etcd (etcdtest), natsx its own server (natsxtest),
+# and the symbol tests start their own PostgreSQL (pgtest).
 services:
   postgres:
     image: postgres:17

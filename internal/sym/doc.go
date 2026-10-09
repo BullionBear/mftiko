@@ -17,23 +17,26 @@
 //     not re-key. The same ticker listed again after delisting gets a new UID.
 //   - Hourly by default, plus on request.
 //
-// Storage is PostgreSQL. The decided shape (D203) is two listing tables: an active table
-// (PRELISTING, TRADABLE, HALTED, SETTLING, UNKNOWN), which the Resolver and hot paths read, and a
-// terminal table (EXPIRED, DELISTED) for historical lookup of old fills and positions and for
-// reverse lookup by UID. UID is the primary key of both tables and is unique across them.
-// Terminal rows can be archived. The status enum is still provisional.
+// Storage is PostgreSQL (migrations/0002_symbol). symbol_active holds PRELISTING, TRADABLE,
+// HALTED, SETTLING and UNKNOWN, which the Resolver and hot paths read. symbol_terminal holds
+// EXPIRED and DELISTED, for historical lookup of old fills and positions and for reverse lookup
+// by UID. UID is the primary key of both. Terminal rows can be archived. The status enum is
+// still provisional; the contract field stays bool.
 //
-// SYM allocates each UID as a random integer that is unique and never reused. It is not a
-// monotonic sequence. The UID is stored on the row, so a restart or a reload does not change it.
-// A delist followed by a relist gets a new UID. SYM retries when a candidate collides.
-// symbol_filter is split the same way, and its rows move with the listing on a terminal
-// transition. List pages with offset and limit; inconsistency across pages is accepted.
-// Selectors have no UID. Universe.current is a selector and is still TBD, outside D203.
-// The contract type is uint64 and 0 is invalid. Width and numeric range are still open
-// (PROTOCOL §10 P13): Postgres BIGINT is signed, so the suggested range is 1..2^63-1.
-// migrations/0002_symbol is still one symbol_ticker plus one symbol_filter, keyed by that
-// table's own id, not by a shared UID. This service does not implement the split, the
-// allocator, or GetByUID yet. Only this service writes them.
+// Insert allocates a UID by drawing from Source (RandomSource in production). It inserts that
+// uid into symbol_uid first and retries when the insert reports a unique violation on the uid.
+// symbol_uid is never deleted, so archiving a listing does not free the uid. The candidate is
+// also stored on the listing row, so a restart does not change it. Move copies the row and its
+// symbol_filter rows onto the terminal tables in one transaction; the UID and the UniversalTicker
+// stay the same, and the active row is deleted in that transaction. symbol_reject_shared_uid
+// still rejects a uid that is on the other listing table, which the registry alone does not.
+// A later Insert of the same ticker draws a new UID. The old terminal row stays. List pages
+// with offset and limit; inconsistency across pages is accepted. Selectors have no UID.
+// Universe.current is a selector and is still TBD, outside D203.
+// The UID is uint32, the same type as Info.UID. The interval is symbol.MinUID..symbol.MaxUID
+// and 0 is invalid. symbol.ValidUID is that check. The BIGINT columns use the same bounds.
+// The sym subject and GetByUID are not served yet.
+// Only this service writes the tables.
 //
 // It is also the only place that uppercases asset codes and applies the alias table (XBT to BTC,
 // D203): normalize first, then judge quanto, then derive the ticker. Adapters pass native codes.
@@ -48,5 +51,5 @@
 // yields the UID. Historical lookup (old fills and positions, reverse lookup of a terminal UID)
 // reads the terminal table and is not part of that cache. Clients cache through symbol.Resolver.
 //
-// Shape only: not implemented yet.
+// The sym subject is not served yet.
 package sym

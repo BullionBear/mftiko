@@ -74,7 +74,9 @@ The tests of `internal/platform/state` run a real etcd (v3.7.2). They find it th
 
 The tests of `internal/platform/natsx` start an embedded core NATS server (`natsxtest`, nats-server v2.15.0, the same release as the dev image). They do not use the compose service and need no extra binary.
 
-CI (`.github/workflows/ci.yml`) runs `make check` on every pull request and on `main`, with etcd downloaded from its release and checked against the release's `SHA256SUMS`, and `buf breaking` compared with the pull request's base.
+The tests of `migrations` and `internal/sym` run a real PostgreSQL (`pgtest`). They find the server through `MFTIKO_PG_BIN` (the `postgres` binary; `initdb` is the one beside it), else `postgres` on `PATH`, and are skipped when there is neither. Set `MFTIKO_REQUIRE_PG=1` to make a missing binary a failure instead; CI does, so a run that skipped them cannot pass.
+
+CI (`.github/workflows/ci.yml`) runs `make check` on every pull request and on `main`, with etcd downloaded from its release and checked against the release's `SHA256SUMS`, PostgreSQL installed from the runner image's packages, and `buf breaking` compared with the pull request's base.
 
 ## Logging and build identity
 

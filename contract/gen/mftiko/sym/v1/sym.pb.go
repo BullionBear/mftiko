@@ -159,7 +159,7 @@ func (*Request_GetByUid) isRequest_Req() {}
 type GetRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	UniversalTicker string                 `protobuf:"bytes,1,opt,name=universal_ticker,json=universalTicker,proto3" json:"universal_ticker,omitempty"`
-	IncludeInactive bool                   `protobuf:"varint,2,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // D203：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢，含 MD 的到期監看。Resolver 與熱路徑不設。表還沒拆
+	IncludeInactive bool                   `protobuf:"varint,2,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // D203：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢，含 MD 的到期監看。Resolver 與熱路徑不設。表是 symbol_active 與 symbol_terminal
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -575,7 +575,7 @@ type SymbolInfo struct {
 	ExpiryNs        int64                  `protobuf:"varint,7,opt,name=expiry_ns,json=expiryNs,proto3" json:"expiry_ns,omitempty"`                  // 0 = does not expire
 	Strike          *string                `protobuf:"bytes,8,opt,name=strike,proto3,oneof" json:"strike,omitempty"`                                 // SYM 先依 spell_strike 正規化再推 ticker：6400.0 與 6400 相同（D203）
 	OptionType      string                 `protobuf:"bytes,9,opt,name=option_type,json=optionType,proto3" json:"option_type,omitempty"`             // C | P | ""
-	Active          bool                   `protobuf:"varint,10,opt,name=active,proto3" json:"active,omitempty"`                                     // 暫定（D203）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。定案前仍是 bool，表也還沒拆
+	Active          bool                   `protobuf:"varint,10,opt,name=active,proto3" json:"active,omitempty"`                                     // 暫定（D203）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。定案前契約仍是 bool。表已拆成 symbol_active 與 symbol_terminal
 	// name -> bound. A key with an absent value: the venue publishes the restriction, no bound.
 	// price_tick is price_ccy; qty_step, min_qty, max_qty are contract_value_ccy (D203).
 	Filters     map[string]*Bound `protobuf:"bytes,11,rep,name=filters,proto3" json:"filters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -584,6 +584,7 @@ type SymbolInfo struct {
 	// 重啟與重載不改它。下架再上市是新的 UID。碰撞時 SYM 重試。
 	// 契約型別 uint32，範圍 1..4294967295（1..2^32-1），0 非法（PROTOCOL §10 P13）。
 	// Postgres 欄位是 bigint，CHECK (uid BETWEEN 1 AND 4294967295)。
+	// SQL 的兩張表以 uid 為主鍵（migrations/0002_symbol）。
 	Uid           uint32 `protobuf:"varint,13,opt,name=uid,proto3" json:"uid,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

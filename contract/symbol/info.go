@@ -33,8 +33,8 @@ type Info struct {
 	// Active is tentative (D203): only TRADABLE trades. The enum is PRELISTING,
 	// TRADABLE, HALTED, SETTLING, EXPIRED, DELISTED, UNKNOWN. Non-terminal statuses
 	// stay on the active table the Resolver reads; EXPIRED and DELISTED move to the
-	// terminal table without changing the ticker or the UID. This stays bool, and the store stays
-	// one table, until that design is implemented.
+	// terminal table without changing the ticker or the UID. This stays bool until
+	// that enum is final. The store tables are already split (migrations/0002_symbol).
 	Active      bool
 	Filters     map[string]string
 	UpdatedAtNs int64
