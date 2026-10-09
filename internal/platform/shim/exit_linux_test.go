@@ -86,8 +86,8 @@ func TestExitInfoEndings(t *testing.T) {
 				rec.GetWorker().GetIncarnation() != 3 || int(rec.GetPid()) != pid || rec.GetStartTime() == 0 {
 				t.Errorf("exit file %v, want the same ExitInfo as Exited, for pid %d", rec, pid)
 			}
-			if at := a.waitExited(1); at.GetState() != shimv1.WorkerState_WORKER_STATE_EXITED {
-				t.Fatalf("state %v", at.GetState())
+			if at := a.waitExited(1); !proto.Equal(at.GetExit(), got) {
+				t.Fatalf("Attached.exit %v, want what Exited and the exit file say: %v", at.GetExit(), got)
 			}
 			wantOK(t, a.call(releaseReq()))
 			p.wantExit(0)

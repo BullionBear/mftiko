@@ -111,6 +111,8 @@ message Attached {
   uint64 next_seq = 12;
   int64 last_beat_at_ns = 13;
   Phase phase = 14; // 生命週期的階段（§4.3）；worker 結束後是結束前的最後一個
+  mftiko.worker.v1.Exiting exiting = 15; // worker 送的第一則 Exiting；沒送過就沒有（§4.4）
+  mftiko.common.v1.ExitInfo exit = 16;   // state 是 EXITED 時的 ExitInfo，與結束檔相同（§4.5 S3）
 }
 
 // shim 記下的生命週期階段（§4.3）。

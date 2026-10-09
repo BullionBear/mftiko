@@ -224,11 +224,13 @@ func (v *view) exited() bool {
 	}
 }
 
-// Attached reports the worker. Its state is EXITED once reaped, RUNNING once it said Hello, STARTING before.
+// Attached reports the worker: everything an agent decides by (DECISIONS D37). Its state is EXITED once the exit is
+// recorded, with the ExitInfo; RUNNING once it said Hello; STARTING before.
 func (v *view) Attached() *shimv1.Attached {
 	a := &shimv1.Attached{Pid: int32(v.pid), Pgid: int32(v.pgid), StartTime: v.startTime}
 	v.mu.Lock()
 	a.Hello, a.Stage, a.LastBeatAtNs, a.Phase = proto.CloneOf(v.hello), v.stage, v.lastBeatNs, v.phase
+	a.Exiting, a.Exit = proto.CloneOf(v.exitingMsg), proto.CloneOf(v.exit) // exit is set only once recorded
 	v.mu.Unlock()
 	a.OldestSeq, a.NextSeq = v.events.Bounds()
 	switch {
