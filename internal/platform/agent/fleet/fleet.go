@@ -253,11 +253,7 @@ func (f *Fleet[S, L]) Spawn(ctx context.Context, key agent.WorkerKey, spec S, li
 	}
 	at := conn.Attached()
 	w := &worker[S]{conn: conn, socket: socket, shimDone: shimDone, pid: int(at.GetPid()), startTime: at.GetStartTime(),
-		obs: agent.Observed{
-			Key: key, Incarnation: n, SpecHash: spec.Hash(), Pushed: live.Hash(), PushedAt: time.Now(),
-			State:       agent.StateInitializing,
-			ShimRelease: at.GetShimRelease(), StartedAt: time.Now(),
-		}}
+		obs: spawned(at, spec.Hash(), live.Hash(), time.Now())}
 	f.mu.Lock()
 	f.workers[key] = w
 	f.mu.Unlock()
@@ -269,6 +265,17 @@ func (f *Fleet[S, L]) Spawn(ctx context.Context, key agent.WorkerKey, spec S, li
 	}
 	f.cfg.Log.Info().Str("worker", string(key)).Uint32("incarnation", n).Int32("pid", at.GetPid()).Msg("worker spawned")
 	return nil
+}
+
+// spawned is a worker just spawned, as its shim's Attached has it (D108): what the worker said before the attach
+// (its Hello, a Stage, a Beat) is in the snapshot, and the events of it are skipped as older than next_seq, so the
+// snapshot is the only place to read it from. Init has not been sent yet: the worker is initializing, and its live
+// config is the one Init carries.
+func spawned(at *shimv1.Attached, specHash, liveHash string, now time.Time) agent.Observed {
+	o := observedOf(at)
+	o.SpecHash, o.Pushed, o.PushedAt, o.StartedAt = specHash, liveHash, now, now
+	o.State = agent.StateInitializing
+	return o
 }
 
 // startShim execs the shim in a session of its own (§4.6 step 1), its log appended to a file under the work dir,
