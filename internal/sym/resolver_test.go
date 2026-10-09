@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 
@@ -587,12 +588,18 @@ func TestReloadDoesNotPublishHalfTable(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := 1; i <= 40 && !stop.Load(); i++ {
+		// At least 40 reloads, and on until the readers have seen both parities: a reload can be
+		// quicker than the readers are to start, and the last generation alone is one parity.
+		deadline := time.Now().Add(10 * time.Second)
+		for i := 1; !stop.Load(); i++ {
 			src.set(i)
 			r.Invalidate("Bybit")
 			if _, err := r.List(ctx, "Bybit", symbol.Spot); err != nil {
 				fail(err)
 				return
+			}
+			if i >= 40 && (seen[0].Load() > 0 && seen[1].Load() > 0 || time.Now().After(deadline)) {
+				break
 			}
 		}
 		stop.Store(true)
