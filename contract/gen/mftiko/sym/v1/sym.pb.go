@@ -278,7 +278,7 @@ func (x *GetRequest) GetIncludeInactive() bool {
 }
 
 // 系統內部的查詢（D203）。STS、TD、MD 持有 UID，用它拿這一列的欄位。
-// 預設只讀活躍表；include_inactive 才含終結表。0 不是合法 UID。
+// 預設只讀活躍表；include_inactive 才含終結表。0 不是合法 UID，查詢是 not_found。
 type GetByUidRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 契約型別 uint32，範圍 1..4294967295（1..2^32-1），0 非法（PROTOCOL §10 P13）。
@@ -333,14 +333,15 @@ func (x *GetByUidRequest) GetIncludeInactive() bool {
 	return false
 }
 
-// One (venue, category) table, paged by offset and limit. A page stays under NATS's 1 MiB
-// with every filter. A row may move or appear between pages; that inconsistency is accepted
-// (D203, PROTOCOL §10 P13).
+// One (venue, category) table, paged by offset and limit. limit 0 means 500; a limit above
+// 500 is invalid, not clamped. A page whose protobuf reaches 1 MiB is unavailable, not a
+// shorter page, so offset and limit stay what the caller sent. A row may move or appear
+// between pages; that inconsistency is accepted (D203, PROTOCOL §10 P13).
 type ListRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Venue           string                 `protobuf:"bytes,1,opt,name=venue,proto3" json:"venue,omitempty"`
 	Category        string                 `protobuf:"bytes,2,opt,name=category,proto3" json:"category,omitempty"`
-	Limit           uint32                 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"` // at most 500
+	Limit           uint32                 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"` // 0 means 500; above 500 is invalid
 	Offset          uint32                 `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
 	IncludeInactive bool                   `protobuf:"varint,5,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // 同 GetRequest.include_inactive（D203）
 	unknownFields   protoimpl.UnknownFields
@@ -414,13 +415,17 @@ func (x *ListRequest) GetIncludeInactive() bool {
 
 // The venue's spelling -> the listing. Callers keep SymbolInfo.uid (D203). Category is required:
 // on a unified-account venue the spelling alone is ambiguous (Bybit's spot and linear "BTCUSDT").
+// include_inactive defaults to the active table. Set it to fall through to the terminal table
+// when the active table has no match; the uid is the one stored on that row. When both tables
+// match, the active row wins (a delist followed by a relist).
 type ReverseRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Venue         string                 `protobuf:"bytes,1,opt,name=venue,proto3" json:"venue,omitempty"`
-	Category      string                 `protobuf:"bytes,2,opt,name=category,proto3" json:"category,omitempty"`
-	ExchTicker    string                 `protobuf:"bytes,3,opt,name=exch_ticker,json=exchTicker,proto3" json:"exch_ticker,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Venue           string                 `protobuf:"bytes,1,opt,name=venue,proto3" json:"venue,omitempty"`
+	Category        string                 `protobuf:"bytes,2,opt,name=category,proto3" json:"category,omitempty"`
+	ExchTicker      string                 `protobuf:"bytes,3,opt,name=exch_ticker,json=exchTicker,proto3" json:"exch_ticker,omitempty"`
+	IncludeInactive bool                   `protobuf:"varint,4,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // 同 GetRequest.include_inactive（D203）
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ReverseRequest) Reset() {
@@ -474,6 +479,13 @@ func (x *ReverseRequest) GetExchTicker() string {
 	return ""
 }
 
+func (x *ReverseRequest) GetIncludeInactive() bool {
+	if x != nil {
+		return x.IncludeInactive
+	}
+	return false
+}
+
 // Re-pull one venue's listings now, or every venue when venue is empty.
 type RefreshRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -521,7 +533,8 @@ func (x *RefreshRequest) GetVenue() string {
 
 // A success is this message: result is set, and error and reason stay empty.
 // invalid, not_found and unavailable are not this message. They are a natsx
-// error reply (option A). The text is that word, then an optional ": " and a reason.
+// error reply (option A). The text is that word, then ": " and a reason that
+// names the field, the value, and why.
 type Reply struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Error  string                 `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`   // unused; business errors use the natsx error reply
@@ -901,9 +914,9 @@ func (x *SymbolList) GetTotal() uint32 {
 
 type RefreshResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Refreshed     map[string]uint32      `protobuf:"bytes,1,rep,name=refreshed,proto3" json:"refreshed,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`     // venue -> instruments seen
-	Deactivated   map[string]uint32      `protobuf:"bytes,2,rep,name=deactivated,proto3" json:"deactivated,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"` // venue -> rows marked inactive
-	Failed        map[string]string      `protobuf:"bytes,3,rep,name=failed,proto3" json:"failed,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`            // venue -> reason, per category
+	Refreshed     map[string]uint32      `protobuf:"bytes,1,rep,name=refreshed,proto3" json:"refreshed,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`     // venue/category -> instruments seen
+	Deactivated   map[string]uint32      `protobuf:"bytes,2,rep,name=deactivated,proto3" json:"deactivated,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"` // venue/category -> rows marked inactive
+	Failed        map[string]string      `protobuf:"bytes,3,rep,name=failed,proto3" json:"failed,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`            // venue/category -> reason
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -984,12 +997,13 @@ const file_mftiko_sym_v1_sym_proto_rawDesc = "" +
 	"\bcategory\x18\x02 \x01(\tR\bcategory\x12\x14\n" +
 	"\x05limit\x18\x03 \x01(\rR\x05limit\x12\x16\n" +
 	"\x06offset\x18\x04 \x01(\rR\x06offset\x12)\n" +
-	"\x10include_inactive\x18\x05 \x01(\bR\x0fincludeInactive\"c\n" +
+	"\x10include_inactive\x18\x05 \x01(\bR\x0fincludeInactive\"\x8e\x01\n" +
 	"\x0eReverseRequest\x12\x14\n" +
 	"\x05venue\x18\x01 \x01(\tR\x05venue\x12\x1a\n" +
 	"\bcategory\x18\x02 \x01(\tR\bcategory\x12\x1f\n" +
 	"\vexch_ticker\x18\x03 \x01(\tR\n" +
-	"exchTicker\"&\n" +
+	"exchTicker\x12)\n" +
+	"\x10include_inactive\x18\x04 \x01(\bR\x0fincludeInactive\"&\n" +
 	"\x0eRefreshRequest\x12\x14\n" +
 	"\x05venue\x18\x01 \x01(\tR\x05venue\"\xdb\x01\n" +
 	"\x05Reply\x12\x14\n" +

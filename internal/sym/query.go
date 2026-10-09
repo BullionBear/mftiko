@@ -46,18 +46,20 @@ func (s *Store) GetByUID(ctx context.Context, uid uint32, includeInactive bool) 
 
 // Reverse reads the listing for a venue spelling.
 //
-// The active row wins when the spelling is listed now. Otherwise the terminal
-// row is returned, and its uid is the one assigned when that row was created.
-// Several terminal rows and no active row yield the greatest updated_at_ns,
-// then the greatest uid. Category is part of the key: one spelling is not one
-// instrument on a unified-account venue.
-func (s *Store) Reverse(ctx context.Context, key symbol.ExchKey) (symbol.Info, error) {
+// The active table is the default. includeInactive falls through to the
+// terminal table when the active table has no match, and that row's uid is the
+// one assigned when it was created. When both tables match, the active row
+// wins: a delist followed by a relist leaves both. Several terminal rows and
+// no active row yield the greatest updated_at_ns, then the greatest uid.
+// Category is part of the key: one spelling is not one instrument on a
+// unified-account venue.
+func (s *Store) Reverse(ctx context.Context, key symbol.ExchKey, includeInactive bool) (symbol.Info, error) {
 	if key.Venue == "" || key.ExchTicker == "" || !knownCategory(key.Category) {
 		return symbol.Info{}, fmt.Errorf("sym: reverse key")
 	}
 	args := []any{key.Venue, string(key.Category), key.ExchTicker}
 	info, err := s.queryOne(ctx, listingSelect("symbol_active", "venue = $1 AND category = $2 AND exch_ticker = $3", 0), args...)
-	if err == nil || !errors.Is(err, ErrNotFound) {
+	if err == nil || !errors.Is(err, ErrNotFound) || !includeInactive {
 		return info, err
 	}
 	q := listingSelect("symbol_terminal", "venue = $1 AND category = $2 AND exch_ticker = $3", 1) + `

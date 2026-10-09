@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -37,7 +38,8 @@ func TestSymService(t *testing.T) {
 	})
 
 	t.Run("include inactive", func(t *testing.T) {
-		callSymErr(t, fx.client, getReq("Bybit_Spot_BTCUSDT", false), CodeNotFound)
+		callSymErr(t, fx.client, getReq("Bybit_Spot_BTCUSDT", false),
+			"not_found: ticker Bybit_Spot_BTCUSDT not found in active table (include_inactive=false)")
 		info := getTicker(t, fx.client, "Bybit_Spot_BTCUSDT", true)
 		if info.GetUid() != fx.btc || info.GetStatus() != symv1.SymbolStatus_SYMBOL_STATUS_DELISTED {
 			t.Fatalf("terminal %+v, want uid %d DELISTED", info, fx.btc)
@@ -51,8 +53,10 @@ func TestSymService(t *testing.T) {
 	})
 
 	t.Run("get by uid", func(t *testing.T) {
-		callSymErr(t, fx.client, &symv1.Request{Req: &symv1.Request_GetByUid{GetByUid: &symv1.GetByUidRequest{}}}, CodeNotFound)
-		callSymErr(t, fx.client, uidReq(fx.btc, false), CodeNotFound)
+		callSymErr(t, fx.client, &symv1.Request{Req: &symv1.Request_GetByUid{GetByUid: &symv1.GetByUidRequest{}}},
+			"not_found: uid 0 not found; 0 is not a valid uid")
+		callSymErr(t, fx.client, uidReq(fx.btc, false),
+			fmt.Sprintf("not_found: uid %d not found in active table (include_inactive=false)", fx.btc))
 		info := getByUID(t, fx.client, fx.btc, true)
 		if info.GetUid() != fx.btc || info.GetUniversalTicker() != "Bybit_Spot_BTCUSDT" {
 			t.Fatalf("uid lookup %+v", info)
@@ -62,15 +66,20 @@ func TestSymService(t *testing.T) {
 		if again.GetUniversalTicker() != "Bybit_Spot_ETHUSDT" || again.GetUid() != eth.GetUid() {
 			t.Fatalf("active uid %+v", again)
 		}
-		callSymErr(t, fx.client, uidReq(9_000_000, false), CodeNotFound)
+		callSymErr(t, fx.client, uidReq(9_000_000, false),
+			"not_found: uid 9000000 not found in active table (include_inactive=false)")
+		callSymErr(t, fx.client, uidReq(9_000_000, true),
+			"not_found: uid 9000000 not found in active or terminal table (include_inactive=true)")
 	})
 
 	t.Run("reverse keeps the original uid", func(t *testing.T) {
-		info := reverse(t, fx.client, "Bybit", "Spot", "BTCUSDT")
+		callSymErr(t, fx.client, revReq("Bybit", "Spot", "BTCUSDT", false),
+			`not_found: exch_ticker "BTCUSDT" for Bybit/Spot not found in active table (include_inactive=false)`)
+		info := reverse(t, fx.client, "Bybit", "Spot", "BTCUSDT", true)
 		if info.GetUid() != fx.btc || info.GetStatus() != symv1.SymbolStatus_SYMBOL_STATUS_DELISTED {
 			t.Fatalf("reverse terminal %+v, want uid %d", info, fx.btc)
 		}
-		perp := reverse(t, fx.client, "Bybit", "Perp", "BTCUSDT")
+		perp := reverse(t, fx.client, "Bybit", "Perp", "BTCUSDT", false)
 		if perp.GetUid() == fx.btc || perp.GetUniversalTicker() != "Bybit_Perp_BTCUSDT" {
 			t.Fatalf("reverse perp %+v", perp)
 		}
@@ -80,7 +89,10 @@ func TestSymService(t *testing.T) {
 		if perp.GetStatus() != symv1.SymbolStatus_SYMBOL_STATUS_TRADABLE {
 			t.Fatalf("perp status %v", perp.GetStatus())
 		}
-		callSymErr(t, fx.client, revReq("Bybit", "Spot", "NOPE"), CodeNotFound)
+		callSymErr(t, fx.client, revReq("Bybit", "Spot", "NOPE", false),
+			`not_found: exch_ticker "NOPE" for Bybit/Spot not found in active table (include_inactive=false)`)
+		callSymErr(t, fx.client, revReq("Bybit", "Spot", "NOPE", true),
+			`not_found: exch_ticker "NOPE" for Bybit/Spot not found in active or terminal table (include_inactive=true)`)
 	})
 
 	t.Run("list pages", func(t *testing.T) {
@@ -139,24 +151,40 @@ func TestSymService(t *testing.T) {
 		if perp.GetTotal() != 1 || perp.GetSymbols()[0].GetUniversalTicker() != "Bybit_Perp_BTCUSDT" {
 			t.Fatalf("perp %+v", tickersOf(perp))
 		}
+		empty := listPage(t, fx.client, "Nope", "Spot", 1, 0, false)
+		if empty.GetTotal() != 0 || len(empty.GetSymbols()) != 0 {
+			t.Fatalf("unknown venue %+v", tickersOf(empty))
+		}
 	})
 
 	t.Run("errors", func(t *testing.T) {
-		callSymErr(t, fx.client, &symv1.Request{}, CodeInvalid)
-		callSymErr(t, fx.client, getReq("", false), CodeInvalid)
-		callSymErr(t, fx.client, getReq("not a ticker", false), CodeInvalid)
-		callSymErr(t, fx.client, getReq("Bybit_Spot_NOSUCH", false), CodeNotFound)
+		callSymErr(t, fx.client, &symv1.Request{}, "invalid: request is empty")
+		callSymErr(t, fx.client, getReq("", false), `invalid: ticker "" is not a universal ticker`)
+		callSymErr(t, fx.client, getReq("not a ticker", false), `invalid: ticker "not a ticker" is not a universal ticker`)
+		callSymErr(t, fx.client, getReq("Bybit_Spot_NOSUCH", false),
+			"not_found: ticker Bybit_Spot_NOSUCH not found in active table (include_inactive=false)")
+		callSymErr(t, fx.client, getReq("Bybit_Spot_NOSUCH", true),
+			"not_found: ticker Bybit_Spot_NOSUCH not found in active or terminal table (include_inactive=true)")
 		callSymErr(t, fx.client, &symv1.Request{Req: &symv1.Request_List{List: &symv1.ListRequest{
 			Venue: "Bybit", Category: "spot", Limit: 1,
-		}}}, CodeInvalid)
+		}}}, `invalid: category "spot" is not canonical, use "Spot"`)
+		callSymErr(t, fx.client, &symv1.Request{Req: &symv1.Request_List{List: &symv1.ListRequest{
+			Venue: "Bybit", Category: "nope", Limit: 1,
+		}}}, `invalid: category "nope" is not one of Spot, Perp, Inverse, Future, Option`)
 		callSymErr(t, fx.client, &symv1.Request{Req: &symv1.Request_List{List: &symv1.ListRequest{
 			Venue: "bybit", Category: "Spot", Limit: 1,
-		}}}, CodeInvalid)
+		}}}, `invalid: venue "bybit" is not canonical, use "Bybit"`)
 		callSymErr(t, fx.client, &symv1.Request{Req: &symv1.Request_List{List: &symv1.ListRequest{
-			Venue: "Bybit", Category: "Spot", Limit: uint32(symbol.ListPage) + 1,
-		}}}, CodeInvalid)
-		callSymErr(t, fx.client, revReq("Bybit", "Spot", ""), CodeInvalid)
-		callSymErr(t, fx.client, &symv1.Request{Req: &symv1.Request_Refresh{Refresh: &symv1.RefreshRequest{Venue: "Nope"}}}, CodeInvalid)
+			Venue: "Bybit", Category: "Spot", Limit: 600,
+		}}}, "invalid: limit 600 exceeds max 500")
+		callSymErr(t, fx.client, &symv1.Request{Req: &symv1.Request_List{List: &symv1.ListRequest{
+			Venue: "", Category: "Spot", Limit: 1,
+		}}}, `invalid: venue "" is empty`)
+		callSymErr(t, fx.client, revReq("Bybit", "Spot", "", false), "invalid: exch_ticker is empty")
+		callSymErr(t, fx.client, &symv1.Request{Req: &symv1.Request_Refresh{Refresh: &symv1.RefreshRequest{Venue: "Nope"}}},
+			"invalid: venue Nope is not refreshed by this process")
+		callSymErr(t, fx.client, &symv1.Request{Req: &symv1.Request_Refresh{Refresh: &symv1.RefreshRequest{Venue: "bybit"}}},
+			`invalid: venue "bybit" is not canonical, use "Bybit"`)
 	})
 
 	t.Run("bad payload is not a business code", func(t *testing.T) {
@@ -198,13 +226,19 @@ func TestSymService(t *testing.T) {
 	if old.GetUid() != fx.btc || old.GetStatus() != symv1.SymbolStatus_SYMBOL_STATUS_DELISTED {
 		t.Fatalf("old uid %+v", old)
 	}
-	callSymErr(t, fx.client, uidReq(fx.btc, false), CodeNotFound)
-	rev := reverse(t, fx.client, "Bybit", "Spot", "BTCUSDT")
+	callSymErr(t, fx.client, uidReq(fx.btc, false),
+		fmt.Sprintf("not_found: uid %d not found in active table (include_inactive=false)", fx.btc))
+	rev := reverse(t, fx.client, "Bybit", "Spot", "BTCUSDT", false)
 	if rev.GetUid() != again.GetUid() {
 		t.Fatalf("reverse after relist %d, want %d", rev.GetUid(), again.GetUid())
 	}
+	revBoth := reverse(t, fx.client, "Bybit", "Spot", "BTCUSDT", true)
+	if revBoth.GetUid() != again.GetUid() {
+		t.Fatalf("include_inactive reverse returned %d, active is %d", revBoth.GetUid(), again.GetUid())
+	}
 
-	// A second delist leaves two terminal rows. Reverse returns the later one.
+	// A second delist leaves two terminal rows. Reverse with include_inactive
+	// returns the later one. Without the flag the active table has no row.
 	if err := fx.src.Remove(symbol.Spot, "BTCUSDT"); err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +246,9 @@ func TestSymService(t *testing.T) {
 	if _, err := fx.run.Trigger(context.Background(), "Bybit"); err != nil {
 		t.Fatal(err)
 	}
-	later := reverse(t, fx.client, "Bybit", "Spot", "BTCUSDT")
+	callSymErr(t, fx.client, revReq("Bybit", "Spot", "BTCUSDT", false),
+		`not_found: exch_ticker "BTCUSDT" for Bybit/Spot not found in active table (include_inactive=false)`)
+	later := reverse(t, fx.client, "Bybit", "Spot", "BTCUSDT", true)
 	if later.GetUid() == fx.btc || later.GetStatus() != symv1.SymbolStatus_SYMBOL_STATUS_DELISTED {
 		t.Fatalf("later terminal %+v", later)
 	}
@@ -239,10 +275,10 @@ func TestSymService(t *testing.T) {
 func TestSymUnavailable(t *testing.T) {
 	fx := newSymFixture(t)
 	fx.store.Close()
-	callSymErr(t, fx.client, getReq("Bybit_Spot_ETHUSDT", false), CodeUnavailable)
-	callSymErr(t, fx.client, &symv1.Request{Req: &symv1.Request_List{List: &symv1.ListRequest{
+	callSymErrHas(t, fx.client, getReq("Bybit_Spot_ETHUSDT", false), CodeUnavailable, "get ticker Bybit_Spot_ETHUSDT")
+	callSymErrHas(t, fx.client, &symv1.Request{Req: &symv1.Request_List{List: &symv1.ListRequest{
 		Venue: "Bybit", Category: "Spot", Limit: 1,
-	}}}, CodeUnavailable)
+	}}}, CodeUnavailable, "list Bybit/Spot")
 }
 
 func TestReplyFits(t *testing.T) {
@@ -257,9 +293,46 @@ func TestReplyFits(t *testing.T) {
 		t.Fatal("fixture is not over the cap")
 	}
 	err := fits(huge)
-	var ce *codeError
-	if !errors.As(err, &ce) || ce.code != CodeUnavailable {
-		t.Fatalf("got %v", err)
+	want := fmt.Sprintf("unavailable: reply is %d bytes, exceeds 1 MiB limit", proto.Size(huge))
+	if err == nil || err.Error() != want {
+		t.Fatalf("got %v, want %s", err, want)
+	}
+	page := &symv1.Reply{Result: &symv1.Reply_List{List: &symv1.SymbolList{Symbols: []*symv1.SymbolInfo{
+		{UniversalTicker: strings.Repeat("x", maxReplyBytes)},
+		{UniversalTicker: "Bybit_Spot_ETHUSDT"},
+	}}}}
+	if proto.Size(page) <= maxReplyBytes {
+		t.Fatal("page fixture is not over the cap")
+	}
+	err = fits(page)
+	want = fmt.Sprintf("unavailable: page of %d rows is %d bytes, exceeds 1 MiB limit; lower limit", len(page.GetList().GetSymbols()), proto.Size(page))
+	if err == nil || err.Error() != want {
+		t.Fatalf("got %v, want %s", err, want)
+	}
+}
+
+func TestErrorReasons(t *testing.T) {
+	err := readErr(context.Canceled, "get ticker Bybit_Spot_BTCUSDT", missed("ticker Bybit_Spot_BTCUSDT", false))
+	if err == nil || err.Error() != "unavailable: get ticker Bybit_Spot_BTCUSDT: context canceled" {
+		t.Fatalf("canceled: %v", err)
+	}
+	err = readErr(errors.New("SELECT secret FROM symbol_active"), "list Bybit/Spot", notFound("unused"))
+	if err == nil || err.Error() != "unavailable: list Bybit/Spot: database read failed" {
+		t.Fatalf("sql: %v", err)
+	}
+	err = statusUnavailable(symbol.Info{}, errors.New("sym: status"))
+	if err == nil || err.Error() != `unavailable: status "" cannot be encoded` {
+		t.Fatalf("status: %v", err)
+	}
+	if _, err := parseCategory(""); err == nil || err.Error() != `invalid: category "" is empty` {
+		t.Fatalf("category: %v", err)
+	}
+	if err := rejectVenue("by-bit"); err == nil || err.Error() != `invalid: venue "by-bit" is not canonical` {
+		t.Fatalf("venue: %v", err)
+	}
+	sv := NewService(&Store{}, nil, zerolog.Nop())
+	if _, err := sv.refresh(context.Background(), &symv1.RefreshRequest{Venue: "Bybit"}); err == nil || err.Error() != "unavailable: refresh is not served by this process" {
+		t.Fatalf("refresh: %v", err)
 	}
 }
 
@@ -419,18 +492,35 @@ func callSym(t *testing.T, c *natsx.Conn, req *symv1.Request) *symv1.Reply {
 	return &resp
 }
 
-func callSymErr(t *testing.T, c *natsx.Conn, req *symv1.Request, code string) {
+func callSymErr(t *testing.T, c *natsx.Conn, req *symv1.Request, want string) {
+	t.Helper()
+	msg := symErr(t, c, req)
+	if msg != want {
+		t.Fatalf("message %q, want %q", msg, want)
+	}
+}
+
+func callSymErrHas(t *testing.T, c *natsx.Conn, req *symv1.Request, code, detail string) {
+	t.Helper()
+	msg := symErr(t, c, req)
+	got, reason, ok := strings.Cut(msg, ": ")
+	if !ok || got != code || !strings.Contains(reason, detail) || reason == "" {
+		t.Fatalf("message %q, want %s mentioning %q", msg, code, detail)
+	}
+}
+
+func symErr(t *testing.T, c *natsx.Conn, req *symv1.Request) string {
 	t.Helper()
 	var resp symv1.Reply
 	err := c.Request(t.Context(), Subject, req, &resp)
 	var re *natsx.ReplyError
 	if !errors.As(err, &re) || re.Code != natsx.CodeHandler {
-		t.Fatalf("got %v, want %s", err, code)
+		t.Fatalf("got %v, want handler error", err)
 	}
-	got, _, _ := strings.Cut(re.Message, ": ")
-	if got != code {
-		t.Fatalf("message %q, want %s", re.Message, code)
+	if _, reason, ok := strings.Cut(re.Message, ": "); !ok || reason == "" {
+		t.Fatalf("message %q has no reason", re.Message)
 	}
+	return re.Message
 }
 
 func getReq(ticker string, inactive bool) *symv1.Request {
@@ -445,9 +535,9 @@ func uidReq(uid uint32, inactive bool) *symv1.Request {
 	}}}
 }
 
-func revReq(venue, category, exch string) *symv1.Request {
+func revReq(venue, category, exch string, inactive bool) *symv1.Request {
 	return &symv1.Request{Req: &symv1.Request_Reverse{Reverse: &symv1.ReverseRequest{
-		Venue: venue, Category: category, ExchTicker: exch,
+		Venue: venue, Category: category, ExchTicker: exch, IncludeInactive: inactive,
 	}}}
 }
 
@@ -469,9 +559,9 @@ func getByUID(t *testing.T, c *natsx.Conn, uid uint32, inactive bool) *symv1.Sym
 	return info
 }
 
-func reverse(t *testing.T, c *natsx.Conn, venue, category, exch string) *symv1.SymbolInfo {
+func reverse(t *testing.T, c *natsx.Conn, venue, category, exch string, inactive bool) *symv1.SymbolInfo {
 	t.Helper()
-	info := callSym(t, c, revReq(venue, category, exch)).GetInfo()
+	info := callSym(t, c, revReq(venue, category, exch, inactive)).GetInfo()
 	if info == nil {
 		t.Fatal("no info")
 	}

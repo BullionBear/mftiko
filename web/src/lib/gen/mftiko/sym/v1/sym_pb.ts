@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mftiko/sym/v1/sym.proto.
  */
 export const file_mftiko_sym_v1_sym: GenFile = /*@__PURE__*/
-  fileDesc("ChdtZnRpa28vc3ltL3YxL3N5bS5wcm90bxINbWZ0aWtvLnN5bS52MSKAAgoHUmVxdWVzdBIoCgNnZXQYASABKAsyGS5tZnRpa28uc3ltLnYxLkdldFJlcXVlc3RIABIqCgRsaXN0GAIgASgLMhoubWZ0aWtvLnN5bS52MS5MaXN0UmVxdWVzdEgAEjAKB3JldmVyc2UYAyABKAsyHS5tZnRpa28uc3ltLnYxLlJldmVyc2VSZXF1ZXN0SAASMAoHcmVmcmVzaBgEIAEoCzIdLm1mdGlrby5zeW0udjEuUmVmcmVzaFJlcXVlc3RIABI0CgpnZXRfYnlfdWlkGAUgASgLMh4ubWZ0aWtvLnN5bS52MS5HZXRCeVVpZFJlcXVlc3RIAEIFCgNyZXEiQAoKR2V0UmVxdWVzdBIYChB1bml2ZXJzYWxfdGlja2VyGAEgASgJEhgKEGluY2x1ZGVfaW5hY3RpdmUYAiABKAgiOAoPR2V0QnlVaWRSZXF1ZXN0EgsKA3VpZBgBIAEoDRIYChBpbmNsdWRlX2luYWN0aXZlGAIgASgIImcKC0xpc3RSZXF1ZXN0Eg0KBXZlbnVlGAEgASgJEhAKCGNhdGVnb3J5GAIgASgJEg0KBWxpbWl0GAMgASgNEg4KBm9mZnNldBgEIAEoDRIYChBpbmNsdWRlX2luYWN0aXZlGAUgASgIIkYKDlJldmVyc2VSZXF1ZXN0Eg0KBXZlbnVlGAEgASgJEhAKCGNhdGVnb3J5GAIgASgJEhMKC2V4Y2hfdGlja2VyGAMgASgJIh8KDlJlZnJlc2hSZXF1ZXN0Eg0KBXZlbnVlGAEgASgJIrcBCgVSZXBseRINCgVlcnJvchgBIAEoCRIOCgZyZWFzb24YAiABKAkSKQoEaW5mbxgKIAEoCzIZLm1mdGlrby5zeW0udjEuU3ltYm9sSW5mb0gAEikKBGxpc3QYCyABKAsyGS5tZnRpa28uc3ltLnYxLlN5bWJvbExpc3RIABIvCgdyZWZyZXNoGAwgASgLMhwubWZ0aWtvLnN5bS52MS5SZWZyZXNoUmVzdWx0SABCCAoGcmVzdWx0Iu0DCgpTeW1ib2xJbmZvEhgKEHVuaXZlcnNhbF90aWNrZXIYASABKAkSEwoLZXhjaF90aWNrZXIYAiABKAkSDAoEYmFzZRgDIAEoCRINCgVxdW90ZRgEIAEoCRIaCg1jb250cmFjdF9zaXplGAUgASgJSACIAQESEwoGc2V0dGxlGAYgASgJSAGIAQESEQoJZXhwaXJ5X25zGAcgASgDEhMKBnN0cmlrZRgIIAEoCUgCiAEBEhMKC29wdGlvbl90eXBlGAkgASgJEisKBnN0YXR1cxgKIAEoDjIbLm1mdGlrby5zeW0udjEuU3ltYm9sU3RhdHVzEjcKB2ZpbHRlcnMYCyADKAsyJi5tZnRpa28uc3ltLnYxLlN5bWJvbEluZm8uRmlsdGVyc0VudHJ5EhUKDXVwZGF0ZWRfYXRfbnMYDCABKAMSCwoDdWlkGA0gASgNEhoKEmNvbnRyYWN0X3ZhbHVlX2NjeRgOIAEoCRIRCglwcmljZV9jY3kYDyABKAkaRAoMRmlsdGVyc0VudHJ5EgsKA2tleRgBIAEoCRIjCgV2YWx1ZRgCIAEoCzIULm1mdGlrby5zeW0udjEuQm91bmQ6AjgBQhAKDl9jb250cmFjdF9zaXplQgkKB19zZXR0bGVCCQoHX3N0cmlrZSIlCgVCb3VuZBISCgV2YWx1ZRgBIAEoCUgAiAEBQggKBl92YWx1ZSJHCgpTeW1ib2xMaXN0EioKB3N5bWJvbHMYASADKAsyGS5tZnRpa28uc3ltLnYxLlN5bWJvbEluZm8SDQoFdG90YWwYAiABKA0i4gIKDVJlZnJlc2hSZXN1bHQSPgoJcmVmcmVzaGVkGAEgAygLMisubWZ0aWtvLnN5bS52MS5SZWZyZXNoUmVzdWx0LlJlZnJlc2hlZEVudHJ5EkIKC2RlYWN0aXZhdGVkGAIgAygLMi0ubWZ0aWtvLnN5bS52MS5SZWZyZXNoUmVzdWx0LkRlYWN0aXZhdGVkRW50cnkSOAoGZmFpbGVkGAMgAygLMigubWZ0aWtvLnN5bS52MS5SZWZyZXNoUmVzdWx0LkZhaWxlZEVudHJ5GjAKDlJlZnJlc2hlZEVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoDToCOAEaMgoQRGVhY3RpdmF0ZWRFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKA06AjgBGi0KC0ZhaWxlZEVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEq7wEKDFN5bWJvbFN0YXR1cxIdChlTWU1CT0xfU1RBVFVTX1VOU1BFQ0lGSUVEEAASHAoYU1lNQk9MX1NUQVRVU19QUkVMSVNUSU5HEAESGgoWU1lNQk9MX1NUQVRVU19UUkFEQUJMRRACEhgKFFNZTUJPTF9TVEFUVVNfSEFMVEVEEAMSGgoWU1lNQk9MX1NUQVRVU19TRVRUTElORxAEEhkKFVNZTUJPTF9TVEFUVVNfRVhQSVJFRBAFEhoKFlNZTUJPTF9TVEFUVVNfREVMSVNURUQQBhIZChVTWU1CT0xfU1RBVFVTX1VOS05PV04QB0JAWj5naXRodWIuY29tL0J1bGxpb25CZWFyL21mdGlrby9jb250cmFjdC9nZW4vbWZ0aWtvL3N5bS92MTtzeW12MWIGcHJvdG8z");
+  fileDesc("ChdtZnRpa28vc3ltL3YxL3N5bS5wcm90bxINbWZ0aWtvLnN5bS52MSKAAgoHUmVxdWVzdBIoCgNnZXQYASABKAsyGS5tZnRpa28uc3ltLnYxLkdldFJlcXVlc3RIABIqCgRsaXN0GAIgASgLMhoubWZ0aWtvLnN5bS52MS5MaXN0UmVxdWVzdEgAEjAKB3JldmVyc2UYAyABKAsyHS5tZnRpa28uc3ltLnYxLlJldmVyc2VSZXF1ZXN0SAASMAoHcmVmcmVzaBgEIAEoCzIdLm1mdGlrby5zeW0udjEuUmVmcmVzaFJlcXVlc3RIABI0CgpnZXRfYnlfdWlkGAUgASgLMh4ubWZ0aWtvLnN5bS52MS5HZXRCeVVpZFJlcXVlc3RIAEIFCgNyZXEiQAoKR2V0UmVxdWVzdBIYChB1bml2ZXJzYWxfdGlja2VyGAEgASgJEhgKEGluY2x1ZGVfaW5hY3RpdmUYAiABKAgiOAoPR2V0QnlVaWRSZXF1ZXN0EgsKA3VpZBgBIAEoDRIYChBpbmNsdWRlX2luYWN0aXZlGAIgASgIImcKC0xpc3RSZXF1ZXN0Eg0KBXZlbnVlGAEgASgJEhAKCGNhdGVnb3J5GAIgASgJEg0KBWxpbWl0GAMgASgNEg4KBm9mZnNldBgEIAEoDRIYChBpbmNsdWRlX2luYWN0aXZlGAUgASgIImAKDlJldmVyc2VSZXF1ZXN0Eg0KBXZlbnVlGAEgASgJEhAKCGNhdGVnb3J5GAIgASgJEhMKC2V4Y2hfdGlja2VyGAMgASgJEhgKEGluY2x1ZGVfaW5hY3RpdmUYBCABKAgiHwoOUmVmcmVzaFJlcXVlc3QSDQoFdmVudWUYASABKAkitwEKBVJlcGx5Eg0KBWVycm9yGAEgASgJEg4KBnJlYXNvbhgCIAEoCRIpCgRpbmZvGAogASgLMhkubWZ0aWtvLnN5bS52MS5TeW1ib2xJbmZvSAASKQoEbGlzdBgLIAEoCzIZLm1mdGlrby5zeW0udjEuU3ltYm9sTGlzdEgAEi8KB3JlZnJlc2gYDCABKAsyHC5tZnRpa28uc3ltLnYxLlJlZnJlc2hSZXN1bHRIAEIICgZyZXN1bHQi7QMKClN5bWJvbEluZm8SGAoQdW5pdmVyc2FsX3RpY2tlchgBIAEoCRITCgtleGNoX3RpY2tlchgCIAEoCRIMCgRiYXNlGAMgASgJEg0KBXF1b3RlGAQgASgJEhoKDWNvbnRyYWN0X3NpemUYBSABKAlIAIgBARITCgZzZXR0bGUYBiABKAlIAYgBARIRCglleHBpcnlfbnMYByABKAMSEwoGc3RyaWtlGAggASgJSAKIAQESEwoLb3B0aW9uX3R5cGUYCSABKAkSKwoGc3RhdHVzGAogASgOMhsubWZ0aWtvLnN5bS52MS5TeW1ib2xTdGF0dXMSNwoHZmlsdGVycxgLIAMoCzImLm1mdGlrby5zeW0udjEuU3ltYm9sSW5mby5GaWx0ZXJzRW50cnkSFQoNdXBkYXRlZF9hdF9ucxgMIAEoAxILCgN1aWQYDSABKA0SGgoSY29udHJhY3RfdmFsdWVfY2N5GA4gASgJEhEKCXByaWNlX2NjeRgPIAEoCRpECgxGaWx0ZXJzRW50cnkSCwoDa2V5GAEgASgJEiMKBXZhbHVlGAIgASgLMhQubWZ0aWtvLnN5bS52MS5Cb3VuZDoCOAFCEAoOX2NvbnRyYWN0X3NpemVCCQoHX3NldHRsZUIJCgdfc3RyaWtlIiUKBUJvdW5kEhIKBXZhbHVlGAEgASgJSACIAQFCCAoGX3ZhbHVlIkcKClN5bWJvbExpc3QSKgoHc3ltYm9scxgBIAMoCzIZLm1mdGlrby5zeW0udjEuU3ltYm9sSW5mbxINCgV0b3RhbBgCIAEoDSLiAgoNUmVmcmVzaFJlc3VsdBI+CglyZWZyZXNoZWQYASADKAsyKy5tZnRpa28uc3ltLnYxLlJlZnJlc2hSZXN1bHQuUmVmcmVzaGVkRW50cnkSQgoLZGVhY3RpdmF0ZWQYAiADKAsyLS5tZnRpa28uc3ltLnYxLlJlZnJlc2hSZXN1bHQuRGVhY3RpdmF0ZWRFbnRyeRI4CgZmYWlsZWQYAyADKAsyKC5tZnRpa28uc3ltLnYxLlJlZnJlc2hSZXN1bHQuRmFpbGVkRW50cnkaMAoOUmVmcmVzaGVkRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgNOgI4ARoyChBEZWFjdGl2YXRlZEVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoDToCOAEaLQoLRmFpbGVkRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASrvAQoMU3ltYm9sU3RhdHVzEh0KGVNZTUJPTF9TVEFUVVNfVU5TUEVDSUZJRUQQABIcChhTWU1CT0xfU1RBVFVTX1BSRUxJU1RJTkcQARIaChZTWU1CT0xfU1RBVFVTX1RSQURBQkxFEAISGAoUU1lNQk9MX1NUQVRVU19IQUxURUQQAxIaChZTWU1CT0xfU1RBVFVTX1NFVFRMSU5HEAQSGQoVU1lNQk9MX1NUQVRVU19FWFBJUkVEEAUSGgoWU1lNQk9MX1NUQVRVU19ERUxJU1RFRBAGEhkKFVNZTUJPTF9TVEFUVVNfVU5LTk9XThAHQkBaPmdpdGh1Yi5jb20vQnVsbGlvbkJlYXIvbWZ0aWtvL2NvbnRyYWN0L2dlbi9tZnRpa28vc3ltL3YxO3N5bXYxYgZwcm90bzM");
 
 /**
  * @generated from message mftiko.sym.v1.Request
@@ -91,7 +91,7 @@ export const GetRequestSchema: GenMessage<GetRequest> = /*@__PURE__*/
 
 /**
  * 系統內部的查詢（D203）。STS、TD、MD 持有 UID，用它拿這一列的欄位。
- * 預設只讀活躍表；include_inactive 才含終結表。0 不是合法 UID。
+ * 預設只讀活躍表；include_inactive 才含終結表。0 不是合法 UID，查詢是 not_found。
  *
  * @generated from message mftiko.sym.v1.GetByUidRequest
  */
@@ -120,9 +120,10 @@ export const GetByUidRequestSchema: GenMessage<GetByUidRequest> = /*@__PURE__*/
   messageDesc(file_mftiko_sym_v1_sym, 2);
 
 /**
- * One (venue, category) table, paged by offset and limit. A page stays under NATS's 1 MiB
- * with every filter. A row may move or appear between pages; that inconsistency is accepted
- * (D203, PROTOCOL §10 P13).
+ * One (venue, category) table, paged by offset and limit. limit 0 means 500; a limit above
+ * 500 is invalid, not clamped. A page whose protobuf reaches 1 MiB is unavailable, not a
+ * shorter page, so offset and limit stay what the caller sent. A row may move or appear
+ * between pages; that inconsistency is accepted (D203, PROTOCOL §10 P13).
  *
  * @generated from message mftiko.sym.v1.ListRequest
  */
@@ -138,7 +139,7 @@ export type ListRequest = Message<"mftiko.sym.v1.ListRequest"> & {
   category: string;
 
   /**
-   * at most 500
+   * 0 means 500; above 500 is invalid
    *
    * @generated from field: uint32 limit = 3;
    */
@@ -167,6 +168,9 @@ export const ListRequestSchema: GenMessage<ListRequest> = /*@__PURE__*/
 /**
  * The venue's spelling -> the listing. Callers keep SymbolInfo.uid (D203). Category is required:
  * on a unified-account venue the spelling alone is ambiguous (Bybit's spot and linear "BTCUSDT").
+ * include_inactive defaults to the active table. Set it to fall through to the terminal table
+ * when the active table has no match; the uid is the one stored on that row. When both tables
+ * match, the active row wins (a delist followed by a relist).
  *
  * @generated from message mftiko.sym.v1.ReverseRequest
  */
@@ -185,6 +189,13 @@ export type ReverseRequest = Message<"mftiko.sym.v1.ReverseRequest"> & {
    * @generated from field: string exch_ticker = 3;
    */
   exchTicker: string;
+
+  /**
+   * 同 GetRequest.include_inactive（D203）
+   *
+   * @generated from field: bool include_inactive = 4;
+   */
+  includeInactive: boolean;
 };
 
 /**
@@ -216,7 +227,8 @@ export const RefreshRequestSchema: GenMessage<RefreshRequest> = /*@__PURE__*/
 /**
  * A success is this message: result is set, and error and reason stay empty.
  * invalid, not_found and unavailable are not this message. They are a natsx
- * error reply (option A). The text is that word, then an optional ": " and a reason.
+ * error reply (option A). The text is that word, then ": " and a reason that
+ * names the field, the value, and why.
  *
  * @generated from message mftiko.sym.v1.Reply
  */
@@ -430,21 +442,21 @@ export const SymbolListSchema: GenMessage<SymbolList> = /*@__PURE__*/
  */
 export type RefreshResult = Message<"mftiko.sym.v1.RefreshResult"> & {
   /**
-   * venue -> instruments seen
+   * venue/category -> instruments seen
    *
    * @generated from field: map<string, uint32> refreshed = 1;
    */
   refreshed: { [key: string]: number };
 
   /**
-   * venue -> rows marked inactive
+   * venue/category -> rows marked inactive
    *
    * @generated from field: map<string, uint32> deactivated = 2;
    */
   deactivated: { [key: string]: number };
 
   /**
-   * venue -> reason, per category
+   * venue/category -> reason
    *
    * @generated from field: map<string, string> failed = 3;
    */

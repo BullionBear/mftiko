@@ -192,7 +192,9 @@ func (r *Resolver) GetByUID(ctx context.Context, uid uint32, includeInactive boo
 
 // Reverse resolves a venue spelling from the active table.
 // Bybit spot and linear share an ExchTicker and differ by category.
-func (r *Resolver) Reverse(ctx context.Context, key symbol.ExchKey) (*symbol.Info, error) {
+// includeInactive does not widen the result: this process keeps no terminal table.
+func (r *Resolver) Reverse(ctx context.Context, key symbol.ExchKey, includeInactive bool) (*symbol.Info, error) {
+	_ = includeInactive
 	snap, err := r.serve(ctx, key.Venue)
 	if err != nil {
 		return nil, err

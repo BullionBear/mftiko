@@ -27,7 +27,7 @@ message GetRequest {
 }
 
 // 系統內部的查詢（D203）。STS、TD、MD 持有 UID，用它拿這一列的欄位。
-// 預設只讀活躍表；include_inactive 才含終結表。0 不是合法 UID。
+// 預設只讀活躍表；include_inactive 才含終結表。0 不是合法 UID，查詢是 not_found。
 message GetByUidRequest {
   // 契約型別 uint32，範圍 1..4294967295（1..2^32-1），0 非法（PROTOCOL §10 P13）。
   // Postgres 欄位是 bigint，CHECK (uid BETWEEN 1 AND 4294967295)。
@@ -35,23 +35,28 @@ message GetByUidRequest {
   bool include_inactive = 2; // 同 GetRequest.include_inactive（D203）
 }
 
-// One (venue, category) table, paged by offset and limit. A page stays under NATS's 1 MiB
-// with every filter. A row may move or appear between pages; that inconsistency is accepted
-// (D203, PROTOCOL §10 P13).
+// One (venue, category) table, paged by offset and limit. limit 0 means 500; a limit above
+// 500 is invalid, not clamped. A page whose protobuf reaches 1 MiB is unavailable, not a
+// shorter page, so offset and limit stay what the caller sent. A row may move or appear
+// between pages; that inconsistency is accepted (D203, PROTOCOL §10 P13).
 message ListRequest {
   string venue = 1;
   string category = 2;
-  uint32 limit = 3; // at most 500
+  uint32 limit = 3; // 0 means 500; above 500 is invalid
   uint32 offset = 4;
   bool include_inactive = 5; // 同 GetRequest.include_inactive（D203）
 }
 
 // The venue's spelling -> the listing. Callers keep SymbolInfo.uid (D203). Category is required:
 // on a unified-account venue the spelling alone is ambiguous (Bybit's spot and linear "BTCUSDT").
+// include_inactive defaults to the active table. Set it to fall through to the terminal table
+// when the active table has no match; the uid is the one stored on that row. When both tables
+// match, the active row wins (a delist followed by a relist).
 message ReverseRequest {
   string venue = 1;
   string category = 2;
   string exch_ticker = 3;
+  bool include_inactive = 4; // 同 GetRequest.include_inactive（D203）
 }
 
 // Re-pull one venue's listings now, or every venue when venue is empty.
@@ -61,7 +66,8 @@ message RefreshRequest {
 
 // A success is this message: result is set, and error and reason stay empty.
 // invalid, not_found and unavailable are not this message. They are a natsx
-// error reply (option A). The text is that word, then an optional ": " and a reason.
+// error reply (option A). The text is that word, then ": " and a reason that
+// names the field, the value, and why.
 message Reply {
   string error = 1; // unused; business errors use the natsx error reply
   string reason = 2; // unused
@@ -127,7 +133,7 @@ message SymbolList {
 }
 
 message RefreshResult {
-  map<string, uint32> refreshed = 1;   // venue -> instruments seen
-  map<string, uint32> deactivated = 2; // venue -> rows marked inactive
-  map<string, string> failed = 3;      // venue -> reason, per category
+  map<string, uint32> refreshed = 1;   // venue/category -> instruments seen
+  map<string, uint32> deactivated = 2; // venue/category -> rows marked inactive
+  map<string, string> failed = 3;      // venue/category -> reason
 }
