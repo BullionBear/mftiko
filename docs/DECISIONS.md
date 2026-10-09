@@ -517,11 +517,16 @@ E3 開工前先定的介面、設計模式與技術棧。各交易所的實作�
   - 需要時間的地方（簽名）由呼叫者傳入 `now`。public 的請求不簽名，不帶 `now`。
   - 不採用注入 `Doer` 讓 adapter 自己送：`exchange` 是公開套件（D006），`Doer` 的形狀會把傳輸函式庫的型別帶進介面；而且 adapter 拿得到連線，就擋不住它自己重試。
   - 好處：測試只需要錄下來的 fixture，`Decode` 與 `Parse` 都能 fuzz；重試、重連、限速只在 worker；傳輸可以換，adapter 不動。代價：有狀態的流程要寫成顯式的步驟。
-- **技術棧：** WS 用 `github.com/coder/websocket`，REST 用 `github.com/valyala/fasthttp`，JSON 用 `github.com/bytedance/sonic`。三者都只出現在 worker 與 `exchange/transport/*`，`exchange` 的介面裡沒有它們的型別。
+- **技術棧：** WS 用 `github.com/lxzan/gws`，REST 用 `github.com/valyala/fasthttp`，JSON 用 `github.com/bytedance/sonic`。三者都只出現在 worker 與 `exchange/transport/*`，`exchange` 的介面裡沒有它們的型別。
   - sonic 每個 adapter 一份凍結的設定。它碰 runtime 內部，Go 每次升版都要先確認 sonic 跟上了。
   - fasthttp 沒有 context：以 ctx 的 deadline 呼叫 `DoDeadline`，送出後無法中途取消；`MaxIdemponentCallAttempts` 設 1，重試由 worker 決定。HTTP/1.1。
-  - coder/websocket 的讀取上限預設 32 KiB，每個 venue 依自己的訊息大小設 `SetReadLimit`；pong 只在有 `Read` 進行時處理，讀的 goroutine 不停。握手走 net/http，proxy、TLS、DNS 與 fasthttp 由同一份設定產生。
-- **緩衝區是 worker 的，借給 adapter。** WS 用 `Conn.Reader` 讀進每條連線自己的緩衝區，穩態零分配；交給 `Decode` 的 frame、交給 `Parse` 的 response 只在呼叫期間有效。sonic 不複製字串，解出來的字串可能指向緩衝區：Sink 收到的指標與其中的字串只在回呼期間有效，要留的自己複製。REST 的 `Parse` 一律以複製字串的設定解碼（fasthttp 會重用 response），不值得為它借用。conformance 驗證：回呼返回後把緩衝區塗掉，下游拿到的不變。數字是 float64（D008），不受這條影響。
+  - gws 是事件驅動的：`NewClient(handler, *ClientOption)` 連線，`ReadLoop` 擋住讀取並回呼 handler 的 `OnOpen`、`OnMessage`、`OnPing`、`OnPong`、`OnClose`。一條連線一個 `ReadLoop`，不和 `ReadMessage`、`NextReader` 混用。
+  - `ParallelEnabled` 必須是 false（預設）：同一條連線的訊息照順序交給 `Decode`，book 的序號判斷靠這個。
+  - 沒有 context：握手的逾時是 `HandshakeTimeout`（預設 5 秒），撥號由 `NewDialer` 提供；ctx 結束時由 worker 關閉連線，`ReadLoop` 隨之以 `OnClose` 返回。
+  - ping：`BuiltinEventHandler.OnPing` 回 pong；handler 自己實作 `OnPing` 時要自己呼叫 `WritePong`，否則交易所（例如 Binance）會斷線。應用層的心跳（OKX 的 `"ping"`、Bybit 的 `{"op":"ping"}`）仍是 codec 的事（`Session.Ping`）。
+  - 讀取上限 `ReadMaxPayloadSize` 預設 16 MiB，夠用；venue 需要時再設。permessage-deflate 預設關閉，venue 要求才開。
+  - gws 與 fasthttp 都不走 net/http：proxy（`NewDialer`）、TLS（`TlsConfig`）、DNS 由同一份設定產生，給兩者使用。
+- **緩衝區是 worker 的，借給 adapter。** WS 的 frame 是 gws 從池裡取出的 `Message.Data`：worker 在 `OnMessage` 裡把 `message.Bytes()` 交給 `Decode`，返回之後才 `message.Close()` 把緩衝區還回池，穩態零分配；交給 `Decode` 的 frame、交給 `Parse` 的 response 只在呼叫期間有效。sonic 不複製字串，解出來的字串可能指向緩衝區：Sink 收到的指標與其中的字串只在回呼期間有效，要留的自己複製。REST 的 `Parse` 一律以複製字串的設定解碼（fasthttp 會重用 response），不值得為它借用。conformance 驗證：回呼返回後把緩衝區塗掉，下游拿到的不變。數字是 float64（D008），不受這條影響。
 - **資料邊界：**
   - 商品：進去的是解析好的 `*symbol.Info`，出來的是 `symbol.ExchKey`（D202、D203），adapter 不碰 SYM。
   - 時間：`int64` 奈秒。adapter 只填交易所給的時間（`ExchTsNs`）；收到的時間由 worker 蓋。

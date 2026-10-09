@@ -38,12 +38,13 @@
 // sends what the adapter built and hands back what came in; a REST Call runs with Run or Collect over a
 // Doer. The time a request is signed at comes in as now.
 //
-// So the transport stays out of this package: websockets are github.com/coder/websocket and REST is
+// So the transport stays out of this package: websockets are github.com/lxzan/gws and REST is
 // github.com/valyala/fasthttp in the workers and in exchange/transport, and neither type appears in an
 // interface here. JSON is github.com/bytedance/sonic, with one frozen configuration per adapter.
 //
-// Buffers are the worker's and are lent (D302). A frame passed to Decode, and a response passed to
-// Parse, are valid until the call returns; anything decoded from them may point into them (sonic does
+// Buffers are the worker's and are lent (D302). A frame passed to Decode is a gws message's pooled
+// buffer, closed (returned to the pool) once Decode returns; a response passed to Parse is the
+// transport's. Both are valid until the call returns; anything decoded from them may point into them (sonic does
 // not copy strings), so what a Sink or a caller keeps it copies. A REST Parse decodes with copied
 // strings, because the transport reuses the response.
 //

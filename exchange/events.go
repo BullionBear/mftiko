@@ -4,8 +4,8 @@ package exchange
 // the conn worker maps it to the atom and from there to the feeds it publishes (mdctl.AtomAssignment).
 //
 // Pointers are valid only during the call, and so are ch and the strings in what they point to
-// (D302): the decoder reuses its structs, and a string may point into the frame, which the conn
-// worker reads the next message into once Decode returns. Copy what you keep (strings.Clone).
+// (D302): the decoder reuses its structs, and a string may point into the frame, a pooled buffer the
+// conn worker returns to the pool once Decode returns. Copy what you keep (strings.Clone).
 type Sink interface {
 	// Ack answers a Request. err is nil when the venue accepted it.
 	Ack(id uint64, err error)
