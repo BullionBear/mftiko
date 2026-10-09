@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
 
+	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	shimv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/shim/v1"
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
 	"github.com/BullionBear/mftiko/contract/wire/frame"
@@ -22,6 +23,8 @@ type proc interface {
 	Signal(sig syscall.Signal) error
 	// Done is closed once the worker has been reaped.
 	Done() <-chan struct{}
+	// Status is the worker's wait status, once Done is closed.
+	Status() syscall.WaitStatus
 }
 
 // Errors of the lifecycle requests (PROTOCOL §4.3). The server turns them into codes; ErrExited is the third.
@@ -83,6 +86,13 @@ type view struct {
 	exiting    bool // the worker sent Exiting: it is ending on its own, or on a Stop it already had
 	stopping   bool // a Stop's timers are running
 	sink       sink // where Beat, Report and the worker's Relay go; nil until set
+	exitingMsg *workerv1.Exiting
+	stoppedMsg *workerv1.Stopped
+	persist    func(*commonv1.ExitInfo) error // writes the exit file; nil for none
+	exit       *commonv1.ExitInfo             // set once recorded
+
+	followDone chan struct{} // closed when follow has read the worker's channel to its end
+	recorded   chan struct{} // closed once the worker's exit is recorded: ExitInfo composed, written, Exited appended
 
 	events *eventLog // what an agent reads back (PROTOCOL §4.4); its own lock
 }
@@ -97,6 +107,10 @@ type sink interface {
 // beatEvery is how often at most a Beat goes on to the agent (PROTOCOL §4.4).
 const beatEvery = time.Second
 
+// exitReadGrace bounds the wait, after the reap, for the rest of what the worker sent: its Exiting and Stopped may be
+// in the socket still. A worker that leaked fd 3 to a process that outlives it never gives an EOF.
+const exitReadGrace = time.Second
+
 func newView(log zerolog.Logger, w *Worker) *view {
 	return newViewOf(log, w, w.Pid, w.Pgid, w.StartTime, w.Conn)
 }
@@ -104,12 +118,70 @@ func newView(log zerolog.Logger, w *Worker) *view {
 // newViewOf is a view of p, which writes to the worker on conn.
 func newViewOf(log zerolog.Logger, p proc, pid, pgid int, startTime uint64, conn io.Writer) *view {
 	v := &view{log: log, p: p, pid: pid, pgid: pgid, startTime: startTime,
-		down: make(chan *workerv1.WorkerDown, downQueue), phase: shimv1.Phase_PHASE_NEW, events: newEventLog()}
+		down: make(chan *workerv1.WorkerDown, downQueue), phase: shimv1.Phase_PHASE_NEW, events: newEventLog(),
+		followDone: make(chan struct{}), recorded: make(chan struct{})}
 	v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Started{Started: &shimv1.Started{
 		Pid: int32(pid), Pgid: int32(pgid), StartTime: startTime,
 	}}})
 	go v.write(conn)
+	go v.record()
 	return v
+}
+
+// SetPersist sets what writes the exit file. Call it before the worker can end.
+func (v *view) SetPersist(f func(*commonv1.ExitInfo) error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.persist = f
+}
+
+// Recorded is closed once the worker's exit is recorded (PROTOCOL §4.5 S3): its ExitInfo composed and written to the
+// exit file, and Exited appended to the events, after everything else the worker sent.
+func (v *view) Recorded() <-chan struct{} { return v.recorded }
+
+// Exit is the worker's ExitInfo, nil until recorded.
+func (v *view) Exit() *commonv1.ExitInfo {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.exit
+}
+
+// record waits for the reap, then for the rest of the worker's messages, and records how it ended.
+func (v *view) record() {
+	<-v.p.Done()
+	t := time.NewTimer(exitReadGrace)
+	select {
+	case <-v.followDone:
+		t.Stop()
+	case <-t.C:
+		v.log.Warn().Dur("after", exitReadGrace).Msg("worker channel still open after the reap: something the worker started holds fd 3")
+	}
+	v.mu.Lock()
+	info := composeExit(v.exitingMsg, v.stoppedMsg, v.p.Status(), time.Now())
+	persist := v.persist
+	v.mu.Unlock()
+	if persist != nil {
+		if err := persist(info); err != nil { // the Exited event still says it
+			v.log.Error().Err(err).Msg("exit file not written")
+		}
+	}
+	v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Exited{Exited: &shimv1.Exited{Exit: info}}})
+	v.mu.Lock()
+	v.exit = info
+	v.mu.Unlock()
+	close(v.recorded)
+	v.log.Info().Str("outcome", info.GetOutcome().String()).Int32("code", info.GetCode()).Int32("signal", info.GetSignal()).
+		Str("reason", info.GetReason()).Bool("on_stop_completed", info.GetOnStopCompleted()).Msg("exit recorded")
+}
+
+// isRecorded reports whether the worker's exit has been recorded.
+func (v *view) isRecorded() bool {
+	select {
+	case <-v.recorded:
+		return true
+	default:
+		return false
+	}
 }
 
 // Events is the log of what the worker said.
@@ -160,7 +232,7 @@ func (v *view) Attached() *shimv1.Attached {
 	v.mu.Unlock()
 	a.OldestSeq, a.NextSeq = v.events.Bounds()
 	switch {
-	case v.exited():
+	case v.isRecorded(): // not merely reaped: Exited is in the events, and Release is accepted
 		a.State = shimv1.WorkerState_WORKER_STATE_EXITED
 	case a.Hello != nil:
 		a.State = shimv1.WorkerState_WORKER_STATE_RUNNING
@@ -271,9 +343,10 @@ func (v *view) escalate(grace, killAfter time.Duration) {
 	}
 }
 
-// Release is accepted only once the worker has been reaped (PROTOCOL §4.3).
+// Release is accepted only once the worker's exit has been recorded (PROTOCOL §4.3, §4.5 S3): reaped, and its exit
+// file written.
 func (v *view) Release() error {
-	if !v.exited() {
+	if !v.isRecorded() {
 		return ErrRunning
 	}
 	return nil
@@ -310,6 +383,7 @@ func (v *view) write(conn io.Writer) {
 // back, and passes on the rest: the latest Report, a Beat a second, and the worker's Relay, which gets Undeliverable
 // when there is no controller to take it.
 func (v *view) follow(conn io.Reader) {
+	defer close(v.followDone)
 	r := newFrameReader(conn)
 	var lastBeat time.Time
 	for {
@@ -336,6 +410,13 @@ func (v *view) follow(conn io.Reader) {
 		case *workerv1.WorkerUp_Exiting:
 			v.exiting = true
 			v.phase = shimv1.Phase_PHASE_STOPPING
+			if v.exitingMsg == nil { // the first one counts
+				v.exitingMsg = m.Exiting
+			}
+		case *workerv1.WorkerUp_Stopped:
+			if v.stoppedMsg == nil {
+				v.stoppedMsg = m.Stopped
+			}
 		}
 		out := v.sink
 		v.mu.Unlock()

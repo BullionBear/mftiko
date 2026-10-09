@@ -1,6 +1,7 @@
 package shim
 
 import (
+	"errors"
 	"os"
 	"os/signal"
 	"syscall"
@@ -8,6 +9,10 @@ import (
 
 	"github.com/rs/zerolog"
 	"golang.org/x/sys/unix"
+	"google.golang.org/protobuf/proto"
+
+	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
+	shimv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/shim/v1"
 )
 
 // Run is the shim process (cmd/mftiko-shim): it becomes a session leader and subreaper, reads its Launch from
@@ -15,14 +20,14 @@ import (
 // exit code.
 //
 // Of C3 it does Attach, fencing and Signal (E1-09), and the lifecycle (E1-11): Init, Start and Relay go to the
-// worker, Stop is timed here, Release ends the shim once the worker has been reaped. What the worker says is kept
-// for an agent that is away and replayed from where it asks, until it acknowledges it (E1-12). There is no exit file
-// yet (E1-13). The worker's stdout and stderr go
-// to rotated files under ${WORK_DIR}/log/{plane} (E1-14).
+// worker, Stop is timed here, Release ends the shim once the worker's exit is recorded. What the worker says is kept
+// for an agent that is away and replayed from where it asks, until it acknowledges it (E1-12). How the worker ended is
+// recorded in an exit file next to the socket and as the event Exited; the file stays until Release (E1-13). The
+// worker's stdout and stderr go to rotated files under ${WORK_DIR}/log/{plane} (E1-14).
 //
 // SIGTERM or SIGINT stops the worker as a Stop would, with shutdownGrace and shutdownKillAfter, and the shim ends
-// once the worker has been reaped; one that comes after the worker is gone ends the shim at once. Either way it
-// removes its socket, and once the worker is reaped it writes out the last of its output first.
+// once the worker's exit is recorded, leaving the exit file for the next agent. It removes its socket either way, and
+// writes out the last of the worker's output first.
 func Run(log zerolog.Logger) int {
 	// stderr is the agent's to connect, and may be a pipe whose reader is gone: a log line must then fail, not kill
 	// the shim. A handled signal, unlike an ignored one, goes back to its default in the worker.
@@ -60,6 +65,13 @@ func Run(log zerolog.Logger) int {
 	}
 	defer ln.Close() // removes the socket
 	log.Info().Str("socket", ln.Addr().String()).Msg("listening")
+	// Only now, with the socket held, is this the one shim of the worker key: an earlier incarnation's exit file is
+	// for the agent to collect, and spawning would end up overwriting it.
+	if err := checkNoExitFile(l); err != nil {
+		log.Error().Err(err).Msg("exit file in the way")
+		return 1
+	}
+	exitPath := ExitPath(l.GetWorkDir(), l.GetPlane(), l.GetWorker().GetKey())
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
@@ -103,37 +115,43 @@ func Run(log zerolog.Logger) int {
 	}()
 
 	v := newView(log, w)
+	v.SetPersist(func(info *commonv1.ExitInfo) error {
+		return writeExitFile(exitPath, &shimv1.ExitRecord{Worker: proto.CloneOf(l.GetWorker()), SpecHash: l.GetSpecHash(),
+			Pid: int32(w.Pid), StartTime: w.StartTime, Exit: info})
+	})
 	go v.follow(w.Conn)
 	srv := newServer(log, ln, l, v, os.Geteuid())
 	v.SetSink(srv)
 	srv.start()
-	done, stopping := w.Done(), false
+	done, recorded, stopping := w.Done(), v.Recorded(), false
 	for {
 		select {
 		case <-done:
 			st := w.Status()
 			log.Info().Int("pid", w.Pid).Int("code", st.ExitStatus()).Int("signal", signalOf(st)).Msg("worker exited")
 			done = nil // seen; grandchildren are still reaped
-			if stopping {
-				log.Info().Msg("shim stopping: the worker is gone")
-				srv.close()
-				return 0
-			}
+		case <-recorded:
+			recorded = nil
 		case s := <-stop:
-			if done == nil {
-				log.Info().Str("signal", s.String()).Msg("shim stopping")
-				srv.close()
-				return 0
-			}
-			// Not before the worker: it gets a Stop, runs its OnStop, and the shim ends when it is reaped (§4.3).
 			stopping = true
-			if first, _ := v.Stop("shim: "+s.String(), shutdownGrace, shutdownKillAfter); first {
+			switch first, err := v.Stop("shim: "+s.String(), shutdownGrace, shutdownKillAfter); {
+			case errors.Is(err, ErrExited): // reaped: the shim goes once the exit is recorded
+				log.Info().Str("signal", s.String()).Msg("shim stopping")
+			case first: // not before the worker: it gets a Stop, runs its OnStop, and is reaped (§4.3)
 				log.Info().Str("signal", s.String()).Msg("shim stopping: stopping the worker first")
-			} else {
+			default:
 				log.Info().Str("signal", s.String()).Msg("shim stopping: the worker is already stopping")
 			}
 		case <-srv.Released():
 			log.Info().Msg("shim released")
+			if err := os.Remove(exitPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+				log.Error().Err(err).Msg("remove exit file")
+			}
+			srv.close()
+			return 0
+		}
+		if stopping && recorded == nil { // the exit file stays: no agent released it, and the next one reads it (S3)
+			log.Info().Msg("shim stopping: the worker is gone")
 			srv.close()
 			return 0
 		}

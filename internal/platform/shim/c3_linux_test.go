@@ -61,9 +61,7 @@ func TestC3SignalWithoutCommonMajor(t *testing.T) {
 	p.waitLog("worker exited", map[string]any{"code": float64(fakeworker.CodeDone)})
 	waitGone(t, pid)
 
-	if st := a.attach(1, Major+1).GetAttached().GetState(); st != shimv1.WorkerState_WORKER_STATE_EXITED {
-		t.Errorf("state %v after the worker exited", st)
-	}
+	a.waitExited(1, Major+1) // once its exit is recorded
 	wantErr(t, a.signal(syscall.SIGKILL), CodeExited)
 }
 

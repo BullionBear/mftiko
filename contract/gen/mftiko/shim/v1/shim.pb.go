@@ -1484,6 +1484,83 @@ func (x *Exited) GetExit() *v1.ExitInfo {
 	return nil
 }
 
+// 結束檔 run/{plane}/{h}.exit.pb 的內容（§4.5 S3）：worker 被 reap、ExitInfo 合成之後寫入，Release 時刪除。
+type ExitRecord struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Worker        *v1.WorkerRef          `protobuf:"bytes,1,opt,name=worker,proto3" json:"worker,omitempty"` // 哪一個 incarnation
+	SpecHash      string                 `protobuf:"bytes,2,opt,name=spec_hash,json=specHash,proto3" json:"spec_hash,omitempty"`
+	Pid           int32                  `protobuf:"varint,3,opt,name=pid,proto3" json:"pid,omitempty"`
+	StartTime     uint64                 `protobuf:"varint,4,opt,name=start_time,json=startTime,proto3" json:"start_time,omitempty"`
+	Exit          *v1.ExitInfo           `protobuf:"bytes,5,opt,name=exit,proto3" json:"exit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExitRecord) Reset() {
+	*x = ExitRecord{}
+	mi := &file_mftiko_shim_v1_shim_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExitRecord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExitRecord) ProtoMessage() {}
+
+func (x *ExitRecord) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_shim_v1_shim_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExitRecord.ProtoReflect.Descriptor instead.
+func (*ExitRecord) Descriptor() ([]byte, []int) {
+	return file_mftiko_shim_v1_shim_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ExitRecord) GetWorker() *v1.WorkerRef {
+	if x != nil {
+		return x.Worker
+	}
+	return nil
+}
+
+func (x *ExitRecord) GetSpecHash() string {
+	if x != nil {
+		return x.SpecHash
+	}
+	return ""
+}
+
+func (x *ExitRecord) GetPid() int32 {
+	if x != nil {
+		return x.Pid
+	}
+	return 0
+}
+
+func (x *ExitRecord) GetStartTime() uint64 {
+	if x != nil {
+		return x.StartTime
+	}
+	return 0
+}
+
+func (x *ExitRecord) GetExit() *v1.ExitInfo {
+	if x != nil {
+		return x.Exit
+	}
+	return nil
+}
+
 type Preempted struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ByEpoch       int64                  `protobuf:"varint,1,opt,name=by_epoch,json=byEpoch,proto3" json:"by_epoch,omitempty"`
@@ -1493,7 +1570,7 @@ type Preempted struct {
 
 func (x *Preempted) Reset() {
 	*x = Preempted{}
-	mi := &file_mftiko_shim_v1_shim_proto_msgTypes[15]
+	mi := &file_mftiko_shim_v1_shim_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1505,7 +1582,7 @@ func (x *Preempted) String() string {
 func (*Preempted) ProtoMessage() {}
 
 func (x *Preempted) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_shim_v1_shim_proto_msgTypes[15]
+	mi := &file_mftiko_shim_v1_shim_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1518,7 +1595,7 @@ func (x *Preempted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Preempted.ProtoReflect.Descriptor instead.
 func (*Preempted) Descriptor() ([]byte, []int) {
-	return file_mftiko_shim_v1_shim_proto_rawDescGZIP(), []int{15}
+	return file_mftiko_shim_v1_shim_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Preempted) GetByEpoch() int64 {
@@ -1635,7 +1712,15 @@ const file_mftiko_shim_v1_shim_proto_rawDesc = "" +
 	"\n" +
 	"start_time\x18\x03 \x01(\x04R\tstartTime\"8\n" +
 	"\x06Exited\x12.\n" +
-	"\x04exit\x18\x01 \x01(\v2\x1a.mftiko.common.v1.ExitInfoR\x04exit\"&\n" +
+	"\x04exit\x18\x01 \x01(\v2\x1a.mftiko.common.v1.ExitInfoR\x04exit\"\xbf\x01\n" +
+	"\n" +
+	"ExitRecord\x123\n" +
+	"\x06worker\x18\x01 \x01(\v2\x1b.mftiko.common.v1.WorkerRefR\x06worker\x12\x1b\n" +
+	"\tspec_hash\x18\x02 \x01(\tR\bspecHash\x12\x10\n" +
+	"\x03pid\x18\x03 \x01(\x05R\x03pid\x12\x1d\n" +
+	"\n" +
+	"start_time\x18\x04 \x01(\x04R\tstartTime\x12.\n" +
+	"\x04exit\x18\x05 \x01(\v2\x1a.mftiko.common.v1.ExitInfoR\x04exit\"&\n" +
 	"\tPreempted\x12\x19\n" +
 	"\bby_epoch\x18\x01 \x01(\x03R\abyEpoch*\x97\x01\n" +
 	"\x05Phase\x12\x15\n" +
@@ -1665,7 +1750,7 @@ func file_mftiko_shim_v1_shim_proto_rawDescGZIP() []byte {
 }
 
 var file_mftiko_shim_v1_shim_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_mftiko_shim_v1_shim_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_mftiko_shim_v1_shim_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_mftiko_shim_v1_shim_proto_goTypes = []any{
 	(Phase)(0),           // 0: mftiko.shim.v1.Phase
 	(WorkerState)(0),     // 1: mftiko.shim.v1.WorkerState
@@ -1684,58 +1769,61 @@ var file_mftiko_shim_v1_shim_proto_goTypes = []any{
 	(*Event)(nil),        // 14: mftiko.shim.v1.Event
 	(*Started)(nil),      // 15: mftiko.shim.v1.Started
 	(*Exited)(nil),       // 16: mftiko.shim.v1.Exited
-	(*Preempted)(nil),    // 17: mftiko.shim.v1.Preempted
-	(*v1.WorkerRef)(nil), // 18: mftiko.common.v1.WorkerRef
-	(*v11.Init)(nil),     // 19: mftiko.worker.v1.Init
-	(*v11.Start)(nil),    // 20: mftiko.worker.v1.Start
-	(*v11.Relay)(nil),    // 21: mftiko.worker.v1.Relay
-	(*v1.Error)(nil),     // 22: mftiko.common.v1.Error
-	(*v11.Hello)(nil),    // 23: mftiko.worker.v1.Hello
-	(*v11.Done)(nil),     // 24: mftiko.worker.v1.Done
-	(*v11.Stage)(nil),    // 25: mftiko.worker.v1.Stage
-	(*v11.Beat)(nil),     // 26: mftiko.worker.v1.Beat
-	(*v11.Report)(nil),   // 27: mftiko.worker.v1.Report
-	(*v11.Exiting)(nil),  // 28: mftiko.worker.v1.Exiting
-	(*v11.Stopped)(nil),  // 29: mftiko.worker.v1.Stopped
-	(*v1.ExitInfo)(nil),  // 30: mftiko.common.v1.ExitInfo
+	(*ExitRecord)(nil),   // 17: mftiko.shim.v1.ExitRecord
+	(*Preempted)(nil),    // 18: mftiko.shim.v1.Preempted
+	(*v1.WorkerRef)(nil), // 19: mftiko.common.v1.WorkerRef
+	(*v11.Init)(nil),     // 20: mftiko.worker.v1.Init
+	(*v11.Start)(nil),    // 21: mftiko.worker.v1.Start
+	(*v11.Relay)(nil),    // 22: mftiko.worker.v1.Relay
+	(*v1.Error)(nil),     // 23: mftiko.common.v1.Error
+	(*v11.Hello)(nil),    // 24: mftiko.worker.v1.Hello
+	(*v11.Done)(nil),     // 25: mftiko.worker.v1.Done
+	(*v11.Stage)(nil),    // 26: mftiko.worker.v1.Stage
+	(*v11.Beat)(nil),     // 27: mftiko.worker.v1.Beat
+	(*v11.Report)(nil),   // 28: mftiko.worker.v1.Report
+	(*v11.Exiting)(nil),  // 29: mftiko.worker.v1.Exiting
+	(*v11.Stopped)(nil),  // 30: mftiko.worker.v1.Stopped
+	(*v1.ExitInfo)(nil),  // 31: mftiko.common.v1.ExitInfo
 }
 var file_mftiko_shim_v1_shim_proto_depIdxs = []int32{
-	18, // 0: mftiko.shim.v1.Launch.worker:type_name -> mftiko.common.v1.WorkerRef
+	19, // 0: mftiko.shim.v1.Launch.worker:type_name -> mftiko.common.v1.WorkerRef
 	3,  // 1: mftiko.shim.v1.Launch.cred:type_name -> mftiko.shim.v1.Credential
 	4,  // 2: mftiko.shim.v1.Launch.output:type_name -> mftiko.shim.v1.Output
 	6,  // 3: mftiko.shim.v1.ShimRequest.attach:type_name -> mftiko.shim.v1.Attach
 	7,  // 4: mftiko.shim.v1.ShimRequest.ack:type_name -> mftiko.shim.v1.Ack
 	8,  // 5: mftiko.shim.v1.ShimRequest.signal:type_name -> mftiko.shim.v1.Signal
-	19, // 6: mftiko.shim.v1.ShimRequest.init:type_name -> mftiko.worker.v1.Init
-	20, // 7: mftiko.shim.v1.ShimRequest.start:type_name -> mftiko.worker.v1.Start
+	20, // 6: mftiko.shim.v1.ShimRequest.init:type_name -> mftiko.worker.v1.Init
+	21, // 7: mftiko.shim.v1.ShimRequest.start:type_name -> mftiko.worker.v1.Start
 	9,  // 8: mftiko.shim.v1.ShimRequest.stop:type_name -> mftiko.shim.v1.Stop
-	21, // 9: mftiko.shim.v1.ShimRequest.relay:type_name -> mftiko.worker.v1.Relay
+	22, // 9: mftiko.shim.v1.ShimRequest.relay:type_name -> mftiko.worker.v1.Relay
 	10, // 10: mftiko.shim.v1.ShimRequest.release:type_name -> mftiko.shim.v1.Release
 	12, // 11: mftiko.shim.v1.ShimMessage.response:type_name -> mftiko.shim.v1.Response
 	14, // 12: mftiko.shim.v1.ShimMessage.event:type_name -> mftiko.shim.v1.Event
-	17, // 13: mftiko.shim.v1.ShimMessage.preempted:type_name -> mftiko.shim.v1.Preempted
-	22, // 14: mftiko.shim.v1.Response.error:type_name -> mftiko.common.v1.Error
+	18, // 13: mftiko.shim.v1.ShimMessage.preempted:type_name -> mftiko.shim.v1.Preempted
+	23, // 14: mftiko.shim.v1.Response.error:type_name -> mftiko.common.v1.Error
 	13, // 15: mftiko.shim.v1.Response.attached:type_name -> mftiko.shim.v1.Attached
-	18, // 16: mftiko.shim.v1.Attached.worker:type_name -> mftiko.common.v1.WorkerRef
+	19, // 16: mftiko.shim.v1.Attached.worker:type_name -> mftiko.common.v1.WorkerRef
 	1,  // 17: mftiko.shim.v1.Attached.state:type_name -> mftiko.shim.v1.WorkerState
-	23, // 18: mftiko.shim.v1.Attached.hello:type_name -> mftiko.worker.v1.Hello
+	24, // 18: mftiko.shim.v1.Attached.hello:type_name -> mftiko.worker.v1.Hello
 	0,  // 19: mftiko.shim.v1.Attached.phase:type_name -> mftiko.shim.v1.Phase
 	15, // 20: mftiko.shim.v1.Event.started:type_name -> mftiko.shim.v1.Started
-	23, // 21: mftiko.shim.v1.Event.hello:type_name -> mftiko.worker.v1.Hello
-	24, // 22: mftiko.shim.v1.Event.done:type_name -> mftiko.worker.v1.Done
-	25, // 23: mftiko.shim.v1.Event.stage:type_name -> mftiko.worker.v1.Stage
-	26, // 24: mftiko.shim.v1.Event.beat:type_name -> mftiko.worker.v1.Beat
-	27, // 25: mftiko.shim.v1.Event.report:type_name -> mftiko.worker.v1.Report
-	21, // 26: mftiko.shim.v1.Event.relay:type_name -> mftiko.worker.v1.Relay
-	28, // 27: mftiko.shim.v1.Event.exiting:type_name -> mftiko.worker.v1.Exiting
-	29, // 28: mftiko.shim.v1.Event.stopped:type_name -> mftiko.worker.v1.Stopped
+	24, // 21: mftiko.shim.v1.Event.hello:type_name -> mftiko.worker.v1.Hello
+	25, // 22: mftiko.shim.v1.Event.done:type_name -> mftiko.worker.v1.Done
+	26, // 23: mftiko.shim.v1.Event.stage:type_name -> mftiko.worker.v1.Stage
+	27, // 24: mftiko.shim.v1.Event.beat:type_name -> mftiko.worker.v1.Beat
+	28, // 25: mftiko.shim.v1.Event.report:type_name -> mftiko.worker.v1.Report
+	22, // 26: mftiko.shim.v1.Event.relay:type_name -> mftiko.worker.v1.Relay
+	29, // 27: mftiko.shim.v1.Event.exiting:type_name -> mftiko.worker.v1.Exiting
+	30, // 28: mftiko.shim.v1.Event.stopped:type_name -> mftiko.worker.v1.Stopped
 	16, // 29: mftiko.shim.v1.Event.exited:type_name -> mftiko.shim.v1.Exited
-	30, // 30: mftiko.shim.v1.Exited.exit:type_name -> mftiko.common.v1.ExitInfo
-	31, // [31:31] is the sub-list for method output_type
-	31, // [31:31] is the sub-list for method input_type
-	31, // [31:31] is the sub-list for extension type_name
-	31, // [31:31] is the sub-list for extension extendee
-	0,  // [0:31] is the sub-list for field type_name
+	31, // 30: mftiko.shim.v1.Exited.exit:type_name -> mftiko.common.v1.ExitInfo
+	19, // 31: mftiko.shim.v1.ExitRecord.worker:type_name -> mftiko.common.v1.WorkerRef
+	31, // 32: mftiko.shim.v1.ExitRecord.exit:type_name -> mftiko.common.v1.ExitInfo
+	33, // [33:33] is the sub-list for method output_type
+	33, // [33:33] is the sub-list for method input_type
+	33, // [33:33] is the sub-list for extension type_name
+	33, // [33:33] is the sub-list for extension extendee
+	0,  // [0:33] is the sub-list for field type_name
 }
 
 func init() { file_mftiko_shim_v1_shim_proto_init() }
@@ -1776,7 +1864,7 @@ func file_mftiko_shim_v1_shim_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mftiko_shim_v1_shim_proto_rawDesc), len(file_mftiko_shim_v1_shim_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   16,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

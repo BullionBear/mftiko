@@ -52,6 +52,16 @@ func (p *fakeProc) Signal(sig syscall.Signal) error {
 
 func (p *fakeProc) Done() <-chan struct{} { return p.done }
 
+// Status is exit 0, or the signal that ended it.
+func (p *fakeProc) Status() syscall.WaitStatus {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.exitOn != 0 && len(p.sent) > 0 && p.sent[len(p.sent)-1].sig == p.exitOn {
+		return syscall.WaitStatus(p.exitOn) // the low 7 bits are the signal
+	}
+	return 0
+}
+
 func (p *fakeProc) exit() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -309,6 +319,10 @@ func TestViewExited(t *testing.T) {
 	if _, err := v.Stop("x", 0, 0); !errors.Is(err, ErrExited) {
 		t.Errorf("stop: %v", err)
 	}
+	if !errors.Is(v.Release(), ErrRunning) && !v.isRecorded() {
+		t.Error("release accepted before the exit was recorded")
+	}
+	<-v.Recorded()
 	if err := v.Release(); err != nil {
 		t.Errorf("release: %v", err)
 	}
