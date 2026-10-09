@@ -124,6 +124,8 @@ func TestEd25519RFC8032(t *testing.T) {
 // documented inputs:
 //
 //	printf '%s' "$prehash" | openssl dgst -sha256 -hmac "$secret" -binary | base64
+//
+// They are accepted as the reference until the OKX adapter's tests check signing against recorded fixtures.
 func TestOKXHMAC(t *testing.T) {
 	s := signer(t, exchange.KeyHMAC, "22582BD0CFF14C41EDBF1AB98506286D")
 	for _, c := range []struct{ prehash, sig string }{
@@ -143,6 +145,8 @@ func TestOKXHMAC(t *testing.T) {
 // values are openssl's on the documented payloads, with that placeholder as the secret:
 //
 //	printf '%s' "$payload" | openssl dgst -sha256 -hmac XXXXXXXXXX
+//
+// They are accepted as the reference until the Bybit adapter's tests check signing against recorded fixtures.
 func TestBybitHMAC(t *testing.T) {
 	s := signer(t, exchange.KeyHMAC, "XXXXXXXXXX")
 	for _, c := range []struct{ payload, sig string }{
