@@ -62,9 +62,10 @@ func (c *Conn) PublishMsg(m Msg) error {
 	return nil
 }
 
-// Subscribe delivers each message on subject to fn, one at a time, on the connection's read
-// goroutine. fn must return promptly: while it runs, no other callback on this connection runs.
-// queue, when not empty, is the queue group, and the server hands each message to one member.
+// Subscribe delivers each message on subject to fn, one at a time. The client runs each
+// subscription on its own goroutine, so a slow fn stalls only this subscription. queue, when
+// not empty, is the queue group, and the server hands each message to one member. An empty
+// queue delivers every message to every subscriber.
 //
 // Subscribe returns only after the server has registered the interest. The interest is removed
 // when ctx is cancelled. A cancelled ctx does not subscribe.

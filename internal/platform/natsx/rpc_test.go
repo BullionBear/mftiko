@@ -75,6 +75,40 @@ func TestRequestTimeout(t *testing.T) {
 	}
 }
 
+func TestServeDefaultsToOneReply(t *testing.T) {
+	s, _ := start(t)
+	const n = 16
+	hits := make(chan struct{}, n*2)
+	for range 2 {
+		srv := dial(t, s.URL(), natsx.Options{})
+		if _, err := srv.Serve(t.Context(), "one", "",
+			func() proto.Message { return &wrapperspb.StringValue{} },
+			func(context.Context, proto.Message) (proto.Message, error) {
+				hits <- struct{}{}
+				return &wrapperspb.StringValue{Value: "ok"}, nil
+			},
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	asker := dial(t, s.URL(), natsx.Options{})
+	for range n {
+		var out wrapperspb.StringValue
+		if err := asker.Request(t.Context(), "one", &wrapperspb.StringValue{}, &out); err != nil {
+			t.Fatal(err)
+		}
+		if out.GetValue() != "ok" {
+			t.Fatalf("reply %q", out.GetValue())
+		}
+		await(t, hits)
+	}
+	select {
+	case <-hits:
+		t.Fatal("a second server also answered")
+	default:
+	}
+}
+
 func TestNoResponders(t *testing.T) {
 	_, c := start(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)

@@ -2,10 +2,13 @@ package natsx_test
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/BullionBear/mftiko/internal/platform/natsx"
+	"github.com/BullionBear/mftiko/internal/platform/natsx/natsxtest"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
@@ -17,15 +20,8 @@ func TestConnectRejectsBadOptions(t *testing.T) {
 		want string
 	}{
 		{name: "empty url", want: "empty url"},
-		{name: "jwt only", url: "nats://127.0.0.1:1", opt: natsx.Options{UserJWT: "x"}, want: "both be set"},
-		{name: "seed only", url: "nats://127.0.0.1:1", opt: natsx.Options{NKeySeed: "x"}, want: "both be set"},
-		{
-			name: "creds and jwt",
-			url:  "nats://127.0.0.1:1",
-			opt:  natsx.Options{CredsFile: "x.creds", UserJWT: "j", NKeySeed: "s"},
-			want: "mutually exclusive",
-		},
-		{name: "negative timeout", url: "nats://127.0.0.1:1", opt: natsx.Options{RequestTimeout: -1}, want: "negative"},
+		{name: "negative request timeout", url: "nats://127.0.0.1:1", opt: natsx.Options{RequestTimeout: -1}, want: "negative"},
+		{name: "negative connect timeout", url: "nats://127.0.0.1:1", opt: natsx.Options{ConnectTimeout: -1}, want: "negative"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -37,35 +33,55 @@ func TestConnectRejectsBadOptions(t *testing.T) {
 	}
 }
 
-func TestConnectRejectsBadInboxPrefix(t *testing.T) {
-	s, _ := start(t)
-	for _, prefix := range []string{"bad.", "bad*", "bad>"} {
-		_, err := natsx.Connect(s.URL(), natsx.Options{InboxPrefix: prefix})
-		if err == nil || !strings.Contains(err.Error(), "prefix") {
-			t.Fatalf("prefix %q: %v", prefix, err)
-		}
-	}
+// logCapture records slog messages. Handle does not block: the client's callback dispatcher
+// must be able to return while the test is still reading.
+type logCapture struct {
+	ch chan string
 }
 
-func TestInboxPrefixIsOnTheReply(t *testing.T) {
-	s, _ := start(t)
-	const prefix = "_INBOX_sess"
-	client := dial(t, s.URL(), natsx.Options{InboxPrefix: prefix})
-	replies := make(chan string, 1)
-	if _, err := client.Subscribe(t.Context(), "svc", "", func(m natsx.Msg) {
-		replies <- m.Reply
-		_ = client.Publish(m.Reply, nil)
-	}); err != nil {
+func (h *logCapture) Enabled(context.Context, slog.Level) bool { return true }
+func (h *logCapture) Handle(_ context.Context, r slog.Record) error {
+	select {
+	case h.ch <- r.Message:
+	default:
+	}
+	return nil
+}
+func (h *logCapture) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *logCapture) WithGroup(string) slog.Handler      { return h }
+
+func TestRestartLogsDisconnectThenReconnect(t *testing.T) {
+	s := natsxtest.Start(t)
+	logs := &logCapture{ch: make(chan string, 8)}
+	_ = dial(t, s.URL(), natsx.Options{Logger: slog.New(logs)})
+	before := s.URL()
+	if err := s.Restart(); err != nil {
 		t.Fatal(err)
 	}
-	// A second connection, so the reply subject is the requester's, not the server's.
-	asker := dial(t, s.URL(), natsx.Options{InboxPrefix: prefix})
-	if err := asker.Request(t.Context(), "svc", &wrapperspb.StringValue{}, &wrapperspb.StringValue{}); err != nil {
-		t.Fatal(err)
+	if s.URL() != before {
+		t.Fatalf("url changed from %s to %s", before, s.URL())
 	}
-	got := await(t, replies)
-	if !strings.HasPrefix(got, prefix+".") {
-		t.Fatalf("reply subject %q, want prefix %s.", got, prefix)
+	// The client waits out its reconnect delay, so this timer is only the failure path.
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	var sawDisconnect bool
+	for {
+		select {
+		case msg := <-logs.ch:
+			switch msg {
+			case "nats disconnected":
+				sawDisconnect = true
+			case "nats reconnected":
+				if !sawDisconnect {
+					t.Fatal("reconnected before disconnected")
+				}
+				return
+			case "nats closed":
+				t.Fatal("connection closed instead of reconnecting")
+			}
+		case <-deadline.C:
+			t.Fatalf("reconnect log missing (disconnected=%v)", sawDisconnect)
+		}
 	}
 }
 

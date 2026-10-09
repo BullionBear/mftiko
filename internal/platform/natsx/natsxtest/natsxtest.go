@@ -8,6 +8,8 @@ package natsxtest
 import (
 	"errors"
 	"fmt"
+	"net"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -46,9 +48,13 @@ func Start(t testing.TB) *Server {
 }
 
 func start() (*Server, error) {
+	return startAt("127.0.0.1", -1)
+}
+
+func startAt(host string, port int) (*Server, error) {
 	opts := &server.Options{
-		Host:       "127.0.0.1",
-		Port:       -1, // a free port
+		Host:       host,
+		Port:       port, // -1 asks the OS for a free port
 		NoLog:      true,
 		NoSigs:     true,
 		JetStream:  false,
@@ -74,6 +80,41 @@ func start() (*Server, error) {
 
 // URL is the client URL, nats://127.0.0.1:<port>.
 func (s *Server) URL() string { return s.url }
+
+// Restart stops the server and starts another on the same address. A client keeps the URL it
+// already dialed and reconnects to it. Shutdown still stops whichever server is running.
+func (s *Server) Restart() error {
+	if s == nil || s.ns == nil {
+		return errors.New("natsxtest: no server")
+	}
+	addr := s.ns.Addr()
+	if addr == nil {
+		return errors.New("natsxtest: server has no address")
+	}
+	host, portStr, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		return fmt.Errorf("natsxtest: address: %w", err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return fmt.Errorf("natsxtest: port: %w", err)
+	}
+	s.ns.Shutdown()
+	s.ns.WaitForShutdown()
+
+	var errs []error
+	for range startTries {
+		next, err := startAt(host, port)
+		if err == nil {
+			s.ns = next.ns
+			s.url = next.url
+			return nil
+		}
+		errs = append(errs, err)
+	}
+	s.ns = nil
+	return fmt.Errorf("natsxtest: restart: %w", errors.Join(errs...))
+}
 
 // Shutdown stops the server and waits until it has exited.
 func (s *Server) Shutdown() {

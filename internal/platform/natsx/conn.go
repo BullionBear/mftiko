@@ -3,6 +3,7 @@ package natsx
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -21,26 +22,16 @@ const (
 // ErrClosed: the connection is closed, so the operation was not sent.
 var ErrClosed = errors.New("natsx: connection closed")
 
-// Options is how one connection authenticates and where its replies come back.
-// Zero is an unauthenticated connection with NATS's own inbox prefix, which is what the dev
-// server at nats://127.0.0.1:4222 accepts.
+// Options configures one connection. Zero is an unauthenticated connection, which is what the
+// dev server at nats://127.0.0.1:4222 accepts. Credentials and the per-session inbox prefix
+// are not configured here.
 type Options struct {
 	// Name is the connection name the server shows in monitoring. Empty leaves it unset.
 	Name string
 
-	// InboxPrefix is the prefix of reply subjects, without a trailing dot. Session workers set
-	// it to _INBOX_{session_id} so one session cannot read another's replies (D30). Empty keeps
-	// NATS's _INBOX. "*", ">" and a trailing dot are rejected.
-	InboxPrefix string
-
-	// UserJWT and NKeySeed authenticate a connection that already has a signed user JWT (D30).
-	// Set both, or neither. This package does not sign the JWT.
-	UserJWT  string
-	NKeySeed string
-
-	// CredsFile is a credentials file, the MD and TD instance credential (MFTIKO_NATS_CREDS).
-	// It is mutually exclusive with UserJWT.
-	CredsFile string
+	// Logger receives disconnects, reconnects, closes, and asynchronous errors such as a slow
+	// consumer. Nil uses slog.Default().
+	Logger *slog.Logger
 
 	// RequestTimeout is Request's wait when the context has no deadline. Zero means
 	// DefaultRequestTimeout. A negative value is rejected.
@@ -50,9 +41,7 @@ type Options struct {
 	ConnectTimeout time.Duration
 }
 
-// Conn is one core-NATS connection. It is safe for concurrent use. It has no JetStream handle;
-// a caller that needs a second connection, for example so a slow RPC handler does not stall
-// market data, opens one.
+// Conn is one core-NATS connection. It is safe for concurrent use. It has no JetStream handle.
 type Conn struct {
 	nc         *nats.Conn
 	reqTimeout time.Duration
@@ -60,6 +49,7 @@ type Conn struct {
 
 // Connect dials url, which may be a comma-separated list. The first attempt must succeed;
 // after that a dropped connection reconnects without a limit, so a blip does not end the process.
+// Disconnects, reconnects, closes, and asynchronous errors are logged on Options.Logger.
 func Connect(url string, opt Options) (*Conn, error) {
 	if url == "" {
 		return nil, errors.New("natsx: empty url")
@@ -71,23 +61,43 @@ func Connect(url string, opt Options) (*Conn, error) {
 	if timeout == 0 {
 		timeout = DefaultRequestTimeout
 	}
+	log := opt.Logger
+	if log == nil {
+		log = slog.Default()
+	}
 	nopts := []nats.Option{
 		nats.MaxReconnects(-1),
+		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
+			if err != nil {
+				log.Warn("nats disconnected", "err", err)
+				return
+			}
+			log.Info("nats disconnected")
+		}),
+		nats.ReconnectHandler(func(nc *nats.Conn) {
+			log.Info("nats reconnected", "url", nc.ConnectedUrlRedacted())
+		}),
+		nats.ClosedHandler(func(nc *nats.Conn) {
+			if err := nc.LastError(); err != nil {
+				log.Info("nats closed", "err", err)
+				return
+			}
+			log.Info("nats closed")
+		}),
+		// Replaces the client's stderr handler. A slow consumer is reported here.
+		nats.ErrorHandler(func(_ *nats.Conn, sub *nats.Subscription, err error) {
+			subject := ""
+			if sub != nil {
+				subject = sub.Subject
+			}
+			log.Error("nats async error", "subject", subject, "err", err)
+		}),
 	}
 	if opt.Name != "" {
 		nopts = append(nopts, nats.Name(opt.Name))
 	}
 	if opt.ConnectTimeout > 0 {
 		nopts = append(nopts, nats.Timeout(opt.ConnectTimeout))
-	}
-	if opt.InboxPrefix != "" {
-		nopts = append(nopts, nats.CustomInboxPrefix(opt.InboxPrefix))
-	}
-	switch {
-	case opt.CredsFile != "":
-		nopts = append(nopts, nats.UserCredentials(opt.CredsFile))
-	case opt.UserJWT != "":
-		nopts = append(nopts, nats.UserJWTAndSeed(opt.UserJWT, opt.NKeySeed))
 	}
 	nc, err := nats.Connect(url, nopts...)
 	if err != nil {
@@ -97,12 +107,6 @@ func Connect(url string, opt Options) (*Conn, error) {
 }
 
 func (o Options) validate() error {
-	if (o.UserJWT == "") != (o.NKeySeed == "") {
-		return errors.New("natsx: user JWT and nkey seed must both be set, or neither")
-	}
-	if o.CredsFile != "" && o.UserJWT != "" {
-		return errors.New("natsx: credentials file and user JWT are mutually exclusive")
-	}
 	if o.RequestTimeout < 0 || o.ConnectTimeout < 0 {
 		return errors.New("natsx: negative timeout")
 	}

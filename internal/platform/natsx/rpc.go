@@ -106,11 +106,11 @@ func (c *Conn) Request(ctx context.Context, subject string, req, resp proto.Mess
 }
 
 // Serve answers subject. newReq is called for every request and must return an empty message;
-// the handler may keep that message. h runs on the connection's read goroutine, one call at a
-// time, and must return promptly. Its context is cancelled when ctx is.
+// the handler may keep that message. h runs on this subscription's goroutine, one call at a
+// time, so a slow handler stalls only this subscription. Its context is cancelled when ctx is.
 //
-// queue is the queue group when more than one process serves the subject. An empty queue
-// delivers every request to every server, and each of them replies.
+// queue names the queue group. Empty uses the subject itself, so one of the registered servers
+// answers each request. Request keeps a single reply, so Serve always joins a queue group.
 //
 // A publish with no reply subject is ignored: Serve is request/reply, not a second subscription.
 // Serve returns after the server has registered the interest.
@@ -122,6 +122,9 @@ func (c *Conn) Serve(
 ) (*Subscription, error) {
 	if newReq == nil || h == nil {
 		return nil, errors.New("natsx: nil handler")
+	}
+	if queue == "" {
+		queue = subject
 	}
 	return c.Subscribe(ctx, subject, queue, func(m Msg) {
 		if m.Reply == "" {

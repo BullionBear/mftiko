@@ -5,9 +5,8 @@
 // streaming RPC: Request and Serve are one request and one reply.
 //
 // Publish and Subscribe pass bytes through unchanged. The md.f envelope lives in contract/wire/envelope
-// and is not framed here.
+// and is not framed here. Disconnects, reconnects, closes, and asynchronous errors are logged to
+// Options.Logger.
 //
-// A session worker's reply inbox is not the shared _INBOX. Pass Options.InboxPrefix _INBOX_{session_id}
-// (D30). The JWT and seed Options carries are produced elsewhere; signing them needs the session's
-// subjects, which this package does not know.
+// Operator and account credentials, and each session's inbox prefix, are not set here (D30).
 package natsx
