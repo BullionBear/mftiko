@@ -1,13 +1,13 @@
 // Package exchangetest is a test helper for callers of an exchange adapter, in the sense of
 // net/http/httptest. It is not a venue: it is not declared to the registry and it has no wire format.
 //
-// Source is an in-memory PublicREST bound to one venue. A test adds, removes and modifies
-// instruments, optionally loads them from a fixture, and then calls Listing the way SYM does.
+// Source is an in-memory listing bound to one venue: an exchange.Lister, which is what SYM reads
+// through exchange.ListingOver on a real venue. It runs in process, with no HTTPRequest behind it. A
+// test adds, removes and modifies instruments, optionally loads them from a fixture, and then calls
+// Listing the way SYM does.
 // Listing reads one category in pages. The page size is configurable, and a chosen page can be made
 // to fail. Either way Listing returns every instrument of that category, or an error and no rows: a
 // short read is not a successful listing, which is the rule a refresh relies on.
-//
-// Depth, klines and open interest return exchange.ErrNotImplemented.
 //
 // Source implements exchange.InProcessUIDSource. The in-process Resolver may allocate
 // UIDs for these listings. Those UIDs are not SYM's: they stay in that process, are not

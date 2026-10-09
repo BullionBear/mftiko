@@ -7,8 +7,9 @@
 //
 // Refresh (Store.Refresh, Runner):
 //
-//   - One feed per (venue, category), from the venue's adapter (exchange PublicREST.Listing). That
-//     is the unit a refresh may delist within: a spot refresh never deactivates perp rows.
+//   - One feed per (venue, category), from the venue's adapter (exchange PublicREST.Listing, run
+//     over an HTTP transport by exchange.ListingOver). That is the unit a refresh may delist
+//     within: a spot refresh never deactivates perp rows.
 //   - Each feed is refreshed on its own. Runner waits jitter before the first pass and then
 //     DefaultInterval plus a fresh jitter draw. Trigger runs one venue, or every feed when the
 //     venue is empty. One feed's error does not stop the others. Failures are reported, not raised.
@@ -85,7 +86,7 @@
 // In-process Resolver (E2-05), for tests and local development only:
 //
 // Resolver implements symbol.Resolver without the SYM service and without PostgreSQL.
-// At startup it calls PublicREST.Listing for each configured (venue, category).
+// At startup it calls Listing for each configured (venue, category).
 // It canonicalizes asset codes with normalizeAssets, the same helper SYM refresh
 // uses, then keeps rows that pass Listing.Validate and whose status is on the
 // active table: PRELISTING, TRADABLE, HALTED, SETTLING, UNKNOWN. EXPIRED and
@@ -101,7 +102,7 @@
 // This process allocates those UIDs. Tests pass a Source with a fixed sequence; otherwise
 // the draw is RandomSource. Either way the value is not inserted into symbol_uid and must
 // not be sent to another process or plane. Real venues wait for the UIDs SYM assigns.
-// NewResolver rejects a PublicREST that does not implement exchange.InProcessUIDSource.
+// NewResolver rejects a listing that does not implement exchange.InProcessUIDSource.
 // exchangetest.Source is the implementation that does. cmd injects this Resolver or the
 // NATS client (E2-09). Only this one allocates.
 //
