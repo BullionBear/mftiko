@@ -174,10 +174,16 @@ func setup(t *testing.T, regions map[string]state.Region) *env {
 
 // run starts the agent; done is closed once Run has returned, *err.
 func (e *env) run() (done <-chan struct{}, err *error) {
+	done, err, _ = e.runWith(e.cfg)
+	return done, err
+}
+
+// runWith starts an agent with cfg; stop cancels its context, as a graceful shutdown does.
+func (e *env) runWith(cfg Config) (done <-chan struct{}, err *error, stop func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 	ch := make(chan struct{})
 	var ret error
-	go func() { ret = Run(ctx, e.cfg); close(ch) }()
+	go func() { ret = Run(ctx, cfg); close(ch) }()
 	e.t.Cleanup(func() {
 		cancel()
 		select {
@@ -186,7 +192,7 @@ func (e *env) run() (done <-chan struct{}, err *error) {
 			e.t.Error("the agent did not stop")
 		}
 	})
-	return ch, &ret
+	return ch, &ret, cancel
 }
 
 // want writes a demand entry, as the controller would.
@@ -512,8 +518,9 @@ func (e *env) count(name, event string) int {
 	return n
 }
 
-// The agent is killed with -9 and a new one takes over (E1-17): it adopts every worker, spawns none again, keeps
-// the WorkerStatus of a shim it cannot attach, and controls what it adopted.
+// The agent is killed with -9 and a new one takes over (E1-17, E1-20): it adopts every worker, spawns none again,
+// hands the Policy the end of one that ended while no agent was there, keeps the WorkerStatus of a shim it cannot
+// attach, and controls what it adopted.
 func TestAdoptAfterKill9(t *testing.T) {
 	e := setup(t, nil)
 	b := make([]byte, 8)
@@ -546,9 +553,11 @@ func TestAdoptAfterKill9(t *testing.T) {
 	e.want("a", Worker{})
 	e.want("b", Worker{Live: "v1"})
 	e.want("held", Worker{Hold: true})
+	e.want("c", Worker{Script: fakeworker.Script{Exit: fakeworker.ExitFailed, ExitAfterMS: 1000}}) // ends with no agent
 	e.waitStatus("a", "RUNNING", phase(runner.PhaseRunning, 1))
 	e.waitStatus("b", "RUNNING", phase(runner.PhaseRunning, 1))
 	e.waitStatus("held", "STARTING", phase(runner.PhaseStarting, 1))
+	e.waitStatus("c", "RUNNING", phase(runner.PhaseRunning, 1))
 
 	// A shim that answers and never replies, and the WorkerStatus its agent wrote.
 	sock := shim.SocketPath(e.cfg.WorkDir, string(plane), string(Key(plane, "z")))
@@ -578,6 +587,8 @@ func TestAdoptAfterKill9(t *testing.T) {
 	}
 	old.Wait() //nolint:errcheck
 
+	pol := &recordPolicy{}
+	e.cfg.Policy = pol
 	e.run()
 	deadline := time.Now().Add(30 * time.Second)
 	for e.record().GetEpoch() != 2 {
@@ -587,10 +598,15 @@ func TestAdoptAfterKill9(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	time.Sleep(time.Second) // a few reconciles
-	if !strings.Contains(e.log.String(), `"adopted":3,"unreachable":1`) {
-		t.Fatalf("want 3 shims adopted and 1 held:\n%s", e.log.String())
+	if !strings.Contains(e.log.String(), `"adopted":4,"unreachable":1`) {
+		t.Fatalf("want 4 shims adopted and 1 held:\n%s", e.log.String())
 	}
-	for _, name := range []string{"a", "b", "held"} {
+	st := e.waitStatus("c", "EXITED", phase(runner.PhaseExited, 1))
+	if ends := pol.ends("c"); len(ends) != 1 || ends[0].Exit.GetOutcome() != commonv1.Outcome_OUTCOME_FAILED ||
+		st.GetLastExit().GetOutcome() != commonv1.Outcome_OUTCOME_FAILED {
+		t.Fatalf("the end of c, which came while no agent was there: Policy got %+v, status %v", ends, st)
+	}
+	for _, name := range []string{"a", "b", "held", "c"} {
 		if n := e.count(name, "start"); n != 1 {
 			t.Errorf("worker %s started %d times, want once: adopted, not spawned again", name, n)
 		}

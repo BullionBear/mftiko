@@ -230,17 +230,19 @@ func (planner) Plan(d agent.Demand[string]) map[agent.WorkerKey]agent.Plan[h, h]
 
 // fleet is a Fleet the test moves along: an action changes what it observes at once, as a real one does.
 type fleet struct {
-	j       *journal
-	changed chan struct{}
-	adopt   map[agent.WorkerKey]agent.Observed
-	mu      sync.Mutex
-	obs     map[agent.WorkerKey]agent.Observed
-	block   chan struct{} // Spawn waits on it, or on its ctx, when set
-	held    []string      // Unreachable
+	j         *journal
+	changed   chan struct{}
+	adopt     map[agent.WorkerKey]agent.Observed
+	mu        sync.Mutex
+	obs       map[agent.WorkerKey]agent.Observed
+	block     chan struct{} // Spawn waits on it, or on its ctx, when set
+	held      []string      // Unreachable
+	preempted chan struct{}
 }
 
 func newFleet(j *journal) *fleet {
-	return &fleet{j: j, changed: make(chan struct{}, 1), obs: map[agent.WorkerKey]agent.Observed{}}
+	return &fleet{j: j, changed: make(chan struct{}, 1), obs: map[agent.WorkerKey]agent.Observed{},
+		preempted: make(chan struct{})}
 }
 
 func (f *fleet) Adopt(context.Context) error {
@@ -299,6 +301,18 @@ func (f *fleet) Stop(_ context.Context, k agent.WorkerKey, reason string) error 
 	f.j.add("stop %s: %s", k, reason)
 	return nil
 }
+func (f *fleet) Preempted() <-chan struct{} { return f.preempted }
+func (f *fleet) PreemptedErr() error {
+	select {
+	case <-f.preempted:
+		return errPreempted
+	default:
+		return nil
+	}
+}
+
+var errPreempted = errors.New("preempted")
+
 func (f *fleet) Unreachable() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -496,4 +510,28 @@ func TestIntakeDecodesOnce(t *testing.T) {
 	if calls != 3 || d.Items[state.DemandPrefix(state.PlaneMD, inst)+"a"] != "a=s2" || len(d.Rejected) != 0 {
 		t.Fatalf("after the change: %d calls, %+v", calls, d)
 	}
+}
+
+// A shim that preempts the agent for a newer term ends it, as the end of its term does: Run returns ErrTermEnded
+// with the cause, and the action in flight is cancelled.
+func TestRunPreempted(t *testing.T) {
+	hs := newHarness(t, lister{})
+	hs.fleet.block = make(chan struct{})
+	close(hs.src.synced)
+	hs.src.put("a", "s")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { hs.ret <- Run(ctx, hs.cfg) }()
+	hs.j.waitFor(t, "record")
+	time.Sleep(20 * time.Millisecond) // Spawn is waiting
+	close(hs.fleet.preempted)
+	select {
+	case err := <-hs.ret:
+		if !errors.Is(err, ErrTermEnded) || !errors.Is(err, errPreempted) {
+			t.Fatalf("Run returned %v, want ErrTermEnded with the preemption", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run went on after a preemption")
+	}
+	hs.j.waitFor(t, "spawn md/a cancelled")
 }

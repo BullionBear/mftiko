@@ -29,8 +29,9 @@ const (
 	DefaultWriteTimeout = 5 * time.Second
 )
 
-// ErrTermEnded is what Run returns when the term ended: session lost, superseded, or closed. It wraps the term's
-// own error. The agent exits and systemd starts it again; the next process campaigns for a new epoch (E1-05).
+// ErrTermEnded is what Run returns when the term ended: session lost, superseded, or closed, or a shim preempted
+// the agent for a newer term. It wraps the cause. The agent exits and systemd starts it again; the next process
+// campaigns for a new epoch (E1-05).
 var ErrTermEnded = errors.New("agent: term ended")
 
 // Fleet is the set of shim-backed workers (D101). Its calls start an action and return: Observe reflects each one
@@ -51,6 +52,10 @@ type Fleet[S, L agent.Hashed] interface {
 	Stop(ctx context.Context, key agent.WorkerKey, reason string) error
 	// Release ends the shim of a worker that ended; Observe no longer has it.
 	Release(ctx context.Context, key agent.WorkerKey) error
+	// Preempted is closed once a newer term attached to one of the shims (PROTOCOL §4.2): the agent ends, as it
+	// does when its term ends, and touches no worker. PreemptedErr says why.
+	Preempted() <-chan struct{}
+	PreemptedErr() error
 	// Unreachable are the worker hashes (h, PROTOCOL §2) of shims that answer but could not be attached: their
 	// workers may be running, so their WorkerStatus stays (W7.1).
 	Unreachable() []string
@@ -99,14 +104,18 @@ func Run[I any, S, L agent.Hashed](ctx context.Context, cfg Config[I, S, L]) err
 	r := newRun(cfg)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	go func() { // a term that ends cancels whatever is in flight
+	go func() { // a term that ends, or a newer one at a shim, cancels whatever is in flight
 		select {
 		case <-cfg.Term.Done():
-			cancel()
+		case <-cfg.Fleet.Preempted():
 		case <-ctx.Done():
 		}
+		cancel()
 	}()
 	err := r.run(ctx)
+	if pe := cfg.Fleet.PreemptedErr(); pe != nil {
+		return fmt.Errorf("%w: %w", ErrTermEnded, pe)
+	}
 	if termErr := cfg.Term.Err(); termErr != nil {
 		return fmt.Errorf("%w: %w", ErrTermEnded, termErr)
 	}
