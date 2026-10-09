@@ -120,28 +120,30 @@ Wall clock, 4 cores: non-race cold 212.8s (exit 1), race `-json` 213.8s (exit 0)
 
 From the local race `-json -count=1` run (exit 0). Non-race times are the cold `-json -count=1` run. Parent tests only; subtests are inside the parent.
 
-| # | Test | Race (s) | Non-race (s) | Why |
-| ---: | --- | ---: | ---: | --- |
-| 1 | state `TestTokenExpiry` | 11.87 | 11.84 | One etcd. Token TTL 2s, session TTL 5s. Sleeps 4s, then 6s. |
-| 2 | testplane `TestAdoptAfterKill9` | 11.12 | 9.63 | Four workers, one with `ExitAfterMS: 1000`. SIGKILL the old agent, sleep 1s. etcd. |
-| 3 | state `TestRecordGoesWithTheAgent` | 10.46 | 10.67 | Session TTL 2s, then the proxy is cut. Polls up to 10s for etcd to drop the lease. The drop takes ~8–10s. |
-| 4 | shim `TestExitInfoEndings` | 9.52 | 0.36 | Eight real shim+worker processes. Race: 1.04s × 6, plus 2.04s and 1.24s. Non-race: 0.02s each (one 0.22s). |
-| 5 | state `TestMirrorRandomized` | 7.08 | 6.36 | `time.Sleep(4s)` of proxy cuts, compaction, and writes. One etcd. |
-| 6 | testplane `TestBeatTimeout` | 7.03 | 4.89 | 15 beats at 100ms, then a 2s silence timeout. Race adds process startup. |
-| 7 | testplane `TestTermEnds` | 6.79 | 6.72 | etcd and processes. Revokes the session lease, then sleeps 200ms. |
-| 8 | state `TestMirrorAfterTokenExpiry` | 5.96 | 5.96 | Sleeps 4s so a 2s token expires. One etcd. |
-| 9 | testplane `TestLiveApplied` | 5.27 | 5.25 | Sleeps 1s, 1.5s, and 1s. `LiveRetry` 300ms. |
-| 10 | state `TestMirrorLastContact` | 5.05 | 4.92 | Sleeps 5 probes, then 6, at 200ms. |
-| 11 | state `TestMirrorReconnects` | 4.96 | 4.86 | Three rounds of a 300ms cut, then reconnect. |
-| 12 | state `TestMirrorQuietAfterReconnect` | 4.87 | 4.83 | 5 probes, a 300ms cut, then 10 probes, at 200ms. |
-| 13 | testplane `TestStartsAndStops` | 4.75 | 2.72 | etcd, a shim, and `time.Sleep(1s)`. Race is about 2× on process start. |
-| 14 | testplane `TestRotation` | 4.66 | 2.73 | Two agents, sleep 500ms. Process-bound under `-race`. |
-| 15 | state `TestMirrorQuietSharedStream` | 4.64 | 4.59 | Sleeps 15 × 200ms. |
-| 16 | state `TestMirrorProbeUnderLoad` | 4.57 | 4.54 | Sleeps 3s. Each `Get` is delayed 30ms. |
-| 17 | shim `TestWorkerOutputIncarnations` | 4.10 | 0.05 | Two shim processes and a 200KiB flood. Race process startup. |
-| 18 | state `TestRecordGoesWithSupersededTerm` | 4.07 | 4.06 | Waits out a 2s session TTL. |
-| 19 | state `TestMirrorLeaseExpiry` | 4.06 | 4.08 | `Grant` TTL 1s, then polls until the key leaves the mirror. |
-| 20 | state `TestWritesTwoRegions` | 3.85 | 3.76 | Two etcd processes. |
+Class is the clock wait, not the whole test. **(a)** real elapsed time or TTL expiry: less time means asserting a state that has not happened. **(b)** the sleep stands in for convergence: shortening it raises the bet and flakes under load, as #90 did. **—** process startup or a second etcd boot, not a clock wait. Several (a) tests already poll; the time left is etcd, not a sleep to trim.
+
+| # | Test | Race (s) | Non-race (s) | Class | Why |
+| ---: | --- | ---: | ---: | --- | --- |
+| 1 | state `TestTokenExpiry` | 11.87 | 11.84 | (a) | One etcd. Token TTL 2s, session TTL 5s. Sleeps 4s (two token lifetimes), then 6s (past the session, to prove keepalives held it). |
+| 2 | testplane `TestAdoptAfterKill9` | 11.12 | 9.63 | (a)(b) | `ExitAfterMS: 1000` is real time with no agent (a). `time.Sleep(1s)` then checks the adopt log (b). Four workers, SIGKILL, etcd. |
+| 3 | state `TestRecordGoesWithTheAgent` | 10.46 | 10.67 | (a) | Session TTL 2s, proxy cut. Already polls up to 10s. The lease is gone only after ~8–10s. |
+| 4 | shim `TestExitInfoEndings` | 9.52 | 0.36 | — | Eight real shim+worker processes. Race: 1.04s × 6, plus 2.04s and 1.24s. Non-race: ~0.02s each. |
+| 5 | state `TestMirrorRandomized` | 7.08 | 6.36 | (b) | `time.Sleep(4s)` of cuts, compaction, and writes, then `waitConverged`. One etcd. |
+| 6 | testplane `TestBeatTimeout` | 7.03 | 4.89 | (a) | 15 beats at 100ms, then a 2s silence. `waitDown` already polls for the Stop. The 2s is the timeout. |
+| 7 | testplane `TestTermEnds` | 6.79 | 6.72 | (b) | Revoke already waits on the agent returning (20s bound). The 200ms sleep is a proxy that the shim and status stayed. Bulk of the 6.8s is boot and processes. |
+| 8 | state `TestMirrorAfterTokenExpiry` | 5.96 | 5.96 | (a) | Sleeps 4s so a 2s token has expired before the late mirror starts. One etcd. |
+| 9 | testplane `TestLiveApplied` | 5.27 | 5.25 | (a)(b) | Two 1s sleeps prove no extra Live was sent (a). The 1.5s counts retries at 300ms (b). |
+| 10 | state `TestMirrorLastContact` | 5.05 | 4.92 | (a)(b) | 5 × 200ms before an existing `waitFor` (b). 6 × 200ms while cut, so contact can age out (a). |
+| 11 | state `TestMirrorReconnects` | 4.96 | 4.86 | (b) | Three 300ms cuts as a proxy that nothing got through, then `waitConverged` (already a condition, 30s bound). |
+| 12 | state `TestMirrorQuietAfterReconnect` | 4.87 | 4.83 | (b) | 5 probes, a 300ms cut, then 10 probes "were a stall coming". Reconnect already polls. One stall window of real time still has to pass. |
+| 13 | testplane `TestStartsAndStops` | 4.75 | 2.72 | (a) | `time.Sleep(1s)` is 50 beats at 20ms, then the revision must be unchanged. CI failures were the release check, not this sleep. |
+| 14 | testplane `TestRotation` | 4.66 | 2.73 | (b) | `time.Sleep(500ms)` ("a few reconciles"), then start counts. The 4.7s vs 2.7s gap is process startup under `-race`. |
+| 15 | state `TestMirrorQuietSharedStream` | 4.64 | 4.59 | (b) | Sleeps 15 × 200ms, then checks contact is fresh and the watch was not reopened. |
+| 16 | state `TestMirrorProbeUnderLoad` | 4.57 | 4.54 | (b) | Sleeps 3s of writes. Each `Get` is delayed 30ms. Then lists must still be 1. |
+| 17 | shim `TestWorkerOutputIncarnations` | 4.10 | 0.05 | — | Two shim processes and a 200KiB flood. Race process startup. |
+| 18 | state `TestRecordGoesWithSupersededTerm` | 4.07 | 4.06 | (a) | Session TTL 2s. Already polls up to 10s for the record to disappear. |
+| 19 | state `TestMirrorLeaseExpiry` | 4.06 | 4.08 | (a) | `Grant` TTL 1s. Already polls (50ms, 20s bound) until the key leaves the mirror. |
+| 20 | state `TestWritesTwoRegions` | 3.85 | 3.76 | — | Two etcd processes. |
 
 `TestPutRecord`, one etcd and no deliberate sleep, is 1.64s race and 1.65s non-race in the full suite. Three warm non-race runs took 4.87s of package time (~1.62s each). That is the cold-start floor.
 
@@ -155,7 +157,7 @@ Inside `state` (race, 82 tests, sum 188.3s):
 
 The 16 fast tests: `TestAgentRegions`, `TestAuthRefused`, `TestAuthTables`, `TestCampaignArgs`, `TestClustersAllowedAndLazy`, `TestEndAndBind`, `TestKeys`, `TestMirrorResumePoint`, `TestNewClustersRejects`, `TestOwnerRejects`, `TestParseEpoch`, `TestRegionOf`, `TestRouteTxn`, `TestValidate`, `TestWorkerHash`, `TestWriteScope` (10ms; the rest are ~0).
 
-The 11 `state` tests over 4s sum 67.6s. About 1.6s of each is the etcd boot; the rest is the sleeps and the lease wait in the table above.
+The 11 `state` tests over 4s sum 67.6s. About 1.6s of each is the etcd boot. Of the rest, five are (b) proxy sleeps (`TestMirrorRandomized`, `TestMirrorReconnects`, `TestMirrorQuietAfterReconnect`, `TestMirrorQuietSharedStream`, `TestMirrorProbeUnderLoad`) and the others are (a) expiry. Three of the (a) tests already poll. etcd does not expire a lease at its TTL: the leader sweeps on a 500ms ticker, and later when revoke is busy, so a 2s session in `TestRecordGoesWithTheAgent` is gone only after ~8–10s. No fixed short sleep covers that.
 
 ## 4. Cost of `-race` and of `-count=1`
 
@@ -294,26 +296,30 @@ Passed again when it was the only uncached package (3.7s). The failure is the sa
 
 ## 9. Recommendations
 
-Savings are against the CI test step and the job, because `state` is the critical path on both 2 and 4 cores. The etcd-reuse and sleep numbers are estimates from the measured 1.64s floor and the sleeps in §3. They were not prototyped.
+Savings are against the CI test step and the job, because `state` is the critical path on both 2 and 4 cores (`state` alone: 51.6s user CPU, 186s wall). The etcd-reuse number is an estimate from the measured 1.64s floor. It was not prototyped. Do the clock-wait rewrite first and confirm the sleep-margin flakes drop, then consider a shared etcd.
+
+**(b)** is a sleep standing in for convergence (`TestMirrorRandomized` 4s, `TestMirrorProbeUnderLoad` 3s, `TestMirrorQuietSharedStream` 15 × 200ms, and the same shape in `TestMirrorReconnects`, `TestMirrorQuietAfterReconnect`, the first half of `TestMirrorLastContact`). Wait on the observable. Keep a bound at least as long as today's sleep. Shortening the sleep is how #90 flaked.
+
+**(a)** is real elapsed time. `TestTokenExpiry` (4s + 6s) and `TestMirrorAfterTokenExpiry` (4s) sleep a fixed multiple of the TTL; poll until the key or the token's effect has happened. `TestMirrorLeaseExpiry`, `TestRecordGoesWithTheAgent`, and `TestRecordGoesWithSupersededTerm` already poll. A shorter TTL is legal and thins coverage (fewer keepalive cycles, less overlap with bcrypt). etcd sweeps expired leases on a 500ms ticker, and later when revoke is busy, so a 2s session is gone only after ~8–10s here. The bound stays wide. A fixed short sleep does not cover that sweep.
 
 | # | Change | Estimated saving | Risk |
 | --- | --- | --- | --- |
-| 1 | Reuse one warm etcd across `state` tests. Reset keys, leases, and users between tests. Keep a private server for `Restart`, `Rebuild`, and a non-default token TTL. | ~50s from the 34-test floor (1.65s → ~0.2s, the 0.2s is assumed). On the order of 80–100s if the other single-server tests also stop paying a cold start. The job drops by the same amount. | Medium. A leaked key, role, or lease contaminates the next test. Auth setup still costs if it is redone every test. Two-member tests still need two processes. |
-| 2 | Shorten the fixed waits in the 11 `state` tests over 4s (token sleeps of 4s and 6s, mirror sleeps of 3–4s, probe sleeps at 200ms, and the ~8s lease-expiry wait past a 2s TTL). Revoke the lease where the test only needs the key gone. | ~30–40s, in series on the pole. The wait portion of those 11 tests is ~50s after the 1.6s boot. | Low to medium. Keep the assertion. One test that really waits out etcd's expiry can stay slow. |
+| 1 | Replace clock waits with condition waits, as (a) and (b) above. Do not decide a stall by sleeping. | On the `state` pole, common case: ~8–12s from (b) (the condition is usually true well before today's sleep; a slow run keeps the bound and saves ~0). ~(1–3)s of (a) slack where the sleep overshoots the TTL. Already-polling (a) tests shrink only if the TTL is shortened: `TestRecordGoesWithTheAgent` can fall from ~8–10s toward a couple of sweeps (~6–8s typical, still several seconds when revoke is busy). testplane's clock waits are the same two classes and do not move CI while `state` is ~190s. | Low for (b): the bound stays. Medium for a shorter TTL: thinner keepalive and expiry coverage. |
+| 2 | After 1, reuse one warm etcd across `state` tests. Reset keys, leases, and users between tests. Keep a private server for `Restart`, `Rebuild`, and a non-default token TTL. | ~50s from the 34-test floor (1.65s → ~0.2s, the 0.2s is assumed). On the order of 80–100s if the other single-server tests also stop paying a cold start. The job drops by the same amount. | Medium. A leaked key, role, or lease contaminates the next test. Leftover state also makes a "not yet propagated" failure harder to read, and delay inside one etcd already flakes tests (the #90 watch; the 2s lease that lasts ~8–10s). Auth setup still costs if it is redone every test. Two-member tests still need two processes. |
 | 3 | Keep `-race`. | Removing it saves about a minute on the 2-vCPU runner (the part of `shim` and `testplane` past `state`) and ~2% of `state`. | High. The detector goes away. `shim` under `-race` is where several of the flakes show up. |
 | 4 | Stop passing `-count=1` once the flakes in §8 are fixed. `setup-go` already restores the cache. Keep `-count=1` on `state`, `shim`, `testplane`, `sym`, and `migrations` until then. | Up to the whole test step (~262s recent-hit median, 268s on this commit) when nothing the tests read has changed. ~0 of wall clock if `state` still runs. | A green flake is cached until inputs change. A failed package is not cached (measured). The etcd/postgres path in the environment has to stay stable (§4). |
 | 5 | Run `go test` in a job that only needs Go, etcd, and Postgres. Put buf, codegen, vet, build, and svelte-check in a parallel job. Install Postgres from a pinned binary or a cached deb. | ~25s of serial checks leave the critical path. apt-get is another ~10s (p50). etcd's download is 1–2s. | Low, on a second runner. On one runner the compiles contend with the tests for 2 cores. |
-| 6 | `t.Parallel` inside `state`. | Small next to a shared etcd. Overlapping cold starts on 2 cores still pays every boot, and the package is already the whole pole. | Medium. The load flakes in §8 get more room. |
+| 6 | `t.Parallel` inside `state`. | Small beside a shared etcd, and only after that sharing is shown not to add flakes. | Medium. The load flakes in §8 get more room. |
 
-Doing 1 and 2 is the time cut. Doing 4 is the large cut on PRs that do not touch `state`, and it waits on the flakes. Doing 5 is the small, safe cut. Doing 3 is not where the time is.
+Doing 1 is the flake cut, and about 10s on a normal `state` run. Doing 2 is the time cut, and it waits on 1. Doing 4 is the large cut on PRs that do not touch `state`, and it waits on the flakes. Doing 5 is the small, safe cut. Doing 3 is not where the time is.
 
 ## 10. Follow-up tickets
 
 Titles and scope only. Not opened.
 
-1. **Reuse one warm etcd across `state` tests.** Add a reset that drops keys, leases, and users without re-executing etcd, or one server in `TestMain`. Tests that call `Restart`, `Rebuild`, or `TokenTTL` keep a private `Start`. Record package time before and after. Target: remove the 1.6s floor.
+1. **Replace clock waits with condition waits (poll + generous bound; TTL parameterization where needed).** In `state`: for (b), wait on the observable instead of `TestMirrorRandomized`'s 4s, `TestMirrorProbeUnderLoad`'s 3s, `TestMirrorQuietSharedStream`'s 15 × 200ms, and the same shape in `TestMirrorReconnects`, `TestMirrorQuietAfterReconnect`, and the proxy half of `TestMirrorLastContact`. Do not shrink the upper bound. For (a), poll until the key or the token's effect has actually happened (`TestTokenExpiry`, `TestMirrorAfterTokenExpiry`). `TestMirrorLeaseExpiry`, `TestRecordGoesWithTheAgent`, and `TestRecordGoesWithSupersededTerm` already poll; a shorter TTL is optional and thins coverage, and etcd's 500ms sweep (later under load) stays the floor. Do not decide a stall by sleeping. Confirm this class of flake drops before ticket 2. testplane's clock waits are the same split and are not on the CI pole while `state` is ~190s.
 
-2. **Shorten the deliberate waits in `state`.** Cover `TestTokenExpiry`, `TestMirrorAfterTokenExpiry`, `TestMirrorRandomized`, `TestMirrorQuietSharedStream`, `TestMirrorProbeUnderLoad`, `TestMirrorLastContact`, `TestMirrorQuietAfterReconnect`, `TestMirrorReconnects`, `TestRecordGoesWithTheAgent`, `TestRecordGoesWithSupersededTerm`, and `TestMirrorLeaseExpiry`. Use a shorter TTL or probe, or revoke the lease, and keep the assertion. Do not decide a stall by sleeping (already true of `TestMirrorSlowWatchCreation`).
+2. **Reuse one warm etcd across `state` tests, after ticket 1.** Add a reset that drops keys, leases, and users without re-executing etcd, or one server in `TestMain`. Tests that call `Restart`, `Rebuild`, or `TokenTTL` keep a private `Start`. Record package time before and after. Target: remove the 1.6s floor. Sharing makes a "not yet propagated" state harder to read, because delay inside one etcd already flakes tests.
 
 3. **Make `TestShimKilled`, `TestStartsAndStops`, and `TestReloadDoesNotPublishHalfTable` deterministic under `-race` and `GOMAXPROCS=2`.** `TestShimKilled` should ignore `SIGTERM` the way `TestShimKilledWorkerSeesEOF` does, or accept either EOF or `SIGTERM`. `TestStartsAndStops` should wait until `shim_release` is `"fake"`, not the first `RUNNING`. `TestReloadDoesNotPublishHalfTable` should make the readers overlap the 40 reloads, or stop requiring both parities from a sample that can fall entirely after the writer finishes.
 
