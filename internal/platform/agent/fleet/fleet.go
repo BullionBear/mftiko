@@ -2,12 +2,15 @@
 // to it over C3, sends the lifecycle and the live config, and observes each worker from its shim's Attached and
 // events (D108). It is the runner.Fleet of every plane; a plane supplies its Program.
 //
-// Not yet here: adopting the shims a previous term left (Adopt finds none; E1-17), checking that an old worker is
-// gone by pid and start time before its next incarnation (E1-16), and Beat timeouts (E1-18).
+// At most one incarnation of a worker key lives at a time (D106): the next one is spawned only once the last is
+// known to be gone, by its recorded exit or, when its shim was lost, by its pid and start time (E1-16).
+//
+// Not yet here: adopting the shims a previous term left (Adopt finds none; E1-17), and Beat timeouts (E1-18).
 package fleet
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -88,13 +91,43 @@ type Fleet[S, L agent.Hashed] struct {
 	workers map[agent.WorkerKey]*worker[S]
 }
 
+// ErrStillRunning: the worker of a lost shim, or that shim, is still running. Its next incarnation waits; the
+// spawn is tried again after a backoff (D104 says it must die with its shim: Pdeathsig, or its own EOF on fd 3).
+var ErrStillRunning = errors.New("fleet: the last incarnation is still running")
+
 // worker is one incarnation and its shim.
 type worker[S agent.Hashed] struct {
-	spec     S
-	conn     *c3.Conn
-	shimDone <-chan struct{} // closed once the shim this Fleet started has exited
-	obs      agent.Observed  // under Fleet.mu
-	released bool            // under Fleet.mu: Release was sent; the end of the connection is expected
+	spec      S
+	conn      *c3.Conn
+	shimDone  <-chan struct{} // closed once the shim this Fleet started has exited
+	pid       int             // the worker's, and its start time: Attached.pid and start_time
+	startTime uint64
+	obs       agent.Observed // under Fleet.mu
+	released  bool           // under Fleet.mu: Release was sent; the end of the connection is expected
+}
+
+// gone checks that neither the worker nor its shim runs any more: the shim this Fleet started has exited, and the
+// worker's pid is free or belongs to a later process (pid reuse) or a zombie. A /proc that cannot be read is not
+// taken for gone.
+func (w *worker[S]) gone() error {
+	if w.shimDone != nil {
+		select {
+		case <-w.shimDone:
+		default:
+			return fmt.Errorf("%w: its shim", ErrStillRunning)
+		}
+	}
+	if w.pid == 0 {
+		return nil // never started: Attached had no pid
+	}
+	running, err := shim.Running(w.pid, w.startTime)
+	switch {
+	case err != nil:
+		return fmt.Errorf("fleet: is pid %d still running: %w", w.pid, err)
+	case running:
+		return fmt.Errorf("%w: pid %d", ErrStillRunning, w.pid)
+	}
+	return nil
 }
 
 // New is a Fleet with no workers.
@@ -207,10 +240,11 @@ func (f *Fleet[S, L]) Spawn(ctx context.Context, key agent.WorkerKey, spec S, li
 		return fmt.Errorf("fleet: spawn %s/%d: attach: %w", key, n, err)
 	}
 	at := conn.Attached()
-	w := &worker[S]{spec: spec, conn: conn, shimDone: shimDone, obs: agent.Observed{
-		Key: key, Incarnation: n, SpecHash: spec.Hash(), LiveHash: live.Hash(), State: agent.StateInitializing,
-		ShimRelease: at.GetShimRelease(), StartedAt: time.Now(),
-	}}
+	w := &worker[S]{spec: spec, conn: conn, shimDone: shimDone, pid: int(at.GetPid()), startTime: at.GetStartTime(),
+		obs: agent.Observed{
+			Key: key, Incarnation: n, SpecHash: spec.Hash(), LiveHash: live.Hash(), State: agent.StateInitializing,
+			ShimRelease: at.GetShimRelease(), StartedAt: time.Now(),
+		}}
 	f.mu.Lock()
 	f.workers[key] = w
 	f.mu.Unlock()
@@ -269,18 +303,29 @@ func (f *Fleet[S, L]) startShim(l *shimv1.Launch) (<-chan struct{}, error) {
 }
 
 // follow applies key's events to its observation until the connection ends. An end that Release did not ask for
-// leaves the worker lost, unless its exit was already recorded.
+// leaves the worker lost, unless its exit was recorded: in an Exited event, or in the exit file its shim wrote
+// before it went (S3).
 func (f *Fleet[S, L]) follow(key agent.WorkerKey, w *worker[S]) {
 	for ev := range w.conn.Events() {
 		f.update(key, w, func(o *agent.Observed) { apply(o, ev) })
 	}
+	rec, _ := shim.ReadExitFile(f.exitPath(key)) // a missing or unreadable file: no record
 	f.mu.Lock()
 	if f.workers[key] == w && !w.released && w.obs.State != agent.StateExited {
-		w.obs.State = agent.StateLost
-		f.cfg.Log.Warn().Err(w.conn.Err()).Str("worker", string(key)).Msg("lost the shim")
+		if rec.GetWorker().GetIncarnation() == w.obs.Incarnation && rec.GetExit() != nil {
+			w.obs.State, w.obs.Exit = agent.StateExited, rec.GetExit()
+			f.cfg.Log.Warn().Err(w.conn.Err()).Str("worker", string(key)).Msg("lost the shim; its exit is recorded")
+		} else {
+			w.obs.State = agent.StateLost
+			f.cfg.Log.Warn().Err(w.conn.Err()).Str("worker", string(key)).Msg("lost the shim")
+		}
 	}
 	f.mu.Unlock()
 	f.signal()
+}
+
+func (f *Fleet[S, L]) exitPath(key agent.WorkerKey) string {
+	return shim.ExitPath(f.cfg.WorkDir, string(f.cfg.Plane), string(key))
 }
 
 // apply is one event's effect on a worker's observation (PROTOCOL §4.4).
@@ -369,8 +414,10 @@ func (f *Fleet[S, L]) Stop(ctx context.Context, key agent.WorkerKey, reason stri
 	return nil
 }
 
-// Release ends the shim of key's worker, which has ended, and forgets it. It waits for the shim to exit, so that
-// the socket is gone before the next incarnation's shim listens.
+// Release ends the shim of key's worker, which has ended, and forgets it. With its shim there, the shim does it
+// (§4.3) and Release waits for it to exit, so that the socket is gone before the next incarnation's shim listens.
+// With its shim lost, Release first checks that the worker and the shim are gone (ErrStillRunning otherwise),
+// then removes the exit file the shim may have left, which would keep the next shim from starting (S3).
 func (f *Fleet[S, L]) Release(ctx context.Context, key agent.WorkerKey) error {
 	w, err := f.get(key)
 	if err != nil {
@@ -378,18 +425,34 @@ func (f *Fleet[S, L]) Release(ctx context.Context, key agent.WorkerKey) error {
 	}
 	f.mu.Lock()
 	w.released = true
-	state := w.obs.State
+	state, inc := w.obs.State, w.obs.Incarnation
 	f.mu.Unlock()
-	if state == agent.StateExited {
+	unrelease := func() {
+		f.mu.Lock()
+		w.released = false
+		f.mu.Unlock()
+	}
+	viaShim := state == agent.StateExited && w.conn.Err() == nil
+	if viaShim {
 		if err := w.conn.Release(ctx); err != nil {
-			f.mu.Lock()
-			w.released = false
-			f.mu.Unlock()
+			unrelease()
 			return fmt.Errorf("fleet: release %s: %w", key, err)
+		}
+	} else {
+		if err := w.gone(); err != nil {
+			unrelease()
+			return fmt.Errorf("fleet: release %s/%d: %w", key, inc, err)
+		}
+		path := f.exitPath(key)
+		if rec, err := shim.ReadExitFile(path); err == nil && rec.GetWorker().GetIncarnation() == inc {
+			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+				unrelease()
+				return fmt.Errorf("fleet: release %s: %w", key, err)
+			}
 		}
 	}
 	w.conn.Close()
-	if w.shimDone != nil && state == agent.StateExited {
+	if viaShim && w.shimDone != nil {
 		t := time.NewTimer(releaseWait)
 		select {
 		case <-w.shimDone:

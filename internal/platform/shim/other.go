@@ -13,3 +13,8 @@ func Run(log zerolog.Logger) int {
 	log.Error().Err(errors.New("shim: needs linux")).Msg("unsupported")
 	return 1
 }
+
+// Running needs Linux's /proc.
+func Running(pid int, startTime uint64) (bool, error) {
+	return false, errors.New("shim: needs linux")
+}

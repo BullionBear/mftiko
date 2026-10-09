@@ -1,7 +1,6 @@
 package shim
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -275,23 +274,4 @@ func sameGroups(groups []uint32) bool {
 		}
 	}
 	return true
-}
-
-// procStartTime is field 22 of /proc/<pid>/stat: when the process started, in clock ticks after boot.
-func procStartTime(pid int) (uint64, error) {
-	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
-	if err != nil {
-		return 0, err
-	}
-	// The command name is field 2, in parentheses, and may hold spaces or parentheses itself: count from the last ")".
-	i := bytes.LastIndexByte(b, ')')
-	if i < 0 {
-		return 0, fmt.Errorf("shim: /proc/%d/stat: no command name", pid)
-	}
-	fields := bytes.Fields(b[i+1:]) // field 3 onwards
-	const idx = 22 - 3
-	if len(fields) <= idx {
-		return 0, fmt.Errorf("shim: /proc/%d/stat: %d fields", pid, len(fields)+2)
-	}
-	return strconv.ParseUint(string(fields[idx]), 10, 64)
 }

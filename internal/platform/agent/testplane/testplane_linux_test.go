@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -379,4 +380,60 @@ func TestOwnRegionOnly(t *testing.T) {
 	if _, err := cl.Reader("tw"); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// workerPid is the pid the last incarnation of the worker named name journalled.
+func (e *env) workerPid(name string) int {
+	e.t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		entries, err := fakeworker.ReadJournal(e.cfg.Program.Journal(name))
+		if err != nil {
+			e.t.Fatal(err)
+		}
+		for i := len(entries) - 1; i >= 0; i-- {
+			if entries[i].Event == "ids" {
+				return entries[i].PID
+			}
+		}
+		if time.Now().After(deadline) {
+			e.t.Fatalf("worker %s journalled no pid", name)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func (e *env) shimPids() []int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return slices.Clone(e.pids)
+}
+
+// At most one incarnation of a worker key lives at a time (E1-16): a worker that outlives its killed shim (it
+// ignores SIGTERM and EOF, which D104 forbids, so that the case can be made) holds its next incarnation back until
+// it is gone; then the next one starts.
+func TestOneIncarnationAtATime(t *testing.T) {
+	e := setup(t, nil)
+	e.run()
+	e.want("a", Worker{Script: fakeworker.Script{IgnoreSIGTERM: true, IgnoreEOF: true}})
+	e.waitStatus("a", "RUNNING", phase(runner.PhaseRunning, 1))
+	pid := e.workerPid("a")
+	t.Cleanup(func() { syscall.Kill(pid, syscall.SIGKILL) }) //nolint:errcheck // killed below, mostly
+
+	if err := syscall.Kill(e.shimPids()[0], syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	e.waitStatus("a", "LOST", phase(runner.PhaseLost, 1))
+	time.Sleep(time.Second) // a few retries of the spawn, all held back
+	if st, _ := e.status("a"); st.GetWorker().GetIncarnation() != 1 || len(e.shimPids()) != 1 {
+		t.Fatalf("a second incarnation while the first runs: %v, %d shims", st, len(e.shimPids()))
+	}
+	if !strings.Contains(e.log.String(), "the last incarnation is still running") {
+		t.Fatalf("no spawn held back:\n%s", e.log.String())
+	}
+
+	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	e.waitStatus("a", "a second incarnation", phase(runner.PhaseRunning, 2))
 }
