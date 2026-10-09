@@ -75,7 +75,7 @@ export type GetRequest = Message<"mftiko.sym.v1.GetRequest"> & {
   universalTicker: string;
 
   /**
-   * D203：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢，含 MD 的到期監看。Resolver 與熱路徑不設。表還沒拆
+   * D203：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢，含 MD 的到期監看。Resolver 與熱路徑不設。表是 symbol_active 與 symbol_terminal
    *
    * @generated from field: bool include_inactive = 2;
    */
@@ -326,7 +326,7 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
   optionType: string;
 
   /**
-   * 暫定（D203）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。定案前仍是 bool，表也還沒拆
+   * 暫定（D203）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。定案前契約仍是 bool。表已拆成 symbol_active 與 symbol_terminal
    *
    * @generated from field: bool active = 10;
    */
@@ -350,6 +350,7 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
    * 重啟與重載不改它。下架再上市是新的 UID。碰撞時 SYM 重試。
    * 契約型別 uint32，範圍 1..4294967295（1..2^32-1），0 非法（PROTOCOL §10 P13）。
    * Postgres 欄位是 bigint，CHECK (uid BETWEEN 1 AND 4294967295)。
+   * SQL 的兩張表以 uid 為主鍵（migrations/0002_symbol）。
    *
    * @generated from field: uint32 uid = 13;
    */

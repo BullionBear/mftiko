@@ -31,7 +31,7 @@
 // is not stored in phase 1, and the demand is REJECTED. qty is in contract_value_ccy (contracts
 // times contract_size): base on linear and options, quote on inverse, not a contract count.
 //
-// Listings will be stored in two tables, split by whether the status can still change (D203): the
+// Listings are stored in two tables, split by whether the status can still change (D203): the
 // active table (PRELISTING, TRADABLE, HALTED, SETTLING, UNKNOWN), which is all the Resolver and the
 // hot paths read, and the terminal table (EXPIRED, DELISTED), kept for historical lookup and never
 // refreshed. A listing moves when it becomes terminal; the UniversalTicker string and the UID stay
@@ -42,6 +42,7 @@
 // no UID; Universe.current is a selector and is still TBD, outside D203. The enum is still
 // provisional. The contract type is uint32, range MinUID..MaxUID (1..4294967295,
 // PROTOCOL §10 P13). Zero is invalid. Postgres stores the column as bigint with
-// CHECK (uid BETWEEN 1 AND 4294967295). ValidUID applies that range. This package does not
-// implement the split or the allocator. Active stays bool until the status enum is final (D203).
+// CHECK (uid BETWEEN 1 AND 4294967295). ValidUID applies that range. The tables
+// and the allocator are internal/sym; this package does not allocate UIDs.
+// Active stays bool until the status enum is final (D203).
 package symbol

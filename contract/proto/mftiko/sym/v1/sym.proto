@@ -23,7 +23,7 @@ message Request {
 // One instrument by exact ticker: a single row, never a venue table.
 message GetRequest {
   string universal_ticker = 1;
-  bool include_inactive = 2; // D203：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢，含 MD 的到期監看。Resolver 與熱路徑不設。表還沒拆
+  bool include_inactive = 2; // D203：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢，含 MD 的到期監看。Resolver 與熱路徑不設。表是 symbol_active 與 symbol_terminal
 }
 
 // 系統內部的查詢（D203）。STS、TD、MD 持有 UID，用它拿這一列的欄位。
@@ -79,7 +79,7 @@ message SymbolInfo {
   int64 expiry_ns = 7; // 0 = does not expire
   optional string strike = 8; // SYM 先依 spell_strike 正規化再推 ticker：6400.0 與 6400 相同（D203）
   string option_type = 9; // C | P | ""
-  bool active = 10; // 暫定（D203）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。定案前仍是 bool，表也還沒拆
+  bool active = 10; // 暫定（D203）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。定案前契約仍是 bool。表已拆成 symbol_active 與 symbol_terminal
   // name -> bound. A key with an absent value: the venue publishes the restriction, no bound.
   // price_tick is price_ccy; qty_step, min_qty, max_qty are contract_value_ccy (D203).
   map<string, Bound> filters = 11;
@@ -88,6 +88,7 @@ message SymbolInfo {
   // 重啟與重載不改它。下架再上市是新的 UID。碰撞時 SYM 重試。
   // 契約型別 uint32，範圍 1..4294967295（1..2^32-1），0 非法（PROTOCOL §10 P13）。
   // Postgres 欄位是 bigint，CHECK (uid BETWEEN 1 AND 4294967295)。
+  // SQL 的兩張表以 uid 為主鍵（migrations/0002_symbol）。
   uint32 uid = 13;
 }
 

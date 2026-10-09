@@ -50,6 +50,15 @@ jobs:
           "$bin" --version
           echo "MFTIKO_ETCD_BIN=$bin" >> "$GITHUB_ENV"
 
+      - name: Install PostgreSQL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql
+          bin="$(pg_config --bindir)/postgres"
+          test -x "$bin"
+          "$bin" --version
+          echo "MFTIKO_PG_BIN=$bin" >> "$GITHUB_ENV"
+
       # The pull request's base, or the previous main for a push; buf reads it as a local branch.
       - name: Base for buf breaking
         env:
@@ -70,6 +79,7 @@ jobs:
       - name: go test -race
         env:
           MFTIKO_REQUIRE_ETCD: "1" # a missing etcd fails the etcd tests instead of skipping them
+          MFTIKO_REQUIRE_PG: "1" # a missing postgres fails the symbol migration tests instead of skipping them
         run: make test-race
       - name: svelte-check
         run: make web-check
