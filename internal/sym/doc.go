@@ -19,9 +19,12 @@
 // Storage is PostgreSQL, symbol_ticker and symbol_filter (migrations/0002_symbol). Only this
 // service writes them.
 //
-// It is also the only place that normalizes asset aliases (D38): normalize first, then decide
-// quanto, then derive the ticker. USD, USDC and USDT stay distinct. A USD quote settled in USDC
-// is quanto and is not tradable in phase 1.
+// It is also the only place that uppercases asset codes and applies the alias table (XBT to BTC,
+// D38): normalize first, then judge quanto, then derive the ticker. Adapters pass native codes.
+// Strikes go through spell_strike before the ticker, so 6400.0 and 6400 are one ticker. USD, USDC
+// and USDT stay distinct. A USD quote settled in USDC is quanto: it is not stored in phase 1, and
+// the demand is REJECTED. Adapters fill contract_value_ccy, price_ccy and the PnL settlement
+// asset from native venue fields; this service does not derive them.
 //
 // Reads (PROTOCOL §7.3): one instrument by exact UniversalTicker (a single row, never a venue
 // table); a (venue, category) table in pages of symbol.ListPage; the reverse lookup from a

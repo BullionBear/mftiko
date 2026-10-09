@@ -247,14 +247,14 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
   quote: string;
 
   /**
-   * 一張的面值。linear 與期權是 base，inverse 是 quote；空 = 該單位的 1（D38）
+   * 一張的面值。qty = 張數 × 此值，單位是 contract_value_ccy：linear 與期權是 base，inverse 是 quote（D38）
    *
    * @generated from field: optional string contract_size = 5;
    */
   contractSize?: string | undefined;
 
   /**
-   * 結算資產。空 = 現貨。和 base、quote 一起決定類別（D38）
+   * 損益結算幣（settlement_asset），不是保證金幣。空 = 現貨。quanto（既不是 base 也不是 quote）一期不入庫（D38）
    *
    * @generated from field: optional string settle = 6;
    */
@@ -268,6 +268,8 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
   expiryNs: bigint;
 
   /**
+   * SYM 先依 spell_strike 正規化再推 ticker：6400.0 與 6400 相同（D38）
+   *
    * @generated from field: optional string strike = 8;
    */
   strike?: string | undefined;
@@ -280,7 +282,7 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
   optionType: string;
 
   /**
-   * 暫定。D38：將改成 status enum；交易路徑只接受 TRADABLE。對不上的原生狀態是 UNKNOWN，不可交易
+   * 暫定（D38）。將改成 PRELISTING、TRADABLE、HALTED、SETTLING、EXPIRED、DELISTED、UNKNOWN。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。定案前仍是 bool
    *
    * @generated from field: bool active = 10;
    */
@@ -288,7 +290,7 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
 
   /**
    * name -> bound. A key with an absent value: the venue publishes the restriction, no bound.
-   * qty_step, min_qty, max_qty are in the qty unit; min_notional is quote (D38).
+   * price_tick is price_ccy; qty_step, min_qty, max_qty are contract_value_ccy (D38).
    *
    * @generated from field: map<string, mftiko.sym.v1.Bound> filters = 11;
    */

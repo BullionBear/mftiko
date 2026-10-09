@@ -17,9 +17,12 @@
 //
 // The plane itself (refresh, tables, the sym subject) is internal/sym.
 //
-// Asset aliases are normalized only there, and only before quanto is decided and the ticker is
-// derived (D38). USD, USDC and USDT are three assets. Quantity units depend on the class that
-// decision names.
+// Asset codes are uppercased there, and the alias table (XBT to BTC) is applied only there,
+// before quanto is judged and the ticker is derived (D38). Adapters pass native codes and do not
+// rename. Strikes are normalized with spell_strike first, so 6400.0 and 6400 are one ticker.
+// USD, USDC and USDT are three assets. Quanto (a settlement asset that is neither base nor quote)
+// is not stored in phase 1, and the demand is REJECTED. qty is in contract_value_ccy (contracts
+// times contract_size): base on linear and options, quote on inverse, not a contract count.
 //
 // Shape only: types and contracts; the functions return ErrNotImplemented.
 package symbol

@@ -6,13 +6,16 @@ type Info struct {
 	ExchTicker string
 	Base       string
 	Quote      string
-	// ContractSize and Settle use the D38 units. See Listing.
+	// ContractSize and Settle use the D38 units. See Listing. Settle is the PnL
+	// settlement asset, not the margin asset. Quanto is not stored in phase 1.
 	ContractSize string
 	Settle       string
 	ExpiryNs     int64
-	Strike       string
+	Strike       string // SYM applies spell_strike before the ticker (D38)
 	OptionType   string
-	// Active is tentative (D38): the trading path accepts only what will be TRADABLE.
+	// Active is tentative (D38): only TRADABLE trades. The enum is PRELISTING,
+	// TRADABLE, HALTED, SETTLING, EXPIRED, DELISTED, UNKNOWN. This stays bool
+	// until that enum is final.
 	Active      bool
 	Filters     map[string]string
 	UpdatedAtNs int64

@@ -12,14 +12,16 @@ CREATE TABLE symbol_ticker (
     exch_ticker      TEXT    NOT NULL,         -- the venue's own spelling, what goes on the wire
     base             TEXT    NOT NULL,
     quote            TEXT    NOT NULL,
-    contract_size    NUMERIC,                  -- face value of one contract (D38); NULL means 1 of that unit
-    settle           TEXT,                     -- settlement asset (D38); NULL for spot
+    contract_size    NUMERIC,                  -- face value of one contract (D38). Platform qty is contracts × this, in contract_value_ccy: base on linear and options, quote on inverse (not a contract count)
+    settle           TEXT,                     -- PnL settlement asset, not the margin asset (D38); NULL for spot. Quanto (neither base nor quote) is not stored in phase 1
     expiry_ns        BIGINT,                   -- dated contracts and options only
-    strike           NUMERIC,                  -- options only, as the venue published it
+    strike           NUMERIC,                  -- options only. SYM normalizes with spell_strike before the ticker (D38): 6400.0 and 6400 are one ticker
     option_type      TEXT CHECK (option_type IN ('C', 'P')),
-    -- False when it is not tradable (delisted, or quanto in phase 1). Rows are never deleted.
-    -- Tentative (D38): this boolean becomes a status enum. Only TRADABLE is tradable;
-    -- a native status that does not map is UNKNOWN and is not tradable.
+    -- False when it is not tradable (for example delisted). Rows are never deleted.
+    -- Quanto is not a row. Tentative (D38): this boolean becomes PRELISTING, TRADABLE,
+    -- HALTED, SETTLING, EXPIRED, DELISTED, UNKNOWN. Only TRADABLE is tradable. An unmapped
+    -- native status is UNKNOWN and is not tradable. Adding a value later does not make a
+    -- non-tradable instrument tradable. The column stays boolean until that enum is final.
     is_active        BOOLEAN NOT NULL DEFAULT TRUE,
     created_at_ns    BIGINT  NOT NULL,
     updated_at_ns    BIGINT  NOT NULL

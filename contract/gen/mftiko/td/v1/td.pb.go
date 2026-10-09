@@ -247,9 +247,9 @@ type Submit struct {
 	Ticker        string                 `protobuf:"bytes,2,opt,name=ticker,proto3" json:"ticker,omitempty"`
 	Side          v1.Side                `protobuf:"varint,3,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"`
 	OrderType     v1.OrderType           `protobuf:"varint,4,opt,name=order_type,json=orderType,proto3,enum=mftiko.common.v1.OrderType" json:"order_type,omitempty"`
-	Qty           *string                `protobuf:"bytes,5,opt,name=qty,proto3,oneof" json:"qty,omitempty"`                           // 下單數量，單位見 D38：現貨、linear、期權是 base；inverse 是張數
-	QuoteQty      *string                `protobuf:"bytes,6,opt,name=quote_qty,json=quoteQty,proto3,oneof" json:"quote_qty,omitempty"` // quote 資產的金額。只有現貨能用來下單；合約與期權不填（D38）
-	Price         *string                `protobuf:"bytes,7,opt,name=price,proto3,oneof" json:"price,omitempty"`                       // 現貨、linear、inverse、USD 保證金期權是 quote；幣本位期權是 base 權利金（D38）
+	Qty           *string                `protobuf:"bytes,5,opt,name=qty,proto3,oneof" json:"qty,omitempty"`                           // 單位是 contract_value_ccy（D38）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數
+	QuoteQty      *string                `protobuf:"bytes,6,opt,name=quote_qty,json=quoteQty,proto3,oneof" json:"quote_qty,omitempty"` // quote 資產的金額，單位是 quote，不是 contract_value_ccy（D38）
+	Price         *string                `protobuf:"bytes,7,opt,name=price,proto3,oneof" json:"price,omitempty"`                       // 單位是 price_ccy（D38）：現貨與期貨（含 inverse）是 quote；幣本位期權的權利金是 base；U 本位期權的權利金是 quote（穩定幣）
 	Tif           v1.TimeInForce         `protobuf:"varint,8,opt,name=tif,proto3,enum=mftiko.common.v1.TimeInForce" json:"tif,omitempty"`
 	ReduceOnly    bool                   `protobuf:"varint,9,opt,name=reduce_only,json=reduceOnly,proto3" json:"reduce_only,omitempty"`
 	ClientOrderId string                 `protobuf:"bytes,10,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
@@ -1463,11 +1463,11 @@ type Order struct {
 	Side          v1.Side                `protobuf:"varint,4,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"`
 	OrderType     v1.OrderType           `protobuf:"varint,5,opt,name=order_type,json=orderType,proto3,enum=mftiko.common.v1.OrderType" json:"order_type,omitempty"`
 	Status        OrderStatus            `protobuf:"varint,6,opt,name=status,proto3,enum=mftiko.td.v1.OrderStatus" json:"status,omitempty"`
-	Qty           string                 `protobuf:"bytes,7,opt,name=qty,proto3" json:"qty,omitempty"`                                  // 同 Submit.qty（D38）
+	Qty           string                 `protobuf:"bytes,7,opt,name=qty,proto3" json:"qty,omitempty"`                                  // 同 Submit.qty，單位是 contract_value_ccy（D38）
 	QuoteQty      *string                `protobuf:"bytes,8,opt,name=quote_qty,json=quoteQty,proto3,oneof" json:"quote_qty,omitempty"`  // 同 Submit.quote_qty（D38）
-	Price         *string                `protobuf:"bytes,9,opt,name=price,proto3,oneof" json:"price,omitempty"`                        // 同 Submit.price（D38）
-	FilledQty     string                 `protobuf:"bytes,10,opt,name=filled_qty,json=filledQty,proto3" json:"filled_qty,omitempty"`    // 已成交數量，單位同 qty（D38）
-	AvgPrice      *string                `protobuf:"bytes,11,opt,name=avg_price,json=avgPrice,proto3,oneof" json:"avg_price,omitempty"` // 同 Submit.price（D38）
+	Price         *string                `protobuf:"bytes,9,opt,name=price,proto3,oneof" json:"price,omitempty"`                        // 同 Submit.price，單位是 price_ccy（D38）
+	FilledQty     string                 `protobuf:"bytes,10,opt,name=filled_qty,json=filledQty,proto3" json:"filled_qty,omitempty"`    // 已成交數量，單位同 qty（contract_value_ccy，D38）
+	AvgPrice      *string                `protobuf:"bytes,11,opt,name=avg_price,json=avgPrice,proto3,oneof" json:"avg_price,omitempty"` // 同 Submit.price，單位是 price_ccy（D38）
 	RejectReason  string                 `protobuf:"bytes,12,opt,name=reject_reason,json=rejectReason,proto3" json:"reject_reason,omitempty"`
 	ExchTsNs      int64                  `protobuf:"varint,13,opt,name=exch_ts_ns,json=exchTsNs,proto3" json:"exch_ts_ns,omitempty"`
 	TdTsNs        int64                  `protobuf:"varint,14,opt,name=td_ts_ns,json=tdTsNs,proto3" json:"td_ts_ns,omitempty"`
@@ -1611,8 +1611,8 @@ type Fill struct {
 	OrderId       string  `protobuf:"bytes,3,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
 	ClientOrderId string  `protobuf:"bytes,4,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
 	Side          v1.Side `protobuf:"varint,5,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"`
-	Price         string  `protobuf:"bytes,6,opt,name=price,proto3" json:"price,omitempty"` // 同 Submit.price（D38）
-	Qty           string  `protobuf:"bytes,7,opt,name=qty,proto3" json:"qty,omitempty"`     // 成交數量，單位同 Submit.qty（D38）
+	Price         string  `protobuf:"bytes,6,opt,name=price,proto3" json:"price,omitempty"` // 同 Submit.price，單位是 price_ccy（D38）
+	Qty           string  `protobuf:"bytes,7,opt,name=qty,proto3" json:"qty,omitempty"`     // 成交數量，單位同 Submit.qty（contract_value_ccy，D38）
 	Fee           string  `protobuf:"bytes,8,opt,name=fee,proto3" json:"fee,omitempty"`
 	FeeAsset      string  `protobuf:"bytes,9,opt,name=fee_asset,json=feeAsset,proto3" json:"fee_asset,omitempty"`
 	Liquidity     string  `protobuf:"bytes,10,opt,name=liquidity,proto3" json:"liquidity,omitempty"`
@@ -1943,10 +1943,10 @@ func (x *Balance) GetPrelock() string {
 type Position struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ticker        string                 `protobuf:"bytes,1,opt,name=ticker,proto3" json:"ticker,omitempty"`
-	Size          string                 `protobuf:"bytes,2,opt,name=size,proto3" json:"size,omitempty"`                                              // 持倉數量，單位同 Submit.qty（D38）
-	EntryPrice    *string                `protobuf:"bytes,3,opt,name=entry_price,json=entryPrice,proto3,oneof" json:"entry_price,omitempty"`          // 同 Submit.price（D38）
-	MarkPrice     *string                `protobuf:"bytes,4,opt,name=mark_price,json=markPrice,proto3,oneof" json:"mark_price,omitempty"`             // 同 Submit.price（D38）
-	UnrealizedPnl *string                `protobuf:"bytes,5,opt,name=unrealized_pnl,json=unrealizedPnl,proto3,oneof" json:"unrealized_pnl,omitempty"` // 結算資產（settle，D38）
+	Size          string                 `protobuf:"bytes,2,opt,name=size,proto3" json:"size,omitempty"`                                              // 持倉數量，單位同 Submit.qty（contract_value_ccy，D38）
+	EntryPrice    *string                `protobuf:"bytes,3,opt,name=entry_price,json=entryPrice,proto3,oneof" json:"entry_price,omitempty"`          // 同 Submit.price，單位是 price_ccy（D38）
+	MarkPrice     *string                `protobuf:"bytes,4,opt,name=mark_price,json=markPrice,proto3,oneof" json:"mark_price,omitempty"`             // 同 Submit.price，單位是 price_ccy（D38）
+	UnrealizedPnl *string                `protobuf:"bytes,5,opt,name=unrealized_pnl,json=unrealizedPnl,proto3,oneof" json:"unrealized_pnl,omitempty"` // 損益結算幣 settlement_asset（欄位 settle），不是保證金幣（D38）
 	Leverage      *string                `protobuf:"bytes,6,opt,name=leverage,proto3,oneof" json:"leverage,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

@@ -76,21 +76,21 @@ export type Submit = Message<"mftiko.td.v1.Submit"> & {
   orderType: OrderType;
 
   /**
-   * 下單數量，單位見 D38：現貨、linear、期權是 base；inverse 是張數
+   * 單位是 contract_value_ccy（D38）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數
    *
    * @generated from field: optional string qty = 5;
    */
   qty?: string | undefined;
 
   /**
-   * quote 資產的金額。只有現貨能用來下單；合約與期權不填（D38）
+   * quote 資產的金額，單位是 quote，不是 contract_value_ccy（D38）
    *
    * @generated from field: optional string quote_qty = 6;
    */
   quoteQty?: string | undefined;
 
   /**
-   * 現貨、linear、inverse、USD 保證金期權是 quote；幣本位期權是 base 權利金（D38）
+   * 單位是 price_ccy（D38）：現貨與期貨（含 inverse）是 quote；幣本位期權的權利金是 base；U 本位期權的權利金是 quote（穩定幣）
    *
    * @generated from field: optional string price = 7;
    */
@@ -631,7 +631,7 @@ export type Order = Message<"mftiko.td.v1.Order"> & {
   status: OrderStatus;
 
   /**
-   * 同 Submit.qty（D38）
+   * 同 Submit.qty，單位是 contract_value_ccy（D38）
    *
    * @generated from field: string qty = 7;
    */
@@ -645,21 +645,21 @@ export type Order = Message<"mftiko.td.v1.Order"> & {
   quoteQty?: string | undefined;
 
   /**
-   * 同 Submit.price（D38）
+   * 同 Submit.price，單位是 price_ccy（D38）
    *
    * @generated from field: optional string price = 9;
    */
   price?: string | undefined;
 
   /**
-   * 已成交數量，單位同 qty（D38）
+   * 已成交數量，單位同 qty（contract_value_ccy，D38）
    *
    * @generated from field: string filled_qty = 10;
    */
   filledQty: string;
 
   /**
-   * 同 Submit.price（D38）
+   * 同 Submit.price，單位是 price_ccy（D38）
    *
    * @generated from field: optional string avg_price = 11;
    */
@@ -720,14 +720,14 @@ export type Fill = Message<"mftiko.td.v1.Fill"> & {
   side: Side;
 
   /**
-   * 同 Submit.price（D38）
+   * 同 Submit.price，單位是 price_ccy（D38）
    *
    * @generated from field: string price = 6;
    */
   price: string;
 
   /**
-   * 成交數量，單位同 Submit.qty（D38）
+   * 成交數量，單位同 Submit.qty（contract_value_ccy，D38）
    *
    * @generated from field: string qty = 7;
    */
@@ -872,28 +872,28 @@ export type Position = Message<"mftiko.td.v1.Position"> & {
   ticker: string;
 
   /**
-   * 持倉數量，單位同 Submit.qty（D38）
+   * 持倉數量，單位同 Submit.qty（contract_value_ccy，D38）
    *
    * @generated from field: string size = 2;
    */
   size: string;
 
   /**
-   * 同 Submit.price（D38）
+   * 同 Submit.price，單位是 price_ccy（D38）
    *
    * @generated from field: optional string entry_price = 3;
    */
   entryPrice?: string | undefined;
 
   /**
-   * 同 Submit.price（D38）
+   * 同 Submit.price，單位是 price_ccy（D38）
    *
    * @generated from field: optional string mark_price = 4;
    */
   markPrice?: string | undefined;
 
   /**
-   * 結算資產（settle，D38）
+   * 損益結算幣 settlement_asset（欄位 settle），不是保證金幣（D38）
    *
    * @generated from field: optional string unrealized_pnl = 5;
    */
