@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/BullionBear/mftiko/contract/symbol"
+	"github.com/BullionBear/mftiko/contract/wire/decimal"
 )
 
 // GetByTicker reads one instrument by its universal ticker.
@@ -237,7 +238,9 @@ func (sc stored) info() (symbol.Info, error) {
 		UpdatedAtNs:      sc.updatedAtNs,
 	}
 	if sc.contractSize != nil {
-		info.ContractSize = *sc.contractSize
+		if info.ContractSize, err = storedNumber("contract_size", *sc.contractSize); err != nil {
+			return symbol.Info{}, err
+		}
 	}
 	if sc.settle != nil {
 		info.Settle = *sc.settle
@@ -246,22 +249,35 @@ func (sc stored) info() (symbol.Info, error) {
 		info.ExpiryNs = *sc.expiryNs
 	}
 	if sc.strike != nil {
-		info.Strike = *sc.strike
+		if info.Strike, err = storedNumber("strike", *sc.strike); err != nil {
+			return symbol.Info{}, err
+		}
 	}
 	if sc.optionType != nil {
 		info.OptionType = *sc.optionType
 	}
 	if len(sc.filters) > 0 {
-		info.Filters = make(map[string]string, len(sc.filters))
+		info.Filters = make(symbol.Filters, len(sc.filters))
 		for _, f := range sc.filters {
-			v := ""
+			v := decimal.Absent() // a published restriction with no bound
 			if f.Value != nil {
-				v = *f.Value
+				if v, err = storedNumber("filter "+f.Name, *f.Value); err != nil {
+					return symbol.Info{}, err
+				}
 			}
 			info.Filters[f.Name] = v
 		}
 	}
 	return info, nil
+}
+
+// storedNumber reads a NUMERIC column's text as the float64 every plane uses (D008).
+func storedNumber(column, text string) (float64, error) {
+	v, err := decimal.Parse(text)
+	if err != nil {
+		return 0, fmt.Errorf("sym: stored %s %q: %w", column, text, err)
+	}
+	return v, nil
 }
 
 func (s *Store) queryOne(ctx context.Context, q string, args ...any) (symbol.Info, error) {

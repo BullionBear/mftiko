@@ -32,7 +32,11 @@
 //
 // # Rules every adapter follows
 //
-//   - Decimals are strings exactly as the venue sent them. No float64 anywhere.
+//   - Numbers are float64 (DECISIONS D008), read with decimal.Parse and written to a venue with
+//     decimal.Append at the instrument's step: plain notation, the step's decimals, never an exponent. An
+//     optional number the venue does not send is decimal.Absent. Nothing compares numbers with ==.
+//   - A request body that is signed is marshalled once; the signature covers those bytes, and those bytes
+//     are what is sent.
 //   - Times are int64 unix nanoseconds, fields end in Ns.
 //   - Instruments go in resolved and come out venue-named (D202, D203). Specs write a UniversalTicker;
 //     the caller resolves that to *symbol.Info at load (symbol.Resolver.Get) and hands the adapter

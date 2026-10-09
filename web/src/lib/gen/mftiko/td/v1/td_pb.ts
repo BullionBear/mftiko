@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mftiko/td/v1/td.proto.
  */
 export const file_mftiko_td_v1_td: GenFile = /*@__PURE__*/
-  fileDesc("ChVtZnRpa28vdGQvdjEvdGQucHJvdG8SDG1mdGlrby50ZC52MSKuAQoMT3JkZXJSZXF1ZXN0EiYKBnN1Ym1pdBgBIAEoCzIULm1mdGlrby50ZC52MS5TdWJtaXRIABImCgZjYW5jZWwYAiABKAsyFC5tZnRpa28udGQudjEuQ2FuY2VsSAASMQoMYmF0Y2hfY2FuY2VsGAQgASgLMhkubWZ0aWtvLnRkLnYxLkJhdGNoQ2FuY2VsSABCBQoDcmVxSgQIAxAEUg5jYW5jZWxfc2Vzc2lvbiKtAwoGU3VibWl0EhIKCnNlc3Npb25faWQYASABKAkSDgoGdGlja2VyGAIgASgJEiQKBHNpZGUYAyABKA4yFi5tZnRpa28uY29tbW9uLnYxLlNpZGUSLwoKb3JkZXJfdHlwZRgEIAEoDjIbLm1mdGlrby5jb21tb24udjEuT3JkZXJUeXBlEhAKA3F0eRgFIAEoCUgAiAEBEhYKCXF1b3RlX3F0eRgGIAEoCUgBiAEBEhIKBXByaWNlGAcgASgJSAKIAQESKgoDdGlmGAggASgOMh0ubWZ0aWtvLmNvbW1vbi52MS5UaW1lSW5Gb3JjZRITCgtyZWR1Y2Vfb25seRgJIAEoCBIXCg9jbGllbnRfb3JkZXJfaWQYCiABKAkSMAoGcGFyYW1zGAsgAygLMiAubWZ0aWtvLnRkLnYxLlN1Ym1pdC5QYXJhbXNFbnRyeRIPCgdhbGdvX2lkGAwgASgNGi0KC1BhcmFtc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAFCBgoEX3F0eUIMCgpfcXVvdGVfcXR5QggKBl9wcmljZSJoCgZDYW5jZWwSEgoKc2Vzc2lvbl9pZBgBIAEoCRIOCgZ0aWNrZXIYAiABKAkSFwoPY2xpZW50X29yZGVyX2lkGAMgASgJEhAKCG9yZGVyX2lkGAQgASgJEg8KB2FsZ29faWQYBSABKA0iQwoLQmF0Y2hDYW5jZWwSDwoHYWxnb19pZBgBIAEoDRIPCgd0aWNrZXJzGAIgAygJEhIKCnRpbWVvdXRfbXMYAyABKA0itQEKCk9yZGVyUmVwbHkSJQoDYWNrGAEgASgLMhYubWZ0aWtvLnRkLnYxLk9yZGVyQWNrSAASKAoFZXJyb3IYAyABKAsyFy5tZnRpa28uY29tbW9uLnYxLkVycm9ySAASNwoMYmF0Y2hfY2FuY2VsGAQgASgLMh8ubWZ0aWtvLnRkLnYxLkJhdGNoQ2FuY2VsUmVzdWx0SABCBwoFcmVwbHlKBAgCEANSDmNhbmNlbF9zZXNzaW9uIlMKCE9yZGVyQWNrEhcKD2NsaWVudF9vcmRlcl9pZBgBIAEoCRIQCghhY2NlcHRlZBgCIAEoCBIMCgRjb2RlGAMgASgFEg4KBnJlYXNvbhgEIAEoCSJfChFCYXRjaENhbmNlbFJlc3VsdBIPCgdhbGdvX2lkGAEgASgNEhEKCWNvbmZpcm1lZBgCIAEoCBIRCgljYW5jZWxsZWQYAyADKAkSEwoLdW5jb25maXJtZWQYBCADKAkirQEKC1ZpZXdSZXF1ZXN0EisKA29tcxgBIAEoCzIcLm1mdGlrby50ZC52MS5PbXNWaWV3UmVxdWVzdEgAEjEKBmxlZGdlchgCIAEoCzIfLm1mdGlrby50ZC52MS5MZWRnZXJWaWV3UmVxdWVzdEgAEjcKCGxldmVyYWdlGAMgASgLMiMubWZ0aWtvLnRkLnYxLkVuc3VyZUxldmVyYWdlUmVxdWVzdEgAQgUKA3JlcSJGCg5PbXNWaWV3UmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEg8KB3NldHRsZWQYAiABKAgSDwoHYWxnb19pZBgDIAEoDSITChFMZWRnZXJWaWV3UmVxdWVzdCInChVFbnN1cmVMZXZlcmFnZVJlcXVlc3QSDgoGdGlja2VyGAEgASgJIsABCglWaWV3UmVwbHkSJAoDb21zGAEgASgLMhUubWZ0aWtvLnRkLnYxLk9tc1ZpZXdIABIqCgZsZWRnZXIYAiABKAsyGC5tZnRpa28udGQudjEuTGVkZ2VyVmlld0gAEi4KCGxldmVyYWdlGAMgASgLMhoubWZ0aWtvLnRkLnYxLkxldmVyYWdlSW5mb0gAEigKBWVycm9yGAQgASgLMhcubWZ0aWtvLmNvbW1vbi52MS5FcnJvckgAQgcKBXJlcGx5IlUKB09tc1ZpZXcSIwoGb3JkZXJzGAEgAygLMhMubWZ0aWtvLnRkLnYxLk9yZGVyEhMKC2luY2FybmF0aW9uGAIgASgNEhAKCGFzX29mX25zGAMgASgDIocBCgpMZWRnZXJWaWV3EicKCGJhbGFuY2VzGAEgAygLMhUubWZ0aWtvLnRkLnYxLkJhbGFuY2USKQoJcG9zaXRpb25zGAIgAygLMhYubWZ0aWtvLnRkLnYxLlBvc2l0aW9uEhMKC2luY2FybmF0aW9uGAMgASgNEhAKCGFzX29mX25zGAQgASgDIjAKDExldmVyYWdlSW5mbxIOCgZ0aWNrZXIYASABKAkSEAoIbGV2ZXJhZ2UYAiABKAkitQMKDEFjY291bnRFdmVudBILCgNzZXEYASABKAQSKwoGc291cmNlGAIgASgLMhsubWZ0aWtvLmNvbW1vbi52MS5Xb3JrZXJSZWYSKwoMb3JkZXJfdXBkYXRlGAogASgLMhMubWZ0aWtvLnRkLnYxLk9yZGVySAASIgoEZmlsbBgLIAEoCzISLm1mdGlrby50ZC52MS5GaWxsSAASMQoMb3JkZXJfcmVqZWN0GAwgASgLMhkubWZ0aWtvLnRkLnYxLk9yZGVyUmVqZWN0SAASMwoNY2FuY2VsX3JlamVjdBgNIAEoCzIaLm1mdGlrby50ZC52MS5DYW5jZWxSZWplY3RIABI1Cg5iYWxhbmNlX3VwZGF0ZRgOIAEoCzIbLm1mdGlrby50ZC52MS5CYWxhbmNlVXBkYXRlSAASNwoPcG9zaXRpb25fdXBkYXRlGA8gASgLMhwubWZ0aWtvLnRkLnYxLlBvc2l0aW9uVXBkYXRlSAASJAoFcmVjb24YESABKAsyEy5tZnRpa28udGQudjEuUmVjb25IAEIHCgVldmVudEoECBAQEVINYWNjb3VudF9yZXNldCKMAwoFT3JkZXISDgoGdGlja2VyGAEgASgJEhAKCG9yZGVyX2lkGAIgASgJEhcKD2NsaWVudF9vcmRlcl9pZBgDIAEoCRIkCgRzaWRlGAQgASgOMhYubWZ0aWtvLmNvbW1vbi52MS5TaWRlEi8KCm9yZGVyX3R5cGUYBSABKA4yGy5tZnRpa28uY29tbW9uLnYxLk9yZGVyVHlwZRIpCgZzdGF0dXMYBiABKA4yGS5tZnRpa28udGQudjEuT3JkZXJTdGF0dXMSCwoDcXR5GAcgASgJEhYKCXF1b3RlX3F0eRgIIAEoCUgAiAEBEhIKBXByaWNlGAkgASgJSAGIAQESEgoKZmlsbGVkX3F0eRgKIAEoCRIWCglhdmdfcHJpY2UYCyABKAlIAogBARIVCg1yZWplY3RfcmVhc29uGAwgASgJEhIKCmV4Y2hfdHNfbnMYDSABKAMSEAoIdGRfdHNfbnMYDiABKANCDAoKX3F1b3RlX3F0eUIICgZfcHJpY2VCDAoKX2F2Z19wcmljZSLbAQoERmlsbBIOCgZ0aWNrZXIYASABKAkSDwoHZmlsbF9pZBgCIAEoCRIQCghvcmRlcl9pZBgDIAEoCRIXCg9jbGllbnRfb3JkZXJfaWQYBCABKAkSJAoEc2lkZRgFIAEoDjIWLm1mdGlrby5jb21tb24udjEuU2lkZRINCgVwcmljZRgGIAEoCRILCgNxdHkYByABKAkSCwoDZmVlGAggASgJEhEKCWZlZV9hc3NldBgJIAEoCRIRCglsaXF1aWRpdHkYCiABKAkSEgoKZXhjaF90c19ucxgLIAEoAyJmCgtPcmRlclJlamVjdBIXCg9jbGllbnRfb3JkZXJfaWQYASABKAkSEAoIb3JkZXJfaWQYAiABKAkSDgoGdGlja2VyGAMgASgJEgwKBGNvZGUYBCABKAUSDgoGcmVhc29uGAUgASgJIlcKDENhbmNlbFJlamVjdBIXCg9jbGllbnRfb3JkZXJfaWQYASABKAkSEAoIb3JkZXJfaWQYAiABKAkSDAoEY29kZRgDIAEoBRIOCgZyZWFzb24YBCABKAkiRwoHQmFsYW5jZRINCgVhc3NldBgBIAEoCRIMCgRmcmVlGAIgASgJEg4KBmxvY2tlZBgDIAEoCRIPCgdwcmVsb2NrGAQgASgJIs4BCghQb3NpdGlvbhIOCgZ0aWNrZXIYASABKAkSDAoEc2l6ZRgCIAEoCRIYCgtlbnRyeV9wcmljZRgDIAEoCUgAiAEBEhcKCm1hcmtfcHJpY2UYBCABKAlIAYgBARIbCg51bnJlYWxpemVkX3BubBgFIAEoCUgCiAEBEhUKCGxldmVyYWdlGAYgASgJSAOIAQFCDgoMX2VudHJ5X3ByaWNlQg0KC19tYXJrX3ByaWNlQhEKD191bnJlYWxpemVkX3BubEILCglfbGV2ZXJhZ2UiOAoNQmFsYW5jZVVwZGF0ZRInCghiYWxhbmNlcxgBIAMoCzIVLm1mdGlrby50ZC52MS5CYWxhbmNlIjsKDlBvc2l0aW9uVXBkYXRlEikKCXBvc2l0aW9ucxgBIAMoCzIWLm1mdGlrby50ZC52MS5Qb3NpdGlvbiLXAQoFUmVjb24SEwoLaW5jYXJuYXRpb24YASABKA0SKQoGcmVhc29uGAIgASgOMhkubWZ0aWtvLnRkLnYxLlJlY29uUmVhc29uEigKC29wZW5fb3JkZXJzGAMgAygLMhMubWZ0aWtvLnRkLnYxLk9yZGVyEikKCXBvc2l0aW9ucxgEIAMoCzIWLm1mdGlrby50ZC52MS5Qb3NpdGlvbhInCghiYWxhbmNlcxgFIAMoCzIVLm1mdGlrby50ZC52MS5CYWxhbmNlEhAKCGFzX29mX25zGAYgASgDKqcCCgtPcmRlclN0YXR1cxIcChhPUkRFUl9TVEFUVVNfVU5TUEVDSUZJRUQQABIcChhPUkRFUl9TVEFUVVNfUEVORElOR19ORVcQARIUChBPUkRFUl9TVEFUVVNfTkVXEAISIQodT1JERVJfU1RBVFVTX1BBUlRJQUxMWV9GSUxMRUQQAxIXChNPUkRFUl9TVEFUVVNfRklMTEVEEAQSHwobT1JERVJfU1RBVFVTX1BFTkRJTkdfQ0FOQ0VMEAUSGgoWT1JERVJfU1RBVFVTX0NBTkNFTExFRBAGEhkKFU9SREVSX1NUQVRVU19SRUpFQ1RFRBAHEhgKFE9SREVSX1NUQVRVU19FWFBJUkVEEAgSGAoUT1JERVJfU1RBVFVTX1VOS05PV04QCSplCgtSZWNvblJlYXNvbhIcChhSRUNPTl9SRUFTT05fVU5TUEVDSUZJRUQQABIaChZSRUNPTl9SRUFTT05fUkVDT05ORUNUEAESHAoYUkVDT05fUkVBU09OX0lOQ0FSTkFUSU9OEAJCPlo8Z2l0aHViLmNvbS9CdWxsaW9uQmVhci9tZnRpa28vY29udHJhY3QvZ2VuL21mdGlrby90ZC92MTt0ZHYxYgZwcm90bzM", [file_mftiko_common_v1_common]);
+  fileDesc("ChVtZnRpa28vdGQvdjEvdGQucHJvdG8SDG1mdGlrby50ZC52MSKuAQoMT3JkZXJSZXF1ZXN0EiYKBnN1Ym1pdBgBIAEoCzIULm1mdGlrby50ZC52MS5TdWJtaXRIABImCgZjYW5jZWwYAiABKAsyFC5tZnRpa28udGQudjEuQ2FuY2VsSAASMQoMYmF0Y2hfY2FuY2VsGAQgASgLMhkubWZ0aWtvLnRkLnYxLkJhdGNoQ2FuY2VsSABCBQoDcmVxSgQIAxAEUg5jYW5jZWxfc2Vzc2lvbiKtAwoGU3VibWl0EhIKCnNlc3Npb25faWQYASABKAkSDgoGdGlja2VyGAIgASgJEiQKBHNpZGUYAyABKA4yFi5tZnRpa28uY29tbW9uLnYxLlNpZGUSLwoKb3JkZXJfdHlwZRgEIAEoDjIbLm1mdGlrby5jb21tb24udjEuT3JkZXJUeXBlEhAKA3F0eRgFIAEoAUgAiAEBEhYKCXF1b3RlX3F0eRgGIAEoAUgBiAEBEhIKBXByaWNlGAcgASgBSAKIAQESKgoDdGlmGAggASgOMh0ubWZ0aWtvLmNvbW1vbi52MS5UaW1lSW5Gb3JjZRITCgtyZWR1Y2Vfb25seRgJIAEoCBIXCg9jbGllbnRfb3JkZXJfaWQYCiABKAkSMAoGcGFyYW1zGAsgAygLMiAubWZ0aWtvLnRkLnYxLlN1Ym1pdC5QYXJhbXNFbnRyeRIPCgdhbGdvX2lkGAwgASgNGi0KC1BhcmFtc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAFCBgoEX3F0eUIMCgpfcXVvdGVfcXR5QggKBl9wcmljZSJoCgZDYW5jZWwSEgoKc2Vzc2lvbl9pZBgBIAEoCRIOCgZ0aWNrZXIYAiABKAkSFwoPY2xpZW50X29yZGVyX2lkGAMgASgJEhAKCG9yZGVyX2lkGAQgASgJEg8KB2FsZ29faWQYBSABKA0iQwoLQmF0Y2hDYW5jZWwSDwoHYWxnb19pZBgBIAEoDRIPCgd0aWNrZXJzGAIgAygJEhIKCnRpbWVvdXRfbXMYAyABKA0itQEKCk9yZGVyUmVwbHkSJQoDYWNrGAEgASgLMhYubWZ0aWtvLnRkLnYxLk9yZGVyQWNrSAASKAoFZXJyb3IYAyABKAsyFy5tZnRpa28uY29tbW9uLnYxLkVycm9ySAASNwoMYmF0Y2hfY2FuY2VsGAQgASgLMh8ubWZ0aWtvLnRkLnYxLkJhdGNoQ2FuY2VsUmVzdWx0SABCBwoFcmVwbHlKBAgCEANSDmNhbmNlbF9zZXNzaW9uIlMKCE9yZGVyQWNrEhcKD2NsaWVudF9vcmRlcl9pZBgBIAEoCRIQCghhY2NlcHRlZBgCIAEoCBIMCgRjb2RlGAMgASgFEg4KBnJlYXNvbhgEIAEoCSJfChFCYXRjaENhbmNlbFJlc3VsdBIPCgdhbGdvX2lkGAEgASgNEhEKCWNvbmZpcm1lZBgCIAEoCBIRCgljYW5jZWxsZWQYAyADKAkSEwoLdW5jb25maXJtZWQYBCADKAkirQEKC1ZpZXdSZXF1ZXN0EisKA29tcxgBIAEoCzIcLm1mdGlrby50ZC52MS5PbXNWaWV3UmVxdWVzdEgAEjEKBmxlZGdlchgCIAEoCzIfLm1mdGlrby50ZC52MS5MZWRnZXJWaWV3UmVxdWVzdEgAEjcKCGxldmVyYWdlGAMgASgLMiMubWZ0aWtvLnRkLnYxLkVuc3VyZUxldmVyYWdlUmVxdWVzdEgAQgUKA3JlcSJGCg5PbXNWaWV3UmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEg8KB3NldHRsZWQYAiABKAgSDwoHYWxnb19pZBgDIAEoDSITChFMZWRnZXJWaWV3UmVxdWVzdCInChVFbnN1cmVMZXZlcmFnZVJlcXVlc3QSDgoGdGlja2VyGAEgASgJIsABCglWaWV3UmVwbHkSJAoDb21zGAEgASgLMhUubWZ0aWtvLnRkLnYxLk9tc1ZpZXdIABIqCgZsZWRnZXIYAiABKAsyGC5tZnRpa28udGQudjEuTGVkZ2VyVmlld0gAEi4KCGxldmVyYWdlGAMgASgLMhoubWZ0aWtvLnRkLnYxLkxldmVyYWdlSW5mb0gAEigKBWVycm9yGAQgASgLMhcubWZ0aWtvLmNvbW1vbi52MS5FcnJvckgAQgcKBXJlcGx5IlUKB09tc1ZpZXcSIwoGb3JkZXJzGAEgAygLMhMubWZ0aWtvLnRkLnYxLk9yZGVyEhMKC2luY2FybmF0aW9uGAIgASgNEhAKCGFzX29mX25zGAMgASgDIocBCgpMZWRnZXJWaWV3EicKCGJhbGFuY2VzGAEgAygLMhUubWZ0aWtvLnRkLnYxLkJhbGFuY2USKQoJcG9zaXRpb25zGAIgAygLMhYubWZ0aWtvLnRkLnYxLlBvc2l0aW9uEhMKC2luY2FybmF0aW9uGAMgASgNEhAKCGFzX29mX25zGAQgASgDIjAKDExldmVyYWdlSW5mbxIOCgZ0aWNrZXIYASABKAkSEAoIbGV2ZXJhZ2UYAiABKAEitQMKDEFjY291bnRFdmVudBILCgNzZXEYASABKAQSKwoGc291cmNlGAIgASgLMhsubWZ0aWtvLmNvbW1vbi52MS5Xb3JrZXJSZWYSKwoMb3JkZXJfdXBkYXRlGAogASgLMhMubWZ0aWtvLnRkLnYxLk9yZGVySAASIgoEZmlsbBgLIAEoCzISLm1mdGlrby50ZC52MS5GaWxsSAASMQoMb3JkZXJfcmVqZWN0GAwgASgLMhkubWZ0aWtvLnRkLnYxLk9yZGVyUmVqZWN0SAASMwoNY2FuY2VsX3JlamVjdBgNIAEoCzIaLm1mdGlrby50ZC52MS5DYW5jZWxSZWplY3RIABI1Cg5iYWxhbmNlX3VwZGF0ZRgOIAEoCzIbLm1mdGlrby50ZC52MS5CYWxhbmNlVXBkYXRlSAASNwoPcG9zaXRpb25fdXBkYXRlGA8gASgLMhwubWZ0aWtvLnRkLnYxLlBvc2l0aW9uVXBkYXRlSAASJAoFcmVjb24YESABKAsyEy5tZnRpa28udGQudjEuUmVjb25IAEIHCgVldmVudEoECBAQEVINYWNjb3VudF9yZXNldCKMAwoFT3JkZXISDgoGdGlja2VyGAEgASgJEhAKCG9yZGVyX2lkGAIgASgJEhcKD2NsaWVudF9vcmRlcl9pZBgDIAEoCRIkCgRzaWRlGAQgASgOMhYubWZ0aWtvLmNvbW1vbi52MS5TaWRlEi8KCm9yZGVyX3R5cGUYBSABKA4yGy5tZnRpa28uY29tbW9uLnYxLk9yZGVyVHlwZRIpCgZzdGF0dXMYBiABKA4yGS5tZnRpa28udGQudjEuT3JkZXJTdGF0dXMSCwoDcXR5GAcgASgBEhYKCXF1b3RlX3F0eRgIIAEoAUgAiAEBEhIKBXByaWNlGAkgASgBSAGIAQESEgoKZmlsbGVkX3F0eRgKIAEoARIWCglhdmdfcHJpY2UYCyABKAFIAogBARIVCg1yZWplY3RfcmVhc29uGAwgASgJEhIKCmV4Y2hfdHNfbnMYDSABKAMSEAoIdGRfdHNfbnMYDiABKANCDAoKX3F1b3RlX3F0eUIICgZfcHJpY2VCDAoKX2F2Z19wcmljZSLbAQoERmlsbBIOCgZ0aWNrZXIYASABKAkSDwoHZmlsbF9pZBgCIAEoCRIQCghvcmRlcl9pZBgDIAEoCRIXCg9jbGllbnRfb3JkZXJfaWQYBCABKAkSJAoEc2lkZRgFIAEoDjIWLm1mdGlrby5jb21tb24udjEuU2lkZRINCgVwcmljZRgGIAEoARILCgNxdHkYByABKAESCwoDZmVlGAggASgBEhEKCWZlZV9hc3NldBgJIAEoCRIRCglsaXF1aWRpdHkYCiABKAkSEgoKZXhjaF90c19ucxgLIAEoAyJmCgtPcmRlclJlamVjdBIXCg9jbGllbnRfb3JkZXJfaWQYASABKAkSEAoIb3JkZXJfaWQYAiABKAkSDgoGdGlja2VyGAMgASgJEgwKBGNvZGUYBCABKAUSDgoGcmVhc29uGAUgASgJIlcKDENhbmNlbFJlamVjdBIXCg9jbGllbnRfb3JkZXJfaWQYASABKAkSEAoIb3JkZXJfaWQYAiABKAkSDAoEY29kZRgDIAEoBRIOCgZyZWFzb24YBCABKAkiRwoHQmFsYW5jZRINCgVhc3NldBgBIAEoCRIMCgRmcmVlGAIgASgBEg4KBmxvY2tlZBgDIAEoARIPCgdwcmVsb2NrGAQgASgBIs4BCghQb3NpdGlvbhIOCgZ0aWNrZXIYASABKAkSDAoEc2l6ZRgCIAEoARIYCgtlbnRyeV9wcmljZRgDIAEoAUgAiAEBEhcKCm1hcmtfcHJpY2UYBCABKAFIAYgBARIbCg51bnJlYWxpemVkX3BubBgFIAEoAUgCiAEBEhUKCGxldmVyYWdlGAYgASgBSAOIAQFCDgoMX2VudHJ5X3ByaWNlQg0KC19tYXJrX3ByaWNlQhEKD191bnJlYWxpemVkX3BubEILCglfbGV2ZXJhZ2UiOAoNQmFsYW5jZVVwZGF0ZRInCghiYWxhbmNlcxgBIAMoCzIVLm1mdGlrby50ZC52MS5CYWxhbmNlIjsKDlBvc2l0aW9uVXBkYXRlEikKCXBvc2l0aW9ucxgBIAMoCzIWLm1mdGlrby50ZC52MS5Qb3NpdGlvbiLXAQoFUmVjb24SEwoLaW5jYXJuYXRpb24YASABKA0SKQoGcmVhc29uGAIgASgOMhkubWZ0aWtvLnRkLnYxLlJlY29uUmVhc29uEigKC29wZW5fb3JkZXJzGAMgAygLMhMubWZ0aWtvLnRkLnYxLk9yZGVyEikKCXBvc2l0aW9ucxgEIAMoCzIWLm1mdGlrby50ZC52MS5Qb3NpdGlvbhInCghiYWxhbmNlcxgFIAMoCzIVLm1mdGlrby50ZC52MS5CYWxhbmNlEhAKCGFzX29mX25zGAYgASgDKqcCCgtPcmRlclN0YXR1cxIcChhPUkRFUl9TVEFUVVNfVU5TUEVDSUZJRUQQABIcChhPUkRFUl9TVEFUVVNfUEVORElOR19ORVcQARIUChBPUkRFUl9TVEFUVVNfTkVXEAISIQodT1JERVJfU1RBVFVTX1BBUlRJQUxMWV9GSUxMRUQQAxIXChNPUkRFUl9TVEFUVVNfRklMTEVEEAQSHwobT1JERVJfU1RBVFVTX1BFTkRJTkdfQ0FOQ0VMEAUSGgoWT1JERVJfU1RBVFVTX0NBTkNFTExFRBAGEhkKFU9SREVSX1NUQVRVU19SRUpFQ1RFRBAHEhgKFE9SREVSX1NUQVRVU19FWFBJUkVEEAgSGAoUT1JERVJfU1RBVFVTX1VOS05PV04QCSplCgtSZWNvblJlYXNvbhIcChhSRUNPTl9SRUFTT05fVU5TUEVDSUZJRUQQABIaChZSRUNPTl9SRUFTT05fUkVDT05ORUNUEAESHAoYUkVDT05fUkVBU09OX0lOQ0FSTkFUSU9OEAJCPlo8Z2l0aHViLmNvbS9CdWxsaW9uQmVhci9tZnRpa28vY29udHJhY3QvZ2VuL21mdGlrby90ZC92MTt0ZHYxYgZwcm90bzM", [file_mftiko_common_v1_common]);
 
 /**
  * @generated from message mftiko.td.v1.OrderRequest
@@ -80,23 +80,23 @@ export type Submit = Message<"mftiko.td.v1.Submit"> & {
   /**
    * 單位是 contract_value_ccy（D203）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數
    *
-   * @generated from field: optional string qty = 5;
+   * @generated from field: optional double qty = 5;
    */
-  qty?: string | undefined;
+  qty?: number | undefined;
 
   /**
    * quote 資產的金額，單位是 quote，不是 contract_value_ccy（D203）
    *
-   * @generated from field: optional string quote_qty = 6;
+   * @generated from field: optional double quote_qty = 6;
    */
-  quoteQty?: string | undefined;
+  quoteQty?: number | undefined;
 
   /**
    * 單位是 price_ccy（D203）：現貨與期貨（含 inverse）是 quote；幣本位期權的權利金是 base；U 本位期權的權利金是 quote（穩定幣）
    *
-   * @generated from field: optional string price = 7;
+   * @generated from field: optional double price = 7;
    */
-  price?: string | undefined;
+  price?: number | undefined;
 
   /**
    * @generated from field: mftiko.common.v1.TimeInForce tif = 8;
@@ -515,9 +515,9 @@ export type LeverageInfo = Message<"mftiko.td.v1.LeverageInfo"> & {
   ticker: string;
 
   /**
-   * @generated from field: string leverage = 2;
+   * @generated from field: double leverage = 2;
    */
-  leverage: string;
+  leverage: number;
 };
 
 /**
@@ -635,37 +635,37 @@ export type Order = Message<"mftiko.td.v1.Order"> & {
   /**
    * 同 Submit.qty，單位是 contract_value_ccy（D203）
    *
-   * @generated from field: string qty = 7;
+   * @generated from field: double qty = 7;
    */
-  qty: string;
+  qty: number;
 
   /**
    * 同 Submit.quote_qty（D203）
    *
-   * @generated from field: optional string quote_qty = 8;
+   * @generated from field: optional double quote_qty = 8;
    */
-  quoteQty?: string | undefined;
+  quoteQty?: number | undefined;
 
   /**
    * 同 Submit.price，單位是 price_ccy（D203）
    *
-   * @generated from field: optional string price = 9;
+   * @generated from field: optional double price = 9;
    */
-  price?: string | undefined;
+  price?: number | undefined;
 
   /**
    * 已成交數量，單位同 qty（contract_value_ccy，D203）
    *
-   * @generated from field: string filled_qty = 10;
+   * @generated from field: double filled_qty = 10;
    */
-  filledQty: string;
+  filledQty: number;
 
   /**
    * 同 Submit.price，單位是 price_ccy（D203）
    *
-   * @generated from field: optional string avg_price = 11;
+   * @generated from field: optional double avg_price = 11;
    */
-  avgPrice?: string | undefined;
+  avgPrice?: number | undefined;
 
   /**
    * @generated from field: string reject_reason = 12;
@@ -724,21 +724,21 @@ export type Fill = Message<"mftiko.td.v1.Fill"> & {
   /**
    * 同 Submit.price，單位是 price_ccy（D203）
    *
-   * @generated from field: string price = 6;
+   * @generated from field: double price = 6;
    */
-  price: string;
+  price: number;
 
   /**
    * 成交數量，單位同 Submit.qty（contract_value_ccy，D203）
    *
-   * @generated from field: string qty = 7;
+   * @generated from field: double qty = 7;
    */
-  qty: string;
+  qty: number;
 
   /**
-   * @generated from field: string fee = 8;
+   * @generated from field: double fee = 8;
    */
-  fee: string;
+  fee: number;
 
   /**
    * @generated from field: string fee_asset = 9;
@@ -842,19 +842,19 @@ export type Balance = Message<"mftiko.td.v1.Balance"> & {
   asset: string;
 
   /**
-   * @generated from field: string free = 2;
+   * @generated from field: double free = 2;
    */
-  free: string;
+  free: number;
 
   /**
-   * @generated from field: string locked = 3;
+   * @generated from field: double locked = 3;
    */
-  locked: string;
+  locked: number;
 
   /**
-   * @generated from field: string prelock = 4;
+   * @generated from field: double prelock = 4;
    */
-  prelock: string;
+  prelock: number;
 };
 
 /**
@@ -876,35 +876,35 @@ export type Position = Message<"mftiko.td.v1.Position"> & {
   /**
    * 持倉數量，單位同 Submit.qty（contract_value_ccy，D203）
    *
-   * @generated from field: string size = 2;
+   * @generated from field: double size = 2;
    */
-  size: string;
+  size: number;
 
   /**
    * 同 Submit.price，單位是 price_ccy（D203）
    *
-   * @generated from field: optional string entry_price = 3;
+   * @generated from field: optional double entry_price = 3;
    */
-  entryPrice?: string | undefined;
+  entryPrice?: number | undefined;
 
   /**
    * 同 Submit.price，單位是 price_ccy（D203）
    *
-   * @generated from field: optional string mark_price = 4;
+   * @generated from field: optional double mark_price = 4;
    */
-  markPrice?: string | undefined;
+  markPrice?: number | undefined;
 
   /**
    * 損益結算幣 settlement_asset（欄位 settle），不是保證金幣（D203）
    *
-   * @generated from field: optional string unrealized_pnl = 5;
+   * @generated from field: optional double unrealized_pnl = 5;
    */
-  unrealizedPnl?: string | undefined;
+  unrealizedPnl?: number | undefined;
 
   /**
-   * @generated from field: optional string leverage = 6;
+   * @generated from field: optional double leverage = 6;
    */
-  leverage?: string | undefined;
+  leverage?: number | undefined;
 };
 
 /**

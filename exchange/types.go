@@ -74,8 +74,8 @@ const (
 	OrderStatusUnknown
 )
 
-// Level is one price level. Qty "0" deletes the level.
+// Level is one price level. Qty 0 deletes the level.
 type Level struct {
-	Price string
-	Qty   string
+	Price float64
+	Qty   float64
 }

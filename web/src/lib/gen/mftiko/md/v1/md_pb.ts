@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mftiko/md/v1/md.proto.
  */
 export const file_mftiko_md_v1_md: GenFile = /*@__PURE__*/
-  fileDesc("ChVtZnRpa28vbWQvdjEvbWQucHJvdG8SDG1mdGlrby5tZC52MSJHCgRNZXRhEhIKCmV4Y2hfdHNfbnMYAyABKANKBAgBEAJKBAgCEANKBAgEEAVSA3NlcVIKY29ubl9lcG9jaFIIbWRfdHNfbnMi6QQKCUZlZWRFdmVudBItCgpiZXN0X3F1b3RlGAEgASgLMhcubWZ0aWtvLm1kLnYxLkJlc3RRdW90ZUgAEiQKBXRyYWRlGAIgASgLMhMubWZ0aWtvLm1kLnYxLlRyYWRlSAASKwoJYWdnX3RyYWRlGAMgASgLMhYubWZ0aWtvLm1kLnYxLkFnZ1RyYWRlSAASLQoKb3JkZXJfYm9vaxgEIAEoCzIXLm1mdGlrby5tZC52MS5PcmRlckJvb2tIABIkCgVrbGluZRgFIAEoCzITLm1mdGlrby5tZC52MS5LbGluZUgAEiYKBnRpY2tlchgGIAEoCzIULm1mdGlrby5tZC52MS5UaWNrZXJIABIwCgtsaXF1aWRhdGlvbhgHIAEoCzIZLm1mdGlrby5tZC52MS5MaXF1aWRhdGlvbkgAEjEKDGZ1bmRpbmdfcmF0ZRgIIAEoCzIZLm1mdGlrby5tZC52MS5GdW5kaW5nUmF0ZUgAEjMKDW9wZW5faW50ZXJlc3QYCSABKAsyGi5tZnRpa28ubWQudjEuT3BlbkludGVyZXN0SAASJgoGZ3JlZWtzGAogASgLMhQubWZ0aWtvLm1kLnYxLkdyZWVrc0gAEi0KCm1hcmtfcHJpY2UYCyABKAsyFy5tZnRpa28ubWQudjEuTWFya1ByaWNlSAASOAoQb3JkZXJfYm9va19kZWx0YRgMIAEoCzIcLm1mdGlrby5tZC52MS5PcmRlckJvb2tEZWx0YUgAEikKCGZlZWRfZW5kGGQgASgLMhUubWZ0aWtvLm1kLnYxLkZlZWRFbmRIAEIHCgVldmVudCJpCglCZXN0UXVvdGUSIAoEbWV0YRgBIAEoCzISLm1mdGlrby5tZC52MS5NZXRhEgsKA2JpZBgCIAEoCRIPCgdiaWRfcXR5GAMgASgJEgsKA2FzaxgEIAEoCRIPCgdhc2tfcXR5GAUgASgJIn0KBVRyYWRlEiAKBG1ldGEYASABKAsyEi5tZnRpa28ubWQudjEuTWV0YRIQCgh0cmFkZV9pZBgCIAEoCRINCgVwcmljZRgDIAEoCRILCgNxdHkYBCABKAkSJAoEc2lkZRgFIAEoDjIWLm1mdGlrby5jb21tb24udjEuU2lkZSLEAQoIQWdnVHJhZGUSIAoEbWV0YRgBIAEoCzISLm1mdGlrby5tZC52MS5NZXRhEhAKCHRyYWRlX2lkGAIgASgJEg0KBXByaWNlGAMgASgJEgsKA3F0eRgEIAEoCRIkCgRzaWRlGAUgASgOMhYubWZ0aWtvLmNvbW1vbi52MS5TaWRlEhYKDmZpcnN0X3RyYWRlX2lkGAYgASgJEhUKDWxhc3RfdHJhZGVfaWQYByABKAkSEwoLbWF0Y2hfY291bnQYCCABKA0iIwoFTGV2ZWwSDQoFcHJpY2UYASABKAkSCwoDcXR5GAIgASgJIoIBCglPcmRlckJvb2sSIAoEbWV0YRgBIAEoCzISLm1mdGlrby5tZC52MS5NZXRhEiEKBGJpZHMYAiADKAsyEy5tZnRpa28ubWQudjEuTGV2ZWwSIQoEYXNrcxgDIAMoCzITLm1mdGlrby5tZC52MS5MZXZlbBINCgVkZXB0aBgEIAEoDSKHAQoOT3JkZXJCb29rRGVsdGESIAoEbWV0YRgBIAEoCzISLm1mdGlrby5tZC52MS5NZXRhEiEKBGJpZHMYAiADKAsyEy5tZnRpa28ubWQudjEuTGV2ZWwSIQoEYXNrcxgDIAMoCzITLm1mdGlrby5tZC52MS5MZXZlbBINCgVyZXNldBgEIAEoCCLVAQoFS2xpbmUSIAoEbWV0YRgBIAEoCzISLm1mdGlrby5tZC52MS5NZXRhEhAKCGludGVydmFsGAIgASgJEhQKDG9wZW5fdGltZV9ucxgDIAEoAxIMCgRvcGVuGAQgASgJEgwKBGhpZ2gYBSABKAkSCwoDbG93GAYgASgJEg0KBWNsb3NlGAcgASgJEg4KBnZvbHVtZRgIIAEoCRIZCgxxdW90ZV92b2x1bWUYCSABKAlIAIgBARIOCgZjbG9zZWQYCiABKAhCDwoNX3F1b3RlX3ZvbHVtZSK8AgoGVGlja2VyEiAKBG1ldGEYASABKAsyEi5tZnRpa28ubWQudjEuTWV0YRIRCgRsYXN0GAIgASgJSACIAQESFQoIb3Blbl8yNGgYAyABKAlIAYgBARIVCghoaWdoXzI0aBgEIAEoCUgCiAEBEhQKB2xvd18yNGgYBSABKAlIA4gBARIXCgp2b2x1bWVfMjRoGAYgASgJSASIAQESHQoQcXVvdGVfdm9sdW1lXzI0aBgHIAEoCUgFiAEBEhsKDmNoYW5nZV9wY3RfMjRoGAggASgJSAaIAQFCBwoFX2xhc3RCCwoJX29wZW5fMjRoQgsKCV9oaWdoXzI0aEIKCghfbG93XzI0aEINCgtfdm9sdW1lXzI0aEITChFfcXVvdGVfdm9sdW1lXzI0aEIRCg9fY2hhbmdlX3BjdF8yNGgicQoLTGlxdWlkYXRpb24SIAoEbWV0YRgBIAEoCzISLm1mdGlrby5tZC52MS5NZXRhEiQKBHNpZGUYAiABKA4yFi5tZnRpa28uY29tbW9uLnYxLlNpZGUSDQoFcHJpY2UYAyABKAkSCwoDcXR5GAQgASgJIn4KC0Z1bmRpbmdSYXRlEiAKBG1ldGEYASABKAsyEi5tZnRpa28ubWQudjEuTWV0YRIMCgRyYXRlGAIgASgJEhcKD25leHRfZnVuZGluZ19ucxgDIAEoAxIXCgppbnRlcnZhbF9zGAQgASgNSACIAQFCDQoLX2ludGVydmFsX3MigQEKDE9wZW5JbnRlcmVzdBIgCgRtZXRhGAEgASgLMhIubWZ0aWtvLm1kLnYxLk1ldGESFQoNb3Blbl9pbnRlcmVzdBgCIAEoCRIgChNvcGVuX2ludGVyZXN0X3ZhbHVlGAMgASgJSACIAQFCFgoUX29wZW5faW50ZXJlc3RfdmFsdWUi+AIKBkdyZWVrcxIgCgRtZXRhGAEgASgLMhIubWZ0aWtvLm1kLnYxLk1ldGESEgoFZGVsdGEYAiABKAlIAIgBARISCgVnYW1tYRgDIAEoCUgBiAEBEhEKBHZlZ2EYBCABKAlIAogBARISCgV0aGV0YRgFIAEoCUgDiAEBEhAKA3JobxgGIAEoCUgEiAEBEhQKB21hcmtfaXYYByABKAlIBYgBARITCgZiaWRfaXYYCCABKAlIBogBARITCgZhc2tfaXYYCSABKAlIB4gBARIXCgptYXJrX3ByaWNlGAogASgJSAiIAQESHQoQdW5kZXJseWluZ19wcmljZRgLIAEoCUgJiAEBQggKBl9kZWx0YUIICgZfZ2FtbWFCBwoFX3ZlZ2FCCAoGX3RoZXRhQgYKBF9yaG9CCgoIX21hcmtfaXZCCQoHX2JpZF9pdkIJCgdfYXNrX2l2Qg0KC19tYXJrX3ByaWNlQhMKEV91bmRlcmx5aW5nX3ByaWNlImsKCU1hcmtQcmljZRIgCgRtZXRhGAEgASgLMhIubWZ0aWtvLm1kLnYxLk1ldGESEgoKbWFya19wcmljZRgCIAEoCRIYCgtpbmRleF9wcmljZRgDIAEoCUgAiAEBQg4KDF9pbmRleF9wcmljZSIoCgdGZWVkRW5kEg4KBnJlYXNvbhgBIAEoCRINCgVhdF9ucxgCIAEoA0I+WjxnaXRodWIuY29tL0J1bGxpb25CZWFyL21mdGlrby9jb250cmFjdC9nZW4vbWZ0aWtvL21kL3YxO21kdjFiBnByb3RvMw", [file_mftiko_common_v1_common]);
+  fileDesc("ChVtZnRpa28vbWQvdjEvbWQucHJvdG8SDG1mdGlrby5tZC52MSJHCgRNZXRhEhIKCmV4Y2hfdHNfbnMYAyABKANKBAgBEAJKBAgCEANKBAgEEAVSA3NlcVIKY29ubl9lcG9jaFIIbWRfdHNfbnMi6QQKCUZlZWRFdmVudBItCgpiZXN0X3F1b3RlGAEgASgLMhcubWZ0aWtvLm1kLnYxLkJlc3RRdW90ZUgAEiQKBXRyYWRlGAIgASgLMhMubWZ0aWtvLm1kLnYxLlRyYWRlSAASKwoJYWdnX3RyYWRlGAMgASgLMhYubWZ0aWtvLm1kLnYxLkFnZ1RyYWRlSAASLQoKb3JkZXJfYm9vaxgEIAEoCzIXLm1mdGlrby5tZC52MS5PcmRlckJvb2tIABIkCgVrbGluZRgFIAEoCzITLm1mdGlrby5tZC52MS5LbGluZUgAEiYKBnRpY2tlchgGIAEoCzIULm1mdGlrby5tZC52MS5UaWNrZXJIABIwCgtsaXF1aWRhdGlvbhgHIAEoCzIZLm1mdGlrby5tZC52MS5MaXF1aWRhdGlvbkgAEjEKDGZ1bmRpbmdfcmF0ZRgIIAEoCzIZLm1mdGlrby5tZC52MS5GdW5kaW5nUmF0ZUgAEjMKDW9wZW5faW50ZXJlc3QYCSABKAsyGi5tZnRpa28ubWQudjEuT3BlbkludGVyZXN0SAASJgoGZ3JlZWtzGAogASgLMhQubWZ0aWtvLm1kLnYxLkdyZWVrc0gAEi0KCm1hcmtfcHJpY2UYCyABKAsyFy5tZnRpa28ubWQudjEuTWFya1ByaWNlSAASOAoQb3JkZXJfYm9va19kZWx0YRgMIAEoCzIcLm1mdGlrby5tZC52MS5PcmRlckJvb2tEZWx0YUgAEikKCGZlZWRfZW5kGGQgASgLMhUubWZ0aWtvLm1kLnYxLkZlZWRFbmRIAEIHCgVldmVudCJpCglCZXN0UXVvdGUSIAoEbWV0YRgBIAEoCzISLm1mdGlrby5tZC52MS5NZXRhEgsKA2JpZBgCIAEoARIPCgdiaWRfcXR5GAMgASgBEgsKA2FzaxgEIAEoARIPCgdhc2tfcXR5GAUgASgBIn0KBVRyYWRlEiAKBG1ldGEYASABKAsyEi5tZnRpa28ubWQudjEuTWV0YRIQCgh0cmFkZV9pZBgCIAEoCRINCgVwcmljZRgDIAEoARILCgNxdHkYBCABKAESJAoEc2lkZRgFIAEoDjIWLm1mdGlrby5jb21tb24udjEuU2lkZSLEAQoIQWdnVHJhZGUSIAoEbWV0YRgBIAEoCzISLm1mdGlrby5tZC52MS5NZXRhEhAKCHRyYWRlX2lkGAIgASgJEg0KBXByaWNlGAMgASgBEgsKA3F0eRgEIAEoARIkCgRzaWRlGAUgASgOMhYubWZ0aWtvLmNvbW1vbi52MS5TaWRlEhYKDmZpcnN0X3RyYWRlX2lkGAYgASgJEhUKDWxhc3RfdHJhZGVfaWQYByABKAkSEwoLbWF0Y2hfY291bnQYCCABKA0iIwoFTGV2ZWwSDQoFcHJpY2UYASABKAESCwoDcXR5GAIgASgBIoIBCglPcmRlckJvb2sSIAoEbWV0YRgBIAEoCzISLm1mdGlrby5tZC52MS5NZXRhEiEKBGJpZHMYAiADKAsyEy5tZnRpa28ubWQudjEuTGV2ZWwSIQoEYXNrcxgDIAMoCzITLm1mdGlrby5tZC52MS5MZXZlbBINCgVkZXB0aBgEIAEoDSKHAQoOT3JkZXJCb29rRGVsdGESIAoEbWV0YRgBIAEoCzISLm1mdGlrby5tZC52MS5NZXRhEiEKBGJpZHMYAiADKAsyEy5tZnRpa28ubWQudjEuTGV2ZWwSIQoEYXNrcxgDIAMoCzITLm1mdGlrby5tZC52MS5MZXZlbBINCgVyZXNldBgEIAEoCCLVAQoFS2xpbmUSIAoEbWV0YRgBIAEoCzISLm1mdGlrby5tZC52MS5NZXRhEhAKCGludGVydmFsGAIgASgJEhQKDG9wZW5fdGltZV9ucxgDIAEoAxIMCgRvcGVuGAQgASgBEgwKBGhpZ2gYBSABKAESCwoDbG93GAYgASgBEg0KBWNsb3NlGAcgASgBEg4KBnZvbHVtZRgIIAEoARIZCgxxdW90ZV92b2x1bWUYCSABKAFIAIgBARIOCgZjbG9zZWQYCiABKAhCDwoNX3F1b3RlX3ZvbHVtZSK8AgoGVGlja2VyEiAKBG1ldGEYASABKAsyEi5tZnRpa28ubWQudjEuTWV0YRIRCgRsYXN0GAIgASgBSACIAQESFQoIb3Blbl8yNGgYAyABKAFIAYgBARIVCghoaWdoXzI0aBgEIAEoAUgCiAEBEhQKB2xvd18yNGgYBSABKAFIA4gBARIXCgp2b2x1bWVfMjRoGAYgASgBSASIAQESHQoQcXVvdGVfdm9sdW1lXzI0aBgHIAEoAUgFiAEBEhsKDmNoYW5nZV9wY3RfMjRoGAggASgBSAaIAQFCBwoFX2xhc3RCCwoJX29wZW5fMjRoQgsKCV9oaWdoXzI0aEIKCghfbG93XzI0aEINCgtfdm9sdW1lXzI0aEITChFfcXVvdGVfdm9sdW1lXzI0aEIRCg9fY2hhbmdlX3BjdF8yNGgicQoLTGlxdWlkYXRpb24SIAoEbWV0YRgBIAEoCzISLm1mdGlrby5tZC52MS5NZXRhEiQKBHNpZGUYAiABKA4yFi5tZnRpa28uY29tbW9uLnYxLlNpZGUSDQoFcHJpY2UYAyABKAESCwoDcXR5GAQgASgBIn4KC0Z1bmRpbmdSYXRlEiAKBG1ldGEYASABKAsyEi5tZnRpa28ubWQudjEuTWV0YRIMCgRyYXRlGAIgASgBEhcKD25leHRfZnVuZGluZ19ucxgDIAEoAxIXCgppbnRlcnZhbF9zGAQgASgNSACIAQFCDQoLX2ludGVydmFsX3MigQEKDE9wZW5JbnRlcmVzdBIgCgRtZXRhGAEgASgLMhIubWZ0aWtvLm1kLnYxLk1ldGESFQoNb3Blbl9pbnRlcmVzdBgCIAEoARIgChNvcGVuX2ludGVyZXN0X3ZhbHVlGAMgASgBSACIAQFCFgoUX29wZW5faW50ZXJlc3RfdmFsdWUi+AIKBkdyZWVrcxIgCgRtZXRhGAEgASgLMhIubWZ0aWtvLm1kLnYxLk1ldGESEgoFZGVsdGEYAiABKAFIAIgBARISCgVnYW1tYRgDIAEoAUgBiAEBEhEKBHZlZ2EYBCABKAFIAogBARISCgV0aGV0YRgFIAEoAUgDiAEBEhAKA3JobxgGIAEoAUgEiAEBEhQKB21hcmtfaXYYByABKAFIBYgBARITCgZiaWRfaXYYCCABKAFIBogBARITCgZhc2tfaXYYCSABKAFIB4gBARIXCgptYXJrX3ByaWNlGAogASgBSAiIAQESHQoQdW5kZXJseWluZ19wcmljZRgLIAEoAUgJiAEBQggKBl9kZWx0YUIICgZfZ2FtbWFCBwoFX3ZlZ2FCCAoGX3RoZXRhQgYKBF9yaG9CCgoIX21hcmtfaXZCCQoHX2JpZF9pdkIJCgdfYXNrX2l2Qg0KC19tYXJrX3ByaWNlQhMKEV91bmRlcmx5aW5nX3ByaWNlImsKCU1hcmtQcmljZRIgCgRtZXRhGAEgASgLMhIubWZ0aWtvLm1kLnYxLk1ldGESEgoKbWFya19wcmljZRgCIAEoARIYCgtpbmRleF9wcmljZRgDIAEoAUgAiAEBQg4KDF9pbmRleF9wcmljZSIoCgdGZWVkRW5kEg4KBnJlYXNvbhgBIAEoCRINCgVhdF9ucxgCIAEoA0I+WjxnaXRodWIuY29tL0J1bGxpb25CZWFyL21mdGlrby9jb250cmFjdC9nZW4vbWZ0aWtvL21kL3YxO21kdjFiBnByb3RvMw", [file_mftiko_common_v1_common]);
 
 /**
  * seq、conn_epoch、md_ts_ns 移到 envelope（上表）。
@@ -140,24 +140,24 @@ export type BestQuote = Message<"mftiko.md.v1.BestQuote"> & {
   meta?: Meta | undefined;
 
   /**
-   * @generated from field: string bid = 2;
+   * @generated from field: double bid = 2;
    */
-  bid: string;
+  bid: number;
 
   /**
-   * @generated from field: string bid_qty = 3;
+   * @generated from field: double bid_qty = 3;
    */
-  bidQty: string;
+  bidQty: number;
 
   /**
-   * @generated from field: string ask = 4;
+   * @generated from field: double ask = 4;
    */
-  ask: string;
+  ask: number;
 
   /**
-   * @generated from field: string ask_qty = 5;
+   * @generated from field: double ask_qty = 5;
    */
-  askQty: string;
+  askQty: number;
 };
 
 /**
@@ -182,14 +182,14 @@ export type Trade = Message<"mftiko.md.v1.Trade"> & {
   tradeId: string;
 
   /**
-   * @generated from field: string price = 3;
+   * @generated from field: double price = 3;
    */
-  price: string;
+  price: number;
 
   /**
-   * @generated from field: string qty = 4;
+   * @generated from field: double qty = 4;
    */
-  qty: string;
+  qty: number;
 
   /**
    * taker
@@ -221,14 +221,14 @@ export type AggTrade = Message<"mftiko.md.v1.AggTrade"> & {
   tradeId: string;
 
   /**
-   * @generated from field: string price = 3;
+   * @generated from field: double price = 3;
    */
-  price: string;
+  price: number;
 
   /**
-   * @generated from field: string qty = 4;
+   * @generated from field: double qty = 4;
    */
-  qty: string;
+  qty: number;
 
   /**
    * @generated from field: mftiko.common.v1.Side side = 5;
@@ -263,14 +263,14 @@ export const AggTradeSchema: GenMessage<AggTrade> = /*@__PURE__*/
  */
 export type Level = Message<"mftiko.md.v1.Level"> & {
   /**
-   * @generated from field: string price = 1;
+   * @generated from field: double price = 1;
    */
-  price: string;
+  price: number;
 
   /**
-   * @generated from field: string qty = 2;
+   * @generated from field: double qty = 2;
    */
-  qty: string;
+  qty: number;
 };
 
 /**
@@ -315,7 +315,7 @@ export const OrderBookSchema: GenMessage<OrderBook> = /*@__PURE__*/
   messageDesc(file_mftiko_md_v1_md, 6);
 
 /**
- * orderbook_delta：本地全量 book 的增量（D402）。qty 為 "0" 表示刪除該價位。
+ * orderbook_delta：本地全量 book 的增量（D402）。qty 為 0 表示刪除該價位。
  * reset 為 true 時，bids／asks 是完整的 book，取代本地狀態（conn worker 對交易所重新同步之後）。
  * 晚加入的接法見 read.proto 的 md.view。
  *
@@ -370,34 +370,34 @@ export type Kline = Message<"mftiko.md.v1.Kline"> & {
   openTimeNs: bigint;
 
   /**
-   * @generated from field: string open = 4;
+   * @generated from field: double open = 4;
    */
-  open: string;
+  open: number;
 
   /**
-   * @generated from field: string high = 5;
+   * @generated from field: double high = 5;
    */
-  high: string;
+  high: number;
 
   /**
-   * @generated from field: string low = 6;
+   * @generated from field: double low = 6;
    */
-  low: string;
+  low: number;
 
   /**
-   * @generated from field: string close = 7;
+   * @generated from field: double close = 7;
    */
-  close: string;
+  close: number;
 
   /**
-   * @generated from field: string volume = 8;
+   * @generated from field: double volume = 8;
    */
-  volume: string;
+  volume: number;
 
   /**
-   * @generated from field: optional string quote_volume = 9;
+   * @generated from field: optional double quote_volume = 9;
    */
-  quoteVolume?: string | undefined;
+  quoteVolume?: number | undefined;
 
   /**
    * @generated from field: bool closed = 10;
@@ -424,39 +424,39 @@ export type Ticker = Message<"mftiko.md.v1.Ticker"> & {
   meta?: Meta | undefined;
 
   /**
-   * @generated from field: optional string last = 2;
+   * @generated from field: optional double last = 2;
    */
-  last?: string | undefined;
+  last?: number | undefined;
 
   /**
-   * @generated from field: optional string open_24h = 3;
+   * @generated from field: optional double open_24h = 3;
    */
-  open24h?: string | undefined;
+  open24h?: number | undefined;
 
   /**
-   * @generated from field: optional string high_24h = 4;
+   * @generated from field: optional double high_24h = 4;
    */
-  high24h?: string | undefined;
+  high24h?: number | undefined;
 
   /**
-   * @generated from field: optional string low_24h = 5;
+   * @generated from field: optional double low_24h = 5;
    */
-  low24h?: string | undefined;
+  low24h?: number | undefined;
 
   /**
-   * @generated from field: optional string volume_24h = 6;
+   * @generated from field: optional double volume_24h = 6;
    */
-  volume24h?: string | undefined;
+  volume24h?: number | undefined;
 
   /**
-   * @generated from field: optional string quote_volume_24h = 7;
+   * @generated from field: optional double quote_volume_24h = 7;
    */
-  quoteVolume24h?: string | undefined;
+  quoteVolume24h?: number | undefined;
 
   /**
-   * @generated from field: optional string change_pct_24h = 8;
+   * @generated from field: optional double change_pct_24h = 8;
    */
-  changePct24h?: string | undefined;
+  changePct24h?: number | undefined;
 };
 
 /**
@@ -483,14 +483,14 @@ export type Liquidation = Message<"mftiko.md.v1.Liquidation"> & {
   side: Side;
 
   /**
-   * @generated from field: string price = 3;
+   * @generated from field: double price = 3;
    */
-  price: string;
+  price: number;
 
   /**
-   * @generated from field: string qty = 4;
+   * @generated from field: double qty = 4;
    */
-  qty: string;
+  qty: number;
 };
 
 /**
@@ -510,9 +510,9 @@ export type FundingRate = Message<"mftiko.md.v1.FundingRate"> & {
   meta?: Meta | undefined;
 
   /**
-   * @generated from field: string rate = 2;
+   * @generated from field: double rate = 2;
    */
-  rate: string;
+  rate: number;
 
   /**
    * @generated from field: int64 next_funding_ns = 3;
@@ -542,14 +542,14 @@ export type OpenInterest = Message<"mftiko.md.v1.OpenInterest"> & {
   meta?: Meta | undefined;
 
   /**
-   * @generated from field: string open_interest = 2;
+   * @generated from field: double open_interest = 2;
    */
-  openInterest: string;
+  openInterest: number;
 
   /**
-   * @generated from field: optional string open_interest_value = 3;
+   * @generated from field: optional double open_interest_value = 3;
    */
-  openInterestValue?: string | undefined;
+  openInterestValue?: number | undefined;
 };
 
 /**
@@ -569,54 +569,54 @@ export type Greeks = Message<"mftiko.md.v1.Greeks"> & {
   meta?: Meta | undefined;
 
   /**
-   * @generated from field: optional string delta = 2;
+   * @generated from field: optional double delta = 2;
    */
-  delta?: string | undefined;
+  delta?: number | undefined;
 
   /**
-   * @generated from field: optional string gamma = 3;
+   * @generated from field: optional double gamma = 3;
    */
-  gamma?: string | undefined;
+  gamma?: number | undefined;
 
   /**
-   * @generated from field: optional string vega = 4;
+   * @generated from field: optional double vega = 4;
    */
-  vega?: string | undefined;
+  vega?: number | undefined;
 
   /**
-   * @generated from field: optional string theta = 5;
+   * @generated from field: optional double theta = 5;
    */
-  theta?: string | undefined;
+  theta?: number | undefined;
 
   /**
-   * @generated from field: optional string rho = 6;
+   * @generated from field: optional double rho = 6;
    */
-  rho?: string | undefined;
+  rho?: number | undefined;
 
   /**
-   * @generated from field: optional string mark_iv = 7;
+   * @generated from field: optional double mark_iv = 7;
    */
-  markIv?: string | undefined;
+  markIv?: number | undefined;
 
   /**
-   * @generated from field: optional string bid_iv = 8;
+   * @generated from field: optional double bid_iv = 8;
    */
-  bidIv?: string | undefined;
+  bidIv?: number | undefined;
 
   /**
-   * @generated from field: optional string ask_iv = 9;
+   * @generated from field: optional double ask_iv = 9;
    */
-  askIv?: string | undefined;
+  askIv?: number | undefined;
 
   /**
-   * @generated from field: optional string mark_price = 10;
+   * @generated from field: optional double mark_price = 10;
    */
-  markPrice?: string | undefined;
+  markPrice?: number | undefined;
 
   /**
-   * @generated from field: optional string underlying_price = 11;
+   * @generated from field: optional double underlying_price = 11;
    */
-  underlyingPrice?: string | undefined;
+  underlyingPrice?: number | undefined;
 };
 
 /**
@@ -636,14 +636,14 @@ export type MarkPrice = Message<"mftiko.md.v1.MarkPrice"> & {
   meta?: Meta | undefined;
 
   /**
-   * @generated from field: string mark_price = 2;
+   * @generated from field: double mark_price = 2;
    */
-  markPrice: string;
+  markPrice: number;
 
   /**
-   * @generated from field: optional string index_price = 3;
+   * @generated from field: optional double index_price = 3;
    */
-  indexPrice?: string | undefined;
+  indexPrice?: number | undefined;
 };
 
 /**

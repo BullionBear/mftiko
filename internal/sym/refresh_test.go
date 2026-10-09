@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"math"
+	"strconv"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -61,9 +63,9 @@ func TestRefresh(t *testing.T) {
 	t.Run("delist stays inside the category and relist gets a new uid", func(t *testing.T) {
 		truncate(t, ctx, conn)
 		st := openStore(t, srv.DSN(), &script{uids: []uint32{4, 6, 5}})
-		tick := "0.5"
+		tick := 0.5
 		spot := spotL("BTC", "USDT", "BTCUSDT")
-		spot.Filters = map[string]string{"price_tick": tick, "max_qty": ""}
+		spot.Filters = symbol.Filters{"price_tick": tick, "max_qty": math.NaN()}
 		mustRefresh(t, st, symbol.Spot, 100, []symbol.Listing{spot}, zerolog.Nop())
 		perp := perpL("BTC", "USDT", "BTCUSDT")
 		mustRefresh(t, st, symbol.Perp, 100, []symbol.Listing{perp}, zerolog.Nop())
@@ -189,7 +191,7 @@ func TestRefresh(t *testing.T) {
 			t.Fatalf("insert = %+v", rep)
 		}
 		eth := spotL("ETH", "USDT", "ETHUSDT")
-		eth.Filters = map[string]string{"price_tick": "0.01"}
+		eth.Filters = symbol.Filters{"price_tick": 0.01}
 		rep = mustRefresh(t, st, symbol.Spot, 200, []symbol.Listing{
 			spotL("BTC", "USDT", "BTCUSDT"),
 			eth,
@@ -200,16 +202,18 @@ func TestRefresh(t *testing.T) {
 		}
 	})
 
-	t.Run("scale and strike spelling are not a change", func(t *testing.T) {
+	// The venue's "1.10" and "1.1" are one float64 (D008); stored as NUMERIC, read back as text, it
+	// compares equal to the listing's shortest form, so a refresh with the same numbers changes nothing.
+	t.Run("the same numbers are not a change", func(t *testing.T) {
 		truncate(t, ctx, conn)
 		st := openStore(t, srv.DSN(), &script{uids: []uint32{21}})
-		opt := optionL("6400.0")
-		opt.ContractSize = "1.10"
-		opt.Filters = map[string]string{"price_tick": "0.50"}
+		opt := optionL(6400)
+		opt.ContractSize = 1.10
+		opt.Filters = symbol.Filters{"price_tick": 0.50, "min_qty": 0.0001, "max_qty": math.NaN()}
 		mustRefresh(t, st, symbol.Option, 100, []symbol.Listing{opt}, zerolog.Nop())
-		opt.Strike = "6400"
-		opt.ContractSize = "1.1"
-		opt.Filters = map[string]string{"price_tick": "0.5"}
+		opt.Strike = 6400.0
+		opt.ContractSize = 1.1
+		opt.Filters = symbol.Filters{"price_tick": 0.5, "min_qty": 1e-4, "max_qty": math.NaN()}
 		rep := mustRefresh(t, st, symbol.Option, 200, []symbol.Listing{opt}, zerolog.Nop())
 		if rep.Changed || rep.Revision != 1 {
 			t.Fatalf("scale refresh = %+v", rep)
@@ -240,7 +244,7 @@ func TestRefresh(t *testing.T) {
 		st := openStore(t, srv.DSN(), &script{uids: []uint32{41}})
 		row := symbol.Listing{
 			Venue: "Bybit", Category: symbol.Perp, Base: "BTC", Quote: "USD", ExchTicker: "BTCUSD",
-			ContractSize: "1", ContractValueCcy: "BTC", PriceCcy: "USD", Settle: "USD", Status: Tradable,
+			ContractSize: 1, ContractValueCcy: "BTC", PriceCcy: "USD", Settle: "USD", Status: Tradable,
 		}
 		mustRefresh(t, st, symbol.Perp, 100, []symbol.Listing{row}, zerolog.Nop())
 		var buf bytes.Buffer
@@ -248,7 +252,7 @@ func TestRefresh(t *testing.T) {
 		row.Settle = "USDC"
 		fresh := symbol.Listing{
 			Venue: "Bybit", Category: symbol.Perp, Base: "ETH", Quote: "USD", ExchTicker: "ETHUSD",
-			ContractSize: "1", ContractValueCcy: "ETH", PriceCcy: "USD", Settle: "USDC", Status: Tradable,
+			ContractSize: 1, ContractValueCcy: "ETH", PriceCcy: "USD", Settle: "USDC", Status: Tradable,
 		}
 		rep := mustRefresh(t, st, symbol.Perp, 200, []symbol.Listing{row, fresh}, log)
 		if rep.Rejected != 2 || rep.Changed || rep.Revision != 1 {
@@ -277,9 +281,9 @@ func TestRefresh(t *testing.T) {
 		truncate(t, ctx, conn)
 		st := openStore(t, srv.DSN(), &script{uids: []uint32{51}})
 		row := futureL(5_000)
-		row.Filters = map[string]string{"price_tick": "0.5"}
+		row.Filters = symbol.Filters{"price_tick": 0.5}
 		mustRefresh(t, st, symbol.Future, 1_000, []symbol.Listing{row}, zerolog.Nop())
-		row.Filters = map[string]string{"price_tick": "0.9"}
+		row.Filters = symbol.Filters{"price_tick": 0.9}
 		rep := mustRefresh(t, st, symbol.Future, 5_000, []symbol.Listing{row}, zerolog.Nop())
 		if rep.Expired != 1 || rep.Inserted != 0 || rep.Revision != 2 {
 			t.Fatalf("expire = %+v", rep)
@@ -299,7 +303,7 @@ func TestRefresh(t *testing.T) {
 		if tick != "0.5" {
 			t.Fatalf("terminal tick = %s, want the pre-expiry value", tick)
 		}
-		row.Filters = map[string]string{"price_tick": "1"}
+		row.Filters = symbol.Filters{"price_tick": 1}
 		rep = mustRefresh(t, st, symbol.Future, 6_000, []symbol.Listing{row}, zerolog.Nop())
 		if rep.Changed || rep.Inserted != 0 || rep.Revision != 2 {
 			t.Fatalf("still expired = %+v", rep)
@@ -492,7 +496,7 @@ func TestRefresh(t *testing.T) {
 		// Settle and the value currency are aliased before quanto, so XBT is BTC.
 		inv := symbol.Listing{
 			Venue: "Bitmex", Category: symbol.Inverse, Base: "XBT", Quote: "USD",
-			ExchTicker: "XBTUSD", ContractSize: "1",
+			ExchTicker: "XBTUSD", ContractSize: 1,
 			ContractValueCcy: "XBT", PriceCcy: "usd", Settle: "XBT", Status: Tradable,
 		}
 		rep, err = st.Refresh(ctx, Feed{Venue: "Bitmex", Category: symbol.Inverse, REST: listREST{rows: []symbol.Listing{inv}}}, 100, zerolog.Nop())
@@ -641,14 +645,14 @@ func mustRefresh(t *testing.T, st *Store, c symbol.Category, atNs int64, rows []
 func spotL(base, quote, exch string) symbol.Listing {
 	return symbol.Listing{
 		Venue: "Bybit", Category: symbol.Spot, Base: base, Quote: quote, ExchTicker: exch, Status: Tradable,
-		Filters: map[string]string{"price_tick": "0.5"},
+		Filters: symbol.Filters{"price_tick": 0.5},
 	}
 }
 
 func perpL(base, quote, exch string) symbol.Listing {
 	return symbol.Listing{
 		Venue: "Bybit", Category: symbol.Perp, Base: base, Quote: quote, ExchTicker: exch,
-		ContractSize: "1", ContractValueCcy: base, PriceCcy: quote, Settle: quote, Status: Tradable,
+		ContractSize: 1, ContractValueCcy: base, PriceCcy: quote, Settle: quote, Status: Tradable,
 	}
 }
 
@@ -656,16 +660,16 @@ func futureL(expiry int64) symbol.Listing {
 	return symbol.Listing{
 		Venue: "BinanceUM", Category: symbol.Future, Base: "BTC", Quote: "USDT",
 		ExchTicker: "BTCUSDT_260925", ExpiryCode: "260925", ExpiryNs: expiry,
-		ContractSize: "1", ContractValueCcy: "BTC", PriceCcy: "USDT", Settle: "USDT", Status: Tradable,
+		ContractSize: 1, ContractValueCcy: "BTC", PriceCcy: "USDT", Settle: "USDT", Status: Tradable,
 	}
 }
 
-func optionL(strike string) symbol.Listing {
+func optionL(strike float64) symbol.Listing {
 	return symbol.Listing{
 		Venue: "Okx", Category: symbol.Option, Base: "BTC", Quote: "USD",
-		ExchTicker: "BTC-USD-261225-" + strike + "-C", ExpiryCode: "261225", ExpiryNs: 9_000_000_000,
+		ExchTicker: "BTC-USD-261225-" + strconv.FormatFloat(strike, 'f', -1, 64) + "-C", ExpiryCode: "261225", ExpiryNs: 9_000_000_000,
 		Strike: strike, OptionType: "C",
-		ContractSize: "1", ContractValueCcy: "BTC", PriceCcy: "BTC", Settle: "BTC", Status: Tradable,
+		ContractSize: 1, ContractValueCcy: "BTC", PriceCcy: "BTC", Settle: "BTC", Status: Tradable,
 	}
 }
 

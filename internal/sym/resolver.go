@@ -409,14 +409,6 @@ func logSkipTicker(log zerolog.Logger, venue string, cat symbol.Category, l symb
 }
 
 func infoFrom(l symbol.Listing, ticker symbol.UniversalTicker) (symbol.Info, error) {
-	strike := ""
-	if l.Strike != "" {
-		var err error
-		strike, err = symbol.SpellStrike(l.Strike)
-		if err != nil {
-			return symbol.Info{}, err
-		}
-	}
 	opt := ""
 	if l.OptionType != "" {
 		opt = strings.ToUpper(strings.TrimSpace(l.OptionType))
@@ -431,7 +423,7 @@ func infoFrom(l symbol.Listing, ticker symbol.UniversalTicker) (symbol.Info, err
 		PriceCcy:         l.PriceCcy,
 		Settle:           l.Settle,
 		ExpiryNs:         l.ExpiryNs,
-		Strike:           strike,
+		Strike:           l.Strike,
 		OptionType:       opt,
 		Status:           l.Status,
 		Filters:          maps.Clone(l.Filters),

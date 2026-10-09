@@ -99,10 +99,10 @@ message SymbolInfo {
   string exch_ticker = 2;
   string base = 3;
   string quote = 4;
-  optional string contract_size = 5; // 一張的面值。qty = 張數 × 此值，單位是 contract_value_ccy：linear 與期權是 base，inverse 是 quote（D203）
+  optional double contract_size = 5; // 一張的面值。qty = 張數 × 此值，單位是 contract_value_ccy：linear 與期權是 base，inverse 是 quote（D203）
   optional string settle = 6; // 損益結算幣（settlement_asset），不是保證金幣。空 = 現貨。quanto（既不是 base 也不是 quote）一期不入庫（D203）
   int64 expiry_ns = 7; // 0 = does not expire
-  optional string strike = 8; // SYM 先依 spell_strike 正規化再推 ticker：6400.0 與 6400 相同（D203）
+  optional double strike = 8; // ticker 裡的拼法由此值的最短十進位表示推出（spell_strike，D203、D008）：6400.0 與 6400 是同一個值
   string option_type = 9; // C | P | ""
   SymbolStatus status = 10; // 暫定（D203）。UNSPECIFIED 非法、不可交易。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。列舉仍暫定，契約已用這個 enum。表已拆成 symbol_active 與 symbol_terminal
   // name -> bound. A key with an absent value: the venue publishes the restriction, no bound.
@@ -124,7 +124,7 @@ message SymbolInfo {
 }
 
 message Bound {
-  optional string value = 1;
+  optional double value = 1;
 }
 
 message SymbolList {

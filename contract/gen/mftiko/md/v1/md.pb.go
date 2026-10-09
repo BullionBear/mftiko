@@ -330,10 +330,10 @@ func (*FeedEvent_FeedEnd) isFeedEvent_Event() {}
 type BestQuote struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Meta          *Meta                  `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
-	Bid           string                 `protobuf:"bytes,2,opt,name=bid,proto3" json:"bid,omitempty"`
-	BidQty        string                 `protobuf:"bytes,3,opt,name=bid_qty,json=bidQty,proto3" json:"bid_qty,omitempty"`
-	Ask           string                 `protobuf:"bytes,4,opt,name=ask,proto3" json:"ask,omitempty"`
-	AskQty        string                 `protobuf:"bytes,5,opt,name=ask_qty,json=askQty,proto3" json:"ask_qty,omitempty"`
+	Bid           float64                `protobuf:"fixed64,2,opt,name=bid,proto3" json:"bid,omitempty"`
+	BidQty        float64                `protobuf:"fixed64,3,opt,name=bid_qty,json=bidQty,proto3" json:"bid_qty,omitempty"`
+	Ask           float64                `protobuf:"fixed64,4,opt,name=ask,proto3" json:"ask,omitempty"`
+	AskQty        float64                `protobuf:"fixed64,5,opt,name=ask_qty,json=askQty,proto3" json:"ask_qty,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -375,40 +375,40 @@ func (x *BestQuote) GetMeta() *Meta {
 	return nil
 }
 
-func (x *BestQuote) GetBid() string {
+func (x *BestQuote) GetBid() float64 {
 	if x != nil {
 		return x.Bid
 	}
-	return ""
+	return 0
 }
 
-func (x *BestQuote) GetBidQty() string {
+func (x *BestQuote) GetBidQty() float64 {
 	if x != nil {
 		return x.BidQty
 	}
-	return ""
+	return 0
 }
 
-func (x *BestQuote) GetAsk() string {
+func (x *BestQuote) GetAsk() float64 {
 	if x != nil {
 		return x.Ask
 	}
-	return ""
+	return 0
 }
 
-func (x *BestQuote) GetAskQty() string {
+func (x *BestQuote) GetAskQty() float64 {
 	if x != nil {
 		return x.AskQty
 	}
-	return ""
+	return 0
 }
 
 type Trade struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Meta          *Meta                  `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
 	TradeId       string                 `protobuf:"bytes,2,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
-	Price         string                 `protobuf:"bytes,3,opt,name=price,proto3" json:"price,omitempty"`
-	Qty           string                 `protobuf:"bytes,4,opt,name=qty,proto3" json:"qty,omitempty"`
+	Price         float64                `protobuf:"fixed64,3,opt,name=price,proto3" json:"price,omitempty"`
+	Qty           float64                `protobuf:"fixed64,4,opt,name=qty,proto3" json:"qty,omitempty"`
 	Side          v1.Side                `protobuf:"varint,5,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"` // taker
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -458,18 +458,18 @@ func (x *Trade) GetTradeId() string {
 	return ""
 }
 
-func (x *Trade) GetPrice() string {
+func (x *Trade) GetPrice() float64 {
 	if x != nil {
 		return x.Price
 	}
-	return ""
+	return 0
 }
 
-func (x *Trade) GetQty() string {
+func (x *Trade) GetQty() float64 {
 	if x != nil {
 		return x.Qty
 	}
-	return ""
+	return 0
 }
 
 func (x *Trade) GetSide() v1.Side {
@@ -483,8 +483,8 @@ type AggTrade struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Meta          *Meta                  `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
 	TradeId       string                 `protobuf:"bytes,2,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
-	Price         string                 `protobuf:"bytes,3,opt,name=price,proto3" json:"price,omitempty"`
-	Qty           string                 `protobuf:"bytes,4,opt,name=qty,proto3" json:"qty,omitempty"`
+	Price         float64                `protobuf:"fixed64,3,opt,name=price,proto3" json:"price,omitempty"`
+	Qty           float64                `protobuf:"fixed64,4,opt,name=qty,proto3" json:"qty,omitempty"`
 	Side          v1.Side                `protobuf:"varint,5,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"`
 	FirstTradeId  string                 `protobuf:"bytes,6,opt,name=first_trade_id,json=firstTradeId,proto3" json:"first_trade_id,omitempty"`
 	LastTradeId   string                 `protobuf:"bytes,7,opt,name=last_trade_id,json=lastTradeId,proto3" json:"last_trade_id,omitempty"`
@@ -537,18 +537,18 @@ func (x *AggTrade) GetTradeId() string {
 	return ""
 }
 
-func (x *AggTrade) GetPrice() string {
+func (x *AggTrade) GetPrice() float64 {
 	if x != nil {
 		return x.Price
 	}
-	return ""
+	return 0
 }
 
-func (x *AggTrade) GetQty() string {
+func (x *AggTrade) GetQty() float64 {
 	if x != nil {
 		return x.Qty
 	}
-	return ""
+	return 0
 }
 
 func (x *AggTrade) GetSide() v1.Side {
@@ -581,8 +581,8 @@ func (x *AggTrade) GetMatchCount() uint32 {
 
 type Level struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Price         string                 `protobuf:"bytes,1,opt,name=price,proto3" json:"price,omitempty"`
-	Qty           string                 `protobuf:"bytes,2,opt,name=qty,proto3" json:"qty,omitempty"`
+	Price         float64                `protobuf:"fixed64,1,opt,name=price,proto3" json:"price,omitempty"`
+	Qty           float64                `protobuf:"fixed64,2,opt,name=qty,proto3" json:"qty,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -617,18 +617,18 @@ func (*Level) Descriptor() ([]byte, []int) {
 	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *Level) GetPrice() string {
+func (x *Level) GetPrice() float64 {
 	if x != nil {
 		return x.Price
 	}
-	return ""
+	return 0
 }
 
-func (x *Level) GetQty() string {
+func (x *Level) GetQty() float64 {
 	if x != nil {
 		return x.Qty
 	}
-	return ""
+	return 0
 }
 
 // orderbook：conn worker 本地全量 book 的 top-N，top-N 有變才推（D402）。
@@ -700,7 +700,7 @@ func (x *OrderBook) GetDepth() uint32 {
 	return 0
 }
 
-// orderbook_delta：本地全量 book 的增量（D402）。qty 為 "0" 表示刪除該價位。
+// orderbook_delta：本地全量 book 的增量（D402）。qty 為 0 表示刪除該價位。
 // reset 為 true 時，bids／asks 是完整的 book，取代本地狀態（conn worker 對交易所重新同步之後）。
 // 晚加入的接法見 read.proto 的 md.view。
 type OrderBookDelta struct {
@@ -776,12 +776,12 @@ type Kline struct {
 	Meta          *Meta                  `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
 	Interval      string                 `protobuf:"bytes,2,opt,name=interval,proto3" json:"interval,omitempty"`
 	OpenTimeNs    int64                  `protobuf:"varint,3,opt,name=open_time_ns,json=openTimeNs,proto3" json:"open_time_ns,omitempty"`
-	Open          string                 `protobuf:"bytes,4,opt,name=open,proto3" json:"open,omitempty"`
-	High          string                 `protobuf:"bytes,5,opt,name=high,proto3" json:"high,omitempty"`
-	Low           string                 `protobuf:"bytes,6,opt,name=low,proto3" json:"low,omitempty"`
-	Close         string                 `protobuf:"bytes,7,opt,name=close,proto3" json:"close,omitempty"`
-	Volume        string                 `protobuf:"bytes,8,opt,name=volume,proto3" json:"volume,omitempty"`
-	QuoteVolume   *string                `protobuf:"bytes,9,opt,name=quote_volume,json=quoteVolume,proto3,oneof" json:"quote_volume,omitempty"`
+	Open          float64                `protobuf:"fixed64,4,opt,name=open,proto3" json:"open,omitempty"`
+	High          float64                `protobuf:"fixed64,5,opt,name=high,proto3" json:"high,omitempty"`
+	Low           float64                `protobuf:"fixed64,6,opt,name=low,proto3" json:"low,omitempty"`
+	Close         float64                `protobuf:"fixed64,7,opt,name=close,proto3" json:"close,omitempty"`
+	Volume        float64                `protobuf:"fixed64,8,opt,name=volume,proto3" json:"volume,omitempty"`
+	QuoteVolume   *float64               `protobuf:"fixed64,9,opt,name=quote_volume,json=quoteVolume,proto3,oneof" json:"quote_volume,omitempty"`
 	Closed        bool                   `protobuf:"varint,10,opt,name=closed,proto3" json:"closed,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -838,46 +838,46 @@ func (x *Kline) GetOpenTimeNs() int64 {
 	return 0
 }
 
-func (x *Kline) GetOpen() string {
+func (x *Kline) GetOpen() float64 {
 	if x != nil {
 		return x.Open
 	}
-	return ""
+	return 0
 }
 
-func (x *Kline) GetHigh() string {
+func (x *Kline) GetHigh() float64 {
 	if x != nil {
 		return x.High
 	}
-	return ""
+	return 0
 }
 
-func (x *Kline) GetLow() string {
+func (x *Kline) GetLow() float64 {
 	if x != nil {
 		return x.Low
 	}
-	return ""
+	return 0
 }
 
-func (x *Kline) GetClose() string {
+func (x *Kline) GetClose() float64 {
 	if x != nil {
 		return x.Close
 	}
-	return ""
+	return 0
 }
 
-func (x *Kline) GetVolume() string {
+func (x *Kline) GetVolume() float64 {
 	if x != nil {
 		return x.Volume
 	}
-	return ""
+	return 0
 }
 
-func (x *Kline) GetQuoteVolume() string {
+func (x *Kline) GetQuoteVolume() float64 {
 	if x != nil && x.QuoteVolume != nil {
 		return *x.QuoteVolume
 	}
-	return ""
+	return 0
 }
 
 func (x *Kline) GetClosed() bool {
@@ -891,13 +891,13 @@ func (x *Kline) GetClosed() bool {
 type Ticker struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Meta            *Meta                  `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
-	Last            *string                `protobuf:"bytes,2,opt,name=last,proto3,oneof" json:"last,omitempty"`
-	Open_24H        *string                `protobuf:"bytes,3,opt,name=open_24h,json=open24h,proto3,oneof" json:"open_24h,omitempty"`
-	High_24H        *string                `protobuf:"bytes,4,opt,name=high_24h,json=high24h,proto3,oneof" json:"high_24h,omitempty"`
-	Low_24H         *string                `protobuf:"bytes,5,opt,name=low_24h,json=low24h,proto3,oneof" json:"low_24h,omitempty"`
-	Volume_24H      *string                `protobuf:"bytes,6,opt,name=volume_24h,json=volume24h,proto3,oneof" json:"volume_24h,omitempty"`
-	QuoteVolume_24H *string                `protobuf:"bytes,7,opt,name=quote_volume_24h,json=quoteVolume24h,proto3,oneof" json:"quote_volume_24h,omitempty"`
-	ChangePct_24H   *string                `protobuf:"bytes,8,opt,name=change_pct_24h,json=changePct24h,proto3,oneof" json:"change_pct_24h,omitempty"`
+	Last            *float64               `protobuf:"fixed64,2,opt,name=last,proto3,oneof" json:"last,omitempty"`
+	Open_24H        *float64               `protobuf:"fixed64,3,opt,name=open_24h,json=open24h,proto3,oneof" json:"open_24h,omitempty"`
+	High_24H        *float64               `protobuf:"fixed64,4,opt,name=high_24h,json=high24h,proto3,oneof" json:"high_24h,omitempty"`
+	Low_24H         *float64               `protobuf:"fixed64,5,opt,name=low_24h,json=low24h,proto3,oneof" json:"low_24h,omitempty"`
+	Volume_24H      *float64               `protobuf:"fixed64,6,opt,name=volume_24h,json=volume24h,proto3,oneof" json:"volume_24h,omitempty"`
+	QuoteVolume_24H *float64               `protobuf:"fixed64,7,opt,name=quote_volume_24h,json=quoteVolume24h,proto3,oneof" json:"quote_volume_24h,omitempty"`
+	ChangePct_24H   *float64               `protobuf:"fixed64,8,opt,name=change_pct_24h,json=changePct24h,proto3,oneof" json:"change_pct_24h,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -939,61 +939,61 @@ func (x *Ticker) GetMeta() *Meta {
 	return nil
 }
 
-func (x *Ticker) GetLast() string {
+func (x *Ticker) GetLast() float64 {
 	if x != nil && x.Last != nil {
 		return *x.Last
 	}
-	return ""
+	return 0
 }
 
-func (x *Ticker) GetOpen_24H() string {
+func (x *Ticker) GetOpen_24H() float64 {
 	if x != nil && x.Open_24H != nil {
 		return *x.Open_24H
 	}
-	return ""
+	return 0
 }
 
-func (x *Ticker) GetHigh_24H() string {
+func (x *Ticker) GetHigh_24H() float64 {
 	if x != nil && x.High_24H != nil {
 		return *x.High_24H
 	}
-	return ""
+	return 0
 }
 
-func (x *Ticker) GetLow_24H() string {
+func (x *Ticker) GetLow_24H() float64 {
 	if x != nil && x.Low_24H != nil {
 		return *x.Low_24H
 	}
-	return ""
+	return 0
 }
 
-func (x *Ticker) GetVolume_24H() string {
+func (x *Ticker) GetVolume_24H() float64 {
 	if x != nil && x.Volume_24H != nil {
 		return *x.Volume_24H
 	}
-	return ""
+	return 0
 }
 
-func (x *Ticker) GetQuoteVolume_24H() string {
+func (x *Ticker) GetQuoteVolume_24H() float64 {
 	if x != nil && x.QuoteVolume_24H != nil {
 		return *x.QuoteVolume_24H
 	}
-	return ""
+	return 0
 }
 
-func (x *Ticker) GetChangePct_24H() string {
+func (x *Ticker) GetChangePct_24H() float64 {
 	if x != nil && x.ChangePct_24H != nil {
 		return *x.ChangePct_24H
 	}
-	return ""
+	return 0
 }
 
 type Liquidation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Meta          *Meta                  `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
 	Side          v1.Side                `protobuf:"varint,2,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"` // 被平倉部位的方向
-	Price         string                 `protobuf:"bytes,3,opt,name=price,proto3" json:"price,omitempty"`
-	Qty           string                 `protobuf:"bytes,4,opt,name=qty,proto3" json:"qty,omitempty"`
+	Price         float64                `protobuf:"fixed64,3,opt,name=price,proto3" json:"price,omitempty"`
+	Qty           float64                `protobuf:"fixed64,4,opt,name=qty,proto3" json:"qty,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1042,24 +1042,24 @@ func (x *Liquidation) GetSide() v1.Side {
 	return v1.Side(0)
 }
 
-func (x *Liquidation) GetPrice() string {
+func (x *Liquidation) GetPrice() float64 {
 	if x != nil {
 		return x.Price
 	}
-	return ""
+	return 0
 }
 
-func (x *Liquidation) GetQty() string {
+func (x *Liquidation) GetQty() float64 {
 	if x != nil {
 		return x.Qty
 	}
-	return ""
+	return 0
 }
 
 type FundingRate struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Meta          *Meta                  `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
-	Rate          string                 `protobuf:"bytes,2,opt,name=rate,proto3" json:"rate,omitempty"`
+	Rate          float64                `protobuf:"fixed64,2,opt,name=rate,proto3" json:"rate,omitempty"`
 	NextFundingNs int64                  `protobuf:"varint,3,opt,name=next_funding_ns,json=nextFundingNs,proto3" json:"next_funding_ns,omitempty"`
 	IntervalS     *uint32                `protobuf:"varint,4,opt,name=interval_s,json=intervalS,proto3,oneof" json:"interval_s,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1103,11 +1103,11 @@ func (x *FundingRate) GetMeta() *Meta {
 	return nil
 }
 
-func (x *FundingRate) GetRate() string {
+func (x *FundingRate) GetRate() float64 {
 	if x != nil {
 		return x.Rate
 	}
-	return ""
+	return 0
 }
 
 func (x *FundingRate) GetNextFundingNs() int64 {
@@ -1127,8 +1127,8 @@ func (x *FundingRate) GetIntervalS() uint32 {
 type OpenInterest struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Meta              *Meta                  `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
-	OpenInterest      string                 `protobuf:"bytes,2,opt,name=open_interest,json=openInterest,proto3" json:"open_interest,omitempty"`
-	OpenInterestValue *string                `protobuf:"bytes,3,opt,name=open_interest_value,json=openInterestValue,proto3,oneof" json:"open_interest_value,omitempty"`
+	OpenInterest      float64                `protobuf:"fixed64,2,opt,name=open_interest,json=openInterest,proto3" json:"open_interest,omitempty"`
+	OpenInterestValue *float64               `protobuf:"fixed64,3,opt,name=open_interest_value,json=openInterestValue,proto3,oneof" json:"open_interest_value,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1170,33 +1170,33 @@ func (x *OpenInterest) GetMeta() *Meta {
 	return nil
 }
 
-func (x *OpenInterest) GetOpenInterest() string {
+func (x *OpenInterest) GetOpenInterest() float64 {
 	if x != nil {
 		return x.OpenInterest
 	}
-	return ""
+	return 0
 }
 
-func (x *OpenInterest) GetOpenInterestValue() string {
+func (x *OpenInterest) GetOpenInterestValue() float64 {
 	if x != nil && x.OpenInterestValue != nil {
 		return *x.OpenInterestValue
 	}
-	return ""
+	return 0
 }
 
 type Greeks struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Meta            *Meta                  `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
-	Delta           *string                `protobuf:"bytes,2,opt,name=delta,proto3,oneof" json:"delta,omitempty"`
-	Gamma           *string                `protobuf:"bytes,3,opt,name=gamma,proto3,oneof" json:"gamma,omitempty"`
-	Vega            *string                `protobuf:"bytes,4,opt,name=vega,proto3,oneof" json:"vega,omitempty"`
-	Theta           *string                `protobuf:"bytes,5,opt,name=theta,proto3,oneof" json:"theta,omitempty"`
-	Rho             *string                `protobuf:"bytes,6,opt,name=rho,proto3,oneof" json:"rho,omitempty"`
-	MarkIv          *string                `protobuf:"bytes,7,opt,name=mark_iv,json=markIv,proto3,oneof" json:"mark_iv,omitempty"`
-	BidIv           *string                `protobuf:"bytes,8,opt,name=bid_iv,json=bidIv,proto3,oneof" json:"bid_iv,omitempty"`
-	AskIv           *string                `protobuf:"bytes,9,opt,name=ask_iv,json=askIv,proto3,oneof" json:"ask_iv,omitempty"`
-	MarkPrice       *string                `protobuf:"bytes,10,opt,name=mark_price,json=markPrice,proto3,oneof" json:"mark_price,omitempty"`
-	UnderlyingPrice *string                `protobuf:"bytes,11,opt,name=underlying_price,json=underlyingPrice,proto3,oneof" json:"underlying_price,omitempty"`
+	Delta           *float64               `protobuf:"fixed64,2,opt,name=delta,proto3,oneof" json:"delta,omitempty"`
+	Gamma           *float64               `protobuf:"fixed64,3,opt,name=gamma,proto3,oneof" json:"gamma,omitempty"`
+	Vega            *float64               `protobuf:"fixed64,4,opt,name=vega,proto3,oneof" json:"vega,omitempty"`
+	Theta           *float64               `protobuf:"fixed64,5,opt,name=theta,proto3,oneof" json:"theta,omitempty"`
+	Rho             *float64               `protobuf:"fixed64,6,opt,name=rho,proto3,oneof" json:"rho,omitempty"`
+	MarkIv          *float64               `protobuf:"fixed64,7,opt,name=mark_iv,json=markIv,proto3,oneof" json:"mark_iv,omitempty"`
+	BidIv           *float64               `protobuf:"fixed64,8,opt,name=bid_iv,json=bidIv,proto3,oneof" json:"bid_iv,omitempty"`
+	AskIv           *float64               `protobuf:"fixed64,9,opt,name=ask_iv,json=askIv,proto3,oneof" json:"ask_iv,omitempty"`
+	MarkPrice       *float64               `protobuf:"fixed64,10,opt,name=mark_price,json=markPrice,proto3,oneof" json:"mark_price,omitempty"`
+	UnderlyingPrice *float64               `protobuf:"fixed64,11,opt,name=underlying_price,json=underlyingPrice,proto3,oneof" json:"underlying_price,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -1238,81 +1238,81 @@ func (x *Greeks) GetMeta() *Meta {
 	return nil
 }
 
-func (x *Greeks) GetDelta() string {
+func (x *Greeks) GetDelta() float64 {
 	if x != nil && x.Delta != nil {
 		return *x.Delta
 	}
-	return ""
+	return 0
 }
 
-func (x *Greeks) GetGamma() string {
+func (x *Greeks) GetGamma() float64 {
 	if x != nil && x.Gamma != nil {
 		return *x.Gamma
 	}
-	return ""
+	return 0
 }
 
-func (x *Greeks) GetVega() string {
+func (x *Greeks) GetVega() float64 {
 	if x != nil && x.Vega != nil {
 		return *x.Vega
 	}
-	return ""
+	return 0
 }
 
-func (x *Greeks) GetTheta() string {
+func (x *Greeks) GetTheta() float64 {
 	if x != nil && x.Theta != nil {
 		return *x.Theta
 	}
-	return ""
+	return 0
 }
 
-func (x *Greeks) GetRho() string {
+func (x *Greeks) GetRho() float64 {
 	if x != nil && x.Rho != nil {
 		return *x.Rho
 	}
-	return ""
+	return 0
 }
 
-func (x *Greeks) GetMarkIv() string {
+func (x *Greeks) GetMarkIv() float64 {
 	if x != nil && x.MarkIv != nil {
 		return *x.MarkIv
 	}
-	return ""
+	return 0
 }
 
-func (x *Greeks) GetBidIv() string {
+func (x *Greeks) GetBidIv() float64 {
 	if x != nil && x.BidIv != nil {
 		return *x.BidIv
 	}
-	return ""
+	return 0
 }
 
-func (x *Greeks) GetAskIv() string {
+func (x *Greeks) GetAskIv() float64 {
 	if x != nil && x.AskIv != nil {
 		return *x.AskIv
 	}
-	return ""
+	return 0
 }
 
-func (x *Greeks) GetMarkPrice() string {
+func (x *Greeks) GetMarkPrice() float64 {
 	if x != nil && x.MarkPrice != nil {
 		return *x.MarkPrice
 	}
-	return ""
+	return 0
 }
 
-func (x *Greeks) GetUnderlyingPrice() string {
+func (x *Greeks) GetUnderlyingPrice() float64 {
 	if x != nil && x.UnderlyingPrice != nil {
 		return *x.UnderlyingPrice
 	}
-	return ""
+	return 0
 }
 
 type MarkPrice struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Meta          *Meta                  `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
-	MarkPrice     string                 `protobuf:"bytes,2,opt,name=mark_price,json=markPrice,proto3" json:"mark_price,omitempty"`
-	IndexPrice    *string                `protobuf:"bytes,3,opt,name=index_price,json=indexPrice,proto3,oneof" json:"index_price,omitempty"`
+	MarkPrice     float64                `protobuf:"fixed64,2,opt,name=mark_price,json=markPrice,proto3" json:"mark_price,omitempty"`
+	IndexPrice    *float64               `protobuf:"fixed64,3,opt,name=index_price,json=indexPrice,proto3,oneof" json:"index_price,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1354,18 +1354,18 @@ func (x *MarkPrice) GetMeta() *Meta {
 	return nil
 }
 
-func (x *MarkPrice) GetMarkPrice() string {
+func (x *MarkPrice) GetMarkPrice() float64 {
 	if x != nil {
 		return x.MarkPrice
 	}
-	return ""
+	return 0
 }
 
-func (x *MarkPrice) GetIndexPrice() string {
+func (x *MarkPrice) GetIndexPrice() float64 {
 	if x != nil && x.IndexPrice != nil {
 		return *x.IndexPrice
 	}
-	return ""
+	return 0
 }
 
 type FeedEnd struct {
@@ -1450,29 +1450,29 @@ const file_mftiko_md_v1_md_proto_rawDesc = "" +
 	"\x05event\"\x89\x01\n" +
 	"\tBestQuote\x12&\n" +
 	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12\x10\n" +
-	"\x03bid\x18\x02 \x01(\tR\x03bid\x12\x17\n" +
-	"\abid_qty\x18\x03 \x01(\tR\x06bidQty\x12\x10\n" +
-	"\x03ask\x18\x04 \x01(\tR\x03ask\x12\x17\n" +
-	"\aask_qty\x18\x05 \x01(\tR\x06askQty\"\x9e\x01\n" +
+	"\x03bid\x18\x02 \x01(\x01R\x03bid\x12\x17\n" +
+	"\abid_qty\x18\x03 \x01(\x01R\x06bidQty\x12\x10\n" +
+	"\x03ask\x18\x04 \x01(\x01R\x03ask\x12\x17\n" +
+	"\aask_qty\x18\x05 \x01(\x01R\x06askQty\"\x9e\x01\n" +
 	"\x05Trade\x12&\n" +
 	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12\x19\n" +
 	"\btrade_id\x18\x02 \x01(\tR\atradeId\x12\x14\n" +
-	"\x05price\x18\x03 \x01(\tR\x05price\x12\x10\n" +
-	"\x03qty\x18\x04 \x01(\tR\x03qty\x12*\n" +
+	"\x05price\x18\x03 \x01(\x01R\x05price\x12\x10\n" +
+	"\x03qty\x18\x04 \x01(\x01R\x03qty\x12*\n" +
 	"\x04side\x18\x05 \x01(\x0e2\x16.mftiko.common.v1.SideR\x04side\"\x8c\x02\n" +
 	"\bAggTrade\x12&\n" +
 	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12\x19\n" +
 	"\btrade_id\x18\x02 \x01(\tR\atradeId\x12\x14\n" +
-	"\x05price\x18\x03 \x01(\tR\x05price\x12\x10\n" +
-	"\x03qty\x18\x04 \x01(\tR\x03qty\x12*\n" +
+	"\x05price\x18\x03 \x01(\x01R\x05price\x12\x10\n" +
+	"\x03qty\x18\x04 \x01(\x01R\x03qty\x12*\n" +
 	"\x04side\x18\x05 \x01(\x0e2\x16.mftiko.common.v1.SideR\x04side\x12$\n" +
 	"\x0efirst_trade_id\x18\x06 \x01(\tR\ffirstTradeId\x12\"\n" +
 	"\rlast_trade_id\x18\a \x01(\tR\vlastTradeId\x12\x1f\n" +
 	"\vmatch_count\x18\b \x01(\rR\n" +
 	"matchCount\"/\n" +
 	"\x05Level\x12\x14\n" +
-	"\x05price\x18\x01 \x01(\tR\x05price\x12\x10\n" +
-	"\x03qty\x18\x02 \x01(\tR\x03qty\"\x9b\x01\n" +
+	"\x05price\x18\x01 \x01(\x01R\x05price\x12\x10\n" +
+	"\x03qty\x18\x02 \x01(\x01R\x03qty\"\x9b\x01\n" +
 	"\tOrderBook\x12&\n" +
 	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12'\n" +
 	"\x04bids\x18\x02 \x03(\v2\x13.mftiko.md.v1.LevelR\x04bids\x12'\n" +
@@ -1488,25 +1488,25 @@ const file_mftiko_md_v1_md_proto_rawDesc = "" +
 	"\binterval\x18\x02 \x01(\tR\binterval\x12 \n" +
 	"\fopen_time_ns\x18\x03 \x01(\x03R\n" +
 	"openTimeNs\x12\x12\n" +
-	"\x04open\x18\x04 \x01(\tR\x04open\x12\x12\n" +
-	"\x04high\x18\x05 \x01(\tR\x04high\x12\x10\n" +
-	"\x03low\x18\x06 \x01(\tR\x03low\x12\x14\n" +
-	"\x05close\x18\a \x01(\tR\x05close\x12\x16\n" +
-	"\x06volume\x18\b \x01(\tR\x06volume\x12&\n" +
-	"\fquote_volume\x18\t \x01(\tH\x00R\vquoteVolume\x88\x01\x01\x12\x16\n" +
+	"\x04open\x18\x04 \x01(\x01R\x04open\x12\x12\n" +
+	"\x04high\x18\x05 \x01(\x01R\x04high\x12\x10\n" +
+	"\x03low\x18\x06 \x01(\x01R\x03low\x12\x14\n" +
+	"\x05close\x18\a \x01(\x01R\x05close\x12\x16\n" +
+	"\x06volume\x18\b \x01(\x01R\x06volume\x12&\n" +
+	"\fquote_volume\x18\t \x01(\x01H\x00R\vquoteVolume\x88\x01\x01\x12\x16\n" +
 	"\x06closed\x18\n" +
 	" \x01(\bR\x06closedB\x0f\n" +
 	"\r_quote_volume\"\x8b\x03\n" +
 	"\x06Ticker\x12&\n" +
 	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12\x17\n" +
-	"\x04last\x18\x02 \x01(\tH\x00R\x04last\x88\x01\x01\x12\x1e\n" +
-	"\bopen_24h\x18\x03 \x01(\tH\x01R\aopen24h\x88\x01\x01\x12\x1e\n" +
-	"\bhigh_24h\x18\x04 \x01(\tH\x02R\ahigh24h\x88\x01\x01\x12\x1c\n" +
-	"\alow_24h\x18\x05 \x01(\tH\x03R\x06low24h\x88\x01\x01\x12\"\n" +
+	"\x04last\x18\x02 \x01(\x01H\x00R\x04last\x88\x01\x01\x12\x1e\n" +
+	"\bopen_24h\x18\x03 \x01(\x01H\x01R\aopen24h\x88\x01\x01\x12\x1e\n" +
+	"\bhigh_24h\x18\x04 \x01(\x01H\x02R\ahigh24h\x88\x01\x01\x12\x1c\n" +
+	"\alow_24h\x18\x05 \x01(\x01H\x03R\x06low24h\x88\x01\x01\x12\"\n" +
 	"\n" +
-	"volume_24h\x18\x06 \x01(\tH\x04R\tvolume24h\x88\x01\x01\x12-\n" +
-	"\x10quote_volume_24h\x18\a \x01(\tH\x05R\x0equoteVolume24h\x88\x01\x01\x12)\n" +
-	"\x0echange_pct_24h\x18\b \x01(\tH\x06R\fchangePct24h\x88\x01\x01B\a\n" +
+	"volume_24h\x18\x06 \x01(\x01H\x04R\tvolume24h\x88\x01\x01\x12-\n" +
+	"\x10quote_volume_24h\x18\a \x01(\x01H\x05R\x0equoteVolume24h\x88\x01\x01\x12)\n" +
+	"\x0echange_pct_24h\x18\b \x01(\x01H\x06R\fchangePct24h\x88\x01\x01B\a\n" +
 	"\x05_lastB\v\n" +
 	"\t_open_24hB\v\n" +
 	"\t_high_24hB\n" +
@@ -1518,34 +1518,34 @@ const file_mftiko_md_v1_md_proto_rawDesc = "" +
 	"\vLiquidation\x12&\n" +
 	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12*\n" +
 	"\x04side\x18\x02 \x01(\x0e2\x16.mftiko.common.v1.SideR\x04side\x12\x14\n" +
-	"\x05price\x18\x03 \x01(\tR\x05price\x12\x10\n" +
-	"\x03qty\x18\x04 \x01(\tR\x03qty\"\xa4\x01\n" +
+	"\x05price\x18\x03 \x01(\x01R\x05price\x12\x10\n" +
+	"\x03qty\x18\x04 \x01(\x01R\x03qty\"\xa4\x01\n" +
 	"\vFundingRate\x12&\n" +
 	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12\x12\n" +
-	"\x04rate\x18\x02 \x01(\tR\x04rate\x12&\n" +
+	"\x04rate\x18\x02 \x01(\x01R\x04rate\x12&\n" +
 	"\x0fnext_funding_ns\x18\x03 \x01(\x03R\rnextFundingNs\x12\"\n" +
 	"\n" +
 	"interval_s\x18\x04 \x01(\rH\x00R\tintervalS\x88\x01\x01B\r\n" +
 	"\v_interval_s\"\xa8\x01\n" +
 	"\fOpenInterest\x12&\n" +
 	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12#\n" +
-	"\ropen_interest\x18\x02 \x01(\tR\fopenInterest\x123\n" +
-	"\x13open_interest_value\x18\x03 \x01(\tH\x00R\x11openInterestValue\x88\x01\x01B\x16\n" +
+	"\ropen_interest\x18\x02 \x01(\x01R\fopenInterest\x123\n" +
+	"\x13open_interest_value\x18\x03 \x01(\x01H\x00R\x11openInterestValue\x88\x01\x01B\x16\n" +
 	"\x14_open_interest_value\"\xd0\x03\n" +
 	"\x06Greeks\x12&\n" +
 	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12\x19\n" +
-	"\x05delta\x18\x02 \x01(\tH\x00R\x05delta\x88\x01\x01\x12\x19\n" +
-	"\x05gamma\x18\x03 \x01(\tH\x01R\x05gamma\x88\x01\x01\x12\x17\n" +
-	"\x04vega\x18\x04 \x01(\tH\x02R\x04vega\x88\x01\x01\x12\x19\n" +
-	"\x05theta\x18\x05 \x01(\tH\x03R\x05theta\x88\x01\x01\x12\x15\n" +
-	"\x03rho\x18\x06 \x01(\tH\x04R\x03rho\x88\x01\x01\x12\x1c\n" +
-	"\amark_iv\x18\a \x01(\tH\x05R\x06markIv\x88\x01\x01\x12\x1a\n" +
-	"\x06bid_iv\x18\b \x01(\tH\x06R\x05bidIv\x88\x01\x01\x12\x1a\n" +
-	"\x06ask_iv\x18\t \x01(\tH\aR\x05askIv\x88\x01\x01\x12\"\n" +
+	"\x05delta\x18\x02 \x01(\x01H\x00R\x05delta\x88\x01\x01\x12\x19\n" +
+	"\x05gamma\x18\x03 \x01(\x01H\x01R\x05gamma\x88\x01\x01\x12\x17\n" +
+	"\x04vega\x18\x04 \x01(\x01H\x02R\x04vega\x88\x01\x01\x12\x19\n" +
+	"\x05theta\x18\x05 \x01(\x01H\x03R\x05theta\x88\x01\x01\x12\x15\n" +
+	"\x03rho\x18\x06 \x01(\x01H\x04R\x03rho\x88\x01\x01\x12\x1c\n" +
+	"\amark_iv\x18\a \x01(\x01H\x05R\x06markIv\x88\x01\x01\x12\x1a\n" +
+	"\x06bid_iv\x18\b \x01(\x01H\x06R\x05bidIv\x88\x01\x01\x12\x1a\n" +
+	"\x06ask_iv\x18\t \x01(\x01H\aR\x05askIv\x88\x01\x01\x12\"\n" +
 	"\n" +
 	"mark_price\x18\n" +
-	" \x01(\tH\bR\tmarkPrice\x88\x01\x01\x12.\n" +
-	"\x10underlying_price\x18\v \x01(\tH\tR\x0funderlyingPrice\x88\x01\x01B\b\n" +
+	" \x01(\x01H\bR\tmarkPrice\x88\x01\x01\x12.\n" +
+	"\x10underlying_price\x18\v \x01(\x01H\tR\x0funderlyingPrice\x88\x01\x01B\b\n" +
 	"\x06_deltaB\b\n" +
 	"\x06_gammaB\a\n" +
 	"\x05_vegaB\b\n" +
@@ -1560,8 +1560,8 @@ const file_mftiko_md_v1_md_proto_rawDesc = "" +
 	"\tMarkPrice\x12&\n" +
 	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12\x1d\n" +
 	"\n" +
-	"mark_price\x18\x02 \x01(\tR\tmarkPrice\x12$\n" +
-	"\vindex_price\x18\x03 \x01(\tH\x00R\n" +
+	"mark_price\x18\x02 \x01(\x01R\tmarkPrice\x12$\n" +
+	"\vindex_price\x18\x03 \x01(\x01H\x00R\n" +
 	"indexPrice\x88\x01\x01B\x0e\n" +
 	"\f_index_price\"6\n" +
 	"\aFeedEnd\x12\x16\n" +

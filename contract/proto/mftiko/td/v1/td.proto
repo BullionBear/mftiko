@@ -37,9 +37,9 @@ message Submit {
   string ticker = 2; // 今天是 UniversalTicker。平面之間改傳 UID 是後續（D203），這一版不改 td 的欄位
   mftiko.common.v1.Side side = 3;
   mftiko.common.v1.OrderType order_type = 4;
-  optional string qty = 5; // 單位是 contract_value_ccy（D203）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數
-  optional string quote_qty = 6; // quote 資產的金額，單位是 quote，不是 contract_value_ccy（D203）
-  optional string price = 7; // 單位是 price_ccy（D203）：現貨與期貨（含 inverse）是 quote；幣本位期權的權利金是 base；U 本位期權的權利金是 quote（穩定幣）
+  optional double qty = 5; // 單位是 contract_value_ccy（D203）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數
+  optional double quote_qty = 6; // quote 資產的金額，單位是 quote，不是 contract_value_ccy（D203）
+  optional double price = 7; // 單位是 price_ccy（D203）：現貨與期貨（含 inverse）是 quote；幣本位期權的權利金是 base；U 本位期權的權利金是 quote（穩定幣）
   mftiko.common.v1.TimeInForce tif = 8;
   bool reduce_only = 9;
   string client_order_id = 10;
@@ -133,7 +133,7 @@ message LedgerView {
 
 message LeverageInfo {
   string ticker = 1;
-  string leverage = 2;
+  double leverage = 2;
 }
 
 // ---------- td.evt.{api_id} ----------
@@ -161,11 +161,11 @@ message Order {
   mftiko.common.v1.Side side = 4;
   mftiko.common.v1.OrderType order_type = 5;
   OrderStatus status = 6;
-  string qty = 7; // 同 Submit.qty，單位是 contract_value_ccy（D203）
-  optional string quote_qty = 8; // 同 Submit.quote_qty（D203）
-  optional string price = 9; // 同 Submit.price，單位是 price_ccy（D203）
-  string filled_qty = 10; // 已成交數量，單位同 qty（contract_value_ccy，D203）
-  optional string avg_price = 11; // 同 Submit.price，單位是 price_ccy（D203）
+  double qty = 7; // 同 Submit.qty，單位是 contract_value_ccy（D203）
+  optional double quote_qty = 8; // 同 Submit.quote_qty（D203）
+  optional double price = 9; // 同 Submit.price，單位是 price_ccy（D203）
+  double filled_qty = 10; // 已成交數量，單位同 qty（contract_value_ccy，D203）
+  optional double avg_price = 11; // 同 Submit.price，單位是 price_ccy（D203）
   string reject_reason = 12;
   int64 exch_ts_ns = 13;
   int64 td_ts_ns = 14;
@@ -178,9 +178,9 @@ message Fill {
   string order_id = 3;
   string client_order_id = 4;
   mftiko.common.v1.Side side = 5;
-  string price = 6; // 同 Submit.price，單位是 price_ccy（D203）
-  string qty = 7; // 成交數量，單位同 Submit.qty（contract_value_ccy，D203）
-  string fee = 8;
+  double price = 6; // 同 Submit.price，單位是 price_ccy（D203）
+  double qty = 7; // 成交數量，單位同 Submit.qty（contract_value_ccy，D203）
+  double fee = 8;
   string fee_asset = 9;
   string liquidity = 10;
   int64 exch_ts_ns = 11;
@@ -203,18 +203,18 @@ message CancelReject {
 
 message Balance {
   string asset = 1;
-  string free = 2;
-  string locked = 3;
-  string prelock = 4;
+  double free = 2;
+  double locked = 3;
+  double prelock = 4;
 }
 
 message Position {
   string ticker = 1;
-  string size = 2; // 持倉數量，單位同 Submit.qty（contract_value_ccy，D203）
-  optional string entry_price = 3; // 同 Submit.price，單位是 price_ccy（D203）
-  optional string mark_price = 4; // 同 Submit.price，單位是 price_ccy（D203）
-  optional string unrealized_pnl = 5; // 損益結算幣 settlement_asset（欄位 settle），不是保證金幣（D203）
-  optional string leverage = 6;
+  double size = 2; // 持倉數量，單位同 Submit.qty（contract_value_ccy，D203）
+  optional double entry_price = 3; // 同 Submit.price，單位是 price_ccy（D203）
+  optional double mark_price = 4; // 同 Submit.price，單位是 price_ccy（D203）
+  optional double unrealized_pnl = 5; // 損益結算幣 settlement_asset（欄位 settle），不是保證金幣（D203）
+  optional double leverage = 6;
 }
 
 message BalanceUpdate {

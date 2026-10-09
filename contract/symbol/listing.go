@@ -1,7 +1,11 @@
 package symbol
 
 import (
+	"encoding/json"
 	"fmt"
+	"math"
+	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -32,15 +36,15 @@ type Listing struct {
 	// ExpiryCode is YYMMDD taken from the venue's own dated ticker, not computed from ExpiryNs.
 	ExpiryCode string
 	ExpiryNs   int64 // 0 = does not expire
-	// Strike is as the venue published it. SYM normalizes it with spell_strike before
-	// the ticker is derived (D203): 6400.0 and 6400 are one ticker. "" unless an option.
-	Strike     string
+	// Strike is the venue's strike (D008: a float64, like every number). The ticker spells it
+	// with StrikeSpelling (D203): 6400.0 and 6400 are one value and one ticker. 0 unless an option.
+	Strike     float64
 	OptionType string // C | P; "" unless an option
 	// ContractSize is one contract's face value (D203). Platform qty is the contract
 	// count times this value, in contract_value_ccy: base on linear and options, quote
 	// on inverse. Inverse qty is that quote amount, not a contract count.
-	// Empty on spot, which has no contract count. Required on a contract.
-	ContractSize string
+	// 0 on spot, which has no contract count. Required, and positive, on a contract.
+	ContractSize float64
 	// ContractValueCcy is the unit of qty (D203). Adapters fill it from the venue's
 	// native field; nothing here derives it. Empty is allowed on spot. A contract
 	// must set it: base on linear and options, quote on inverse.
@@ -61,15 +65,93 @@ type Listing struct {
 	// table; Expired and Delisted move to the terminal table and the UniversalTicker
 	// string does not change. The tables are already split (migrations/0002_symbol).
 	Status Status
-	// Filters: name -> bound. A present key with "" means the venue publishes the restriction but
-	// sets no limit, which is not the same as leaving it out.
-	Filters map[string]string
+	// Filters: name -> bound. A present key with the value decimal.Absent (NaN) means the venue
+	// publishes the restriction but sets no limit, which is not the same as leaving it out.
+	Filters Filters
+}
+
+// Filters is a listing's restrictions by name. A bound that is NaN (decimal.Absent) is a restriction
+// with no limit; in JSON it is null.
+type Filters map[string]float64
+
+// Equal reports whether f and g have the same names with the same bounds, an absent bound equal
+// to another absent bound.
+func (f Filters) Equal(g Filters) bool {
+	if len(f) != len(g) {
+		return false
+	}
+	for k, a := range f {
+		b, ok := g[k]
+		if !ok || (a != b && !(math.IsNaN(a) && math.IsNaN(b))) {
+			return false
+		}
+	}
+	return true
+}
+
+// MarshalJSON writes an absent bound as null; JSON has no NaN.
+func (f Filters) MarshalJSON() ([]byte, error) {
+	if f == nil {
+		return []byte("null"), nil
+	}
+	names := make([]string, 0, len(f))
+	for k := range f {
+		names = append(names, k)
+	}
+	slices.Sort(names)
+	b := []byte{'{'}
+	for i, k := range names {
+		if i > 0 {
+			b = append(b, ',')
+		}
+		b = strconv.AppendQuote(b, k)
+		b = append(b, ':')
+		if v := f[k]; math.IsNaN(v) {
+			b = append(b, "null"...)
+		} else if math.IsInf(v, 0) {
+			return nil, fmt.Errorf("%w: filter %s is %v", ErrInvalidListing, k, v)
+		} else {
+			b = strconv.AppendFloat(b, v, 'g', -1, 64)
+		}
+	}
+	return append(b, '}'), nil
+}
+
+// UnmarshalJSON reads null as an absent bound.
+func (f *Filters) UnmarshalJSON(b []byte) error {
+	if string(b) == "null" {
+		*f = nil
+		return nil
+	}
+	var raw map[string]*float64
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	out := make(Filters, len(raw))
+	for k, v := range raw {
+		if v == nil {
+			out[k] = math.NaN()
+		} else {
+			out[k] = *v
+		}
+	}
+	*f = out
+	return nil
+}
+
+// StrikeSpelling is how the ticker writes strike v (D203, D008): its shortest decimal form, folded
+// by SpellStrike, so 6400 is "6400" and 6.4 is "6D4". v must be positive and finite.
+func StrikeSpelling(v float64) (string, error) {
+	if !(v > 0) || math.IsInf(v, 0) {
+		return "", fmt.Errorf("%w: strike %v", ErrInvalidTicker, v)
+	}
+	return SpellStrike(strconv.FormatFloat(v, 'f', -1, 64))
 }
 
 // Ticker derives the instrument's identity from the venue's own fields, never by splitting
 // ExchTicker. The symbol is the canonical base plus the canonical quote (uppercase, alias
 // table), then -ExpiryCode for a dated contract, then -Strike-OptionType for an option.
-// The strike goes through SpellStrike first (D203): 6400.0 and 6400 are one ticker, and a
+// The strike goes through StrikeSpelling first (D203): 6400.0 and 6400 are one ticker, and a
 // fractional strike uses StrikeDecimal. The result is always a string Parse accepts.
 func (l *Listing) Ticker() (UniversalTicker, error) {
 	if l == nil {
@@ -93,7 +175,7 @@ func (l *Listing) Ticker() (UniversalTicker, error) {
 	var symbol string
 	switch l.Category {
 	case Spot, Perp, Inverse:
-		if l.ExpiryCode != "" || l.Strike != "" || l.OptionType != "" {
+		if l.ExpiryCode != "" || l.Strike != 0 || l.OptionType != "" {
 			return UniversalTicker{}, fmt.Errorf("%w: %s has no expiry or strike", ErrInvalidTicker, l.Category)
 		}
 		symbol = pair
@@ -101,7 +183,7 @@ func (l *Listing) Ticker() (UniversalTicker, error) {
 		if !dateCode(l.ExpiryCode) {
 			return UniversalTicker{}, fmt.Errorf("%w: expiry %q", ErrInvalidTicker, l.ExpiryCode)
 		}
-		if l.Strike != "" || l.OptionType != "" {
+		if l.Strike != 0 || l.OptionType != "" {
 			return UniversalTicker{}, fmt.Errorf("%w: future has no strike", ErrInvalidTicker)
 		}
 		symbol = pair + "-" + l.ExpiryCode
@@ -113,7 +195,7 @@ func (l *Listing) Ticker() (UniversalTicker, error) {
 		if opt != "C" && opt != "P" {
 			return UniversalTicker{}, fmt.Errorf("%w: option type %q", ErrInvalidTicker, l.OptionType)
 		}
-		strike, err := SpellStrike(l.Strike)
+		strike, err := StrikeSpelling(l.Strike)
 		if err != nil {
 			return UniversalTicker{}, err
 		}
@@ -177,7 +259,7 @@ func (l *Listing) Validate() error {
 		}
 		return nil
 	}
-	if strings.TrimSpace(l.ContractSize) == "" {
+	if !(l.ContractSize > 0) || math.IsInf(l.ContractSize, 0) {
 		return fmt.Errorf("%w: contract_size", ErrInvalidListing)
 	}
 	if l.ContractValueCcy == "" || l.PriceCcy == "" || l.Settle == "" {

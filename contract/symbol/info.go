@@ -23,12 +23,12 @@ type Info struct {
 	// ContractSize, ContractValueCcy, PriceCcy and Settle use the D203 units.
 	// See Listing. Settle is the PnL settlement asset, not the margin asset.
 	// Quanto is not stored in phase 1.
-	ContractSize     string
+	ContractSize     float64 // 0 on spot
 	ContractValueCcy string
 	PriceCcy         string
 	Settle           string
 	ExpiryNs         int64
-	Strike           string // SYM applies spell_strike before the ticker (D203)
+	Strike           float64 // 0 unless an option; the ticker spells it with StrikeSpelling (D203)
 	OptionType       string
 	// Status is the trading state (D203). The set is still provisional. Only
 	// Tradable may trade. Non-terminal statuses stay on the active table the
@@ -36,7 +36,7 @@ type Info struct {
 	// changing the ticker or the UID. The tables are already split
 	// (migrations/0002_symbol).
 	Status      Status
-	Filters     map[string]string
+	Filters     Filters
 	UpdatedAtNs int64
 }
 

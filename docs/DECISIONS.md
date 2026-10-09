@@ -290,7 +290,7 @@ account worker 依 refcount 起停，沒有常駐層（D901），所以閒置帳
   - 不管策略訂的是 `orderbook` 還是 `orderbook_delta`，conn worker 都維護一本本地全量 book，再依 feed 決定推什麼。兩個 topic 對到同一個 atom：交易所的增量 channel；沒有增量 channel 的交易所，用它最完整的 book channel。
   - 跟交易所同步的邏輯全在 conn worker 裡：快照與增量對齊、驗序號、斷號後重抓。快照用 adapter 的 REST reader 在進程內抓（Binance 類），或用訂閱時 WS 推來的那一張（OKX、Bybit 類）。不經過 md.fetch 服務：正確性不依賴另一個服務，而且對齊有時序要求，多一跳 NATS 只會讓快照變慢。
   - `orderbook`：本地 book 的 top-N 全量（`OrderBook`），top-N 有變才推。N 由 MD 的設定決定，同一個 venue 上固定。
-  - `orderbook_delta`：正規化後的增量（`OrderBookDelta`：價位 → 數量，`"0"` 為刪除）。conn worker 對交易所重新同步之後推一則 `reset`，內容是完整的 book。增量被 prehook 丟掉（D803）時，seq 會跳號，SDK 的小工具就向 `md.view` 重拿。
+  - `orderbook_delta`：正規化後的增量（`OrderBookDelta`：價位 → 數量，`0` 為刪除）。conn worker 對交易所重新同步之後推一則 `reset`，內容是完整的 book。增量被 prehook 丟掉（D803）時，seq 會跳號，SDK 的小工具就向 `md.view` 重拿。
   - 晚加入：SDK 先訂 `md.f`，再向持有者要 `md.view`，拿到 seq S 時的 book，之後只套用 seq > S 的增量。seq 斷號或 `conn_epoch` 改變時，重新要一次。這是 SDK 提供的可選小工具，fold 跟交易所無關。
 - **tape：**
   - 只錄 `trade`、`aggtrade`、`liquidation`，book 類不錄。錄不錄由 topic 決定，MD agent 推導 `AtomAssignment.record`。
@@ -579,6 +579,20 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **趁還是草案，拿掉兩條跨契約的 import：**
   - `stsctl.v1` 不再 import `state.v1`。策略的契約版本偏差最久（PROTOCOL §1），etcd 的 schema 卻是不相容就換 key 根，兩者不該綁在一起。session 的宣告（`SessionSpec` 與它的組成）抽成獨立的套件 `mftiko.session.v1`，歸 STS；`state.v1`、`stsctl.v1` 與 E10 的 API 契約都 import 它。`EntryState`、`Universe` 在 `stsctl` 裡另定綁定自己的型別。
   - `td.v1` 不再為了 `Side` import `md.v1`：`Side` 搬到 `common.v1`（D006）。
+
+### D008 十進位數一律是 float64
+
+- **價格、數量、金額、手續費、費率、greeks、IV、tick 與 step、`contract_size`、strike、槓桿，在 Go 裡是 `float64`，在契約裡是 `double`。** 範圍包括 `md.v1`、`td.v1`、`sym.v1`、SDK 與 `exchange` 的型別。這條推翻 PROTOCOL §2 原本的「十進位數一律是字串」。
+- 理由：熱路徑（WS 解碼、策略）不必再 parse 字串；值不帶指標，E3 零分配解碼時不受緩衝區重用的影響；策略本來就用浮點運算，字串只是把轉換推給每個使用者。代價是不精確，用下面的規則收住。
+- **不變的：** `client_order_id` 仍是十進位字串（它是整數，不是數量）；UniversalTicker 裡 strike 的拼法是身分，由 float 的最短十進位表示推出（`symbol.StrikeSpelling`，D203）；Postgres 的欄位仍是 `NUMERIC`，SYM 在寫入前把 float 轉成最短的十進位文字，`"1.10"` 與 `1.1` 因此是同一個值。
+- **規則**（`contract/wire/decimal`）：
+  1. 入站用 `decimal.Parse`，正確捨入；NaN、Inf、十六進位、底線一律拒收，正負號由各欄位自己檢查。有效位數不超過 15 位的文字，Parse 之後再以同樣的小數位 Format，得回原文字。超過的（例如千萬級數量加 8 位小數）會被捨入，E3 的 conformance 對每個 venue 的 tick 與 step 範圍驗證。
+  2. 出站用 `decimal.Append`：先對齊 tick 或 step，再以 step 的小數位、不帶指數寫出；交易所拒收 `1e-05`。有方向的對齊（買價往下、賣價往上）用 `SnapDown`、`SnapUp`，帶 1e-9 個 step 的容差：`0.3/0.1` 是 `2.9999999999999996`。
+  3. 不用 `==` 比較。換成整數個 step 再比（`Steps`、`Equal`）：累計成交量是否等於下單量、持倉是否歸零都照這條。
+  4. 張數換算（D203）：交易所的張數是 `Snap(qty / contract_size, 張數的 step)`，下單前驗證殘差。
+  5. 累加值（餘額、PnL）以交易所回報為準，本地累加只是估計，對帳帶容差。
+  6. 缺值在程序裡是 `decimal.Absent()`（NaN），在契約上是不設的 optional 欄位；NaN 不上線。`Filters` 的「有這個限制但沒有界限」也是 NaN，JSON 裡是 `null`。
+- 簽名的 request body 只 marshal 一次：簽那份 bytes，送那份 bytes（E3）。
 
 ### D108 agent 以快照恢復，shim 的事件只是通知
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -32,15 +33,15 @@ func TestLoadFixture(t *testing.T) {
 		{
 			name: "two categories",
 			json: `[
-				{"Venue":"Bybit","Category":"Perp","Base":"BTC","Quote":"USDT","ExchTicker":"BTCUSDT","ContractSize":"1","Settle":"USDT","Status":"TRADABLE","Filters":{"price_tick":"0.1","qty_step":"0.001"}},
-				{"Venue":"Bybit","Category":"Spot","Base":"BTC","Quote":"USDT","ExchTicker":"BTCUSDT","ContractSize":"1","Settle":"USDT","Status":"TRADABLE","Filters":{"price_tick":"0.1","qty_step":"0.001"}}
+				{"Venue":"Bybit","Category":"Perp","Base":"BTC","Quote":"USDT","ExchTicker":"BTCUSDT","ContractSize":1,"Settle":"USDT","Status":"TRADABLE","Filters":{"price_tick":0.1,"qty_step":0.001}},
+				{"Venue":"Bybit","Category":"Spot","Base":"BTC","Quote":"USDT","ExchTicker":"BTCUSDT","ContractSize":1,"Settle":"USDT","Status":"TRADABLE","Filters":{"price_tick":0.1,"qty_step":0.001}}
 			]`,
 			want: []symbol.Listing{btc},
 			spot: []symbol.Listing{spot},
 		},
 		{
 			name: "omitted venue is the source venue",
-			json: `[{"Category":"Perp","Base":"ETH","Quote":"USDT","ExchTicker":"ETHUSDT","ContractSize":"1","Settle":"USDT","Status":"TRADABLE","Filters":{"price_tick":"0.1","qty_step":"0.001"}}]`,
+			json: `[{"Category":"Perp","Base":"ETH","Quote":"USDT","ExchTicker":"ETHUSDT","ContractSize":1,"Settle":"USDT","Status":"TRADABLE","Filters":{"price_tick":0.1,"qty_step":0.001}}]`,
 			want: []symbol.Listing{inst(symbol.Perp, "ETH", "ETHUSDT")},
 		},
 		{
@@ -61,7 +62,7 @@ func TestLoadFixture(t *testing.T) {
 			json: `[{"Venue":"Bybit","Category":"Perp","Base":"BTC","Quote":"USDT","ExchTicker":"BTCUSDT","Filters":{}}]`,
 			want: []symbol.Listing{{
 				Venue: "Bybit", Category: symbol.Perp, Base: "BTC", Quote: "USDT", ExchTicker: "BTCUSDT",
-				Filters: map[string]string{},
+				Filters: symbol.Filters{},
 			}},
 		},
 		{
@@ -149,13 +150,13 @@ func TestLoadFixture(t *testing.T) {
 			path: filepath.Join("testdata", "listing.json"),
 			want: []symbol.Listing{{
 				Venue: "Bybit", Category: symbol.Perp, Base: "BTC", Quote: "USDT",
-				ExchTicker: "BTCUSDT", ContractSize: "1", Settle: "USDT", Status: symbol.Tradable,
-				Filters: map[string]string{symbol.PriceTick: "0.1", symbol.QtyStep: "0.001"},
+				ExchTicker: "BTCUSDT", ContractSize: 1, Settle: "USDT", Status: symbol.Tradable,
+				Filters: symbol.Filters{symbol.PriceTick: 0.1, symbol.QtyStep: 0.001},
 			}},
 			spot: []symbol.Listing{{
 				Venue: "Bybit", Category: symbol.Spot, Base: "BTC", Quote: "USDT",
-				ExchTicker: "BTCUSDT", ContractSize: "1", Settle: "USDT", Status: symbol.Tradable,
-				Filters: map[string]string{symbol.PriceTick: "0.01", symbol.QtyStep: "0.00001"},
+				ExchTicker: "BTCUSDT", ContractSize: 1, Settle: "USDT", Status: symbol.Tradable,
+				Filters: symbol.Filters{symbol.PriceTick: 0.01, symbol.QtyStep: 0.00001},
 			}},
 		},
 		{
@@ -198,8 +199,8 @@ func TestLoadFixtureDoesNotSeeAPartialApply(t *testing.T) {
 	// A duplicate on row 1 must not leave row 0 behind.
 	s := newSource(t)
 	body := `[
-		{"Venue":"Bybit","Category":"Perp","Base":"ETH","Quote":"USDT","ExchTicker":"ETHUSDT","Status":"TRADABLE","Filters":{"price_tick":"9"}},
-		{"Venue":"Bybit","Category":"Perp","ExchTicker":"ETHUSDT","Filters":{"price_tick":"1"}}
+		{"Venue":"Bybit","Category":"Perp","Base":"ETH","Quote":"USDT","ExchTicker":"ETHUSDT","Status":"TRADABLE","Filters":{"price_tick":9}},
+		{"Venue":"Bybit","Category":"Perp","ExchTicker":"ETHUSDT","Filters":{"price_tick":1}}
 	]`
 	if err := s.LoadFixture(strings.NewReader(body)); !errors.Is(err, exchangetest.ErrDuplicate) {
 		t.Fatal(err)
@@ -235,8 +236,14 @@ func TestFixtureRoundTripAllFields(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("got %#v", got)
 	}
-	if !reflect.DeepEqual(got[0], original) {
-		t.Fatalf("got %#v\nwant %#v", got[0], original)
+	// NaN is not DeepEqual to itself: Filters is compared on its own.
+	if !got[0].Filters.Equal(original.Filters) {
+		t.Fatalf("filters: got %v, want %v", got[0].Filters, original.Filters)
+	}
+	g, o := got[0], original
+	g.Filters, o.Filters = nil, nil
+	if !reflect.DeepEqual(g, o) {
+		t.Fatalf("got %#v\nwant %#v", g, o)
 	}
 }
 
@@ -263,12 +270,11 @@ func nonzeroListing(t *testing.T) symbol.Listing {
 		case reflect.Float32, reflect.Float64:
 			f.SetFloat(1.5)
 		case reflect.Map:
-			if f.Type().Key().Kind() != reflect.String || f.Type().Elem().Kind() != reflect.String {
+			if f.Type() != reflect.TypeOf(symbol.Filters{}) {
 				t.Fatalf("Listing.%s is %s; teach the fixture round trip about this map", name, f.Type())
 			}
-			m := reflect.MakeMap(f.Type())
-			m.SetMapIndex(reflect.ValueOf(name), reflect.ValueOf("bound"))
-			f.Set(m)
+			// A bound and an absent bound (NaN, null in JSON).
+			f.Set(reflect.ValueOf(symbol.Filters{name: 2.5, "unbounded": math.NaN()}))
 		default:
 			t.Fatalf("Listing.%s has kind %s; teach the fixture round trip about it", name, f.Kind())
 		}
