@@ -112,10 +112,19 @@ type Page[E any] struct {
 }
 
 // Doer sends HTTP requests: the transport (exchange/transport/fasthttp, or a fake in a test). It
-// returns an error only when no response came back. For a request that may have gone out it wraps
-// ErrUnknownOutcome; for one that certainly did not (the dial failed) it does not.
+// returns an error only when no answer Parse could read came back. For a request that may have gone
+// out (a timeout, a dropped connection, a 5xx) it wraps ErrUnknownOutcome; for one that certainly did
+// not (the dial failed) it does not.
 type Doer interface {
 	Do(ctx context.Context, req *HTTPRequest) (*HTTPResponse, error)
+}
+
+// Lender is a Doer that can lend its response instead of handing it over: use gets the response
+// for the duration of the call, and the Lender reuses it once use returns (D302). Lend returns
+// use's error, or what Do would have. Run and Collect lend when they can.
+type Lender interface {
+	Doer
+	Lend(ctx context.Context, req *HTTPRequest, use func(*HTTPResponse) error) error
 }
 
 // ErrNoTransport: a Call was run with no Doer to send it.
@@ -126,6 +135,15 @@ func Run[T any](ctx context.Context, d Doer, c Call[T]) (T, error) {
 	var zero T
 	if d == nil {
 		return zero, ErrNoTransport
+	}
+	if l, ok := d.(Lender); ok {
+		var out T
+		err := l.Lend(ctx, &c.Req, func(resp *HTTPResponse) error {
+			var err error
+			out, err = c.Parse(resp)
+			return err
+		})
+		return out, err
 	}
 	resp, err := d.Do(ctx, &c.Req)
 	if err != nil {
