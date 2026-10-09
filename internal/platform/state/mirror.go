@@ -99,10 +99,12 @@ type MirrorStats struct {
 //     revision. Events and progress notifications only move the copy's revision, so a member that serves the watch
 //     but lags behind the cluster cannot make the copy look fresh. The probe also asks the watch stream for a
 //     progress notification; a watch that stays silent for 3 probe intervals while the cluster has moved past the
-//     copy is reopened. Silence counts from when etcd confirmed the watch (clientv3.WithCreatedNotify), not from when
-//     it was asked for: opening the watch's gRPC stream authenticates first, which can take longer than 3 probe
-//     intervals, and each reopen would start that over. A watch not confirmed within DefaultMirrorCreateTimeout is
-//     reopened anyway.
+//     copy is reopened. Silent means it brought nothing that moved the copy on: a watch that delivers late, so that
+//     the copy never reaches a probe's revision before the next probe reads a newer one, is behind, not stalled,
+//     and reopening it would only start it over. Silence counts from when etcd confirmed the watch
+//     (clientv3.WithCreatedNotify), not from when it was asked for: opening the watch's gRPC stream authenticates
+//     first, which can take longer than 3 probe intervals, and each reopen would start that over. A watch not
+//     confirmed within DefaultMirrorCreateTimeout is reopened anyway.
 //
 // Readers act level-triggered: Notify says that something changed, Snapshot or Take says what is there now.
 // Notify and Take are for one consumer: Take consumes the set of changed keys. Safe for concurrent use; Run is
@@ -130,6 +132,7 @@ type Mirror struct {
 	id          uint64    // this mirror, for its gRPC stream
 	streamN     uint64    // the stream's number: moves on when the stream's token is refused
 	opened      time.Time // when it was asked for, then when etcd confirmed it
+	advanced    time.Time // when the copy's revision last moved on: a list, an event or a progress notification
 	created     bool      // etcd has confirmed it
 	kickGen     uint64    // the generation a stall kick is for
 	relistAsked uint64    // relists the probe asked for, counted
@@ -529,7 +532,7 @@ func (m *Mirror) probe(pctx context.Context) {
 			continue
 		}
 		m.probeRev, m.probeSent = h.Revision, sent // contact once the watch brings the copy this far
-		silent, window := latest(m.contact, m.opened), mirrorStallProbes*m.opt.ProbeInterval
+		silent, window := latest(latest(m.contact, m.opened), m.advanced), mirrorStallProbes*m.opt.ProbeInterval
 		if !m.created {
 			silent, window = m.opened, max(window, m.opt.createTimeout)
 		}
@@ -655,6 +658,7 @@ func (m *Mirror) setRev(rev int64) {
 		return
 	}
 	m.rev = rev
+	m.advanced = time.Now()
 	close(m.revCh)
 	m.revCh = make(chan struct{})
 	if m.probeRev != 0 && m.rev >= m.probeRev {

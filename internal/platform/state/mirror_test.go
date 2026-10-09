@@ -1020,6 +1020,41 @@ func TestMirrorStalledWatch(t *testing.T) {
 	}
 }
 
+// laggingReader delivers every response of a watch lag after etcd sent it: a watch that works, behind the cluster,
+// as one is on a loaded host.
+type laggingReader struct {
+	Reader
+	lag time.Duration
+}
+
+func (l *laggingReader) Watch(ctx context.Context, key string, opts ...clientv3.OpOption) clientv3.WatchChan {
+	in := l.Reader.Watch(ctx, key, opts...)
+	type timed struct {
+		r  clientv3.WatchResponse
+		at time.Time
+	}
+	queue := make(chan timed, 1<<16)
+	out := make(chan clientv3.WatchResponse)
+	go func() {
+		defer close(queue)
+		for r := range in {
+			queue <- timed{r, time.Now().Add(l.lag)}
+		}
+	}()
+	go func() {
+		defer close(out)
+		for q := range queue {
+			time.Sleep(time.Until(q.at))
+			select {
+			case out <- q.r:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out
+}
+
 // unconfirmedReader holds back every response of a watch, etcd's confirmation first, for hold after the watch is
 // asked for, as a watch on a new gRPC stream waits for the stream to authenticate. With hold < 0 the first watch
 // never answers and later ones answer at once.
@@ -1101,6 +1136,32 @@ func TestMirrorSlowWatchCreation(t *testing.T) {
 	waitConverged(t, ctx, m, raw, 20*time.Second)
 	if st := m.Stats(); st.Lists != 1 || st.Watches != 1 || st.Errors != 0 {
 		t.Fatalf("stats %+v: a watch waiting for its confirmation was reopened", st)
+	}
+}
+
+// A watch that delivers every event late, while the cluster keeps moving, is behind, not stalled: each probe reads a
+// newer revision than the copy has, so the copy never reaches one before the next probe asks for a newer one, and
+// LastContact stands still. Its events keep coming: it must not be reopened (E1-23, #90).
+func TestMirrorLaggingWatch(t *testing.T) {
+	ctx := testCtx(t)
+	s, topo := singleRegion(t, "td-tw-1")
+	raw := s.Client(t)
+	direct, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const probe = 50 * time.Millisecond
+	m := startMirror(t, &laggingReader{Reader: direct, lag: 2 * probe}, TDAckPrefix("td-tw-1"), MirrorOptions{ProbeInterval: probe})
+	waitConverged(t, ctx, m, raw, 20*time.Second)
+
+	stop := make(chan struct{})
+	wg := writeUntil(t, ctx, raw, stop)
+	time.Sleep(20 * probe)
+	close(stop)
+	wg.Wait()
+	waitConverged(t, ctx, m, raw, 20*time.Second)
+	if st := m.Stats(); st.Lists != 1 || st.Watches != 1 || st.Errors != 0 {
+		t.Fatalf("stats %+v: a watch that kept delivering, late, was reopened", st)
 	}
 }
 
