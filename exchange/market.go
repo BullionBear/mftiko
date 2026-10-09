@@ -17,9 +17,10 @@ type Market interface {
 	// Topics is the capability table (D12). A topic missing here is unsupported on this venue.
 	Topics() []TopicCaps
 
-	// Atom maps a feed to its atom (D12, D31). The feed's UniversalTicker is only a placeholder: the
-	// caller resolves it through SYM first (symbol.Resolver.Get) and passes what came back, so this
-	// stays a pure function. The answer is the venue channel to subscribe and the route (websocket
+	// Atom maps a feed to its atom (D12, D31, D38). A spec names the feed with a UniversalTicker; the
+	// caller resolves that to *symbol.Info at load (symbol.Resolver.Get) and passes what came back,
+	// so this stays a pure function. The Info's UID is the instrument inside the system. The answer
+	// is the venue channel to subscribe and the route (websocket
 	// path) it lives on (D26); several topics may land on one atom (orderbook and orderbook_delta,
 	// D21; Bybit's linear tickers carry ticker, funding, open interest and mark price).
 	// ErrUnsupported when the venue does not push this topic: the lease item becomes REJECTED

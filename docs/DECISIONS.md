@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-09 更新：agent 以快照恢復，D37）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D38）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 
@@ -470,9 +470,10 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 照 mftik 的 symbol plane（D11）。
 
-- **平台裡指涉商品一律用 UniversalTicker：** spec、需求項目、`md.f` 的 subject、`td.order`、DB。平面之間交換資料一律用它。交易所的寫法（`exch_ticker`）只出現在 adapter 和 SYM 的表裡。
+- **給人寫的是 UniversalTicker，系統內部是 UID（D38）。** spec 與設定寫 ticker 字串，載入時才解成 UID。STS、TD、MD 之間傳這個整數，各平面再用 UID 向 SYM 拿欄位。需求項目、`td.order` 今天仍帶 ticker，換成 UID 是後續。NATS 的 subject 用人讀的名字，不用 UID；確切拼法還沒定（PROTOCOL §10 P14），這一版的 `md.f` 仍是 `md.f.{inst}.{topic}.{ticker}`。SYM 表的主鍵是 UID。交易所的寫法（`exch_ticker`）只出現在 adapter 和 SYM。
 - **翻譯是查表，經 SYM 解析，不是字串轉換。** `BTCUSDT` 不帶 base／quote 的切法，交易所的寫法也不一定是 base＋分隔＋quote。
-- **先解析，再交給 adapter。** MD agent 收到需求項目，先在已載入的商品表裡解析，找不到或已下架就是 `REJECTED`；再把解析結果交給 adapter，由它決定 route 和 channel。
+- **ticker 的 base／quote 是 SYM 正規化之後的資產（D38）。** 資產代碼一律大寫，再套別名表（例如 `XBT` → `BTC`），只在 SYM。先正規化，再做 quanto 判斷，再推 ticker；strike 先依 `spell_strike` 正規化，`6400.0` 與 `6400` 是同一個 ticker。`USD`、`USDC`、`USDT` 不合併。quanto 不入庫。
+- **先解析，再交給 adapter。** MD agent 收到需求項目，先在已載入的活躍表裡解析（D38：Resolver 與熱路徑不讀終結表），找不到、已下架、已到期，或不是可交易（不是 `TRADABLE`；quanto 不入庫）就是 `REJECTED`；再把解析結果交給 adapter，由它決定 route 和 channel。
   - adapter 因此是純函數：不查 SYM、不做 I/O，只用資料就能測。
   - mftik 的 adapter 自己帶 SymbolResolver，在裡面查；mftik refactor 的 B7-01 改成先解析再 `atoms_for`。這裡照後者。
 - **回程帶交易所那一側的 key。** 私有事件、REST 拿回的成交與訂單帶 `(venue, category, exch_ticker)`（venue 見 D32），account worker 和 backfill 以 SYM 反查換回 UniversalTicker。category 是 key 的一部分：統一帳戶的 venue 上，同一個寫法可能是兩個商品（Bybit 現貨與 linear 的 `BTCUSDT`）。
@@ -483,10 +484,10 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **topic 名稱沿用 mftik：** `bestquote`、`trade`、`aggtrade`、`orderbook`、`ticker`、`liquidation`、`funding_rate`、`open_interest`、`greeks`、`kline_<interval>`，加上這裡自己的 `orderbook_delta`、`mark_price`。表在 PROTOCOL §2。
 - **SYM 照 mftik：**
   - 刷新以 `(venue, category)` 為單位，各自刷新、各自下架：現貨的刷新不會讓 perp 下架。
-  - 列永遠不刪，訂單與 session 會一直指向下架的商品。
+  - 下架與到期不改 UniversalTicker（D38）。狀態還會變的留在活躍表；進了終結狀態就搬到終結表，ticker 字串不變。訂單與 session 仍指向同一個 ticker。
   - 契約見 PROTOCOL §7.3，表見 `migrations/0002_symbol`。
 - **誰用 SYM：STS、MD、TD；API 不用。** STS 這端是 session worker（經 SDK），所以它的 NATS 權限有 `sym`（D30）。
-- **啟動時把用得到的 venue 整表載入，之後跟著變更重載。** 進程啟動時，依 `(venue, category)` 分頁把整表讀進記憶體（每頁最多 500 筆），之後的解析與反查都查記憶體。盤中會有新上市、到期與下架，selector 也要挑得到新合約，所以 SYM 刷新出差異時發變更通知，帶 revision，收到的進程重載那個 `(venue, category)`。通知的 subject 與訊息在 E2 定（PROTOCOL §10）。取代原本的「單一商品精確查詢、用戶端快取 10 分鐘」。
+- **啟動時把用得到的 venue 的活躍表載入，之後跟著變更重載（D38）。** 進程啟動時，依 `(venue, category)` 分頁把未終結的列讀進記憶體（每頁最多 500 筆）。Resolver 與熱路徑只讀這張表；終結列不進這份快取。盤中會有新上市、到期與下架，selector 也要挑得到新合約，所以 SYM 刷新出差異時發變更通知，帶 revision，收到的進程重載那個 `(venue, category)` 的活躍列。通知的 subject 與訊息在 E2 定（PROTOCOL §10）。取代原本的「單一商品精確查詢、用戶端快取 10 分鐘」。
 - venue 名稱照 mftik 用 CamelCase：OKX 的 token 是 `Okx`。
 
 ### D32 帳號種類和 venue 是兩個 enum
@@ -585,6 +586,48 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - 不能等 agent 回來的事都在 shim：`Stop` 的計時、自己收到 SIGTERM 時送 `Stop`、結束的記錄、對 worker 的 `Relay` 回 `Undeliverable`。其餘的判斷（例如要不要重啟）本來就要等 agent，事件保留得再完整也不會更快。
 - 不採用的做法：`Ack` 當成提交（agent 把效果寫進 etcd 之後才 Ack，未 Ack 的事件等於 etcd 還沒反映的部分）。它讓 shim 的保留語意綁上 agent 何時持久化，agent 還得處理 at-least-once 的冪等；而只要快照完整，這些都不需要。
 - 因此 `Attached` 帶 `exiting`（worker 正在跑 OnStop 時，原本打算怎麼結束）與 `exit`（記錄完的 `ExitInfo`）。
+
+### D38 幣與數量的單位
+
+三個欄位描述一個商品的數量、價格、損益各用什麼幣。都由 adapter 從交易所的原生欄位填（例如 OKX 的 `ctValCcy`、Deribit 期權的 `quote_currency`），下游不推導。不沿用 mftik 把 linear／inverse 寫在 `reservations.is_linear_margin` 的做法，也不為 Deribit 開特例。
+
+這一票只定語意。三個欄位還沒進 `Listing` 與 `SymbolInfo`。契約裡既有的結算欄位仍叫 `settle`，不另開一個 `settlement_asset`。
+
+- **`contract_value_ccy` 是 qty 的單位。** qty = 張數 × `contract_size`，以這個幣計。linear 是 base，inverse 是 quote，期權是 base（標的）。inverse 的 qty 因此是 quote 的金額，不是張數。平台上的 qty、`filled_qty`、成交 qty、持倉 size 都已經是這個乘積；下游不再乘除。現貨沒有張數，qty 是 base。
+- **`price_ccy` 是 price、`price_tick`、權利金的單位。** 現貨與期貨（含 inverse）是 quote。幣本位期權是 base。U 本位期權是 quote（那個穩定幣）。
+- **`settlement_asset` 是損益結算幣，不是保證金幣。** mftik 在這裡語意不一致：Binance 的 listing 填 `marginAsset`，Bitget 直接寫成 quote。這裡不沿用那兩種填法。`unrealized_pnl` 以 `settlement_asset` 計；契約欄位仍是 `settle`。現貨沒有這個欄位。
+- **幣本位／U 本位是推導出來的，只給顯示與分組。** 入庫的合約與期權：`settlement_asset == base` 是幣本位，否則是 U 本位。交易路徑不看這個標籤，只看上面三個欄位。
+- **quanto 一期不支援。** `settlement_asset` 既不是 base 也不是 quote（例如報價 USD、結算 USDC）就不入庫，需求項目 `REJECTED`。不留一列、也不把 `active` 設成 false 來表示它。
+
+| 類 | 例子 | contract_value_ccy | price_ccy | settlement_asset | qty |
+|---|---|---|---|---|---|
+| linear | `BinanceUM_Perp_BTCUSDT`、`Bybit_Perp_BTCUSDC` | base | quote | quote | base（張數 × `contract_size`） |
+| inverse | `BinanceCM_Inverse_BTCUSD` | quote | quote | base | quote（張數 × `contract_size`），不是張數 |
+| U 本位期權 | `BinanceEO_Option_BTCUSDT-261226-100000-C` | base（標的） | quote（穩定幣，權利金） | quote | base（張數 × `contract_size`） |
+| 幣本位期權 | `Okx_Option_BTCUSD-261225-100000-C`（settle 是 BTC；ticker 的 quote 是 strike 的幣，這裡是 USD） | base（標的） | base（權利金） | base | base（張數 × `contract_size`） |
+| quanto | 報價 USD、結算 USDC 的 BTC 合約 | 不入庫 | 不入庫 | 既不是 base 也不是 quote | 不入庫。需求 `REJECTED` |
+
+`Bybit_Perp_BTCUSDC` 與 `Bybit_Perp_BTCUSDT` 是兩個商品。表裡的三個幣是 adapter 填進去的值，不是下游拿類別回推的公式。
+
+- **資產代碼一律大寫，別名只在 SYM 套。** 別名表例如 `XBT` → `BTC`。adapter 傳交易所原生代碼，不自行改名。各 venue 的別名在做 venue integration 時補進 SYM。順序固定：先大寫並套別名，再做 quanto 判斷，再推 ticker。先比再收會把同一個幣看成兩種資產。
+- **`USD`、`USDC`、`USDT` 是三種資產，別名表不合併。** 報價 USD、結算 USDC 依 quanto 那條，一期不入庫、需求 `REJECTED`。這是刻意的。
+- **strike 先依 `spell_strike` 正規化，再推 ticker。** 整數去掉尾端的小數零，`6400.0` 與 `6400` 是同一個 ticker。有小數的 strike 把小數點寫成 `D`（PROTOCOL §2，`6.4` 是 `6D4`）。
+- **filter。** `price_tick` 用 `price_ccy`。`qty_step`、`min_qty`、`max_qty` 與 qty 同一個單位（`contract_value_ccy`）。
+- **交易狀態，暫定。** `bool active` 會換成 status enum：`PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`EXPIRED`、`DELISTED`、`UNKNOWN`。完整列舉還沒定案，這一票標暫定。交易路徑只接受 `TRADABLE`，其他狀態拒單。之後新增 enum 值不會讓原本不可交易的變成可交易。交易所的原生狀態對不上，記成 `UNKNOWN`，不可交易。各 venue 的原生狀態對照在做 venue integration 時補。enum 定案前，契約維持 `bool active`。
+- **SYM 的 listing 分兩張表，看狀態還會不會變。** 期權與到期合約會讓 ticker 變多，熱路徑不該掃已終結的列。enum 仍是暫定，分表跟著這個暫定的切法。
+  - **活躍表：** `PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`UNKNOWN`。狀態還可能變。Resolver 與熱路徑只讀這張表。裡面只有 `TRADABLE` 可以交易。
+  - **終結表：** `EXPIRED`、`DELISTED`。一到這裡，狀態就不再變。留給歷史查詢：舊的成交與持倉，以及依 UID 反查。不再刷新，可以歸檔。
+  - 列進了終結狀態，就從活躍表搬到終結表。UniversalTicker 的字串不變，UID 也不變。
+  - 這一票不拆表。`migrations/0002_symbol` 仍是一張 `symbol_ticker`，主鍵仍是那張表自己的 `id`。拆表與共用的 UID 留給 E2 的 Resolver／SYM store。
+- **UID 是系統內部的商品身分。** UniversalTicker 是給人看的字串，只用在寫設定與 spec。系統裡面傳商品用 UID（整數）。各平面要欄位時用 UID 向 SYM 查。STS、TD、MD 之間用 UID，不用 ticker 字串。
+  - UID 是活躍表與終結表的主鍵，兩張表合在一起唯一：同一個 UID 不會同時在兩張表。搬到終結表時 UID 跟著列走。
+  - 同一個 ticker 下架之後再上市，是新的一列，拿新的 UID。舊的成交與持倉仍指向舊 UID。
+  - ticker 解成 UID 只發生在設定與 spec 載入的邊界。`SessionSpec` 的 feed 仍寫 UniversalTicker，載入時用 `GetRequest` 換成 UID。
+  - 這一版只在 `SymbolInfo` 加上 `uid`，並加 `GetByUidRequest`。`td.order`、需求項目、selector 成員今天仍是 ticker 字串。
+  - NATS 的 subject 用人讀的名字，不用 UID。確切拼法還沒定（PROTOCOL §10 P14）。這一版維持 `md.f.{inst}.{topic}.{ticker}`，不改 subject。
+  - 寬度、誰分配、重啟或重載時留不留，都還沒定（PROTOCOL §10 P13）。契約上 `uid` 暫用 `uint64`，寬度暫定，0 不分配。P13 的建議方向是一條 Postgres sequence（例如 `symbol_uid_seq`）餵兩張表的 `uid` 主鍵，`symbol_filter` 以 uid 為鍵，終結時整列連 uid 一起搬。這一票不實作。策略 hook 看 ticker 還是 UID 見 P15。
+
+- **不採用：** adapter 自行改名，或在 adapter 裡收別名；下游用類別回推三個幣欄；沿用 `reservations.is_linear_margin`，或為 Deribit 開特例；把 `settlement_asset` 當成保證金幣（Binance 的 `marginAsset`、Bitget 寫成 quote）；inverse 的 qty 用張數；quanto 入庫並把 `active` 設成 false；把 `USD`、`USDC`、`USDT` 收成同一個；已終結的列留在熱路徑讀的那張表；搬表時改寫 UniversalTicker 或重發 UID；下架再上市沿用舊 UID；系統內部繼續用 ticker 字串當商品身分；NATS subject 用 UID。
 
 ## 待討論
 

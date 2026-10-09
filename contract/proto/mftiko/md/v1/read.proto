@@ -8,6 +8,7 @@ import "mftiko/md/v1/md.proto";
 option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1;mdv1";
 
 // ---------- md.view.{inst}.{topic}.{ticker} ----------
+// subject 最後一段今天是 UniversalTicker。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（D38、§10 P14）。
 // 由持有該 atom 的 conn worker 回答。回什麼由 subject 的 topic 決定：
 // trade、aggtrade、liquidation 回 tape；orderbook_delta 回 book。其他 topic 回 error = "unsupported"。
 
@@ -65,7 +66,7 @@ message FetchRequest {
 }
 
 message FetchKlines {
-  string ticker = 1;   // UniversalTicker
+  string ticker = 1;   // 今天是 UniversalTicker。改成 UID 是後續（D38）。subject 用人讀的名字，拼法還沒定（§10 P14）
   string interval = 2; // 正規寫法：1m、4h、1mo
   uint32 limit = 3;    // 最近 N 根已收盤的；超過交易所單次上限時由服務分頁
 }

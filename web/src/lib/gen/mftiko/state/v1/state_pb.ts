@@ -316,6 +316,8 @@ export type Binding = Message<"mftiko.state.v1.Binding"> & {
    */
   target: {
     /**
+     * feed key。spec 載入時才把其中的 ticker 解成 UID（D38）；這個欄位今天仍是字串
+     *
      * @generated from field: string feed = 1;
      */
     value: string;
@@ -375,7 +377,7 @@ export type EntryStatus = Message<"mftiko.state.v1.EntryStatus"> & {
   reason: string;
 
   /**
-   * feed：完整的 subject（今天是 md.f.{inst}.{topic}.{ticker}）；selector：成員 subject 的前綴（今天是 md.f.{inst}）；
+   * feed：完整的 subject（今天是 md.f.{inst}.{topic}.{ticker}）。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（§10 P14）。selector：成員 subject 的前綴（今天是 md.f.{inst}）；
    * 帳號：td.order.{api_id}。由 provider 決定，訂閱端不自己組（PROTOCOL §7、DECISIONS D8）。
    *
    * @generated from field: string subject = 3;
@@ -417,7 +419,7 @@ export type Universe = Message<"mftiko.state.v1.Universe"> & {
   epoch: bigint;
 
   /**
-   * UniversalTicker
+   * 今天是 UniversalTicker。改成 UID 是後續（D38）
    *
    * @generated from field: repeated string members = 2;
    */

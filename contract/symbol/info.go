@@ -2,18 +2,30 @@ package symbol
 
 // Info is one instrument as SYM serves it: the golden record every plane reads.
 type Info struct {
-	Ticker       UniversalTicker
-	ExchTicker   string
-	Base         string
-	Quote        string
+	// UID is the primary key of both SYM tables, unique across them (D38). Moving a
+	// listing to the terminal table keeps it. The same ticker listed again after
+	// delisting gets a new UID. Zero is never assigned. The width is provisional
+	// (PROTOCOL §10 P13); uint64 is the stand-in on the wire.
+	UID        uint64
+	Ticker     UniversalTicker
+	ExchTicker string
+	Base       string
+	Quote      string
+	// ContractSize and Settle use the D38 units. See Listing. Settle is the PnL
+	// settlement asset, not the margin asset. Quanto is not stored in phase 1.
 	ContractSize string
 	Settle       string
 	ExpiryNs     int64
-	Strike       string
+	Strike       string // SYM applies spell_strike before the ticker (D38)
 	OptionType   string
-	Active       bool
-	Filters      map[string]string
-	UpdatedAtNs  int64
+	// Active is tentative (D38): only TRADABLE trades. The enum is PRELISTING,
+	// TRADABLE, HALTED, SETTLING, EXPIRED, DELISTED, UNKNOWN. Non-terminal statuses
+	// stay on the active table the Resolver reads; EXPIRED and DELISTED move to the
+	// terminal table without changing the ticker or the UID. This stays bool, and the store stays
+	// one table, until that design is implemented.
+	Active      bool
+	Filters     map[string]string
+	UpdatedAtNs int64
 }
 
 // Exch is the venue-side key of the instrument.
@@ -22,8 +34,7 @@ func (i *Info) Exch() ExchKey {
 }
 
 // ExchKey names an instrument the way a venue's messages do. Adapters emit it on the way out
-// (fills, orders, positions); the caller turns it back into a UniversalTicker with
-// Resolver.Reverse.
+// (fills, orders, positions); the caller turns it into a UID with Resolver.Reverse (D38).
 //
 //   - Venue is part of it because one account kind can trade several venues: a BinancePM private
 //     stream carries UM, CM and spot-margin events (D32).

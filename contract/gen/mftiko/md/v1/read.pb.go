@@ -516,7 +516,7 @@ func (*FetchRequest_OpenInterest) isFetchRequest_Req() {}
 
 type FetchKlines struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ticker        string                 `protobuf:"bytes,1,opt,name=ticker,proto3" json:"ticker,omitempty"`     // UniversalTicker
+	Ticker        string                 `protobuf:"bytes,1,opt,name=ticker,proto3" json:"ticker,omitempty"`     // 今天是 UniversalTicker。改成 UID 是後續（D38）。subject 用人讀的名字，拼法還沒定（§10 P14）
 	Interval      string                 `protobuf:"bytes,2,opt,name=interval,proto3" json:"interval,omitempty"` // 正規寫法：1m、4h、1mo
 	Limit         uint32                 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`      // 最近 N 根已收盤的；超過交易所單次上限時由服務分頁
 	unknownFields protoimpl.UnknownFields

@@ -777,7 +777,7 @@ type isBinding_Target interface {
 }
 
 type Binding_Feed struct {
-	Feed string `protobuf:"bytes,1,opt,name=feed,proto3,oneof"`
+	Feed string `protobuf:"bytes,1,opt,name=feed,proto3,oneof"` // feed key。spec 載入時才把其中的 ticker 解成 UID（D38）；這個欄位今天仍是字串
 }
 
 type Binding_Selector struct {
@@ -799,7 +799,7 @@ type EntryStatus struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	State  EntryState             `protobuf:"varint,1,opt,name=state,proto3,enum=mftiko.state.v1.EntryState" json:"state,omitempty"`
 	Reason string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
-	// feed：完整的 subject（今天是 md.f.{inst}.{topic}.{ticker}）；selector：成員 subject 的前綴（今天是 md.f.{inst}）；
+	// feed：完整的 subject（今天是 md.f.{inst}.{topic}.{ticker}）。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（§10 P14）。selector：成員 subject 的前綴（今天是 md.f.{inst}）；
 	// 帳號：td.order.{api_id}。由 provider 決定，訂閱端不自己組（PROTOCOL §7、DECISIONS D8）。
 	Subject       string        `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
 	Worker        *v1.WorkerRef `protobuf:"bytes,4,opt,name=worker,proto3" json:"worker,omitempty"`
@@ -884,7 +884,7 @@ func (x *EntryStatus) GetUpdatedAtNs() int64 {
 type Universe struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Epoch         uint64                 `protobuf:"varint,1,opt,name=epoch,proto3" json:"epoch,omitempty"`
-	Members       []string               `protobuf:"bytes,2,rep,name=members,proto3" json:"members,omitempty"` // UniversalTicker
+	Members       []string               `protobuf:"bytes,2,rep,name=members,proto3" json:"members,omitempty"` // 今天是 UniversalTicker。改成 UID 是後續（D38）
 	Current       string                 `protobuf:"bytes,3,opt,name=current,proto3" json:"current,omitempty"` // 只有 rolling_future
 	Topics        []string               `protobuf:"bytes,4,rep,name=topics,proto3" json:"topics,omitempty"`
 	unknownFields protoimpl.UnknownFields

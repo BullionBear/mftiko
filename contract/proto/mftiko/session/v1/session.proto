@@ -7,6 +7,7 @@ option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v
 
 // session 的宣告：使用者經 API server 寫進 etcd（§3.1）；controller 依它推導需求，STS agent 依它起 worker，策略在
 // InitPayload 拿到自己宣告的那一份（§6.1）。歸 STS 擁有；state.v1、stsctl.v1 與 API 的契約都 import 它（DECISIONS D36）。
+// 商品在這裡寫 UniversalTicker，不寫 UID（D38）。ticker 解成 UID 發生在這份 spec 載入時，不在這份宣告裡。
 
 message SessionSpec {
   string name = 1;
@@ -48,8 +49,10 @@ message StrategyRef {
   string repository = 3; // 拉取用的 OCI repository
 }
 
+// 人寫的規格。feed key 裡是 UniversalTicker，不是 UID（D38）。
+// ticker 解成 UID 發生在 spec 載入時（sym.GetRequest），不在這份宣告裡。
 message FeedDecl {
-  string feed = 1;        // 正規 feed key
+  string feed = 1;        // 正規 feed key（<topic>.<UniversalTicker>）。載入邊界才解成 UID
   string md_instance = 2; // API 解析後一律填
   reserved 3;             // 原本的 delivery：背壓改由 recv_window_ms 處理（D24）
   reserved "delivery";
