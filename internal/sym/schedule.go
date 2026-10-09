@@ -122,9 +122,9 @@ func NewRunner(ref refresher, feeds []Feed, opt Options) (*Runner, error) {
 }
 
 // FeedsFromRegistry builds one feed per (venue, category) that has a public
-// REST reader. A venue with a nil reader is skipped. Categories stay in the
-// order the venue declared them.
-func FeedsFromRegistry(reg *exchange.Registry) []Feed {
+// REST reader, read over http (exchange.ListingOver). A venue with a nil reader
+// is skipped. Categories stay in the order the venue declared them.
+func FeedsFromRegistry(reg *exchange.Registry, http exchange.Doer) []Feed {
 	if reg == nil {
 		return nil
 	}
@@ -135,7 +135,7 @@ func FeedsFromRegistry(reg *exchange.Registry) []Feed {
 			continue
 		}
 		for _, c := range v.Categories {
-			out = append(out, Feed{Venue: name, Category: c, REST: v.REST})
+			out = append(out, Feed{Venue: name, Category: c, REST: exchange.ListingOver(v.REST, http, time.Now)})
 		}
 	}
 	return out

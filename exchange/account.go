@@ -1,7 +1,6 @@
 package exchange
 
 import (
-	"context"
 	"time"
 
 	"github.com/BullionBear/mftiko/contract/symbol"
@@ -20,8 +19,8 @@ type AccountConfig struct {
 // AccountFactory builds an Account for one api_id of one AccountKind.
 type AccountFactory func(cfg AccountConfig) (Account, error)
 
-// Account is a venue's private trading interface for one api_id, owned by the TD account worker.
-// Safe for concurrent use: the worker's HTTP pool calls it from several goroutines.
+// Account is a venue's private trading interface for one api_id, sans-I/O (D302): each method builds a
+// signed Call at now, and the TD account worker sends it over its HTTP pool. Safe for concurrent use.
 //
 // Instruments go in resolved (*symbol.Info, cached by the worker) and come out as the venue names
 // them (symbol.ExchKey); the worker maps them back with symbol.Resolver.Reverse and keeps Info.UID
@@ -31,28 +30,35 @@ type AccountFactory func(cfg AccountConfig) (Account, error)
 //
 // It knows nothing about algo_id (D602). The worker checks algo ownership, and translates
 // BatchCancel(algo_id) by filtering its OMS for open orders whose client_order_id carries that algo,
-// then calling CancelBatch in chunks of Limits().CancelBatch.
+// then running CancelBatch in chunks of Limits().CancelBatch.
 type Account interface {
 	Limits() AccountLimits
 
-	// Submit sends one order. A venue refusal is a *Reject; any other error means the outcome is
-	// unknown and the private stream or the next recon will tell.
-	Submit(ctx context.Context, req *OrderRequest) (*OrderResult, error)
+	// Submit is one order. Its Parse returns a *Reject for a venue refusal. A request that went out
+	// with no readable answer is ErrUnknownOutcome (the transport's to say): the private stream or the
+	// next recon tells.
+	Submit(now time.Time, req *OrderRequest) (Call[*OrderResult], error)
 
-	Cancel(ctx context.Context, ref CancelRef) error
+	Cancel(now time.Time, ref CancelRef) (Call[struct{}], error)
 
 	// CancelBatch cancels up to Limits().CancelBatch orders in one venue request. The result has one
-	// entry per ref, nil for success; the second return is for a failure of the whole request.
-	CancelBatch(ctx context.Context, refs []CancelRef) ([]error, error)
+	// entry per ref, nil for success; Parse's error is for a failure of the whole request.
+	CancelBatch(now time.Time, refs []CancelRef) (Call[[]error], error)
 
-	// Snapshot is the recon read (D603): open orders, positions, balances.
-	Snapshot(ctx context.Context) (*AccountSnapshot, error)
+	// Snapshot is the recon read (D603): open orders, positions, balances. A venue answers them in
+	// several requests (BinancePM: one per product), each of them paginated or not: the worker runs
+	// every Call to its last page and merges what the pages carry. It stamps AsOfNs itself, before the
+	// first request goes out.
+	Snapshot(now time.Time) ([]Call[Page[AccountSnapshot]], error)
 
 	// Leverage answers td.view's EnsureLeverage.
-	Leverage(ctx context.Context, inst *symbol.Info) (string, error)
+	Leverage(now time.Time, inst *symbol.Info) (Call[float64], error)
 
 	// NewStream returns the private websocket codec for one connection.
 	NewStream() (PrivateStream, error)
+
+	// Usage reads the rate-limit usage the venue reports in a response; nil when it reports none.
+	Usage(resp *HTTPResponse) []Used
 }
 
 // AccountLimits are the venue's rules for one api_id.
@@ -66,7 +72,7 @@ type AccountLimits struct {
 // AccountSettings.cancel_on_disconnect_s. insts is ignored by venues whose switch is account-wide;
 // Binance's is per symbol.
 type CancelOnDisconnect interface {
-	ArmCancelOnDisconnect(ctx context.Context, timeout time.Duration, insts []*symbol.Info) error
+	ArmCancelOnDisconnect(now time.Time, timeout time.Duration, insts []*symbol.Info) (Call[struct{}], error)
 }
 
 // OrderRequest carries the resolved instrument: ExchTicker for the wire, filters for the worker's
@@ -157,14 +163,18 @@ type Position struct {
 
 // PrivateStream is the codec of one private websocket connection. Not safe for concurrent use.
 type PrivateStream interface {
-	// Open does whatever must happen before connecting (Binance: create a listenKey over REST) and
-	// returns the URL and the frames to send once connected (OKX: login then subscribe; Bybit: auth
-	// then subscribe). The host is AccountConfig.StreamEndpoint or the venue's default.
-	Open(ctx context.Context) (*Dial, error)
+	// Prepare is what must happen over REST before connecting (Binance: create a listenKey); its
+	// result is the token Dial takes. nil when the venue needs nothing (OKX, Bybit).
+	Prepare(now time.Time) (*Call[string], error)
 
-	// Refresh keeps the stream's credentials alive (Binance: extend the listenKey), called every
-	// Limits().RefreshEvery. A no-op where nothing expires.
-	Refresh(ctx context.Context) error
+	// Dial is the URL to connect to and the frames to send once connected (OKX: login then
+	// subscribe; Bybit: auth then subscribe), signed at now. token is what Prepare's Call returned,
+	// "" when there was none. The host is AccountConfig.StreamEndpoint or the venue's default.
+	Dial(now time.Time, token string) (*Dial, error)
+
+	// Refresh keeps the stream's credentials alive (Binance: extend the listenKey), run every
+	// Limits().RefreshEvery. nil where nothing expires.
+	Refresh(now time.Time) (*Call[struct{}], error)
 
 	Limits() StreamLimits
 	Ping() []byte
@@ -182,7 +192,8 @@ type StreamLimits struct {
 	MaxLifetime  time.Duration
 }
 
-// AccountSink receives what PrivateStream.Decode finds. Pointers are valid only during the call.
+// AccountSink receives what PrivateStream.Decode finds. Pointers, and the strings in what they point
+// to, are valid only during the call (D302): the frame they came from is the worker's to reuse.
 type AccountSink interface {
 	// Ready: login and subscriptions acknowledged, the stream is live. The account worker recons
 	// next and only then accepts new orders again (D603).
