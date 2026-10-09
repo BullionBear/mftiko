@@ -33,8 +33,8 @@ type VenueListing struct {
 // Resolver is the in-process symbol.Resolver (E2-05).
 //
 // It is for tests and local development. It loads PublicREST.Listing itself and
-// does not call the SYM service or PostgreSQL. cmd injects this or the NATS
-// client (E2-09); both implement symbol.Resolver.
+// does not call the SYM service or PostgreSQL. OpenRemote is the NATS Resolver
+// (E2-09); both implement symbol.Resolver.
 //
 // UIDs are allocated in this process. Tests pass a Source; a nil Source uses
 // RandomSource. The numbers are not written to symbol_uid and must not be sent

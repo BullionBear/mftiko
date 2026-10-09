@@ -6,7 +6,8 @@
 //
 // Publish and Subscribe pass bytes through unchanged. The md.f envelope lives in contract/wire/envelope
 // and is not framed here. Disconnects, reconnects, closes, and asynchronous errors are logged to
-// Options.Logger.
+// Options.Logger. OnReconnect is an additional callback for a process that must
+// reload after a gap; it runs on the client's reconnect goroutine and must not block.
 //
 // Operator and account credentials, and each session's inbox prefix, are not set here (D906).
 package natsx

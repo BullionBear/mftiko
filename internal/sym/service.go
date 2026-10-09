@@ -85,6 +85,8 @@ func (sv *Service) handle(ctx context.Context, m proto.Message) (proto.Message, 
 		reply, err = sv.reverse(ctx, r.Reverse)
 	case *symv1.Request_Refresh:
 		reply, err = sv.refresh(ctx, r.Refresh)
+	case *symv1.Request_Revisions:
+		reply, err = sv.revisions(ctx, r.Revisions)
 	default:
 		err = invalid("request is empty")
 	}
@@ -190,6 +192,31 @@ func (sv *Service) reverse(ctx context.Context, req *symv1.ReverseRequest) (*sym
 		return nil, readErr(err, op, missed(label, req.GetIncludeInactive()))
 	}
 	return infoReply(info)
+}
+
+func (sv *Service) revisions(ctx context.Context, req *symv1.RevisionsRequest) (*symv1.Reply, error) {
+	if req == nil {
+		return nil, invalid("request is empty")
+	}
+	rows, err := sv.store.Revisions(ctx)
+	if err != nil {
+		return nil, readErr(err, "revisions", notFound("revisions not found"))
+	}
+	tables := make([]*symv1.TableRevision, 0, len(rows))
+	for _, row := range rows {
+		if err := rejectVenue(row.Venue); err != nil {
+			return nil, unavailable(fmt.Sprintf("revisions: venue %q is not canonical", row.Venue), err)
+		}
+		if _, err := parseCategory(string(row.Category)); err != nil {
+			return nil, unavailable(fmt.Sprintf("revisions: category %q is not a category", row.Category), err)
+		}
+		tables = append(tables, &symv1.TableRevision{
+			Venue:    row.Venue,
+			Category: string(row.Category),
+			Revision: row.Revision,
+		})
+	}
+	return &symv1.Reply{Result: &symv1.Reply_Revisions{Revisions: &symv1.RevisionList{Tables: tables}}}, nil
 }
 
 func (sv *Service) refresh(ctx context.Context, req *symv1.RefreshRequest) (*symv1.Reply, error) {

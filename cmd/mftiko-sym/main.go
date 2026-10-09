@@ -76,6 +76,8 @@ func run(database, natsURL, feeds string, log zerolog.Logger) error {
 		return err
 	}
 	defer nc.Close()
+	// After the revision commits. A subscriber that misses it compares revisions.
+	st.SetPublisher(sym.NATSChanged(nc, log))
 	if _, err := sym.NewService(st, runner, log).Serve(ctx, nc); err != nil {
 		return err
 	}

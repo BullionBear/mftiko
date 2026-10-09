@@ -59,6 +59,6 @@ type Resolver interface {
 
 	// Invalidate drops the cached active table for a venue, or every venue when
 	// venue is "". The next read reloads. A SYM change notification is what prompts
-	// the reload (D202); the notification itself is PROTOCOL §10 P7.
+	// the reload (D202); the notification itself is PROTOCOL §7.3.
 	Invalidate(venue string)
 }

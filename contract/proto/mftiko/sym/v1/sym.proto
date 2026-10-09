@@ -15,6 +15,7 @@ message Request {
     ReverseRequest reverse = 3;
     RefreshRequest refresh = 4;
     GetByUidRequest get_by_uid = 5;
+    RevisionsRequest revisions = 6;
   }
 }
 
@@ -75,7 +76,32 @@ message Reply {
     SymbolInfo info = 10;     // get, get_by_uid, reverse
     SymbolList list = 11;     // list
     RefreshResult refresh = 12;
+    RevisionList revisions = 13;
   }
+}
+
+// Every (venue, category) revision. A client that may have missed
+// sym.changed compares these with the revision it loaded (P7, PROTOCOL §7.3).
+message RevisionsRequest {}
+
+// One table's revision, as stored after the commit that advanced it.
+message TableRevision {
+  string venue = 1;
+  string category = 2;
+  int64 revision = 3;
+}
+
+message RevisionList {
+  repeated TableRevision tables = 1;
+}
+
+// Published on sym.changed.{venue}.{category} after that table's revision
+// commits (P7). Venue and category are the human-readable names, not a UID.
+// PROTOCOL §10 P14 may rename this subject.
+message Changed {
+  string venue = 1;
+  string category = 2;
+  int64 revision = 3;
 }
 
 // 交易狀態（D203）。列舉仍暫定。UNSPECIFIED 是 proto 的零值，非法且不可交易。

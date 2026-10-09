@@ -101,6 +101,7 @@ type Request struct {
 	//	*Request_Reverse
 	//	*Request_Refresh
 	//	*Request_GetByUid
+	//	*Request_Revisions
 	Req           isRequest_Req `protobuf_oneof:"req"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -188,6 +189,15 @@ func (x *Request) GetGetByUid() *GetByUidRequest {
 	return nil
 }
 
+func (x *Request) GetRevisions() *RevisionsRequest {
+	if x != nil {
+		if x, ok := x.Req.(*Request_Revisions); ok {
+			return x.Revisions
+		}
+	}
+	return nil
+}
+
 type isRequest_Req interface {
 	isRequest_Req()
 }
@@ -212,6 +222,10 @@ type Request_GetByUid struct {
 	GetByUid *GetByUidRequest `protobuf:"bytes,5,opt,name=get_by_uid,json=getByUid,proto3,oneof"`
 }
 
+type Request_Revisions struct {
+	Revisions *RevisionsRequest `protobuf:"bytes,6,opt,name=revisions,proto3,oneof"`
+}
+
 func (*Request_Get) isRequest_Req() {}
 
 func (*Request_List) isRequest_Req() {}
@@ -221,6 +235,8 @@ func (*Request_Reverse) isRequest_Req() {}
 func (*Request_Refresh) isRequest_Req() {}
 
 func (*Request_GetByUid) isRequest_Req() {}
+
+func (*Request_Revisions) isRequest_Req() {}
 
 // Spec 與設定載入的邊界（D203）：人寫的 UniversalTicker 在這裡解成 UID。
 // 平面之間不走這條，它們已經持有 UID，用 GetByUidRequest。
@@ -544,6 +560,7 @@ type Reply struct {
 	//	*Reply_Info
 	//	*Reply_List
 	//	*Reply_Refresh
+	//	*Reply_Revisions
 	Result        isReply_Result `protobuf_oneof:"result"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -627,6 +644,15 @@ func (x *Reply) GetRefresh() *RefreshResult {
 	return nil
 }
 
+func (x *Reply) GetRevisions() *RevisionList {
+	if x != nil {
+		if x, ok := x.Result.(*Reply_Revisions); ok {
+			return x.Revisions
+		}
+	}
+	return nil
+}
+
 type isReply_Result interface {
 	isReply_Result()
 }
@@ -643,11 +669,223 @@ type Reply_Refresh struct {
 	Refresh *RefreshResult `protobuf:"bytes,12,opt,name=refresh,proto3,oneof"`
 }
 
+type Reply_Revisions struct {
+	Revisions *RevisionList `protobuf:"bytes,13,opt,name=revisions,proto3,oneof"`
+}
+
 func (*Reply_Info) isReply_Result() {}
 
 func (*Reply_List) isReply_Result() {}
 
 func (*Reply_Refresh) isReply_Result() {}
+
+func (*Reply_Revisions) isReply_Result() {}
+
+// Every (venue, category) revision. A client that may have missed
+// sym.changed compares these with the revision it loaded (P7, PROTOCOL §7.3).
+type RevisionsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevisionsRequest) Reset() {
+	*x = RevisionsRequest{}
+	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevisionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevisionsRequest) ProtoMessage() {}
+
+func (x *RevisionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevisionsRequest.ProtoReflect.Descriptor instead.
+func (*RevisionsRequest) Descriptor() ([]byte, []int) {
+	return file_mftiko_sym_v1_sym_proto_rawDescGZIP(), []int{7}
+}
+
+// One table's revision, as stored after the commit that advanced it.
+type TableRevision struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Venue         string                 `protobuf:"bytes,1,opt,name=venue,proto3" json:"venue,omitempty"`
+	Category      string                 `protobuf:"bytes,2,opt,name=category,proto3" json:"category,omitempty"`
+	Revision      int64                  `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TableRevision) Reset() {
+	*x = TableRevision{}
+	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TableRevision) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TableRevision) ProtoMessage() {}
+
+func (x *TableRevision) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TableRevision.ProtoReflect.Descriptor instead.
+func (*TableRevision) Descriptor() ([]byte, []int) {
+	return file_mftiko_sym_v1_sym_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *TableRevision) GetVenue() string {
+	if x != nil {
+		return x.Venue
+	}
+	return ""
+}
+
+func (x *TableRevision) GetCategory() string {
+	if x != nil {
+		return x.Category
+	}
+	return ""
+}
+
+func (x *TableRevision) GetRevision() int64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+type RevisionList struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Tables        []*TableRevision       `protobuf:"bytes,1,rep,name=tables,proto3" json:"tables,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevisionList) Reset() {
+	*x = RevisionList{}
+	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevisionList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevisionList) ProtoMessage() {}
+
+func (x *RevisionList) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevisionList.ProtoReflect.Descriptor instead.
+func (*RevisionList) Descriptor() ([]byte, []int) {
+	return file_mftiko_sym_v1_sym_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *RevisionList) GetTables() []*TableRevision {
+	if x != nil {
+		return x.Tables
+	}
+	return nil
+}
+
+// Published on sym.changed.{venue}.{category} after that table's revision
+// commits (P7). Venue and category are the human-readable names, not a UID.
+// PROTOCOL §10 P14 may rename this subject.
+type Changed struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Venue         string                 `protobuf:"bytes,1,opt,name=venue,proto3" json:"venue,omitempty"`
+	Category      string                 `protobuf:"bytes,2,opt,name=category,proto3" json:"category,omitempty"`
+	Revision      int64                  `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Changed) Reset() {
+	*x = Changed{}
+	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Changed) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Changed) ProtoMessage() {}
+
+func (x *Changed) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Changed.ProtoReflect.Descriptor instead.
+func (*Changed) Descriptor() ([]byte, []int) {
+	return file_mftiko_sym_v1_sym_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *Changed) GetVenue() string {
+	if x != nil {
+		return x.Venue
+	}
+	return ""
+}
+
+func (x *Changed) GetCategory() string {
+	if x != nil {
+		return x.Category
+	}
+	return ""
+}
+
+func (x *Changed) GetRevision() int64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
 
 type SymbolInfo struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
@@ -683,7 +921,7 @@ type SymbolInfo struct {
 
 func (x *SymbolInfo) Reset() {
 	*x = SymbolInfo{}
-	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[7]
+	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -695,7 +933,7 @@ func (x *SymbolInfo) String() string {
 func (*SymbolInfo) ProtoMessage() {}
 
 func (x *SymbolInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[7]
+	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -708,7 +946,7 @@ func (x *SymbolInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SymbolInfo.ProtoReflect.Descriptor instead.
 func (*SymbolInfo) Descriptor() ([]byte, []int) {
-	return file_mftiko_sym_v1_sym_proto_rawDescGZIP(), []int{7}
+	return file_mftiko_sym_v1_sym_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *SymbolInfo) GetUniversalTicker() string {
@@ -825,7 +1063,7 @@ type Bound struct {
 
 func (x *Bound) Reset() {
 	*x = Bound{}
-	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[8]
+	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -837,7 +1075,7 @@ func (x *Bound) String() string {
 func (*Bound) ProtoMessage() {}
 
 func (x *Bound) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[8]
+	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -850,7 +1088,7 @@ func (x *Bound) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Bound.ProtoReflect.Descriptor instead.
 func (*Bound) Descriptor() ([]byte, []int) {
-	return file_mftiko_sym_v1_sym_proto_rawDescGZIP(), []int{8}
+	return file_mftiko_sym_v1_sym_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Bound) GetValue() float64 {
@@ -870,7 +1108,7 @@ type SymbolList struct {
 
 func (x *SymbolList) Reset() {
 	*x = SymbolList{}
-	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[9]
+	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -882,7 +1120,7 @@ func (x *SymbolList) String() string {
 func (*SymbolList) ProtoMessage() {}
 
 func (x *SymbolList) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[9]
+	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -895,7 +1133,7 @@ func (x *SymbolList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SymbolList.ProtoReflect.Descriptor instead.
 func (*SymbolList) Descriptor() ([]byte, []int) {
-	return file_mftiko_sym_v1_sym_proto_rawDescGZIP(), []int{9}
+	return file_mftiko_sym_v1_sym_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *SymbolList) GetSymbols() []*SymbolInfo {
@@ -923,7 +1161,7 @@ type RefreshResult struct {
 
 func (x *RefreshResult) Reset() {
 	*x = RefreshResult{}
-	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[10]
+	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -935,7 +1173,7 @@ func (x *RefreshResult) String() string {
 func (*RefreshResult) ProtoMessage() {}
 
 func (x *RefreshResult) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[10]
+	mi := &file_mftiko_sym_v1_sym_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -948,7 +1186,7 @@ func (x *RefreshResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefreshResult.ProtoReflect.Descriptor instead.
 func (*RefreshResult) Descriptor() ([]byte, []int) {
-	return file_mftiko_sym_v1_sym_proto_rawDescGZIP(), []int{10}
+	return file_mftiko_sym_v1_sym_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *RefreshResult) GetRefreshed() map[string]uint32 {
@@ -976,14 +1214,15 @@ var File_mftiko_sym_v1_sym_proto protoreflect.FileDescriptor
 
 const file_mftiko_sym_v1_sym_proto_rawDesc = "" +
 	"\n" +
-	"\x17mftiko/sym/v1/sym.proto\x12\rmftiko.sym.v1\"\xa7\x02\n" +
+	"\x17mftiko/sym/v1/sym.proto\x12\rmftiko.sym.v1\"\xe8\x02\n" +
 	"\aRequest\x12-\n" +
 	"\x03get\x18\x01 \x01(\v2\x19.mftiko.sym.v1.GetRequestH\x00R\x03get\x120\n" +
 	"\x04list\x18\x02 \x01(\v2\x1a.mftiko.sym.v1.ListRequestH\x00R\x04list\x129\n" +
 	"\areverse\x18\x03 \x01(\v2\x1d.mftiko.sym.v1.ReverseRequestH\x00R\areverse\x129\n" +
 	"\arefresh\x18\x04 \x01(\v2\x1d.mftiko.sym.v1.RefreshRequestH\x00R\arefresh\x12>\n" +
 	"\n" +
-	"get_by_uid\x18\x05 \x01(\v2\x1e.mftiko.sym.v1.GetByUidRequestH\x00R\bgetByUidB\x05\n" +
+	"get_by_uid\x18\x05 \x01(\v2\x1e.mftiko.sym.v1.GetByUidRequestH\x00R\bgetByUid\x12?\n" +
+	"\trevisions\x18\x06 \x01(\v2\x1f.mftiko.sym.v1.RevisionsRequestH\x00R\trevisionsB\x05\n" +
 	"\x03req\"b\n" +
 	"\n" +
 	"GetRequest\x12)\n" +
@@ -1005,15 +1244,27 @@ const file_mftiko_sym_v1_sym_proto_rawDesc = "" +
 	"exchTicker\x12)\n" +
 	"\x10include_inactive\x18\x04 \x01(\bR\x0fincludeInactive\"&\n" +
 	"\x0eRefreshRequest\x12\x14\n" +
-	"\x05venue\x18\x01 \x01(\tR\x05venue\"\xdb\x01\n" +
+	"\x05venue\x18\x01 \x01(\tR\x05venue\"\x98\x02\n" +
 	"\x05Reply\x12\x14\n" +
 	"\x05error\x18\x01 \x01(\tR\x05error\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\x12/\n" +
 	"\x04info\x18\n" +
 	" \x01(\v2\x19.mftiko.sym.v1.SymbolInfoH\x00R\x04info\x12/\n" +
 	"\x04list\x18\v \x01(\v2\x19.mftiko.sym.v1.SymbolListH\x00R\x04list\x128\n" +
-	"\arefresh\x18\f \x01(\v2\x1c.mftiko.sym.v1.RefreshResultH\x00R\arefreshB\b\n" +
-	"\x06result\"\x96\x05\n" +
+	"\arefresh\x18\f \x01(\v2\x1c.mftiko.sym.v1.RefreshResultH\x00R\arefresh\x12;\n" +
+	"\trevisions\x18\r \x01(\v2\x1b.mftiko.sym.v1.RevisionListH\x00R\trevisionsB\b\n" +
+	"\x06result\"\x12\n" +
+	"\x10RevisionsRequest\"]\n" +
+	"\rTableRevision\x12\x14\n" +
+	"\x05venue\x18\x01 \x01(\tR\x05venue\x12\x1a\n" +
+	"\bcategory\x18\x02 \x01(\tR\bcategory\x12\x1a\n" +
+	"\brevision\x18\x03 \x01(\x03R\brevision\"D\n" +
+	"\fRevisionList\x124\n" +
+	"\x06tables\x18\x01 \x03(\v2\x1c.mftiko.sym.v1.TableRevisionR\x06tables\"W\n" +
+	"\aChanged\x12\x14\n" +
+	"\x05venue\x18\x01 \x01(\tR\x05venue\x12\x1a\n" +
+	"\bcategory\x18\x02 \x01(\tR\bcategory\x12\x1a\n" +
+	"\brevision\x18\x03 \x01(\x03R\brevision\"\x96\x05\n" +
 	"\n" +
 	"SymbolInfo\x12)\n" +
 	"\x10universal_ticker\x18\x01 \x01(\tR\x0funiversalTicker\x12\x1f\n" +
@@ -1083,24 +1334,28 @@ func file_mftiko_sym_v1_sym_proto_rawDescGZIP() []byte {
 }
 
 var file_mftiko_sym_v1_sym_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_mftiko_sym_v1_sym_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_mftiko_sym_v1_sym_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_mftiko_sym_v1_sym_proto_goTypes = []any{
-	(SymbolStatus)(0),       // 0: mftiko.sym.v1.SymbolStatus
-	(*Request)(nil),         // 1: mftiko.sym.v1.Request
-	(*GetRequest)(nil),      // 2: mftiko.sym.v1.GetRequest
-	(*GetByUidRequest)(nil), // 3: mftiko.sym.v1.GetByUidRequest
-	(*ListRequest)(nil),     // 4: mftiko.sym.v1.ListRequest
-	(*ReverseRequest)(nil),  // 5: mftiko.sym.v1.ReverseRequest
-	(*RefreshRequest)(nil),  // 6: mftiko.sym.v1.RefreshRequest
-	(*Reply)(nil),           // 7: mftiko.sym.v1.Reply
-	(*SymbolInfo)(nil),      // 8: mftiko.sym.v1.SymbolInfo
-	(*Bound)(nil),           // 9: mftiko.sym.v1.Bound
-	(*SymbolList)(nil),      // 10: mftiko.sym.v1.SymbolList
-	(*RefreshResult)(nil),   // 11: mftiko.sym.v1.RefreshResult
-	nil,                     // 12: mftiko.sym.v1.SymbolInfo.FiltersEntry
-	nil,                     // 13: mftiko.sym.v1.RefreshResult.RefreshedEntry
-	nil,                     // 14: mftiko.sym.v1.RefreshResult.DeactivatedEntry
-	nil,                     // 15: mftiko.sym.v1.RefreshResult.FailedEntry
+	(SymbolStatus)(0),        // 0: mftiko.sym.v1.SymbolStatus
+	(*Request)(nil),          // 1: mftiko.sym.v1.Request
+	(*GetRequest)(nil),       // 2: mftiko.sym.v1.GetRequest
+	(*GetByUidRequest)(nil),  // 3: mftiko.sym.v1.GetByUidRequest
+	(*ListRequest)(nil),      // 4: mftiko.sym.v1.ListRequest
+	(*ReverseRequest)(nil),   // 5: mftiko.sym.v1.ReverseRequest
+	(*RefreshRequest)(nil),   // 6: mftiko.sym.v1.RefreshRequest
+	(*Reply)(nil),            // 7: mftiko.sym.v1.Reply
+	(*RevisionsRequest)(nil), // 8: mftiko.sym.v1.RevisionsRequest
+	(*TableRevision)(nil),    // 9: mftiko.sym.v1.TableRevision
+	(*RevisionList)(nil),     // 10: mftiko.sym.v1.RevisionList
+	(*Changed)(nil),          // 11: mftiko.sym.v1.Changed
+	(*SymbolInfo)(nil),       // 12: mftiko.sym.v1.SymbolInfo
+	(*Bound)(nil),            // 13: mftiko.sym.v1.Bound
+	(*SymbolList)(nil),       // 14: mftiko.sym.v1.SymbolList
+	(*RefreshResult)(nil),    // 15: mftiko.sym.v1.RefreshResult
+	nil,                      // 16: mftiko.sym.v1.SymbolInfo.FiltersEntry
+	nil,                      // 17: mftiko.sym.v1.RefreshResult.RefreshedEntry
+	nil,                      // 18: mftiko.sym.v1.RefreshResult.DeactivatedEntry
+	nil,                      // 19: mftiko.sym.v1.RefreshResult.FailedEntry
 }
 var file_mftiko_sym_v1_sym_proto_depIdxs = []int32{
 	2,  // 0: mftiko.sym.v1.Request.get:type_name -> mftiko.sym.v1.GetRequest
@@ -1108,21 +1363,24 @@ var file_mftiko_sym_v1_sym_proto_depIdxs = []int32{
 	5,  // 2: mftiko.sym.v1.Request.reverse:type_name -> mftiko.sym.v1.ReverseRequest
 	6,  // 3: mftiko.sym.v1.Request.refresh:type_name -> mftiko.sym.v1.RefreshRequest
 	3,  // 4: mftiko.sym.v1.Request.get_by_uid:type_name -> mftiko.sym.v1.GetByUidRequest
-	8,  // 5: mftiko.sym.v1.Reply.info:type_name -> mftiko.sym.v1.SymbolInfo
-	10, // 6: mftiko.sym.v1.Reply.list:type_name -> mftiko.sym.v1.SymbolList
-	11, // 7: mftiko.sym.v1.Reply.refresh:type_name -> mftiko.sym.v1.RefreshResult
-	0,  // 8: mftiko.sym.v1.SymbolInfo.status:type_name -> mftiko.sym.v1.SymbolStatus
-	12, // 9: mftiko.sym.v1.SymbolInfo.filters:type_name -> mftiko.sym.v1.SymbolInfo.FiltersEntry
-	8,  // 10: mftiko.sym.v1.SymbolList.symbols:type_name -> mftiko.sym.v1.SymbolInfo
-	13, // 11: mftiko.sym.v1.RefreshResult.refreshed:type_name -> mftiko.sym.v1.RefreshResult.RefreshedEntry
-	14, // 12: mftiko.sym.v1.RefreshResult.deactivated:type_name -> mftiko.sym.v1.RefreshResult.DeactivatedEntry
-	15, // 13: mftiko.sym.v1.RefreshResult.failed:type_name -> mftiko.sym.v1.RefreshResult.FailedEntry
-	9,  // 14: mftiko.sym.v1.SymbolInfo.FiltersEntry.value:type_name -> mftiko.sym.v1.Bound
-	15, // [15:15] is the sub-list for method output_type
-	15, // [15:15] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	8,  // 5: mftiko.sym.v1.Request.revisions:type_name -> mftiko.sym.v1.RevisionsRequest
+	12, // 6: mftiko.sym.v1.Reply.info:type_name -> mftiko.sym.v1.SymbolInfo
+	14, // 7: mftiko.sym.v1.Reply.list:type_name -> mftiko.sym.v1.SymbolList
+	15, // 8: mftiko.sym.v1.Reply.refresh:type_name -> mftiko.sym.v1.RefreshResult
+	10, // 9: mftiko.sym.v1.Reply.revisions:type_name -> mftiko.sym.v1.RevisionList
+	9,  // 10: mftiko.sym.v1.RevisionList.tables:type_name -> mftiko.sym.v1.TableRevision
+	0,  // 11: mftiko.sym.v1.SymbolInfo.status:type_name -> mftiko.sym.v1.SymbolStatus
+	16, // 12: mftiko.sym.v1.SymbolInfo.filters:type_name -> mftiko.sym.v1.SymbolInfo.FiltersEntry
+	12, // 13: mftiko.sym.v1.SymbolList.symbols:type_name -> mftiko.sym.v1.SymbolInfo
+	17, // 14: mftiko.sym.v1.RefreshResult.refreshed:type_name -> mftiko.sym.v1.RefreshResult.RefreshedEntry
+	18, // 15: mftiko.sym.v1.RefreshResult.deactivated:type_name -> mftiko.sym.v1.RefreshResult.DeactivatedEntry
+	19, // 16: mftiko.sym.v1.RefreshResult.failed:type_name -> mftiko.sym.v1.RefreshResult.FailedEntry
+	13, // 17: mftiko.sym.v1.SymbolInfo.FiltersEntry.value:type_name -> mftiko.sym.v1.Bound
+	18, // [18:18] is the sub-list for method output_type
+	18, // [18:18] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_mftiko_sym_v1_sym_proto_init() }
@@ -1136,21 +1394,23 @@ func file_mftiko_sym_v1_sym_proto_init() {
 		(*Request_Reverse)(nil),
 		(*Request_Refresh)(nil),
 		(*Request_GetByUid)(nil),
+		(*Request_Revisions)(nil),
 	}
 	file_mftiko_sym_v1_sym_proto_msgTypes[6].OneofWrappers = []any{
 		(*Reply_Info)(nil),
 		(*Reply_List)(nil),
 		(*Reply_Refresh)(nil),
+		(*Reply_Revisions)(nil),
 	}
-	file_mftiko_sym_v1_sym_proto_msgTypes[7].OneofWrappers = []any{}
-	file_mftiko_sym_v1_sym_proto_msgTypes[8].OneofWrappers = []any{}
+	file_mftiko_sym_v1_sym_proto_msgTypes[11].OneofWrappers = []any{}
+	file_mftiko_sym_v1_sym_proto_msgTypes[12].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mftiko_sym_v1_sym_proto_rawDesc), len(file_mftiko_sym_v1_sym_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   15,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -29,8 +29,10 @@
 //   - The listing's status is stored as given. PRELISTING, TRADABLE, HALTED, SETTLING and UNKNOWN
 //     stay on the active table. EXPIRED and DELISTED move. Changing from one non-terminal status
 //     to another is a content change. Unspecified is invalid and is not written.
-//   - The change notification itself is not sent; its subject is still open (PROTOCOL §10 P7).
-//     The revision row is what a later notification will carry.
+//   - After that transaction commits, and only when the revision advanced, SYM publishes
+//     Changed{venue, category, revision} on sym.changed.{venue}.{category} (PROTOCOL §7.3).
+//     Venue and category are the human-readable names. PROTOCOL §10 P14 may rename the subject.
+//     A failed publish is logged and the commit stands. A later revision check recovers a missed one.
 //
 // Storage is PostgreSQL (migrations/0002_symbol). symbol_active holds PRELISTING, TRADABLE,
 // HALTED, SETTLING and UNKNOWN, which the Resolver and hot paths read. symbol_terminal holds
@@ -50,8 +52,8 @@
 // Universe.current is a selector and is still TBD, outside D203.
 // The UID is uint32, the same type as Info.UID. The interval is symbol.MinUID..symbol.MaxUID
 // and 0 is invalid. symbol.ValidUID is that check. The BIGINT columns use the same bounds.
-// Service answers the sym subject over natsx: Get, GetByUid, List, Reverse and
-// Refresh. A success is the Reply protobuf. invalid, not_found and unavailable
+// Service answers the sym subject over natsx: Get, GetByUid, List, Reverse,
+// Refresh and Revisions. A success is the Reply protobuf. invalid, not_found and unavailable
 // are a natsx error reply (option A): the text is that word, then ": " and a
 // reason that names the field, the value, and why. include_inactive reads the
 // terminal table as well as the active one; the default is the active table
@@ -102,8 +104,10 @@
 // the draw is RandomSource. Either way the value is not inserted into symbol_uid and must
 // not be sent to another process or plane. Real venues wait for the UIDs SYM assigns.
 // NewResolver rejects a PublicREST that does not implement exchange.InProcessUIDSource.
-// exchangetest.Source is the implementation that does. cmd injects this Resolver or the
-// NATS client (E2-09). Only this one allocates.
+// exchangetest.Source is the implementation that does. OpenRemote is the NATS Resolver
+// (E2-09): it loads only the active table through SYM List, keeps these same indexes,
+// and asks SYM for include_inactive without caching that answer. cmd/mftiko-sym publishes
+// with NATSChanged. Only this in-process Resolver allocates UIDs.
 //
 // This process keeps no terminal table, so includeInactive does not widen a lookup.
 // A row whose status is EXPIRED or DELISTED is omitted even when the listing still

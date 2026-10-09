@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -45,6 +46,9 @@ type Options struct {
 type Conn struct {
 	nc         *nats.Conn
 	reqTimeout time.Duration
+
+	mu        sync.Mutex
+	reconnect []func()
 }
 
 // Connect dials url, which may be a comma-separated list. The first attempt must succeed;
@@ -65,6 +69,7 @@ func Connect(url string, opt Options) (*Conn, error) {
 	if log == nil {
 		log = slog.Default()
 	}
+	c := &Conn{reqTimeout: timeout}
 	nopts := []nats.Option{
 		nats.MaxReconnects(-1),
 		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
@@ -76,6 +81,7 @@ func Connect(url string, opt Options) (*Conn, error) {
 		}),
 		nats.ReconnectHandler(func(nc *nats.Conn) {
 			log.Info("nats reconnected", "url", nc.ConnectedUrlRedacted())
+			c.notifyReconnect()
 		}),
 		nats.ClosedHandler(func(nc *nats.Conn) {
 			if err := nc.LastError(); err != nil {
@@ -103,7 +109,30 @@ func Connect(url string, opt Options) (*Conn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("natsx: connect: %w", err)
 	}
-	return &Conn{nc: nc, reqTimeout: timeout}, nil
+	c.nc = nc
+	return c, nil
+}
+
+// OnReconnect registers fn, called after each successful reconnect on the
+// client's reconnect goroutine. fn must not block: a slow fn stalls every
+// later callback and the client's own reconnect bookkeeping. A nil fn is
+// ignored. Callbacks stay registered until the connection is discarded.
+func (c *Conn) OnReconnect(fn func()) {
+	if c == nil || fn == nil {
+		return
+	}
+	c.mu.Lock()
+	c.reconnect = append(c.reconnect, fn)
+	c.mu.Unlock()
+}
+
+func (c *Conn) notifyReconnect() {
+	c.mu.Lock()
+	fns := append([]func(){}, c.reconnect...)
+	c.mu.Unlock()
+	for _, fn := range fns {
+		fn()
+	}
 }
 
 func (o Options) validate() error {
@@ -127,6 +156,19 @@ func (c *Conn) Close() {
 		return
 	}
 	c.nc.Close()
+}
+
+// Flush waits until the server has processed the publishes already submitted.
+// A change notification uses it so a subscriber can observe the message once
+// the publisher has returned.
+func (c *Conn) Flush() error {
+	if err := c.usable(); err != nil {
+		return err
+	}
+	if err := c.nc.FlushTimeout(flushTimeout); err != nil {
+		return classify("flush", "", err)
+	}
+	return nil
 }
 
 // Drain stops new work, delivers what is already buffered, and then closes.

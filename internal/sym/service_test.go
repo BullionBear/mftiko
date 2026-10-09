@@ -25,6 +25,21 @@ import (
 func TestSymService(t *testing.T) {
 	fx := newSymFixture(t)
 
+	t.Run("revisions", func(t *testing.T) {
+		rep := callSym(t, fx.client, &symv1.Request{Req: &symv1.Request_Revisions{Revisions: &symv1.RevisionsRequest{}}})
+		got := map[string]int64{}
+		for _, row := range rep.GetRevisions().GetTables() {
+			if row.GetVenue() == "" || row.GetCategory() == "" || row.GetRevision() < 1 {
+				t.Fatalf("row %+v", row)
+			}
+			got[row.GetVenue()+"/"+row.GetCategory()] = row.GetRevision()
+		}
+		// First refresh inserts both tables. The second delists spot BTC and leaves perp unchanged.
+		if got["Bybit/Spot"] != 2 || got["Bybit/Perp"] != 1 || len(got) != 2 {
+			t.Fatalf("revisions %v", got)
+		}
+	})
+
 	t.Run("active get", func(t *testing.T) {
 		info := getTicker(t, fx.client, "Bybit_Spot_ETHUSDT", false)
 		if info.GetUid() == 0 || info.GetUid() == fx.btc || info.GetStatus() != symv1.SymbolStatus_SYMBOL_STATUS_TRADABLE {
@@ -280,6 +295,8 @@ func TestSymUnavailable(t *testing.T) {
 	callSymErrHas(t, fx.client, &symv1.Request{Req: &symv1.Request_List{List: &symv1.ListRequest{
 		Venue: "Bybit", Category: "Spot", Limit: 1,
 	}}}, CodeUnavailable, "list Bybit/Spot")
+	callSymErrHas(t, fx.client, &symv1.Request{Req: &symv1.Request_Revisions{Revisions: &symv1.RevisionsRequest{}}},
+		CodeUnavailable, "revisions")
 }
 
 func TestReplyFits(t *testing.T) {
@@ -366,6 +383,7 @@ type symFixture struct {
 	src    *exchangetest.Source
 	store  *Store
 	run    *Runner
+	ns     *natsxtest.Server
 	url    string
 	btc    uint32
 	btcRow symbol.Listing
@@ -427,6 +445,7 @@ func newSymFixture(t *testing.T) *symFixture {
 		src:    src,
 		store:  st,
 		run:    run,
+		ns:     ns,
 		url:    ns.URL(),
 		btc:    info.UID,
 		btcRow: btc,

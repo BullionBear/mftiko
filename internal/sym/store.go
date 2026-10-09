@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -66,6 +67,9 @@ var ErrUID = errors.New("sym: uid")
 type Store struct {
 	db  *pgxpool.Pool
 	src Source
+
+	pubMu sync.RWMutex
+	pub   ChangedPublisher
 }
 
 // Open connects to the database. A nil source uses RandomSource.
@@ -86,6 +90,30 @@ func Open(ctx context.Context, dsn string, src Source) (*Store, error) {
 
 // Close releases the pool.
 func (s *Store) Close() { s.db.Close() }
+
+// SetPublisher receives a change after the revision commit returns.
+// A nil publisher publishes nothing. Safe to call while the store is in use.
+func (s *Store) SetPublisher(p ChangedPublisher) {
+	if s == nil {
+		return
+	}
+	s.pubMu.Lock()
+	s.pub = p
+	s.pubMu.Unlock()
+}
+
+func (s *Store) publish(ctx context.Context, venue, category string, revision int64) {
+	if revision <= 0 {
+		return
+	}
+	s.pubMu.RLock()
+	p := s.pub
+	s.pubMu.RUnlock()
+	if p == nil {
+		return
+	}
+	p.Changed(ctx, venue, category, revision)
+}
 
 // Insert puts a listing on the active table and allocates its uid.
 //
@@ -157,9 +185,14 @@ func (s *Store) Move(ctx context.Context, uid uint32, status Status, atNs int64)
 	if err := bumpRevision(ctx, tx, "symbol_terminal", uid, atNs); err != nil {
 		return fmt.Errorf("sym: move: %w", err)
 	}
+	note, err := readBumped(ctx, tx, "symbol_terminal", uid)
+	if err != nil {
+		return fmt.Errorf("sym: move: %w", err)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("sym: move: %w", err)
 	}
+	s.publish(ctx, note.venue, note.category, note.revision)
 	return nil
 }
 
@@ -233,7 +266,15 @@ func (s *Store) insertActive(ctx context.Context, uid uint32, l Listing) error {
 	if err := bumpRevision(ctx, tx, "symbol_active", uid, l.UpdatedAtNs); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	note, err := readBumped(ctx, tx, "symbol_active", uid)
+	if err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	s.publish(ctx, note.venue, note.category, note.revision)
+	return nil
 }
 
 type listingRow struct {
@@ -346,6 +387,31 @@ func bumpRevision(ctx context.Context, tx pgx.Tx, table string, uid uint32, atNs
 		return fmt.Errorf("sym: revision for uid %d was not written", uid)
 	}
 	return nil
+}
+
+type revisionNote struct {
+	venue    string
+	category string
+	revision int64
+}
+
+// readBumped reads the revision row of the listing uid was just written to.
+// table is a known listing table. The caller is inside the transaction that bumped it.
+func readBumped(ctx context.Context, tx pgx.Tx, table string, uid uint32) (revisionNote, error) {
+	if err := knownListingTable(table); err != nil {
+		return revisionNote{}, err
+	}
+	var note revisionNote
+	q := fmt.Sprintf(`
+		SELECT r.venue, r.category, r.revision
+		FROM symbol_revision r
+		JOIN %s t ON t.venue = r.venue AND t.category = r.category
+		WHERE t.uid = $1`, table)
+	err := tx.QueryRow(ctx, q, uid).Scan(&note.venue, &note.category, &note.revision)
+	if err != nil {
+		return revisionNote{}, fmt.Errorf("sym: revision for uid %d: %w", uid, err)
+	}
+	return note, nil
 }
 
 func knownListingTable(table string) error {

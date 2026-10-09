@@ -85,6 +85,27 @@ func TestRestartLogsDisconnectThenReconnect(t *testing.T) {
 	}
 }
 
+func TestOnReconnect(t *testing.T) {
+	s := natsxtest.Start(t)
+	c := dial(t, s.URL(), natsx.Options{})
+	got := make(chan struct{}, 1)
+	c.OnReconnect(func() {
+		select {
+		case got <- struct{}{}:
+		default:
+		}
+	})
+	c.OnReconnect(nil)
+	if err := s.Restart(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-got:
+	case <-time.After(10 * time.Second):
+		t.Fatal("reconnect callback did not run")
+	}
+}
+
 func TestPublishAfterClose(t *testing.T) {
 	_, c := start(t)
 	c.Close()
