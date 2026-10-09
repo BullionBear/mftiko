@@ -116,7 +116,7 @@ func TestObservedOf(t *testing.T) {
 	} {
 		at := &shimv1.Attached{State: c.state, Phase: c.phase, SpecHash: "s", Stage: "warm", ShimRelease: "r",
 			LastBeatAtNs: 1_700_000_000_000_000_000,
-			Worker: &commonv1.WorkerRef{Key: "td/1", Incarnation: 3}, Hello: &workerv1.Hello{Release: "w"}}
+			Worker:       &commonv1.WorkerRef{Key: "td/1", Incarnation: 3}, Hello: &workerv1.Hello{Release: "w"}}
 		o := observedOf(at)
 		if o.State != c.want || o.Key != "td/1" || o.Incarnation != 3 || o.SpecHash != "s" || o.Stage != "warm" ||
 			o.Release != "w" || o.ShimRelease != "r" || o.LiveHash != "" || o.LastBeat.UnixNano() != at.GetLastBeatAtNs() {

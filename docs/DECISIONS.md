@@ -654,6 +654,19 @@ agent 依需求做的改變，前提是需求是新的。Mirror 的 `LastContact
 - `internal/archtest` 檢查：平面的根套件與 `internal/platform/agent` 的依賴閉包裡沒有 etcd、NATS、`state`、`natsx`、`shim`、`agent/c3`、`agent/fleet`、`agent/runner`、`agent/testplane`。
 - 子套件叫 `daemon`：它是常駐的 agent 進程。不用 `runtime`（遮住標準庫）、`agent`（與 `internal/platform/agent` 同名，平面的接線一定 import 它）、`wire`（與 `contract/wire` 同名）、`adapter`（與 exchange 的 adaptor 混淆）。
 
+### D111 live config 以 etcd 為唯一來源
+
+- **live config 是完整的期望狀態，不是增量**：例如 MD 的 atom 集合、STS 的依賴綁定、TD 的 drain。worker 收到之後和手上的版本 diff 再套用，所以收到同一份就什麼都不做。
+- **唯一的來源是 etcd，加上 SYM。** agent 每次都從 etcd 推導，不信任自己記得推過什麼，也不在 shim 另外留一份副本。
+  - 推導當中依賴當下狀態的部分，例如 MD selector 的成員（價格決定置中、時間決定換月）、placement，**先寫進 etcd，再推給 worker**。否則 agent 推完、還沒寫就掛了，新 agent 依當下的狀態重算，會得到另一份。
+  - 因此 Planner 的輸入是需求加上平面自己持久化的推導狀態，例如 MD 的 `selector/`、`placement/`，不只是 `demand/`。selector 的評估是一個先寫 etcd、再影響計畫的動作，不放在純的 Planner 裡（D110）。這兩點在 E4、E5 實作。
+- **worker 手上是哪一份，以 worker 的回報為準。** agent 推的時候附上 digest，worker 套用後回報 `Applied{digest}`，shim 把最新一則記在 `Attached`（D108）。agent 拿它和 etcd 推導出的 digest 比對，不同才推。digest 防的是漂移（推到一半、套用失敗、輪換期間需求變了），不是竄改，用 `Hash()` 就夠（E1-22，#86）。
+- **暫行做法：** E1-22 之前，收養時一律重推一次（E1-17）。live config 是宣告式的，所以重推不會造成問題，只多一輪 Relay。
+- **不採用：**
+  - 收養時不推：輪換期間的需求變化會被永久漏掉。
+  - shim 記下 agent 交出的 `live_hash`：多一份副本，而且只代表交了，不代表套用了。
+  - live config 寫成增量：重推會重複套用，漂移也無法用 digest 比出來。
+
 ## 待討論
 
 目前沒有。協議層還沒定的見 PROTOCOL §10。
