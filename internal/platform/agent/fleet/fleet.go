@@ -90,6 +90,10 @@ type Fleet[S, L agent.Hashed] struct {
 	cfg     Config[S, L]
 	changed chan struct{}
 
+	preempted   chan struct{}
+	preemptOnce sync.Once
+	preemptErr  error
+
 	mu          sync.Mutex
 	workers     map[agent.WorkerKey]*worker[S]
 	unreachable map[string]string // worker hash h -> the socket of a shim that answers but could not be attached
@@ -147,8 +151,8 @@ func New[S, L agent.Hashed](cfg Config[S, L]) *Fleet[S, L] {
 	if cfg.DialTimeout == 0 {
 		cfg.DialTimeout = DefaultDialTimeout
 	}
-	return &Fleet[S, L]{cfg: cfg, changed: make(chan struct{}, 1), workers: map[agent.WorkerKey]*worker[S]{},
-		unreachable: map[string]string{}}
+	return &Fleet[S, L]{cfg: cfg, changed: make(chan struct{}, 1), preempted: make(chan struct{}),
+		workers: map[agent.WorkerKey]*worker[S]{}, unreachable: map[string]string{}}
 }
 
 // Observe is every worker as last seen.
@@ -322,6 +326,13 @@ func (f *Fleet[S, L]) follow(key agent.WorkerKey, w *worker[S]) {
 		}
 		f.update(key, w, func(o *agent.Observed) { apply(o, ev) })
 	}
+	var pe *c3.PreemptedError
+	if errors.As(w.conn.Err(), &pe) {
+		// A newer term attached to this shim: the worker runs on under it. Nothing about it changed here, and
+		// this agent must stop (PROTOCOL §4.2 step 3).
+		f.preempt(pe)
+		return
+	}
 	rec, _ := shim.ReadExitFile(f.exitPath(key)) // a missing or unreadable file: no record
 	f.mu.Lock()
 	if f.workers[key] == w && !w.released && w.obs.State != agent.StateExited {
@@ -335,6 +346,29 @@ func (f *Fleet[S, L]) follow(key agent.WorkerKey, w *worker[S]) {
 	}
 	f.mu.Unlock()
 	f.signal()
+}
+
+// preempt records the first preemption and signals Preempted.
+func (f *Fleet[S, L]) preempt(pe *c3.PreemptedError) {
+	f.preemptOnce.Do(func() {
+		f.preemptErr = pe
+		f.cfg.Log.Warn().Int64("by_epoch", pe.ByEpoch).Msg("preempted by a newer term")
+		close(f.preempted)
+	})
+}
+
+// Preempted is closed once a newer term has attached to one of the shims: this agent is superseded, and must end
+// without touching the workers. PreemptedErr says by which epoch.
+func (f *Fleet[S, L]) Preempted() <-chan struct{} { return f.preempted }
+
+// PreemptedErr is the first preemption, a *c3.PreemptedError; nil before.
+func (f *Fleet[S, L]) PreemptedErr() error {
+	select {
+	case <-f.preempted:
+		return f.preemptErr
+	default:
+		return nil
+	}
 }
 
 func (f *Fleet[S, L]) exitPath(key agent.WorkerKey) string {
