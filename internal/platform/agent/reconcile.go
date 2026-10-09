@@ -47,6 +47,7 @@ type Action[S, L Hashed] struct {
 const (
 	ReasonNotPlanned  = "not in demand"
 	ReasonSpecChanged = "spec changed"
+	ReasonSilent      = "beat timeout"
 )
 
 const (
@@ -77,6 +78,8 @@ type book struct {
 	handled   uint32    // the incarnation whose end Policy was asked about; 0 for none
 	gaveUp    string    // the spec hash the Policy said not to restart; "" if it did not. A new spec tries again
 	replacing bool      // stopped for a new spec: spawn again as soon as it has ended, with no backoff
+	silentInc uint32    // the incarnation, and the Beat it went silent after, last reported to Policy.Silent
+	silentAt  time.Time
 }
 
 // Step is one pass. stale says the demand is stale (DECISIONS D109): nothing is stopped or pushed, and a worker is
@@ -142,6 +145,14 @@ func (r *Reconciler[S, L]) Step(now time.Time, stale bool, plans map[WorkerKey]P
 		case o.State == StateStopping:
 		default:
 			b.failures = 0
+			stop, deadline := r.silent(now, k, b, o)
+			if stop {
+				acts = append(acts, Action[S, L]{Kind: ActStop, Key: k, Reason: ReasonSilent})
+				continue
+			}
+			if !deadline.IsZero() {
+				held(deadline)
+			}
 			if o.LiveHash != p.Live.Hash() && !stale {
 				acts = append(acts, Action[S, L]{Kind: ActPush, Key: k, Live: p.Live})
 			}
@@ -151,6 +162,27 @@ func (r *Reconciler[S, L]) Step(now time.Time, stale bool, plans map[WorkerKey]P
 		}
 	}
 	return acts, wake
+}
+
+// silent checks a live worker's Beats against the Policy's timeout (E1-18): it reports a silence once, and says
+// whether to stop the worker for it; otherwise deadline is when the worker goes silent if no Beat comes.
+func (r *Reconciler[S, L]) silent(now time.Time, k WorkerKey, b *book, o Observed) (stop bool, deadline time.Time) {
+	timeout := r.Policy.BeatTimeout(k)
+	last := o.LastBeat
+	if last.IsZero() {
+		last = o.StartedAt
+	}
+	if timeout <= 0 || last.IsZero() {
+		return false, time.Time{}
+	}
+	if deadline = last.Add(timeout); now.Before(deadline) {
+		return false, deadline
+	}
+	if b.silentInc == o.Incarnation && b.silentAt.Equal(last) {
+		return false, time.Time{} // reported already
+	}
+	b.silentInc, b.silentAt = o.Incarnation, last
+	return r.Policy.Silent(k, now.Sub(last)), time.Time{}
 }
 
 // ended handles a planned worker's end, once per incarnation: a replacement goes at once, anything else as the

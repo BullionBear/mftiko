@@ -22,6 +22,15 @@ type Policy interface {
 	// keep the last demand it saw: run again one that ended, start one that was waiting (DECISIONS D109). Nothing
 	// is ever stopped or pushed while the demand is stale.
 	KeepWhileStale(key WorkerKey) bool
+	// BeatTimeout is how long the worker may go without a Beat, counted from its last one or, before the first,
+	// from its start; 0 is no limit. The shim passes on at most one Beat a second (PROTOCOL §4.4): a timeout of a
+	// few seconds at least.
+	BeatTimeout(key WorkerKey) time.Duration
+	// Silent tells the Policy that a live worker has sent no Beat for silentFor, past its BeatTimeout: once per
+	// silence, again only if it beats and goes silent anew. stop says to stop it, with ReasonSilent; what makes a
+	// worker HUNG is the plane's (E9). A worker is stopped for its silence even while the demand is stale: the
+	// stop does not come from the demand.
+	Silent(key WorkerKey, silentFor time.Duration) (stop bool)
 }
 
 // Backoff is an exponential wait: Min for the first retry, doubling up to Max.
@@ -42,9 +51,12 @@ func (b Backoff) After(n uint32) time.Duration {
 }
 
 // Always is a Policy that restarts every worker, with a backoff, and keeps every worker while the demand is
-// stale: right for a plane whose workers are harmless to run on old demand, as MD's are.
+// stale: right for a plane whose workers are harmless to run on old demand, as MD's are. Beat sets the timeout,
+// 0 none; a silent worker is stopped when StopSilent is set, and only reported otherwise.
 type Always struct {
-	Backoff Backoff
+	Backoff    Backoff
+	Beat       time.Duration
+	StopSilent bool
 }
 
 func (p Always) Restart(_ WorkerKey, end Ended) (bool, time.Duration) {
@@ -52,3 +64,7 @@ func (p Always) Restart(_ WorkerKey, end Ended) (bool, time.Duration) {
 }
 
 func (Always) KeepWhileStale(WorkerKey) bool { return true }
+
+func (p Always) BeatTimeout(WorkerKey) time.Duration { return p.Beat }
+
+func (p Always) Silent(WorkerKey, time.Duration) bool { return p.StopSilent }

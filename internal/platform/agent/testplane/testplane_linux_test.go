@@ -19,6 +19,7 @@ import (
 
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
+	"github.com/BullionBear/mftiko/internal/platform/agent"
 	"github.com/BullionBear/mftiko/internal/platform/agent/runner"
 	"github.com/BullionBear/mftiko/internal/platform/logger"
 	"github.com/BullionBear/mftiko/internal/platform/shim"
@@ -434,6 +435,25 @@ func TestOneIncarnationAtATime(t *testing.T) {
 
 	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
 		t.Fatal(err)
+	}
+	e.waitStatus("a", "a second incarnation", phase(runner.PhaseRunning, 2))
+}
+
+// A worker that stops beating is reported to the Policy past its timeout (E1-18); this Policy has it stopped, and
+// it comes back as the next incarnation.
+func TestBeatTimeout(t *testing.T) {
+	e := setup(t, nil)
+	e.cfg.Policy = agent.Always{Backoff: agent.Backoff{Min: 100 * time.Millisecond, Max: time.Second},
+		Beat: 2 * time.Second, StopSilent: true}
+	e.run()
+	e.want("a", Worker{Script: fakeworker.Script{BeatMS: 100, Beats: 15}}) // 1.5s of Beats, then none
+	e.waitStatus("a", "RUNNING", phase(runner.PhaseRunning, 1))
+	start := time.Now()
+	e.waitDown("a", "Stop for the silence", func(m *workerv1.WorkerDown) bool {
+		return m.GetStop().GetReason() == agent.ReasonSilent
+	})
+	if d := time.Since(start); d < time.Second || d > 8*time.Second { // Beats end ~1.5s in; 2s of silence
+		t.Fatalf("stopped %s after RUNNING: want the 2s timeout after the last Beat, within a few resyncs", d)
 	}
 	e.waitStatus("a", "a second incarnation", phase(runner.PhaseRunning, 2))
 }
