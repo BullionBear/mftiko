@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"runtime"
+	"runtime/pprof"
 	"strconv"
 	"testing"
 )
@@ -117,21 +118,38 @@ func readMessages(tb testing.TB, size int, at func(n int) bool) {
 }
 
 // The read path allocates nothing per message once the buffer has grown (D302).
+//
+// MemStats counts the whole process, and the runtime allocates when it starts an OS thread: on a busy
+// machine it does, to take a P back from a goroutine held in a socket syscall. A window in which a
+// thread started is measured again; an allocation on the read path shows in every window.
 func TestReadDoesNotAllocate(t *testing.T) {
-	const warm, count = 1_000, 20_000
+	const warm, count, retries = 1_000, 20_000, 4
+	threads := pprof.Lookup("threadcreate")
 	for _, size := range []int{256, 4 << 10, 128 << 10} {
 		var before, after runtime.MemStats
+		var allocs uint64
+		started, end, retried := 0, warm+count, 0
 		readMessages(t, size, func(n int) bool {
-			switch n {
-			case warm:
+			if n == warm {
+				started = threads.Count()
 				runtime.ReadMemStats(&before)
-			case warm + count:
-				runtime.ReadMemStats(&after)
-				return true
 			}
-			return false
+			if n != end {
+				return false
+			}
+			runtime.ReadMemStats(&after)
+			allocs = after.Mallocs - before.Mallocs
+			if allocs > 0 && threads.Count() != started && retried < retries {
+				t.Logf("%d B messages: %d allocations while the runtime started a thread; measuring again", size, allocs)
+				retried++
+				end += count
+				started = threads.Count()
+				runtime.ReadMemStats(&before)
+				return false
+			}
+			return true
 		})
-		if allocs := after.Mallocs - before.Mallocs; allocs > 0 {
+		if allocs > 0 {
 			t.Errorf("%d B messages: %d allocations in %d reads", size, allocs, count)
 		}
 	}
