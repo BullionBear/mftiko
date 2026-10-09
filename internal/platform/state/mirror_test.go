@@ -104,6 +104,29 @@ func waitConverged(t *testing.T, ctx context.Context, m *Mirror, raw *clientv3.C
 	}
 }
 
+// absentWhileCut waits while the mirror is cut off from etcd. key must stay absent.
+// The wait ends once the mirror has noticed the cut (its watch failed or was
+// reopened) or, if it never notices, once within elapses — the old fixed pause,
+// not a shorter one. A key that arrives fails at once.
+func absentWhileCut(t *testing.T, m *Mirror, key string, before MirrorStats, within time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	var last string
+	for {
+		_, present := m.Get(key)
+		st := m.Stats()
+		last = fmt.Sprintf("present=%v errors=%d watches=%d lists=%d (before errors=%d watches=%d)",
+			present, st.Errors, st.Watches, st.Lists, before.Errors, before.Watches)
+		if present {
+			t.Fatalf("waited %s for %s to stay out of the mirror while cut off; last: %s", within, key, last)
+		}
+		if st.Errors > before.Errors || st.Watches > before.Watches || !time.Now().Before(deadline) {
+			return
+		}
+		time.Sleep(pollInterval)
+	}
+}
+
 func waitNotify(t *testing.T, m *Mirror) {
 	t.Helper()
 	select {
@@ -404,15 +427,13 @@ func TestMirrorReconnects(t *testing.T) {
 	m := startMirror(t, r, TDAckPrefix("td-tw-1"), MirrorOptions{MaxBackoff: 500 * time.Millisecond})
 
 	for round := range 3 {
+		before := m.Stats()
 		p.Cut()
 		mustPut(t, ctx, raw, ackKey(round+1), "v1")
 		if _, err := raw.Delete(ctx, ackKey(round)); err != nil {
 			t.Fatal(err)
 		}
-		time.Sleep(300 * time.Millisecond)
-		if _, ok := m.Get(ackKey(round + 1)); ok { // the cut is real: nothing gets through
-			t.Fatalf("round %d: a write made while cut off reached the mirror", round)
-		}
+		absentWhileCut(t, m, ackKey(round+1), before, 300*time.Millisecond) // the cut is real: nothing gets through
 		p.Restore()
 		waitConverged(t, ctx, m, raw, 30*time.Second)
 	}
@@ -710,7 +731,20 @@ func TestMirrorRandomized(t *testing.T) {
 		}
 	})
 
-	time.Sleep(4 * time.Second)
+	// Stop once a relist and a rewatch have both happened, or once the old 4s
+	// window is over. A relist forced by compaction often finishes only after
+	// the chaos stops and the proxy is restored; the check below still waits
+	// for that.
+	chaos := 4 * time.Second
+	chaosStart := time.Now()
+	for time.Since(chaosStart) < chaos {
+		st := m.Stats()
+		if st.Lists >= 2 && st.Errors >= 1 {
+			break
+		}
+		time.Sleep(pollInterval)
+	}
+	ran := time.Since(chaosStart)
 	close(stop)
 	wg.Wait()
 	p.Restore()
@@ -720,9 +754,9 @@ func TestMirrorRandomized(t *testing.T) {
 	}
 	waitConverged(t, ctx, m, raw, 60*time.Second) // leases granted at the end expire meanwhile: polled until stable
 	st := m.Stats()
-	t.Logf("stats %+v", st)
+	t.Logf("chaos %s, stats %+v", ran.Round(time.Millisecond), st)
 	if st.Lists < 2 || st.Errors < 1 {
-		t.Fatalf("stats %+v: the relist and rewatch paths were not exercised", st)
+		t.Fatalf("after %s of chaos, a relist and a rewatch were not both exercised; last: stats %+v", ran.Round(time.Millisecond), st)
 	}
 }
 
@@ -944,25 +978,37 @@ func TestMirrorLastContact(t *testing.T) {
 	mustPut(t, ctx, raw, ackKey(0), "v1")
 	const probe = 200 * time.Millisecond
 	m := startMirror(t, r, TDAckPrefix("td-tw-1"), MirrorOptions{MaxBackoff: 200 * time.Millisecond, ProbeInterval: probe})
-	fresh := func(within time.Duration) bool { return time.Since(m.LastContact()) < within }
-	waitFor := func(what string, cond func() bool) {
-		t.Helper()
-		for deadline := time.Now().Add(30 * time.Second); !cond(); time.Sleep(20 * time.Millisecond) {
-			if time.Now().After(deadline) {
-				t.Fatalf("%s: last contact %s ago, stats %+v", what, time.Since(m.LastContact()), m.Stats())
-			}
-		}
-	}
 
-	time.Sleep(5 * probe) // longer than the list's contact lasts
-	waitFor("quiet but connected", func() bool { return fresh(3 * probe) })
+	// The list's own contact has to be replaced by a probe. The bound is longer
+	// than the old 5 probes, so a slow probe still counts.
+	listed := m.LastContact()
+	until(t, 30*time.Second, "LastContact moves past the list while the cluster is quiet", func() error {
+		contact := m.LastContact()
+		ago := time.Since(contact)
+		if !contact.After(listed) || ago >= 3*probe {
+			return fmt.Errorf("last contact %s ago (list contact %s)", ago, listed.Format(time.RFC3339Nano))
+		}
+		return nil
+	})
 	p.Cut()
-	time.Sleep(6 * probe)
-	if fresh(4 * probe) {
-		t.Fatalf("cut off for %s, yet last contact %s ago", 6*probe, time.Since(m.LastContact()))
-	}
+	// Contact has to age past what a connected probe would allow. A response
+	// already in flight can land once after the cut, so the bound is wider than
+	// the old 6 probes.
+	until(t, 30*time.Second, "LastContact ages out while cut off", func() error {
+		ago := time.Since(m.LastContact())
+		if ago < 4*probe {
+			return fmt.Errorf("last contact %s ago, want at least %s", ago, 4*probe)
+		}
+		return nil
+	})
 	p.Restore()
-	waitFor("reconnected", func() bool { return fresh(3 * probe) })
+	until(t, 30*time.Second, "LastContact is fresh after reconnecting", func() error {
+		ago := time.Since(m.LastContact())
+		if ago >= 3*probe {
+			return fmt.Errorf("last contact %s ago, stats %+v", ago, m.Stats())
+		}
+		return nil
+	})
 }
 
 func TestMirrorWaitRev(t *testing.T) {
@@ -1232,9 +1278,26 @@ func TestMirrorQuietSharedStream(t *testing.T) {
 	opt := MirrorOptions{ProbeInterval: probe}
 	leases := startMirror(t, r, TDAckPrefix("td-tw-1"), opt)
 	acks := startMirror(t, r, TDAckPrefix("td-tw-1"), opt)
+	mirrors := map[string]*Mirror{"leases": leases, "acks": acks}
 
-	time.Sleep(15 * probe)
-	for name, m := range map[string]*Mirror{"leases": leases, "acks": acks} {
+	// A stall shows up as a reopened watch. The window stays the old 15 probes:
+	// under load a reopen can land late (#90). Freshness is read at the end,
+	// because a slow probe in the middle recovers.
+	during(t, 15*probe, "neither quiet mirror reopens its watch or leaves the cluster revision", func() error {
+		var bad []string
+		for _, name := range []string{"acks", "leases"} {
+			m := mirrors[name]
+			st := m.Stats()
+			if st.Watches != 1 || st.Errors != 0 || m.Rev() != rev {
+				bad = append(bad, fmt.Sprintf("%s rev %d stats %+v contact %s ago", name, m.Rev(), st, time.Since(m.LastContact())))
+			}
+		}
+		if len(bad) == 0 {
+			return nil
+		}
+		return fmt.Errorf("%s", strings.Join(bad, "; "))
+	})
+	for name, m := range mirrors {
 		if ago := time.Since(m.LastContact()); ago > 3*probe {
 			t.Errorf("%s: last contact %s ago on a connected, quiet cluster", name, ago)
 		}
@@ -1259,6 +1322,18 @@ func (s slowReader) Get(ctx context.Context, key string, opts ...clientv3.OpOpti
 	return resp, err
 }
 
+// countGets counts completed Gets, so a test can see that probes ran.
+type countGets struct {
+	Reader
+	n atomic.Int32
+}
+
+func (c *countGets) Get(ctx context.Context, key string, opts ...clientv3.OpOption) (*clientv3.GetResponse, error) {
+	resp, err := c.Reader.Get(ctx, key, opts...)
+	c.n.Add(1)
+	return resp, err
+}
+
 // Under a steady stream of writes the watch applies events while a probe's read is in flight, so the read's
 // revision is below the copy's by the time it answers. That is not a cluster going back: no relist.
 func TestMirrorProbeUnderLoad(t *testing.T) {
@@ -1269,11 +1344,23 @@ func TestMirrorProbeUnderLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := startMirror(t, slowReader{direct, 30 * time.Millisecond}, TDAckPrefix("td-tw-1"), MirrorOptions{ProbeInterval: 50 * time.Millisecond})
+	cg := &countGets{Reader: slowReader{Reader: direct, delay: 30 * time.Millisecond}}
+	m := startMirror(t, cg, TDAckPrefix("td-tw-1"), MirrorOptions{ProbeInterval: 50 * time.Millisecond})
+	listed, rev0 := cg.n.Load(), m.Rev()
 
 	stop := make(chan struct{})
 	wg := writeUntil(t, ctx, raw, stop)
-	time.Sleep(3 * time.Second)
+	// A probe read returns after its delay, while the watch has applied writes,
+	// so the read's revision is behind the copy. That must not relist. Three
+	// probes is one stall window of chances. The bound is the old 3s of writes.
+	until(t, 3*time.Second, "probe reads overlap writes without a relist", func() error {
+		st := m.Stats()
+		probes, rev := cg.n.Load()-listed, m.Rev()
+		if probes < int32(mirrorStallProbes) || rev <= rev0 || st.Lists != 1 || st.Errors != 0 {
+			return fmt.Errorf("probes=%d rev=%d (at list %d) stats=%+v", probes, rev, rev0, st)
+		}
+		return nil
+	})
 	close(stop)
 	wg.Wait()
 	waitConverged(t, ctx, m, raw, 20*time.Second)
@@ -1295,19 +1382,67 @@ func TestMirrorQuietAfterReconnect(t *testing.T) {
 		"leases": startMirror(t, r, TDAckPrefix("td-tw-1"), opt),
 		"acks":   startMirror(t, r, TDAckPrefix("td-tw-1"), opt),
 	}
-	time.Sleep(5 * probe)
-
-	p.Cut()
-	time.Sleep(300 * time.Millisecond)
-	p.Restore()
+	listed := map[string]time.Time{}
 	for name, m := range mirrors {
-		for deadline := time.Now().Add(15 * time.Second); time.Since(m.LastContact()) > 3*probe; time.Sleep(20 * time.Millisecond) {
-			if time.Now().After(deadline) {
-				t.Fatalf("%s: last contact %s ago after reconnecting, stats %+v", name, time.Since(m.LastContact()), m.Stats())
+		listed[name] = m.LastContact()
+	}
+	// Quiet contact has to come from a probe, not the list. The bound is longer
+	// than the old 5 probes.
+	until(t, 30*time.Second, "both mirrors' contact moves past the list", func() error {
+		var waiting []string
+		for _, name := range []string{"acks", "leases"} {
+			m := mirrors[name]
+			if !m.LastContact().After(listed[name]) {
+				waiting = append(waiting, fmt.Sprintf("%s last contact %s ago", name, time.Since(m.LastContact())))
 			}
 		}
+		if len(waiting) == 0 {
+			return nil
+		}
+		return fmt.Errorf("%s", strings.Join(waiting, "; "))
+	})
+
+	p.Cut()
+	// The partition lasts the old 300ms. Ending it sooner is a shorter cut, which
+	// is how a reconnect test misses the resume. Poll that neither mirror relists.
+	during(t, 300*time.Millisecond, "the cut does not relist or reopen either mirror", func() error {
+		var bad []string
+		for _, name := range []string{"acks", "leases"} {
+			st := mirrors[name].Stats()
+			if st.Errors != 0 || st.Lists != 1 {
+				bad = append(bad, fmt.Sprintf("%s stats %+v contact %s ago", name, st, time.Since(mirrors[name].LastContact())))
+			}
+		}
+		if len(bad) == 0 {
+			return nil
+		}
+		return fmt.Errorf("%s", strings.Join(bad, "; "))
+	})
+	p.Restore()
+	for _, name := range []string{"acks", "leases"} {
+		m := mirrors[name]
+		until(t, 15*time.Second, name+" LastContact is fresh after reconnecting", func() error {
+			ago := time.Since(m.LastContact())
+			if ago > 3*probe {
+				return fmt.Errorf("last contact %s ago, stats %+v", ago, m.Stats())
+			}
+			return nil
+		})
 	}
-	time.Sleep(10 * probe) // long enough for a stall kick, were one coming
+	// Long enough for a stall kick, were one coming. The window stays the old 10 probes.
+	during(t, 10*probe, "no stall kick after the quiet reconnect", func() error {
+		var bad []string
+		for _, name := range []string{"acks", "leases"} {
+			st := mirrors[name].Stats()
+			if st.Errors != 0 || st.Lists != 1 {
+				bad = append(bad, fmt.Sprintf("%s stats %+v contact %s ago", name, st, time.Since(mirrors[name].LastContact())))
+			}
+		}
+		if len(bad) == 0 {
+			return nil
+		}
+		return fmt.Errorf("%s", strings.Join(bad, "; "))
+	})
 	for name, m := range mirrors {
 		if ago := time.Since(m.LastContact()); ago > 3*probe {
 			t.Errorf("%s: last contact %s ago on a quiet, connected cluster", name, ago)

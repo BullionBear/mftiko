@@ -302,7 +302,8 @@ func TestTokenExpiry(t *testing.T) {
 	raw := s.Client(t)
 	topo := topologyOf(map[string]*etcdtest.Server{"tw": s}, map[string]string{"md-tw-1": "tw"})
 	cl := newClusters(t, topo, nil, as(t, topo, "md-tw-1"))
-	term := campaign(t, ctx, cl, PlaneMD, "md-tw-1", TermOptions{SessionTTL: 5 * time.Second})
+	const sessionTTL = 5 * time.Second
+	term := campaign(t, ctx, cl, PlaneMD, "md-tw-1", TermOptions{SessionTTL: sessionTTL})
 	if err := term.PutRecord(ctx, "record"); err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +315,10 @@ func TestTokenExpiry(t *testing.T) {
 	defer cancel()
 	wch := r.Watch(wctx, DemandPrefix(PlaneMD, "md-tw-1"), clientv3.WithPrefix())
 
-	time.Sleep(4 * time.Second) // two token lifetimes with nothing but keepalives
+	// A token issued now is newer than the one the watch and the session were
+	// opened with, so when it is rejected those have expired too. The TTL is
+	// unchanged; the bound is wider than the old two lifetimes.
+	waitRejected(t, ctx, raw, s.Endpoints(), "md-tw-1", AgentKey(PlaneMD, "md-tw-1"))
 	if _, err := raw.Put(ctx, MDDemandKey("md-tw-1", "a1b2c3", "feed/x"), "d"); err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +341,24 @@ func TestTokenExpiry(t *testing.T) {
 	if err := term.Put(ctx, MDAckKey("md-tw-1", "a1b2c3", "feed/x"), "PENDING"); err != nil {
 		t.Fatalf("write after an auth change: %v", err)
 	}
-	time.Sleep(6 * time.Second) // past the session TTL, on keepalives alone
+	// An unrenewed lease of the session TTL has to actually disappear before the
+	// record's survival means the keepalives held it. etcd sweeps expired leases
+	// on its own ticker and later under load. The bound is wider than the old 6s.
+	// The session TTL is unchanged.
+	canary := "/canary/session-ttl"
+	lease, err := raw.Grant(ctx, int64(sessionTTL/time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Put(ctx, canary, "x", clientv3.WithLease(lease.ID)); err != nil {
+		t.Fatal(err)
+	}
+	until(t, 30*time.Second, "an unrenewed lease of the session TTL is gone", func() error {
+		if _, _, ok := kvOf(t, ctx, raw, canary); ok {
+			return fmt.Errorf("canary %s still present on lease %x", canary, lease.ID)
+		}
+		return nil
+	})
 	if !running(term) {
 		t.Fatalf("term ended: %v", term.Err())
 	}
@@ -390,7 +411,10 @@ func TestMirrorAfterTokenExpiry(t *testing.T) {
 	mustPut(t, ctx, raw, ackKey(0), "v0")
 	m := startMirror(t, r, TDAckPrefix("td-tw-1"), MirrorOptions{MaxBackoff: 200 * time.Millisecond})
 
-	time.Sleep(4 * time.Second) // the token m's watch was opened with has expired; m's watch stays open
+	// m's watch keeps the token it was opened with. A token issued after that
+	// watch expires later, so rejection means the watch's token is already
+	// dead. The bound is wider than the old 4s. The TTL is unchanged.
+	waitRejected(t, ctx, raw, s.Endpoints(), "td-tw-1", ackKey(0))
 	late := startMirror(t, r, TDAckPrefix("td-tw-1"), MirrorOptions{MaxBackoff: 200 * time.Millisecond})
 	mustPut(t, ctx, raw, ackKey(1), "v1")
 	waitConverged(t, ctx, late, raw, 20*time.Second)
@@ -423,4 +447,72 @@ func TestAuthRefused(t *testing.T) {
 			t.Errorf("%v: taken for a refused token", err)
 		}
 	}
+}
+
+// waitRejected waits until a token issued now is refused. That token is newer
+// than one the test's long-running client already presented, so the older one
+// has expired as well. The bound is several times a test token TTL.
+func waitRejected(t *testing.T, ctx context.Context, raw *clientv3.Client, endpoints []string, user, key string) {
+	t.Helper()
+	issued := time.Now()
+	probe := fixedTokenClient(t, endpoints, issueToken(t, ctx, raw, user))
+	until(t, 20*time.Second, "a token issued for "+user+" is rejected", func() error {
+		rejected, err := probe.rejected(ctx, key)
+		if err != nil {
+			return err
+		}
+		if !rejected {
+			return fmt.Errorf("token still accepted, %s after it was issued", time.Since(issued).Round(time.Millisecond))
+		}
+		return nil
+	})
+}
+
+// issueToken logs user in and returns the token etcd just signed. It is newer
+// than a token the test's long-running client already presented.
+func issueToken(t *testing.T, ctx context.Context, raw *clientv3.Client, user string) string {
+	t.Helper()
+	resp, err := raw.Authenticate(ctx, user, etcdtest.Password(user))
+	if err != nil {
+		t.Fatalf("authenticate %s: %v", user, err)
+	}
+	if resp.Token == "" {
+		t.Fatalf("authenticate %s: empty token", user)
+	}
+	return resp.Token
+}
+
+// fixedToken is a client that presents one token and cannot refresh it.
+type fixedToken struct {
+	cli *clientv3.Client
+}
+
+func fixedTokenClient(t *testing.T, endpoints []string, token string) *fixedToken {
+	t.Helper()
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   endpoints,
+		DialTimeout: DialTimeout,
+		Token:       token,
+	})
+	if err != nil {
+		t.Fatalf("client for a fixed token: %v", err)
+	}
+	t.Cleanup(func() { cli.Close() })
+	return &fixedToken{cli: cli}
+}
+
+// rejected reports whether the cluster refuses the fixed token. A permission
+// failure still means the token was accepted. Any other error is returned so
+// the caller can show it.
+func (f *fixedToken) rejected(ctx context.Context, key string) (bool, error) {
+	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_, err := f.cli.Get(cctx, key)
+	if err == nil || strings.Contains(err.Error(), rpctypes.ErrPermissionDenied.Error()) {
+		return false, nil
+	}
+	if authRefused(err) {
+		return true, nil
+	}
+	return false, err
 }
