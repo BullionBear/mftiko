@@ -8,20 +8,20 @@
 --                    (old fills and positions, reverse lookup by UID). Not refreshed. Can be archived.
 --
 -- uid is the primary key of both tables. SYM allocates it: a random integer, not a sequence, stored
--- on the row so a restart or a move keeps it. 0 is illegal (D203). The same ticker delisted and
--- listed again is a new row with a new uid; the old row stays on symbol_terminal, so
+-- on the row so a restart or a move keeps it. 0 is illegal. The inclusive range is 1..4294967295
+-- (2^32-1). Columns stay BIGINT, with CHECK (uid BETWEEN 1 AND 4294967295). The same ticker
+-- delisted and listed again is a new row with a new uid; the old row stays on symbol_terminal, so
 -- universal_ticker and (venue, category, exch_ticker) are unique only on symbol_active.
 --
--- A uid must not sit on both tables at once. Each primary key cannot see the other table, so
--- symbol_reject_shared_uid raises unique_violation and SYM draws again. That does not survive
--- archiving a terminal row (the row is gone, so the uid could be drawn again). A symbol_uid
--- registry that is never deleted would. That table is not in this migration; whether to add it
--- is open.
+-- symbol_uid is the registry: primary key uid, and rows are never deleted. Both listing tables and
+-- both filter tables reference it. Allocation inserts into symbol_uid first and retries when that
+-- insert reports a unique violation. Deleting or archiving a listing does not delete the registry
+-- row, so that uid cannot be drawn again.
 --
--- Width and numeric range are open (PROTOCOL §10 P13). The column is BIGINT, which is signed, so
--- the suggested draw interval is 1..2^63-1. The only check here is uid > 0. The store's interval
--- is two constants, not a constraint, so the suggestion can change without a rewrite of this file
--- as long as the values still fit in BIGINT.
+-- The registry does not stop the same uid sitting on both listing tables at once: both rows would
+-- reference the one registry row. symbol_reject_shared_uid raises unique_violation in that case,
+-- and SYM draws again. Move deletes the active row and then inserts the terminal row in one
+-- transaction, so the uid is never on both tables and the trigger allows the move.
 --
 -- venue and category are generated from universal_ticker (<Venue>_<Category>_<SYMBOL>, neither of
 -- the first two fields contains '_'). They cannot drift from the ticker. The reverse lookup is
@@ -52,7 +52,8 @@ BEGIN
 END;
 $$;
 
--- See the header: this is not a substitute for a never-deleted symbol_uid registry.
+-- The registry row stays when a listing is deleted, so this is what stops the same uid
+-- being on symbol_active and symbol_terminal at the same time.
 CREATE FUNCTION symbol_reject_shared_uid() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -71,8 +72,15 @@ BEGIN
 END;
 $$;
 
+-- Every uid ever allocated. SYM does not delete from this table.
+CREATE TABLE symbol_uid (
+    uid BIGINT NOT NULL,
+    CONSTRAINT symbol_uid_pkey PRIMARY KEY (uid),
+    CONSTRAINT symbol_uid_range CHECK (uid BETWEEN 1 AND 4294967295)
+);
+
 CREATE TABLE symbol_active (
-    uid                BIGINT  NOT NULL,
+    uid                BIGINT  NOT NULL REFERENCES symbol_uid (uid),
     universal_ticker   TEXT    NOT NULL,
     exch_ticker        TEXT    NOT NULL,
     base               TEXT    NOT NULL,
@@ -92,7 +100,7 @@ CREATE TABLE symbol_active (
     CONSTRAINT symbol_active_pkey PRIMARY KEY (uid),
     CONSTRAINT symbol_active_ticker UNIQUE (universal_ticker),
     CONSTRAINT symbol_active_exch UNIQUE (venue, category, exch_ticker),
-    CONSTRAINT symbol_active_uid CHECK (uid > 0),
+    CONSTRAINT symbol_active_uid CHECK (uid BETWEEN 1 AND 4294967295),
     CONSTRAINT symbol_active_ccy CHECK (contract_value_ccy <> '' AND price_ccy <> ''),
     CONSTRAINT symbol_active_option CHECK (option_type IS NULL OR option_type IN ('C', 'P')),
     CONSTRAINT symbol_active_ticker_shape CHECK (universal_ticker ~ '^[^_]+_[^_]+_[^_]+$'),
@@ -112,7 +120,7 @@ CREATE TRIGGER symbol_active_uid_across
 CREATE INDEX symbol_active_prefix ON symbol_active (universal_ticker text_pattern_ops);
 
 CREATE TABLE symbol_terminal (
-    uid                BIGINT  NOT NULL,
+    uid                BIGINT  NOT NULL REFERENCES symbol_uid (uid),
     universal_ticker   TEXT    NOT NULL,
     exch_ticker        TEXT    NOT NULL,
     base               TEXT    NOT NULL,
@@ -130,7 +138,7 @@ CREATE TABLE symbol_terminal (
     venue              TEXT    GENERATED ALWAYS AS (split_part(universal_ticker, '_', 1)) STORED,
     category           TEXT    GENERATED ALWAYS AS (split_part(universal_ticker, '_', 2)) STORED,
     CONSTRAINT symbol_terminal_pkey PRIMARY KEY (uid),
-    CONSTRAINT symbol_terminal_uid CHECK (uid > 0),
+    CONSTRAINT symbol_terminal_uid CHECK (uid BETWEEN 1 AND 4294967295),
     CONSTRAINT symbol_terminal_ccy CHECK (contract_value_ccy <> '' AND price_ccy <> ''),
     CONSTRAINT symbol_terminal_option CHECK (option_type IS NULL OR option_type IN ('C', 'P')),
     CONSTRAINT symbol_terminal_ticker_shape CHECK (universal_ticker ~ '^[^_]+_[^_]+_[^_]+$'),
@@ -154,17 +162,21 @@ CREATE INDEX symbol_terminal_ticker ON symbol_terminal (universal_ticker);
 -- restriction but sets no bound, which is not the same as no row.
 -- A terminal move copies these rows with the listing. The uid does not change.
 CREATE TABLE symbol_filter_active (
-    uid   BIGINT NOT NULL REFERENCES symbol_active (uid) ON DELETE CASCADE,
+    uid   BIGINT NOT NULL,
     name  TEXT   NOT NULL,  -- price_tick, qty_step, min_qty, max_qty, min_notional, ...
     value NUMERIC,
-    PRIMARY KEY (uid, name)
+    PRIMARY KEY (uid, name),
+    CONSTRAINT symbol_filter_active_listing FOREIGN KEY (uid) REFERENCES symbol_active (uid) ON DELETE CASCADE,
+    CONSTRAINT symbol_filter_active_uid FOREIGN KEY (uid) REFERENCES symbol_uid (uid)
 );
 
 CREATE TABLE symbol_filter_terminal (
-    uid   BIGINT NOT NULL REFERENCES symbol_terminal (uid) ON DELETE CASCADE,
+    uid   BIGINT NOT NULL,
     name  TEXT   NOT NULL,
     value NUMERIC,
-    PRIMARY KEY (uid, name)
+    PRIMARY KEY (uid, name),
+    CONSTRAINT symbol_filter_terminal_listing FOREIGN KEY (uid) REFERENCES symbol_terminal (uid) ON DELETE CASCADE,
+    CONSTRAINT symbol_filter_terminal_uid FOREIGN KEY (uid) REFERENCES symbol_uid (uid)
 );
 
 -- One current revision per (venue, category). SYM increments it in the same transaction as the

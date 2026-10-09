@@ -23,16 +23,19 @@
 // by UID. UID is the primary key of both. Terminal rows can be archived. The status enum is
 // still provisional; the contract field stays bool.
 //
-// Insert allocates a UID by drawing from Source (RandomSource in production) and retries when
-// the insert reports a unique violation on that UID. The candidate is stored on the row, so a
-// restart does not change it. Move copies the row and its symbol_filter rows onto the terminal
-// tables in one transaction; the UID and the UniversalTicker stay the same, and the active row
-// is deleted in that transaction. A later Insert of the same ticker draws a new UID. The old
-// terminal row stays. List pages with offset and limit; inconsistency across pages is accepted.
-// Selectors have no UID. Universe.current is a selector and is still TBD, outside D203.
-// The contract type is uint64 and 0 is invalid. Width and numeric range are still open
-// (PROTOCOL §10 P13): uidMin and uidMax are the suggested 1..2^63-1 interval, and they are the
-// only place that interval is written. The sym subject and GetByUID are not served yet.
+// Insert allocates a UID by drawing from Source (RandomSource in production). It inserts that
+// uid into symbol_uid first and retries when the insert reports a unique violation on the uid.
+// symbol_uid is never deleted, so archiving a listing does not free the uid. The candidate is
+// also stored on the listing row, so a restart does not change it. Move copies the row and its
+// symbol_filter rows onto the terminal tables in one transaction; the UID and the UniversalTicker
+// stay the same, and the active row is deleted in that transaction. symbol_reject_shared_uid
+// still rejects a uid that is on the other listing table, which the registry alone does not.
+// A later Insert of the same ticker draws a new UID. The old terminal row stays. List pages
+// with offset and limit; inconsistency across pages is accepted. Selectors have no UID.
+// Universe.current is a selector and is still TBD, outside D203.
+// The decided interval is 1..4294967295 and 0 is invalid. uidMin and uidMax are that interval.
+// The store keeps the value as uint64 so it does not depend on the contract field's width.
+// The sym subject and GetByUID are not served yet.
 // Only this service writes the tables.
 //
 // It is also the only place that uppercases asset codes and applies the alias table (XBT to BTC,

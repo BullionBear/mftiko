@@ -126,11 +126,48 @@ func TestStoreRoundTrip(t *testing.T) {
 			// insert (100), move (200), relist (10): three bumps, last refreshed_at is the relist's.
 			t.Fatalf("revision = %d at %d, want 3 at 10", revision, refreshed)
 		}
+		var registered int
+		if err := conn.QueryRow(ctx, `SELECT count(*) FROM symbol_uid WHERE uid IN ($1, $2)`, uid, again).Scan(&registered); err != nil {
+			t.Fatal(err)
+		}
+		if registered != 2 {
+			t.Fatalf("symbol_uid rows for the old and new uid = %d, want 2", registered)
+		}
+	})
+
+	t.Run("archived uid stays registered", func(t *testing.T) {
+		truncate(t, ctx, conn)
+		src := &script{uids: []uint64{6, 6, 7}}
+		st := openStore(t, srv.DSN(), src)
+		uid, err := st.Insert(ctx, spot("Bybit_Spot_BTCUSDT", "BTCUSDT"))
+		if err != nil || uid != 6 {
+			t.Fatalf("insert = %d, %v", uid, err)
+		}
+		if err := st.Move(ctx, uid, Delisted, 200); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := conn.Exec(ctx, `DELETE FROM symbol_terminal WHERE uid = $1`, uid); err != nil {
+			t.Fatal(err)
+		}
+		var left int
+		if err := conn.QueryRow(ctx, `SELECT count(*) FROM symbol_uid WHERE uid = $1`, uid).Scan(&left); err != nil {
+			t.Fatal(err)
+		}
+		if left != 1 {
+			t.Fatal("archiving the listing deleted the registry row")
+		}
+		again, err := st.Insert(ctx, spot("Bybit_Spot_BTCUSDT", "BTCUSDT"))
+		if err != nil || again != 7 {
+			t.Fatalf("relist after archive = %d, %v", again, err)
+		}
+		if src.n != 3 {
+			t.Fatalf("draws = %d, want 3 (the archived uid collided)", src.n)
+		}
 	})
 
 	t.Run("zero and out of range are not inserted", func(t *testing.T) {
 		truncate(t, ctx, conn)
-		src := &script{uids: []uint64{0, 1 << 63, 9}}
+		src := &script{uids: []uint64{0, 1 << 32, 9}}
 		st := openStore(t, srv.DSN(), src)
 		uid, err := st.Insert(ctx, spot("Okx_Perp_BTCUSDT", "BTC-USDT"))
 		if err != nil || uid != 9 {
@@ -238,7 +275,7 @@ func spot(ticker, exch string) Listing {
 
 func truncate(t *testing.T, ctx context.Context, conn *pgx.Conn) {
 	t.Helper()
-	if _, err := conn.Exec(ctx, `TRUNCATE symbol_active, symbol_terminal, symbol_revision CASCADE`); err != nil {
+	if _, err := conn.Exec(ctx, `TRUNCATE symbol_filter_active, symbol_filter_terminal, symbol_active, symbol_terminal, symbol_uid, symbol_revision`); err != nil {
 		t.Fatal(err)
 	}
 }

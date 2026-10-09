@@ -3,6 +3,7 @@ package migrations
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -37,6 +38,7 @@ func TestSymbolMigration(t *testing.T) {
 		}
 	}
 
+	grant(t, ctx, conn, 1, 2)
 	mustExec(t, ctx, conn, `
 		INSERT INTO symbol_active (
 		    uid, universal_ticker, exch_ticker, base, quote,
@@ -57,6 +59,7 @@ func TestSymbolMigration(t *testing.T) {
 	if strike != "6400" {
 		t.Fatalf("strike stored as %q, want 6400 after trim_scale", strike)
 	}
+	grant(t, ctx, conn, 8)
 	mustExec(t, ctx, conn, `
 		INSERT INTO symbol_active (
 		    uid, universal_ticker, exch_ticker, base, quote,
@@ -70,6 +73,7 @@ func TestSymbolMigration(t *testing.T) {
 		t.Fatalf("fractional strike stored as %q, want 6.4", strike)
 	}
 
+	grant(t, ctx, conn, 3)
 	mustFailConstraint(t, ctx, conn, "23505", "symbol_active_exch", `
 		INSERT INTO symbol_active (
 		    uid, universal_ticker, exch_ticker, base, quote,
@@ -84,6 +88,7 @@ func TestSymbolMigration(t *testing.T) {
 		) VALUES (
 		    0, 'Bybit_Spot_ETHUSDT', 'ETHUSDT', 'ETH', 'USDT', 'ETH', 'USDT', 'TRADABLE', 1, 1)`)
 
+	grant(t, ctx, conn, 4)
 	mustFailConstraint(t, ctx, conn, "23514", "symbol_active_status", `
 		INSERT INTO symbol_active (
 		    uid, universal_ticker, exch_ticker, base, quote,
@@ -91,6 +96,7 @@ func TestSymbolMigration(t *testing.T) {
 		) VALUES (
 		    4, 'Bybit_Spot_ETHUSDT', 'ETHUSDT', 'ETH', 'USDT', 'ETH', 'USDT', 'DELISTED', 1, 1)`)
 
+	grant(t, ctx, conn, 10, 11)
 	mustExec(t, ctx, conn, `
 		INSERT INTO symbol_terminal (
 		    uid, universal_ticker, exch_ticker, base, quote,
@@ -106,6 +112,7 @@ func TestSymbolMigration(t *testing.T) {
 		) VALUES (
 		    10, 'Bybit_Spot_ETHUSDT', 'ETHUSDT', 'ETH', 'USDT', 'ETH', 'USDT', 'TRADABLE', 1, 1)`)
 
+	grant(t, ctx, conn, 12, 4294967295)
 	mustFailConstraint(t, ctx, conn, "23514", "symbol_terminal_status", `
 		INSERT INTO symbol_terminal (
 		    uid, universal_ticker, exch_ticker, base, quote,
@@ -113,8 +120,32 @@ func TestSymbolMigration(t *testing.T) {
 		) VALUES (
 		    12, 'Bybit_Spot_ETHUSDT', 'ETHUSDT', 'ETH', 'USDT', 'ETH', 'USDT', 'TRADABLE', 1, 1)`)
 
+	mustExec(t, ctx, conn, `
+		INSERT INTO symbol_active (
+		    uid, universal_ticker, exch_ticker, base, quote,
+		    contract_value_ccy, price_ccy, status, created_at_ns, updated_at_ns
+		) VALUES (
+		    4294967295, 'Bybit_Spot_MAX', 'MAX', 'BTC', 'USDT', 'BTC', 'USDT', 'TRADABLE', 1, 1)`)
+	mustFailConstraint(t, ctx, conn, "23514", "symbol_uid_range", `INSERT INTO symbol_uid (uid) VALUES (4294967296)`)
+	mustFailConstraint(t, ctx, conn, "23514", "symbol_active_uid", `
+		INSERT INTO symbol_active (
+		    uid, universal_ticker, exch_ticker, base, quote,
+		    contract_value_ccy, price_ccy, status, created_at_ns, updated_at_ns
+		) VALUES (
+		    4294967296, 'Bybit_Spot_OVER', 'OVER', 'BTC', 'USDT', 'BTC', 'USDT', 'TRADABLE', 1, 1)`)
+
+	mustExec(t, ctx, conn, `DELETE FROM symbol_terminal WHERE uid = 10`)
+	var registered int
+	if err := conn.QueryRow(ctx, `SELECT count(*) FROM symbol_uid WHERE uid = 10`).Scan(&registered); err != nil {
+		t.Fatal(err)
+	}
+	if registered != 1 {
+		t.Fatal("deleting the terminal row deleted symbol_uid")
+	}
+	mustFailConstraint(t, ctx, conn, "23505", "symbol_uid_pkey", `INSERT INTO symbol_uid (uid) VALUES (10)`)
+
 	apply(t, ctx, conn, "0002_symbol.down.sql")
-	if regclass(t, ctx, conn, "symbol_active") || regclass(t, ctx, conn, "symbol_revision") {
+	if regclass(t, ctx, conn, "symbol_active") || regclass(t, ctx, conn, "symbol_revision") || regclass(t, ctx, conn, "symbol_uid") {
 		t.Fatal("down left symbol tables behind")
 	}
 	if !regclass(t, ctx, conn, "orders") {
@@ -122,7 +153,7 @@ func TestSymbolMigration(t *testing.T) {
 	}
 
 	apply(t, ctx, conn, "0002_symbol.up.sql")
-	if !regclass(t, ctx, conn, "symbol_active") || !regclass(t, ctx, conn, "symbol_filter_terminal") {
+	if !regclass(t, ctx, conn, "symbol_active") || !regclass(t, ctx, conn, "symbol_filter_terminal") || !regclass(t, ctx, conn, "symbol_uid") {
 		t.Fatal("second up did not recreate the symbol tables")
 	}
 	var n int
@@ -152,6 +183,13 @@ func regclass(t *testing.T, ctx context.Context, conn *pgx.Conn, name string) bo
 		t.Fatal(err)
 	}
 	return rel != nil
+}
+
+func grant(t *testing.T, ctx context.Context, conn *pgx.Conn, uids ...int64) {
+	t.Helper()
+	for _, uid := range uids {
+		mustExec(t, ctx, conn, fmt.Sprintf(`INSERT INTO symbol_uid (uid) VALUES (%d)`, uid))
+	}
 }
 
 func mustExec(t *testing.T, ctx context.Context, conn *pgx.Conn, sql string) {

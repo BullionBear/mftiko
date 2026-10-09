@@ -100,11 +100,13 @@ func (s *Store) Close() { s.db.Close() }
 
 // Insert puts a listing on the active table and allocates its uid.
 //
-// A candidate outside uidMin..uidMax is discarded. A candidate the database
-// rejects as already stored (this table's primary key, or the other table via
-// symbol_reject_shared_uid) is discarded and another is drawn. A collision on
-// the ticker or the exchange spelling is returned as-is: that is not a uid
-// collision, and retrying would burn draws.
+// A candidate outside uidMin..uidMax is discarded. Allocation inserts the uid
+// into symbol_uid first. A unique violation on that registry (or on a listing
+// primary key, or from symbol_reject_shared_uid) is discarded and another uid
+// is drawn. A collision on the ticker or the exchange spelling is returned
+// as-is: that is not a uid collision, and retrying would burn draws. The
+// symbol_uid row is never deleted, so a uid stays taken after the listing is
+// archived.
 func (s *Store) Insert(ctx context.Context, l Listing) (uint64, error) {
 	if !l.Status.Active() {
 		return 0, fmt.Errorf("%w: %s is not an active status", ErrStatus, l.Status)
@@ -167,7 +169,8 @@ func (s *Store) Move(ctx context.Context, uid uint64, status Status, atNs int64)
 		return fmt.Errorf("sym: move: %w", err)
 	}
 	// Delete before the terminal insert. symbol_reject_shared_uid refuses a uid
-	// that is still on the other table. The delete rolls back with the transaction
+	// that is still on the other table; the registry row stays, so it does not
+	// itself make the move legal. The delete rolls back with the transaction
 	// if the insert fails, so a failed move leaves the active row in place.
 	tag, err := tx.Exec(ctx, `DELETE FROM symbol_active WHERE uid = $1`, uid)
 	if err != nil {
@@ -213,6 +216,10 @@ func (s *Store) insertActive(ctx context.Context, uid uint64, l Listing) error {
 	}
 	if l.OptionType != "" {
 		row.OptionType = &l.OptionType
+	}
+	// The registry insert is the allocation. A listing row only references it.
+	if _, err := tx.Exec(ctx, `INSERT INTO symbol_uid (uid) VALUES ($1)`, uid); err != nil {
+		return err
 	}
 	if err := insertListing(ctx, tx, "symbol_active", uid, l.Status, row, l.UpdatedAtNs); err != nil {
 		return err
@@ -364,7 +371,7 @@ func isUIDCollision(err error) bool {
 		return false
 	}
 	switch pgErr.ConstraintName {
-	case "symbol_active_pkey", "symbol_terminal_pkey", "symbol_uid_across_tables":
+	case "symbol_uid_pkey", "symbol_active_pkey", "symbol_terminal_pkey", "symbol_uid_across_tables":
 		return true
 	default:
 		return false
