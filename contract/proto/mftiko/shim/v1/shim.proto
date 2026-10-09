@@ -51,6 +51,7 @@ message ShimRequest {
     Stop stop = 15;
     mftiko.worker.v1.Relay relay = 16;
     Release release = 17;
+    mftiko.worker.v1.Live live = 18;
   }
 }
 
@@ -113,6 +114,7 @@ message Attached {
   Phase phase = 14; // 生命週期的階段（§4.3）；worker 結束後是結束前的最後一個
   mftiko.worker.v1.Exiting exiting = 15; // worker 送的第一則 Exiting；沒送過就沒有（§4.4）
   mftiko.common.v1.ExitInfo exit = 16;   // state 是 EXITED 時的 ExitInfo，與結束檔相同（§4.5 S3）
+  string applied_digest = 17;            // worker 最後一則 Applied 的 digest：它手上的 live config（D111）；沒送過是空的
 }
 
 // shim 記下的生命週期階段（§4.3）。
@@ -148,6 +150,7 @@ message Event {
     mftiko.worker.v1.Exiting exiting = 17;
     mftiko.worker.v1.Stopped stopped = 18;
     Exited exited = 19;
+    mftiko.worker.v1.Applied applied = 20;
   }
 }
 

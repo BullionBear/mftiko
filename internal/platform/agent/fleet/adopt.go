@@ -160,13 +160,12 @@ func (f *Fleet[S, L]) adoptConn(h, sock string, conn *c3.Conn) {
 		Stringer("state", w.obs.State).Msg("adopted")
 }
 
-// observedOf is a worker as its shim's Attached has it. Which live config the worker has applied is not there yet
-// (E1-22): LiveHash is empty, and the one derived from etcd is pushed again. Live config is the whole desired
-// state, applied by diff, so the same one again changes nothing (D111).
+// observedOf is a worker as its shim's Attached has it, the live config it has applied included (D111): nothing
+// is sent again that it already has.
 func observedOf(at *shimv1.Attached) agent.Observed {
 	o := agent.Observed{
 		Key: agent.WorkerKey(at.GetWorker().GetKey()), Incarnation: at.GetWorker().GetIncarnation(),
-		SpecHash: at.GetSpecHash(), Stage: at.GetStage(), Release: at.GetHello().GetRelease(),
+		SpecHash: at.GetSpecHash(), LiveHash: at.GetAppliedDigest(), Stage: at.GetStage(), Release: at.GetHello().GetRelease(),
 		ShimRelease: at.GetShimRelease(), Exit: at.GetExit(),
 	}
 	if ns := at.GetLastBeatAtNs(); ns != 0 {

@@ -88,7 +88,9 @@ type Observed struct {
 	Key         WorkerKey
 	Incarnation uint32
 	SpecHash    string // the spawn spec's Hash
-	LiveHash    string // the Hash of the live config last pushed to it, or spawned with
+	LiveHash    string // the Hash of the live config the worker says it has applied (Applied, D111); "" for none yet
+	Pushed      string // the Hash of the live config last sent to this incarnation, in Init or Live; "" for none
+	PushedAt    time.Time
 	State       State
 	Stage       string // the worker's last Stage
 	Release     string // the worker's, from Hello

@@ -115,11 +115,11 @@ func TestObservedOf(t *testing.T) {
 		{shimv1.WorkerState_WORKER_STATE_EXITED, shimv1.Phase_PHASE_STARTED, agent.StateExited},
 	} {
 		at := &shimv1.Attached{State: c.state, Phase: c.phase, SpecHash: "s", Stage: "warm", ShimRelease: "r",
-			LastBeatAtNs: 1_700_000_000_000_000_000,
-			Worker:       &commonv1.WorkerRef{Key: "td/1", Incarnation: 3}, Hello: &workerv1.Hello{Release: "w"}}
+			LastBeatAtNs: 1_700_000_000_000_000_000, AppliedDigest: "l",
+			Worker: &commonv1.WorkerRef{Key: "td/1", Incarnation: 3}, Hello: &workerv1.Hello{Release: "w"}}
 		o := observedOf(at)
 		if o.State != c.want || o.Key != "td/1" || o.Incarnation != 3 || o.SpecHash != "s" || o.Stage != "warm" ||
-			o.Release != "w" || o.ShimRelease != "r" || o.LiveHash != "" || o.LastBeat.UnixNano() != at.GetLastBeatAtNs() {
+			o.Release != "w" || o.ShimRelease != "r" || o.LiveHash != "l" || o.LastBeat.UnixNano() != at.GetLastBeatAtNs() {
 			t.Errorf("%v %v: %+v, want %s", c.state, c.phase, o, c.want)
 		}
 	}

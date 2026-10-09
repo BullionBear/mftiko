@@ -81,6 +81,7 @@ type view struct {
 	mu         sync.Mutex
 	hello      *workerv1.Hello
 	stage      string
+	applied    string // the digest of the worker's last Applied: the live config it has (D111)
 	lastBeatNs int64
 	phase      shimv1.Phase
 	exiting    bool // the worker sent Exiting: it is ending on its own, or on a Stop it already had
@@ -233,6 +234,7 @@ func (v *view) Attached() *shimv1.Attached {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	a.Hello, a.Stage, a.LastBeatAtNs, a.Phase = proto.CloneOf(v.hello), v.stage, v.lastBeatNs, v.phase
+	a.AppliedDigest = v.applied
 	a.Exiting, a.Exit = proto.CloneOf(v.exitingMsg), proto.CloneOf(v.exit) // exit is set only once recorded
 	a.OldestSeq, a.NextSeq = v.events.Bounds()
 	switch {
@@ -282,6 +284,20 @@ func (v *view) Relay(m *workerv1.Relay) error {
 		return ErrExited
 	}
 	if !v.sendLocked(&workerv1.WorkerDown{Msg: &workerv1.WorkerDown_Relay{Relay: m}}) {
+		return ErrWorkerBusy
+	}
+	return nil
+}
+
+// Live passes a live config to the worker, in any phase, as a Relay goes (PROTOCOL §4.3). The shim keeps nothing of
+// it: what the worker has is what it says in Applied (DECISIONS D111).
+func (v *view) Live(m *workerv1.Live) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.exited() {
+		return ErrExited
+	}
+	if !v.sendLocked(&workerv1.WorkerDown{Msg: &workerv1.WorkerDown_Live{Live: m}}) {
 		return ErrWorkerBusy
 	}
 	return nil
@@ -426,6 +442,9 @@ func (v *view) takeLocked(m *workerv1.WorkerUp, lastBeat *time.Time) (pass *shim
 	case *workerv1.WorkerUp_Stage:
 		v.stage = m.Stage.GetName()
 		v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Stage{Stage: m.Stage}})
+	case *workerv1.WorkerUp_Applied:
+		v.applied = m.Applied.GetDigest()
+		v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Applied{Applied: m.Applied}})
 	case *workerv1.WorkerUp_Done:
 		v.doneLocked(m.Done)
 		v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Done{Done: m.Done}})

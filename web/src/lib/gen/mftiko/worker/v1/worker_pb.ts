@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mftiko/worker/v1/worker.proto.
  */
 export const file_mftiko_worker_v1_worker: GenFile = /*@__PURE__*/
-  fileDesc("Ch1tZnRpa28vd29ya2VyL3YxL3dvcmtlci5wcm90bxIQbWZ0aWtvLndvcmtlci52MSLnAgoIV29ya2VyVXASKAoFaGVsbG8YASABKAsyFy5tZnRpa28ud29ya2VyLnYxLkhlbGxvSAASJgoEZG9uZRgCIAEoCzIWLm1mdGlrby53b3JrZXIudjEuRG9uZUgAEigKBXN0YWdlGAMgASgLMhcubWZ0aWtvLndvcmtlci52MS5TdGFnZUgAEiYKBGJlYXQYBCABKAsyFi5tZnRpa28ud29ya2VyLnYxLkJlYXRIABIqCgZyZXBvcnQYBSABKAsyGC5tZnRpa28ud29ya2VyLnYxLlJlcG9ydEgAEigKBXJlbGF5GAYgASgLMhcubWZ0aWtvLndvcmtlci52MS5SZWxheUgAEiwKB2V4aXRpbmcYByABKAsyGS5tZnRpa28ud29ya2VyLnYxLkV4aXRpbmdIABIsCgdzdG9wcGVkGAggASgLMhkubWZ0aWtvLndvcmtlci52MS5TdG9wcGVkSABCBQoDbXNnIkYKBUhlbGxvEgwKBGtpbmQYASABKAkSDwoHcmVsZWFzZRgCIAEoCRIRCgljb250cmFjdHMYAyADKAkSCwoDcGlkGAQgASgFIkcKBERvbmUSJAoEdmVyYhgBIAEoDjIWLm1mdGlrby53b3JrZXIudjEuVmVyYhIKCgJvaxgCIAEoCBINCgVlcnJvchgDIAEoCSIVCgVTdGFnZRIMCgRuYW1lGAEgASgJIiUKBEJlYXQSCwoDc2VxGAEgASgEEhAKCHByb2dyZXNzGAIgASgMIisKBlJlcG9ydBIQCghjb250cmFjdBgBIAEoCRIPCgdwYXlsb2FkGAIgASgMIjsKBVJlbGF5EhAKCGNvbnRyYWN0GAEgASgJEg8KB2NvcnJfaWQYAiABKAwSDwoHcGF5bG9hZBgDIAEoDCJVCgdFeGl0aW5nEioKB291dGNvbWUYASABKA4yGS5tZnRpa28uY29tbW9uLnYxLk91dGNvbWUSDgoGcmVhc29uGAIgASgJEg4KBmRldGFpbBgDIAEoCSIkCgdTdG9wcGVkEhkKEW9uX3N0b3BfY29tcGxldGVkGAEgASgIIqUCCgpXb3JrZXJEb3duEiYKBGluaXQYASABKAsyFi5tZnRpa28ud29ya2VyLnYxLkluaXRIABIoCgVzdGFydBgCIAEoCzIXLm1mdGlrby53b3JrZXIudjEuU3RhcnRIABImCgRzdG9wGAMgASgLMhYubWZ0aWtvLndvcmtlci52MS5TdG9wSAASKAoFcmVsYXkYBCABKAsyFy5tZnRpa28ud29ya2VyLnYxLlJlbGF5SAASOAoNdW5kZWxpdmVyYWJsZRgFIAEoCzIfLm1mdGlrby53b3JrZXIudjEuVW5kZWxpdmVyYWJsZUgAEjIKCmNvbnRyb2xsZXIYBiABKAsyHC5tZnRpa28ud29ya2VyLnYxLkNvbnRyb2xsZXJIAEIFCgNtc2ciPgoESW5pdBIQCghjb250cmFjdBgBIAEoCRIPCgdwYXlsb2FkGAIgASgMEhMKC2RlYWRsaW5lX21zGAMgASgNIj8KBVN0YXJ0EhAKCGNvbnRyYWN0GAEgASgJEg8KB3BheWxvYWQYAiABKAwSEwoLZGVhZGxpbmVfbXMYAyABKA0iKAoEU3RvcBIOCgZyZWFzb24YASABKAkSEAoIZ3JhY2VfbXMYAiABKA0iIAoNVW5kZWxpdmVyYWJsZRIPCgdjb3JyX2lkGAEgASgMIi0KCkNvbnRyb2xsZXISEAoIYXR0YWNoZWQYASABKAgSDQoFZXBvY2gYAiABKAMqOwoEVmVyYhIUChBWRVJCX1VOU1BFQ0lGSUVEEAASDQoJVkVSQl9JTklUEAESDgoKVkVSQl9TVEFSVBACQkZaRGdpdGh1Yi5jb20vQnVsbGlvbkJlYXIvbWZ0aWtvL2NvbnRyYWN0L2dlbi9tZnRpa28vd29ya2VyL3YxO3dvcmtlcnYxYgZwcm90bzM", [file_mftiko_common_v1_common]);
+  fileDesc("Ch1tZnRpa28vd29ya2VyL3YxL3dvcmtlci5wcm90bxIQbWZ0aWtvLndvcmtlci52MSKVAwoIV29ya2VyVXASKAoFaGVsbG8YASABKAsyFy5tZnRpa28ud29ya2VyLnYxLkhlbGxvSAASJgoEZG9uZRgCIAEoCzIWLm1mdGlrby53b3JrZXIudjEuRG9uZUgAEigKBXN0YWdlGAMgASgLMhcubWZ0aWtvLndvcmtlci52MS5TdGFnZUgAEiYKBGJlYXQYBCABKAsyFi5tZnRpa28ud29ya2VyLnYxLkJlYXRIABIqCgZyZXBvcnQYBSABKAsyGC5tZnRpa28ud29ya2VyLnYxLlJlcG9ydEgAEigKBXJlbGF5GAYgASgLMhcubWZ0aWtvLndvcmtlci52MS5SZWxheUgAEiwKB2V4aXRpbmcYByABKAsyGS5tZnRpa28ud29ya2VyLnYxLkV4aXRpbmdIABIsCgdzdG9wcGVkGAggASgLMhkubWZ0aWtvLndvcmtlci52MS5TdG9wcGVkSAASLAoHYXBwbGllZBgJIAEoCzIZLm1mdGlrby53b3JrZXIudjEuQXBwbGllZEgAQgUKA21zZyJGCgVIZWxsbxIMCgRraW5kGAEgASgJEg8KB3JlbGVhc2UYAiABKAkSEQoJY29udHJhY3RzGAMgAygJEgsKA3BpZBgEIAEoBSJHCgREb25lEiQKBHZlcmIYASABKA4yFi5tZnRpa28ud29ya2VyLnYxLlZlcmISCgoCb2sYAiABKAgSDQoFZXJyb3IYAyABKAkiFQoFU3RhZ2USDAoEbmFtZRgBIAEoCSIlCgRCZWF0EgsKA3NlcRgBIAEoBBIQCghwcm9ncmVzcxgCIAEoDCIrCgZSZXBvcnQSEAoIY29udHJhY3QYASABKAkSDwoHcGF5bG9hZBgCIAEoDCI7CgVSZWxheRIQCghjb250cmFjdBgBIAEoCRIPCgdjb3JyX2lkGAIgASgMEg8KB3BheWxvYWQYAyABKAwiVQoHRXhpdGluZxIqCgdvdXRjb21lGAEgASgOMhkubWZ0aWtvLmNvbW1vbi52MS5PdXRjb21lEg4KBnJlYXNvbhgCIAEoCRIOCgZkZXRhaWwYAyABKAkiJAoHU3RvcHBlZBIZChFvbl9zdG9wX2NvbXBsZXRlZBgBIAEoCCIZCgdBcHBsaWVkEg4KBmRpZ2VzdBgBIAEoCSLNAgoKV29ya2VyRG93bhImCgRpbml0GAEgASgLMhYubWZ0aWtvLndvcmtlci52MS5Jbml0SAASKAoFc3RhcnQYAiABKAsyFy5tZnRpa28ud29ya2VyLnYxLlN0YXJ0SAASJgoEc3RvcBgDIAEoCzIWLm1mdGlrby53b3JrZXIudjEuU3RvcEgAEigKBXJlbGF5GAQgASgLMhcubWZ0aWtvLndvcmtlci52MS5SZWxheUgAEjgKDXVuZGVsaXZlcmFibGUYBSABKAsyHy5tZnRpa28ud29ya2VyLnYxLlVuZGVsaXZlcmFibGVIABIyCgpjb250cm9sbGVyGAYgASgLMhwubWZ0aWtvLndvcmtlci52MS5Db250cm9sbGVySAASJgoEbGl2ZRgHIAEoCzIWLm1mdGlrby53b3JrZXIudjEuTGl2ZUgAQgUKA21zZyJTCgRJbml0EhAKCGNvbnRyYWN0GAEgASgJEg8KB3BheWxvYWQYAiABKAwSEwoLZGVhZGxpbmVfbXMYAyABKA0SEwoLbGl2ZV9kaWdlc3QYBCABKAkiPwoFU3RhcnQSEAoIY29udHJhY3QYASABKAkSDwoHcGF5bG9hZBgCIAEoDBITCgtkZWFkbGluZV9tcxgDIAEoDSIoCgRTdG9wEg4KBnJlYXNvbhgBIAEoCRIQCghncmFjZV9tcxgCIAEoDSI5CgRMaXZlEhAKCGNvbnRyYWN0GAEgASgJEg8KB3BheWxvYWQYAiABKAwSDgoGZGlnZXN0GAMgASgJIiAKDVVuZGVsaXZlcmFibGUSDwoHY29ycl9pZBgBIAEoDCItCgpDb250cm9sbGVyEhAKCGF0dGFjaGVkGAEgASgIEg0KBWVwb2NoGAIgASgDKjsKBFZlcmISFAoQVkVSQl9VTlNQRUNJRklFRBAAEg0KCVZFUkJfSU5JVBABEg4KClZFUkJfU1RBUlQQAkJGWkRnaXRodWIuY29tL0J1bGxpb25CZWFyL21mdGlrby9jb250cmFjdC9nZW4vbWZ0aWtvL3dvcmtlci92MTt3b3JrZXJ2MWIGcHJvdG8z", [file_mftiko_common_v1_common]);
 
 /**
  * @generated from message mftiko.worker.v1.WorkerUp
@@ -71,6 +71,12 @@ export type WorkerUp = Message<"mftiko.worker.v1.WorkerUp"> & {
      */
     value: Stopped;
     case: "stopped";
+  } | {
+    /**
+     * @generated from field: mftiko.worker.v1.Applied applied = 9;
+     */
+    value: Applied;
+    case: "applied";
   } | { case: undefined; value?: undefined };
 };
 
@@ -279,6 +285,26 @@ export const StoppedSchema: GenMessage<Stopped> = /*@__PURE__*/
   messageDesc(file_mftiko_worker_v1_worker, 8);
 
 /**
+ * worker 已經套用的 live config（DECISIONS D111）：Init 成功之後回報 Init.live_digest，套用一則 Live 之後回報它的 digest。
+ * 套用失敗就不送；agent 照它判斷 worker 手上是哪一份。
+ *
+ * @generated from message mftiko.worker.v1.Applied
+ */
+export type Applied = Message<"mftiko.worker.v1.Applied"> & {
+  /**
+   * @generated from field: string digest = 1;
+   */
+  digest: string;
+};
+
+/**
+ * Describes the message mftiko.worker.v1.Applied.
+ * Use `create(AppliedSchema)` to create a new message.
+ */
+export const AppliedSchema: GenMessage<Applied> = /*@__PURE__*/
+  messageDesc(file_mftiko_worker_v1_worker, 9);
+
+/**
  * @generated from message mftiko.worker.v1.WorkerDown
  */
 export type WorkerDown = Message<"mftiko.worker.v1.WorkerDown"> & {
@@ -321,6 +347,12 @@ export type WorkerDown = Message<"mftiko.worker.v1.WorkerDown"> & {
      */
     value: Controller;
     case: "controller";
+  } | {
+    /**
+     * @generated from field: mftiko.worker.v1.Live live = 7;
+     */
+    value: Live;
+    case: "live";
   } | { case: undefined; value?: undefined };
 };
 
@@ -329,7 +361,7 @@ export type WorkerDown = Message<"mftiko.worker.v1.WorkerDown"> & {
  * Use `create(WorkerDownSchema)` to create a new message.
  */
 export const WorkerDownSchema: GenMessage<WorkerDown> = /*@__PURE__*/
-  messageDesc(file_mftiko_worker_v1_worker, 9);
+  messageDesc(file_mftiko_worker_v1_worker, 10);
 
 /**
  * @generated from message mftiko.worker.v1.Init
@@ -351,6 +383,13 @@ export type Init = Message<"mftiko.worker.v1.Init"> & {
    * @generated from field: uint32 deadline_ms = 3;
    */
   deadlineMs: number;
+
+  /**
+   * payload 裡初始 live config 的 digest；Init 成功之後以 Applied 回報
+   *
+   * @generated from field: string live_digest = 4;
+   */
+  liveDigest: string;
 };
 
 /**
@@ -358,7 +397,7 @@ export type Init = Message<"mftiko.worker.v1.Init"> & {
  * Use `create(InitSchema)` to create a new message.
  */
 export const InitSchema: GenMessage<Init> = /*@__PURE__*/
-  messageDesc(file_mftiko_worker_v1_worker, 10);
+  messageDesc(file_mftiko_worker_v1_worker, 11);
 
 /**
  * @generated from message mftiko.worker.v1.Start
@@ -387,7 +426,7 @@ export type Start = Message<"mftiko.worker.v1.Start"> & {
  * Use `create(StartSchema)` to create a new message.
  */
 export const StartSchema: GenMessage<Start> = /*@__PURE__*/
-  messageDesc(file_mftiko_worker_v1_worker, 11);
+  messageDesc(file_mftiko_worker_v1_worker, 12);
 
 /**
  * @generated from message mftiko.worker.v1.Stop
@@ -409,7 +448,40 @@ export type Stop = Message<"mftiko.worker.v1.Stop"> & {
  * Use `create(StopSchema)` to create a new message.
  */
 export const StopSchema: GenMessage<Stop> = /*@__PURE__*/
-  messageDesc(file_mftiko_worker_v1_worker, 12);
+  messageDesc(file_mftiko_worker_v1_worker, 13);
+
+/**
+ * live config：完整的期望狀態，不是增量；worker 以 diff 套用，收到和手上相同的就什麼都不做（DECISIONS D111）。
+ *
+ * @generated from message mftiko.worker.v1.Live
+ */
+export type Live = Message<"mftiko.worker.v1.Live"> & {
+  /**
+   * @generated from field: string contract = 1;
+   */
+  contract: string;
+
+  /**
+   * 該平面 C5 的 live config
+   *
+   * @generated from field: bytes payload = 2;
+   */
+  payload: Uint8Array;
+
+  /**
+   * agent 算的，worker 不解讀，套用之後以 Applied 原樣回報
+   *
+   * @generated from field: string digest = 3;
+   */
+  digest: string;
+};
+
+/**
+ * Describes the message mftiko.worker.v1.Live.
+ * Use `create(LiveSchema)` to create a new message.
+ */
+export const LiveSchema: GenMessage<Live> = /*@__PURE__*/
+  messageDesc(file_mftiko_worker_v1_worker, 14);
 
 /**
  * @generated from message mftiko.worker.v1.Undeliverable
@@ -426,7 +498,7 @@ export type Undeliverable = Message<"mftiko.worker.v1.Undeliverable"> & {
  * Use `create(UndeliverableSchema)` to create a new message.
  */
 export const UndeliverableSchema: GenMessage<Undeliverable> = /*@__PURE__*/
-  messageDesc(file_mftiko_worker_v1_worker, 13);
+  messageDesc(file_mftiko_worker_v1_worker, 15);
 
 /**
  * @generated from message mftiko.worker.v1.Controller
@@ -448,7 +520,7 @@ export type Controller = Message<"mftiko.worker.v1.Controller"> & {
  * Use `create(ControllerSchema)` to create a new message.
  */
 export const ControllerSchema: GenMessage<Controller> = /*@__PURE__*/
-  messageDesc(file_mftiko_worker_v1_worker, 14);
+  messageDesc(file_mftiko_worker_v1_worker, 16);
 
 /**
  * @generated from enum mftiko.worker.v1.Verb

@@ -85,6 +85,7 @@ type WorkerUp struct {
 	//	*WorkerUp_Relay
 	//	*WorkerUp_Exiting
 	//	*WorkerUp_Stopped
+	//	*WorkerUp_Applied
 	Msg           isWorkerUp_Msg `protobuf_oneof:"msg"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -199,6 +200,15 @@ func (x *WorkerUp) GetStopped() *Stopped {
 	return nil
 }
 
+func (x *WorkerUp) GetApplied() *Applied {
+	if x != nil {
+		if x, ok := x.Msg.(*WorkerUp_Applied); ok {
+			return x.Applied
+		}
+	}
+	return nil
+}
+
 type isWorkerUp_Msg interface {
 	isWorkerUp_Msg()
 }
@@ -235,6 +245,10 @@ type WorkerUp_Stopped struct {
 	Stopped *Stopped `protobuf:"bytes,8,opt,name=stopped,proto3,oneof"`
 }
 
+type WorkerUp_Applied struct {
+	Applied *Applied `protobuf:"bytes,9,opt,name=applied,proto3,oneof"`
+}
+
 func (*WorkerUp_Hello) isWorkerUp_Msg() {}
 
 func (*WorkerUp_Done) isWorkerUp_Msg() {}
@@ -250,6 +264,8 @@ func (*WorkerUp_Relay) isWorkerUp_Msg() {}
 func (*WorkerUp_Exiting) isWorkerUp_Msg() {}
 
 func (*WorkerUp_Stopped) isWorkerUp_Msg() {}
+
+func (*WorkerUp_Applied) isWorkerUp_Msg() {}
 
 type Hello struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -691,6 +707,52 @@ func (x *Stopped) GetOnStopCompleted() bool {
 	return false
 }
 
+// worker 已經套用的 live config（DECISIONS D111）：Init 成功之後回報 Init.live_digest，套用一則 Live 之後回報它的 digest。
+// 套用失敗就不送；agent 照它判斷 worker 手上是哪一份。
+type Applied struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Digest        string                 `protobuf:"bytes,1,opt,name=digest,proto3" json:"digest,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Applied) Reset() {
+	*x = Applied{}
+	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Applied) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Applied) ProtoMessage() {}
+
+func (x *Applied) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Applied.ProtoReflect.Descriptor instead.
+func (*Applied) Descriptor() ([]byte, []int) {
+	return file_mftiko_worker_v1_worker_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *Applied) GetDigest() string {
+	if x != nil {
+		return x.Digest
+	}
+	return ""
+}
+
 type WorkerDown struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Msg:
@@ -701,6 +763,7 @@ type WorkerDown struct {
 	//	*WorkerDown_Relay
 	//	*WorkerDown_Undeliverable
 	//	*WorkerDown_Controller
+	//	*WorkerDown_Live
 	Msg           isWorkerDown_Msg `protobuf_oneof:"msg"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -708,7 +771,7 @@ type WorkerDown struct {
 
 func (x *WorkerDown) Reset() {
 	*x = WorkerDown{}
-	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[9]
+	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -720,7 +783,7 @@ func (x *WorkerDown) String() string {
 func (*WorkerDown) ProtoMessage() {}
 
 func (x *WorkerDown) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[9]
+	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -733,7 +796,7 @@ func (x *WorkerDown) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerDown.ProtoReflect.Descriptor instead.
 func (*WorkerDown) Descriptor() ([]byte, []int) {
-	return file_mftiko_worker_v1_worker_proto_rawDescGZIP(), []int{9}
+	return file_mftiko_worker_v1_worker_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *WorkerDown) GetMsg() isWorkerDown_Msg {
@@ -797,6 +860,15 @@ func (x *WorkerDown) GetController() *Controller {
 	return nil
 }
 
+func (x *WorkerDown) GetLive() *Live {
+	if x != nil {
+		if x, ok := x.Msg.(*WorkerDown_Live); ok {
+			return x.Live
+		}
+	}
+	return nil
+}
+
 type isWorkerDown_Msg interface {
 	isWorkerDown_Msg()
 }
@@ -825,6 +897,10 @@ type WorkerDown_Controller struct {
 	Controller *Controller `protobuf:"bytes,6,opt,name=controller,proto3,oneof"`
 }
 
+type WorkerDown_Live struct {
+	Live *Live `protobuf:"bytes,7,opt,name=live,proto3,oneof"`
+}
+
 func (*WorkerDown_Init) isWorkerDown_Msg() {}
 
 func (*WorkerDown_Start) isWorkerDown_Msg() {}
@@ -837,18 +913,21 @@ func (*WorkerDown_Undeliverable) isWorkerDown_Msg() {}
 
 func (*WorkerDown_Controller) isWorkerDown_Msg() {}
 
+func (*WorkerDown_Live) isWorkerDown_Msg() {}
+
 type Init struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Contract      string                 `protobuf:"bytes,1,opt,name=contract,proto3" json:"contract,omitempty"`
 	Payload       []byte                 `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"` // 該平面 C5 的 InitPayload
 	DeadlineMs    uint32                 `protobuf:"varint,3,opt,name=deadline_ms,json=deadlineMs,proto3" json:"deadline_ms,omitempty"`
+	LiveDigest    string                 `protobuf:"bytes,4,opt,name=live_digest,json=liveDigest,proto3" json:"live_digest,omitempty"` // payload 裡初始 live config 的 digest；Init 成功之後以 Applied 回報
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Init) Reset() {
 	*x = Init{}
-	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[10]
+	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -860,7 +939,7 @@ func (x *Init) String() string {
 func (*Init) ProtoMessage() {}
 
 func (x *Init) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[10]
+	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -873,7 +952,7 @@ func (x *Init) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Init.ProtoReflect.Descriptor instead.
 func (*Init) Descriptor() ([]byte, []int) {
-	return file_mftiko_worker_v1_worker_proto_rawDescGZIP(), []int{10}
+	return file_mftiko_worker_v1_worker_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Init) GetContract() string {
@@ -897,6 +976,13 @@ func (x *Init) GetDeadlineMs() uint32 {
 	return 0
 }
 
+func (x *Init) GetLiveDigest() string {
+	if x != nil {
+		return x.LiveDigest
+	}
+	return ""
+}
+
 type Start struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Contract      string                 `protobuf:"bytes,1,opt,name=contract,proto3" json:"contract,omitempty"`
@@ -908,7 +994,7 @@ type Start struct {
 
 func (x *Start) Reset() {
 	*x = Start{}
-	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[11]
+	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -920,7 +1006,7 @@ func (x *Start) String() string {
 func (*Start) ProtoMessage() {}
 
 func (x *Start) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[11]
+	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -933,7 +1019,7 @@ func (x *Start) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Start.ProtoReflect.Descriptor instead.
 func (*Start) Descriptor() ([]byte, []int) {
-	return file_mftiko_worker_v1_worker_proto_rawDescGZIP(), []int{11}
+	return file_mftiko_worker_v1_worker_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Start) GetContract() string {
@@ -967,7 +1053,7 @@ type Stop struct {
 
 func (x *Stop) Reset() {
 	*x = Stop{}
-	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[12]
+	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -979,7 +1065,7 @@ func (x *Stop) String() string {
 func (*Stop) ProtoMessage() {}
 
 func (x *Stop) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[12]
+	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -992,7 +1078,7 @@ func (x *Stop) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Stop.ProtoReflect.Descriptor instead.
 func (*Stop) Descriptor() ([]byte, []int) {
-	return file_mftiko_worker_v1_worker_proto_rawDescGZIP(), []int{12}
+	return file_mftiko_worker_v1_worker_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Stop) GetReason() string {
@@ -1009,6 +1095,67 @@ func (x *Stop) GetGraceMs() uint32 {
 	return 0
 }
 
+// live config：完整的期望狀態，不是增量；worker 以 diff 套用，收到和手上相同的就什麼都不做（DECISIONS D111）。
+type Live struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Contract      string                 `protobuf:"bytes,1,opt,name=contract,proto3" json:"contract,omitempty"`
+	Payload       []byte                 `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"` // 該平面 C5 的 live config
+	Digest        string                 `protobuf:"bytes,3,opt,name=digest,proto3" json:"digest,omitempty"`   // agent 算的，worker 不解讀，套用之後以 Applied 原樣回報
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Live) Reset() {
+	*x = Live{}
+	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Live) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Live) ProtoMessage() {}
+
+func (x *Live) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Live.ProtoReflect.Descriptor instead.
+func (*Live) Descriptor() ([]byte, []int) {
+	return file_mftiko_worker_v1_worker_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *Live) GetContract() string {
+	if x != nil {
+		return x.Contract
+	}
+	return ""
+}
+
+func (x *Live) GetPayload() []byte {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *Live) GetDigest() string {
+	if x != nil {
+		return x.Digest
+	}
+	return ""
+}
+
 type Undeliverable struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	CorrId        []byte                 `protobuf:"bytes,1,opt,name=corr_id,json=corrId,proto3" json:"corr_id,omitempty"`
@@ -1018,7 +1165,7 @@ type Undeliverable struct {
 
 func (x *Undeliverable) Reset() {
 	*x = Undeliverable{}
-	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[13]
+	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1030,7 +1177,7 @@ func (x *Undeliverable) String() string {
 func (*Undeliverable) ProtoMessage() {}
 
 func (x *Undeliverable) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[13]
+	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1043,7 +1190,7 @@ func (x *Undeliverable) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Undeliverable.ProtoReflect.Descriptor instead.
 func (*Undeliverable) Descriptor() ([]byte, []int) {
-	return file_mftiko_worker_v1_worker_proto_rawDescGZIP(), []int{13}
+	return file_mftiko_worker_v1_worker_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *Undeliverable) GetCorrId() []byte {
@@ -1063,7 +1210,7 @@ type Controller struct {
 
 func (x *Controller) Reset() {
 	*x = Controller{}
-	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[14]
+	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1075,7 +1222,7 @@ func (x *Controller) String() string {
 func (*Controller) ProtoMessage() {}
 
 func (x *Controller) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[14]
+	mi := &file_mftiko_worker_v1_worker_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1088,7 +1235,7 @@ func (x *Controller) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Controller.ProtoReflect.Descriptor instead.
 func (*Controller) Descriptor() ([]byte, []int) {
-	return file_mftiko_worker_v1_worker_proto_rawDescGZIP(), []int{14}
+	return file_mftiko_worker_v1_worker_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Controller) GetAttached() bool {
@@ -1109,7 +1256,7 @@ var File_mftiko_worker_v1_worker_proto protoreflect.FileDescriptor
 
 const file_mftiko_worker_v1_worker_proto_rawDesc = "" +
 	"\n" +
-	"\x1dmftiko/worker/v1/worker.proto\x12\x10mftiko.worker.v1\x1a\x1dmftiko/common/v1/common.proto\"\xa2\x03\n" +
+	"\x1dmftiko/worker/v1/worker.proto\x12\x10mftiko.worker.v1\x1a\x1dmftiko/common/v1/common.proto\"\xd9\x03\n" +
 	"\bWorkerUp\x12/\n" +
 	"\x05hello\x18\x01 \x01(\v2\x17.mftiko.worker.v1.HelloH\x00R\x05hello\x12,\n" +
 	"\x04done\x18\x02 \x01(\v2\x16.mftiko.worker.v1.DoneH\x00R\x04done\x12/\n" +
@@ -1118,7 +1265,8 @@ const file_mftiko_worker_v1_worker_proto_rawDesc = "" +
 	"\x06report\x18\x05 \x01(\v2\x18.mftiko.worker.v1.ReportH\x00R\x06report\x12/\n" +
 	"\x05relay\x18\x06 \x01(\v2\x17.mftiko.worker.v1.RelayH\x00R\x05relay\x125\n" +
 	"\aexiting\x18\a \x01(\v2\x19.mftiko.worker.v1.ExitingH\x00R\aexiting\x125\n" +
-	"\astopped\x18\b \x01(\v2\x19.mftiko.worker.v1.StoppedH\x00R\astoppedB\x05\n" +
+	"\astopped\x18\b \x01(\v2\x19.mftiko.worker.v1.StoppedH\x00R\astopped\x125\n" +
+	"\aapplied\x18\t \x01(\v2\x19.mftiko.worker.v1.AppliedH\x00R\aappliedB\x05\n" +
 	"\x03msg\"e\n" +
 	"\x05Hello\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x18\n" +
@@ -1146,7 +1294,9 @@ const file_mftiko_worker_v1_worker_proto_rawDesc = "" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\x12\x16\n" +
 	"\x06detail\x18\x03 \x01(\tR\x06detail\"5\n" +
 	"\aStopped\x12*\n" +
-	"\x11on_stop_completed\x18\x01 \x01(\bR\x0fonStopCompleted\"\xda\x02\n" +
+	"\x11on_stop_completed\x18\x01 \x01(\bR\x0fonStopCompleted\"!\n" +
+	"\aApplied\x12\x16\n" +
+	"\x06digest\x18\x01 \x01(\tR\x06digest\"\x88\x03\n" +
 	"\n" +
 	"WorkerDown\x12,\n" +
 	"\x04init\x18\x01 \x01(\v2\x16.mftiko.worker.v1.InitH\x00R\x04init\x12/\n" +
@@ -1156,13 +1306,16 @@ const file_mftiko_worker_v1_worker_proto_rawDesc = "" +
 	"\rundeliverable\x18\x05 \x01(\v2\x1f.mftiko.worker.v1.UndeliverableH\x00R\rundeliverable\x12>\n" +
 	"\n" +
 	"controller\x18\x06 \x01(\v2\x1c.mftiko.worker.v1.ControllerH\x00R\n" +
-	"controllerB\x05\n" +
-	"\x03msg\"]\n" +
+	"controller\x12,\n" +
+	"\x04live\x18\a \x01(\v2\x16.mftiko.worker.v1.LiveH\x00R\x04liveB\x05\n" +
+	"\x03msg\"~\n" +
 	"\x04Init\x12\x1a\n" +
 	"\bcontract\x18\x01 \x01(\tR\bcontract\x12\x18\n" +
 	"\apayload\x18\x02 \x01(\fR\apayload\x12\x1f\n" +
 	"\vdeadline_ms\x18\x03 \x01(\rR\n" +
-	"deadlineMs\"^\n" +
+	"deadlineMs\x12\x1f\n" +
+	"\vlive_digest\x18\x04 \x01(\tR\n" +
+	"liveDigest\"^\n" +
 	"\x05Start\x12\x1a\n" +
 	"\bcontract\x18\x01 \x01(\tR\bcontract\x12\x18\n" +
 	"\apayload\x18\x02 \x01(\fR\apayload\x12\x1f\n" +
@@ -1170,7 +1323,11 @@ const file_mftiko_worker_v1_worker_proto_rawDesc = "" +
 	"deadlineMs\"9\n" +
 	"\x04Stop\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason\x12\x19\n" +
-	"\bgrace_ms\x18\x02 \x01(\rR\agraceMs\"(\n" +
+	"\bgrace_ms\x18\x02 \x01(\rR\agraceMs\"T\n" +
+	"\x04Live\x12\x1a\n" +
+	"\bcontract\x18\x01 \x01(\tR\bcontract\x12\x18\n" +
+	"\apayload\x18\x02 \x01(\fR\apayload\x12\x16\n" +
+	"\x06digest\x18\x03 \x01(\tR\x06digest\"(\n" +
 	"\rUndeliverable\x12\x17\n" +
 	"\acorr_id\x18\x01 \x01(\fR\x06corrId\">\n" +
 	"\n" +
@@ -1196,7 +1353,7 @@ func file_mftiko_worker_v1_worker_proto_rawDescGZIP() []byte {
 }
 
 var file_mftiko_worker_v1_worker_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_mftiko_worker_v1_worker_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_mftiko_worker_v1_worker_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_mftiko_worker_v1_worker_proto_goTypes = []any{
 	(Verb)(0),             // 0: mftiko.worker.v1.Verb
 	(*WorkerUp)(nil),      // 1: mftiko.worker.v1.WorkerUp
@@ -1208,13 +1365,15 @@ var file_mftiko_worker_v1_worker_proto_goTypes = []any{
 	(*Relay)(nil),         // 7: mftiko.worker.v1.Relay
 	(*Exiting)(nil),       // 8: mftiko.worker.v1.Exiting
 	(*Stopped)(nil),       // 9: mftiko.worker.v1.Stopped
-	(*WorkerDown)(nil),    // 10: mftiko.worker.v1.WorkerDown
-	(*Init)(nil),          // 11: mftiko.worker.v1.Init
-	(*Start)(nil),         // 12: mftiko.worker.v1.Start
-	(*Stop)(nil),          // 13: mftiko.worker.v1.Stop
-	(*Undeliverable)(nil), // 14: mftiko.worker.v1.Undeliverable
-	(*Controller)(nil),    // 15: mftiko.worker.v1.Controller
-	(v1.Outcome)(0),       // 16: mftiko.common.v1.Outcome
+	(*Applied)(nil),       // 10: mftiko.worker.v1.Applied
+	(*WorkerDown)(nil),    // 11: mftiko.worker.v1.WorkerDown
+	(*Init)(nil),          // 12: mftiko.worker.v1.Init
+	(*Start)(nil),         // 13: mftiko.worker.v1.Start
+	(*Stop)(nil),          // 14: mftiko.worker.v1.Stop
+	(*Live)(nil),          // 15: mftiko.worker.v1.Live
+	(*Undeliverable)(nil), // 16: mftiko.worker.v1.Undeliverable
+	(*Controller)(nil),    // 17: mftiko.worker.v1.Controller
+	(v1.Outcome)(0),       // 18: mftiko.common.v1.Outcome
 }
 var file_mftiko_worker_v1_worker_proto_depIdxs = []int32{
 	2,  // 0: mftiko.worker.v1.WorkerUp.hello:type_name -> mftiko.worker.v1.Hello
@@ -1225,19 +1384,21 @@ var file_mftiko_worker_v1_worker_proto_depIdxs = []int32{
 	7,  // 5: mftiko.worker.v1.WorkerUp.relay:type_name -> mftiko.worker.v1.Relay
 	8,  // 6: mftiko.worker.v1.WorkerUp.exiting:type_name -> mftiko.worker.v1.Exiting
 	9,  // 7: mftiko.worker.v1.WorkerUp.stopped:type_name -> mftiko.worker.v1.Stopped
-	0,  // 8: mftiko.worker.v1.Done.verb:type_name -> mftiko.worker.v1.Verb
-	16, // 9: mftiko.worker.v1.Exiting.outcome:type_name -> mftiko.common.v1.Outcome
-	11, // 10: mftiko.worker.v1.WorkerDown.init:type_name -> mftiko.worker.v1.Init
-	12, // 11: mftiko.worker.v1.WorkerDown.start:type_name -> mftiko.worker.v1.Start
-	13, // 12: mftiko.worker.v1.WorkerDown.stop:type_name -> mftiko.worker.v1.Stop
-	7,  // 13: mftiko.worker.v1.WorkerDown.relay:type_name -> mftiko.worker.v1.Relay
-	14, // 14: mftiko.worker.v1.WorkerDown.undeliverable:type_name -> mftiko.worker.v1.Undeliverable
-	15, // 15: mftiko.worker.v1.WorkerDown.controller:type_name -> mftiko.worker.v1.Controller
-	16, // [16:16] is the sub-list for method output_type
-	16, // [16:16] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	10, // 8: mftiko.worker.v1.WorkerUp.applied:type_name -> mftiko.worker.v1.Applied
+	0,  // 9: mftiko.worker.v1.Done.verb:type_name -> mftiko.worker.v1.Verb
+	18, // 10: mftiko.worker.v1.Exiting.outcome:type_name -> mftiko.common.v1.Outcome
+	12, // 11: mftiko.worker.v1.WorkerDown.init:type_name -> mftiko.worker.v1.Init
+	13, // 12: mftiko.worker.v1.WorkerDown.start:type_name -> mftiko.worker.v1.Start
+	14, // 13: mftiko.worker.v1.WorkerDown.stop:type_name -> mftiko.worker.v1.Stop
+	7,  // 14: mftiko.worker.v1.WorkerDown.relay:type_name -> mftiko.worker.v1.Relay
+	16, // 15: mftiko.worker.v1.WorkerDown.undeliverable:type_name -> mftiko.worker.v1.Undeliverable
+	17, // 16: mftiko.worker.v1.WorkerDown.controller:type_name -> mftiko.worker.v1.Controller
+	15, // 17: mftiko.worker.v1.WorkerDown.live:type_name -> mftiko.worker.v1.Live
+	18, // [18:18] is the sub-list for method output_type
+	18, // [18:18] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_mftiko_worker_v1_worker_proto_init() }
@@ -1254,14 +1415,16 @@ func file_mftiko_worker_v1_worker_proto_init() {
 		(*WorkerUp_Relay)(nil),
 		(*WorkerUp_Exiting)(nil),
 		(*WorkerUp_Stopped)(nil),
+		(*WorkerUp_Applied)(nil),
 	}
-	file_mftiko_worker_v1_worker_proto_msgTypes[9].OneofWrappers = []any{
+	file_mftiko_worker_v1_worker_proto_msgTypes[10].OneofWrappers = []any{
 		(*WorkerDown_Init)(nil),
 		(*WorkerDown_Start)(nil),
 		(*WorkerDown_Stop)(nil),
 		(*WorkerDown_Relay)(nil),
 		(*WorkerDown_Undeliverable)(nil),
 		(*WorkerDown_Controller)(nil),
+		(*WorkerDown_Live)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1269,7 +1432,7 @@ func file_mftiko_worker_v1_worker_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mftiko_worker_v1_worker_proto_rawDesc), len(file_mftiko_worker_v1_worker_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   15,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

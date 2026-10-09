@@ -32,7 +32,7 @@ import (
 // Worker is one demand entry: a fake worker, named by the entry's key after demand/.
 type Worker struct {
 	Script fakeworker.Script `json:"script"`
-	Live   string            `json:"live,omitempty"` // the live config: pushed when it changes, echoed by the worker
+	Live   string            `json:"live,omitempty"` // the live config: pushed until the worker says it has applied it
 	Hold   bool              `json:"hold,omitempty"` // do not Start it: as an STS session before the controller's start
 }
 
@@ -117,8 +117,8 @@ func (Program) Start(agent.WorkerKey, Spec) (*workerv1.Start, error) {
 	return &workerv1.Start{Contract: fakeworker.Contract}, nil
 }
 
-func (Program) Push(_ agent.WorkerKey, live Live) (*workerv1.Relay, error) {
-	return &workerv1.Relay{Contract: fakeworker.Contract, CorrId: []byte("live"), Payload: []byte(live)}, nil
+func (Program) Push(_ agent.WorkerKey, live Live) (*workerv1.Live, error) {
+	return &workerv1.Live{Contract: fakeworker.Contract, Payload: []byte(live)}, nil
 }
 
 // Config is one test-plane agent.
@@ -137,6 +137,7 @@ type Config struct {
 
 	Resync     time.Duration
 	StaleAfter time.Duration
+	LiveRetry  time.Duration
 	Mirror     state.MirrorOptions
 	Started    func(pid int) // each shim's pid
 	Log        zerolog.Logger
@@ -191,6 +192,6 @@ func Run(ctx context.Context, cfg Config) error {
 	return runner.Run(ctx, runner.Config[Entry, Spec, Live]{
 		Term: term, Demand: m, Statuses: reader, Decode: Decode, Planner: Planner{Plane: cfg.Plane},
 		Policy: policy, Fleet: f, Release: "testplane",
-		Resync: cfg.Resync, StaleAfter: cfg.StaleAfter, Log: cfg.Log,
+		Resync: cfg.Resync, StaleAfter: cfg.StaleAfter, LiveRetry: cfg.LiveRetry, Log: cfg.Log,
 	})
 }

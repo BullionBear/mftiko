@@ -391,6 +391,7 @@ type ShimRequest struct {
 	//	*ShimRequest_Stop
 	//	*ShimRequest_Relay
 	//	*ShimRequest_Release
+	//	*ShimRequest_Live
 	Op            isShimRequest_Op `protobuf_oneof:"op"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -512,6 +513,15 @@ func (x *ShimRequest) GetRelease() *Release {
 	return nil
 }
 
+func (x *ShimRequest) GetLive() *v11.Live {
+	if x != nil {
+		if x, ok := x.Op.(*ShimRequest_Live); ok {
+			return x.Live
+		}
+	}
+	return nil
+}
+
 type isShimRequest_Op interface {
 	isShimRequest_Op()
 }
@@ -548,6 +558,10 @@ type ShimRequest_Release struct {
 	Release *Release `protobuf:"bytes,17,opt,name=release,proto3,oneof"`
 }
 
+type ShimRequest_Live struct {
+	Live *v11.Live `protobuf:"bytes,18,opt,name=live,proto3,oneof"`
+}
+
 func (*ShimRequest_Attach) isShimRequest_Op() {}
 
 func (*ShimRequest_Ack) isShimRequest_Op() {}
@@ -563,6 +577,8 @@ func (*ShimRequest_Stop) isShimRequest_Op() {}
 func (*ShimRequest_Relay) isShimRequest_Op() {}
 
 func (*ShimRequest_Release) isShimRequest_Op() {}
+
+func (*ShimRequest_Live) isShimRequest_Op() {}
 
 type Attach struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1013,9 +1029,10 @@ type Attached struct {
 	OldestSeq     uint64                 `protobuf:"varint,11,opt,name=oldest_seq,json=oldestSeq,proto3" json:"oldest_seq,omitempty"`
 	NextSeq       uint64                 `protobuf:"varint,12,opt,name=next_seq,json=nextSeq,proto3" json:"next_seq,omitempty"` // 這份快照的時間點：反映了 seq < next_seq 的每一則事件，不含 seq ≥ next_seq 的任何一則（§4.4）
 	LastBeatAtNs  int64                  `protobuf:"varint,13,opt,name=last_beat_at_ns,json=lastBeatAtNs,proto3" json:"last_beat_at_ns,omitempty"`
-	Phase         Phase                  `protobuf:"varint,14,opt,name=phase,proto3,enum=mftiko.shim.v1.Phase" json:"phase,omitempty"` // 生命週期的階段（§4.3）；worker 結束後是結束前的最後一個
-	Exiting       *v11.Exiting           `protobuf:"bytes,15,opt,name=exiting,proto3" json:"exiting,omitempty"`                        // worker 送的第一則 Exiting；沒送過就沒有（§4.4）
-	Exit          *v1.ExitInfo           `protobuf:"bytes,16,opt,name=exit,proto3" json:"exit,omitempty"`                              // state 是 EXITED 時的 ExitInfo，與結束檔相同（§4.5 S3）
+	Phase         Phase                  `protobuf:"varint,14,opt,name=phase,proto3,enum=mftiko.shim.v1.Phase" json:"phase,omitempty"`           // 生命週期的階段（§4.3）；worker 結束後是結束前的最後一個
+	Exiting       *v11.Exiting           `protobuf:"bytes,15,opt,name=exiting,proto3" json:"exiting,omitempty"`                                  // worker 送的第一則 Exiting；沒送過就沒有（§4.4）
+	Exit          *v1.ExitInfo           `protobuf:"bytes,16,opt,name=exit,proto3" json:"exit,omitempty"`                                        // state 是 EXITED 時的 ExitInfo，與結束檔相同（§4.5 S3）
+	AppliedDigest string                 `protobuf:"bytes,17,opt,name=applied_digest,json=appliedDigest,proto3" json:"applied_digest,omitempty"` // worker 最後一則 Applied 的 digest：它手上的 live config（D111）；沒送過是空的
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1162,6 +1179,13 @@ func (x *Attached) GetExit() *v1.ExitInfo {
 	return nil
 }
 
+func (x *Attached) GetAppliedDigest() string {
+	if x != nil {
+		return x.AppliedDigest
+	}
+	return ""
+}
+
 type Event struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Seq   uint64                 `protobuf:"varint,1,opt,name=seq,proto3" json:"seq,omitempty"`
@@ -1179,6 +1203,7 @@ type Event struct {
 	//	*Event_Exiting
 	//	*Event_Stopped
 	//	*Event_Exited
+	//	*Event_Applied
 	Kind          isEvent_Kind `protobuf_oneof:"kind"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1332,6 +1357,15 @@ func (x *Event) GetExited() *Exited {
 	return nil
 }
 
+func (x *Event) GetApplied() *v11.Applied {
+	if x != nil {
+		if x, ok := x.Kind.(*Event_Applied); ok {
+			return x.Applied
+		}
+	}
+	return nil
+}
+
 type isEvent_Kind interface {
 	isEvent_Kind()
 }
@@ -1376,6 +1410,10 @@ type Event_Exited struct {
 	Exited *Exited `protobuf:"bytes,19,opt,name=exited,proto3,oneof"`
 }
 
+type Event_Applied struct {
+	Applied *v11.Applied `protobuf:"bytes,20,opt,name=applied,proto3,oneof"`
+}
+
 func (*Event_Started) isEvent_Kind() {}
 
 func (*Event_Hello) isEvent_Kind() {}
@@ -1395,6 +1433,8 @@ func (*Event_Exiting) isEvent_Kind() {}
 func (*Event_Stopped) isEvent_Kind() {}
 
 func (*Event_Exited) isEvent_Kind() {}
+
+func (*Event_Applied) isEvent_Kind() {}
 
 type Started struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1646,7 +1686,7 @@ const file_mftiko_shim_v1_shim_proto_rawDesc = "" +
 	"\x06groups\x18\x03 \x03(\rR\x06groups\"9\n" +
 	"\x06Output\x12\x1b\n" +
 	"\tmax_bytes\x18\x01 \x01(\x04R\bmaxBytes\x12\x12\n" +
-	"\x04keep\x18\x02 \x01(\rR\x04keep\"\xa1\x03\n" +
+	"\x04keep\x18\x02 \x01(\rR\x04keep\"\xcf\x03\n" +
 	"\vShimRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x120\n" +
 	"\x06attach\x18\n" +
@@ -1657,7 +1697,8 @@ const file_mftiko_shim_v1_shim_proto_rawDesc = "" +
 	"\x05start\x18\x0e \x01(\v2\x17.mftiko.worker.v1.StartH\x00R\x05start\x12*\n" +
 	"\x04stop\x18\x0f \x01(\v2\x14.mftiko.shim.v1.StopH\x00R\x04stop\x12/\n" +
 	"\x05relay\x18\x10 \x01(\v2\x17.mftiko.worker.v1.RelayH\x00R\x05relay\x123\n" +
-	"\arelease\x18\x11 \x01(\v2\x17.mftiko.shim.v1.ReleaseH\x00R\areleaseB\x04\n" +
+	"\arelease\x18\x11 \x01(\v2\x17.mftiko.shim.v1.ReleaseH\x00R\arelease\x12,\n" +
+	"\x04live\x18\x12 \x01(\v2\x16.mftiko.worker.v1.LiveH\x00R\x04liveB\x04\n" +
 	"\x02op\"\xc2\x01\n" +
 	"\x06Attach\x12\x14\n" +
 	"\x05plane\x18\x01 \x01(\tR\x05plane\x12%\n" +
@@ -1686,7 +1727,7 @@ const file_mftiko_shim_v1_shim_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x0e\n" +
 	"\x02ok\x18\x02 \x01(\bR\x02ok\x12-\n" +
 	"\x05error\x18\x03 \x01(\v2\x17.mftiko.common.v1.ErrorR\x05error\x124\n" +
-	"\battached\x18\x04 \x01(\v2\x18.mftiko.shim.v1.AttachedR\battached\"\xce\x04\n" +
+	"\battached\x18\x04 \x01(\v2\x18.mftiko.shim.v1.AttachedR\battached\"\xf5\x04\n" +
 	"\bAttached\x12!\n" +
 	"\fshim_release\x18\x01 \x01(\tR\vshimRelease\x12\x1d\n" +
 	"\n" +
@@ -1707,7 +1748,8 @@ const file_mftiko_shim_v1_shim_proto_rawDesc = "" +
 	"\x0flast_beat_at_ns\x18\r \x01(\x03R\flastBeatAtNs\x12+\n" +
 	"\x05phase\x18\x0e \x01(\x0e2\x15.mftiko.shim.v1.PhaseR\x05phase\x123\n" +
 	"\aexiting\x18\x0f \x01(\v2\x19.mftiko.worker.v1.ExitingR\aexiting\x12.\n" +
-	"\x04exit\x18\x10 \x01(\v2\x1a.mftiko.common.v1.ExitInfoR\x04exit\"\xc0\x04\n" +
+	"\x04exit\x18\x10 \x01(\v2\x1a.mftiko.common.v1.ExitInfoR\x04exit\x12%\n" +
+	"\x0eapplied_digest\x18\x11 \x01(\tR\rappliedDigest\"\xf7\x04\n" +
 	"\x05Event\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\x04R\x03seq\x12\x13\n" +
 	"\x05at_ns\x18\x02 \x01(\x03R\x04atNs\x12\x10\n" +
@@ -1722,7 +1764,8 @@ const file_mftiko_shim_v1_shim_proto_rawDesc = "" +
 	"\x05relay\x18\x10 \x01(\v2\x17.mftiko.worker.v1.RelayH\x00R\x05relay\x125\n" +
 	"\aexiting\x18\x11 \x01(\v2\x19.mftiko.worker.v1.ExitingH\x00R\aexiting\x125\n" +
 	"\astopped\x18\x12 \x01(\v2\x19.mftiko.worker.v1.StoppedH\x00R\astopped\x120\n" +
-	"\x06exited\x18\x13 \x01(\v2\x16.mftiko.shim.v1.ExitedH\x00R\x06exitedB\x06\n" +
+	"\x06exited\x18\x13 \x01(\v2\x16.mftiko.shim.v1.ExitedH\x00R\x06exited\x125\n" +
+	"\aapplied\x18\x14 \x01(\v2\x19.mftiko.worker.v1.AppliedH\x00R\aappliedB\x06\n" +
 	"\x04kind\"N\n" +
 	"\aStarted\x12\x10\n" +
 	"\x03pid\x18\x01 \x01(\x05R\x03pid\x12\x12\n" +
@@ -1793,15 +1836,17 @@ var file_mftiko_shim_v1_shim_proto_goTypes = []any{
 	(*v11.Init)(nil),     // 20: mftiko.worker.v1.Init
 	(*v11.Start)(nil),    // 21: mftiko.worker.v1.Start
 	(*v11.Relay)(nil),    // 22: mftiko.worker.v1.Relay
-	(*v1.Error)(nil),     // 23: mftiko.common.v1.Error
-	(*v11.Hello)(nil),    // 24: mftiko.worker.v1.Hello
-	(*v11.Exiting)(nil),  // 25: mftiko.worker.v1.Exiting
-	(*v1.ExitInfo)(nil),  // 26: mftiko.common.v1.ExitInfo
-	(*v11.Done)(nil),     // 27: mftiko.worker.v1.Done
-	(*v11.Stage)(nil),    // 28: mftiko.worker.v1.Stage
-	(*v11.Beat)(nil),     // 29: mftiko.worker.v1.Beat
-	(*v11.Report)(nil),   // 30: mftiko.worker.v1.Report
-	(*v11.Stopped)(nil),  // 31: mftiko.worker.v1.Stopped
+	(*v11.Live)(nil),     // 23: mftiko.worker.v1.Live
+	(*v1.Error)(nil),     // 24: mftiko.common.v1.Error
+	(*v11.Hello)(nil),    // 25: mftiko.worker.v1.Hello
+	(*v11.Exiting)(nil),  // 26: mftiko.worker.v1.Exiting
+	(*v1.ExitInfo)(nil),  // 27: mftiko.common.v1.ExitInfo
+	(*v11.Done)(nil),     // 28: mftiko.worker.v1.Done
+	(*v11.Stage)(nil),    // 29: mftiko.worker.v1.Stage
+	(*v11.Beat)(nil),     // 30: mftiko.worker.v1.Beat
+	(*v11.Report)(nil),   // 31: mftiko.worker.v1.Report
+	(*v11.Stopped)(nil),  // 32: mftiko.worker.v1.Stopped
+	(*v11.Applied)(nil),  // 33: mftiko.worker.v1.Applied
 }
 var file_mftiko_shim_v1_shim_proto_depIdxs = []int32{
 	19, // 0: mftiko.shim.v1.Launch.worker:type_name -> mftiko.common.v1.WorkerRef
@@ -1815,35 +1860,37 @@ var file_mftiko_shim_v1_shim_proto_depIdxs = []int32{
 	9,  // 8: mftiko.shim.v1.ShimRequest.stop:type_name -> mftiko.shim.v1.Stop
 	22, // 9: mftiko.shim.v1.ShimRequest.relay:type_name -> mftiko.worker.v1.Relay
 	10, // 10: mftiko.shim.v1.ShimRequest.release:type_name -> mftiko.shim.v1.Release
-	12, // 11: mftiko.shim.v1.ShimMessage.response:type_name -> mftiko.shim.v1.Response
-	14, // 12: mftiko.shim.v1.ShimMessage.event:type_name -> mftiko.shim.v1.Event
-	18, // 13: mftiko.shim.v1.ShimMessage.preempted:type_name -> mftiko.shim.v1.Preempted
-	23, // 14: mftiko.shim.v1.Response.error:type_name -> mftiko.common.v1.Error
-	13, // 15: mftiko.shim.v1.Response.attached:type_name -> mftiko.shim.v1.Attached
-	19, // 16: mftiko.shim.v1.Attached.worker:type_name -> mftiko.common.v1.WorkerRef
-	1,  // 17: mftiko.shim.v1.Attached.state:type_name -> mftiko.shim.v1.WorkerState
-	24, // 18: mftiko.shim.v1.Attached.hello:type_name -> mftiko.worker.v1.Hello
-	0,  // 19: mftiko.shim.v1.Attached.phase:type_name -> mftiko.shim.v1.Phase
-	25, // 20: mftiko.shim.v1.Attached.exiting:type_name -> mftiko.worker.v1.Exiting
-	26, // 21: mftiko.shim.v1.Attached.exit:type_name -> mftiko.common.v1.ExitInfo
-	15, // 22: mftiko.shim.v1.Event.started:type_name -> mftiko.shim.v1.Started
-	24, // 23: mftiko.shim.v1.Event.hello:type_name -> mftiko.worker.v1.Hello
-	27, // 24: mftiko.shim.v1.Event.done:type_name -> mftiko.worker.v1.Done
-	28, // 25: mftiko.shim.v1.Event.stage:type_name -> mftiko.worker.v1.Stage
-	29, // 26: mftiko.shim.v1.Event.beat:type_name -> mftiko.worker.v1.Beat
-	30, // 27: mftiko.shim.v1.Event.report:type_name -> mftiko.worker.v1.Report
-	22, // 28: mftiko.shim.v1.Event.relay:type_name -> mftiko.worker.v1.Relay
-	25, // 29: mftiko.shim.v1.Event.exiting:type_name -> mftiko.worker.v1.Exiting
-	31, // 30: mftiko.shim.v1.Event.stopped:type_name -> mftiko.worker.v1.Stopped
-	16, // 31: mftiko.shim.v1.Event.exited:type_name -> mftiko.shim.v1.Exited
-	26, // 32: mftiko.shim.v1.Exited.exit:type_name -> mftiko.common.v1.ExitInfo
-	19, // 33: mftiko.shim.v1.ExitRecord.worker:type_name -> mftiko.common.v1.WorkerRef
-	26, // 34: mftiko.shim.v1.ExitRecord.exit:type_name -> mftiko.common.v1.ExitInfo
-	35, // [35:35] is the sub-list for method output_type
-	35, // [35:35] is the sub-list for method input_type
-	35, // [35:35] is the sub-list for extension type_name
-	35, // [35:35] is the sub-list for extension extendee
-	0,  // [0:35] is the sub-list for field type_name
+	23, // 11: mftiko.shim.v1.ShimRequest.live:type_name -> mftiko.worker.v1.Live
+	12, // 12: mftiko.shim.v1.ShimMessage.response:type_name -> mftiko.shim.v1.Response
+	14, // 13: mftiko.shim.v1.ShimMessage.event:type_name -> mftiko.shim.v1.Event
+	18, // 14: mftiko.shim.v1.ShimMessage.preempted:type_name -> mftiko.shim.v1.Preempted
+	24, // 15: mftiko.shim.v1.Response.error:type_name -> mftiko.common.v1.Error
+	13, // 16: mftiko.shim.v1.Response.attached:type_name -> mftiko.shim.v1.Attached
+	19, // 17: mftiko.shim.v1.Attached.worker:type_name -> mftiko.common.v1.WorkerRef
+	1,  // 18: mftiko.shim.v1.Attached.state:type_name -> mftiko.shim.v1.WorkerState
+	25, // 19: mftiko.shim.v1.Attached.hello:type_name -> mftiko.worker.v1.Hello
+	0,  // 20: mftiko.shim.v1.Attached.phase:type_name -> mftiko.shim.v1.Phase
+	26, // 21: mftiko.shim.v1.Attached.exiting:type_name -> mftiko.worker.v1.Exiting
+	27, // 22: mftiko.shim.v1.Attached.exit:type_name -> mftiko.common.v1.ExitInfo
+	15, // 23: mftiko.shim.v1.Event.started:type_name -> mftiko.shim.v1.Started
+	25, // 24: mftiko.shim.v1.Event.hello:type_name -> mftiko.worker.v1.Hello
+	28, // 25: mftiko.shim.v1.Event.done:type_name -> mftiko.worker.v1.Done
+	29, // 26: mftiko.shim.v1.Event.stage:type_name -> mftiko.worker.v1.Stage
+	30, // 27: mftiko.shim.v1.Event.beat:type_name -> mftiko.worker.v1.Beat
+	31, // 28: mftiko.shim.v1.Event.report:type_name -> mftiko.worker.v1.Report
+	22, // 29: mftiko.shim.v1.Event.relay:type_name -> mftiko.worker.v1.Relay
+	26, // 30: mftiko.shim.v1.Event.exiting:type_name -> mftiko.worker.v1.Exiting
+	32, // 31: mftiko.shim.v1.Event.stopped:type_name -> mftiko.worker.v1.Stopped
+	16, // 32: mftiko.shim.v1.Event.exited:type_name -> mftiko.shim.v1.Exited
+	33, // 33: mftiko.shim.v1.Event.applied:type_name -> mftiko.worker.v1.Applied
+	27, // 34: mftiko.shim.v1.Exited.exit:type_name -> mftiko.common.v1.ExitInfo
+	19, // 35: mftiko.shim.v1.ExitRecord.worker:type_name -> mftiko.common.v1.WorkerRef
+	27, // 36: mftiko.shim.v1.ExitRecord.exit:type_name -> mftiko.common.v1.ExitInfo
+	37, // [37:37] is the sub-list for method output_type
+	37, // [37:37] is the sub-list for method input_type
+	37, // [37:37] is the sub-list for extension type_name
+	37, // [37:37] is the sub-list for extension extendee
+	0,  // [0:37] is the sub-list for field type_name
 }
 
 func init() { file_mftiko_shim_v1_shim_proto_init() }
@@ -1860,6 +1907,7 @@ func file_mftiko_shim_v1_shim_proto_init() {
 		(*ShimRequest_Stop)(nil),
 		(*ShimRequest_Relay)(nil),
 		(*ShimRequest_Release)(nil),
+		(*ShimRequest_Live)(nil),
 	}
 	file_mftiko_shim_v1_shim_proto_msgTypes[9].OneofWrappers = []any{
 		(*ShimMessage_Response)(nil),
@@ -1877,6 +1925,7 @@ func file_mftiko_shim_v1_shim_proto_init() {
 		(*Event_Exiting)(nil),
 		(*Event_Stopped)(nil),
 		(*Event_Exited)(nil),
+		(*Event_Applied)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

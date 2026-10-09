@@ -248,6 +248,7 @@ func (f *fakeWorker) verb(name string) error {
 func (f *fakeWorker) Init(*workerv1.Init) error   { return f.verb("init") }
 func (f *fakeWorker) Start(*workerv1.Start) error { return f.verb("start") }
 func (f *fakeWorker) Relay(*workerv1.Relay) error { return f.verb("relay") }
+func (f *fakeWorker) Live(*workerv1.Live) error   { return f.verb("live") }
 func (f *fakeWorker) Release() error              { return f.verb("release") }
 
 func (f *fakeWorker) Stop(reason string, grace, killAfter time.Duration) (bool, error) {

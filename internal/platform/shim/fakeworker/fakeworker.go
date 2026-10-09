@@ -97,6 +97,7 @@ type Script struct {
 	OnStopMS int `json:"on_stop_ms,omitempty"`
 
 	IgnoreSIGTERM bool   `json:"ignore_sigterm,omitempty"` // by default SIGTERM is a Stop, as the SDK makes it
+	IgnoreLive    bool   `json:"ignore_live,omitempty"`    // take a Live without applying it: no Applied, as when applying fails
 	IgnoreEOF     bool   `json:"ignore_eof,omitempty"`     // keep running when fd 3 ends, so only Pdeathsig kills it
 	Grandchild    bool   `json:"grandchild,omitempty"`     // start a process that outlives the worker
 	FloodBytes    int    `json:"flood_bytes,omitempty"`    // write this much to stdout and to stderr once running
@@ -275,7 +276,7 @@ func (w *worker) loop() int {
 			}
 			switch m := m.Msg.(type) {
 			case *workerv1.WorkerDown_Init:
-				if code, done := w.onInit(); done {
+				if code, done := w.onInit(m.Init); done {
 					return code
 				}
 			case *workerv1.WorkerDown_Start:
@@ -299,6 +300,10 @@ func (w *worker) loop() int {
 				return w.finish(commonv1.Outcome_OUTCOME_DONE, "stop: "+m.Stop.GetReason(), started, CodeDone)
 			case *workerv1.WorkerDown_Relay:
 				w.send(&workerv1.WorkerUp{Msg: &workerv1.WorkerUp_Relay{Relay: m.Relay}}) // echo
+			case *workerv1.WorkerDown_Live:
+				if !w.s.IgnoreLive { // the fake applies any live config at once
+					w.applied(m.Live.GetDigest())
+				}
 			}
 		case <-exitTimer:
 			return w.end()
@@ -317,7 +322,12 @@ func (w *worker) loop() int {
 	}
 }
 
-func (w *worker) onInit() (code int, done bool) {
+// applied tells the agent which live config the worker has (D111).
+func (w *worker) applied(digest string) {
+	w.send(&workerv1.WorkerUp{Msg: &workerv1.WorkerUp_Applied{Applied: &workerv1.Applied{Digest: digest}}})
+}
+
+func (w *worker) onInit(m *workerv1.Init) (code int, done bool) {
 	if w.s.Hang == AtInit {
 		w.hang()
 	}
@@ -327,6 +337,9 @@ func (w *worker) onInit() (code int, done bool) {
 	if w.s.FailInit != "" {
 		w.send(doneMsg(workerv1.Verb_VERB_INIT, false, w.s.FailInit))
 		return w.finish(commonv1.Outcome_OUTCOME_INIT_FAILED, w.s.FailInit, false, CodeInitFailed), true
+	}
+	if d := m.GetLiveDigest(); d != "" { // the initial live config is applied: say so before Done
+		w.applied(d)
 	}
 	w.send(doneMsg(workerv1.Verb_VERB_INIT, true, ""))
 	return 0, false
