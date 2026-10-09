@@ -34,8 +34,8 @@
 -- Settlement currency is settle, the contract field name (D203), not settlement_asset.
 -- contract_value_ccy is the unit of qty. price_ccy is the unit of price, price_tick and premium.
 --
--- symbol_revision is the per-(venue, category) counter change notifications compare (PROTOCOL §10 P7).
--- The subject and the message are still open; this table is only the counter.
+-- symbol_revision is the per-(venue, category) counter change notifications compare (PROTOCOL §7.3).
+-- After that revision commits, SYM publishes Changed on sym.changed.{venue}.{category}.
 --
 -- The status enum is still provisional as a set. It is TEXT plus a CHECK, not a Postgres enum,
 -- so adding a value is a change to the check. The contract uses this enum. UNSPECIFIED is not a
@@ -181,7 +181,7 @@ CREATE TABLE symbol_filter_terminal (
 );
 
 -- One current revision per (venue, category). SYM increments it in the same transaction as the
--- listing change. Clients compare it to notice a missed change notification (PROTOCOL §10 P7).
+-- listing change. Clients compare it to notice a missed change notification (PROTOCOL §7.3).
 CREATE TABLE symbol_revision (
     venue           TEXT   NOT NULL,
     category        TEXT   NOT NULL,

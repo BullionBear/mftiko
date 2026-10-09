@@ -459,7 +459,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   | | 允許 |
   |---|---|
   | publish | `td.order.{綁定的 api_id}`、`td.view.{綁定的 api_id}`、`md.view.{綁定的 MD instance}.>`、`md.fetch`、`sym`（D202）、`log.sts.{session_id}` |
-  | subscribe | `md.f.{綁定的 MD instance}.>`、`td.evt.{綁定的 api_id}`、`_INBOX_{session_id}.>` |
+  | subscribe | `md.f.{綁定的 MD instance}.>`、`td.evt.{綁定的 api_id}`、`_INBOX_{session_id}.>`、`sym.changed.>`（E2-09） |
 
   - 行情的訂閱權限用萬用字元，只分到 instance：selector 的成員會變，沒辦法逐一列出；行情是公開資料，放寬讀取的風險很低。
   - reply inbox 每個 session 一個獨立的前綴 `_INBOX_{session_id}`。預設的 `_INBOX.>` 會讓任何連線都能讀到別人的回覆，包括 `td.view` 查回來的帳務資料。
@@ -489,7 +489,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   - 下架與到期不改 UniversalTicker（D203）。狀態還會變的留在活躍表；進了終結狀態就搬到終結表，ticker 字串不變。訂單與 session 仍指向同一個 ticker。
   - 契約見 PROTOCOL §7.3，表見 `migrations/0002_symbol`。
 - **誰用 SYM：STS、MD、TD；API 不用。** STS 這端是 session worker（經 SDK），所以它的 NATS 權限有 `sym`（D906）。
-- **啟動時把用得到的 venue 的活躍表載入，之後跟著變更重載（D203）。** 進程啟動時，依 `(venue, category)` 分頁把未終結的列讀進記憶體（每頁最多 500 筆）。Resolver 與熱路徑只讀這張表；終結列不進這份快取。盤中會有新上市、到期與下架，selector 也要挑得到新合約，所以 SYM 刷新出差異時發變更通知，帶 revision，收到的進程重載那個 `(venue, category)` 的活躍列。通知的 subject 與訊息在 E2 定（PROTOCOL §10）。取代原本的「單一商品精確查詢、用戶端快取 10 分鐘」。
+- **啟動時把用得到的 venue 的活躍表載入，之後跟著變更重載（D203）。** 進程啟動時，依 `(venue, category)` 分頁把未終結的列讀進記憶體（每頁最多 500 筆）。Resolver 與熱路徑只讀這張表；終結列不進這份快取。盤中會有新上市、到期與下架，selector 也要挑得到新合約，所以 SYM 在 revision commit 之後發 `sym.changed.{venue}.{category}`（內容 `Changed{venue, category, revision}`，用人讀的名字），收到的進程重載那個 `(venue, category)` 的活躍列。已定，見 PROTOCOL §7.3。P14 定案時這個 subject 可能改名。取代原本的「單一商品精確查詢、用戶端快取 10 分鐘」。
 - venue 名稱照 mftik 用 CamelCase：OKX 的 token 是 `Okx`。
 
 ### D301 帳號種類和 venue 是兩個 enum
@@ -634,7 +634,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   - **活躍表：** `PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`UNKNOWN`。狀態還可能變。Resolver 與熱路徑只讀這張表。裡面只有 `TRADABLE` 可以交易。
   - **終結表：** `EXPIRED`、`DELISTED`。一到這裡，狀態就不再變。留給歷史查詢：舊的成交與持倉，以及依 UID 反查。不再刷新，可以歸檔。
   - 列進了終結狀態，就從活躍表搬到終結表。UniversalTicker 的字串不變，UID 也不變。`symbol_filter` 同樣分活躍表與終結表，跟列一起搬。
-  - E2-03 拆了表。`migrations/0002_symbol` 是活躍表 `symbol_active` 與終結表 `symbol_terminal`，欄位相同，主鍵都是 `uid`。`symbol_filter_active` 參照活躍表、`symbol_filter_terminal` 參照終結表，終結時跟列一起搬。活躍表用 generated column 從 `universal_ticker` 拆出 `venue`、`category`，並有 `UNIQUE (venue, category, exch_ticker)` 與 `universal_ticker` 唯一；終結表沒有這兩個唯一，同一個 ticker 可以留多列。`symbol_revision (venue, category, revision, refreshed_at_ns)` 給變更通知比對 revision（PROTOCOL §10 P7 的 subject 與訊息仍開放）。另有 `symbol_uid`（主鍵 `uid`，列不刪），兩張 listing 與兩張 filter 參照它，所以歸檔之後也不會再抽到同一個 uid。結算幣欄位名是 `settle`，與契約一致，另外有 `contract_value_ccy`、`price_ccy`。strike 入庫時去掉尾端的零。
+  - E2-03 拆了表。`migrations/0002_symbol` 是活躍表 `symbol_active` 與終結表 `symbol_terminal`，欄位相同，主鍵都是 `uid`。`symbol_filter_active` 參照活躍表、`symbol_filter_terminal` 參照終結表，終結時跟列一起搬。活躍表用 generated column 從 `universal_ticker` 拆出 `venue`、`category`，並有 `UNIQUE (venue, category, exch_ticker)` 與 `universal_ticker` 唯一；終結表沒有這兩個唯一，同一個 ticker 可以留多列。`symbol_revision (venue, category, revision, refreshed_at_ns)` 給變更通知比對 revision（PROTOCOL §7.3，subject 是 `sym.changed.{venue}.{category}`）。另有 `symbol_uid`（主鍵 `uid`，列不刪），兩張 listing 與兩張 filter 參照它，所以歸檔之後也不會再抽到同一個 uid。結算幣欄位名是 `settle`，與契約一致，另外有 `contract_value_ccy`、`price_ccy`。strike 入庫時去掉尾端的零。
 - **UID 是系統內部的商品身分。** UniversalTicker 是給人看的字串，只用在寫設定與 spec。系統裡面傳商品用 UID（整數）。各平面要欄位時用 UID 向 SYM 查。STS、TD、MD 之間用 UID，不用 ticker 字串。
   - UID 由 SYM 分配，是隨機整數：唯一、永不重用，不是單調序號，也不是 Postgres sequence。活躍表與終結表合在一起唯一，同一個 UID 不會同時在兩張表。UID 跟列一起持久化，所以重啟與重載都不改它。搬到終結表時 UID 跟著列走。碰撞時 SYM 重試，再抽一個。
   - 同一個 ticker 下架之後再上市，是新的一列，拿新的 UID。舊的成交與持倉仍指向舊 UID。

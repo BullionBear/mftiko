@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mftiko/sym/v1/sym.proto.
  */
 export const file_mftiko_sym_v1_sym: GenFile = /*@__PURE__*/
-  fileDesc("ChdtZnRpa28vc3ltL3YxL3N5bS5wcm90bxINbWZ0aWtvLnN5bS52MSKAAgoHUmVxdWVzdBIoCgNnZXQYASABKAsyGS5tZnRpa28uc3ltLnYxLkdldFJlcXVlc3RIABIqCgRsaXN0GAIgASgLMhoubWZ0aWtvLnN5bS52MS5MaXN0UmVxdWVzdEgAEjAKB3JldmVyc2UYAyABKAsyHS5tZnRpa28uc3ltLnYxLlJldmVyc2VSZXF1ZXN0SAASMAoHcmVmcmVzaBgEIAEoCzIdLm1mdGlrby5zeW0udjEuUmVmcmVzaFJlcXVlc3RIABI0CgpnZXRfYnlfdWlkGAUgASgLMh4ubWZ0aWtvLnN5bS52MS5HZXRCeVVpZFJlcXVlc3RIAEIFCgNyZXEiQAoKR2V0UmVxdWVzdBIYChB1bml2ZXJzYWxfdGlja2VyGAEgASgJEhgKEGluY2x1ZGVfaW5hY3RpdmUYAiABKAgiOAoPR2V0QnlVaWRSZXF1ZXN0EgsKA3VpZBgBIAEoDRIYChBpbmNsdWRlX2luYWN0aXZlGAIgASgIImcKC0xpc3RSZXF1ZXN0Eg0KBXZlbnVlGAEgASgJEhAKCGNhdGVnb3J5GAIgASgJEg0KBWxpbWl0GAMgASgNEg4KBm9mZnNldBgEIAEoDRIYChBpbmNsdWRlX2luYWN0aXZlGAUgASgIImAKDlJldmVyc2VSZXF1ZXN0Eg0KBXZlbnVlGAEgASgJEhAKCGNhdGVnb3J5GAIgASgJEhMKC2V4Y2hfdGlja2VyGAMgASgJEhgKEGluY2x1ZGVfaW5hY3RpdmUYBCABKAgiHwoOUmVmcmVzaFJlcXVlc3QSDQoFdmVudWUYASABKAkitwEKBVJlcGx5Eg0KBWVycm9yGAEgASgJEg4KBnJlYXNvbhgCIAEoCRIpCgRpbmZvGAogASgLMhkubWZ0aWtvLnN5bS52MS5TeW1ib2xJbmZvSAASKQoEbGlzdBgLIAEoCzIZLm1mdGlrby5zeW0udjEuU3ltYm9sTGlzdEgAEi8KB3JlZnJlc2gYDCABKAsyHC5tZnRpa28uc3ltLnYxLlJlZnJlc2hSZXN1bHRIAEIICgZyZXN1bHQi7QMKClN5bWJvbEluZm8SGAoQdW5pdmVyc2FsX3RpY2tlchgBIAEoCRITCgtleGNoX3RpY2tlchgCIAEoCRIMCgRiYXNlGAMgASgJEg0KBXF1b3RlGAQgASgJEhoKDWNvbnRyYWN0X3NpemUYBSABKAFIAIgBARITCgZzZXR0bGUYBiABKAlIAYgBARIRCglleHBpcnlfbnMYByABKAMSEwoGc3RyaWtlGAggASgBSAKIAQESEwoLb3B0aW9uX3R5cGUYCSABKAkSKwoGc3RhdHVzGAogASgOMhsubWZ0aWtvLnN5bS52MS5TeW1ib2xTdGF0dXMSNwoHZmlsdGVycxgLIAMoCzImLm1mdGlrby5zeW0udjEuU3ltYm9sSW5mby5GaWx0ZXJzRW50cnkSFQoNdXBkYXRlZF9hdF9ucxgMIAEoAxILCgN1aWQYDSABKA0SGgoSY29udHJhY3RfdmFsdWVfY2N5GA4gASgJEhEKCXByaWNlX2NjeRgPIAEoCRpECgxGaWx0ZXJzRW50cnkSCwoDa2V5GAEgASgJEiMKBXZhbHVlGAIgASgLMhQubWZ0aWtvLnN5bS52MS5Cb3VuZDoCOAFCEAoOX2NvbnRyYWN0X3NpemVCCQoHX3NldHRsZUIJCgdfc3RyaWtlIiUKBUJvdW5kEhIKBXZhbHVlGAEgASgBSACIAQFCCAoGX3ZhbHVlIkcKClN5bWJvbExpc3QSKgoHc3ltYm9scxgBIAMoCzIZLm1mdGlrby5zeW0udjEuU3ltYm9sSW5mbxINCgV0b3RhbBgCIAEoDSLiAgoNUmVmcmVzaFJlc3VsdBI+CglyZWZyZXNoZWQYASADKAsyKy5tZnRpa28uc3ltLnYxLlJlZnJlc2hSZXN1bHQuUmVmcmVzaGVkRW50cnkSQgoLZGVhY3RpdmF0ZWQYAiADKAsyLS5tZnRpa28uc3ltLnYxLlJlZnJlc2hSZXN1bHQuRGVhY3RpdmF0ZWRFbnRyeRI4CgZmYWlsZWQYAyADKAsyKC5tZnRpa28uc3ltLnYxLlJlZnJlc2hSZXN1bHQuRmFpbGVkRW50cnkaMAoOUmVmcmVzaGVkRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgNOgI4ARoyChBEZWFjdGl2YXRlZEVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoDToCOAEaLQoLRmFpbGVkRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASrvAQoMU3ltYm9sU3RhdHVzEh0KGVNZTUJPTF9TVEFUVVNfVU5TUEVDSUZJRUQQABIcChhTWU1CT0xfU1RBVFVTX1BSRUxJU1RJTkcQARIaChZTWU1CT0xfU1RBVFVTX1RSQURBQkxFEAISGAoUU1lNQk9MX1NUQVRVU19IQUxURUQQAxIaChZTWU1CT0xfU1RBVFVTX1NFVFRMSU5HEAQSGQoVU1lNQk9MX1NUQVRVU19FWFBJUkVEEAUSGgoWU1lNQk9MX1NUQVRVU19ERUxJU1RFRBAGEhkKFVNZTUJPTF9TVEFUVVNfVU5LTk9XThAHQkBaPmdpdGh1Yi5jb20vQnVsbGlvbkJlYXIvbWZ0aWtvL2NvbnRyYWN0L2dlbi9tZnRpa28vc3ltL3YxO3N5bXYxYgZwcm90bzM");
+  fileDesc("ChdtZnRpa28vc3ltL3YxL3N5bS5wcm90bxINbWZ0aWtvLnN5bS52MSK2AgoHUmVxdWVzdBIoCgNnZXQYASABKAsyGS5tZnRpa28uc3ltLnYxLkdldFJlcXVlc3RIABIqCgRsaXN0GAIgASgLMhoubWZ0aWtvLnN5bS52MS5MaXN0UmVxdWVzdEgAEjAKB3JldmVyc2UYAyABKAsyHS5tZnRpa28uc3ltLnYxLlJldmVyc2VSZXF1ZXN0SAASMAoHcmVmcmVzaBgEIAEoCzIdLm1mdGlrby5zeW0udjEuUmVmcmVzaFJlcXVlc3RIABI0CgpnZXRfYnlfdWlkGAUgASgLMh4ubWZ0aWtvLnN5bS52MS5HZXRCeVVpZFJlcXVlc3RIABI0CglyZXZpc2lvbnMYBiABKAsyHy5tZnRpa28uc3ltLnYxLlJldmlzaW9uc1JlcXVlc3RIAEIFCgNyZXEiQAoKR2V0UmVxdWVzdBIYChB1bml2ZXJzYWxfdGlja2VyGAEgASgJEhgKEGluY2x1ZGVfaW5hY3RpdmUYAiABKAgiOAoPR2V0QnlVaWRSZXF1ZXN0EgsKA3VpZBgBIAEoDRIYChBpbmNsdWRlX2luYWN0aXZlGAIgASgIImcKC0xpc3RSZXF1ZXN0Eg0KBXZlbnVlGAEgASgJEhAKCGNhdGVnb3J5GAIgASgJEg0KBWxpbWl0GAMgASgNEg4KBm9mZnNldBgEIAEoDRIYChBpbmNsdWRlX2luYWN0aXZlGAUgASgIImAKDlJldmVyc2VSZXF1ZXN0Eg0KBXZlbnVlGAEgASgJEhAKCGNhdGVnb3J5GAIgASgJEhMKC2V4Y2hfdGlja2VyGAMgASgJEhgKEGluY2x1ZGVfaW5hY3RpdmUYBCABKAgiHwoOUmVmcmVzaFJlcXVlc3QSDQoFdmVudWUYASABKAki6QEKBVJlcGx5Eg0KBWVycm9yGAEgASgJEg4KBnJlYXNvbhgCIAEoCRIpCgRpbmZvGAogASgLMhkubWZ0aWtvLnN5bS52MS5TeW1ib2xJbmZvSAASKQoEbGlzdBgLIAEoCzIZLm1mdGlrby5zeW0udjEuU3ltYm9sTGlzdEgAEi8KB3JlZnJlc2gYDCABKAsyHC5tZnRpa28uc3ltLnYxLlJlZnJlc2hSZXN1bHRIABIwCglyZXZpc2lvbnMYDSABKAsyGy5tZnRpa28uc3ltLnYxLlJldmlzaW9uTGlzdEgAQggKBnJlc3VsdCISChBSZXZpc2lvbnNSZXF1ZXN0IkIKDVRhYmxlUmV2aXNpb24SDQoFdmVudWUYASABKAkSEAoIY2F0ZWdvcnkYAiABKAkSEAoIcmV2aXNpb24YAyABKAMiPAoMUmV2aXNpb25MaXN0EiwKBnRhYmxlcxgBIAMoCzIcLm1mdGlrby5zeW0udjEuVGFibGVSZXZpc2lvbiI8CgdDaGFuZ2VkEg0KBXZlbnVlGAEgASgJEhAKCGNhdGVnb3J5GAIgASgJEhAKCHJldmlzaW9uGAMgASgDIu0DCgpTeW1ib2xJbmZvEhgKEHVuaXZlcnNhbF90aWNrZXIYASABKAkSEwoLZXhjaF90aWNrZXIYAiABKAkSDAoEYmFzZRgDIAEoCRINCgVxdW90ZRgEIAEoCRIaCg1jb250cmFjdF9zaXplGAUgASgBSACIAQESEwoGc2V0dGxlGAYgASgJSAGIAQESEQoJZXhwaXJ5X25zGAcgASgDEhMKBnN0cmlrZRgIIAEoAUgCiAEBEhMKC29wdGlvbl90eXBlGAkgASgJEisKBnN0YXR1cxgKIAEoDjIbLm1mdGlrby5zeW0udjEuU3ltYm9sU3RhdHVzEjcKB2ZpbHRlcnMYCyADKAsyJi5tZnRpa28uc3ltLnYxLlN5bWJvbEluZm8uRmlsdGVyc0VudHJ5EhUKDXVwZGF0ZWRfYXRfbnMYDCABKAMSCwoDdWlkGA0gASgNEhoKEmNvbnRyYWN0X3ZhbHVlX2NjeRgOIAEoCRIRCglwcmljZV9jY3kYDyABKAkaRAoMRmlsdGVyc0VudHJ5EgsKA2tleRgBIAEoCRIjCgV2YWx1ZRgCIAEoCzIULm1mdGlrby5zeW0udjEuQm91bmQ6AjgBQhAKDl9jb250cmFjdF9zaXplQgkKB19zZXR0bGVCCQoHX3N0cmlrZSIlCgVCb3VuZBISCgV2YWx1ZRgBIAEoAUgAiAEBQggKBl92YWx1ZSJHCgpTeW1ib2xMaXN0EioKB3N5bWJvbHMYASADKAsyGS5tZnRpa28uc3ltLnYxLlN5bWJvbEluZm8SDQoFdG90YWwYAiABKA0i4gIKDVJlZnJlc2hSZXN1bHQSPgoJcmVmcmVzaGVkGAEgAygLMisubWZ0aWtvLnN5bS52MS5SZWZyZXNoUmVzdWx0LlJlZnJlc2hlZEVudHJ5EkIKC2RlYWN0aXZhdGVkGAIgAygLMi0ubWZ0aWtvLnN5bS52MS5SZWZyZXNoUmVzdWx0LkRlYWN0aXZhdGVkRW50cnkSOAoGZmFpbGVkGAMgAygLMigubWZ0aWtvLnN5bS52MS5SZWZyZXNoUmVzdWx0LkZhaWxlZEVudHJ5GjAKDlJlZnJlc2hlZEVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoDToCOAEaMgoQRGVhY3RpdmF0ZWRFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKA06AjgBGi0KC0ZhaWxlZEVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEq7wEKDFN5bWJvbFN0YXR1cxIdChlTWU1CT0xfU1RBVFVTX1VOU1BFQ0lGSUVEEAASHAoYU1lNQk9MX1NUQVRVU19QUkVMSVNUSU5HEAESGgoWU1lNQk9MX1NUQVRVU19UUkFEQUJMRRACEhgKFFNZTUJPTF9TVEFUVVNfSEFMVEVEEAMSGgoWU1lNQk9MX1NUQVRVU19TRVRUTElORxAEEhkKFVNZTUJPTF9TVEFUVVNfRVhQSVJFRBAFEhoKFlNZTUJPTF9TVEFUVVNfREVMSVNURUQQBhIZChVTWU1CT0xfU1RBVFVTX1VOS05PV04QB0JAWj5naXRodWIuY29tL0J1bGxpb25CZWFyL21mdGlrby9jb250cmFjdC9nZW4vbWZ0aWtvL3N5bS92MTtzeW12MWIGcHJvdG8z");
 
 /**
  * @generated from message mftiko.sym.v1.Request
@@ -51,6 +51,12 @@ export type Request = Message<"mftiko.sym.v1.Request"> & {
      */
     value: GetByUidRequest;
     case: "getByUid";
+  } | {
+    /**
+     * @generated from field: mftiko.sym.v1.RevisionsRequest revisions = 6;
+     */
+    value: RevisionsRequest;
+    case: "revisions";
   } | { case: undefined; value?: undefined };
 };
 
@@ -272,6 +278,12 @@ export type Reply = Message<"mftiko.sym.v1.Reply"> & {
      */
     value: RefreshResult;
     case: "refresh";
+  } | {
+    /**
+     * @generated from field: mftiko.sym.v1.RevisionList revisions = 13;
+     */
+    value: RevisionList;
+    case: "revisions";
   } | { case: undefined; value?: undefined };
 };
 
@@ -281,6 +293,99 @@ export type Reply = Message<"mftiko.sym.v1.Reply"> & {
  */
 export const ReplySchema: GenMessage<Reply> = /*@__PURE__*/
   messageDesc(file_mftiko_sym_v1_sym, 6);
+
+/**
+ * Every (venue, category) revision. A client that may have missed
+ * sym.changed compares these with the revision it loaded (P7, PROTOCOL §7.3).
+ *
+ * @generated from message mftiko.sym.v1.RevisionsRequest
+ */
+export type RevisionsRequest = Message<"mftiko.sym.v1.RevisionsRequest"> & {
+};
+
+/**
+ * Describes the message mftiko.sym.v1.RevisionsRequest.
+ * Use `create(RevisionsRequestSchema)` to create a new message.
+ */
+export const RevisionsRequestSchema: GenMessage<RevisionsRequest> = /*@__PURE__*/
+  messageDesc(file_mftiko_sym_v1_sym, 7);
+
+/**
+ * One table's revision, as stored after the commit that advanced it.
+ *
+ * @generated from message mftiko.sym.v1.TableRevision
+ */
+export type TableRevision = Message<"mftiko.sym.v1.TableRevision"> & {
+  /**
+   * @generated from field: string venue = 1;
+   */
+  venue: string;
+
+  /**
+   * @generated from field: string category = 2;
+   */
+  category: string;
+
+  /**
+   * @generated from field: int64 revision = 3;
+   */
+  revision: bigint;
+};
+
+/**
+ * Describes the message mftiko.sym.v1.TableRevision.
+ * Use `create(TableRevisionSchema)` to create a new message.
+ */
+export const TableRevisionSchema: GenMessage<TableRevision> = /*@__PURE__*/
+  messageDesc(file_mftiko_sym_v1_sym, 8);
+
+/**
+ * @generated from message mftiko.sym.v1.RevisionList
+ */
+export type RevisionList = Message<"mftiko.sym.v1.RevisionList"> & {
+  /**
+   * @generated from field: repeated mftiko.sym.v1.TableRevision tables = 1;
+   */
+  tables: TableRevision[];
+};
+
+/**
+ * Describes the message mftiko.sym.v1.RevisionList.
+ * Use `create(RevisionListSchema)` to create a new message.
+ */
+export const RevisionListSchema: GenMessage<RevisionList> = /*@__PURE__*/
+  messageDesc(file_mftiko_sym_v1_sym, 9);
+
+/**
+ * Published on sym.changed.{venue}.{category} after that table's revision
+ * commits (P7). Venue and category are the human-readable names, not a UID.
+ * PROTOCOL §10 P14 may rename this subject.
+ *
+ * @generated from message mftiko.sym.v1.Changed
+ */
+export type Changed = Message<"mftiko.sym.v1.Changed"> & {
+  /**
+   * @generated from field: string venue = 1;
+   */
+  venue: string;
+
+  /**
+   * @generated from field: string category = 2;
+   */
+  category: string;
+
+  /**
+   * @generated from field: int64 revision = 3;
+   */
+  revision: bigint;
+};
+
+/**
+ * Describes the message mftiko.sym.v1.Changed.
+ * Use `create(ChangedSchema)` to create a new message.
+ */
+export const ChangedSchema: GenMessage<Changed> = /*@__PURE__*/
+  messageDesc(file_mftiko_sym_v1_sym, 10);
 
 /**
  * @generated from message mftiko.sym.v1.SymbolInfo
@@ -396,7 +501,7 @@ export type SymbolInfo = Message<"mftiko.sym.v1.SymbolInfo"> & {
  * Use `create(SymbolInfoSchema)` to create a new message.
  */
 export const SymbolInfoSchema: GenMessage<SymbolInfo> = /*@__PURE__*/
-  messageDesc(file_mftiko_sym_v1_sym, 7);
+  messageDesc(file_mftiko_sym_v1_sym, 11);
 
 /**
  * @generated from message mftiko.sym.v1.Bound
@@ -413,7 +518,7 @@ export type Bound = Message<"mftiko.sym.v1.Bound"> & {
  * Use `create(BoundSchema)` to create a new message.
  */
 export const BoundSchema: GenMessage<Bound> = /*@__PURE__*/
-  messageDesc(file_mftiko_sym_v1_sym, 8);
+  messageDesc(file_mftiko_sym_v1_sym, 12);
 
 /**
  * @generated from message mftiko.sym.v1.SymbolList
@@ -435,7 +540,7 @@ export type SymbolList = Message<"mftiko.sym.v1.SymbolList"> & {
  * Use `create(SymbolListSchema)` to create a new message.
  */
 export const SymbolListSchema: GenMessage<SymbolList> = /*@__PURE__*/
-  messageDesc(file_mftiko_sym_v1_sym, 9);
+  messageDesc(file_mftiko_sym_v1_sym, 13);
 
 /**
  * @generated from message mftiko.sym.v1.RefreshResult
@@ -468,7 +573,7 @@ export type RefreshResult = Message<"mftiko.sym.v1.RefreshResult"> & {
  * Use `create(RefreshResultSchema)` to create a new message.
  */
 export const RefreshResultSchema: GenMessage<RefreshResult> = /*@__PURE__*/
-  messageDesc(file_mftiko_sym_v1_sym, 10);
+  messageDesc(file_mftiko_sym_v1_sym, 14);
 
 /**
  * 交易狀態（D203）。列舉仍暫定。UNSPECIFIED 是 proto 的零值，非法且不可交易。

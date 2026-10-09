@@ -69,6 +69,47 @@ func (s *Store) Reverse(ctx context.Context, key symbol.ExchKey, includeInactive
 	return s.queryOne(ctx, q, args...)
 }
 
+// TableRevision is one (venue, category) counter. Revision is the value
+// committed with the last change of that table. A table that has never
+// changed has no row; callers treat that as revision 0.
+type TableRevision struct {
+	Venue    string
+	Category symbol.Category
+	Revision int64
+}
+
+// Revisions reads every symbol_revision row, ordered by venue then category.
+func (s *Store) Revisions(ctx context.Context) ([]TableRevision, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT venue, category, revision
+		FROM symbol_revision
+		ORDER BY venue, category`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TableRevision
+	for rows.Next() {
+		var row TableRevision
+		var cat string
+		if err := rows.Scan(&row.Venue, &cat, &row.Revision); err != nil {
+			return nil, err
+		}
+		row.Category = symbol.Category(cat)
+		if row.Revision < 0 {
+			return nil, fmt.Errorf("sym: revision %d for %s %s", row.Revision, row.Venue, cat)
+		}
+		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = []TableRevision{}
+	}
+	return out, nil
+}
+
 // List reads one page of a (venue, category).
 //
 // limit must be in 1..symbol.ListPage. offset is the number of rows to skip.

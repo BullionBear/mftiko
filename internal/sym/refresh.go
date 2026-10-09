@@ -278,6 +278,9 @@ func (s *Store) apply(ctx context.Context, venue string, category symbol.Categor
 	if err := tx.Commit(ctx); err != nil {
 		return rep, fmt.Errorf("sym: refresh %s %s: %w", venue, category, err)
 	}
+	if changed {
+		s.publish(ctx, venue, string(category), rev)
+	}
 
 	rep.Updated = len(updates)
 	rep.Inserted = len(inserts)
