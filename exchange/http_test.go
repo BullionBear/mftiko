@@ -1,0 +1,72 @@
+package exchange
+
+import (
+	"context"
+	"errors"
+	"strconv"
+	"testing"
+	"time"
+)
+
+// pages is a Doer that answers page n of three with its number, and records the request it got.
+type pages struct {
+	seen []string
+	fail error
+}
+
+func (p *pages) Do(_ context.Context, req *HTTPRequest) (*HTTPResponse, error) {
+	p.seen = append(p.seen, string(req.Query))
+	if p.fail != nil && len(p.seen) == 2 {
+		return nil, p.fail
+	}
+	return &HTTPResponse{Status: 200, Header: []Header{{Name: "X-Used", Value: "7"}}, Body: req.Query}, nil
+}
+
+// page builds the request for page n, stamped with now as a signed request would be.
+func page(n int, now time.Time) Call[Page[int]] {
+	return Call[Page[int]]{
+		Req: HTTPRequest{Method: "GET", Path: "/p", Query: []byte(strconv.Itoa(n) + "@" + strconv.FormatInt(now.Unix(), 10))},
+		Parse: func(resp *HTTPResponse) (Page[int], error) {
+			p := Page[int]{Items: []int{n}}
+			if n < 2 {
+				p.Next = func(now time.Time) (Call[Page[int]], error) { return page(n+1, now), nil }
+			}
+			return p, nil
+		},
+	}
+}
+
+func TestCollect(t *testing.T) {
+	clock := int64(100)
+	now := func() time.Time { clock++; return time.Unix(clock, 0) }
+	d := &pages{}
+	got, err := Collect(context.Background(), d, now, page(0, time.Unix(100, 0)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 || got[0] != 0 || got[2] != 2 {
+		t.Fatalf("items %v", got)
+	}
+	// Each following page is built with the time it goes out at.
+	if want := []string{"0@100", "1@101", "2@102"}; len(d.seen) != 3 || d.seen[1] != want[1] || d.seen[2] != want[2] {
+		t.Fatalf("requests %v, want %v", d.seen, want)
+	}
+
+	boom := errors.New("boom")
+	if got, err := Collect(context.Background(), &pages{fail: boom}, now, page(0, now())); !errors.Is(err, boom) || got != nil {
+		t.Fatalf("failed page: %v %v", got, err)
+	}
+	if _, err := Run(context.Background(), nil, page(0, now())); !errors.Is(err, ErrNoTransport) {
+		t.Fatalf("nil Doer: %v", err)
+	}
+}
+
+func TestResponseGet(t *testing.T) {
+	r := &HTTPResponse{Header: []Header{{Name: "X-MBX-USED-WEIGHT-1M", Value: "12"}, {Name: "x-mbx-used-weight-1m", Value: "13"}}}
+	if got := r.Get("x-mbx-used-weight-1m"); got != "12" {
+		t.Fatalf("Get = %q", got)
+	}
+	if got := r.Get("Retry-After"); got != "" {
+		t.Fatalf("Get missing = %q", got)
+	}
+}
