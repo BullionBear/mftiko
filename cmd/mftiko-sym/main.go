@@ -55,9 +55,7 @@ func run(database, natsURL, feeds string, log zerolog.Logger) error {
 		return errors.New("nats URL is empty")
 	}
 	// D006: the command names the exchanges. There is no init() registration.
-	// No HTTP transport yet: exchange/transport/fasthttp is an E3 ticket, and every adapter's
-	// Listing is still ErrNotImplemented. Until then a refresh fails with exchange.ErrNoTransport.
-	selected, err := sym.SelectFeeds(all.Registry(), feeds, nil)
+	selected, err := sym.SelectFeeds(all.Registry(), feeds)
 	if err != nil {
 		return err
 	}

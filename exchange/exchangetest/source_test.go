@@ -505,14 +505,16 @@ func TestListingContext(t *testing.T) {
 }
 
 func TestUnimplementedReads(t *testing.T) {
-	rest := newSource(t).REST()
+	s := newSource(t)
+	var rest exchange.PublicREST = s
+	ctx := context.Background()
 	for _, tc := range []struct {
 		name string
 		call func() error
 	}{
-		{name: "depth", call: func() error { _, err := rest.Depth(nil, 10); return err }},
-		{name: "klines", call: func() error { _, err := rest.Klines(nil, "1m", 0, 10); return err }},
-		{name: "open interest", call: func() error { _, err := rest.OpenInterest(nil); return err }},
+		{name: "depth", call: func() error { _, err := rest.Depth(ctx, nil, 10); return err }},
+		{name: "klines", call: func() error { _, err := rest.Klines(ctx, nil, "1m", 10); return err }},
+		{name: "open interest", call: func() error { _, err := rest.OpenInterest(ctx, nil); return err }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := tc.call(); !errors.Is(err, exchange.ErrNotImplemented) {
@@ -522,44 +524,6 @@ func TestUnimplementedReads(t *testing.T) {
 	}
 	if rest.KlinePage() != 0 {
 		t.Fatalf("KlinePage = %d", rest.KlinePage())
-	}
-}
-
-// TestRESTOverDoer: the sans-I/O face, run over the Source as its Doer, reads what Listing reads, at
-// every page size, and a failed page fails the whole read with no rows (D302).
-func TestRESTOverDoer(t *testing.T) {
-	s := newSource(t)
-	mustAdd(t, s,
-		inst(symbol.Perp, "BTC", "BTCUSDT"), inst(symbol.Perp, "ETH", "ETHUSDT"), inst(symbol.Perp, "SOL", "SOLUSDT"))
-	want := listed(t, s, symbol.Perp)
-	over := exchange.ListingOver(s.REST(), s, time.Now)
-	for _, size := range []int{0, 1, 2, 3, 4} {
-		if err := s.SetPageSize(size); err != nil {
-			t.Fatal(err)
-		}
-		got, err := over.Listing(context.Background(), symbol.Perp)
-		if err != nil {
-			t.Fatalf("page size %d: %v", size, err)
-		}
-		equalList(t, got, want)
-	}
-	empty, err := over.Listing(context.Background(), symbol.Spot)
-	if err != nil || len(empty) != 0 {
-		t.Fatalf("empty category: %v %v", empty, err)
-	}
-
-	boom := errors.New("boom")
-	if err := s.SetPageSize(1); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.FailPage(2, boom); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := over.Listing(context.Background(), symbol.Perp); !errors.Is(err, boom) || got != nil {
-		t.Fatalf("failed page: %v rows %v", err, got)
-	}
-	if _, err := exchange.ListingOver(s.REST(), nil, time.Now).Listing(context.Background(), symbol.Perp); !errors.Is(err, exchange.ErrNoTransport) {
-		t.Fatalf("no transport: %v", err)
 	}
 }
 

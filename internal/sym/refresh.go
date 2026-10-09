@@ -19,13 +19,12 @@ import (
 var errDuplicate = errors.New("sym: duplicate listing")
 
 // Feed is one (venue, category) listing. Several categories of one venue share
-// a reader; Listing is called with Category. A refresh of this feed does
-// not delist another category. REST reads the whole listing: a venue's
-// PublicREST over an HTTP transport (exchange.ListingOver), or a fake.
+// a REST reader; Listing is called with Category. A refresh of this feed does
+// not delist another category.
 type Feed struct {
 	Venue    string
 	Category symbol.Category
-	REST     exchange.Lister
+	REST     exchange.PublicREST
 }
 
 // Report is one feed's refresh. When Err is set, nothing from this call was

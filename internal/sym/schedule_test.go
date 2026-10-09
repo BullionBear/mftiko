@@ -193,25 +193,19 @@ func TestFeedsFromRegistry(t *testing.T) {
 	reg, err := exchange.NewRegistry(exchange.Declaration{
 		Exchange: "test",
 		Venues: []exchange.Venue{
-			{Venue: symbol.Venue{Name: "Bybit", Categories: []symbol.Category{symbol.Perp, symbol.Spot}}, REST: bybit.REST()},
+			{Venue: symbol.Venue{Name: "Bybit", Categories: []symbol.Category{symbol.Perp, symbol.Spot}}, REST: bybit},
 			{Venue: symbol.Venue{Name: "Okx", Categories: []symbol.Category{symbol.Spot}}},
 		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	feeds := FeedsFromRegistry(reg, bybit)
+	feeds := FeedsFromRegistry(reg)
 	if len(feeds) != 2 || feeds[0].Venue != "Bybit" || feeds[0].Category != symbol.Perp || feeds[1].Category != symbol.Spot {
 		t.Fatalf("feeds = %+v", feeds)
 	}
-	// The feed reads the venue's PublicREST over the transport it was given.
-	perp := symbol.Listing{Venue: "Bybit", Category: symbol.Perp, Base: "BTC", Quote: "USDT", ExchTicker: "BTCUSDT"}
-	if err := bybit.Add(perp); err != nil {
-		t.Fatal(err)
-	}
-	got, err := feeds[0].REST.Listing(context.Background(), symbol.Perp)
-	if err != nil || len(got) != 1 || got[0].ExchTicker != "BTCUSDT" {
-		t.Fatalf("listing over the transport: %v %v", got, err)
+	if feeds[0].REST != bybit {
+		t.Fatal("REST was not the venue reader")
 	}
 }
 
