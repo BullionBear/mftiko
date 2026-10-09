@@ -50,7 +50,17 @@
 // Universe.current is a selector and is still TBD, outside D203.
 // The UID is uint32, the same type as Info.UID. The interval is symbol.MinUID..symbol.MaxUID
 // and 0 is invalid. symbol.ValidUID is that check. The BIGINT columns use the same bounds.
-// The sym subject is not served yet.
+// Service answers the sym subject over natsx: Get, GetByUid, List, Reverse and
+// Refresh. A success is the Reply protobuf. invalid, not_found and unavailable
+// are a natsx error reply (option A): the text is that word, then ": " and a
+// reason that names the field, the value, and why. include_inactive reads the
+// terminal table as well as the active one; the default is the active table
+// only, including Reverse. When both tables match, the active row wins. Several
+// terminal rows and no active row yield the greatest updated_at_ns, then the
+// greatest uid. Reverse of a terminal row, with include_inactive set, returns
+// the uid stored on that row. List pages with offset and limit. A limit of 0
+// means symbol.ListPage, and a limit above that is invalid. A reply that
+// reaches 1 MiB is unavailable rather than a shorter page.
 // Only this service writes the tables.
 //
 // It is also the only place that uppercases asset codes and applies the alias table (XBT to BTC,
@@ -68,8 +78,9 @@
 // Reads (PROTOCOL §7.3): the Resolver and hot paths read the active table only. One instrument by
 // exact UniversalTicker at spec load (a single row, never a venue table), then by UID; a
 // (venue, category) page of symbol.ListPage; the reverse lookup from a venue's spelling, which
-// yields the UID. Historical lookup (old fills and positions, reverse lookup of a terminal UID)
-// reads the terminal table and is not part of that cache. Clients cache through symbol.Resolver.
+// yields the UID. Historical lookup (old fills and positions, and a reverse with
+// include_inactive) reads the terminal table and is not part of that cache.
+// Clients cache through symbol.Resolver.
 //
 // In-process Resolver (E2-05), for tests and local development only:
 //
@@ -98,5 +109,5 @@
 // A row whose status is EXPIRED or DELISTED is omitted even when the listing still
 // returns it. Only TRADABLE may trade.
 //
-// The sym subject is not served yet.
+// This process does not answer the sym subject. Service does, from PostgreSQL.
 package sym

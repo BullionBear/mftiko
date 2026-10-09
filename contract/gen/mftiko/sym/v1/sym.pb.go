@@ -278,7 +278,7 @@ func (x *GetRequest) GetIncludeInactive() bool {
 }
 
 // 系統內部的查詢（D203）。STS、TD、MD 持有 UID，用它拿這一列的欄位。
-// 預設只讀活躍表；include_inactive 才含終結表。0 不是合法 UID。
+// 預設只讀活躍表；include_inactive 才含終結表。0 不是合法 UID，查詢是 not_found。
 type GetByUidRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 契約型別 uint32，範圍 1..4294967295（1..2^32-1），0 非法（PROTOCOL §10 P13）。
@@ -333,14 +333,15 @@ func (x *GetByUidRequest) GetIncludeInactive() bool {
 	return false
 }
 
-// One (venue, category) table, paged by offset and limit. A page stays under NATS's 1 MiB
-// with every filter. A row may move or appear between pages; that inconsistency is accepted
-// (D203, PROTOCOL §10 P13).
+// One (venue, category) table, paged by offset and limit. limit 0 means 500; a limit above
+// 500 is invalid, not clamped. A page whose protobuf reaches 1 MiB is unavailable, not a
+// shorter page, so offset and limit stay what the caller sent. A row may move or appear
+// between pages; that inconsistency is accepted (D203, PROTOCOL §10 P13).
 type ListRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Venue           string                 `protobuf:"bytes,1,opt,name=venue,proto3" json:"venue,omitempty"`
 	Category        string                 `protobuf:"bytes,2,opt,name=category,proto3" json:"category,omitempty"`
-	Limit           uint32                 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"` // at most 500
+	Limit           uint32                 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"` // 0 means 500; above 500 is invalid
 	Offset          uint32                 `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
 	IncludeInactive bool                   `protobuf:"varint,5,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // 同 GetRequest.include_inactive（D203）
 	unknownFields   protoimpl.UnknownFields
@@ -414,13 +415,17 @@ func (x *ListRequest) GetIncludeInactive() bool {
 
 // The venue's spelling -> the listing. Callers keep SymbolInfo.uid (D203). Category is required:
 // on a unified-account venue the spelling alone is ambiguous (Bybit's spot and linear "BTCUSDT").
+// include_inactive defaults to the active table. Set it to fall through to the terminal table
+// when the active table has no match; the uid is the one stored on that row. When both tables
+// match, the active row wins (a delist followed by a relist).
 type ReverseRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Venue         string                 `protobuf:"bytes,1,opt,name=venue,proto3" json:"venue,omitempty"`
-	Category      string                 `protobuf:"bytes,2,opt,name=category,proto3" json:"category,omitempty"`
-	ExchTicker    string                 `protobuf:"bytes,3,opt,name=exch_ticker,json=exchTicker,proto3" json:"exch_ticker,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Venue           string                 `protobuf:"bytes,1,opt,name=venue,proto3" json:"venue,omitempty"`
+	Category        string                 `protobuf:"bytes,2,opt,name=category,proto3" json:"category,omitempty"`
+	ExchTicker      string                 `protobuf:"bytes,3,opt,name=exch_ticker,json=exchTicker,proto3" json:"exch_ticker,omitempty"`
+	IncludeInactive bool                   `protobuf:"varint,4,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // 同 GetRequest.include_inactive（D203）
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ReverseRequest) Reset() {
@@ -474,6 +479,13 @@ func (x *ReverseRequest) GetExchTicker() string {
 	return ""
 }
 
+func (x *ReverseRequest) GetIncludeInactive() bool {
+	if x != nil {
+		return x.IncludeInactive
+	}
+	return false
+}
+
 // Re-pull one venue's listings now, or every venue when venue is empty.
 type RefreshRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -519,10 +531,14 @@ func (x *RefreshRequest) GetVenue() string {
 	return ""
 }
 
+// A success is this message: result is set, and error and reason stay empty.
+// invalid, not_found and unavailable are not this message. They are a natsx
+// error reply (option A). The text is that word, then ": " and a reason that
+// names the field, the value, and why.
 type Reply struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
-	Error  string                 `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"` // empty = success; invalid | not_found | unavailable
-	Reason string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	Error  string                 `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`   // unused; business errors use the natsx error reply
+	Reason string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"` // unused
 	// Types that are valid to be assigned to Result:
 	//
 	//	*Reply_Info
@@ -654,7 +670,13 @@ type SymbolInfo struct {
 	// 契約型別 uint32，範圍 1..4294967295（1..2^32-1），0 非法（PROTOCOL §10 P13）。
 	// Postgres 欄位是 bigint，CHECK (uid BETWEEN 1 AND 4294967295)。
 	// SQL 的兩張表以 uid 為主鍵（migrations/0002_symbol）。
-	Uid           uint32 `protobuf:"varint,13,opt,name=uid,proto3" json:"uid,omitempty"`
+	Uid uint32 `protobuf:"varint,13,opt,name=uid,proto3" json:"uid,omitempty"`
+	// qty 的單位（D203）。adapter 從交易所原生欄位填，下游不推導。linear 與期權是 base，inverse 是 quote。
+	// 現貨可以留空；入庫時存成 base。
+	ContractValueCcy string `protobuf:"bytes,14,opt,name=contract_value_ccy,json=contractValueCcy,proto3" json:"contract_value_ccy,omitempty"`
+	// price、price_tick 與權利金的單位（D203）。adapter 填。現貨與期貨（含 inverse）是 quote；
+	// 幣本位期權是 base；U 本位期權是 quote。現貨可以留空；入庫時存成 quote。
+	PriceCcy      string `protobuf:"bytes,15,opt,name=price_ccy,json=priceCcy,proto3" json:"price_ccy,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -780,6 +802,20 @@ func (x *SymbolInfo) GetUid() uint32 {
 	return 0
 }
 
+func (x *SymbolInfo) GetContractValueCcy() string {
+	if x != nil {
+		return x.ContractValueCcy
+	}
+	return ""
+}
+
+func (x *SymbolInfo) GetPriceCcy() string {
+	if x != nil {
+		return x.PriceCcy
+	}
+	return ""
+}
+
 type Bound struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Value         *string                `protobuf:"bytes,1,opt,name=value,proto3,oneof" json:"value,omitempty"`
@@ -878,9 +914,9 @@ func (x *SymbolList) GetTotal() uint32 {
 
 type RefreshResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Refreshed     map[string]uint32      `protobuf:"bytes,1,rep,name=refreshed,proto3" json:"refreshed,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`     // venue -> instruments seen
-	Deactivated   map[string]uint32      `protobuf:"bytes,2,rep,name=deactivated,proto3" json:"deactivated,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"` // venue -> rows marked inactive
-	Failed        map[string]string      `protobuf:"bytes,3,rep,name=failed,proto3" json:"failed,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`            // venue -> reason, per category
+	Refreshed     map[string]uint32      `protobuf:"bytes,1,rep,name=refreshed,proto3" json:"refreshed,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`     // venue/category -> instruments seen
+	Deactivated   map[string]uint32      `protobuf:"bytes,2,rep,name=deactivated,proto3" json:"deactivated,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"` // venue/category -> rows marked inactive
+	Failed        map[string]string      `protobuf:"bytes,3,rep,name=failed,proto3" json:"failed,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`            // venue/category -> reason
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -961,12 +997,13 @@ const file_mftiko_sym_v1_sym_proto_rawDesc = "" +
 	"\bcategory\x18\x02 \x01(\tR\bcategory\x12\x14\n" +
 	"\x05limit\x18\x03 \x01(\rR\x05limit\x12\x16\n" +
 	"\x06offset\x18\x04 \x01(\rR\x06offset\x12)\n" +
-	"\x10include_inactive\x18\x05 \x01(\bR\x0fincludeInactive\"c\n" +
+	"\x10include_inactive\x18\x05 \x01(\bR\x0fincludeInactive\"\x8e\x01\n" +
 	"\x0eReverseRequest\x12\x14\n" +
 	"\x05venue\x18\x01 \x01(\tR\x05venue\x12\x1a\n" +
 	"\bcategory\x18\x02 \x01(\tR\bcategory\x12\x1f\n" +
 	"\vexch_ticker\x18\x03 \x01(\tR\n" +
-	"exchTicker\"&\n" +
+	"exchTicker\x12)\n" +
+	"\x10include_inactive\x18\x04 \x01(\bR\x0fincludeInactive\"&\n" +
 	"\x0eRefreshRequest\x12\x14\n" +
 	"\x05venue\x18\x01 \x01(\tR\x05venue\"\xdb\x01\n" +
 	"\x05Reply\x12\x14\n" +
@@ -976,7 +1013,7 @@ const file_mftiko_sym_v1_sym_proto_rawDesc = "" +
 	" \x01(\v2\x19.mftiko.sym.v1.SymbolInfoH\x00R\x04info\x12/\n" +
 	"\x04list\x18\v \x01(\v2\x19.mftiko.sym.v1.SymbolListH\x00R\x04list\x128\n" +
 	"\arefresh\x18\f \x01(\v2\x1c.mftiko.sym.v1.RefreshResultH\x00R\arefreshB\b\n" +
-	"\x06result\"\xcb\x04\n" +
+	"\x06result\"\x96\x05\n" +
 	"\n" +
 	"SymbolInfo\x12)\n" +
 	"\x10universal_ticker\x18\x01 \x01(\tR\x0funiversalTicker\x12\x1f\n" +
@@ -994,7 +1031,9 @@ const file_mftiko_sym_v1_sym_proto_rawDesc = "" +
 	" \x01(\x0e2\x1b.mftiko.sym.v1.SymbolStatusR\x06status\x12@\n" +
 	"\afilters\x18\v \x03(\v2&.mftiko.sym.v1.SymbolInfo.FiltersEntryR\afilters\x12\"\n" +
 	"\rupdated_at_ns\x18\f \x01(\x03R\vupdatedAtNs\x12\x10\n" +
-	"\x03uid\x18\r \x01(\rR\x03uid\x1aP\n" +
+	"\x03uid\x18\r \x01(\rR\x03uid\x12,\n" +
+	"\x12contract_value_ccy\x18\x0e \x01(\tR\x10contractValueCcy\x12\x1b\n" +
+	"\tprice_ccy\x18\x0f \x01(\tR\bpriceCcy\x1aP\n" +
 	"\fFiltersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12*\n" +
 	"\x05value\x18\x02 \x01(\v2\x14.mftiko.sym.v1.BoundR\x05value:\x028\x01B\x10\n" +

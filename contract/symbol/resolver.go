@@ -46,10 +46,11 @@ type Resolver interface {
 	GetByUID(ctx context.Context, uid uint32, includeInactive bool) (*Info, error)
 
 	// Reverse turns a venue's spelling into the listing. Callers keep Info.UID (D203).
-	// The hot path reads the active table. Historical reverse lookup of an EXPIRED or
-	// DELISTED listing reads the terminal table; the UID is the one assigned when that
-	// listing was created, not a new one.
-	Reverse(ctx context.Context, key ExchKey) (*Info, error)
+	// includeInactive matches Get: the active table is the default, and a terminal
+	// listing is ErrNotFound unless it is set. The uid on a terminal row is the one
+	// stored there, not a new one. When the spelling is on both tables, the active
+	// row is returned.
+	Reverse(ctx context.Context, key ExchKey, includeInactive bool) (*Info, error)
 
 	// List is every non-terminal row of one (venue, category): the active table, not
 	// only TRADABLE. Selectors evaluate on it (D901). Only TRADABLE may trade.

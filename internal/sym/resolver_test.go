@@ -54,11 +54,11 @@ func TestResolverFakeSource(t *testing.T) {
 
 	r := mustResolver(t, "Bybit", src, []symbol.Category{symbol.Spot, symbol.Perp}, &script{uids: []uint32{10, 11, 12, 13}})
 
-	spot, err := r.Reverse(ctx, symbol.ExchKey{Venue: "Bybit", Category: symbol.Spot, ExchTicker: "BTCUSDT"})
+	spot, err := r.Reverse(ctx, symbol.ExchKey{Venue: "Bybit", Category: symbol.Spot, ExchTicker: "BTCUSDT"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	perp, err := r.Reverse(ctx, symbol.ExchKey{Venue: "Bybit", Category: symbol.Perp, ExchTicker: "BTCUSDT"})
+	perp, err := r.Reverse(ctx, symbol.ExchKey{Venue: "Bybit", Category: symbol.Perp, ExchTicker: "BTCUSDT"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,8 +89,12 @@ func TestResolverFakeSource(t *testing.T) {
 	if _, err := r.GetByUID(ctx, 0, true); !errors.Is(err, symbol.ErrNotFound) {
 		t.Fatalf("uid 0 err = %v", err)
 	}
-	if _, err := r.Reverse(ctx, symbol.ExchKey{Venue: "Bybit", Category: symbol.Spot, ExchTicker: "BTCUSD"}); !errors.Is(err, symbol.ErrNotFound) {
+	if _, err := r.Reverse(ctx, symbol.ExchKey{Venue: "Bybit", Category: symbol.Spot, ExchTicker: "BTCUSD"}, false); !errors.Is(err, symbol.ErrNotFound) {
 		t.Fatalf("quanto reverse err = %v", err)
+	}
+	// This process keeps no terminal table, so includeInactive does not add a row.
+	if _, err := r.Reverse(ctx, symbol.ExchKey{Venue: "Bybit", Category: symbol.Spot, ExchTicker: "BTCUSD"}, true); !errors.Is(err, symbol.ErrNotFound) {
+		t.Fatalf("include_inactive reverse err = %v", err)
 	}
 
 	halted, err := r.Get(ctx, symbol.UniversalTicker{Venue: "Bybit", Category: symbol.Spot, Symbol: "ETHUSDT"}, true)
@@ -374,7 +378,7 @@ func TestResolverSkipsBadTicker(t *testing.T) {
 	if err != nil || fut.UID != 2 {
 		t.Fatalf("future = %+v %v", fut, err)
 	}
-	if _, err := r.Reverse(ctx, symbol.ExchKey{Venue: "Bybit", Category: symbol.Future, ExchTicker: "BTCUSDT-BAD"}); !errors.Is(err, symbol.ErrNotFound) {
+	if _, err := r.Reverse(ctx, symbol.ExchKey{Venue: "Bybit", Category: symbol.Future, ExchTicker: "BTCUSDT-BAD"}, false); !errors.Is(err, symbol.ErrNotFound) {
 		t.Fatalf("bad ticker err = %v", err)
 	}
 	if got := listedTickers(mustList(t, r, "Bybit", symbol.Future)); len(got) != 1 || got[0] != "Bybit_Future_BTCUSDT-261225" {
@@ -505,11 +509,11 @@ func TestResolverDefaultDrawIsValid(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := mustResolver(t, "Bybit", src, []symbol.Category{symbol.Spot, symbol.Perp}, nil)
-	a, err := r.Reverse(ctx, symbol.ExchKey{Venue: "Bybit", Category: symbol.Spot, ExchTicker: "BTCUSDT"})
+	a, err := r.Reverse(ctx, symbol.ExchKey{Venue: "Bybit", Category: symbol.Spot, ExchTicker: "BTCUSDT"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := r.Reverse(ctx, symbol.ExchKey{Venue: "Bybit", Category: symbol.Perp, ExchTicker: "BTCUSDT"})
+	b, err := r.Reverse(ctx, symbol.ExchKey{Venue: "Bybit", Category: symbol.Perp, ExchTicker: "BTCUSDT"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -568,7 +572,7 @@ func TestReloadDoesNotPublishHalfTable(t *testing.T) {
 					fail(errors.New("perp uid changed during reload"))
 					return
 				}
-				rev, err := r.Reverse(ctx, symbol.ExchKey{Venue: "Bybit", Category: symbol.Spot, ExchTicker: "BTCUSDT"})
+				rev, err := r.Reverse(ctx, symbol.ExchKey{Venue: "Bybit", Category: symbol.Spot, ExchTicker: "BTCUSDT"}, false)
 				if err != nil && !errors.Is(err, symbol.ErrNotFound) {
 					fail(err)
 					return
