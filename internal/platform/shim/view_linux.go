@@ -165,11 +165,11 @@ func (v *view) record() {
 			v.log.Error().Err(err).Msg("exit file not written")
 		}
 	}
+	v.mu.Lock() // the Exited event, the exit and EXITED: one moment for Attached
 	v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Exited{Exited: &shimv1.Exited{Exit: info}}})
-	v.mu.Lock()
 	v.exit = info
-	v.mu.Unlock()
 	close(v.recorded)
+	v.mu.Unlock()
 	v.log.Info().Str("outcome", info.GetOutcome().String()).Int32("code", info.GetCode()).Int32("signal", info.GetSignal()).
 		Str("reason", info.GetReason()).Bool("on_stop_completed", info.GetOnStopCompleted()).Msg("exit recorded")
 }
@@ -228,13 +228,15 @@ func (v *view) exited() bool {
 // recorded, with the ExitInfo; RUNNING once it said Hello; STARTING before.
 func (v *view) Attached() *shimv1.Attached {
 	a := &shimv1.Attached{Pid: int32(v.pid), Pgid: int32(v.pgid), StartTime: v.startTime}
+	// One moment (PROTOCOL §4.4): what follow and record change, and the events they append, change together under
+	// v.mu, so next_seq is exactly where this state stands.
 	v.mu.Lock()
+	defer v.mu.Unlock()
 	a.Hello, a.Stage, a.LastBeatAtNs, a.Phase = proto.CloneOf(v.hello), v.stage, v.lastBeatNs, v.phase
 	a.Exiting, a.Exit = proto.CloneOf(v.exitingMsg), proto.CloneOf(v.exit) // exit is set only once recorded
-	v.mu.Unlock()
 	a.OldestSeq, a.NextSeq = v.events.Bounds()
 	switch {
-	case v.isRecorded(): // not merely reaped: Exited is in the events, and Release is accepted
+	case v.exit != nil: // recorded, not merely reaped: Exited is in the events, and Release is accepted
 		a.State = shimv1.WorkerState_WORKER_STATE_EXITED
 	case a.Hello != nil:
 		a.State = shimv1.WorkerState_WORKER_STATE_RUNNING
@@ -397,28 +399,34 @@ func (v *view) follow(conn io.Reader) {
 			v.log.Info().Msg("worker channel closed")
 			return
 		}
+		// The state and the event that tells of it change together, under v.mu: Attached reads both at one moment.
 		v.mu.Lock()
 		switch m := m.GetMsg().(type) {
 		case *workerv1.WorkerUp_Hello:
 			if v.hello == nil { // the first one counts; a worker says Hello once
 				v.hello = m.Hello
 			}
+			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Hello{Hello: m.Hello}})
 		case *workerv1.WorkerUp_Stage:
 			v.stage = m.Stage.GetName()
+			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Stage{Stage: m.Stage}})
 		case *workerv1.WorkerUp_Beat:
 			v.lastBeatNs = time.Now().UnixNano()
 		case *workerv1.WorkerUp_Done:
 			v.doneLocked(m.Done)
+			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Done{Done: m.Done}})
 		case *workerv1.WorkerUp_Exiting:
 			v.exiting = true
 			v.phase = shimv1.Phase_PHASE_STOPPING
 			if v.exitingMsg == nil { // the first one counts
 				v.exitingMsg = m.Exiting
 			}
+			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Exiting{Exiting: m.Exiting}})
 		case *workerv1.WorkerUp_Stopped:
 			if v.stoppedMsg == nil {
 				v.stoppedMsg = m.Stopped
 			}
+			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Stopped{Stopped: m.Stopped}})
 		}
 		out := v.sink
 		v.mu.Unlock()
@@ -427,16 +435,6 @@ func (v *view) follow(conn io.Reader) {
 		// Not under v.mu: Deliver takes the server's lock, which is held while it calls into the view.
 		deliver := func(ev *shimv1.Event) bool { return out != nil && out.Deliver(ev) }
 		switch m := m.GetMsg().(type) {
-		case *workerv1.WorkerUp_Hello:
-			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Hello{Hello: m.Hello}})
-		case *workerv1.WorkerUp_Done:
-			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Done{Done: m.Done}})
-		case *workerv1.WorkerUp_Stage:
-			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Stage{Stage: m.Stage}})
-		case *workerv1.WorkerUp_Exiting:
-			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Exiting{Exiting: m.Exiting}})
-		case *workerv1.WorkerUp_Stopped:
-			v.events.Append(&shimv1.Event{Kind: &shimv1.Event_Stopped{Stopped: m.Stopped}})
 		case *workerv1.WorkerUp_Report:
 			deliver(v.events.SetReport(&shimv1.Event{Kind: &shimv1.Event_Report{Report: m.Report}}))
 		case *workerv1.WorkerUp_Beat:

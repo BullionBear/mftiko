@@ -84,3 +84,38 @@ func TestAttachedAloneSuffices(t *testing.T) {
 		t.Error("the ring did not overflow: the test proves nothing")
 	}
 }
+
+// Attached is one moment: its next_seq is exactly where its state stands. Every event before it is in the state,
+// none after it. While the worker sends Stage after Stage, every snapshot's last stage is stage-k with next_seq k+3
+// (Started is 1, Hello 2, stage-i 2+i).
+func TestAttachedIsOneMoment(t *testing.T) {
+	const stages = 5000
+	p := startShim(t, fakeworker.Script{Stages: stages}, "", "", nil)
+	p.workerPid()
+	a := dial(t, p.socket())
+	seen := 0
+	for {
+		at := a.attach(1, Major+1).GetAttached()
+		stage, next := at.GetStage(), at.GetNextSeq()
+		if stage == "" {
+			if next > 3 {
+				t.Fatalf("no stage yet, but next_seq %d: the snapshot is behind its own seq", next)
+			}
+			continue
+		}
+		k, err := strconv.Atoi(stage[len("stage-"):])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if next != uint64(k)+3 {
+			t.Fatalf("stage %s with next_seq %d, want %d: state and seq are from different moments", stage, next, k+3)
+		}
+		seen++
+		if k == stages {
+			break
+		}
+	}
+	if seen < 10 {
+		t.Fatalf("only %d snapshots during the stages: the test proves nothing", seen)
+	}
+}

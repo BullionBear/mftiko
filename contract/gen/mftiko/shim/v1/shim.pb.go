@@ -1011,7 +1011,7 @@ type Attached struct {
 	StartTime     uint64                 `protobuf:"varint,9,opt,name=start_time,json=startTime,proto3" json:"start_time,omitempty"` // /proc/<pid>/stat 的 starttime，防 pid 重用
 	Hello         *v11.Hello             `protobuf:"bytes,10,opt,name=hello,proto3" json:"hello,omitempty"`
 	OldestSeq     uint64                 `protobuf:"varint,11,opt,name=oldest_seq,json=oldestSeq,proto3" json:"oldest_seq,omitempty"`
-	NextSeq       uint64                 `protobuf:"varint,12,opt,name=next_seq,json=nextSeq,proto3" json:"next_seq,omitempty"`
+	NextSeq       uint64                 `protobuf:"varint,12,opt,name=next_seq,json=nextSeq,proto3" json:"next_seq,omitempty"` // 這份快照的時間點：反映了 seq < next_seq 的每一則事件，不含 seq ≥ next_seq 的任何一則（§4.4）
 	LastBeatAtNs  int64                  `protobuf:"varint,13,opt,name=last_beat_at_ns,json=lastBeatAtNs,proto3" json:"last_beat_at_ns,omitempty"`
 	Phase         Phase                  `protobuf:"varint,14,opt,name=phase,proto3,enum=mftiko.shim.v1.Phase" json:"phase,omitempty"` // 生命週期的階段（§4.3）；worker 結束後是結束前的最後一個
 	Exiting       *v11.Exiting           `protobuf:"bytes,15,opt,name=exiting,proto3" json:"exiting,omitempty"`                        // worker 送的第一則 Exiting；沒送過就沒有（§4.4）

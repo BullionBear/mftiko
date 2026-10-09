@@ -483,6 +483,8 @@ export type Attached = Message<"mftiko.shim.v1.Attached"> & {
   oldestSeq: bigint;
 
   /**
+   * 這份快照的時間點：反映了 seq < next_seq 的每一則事件，不含 seq ≥ next_seq 的任何一則（§4.4）
+   *
    * @generated from field: uint64 next_seq = 12;
    */
   nextSeq: bigint;
