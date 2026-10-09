@@ -85,6 +85,12 @@ func forbiddenInStrategy(importPath string) bool {
 	return own && under(r, "exchange", "internal")
 }
 
+// forbiddenInExchange reports whether the exchange package, which holds the adapter interfaces, must not
+// link the package: the transport and JSON libraries are the workers' and exchange/transport's (DECISIONS D302).
+func forbiddenInExchange(importPath string) bool {
+	return under(importPath, "github.com/valyala/fasthttp", "github.com/coder/websocket", "github.com/bytedance/sonic")
+}
+
 // check returns one line per broken rule. std holds the standard library's import paths.
 func check(pkgs []pkg, std map[string]bool) []string {
 	var out []string
@@ -140,6 +146,13 @@ func check(pkgs []pkg, std map[string]bool) []string {
 					bad(imp, "the API does not query SYM")
 				case under(to, "exchange") && to != "exchange":
 					bad(imp, "planes use exchange's interfaces only; cmd registers the exchanges")
+				}
+			}
+		}
+		if from == "exchange" {
+			for _, d := range p.Deps {
+				if forbiddenInExchange(d) {
+					out = append(out, fmt.Sprintf("%s links %s: the adapter interfaces carry no transport or JSON library", from, d))
 				}
 			}
 		}
@@ -229,6 +242,10 @@ func TestCheckReportsViolations(t *testing.T) {
 		{ImportPath: m("internal/api"), Imports: []string{m("exchange"), m("contract/gen/mftiko/sym/v1"), m("contract/gen/mftiko/state/v1")}},
 		{ImportPath: m("internal/platform/agent"), Imports: []string{m("contract/gen/mftiko/shim/v1"), m("internal/sts"), m("exchange")}},
 		{ImportPath: m("exchange/okx"), Imports: []string{m("exchange"), m("contract/symbol"), m("internal/platform/state")}},
+		{ImportPath: m("exchange"), Imports: []string{"github.com/valyala/fasthttp"},
+			Deps: []string{"github.com/valyala/fasthttp", "github.com/coder/websocket/internal/errd", "github.com/bytedance/sonic/ast"}},
+		{ImportPath: m("exchange/transport/fasthttp"), Imports: []string{m("exchange"), m("exchange/transport"), "github.com/valyala/fasthttp"},
+			Deps: []string{"github.com/valyala/fasthttp", m("exchange")}}, // the transport: free
 		{ImportPath: m("contract/symbol"), Imports: []string{"context", "google.golang.org/protobuf/proto", "github.com/rs/zerolog", m("exchange")}},
 		{ImportPath: m("sdk"), Imports: []string{m("contract/wire/frame"), m("internal/platform/natsx")},
 			Deps: []string{"fmt", m("contract/wire/frame"), "go.etcd.io/etcd/client/v3", m("exchange"), m("sdk/internal/c4")}},
@@ -251,6 +268,9 @@ func TestCheckReportsViolations(t *testing.T) {
 		"internal/platform/agent imports " + m("internal/sts"),
 		"internal/platform/agent imports " + m("exchange"),
 		"exchange/okx imports " + m("internal/platform/state"),
+		"exchange links github.com/valyala/fasthttp",
+		"exchange links github.com/coder/websocket/internal/errd",
+		"exchange links github.com/bytedance/sonic/ast",
 		"contract/symbol imports google.golang.org/protobuf/proto",
 		"contract/symbol imports github.com/rs/zerolog",
 		"contract/symbol imports " + m("exchange"),
