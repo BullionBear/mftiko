@@ -9,9 +9,9 @@
 //   - The planes (internal/api, sts, md, td, sym) do not import each other. They use exchange's interfaces only;
 //     cmd registers the exchanges. The API imports no exchange at all and does not use sym.v1.
 //   - The agent planes' root packages (internal/sts, md, td) and the skeleton's decisions (internal/platform/agent)
-//     link no etcd, NATS, state, natsx, shim, or the skeleton's I/O (agent/c3, agent/runner): they hold the
-//     Planner, the Policy and the domain types, testable without a cluster. The wiring is in internal/{plane}/daemon
-//     (DECISIONS D110).
+//     link no etcd, NATS, state, natsx, shim, or the skeleton's I/O (agent/c3, fleet, runner, testplane): they
+//     hold the Planner, the Policy and the domain types, testable without a cluster. The wiring is in
+//     internal/{plane}/daemon (DECISIONS D110).
 //
 // cmd, migrations and this package are free.
 package archtest

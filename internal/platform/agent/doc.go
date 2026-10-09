@@ -4,5 +4,6 @@
 // This package holds the decisions and does no I/O (D110): the types a plane plans with (Plan, Demand, Observed),
 // Policy, and the Reconciler, which diffs plans against observations and keeps the restarts and their backoff.
 // While the demand is stale it changes nothing by it (D109). The I/O is in the subpackages: runner runs a term's
-// loop around the Reconciler, against etcd and a Fleet; c3 is the client of a worker's shim (PROTOCOL §4).
+// loop around the Reconciler, against etcd and a Fleet; fleet is the Fleet, a shim per worker; c3 is the client of
+// a worker's shim (PROTOCOL §4); testplane runs the whole skeleton with fake workers (E1-19).
 package agent

@@ -2,10 +2,14 @@ package state
 
 import (
 	"cmp"
+	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
 
+	"go.etcd.io/etcd/api/v3/authpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
@@ -136,4 +140,54 @@ func agentRole(p Plane, inst string) Role {
 
 func prefixPerm(prefix string, write bool) Permission {
 	return Permission{Key: prefix, RangeEnd: clientv3.GetPrefixRangeEnd(prefix), Write: write}
+}
+
+// EnsureAuth adds what root's cluster lacks of table: roles, their permissions, users and their roles. A new user's
+// password is password(name). What is there already is left alone, so that applying the same table twice changes
+// nothing, and does not bump the cluster's auth revision. It neither removes nor revokes anything: a role or a
+// permission the table no longer has stays until removed by hand. Tests run every process under RBAC with it;
+// deployment applies the tables the same way (E12).
+func EnsureAuth(ctx context.Context, root *clientv3.Client, table AuthTable, password func(user string) string) error {
+	for _, role := range table.Roles {
+		got, err := root.RoleGet(ctx, role.Name)
+		if errors.Is(err, rpctypes.ErrRoleNotFound) {
+			if _, err = root.RoleAdd(ctx, role.Name); err != nil {
+				return err
+			}
+			got = &clientv3.AuthRoleGetResponse{}
+		} else if err != nil {
+			return err
+		}
+		have := map[Permission]bool{}
+		for _, p := range got.Perm {
+			have[Permission{Key: string(p.Key), RangeEnd: string(p.RangeEnd), Write: p.PermType == authpb.READWRITE}] = true
+		}
+		for _, p := range role.Permissions {
+			if have[p] {
+				continue
+			}
+			kind := clientv3.PermissionType(clientv3.PermRead)
+			if p.Write {
+				kind = clientv3.PermissionType(clientv3.PermReadWrite)
+			}
+			if _, err := root.RoleGrantPermission(ctx, role.Name, p.Key, p.RangeEnd, kind); err != nil {
+				return err
+			}
+		}
+		user, err := root.UserGet(ctx, role.Name)
+		if errors.Is(err, rpctypes.ErrUserNotFound) {
+			if _, err := root.UserAdd(ctx, role.Name, password(role.Name)); err != nil {
+				return err
+			}
+			user = &clientv3.AuthUserGetResponse{}
+		} else if err != nil {
+			return err
+		}
+		if !slices.Contains(user.Roles, role.Name) {
+			if _, err := root.UserGrantRole(ctx, role.Name, role.Name); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

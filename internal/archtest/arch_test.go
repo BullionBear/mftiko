@@ -72,7 +72,8 @@ func forbiddenInPureAgent(importPath string) bool {
 	}
 	r, own := rel(importPath)
 	return own && under(r, "internal/platform/state", "internal/platform/natsx", "internal/platform/shim",
-		"internal/platform/agent/c3", "internal/platform/agent/runner")
+		"internal/platform/agent/c3", "internal/platform/agent/runner", "internal/platform/agent/fleet",
+		"internal/platform/agent/testplane")
 }
 
 // forbiddenInStrategy reports whether a strategy binary, which links sdk, must not contain the package.

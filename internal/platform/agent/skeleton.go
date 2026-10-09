@@ -79,8 +79,8 @@ func (s State) String() string {
 	}
 }
 
-// ended reports whether the worker is gone: exited, or lost with its shim.
-func (s State) ended() bool { return s == StateExited || s == StateLost }
+// Ended reports whether the worker is gone: exited, or lost with its shim.
+func (s State) Ended() bool { return s == StateExited || s == StateLost }
 
 // Observed is one worker as the Fleet sees it: what it was spawned with, what was pushed to it, and its state,
 // from its shim's Attached and events (D108).
