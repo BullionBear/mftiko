@@ -23,9 +23,10 @@
 //
 // The plane itself (refresh, tables, the sym subject) is internal/sym.
 //
-// Asset codes are uppercased there, and the alias table (XBT to BTC) is applied only there,
-// before quanto is judged and the ticker is derived (D203). Adapters pass native codes and do not
-// rename. Strikes are normalized with spell_strike first, so 6400.0 and 6400 are one ticker.
+// CanonicalAsset and AssetAliases live here so every adapter shares one table (D203).
+// SYM applies them before it judges quanto and derives the ticker. Adapters pass native
+// codes and do not keep a table of their own. Strikes are normalized with SpellStrike
+// first, so 6400.0 and 6400 are one ticker.
 // USD, USDC and USDT are three assets. Quanto (a settlement asset that is neither base nor quote)
 // is not stored in phase 1, and the demand is REJECTED. qty is in contract_value_ccy (contracts
 // times contract_size): base on linear and options, quote on inverse, not a contract count.
@@ -40,8 +41,7 @@
 // monotonic sequence. symbol_filter splits the same way and moves with the row. Selectors have
 // no UID; Universe.current is a selector and is still TBD, outside D203. The enum is still
 // provisional. The contract type is uint64 and 0 is invalid; width and range are still open
-// (PROTOCOL §10 P13, suggested 1..2^63-1 because Postgres BIGINT is signed). This package
-// does not implement the split or the allocator.
-//
-// Shape only: types and contracts; the functions return ErrNotImplemented.
+// (PROTOCOL §10 P13, suggested 1..2^63-1 because Postgres BIGINT is signed). ValidUID
+// rejects only 0, so the range can change in that one function. This package does not
+// implement the split or the allocator. Active stays bool until the status enum is final (D203).
 package symbol

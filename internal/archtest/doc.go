@@ -2,6 +2,7 @@
 // code of its own: the rules run as a test, so `make check` and CI enforce them.
 //
 //   - contract depends on nothing else in the repository, and outside it only on protobuf and the standard library.
+//     contract/symbol depends only on the standard library.
 //   - exchange depends only on contract.
 //   - sdk depends only on contract, and nothing it links may be etcd, a PostgreSQL driver, exchange or internal.
 //   - examples use only sdk and contract, as an outside author would.

@@ -100,6 +100,9 @@ func (r *Registry) Lookup(name string) (symbol.Venue, bool) {
 	return v.Venue, ok
 }
 
+// Names implements symbol.Venues: every venue's canonical name.
+func (r *Registry) Names() []string { return r.Venues() }
+
 var _ symbol.Venues = (*Registry)(nil)
 
 // Venues returns every venue name, sorted.
