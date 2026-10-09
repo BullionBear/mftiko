@@ -1,13 +1,21 @@
 package symbol
 
+// MinUID and MaxUID are the inclusive bounds of a symbol UID (D203, PROTOCOL §10 P13).
+// Zero is invalid. The proto field is uint32, so the upper bound is 2^32-1.
+// Postgres stores the column as bigint with CHECK (uid BETWEEN 1 AND 4294967295).
+const (
+	MinUID uint32 = 1
+	MaxUID uint32 = 4294967295
+)
+
 // Info is one instrument as SYM serves it: the golden record every plane reads.
 type Info struct {
 	// UID is the primary key of both SYM tables, unique across them (D203). SYM allocates
 	// a random integer, never reuses it, and stores it on the row, so a restart or reload
-	// does not change it. A delist followed by a relist gets a new one. Zero is never
-	// assigned. The contract type is uint64. Width and range are still open
-	// (PROTOCOL §10 P13); the suggested range is 1..2^63-1.
-	UID        uint64
+	// does not change it. A delist followed by a relist gets a new one. The contract type
+	// is uint32, range MinUID..MaxUID (1..4294967295). Zero is invalid (PROTOCOL §10 P13).
+	// Postgres stores the column as bigint with CHECK (uid BETWEEN 1 AND 4294967295).
+	UID        uint32
 	Ticker     UniversalTicker
 	ExchTicker string
 	Base       string
@@ -32,11 +40,9 @@ type Info struct {
 	UpdatedAtNs int64
 }
 
-// ValidUID reports whether uid may identify an instrument. Zero is never
-// assigned (D203). Any other uint64 is accepted: the numeric range is still
-// open (PROTOCOL §10 P13) and, when it is decided, is applied only here.
-func ValidUID(uid uint64) bool {
-	return uid != 0
+// ValidUID reports whether uid may identify an instrument.
+func ValidUID(uid uint32) bool {
+	return uid >= MinUID && uid <= MaxUID
 }
 
 // Linear, Inverse and Quanto group an instrument for display from the three

@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍仍開放，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 >
@@ -630,7 +630,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   - `Universe.current` 是 selector，尚未定，不在這一條。selector 沒有 UID。selector 的成員今天仍是 ticker 字串；成員是商品，改成商品 UID 是後續。
   - 這一版只在 `SymbolInfo` 加上 `uid`，並加 `GetByUidRequest`。`td.order`、需求項目、selector 成員今天仍是 ticker 字串。SQL 還沒有 `uid` 欄。
   - NATS 的 subject 用人讀的名字，不用 UID。確切拼法還沒定（PROTOCOL §10 P14）。這一版維持 `md.f.{inst}.{topic}.{ticker}`，不改 subject。策略 hook 看 ticker 還是 UID 見 P15。
-  - 契約型別是 `uint64`，0 非法。寬度與數值範圍仍開放（PROTOCOL §10 P13）：Postgres 的 BIGINT 是有號的，建議範圍是 `1..2^63-1`。這一票不實作分配。
+  - 契約型別是 `uint32`，範圍 `1..4294967295`（`1..2^32-1`），0 非法（PROTOCOL §10 P13）。Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`。這一票不實作分配。
 
 - **不採用：** adapter 自行改名，或在 adapter 裡收別名；下游用類別回推三個幣欄；沿用 `reservations.is_linear_margin`，或為 Deribit 開特例；把 `settlement_asset` 當成保證金幣（Binance 的 `marginAsset`、Bitget 寫成 quote）；inverse 的 qty 用張數；quanto 入庫並把 `active` 設成 false；把 `USD`、`USDC`、`USDT` 收成同一個；已終結的列留在熱路徑讀的那張表；搬表時改寫 UniversalTicker 或重發 UID；下架再上市沿用舊 UID；用單調序號或 Postgres sequence（`symbol_uid_seq`）當 UID；重啟或重載時重發 UID；給 selector 一個 UID；系統內部繼續用 ticker 字串當商品身分；NATS subject 用 UID。
 

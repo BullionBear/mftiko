@@ -40,8 +40,8 @@
 // persists it on the row, so a restart or reload keeps it; a collision is retried. It is not a
 // monotonic sequence. symbol_filter splits the same way and moves with the row. Selectors have
 // no UID; Universe.current is a selector and is still TBD, outside D203. The enum is still
-// provisional. The contract type is uint64 and 0 is invalid; width and range are still open
-// (PROTOCOL §10 P13, suggested 1..2^63-1 because Postgres BIGINT is signed). ValidUID
-// rejects only 0, so the range can change in that one function. This package does not
+// provisional. The contract type is uint32, range MinUID..MaxUID (1..4294967295,
+// PROTOCOL §10 P13). Zero is invalid. Postgres stores the column as bigint with
+// CHECK (uid BETWEEN 1 AND 4294967295). ValidUID applies that range. This package does not
 // implement the split or the allocator. Active stays bool until the status enum is final (D203).
 package symbol

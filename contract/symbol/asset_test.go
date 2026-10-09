@@ -2,7 +2,6 @@ package symbol_test
 
 import (
 	"errors"
-	"math"
 	"testing"
 
 	"github.com/BullionBear/mftiko/contract/symbol"
@@ -67,7 +66,10 @@ func TestValidUID(t *testing.T) {
 	if symbol.ValidUID(0) {
 		t.Fatal("0 is a UID")
 	}
-	if !symbol.ValidUID(1) || !symbol.ValidUID(math.MaxUint64) {
-		t.Fatal("range is applied before it is decided")
+	if symbol.MinUID != 1 || symbol.MaxUID != 4294967295 {
+		t.Fatalf("range %d..%d, want 1..4294967295", symbol.MinUID, symbol.MaxUID)
+	}
+	if !symbol.ValidUID(symbol.MinUID) || !symbol.ValidUID(symbol.MaxUID) {
+		t.Fatal("1 and 4294967295 are valid UIDs")
 	}
 }

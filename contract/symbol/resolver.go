@@ -41,9 +41,9 @@ type Resolver interface {
 	Get(ctx context.Context, t UniversalTicker, includeInactive bool) (*Info, error)
 
 	// GetByUID is the internal lookup. STS, TD and MD pass this integer, not the ticker
-	// string (D203). includeInactive has the same meaning as on Get. uid 0 is not a
-	// valid UID (ValidUID); it is ErrNotFound. Width and range are open (PROTOCOL §10 P13).
-	GetByUID(ctx context.Context, uid uint64, includeInactive bool) (*Info, error)
+	// string (D203). includeInactive has the same meaning as on Get. A uid outside
+	// MinUID..MaxUID is not a valid UID (ValidUID); it is ErrNotFound.
+	GetByUID(ctx context.Context, uid uint32, includeInactive bool) (*Info, error)
 
 	// Reverse turns a venue's spelling into the listing. Callers keep Info.UID (D203).
 	// The hot path reads the active table. Historical reverse lookup of an EXPIRED or
