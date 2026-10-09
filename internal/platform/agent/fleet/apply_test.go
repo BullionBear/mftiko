@@ -26,6 +26,7 @@ func TestApply(t *testing.T) {
 		{&shimv1.Event{AtNs: at.UnixNano(), Kind: &shimv1.Event_Started{Started: &shimv1.Started{Pid: 1}}}, agent.StateInitializing},
 		{&shimv1.Event{Kind: &shimv1.Event_Hello{Hello: &workerv1.Hello{Release: "r1"}}}, agent.StateInitializing},
 		{&shimv1.Event{Kind: &shimv1.Event_Stage{Stage: &workerv1.Stage{Name: "warm"}}}, agent.StateInitializing},
+		{&shimv1.Event{Kind: &shimv1.Event_Applied{Applied: &workerv1.Applied{Digest: "l1"}}}, agent.StateInitializing},
 		{done(workerv1.Verb_VERB_INIT, true), agent.StateInitialized},
 		{&shimv1.Event{AtNs: at.Add(time.Second).UnixNano(), Kind: &shimv1.Event_Beat{Beat: &workerv1.Beat{Seq: 1}}}, agent.StateInitialized},
 		{done(workerv1.Verb_VERB_START, true), agent.StateRunning},
@@ -40,7 +41,7 @@ func TestApply(t *testing.T) {
 		}
 	}
 	if !o.StartedAt.Equal(at) || o.Release != "r1" || o.Stage != "warm" || o.Exit != exit ||
-		!o.LastBeat.Equal(at.Add(time.Second)) {
+		!o.LastBeat.Equal(at.Add(time.Second)) || o.LiveHash != "l1" {
 		t.Fatalf("observed %+v", o)
 	}
 

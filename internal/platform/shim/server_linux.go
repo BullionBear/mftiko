@@ -53,6 +53,8 @@ type controlled interface {
 	Init(*workerv1.Init) error
 	Start(*workerv1.Start) error
 	Relay(*workerv1.Relay) error
+	// Live passes a live config to the worker, in any phase, as Relay does.
+	Live(*workerv1.Live) error
 	// Stop starts stopping the worker; first is false when a Stop was already under way, which keeps its timers.
 	Stop(reason string, grace, killAfter time.Duration) (first bool, err error)
 	// Release is nil once the worker has been reaped, ErrRunning before.
@@ -366,6 +368,8 @@ func (s *server) respondLocked(c *agentConn, req *shimv1.ShimRequest) *shimv1.Re
 		return s.lifecycle(c, "start", s.worker.Start(op.Start))
 	case *shimv1.ShimRequest_Relay:
 		return s.lifecycle(c, "relay", s.worker.Relay(op.Relay))
+	case *shimv1.ShimRequest_Live:
+		return s.lifecycle(c, "live", s.worker.Live(op.Live))
 	case *shimv1.ShimRequest_Stop:
 		return s.stop(c, op.Stop)
 	case *shimv1.ShimRequest_Release:

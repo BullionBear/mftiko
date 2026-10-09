@@ -1,6 +1,6 @@
 # PROTOCOL — 協議與契約
 
-> **狀態：草案 v0.43（2026-10-09）。** 依據 [DECISIONS.md](DECISIONS.md)。v0.3 把控制面改到 etcd（D004），依賴改成 agent 層級的 lease（D901），shim 與 worker 之間加入生命週期動詞（D107），資料面拿掉給策略看的可用性廣播（D801）。v0.4 依 D005 改成每個 region 一個 etcd cluster：路由函數、每個 cluster 各自的 writer key、版本號不依賴 etcd revision；並依 D902 加入策略 artifact 的格式（§8）。v0.5 依 D601 加入歷史補正：`AccountSettings` 加 interval 與手動觸發，TD agent 訂閱 `td.evt` 落庫，`Fill.fill_id` 規定為交易所的 trade id。v0.6 依 D402：md.proto 加 `OrderBookDelta`，新增 `read.proto`（`md.view`、`md.fetch`），tape 不再用 Redis（拿掉 `tape_url` 與 `StandingSubscription.record`）。v0.7 依 D106：行情的 subject 一律由 MD agent 給，`SelectorBinding` 加 `subject_prefix`。v0.8 依 D903 拿掉 `stsctl.SubscribeRequest`：一期策略完全宣告式。v0.9 依 D904 加入 session volume 與資料 artifact：`SessionSpec.inputs`、`Limits.volume_mb`、`SessionStatus.state_out`、兩個環境變數、§8.4。v0.10 依 D803：`md.f` 加 envelope（`seq`、`conn_epoch`、`md_ts_ns` 從 `Meta` 移過去），拿掉 `Delivery`，加 `SessionSpec.recv_window_ms`、`Limits.hook_timeout_s`、`QueueStat.max_age_ms`。v0.11 依 D602：加 `algo_id`（由 spec 在每個帳號上宣告，可以多個，TD agent 以 lease 檢查衝突），`client_order_id` 的 session 欄位換成 algo，`CancelSession` 換成策略自己發的 `BatchCancel`，STS agent 不再有 `td.order` 的權限。v0.12：`client_order_id` 改成 `ver(4) | algo(10) | ts_ms(40) | seq(10)`。v0.13 依 D403：MD 連線的身分改成 `(venue, route, n)`，endpoint 變成 `mdctl.InitPayload.url` 這個參數，atom id 拿掉 endpoint。v0.14 依 D603：`td.evt` 的 `AccountReset` 換成帶快照的 `Recon`，TD 降級時拒新單、放行撤單。v0.15 依 D905：只有一層 linger，連線在最後一個 atom 退訂時就停；lease 的 TTL 統一 60 秒。v0.16 依 D404 拿掉常駐訂閱（`StandingSubscription` 與 `/md/{inst}/standing/`）：MD 的 owner 只有 session 的 lease 項目。v0.17 依 D601：`tdctl.Report` 加 `first_submit_ns`，backfill 的範圍從下單決定。v0.18 依 D906：session worker 的 NATS 憑證每個 session 一份（`stsctl.InitPayload.nats`），權限見 §7。v0.19 依 D802：一期只做 Go SDK，拿掉 Python 綁 Go 的設計；新增 §9，寫明其他語言的 SDK 要遵守的契約，以及 STS agent 以 `Beat` 逾時判定 `HUNG` 的保險。v0.20 依 D202：UniversalTicker 是佔位，經 SYM 解析之後才決定訂閱什麼；atom id 改成 `<venue>:<route>:<channel>`；加入 topic 表與 SYM 的契約（§7.3，`mftiko.sym.v1`）。v0.21 依 D301：帳號種類和 venue 分成兩個 enum，`state.v1.Account.venue`、`tdctl.InitPayload.venue` 改為 `kind`；BinancePM 是帳號種類，不是 venue。v0.22 依 D106：incarnation 存在不綁 lease 的 `/{plane}/{inst}/incarnation/{h}`，spawn 前以 txn 取號（§3.2 W6）。v0.23：W4 的 watch 改從 list 的 revision（含）開始，不再加 1。v0.24 依 D907–D908、D006–D007：控制平面分成 API server 與 controller；跨平面的依賴改由 controller 以宣告式的需求表達，不綁 TTL（D901、D905），lease 項目改名需求項目，key 拿掉 `{sts_inst}`；新增 STS 的指派 `/sts/{inst}/demand/{session_id}`，Gate 與綁定的整理移到 controller；ack 由 controller watch；SYM 改成啟動時整表載入、跟著變更重載，使用者是 STS、MD、TD；三種 worker 都從 artifact 起（§8）；契約分成草案與定案（§1）；session 的宣告抽成 `mftiko.session.v1`，`stsctl.v1` 不再 import `state.v1`，改用自己的 `BindingState`、`Universe`；`Side`、`OrderType`、`TimeInForce` 移到 `common.v1`，`td.v1` 不再 import `md.v1`。v0.25 依 D004：etcd lease 只有選主 session 一種；`AgentRecord` 綁在它上面，agent 在不在就看它；ack、`WorkerStatus` 不綁 lease，由 agent 自己維護（§3.2 W7）。v0.26：W1 由 etcd 的 auth 與 RBAC 強制，角色表由 instance 清單產生（§3.2 W1）。v0.27：shim 的啟動參數 `Launch` 由 agent 經 shim 的 stdin 送入，欄位由 artifact 的 manifest 換算而來（§4.6、§8.3）。v0.28：C3 的 server（E1-09）：`Launch` 加 `work_dir`，socket 的權限、只收同一個 uid 的連線、殘留與重複的處理（§4.1）；attach 的檢查順序、shim 記住接受過的最大 epoch、錯誤碼表、major 沒有交集時只能 `Signal` 與跨 major 不變的欄位（§4.2）；worker 被 reap 之後 `Signal` 回 `exited`（§4.3）；新增 §10 P12。v0.29：生命週期指令（E1-11）：shim 記下的階段 `Phase` 放進 `Attached`，`Init`、`Start` 只在對應的階段接受，`Stop` 的計時與重複的 `Stop`、`Release` 的條件、shim 自己收到 SIGTERM 時的 grace，錯誤碼加 `worker_busy`（§4.2、§4.3）；`cred` 的 uid 和 shim 不同而 shim 沒有 `CAP_KILL` 時不 spawn（§4.6）。v0.30：worker 的輸出（E1-14）：`Launch.output`，檔案放在 `${WORK_DIR}/log/{plane}/{h}.stdout`、`{h}.stderr`，依大小輪替，寫不及時丟棄並在檔案裡註明，不讓 worker 阻塞（§4.5 S4、§4.6）。v0.31：事件緩衝與補送（E1-12）：只有進環狀緩衝的事件有 seq；`Ack` 釋放已確認的事件，環的 1024 則只算未確認的；`gap` 只標在 agent 要的事件被溢出丟掉時；attach 之後先送最新的 `Report` 再補送；控制者換人或離開時，shim 對 worker 送 `Controller`；agent 送完指令就關閉連線時，已送出的指令照樣執行（§4.1、§4.2、§4.4）。v0.32：結束檔與 `Exited`（E1-13）：新增 `ExitRecord`；`ExitInfo` 的合成規則（code、signal 一律依 wait status，outcome、reason 有 `Exiting` 就依它，沒有就依 exit code）；reap 之後讀完 fd 3 才記錄，記錄完才是 `EXITED`、才接受 `Release`；有前一個 incarnation 沒收走的結束檔時 shim 不啟動（§4.3、§4.5 S3、§4.6、§5.3）。v0.33 依 D108：agent 以快照恢復，事件只是通知；`Attached` 加 `exiting`、`exit`，且 `next_seq` 是快照的時間點；`Ack` 不是提交（§4.4）。v0.34 依 D203：幣與數量的單位。qty 的單位是 `contract_value_ccy`（張數 × `contract_size`）：linear 與期權是 base，inverse 是 quote，不是張數；`price_ccy` 是 price、`price_tick` 與權利金的幣，現貨與期貨（含 inverse）是 quote，幣本位期權是 base，U 本位期權是 quote；`settlement_asset` 是損益結算幣，不是保證金幣，三個欄位由 adapter 從原生欄位填，下游不推導。別名只在 SYM 收（一律大寫，例如 XBT→BTC），先正規化再判定 quanto 再推 ticker；strike 先依 `spell_strike`（`6400.0` 與 `6400` 是同一個 ticker）。`USD`、`USDC`、`USDT` 不合併，報價 USD 而結算 USDC 是 quanto，一期不入庫、需求 `REJECTED`。狀態 enum 暫定（`PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`EXPIRED`、`DELISTED`、`UNKNOWN`），契約仍是 `bool active`，交易路徑只接受 `TRADABLE`。SYM 的 listing 預定分兩張表：活躍表是狀態還會變的（`PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`UNKNOWN`），Resolver 與熱路徑只讀它；終結表是 `EXPIRED`、`DELISTED`，狀態不再變，不再刷新，給歷史查詢，可以歸檔；搬過去時 UniversalTicker 字串不變。這一版不拆表。UniversalTicker 只給人寫 spec；系統內部用 UID，是兩張表的主鍵，跨表唯一，搬表時不變，下架再上市拿新的 UID。`SymbolInfo` 加 `uid`（寬度暫定，契約暫用 `uint64`，0 不分配）與 `GetByUidRequest`。寬度、分配方式、重啟是否沿用還沒定；建議方向是一條 Postgres sequence（例如 `symbol_uid_seq`）餵兩張表的 `uid` 主鍵，`symbol_filter` 以 uid 為鍵，終結時整列連 uid 搬走（§10 P13），這一版不實作。NATS subject 用人讀的名字，不用 UID；確切拼法還沒定（§10 P14），這一版仍是 `md.f.{inst}.{topic}.{ticker}`。策略 hook 看 ticker 還是 UID 還沒定（§10 P15）。`td.order` 等仍是 ticker。`td.proto` 的數量欄位註上單位（§7.2、§7.3）。v0.35 依 D109：需求過舊（`LastContact` 超過門檻，預設 15 秒）時，agent 不依需求停 worker、替換、推 live config，也不寫 `WorkerStatus`；重啟結束的 worker 與送 `Start` 由各平面的 Policy 決定（§3.2 W8）。v0.36 改寫 §10 P13：UID 由 SYM 分配，是隨機、唯一、永不重用的整數，不是單調序號，也不是 Postgres sequence；跟列一起持久化，重啟與重載不變，下架再上市拿新的，碰撞就重試。契約型別是 `uint64`，0 非法。寬度與範圍仍開放，Postgres BIGINT 有號，建議 `1..2^63-1`。`symbol_filter` 也分活躍表與終結表，終結時跟列一起搬。SYM `List` 以 offset＋limit 分頁，跨頁不一致可以接受。`Universe.current` 是 selector，尚未定，不在 D203；selector 沒有 UID。P14、P15 仍開放。v0.37：agent 起 shim 的方式（E1-15）：開新 session、shim 的 log 接到 `${WORK_DIR}/log/{plane}/{h}.shim.log`、`Launch.env` 最後由 agent 補上身分變數（§4.6）。v0.38：同一個 worker key 至多一個存活的 incarnation（E1-16）：上一個沒有結束紀錄（shim 不見了）時，agent 以 pid 加 start_time 確認它已經不在，才起下一個；pid 被重用或成了 zombie 都算不在（§4.6）。v0.39：Beat 逾時（E1-18）：agent 記下每個 worker 最後一次 `Beat`，超過平面 Policy 的逾時就通知 Policy，每段沉默一次，由 Policy 決定要不要停掉它（§4.4）。v0.40：啟動時收養（E1-17）：新的 term 在第一次 reconcile 之前掃 `run/{plane}/` 的 socket 與結束檔，逐一 attach；attach 不成的保留 `WorkerStatus`、不起新的 incarnation、定期重試；shim 已不在的結束檔當成已結束的 worker；收養後依 etcd 把 live config 再推一次，暫行到 E1-22 以 worker 回報的 digest 比對（D111，§4.6）。v0.41 定案 symbol UID 的寬度與範圍（§10 P13、D203）：契約型別 `uint32`，範圍 `1..4294967295`（`1..2^32-1`），0 非法。Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`。v0.42 依 E2-03：`migrations/0002_symbol` 改成活躍表 `symbol_active` 與終結表 `symbol_terminal`，主鍵是 uid；`symbol_filter_active` 與 `symbol_filter_terminal` 跟列一起搬。活躍表以 generated column 拆出 venue、category，`UNIQUE (venue, category, exch_ticker)` 與 `universal_ticker` 唯一只在活躍表。加 `contract_value_ccy`、`price_ccy`，結算欄位仍叫 `settle`。strike 入庫前去掉尾端的零。`symbol_revision` 記下每個 `(venue, category)` 的 revision，通知的訊息仍見 P7。契約的 `active` 仍是 bool。另加 symbol_uid（主鍵 uid，列不刪）：兩張 listing 與兩張 filter 的 uid 參照它，分配先插入 symbol_uid，撞 unique 就重抽，歸檔或刪列之後也不會再抽到同一個 uid。symbol_reject_shared_uid 仍在，因為登記表擋不住兩張 listing 同時持有同一個 uid；搬表在同一個交易裡先刪活躍列再插入終結列。uid 是 BIGINT，CHECK (uid BETWEEN 1 AND 4294967295)。契約型別見 P13。v0.43：agent 在任何一個 shim 收到 `Preempted`，就當成自己的 term 已經結束：立刻退出，不把那個 worker 當成失聯，不 Release，也不寫 `WorkerStatus`（§4.2，E1-20）。還沒定的寫在 [§10](#10-待定)。
+> **狀態：草案 v0.44（2026-10-09）。** 依據 [DECISIONS.md](DECISIONS.md)。v0.3 把控制面改到 etcd（D004），依賴改成 agent 層級的 lease（D901），shim 與 worker 之間加入生命週期動詞（D107），資料面拿掉給策略看的可用性廣播（D801）。v0.4 依 D005 改成每個 region 一個 etcd cluster：路由函數、每個 cluster 各自的 writer key、版本號不依賴 etcd revision；並依 D902 加入策略 artifact 的格式（§8）。v0.5 依 D601 加入歷史補正：`AccountSettings` 加 interval 與手動觸發，TD agent 訂閱 `td.evt` 落庫，`Fill.fill_id` 規定為交易所的 trade id。v0.6 依 D402：md.proto 加 `OrderBookDelta`，新增 `read.proto`（`md.view`、`md.fetch`），tape 不再用 Redis（拿掉 `tape_url` 與 `StandingSubscription.record`）。v0.7 依 D106：行情的 subject 一律由 MD agent 給，`SelectorBinding` 加 `subject_prefix`。v0.8 依 D903 拿掉 `stsctl.SubscribeRequest`：一期策略完全宣告式。v0.9 依 D904 加入 session volume 與資料 artifact：`SessionSpec.inputs`、`Limits.volume_mb`、`SessionStatus.state_out`、兩個環境變數、§8.4。v0.10 依 D803：`md.f` 加 envelope（`seq`、`conn_epoch`、`md_ts_ns` 從 `Meta` 移過去），拿掉 `Delivery`，加 `SessionSpec.recv_window_ms`、`Limits.hook_timeout_s`、`QueueStat.max_age_ms`。v0.11 依 D602：加 `algo_id`（由 spec 在每個帳號上宣告，可以多個，TD agent 以 lease 檢查衝突），`client_order_id` 的 session 欄位換成 algo，`CancelSession` 換成策略自己發的 `BatchCancel`，STS agent 不再有 `td.order` 的權限。v0.12：`client_order_id` 改成 `ver(4) | algo(10) | ts_ms(40) | seq(10)`。v0.13 依 D403：MD 連線的身分改成 `(venue, route, n)`，endpoint 變成 `mdctl.InitPayload.url` 這個參數，atom id 拿掉 endpoint。v0.14 依 D603：`td.evt` 的 `AccountReset` 換成帶快照的 `Recon`，TD 降級時拒新單、放行撤單。v0.15 依 D905：只有一層 linger，連線在最後一個 atom 退訂時就停；lease 的 TTL 統一 60 秒。v0.16 依 D404 拿掉常駐訂閱（`StandingSubscription` 與 `/md/{inst}/standing/`）：MD 的 owner 只有 session 的 lease 項目。v0.17 依 D601：`tdctl.Report` 加 `first_submit_ns`，backfill 的範圍從下單決定。v0.18 依 D906：session worker 的 NATS 憑證每個 session 一份（`stsctl.InitPayload.nats`），權限見 §7。v0.19 依 D802：一期只做 Go SDK，拿掉 Python 綁 Go 的設計；新增 §9，寫明其他語言的 SDK 要遵守的契約，以及 STS agent 以 `Beat` 逾時判定 `HUNG` 的保險。v0.20 依 D202：UniversalTicker 是佔位，經 SYM 解析之後才決定訂閱什麼；atom id 改成 `<venue>:<route>:<channel>`；加入 topic 表與 SYM 的契約（§7.3，`mftiko.sym.v1`）。v0.21 依 D301：帳號種類和 venue 分成兩個 enum，`state.v1.Account.venue`、`tdctl.InitPayload.venue` 改為 `kind`；BinancePM 是帳號種類，不是 venue。v0.22 依 D106：incarnation 存在不綁 lease 的 `/{plane}/{inst}/incarnation/{h}`，spawn 前以 txn 取號（§3.2 W6）。v0.23：W4 的 watch 改從 list 的 revision（含）開始，不再加 1。v0.24 依 D907–D908、D006–D007：控制平面分成 API server 與 controller；跨平面的依賴改由 controller 以宣告式的需求表達，不綁 TTL（D901、D905），lease 項目改名需求項目，key 拿掉 `{sts_inst}`；新增 STS 的指派 `/sts/{inst}/demand/{session_id}`，Gate 與綁定的整理移到 controller；ack 由 controller watch；SYM 改成啟動時整表載入、跟著變更重載，使用者是 STS、MD、TD；三種 worker 都從 artifact 起（§8）；契約分成草案與定案（§1）；session 的宣告抽成 `mftiko.session.v1`，`stsctl.v1` 不再 import `state.v1`，改用自己的 `BindingState`、`Universe`；`Side`、`OrderType`、`TimeInForce` 移到 `common.v1`，`td.v1` 不再 import `md.v1`。v0.25 依 D004：etcd lease 只有選主 session 一種；`AgentRecord` 綁在它上面，agent 在不在就看它；ack、`WorkerStatus` 不綁 lease，由 agent 自己維護（§3.2 W7）。v0.26：W1 由 etcd 的 auth 與 RBAC 強制，角色表由 instance 清單產生（§3.2 W1）。v0.27：shim 的啟動參數 `Launch` 由 agent 經 shim 的 stdin 送入，欄位由 artifact 的 manifest 換算而來（§4.6、§8.3）。v0.28：C3 的 server（E1-09）：`Launch` 加 `work_dir`，socket 的權限、只收同一個 uid 的連線、殘留與重複的處理（§4.1）；attach 的檢查順序、shim 記住接受過的最大 epoch、錯誤碼表、major 沒有交集時只能 `Signal` 與跨 major 不變的欄位（§4.2）；worker 被 reap 之後 `Signal` 回 `exited`（§4.3）；新增 §10 P12。v0.29：生命週期指令（E1-11）：shim 記下的階段 `Phase` 放進 `Attached`，`Init`、`Start` 只在對應的階段接受，`Stop` 的計時與重複的 `Stop`、`Release` 的條件、shim 自己收到 SIGTERM 時的 grace，錯誤碼加 `worker_busy`（§4.2、§4.3）；`cred` 的 uid 和 shim 不同而 shim 沒有 `CAP_KILL` 時不 spawn（§4.6）。v0.30：worker 的輸出（E1-14）：`Launch.output`，檔案放在 `${WORK_DIR}/log/{plane}/{h}.stdout`、`{h}.stderr`，依大小輪替，寫不及時丟棄並在檔案裡註明，不讓 worker 阻塞（§4.5 S4、§4.6）。v0.31：事件緩衝與補送（E1-12）：只有進環狀緩衝的事件有 seq；`Ack` 釋放已確認的事件，環的 1024 則只算未確認的；`gap` 只標在 agent 要的事件被溢出丟掉時；attach 之後先送最新的 `Report` 再補送；控制者換人或離開時，shim 對 worker 送 `Controller`；agent 送完指令就關閉連線時，已送出的指令照樣執行（§4.1、§4.2、§4.4）。v0.32：結束檔與 `Exited`（E1-13）：新增 `ExitRecord`；`ExitInfo` 的合成規則（code、signal 一律依 wait status，outcome、reason 有 `Exiting` 就依它，沒有就依 exit code）；reap 之後讀完 fd 3 才記錄，記錄完才是 `EXITED`、才接受 `Release`；有前一個 incarnation 沒收走的結束檔時 shim 不啟動（§4.3、§4.5 S3、§4.6、§5.3）。v0.33 依 D108：agent 以快照恢復，事件只是通知；`Attached` 加 `exiting`、`exit`，且 `next_seq` 是快照的時間點；`Ack` 不是提交（§4.4）。v0.34 依 D203：幣與數量的單位。qty 的單位是 `contract_value_ccy`（張數 × `contract_size`）：linear 與期權是 base，inverse 是 quote，不是張數；`price_ccy` 是 price、`price_tick` 與權利金的幣，現貨與期貨（含 inverse）是 quote，幣本位期權是 base，U 本位期權是 quote；`settlement_asset` 是損益結算幣，不是保證金幣，三個欄位由 adapter 從原生欄位填，下游不推導。別名只在 SYM 收（一律大寫，例如 XBT→BTC），先正規化再判定 quanto 再推 ticker；strike 先依 `spell_strike`（`6400.0` 與 `6400` 是同一個 ticker）。`USD`、`USDC`、`USDT` 不合併，報價 USD 而結算 USDC 是 quanto，一期不入庫、需求 `REJECTED`。狀態 enum 暫定（`PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`EXPIRED`、`DELISTED`、`UNKNOWN`），契約仍是 `bool active`，交易路徑只接受 `TRADABLE`。SYM 的 listing 預定分兩張表：活躍表是狀態還會變的（`PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`UNKNOWN`），Resolver 與熱路徑只讀它；終結表是 `EXPIRED`、`DELISTED`，狀態不再變，不再刷新，給歷史查詢，可以歸檔；搬過去時 UniversalTicker 字串不變。這一版不拆表。UniversalTicker 只給人寫 spec；系統內部用 UID，是兩張表的主鍵，跨表唯一，搬表時不變，下架再上市拿新的 UID。`SymbolInfo` 加 `uid`（寬度暫定，契約暫用 `uint64`，0 不分配）與 `GetByUidRequest`。寬度、分配方式、重啟是否沿用還沒定；建議方向是一條 Postgres sequence（例如 `symbol_uid_seq`）餵兩張表的 `uid` 主鍵，`symbol_filter` 以 uid 為鍵，終結時整列連 uid 搬走（§10 P13），這一版不實作。NATS subject 用人讀的名字，不用 UID；確切拼法還沒定（§10 P14），這一版仍是 `md.f.{inst}.{topic}.{ticker}`。策略 hook 看 ticker 還是 UID 還沒定（§10 P15）。`td.order` 等仍是 ticker。`td.proto` 的數量欄位註上單位（§7.2、§7.3）。v0.35 依 D109：需求過舊（`LastContact` 超過門檻，預設 15 秒）時，agent 不依需求停 worker、替換、推 live config，也不寫 `WorkerStatus`；重啟結束的 worker 與送 `Start` 由各平面的 Policy 決定（§3.2 W8）。v0.36 改寫 §10 P13：UID 由 SYM 分配，是隨機、唯一、永不重用的整數，不是單調序號，也不是 Postgres sequence；跟列一起持久化，重啟與重載不變，下架再上市拿新的，碰撞就重試。契約型別是 `uint64`，0 非法。寬度與範圍仍開放，Postgres BIGINT 有號，建議 `1..2^63-1`。`symbol_filter` 也分活躍表與終結表，終結時跟列一起搬。SYM `List` 以 offset＋limit 分頁，跨頁不一致可以接受。`Universe.current` 是 selector，尚未定，不在 D203；selector 沒有 UID。P14、P15 仍開放。v0.37：agent 起 shim 的方式（E1-15）：開新 session、shim 的 log 接到 `${WORK_DIR}/log/{plane}/{h}.shim.log`、`Launch.env` 最後由 agent 補上身分變數（§4.6）。v0.38：同一個 worker key 至多一個存活的 incarnation（E1-16）：上一個沒有結束紀錄（shim 不見了）時，agent 以 pid 加 start_time 確認它已經不在，才起下一個；pid 被重用或成了 zombie 都算不在（§4.6）。v0.39：Beat 逾時（E1-18）：agent 記下每個 worker 最後一次 `Beat`，超過平面 Policy 的逾時就通知 Policy，每段沉默一次，由 Policy 決定要不要停掉它（§4.4）。v0.40：啟動時收養（E1-17）：新的 term 在第一次 reconcile 之前掃 `run/{plane}/` 的 socket 與結束檔，逐一 attach；attach 不成的保留 `WorkerStatus`、不起新的 incarnation、定期重試；shim 已不在的結束檔當成已結束的 worker；收養後依 etcd 把 live config 再推一次，暫行到 E1-22 以 worker 回報的 digest 比對（D111，§4.6）。v0.41 定案 symbol UID 的寬度與範圍（§10 P13、D203）：契約型別 `uint32`，範圍 `1..4294967295`（`1..2^32-1`），0 非法。Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`。v0.42 依 E2-03：`migrations/0002_symbol` 改成活躍表 `symbol_active` 與終結表 `symbol_terminal`，主鍵是 uid；`symbol_filter_active` 與 `symbol_filter_terminal` 跟列一起搬。活躍表以 generated column 拆出 venue、category，`UNIQUE (venue, category, exch_ticker)` 與 `universal_ticker` 唯一只在活躍表。加 `contract_value_ccy`、`price_ccy`，結算欄位仍叫 `settle`。strike 入庫前去掉尾端的零。`symbol_revision` 記下每個 `(venue, category)` 的 revision，通知的訊息仍見 P7。契約的 `active` 仍是 bool。另加 symbol_uid（主鍵 uid，列不刪）：兩張 listing 與兩張 filter 的 uid 參照它，分配先插入 symbol_uid，撞 unique 就重抽，歸檔或刪列之後也不會再抽到同一個 uid。symbol_reject_shared_uid 仍在，因為登記表擋不住兩張 listing 同時持有同一個 uid；搬表在同一個交易裡先刪活躍列再插入終結列。uid 是 BIGINT，CHECK (uid BETWEEN 1 AND 4294967295)。契約型別見 P13。v0.43：agent 在任何一個 shim 收到 `Preempted`，就當成自己的 term 已經結束：立刻退出，不把那個 worker 當成失聯，不 Release，也不寫 `WorkerStatus`（§4.2，E1-20）。v0.44 依 D111：live config 改由 C3／C4 的 `Live` 推送（帶 digest），worker 套用之後回 `Applied{digest}`，`Init` 帶 `live_digest`；shim 把最新的 `Applied` 記在 `Attached.applied_digest` 並放進事件環；agent 以它判斷 worker 手上是哪一份，收養後不再無條件重推（§4.3、§4.4、§4.6、§5.2、§9.2，E1-22）。還沒定的寫在 [§10](#10-待定)。
 >
 > proto 區塊開頭的 `// file:` 是它在 `contract/proto/` 下的路徑。全部區塊以 `protoc` 編譯驗證過，`contract/proto/` 的檔案與它們逐字相同（第一行除外）。
 
@@ -657,6 +657,7 @@ worker 被 reap 之後 `phase` 停在最後一個，`state` 是 `EXITED`。
 | `Stop{reason, grace_ms, kill_after_ms}` | 對 worker 送 C4 `Stop{reason, grace_ms}`；`grace_ms` 到了還沒結束就對 process group 送 SIGTERM，再過 `kill_after_ms` 就 SIGKILL。0 表示不等。計時在 shim，從 shim 收到 `Stop` 起算，agent 中途消失也照樣執行。worker 已經送了 `Exiting` 時不再送 C4 `Stop`，計時照樣開始（`OnStop` 可能卡住）。只有第一個 `Stop` 設定計時，之後的 `Stop` 回 ok、不改計時；要更快就送 `Signal` |
 | `Signal{signo}` | 對 worker 的 process group 送信號，`signo` 是 1–64。任何 shim major 都必須支援（§4.2）。worker 被 reap 之後回 `exited`，不再送：pid 釋出之後，同一個號碼可能成為別人的 process group。shim 先以 `waitid(WNOWAIT)` 得知 worker 結束，在與 `Signal` 互斥的情況下才 reap，所以 reap 之前送出的 `Signal` 一定送到這個 group |
 | `Relay{contract, corr_id, payload}` | 轉給 worker（C5 指令），任何階段都可以 |
+| `Live{contract, payload, digest}` | 轉給 worker（live config，D111），任何階段都可以。shim 不記內容；worker 手上是哪一份，以它回的 `Applied` 為準 |
 | `Release{}` | worker 的結束已記錄（S3）時才接受，否則 `running`。回應送出後，shim 刪除結束檔與 socket 後退出 |
 
 worker 被 reap 之後，`Init`、`Start`、`Stop`、`Relay` 都回 `exited`。轉給 worker 的指令依收到的順序寫進 fd 3；worker 不讀時，寫入排在 shim 的佇列裡，佇列滿了就回 `worker_busy`，不會卡住其他連線。`Stop` 的 C4 `Stop` 排不進去時，計時照樣開始：SIGTERM 會在 grace 之後到，SDK 把 SIGTERM 當成 `Stop`（§9.2）。
@@ -667,13 +668,13 @@ shim 收到 SIGTERM（例如主機關機）時，自己對 worker 送 `Stop`，�
 
 | 事件 | 緩衝 |
 |---|---|
-| `Started`、`Hello`、`Done`、`Stage`、`Exiting`、`Stopped` | 環狀緩衝（1024 則），滿了丟最舊的 |
+| `Started`、`Hello`、`Done`、`Stage`、`Exiting`、`Stopped`、`Applied` | 環狀緩衝（1024 則），滿了丟最舊的 |
 | `Report` | 只保留最新一份；attach 時先送一次 |
 | `Beat` | 不緩衝；最多每秒轉發一則。`Attached` 帶最後一次的時間 |
 | `Relay`（worker 的請求） | 不緩衝；沒有控制者時，shim 立刻對 worker 回 `Undeliverable` |
 | `Exited` | 環狀緩衝，另外落檔 `run/{plane}/{h}.exit.pb`，直到 `Release`（S3） |
 
-- **快照為準（DECISIONS D108）。** agent 做任何決策所依據的事實，都必須在 `Attached`（或結束檔）裡有最新值：state、phase、最後一個 stage、`Hello`、最後一次 `Beat` 的時間、`exiting`（worker 送的第一則 `Exiting`）、`exit`（記錄完的 `ExitInfo`），加上 attach 時先送的最新 `Report`。事件是降低延遲的通知；agent 不在時遺失的事件只少了歷史，不影響它回來之後的判斷。
+- **快照為準（DECISIONS D108）。** agent 做任何決策所依據的事實，都必須在 `Attached`（或結束檔）裡有最新值：state、phase、最後一個 stage、`Hello`、最後一次 `Beat` 的時間、`exiting`（worker 送的第一則 `Exiting`）、`exit`（記錄完的 `ExitInfo`）、`applied_digest`（worker 最後回報已套用的 live config，D111），加上 attach 時先送的最新 `Report`。事件是降低延遲的通知；agent 不在時遺失的事件只少了歷史，不影響它回來之後的判斷。
 - **seq。** 進環狀緩衝的事件依序編號，從 1 起，一個 shim 一個序列。`Started` 是 1。`Report`、`Beat`、`Relay` 不進緩衝，`seq` 是 0。`at_ns` 是 shim 收到的時間。
 - **Ack。** `Ack{seq}` 表示 agent 不再需要 seq 以前（含）的事件，shim 提早把它們從環裡釋放；環最多保留 1024 則還沒釋放的。它不是提交：shim 不需要知道 agent 處理完了沒有，agent 也不必等持久化才送，收到就可以 Ack，或者完全不送。確認過的 seq 再送一次不改變什麼；還沒產生的 seq 回 `bad_request`。只有控制者能送，且要有共同的 major。
 - **補送。** attach 成功之後，shim 先回 `Attached`（`oldest_seq` 是環裡最舊的 seq，`next_seq` 是下一則會拿到的 seq；環是空的時兩者相同。`Attached` 是同一個時間點的快照：它反映了 seq < `next_seq` 的每一則事件，不含 seq ≥ `next_seq` 的任何一則，所以 agent 拿到快照之後只需要 seq ≥ `next_seq` 的事件，更早的可以略過），接著送最新的 `Report`（有的話），再從 `resume_from` 開始送環裡的事件（0 等於 1），之後新的事件一產生就送。補送與即時的事件走同一個游標，不會漏也不會重複。控制者自己再 `Attach` 也一樣，從新的 `resume_from` 重送。沒有共同 major 的控制者不收事件。
@@ -754,6 +755,7 @@ message ShimRequest {
     Stop stop = 15;
     mftiko.worker.v1.Relay relay = 16;
     Release release = 17;
+    mftiko.worker.v1.Live live = 18;
   }
 }
 
@@ -816,6 +818,7 @@ message Attached {
   Phase phase = 14; // 生命週期的階段（§4.3）；worker 結束後是結束前的最後一個
   mftiko.worker.v1.Exiting exiting = 15; // worker 送的第一則 Exiting；沒送過就沒有（§4.4）
   mftiko.common.v1.ExitInfo exit = 16;   // state 是 EXITED 時的 ExitInfo，與結束檔相同（§4.5 S3）
+  string applied_digest = 17;            // worker 最後一則 Applied 的 digest：它手上的 live config（D111）；沒送過是空的
 }
 
 // shim 記下的生命週期階段（§4.3）。
@@ -851,6 +854,7 @@ message Event {
     mftiko.worker.v1.Exiting exiting = 17;
     mftiko.worker.v1.Stopped stopped = 18;
     Exited exited = 19;
+    mftiko.worker.v1.Applied applied = 20;
   }
 }
 
@@ -930,7 +934,7 @@ agent 這一端（`internal/platform/agent/fleet`）：
   - socket 有回應但 attach 不成（逾時）：保留它的 `WorkerStatus`（W7.1），不為這個 worker key 起新的 incarnation（它可能還在跑），每隔幾秒重試，直到 attach 成功或 shim 不在。
   - socket 沒有回應而有結束檔：worker 在沒有 agent 時結束，當成已結束的 worker 交給 Policy；`Release` 時由 agent 刪掉結束檔。
   - socket 沒有回應也沒有結束檔：shim 在記錄結束之前被殺，worker key 不明，無從收養；它的 `WorkerStatus` 依 W7.1 處理（需求還要它就保留）。下一個 shim 會清掉殘留的 socket（§4.1）。
-  - live config 以 etcd 為唯一來源（DECISIONS D111）。`Attached` 還沒有 worker 已套用的版本（E1-22 的 `Applied`），所以收養後 agent 把從 etcd 推導出的 live config 一律再推一次（暫行）。live config 是完整的期望狀態，worker 以 diff 套用，收到相同的就是無事。
+  - live config 以 etcd 為唯一來源（DECISIONS D111）。worker 手上是哪一份看 `Attached.applied_digest`：和從 etcd 推導出的 digest 相同就不推，不同才推。推出去還沒收到 `Applied` 的，等一段時間（預設 5 秒）再推。
 
 部署時 shim 不能和 agent 放在會一起被殺的 cgroup 或 systemd unit 裡，否則 agent 重啟時 shim 和 worker 會跟著死，D102–D104 就不成立。
 
@@ -948,7 +952,7 @@ worker 啟動 ──▶ Hello
           ──▶ Done(INIT, ok)
           ◀── Start(StartPayload)        STS：訂閱 feed → OnStart → 開始交付
           ──▶ Done(START, ok)、Stage(running)
-              （之後：Beat 每 1 秒、Report、Relay）
+              （之後：Beat 每 1 秒、Report、Relay；收到 Live 套用後回 Applied）
           ◀── Stop                       或策略自己 Exit／Fail，或 crash
           ──▶ Exiting(outcome, reason)   STS：OnStop
           ──▶ Stopped(on_stop_completed)
@@ -958,6 +962,7 @@ worker 啟動 ──▶ Hello
 - `Exiting` 一定在 `OnStop` 之前送。`OnStop` 卡住被殺時，agent 仍然知道這個 worker 原本打算怎麼結束。
 - `Beat` 由不會被 hook 阻塞的執行緒送（Go SDK 是獨立的 goroutine）。做不到的時候，由 STS agent 的 `Beat` 逾時接手（§9.7）。
 - 收到 `Controller` 時更新「目前有沒有 agent」。沒有時，worker 對 agent 的請求會立刻收到 `Undeliverable`。
+- live config（D111）：`Init.payload` 帶第一份，`Init.live_digest` 是它的 digest；之後的每一份是一則 `Live{payload, digest}`，都是完整的期望狀態，不是增量。worker 套用成功就回 `Applied{digest}`（`Init` 的在 `Done(INIT, ok)` 之前送），失敗就不送；收到和手上相同的 live config 什麼都不做，照樣回 `Applied`。agent 以 `Applied` 判斷 worker 手上是哪一份，沒收到就隔一段時間再送。
 
 ### 5.3 結束方式與 exit code
 
@@ -1018,6 +1023,7 @@ message WorkerUp {
     Relay relay = 6;
     Exiting exiting = 7;
     Stopped stopped = 8;
+    Applied applied = 9;
   }
 }
 
@@ -1070,6 +1076,12 @@ message Stopped {
   bool on_stop_completed = 1;
 }
 
+// worker 已經套用的 live config（DECISIONS D111）：Init 成功之後回報 Init.live_digest，套用一則 Live 之後回報它的 digest。
+// 套用失敗就不送；agent 照它判斷 worker 手上是哪一份。
+message Applied {
+  string digest = 1;
+}
+
 // ---------- shim → worker ----------
 
 message WorkerDown {
@@ -1080,6 +1092,7 @@ message WorkerDown {
     Relay relay = 4;
     Undeliverable undeliverable = 5;
     Controller controller = 6;
+    Live live = 7;
   }
 }
 
@@ -1087,6 +1100,7 @@ message Init {
   string contract = 1;
   bytes payload = 2; // 該平面 C5 的 InitPayload
   uint32 deadline_ms = 3;
+  string live_digest = 4; // payload 裡初始 live config 的 digest；Init 成功之後以 Applied 回報
 }
 
 message Start {
@@ -1098,6 +1112,13 @@ message Start {
 message Stop {
   string reason = 1;
   uint32 grace_ms = 2;
+}
+
+// live config：完整的期望狀態，不是增量；worker 以 diff 套用，收到和手上相同的就什麼都不做（DECISIONS D111）。
+message Live {
+  string contract = 1;
+  bytes payload = 2; // 該平面 C5 的 live config
+  string digest = 3; // agent 算的，worker 不解讀，套用之後以 Applied 原樣回報
 }
 
 message Undeliverable {
@@ -2171,6 +2192,7 @@ STS 主機上：
 6. **收到 `Stop`**：在 `grace_ms` 內走完上面的流程。逾時 shim 會 SIGTERM，再逾時 SIGKILL。SIGTERM 當成 `Stop` 處理。
 7. **fd 3 讀到 EOF（shim 消失）**：必須自行 graceful stop（§4.5 S2）。
 8. **`Controller`**：記下目前有沒有 agent。沒有時，對 agent 的 `Relay` 會收到 `Undeliverable`。
+9. **live config 與 `Applied`**（§5.2，D111）：`Init` 成功時，若 `live_digest` 不是空的，在 `Done(INIT, ok)` 之前送 `Applied{live_digest}`。每收到一則 `Live`，以 diff 套用 payload（完整的期望狀態），成功就送 `Applied{digest}`，原樣帶回 agent 給的 digest；失敗就不送，agent 會再送。
 
 ### 9.3 C5：`stsctl.v1`
 

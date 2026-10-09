@@ -319,3 +319,26 @@ func TestStepSilent(t *testing.T) {
 		t.Fatalf("Silent %q for a stopping worker", pol.silent)
 	}
 }
+
+// The live config a worker has is the one it says it applied (D111): one sent is given LiveRetry to be applied,
+// then sent again; one the worker says it has is not sent at all.
+func TestStepLive(t *testing.T) {
+	r := &Reconciler[h, h]{Policy: &policy{}, LiveRetry: 5 * time.Second}
+	p := plans{"md/a": {Spawn: "s", Live: "l2"}}
+	o := running("md/a", 1, "s", "l1")
+	got, _ := r.Step(t0, false, p, observed{"md/a": o})
+	want(t, got, "push md/a l2")
+
+	o.Pushed, o.PushedAt = "l2", t0 // the Fleet sent it
+	got, wake := r.Step(t0.Add(time.Second), false, p, observed{"md/a": o})
+	want(t, got)
+	if !wake.Equal(t0.Add(5 * time.Second)) {
+		t.Fatalf("wake %v, want the retry", wake)
+	}
+	got, _ = r.Step(t0.Add(5*time.Second), false, p, observed{"md/a": o}) // never applied: again
+	want(t, got, "push md/a l2")
+
+	o.LiveHash = "l2" // applied
+	got, _ = r.Step(t0.Add(time.Hour), false, p, observed{"md/a": o})
+	want(t, got)
+}

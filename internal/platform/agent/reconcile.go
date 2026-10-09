@@ -55,6 +55,9 @@ const (
 	DefaultStableAfter = time.Minute
 )
 
+// DefaultLiveRetry is how long a live config sent to a worker may go without its Applied before it is sent again.
+const DefaultLiveRetry = 5 * time.Second
+
 // DefaultRetry is the wait after an action that failed, before the Reconciler asks for it again.
 var DefaultRetry = Backoff{Min: time.Second, Max: 30 * time.Second}
 
@@ -66,6 +69,7 @@ type Reconciler[S, L Hashed] struct {
 	Policy      Policy
 	StableAfter time.Duration // DefaultStableAfter if 0
 	Retry       Backoff       // after a failed action; DefaultRetry if zero
+	LiveRetry   time.Duration // DefaultLiveRetry if 0
 
 	books map[WorkerKey]*book
 }
@@ -153,8 +157,17 @@ func (r *Reconciler[S, L]) Step(now time.Time, stale bool, plans map[WorkerKey]P
 			if !deadline.IsZero() {
 				held(deadline)
 			}
-			if o.LiveHash != p.Live.Hash() && !stale {
-				acts = append(acts, Action[S, L]{Kind: ActPush, Key: k, Live: p.Live})
+			if want := p.Live.Hash(); o.LiveHash != want && !stale {
+				// What the worker has is what it says (D111). One sent and not yet applied gets LiveRetry to be.
+				retry := r.LiveRetry
+				if retry == 0 {
+					retry = DefaultLiveRetry
+				}
+				if due := o.PushedAt.Add(retry); o.Pushed == want && now.Before(due) {
+					held(due)
+				} else {
+					acts = append(acts, Action[S, L]{Kind: ActPush, Key: k, Live: p.Live})
+				}
 			}
 			if p.Start && o.State == StateInitialized && keep {
 				acts = append(acts, Action[S, L]{Kind: ActStart, Key: k, Spec: p.Spawn})

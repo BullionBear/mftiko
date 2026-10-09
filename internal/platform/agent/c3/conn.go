@@ -230,6 +230,12 @@ func (c *Conn) Relay(ctx context.Context, relay *workerv1.Relay) error {
 	return c.do(ctx, &shimv1.ShimRequest{Op: &shimv1.ShimRequest_Relay{Relay: relay}})
 }
 
+// Live passes a live config to the worker (PROTOCOL §4.3). The worker answers with Applied when it has applied it
+// (DECISIONS D111), as an event, and in Attached.applied_digest.
+func (c *Conn) Live(ctx context.Context, live *workerv1.Live) error {
+	return c.do(ctx, &shimv1.ShimRequest{Op: &shimv1.ShimRequest_Live{Live: live}})
+}
+
 // Release ends the shim, once the worker's end is recorded (shim.CodeRunning before that): the shim removes the
 // exit file and its socket, and exits (PROTOCOL §4.3). The connection then ends with ErrClosed.
 func (c *Conn) Release(ctx context.Context) error {

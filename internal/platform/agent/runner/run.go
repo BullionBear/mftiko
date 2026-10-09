@@ -93,6 +93,7 @@ type Config[I any, S, L agent.Hashed] struct {
 	Resync      time.Duration // DefaultResync if 0
 	StableAfter time.Duration // agent.DefaultStableAfter if 0
 	Retry       agent.Backoff // agent.DefaultRetry if zero
+	LiveRetry   time.Duration // agent.DefaultLiveRetry if 0
 	Log         zerolog.Logger
 	Now         func() time.Time // time.Now if nil
 }
@@ -148,8 +149,9 @@ func newRun[I any, S, L agent.Hashed](cfg Config[I, S, L]) *run[I, S, L] {
 		cfg: cfg, now: now,
 		log:    cfg.Log.With().Str("plane", string(t.Plane())).Str("instance", t.Instance()).Int64("epoch", t.Epoch()).Logger(),
 		intake: NewIntake(cfg.Demand, cfg.Decode),
-		rec:    &agent.Reconciler[S, L]{Policy: cfg.Policy, StableAfter: cfg.StableAfter, Retry: cfg.Retry},
-		st:     newStatuses(t, t.Plane(), t.Instance()),
+		rec: &agent.Reconciler[S, L]{Policy: cfg.Policy, StableAfter: cfg.StableAfter, Retry: cfg.Retry,
+			LiveRetry: cfg.LiveRetry},
+		st: newStatuses(t, t.Plane(), t.Instance()),
 	}
 }
 

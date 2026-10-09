@@ -335,7 +335,9 @@ func TestStartsAndStops(t *testing.T) {
 	if st.GetRelease() != "fake" || st.GetStartedAtNs() == 0 {
 		t.Fatalf("WorkerStatus %v", st)
 	}
-	e.waitDown("a", "Init with v1", func(m *workerv1.WorkerDown) bool { return string(m.GetInit().GetPayload()) == "v1" })
+	e.waitDown("a", "Init with v1", func(m *workerv1.WorkerDown) bool {
+		return string(m.GetInit().GetPayload()) == "v1" && m.GetInit().GetLiveDigest() == "v1"
+	})
 	e.waitDown("a", "Start", func(m *workerv1.WorkerDown) bool { return m.GetStart() != nil })
 
 	_, rev := e.status("a")
@@ -345,7 +347,7 @@ func TestStartsAndStops(t *testing.T) {
 	}
 
 	e.want("a", Worker{Script: fakeworker.Script{BeatMS: 20}, Live: "v2"})
-	e.waitDown("a", "Relay with v2", func(m *workerv1.WorkerDown) bool { return string(m.GetRelay().GetPayload()) == "v2" })
+	e.waitDown("a", "Live v2", func(m *workerv1.WorkerDown) bool { return string(m.GetLive().GetPayload()) == "v2" })
 
 	sock := shim.SocketPath(e.cfg.WorkDir, string(plane), string(Key(plane, "a")))
 	e.unwant("a")
@@ -606,6 +608,9 @@ func TestAdoptAfterKill9(t *testing.T) {
 		st.GetLastExit().GetOutcome() != commonv1.Outcome_OUTCOME_FAILED {
 		t.Fatalf("the end of c, which came while no agent was there: Policy got %+v, status %v", ends, st)
 	}
+	if n := e.countDowns("b", func(m *workerv1.WorkerDown) bool { return m.GetLive() != nil }); n != 0 {
+		t.Errorf("b got its live config %d times again: the new agent read what it has from Attached (D111)", n)
+	}
 	for _, name := range []string{"a", "b", "held", "c"} {
 		if n := e.count(name, "start"); n != 1 {
 			t.Errorf("worker %s started %d times, want once: adopted, not spawned again", name, n)
@@ -641,4 +646,44 @@ func TestBeatTimeout(t *testing.T) {
 		t.Fatalf("stopped %s after RUNNING: want the 2s timeout after the last Beat, within a few resyncs", d)
 	}
 	e.waitStatus("a", "a second incarnation", phase(runner.PhaseRunning, 2))
+}
+
+// countDowns is how many messages the worker named name received that match ok.
+func (e *env) countDowns(name string, ok func(*workerv1.WorkerDown) bool) int {
+	n := 0
+	for _, m := range e.downs(name) {
+		if ok(m) {
+			n++
+		}
+	}
+	return n
+}
+
+// A live config the worker does not apply is sent again after LiveRetry; once the worker applies one, none is sent
+// (E1-22, D111).
+func TestLiveApplied(t *testing.T) {
+	e := setup(t, nil)
+	e.cfg.LiveRetry = 300 * time.Millisecond
+	e.run()
+	isLive := func(m *workerv1.WorkerDown) bool { return m.GetLive() != nil }
+	e.want("a", Worker{Script: fakeworker.Script{IgnoreLive: true}, Live: "v1"})
+	e.waitStatus("a", "RUNNING", phase(runner.PhaseRunning, 1))
+	time.Sleep(time.Second)
+	if n := e.countDowns("a", isLive); n != 0 {
+		t.Fatalf("%d Live after an Init the worker applied, want none", n)
+	}
+	e.want("a", Worker{Script: fakeworker.Script{IgnoreLive: true}, Live: "v2"})
+	time.Sleep(1500 * time.Millisecond) // ~5 retries
+	if n := e.countDowns("a", isLive); n < 3 || n > 7 {
+		t.Fatalf("%d Live in 1.5s to a worker that applies none, want one every 300ms", n)
+	}
+
+	e.want("b", Worker{Live: "v1"})
+	e.waitStatus("b", "RUNNING", phase(runner.PhaseRunning, 1))
+	e.want("b", Worker{Live: "v2"})
+	e.waitDown("b", "Live v2", func(m *workerv1.WorkerDown) bool { return m.GetLive().GetDigest() == "v2" })
+	time.Sleep(time.Second)
+	if n := e.countDowns("b", isLive); n != 1 {
+		t.Fatalf("%d Live to a worker that applied the first, want 1", n)
+	}
 }

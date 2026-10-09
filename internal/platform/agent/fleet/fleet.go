@@ -52,10 +52,11 @@ type Program[S, L agent.Hashed] interface {
 	// variables), dir, cred, output. The Fleet fills plane, agent_instance, worker, spec_hash and work_dir, and adds
 	// the identity variables MFTIKO_PLANE, MFTIKO_INSTANCE, MFTIKO_WORKER_KEY, MFTIKO_INCARNATION.
 	Launch(key agent.WorkerKey, spec S) (*shimv1.Launch, error)
+	// Init carries live, the first live config; the Fleet sets its live_digest.
 	Init(key agent.WorkerKey, spec S, live L) (*workerv1.Init, error)
 	Start(key agent.WorkerKey, spec S) (*workerv1.Start, error)
-	// Push is the C5 command that hands live to a running worker.
-	Push(key agent.WorkerKey, live L) (*workerv1.Relay, error)
+	// Push is live as the worker takes it: its C5 contract and payload. The Fleet sets the digest (D111).
+	Push(key agent.WorkerKey, live L) (*workerv1.Live, error)
 }
 
 // Numbers hands out incarnations: a *state.Incarnations (PROTOCOL §3.2 W6).
@@ -222,6 +223,7 @@ func (f *Fleet[S, L]) Spawn(ctx context.Context, key agent.WorkerKey, spec S, li
 	if err != nil {
 		return fmt.Errorf("fleet: spawn %s: init: %w", key, err)
 	}
+	init.LiveDigest = live.Hash()
 	n, err := f.cfg.Numbers.Next(ctx, string(key))
 	if err != nil {
 		return fmt.Errorf("fleet: spawn %s: incarnation: %w", key, err)
@@ -252,7 +254,8 @@ func (f *Fleet[S, L]) Spawn(ctx context.Context, key agent.WorkerKey, spec S, li
 	at := conn.Attached()
 	w := &worker[S]{conn: conn, socket: socket, shimDone: shimDone, pid: int(at.GetPid()), startTime: at.GetStartTime(),
 		obs: agent.Observed{
-			Key: key, Incarnation: n, SpecHash: spec.Hash(), LiveHash: live.Hash(), State: agent.StateInitializing,
+			Key: key, Incarnation: n, SpecHash: spec.Hash(), Pushed: live.Hash(), PushedAt: time.Now(),
+			State:       agent.StateInitializing,
 			ShimRelease: at.GetShimRelease(), StartedAt: time.Now(),
 		}}
 	f.mu.Lock()
@@ -386,6 +389,8 @@ func apply(o *agent.Observed, ev *shimv1.Event) {
 		o.Release = k.Hello.GetRelease()
 	case *shimv1.Event_Stage:
 		o.Stage = k.Stage.GetName()
+	case *shimv1.Event_Applied:
+		o.LiveHash = k.Applied.GetDigest()
 	case *shimv1.Event_Beat:
 		if ev.GetAtNs() != 0 {
 			o.LastBeat = time.Unix(0, ev.GetAtNs())
@@ -433,7 +438,8 @@ func (f *Fleet[S, L]) Start(ctx context.Context, key agent.WorkerKey, spec S) er
 	return nil
 }
 
-// Push hands live to key's worker.
+// Push hands live to key's worker. What it has stays what it says it applied (D111); the send is recorded, so
+// that the Reconciler waits for the Applied before it sends again.
 func (f *Fleet[S, L]) Push(ctx context.Context, key agent.WorkerKey, live L) error {
 	w, err := f.get(key)
 	if err != nil {
@@ -442,14 +448,15 @@ func (f *Fleet[S, L]) Push(ctx context.Context, key agent.WorkerKey, live L) err
 	if w.conn == nil {
 		return fmt.Errorf("fleet: push %s: its shim is gone", key)
 	}
-	relay, err := f.cfg.Program.Push(key, live)
+	msg, err := f.cfg.Program.Push(key, live)
 	if err != nil {
 		return fmt.Errorf("fleet: push %s: %w", key, err)
 	}
-	if err := w.conn.Relay(ctx, relay); err != nil {
+	msg.Digest = live.Hash()
+	if err := w.conn.Live(ctx, msg); err != nil {
 		return fmt.Errorf("fleet: push %s: %w", key, err)
 	}
-	f.update(key, w, func(o *agent.Observed) { o.LiveHash = live.Hash() })
+	f.update(key, w, func(o *agent.Observed) { o.Pushed, o.PushedAt = msg.Digest, time.Now() })
 	return nil
 }
 

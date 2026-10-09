@@ -660,8 +660,8 @@ agent 依需求做的改變，前提是需求是新的。Mirror 的 `LastContact
 - **唯一的來源是 etcd，加上 SYM。** agent 每次都從 etcd 推導，不信任自己記得推過什麼，也不在 shim 另外留一份副本。
   - 推導當中依賴當下狀態的部分，例如 MD selector 的成員（價格決定置中、時間決定換月）、placement，**先寫進 etcd，再推給 worker**。否則 agent 推完、還沒寫就掛了，新 agent 依當下的狀態重算，會得到另一份。
   - 因此 Planner 的輸入是需求加上平面自己持久化的推導狀態，例如 MD 的 `selector/`、`placement/`，不只是 `demand/`。selector 的評估是一個先寫 etcd、再影響計畫的動作，不放在純的 Planner 裡（D110）。這兩點在 E4、E5 實作。
-- **worker 手上是哪一份，以 worker 的回報為準。** agent 推的時候附上 digest，worker 套用後回報 `Applied{digest}`，shim 把最新一則記在 `Attached`（D108）。agent 拿它和 etcd 推導出的 digest 比對，不同才推。digest 防的是漂移（推到一半、套用失敗、輪換期間需求變了），不是竄改，用 `Hash()` 就夠（E1-22，#86）。
-- **暫行做法：** E1-22 之前，收養時一律重推一次（E1-17）。live config 是宣告式的，所以重推不會造成問題，只多一輪 Relay。
+- **worker 手上是哪一份，以 worker 的回報為準。** agent 推的時候附上 digest，worker 套用後回報 `Applied{digest}`，shim 把最新一則記在 `Attached`（D108）。agent 拿它和 etcd 推導出的 digest 比對，不同才推。digest 防的是漂移（推到一半、套用失敗、輪換期間需求變了），不是竄改，用 `Hash()` 就夠。
+- **推送走 C3／C4 的 `Live`，不走 C5 的 `Relay`**（E1-22）：digest 是骨架的事，不該寫進各平面的 C5 契約。`Init` 帶 `live_digest`，worker 套用第一份之後也回 `Applied`。送出去還沒收到 `Applied` 的，隔一段時間（預設 5 秒）再送；這也補上了套用失敗時 agent 不會再推的漏洞。E1-17 的暫行做法（收養時一律重推）就此拿掉。
 - **不採用：**
   - 收養時不推：輪換期間的需求變化會被永久漏掉。
   - shim 記下 agent 交出的 `live_hash`：多一份副本，而且只代表交了，不代表套用了。
