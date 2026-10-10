@@ -1,0 +1,191 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://www.okx.com",
+    "path": "/api/v5/trade/fills-history",
+    "query": "instType=SPOT&instId=BTC-USDT&begin=1791640596966&end=1791640776966&limit=100",
+    "header": [
+      {
+        "name": "OK-ACCESS-KEY",
+        "value": "REDACTED"
+      },
+      {
+        "name": "OK-ACCESS-SIGN",
+        "value": "REDACTED"
+      },
+      {
+        "name": "OK-ACCESS-TIMESTAMP",
+        "value": "2026-10-10T13:58:36.966Z"
+      },
+      {
+        "name": "OK-ACCESS-PASSPHRASE",
+        "value": "REDACTED"
+      },
+      {
+        "name": "User-Agent",
+        "value": "mftiko"
+      },
+      {
+        "name": "x-simulated-trading",
+        "value": "1"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "header": [
+      {
+        "name": "Content-Length",
+        "value": "521"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json;charset=UTF-8"
+      },
+      {
+        "name": "Server",
+        "value": "cloudflare"
+      },
+      {
+        "name": "Set-Cookie",
+        "value": "locale=en-US; Max-Age=604800; Expires=Sat, 17 Oct 2026 13:58:37 GMT; Path=/"
+      },
+      {
+        "name": "Set-Cookie",
+        "value": "locale=en-US; Max-Age=604800; Expires=Sat, 17 Oct 2026 13:58:37 GMT; Path=/"
+      },
+      {
+        "name": "Set-Cookie",
+        "value": "__cf_bm=KdCmVDL8FH11Ni2wt5J_GA1RrGmF42SNyQPY6fwA3wQ-1791640717.133776-1.0.1.1-FF7ifs7u611FbC_Ev.tZAaR6rzfGTYwCCokZLM8aHGGIuPVMLhekXd.ehj0L9ypWpqpXtspdBkFdwBP7KbJAPmbiegrU.iUGVq61NlM5XXqb7IT4ELNjEnYaNFXI4dbl; HttpOnly; SameSite=None; Secure; Path=/; Domain=okx.com; Expires=Sat, 10 Oct 2026 14:28:37 GMT"
+      },
+      {
+        "name": "Date",
+        "value": "Sat, 10 Oct 2026 13:58:37 GMT"
+      },
+      {
+        "name": "Connection",
+        "value": "keep-alive"
+      },
+      {
+        "name": "CF-Ray",
+        "value": "a48624120c624a5d-TPE"
+      },
+      {
+        "name": "CF-Cache-Status",
+        "value": "DYNAMIC"
+      },
+      {
+        "name": "Access-Control-Allow-Origin",
+        "value": "*"
+      },
+      {
+        "name": "Cache-Control",
+        "value": "no-cache, no-store, max-age=0, must-revalidate"
+      },
+      {
+        "name": "Expires",
+        "value": "0"
+      },
+      {
+        "name": "x-xss-protection",
+        "value": "1; mode=block"
+      },
+      {
+        "name": "x-xss-protection",
+        "value": "1; mode=block"
+      },
+      {
+        "name": "Strict-Transport-Security",
+        "value": "max-age=31536000 ; includeSubDomains, max-age=31536000; includeSubDomains"
+      },
+      {
+        "name": "Pragma",
+        "value": "no-cache"
+      },
+      {
+        "name": "b-locale",
+        "value": "en_US"
+      },
+      {
+        "name": "b-locale",
+        "value": "en_US"
+      },
+      {
+        "name": "content-security-policy",
+        "value": "frame-ancestors 'self'"
+      },
+      {
+        "name": "ok-after",
+        "value": "3997618522675671042"
+      },
+      {
+        "name": "ok-before",
+        "value": "3997618522675671042"
+      },
+      {
+        "name": "x-brokerid",
+        "value": "9999"
+      },
+      {
+        "name": "x-content-type-options",
+        "value": "nosniff"
+      },
+      {
+        "name": "x-content-type-options",
+        "value": "nosniff"
+      },
+      {
+        "name": "x-frame-options",
+        "value": "SAMEORIGIN"
+      },
+      {
+        "name": "x-frame-options",
+        "value": "DENY"
+      },
+      {
+        "name": "x-routed-to",
+        "value": "TKY"
+      }
+    ],
+    "body": {
+      "code": "0",
+      "data": [
+        {
+          "fillSz": "0.0001",
+          "fillPxVol": "",
+          "fillFwdPx": "",
+          "fee": "-0.0000001",
+          "tradeQuoteCcy": "USDT",
+          "ordId": "3997618522675671041",
+          "feeRate": "-0.001",
+          "clOrdId": "1154756144699822081",
+          "posSide": "net",
+          "fillMarkVol": "",
+          "tag": "",
+          "execType": "T",
+          "fillIdxPx": "",
+          "side": "buy",
+          "fillPx": "82824.4",
+          "fillPnl": "0",
+          "instType": "SPOT",
+          "fillPxUsd": "",
+          "instId": "BTC-USDT",
+          "billId": "3997618522675671042",
+          "subType": "1",
+          "fillTime": "1791640715995",
+          "tradeId": "1414981226",
+          "fillMarkPx": "",
+          "feeCcy": "BTC",
+          "ts": "1791640715995"
+        }
+      ],
+      "msg": ""
+    }
+  }
+}

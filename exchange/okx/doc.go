@@ -5,8 +5,7 @@
 // Public market data covers spot, linear swaps (USDT and USDC), linear futures and coin-margined
 // perpetual swaps. Checked on production on 2026-10-10. Private REST and the private stream below
 // were checked on demo trading the same day. Submit and Cancel go over REST (D303); NewTradeStream
-// is exchange.ErrUnsupported. History is still exchange.ErrNotImplemented (E3-13). Options are not
-// listed.
+// is exchange.ErrUnsupported. History is fills-history (E3-16). Options are not listed.
 //
 // Facts the implementation must honor. Checked 2026-10-10 on production for the public socket and
 // the public REST calls, and the same day on demo trading for the private calls.
@@ -27,6 +26,8 @@
 //   - Login signs timestamp + "GET" + "/users/self/verify" with HMAC-SHA256; the key needs a
 //     passphrase (Credentials.Passphrase).
 //   - Dead-man switch: cancel-all-after, account-wide.
+//   - History: GET /api/v5/trade/fills-history, newest first. tradeId is the fill id on both REST
+//     and the orders channel (D601). GET /api/v5/trade/order looks one order up by ordId.
 //   - Demo trading is AccountConfig.Simulated. It adds the header x-simulated-trading: 1 on REST
 //     and, unless StreamEndpoint is set, dials wss://wspap.okx.com:8443/ws/v5/private. The REST
 //     host stays https://www.okx.com. RESTEndpoint replaces that host and does not by itself turn
@@ -160,7 +161,7 @@
 //	             split is read off the instId when instType is absent. An instId of five parts
 //	             ending in C or P is an option. uTime, else cTime, in milliseconds. When the row
 //	             carries a tradeId and a non-zero fillSz, it is also a Fill. tradeId is the fill
-//	             id (D601), the same field fills-history will use. execType T is taker and M is
+//	             id (D601), the same field fills-history returns. execType T is taker and M is
 //	             maker. fillFee is the fee and fillFeeCcy is the fee asset; OKX's sign is kept
 //	             (a charge is negative). fillTime, else uTime.
 //	positions    one Position per row with a non-zero pos, with the same sign rule as the REST
@@ -168,6 +169,27 @@
 //	             leverage.
 //	account      one Balance per details row, with the same availBal and frozenBal split as the
 //	             REST balance. A zero row is left out.
+//
+// # History
+//
+// GET /api/v5/trade/fills-history for one instType and one instId. instType comes from the
+// instrument: Spot is SPOT, Perp is SWAP, Future is FUTURES, Option is OPTION, and Inverse is
+// SWAP unless the contract expires, in which case it is FUTURES. Rows arrive newest first
+// (HistoryTraits.Descending). tradeId is the fill id, the same id the orders channel reports.
+// A row with no tradeId, or a zero fillSz, is left out; the cursor still advances past it. A
+// liquidation or ADL row keeps its tradeId, which OKX sends as a negative id, because the orders
+// channel uses that same id. billId of the oldest row, when the page is full and that id differs
+// from the cursor just sent, is FillPage.Next and goes back as after. There is no from-id. A page
+// is at most 100. The venue keeps 3 months (HistoryTraits.Retention, taken as 90 days). One
+// request has no published cap on the span of begin and end, so MaxWindow is 0. begin and end are
+// millisecond timestamps and filter ts. fee and feeCcy are that fill's fee, the number the orders
+// channel calls fillFee and fillFeeCcy; OKX's sign is kept. fillTime, else ts.
+//
+// GET /api/v5/trade/order looks up one order by instId and ordId. An empty list is an error, so a
+// fill whose order is not visible yet is asked again on the next round (D601).
+//
+// Checked on demo trading on 2026-10-10: the tradeId on the orders channel is the tradeId in
+// fills-history, and the fee, price and quantity match.
 //
 // # Dead-man switch
 //
