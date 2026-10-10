@@ -1,0 +1,26 @@
+{
+  "response": {
+    "status": 200,
+    "body": [
+      {
+        "symbol": "BTCUSDT",
+        "id": 545553575,
+        "orderId": 28625103204,
+        "pair": "BTCUSDT",
+        "side": "BUY",
+        "price": "82629.30",
+        "qty": "0.0007",
+        "realizedPnl": "0",
+        "quoteQty": "57.840510",
+        "commission": "0.02313620",
+        "commissionAsset": "USDT",
+        "time": 1791608091883,
+        "buyer": true,
+        "maker": false,
+        "positionSide": "BOTH",
+        "baseQty": "0",
+        "marginAsset": "USDT"
+      }
+    ]
+  }
+}

@@ -262,6 +262,9 @@ func (h *live) openSockets() {
 	go func() {
 		err := pconn.Run(h.ctx, func(frame []byte) error {
 			buf := append([]byte(nil), frame...)
+			h.rawMu.Lock()
+			h.raw = append(h.raw, buf)
+			h.rawMu.Unlock()
 			return h.priv.Decode(buf, h.feed)
 		})
 		h.feed.die(err)
@@ -530,6 +533,8 @@ type live struct {
 	seq       uint64
 	feed      *feed
 	lines     []string
+	rawMu     sync.Mutex
+	raw       [][]byte // private frames, copied
 }
 
 func d602(seq uint64) string {
@@ -725,6 +730,18 @@ func (f *feed) fillsN() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return len(f.fills)
+}
+
+func (f *feed) fillsOf(cloid string) []exchange.Fill {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []exchange.Fill
+	for _, fill := range f.fills {
+		if fill.ClientOrderID == cloid {
+			out = append(out, fill)
+		}
+	}
+	return out
 }
 
 func (f *feed) seen() string {

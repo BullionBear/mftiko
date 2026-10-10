@@ -32,8 +32,10 @@ func (h *history) Traits() exchange.HistoryTraits {
 		return exchange.HistoryTraits{}
 	}
 	return exchange.HistoryTraits{
-		ByID:      true,
+		ByID: true,
+		// userTrades rejects a window longer than 7 days.
 		MaxWindow: 7 * 24 * time.Hour,
+		// The venue only serves fills from the past three months.
 		Retention: 90 * 24 * time.Hour,
 		PageLimit: 1000,
 	}
@@ -42,6 +44,11 @@ func (h *history) Traits() exchange.HistoryTraits {
 func (h *history) Fills(now time.Time, q exchange.FillQuery) (exchange.Call[*exchange.FillPage], error) {
 	if err := instrument(q.Instrument); err != nil {
 		return exchange.Call[*exchange.FillPage]{}, err
+	}
+	byID := q.Cursor != "" || q.FromID != ""
+	byTime := q.StartNs != 0 || q.EndNs != 0
+	if byID && byTime {
+		return exchange.Call[*exchange.FillPage]{}, fmt.Errorf("binance: fromId cannot be combined with startTime or endTime")
 	}
 	if q.StartNs != 0 && q.EndNs != 0 {
 		if q.EndNs < q.StartNs {
@@ -56,16 +63,19 @@ func (h *history) Fills(now time.Time, q exchange.FillQuery) (exchange.Call[*exc
 		limit = q.Limit
 	}
 	query := codec.Query(nil).Add("symbol", q.Instrument.ExchTicker)
-	if id := q.Cursor; id != "" {
+	if byID {
+		id := q.Cursor
+		if id == "" {
+			id = q.FromID
+		}
 		query = query.Add("fromId", id)
-	} else if q.FromID != "" {
-		query = query.Add("fromId", q.FromID)
-	}
-	if q.StartNs != 0 {
-		query = query.AddInt("startTime", q.StartNs/int64(time.Millisecond))
-	}
-	if q.EndNs != 0 {
-		query = query.AddInt("endTime", q.EndNs/int64(time.Millisecond))
+	} else {
+		if q.StartNs != 0 {
+			query = query.AddInt("startTime", q.StartNs/int64(time.Millisecond))
+		}
+		if q.EndNs != 0 {
+			query = query.AddInt("endTime", q.EndNs/int64(time.Millisecond))
+		}
 	}
 	query = query.AddInt("limit", int64(limit))
 	req, err := signedCall(&h.signerState, h.k, h.cfg, now, http.MethodGet, "/fapi/v1/userTrades", query, weightCost(5), false)
