@@ -93,6 +93,9 @@ type SessionLimits struct {
 	// MaxLifetime is when the venue drops the connection by itself (Binance: 24h). The conn worker
 	// reconnects before that, which bumps conn_epoch like any reconnect. 0 = none.
 	MaxLifetime time.Duration
+	// ReadLimit is the largest message the venue sends, in bytes; a longer one ends the connection.
+	// Required: the websocket transport has no default (coder/websocket's own is 32 KiB).
+	ReadLimit int64
 }
 
 // RateLimit is at most N events per window.

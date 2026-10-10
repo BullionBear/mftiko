@@ -211,6 +211,7 @@ type StreamLimits struct {
 	Keepalive    Keepalive
 	RefreshEvery time.Duration // 0 = no Refresh needed
 	MaxLifetime  time.Duration
+	ReadLimit    int64 // as SessionLimits.ReadLimit
 }
 
 // AccountSink receives what PrivateStream.Decode finds. Pointers, and the strings in what they point

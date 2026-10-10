@@ -59,10 +59,9 @@ type Options struct {
 	Net *transport.Net
 	// Header goes with the handshake request.
 	Header http.Header
-	// ReadLimit is the largest message the venue sends, in bytes: a longer one ends the connection.
-	// Required, because coder/websocket's default of 32 KiB is too small for some venues' messages.
-	ReadLimit int64
-	// Keepalive and MaxLifetime are the codec's: SessionLimits or StreamLimits.
+	// ReadLimit, Keepalive and MaxLifetime are the codec's: SessionLimits or StreamLimits. ReadLimit
+	// is required, because coder/websocket's default of 32 KiB is too small for some venues' messages.
+	ReadLimit   int64
 	Keepalive   exchange.Keepalive
 	MaxLifetime time.Duration
 	// Ping is the codec's Ping(), sent as a text message every Keepalive.Interval. nil sends a
