@@ -124,7 +124,7 @@ func (d *Doer) Lend(ctx context.Context, req *exchange.HTTPRequest, use func(*ex
 		return notSent(req, context.DeadlineExceeded)
 	}
 	if !strings.HasPrefix(req.Base, "https://") && !strings.HasPrefix(req.Base, "http://") {
-		return notSent(req, fmt.Errorf("base %q is not http:// or https://", req.Base))
+		return notSent(req, fmt.Errorf("base %s is not http:// or https://", exchange.MaskURL(req.Base)))
 	}
 
 	freq := fh.AcquireRequest()
@@ -149,7 +149,7 @@ func (d *Doer) Lend(ctx context.Context, req *exchange.HTTPRequest, use func(*ex
 		return classify(req, err)
 	}
 	if s := fresp.StatusCode(); s >= 500 {
-		return fmt.Errorf("fasthttp: %s %s: status %d: %w", req.Method, req.Path, s, exchange.ErrUnknownOutcome)
+		return fmt.Errorf("fasthttp: %s: status %d: %w", endpoint(req), s, exchange.ErrUnknownOutcome)
 	}
 
 	r := responses.Get().(*exchange.HTTPResponse)
@@ -179,10 +179,16 @@ func classify(req *exchange.HTTPRequest, err error) error {
 		errors.Is(err, fh.ErrConnPoolStrategyNotImpl):
 		return notSent(req, err)
 	}
-	return fmt.Errorf("fasthttp: %s %s: %w: %w", req.Method, req.Path, exchange.ErrUnknownOutcome, err)
+	return fmt.Errorf("fasthttp: %s: %w: %w", endpoint(req), exchange.ErrUnknownOutcome, err)
 }
 
 // notSent is the error for a request that did not go out.
 func notSent(req *exchange.HTTPRequest, err error) error {
-	return fmt.Errorf("fasthttp: %s %s: not sent: %w", req.Method, req.Path, err)
+	return fmt.Errorf("fasthttp: %s: not sent: %w", endpoint(req), err)
+}
+
+// endpoint names req in an error: its method and path, any listenKey masked. Its headers, query and
+// body are left out.
+func endpoint(req *exchange.HTTPRequest) string {
+	return req.Method + " " + string(exchange.MaskListenKey([]byte(req.Path)))
 }
