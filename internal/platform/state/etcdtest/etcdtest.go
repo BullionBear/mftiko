@@ -1,6 +1,7 @@
 // Package etcdtest runs a throwaway single-member etcd for tests of package state. It is imported by tests only.
 // A Server can be stopped and restarted on the same data and ports, or rebuilt from nothing; a Proxy in front of it
-// can cut its clients off while etcd keeps running, or send them to another server.
+// can cut its clients off while etcd keeps running, or send them to another server. A Shared server is one warm
+// etcd that the tests of a binary take in turn, emptied between them.
 //
 // The binary is $MFTIKO_ETCD_BIN, else etcd on PATH; a test without either is skipped, unless $MFTIKO_REQUIRE_ETCD
 // is set (CI sets it), in which case it fails: a run that skipped every etcd test must not look green.
@@ -100,13 +101,16 @@ type options struct{ tokenTTL time.Duration }
 // TokenTTL sets how long the tokens etcd issues stay valid; clients must authenticate again after it.
 func TokenTTL(d time.Duration) Option { return func(o *options) { o.tokenTTL = d } }
 
-// Server is one etcd member. It is killed when the test that started it ends.
+// Server is one etcd member. One from Start is killed when the test that started it ends; one from Shared.Take
+// lives until Shared.Close.
 type Server struct {
+	name      string
 	endpoints []string
 	bin       string
 	args      []string
 	dataDir   string
 	out       *lockedBuffer
+	shared    bool // Shared's: other tests use it after this one, so it is never stopped or rebuilt
 
 	mu     sync.Mutex
 	stop   func() // kills the running process and waits for it; nil while stopped
@@ -117,13 +121,7 @@ type Server struct {
 // It skips the test if no etcd binary is found, and fails it if etcd does not come up.
 func Start(t testing.TB, opts ...Option) *Server {
 	t.Helper()
-	bin := binary()
-	if bin == "" {
-		if os.Getenv(EnvRequire) != "" {
-			t.Fatalf("etcdtest: etcd not found and %s is set: set %s or put etcd on PATH", EnvRequire, EnvBin)
-		}
-		t.Skipf("etcd not found: set %s or put etcd on PATH", EnvBin)
-	}
+	bin := requireBinary(t)
 	o := options{tokenTTL: DefaultTokenTTL}
 	for _, f := range opts {
 		f(&o)
@@ -164,6 +162,19 @@ func ClientAs(t testing.TB, endpoints []string, user string) *clientv3.Client {
 	return c
 }
 
+// requireBinary is the etcd binary. Without one it skips the test, or fails it if EnvRequire is set.
+func requireBinary(t testing.TB) string {
+	t.Helper()
+	bin := binary()
+	if bin == "" {
+		if os.Getenv(EnvRequire) != "" {
+			t.Fatalf("etcdtest: etcd not found and %s is set: set %s or put etcd on PATH", EnvRequire, EnvBin)
+		}
+		t.Skipf("etcd not found: set %s or put etcd on PATH", EnvBin)
+	}
+	return bin
+}
+
 func binary() string {
 	if p := os.Getenv(EnvBin); p != "" {
 		if p, err := exec.LookPath(p); err == nil {
@@ -176,8 +187,16 @@ func binary() string {
 	return ""
 }
 
-// Stop kills the member, as a crash would. Its data dir and ports are kept for Restart.
+// Stop kills the member, as a crash would. Its data dir and ports are kept for Restart. A shared server cannot be
+// stopped: the tests after this one use it.
 func (s *Server) Stop() {
+	if s.shared {
+		panic("etcdtest: Stop on the shared server; Start one for the test instead")
+	}
+	s.kill()
+}
+
+func (s *Server) kill() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.stop != nil {
@@ -190,6 +209,10 @@ func (s *Server) Stop() {
 // serves reads. Clients keep their endpoints and reconnect.
 func (s *Server) Restart(t testing.TB) {
 	t.Helper()
+	if s.shared {
+		t.Fatalf("etcdtest: Restart on the shared server; Start one for the test instead")
+		return
+	}
 	s.Stop()
 	s.relaunch(t)
 }
@@ -199,6 +222,10 @@ func (s *Server) Restart(t testing.TB) {
 // turned on again with the root user only: users and roles are gone with the data.
 func (s *Server) Rebuild(t testing.TB) {
 	t.Helper()
+	if s.shared {
+		t.Fatalf("etcdtest: Rebuild on the shared server; Start one for the test instead")
+		return
+	}
 	s.Stop()
 	s.mu.Lock()
 	s.authOn = false
@@ -238,6 +265,22 @@ func (s *Server) relaunch(t testing.TB) {
 }
 
 func start(t testing.TB, bin string, o options) (*Server, error) {
+	s, err := newServer(bin, t.TempDir(), t.TempDir(), o)
+	if err != nil {
+		return nil, err
+	}
+	t.Cleanup(func() {
+		s.Stop()
+		if t.Failed() {
+			t.Logf("etcd %s output:\n%s", s.name, s.out.String())
+		}
+	})
+	return s, nil
+}
+
+// newServer launches a member on dataDir, which must exist and be empty, with its token keys in keyDir, turns
+// auth on and waits until it serves reads.
+func newServer(bin, dataDir, keyDir string, o options) (*Server, error) {
 	client, err := freePort()
 	if err != nil {
 		return nil, err
@@ -250,8 +293,7 @@ func start(t testing.TB, bin string, o options) (*Server, error) {
 	clientURL := "http://" + client
 	peerURL := "http://" + peer
 
-	s := &Server{endpoints: []string{clientURL}, bin: bin, dataDir: t.TempDir(), out: &lockedBuffer{}}
-	keyDir := t.TempDir()
+	s := &Server{name: name, endpoints: []string{clientURL}, bin: bin, dataDir: dataDir, out: &lockedBuffer{}}
 	priv, pub := signingKey()
 	privPath, pubPath := filepath.Join(keyDir, "jwt.key"), filepath.Join(keyDir, "jwt.pub")
 	if err := os.WriteFile(privPath, priv, 0o600); err != nil {
@@ -277,16 +319,10 @@ func start(t testing.TB, bin string, o options) (*Server, error) {
 		return nil, err
 	}
 	if err := enableAuth(s.endpoints); err != nil {
-		s.Stop()
+		s.kill()
 		return nil, err
 	}
 	s.authOn = true
-	t.Cleanup(func() {
-		s.Stop()
-		if t.Failed() {
-			t.Logf("etcd %s output:\n%s", name, s.out.String())
-		}
-	})
 	return s, nil
 }
 
@@ -402,8 +438,18 @@ func (b *lockedBuffer) Write(p []byte) (int, error) {
 	return b.buf.Write(p)
 }
 
-func (b *lockedBuffer) String() string {
+func (b *lockedBuffer) String() string { return b.From(0) }
+
+// Len is how much has been written so far, a mark for From.
+func (b *lockedBuffer) Len() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.buf.String()
+	return b.buf.Len()
+}
+
+// From is what was written since mark.
+func (b *lockedBuffer) From(mark int) string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return string(b.buf.Bytes()[mark:])
 }
