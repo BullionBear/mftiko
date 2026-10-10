@@ -19,6 +19,8 @@ func FuzzDecodeSpot(f *testing.F) { conformance.FuzzDecode(f, spec(), "spot") }
 
 func FuzzDecodeLinear(f *testing.F) { conformance.FuzzDecode(f, spec(), "linear") }
 
+func FuzzDecodeTrade(f *testing.F) { conformance.FuzzDecodeTrade(f, spec()) }
+
 func spec() conformance.Spec {
 	return conformance.Spec{
 		Venue:  Name,
@@ -87,6 +89,12 @@ func spec() conformance.Spec {
 			conformance.Call("klines", func(e conformance.Env) (exchange.Call[[]exchange.Kline], error) {
 				return e.REST.Klines(btcInst(), "1m", 0, 5)
 			}),
+		},
+		TradeSamples: []conformance.TradeSample{
+			{Name: "limit GTC", Submit: limitOrder(exchange.TIFGTC, cloidGTC)},
+			{Name: "market", Submit: marketOrder(cloidMKT)},
+			{Name: "spot quote", Submit: spotQuote(cloidGTC)},
+			{Name: "cancel by client id", Cancel: &exchange.CancelRef{Instrument: btcInst(), ClientOrderID: cloidGTC}},
 		},
 	}
 }

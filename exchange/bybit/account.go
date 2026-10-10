@@ -169,9 +169,14 @@ func (a *account) NewStream() (exchange.PrivateStream, error) {
 	return &privateStream{ws: a.privateURL(), key: a.cfg.Credentials.Key, sig: sig}, nil
 }
 
-// NewTradeStream: phase 1 trades over REST; the order websocket is not used.
+// NewTradeStream is the order socket. The worker sends Submit and Cancel over it. CancelBatch
+// stays on REST.
 func (a *account) NewTradeStream() (exchange.TradeStream, error) {
-	return nil, exchange.ErrUnsupported
+	sig, err := a.signer()
+	if err != nil {
+		return nil, err
+	}
+	return &tradeStream{ws: a.tradeURL(), key: a.cfg.Credentials.Key, sig: sig}, nil
 }
 
 // ArmCancelOnDisconnect sets Disconnected Cancel Protection. syms is ignored: the switch is

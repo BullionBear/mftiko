@@ -1,0 +1,29 @@
+{
+  "url": "wss://stream.bybit.com/v5/trade",
+  "frames": [
+    "{\"op\":\"auth\",\"args\":[\"conformance-api-key\",1767225610000,\"80dd9d3b567890c6be44d5c1e3d1cec9ec67083e3f8d1cc84f3cc70baafacbad\"]}"
+  ],
+  "events": false,
+  "samples": [
+    {
+      "name": "limit GTC",
+      "id": 1,
+      "frame": "{\"reqId\":\"1\",\"header\":{\"X-BAPI-TIMESTAMP\":\"1767225600000\",\"X-BAPI-RECV-WINDOW\":\"5000\"},\"op\":\"order.create\",\"args\":[{\"category\":\"linear\",\"symbol\":\"BTCUSDT\",\"side\":\"Buy\",\"orderType\":\"Limit\",\"qty\":\"0.001\",\"price\":\"65000.0\",\"timeInForce\":\"GTC\",\"orderLinkId\":\"1767225600000000001\"}]}"
+    },
+    {
+      "name": "market",
+      "id": 2,
+      "frame": "{\"reqId\":\"2\",\"header\":{\"X-BAPI-TIMESTAMP\":\"1767225600000\",\"X-BAPI-RECV-WINDOW\":\"5000\"},\"op\":\"order.create\",\"args\":[{\"category\":\"linear\",\"symbol\":\"BTCUSDT\",\"side\":\"Buy\",\"orderType\":\"Market\",\"qty\":\"0.001\",\"orderLinkId\":\"1767225600000000005\"}]}"
+    },
+    {
+      "name": "spot quote",
+      "id": 3,
+      "frame": "{\"reqId\":\"3\",\"header\":{\"X-BAPI-TIMESTAMP\":\"1767225600000\",\"X-BAPI-RECV-WINDOW\":\"5000\"},\"op\":\"order.create\",\"args\":[{\"category\":\"spot\",\"symbol\":\"BTCUSDT\",\"side\":\"Buy\",\"orderType\":\"Market\",\"qty\":\"200.00000000\",\"orderLinkId\":\"1767225600000000001\",\"marketUnit\":\"quoteCoin\"}]}"
+    },
+    {
+      "name": "cancel by client id",
+      "id": 4,
+      "frame": "{\"reqId\":\"4\",\"header\":{\"X-BAPI-TIMESTAMP\":\"1767225600000\",\"X-BAPI-RECV-WINDOW\":\"5000\"},\"op\":\"order.cancel\",\"args\":[{\"category\":\"linear\",\"symbol\":\"BTCUSDT\",\"orderLinkId\":\"1767225600000000001\"}]}"
+    }
+  ]
+}

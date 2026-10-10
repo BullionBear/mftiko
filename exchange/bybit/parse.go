@@ -86,12 +86,13 @@ func classify(status, code int, msg string) error {
 		msg = "refused"
 	}
 	switch {
-	case status == http.StatusTooManyRequests || code == 10006 || code == 10018 || code == 429 || code == 170222:
+	case status == http.StatusTooManyRequests || code == 10006 || code == 10018 || code == 429 || code == 170222 ||
+		code == 10403 || code == 10429:
 		return &exchange.RateLimited{}
 	case code == 10003 || code == 10004 || code == 10005 || code == 10007 || code == 10010 ||
 		code == 33004 || code == -2015 || status == http.StatusUnauthorized:
 		return fmt.Errorf("bybit: %s: %w", msg, exchange.ErrAuth)
-	case code == 10000:
+	case code == 10000 || code == 10016 || code == 10019:
 		return fmt.Errorf("bybit: %s: %w", msg, exchange.ErrUnknownOutcome)
 	case status == http.StatusForbidden && code == 0:
 		return &exchange.RateLimited{}
