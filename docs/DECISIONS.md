@@ -537,10 +537,10 @@ Binance 一律以 ed25519 經 WS API 收發單（2026-10-10 定）。D302 的 `A
 
 - **`TradeStream` 是 sans-I/O 的 codec（D302）。** `Dial(now)` 產生 URL 與連上之後要送的 frame（logon；連線也帶私有事件時，再加上訂閱）。`Submit(now, id, req)`、`Cancel(now, id, ref)` 把一個請求編成 frame。`Decode(frame, sink)` 把回答以 id 交給 `TradeSink.Submitted`、`Canceled`，交易所回報的用量交給 `Used`。logon 被拒是 `ErrAuth`。
 - **id 屬於 worker。** 從 1 起算，同一條連線上不重複；codec 自己的 frame（logon、訂閱）用不會撞號的 id。
-- **`Decode` 不靠記憶。** codec 把讀回答需要的東西寫進交易所的請求 id（Binance 收字串：`o17` 是下單、`c18` 是撤單）。這樣斷線重連之後讀得懂遲到的回答，錄下的 session 也能重播（E3-04）。
-- **同一條連線也帶私有事件時（`TradeLimits.Events`），worker 不另開 `PrivateStream`。** `TradeSink` 本身就是 `AccountSink`：`Ready` 表示連線可用（已 logon；帶事件時也已訂閱），`Order`、`Fill`、`Balances`、`Positions` 從這裡進來。Binance 現貨是這種；UM 的 WS API 不帶私有事件，另開 `PrivateStream`。
+- **`Decode` 不靠記憶。** codec 把讀回答需要的東西寫進交易所的請求 id（Binance 收字串：`o17` 是下單、`c18` 是撤單；Bybit 的 `reqId` 是 worker id 的十進位，回答同時帶回 `op`）。這樣斷線重連之後讀得懂遲到的回答，錄下的 session 也能重播（E3-04）。
+- **同一條連線也帶私有事件時（`TradeLimits.Events`），worker 不另開 `PrivateStream`。** `TradeSink` 本身就是 `AccountSink`：`Ready` 表示連線可用（已 logon；帶事件時也已訂閱），`Order`、`Fill`、`Balances`、`Positions` 從這裡進來。Binance 現貨是這種；UM 的 WS API 不帶私有事件，另開 `PrivateStream`。Bybit 的 trade socket 也不帶，訂單狀態仍走 `/v5/private`。
 - **逾時、重連在 worker。** `exchange.Inflight` 記下送出的請求與期限，純邏輯、時間由 worker 傳入。過期或斷線時還沒回答的請求是 `ErrUnknownOutcome`：訂單可能在、也可能不在，由私有串流或下一次 recon 判定，不當成被拒。過期之後才到的回答不會被當成即時回答，worker 把它當成一則訂單消息處理。
-- **`Account.NewTradeStream()` 回傳 codec**；交易所或這個 adapter 不走 WS 下單時回 `ErrUnsupported`，worker 改送 REST 的 `Submit`、`Cancel`。一期只有 Binance 走 WS；Bybit、Okx 一期用 REST。`CancelBatch`、`Snapshot`、`Leverage`、`History` 都留在 REST，Binance 以 ed25519 簽名。
+- **`Account.NewTradeStream()` 回傳 codec**；交易所或這個 adapter 不走 WS 下單時回 `ErrUnsupported`，worker 改送 REST 的 `Submit`、`Cancel`。一期 Binance 與 Bybit 的 `Submit`、`Cancel` 走 WS；Okx 用 REST。Bybit 的單筆下單與撤單在 `wss://stream.bybit.com/v5/trade`，連線 auth 與私有串流相同，訂單 frame 不再簽名。`CancelBatch`、`Snapshot`、`Leverage`、`History` 都留在 REST，Binance 以 ed25519 簽名。
 - `exchangetest.TradeVenue` 是給 worker 測試用的假交易所：回答順序由測試決定，可以丟掉、拒絕、拒絕 logon。conformance 加 `trade` session、`trade_dial`（logon 與請求 frame 的 golden）、`trade_answers`（每個 id 至多回答一次）。
 
 ### D907 控制平面：API server 與 controller

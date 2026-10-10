@@ -30,10 +30,7 @@ func (p *privateStream) Prepare(time.Time) (*exchange.Call[string], error) { ret
 func (p *privateStream) Refresh(time.Time) (*exchange.Call[struct{}], error) { return nil, nil }
 
 func (p *privateStream) Dial(now time.Time, _ string) (*exchange.Dial, error) {
-	exp := now.Add(authLead).UnixMilli()
-	expStr := strconv.FormatInt(exp, 10)
-	sig := p.sig.SignHex(nil, []byte("GET/realtime"+expStr))
-	auth, err := marshalBody(wsCall{Op: "auth", Args: []any{p.key, exp, string(sig)}})
+	auth, err := authFrame(p.key, p.sig, now)
 	if err != nil {
 		return nil, err
 	}
@@ -52,6 +49,14 @@ func (p *privateStream) Limits() exchange.StreamLimits {
 }
 
 func (p *privateStream) Ping() []byte { return []byte(`{"op":"ping"}`) }
+
+// authFrame is the private and trade login. expires is 10s ahead. The signature is HMAC-SHA256
+// of "GET/realtime" + expires, the same bytes both sockets check.
+func authFrame(key string, sig *codec.Signer, now time.Time) ([]byte, error) {
+	exp := now.Add(authLead).UnixMilli()
+	mac := sig.SignHex(nil, []byte("GET/realtime"+strconv.FormatInt(exp, 10)))
+	return marshalBody(wsCall{Op: "auth", Args: []any{key, exp, string(mac)}})
+}
 
 type wsCall struct {
 	Op   string `json:"op"`

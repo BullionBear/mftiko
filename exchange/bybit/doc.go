@@ -5,8 +5,8 @@
 // Public spot and linear were checked on the mainnet on 2026-10-10 (api.bybit.com,
 // stream.bybit.com/v5/public/spot and /linear). Private REST and the private stream were checked
 // on the testnet the same day. Inverse and option have public paths this adapter does not open.
-// Phase 1 sends orders over REST; NewTradeStream is exchange.ErrUnsupported (D303). History is
-// still exchange.ErrNotImplemented (E3-13).
+// Submit and Cancel go over the trade websocket (D303). Cancel-batch, the snapshot, leverage
+// and the dead-man switch stay on REST. History is still exchange.ErrNotImplemented (E3-13).
 //
 //   - The same channel string exists on both routes: "publicTrade.BTCUSDT" is a spot atom and a
 //     linear atom. The route comes from the instrument's category and is part of the atom id
@@ -75,7 +75,20 @@
 //
 // # Orders
 //
-// POST /v5/order/create, /v5/order/cancel and /v5/order/cancel-batch. Category comes from the
+// The worker sends Submit and Cancel on wss://stream.bybit.com/v5/trade, or
+// wss://stream-testnet.bybit.com/v5/trade when the REST host is api-testnet.bybit.com.
+// Dial sends the same auth frame as the private stream and nothing else. Ready is that auth
+// answer when retCode is 0. A request is
+// {"reqId","header":{"X-BAPI-TIMESTAMP","X-BAPI-RECV-WINDOW"},"op","args":[<body>]} with op
+// order.create or order.cancel. reqId is the worker's id in decimal, and args holds one object:
+// the body POST /v5/order/create or /v5/order/cancel would send. The connection is already
+// authenticated, so the order frame is not signed. The ack has an order id and no status, so
+// retCode 0 is OrderStatusPendingNew; the private stream carries the status. This socket does
+// not carry private events. The client sends {"op":"ping"} every 20s and the venue answers
+// {"op":"pong"}. 10403 and 10429 are RateLimited. 10016 and 10019 are ErrUnknownOutcome.
+//
+// POST /v5/order/create, /v5/order/cancel and /v5/order/cancel-batch remain. The worker uses
+// the trade stream for a single order and a single cancel. Category comes from the
 // instrument: spot, linear (Perp and Future), inverse, option. A market order is IOC and carries
 // no price. Spot market orders set marketUnit to baseCoin or quoteCoin; a quote amount is
 // formatted at 1e-8. orderLinkId is at most 36 characters. The create acknowledgement has an
@@ -165,10 +178,11 @@
 //	207  too many orders          110009 110020 170005 170810
 //	208  client order id          110072 170141
 //
-// 10006, 10018, 170222, retCode 429 and HTTP 429 are RateLimited. HTTP 403 with no retCode is
-// RateLimited (Bybit's "access too frequent"). 10003, 10004, 10005, 10007, 10010, 33004,
-// -2015 and HTTP 401 are ErrAuth. 10000, a server timeout, is ErrUnknownOutcome: the order
-// may have been accepted. Usage reads X-Bapi-Limit minus X-Bapi-Limit-Status into bucket
+// 10006, 10018, 170222, 10403, 10429, retCode 429 and HTTP 429 are RateLimited. HTTP 403 with
+// no retCode is RateLimited (Bybit's "access too frequent"). 10003, 10004, 10005, 10007,
+// 10010, 33004, -2015 and HTTP 401 are ErrAuth. 10000, 10016 and 10019 are ErrUnknownOutcome:
+// a timeout or a restart, so the order may have been accepted. Usage reads X-Bapi-Limit minus
+// X-Bapi-Limit-Status into bucket
 // "endpoint". That window belongs to the endpoint that answered, so the numbers are not one
 // shared counter.
 //

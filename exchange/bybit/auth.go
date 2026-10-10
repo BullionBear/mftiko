@@ -21,6 +21,8 @@ const (
 	testREST    = "https://api-testnet.bybit.com"
 	prodPrivate = "wss://stream.bybit.com/v5/private"
 	testPrivate = "wss://stream-testnet.bybit.com/v5/private"
+	prodTrade   = "wss://stream.bybit.com/v5/trade"
+	testTrade   = "wss://stream-testnet.bybit.com/v5/trade"
 
 	recvWindow = "5000"
 
@@ -89,6 +91,15 @@ func (a *account) privateURL() string {
 		return testPrivate
 	}
 	return prodPrivate
+}
+
+// tradeURL is the order socket. It follows the REST host the way the private socket does.
+// StreamEndpoint replaces only the private URL.
+func (a *account) tradeURL() string {
+	if a.onTestnet() {
+		return testTrade
+	}
+	return prodTrade
 }
 
 // sign builds one signed request. GET signs the query string; POST signs body, which is sent

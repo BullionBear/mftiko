@@ -44,8 +44,19 @@ func TestAuthFrame(t *testing.T) {
 	if ref, err := s.Refresh(conformance.DefaultNow); err != nil || ref != nil {
 		t.Fatalf("refresh %v %v", ref, err)
 	}
-	if _, err := a.NewTradeStream(); !errors.Is(err, exchange.ErrUnsupported) {
-		t.Fatalf("trade stream %v", err)
+	ts, err := a.NewTradeStream()
+	if err != nil {
+		t.Fatal(err)
+	}
+	td, err := ts.Dial(conformance.DefaultNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if td.URL != prodTrade || len(td.Frames) != 1 || string(td.Frames[0]) != auth {
+		t.Fatalf("trade dial %s %q", td.URL, td.Frames)
+	}
+	if ts.Limits().Events || string(ts.Ping()) != `{"op":"ping"}` {
+		t.Fatalf("limits %+v ping %s", ts.Limits(), ts.Ping())
 	}
 }
 
@@ -134,6 +145,12 @@ func TestClassify(t *testing.T) {
 	}
 	if _, ok := classify(200, 10006, "Too many visits").(*exchange.RateLimited); !ok {
 		t.Fatalf("rate %T", classify(200, 10006, "x"))
+	}
+	if _, ok := classify(200, 10403, "exceed ip rate limit").(*exchange.RateLimited); !ok {
+		t.Fatal("trade ip limit")
+	}
+	if !errors.Is(classify(200, 10019, "ws trade service is restarting"), exchange.ErrUnknownOutcome) {
+		t.Fatal("trade restart")
 	}
 	if !errors.Is(classify(200, 10000, "Server Timeout"), exchange.ErrUnknownOutcome) {
 		t.Fatal("timeout")
