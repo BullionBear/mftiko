@@ -12,6 +12,10 @@ import (
 
 func TestConformance(t *testing.T) { conformance.Run(t, spec()) }
 
+func TestSpotConformance(t *testing.T) { conformance.Run(t, spotSpec()) }
+
+func FuzzDecodeSpotTrade(f *testing.F) { conformance.FuzzDecodeTrade(f, spotSpec()) }
+
 func FuzzDecodePublic(f *testing.F) { conformance.FuzzDecode(f, spec(), "public") }
 
 func FuzzDecodeMarket(f *testing.F) { conformance.FuzzDecode(f, spec(), "market") }
@@ -150,6 +154,86 @@ func limitOrder(tif exchange.TimeInForce, cloid string) *exchange.OrderRequest {
 func marketOrder(cloid string) *exchange.OrderRequest {
 	return &exchange.OrderRequest{
 		Instrument: btcInst(), Side: exchange.SideBuy, Type: exchange.OrderTypeMarket,
+		Qty: 0.001, QuoteQty: decimal.Absent(), Price: decimal.Absent(), ClientOrderID: cloid,
+	}
+}
+
+func spotSpec() conformance.Spec {
+	return conformance.Spec{
+		Venue:   VenueSpot,
+		Dir:     "testdata/conformance/Binance",
+		Account: accountFactory(kindSpot),
+		History: historyFactory(kindSpot),
+		KeyType: exchange.KeyEd25519,
+		Cases: []conformance.Case{
+			conformance.Call("submit_limit", func(e conformance.Env) (exchange.Call[*exchange.OrderResult], error) {
+				return e.Account.Submit(e.Now, spotLimit(exchange.TIFGTC, cloidGTC))
+			}),
+			conformance.Call("submit_market", func(e conformance.Env) (exchange.Call[*exchange.OrderResult], error) {
+				return e.Account.Submit(e.Now, spotMarket(cloidMKT))
+			}),
+			conformance.Call("cancel", func(e conformance.Env) (exchange.Call[struct{}], error) {
+				return e.Account.Cancel(e.Now, exchange.CancelRef{Instrument: spotInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("open_orders", func(e conformance.Env) (exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
+				calls, err := e.Account.Snapshot(e.Now)
+				if err != nil || len(calls) < 1 {
+					return exchange.Call[exchange.Page[exchange.AccountSnapshot]]{}, err
+				}
+				return calls[0], nil
+			}),
+			conformance.Call("balances", func(e conformance.Env) (exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
+				calls, err := e.Account.Snapshot(e.Now)
+				if err != nil || len(calls) < 2 {
+					return exchange.Call[exchange.Page[exchange.AccountSnapshot]]{}, err
+				}
+				return calls[1], nil
+			}),
+			conformance.Call("my_trades", func(e conformance.Env) (exchange.Call[*exchange.FillPage], error) {
+				return e.History.Fills(e.Now, exchange.FillQuery{Instrument: spotInst(), FromID: "100", Limit: 1})
+			}),
+			conformance.Call("order_lookup", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.History.Order(e.Now, spotInst(), "1001")
+			}),
+			// The same testnet fill as ws/testnet.jsonl: stream trade id 207624.
+			conformance.Call("my_trades_testnet", func(e conformance.Env) (exchange.Call[*exchange.FillPage], error) {
+				return e.History.Fills(e.Now, exchange.FillQuery{Instrument: spotInst(), FromID: "207624", Limit: 1})
+			}),
+			conformance.Call("order_testnet", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.History.Order(e.Now, spotInst(), "1106510")
+			}),
+		},
+		FillPairs: []conformance.FillPair{
+			{Session: "testnet", Case: "my_trades_testnet"},
+		},
+		TradeSamples: []conformance.TradeSample{
+			{Name: "limit GTC", Submit: spotLimit(exchange.TIFGTC, cloidGTC)},
+			{Name: "limit IOC", Submit: spotLimit(exchange.TIFIOC, cloidIOC)},
+			{Name: "limit FOK", Submit: spotLimit(exchange.TIFFOK, cloidFOK)},
+			{Name: "limit post-only", Submit: spotLimit(exchange.TIFPostOnly, cloidGTX)},
+			{Name: "market", Submit: spotMarket(cloidMKT)},
+			{Name: "cancel by client id", Cancel: &exchange.CancelRef{Instrument: spotInst(), ClientOrderID: cloidGTC}},
+		},
+	}
+}
+
+func spotInst() *symbol.Info {
+	return &symbol.Info{
+		ExchTicker: "BTCUSDT",
+		Filters:    symbol.Filters{symbol.PriceTick: 0.01, symbol.QtyStep: 0.00001},
+	}
+}
+
+func spotLimit(tif exchange.TimeInForce, cloid string) *exchange.OrderRequest {
+	return &exchange.OrderRequest{
+		Instrument: spotInst(), Side: exchange.SideBuy, Type: exchange.OrderTypeLimit, TIF: tif,
+		Qty: 0.001, QuoteQty: decimal.Absent(), Price: 65000, ClientOrderID: cloid,
+	}
+}
+
+func spotMarket(cloid string) *exchange.OrderRequest {
+	return &exchange.OrderRequest{
+		Instrument: spotInst(), Side: exchange.SideBuy, Type: exchange.OrderTypeMarket,
 		Qty: 0.001, QuoteQty: decimal.Absent(), Price: decimal.Absent(), ClientOrderID: cloid,
 	}
 }

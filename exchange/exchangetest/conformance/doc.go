@@ -61,6 +61,8 @@
 //   - subscribe: Subscribe and Unsubscribe cover each channel once, within SessionLimits, with
 //     distinct request ids per connection.
 //   - private_dial: the private stream's Prepare, Dial and Refresh match their golden file.
+//     Skipped when NewStream returns ErrUnsupported, which is a trade stream that already
+//     carries the private events (D303).
 //   - trade_dial: the TradeStream's logon and the frames of Spec.TradeSamples match their golden
 //     file, signatures included (D303).
 //   - trade_answers: in each trade session every request id is answered at most once, and never id 0.

@@ -13,7 +13,7 @@ import (
 
 func TestOtherKindsUnimplemented(t *testing.T) {
 	creds := conformance.TestCredentials(exchange.KeyEd25519, false)
-	a, err := accountFactory(kindSpot)(exchange.AccountConfig{Credentials: creds})
+	a, err := accountFactory(kindCM)(exchange.AccountConfig{Credentials: creds})
 	if err != nil {
 		t.Fatal(err)
 	}

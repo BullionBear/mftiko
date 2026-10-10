@@ -1,0 +1,43 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://api.binance.com",
+    "path": "/api/v3/myTrades",
+    "query": "symbol=BTCUSDT&fromId=207624&limit=1&recvWindow=5000&timestamp=1767225600000&signature=ioSCRvA8HKJ5MXZ34z4Plj47xQoQSJF2zZBlF5qjUm9O8HtsB3XW1awVlRPbFEgG8rmcgl3DzpILwcNMeofFDA%3D%3D",
+    "header": [
+      {
+        "name": "X-MBX-APIKEY",
+        "value": "conformance-api-key"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 10
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": {
+    "Fills": [
+      {
+        "ClientOrderID": "",
+        "Exch": {
+          "Category": "Spot",
+          "ExchTicker": "BTCUSDT",
+          "Venue": "Binance"
+        },
+        "ExchTsNs": 1791618556888000000,
+        "Fee": 0,
+        "FeeAsset": "BTC",
+        "FillID": "207624",
+        "Liquidity": "taker",
+        "OrderID": "1106510",
+        "Price": 82789.84,
+        "Qty": 0.00007,
+        "Side": 1
+      }
+    ],
+    "Next": "207625"
+  }
+}

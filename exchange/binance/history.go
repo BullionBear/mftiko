@@ -17,8 +17,8 @@ func historyFactory(k kind) exchange.HistoryFactory {
 	}
 }
 
-// history reads userTrades by fromId, ascending. The trade id is the same id the private stream
-// reports as ORDER_TRADE_UPDATE.o.t, which is what D601 needs for fill_id.
+// history reads fills by fromId, ascending. USD-M uses userTrades; spot uses myTrades.
+// The trade id is the same id the private event reports (D601).
 type history struct {
 	k   kind
 	cfg exchange.AccountConfig
@@ -28,21 +28,34 @@ type history struct {
 var _ exchange.History = (*history)(nil)
 
 func (h *history) Traits() exchange.HistoryTraits {
-	if h.k.name != kindUM.name {
+	switch h.k.name {
+	case kindUM.name:
+		return exchange.HistoryTraits{
+			ByID: true,
+			// userTrades rejects a window longer than 7 days.
+			MaxWindow: 7 * 24 * time.Hour,
+			// The venue only serves fills from the past three months.
+			Retention: 90 * 24 * time.Hour,
+			PageLimit: 1000,
+		}
+	case kindSpot.name:
+		return exchange.HistoryTraits{
+			ByID: true,
+			// myTrades rejects a startTime/endTime window longer than 24 hours.
+			MaxWindow: 24 * time.Hour,
+			PageLimit: 1000,
+		}
+	default:
 		return exchange.HistoryTraits{}
-	}
-	return exchange.HistoryTraits{
-		ByID: true,
-		// userTrades rejects a window longer than 7 days.
-		MaxWindow: 7 * 24 * time.Hour,
-		// The venue only serves fills from the past three months.
-		Retention: 90 * 24 * time.Hour,
-		PageLimit: 1000,
 	}
 }
 
 func (h *history) Fills(now time.Time, q exchange.FillQuery) (exchange.Call[*exchange.FillPage], error) {
-	if err := instrument(q.Instrument); err != nil {
+	venue, path, weight, window, err := h.fillsRoute()
+	if err != nil {
+		return exchange.Call[*exchange.FillPage]{}, err
+	}
+	if err := instrumentVenue(q.Instrument, venue); err != nil {
 		return exchange.Call[*exchange.FillPage]{}, err
 	}
 	byID := q.Cursor != "" || q.FromID != ""
@@ -54,8 +67,8 @@ func (h *history) Fills(now time.Time, q exchange.FillQuery) (exchange.Call[*exc
 		if q.EndNs < q.StartNs {
 			return exchange.Call[*exchange.FillPage]{}, fmt.Errorf("binance: fill window ends before it starts")
 		}
-		if time.Duration(q.EndNs-q.StartNs) > 7*24*time.Hour {
-			return exchange.Call[*exchange.FillPage]{}, fmt.Errorf("binance: fill window is longer than 7 days")
+		if time.Duration(q.EndNs-q.StartNs) > window {
+			return exchange.Call[*exchange.FillPage]{}, fmt.Errorf("binance: fill window is longer than %s", window)
 		}
 	}
 	limit := 1000
@@ -78,17 +91,32 @@ func (h *history) Fills(now time.Time, q exchange.FillQuery) (exchange.Call[*exc
 		}
 	}
 	query = query.AddInt("limit", int64(limit))
-	req, err := signedCall(&h.signerState, h.k, h.cfg, now, http.MethodGet, "/fapi/v1/userTrades", query, weightCost(5), false)
+	req, err := signedCall(&h.signerState, h.k, h.cfg, now, http.MethodGet, path, query, weightCost(weight), false)
 	if err != nil {
 		return exchange.Call[*exchange.FillPage]{}, err
 	}
 	return exchange.Call[*exchange.FillPage]{Req: req, Parse: func(resp *exchange.HTTPResponse) (*exchange.FillPage, error) {
-		return parseFills(resp, limit)
+		return parseFills(resp, limit, venue)
 	}}, nil
 }
 
+func (h *history) fillsRoute() (venue, path string, weight int, window time.Duration, err error) {
+	switch h.k.name {
+	case kindUM.name:
+		return VenueUM, "/fapi/v1/userTrades", 5, 7 * 24 * time.Hour, nil
+	case kindSpot.name:
+		return VenueSpot, "/api/v3/myTrades", 10, 24 * time.Hour, nil
+	default:
+		return "", "", 0, 0, exchange.ErrNotImplemented
+	}
+}
+
 func (h *history) Order(now time.Time, inst *symbol.Info, orderID string) (exchange.Call[*exchange.OrderUpdate], error) {
-	if err := instrument(inst); err != nil {
+	venue, path, weight, err := h.orderRoute()
+	if err != nil {
+		return exchange.Call[*exchange.OrderUpdate]{}, err
+	}
+	if err := instrumentVenue(inst, venue); err != nil {
 		return exchange.Call[*exchange.OrderUpdate]{}, err
 	}
 	n, err := strconv.ParseInt(orderID, 10, 64)
@@ -96,14 +124,27 @@ func (h *history) Order(now time.Time, inst *symbol.Info, orderID string) (excha
 		return exchange.Call[*exchange.OrderUpdate]{}, fmt.Errorf("binance: order id %q", orderID)
 	}
 	q := codec.Query(nil).Add("symbol", inst.ExchTicker).AddInt("orderId", n)
-	req, err := signedCall(&h.signerState, h.k, h.cfg, now, http.MethodGet, "/fapi/v1/order", q, weightCost(1), false)
+	req, err := signedCall(&h.signerState, h.k, h.cfg, now, http.MethodGet, path, q, weightCost(weight), false)
 	if err != nil {
 		return exchange.Call[*exchange.OrderUpdate]{}, err
 	}
-	return exchange.Call[*exchange.OrderUpdate]{Req: req, Parse: parseOrder}, nil
+	return exchange.Call[*exchange.OrderUpdate]{Req: req, Parse: func(resp *exchange.HTTPResponse) (*exchange.OrderUpdate, error) {
+		return parseOrder(resp, venue)
+	}}, nil
 }
 
-func parseFills(resp *exchange.HTTPResponse, limit int) (*exchange.FillPage, error) {
+func (h *history) orderRoute() (venue, path string, weight int, err error) {
+	switch h.k.name {
+	case kindUM.name:
+		return VenueUM, "/fapi/v1/order", 1, nil
+	case kindSpot.name:
+		return VenueSpot, "/api/v3/order", 2, nil
+	default:
+		return "", "", 0, exchange.ErrNotImplemented
+	}
+}
+
+func parseFills(resp *exchange.HTTPResponse, limit int, venue string) (*exchange.FillPage, error) {
 	if resp.Status >= 400 {
 		return nil, refuse(resp)
 	}
@@ -113,7 +154,7 @@ func parseFills(resp *exchange.HTTPResponse, limit int) (*exchange.FillPage, err
 	}
 	fills := make([]exchange.Fill, len(rows))
 	for i, r := range rows {
-		fills[i] = r.fill()
+		fills[i] = r.fill(venue)
 	}
 	page := &exchange.FillPage{Fills: fills}
 	if limit > 0 && len(rows) == limit {
@@ -122,7 +163,7 @@ func parseFills(resp *exchange.HTTPResponse, limit int) (*exchange.FillPage, err
 	return page, nil
 }
 
-func parseOrder(resp *exchange.HTTPResponse) (*exchange.OrderUpdate, error) {
+func parseOrder(resp *exchange.HTTPResponse, venue string) (*exchange.OrderUpdate, error) {
 	if resp.Status >= 400 {
 		return nil, refuse(resp)
 	}
@@ -130,7 +171,7 @@ func parseOrder(resp *exchange.HTTPResponse) (*exchange.OrderUpdate, error) {
 	if err := codec.DecodeBody(resp.Body, &o); err != nil {
 		return nil, err
 	}
-	up := o.update()
+	up := o.update(venue)
 	return &up, nil
 }
 
@@ -142,20 +183,46 @@ type userTrade struct {
 	Price    codec.Decimal `json:"price"`
 	Qty      codec.Decimal `json:"qty"`
 	Fee      codec.Decimal `json:"commission"`
-	FeeAsset string        `json:"commissionAsset"`
+	FeeAsset flexString    `json:"commissionAsset"`
 	Time     int64         `json:"time"`
 	Maker    bool          `json:"maker"`
+	IsMaker  bool          `json:"isMaker"`
+	IsBuyer  bool          `json:"isBuyer"`
 }
 
-func (t userTrade) fill() exchange.Fill {
+func (t userTrade) fill(venue string) exchange.Fill {
+	maker := t.Maker || t.IsMaker
 	liq := "taker"
-	if t.Maker {
+	if maker {
 		liq = "maker"
 	}
-	return exchange.Fill{
-		Exch: exchOf(t.Symbol), FillID: strconv.FormatInt(t.ID, 10),
-		OrderID: strconv.FormatInt(t.OrderID, 10),
-		Side:    sideOf(t.Side), Price: float64(t.Price), Qty: float64(t.Qty),
-		Fee: float64(t.Fee), FeeAsset: t.FeeAsset, Liquidity: liq, ExchTsNs: ms(t.Time),
+	side := sideOf(t.Side)
+	if t.Side == "" {
+		side = exchange.SideSell
+		if t.IsBuyer {
+			side = exchange.SideBuy
+		}
 	}
+	return exchange.Fill{
+		Exch: exchFor(venue, t.Symbol), FillID: strconv.FormatInt(t.ID, 10),
+		OrderID: strconv.FormatInt(t.OrderID, 10),
+		Side:    side, Price: float64(t.Price), Qty: float64(t.Qty),
+		Fee: float64(t.Fee), FeeAsset: string(t.FeeAsset), Liquidity: liq, ExchTsNs: ms(t.Time),
+	}
+}
+
+// flexString accepts a JSON string or null. Spot leaves the commission asset null when there is none.
+type flexString string
+
+func (s *flexString) UnmarshalJSON(b []byte) error {
+	if string(b) == "null" {
+		*s = ""
+		return nil
+	}
+	var v string
+	if err := codec.DecodeBody(b, &v); err != nil {
+		return err
+	}
+	*s = flexString(v)
+	return nil
 }

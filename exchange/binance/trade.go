@@ -46,16 +46,7 @@ func (t *tradeStream) Dial(now time.Time) (*exchange.Dial, error) {
 
 func (t *tradeStream) logon(now time.Time) ([]byte, error) {
 	// The signature payload is the parameters except signature, sorted by name.
-	q := codec.Query(nil).Add("apiKey", t.key).AddInt("recvWindow", recvWindow).AddInt("timestamp", now.UnixMilli())
-	body := wsCall{
-		ID:     "logon",
-		Method: "session.logon",
-		Params: logonParams{
-			APIKey: t.key, RecvWindow: recvWindow,
-			Signature: string(t.sig.SignBase64(nil, q)), Timestamp: now.UnixMilli(),
-		},
-	}
-	return codec.Marshal(body)
+	return logonFrame(t.key, t.sig, now)
 }
 
 func (t *tradeStream) Submit(now time.Time, id uint64, req *exchange.OrderRequest) ([]byte, error) {
@@ -119,15 +110,15 @@ func (t *tradeStream) Cancel(now time.Time, id uint64, ref exchange.CancelRef) (
 	if id == 0 {
 		return nil, fmt.Errorf("binance: request id is 0")
 	}
-	p, err := cancelParamsOf(now, ref)
+	p, err := cancelParamsOf(now, ref, VenueUM)
 	if err != nil {
 		return nil, err
 	}
 	return codec.Marshal(wsCall{ID: "c" + strconv.FormatUint(id, 10), Method: "order.cancel", Params: p})
 }
 
-func cancelParamsOf(now time.Time, ref exchange.CancelRef) (cancelParams, error) {
-	if err := instrument(ref.Instrument); err != nil {
+func cancelParamsOf(now time.Time, ref exchange.CancelRef, venue string) (cancelParams, error) {
+	if err := instrumentVenue(ref.Instrument, venue); err != nil {
 		return cancelParams{}, err
 	}
 	p := cancelParams{RecvWindow: recvWindow, Symbol: ref.Instrument.ExchTicker, Timestamp: now.UnixMilli()}
@@ -200,6 +191,9 @@ func requestID(id string) (byte, uint64, error) {
 	if id == "logon" {
 		return 'l', 0, nil
 	}
+	if id == "subscribe" {
+		return 's', 0, nil
+	}
 	if len(id) < 2 || (id[0] != 'o' && id[0] != 'c') {
 		return 0, 0, fmt.Errorf("binance: trade frame id %q", id)
 	}
@@ -232,8 +226,12 @@ func orderResult(raw []byte) (*exchange.OrderResult, error) {
 	if o.OrderID == 0 {
 		return nil, fmt.Errorf("binance: order result has no order id")
 	}
+	ts := o.UpdateTime
+	if ts == 0 {
+		ts = o.TransactTime
+	}
 	return &exchange.OrderResult{
-		OrderID: strconv.FormatInt(o.OrderID, 10), Status: statusOf(o.Status), ExchTsNs: ms(o.UpdateTime),
+		OrderID: strconv.FormatInt(o.OrderID, 10), Status: statusOf(o.Status), ExchTsNs: ms(ts),
 	}, nil
 }
 
@@ -245,9 +243,12 @@ func usedOf(ls []wsLimit) []exchange.Used {
 		case "REQUEST_WEIGHT":
 			bucket = weight1m
 		case "ORDERS":
-			if l.Interval == "SECOND" {
+			switch l.Interval {
+			case "SECOND":
 				bucket = orders10s
-			} else {
+			case "DAY":
+				bucket = orders1d
+			default:
 				bucket = orders1m
 			}
 		}
@@ -327,14 +328,25 @@ type restOrder struct {
 	Price         codec.Decimal `json:"price"`
 	AvgPrice      codec.Decimal `json:"avgPrice"`
 	ExecutedQty   codec.Decimal `json:"executedQty"`
+	Quote         codec.Decimal `json:"cummulativeQuoteQty"`
 	UpdateTime    int64         `json:"updateTime"`
+	TransactTime  int64         `json:"transactTime"`
 }
 
-func (o restOrder) update() exchange.OrderUpdate {
+func (o restOrder) update(venue string) exchange.OrderUpdate {
+	avg := float64(o.AvgPrice)
+	filled := float64(o.ExecutedQty)
+	if avg == 0 && filled > 0 && float64(o.Quote) > 0 {
+		avg = float64(o.Quote) / filled
+	}
+	ts := o.UpdateTime
+	if ts == 0 {
+		ts = o.TransactTime
+	}
 	return exchange.OrderUpdate{
-		Exch: exchOf(o.Symbol), OrderID: strconv.FormatInt(o.OrderID, 10), ClientOrderID: o.ClientOrderID,
+		Exch: exchFor(venue, o.Symbol), OrderID: strconv.FormatInt(o.OrderID, 10), ClientOrderID: o.ClientOrderID,
 		Side: sideOf(o.Side), Type: typeOf(o.Type), Status: statusOf(o.Status),
-		Qty: float64(o.OrigQty), Price: float64(o.Price), FilledQty: float64(o.ExecutedQty),
-		AvgPrice: float64(o.AvgPrice), ExchTsNs: ms(o.UpdateTime),
+		Qty: float64(o.OrigQty), Price: float64(o.Price), FilledQty: filled,
+		AvgPrice: avg, ExchTsNs: ms(ts),
 	}
 }

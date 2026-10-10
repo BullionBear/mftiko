@@ -19,6 +19,17 @@ import (
 // takes one count on each order bucket; a batch takes one per order.
 
 func (a *account) Submit(now time.Time, req *exchange.OrderRequest) (exchange.Call[*exchange.OrderResult], error) {
+	if a.k.name == kindSpot.name {
+		q, err := spotOrderQuery(req)
+		if err != nil {
+			return exchange.Call[*exchange.OrderResult]{}, err
+		}
+		httpReq, err := a.signedCall(now, http.MethodPost, "/api/v3/order", q, spotOrderCost(1, 1), true)
+		if err != nil {
+			return exchange.Call[*exchange.OrderResult]{}, err
+		}
+		return exchange.Call[*exchange.OrderResult]{Req: httpReq, Parse: parseOrderResult}, nil
+	}
 	q, err := orderQuery(req)
 	if err != nil {
 		return exchange.Call[*exchange.OrderResult]{}, err
@@ -31,7 +42,7 @@ func (a *account) Submit(now time.Time, req *exchange.OrderRequest) (exchange.Ca
 }
 
 func (a *account) Cancel(now time.Time, ref exchange.CancelRef) (exchange.Call[struct{}], error) {
-	p, err := cancelParamsOf(now, ref)
+	p, path, cost, err := a.cancelQuery(now, ref)
 	if err != nil {
 		return exchange.Call[struct{}]{}, err
 	}
@@ -42,7 +53,7 @@ func (a *account) Cancel(now time.Time, ref exchange.CancelRef) (exchange.Call[s
 	if p.OrigClientOrderID != "" {
 		q = q.Add("origClientOrderId", p.OrigClientOrderID)
 	}
-	httpReq, err := a.signedCall(now, http.MethodDelete, "/fapi/v1/order", q, orderCost(1, 1), true)
+	httpReq, err := a.signedCall(now, http.MethodDelete, path, q, cost, true)
 	if err != nil {
 		return exchange.Call[struct{}]{}, err
 	}
@@ -50,6 +61,21 @@ func (a *account) Cancel(now time.Time, ref exchange.CancelRef) (exchange.Call[s
 }
 
 func (a *account) CancelBatch(now time.Time, refs []exchange.CancelRef) (exchange.Call[[]error], error) {
+	if a.k.name == kindSpot.name {
+		if len(refs) != 1 {
+			return exchange.Call[[]error]{}, fmt.Errorf("binance: spot cancels one order at a time, got %d", len(refs))
+		}
+		one, err := a.Cancel(now, refs[0])
+		if err != nil {
+			return exchange.Call[[]error]{}, err
+		}
+		return exchange.Call[[]error]{Req: one.Req, Parse: func(resp *exchange.HTTPResponse) ([]error, error) {
+			if _, err := one.Parse(resp); err != nil {
+				return nil, err
+			}
+			return []error{nil}, nil
+		}}, nil
+	}
 	if len(refs) == 0 || len(refs) > 10 {
 		return exchange.Call[[]error]{}, fmt.Errorf("binance: batch cancel takes 1 to 10 orders, got %d", len(refs))
 	}
@@ -105,6 +131,9 @@ func (a *account) CancelBatch(now time.Time, refs []exchange.CancelRef) (exchang
 }
 
 func (a *account) Snapshot(now time.Time) ([]exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
+	if a.k.name == kindSpot.name {
+		return a.spotSnapshot(now)
+	}
 	orders, err := a.signedCall(now, http.MethodGet, "/fapi/v1/openOrders", nil, weightCost(40), false)
 	if err != nil {
 		return nil, err
@@ -125,6 +154,9 @@ func (a *account) Snapshot(now time.Time) ([]exchange.Call[exchange.Page[exchang
 }
 
 func (a *account) Leverage(now time.Time, inst *symbol.Info) (exchange.Call[float64], error) {
+	if a.k.name == kindSpot.name {
+		return exchange.Call[float64]{}, fmt.Errorf("binance: spot has no leverage: %w", exchange.ErrUnsupported)
+	}
 	if err := instrument(inst); err != nil {
 		return exchange.Call[float64]{}, err
 	}
@@ -148,7 +180,7 @@ func (a *account) Leverage(now time.Time, inst *symbol.Info) (exchange.Call[floa
 	}}, nil
 }
 
-func (a *account) ArmCancelOnDisconnect(now time.Time, timeout time.Duration, insts []*symbol.Info) (exchange.Call[struct{}], error) {
+func (a *umAccount) ArmCancelOnDisconnect(now time.Time, timeout time.Duration, insts []*symbol.Info) (exchange.Call[struct{}], error) {
 	if timeout < 0 {
 		return exchange.Call[struct{}]{}, fmt.Errorf("binance: countdown is negative")
 	}
@@ -243,7 +275,7 @@ func parseOpenOrders(resp *exchange.HTTPResponse) (exchange.Page[exchange.Accoun
 	}
 	orders := make([]exchange.OrderUpdate, len(rows))
 	for i, o := range rows {
-		orders[i] = o.update()
+		orders[i] = o.update(VenueUM)
 	}
 	return snapPage(exchange.AccountSnapshot{OpenOrders: orders}), nil
 }

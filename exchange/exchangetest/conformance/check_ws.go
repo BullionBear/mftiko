@@ -203,7 +203,9 @@ func (r *runner) checkUnknown() []Problem {
 	}
 	if a := r.env.Account; a != nil {
 		c, err := a.NewStream()
-		if err != nil {
+		if errors.Is(err, exchange.ErrUnsupported) {
+			// The trade stream carries the private events (D303). Spot is this shape.
+		} else if err != nil {
 			out = append(out, Problem{"unknown_frames", "private", err.Error()})
 		} else {
 			try("private", func(b []byte) (int, error) {
@@ -391,6 +393,9 @@ func (r *runner) checkDial() []Problem {
 		return nil
 	}
 	s, err := a.NewStream()
+	if errors.Is(err, exchange.ErrUnsupported) {
+		return nil
+	}
 	if err != nil {
 		return []Problem{{"private_dial", "NewStream", err.Error()}}
 	}

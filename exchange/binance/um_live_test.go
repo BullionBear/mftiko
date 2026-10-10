@@ -41,7 +41,7 @@ func TestBinanceUMTestnet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw := acct.(*account)
+	raw := asAccount(t, acct)
 	doer := fasthttp.New(nil, fasthttp.Options{Timeout: 15 * time.Second})
 	inst, tick, step, qty := btcFilters(t)
 
@@ -535,6 +535,19 @@ type live struct {
 	lines     []string
 	rawMu     sync.Mutex
 	raw       [][]byte // private frames, copied
+}
+
+func asAccount(t *testing.T, a exchange.Account) *account {
+	t.Helper()
+	switch v := a.(type) {
+	case *umAccount:
+		return v.account
+	case *account:
+		return v
+	default:
+		t.Fatalf("account type %T", a)
+		return nil
+	}
 }
 
 func d602(seq uint64) string {

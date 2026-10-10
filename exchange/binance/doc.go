@@ -43,13 +43,21 @@
 //     it dies at 60. The 2026-03 path split retired /ws/<listenKey>. A BinancePM stream carries
 //     margin, UM and CM events; each event's ExchKey names its venue. PM is not implemented here.
 //   - Futures have a per-symbol dead-man switch (countdownCancelAll): CancelOnDisconnect.
-//   - userTrades (GET /fapi/v1/userTrades) is the fill history. One request spans at most 7
+//   - userTrades (GET /fapi/v1/userTrades) is the USD-M fill history. One request spans at most 7
 //     days (HistoryTraits.MaxWindow). fromId cannot be combined with startTime or endTime.
 //     The venue keeps three months (HistoryTraits.Retention). The trade id is the same
 //     value ORDER_TRADE_UPDATE reports as t (D601).
+//   - Binance spot sends orders and private events on one WebSocket API connection
+//     (wss://ws-api.binance.com/ws-api/v3; testnet wss://ws-api.testnet.binance.vision/ws-api/v3).
+//     Dial is session.logon, then userDataStream.subscribe. There is no PrivateStream and no
+//     countdownCancelAll. CancelBatch is one order. Snapshot is open orders plus balances.
+//     myTrades (GET /api/v3/myTrades) is the fill history: fromId walks forward, a startTime
+//     and endTime window is at most 24 hours, and the trade id is executionReport.t (D601).
+//     The published notes give no retention cutoff, so HistoryTraits.Retention stays 0.
 //
 // UM private wire, checked against the USD-M testnet on 2026-10-10. UM public wire, checked the
-// same day against production fapi and fstream. Other products still return exchange.ErrNotImplemented.
+// same day against production fapi and fstream. Spot private wire, checked the same day against
+// the spot testnet. CM, EO and PM still return exchange.ErrNotImplemented. Spot market data does too.
 //
 // # Public fields
 //
