@@ -86,7 +86,8 @@ func forbiddenInStrategy(importPath string) bool {
 }
 
 // forbiddenInExchange reports whether the exchange package, which holds the adapter interfaces, must not
-// link the package: the transport and JSON libraries are the workers' and exchange/transport's (DECISIONS D302).
+// link the package: the transport and JSON libraries are the workers' and exchange/transport's, and sonic is also
+// exchange/internal/codec's (DECISIONS D302).
 func forbiddenInExchange(importPath string) bool {
 	return under(importPath, "github.com/valyala/fasthttp", "github.com/coder/websocket", "github.com/bytedance/sonic")
 }
