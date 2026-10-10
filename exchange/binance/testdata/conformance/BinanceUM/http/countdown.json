@@ -1,0 +1,6 @@
+{
+  "response": {
+    "status": 200,
+    "body": {"symbol": "BTCUSDT", "countdownTime": "120000"}
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://fapi.binance.com",
+    "path": "/fapi/v2/positionRisk",
+    "query": "symbol=BTCUSDT&recvWindow=5000&timestamp=1767225600000&signature=%2FQgxblyHCji7ARtDkwWoRA4nad4BnBzZwPz2sbAvZaqBh2ajWEwaUzHLVc8VWR4Bcz2TOK11GwmFftJ0JffxBg%3D%3D",
+    "header": [
+      {
+        "name": "X-MBX-APIKEY",
+        "value": "conformance-api-key"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 5
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": 20
+}

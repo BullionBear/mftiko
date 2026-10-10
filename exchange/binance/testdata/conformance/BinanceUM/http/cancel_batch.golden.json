@@ -1,0 +1,34 @@
+{
+  "request": {
+    "method": "DELETE",
+    "base": "https://fapi.binance.com",
+    "path": "/fapi/v1/batchOrders",
+    "query": "symbol=BTCUSDT&origClientOrderIdList=%5B%221767225600000000001%22%2C%221767225600000000002%22%5D&recvWindow=5000&timestamp=1767225600000&signature=CiU5Ywb2RjQH9t02SRIdNi4BkomCeRIH3EAqmr3GkUmdInyQpmjaZCfJtN8cMcerAtkW7OoWTY555o5MjKu1DQ%3D%3D",
+    "header": [
+      {
+        "name": "X-MBX-APIKEY",
+        "value": "conformance-api-key"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 1
+      },
+      {
+        "bucket": "orders_10s",
+        "n": 2
+      },
+      {
+        "bucket": "orders_1m",
+        "n": 2
+      }
+    ],
+    "mutates": true
+  },
+  "response": "recorded",
+  "result": [
+    null,
+    "reject 200 -2011"
+  ]
+}

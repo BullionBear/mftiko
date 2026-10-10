@@ -1,0 +1,14 @@
+{
+  "response": {
+    "status": 200,
+    "body": [
+      {
+        "orderId": 1001,
+        "clientOrderId": "1767225600000000001",
+        "symbol": "BTCUSDT",
+        "status": "CANCELED"
+      },
+      {"code": -2011, "msg": "Unknown order sent."}
+    ]
+  }
+}

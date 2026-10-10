@@ -1,0 +1,20 @@
+{
+  "response": {
+    "status": 200,
+    "body": [
+      {
+        "symbol": "BTCUSDT",
+        "id": 100,
+        "orderId": 1001,
+        "side": "BUY",
+        "price": "65000",
+        "qty": "0.001",
+        "commission": "0.025",
+        "commissionAsset": "USDT",
+        "time": 1767225600100,
+        "maker": false,
+        "positionSide": "BOTH"
+      }
+    ]
+  }
+}
