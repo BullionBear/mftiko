@@ -1,0 +1,6 @@
+{
+  "url": "wss://ws.fakex.example/private",
+  "frames": [
+    "{\"op\":\"login\",\"key\":\"conformance-api-key\",\"ts\":1767225600000,\"sig\":\"95a0fcc491e0100842a2ed352ee1e9b4165a134ae7e8f00f8b28c1c54951f278\"}"
+  ]
+}

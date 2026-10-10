@@ -1,0 +1,9 @@
+{
+  "response": {
+    "status": 400,
+    "body": {
+      "code": -2010,
+      "msg": "insufficient balance"
+    }
+  }
+}

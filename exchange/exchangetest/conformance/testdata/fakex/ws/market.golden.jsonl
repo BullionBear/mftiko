@@ -1,0 +1,14 @@
+{"frame":2,"call":"Ack","value":{"error":"","id":1}}
+{"frame":3,"call":"Ack","value":{"error":"","id":2}}
+{"frame":4,"call":"Book","ch":"book:BTCUSDT","value":{"Asks":[{"Price":101,"Qty":1},{"Price":102,"Qty":2},{"Price":103,"Qty":3}],"Bids":[{"Price":100,"Qty":1},{"Price":99,"Qty":2},{"Price":98,"Qty":3}],"Checksum":1206,"ExchTsNs":1767225600000000000,"First":0,"Last":10,"Prev":0,"Snapshot":true}}
+{"frame":5,"call":"Trade","ch":"trade:BTCUSDT","value":{"ExchTsNs":1767225600001000000,"Price":100.5,"Qty":0.25,"Side":1,"TradeID":"t1"}}
+{"frame":6,"call":"Book","ch":"book:BTCUSDT","value":{"Asks":[],"Bids":[{"Price":100,"Qty":2}],"Checksum":1306,"ExchTsNs":1767225600010000000,"First":0,"Last":11,"Prev":10,"Snapshot":false}}
+{"frame":7,"call":"Book","ch":"book:BTCUSDT","value":{"Asks":[{"Price":101,"Qty":0}],"Bids":[],"Checksum":1205,"ExchTsNs":1767225600011000000,"First":0,"Last":12,"Prev":11,"Snapshot":false}}
+{"frame":8,"call":"Trade","ch":"trade:BTCUSDT","value":{"ExchTsNs":1767225600020000000,"Price":100,"Qty":1.5,"Side":2,"TradeID":"t2"}}
+{"frame":9,"call":"Book","ch":"book:BTCUSDT","value":{"Asks":[],"Bids":[{"Price":99.5,"Qty":1}],"Checksum":1010,"ExchTsNs":1767225600012000000,"First":0,"Last":13,"Prev":12,"Snapshot":false}}
+{"frame":10,"call":"Book","ch":"book:BTCUSDT","value":{"Asks":[{"Price":101.5,"Qty":4}],"Bids":[],"Checksum":1416,"ExchTsNs":1767225600013000000,"First":0,"Last":14,"Prev":13,"Snapshot":false}}
+{"frame":11,"call":"Ticker","ch":"ticker:BTCUSDT","value":{"ChangePct24h":null,"ExchTsNs":1767225600030000000,"High24h":102,"Last":100,"Low24h":94.5,"Open24h":95,"QuoteVolume24h":null,"Volume24h":1234.5}}
+{"frame":12,"call":"Book","ch":"book:BTCUSDT","value":{"Asks":[{"Price":104,"Qty":1}],"Bids":[{"Price":98,"Qty":0}],"Checksum":1416,"ExchTsNs":1767225600014000000,"First":0,"Last":15,"Prev":14,"Snapshot":false}}
+{"frame":13,"call":"Book","ch":"book:BTCUSDT","value":{"Asks":[],"Bids":[{"Price":100,"Qty":0}],"Checksum":1216,"ExchTsNs":1767225600015000000,"First":0,"Last":16,"Prev":15,"Snapshot":false}}
+{"frame":14,"call":"Trade","ch":"trade:BTCUSDT","value":{"ExchTsNs":1767225600040000000,"Price":99.5,"Qty":0.001,"Side":1,"TradeID":"t3"}}
+{"frame":15,"call":"Ticker","ch":"ticker:BTCUSDT","value":{"ChangePct24h":null,"ExchTsNs":1767225600050000000,"High24h":102,"Last":99.5,"Low24h":94.5,"Open24h":95,"QuoteVolume24h":null,"Volume24h":1240}}

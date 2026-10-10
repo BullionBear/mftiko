@@ -1,0 +1,31 @@
+{
+  "request": {
+    "method": "POST",
+    "base": "https://api.fakex.example",
+    "path": "/v1/order",
+    "header": [
+      {
+        "name": "X-Key",
+        "value": "conformance-api-key"
+      },
+      {
+        "name": "X-Sign",
+        "value": "54fd3a43d660e69d1aa4ff015a8f3d2b8d7f2dc81bc9848cb0c5dd095fa4f77f"
+      }
+    ],
+    "body": "{\"sym\":\"BTCUSDT\",\"side\":\"buy\",\"px\":\"65000.5\",\"qty\":\"0.250\",\"cid\":\"1234567\",\"ts\":1767225600000}",
+    "cost": [
+      {
+        "bucket": "orders",
+        "n": 1
+      }
+    ],
+    "mutates": true
+  },
+  "response": "recorded",
+  "result": {
+    "ExchTsNs": 1767225600000000000,
+    "OrderID": "o1",
+    "Status": 2
+  }
+}
