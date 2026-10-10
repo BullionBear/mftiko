@@ -529,7 +529,7 @@ E3 開工前先定的介面、設計模式與技術棧。各交易所的實作�
   - 錯誤：`Parse` 判讀交易所的回答：`*Reject`（明確拒絕）、`*RateLimited`、`ErrAuth`（簽名、權限、IP 白名單；不重試，告警）。沒有回答的由傳輸判定：請求可能已送出的是 `ErrUnknownOutcome`；`HTTPRequest.Mutates` 的請求（下單、撤單）遇到它，worker 查單或 recon，不當成被拒。`ErrUnsupported`、`ErrNotImplemented` 不變。
   - 限速：每個 `HTTPRequest` 宣告它的 `Cost`；交易所在回應裡報的用量由 `Usage` 讀出；節流只在 worker。
   - `Account.Leverage` 回 float64（D008 的遺漏）。`Account.Snapshot` 是多個可分頁的 `Call`，worker 全部跑完再合併；`AsOfNs` 由 worker 在第一個請求送出前蓋。
-- SYM 讀的是 `exchange.Lister`（整個 category 讀到最後一頁）：真的 venue 是 `ListingOver(PublicREST, Doer, now)`，測試是 `exchangetest.Source`。`exchangetest.Source.REST()` 是它的 sans-I/O 面，`Source` 本身就是回應它的 `Doer`。在 `exchange/transport/fasthttp` 之前，`mftiko-sym` 沒有傳輸，refresh 回 `ErrNoTransport`；各 adapter 的 `Listing` 本來也還是 `ErrNotImplemented`。
+- SYM 讀的是 `exchange.Lister`（整個 category 讀到最後一頁）：真的 venue 是 `ListingOver(PublicREST, Doer, now)`，測試是 `exchangetest.Source`。`exchangetest.Source.REST()` 是它的 sans-I/O 面，`Source` 本身就是回應它的 `Doer`。`mftiko-sym` 以 `exchange/transport/fasthttp` 的 Doer 執行它；proxy 與 TLS roots 是這個行程的旗標。沒有 Doer 時 refresh 回 `ErrNoTransport`。
 
 ### D303 WS 下單：TradeStream
 
@@ -608,8 +608,8 @@ Binance 一律以 ed25519 經 WS API 收發單（2026-10-10 定）。D302 的 `A
 
 ### D007 契約分成草案與定案
 
-- 每份契約都有狀態與定案的 EPIC，表在 PROTOCOL §1。現在全部是草案。
-- `buf.yaml` 的 `breaking.ignore` 列出草案的檔案：草案可以自由改，CI 不擋。定案的 EPIC 把自己的檔案移出清單，寫進完成標準。C3、C4 在 E1 結束時第一批移出。
+- 每份契約都有狀態與定案的 EPIC，表在 PROTOCOL §1。`sym.proto` 在 E2-10 定案。其餘仍是草案。
+- `buf.yaml` 的 `breaking.ignore` 列出草案的檔案：草案可以自由改，CI 不擋。定案的 EPIC 把自己的檔案移出清單，寫進完成標準。`sym.proto` 已移出。C3、C4 在 E1 結束時移出。
 - 代價：定案之前，不小心改壞草案不會被 CI 抓到，只能靠 review。還沒有任何東西部署，沒有相容性要保護，可以接受。
 - **趁還是草案，拿掉兩條跨契約的 import：**
   - `stsctl.v1` 不再 import `state.v1`。策略的契約版本偏差最久（PROTOCOL §1），etcd 的 schema 卻是不相容就換 key 根，兩者不該綁在一起。session 的宣告（`SessionSpec` 與它的組成）抽成獨立的套件 `mftiko.session.v1`，歸 STS；`state.v1`、`stsctl.v1` 與 E10 的 API 契約都 import 它。`EntryState`、`Universe` 在 `stsctl` 裡另定綁定自己的型別。
