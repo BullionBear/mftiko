@@ -1,0 +1,28 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://fapi.binance.com",
+    "path": "/fapi/v1/openInterest",
+    "query": "symbol=BTCUSDT",
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 1
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "header": [
+      {
+        "name": "X-MBX-USED-WEIGHT-1M",
+        "value": "23"
+      }
+    ],
+    "body": {
+      "symbol": "BTCUSDT",
+      "openInterest": "92506.789",
+      "time": 1791616197505
+    }
+  }
+}

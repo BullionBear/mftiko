@@ -12,6 +12,10 @@ import (
 
 func TestConformance(t *testing.T) { conformance.Run(t, spec()) }
 
+func FuzzDecodePublic(f *testing.F) { conformance.FuzzDecode(f, spec(), "public") }
+
+func FuzzDecodeMarket(f *testing.F) { conformance.FuzzDecode(f, spec(), "market") }
+
 func FuzzDecodePrivate(f *testing.F) { conformance.FuzzDecodePrivate(f, spec()) }
 
 func FuzzDecodeTrade(f *testing.F) { conformance.FuzzDecodeTrade(f, spec()) }
@@ -22,6 +26,8 @@ func spec() conformance.Spec {
 	return conformance.Spec{
 		Venue:   VenueUM,
 		Dir:     "testdata/conformance/BinanceUM",
+		Market:  &market{p: um},
+		REST:    &rest{p: um},
 		Account: accountFactory(kindUM),
 		History: historyFactory(kindUM),
 		KeyType: exchange.KeyEd25519,
@@ -86,6 +92,21 @@ func spec() conformance.Spec {
 			}),
 			conformance.Call("order_testnet", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
 				return e.History.Order(e.Now, btcInst(), "28625103204")
+			}),
+			conformance.Call("listing_perp", func(e conformance.Env) (exchange.Call[exchange.Page[symbol.Listing]], error) {
+				return e.REST.Listing(symbol.Perp)
+			}),
+			conformance.Call("listing_future", func(e conformance.Env) (exchange.Call[exchange.Page[symbol.Listing]], error) {
+				return e.REST.Listing(symbol.Future)
+			}),
+			conformance.Call("depth", func(e conformance.Env) (exchange.Call[*exchange.BookUpdate], error) {
+				return e.REST.Depth(btcInst(), 1000)
+			}),
+			conformance.Call("klines", func(e conformance.Env) (exchange.Call[[]exchange.Kline], error) {
+				return e.REST.Klines(btcInst(), "1m", 0, 5)
+			}),
+			conformance.Call("open_interest", func(e conformance.Env) (exchange.Call[*exchange.OpenInterest], error) {
+				return e.REST.OpenInterest(btcInst())
 			}),
 		},
 		FillPairs: []conformance.FillPair{
