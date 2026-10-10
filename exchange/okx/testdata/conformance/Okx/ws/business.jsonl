@@ -1,0 +1,2 @@
+{"kind":"meta","at_ns":1791639161286335000,"venue":"Okx","side":"market","route":"business","note":"mainnet business BTC-USDT and BTC-USDT-SWAP 1m candles"}
+{"kind":"ws.in","at_ns":1791639161286362000,"frame":"{\"arg\":{\"channel\":\"candle1m\",\"instId\":\"BTC-USDT\"},\"data\":[[\"1791639120000\",\"82864.4\",\"82864.4\",\"82862.1\",\"82862.1\",\"0.03876787\",\"3212.474324100\",\"3212.474324100\",\"0\"]]}"}

@@ -2,22 +2,28 @@
 // token of D201; two enums, D301), a unified account (D403). Spot, swap, futures and options share it; the instId tells them apart (BTC-USDT,
 // BTC-USDT-SWAP).
 //
-// Public market data is still exchange.ErrNotImplemented (E3-14). Private REST and the private
-// stream below were checked on demo trading on 2026-10-10. Submit and Cancel go over REST (D303);
-// NewTradeStream is exchange.ErrUnsupported. History is still exchange.ErrNotImplemented (E3-13).
+// Public market data covers spot, linear swaps (USDT and USDC), linear futures and coin-margined
+// perpetual swaps. Checked on production on 2026-10-10. Private REST and the private stream below
+// were checked on demo trading the same day. Submit and Cancel go over REST (D303); NewTradeStream
+// is exchange.ErrUnsupported. History is still exchange.ErrNotImplemented (E3-13). Options are not
+// listed.
 //
-// Facts the implementation must honor. Checked 2026-10-05 against okx.com/docs-v5 for the public
-// socket, and 2026-10-10 on demo trading for the private calls.
+// Facts the implementation must honor. Checked 2026-10-10 on production for the public socket and
+// the public REST calls, and the same day on demo trading for the private calls.
 //
-//   - Routes: "public" (/ws/v5/public) and "business" (/ws/v5/business, candles among others). The
-//     topic decides the route (D403). Private data is on /ws/v5/private, after login.
-//   - No published cap on channels per connection: Budget is 0. What is limited: 480
-//     subscribe/unsubscribe/login requests per connection per hour (SessionLimits.Rate), 64 KB of
-//     channels per request (PerRequestBytes), 3 new connections per second per IP.
-//   - Keepalive: send the text "ping" when nothing arrived for under 30s; expect "pong". The
-//     private client sends "ping" every 20s.
-//   - Books are SnapshotStream: the first push after subscribe is the snapshot, then seqId/prevSeqId
-//     chain, plus a crc32 checksum of the top levels (BookChecksum).
+//   - Routes: "public" (wss://ws.okx.com:8443/ws/v5/public) and "business"
+//     (wss://ws.okx.com:8443/ws/v5/business, candles). The topic decides the route (D403). Private
+//     data is on /ws/v5/private, after login.
+//   - No published cap on channels per connection: Budget is 0 and Cost is 1. What is limited: 480
+//     subscribe, unsubscribe and login requests per connection per hour (SessionLimits.Rate), and
+//     64 KB of channel names per request. The codec chunks at 32 KB of "<channel>:<instId>" so the
+//     encoded args stay inside that 64 KB. Three new connections per second per IP.
+//   - Keepalive: send the text "ping" when nothing arrived for under 30s; expect "pong". The public
+//     and private clients both send "ping" every 20s.
+//   - Books are SnapshotStream on books:<instId>. The first push is the snapshot (action snapshot,
+//     prevSeqId -1). An update applies when its prevSeqId equals the seqId already held. seqId is
+//     not dense. Since 2026-06-23 the checksum field is still present and always 0, so this codec
+//     does not implement BookChecksum. A broken prevSeqId chain is BookResync.
 //   - Login signs timestamp + "GET" + "/users/self/verify" with HMAC-SHA256; the key needs a
 //     passphrase (Credentials.Passphrase).
 //   - Dead-man switch: cancel-all-after, account-wide.
@@ -25,6 +31,69 @@
 //     and, unless StreamEndpoint is set, dials wss://wspap.okx.com:8443/ws/v5/private. The REST
 //     host stays https://www.okx.com. RESTEndpoint replaces that host and does not by itself turn
 //     demo trading on.
+//
+// # Public market
+//
+// GET /api/v5/public/instruments?instType=SPOT|SWAP|FUTURES. The venue ignores limit and after, so
+// one response is the whole instType and a full page is not a next page. Perp is the linear rows of
+// SWAP (ctType linear, settle equal to the quote). Inverse is the inverse rows of that same SWAP
+// page (settle equal to the base). Future is the linear rows of FUTURES. A coin-margined dated
+// future is not listed: an Inverse ticker cannot carry an expiry, and the linear USD_UM future
+// already uses Okx_Future_<pair>-<date>. Option listing is exchange.ErrUnsupported. A row whose
+// settle is neither base nor quote is quanto and is left out (D203). A row that fails Validate,
+// Ticker or the 15-digit check is left out.
+//
+// Spot base and quote are baseCcy and quoteCcy. A contract's pair is uly (else instFamily), split
+// on the hyphen: BTC-USD_UM-261030 has uly BTC-USD. ContractSize is ctVal. contract_value_ccy is
+// ctValCcy, which is the base on a linear contract and the quote on an inverse one. price_ccy is
+// the quote. settle is settleCcy. ExpiryCode is the six-digit date at the end of a future's instId,
+// and ExpiryNs is expTime in nanoseconds. Status: live is Tradable, suspend is Halted, preopen is
+// Prelisting, expired is Expired, and anything else, including test, is Unknown.
+//
+// qty_step, min_qty and max_qty are in contract_value_ccy (D203). Spot uses lotSz, minSz and
+// maxLmtSz as they are. A contract multiplies each by ctVal, so a swap with lotSz 0.01 and ctVal
+// 0.01 has qty_step 0.0001. price_tick is tickSz. max_notional is maxLmtAmt when OKX sends one.
+// Spot BTC-USDT publishes lotSz 1e-8 and maxLmtSz 9999999999, which is 18 significant digits.
+// float64 holds 15 (D008), so max_qty is stored as the largest value that still fits. When the
+// venue publishes no max and ten million fits at the step, max is left unset.
+//
+// GET /api/v5/market/candles. bar is the venue interval (1m, 1H, 1D, 1M for 1mo). The page is 300.
+// The venue returns the newest candle first, and confirm "0" is the one still forming. Those are
+// dropped; the rest come back oldest first. after, when endNs is set, asks for candles earlier than
+// that millisecond. GET /api/v5/market/books is a snapshot for a caller that wants one without the
+// stream. Open interest has no REST call: the open-interest channel pushes it (D401).
+//
+// The channel string is "<channel>:<instId>". A subscribe frame is
+// {"id","op":"subscribe","args":[{"channel","instId"}]} and the ack echoes id, once per arg.
+//
+//	bbo-tbt         BestQuote. One bid and one ask.
+//	trades          one Trade per row. side is the taker. tradeId is the id. sz on a derivative is
+//	                the contract count. The frame has no ctVal, so this codec does not multiply by
+//	                ContractSize; the conn worker does that when it resolves the instrument (D203).
+//	                Spot sz is already base.
+//	books           orderbook and orderbook_delta. A level is [price, sz, deprecated, numOrders];
+//	                sz "0" deletes the level. Derivative sz is the contract count, same as trades.
+//	                books5 and bbo-tbt are not this book.
+//	tickers         Ticker. Spot vol24h is base and volCcy24h is quote. A contract's vol24h is
+//	                contracts and volCcy24h is the coin amount, which is platform qty on a linear
+//	                contract, so Volume24h is volCcy24h and QuoteVolume24h is absent. ChangePct24h
+//	                is never sent.
+//	funding-rate    contracts only. fundingRate is the rate. fundingTime is NextFundingNs.
+//	                IntervalS is nextFundingTime minus fundingTime, in seconds. OKX sends no interval
+//	                field, and nextFundingRate is often empty.
+//	open-interest   contracts only. oi is contracts and oiCcy is the coin amount, so OpenInterest is
+//	                oiCcy (platform qty on a linear contract). OpenInterestValue is oiUsd. On an
+//	                inverse contract oiCcy is still coin, not the quote amount.
+//	mark-price      contracts only. markPx is the mark. The index is a different channel
+//	                (index-tickers) with a different instId, so IndexPrice is absent.
+//	candle<bar>     business route. The row is ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm.
+//	                confirm "1" is closed. Spot volume is vol (base) and the quote volume is
+//	                volCcyQuote. A derivative's vol is contracts, so Volume is volCcy, the coin amount.
+//	liquidation-orders
+//	                not an atom. The channel takes instType, not instId, so one feed covers every
+//	                swap. The event has no instrument to route it by.
+//
+// A channel this codec does not read is ignored. "ping" and "pong" are ignored.
 //
 // # Orders
 //
