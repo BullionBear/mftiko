@@ -1,0 +1,21 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://api.binance.com",
+    "path": "/api/v3/myTrades",
+    "query": "symbol=BTCUSDT&fromId=100&limit=1&recvWindow=5000&timestamp=1767225600000&signature=TspLATt%2FZKIzlGqkAd0ZEtteGQeI3Jc9r4xvWI8GzmKqE0DetTiCq6DfN89WhGY2zGGSns%2F7miAhnBQDKsR%2BBA%3D%3D",
+    "header": [
+      {
+        "name": "X-MBX-APIKEY",
+        "value": "conformance-api-key"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 10
+      }
+    ]
+  },
+  "response": "none"
+}

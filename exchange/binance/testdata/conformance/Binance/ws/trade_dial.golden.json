@@ -1,0 +1,40 @@
+{
+  "url": "wss://ws-api.binance.com/ws-api/v3",
+  "frames": [
+    "{\"id\":\"logon\",\"method\":\"session.logon\",\"params\":{\"apiKey\":\"conformance-api-key\",\"recvWindow\":5000,\"signature\":\"qI7KrMKI/xwr2bk/SC86yjKAH4PihhWxIuMryia4itId67Irs2bUFN5bFivcs0JHgBYYG+a0u3FuSsuB2VXSDw==\",\"timestamp\":1767225600000}}",
+    "{\"id\":\"subscribe\",\"method\":\"userDataStream.subscribe\"}"
+  ],
+  "events": true,
+  "samples": [
+    {
+      "name": "limit GTC",
+      "id": 1,
+      "frame": "{\"id\":\"o1\",\"method\":\"order.place\",\"params\":{\"newClientOrderId\":\"1767225600000000001\",\"newOrderRespType\":\"RESULT\",\"price\":\"65000.00\",\"quantity\":\"0.00100\",\"recvWindow\":5000,\"side\":\"BUY\",\"symbol\":\"BTCUSDT\",\"timeInForce\":\"GTC\",\"timestamp\":1767225600000,\"type\":\"LIMIT\"}}"
+    },
+    {
+      "name": "limit IOC",
+      "id": 2,
+      "frame": "{\"id\":\"o2\",\"method\":\"order.place\",\"params\":{\"newClientOrderId\":\"1767225600000000002\",\"newOrderRespType\":\"RESULT\",\"price\":\"65000.00\",\"quantity\":\"0.00100\",\"recvWindow\":5000,\"side\":\"BUY\",\"symbol\":\"BTCUSDT\",\"timeInForce\":\"IOC\",\"timestamp\":1767225600000,\"type\":\"LIMIT\"}}"
+    },
+    {
+      "name": "limit FOK",
+      "id": 3,
+      "frame": "{\"id\":\"o3\",\"method\":\"order.place\",\"params\":{\"newClientOrderId\":\"1767225600000000003\",\"newOrderRespType\":\"RESULT\",\"price\":\"65000.00\",\"quantity\":\"0.00100\",\"recvWindow\":5000,\"side\":\"BUY\",\"symbol\":\"BTCUSDT\",\"timeInForce\":\"FOK\",\"timestamp\":1767225600000,\"type\":\"LIMIT\"}}"
+    },
+    {
+      "name": "limit post-only",
+      "id": 4,
+      "frame": "{\"id\":\"o4\",\"method\":\"order.place\",\"params\":{\"newClientOrderId\":\"1767225600000000004\",\"newOrderRespType\":\"RESULT\",\"price\":\"65000.00\",\"quantity\":\"0.00100\",\"recvWindow\":5000,\"side\":\"BUY\",\"symbol\":\"BTCUSDT\",\"timestamp\":1767225600000,\"type\":\"LIMIT_MAKER\"}}"
+    },
+    {
+      "name": "market",
+      "id": 5,
+      "frame": "{\"id\":\"o5\",\"method\":\"order.place\",\"params\":{\"newClientOrderId\":\"1767225600000000005\",\"newOrderRespType\":\"RESULT\",\"quantity\":\"0.00100\",\"recvWindow\":5000,\"side\":\"BUY\",\"symbol\":\"BTCUSDT\",\"timestamp\":1767225600000,\"type\":\"MARKET\"}}"
+    },
+    {
+      "name": "cancel by client id",
+      "id": 6,
+      "frame": "{\"id\":\"c6\",\"method\":\"order.cancel\",\"params\":{\"origClientOrderId\":\"1767225600000000001\",\"recvWindow\":5000,\"symbol\":\"BTCUSDT\",\"timestamp\":1767225600000}}"
+    }
+  ]
+}

@@ -38,7 +38,7 @@ func TestBinanceUMHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw := acct.(*account)
+	raw := asAccount(t, acct)
 	doer := fasthttp.New(nil, fasthttp.Options{Timeout: 15 * time.Second})
 	inst, tick, step, qty := btcFilters(t)
 	h := &live{
@@ -191,8 +191,14 @@ func recordSegment(t *testing.T, creds exchange.Credentials, h *live, cloid stri
 
 func writeExchange(t *testing.T, path string, creds exchange.Credentials, listenKey string, req *exchange.HTTPRequest, resp *exchange.HTTPResponse) {
 	t.Helper()
+	var secrets []string
+	for _, s := range []string{creds.Key, creds.Secret, listenKey} {
+		if s != "" {
+			secrets = append(secrets, s)
+		}
+	}
 	var buf bytes.Buffer
-	if err := conformance.SaveExchange(&buf, req, resp, creds.Key, creds.Secret, listenKey); err != nil {
+	if err := conformance.SaveExchange(&buf, req, resp, secrets...); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(buf.String(), creds.Key) || strings.Contains(buf.String(), "BEGIN ") {

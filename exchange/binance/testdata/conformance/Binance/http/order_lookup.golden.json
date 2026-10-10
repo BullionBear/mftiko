@@ -1,0 +1,21 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://api.binance.com",
+    "path": "/api/v3/order",
+    "query": "symbol=BTCUSDT&orderId=1001&recvWindow=5000&timestamp=1767225600000&signature=Y4sKD%2BAzS7ONWyDqA2io5M6RrvMC3aRHtj5aeY0CZbRfR8FoIYA%2FWr7D9HuZw4jtnnrrx7Z3xiiGRb88UbcxAQ%3D%3D",
+    "header": [
+      {
+        "name": "X-MBX-APIKEY",
+        "value": "conformance-api-key"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 2
+      }
+    ]
+  },
+  "response": "none"
+}

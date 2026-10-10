@@ -24,6 +24,11 @@ const (
 	testTrade   = "wss://testnet.binancefuture.com/ws-fapi/v1"
 	testPrivate = "wss://stream.binancefuture.com/private/ws"
 
+	spotREST      = "https://api.binance.com"
+	spotProdTrade = "wss://ws-api.binance.com/ws-api/v3"
+	spotTestHost  = "testnet.binance.vision"
+	spotTestTrade = "wss://ws-api.testnet.binance.vision/ws-api/v3"
+
 	recvWindow int64 = 5000
 
 	// cloidMax is newClientOrderId's limit. A D602 id is at most 19 digits and fits.
@@ -32,6 +37,7 @@ const (
 	weight1m  = "weight_1m"
 	orders10s = "orders_10s"
 	orders1m  = "orders_1m"
+	orders1d  = "orders_1d"
 )
 
 func (a *account) um() error {
@@ -68,6 +74,15 @@ func (a *account) onTestnet() bool {
 }
 
 func (a *account) tradeURL() string {
+	if a.k.name == kindSpot.name {
+		if ep := strings.TrimRight(a.cfg.StreamEndpoint, "/"); ep != "" {
+			return ep
+		}
+		if strings.Contains(a.restBase(), spotTestHost) {
+			return spotTestTrade
+		}
+		return spotProdTrade
+	}
 	if a.onTestnet() {
 		return testTrade
 	}
@@ -89,14 +104,14 @@ func (a *account) signedCall(now time.Time, method, path string, q codec.Query, 
 }
 
 func signedCall(st *signerState, k kind, cfg exchange.AccountConfig, now time.Time, method, path string, q codec.Query, cost []exchange.Cost, mutates bool) (exchange.HTTPRequest, error) {
-	if k.name != kindUM.name {
-		return exchange.HTTPRequest{}, exchange.ErrNotImplemented
+	base, err := defaultREST(k)
+	if err != nil {
+		return exchange.HTTPRequest{}, err
 	}
 	sig, err := st.get(k.name, cfg.Credentials)
 	if err != nil {
 		return exchange.HTTPRequest{}, err
 	}
-	base := prodREST
 	if cfg.RESTEndpoint != "" {
 		base = strings.TrimRight(cfg.RESTEndpoint, "/")
 	}
@@ -113,8 +128,28 @@ func signedCall(st *signerState, k kind, cfg exchange.AccountConfig, now time.Ti
 	}, nil
 }
 
+func defaultREST(k kind) (string, error) {
+	switch k.name {
+	case kindUM.name:
+		return prodREST, nil
+	case kindSpot.name:
+		return spotREST, nil
+	default:
+		return "", exchange.ErrNotImplemented
+	}
+}
+
 func weightCost(n int) []exchange.Cost {
 	return []exchange.Cost{{Bucket: weight1m, N: n}}
+}
+
+// spotOrderCost is one spot order: request weight, plus one count on the 10s and 1d order buckets.
+func spotOrderCost(w, n int) []exchange.Cost {
+	return []exchange.Cost{
+		{Bucket: weight1m, N: w},
+		{Bucket: orders10s, N: n},
+		{Bucket: orders1d, N: n},
+	}
 }
 
 // orderCost is one order request: request weight plus one count on each order bucket.
@@ -155,6 +190,9 @@ func usedFrom(resp *exchange.HTTPResponse) []exchange.Used {
 	}
 	if n, ok := headerInt(resp, "X-MBX-ORDER-COUNT-1M"); ok {
 		out = append(out, exchange.Used{Bucket: orders1m, N: n})
+	}
+	if n, ok := headerInt(resp, "X-MBX-ORDER-COUNT-1D"); ok {
+		out = append(out, exchange.Used{Bucket: orders1d, N: n})
 	}
 	return out
 }
@@ -263,14 +301,23 @@ func checkCloid(s string) error {
 	return nil
 }
 
-func instrument(inst *symbol.Info) error {
+func instrument(inst *symbol.Info) error { return instrumentVenue(inst, VenueUM) }
+
+func instrumentVenue(inst *symbol.Info, venue string) error {
 	if inst == nil || inst.ExchTicker == "" {
 		return errors.New("binance: instrument is missing")
 	}
-	if v := inst.Ticker.Venue; v != "" && v != VenueUM {
+	if v := inst.Ticker.Venue; v != "" && v != venue {
 		return fmt.Errorf("binance: %s belongs to %s", inst.ExchTicker, v)
 	}
 	return nil
+}
+
+func exchFor(venue, sym string) symbol.ExchKey {
+	if venue == VenueSpot {
+		return symbol.ExchKey{Venue: VenueSpot, Category: symbol.Spot, ExchTicker: sym}
+	}
+	return exchOf(sym)
 }
 
 func exchOf(sym string) symbol.ExchKey {
@@ -305,7 +352,7 @@ func sideWire(s exchange.Side) (string, error) {
 
 func typeOf(s string) exchange.OrderType {
 	switch s {
-	case "LIMIT":
+	case "LIMIT", "LIMIT_MAKER":
 		return exchange.OrderTypeLimit
 	case "MARKET":
 		return exchange.OrderTypeMarket

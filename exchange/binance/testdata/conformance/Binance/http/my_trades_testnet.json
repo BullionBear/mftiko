@@ -1,0 +1,142 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://testnet.binance.vision",
+    "path": "/api/v3/myTrades",
+    "query": "symbol=BTCUSDT&fromId=207624&limit=1&recvWindow=5000&timestamp=1791618556871&signature=REDACTED",
+    "header": [
+      {
+        "name": "X-MBX-APIKEY",
+        "value": "REDACTED"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 10
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "header": [
+      {
+        "name": "Content-Length",
+        "value": "258"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json;charset=UTF-8"
+      },
+      {
+        "name": "Server",
+        "value": "nginx"
+      },
+      {
+        "name": "Connection",
+        "value": "keep-alive"
+      },
+      {
+        "name": "Date",
+        "value": "Sat, 10 Oct 2026 07:49:16 GMT"
+      },
+      {
+        "name": "X-Xss-Protection",
+        "value": "1; mode=block"
+      },
+      {
+        "name": "Vary",
+        "value": "Accept-Encoding"
+      },
+      {
+        "name": "x-mbx-uuid",
+        "value": "d0ccfd5c-5bf8-43d0-bf72-e13496fd7a7a"
+      },
+      {
+        "name": "x-mbx-used-weight",
+        "value": "449"
+      },
+      {
+        "name": "x-mbx-used-weight-1m",
+        "value": "449"
+      },
+      {
+        "name": "Access-Control-Allow-Methods",
+        "value": "GET, HEAD, OPTIONS"
+      },
+      {
+        "name": "Access-Control-Allow-Origin",
+        "value": "*"
+      },
+      {
+        "name": "Cache-Control",
+        "value": "no-cache, no-store, must-revalidate"
+      },
+      {
+        "name": "Content-Security-Policy",
+        "value": "default-src 'self'"
+      },
+      {
+        "name": "Expires",
+        "value": "0"
+      },
+      {
+        "name": "Pragma",
+        "value": "no-cache"
+      },
+      {
+        "name": "Strict-Transport-Security",
+        "value": "max-age=31536000; includeSubdomains"
+      },
+      {
+        "name": "X-Content-Security-Policy",
+        "value": "default-src 'self'"
+      },
+      {
+        "name": "X-Content-Type-Options",
+        "value": "nosniff"
+      },
+      {
+        "name": "X-Frame-Options",
+        "value": "SAMEORIGIN"
+      },
+      {
+        "name": "X-WebKit-CSP",
+        "value": "default-src 'self'"
+      },
+      {
+        "name": "X-Cache",
+        "value": "Miss from cloudfront"
+      },
+      {
+        "name": "Via",
+        "value": "1.1 32f63a26517930f9d5cd0519bca23db6.cloudfront.net (CloudFront)"
+      },
+      {
+        "name": "X-Amz-Cf-Pop",
+        "value": "TPE53-P4"
+      },
+      {
+        "name": "X-Amz-Cf-Id",
+        "value": "y1shOeMfG4l0rINnLWF5pkrTzP9Ekn5CvB5hZ_kMnsRBnv37oUCa6Q=="
+      }
+    ],
+    "body": [
+      {
+        "symbol": "BTCUSDT",
+        "id": 207624,
+        "orderId": 1106510,
+        "orderListId": -1,
+        "price": "82789.84000000",
+        "qty": "0.00007000",
+        "quoteQty": "5.79528880",
+        "commission": "0.00000000",
+        "commissionAsset": "BTC",
+        "time": 1791618556888,
+        "isBuyer": true,
+        "isMaker": false,
+        "isBestMatch": true
+      }
+    ]
+  }
+}
