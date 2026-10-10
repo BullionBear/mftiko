@@ -59,8 +59,9 @@ type Options struct {
 	Net *transport.Net
 	// Header goes with the handshake request.
 	Header http.Header
-	// ReadLimit, Keepalive and MaxLifetime are the codec's: SessionLimits or StreamLimits. ReadLimit
-	// is required, because coder/websocket's default of 32 KiB is too small for some venues' messages.
+	// ReadLimit, Keepalive and MaxLifetime are the codec's: SessionLimits, StreamLimits or
+	// TradeLimits. ReadLimit is required, because coder/websocket's default of 32 KiB is too small for
+	// some venues' messages.
 	ReadLimit   int64
 	Keepalive   exchange.Keepalive
 	MaxLifetime time.Duration
