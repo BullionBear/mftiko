@@ -3,7 +3,9 @@ package ws
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/rs/zerolog"
 
 	"github.com/BullionBear/mftiko/exchange"
 )
@@ -155,8 +158,24 @@ func TestReadLimit(t *testing.T) {
 	}
 }
 
+// streamSecrets are what a stream URL, its handshake and its messages may carry: the listenKey (by
+// position in the path, by name in the query, in a combined stream's list) and an API key header.
+var streamSecrets = []string{"lk-path", "lk-query", "lk-streams", "k-visible"}
+
+func hidesStreamSecrets(t *testing.T, what, out string) {
+	t.Helper()
+	for _, secret := range streamSecrets {
+		if strings.Contains(out, secret) {
+			t.Errorf("%s shows %q: %s", what, secret, out)
+		}
+	}
+}
+
+// privatePaths are where venues put a private stream's listenKey.
+var privatePaths = []string{"/private/ws/lk-path", "/ws?listenKey=lk-query", "/stream?streams=lk-streams/btcusdt@depth"}
+
 // A failed dial or a refused handshake shows neither the handshake's headers nor the URL's path and
-// query, which can carry a listenKey.
+// query.
 func TestDialHidesSecrets(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no", http.StatusUnauthorized)
@@ -170,18 +189,53 @@ func TestDialHidesSecrets(t *testing.T) {
 	ln.Close()
 
 	for _, base := range []string{srv.URL, closed} {
-		url := "ws" + strings.TrimPrefix(base, "http") + "/ws/lk-secret?token=t0k-secret"
-		_, err := Dial(context.Background(), url, Options{ReadLimit: 1 << 10, Header: http.Header{"X-Bapi-Api-Key": {"k-visible"}}})
-		if err == nil {
-			t.Fatalf("%s: Dial succeeded", base)
-		}
-		for _, secret := range []string{"k-visible", "lk-secret", "t0k-secret"} {
-			if strings.Contains(err.Error(), secret) {
-				t.Errorf("error shows %q: %v", secret, err)
+		for _, path := range privatePaths {
+			url := "ws" + strings.TrimPrefix(base, "http") + path
+			_, err := Dial(context.Background(), url, Options{ReadLimit: 1 << 10, Header: http.Header{"X-Bapi-Api-Key": {"k-visible"}}})
+			if err == nil {
+				t.Fatalf("%s: Dial succeeded", url)
+			}
+			hidesStreamSecrets(t, "error", err.Error())
+			if base == closed && !strings.Contains(err.Error(), strings.TrimPrefix(closed, "http://")) {
+				t.Errorf("error lost the host: %v", err)
 			}
 		}
-		if base == closed && !strings.Contains(err.Error(), strings.TrimPrefix(closed, "http://")) {
-			t.Errorf("error lost the host: %v", err)
+	}
+}
+
+// A connection and its options never show the URL's path and query, the handshake's header values,
+// a listenKey in the Ping, or the last message read (here Binance's listenKeyExpired), however they
+// are formatted or logged.
+func TestConnHidesSecrets(t *testing.T) {
+	url := serve(t, nil, func(ctx context.Context, c *websocket.Conn) {
+		c.Write(ctx, websocket.MessageText, []byte(`{"e":"listenKeyExpired","E":1,"listenKey":"lk-path"}`))
+		closeCode(ctx, c)
+	})
+	for _, path := range privatePaths {
+		o := Options{
+			ReadLimit: 1 << 10, Header: http.Header{"X-Mbx-Apikey": {"k-visible"}},
+			Ping: []byte(`{"method":"userDataStream.ping","params":{"listenKey":"lk-query"}}`),
+		}
+		c := dial(t, url+path, o)
+		err := c.Run(context.Background(), func(frame []byte) error {
+			var buf bytes.Buffer
+			log := zerolog.New(&buf)
+			log.Info().Interface("conn", c).Stringer("s", c).Interface("opts", o).Msg("x")
+			j, _ := json.Marshal(struct {
+				C *Conn
+				O Options
+			}{c, o})
+			out := fmt.Sprintf("%v|%+v|%s|%v|%+v|%#v|", c, c, c, o, o, o) + buf.String() + string(j)
+			hidesStreamSecrets(t, "formatting", out)
+			for _, want := range []string{"ws.Conn{ws://127.0.0.1:", "/REDACTED}", "X-Mbx-Apikey: REDACTED", "ReadLimit: 1024"} {
+				if !strings.Contains(out, want) {
+					t.Errorf("formatting lacks %q: %s", want, out)
+				}
+			}
+			return errDone
+		})
+		if !errors.Is(err, errDone) {
+			t.Fatal(err)
 		}
 	}
 }

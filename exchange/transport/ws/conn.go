@@ -15,9 +15,11 @@ package ws
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -68,10 +70,28 @@ type Options struct {
 	Ping []byte
 }
 
+// String is the options as they may be logged: the handshake's header names with every value masked,
+// and the Ping with any listenKey masked. Format and MarshalJSON give the same.
+func (o Options) String() string {
+	b := fmt.Appendf(nil, "ws.Options{ReadLimit: %d, Keepalive: %+v, MaxLifetime: %v, Header: [", o.ReadLimit, o.Keepalive, o.MaxLifetime)
+	for i, name := range slices.Sorted(maps.Keys(o.Header)) {
+		if i > 0 {
+			b = append(b, ", "...)
+		}
+		b = append(b, name+": REDACTED"...)
+	}
+	return string(fmt.Appendf(b, "], Ping: %q}", exchange.MaskListenKey(o.Ping)))
+}
+
+func (o Options) Format(f fmt.State, _ rune) { _, _ = io.WriteString(f, o.String()) }
+
+func (o Options) MarshalJSON() ([]byte, error) { return json.Marshal(o.String()) }
+
 // Conn is one websocket connection. Write and Close are safe to call from any goroutine; Run is
 // called once.
 type Conn struct {
 	ws      *websocket.Conn
+	url     string // as exchange.MaskURL shows it
 	o       Options
 	born    time.Time
 	buf     []byte
@@ -92,7 +112,7 @@ func Dial(ctx context.Context, rawURL string, o Options) (*Conn, error) {
 	if n == nil {
 		n = transport.Direct()
 	}
-	c := &Conn{o: o}
+	c := &Conn{url: exchange.MaskURL(rawURL), o: o}
 	ws, _, err := websocket.Dial(ctx, rawURL, &websocket.DialOptions{
 		HTTPClient:     n.HTTPClient(),
 		HTTPHeader:     o.Header,
@@ -109,20 +129,26 @@ func Dial(ctx context.Context, rawURL string, o Options) (*Conn, error) {
 	return c, nil
 }
 
-// redact keeps the URL in a handshake error to its host: a private stream's path or query can carry
-// its token (Binance's listenKey). Every error wrapping the *url.Error has the URL in its message
+// String is the connection as it may be logged: its URL by exchange.MaskURL, and nothing of the
+// buffer, which holds the last message (Binance's listenKeyExpired carries the listenKey). Format and
+// MarshalJSON give the same.
+func (c *Conn) String() string { return "ws.Conn{" + c.url + "}" }
+
+func (c *Conn) Format(f fmt.State, _ rune) { _, _ = io.WriteString(f, c.String()) }
+
+func (c *Conn) MarshalJSON() ([]byte, error) { return json.Marshal(c.String()) }
+
+// redact shows the URL in a handshake error as exchange.MaskURL does: a private stream's path or
+// query carries its listenKey. Every error wrapping the *url.Error has the URL in its message
 // already, so the message is rewritten and the *url.Error left out of the chain.
 func redact(err error) error {
 	var ue *url.Error
 	if !errors.As(err, &ue) {
 		return err
 	}
-	host := "the url"
-	if u, perr := url.Parse(ue.URL); perr == nil {
-		host = u.Scheme + "://" + u.Host
-	}
-	msg := strings.ReplaceAll(err.Error(), strconv.Quote(ue.URL), strconv.Quote(host))
-	return &redacted{msg: strings.ReplaceAll(msg, ue.URL, host), err: ue.Err}
+	shown := exchange.MaskURL(ue.URL)
+	msg := strings.ReplaceAll(err.Error(), strconv.Quote(ue.URL), strconv.Quote(shown))
+	return &redacted{msg: strings.ReplaceAll(msg, ue.URL, shown), err: ue.Err}
 }
 
 type redacted struct {
