@@ -41,6 +41,11 @@ func (a *account) NewStream() (exchange.PrivateStream, error) {
 	return nil, exchange.ErrNotImplemented
 }
 
+// NewTradeStream: phase 1 trades over REST; the order websocket is not used.
+func (a *account) NewTradeStream() (exchange.TradeStream, error) {
+	return nil, exchange.ErrUnsupported
+}
+
 // ArmCancelOnDisconnect: Disconnected Cancel Protection, account-wide; syms is ignored.
 func (a *account) ArmCancelOnDisconnect(time.Time, time.Duration, []*symbol.Info) (exchange.Call[struct{}], error) {
 	return exchange.Call[struct{}]{}, exchange.ErrNotImplemented

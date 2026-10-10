@@ -21,6 +21,8 @@ type AccountFactory func(cfg AccountConfig) (Account, error)
 
 // Account is a venue's private trading interface for one api_id, sans-I/O (D302): each method builds a
 // signed Call at now, and the TD account worker sends it over its HTTP pool. Safe for concurrent use.
+// Where the adapter has a TradeStream (D303), orders and cancels go over it, and Submit and Cancel
+// here are the REST fallback the venue may still offer.
 //
 // Instruments go in resolved (*symbol.Info, cached by the worker) and come out as the venue names
 // them (symbol.ExchKey); the worker maps them back with symbol.Resolver.Reverse and keeps Info.UID
@@ -54,8 +56,14 @@ type Account interface {
 	// Leverage answers td.view's EnsureLeverage.
 	Leverage(now time.Time, inst *symbol.Info) (Call[float64], error)
 
-	// NewStream returns the private websocket codec for one connection.
+	// NewStream returns the private websocket codec for one connection. Not needed, and not opened,
+	// when the trade stream carries the private events (TradeLimits.Events).
 	NewStream() (PrivateStream, error)
+
+	// NewTradeStream returns the codec of one trade connection (D303). ErrUnsupported when the venue
+	// takes orders over REST only, or this adapter does not use its websocket orders: the worker then
+	// sends Submit and Cancel as REST Calls.
+	NewTradeStream() (TradeStream, error)
 
 	// Usage reads the rate-limit usage the venue reports in a response; nil when it reports none.
 	Usage(resp *HTTPResponse) []Used

@@ -203,3 +203,21 @@ func (s *accountSink) Fill(e *exchange.Fill) {
 }
 
 func clone(s string) string { return string(append([]byte(nil), s...)) }
+
+// tradeSink records a trade session: the answers, and the private events when the connection
+// carries them.
+type tradeSink struct {
+	accountSink
+}
+
+var _ exchange.TradeSink = (*tradeSink)(nil)
+
+func (s *tradeSink) Submitted(id uint64, res *exchange.OrderResult, err error) {
+	s.add("Submitted", map[string]any{"id": id, "result": Normalize(res), "error": Kind(err)})
+}
+
+func (s *tradeSink) Canceled(id uint64, err error) {
+	s.add("Canceled", map[string]any{"id": id, "error": Kind(err)})
+}
+
+func (s *tradeSink) Used(u []exchange.Used) { s.add("Used", u) }

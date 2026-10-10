@@ -31,6 +31,7 @@ type faults struct {
 	blindBook   bool // BookSync applies every update, gaps included
 	otherFillID bool // History returns another fill id than the stream
 	authAs500   bool // a 401 parses as a plain error, not ErrAuth
+	answerTwice bool // the trade codec reports every order answer twice
 }
 
 const venue = "Fakex"
@@ -68,7 +69,11 @@ func fakeSpec(f faults) conformance.Spec {
 				return e.History.Fills(e.Now, exchange.FillQuery{FromID: "f0", Limit: 100})
 			}),
 		},
-		FillPairs: []conformance.FillPair{{Session: "private", Case: "fills"}},
+		FillPairs: []conformance.FillPair{{Session: "private", Case: "fills"}, {Session: "trade", Case: "fills"}},
+		TradeSamples: []conformance.TradeSample{
+			{Name: "limit buy", Submit: order()},
+			{Name: "cancel by client id", Cancel: &exchange.CancelRef{Instrument: order().Instrument, ClientOrderID: "1234567"}},
+		},
 	}
 }
 
@@ -481,7 +486,10 @@ func (a *account) Snapshot(time.Time) ([]exchange.Call[exchange.Page[exchange.Ac
 func (a *account) Leverage(time.Time, *symbol.Info) (exchange.Call[float64], error) {
 	return exchange.Call[float64]{}, exchange.ErrUnsupported
 }
-func (a *account) NewStream() (exchange.PrivateStream, error)   { return &stream{c: a.c}, nil }
+func (a *account) NewStream() (exchange.PrivateStream, error) { return &stream{c: a.c}, nil }
+func (a *account) NewTradeStream() (exchange.TradeStream, error) {
+	return &trade{c: a.c, f: a.f}, nil
+}
 func (a *account) Usage(*exchange.HTTPResponse) []exchange.Used { return nil }
 
 type stream struct{ c exchange.Credentials }
@@ -585,3 +593,103 @@ func (h history) Order(time.Time, *symbol.Info, string) (exchange.Call[*exchange
 	return exchange.Call[*exchange.OrderUpdate]{}, exchange.ErrUnsupported
 }
 func (h history) Usage(*exchange.HTTPResponse) []exchange.Used { return nil }
+
+// --- trade stream (D303): a WebSocket API that also carries the account's events ---
+
+type trade struct {
+	c exchange.Credentials
+	f faults
+}
+
+func (t *trade) Dial(now time.Time) (*exchange.Dial, error) {
+	ts := strconv.FormatInt(now.UnixMilli(), 10)
+	logon := fmt.Sprintf(`{"method":"session.logon","id":"logon","params":{"key":%q,"ts":%s,"sig":%q}}`, t.c.Key, ts, sign(t.c.Secret, ts))
+	return &exchange.Dial{URL: "wss://ws-api.fakex.example/v1", Frames: [][]byte{
+		[]byte(logon), []byte(`{"method":"events.subscribe","id":"sub"}`)}}, nil
+}
+
+func (t *trade) Limits() exchange.TradeLimits { return exchange.TradeLimits{Events: true} }
+func (t *trade) Ping() []byte                 { return nil }
+
+// The wire id carries the op, so an answer reads with no memory of what was sent (D303).
+func (t *trade) Submit(now time.Time, id uint64, req *exchange.OrderRequest) ([]byte, error) {
+	params := fmt.Sprintf(`"sym":%q,"side":%q,"px":%q,"qty":%q,"cid":%q,"ts":%d`, req.Instrument.ExchTicker,
+		map[exchange.Side]string{exchange.SideBuy: "buy", exchange.SideSell: "sell"}[req.Side],
+		decimal.Format(req.Price, req.Instrument.Filters[symbol.PriceTick]),
+		decimal.Format(req.Qty, req.Instrument.Filters[symbol.QtyStep]), req.ClientOrderID, now.UnixMilli())
+	return []byte(fmt.Sprintf(`{"method":"order.place","id":"o%d","params":{%s,"sig":%q}}`, id, params, sign(t.c.Secret, params))), nil
+}
+
+func (t *trade) Cancel(now time.Time, id uint64, ref exchange.CancelRef) ([]byte, error) {
+	params := fmt.Sprintf(`"sym":%q,"cid":%q,"ts":%d`, ref.Instrument.ExchTicker, ref.ClientOrderID, now.UnixMilli())
+	return []byte(fmt.Sprintf(`{"method":"order.cancel","id":"c%d","params":{%s,"sig":%q}}`, id, params, sign(t.c.Secret, params))), nil
+}
+
+type tradeAnswer struct {
+	ID     string `json:"id"`
+	Status int    `json:"status"`
+	Result struct {
+		Order string `json:"order"`
+		State string `json:"state"`
+		Ts    int64  `json:"ts"`
+	} `json:"result"`
+	Error struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+	} `json:"error"`
+	Used  int    `json:"used"`
+	Event string `json:"event"`
+}
+
+func (t *trade) Decode(b []byte, sink exchange.TradeSink) error {
+	var a tradeAnswer
+	if err := json.Unmarshal(b, &a); err != nil {
+		return err
+	}
+	var err error
+	if a.Status >= 400 {
+		body, _ := json.Marshal(a.Error)
+		err = status(&exchange.HTTPResponse{Status: a.Status, Body: body}, t.f)
+	}
+	switch {
+	case a.ID == "logon":
+		if err != nil {
+			return err
+		}
+	case a.ID == "sub":
+		sink.Ready()
+	case len(a.ID) > 1 && (a.ID[0] == 'o' || a.ID[0] == 'c'):
+		id, perr := strconv.ParseUint(a.ID[1:], 10, 64)
+		if perr != nil {
+			return perr
+		}
+		if a.Used > 0 {
+			sink.Used([]exchange.Used{{Bucket: "weight", N: a.Used}})
+		}
+		if a.ID[0] == 'c' {
+			sink.Canceled(id, err)
+			return nil
+		}
+		var res *exchange.OrderResult
+		if err == nil {
+			res = &exchange.OrderResult{OrderID: a.Result.Order, Status: exchange.OrderStatusNew, ExchTsNs: a.Result.Ts * 1e6}
+		}
+		sink.Submitted(id, res, err)
+		if t.f.answerTwice {
+			sink.Submitted(id, res, err)
+		}
+	case a.Event == "fill":
+		var f privFrame
+		if err := json.Unmarshal(b, &f); err != nil {
+			return err
+		}
+		fill, err := toFill(f)
+		if err != nil {
+			return err
+		}
+		sink.Fill(fill)
+	default:
+		return errors.New("fakex: unknown trade frame")
+	}
+	return nil
+}

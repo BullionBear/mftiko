@@ -48,6 +48,10 @@
 // not copy strings), so what a Sink or a caller keeps it copies. A REST Parse decodes with copied
 // strings, because the transport reuses the response.
 //
+// Orders over a websocket (D303) go through a TradeStream, the same kind of codec: the worker owns
+// the request ids and the deadlines (Inflight), and the codec writes into the venue's request id what
+// it needs to read the answer, so Decode keeps no memory of what was sent.
+//
 // Errors: Parse classifies the venue's answer as a *Reject, a *RateLimited or ErrAuth; the transport
 // classifies what has no answer, ErrUnknownOutcome when the request may have gone out. Rate limits:
 // each HTTPRequest names its Cost, Usage reads what the venue reports, and the worker paces.

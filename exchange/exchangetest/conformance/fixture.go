@@ -29,6 +29,7 @@ const (
 	KindHTTP  = "http"   // a REST exchange during the session (a book snapshot)
 	SideMkt   = "market"
 	SidePriv  = "private"
+	SideTrade = "trade" // a TradeStream connection (D303)
 	textCodec = "text"
 	b64Codec  = "base64"
 )
@@ -202,8 +203,8 @@ func LoadSession(fsys fs.FS, name string) (*Session, error) {
 		return nil, fmt.Errorf("conformance: ws/%s.jsonl: the first line is not a meta record", name)
 	}
 	m := recs[0]
-	if m.Side != SideMkt && m.Side != SidePriv {
-		return nil, fmt.Errorf("conformance: ws/%s.jsonl: side %q, want %q or %q", name, m.Side, SideMkt, SidePriv)
+	if m.Side != SideMkt && m.Side != SidePriv && m.Side != SideTrade {
+		return nil, fmt.Errorf("conformance: ws/%s.jsonl: side %q, want %q, %q or %q", name, m.Side, SideMkt, SidePriv, SideTrade)
 	}
 	if m.Side == SideMkt && m.Route == "" {
 		return nil, fmt.Errorf("conformance: ws/%s.jsonl: a market session names its route", name)

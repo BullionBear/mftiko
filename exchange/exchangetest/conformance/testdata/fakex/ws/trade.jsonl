@@ -1,0 +1,13 @@
+{"kind":"meta","venue":"Fakex","side":"trade","note":"hand-written for the conformance framework's own tests"}
+{"kind":"ws.out","frame":"{\"method\":\"session.logon\",\"id\":\"logon\",\"params\":{\"key\":\"REDACTED\",\"ts\":1767225600000,\"sig\":\"REDACTED\"}}"}
+{"kind":"ws.out","frame":"{\"method\":\"events.subscribe\",\"id\":\"sub\"}"}
+{"kind":"ws.in","frame":"{\"id\":\"logon\",\"status\":200}"}
+{"kind":"ws.in","frame":"{\"id\":\"sub\",\"status\":200}"}
+{"kind":"ws.out","frame":"{\"method\":\"order.place\",\"id\":\"o1\",\"params\":{\"sym\":\"BTCUSDT\",\"side\":\"buy\",\"px\":\"65000.5\",\"qty\":\"0.250\",\"cid\":\"1234567\",\"ts\":1767225600000,\"sig\":\"REDACTED\"}}"}
+{"kind":"ws.out","frame":"{\"method\":\"order.place\",\"id\":\"o2\",\"params\":{\"sym\":\"BTCUSDT\",\"side\":\"buy\",\"px\":\"65000.5\",\"qty\":\"100.000\",\"cid\":\"1234568\",\"ts\":1767225600000,\"sig\":\"REDACTED\"}}"}
+{"kind":"ws.in","frame":"{\"id\":\"o2\",\"status\":400,\"error\":{\"code\":-2010,\"msg\":\"insufficient balance\"},\"used\":2}"}
+{"kind":"ws.in","frame":"{\"id\":\"o1\",\"status\":200,\"result\":{\"order\":\"o1\",\"state\":\"NEW\",\"ts\":1767225600000},\"used\":3}"}
+{"kind":"ws.in","frame":"{\"event\":\"fill\",\"id\":\"f1\",\"oid\":\"o1\",\"px\":\"65000.5\",\"sz\":\"0.1\",\"side\":\"buy\",\"sym\":\"BTCUSDT\",\"ts\":1767225600100}"}
+{"kind":"ws.out","frame":"{\"method\":\"order.cancel\",\"id\":\"c3\",\"params\":{\"sym\":\"BTCUSDT\",\"cid\":\"1234567\",\"ts\":1767225600000,\"sig\":\"REDACTED\"}}"}
+{"kind":"ws.in","frame":"{\"event\":\"fill\",\"id\":\"f2\",\"oid\":\"o1\",\"px\":\"65000.5\",\"sz\":\"0.15\",\"side\":\"buy\",\"sym\":\"BTCUSDT\",\"ts\":1767225600101}"}
+{"kind":"ws.in","frame":"{\"id\":\"c3\",\"status\":200,\"used\":4}"}

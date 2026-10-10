@@ -392,3 +392,94 @@ func RecordPrivate(ctx context.Context, p PrivateRecording) error {
 	}
 	return w.Err()
 }
+
+// TradeRecording is one trade session to record (D303), with real (testnet) credentials, redacted
+// from the fixture. Orders are sent once the first frame arrives (the logon's answer), under ids
+// 1, 2, ... in order; a TradeSample may be a Cancel of an order sent earlier in the session.
+type TradeRecording struct {
+	Venue       string
+	Stream      exchange.TradeStream
+	Credentials exchange.Credentials // only to redact them
+	Dial        Dialer
+	Out         io.Writer
+	Duration    time.Duration
+	Requests    []TradeSample
+	Gap         time.Duration // between requests; 0 sends them back to back
+	Now         func() time.Time
+	Note        string
+}
+
+// RecordTrade connects, sends the logon, the requests, and records every frame both ways for
+// Duration.
+func RecordTrade(ctx context.Context, p TradeRecording) error {
+	if p.Stream == nil || p.Dial == nil || p.Out == nil {
+		return errors.New("conformance: TradeRecording needs Stream, Dial and Out")
+	}
+	now := p.Now
+	if now == nil {
+		now = time.Now
+	}
+	w, err := NewWriter(p.Out, Record{Venue: p.Venue, Side: SideTrade, Note: p.Note}, now,
+		p.Credentials.Key, p.Credentials.Secret, p.Credentials.Passphrase)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, p.Duration)
+	defer cancel()
+	d, err := p.Stream.Dial(now())
+	if err != nil {
+		return err
+	}
+	conn, err := p.Dial(ctx, d.URL)
+	if err != nil {
+		return fmt.Errorf("conformance: dial: %w", err)
+	}
+	defer conn.Close()
+	for _, f := range d.Frames {
+		if err := send(ctx, conn, w, f); err != nil {
+			return err
+		}
+	}
+	sent := false
+	for ctx.Err() == nil {
+		b, err := conn.Read(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				break
+			}
+			return fmt.Errorf("conformance: read: %w", err)
+		}
+		if err := w.Frame(KindIn, b); err != nil {
+			return err
+		}
+		if sent {
+			continue
+		}
+		sent = true
+		for i, q := range p.Requests {
+			id := uint64(i + 1)
+			var f []byte
+			switch {
+			case q.Submit != nil:
+				f, err = p.Stream.Submit(now(), id, q.Submit)
+			case q.Cancel != nil:
+				f, err = p.Stream.Cancel(now(), id, *q.Cancel)
+			default:
+				err = fmt.Errorf("conformance: request %q is neither a Submit nor a Cancel", q.Name)
+			}
+			if err != nil {
+				return err
+			}
+			if err := send(ctx, conn, w, f); err != nil {
+				return err
+			}
+			if p.Gap > 0 {
+				select {
+				case <-time.After(p.Gap):
+				case <-ctx.Done():
+				}
+			}
+		}
+	}
+	return w.Err()
+}

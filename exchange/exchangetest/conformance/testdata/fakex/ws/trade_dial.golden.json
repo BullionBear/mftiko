@@ -1,0 +1,20 @@
+{
+  "url": "wss://ws-api.fakex.example/v1",
+  "frames": [
+    "{\"method\":\"session.logon\",\"id\":\"logon\",\"params\":{\"key\":\"conformance-api-key\",\"ts\":1767225600000,\"sig\":\"95a0fcc491e0100842a2ed352ee1e9b4165a134ae7e8f00f8b28c1c54951f278\"}}",
+    "{\"method\":\"events.subscribe\",\"id\":\"sub\"}"
+  ],
+  "events": true,
+  "samples": [
+    {
+      "name": "limit buy",
+      "id": 1,
+      "frame": "{\"method\":\"order.place\",\"id\":\"o1\",\"params\":{\"sym\":\"BTCUSDT\",\"side\":\"buy\",\"px\":\"65000.5\",\"qty\":\"0.250\",\"cid\":\"1234567\",\"ts\":1767225600000,\"sig\":\"c088d1c8aa34efed94999bcac49beee28f1c12618dae0c89269b57a932d20ae3\"}}"
+    },
+    {
+      "name": "cancel by client id",
+      "id": 2,
+      "frame": "{\"method\":\"order.cancel\",\"id\":\"c2\",\"params\":{\"sym\":\"BTCUSDT\",\"cid\":\"1234567\",\"ts\":1767225600000,\"sig\":\"a896d04402b7f22676b0dc2bccc2d03f274f5599d962759cf0bbf43d64b415a1\"}}"
+    }
+  ]
+}

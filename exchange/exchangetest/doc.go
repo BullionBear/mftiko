@@ -14,6 +14,9 @@
 // stored, and must not be sent to another process or plane. A real adapter does not
 // implement the marker.
 //
+// TradeVenue is a fake venue for code that drives an exchange.TradeStream (D303): the test chooses
+// the order of the answers, drops some, refuses some, or refuses the logon.
+//
 // A fixture is a JSON array of symbol.Listing values. Object keys are that struct's exported field
 // names (encoding/json also accepts a different case of the same name), and the loader decodes into
 // the struct itself, so a field added to Listing is picked up here without a new list of fields.

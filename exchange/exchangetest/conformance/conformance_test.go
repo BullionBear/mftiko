@@ -13,6 +13,7 @@ import (
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/contract/wire/decimal"
 	"github.com/BullionBear/mftiko/exchange"
+	"github.com/BullionBear/mftiko/exchange/exchangetest"
 	"github.com/BullionBear/mftiko/exchange/exchangetest/conformance"
 )
 
@@ -22,6 +23,7 @@ func TestFakexConforms(t *testing.T) { conformance.Run(t, fakeSpec(faults{})) }
 func FuzzFakexDecode(f *testing.F)  { conformance.FuzzDecode(f, fakeSpec(faults{}), "public") }
 func FuzzFakexPrivate(f *testing.F) { conformance.FuzzDecodePrivate(f, fakeSpec(faults{})) }
 func FuzzFakexSubmit(f *testing.F)  { conformance.FuzzParse(f, fakeSpec(faults{}), "submit_ok") }
+func FuzzFakexTrade(f *testing.F)   { conformance.FuzzDecodeTrade(f, fakeSpec(faults{})) }
 
 // TestChecksCatchFaults: each fault of the fake venue is reported by the check meant for it, and
 // the clean venue reports nothing.
@@ -50,6 +52,7 @@ func TestChecksCatchFaults(t *testing.T) {
 		{"a gap not noticed", faults{blindBook: true}, "books", "went unnoticed"},
 		{"fill ids that disagree", faults{otherFillID: true}, "fills", "not in History"},
 		{"a 401 not classified as auth", faults{authAs500: true}, "golden", "submit_auth"},
+		{"an order answered twice", faults{answerTwice: true}, "trade_answers", "answered again"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ps, err := conformance.Check(fakeSpec(tc.f))
@@ -273,3 +276,65 @@ func (nopSink) OpenInterest(string, *exchange.OpenInterest) {}
 func (nopSink) Greeks(string, *exchange.Greeks)             {}
 func (nopSink) MarkPrice(string, *exchange.MarkPrice)       {}
 func (nopSink) FeedEnd(string, *exchange.FeedEnd)           {}
+
+// venuePipe is a pipe whose other end is an exchangetest.TradeVenue: what the recorder writes is
+// handled, and the venue's answers come back.
+type venuePipe struct {
+	*pipe
+	v *exchangetest.TradeVenue
+}
+
+func (p venuePipe) Write(ctx context.Context, b []byte) error {
+	if err := p.pipe.Write(ctx, b); err != nil {
+		return err
+	}
+	if err := p.v.Handle(b); err != nil {
+		return err
+	}
+	for _, a := range p.v.Release() {
+		p.in <- a
+	}
+	return nil
+}
+
+// TestRecordTrade: a recorded trade session holds the logon, the requests and their answers, with
+// the credentials redacted.
+func TestRecordTrade(t *testing.T) {
+	creds := exchange.Credentials{Type: exchange.KeyHMAC, Key: "real-testnet-key", Secret: "real-testnet-secret"}
+	v := exchangetest.NewTradeVenue(creds.Key, true)
+	p := venuePipe{newPipe(), v}
+	var out bytes.Buffer
+	err := conformance.RecordTrade(context.Background(), conformance.TradeRecording{
+		Venue: venue, Stream: v.Stream(), Credentials: creds,
+		Dial:     func(context.Context, string) (conformance.FrameConn, error) { return p, nil },
+		Out:      &out,
+		Duration: 300 * time.Millisecond,
+		Requests: []conformance.TradeSample{
+			{Name: "buy", Submit: order()},
+			{Name: "cancel", Cancel: &exchange.CancelRef{Instrument: order().Instrument, ClientOrderID: "1234567"}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "real-testnet") {
+		t.Fatalf("credentials recorded:\n%s", out.String())
+	}
+	recs, err := conformance.ReadRecords(&out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var outs, ins int
+	for _, r := range recs {
+		switch r.Kind {
+		case conformance.KindOut:
+			outs++
+		case conformance.KindIn:
+			ins++
+		}
+	}
+	// logon, subscribe, order, cancel out; their four answers in.
+	if recs[0].Side != conformance.SideTrade || outs != 4 || ins != 4 {
+		t.Fatalf("side %q, out %d, in %d:\n%s", recs[0].Side, outs, ins, out.String())
+	}
+}
