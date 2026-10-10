@@ -61,6 +61,58 @@ func TestCollect(t *testing.T) {
 	}
 }
 
+// lender answers every request with its query, lent: the body is scribbled over once use returns.
+type lender struct {
+	pages
+	lent bool
+}
+
+func (l *lender) Lend(ctx context.Context, req *HTTPRequest, use func(*HTTPResponse) error) error {
+	resp, err := l.Do(ctx, req)
+	if err != nil {
+		return err
+	}
+	resp.Body = append([]byte(nil), resp.Body...)
+	l.lent = true
+	err = use(resp)
+	l.lent = false
+	for i := range resp.Body {
+		resp.Body[i] = 'x'
+	}
+	return err
+}
+
+func TestRunLends(t *testing.T) {
+	l := &lender{}
+	var body []byte
+	c := Call[string]{
+		Req: HTTPRequest{Method: "GET", Path: "/p", Query: []byte("q=1")},
+		Parse: func(resp *HTTPResponse) (string, error) {
+			if !l.lent {
+				t.Error("Parse ran outside the loan")
+			}
+			body = resp.Body
+			return string(resp.Body), nil
+		},
+	}
+	got, err := Run(context.Background(), l, c)
+	if err != nil || got != "q=1" {
+		t.Fatalf("Run = %q, %v", got, err)
+	}
+	// What Parse copied stays; the response itself went back to the Lender.
+	if string(body) != "xxx" {
+		t.Fatalf("lent body after Run: %q", body)
+	}
+	boom := errors.New("boom")
+	if _, err := Run(context.Background(), &lender{pages: pages{fail: boom, seen: []string{""}}}, c); !errors.Is(err, boom) {
+		t.Fatalf("transport error through Lend: %v", err)
+	}
+	c.Parse = func(*HTTPResponse) (string, error) { return "partial", boom }
+	if got, err := Run(context.Background(), l, c); !errors.Is(err, boom) || got != "partial" {
+		t.Fatalf("Parse error through Lend: %q, %v", got, err)
+	}
+}
+
 func TestResponseGet(t *testing.T) {
 	r := &HTTPResponse{Header: []Header{{Name: "X-MBX-USED-WEIGHT-1M", Value: "12"}, {Name: "x-mbx-used-weight-1m", Value: "13"}}}
 	if got := r.Get("x-mbx-used-weight-1m"); got != "12" {

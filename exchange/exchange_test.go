@@ -56,7 +56,7 @@ func TestHTTPRequestHeadersNeverFormat(t *testing.T) {
 
 	// Only the values go: the rest of the request stays readable, and the request itself is untouched.
 	got := fmt.Sprintf("%+v", req)
-	for _, want := range []string{"Method:GET", "/api/v5/account/balance", "Name:OK-ACCESS-PASSPHRASE Value:REDACTED"} {
+	for _, want := range []string{"GET https://api.example/api/v5/account/balance?ccy=BTC", "OK-ACCESS-PASSPHRASE: REDACTED"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("%s lacks %q", got, want)
 		}
@@ -64,11 +64,10 @@ func TestHTTPRequestHeadersNeverFormat(t *testing.T) {
 	if req.Header[0].Value != "k-visible" {
 		t.Errorf("Format changed the request: %s", req.Header[0].Value)
 	}
-	type plain HTTPRequest
 	bare := HTTPRequest{Method: "GET", Path: "/p", Query: []byte("a=1"), Mutates: true}
 	for _, verb := range []string{"%v", "%+v", "%s"} {
-		if got, want := fmt.Sprintf(verb, bare), fmt.Sprintf(verb, plain(bare)); got != want {
-			t.Errorf("%s without headers: %s, want %s", verb, got, want)
+		if got := fmt.Sprintf(verb, bare); got != "GET /p?a=1" {
+			t.Errorf("%s without headers: %s, want GET /p?a=1", verb, got)
 		}
 	}
 }

@@ -52,6 +52,7 @@ type TradeLimits struct {
 	Rate        []RateLimit // requests on the connection, all must hold
 	Keepalive   Keepalive
 	MaxLifetime time.Duration // when the venue drops the connection by itself; 0 = none
+	ReadLimit   int64         // as SessionLimits.ReadLimit
 }
 
 // TradeSink receives what TradeStream.Decode finds. It is an AccountSink as well: Ready says the

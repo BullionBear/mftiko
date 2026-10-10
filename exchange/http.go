@@ -2,8 +2,11 @@ package exchange
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"strconv"
 	"time"
 
 	"github.com/BullionBear/mftiko/contract/symbol"
@@ -46,19 +49,26 @@ type HTTPRequest struct {
 	Mutates bool
 }
 
-// Format masks every header value, under every verb: headers carry the API key and OKX's passphrase.
-// The rest prints as fmt would print the struct. A transport logs no headers at all, masked or not.
-func (r HTTPRequest) Format(f fmt.State, verb rune) {
-	type maskedRequest HTTPRequest // no methods, so fmt prints it field by field
-	m := maskedRequest(r)
-	if r.Header != nil {
-		m.Header = make([]Header, len(r.Header))
-		for i, h := range r.Header {
-			m.Header[i] = Header{Name: h.Name, Value: "REDACTED"}
-		}
+// String is the request as it may be logged or put in an error: header names with every value
+// masked (headers carry the API key, OKX's passphrase and the signature), and the path, query and
+// body with any listenKey masked (MaskListenKey). Format and MarshalJSON give the same, so neither a
+// %v nor zerolog's Interface can leak one.
+func (r HTTPRequest) String() string {
+	b := make([]byte, 0, 64+len(r.Path)+len(r.Query)+len(r.Body))
+	b = append(append(append(append(b, r.Method...), ' '), r.Base...), MaskListenKey([]byte(r.Path))...)
+	if len(r.Query) > 0 {
+		b = append(append(b, '?'), MaskListenKey(r.Query)...)
 	}
-	_, _ = fmt.Fprintf(f, fmt.FormatString(f, verb), m)
+	b = appendHeaders(b, r.Header, true)
+	if len(r.Body) > 0 {
+		b = append(append(b, ' '), MaskListenKey(r.Body)...)
+	}
+	return string(b)
 }
+
+func (r HTTPRequest) Format(f fmt.State, _ rune) { _, _ = io.WriteString(f, r.String()) }
+
+func (r HTTPRequest) MarshalJSON() ([]byte, error) { return json.Marshal(r.String()) }
 
 // HTTPResponse is what came back. Body is lent to Parse for the duration of the call: anything Parse
 // keeps it copies (D302).
@@ -67,6 +77,22 @@ type HTTPResponse struct {
 	Header []Header
 	Body   []byte
 }
+
+// String is the response as it may be logged: the status, the headers, and the body with any
+// listenKey masked (Binance answers a listenKey's start and keepalive with it). Format and
+// MarshalJSON give the same.
+func (r HTTPResponse) String() string {
+	b := strconv.AppendInt(make([]byte, 0, 32+len(r.Body)), int64(r.Status), 10)
+	b = appendHeaders(b, r.Header, false)
+	if len(r.Body) > 0 {
+		b = append(append(b, ' '), MaskListenKey(r.Body)...)
+	}
+	return string(b)
+}
+
+func (r HTTPResponse) Format(f fmt.State, _ rune) { _, _ = io.WriteString(f, r.String()) }
+
+func (r HTTPResponse) MarshalJSON() ([]byte, error) { return json.Marshal(r.String()) }
 
 // Get returns the first value of header name, compared case-insensitively.
 func (r *HTTPResponse) Get(name string) string {
@@ -112,10 +138,19 @@ type Page[E any] struct {
 }
 
 // Doer sends HTTP requests: the transport (exchange/transport/fasthttp, or a fake in a test). It
-// returns an error only when no response came back. For a request that may have gone out it wraps
-// ErrUnknownOutcome; for one that certainly did not (the dial failed) it does not.
+// returns an error only when no answer Parse could read came back. For a request that may have gone
+// out (a timeout, a dropped connection, a 5xx) it wraps ErrUnknownOutcome; for one that certainly did
+// not (the dial failed) it does not.
 type Doer interface {
 	Do(ctx context.Context, req *HTTPRequest) (*HTTPResponse, error)
+}
+
+// Lender is a Doer that can lend its response instead of handing it over: use gets the response
+// for the duration of the call, and the Lender reuses it once use returns (D302). Lend returns
+// use's error, or what Do would have. Run and Collect lend when they can.
+type Lender interface {
+	Doer
+	Lend(ctx context.Context, req *HTTPRequest, use func(*HTTPResponse) error) error
 }
 
 // ErrNoTransport: a Call was run with no Doer to send it.
@@ -126,6 +161,15 @@ func Run[T any](ctx context.Context, d Doer, c Call[T]) (T, error) {
 	var zero T
 	if d == nil {
 		return zero, ErrNoTransport
+	}
+	if l, ok := d.(Lender); ok {
+		var out T
+		err := l.Lend(ctx, &c.Req, func(resp *HTTPResponse) error {
+			var err error
+			out, err = c.Parse(resp)
+			return err
+		})
+		return out, err
 	}
 	resp, err := d.Do(ctx, &c.Req)
 	if err != nil {

@@ -85,6 +85,13 @@ func forbiddenInStrategy(importPath string) bool {
 	return own && under(r, "exchange", "internal")
 }
 
+// forbiddenInExchange reports whether the exchange package, which holds the adapter interfaces, must not
+// link the package: the transport and JSON libraries are the workers' and exchange/transport's, and sonic is also
+// exchange/internal/codec's (DECISIONS D302).
+func forbiddenInExchange(importPath string) bool {
+	return under(importPath, "github.com/valyala/fasthttp", "github.com/coder/websocket", "github.com/bytedance/sonic")
+}
+
 // check returns one line per broken rule. std holds the standard library's import paths.
 func check(pkgs []pkg, std map[string]bool) []string {
 	var out []string
@@ -138,8 +145,15 @@ func check(pkgs []pkg, std map[string]bool) []string {
 					bad(imp, "the API does not use exchange")
 				case plane == "internal/api" && under(to, "contract/gen/mftiko/sym"):
 					bad(imp, "the API does not query SYM")
-				case under(to, "exchange") && to != "exchange":
-					bad(imp, "planes use exchange's interfaces only; cmd registers the exchanges")
+				case under(to, "exchange") && to != "exchange" && !under(to, "exchange/transport"):
+					bad(imp, "planes use exchange's interfaces and exchange/transport only; cmd registers the exchanges")
+				}
+			}
+		}
+		if from == "exchange" {
+			for _, d := range p.Deps {
+				if forbiddenInExchange(d) {
+					out = append(out, fmt.Sprintf("%s links %s: the adapter interfaces carry no transport or JSON library", from, d))
 				}
 			}
 		}
@@ -226,9 +240,17 @@ func TestCheckReportsViolations(t *testing.T) {
 			m("internal/td"),      // another plane
 			m("exchange/binance"), // a concrete exchange
 		}},
+		{ImportPath: m("internal/md/conn"), Imports: []string{m("exchange/transport"), m("exchange/transport/ws")}}, // allowed
+		{ImportPath: m("internal/td/account"), Imports: []string{m("exchange/transport/fasthttp")}},                 // allowed
+		{ImportPath: m("internal/sym/refresh"), Imports: []string{m("exchange/transportx")}},                        // not exchange/transport
 		{ImportPath: m("internal/api"), Imports: []string{m("exchange"), m("contract/gen/mftiko/sym/v1"), m("contract/gen/mftiko/state/v1")}},
+		{ImportPath: m("internal/api/venue"), Imports: []string{m("exchange/transport/fasthttp")}},
 		{ImportPath: m("internal/platform/agent"), Imports: []string{m("contract/gen/mftiko/shim/v1"), m("internal/sts"), m("exchange")}},
 		{ImportPath: m("exchange/okx"), Imports: []string{m("exchange"), m("contract/symbol"), m("internal/platform/state")}},
+		{ImportPath: m("exchange"), Imports: []string{"github.com/valyala/fasthttp"},
+			Deps: []string{"github.com/valyala/fasthttp", "github.com/coder/websocket/internal/errd", "github.com/bytedance/sonic/ast"}},
+		{ImportPath: m("exchange/transport/fasthttp"), Imports: []string{m("exchange"), m("exchange/transport"), "github.com/valyala/fasthttp"},
+			Deps: []string{"github.com/valyala/fasthttp", m("exchange")}}, // the transport: free
 		{ImportPath: m("contract/symbol"), Imports: []string{"context", "google.golang.org/protobuf/proto", "github.com/rs/zerolog", m("exchange")}},
 		{ImportPath: m("sdk"), Imports: []string{m("contract/wire/frame"), m("internal/platform/natsx")},
 			Deps: []string{"fmt", m("contract/wire/frame"), "go.etcd.io/etcd/client/v3", m("exchange"), m("sdk/internal/c4")}},
@@ -246,11 +268,16 @@ func TestCheckReportsViolations(t *testing.T) {
 	want := []string{
 		"internal/md imports " + m("internal/td"),
 		"internal/md imports " + m("exchange/binance"),
+		"internal/sym/refresh imports " + m("exchange/transportx"),
 		"internal/api imports " + m("exchange"),
+		"internal/api/venue imports " + m("exchange/transport/fasthttp"),
 		"internal/api imports " + m("contract/gen/mftiko/sym/v1"),
 		"internal/platform/agent imports " + m("internal/sts"),
 		"internal/platform/agent imports " + m("exchange"),
 		"exchange/okx imports " + m("internal/platform/state"),
+		"exchange links github.com/valyala/fasthttp",
+		"exchange links github.com/coder/websocket/internal/errd",
+		"exchange links github.com/bytedance/sonic/ast",
 		"contract/symbol imports google.golang.org/protobuf/proto",
 		"contract/symbol imports github.com/rs/zerolog",
 		"contract/symbol imports " + m("exchange"),

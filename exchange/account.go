@@ -1,6 +1,10 @@
 package exchange
 
 import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"strconv"
 	"time"
 
 	"github.com/BullionBear/mftiko/contract/symbol"
@@ -194,10 +198,20 @@ type Dial struct {
 	Frames [][]byte
 }
 
+// String is the dial as it may be logged: the URL by MaskURL, and how many frames but not what they
+// say. A private stream's URL carries its listenKey, and OKX's and Bybit's login frames the API key,
+// the passphrase and the signature. Format and MarshalJSON give the same.
+func (d Dial) String() string { return MaskURL(d.URL) + ", " + strconv.Itoa(len(d.Frames)) + " frames" }
+
+func (d Dial) Format(f fmt.State, _ rune) { _, _ = io.WriteString(f, d.String()) }
+
+func (d Dial) MarshalJSON() ([]byte, error) { return json.Marshal(d.String()) }
+
 type StreamLimits struct {
 	Keepalive    Keepalive
 	RefreshEvery time.Duration // 0 = no Refresh needed
 	MaxLifetime  time.Duration
+	ReadLimit    int64 // as SessionLimits.ReadLimit
 }
 
 // AccountSink receives what PrivateStream.Decode finds. Pointers, and the strings in what they point
