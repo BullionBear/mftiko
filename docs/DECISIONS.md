@@ -593,11 +593,11 @@ Binance 一律以 ed25519 經 WS API 收發單（2026-10-10 定）。D302 的 `A
 | exchange | 各交易所的 adaptor | `exchange/` | 公開 |
 
 - **exchange 是獨立的套件，每個交易所也各自獨立。**
-  - 根目錄依平面定義 adaptor 介面：MD 用的 `Market`、`BookSync`、`PublicREST`；TD 用的 `AccountKind`、`PrivateStream`、`History`；SYM 用的 `Listing`。
+  - 根目錄依平面定義 adaptor 介面（E3-17 定案）：MD 用的 `Market`、`Session`、`BookSync`、`PublicREST`；TD 用的 `Account`、`PrivateStream`、`TradeStream`、`History`；SYM 讀 `Lister`，由 `PublicREST.Listing` 經 `ListingOver` 組成。`AccountKind` 是註冊用的 struct（憑證、可交易的 venue、兩座 factory），不是收發單的介面。
   - `binance/`、`bybit/`、`okx/` 各自實作。cmd 明確地把它們註冊進 MD、TD、SYM 各自的 factory，不靠 `init()` 的副作用。平面只看介面，不 import 具體的交易所。
   - 介面不放進各平面：放進去的話 exchange 要 import `internal/md`、`internal/td`，就不能獨立。
   - exchange 只依賴 contract，之後要拆成自己的 Go module 也不用改結構。一期留在同一個 module。
-- **共用的交易 enum 定義在契約裡，不在 exchange。** `Side`（Buy／Sell）、`OrderType`、`TimeInForce`（GTC／IOC／FOK）放進 `common.v1`，Go 這邊 exchange、各平面、SDK 都直接用產生的型別。SDK 下單也要用它們，而 SDK 不能 import exchange；其他語言的 SDK 也需要同一份定義。exchange 根目錄只放交易所之間共用、平台其他地方用不到的東西：憑證、錯誤分類、限速。
+- **共用的交易 enum 定義在契約裡。** `Side`、`OrderType`、`TimeInForce` 放進 `common.v1`。SDK 與其他語言用這一份；SDK 不能 import exchange。exchange 另有同名型別，再加上 `OrderStatus`，數值與 `common.v1`、`td.v1` 相同，worker 以型別轉換映射，`enums_test.go` 鎖住（D302，E3-17 定案）。exchange 根目錄還放憑證、錯誤分類、限速。
 - **依賴規則由 `internal/archtest` 的測試檢查**，`make check` 與 CI 都會跑：
   - 平面之間互不 import；平面只用 exchange 的介面；API 不 import exchange、不用 `sym.v1`。
   - `internal/platform` 不 import 任何平面或 exchange。
@@ -608,8 +608,8 @@ Binance 一律以 ed25519 經 WS API 收發單（2026-10-10 定）。D302 的 `A
 
 ### D007 契約分成草案與定案
 
-- 每份契約都有狀態與定案的 EPIC，表在 PROTOCOL §1。`sym.proto` 在 E2-10 定案。其餘仍是草案。
-- `buf.yaml` 的 `breaking.ignore` 列出草案的檔案：草案可以自由改，CI 不擋。定案的 EPIC 把自己的檔案移出清單，寫進完成標準。`sym.proto` 已移出。C3、C4 在 E1 結束時移出。
+- 每份契約都有狀態與定案的 EPIC，表在 PROTOCOL §1。`sym.proto` 在 E2-10 定案。exchange 的 adaptor 介面在 E3-17 定案。其餘仍是草案。
+- `buf.yaml` 的 `breaking.ignore` 列出草案的 proto：草案可以自由改，CI 不擋。定案的 EPIC 把自己的檔案移出清單，寫進完成標準。`sym.proto` 已移出。adaptor 介面是 Go，沒有 proto，不進這份清單；定案之後靠 review 維持相容。C3、C4 在 E1 結束時移出。
 - 代價：定案之前，不小心改壞草案不會被 CI 抓到，只能靠 review。還沒有任何東西部署，沒有相容性要保護，可以接受。
 - **趁還是草案，拿掉兩條跨契約的 import：**
   - `stsctl.v1` 不再 import `state.v1`。策略的契約版本偏差最久（PROTOCOL §1），etcd 的 schema 卻是不相容就換 key 根，兩者不該綁在一起。session 的宣告（`SessionSpec` 與它的組成）抽成獨立的套件 `mftiko.session.v1`，歸 STS；`state.v1`、`stsctl.v1` 與 E10 的 API 契約都 import 它。`EntryState`、`Universe` 在 `stsctl` 裡另定綁定自己的型別。
