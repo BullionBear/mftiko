@@ -38,7 +38,10 @@
 //     it dies at 60. The 2026-03 path split retired /ws/<listenKey>. A BinancePM stream carries
 //     margin, UM and CM events; each event's ExchKey names its venue. PM is not implemented here.
 //   - Futures have a per-symbol dead-man switch (countdownCancelAll): CancelOnDisconnect.
-//   - userTrades is limited to a 7-day window per request: HistoryTraits.MaxWindow.
+//   - userTrades (GET /fapi/v1/userTrades) is the fill history. One request spans at most 7
+//     days (HistoryTraits.MaxWindow). fromId cannot be combined with startTime or endTime.
+//     The venue keeps three months (HistoryTraits.Retention). The trade id is the same
+//     value ORDER_TRADE_UPDATE reports as t (D601).
 //
 // UM private wire, checked against the USD-M testnet on 2026-10-10. Other account kinds still
 // return exchange.ErrNotImplemented.

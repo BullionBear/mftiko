@@ -80,8 +80,18 @@ func spec() conformance.Spec {
 			conformance.Call("order_lookup", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
 				return e.History.Order(e.Now, btcInst(), "1001")
 			}),
+			// The same testnet fill as ws/testnet.jsonl: stream trade id 545553575.
+			conformance.Call("user_trades_testnet", func(e conformance.Env) (exchange.Call[*exchange.FillPage], error) {
+				return e.History.Fills(e.Now, exchange.FillQuery{Instrument: btcInst(), FromID: "545553575", Limit: 1})
+			}),
+			conformance.Call("order_testnet", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.History.Order(e.Now, btcInst(), "28625103204")
+			}),
 		},
-		FillPairs: []conformance.FillPair{{Session: "private", Case: "user_trades"}},
+		FillPairs: []conformance.FillPair{
+			{Session: "private", Case: "user_trades"},
+			{Session: "testnet", Case: "user_trades_testnet"},
+		},
 		TradeSamples: []conformance.TradeSample{
 			{Name: "limit GTC", Submit: limitOrder(exchange.TIFGTC, cloidGTC)},
 			{Name: "limit IOC", Submit: limitOrder(exchange.TIFIOC, cloidIOC)},

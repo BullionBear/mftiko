@@ -132,6 +132,11 @@ func TestBatchAndWindow(t *testing.T) {
 	if err == nil {
 		t.Fatal("an 8-day window was accepted")
 	}
+	if _, err := h.Fills(now, exchange.FillQuery{
+		Instrument: btcInst(), FromID: "100", StartNs: start,
+	}); err == nil {
+		t.Fatal("fromId combined with a time window was accepted")
+	}
 }
 
 func TestPositionSide(t *testing.T) {

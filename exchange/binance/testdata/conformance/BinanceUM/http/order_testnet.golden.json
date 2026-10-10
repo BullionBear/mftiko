@@ -1,0 +1,40 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://fapi.binance.com",
+    "path": "/fapi/v1/order",
+    "query": "symbol=BTCUSDT&orderId=28625103204&recvWindow=5000&timestamp=1767225600000&signature=mdMHBUOBqBmRYjevYlOLojoMxq0mCTbuGg6Vi7QYNOgpLpq60fwgTdGVVvGlz%2BksxsCjrkGYEi3hU%2BRBcrYJBw%3D%3D",
+    "header": [
+      {
+        "name": "X-MBX-APIKEY",
+        "value": "conformance-api-key"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 1
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": {
+    "AvgPrice": 82629.3,
+    "ClientOrderID": "1154756111292860417",
+    "Exch": {
+      "Category": "Perp",
+      "ExchTicker": "BTCUSDT",
+      "Venue": "BinanceUM"
+    },
+    "ExchTsNs": 1791608091883000000,
+    "FilledQty": 0.0007,
+    "OrderID": "28625103204",
+    "Price": 82794.6,
+    "Qty": 0.0007,
+    "QuoteQty": 0,
+    "RejectReason": "",
+    "Side": 1,
+    "Status": 4,
+    "Type": 1
+  }
+}
