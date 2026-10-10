@@ -82,6 +82,10 @@ func (s *session) Decode(frame []byte, sink exchange.Sink) error {
 	}
 	if h.Stream == "" && h.E == "" {
 		if h.ID == nil {
+			// Spot bookTicker has no event name. An ack always carries id.
+			if spotBookTicker(frame) {
+				return emitBookTicker(frame, "", sink)
+			}
 			return errors.New("binance: unrecognized frame")
 		}
 		var err error
@@ -138,6 +142,9 @@ func knownEvent(frame []byte) error {
 	if err := codec.DecodeFrame(frame, &m); err != nil {
 		return err
 	}
+	if m.E == "" && spotBookTicker(frame) {
+		return nil
+	}
 	switch m.E {
 	case "bookTicker", "depthUpdate", "aggTrade", "kline", "24hrTicker", "24hrMiniTicker", "markPriceUpdate", "forceOrder":
 		return nil
@@ -167,7 +174,7 @@ func emitOne(frame []byte, stream string, sink exchange.Sink) error {
 		return nil
 	}
 	switch m.E {
-	case "bookTicker":
+	case "", "bookTicker":
 		return emitBookTicker(frame, stream, sink)
 	case "depthUpdate":
 		return emitDepth(frame, stream, sink)
@@ -194,6 +201,22 @@ func channel(stream, symbol, fallback string) string {
 		return stream
 	}
 	return sym + "@" + fallback
+}
+
+// spotBookTicker is a spot best-quote object: symbol and the four quote fields, and no event name.
+// UM bookTicker always carries "e", so this stays false for it.
+func spotBookTicker(frame []byte) bool {
+	var e struct {
+		E  string `json:"e"`
+		S  string `json:"s"`
+		ID *int64 `json:"id"`
+	}
+	if err := codec.DecodeFrame(frame, &e); err != nil || e.E != "" || e.S == "" || e.ID != nil {
+		return false
+	}
+	s := string(frame)
+	return strings.Contains(s, `"b"`) && strings.Contains(s, `"B"`) &&
+		strings.Contains(s, `"a"`) && strings.Contains(s, `"A"`)
 }
 
 func emitBookTicker(frame []byte, stream string, sink exchange.Sink) error {
