@@ -30,6 +30,9 @@ func spec() conformance.Spec {
 		Account: func(cfg exchange.AccountConfig) (exchange.Account, error) {
 			return &account{cfg: cfg}, nil
 		},
+		History: func(cfg exchange.AccountConfig) (exchange.History, error) {
+			return &history{cfg: cfg}, nil
+		},
 		Instruments: []*symbol.Info{btcInst()},
 		Cases: []conformance.Case{
 			conformance.Call("submit_limit", func(e conformance.Env) (exchange.Call[*exchange.OrderResult], error) {
@@ -89,6 +92,20 @@ func spec() conformance.Spec {
 			conformance.Call("klines", func(e conformance.Env) (exchange.Call[[]exchange.Kline], error) {
 				return e.REST.Klines(btcInst(), "1m", 0, 5)
 			}),
+			conformance.Call("executions", func(e conformance.Env) (exchange.Call[*exchange.FillPage], error) {
+				return e.History.Fills(e.Now, exchange.FillQuery{
+					Instrument: btcInst(),
+					StartNs:    e.Now.UnixNano(),
+					EndNs:      e.Now.Add(time.Hour).UnixNano(),
+					Limit:      50,
+				})
+			}),
+			conformance.Call("order_lookup", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.History.Order(e.Now, btcInst(), "90f08fa4-4426-474b-8dea-f68e2b0fbd31")
+			}),
+		},
+		FillPairs: []conformance.FillPair{
+			{Session: "fills", Case: "executions"},
 		},
 		TradeSamples: []conformance.TradeSample{
 			{Name: "limit GTC", Submit: limitOrder(exchange.TIFGTC, cloidGTC)},

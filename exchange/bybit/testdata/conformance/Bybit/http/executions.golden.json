@@ -1,0 +1,55 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://api.bybit.com",
+    "path": "/v5/execution/list",
+    "query": "category=linear&symbol=BTCUSDT&startTime=1767225600000&endTime=1767229200000&limit=50",
+    "header": [
+      {
+        "name": "X-BAPI-API-KEY",
+        "value": "conformance-api-key"
+      },
+      {
+        "name": "X-BAPI-TIMESTAMP",
+        "value": "1767225600000"
+      },
+      {
+        "name": "X-BAPI-RECV-WINDOW",
+        "value": "5000"
+      },
+      {
+        "name": "X-BAPI-SIGN",
+        "value": "a958bc2219f9f8faa481fb1ca243fc745b7a06f881bf0475e17d97c583d57ebf"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": {
+    "Fills": [
+      {
+        "ClientOrderID": "1154756139848797185",
+        "Exch": {
+          "Category": "Perp",
+          "ExchTicker": "BTCUSDT",
+          "Venue": "Bybit"
+        },
+        "ExchTsNs": 1791635978578000000,
+        "Fee": 0.04535845,
+        "FeeAsset": "USDT",
+        "FillID": "1b68e682-849c-5603-8339-be92f6b265cd",
+        "Liquidity": "taker",
+        "OrderID": "90f08fa4-4426-474b-8dea-f68e2b0fbd31",
+        "Price": 82469.9,
+        "Qty": 0.001,
+        "Side": 1
+      }
+    ],
+    "Next": "1791635978578%3A350707%3A2%3AOTBmMDhmYTQtNDQyNi00NzRiLThkZWEtZjY4ZTJiMGZiZDMxfjFiNjhlNjgyLTg0OWMtNTYwMy04MzM5LWJlOTJmNmIyNjVjZA%2C1791635978578%3A350707%3A2%3AOTBmMDhmYTQtNDQyNi00NzRiLThkZWEtZjY4ZTJiMGZiZDMxfjFiNjhlNjgyLTg0OWMtNTYwMy04MzM5LWJlOTJmNmIyNjVjZA"
+  }
+}

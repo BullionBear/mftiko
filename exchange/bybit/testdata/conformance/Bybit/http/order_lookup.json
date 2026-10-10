@@ -1,0 +1,166 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://api-testnet.bybit.com",
+    "path": "/v5/order/history",
+    "query": "category=linear&symbol=BTCUSDT&orderId=90f08fa4-4426-474b-8dea-f68e2b0fbd31",
+    "header": [
+      {
+        "name": "X-BAPI-API-KEY",
+        "value": "REDACTED"
+      },
+      {
+        "name": "X-BAPI-TIMESTAMP",
+        "value": "1791635979118"
+      },
+      {
+        "name": "X-BAPI-RECV-WINDOW",
+        "value": "5000"
+      },
+      {
+        "name": "X-BAPI-SIGN",
+        "value": "REDACTED"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "header": [
+      {
+        "name": "Content-Length",
+        "value": "1291"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json; charset=utf-8"
+      },
+      {
+        "name": "Server",
+        "value": "Openresty"
+      },
+      {
+        "name": "Connection",
+        "value": "keep-alive"
+      },
+      {
+        "name": "Date",
+        "value": "Sat, 10 Oct 2026 12:39:39 GMT"
+      },
+      {
+        "name": "x-cld-src",
+        "value": "Loc-A"
+      },
+      {
+        "name": "X-Bapi-Limit",
+        "value": "50"
+      },
+      {
+        "name": "X-Bapi-Limit-Status",
+        "value": "49"
+      },
+      {
+        "name": "X-Bapi-Limit-Reset-Timestamp",
+        "value": "1791635979238"
+      },
+      {
+        "name": "Ret_code",
+        "value": "0"
+      },
+      {
+        "name": "Traceid",
+        "value": "7bd5e4707c1bc38b279c7c19b372af3e"
+      },
+      {
+        "name": "Timenow",
+        "value": "1791635979250"
+      },
+      {
+        "name": "X-Cache",
+        "value": "Miss from cloudfront"
+      },
+      {
+        "name": "Via",
+        "value": "1.1 a0ad49c0aada7d80942417f4dae12972.cloudfront.net (CloudFront)"
+      },
+      {
+        "name": "X-Amz-Cf-Pop",
+        "value": "TPE53-P3"
+      },
+      {
+        "name": "X-Amz-Cf-Id",
+        "value": "Z3wDJRtqD6mgpwJVLSMHdcKrjFiDehbcCMgmyWa945FflWbVMXdHMQ=="
+      }
+    ],
+    "body": {
+      "retCode": 0,
+      "retMsg": "OK",
+      "result": {
+        "nextPageCursor": "90f08fa4-4426-474b-8dea-f68e2b0fbd31%3A1791635978577%2C90f08fa4-4426-474b-8dea-f68e2b0fbd31%3A1791635978577",
+        "category": "linear",
+        "list": [
+          {
+            "symbol": "BTCUSDT",
+            "orderType": "Market",
+            "orderLinkId": "1154756139848797185",
+            "slLimitPrice": "0",
+            "orderId": "90f08fa4-4426-474b-8dea-f68e2b0fbd31",
+            "stopOrderType": "",
+            "takeProfit": "",
+            "tpslMode": "",
+            "smpType": "CancelMaker",
+            "rejectReason": "EC_NoError",
+            "price": "83294.4",
+            "orderIv": "",
+            "rpiMatchedQty": "0",
+            "createdTime": "1791635978577",
+            "tpTriggerBy": "",
+            "positionIdx": 0,
+            "timeInForce": "IOC",
+            "leavesValue": "0",
+            "updatedTime": "1791635978581",
+            "smpGroup": "107081242",
+            "tpLimitPrice": "0",
+            "slTriggerBy": "",
+            "slippageToleranceType": "UNKNOWN",
+            "placeType": "",
+            "cumExecQty": "0.001",
+            "reduceOnly": false,
+            "qty": "0.001",
+            "smpOrderId": "",
+            "parentOrderLinkId": "",
+            "extraFees": "",
+            "cancelType": "UNKNOWN",
+            "avgPrice": "82469.9",
+            "lastPriceOnCreated": "82469.8",
+            "orderStatus": "Filled",
+            "createType": "CreateByUser",
+            "cumExecValue": "82.4699",
+            "triggerDirection": 0,
+            "blockTradeId": "",
+            "cumFeeDetail": {
+              "USDT": "0.04535845"
+            },
+            "isLeverage": "",
+            "side": "Buy",
+            "triggerPrice": "",
+            "cumExecFee": "0.04535845",
+            "leavesQty": "0",
+            "closeOnTrigger": false,
+            "rpiTakerAccess": false,
+            "stopLoss": "",
+            "slippageTolerance": "0",
+            "triggerBy": ""
+          }
+        ]
+      },
+      "retExtInfo": {},
+      "time": 1791635979250
+    }
+  }
+}
