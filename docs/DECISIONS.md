@@ -517,8 +517,8 @@ E3 開工前先定的介面、設計模式與技術棧。各交易所的實作�
   - 需要時間的地方（簽名）由呼叫者傳入 `now`。public 的請求不簽名，不帶 `now`。
   - 不採用注入 `Doer` 讓 adapter 自己送：`exchange` 是公開套件（D006），`Doer` 的形狀會把傳輸函式庫的型別帶進介面；而且 adapter 拿得到連線，就擋不住它自己重試。
   - 好處：測試只需要錄下來的 fixture，`Decode` 與 `Parse` 都能 fuzz；重試、重連、限速只在 worker；傳輸可以換，adapter 不動。代價：有狀態的流程要寫成顯式的步驟。
-- **技術棧：** WS 用 `github.com/coder/websocket`，REST 用 `github.com/valyala/fasthttp`，JSON 用 `github.com/bytedance/sonic`。三者都只出現在 worker 與 `exchange/transport/*`，`exchange` 的介面裡沒有它們的型別。
-  - sonic 每個 adapter 一份凍結的設定。它碰 runtime 內部，Go 每次升版都要先確認 sonic 跟上了。
+- **技術棧：** WS 用 `github.com/coder/websocket`，REST 用 `github.com/valyala/fasthttp`，JSON 用 `github.com/bytedance/sonic`。coder/websocket 與 fasthttp 只出現在 worker 與 `exchange/transport/*`；sonic 只出現在 `exchange/internal/codec`（adapter 共用的兩份凍結設定）、worker 與 transport。`exchange` 的介面裡沒有它們的型別。
+  - sonic 的兩份凍結設定：WS 借用（不複製字串），REST 複製（`CopyString`），欄位名稱都區分大小寫。它碰 runtime 內部，Go 每次升版都要先確認 sonic 跟上了。
   - fasthttp 沒有 context：以 ctx 的 deadline 呼叫 `DoDeadline`，送出後無法中途取消；`MaxIdemponentCallAttempts` 設 1，重試由 worker 決定。HTTP/1.1。
   - coder/websocket 的讀取上限預設 32 KiB，每個 venue 依自己的訊息大小設 `SetReadLimit`；pong 只在有 `Read` 進行時處理，讀的 goroutine 不停。握手走 net/http，proxy、TLS、DNS 與 fasthttp 由同一份設定產生。
 - **緩衝區是 worker 的，借給 adapter。** WS 用 `Conn.Reader` 讀進每條連線自己的緩衝區，穩態零分配；交給 `Decode` 的 frame、交給 `Parse` 的 response 只在呼叫期間有效。sonic 不複製字串，解出來的字串可能指向緩衝區：Sink 收到的指標與其中的字串只在回呼期間有效，要留的自己複製。REST 的 `Parse` 一律以複製字串的設定解碼（fasthttp 會重用 response），不值得為它借用。conformance 驗證：回呼返回後把緩衝區塗掉，下游拿到的不變。數字是 float64（D008），不受這條影響。

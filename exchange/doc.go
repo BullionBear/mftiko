@@ -40,7 +40,8 @@
 //
 // So the transport stays out of this package: websockets are github.com/coder/websocket and REST is
 // github.com/valyala/fasthttp in the workers and in exchange/transport, and neither type appears in an
-// interface here. JSON is github.com/bytedance/sonic, with one frozen configuration per adapter.
+// interface here. JSON is github.com/bytedance/sonic, in the two frozen configurations every adapter
+// shares; package exchange/internal/codec holds them, with signing and query encoding.
 //
 // Buffers are the worker's and are lent (D302). A frame passed to Decode, and a response passed to
 // Parse, are valid until the call returns; anything decoded from them may point into them (sonic does

@@ -1,5 +1,10 @@
 package exchange
 
+import (
+	"fmt"
+	"io"
+)
+
 // KeyType is how the venue signs: tdctl.Credentials.key_type.
 type KeyType string
 
@@ -20,6 +25,9 @@ type Credentials struct {
 }
 
 const redacted = "exchange.Credentials{REDACTED}"
+
+// Format covers every verb: String only serves %v, %s, %q and %x, and %d or %t would print the fields.
+func (Credentials) Format(f fmt.State, _ rune) { _, _ = io.WriteString(f, redacted) }
 
 func (Credentials) String() string   { return redacted }
 func (Credentials) GoString() string { return redacted }
