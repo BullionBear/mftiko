@@ -1,0 +1,138 @@
+{
+  "request": {
+    "method": "POST",
+    "base": "https://www.okx.com",
+    "path": "/api/v5/trade/cancel-all-after",
+    "header": [
+      {
+        "name": "OK-ACCESS-KEY",
+        "value": "REDACTED"
+      },
+      {
+        "name": "OK-ACCESS-SIGN",
+        "value": "REDACTED"
+      },
+      {
+        "name": "OK-ACCESS-TIMESTAMP",
+        "value": "2026-10-10T12:14:20.782Z"
+      },
+      {
+        "name": "OK-ACCESS-PASSPHRASE",
+        "value": "REDACTED"
+      },
+      {
+        "name": "User-Agent",
+        "value": "mftiko"
+      },
+      {
+        "name": "x-simulated-trading",
+        "value": "1"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json"
+      }
+    ],
+    "body": "{\"timeOut\":\"10\"}",
+    "cost": [
+      {
+        "bucket": "caa",
+        "n": 1
+      }
+    ],
+    "mutates": true
+  },
+  "response": {
+    "status": 429,
+    "header": [
+      {
+        "name": "Content-Length",
+        "value": "42"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json;charset=UTF-8"
+      },
+      {
+        "name": "Server",
+        "value": "cloudflare"
+      },
+      {
+        "name": "Set-Cookie",
+        "value": "locale=en-US; Max-Age=604800; Expires=Sat, 17 Oct 2026 12:14:20 GMT; Path=/"
+      },
+      {
+        "name": "Set-Cookie",
+        "value": "__cf_bm=mmtuM02O7LruxLs3CMs644u9WpPCqDNqn29ZvsiFG7A-1791634460.8344362-1.0.1.1-K3cvPp9dUGvAs5HF_QzwtkTp7lpSW.pV09lazVTTRn2DxJQvFVfKsDI_yb_O0G_8zW5ujWXldQh7EHuFytgXWOg9Ectmk3dGEb0jlOx4CuOW4.YG2ctCBQCBzXpEYUSK; HttpOnly; SameSite=None; Secure; Path=/; Domain=okx.com; Expires=Sat, 10 Oct 2026 12:44:20 GMT"
+      },
+      {
+        "name": "Date",
+        "value": "Sat, 10 Oct 2026 12:14:20 GMT"
+      },
+      {
+        "name": "Connection",
+        "value": "keep-alive"
+      },
+      {
+        "name": "CF-Ray",
+        "value": "a4858b5439288f00-TPE"
+      },
+      {
+        "name": "CF-Cache-Status",
+        "value": "DYNAMIC"
+      },
+      {
+        "name": "Cache-Control",
+        "value": "no-cache, no-store, max-age=0, must-revalidate"
+      },
+      {
+        "name": "Expires",
+        "value": "0"
+      },
+      {
+        "name": "x-xss-protection",
+        "value": "1; mode=block"
+      },
+      {
+        "name": "Strict-Transport-Security",
+        "value": "max-age=31536000 ; includeSubDomains"
+      },
+      {
+        "name": "Vary",
+        "value": "Origin"
+      },
+      {
+        "name": "Pragma",
+        "value": "no-cache"
+      },
+      {
+        "name": "b-locale",
+        "value": "en_US"
+      },
+      {
+        "name": "content-security-policy",
+        "value": "frame-ancestors 'self'"
+      },
+      {
+        "name": "x-brokerid",
+        "value": "9999"
+      },
+      {
+        "name": "x-content-type-options",
+        "value": "nosniff"
+      },
+      {
+        "name": "x-frame-options",
+        "value": "SAMEORIGIN"
+      },
+      {
+        "name": "x-routed-to",
+        "value": "TKY"
+      }
+    ],
+    "body": {
+      "msg": "Too Many Requests",
+      "code": "50011"
+    }
+  }
+}

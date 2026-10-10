@@ -143,7 +143,9 @@ func TestCredentials(k exchange.KeyType, passphrase bool) exchange.Credentials {
 	return c
 }
 
-// secrets are the substrings of c that must never leave the adapter.
+// secrets are the substrings of c that must never leave the adapter. The API key is not one of
+// them: it travels in a header. OKX also sends the passphrase, in OK-ACCESS-PASSPHRASE and in the
+// login frame, so the passphrase is not one of them either. The signing secret must not appear.
 func secrets(c exchange.Credentials) []string {
 	var out []string
 	if c.Type == exchange.KeyEd25519 {
@@ -155,9 +157,6 @@ func secrets(c exchange.Credentials) []string {
 		out = append(out, string(TestEd25519Key.Seed()))
 	} else if c.Secret != "" {
 		out = append(out, c.Secret)
-	}
-	if c.Passphrase != "" {
-		out = append(out, c.Passphrase)
 	}
 	return out
 }

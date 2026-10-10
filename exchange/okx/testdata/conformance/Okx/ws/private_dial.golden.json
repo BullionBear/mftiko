@@ -1,0 +1,7 @@
+{
+  "url": "wss://ws.okx.com:8443/ws/v5/private",
+  "frames": [
+    "{\"op\":\"login\",\"args\":[{\"apiKey\":\"conformance-api-key\",\"passphrase\":\"conformance-passphrase-9a8b\",\"timestamp\":\"1767225600\",\"sign\":\"IwPxl1qrO0GDAlZPkR5Qi+gPFmS5fto6C/diEDSUjvY=\"}]}",
+    "{\"op\":\"subscribe\",\"args\":[{\"channel\":\"orders\",\"instType\":\"ANY\"},{\"channel\":\"positions\",\"instType\":\"ANY\"},{\"channel\":\"account\"}]}"
+  ]
+}

@@ -1,0 +1,168 @@
+{
+  "request": {
+    "method": "POST",
+    "base": "https://www.okx.com",
+    "path": "/api/v5/trade/cancel-batch-orders",
+    "header": [
+      {
+        "name": "OK-ACCESS-KEY",
+        "value": "REDACTED"
+      },
+      {
+        "name": "OK-ACCESS-SIGN",
+        "value": "REDACTED"
+      },
+      {
+        "name": "OK-ACCESS-TIMESTAMP",
+        "value": "2026-10-10T12:14:20.338Z"
+      },
+      {
+        "name": "OK-ACCESS-PASSPHRASE",
+        "value": "REDACTED"
+      },
+      {
+        "name": "User-Agent",
+        "value": "mftiko"
+      },
+      {
+        "name": "x-simulated-trading",
+        "value": "1"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json"
+      }
+    ],
+    "body": "[{\"instId\":\"BTC-USDT\",\"clOrdId\":\"1154756138294095879\"},{\"instId\":\"BTC-USDT\",\"clOrdId\":\"1154756138294095880\"}]",
+    "cost": [
+      {
+        "bucket": "orders",
+        "n": 2
+      }
+    ],
+    "mutates": true
+  },
+  "response": {
+    "status": 200,
+    "header": [
+      {
+        "name": "Content-Length",
+        "value": "301"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json;charset=UTF-8"
+      },
+      {
+        "name": "Server",
+        "value": "cloudflare"
+      },
+      {
+        "name": "Set-Cookie",
+        "value": "locale=en-US; Max-Age=604800; Expires=Sat, 17 Oct 2026 12:14:20 GMT; Path=/"
+      },
+      {
+        "name": "Set-Cookie",
+        "value": "__cf_bm=sTw2x7aurEJDzN4Swp0PcehaVgDXETq31A2vxJjIeyI-1791634460.3892028-1.0.1.1-nOxqfZDyPX8qdIttfw0eCV1AVQQgbD8ZfAoSVbU8RpwAJ86NLFuo2EkGB_O2VdyoATy9nGI.yskx8XajJnUprDSoj_1_WPms3wOsADEqgcCRnurq_Vi7ju4aMHkOGEBo; HttpOnly; SameSite=None; Secure; Path=/; Domain=okx.com; Expires=Sat, 10 Oct 2026 12:44:20 GMT"
+      },
+      {
+        "name": "Date",
+        "value": "Sat, 10 Oct 2026 12:14:20 GMT"
+      },
+      {
+        "name": "Connection",
+        "value": "keep-alive"
+      },
+      {
+        "name": "CF-Ray",
+        "value": "a4858b516e5d8f00-TPE"
+      },
+      {
+        "name": "CF-Cache-Status",
+        "value": "DYNAMIC"
+      },
+      {
+        "name": "Cache-Control",
+        "value": "no-cache, no-store, max-age=0, must-revalidate"
+      },
+      {
+        "name": "Expires",
+        "value": "0"
+      },
+      {
+        "name": "x-xss-protection",
+        "value": "1; mode=block"
+      },
+      {
+        "name": "x-xss-protection",
+        "value": "1; mode=block"
+      },
+      {
+        "name": "Strict-Transport-Security",
+        "value": "max-age=31536000 ; includeSubDomains, max-age=31536000; includeSubDomains"
+      },
+      {
+        "name": "Vary",
+        "value": "Origin"
+      },
+      {
+        "name": "Pragma",
+        "value": "no-cache"
+      },
+      {
+        "name": "b-locale",
+        "value": "en_US"
+      },
+      {
+        "name": "content-security-policy",
+        "value": "frame-ancestors 'self'"
+      },
+      {
+        "name": "x-brokerid",
+        "value": "9999"
+      },
+      {
+        "name": "x-content-type-options",
+        "value": "nosniff"
+      },
+      {
+        "name": "x-content-type-options",
+        "value": "nosniff"
+      },
+      {
+        "name": "x-frame-options",
+        "value": "SAMEORIGIN"
+      },
+      {
+        "name": "x-frame-options",
+        "value": "DENY"
+      },
+      {
+        "name": "x-routed-to",
+        "value": "TKY"
+      }
+    ],
+    "body": {
+      "code": "0",
+      "data": [
+        {
+          "clOrdId": "1154756138294095879",
+          "ordId": "3997408615846309889",
+          "sCode": "0",
+          "sMsg": "",
+          "ts": "1791634460416"
+        },
+        {
+          "clOrdId": "1154756138294095880",
+          "ordId": "3997408618094456833",
+          "sCode": "0",
+          "sMsg": "",
+          "ts": "1791634460416"
+        }
+      ],
+      "inTime": "1791634460415406",
+      "msg": "",
+      "outTime": "1791634460417983"
+    }
+  }
+}

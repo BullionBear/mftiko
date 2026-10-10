@@ -1,0 +1,163 @@
+{
+  "request": {
+    "method": "POST",
+    "base": "https://www.okx.com",
+    "path": "/api/v5/trade/order",
+    "header": [
+      {
+        "name": "OK-ACCESS-KEY",
+        "value": "REDACTED"
+      },
+      {
+        "name": "OK-ACCESS-SIGN",
+        "value": "REDACTED"
+      },
+      {
+        "name": "OK-ACCESS-TIMESTAMP",
+        "value": "2026-10-10T12:14:20.463Z"
+      },
+      {
+        "name": "OK-ACCESS-PASSPHRASE",
+        "value": "REDACTED"
+      },
+      {
+        "name": "User-Agent",
+        "value": "mftiko"
+      },
+      {
+        "name": "x-simulated-trading",
+        "value": "1"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json"
+      }
+    ],
+    "body": "{\"instId\":\"BTC-USDT\",\"tdMode\":\"cash\",\"side\":\"buy\",\"ordType\":\"limit\",\"sz\":\"10.00000000\",\"px\":\"41444.4\",\"clOrdId\":\"1154756138294361097\"}",
+    "cost": [
+      {
+        "bucket": "orders",
+        "n": 1
+      }
+    ],
+    "mutates": true
+  },
+  "response": {
+    "status": 200,
+    "header": [
+      {
+        "name": "Content-Length",
+        "value": "346"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json;charset=UTF-8"
+      },
+      {
+        "name": "Server",
+        "value": "cloudflare"
+      },
+      {
+        "name": "Set-Cookie",
+        "value": "locale=en-US; Max-Age=604800; Expires=Sat, 17 Oct 2026 12:14:20 GMT; Path=/"
+      },
+      {
+        "name": "Set-Cookie",
+        "value": "__cf_bm=dRxwG4FJ3GHnGN4bhxrOWEInahBsT4JddQCquoSulsk-1791634460.517506-1.0.1.1-cUvizWxNvI9jweVsb7atYUPPZhIhwhLoQvYNXxZP6f3AmnhrF0IYJEYOotWyFt9bNGTJrpAnqHLAW98U5L2XLGpcKxI998IhxfnNRF3N7rWO9pB9u4s0VSNjhlqM.NP0; HttpOnly; SameSite=None; Secure; Path=/; Domain=okx.com; Expires=Sat, 10 Oct 2026 12:44:20 GMT"
+      },
+      {
+        "name": "Date",
+        "value": "Sat, 10 Oct 2026 12:14:20 GMT"
+      },
+      {
+        "name": "Connection",
+        "value": "keep-alive"
+      },
+      {
+        "name": "CF-Ray",
+        "value": "a4858b523f048f00-TPE"
+      },
+      {
+        "name": "CF-Cache-Status",
+        "value": "DYNAMIC"
+      },
+      {
+        "name": "Cache-Control",
+        "value": "no-cache, no-store, max-age=0, must-revalidate"
+      },
+      {
+        "name": "Expires",
+        "value": "0"
+      },
+      {
+        "name": "x-xss-protection",
+        "value": "1; mode=block"
+      },
+      {
+        "name": "x-xss-protection",
+        "value": "1; mode=block"
+      },
+      {
+        "name": "Strict-Transport-Security",
+        "value": "max-age=31536000 ; includeSubDomains, max-age=31536000; includeSubDomains"
+      },
+      {
+        "name": "Vary",
+        "value": "Origin"
+      },
+      {
+        "name": "Pragma",
+        "value": "no-cache"
+      },
+      {
+        "name": "b-locale",
+        "value": "en_US"
+      },
+      {
+        "name": "content-security-policy",
+        "value": "frame-ancestors 'self'"
+      },
+      {
+        "name": "x-brokerid",
+        "value": "9999"
+      },
+      {
+        "name": "x-content-type-options",
+        "value": "nosniff"
+      },
+      {
+        "name": "x-content-type-options",
+        "value": "nosniff"
+      },
+      {
+        "name": "x-frame-options",
+        "value": "SAMEORIGIN"
+      },
+      {
+        "name": "x-frame-options",
+        "value": "DENY"
+      },
+      {
+        "name": "x-routed-to",
+        "value": "TKY"
+      }
+    ],
+    "body": {
+      "code": "1",
+      "data": [
+        {
+          "clOrdId": "1154756138294361097",
+          "ordId": "",
+          "sCode": "51008",
+          "sMsg": "Order failed. Your available USDT balance is insufficient, and your available margin (in USD) is too low for borrowing. ",
+          "subCode": "1000",
+          "tag": "",
+          "ts": "1791634460547"
+        }
+      ],
+      "inTime": "1791634460545988",
+      "msg": "All operations failed",
+      "outTime": "1791634460548338"
+    }
+  }
+}

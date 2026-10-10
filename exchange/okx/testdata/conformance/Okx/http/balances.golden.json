@@ -1,0 +1,68 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://www.okx.com",
+    "path": "/api/v5/account/balance",
+    "header": [
+      {
+        "name": "OK-ACCESS-KEY",
+        "value": "conformance-api-key"
+      },
+      {
+        "name": "OK-ACCESS-SIGN",
+        "value": "nWNFru8XM6YEZL4ouaneWgCSZVpVtYzGthiDHhmdYpc="
+      },
+      {
+        "name": "OK-ACCESS-TIMESTAMP",
+        "value": "2026-01-01T00:00:00.000Z"
+      },
+      {
+        "name": "OK-ACCESS-PASSPHRASE",
+        "value": "conformance-passphrase-9a8b"
+      },
+      {
+        "name": "User-Agent",
+        "value": "mftiko"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": {
+    "Items": [
+      {
+        "AsOfNs": 0,
+        "Balances": [
+          {
+            "Asset": "BTC",
+            "Free": 1.00000000936,
+            "Locked": 0
+          },
+          {
+            "Asset": "OKB",
+            "Free": 100,
+            "Locked": 0
+          },
+          {
+            "Asset": "USDT",
+            "Free": 4999.962643946551,
+            "Locked": 0
+          },
+          {
+            "Asset": "ETH",
+            "Free": 1,
+            "Locked": 0
+          }
+        ],
+        "OpenOrders": null,
+        "Positions": null
+      }
+    ],
+    "Next": null
+  }
+}

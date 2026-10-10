@@ -1,0 +1,377 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://www.okx.com",
+    "path": "/api/v5/account/balance",
+    "header": [
+      {
+        "name": "OK-ACCESS-KEY",
+        "value": "REDACTED"
+      },
+      {
+        "name": "OK-ACCESS-SIGN",
+        "value": "REDACTED"
+      },
+      {
+        "name": "OK-ACCESS-TIMESTAMP",
+        "value": "2026-10-10T12:14:22.978Z"
+      },
+      {
+        "name": "OK-ACCESS-PASSPHRASE",
+        "value": "REDACTED"
+      },
+      {
+        "name": "User-Agent",
+        "value": "mftiko"
+      },
+      {
+        "name": "x-simulated-trading",
+        "value": "1"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "header": [
+      {
+        "name": "Content-Type",
+        "value": "application/json;charset=UTF-8"
+      },
+      {
+        "name": "Server",
+        "value": "cloudflare"
+      },
+      {
+        "name": "Set-Cookie",
+        "value": "locale=en-US; Max-Age=604800; Expires=Sat, 17 Oct 2026 12:14:23 GMT; Path=/"
+      },
+      {
+        "name": "Set-Cookie",
+        "value": "__cf_bm=eZg3U5C6tUQWZ9sCW9tzu7ET8yD05u6gxlAhAZov.Ps-1791634463.0286303-1.0.1.1-qcmRNVmdDWlfMh.XeM9LG9.ivTmW5vsImvpr04MDEG3hbN8QW5VJ_FhMEKaAXawWU24VSWpWMdqA9P2qYSrgCnxQ8AdfcKtg4w9.yVBSA1W1tcToE23ROuVKNizbmCoU; HttpOnly; SameSite=None; Secure; Path=/; Domain=okx.com; Expires=Sat, 10 Oct 2026 12:44:23 GMT"
+      },
+      {
+        "name": "Date",
+        "value": "Sat, 10 Oct 2026 12:14:23 GMT"
+      },
+      {
+        "name": "Transfer-Encoding",
+        "value": "chunked"
+      },
+      {
+        "name": "Connection",
+        "value": "keep-alive"
+      },
+      {
+        "name": "CF-Ray",
+        "value": "a4858b61ef8f8f00-TPE"
+      },
+      {
+        "name": "CF-Cache-Status",
+        "value": "DYNAMIC"
+      },
+      {
+        "name": "Cache-Control",
+        "value": "no-cache, no-store, max-age=0, must-revalidate"
+      },
+      {
+        "name": "Expires",
+        "value": "0"
+      },
+      {
+        "name": "x-xss-protection",
+        "value": "1; mode=block"
+      },
+      {
+        "name": "x-xss-protection",
+        "value": "1; mode=block"
+      },
+      {
+        "name": "Strict-Transport-Security",
+        "value": "max-age=31536000 ; includeSubDomains, max-age=31536000; includeSubDomains"
+      },
+      {
+        "name": "Vary",
+        "value": "Accept-Encoding, Origin"
+      },
+      {
+        "name": "Pragma",
+        "value": "no-cache"
+      },
+      {
+        "name": "b-locale",
+        "value": "en_US"
+      },
+      {
+        "name": "content-security-policy",
+        "value": "frame-ancestors 'self'"
+      },
+      {
+        "name": "x-brokerid",
+        "value": "9999"
+      },
+      {
+        "name": "x-content-type-options",
+        "value": "nosniff"
+      },
+      {
+        "name": "x-content-type-options",
+        "value": "nosniff"
+      },
+      {
+        "name": "x-frame-options",
+        "value": "SAMEORIGIN"
+      },
+      {
+        "name": "x-frame-options",
+        "value": "DENY"
+      },
+      {
+        "name": "x-routed-to",
+        "value": "TKY"
+      }
+    ],
+    "body": {
+      "code": "0",
+      "data": [
+        {
+          "adjEq": "",
+          "availEq": "",
+          "borrowFroz": "",
+          "delta": "",
+          "deltaLever": "",
+          "deltaNeutralStatus": "",
+          "details": [
+            {
+              "accAvgPx": "82896.4674774775",
+              "autoLendAmt": "0",
+              "autoLendMtAmt": "0",
+              "autoLendStatus": "unsupported",
+              "autoStakingStatus": "unsupported",
+              "availBal": "1.00000000936",
+              "availEq": "",
+              "borrowFroz": "",
+              "cashBal": "1.00000000936",
+              "ccy": "BTC",
+              "clSpotInUseAmt": "",
+              "colBorrAutoConversion": "0",
+              "colRes": "0",
+              "collateralEnabled": false,
+              "collateralRestrict": false,
+              "crossLiab": "",
+              "disEq": "0",
+              "eq": "1.00000000936",
+              "eqUsd": "82814.30077514186",
+              "fixedBal": "0",
+              "frozenBal": "0",
+              "frpType": "0",
+              "imr": "",
+              "interest": "",
+              "isoEq": "0",
+              "isoLiab": "",
+              "isoUpl": "",
+              "liab": "",
+              "maxLoan": "",
+              "maxSpotInUse": "",
+              "mgnRatio": "",
+              "mmr": "",
+              "notionalLever": "",
+              "openAvgPx": "82813.57101",
+              "ordFrozen": "0",
+              "rewardBal": "",
+              "smtSyncEq": "0",
+              "spotBal": "0.0002204193599999",
+              "spotCopyTradingEq": "0",
+              "spotInUseAmt": "",
+              "spotIsoBal": "0",
+              "spotUpl": "0.0001606835092471",
+              "spotUplRatio": "0.0000088027842673",
+              "stgyEq": "0",
+              "totalPnl": "-0.018111302798399",
+              "totalPnlRatio": "-0.0009912060185172",
+              "twap": "0",
+              "uTime": "1791634460158",
+              "upl": "",
+              "uplLiab": ""
+            },
+            {
+              "accAvgPx": "",
+              "autoLendAmt": "0",
+              "autoLendMtAmt": "0",
+              "autoLendStatus": "unsupported",
+              "autoStakingStatus": "unsupported",
+              "availBal": "100",
+              "availEq": "",
+              "borrowFroz": "",
+              "cashBal": "100",
+              "ccy": "OKB",
+              "clSpotInUseAmt": "",
+              "colBorrAutoConversion": "0",
+              "colRes": "0",
+              "collateralEnabled": false,
+              "collateralRestrict": false,
+              "crossLiab": "",
+              "disEq": "0",
+              "eq": "100",
+              "eqUsd": "12610.4",
+              "fixedBal": "0",
+              "frozenBal": "0",
+              "frpType": "0",
+              "imr": "",
+              "interest": "",
+              "isoEq": "0",
+              "isoLiab": "",
+              "isoUpl": "",
+              "liab": "",
+              "maxLoan": "",
+              "maxSpotInUse": "",
+              "mgnRatio": "",
+              "mmr": "",
+              "notionalLever": "",
+              "openAvgPx": "",
+              "ordFrozen": "0",
+              "rewardBal": "",
+              "smtSyncEq": "0",
+              "spotBal": "",
+              "spotCopyTradingEq": "0",
+              "spotInUseAmt": "",
+              "spotIsoBal": "0",
+              "spotUpl": "",
+              "spotUplRatio": "",
+              "stgyEq": "0",
+              "totalPnl": "",
+              "totalPnlRatio": "",
+              "twap": "0",
+              "uTime": "1791629156966",
+              "upl": "",
+              "uplLiab": ""
+            },
+            {
+              "accAvgPx": "",
+              "autoLendAmt": "0",
+              "autoLendMtAmt": "0",
+              "autoLendStatus": "unsupported",
+              "autoStakingStatus": "unsupported",
+              "availBal": "4999.962643946551",
+              "availEq": "",
+              "borrowFroz": "",
+              "cashBal": "4999.962643946551",
+              "ccy": "USDT",
+              "clSpotInUseAmt": "",
+              "colBorrAutoConversion": "0",
+              "colRes": "0",
+              "collateralEnabled": false,
+              "collateralRestrict": false,
+              "crossLiab": "",
+              "disEq": "0",
+              "eq": "4999.962643946551",
+              "eqUsd": "4995.41267794056",
+              "fixedBal": "0",
+              "frozenBal": "0",
+              "frpType": "0",
+              "imr": "",
+              "interest": "",
+              "isoEq": "0",
+              "isoLiab": "",
+              "isoUpl": "",
+              "liab": "",
+              "maxLoan": "",
+              "maxSpotInUse": "",
+              "mgnRatio": "",
+              "mmr": "",
+              "notionalLever": "",
+              "openAvgPx": "",
+              "ordFrozen": "0",
+              "rewardBal": "",
+              "smtSyncEq": "0",
+              "spotBal": "",
+              "spotCopyTradingEq": "0",
+              "spotInUseAmt": "",
+              "spotIsoBal": "0",
+              "spotUpl": "",
+              "spotUplRatio": "",
+              "stgyEq": "0",
+              "totalPnl": "",
+              "totalPnlRatio": "",
+              "twap": "0",
+              "uTime": "1791634460158",
+              "upl": "",
+              "uplLiab": ""
+            },
+            {
+              "accAvgPx": "",
+              "autoLendAmt": "0",
+              "autoLendMtAmt": "0",
+              "autoLendStatus": "unsupported",
+              "autoStakingStatus": "off",
+              "availBal": "1",
+              "availEq": "",
+              "borrowFroz": "",
+              "cashBal": "1",
+              "ccy": "ETH",
+              "clSpotInUseAmt": "",
+              "colBorrAutoConversion": "0",
+              "colRes": "0",
+              "collateralEnabled": false,
+              "collateralRestrict": false,
+              "crossLiab": "",
+              "disEq": "0",
+              "eq": "1",
+              "eqUsd": "2494.55",
+              "fixedBal": "0",
+              "frozenBal": "0",
+              "frpType": "0",
+              "imr": "",
+              "interest": "",
+              "isoEq": "0",
+              "isoLiab": "",
+              "isoUpl": "",
+              "liab": "",
+              "maxLoan": "",
+              "maxSpotInUse": "",
+              "mgnRatio": "",
+              "mmr": "",
+              "notionalLever": "",
+              "openAvgPx": "",
+              "ordFrozen": "0",
+              "rewardBal": "",
+              "smtSyncEq": "0",
+              "spotBal": "",
+              "spotCopyTradingEq": "0",
+              "spotInUseAmt": "",
+              "spotIsoBal": "0",
+              "spotUpl": "",
+              "spotUplRatio": "",
+              "stgyEq": "0",
+              "totalPnl": "",
+              "totalPnlRatio": "",
+              "twap": "0",
+              "uTime": "1791629156974",
+              "upl": "",
+              "uplLiab": ""
+            }
+          ],
+          "imr": "",
+          "isoEq": "",
+          "mgnRatio": "",
+          "mmr": "",
+          "notionalUsd": "",
+          "notionalUsdForBorrow": "",
+          "notionalUsdForFutures": "",
+          "notionalUsdForOption": "",
+          "notionalUsdForSwap": "",
+          "ordFroz": "",
+          "totalEq": "102914.66345308242",
+          "uTime": "1791634463056",
+          "upl": ""
+        }
+      ],
+      "msg": ""
+    }
+  }
+}

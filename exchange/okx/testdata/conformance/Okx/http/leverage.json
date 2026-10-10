@@ -1,0 +1,154 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://www.okx.com",
+    "path": "/api/v5/account/leverage-info",
+    "query": "instId=BTC-USDT-SWAP&mgnMode=cross",
+    "header": [
+      {
+        "name": "OK-ACCESS-KEY",
+        "value": "REDACTED"
+      },
+      {
+        "name": "OK-ACCESS-SIGN",
+        "value": "REDACTED"
+      },
+      {
+        "name": "OK-ACCESS-TIMESTAMP",
+        "value": "2026-10-10T12:14:18.663Z"
+      },
+      {
+        "name": "OK-ACCESS-PASSPHRASE",
+        "value": "REDACTED"
+      },
+      {
+        "name": "User-Agent",
+        "value": "mftiko"
+      },
+      {
+        "name": "x-simulated-trading",
+        "value": "1"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "header": [
+      {
+        "name": "Content-Length",
+        "value": "112"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json;charset=UTF-8"
+      },
+      {
+        "name": "Server",
+        "value": "cloudflare"
+      },
+      {
+        "name": "Set-Cookie",
+        "value": "locale=en-US; Max-Age=604800; Expires=Sat, 17 Oct 2026 12:14:18 GMT; Path=/"
+      },
+      {
+        "name": "Set-Cookie",
+        "value": "__cf_bm=Ko9l19gvkMLDQnBqqOY9u.MJyyZh1CoPCVMnwnX_84s-1791634458.7148633-1.0.1.1-OLuajX7ZOWmTGb6MD2z9iMUf2vEW1XFze_btNRD_5NzxR9XG1CAc0tx6NzJq8qCLllOLUMLAZKssgVvB2Mm4VTEufJ_NFF8Nk9wfvdWkv1VGCTiFHA_jlshfanX2eoWa; HttpOnly; SameSite=None; Secure; Path=/; Domain=okx.com; Expires=Sat, 10 Oct 2026 12:44:18 GMT"
+      },
+      {
+        "name": "Date",
+        "value": "Sat, 10 Oct 2026 12:14:18 GMT"
+      },
+      {
+        "name": "Connection",
+        "value": "keep-alive"
+      },
+      {
+        "name": "CF-Ray",
+        "value": "a4858b46fb488f00-TPE"
+      },
+      {
+        "name": "CF-Cache-Status",
+        "value": "DYNAMIC"
+      },
+      {
+        "name": "Cache-Control",
+        "value": "no-cache, no-store, max-age=0, must-revalidate"
+      },
+      {
+        "name": "Expires",
+        "value": "0"
+      },
+      {
+        "name": "x-xss-protection",
+        "value": "1; mode=block"
+      },
+      {
+        "name": "x-xss-protection",
+        "value": "1; mode=block"
+      },
+      {
+        "name": "Strict-Transport-Security",
+        "value": "max-age=31536000 ; includeSubDomains, max-age=31536000; includeSubDomains"
+      },
+      {
+        "name": "Vary",
+        "value": "Origin"
+      },
+      {
+        "name": "Pragma",
+        "value": "no-cache"
+      },
+      {
+        "name": "b-locale",
+        "value": "en_US"
+      },
+      {
+        "name": "content-security-policy",
+        "value": "frame-ancestors 'self'"
+      },
+      {
+        "name": "x-brokerid",
+        "value": "9999"
+      },
+      {
+        "name": "x-content-type-options",
+        "value": "nosniff"
+      },
+      {
+        "name": "x-content-type-options",
+        "value": "nosniff"
+      },
+      {
+        "name": "x-frame-options",
+        "value": "SAMEORIGIN"
+      },
+      {
+        "name": "x-frame-options",
+        "value": "DENY"
+      },
+      {
+        "name": "x-routed-to",
+        "value": "TKY"
+      }
+    ],
+    "body": {
+      "code": "0",
+      "data": [
+        {
+          "ccy": "",
+          "instId": "BTC-USDT-SWAP",
+          "lever": "3",
+          "mgnMode": "cross",
+          "posSide": "net"
+        }
+      ],
+      "msg": ""
+    }
+  }
+}
