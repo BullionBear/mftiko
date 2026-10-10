@@ -50,9 +50,19 @@ func running(term *Term) bool {
 	}
 }
 
+// singleRegion is one region, tw, on the shared server, with instances at home in it.
 func singleRegion(t *testing.T, instances ...string) (*etcdtest.Server, Topology) {
 	t.Helper()
-	s := etcdtest.Start(t)
+	return regionOn(shared.Take(t), instances...)
+}
+
+// privateRegion is singleRegion on a server of the test's own.
+func privateRegion(t *testing.T, instances ...string) (*etcdtest.Server, Topology) {
+	t.Helper()
+	return regionOn(etcdtest.Start(t), instances...)
+}
+
+func regionOn(s *etcdtest.Server, instances ...string) (*etcdtest.Server, Topology) {
 	m := map[string]string{}
 	for _, inst := range instances {
 		m[inst] = "tw"
@@ -269,7 +279,7 @@ func TestBumpEpochGivesUp(t *testing.T) {
 
 func TestSessionLost(t *testing.T) {
 	ctx := testCtx(t)
-	s, topo := singleRegion(t, "sts-tw-1")
+	s, topo := privateRegion(t, "sts-tw-1") // a non-default session TTL
 	raw := s.Client(t)
 	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "sts-tw-1")), PlaneSTS, "sts-tw-1", TermOptions{SessionTTL: testSessionTTL})
 	if !running(term) {
@@ -294,9 +304,10 @@ func TestSessionLost(t *testing.T) {
 	}
 }
 
+// twoServers are two regions, two clusters: tw on the shared server, jp on one of the test's own.
 func twoServers(t *testing.T) (tw, jp *etcdtest.Server, topo Topology) {
 	t.Helper()
-	tw, jp = etcdtest.Start(t), etcdtest.Start(t)
+	tw, jp = shared.Take(t), etcdtest.Start(t)
 	return tw, jp, topologyOf(map[string]*etcdtest.Server{"tw": tw, "jp": jp}, twoRegions().Instances)
 }
 
@@ -584,7 +595,7 @@ func holding(term *Term, region string) bool {
 // their own ctx allows, and the stuck call still honours its ctx.
 func TestFenceWaitHonoursCtx(t *testing.T) {
 	ctx := testCtx(t)
-	tw := etcdtest.Start(t)
+	tw := shared.Take(t)
 	topo := Topology{
 		Regions:   map[string]Region{"tw": {Endpoints: tw.Endpoints()}, "jp": {Endpoints: []string{unusedEndpoint(t)}}},
 		Instances: twoRegions().Instances,

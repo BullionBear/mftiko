@@ -425,7 +425,7 @@ func TestSupersededByNewLeader(t *testing.T) {
 // The other order: A's lease goes and A notices first. A stops writing on its own, before etcd is asked.
 func TestSessionLostThenNewLeader(t *testing.T) {
 	ctx := testCtx(t)
-	s, topo := singleRegion(t, "td-tw-1")
+	s, topo := privateRegion(t, "td-tw-1") // a non-default session TTL
 	raw := s.Client(t)
 	key := WorkerStatusKey(PlaneTD, "td-tw-1", WorkerHash("td/42"))
 

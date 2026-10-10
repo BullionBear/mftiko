@@ -91,7 +91,7 @@ func TestPutRecord(t *testing.T) {
 // known state; nothing is reclaimed.
 func TestRecordGoesWithTheAgent(t *testing.T) {
 	ctx := testCtx(t)
-	s := etcdtest.Start(t)
+	s := etcdtest.Start(t) // a non-default session TTL
 	proxy := etcdtest.NewProxy(t, s)
 	raw := s.Client(t)
 	topo := Topology{Regions: map[string]Region{"tw": {Endpoints: proxy.Endpoints()}}, Instances: map[string]string{"td-tw-1": "tw"}}
@@ -165,7 +165,7 @@ func TestRecordHandover(t *testing.T) {
 // is no longer renewed once the term ends.
 func TestRecordGoesWithSupersededTerm(t *testing.T) {
 	ctx := testCtx(t)
-	s, topo := singleRegion(t, "sts-tw-1")
+	s, topo := privateRegion(t, "sts-tw-1") // a non-default session TTL
 	raw := s.Client(t)
 	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "sts-tw-1")), PlaneSTS, "sts-tw-1", TermOptions{SessionTTL: testSessionTTL})
 	record := AgentKey(PlaneSTS, "sts-tw-1")
