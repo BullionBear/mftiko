@@ -143,7 +143,7 @@ func TestNewClustersRejects(t *testing.T) {
 
 func TestClustersSingleRegion(t *testing.T) {
 	ctx := testCtx(t)
-	s := etcdtest.Start(t)
+	s := shared.Take(t)
 	topo := topologyOf(map[string]*etcdtest.Server{"tw": s}, map[string]string{"sts-tw-1": "tw", "md-tw-1": "tw"})
 	cl := newClusters(t, topo, nil, as(t, topo, "md-tw-1"))
 
@@ -186,7 +186,7 @@ func TestClustersSingleRegion(t *testing.T) {
 
 func TestClustersTwoRegions(t *testing.T) {
 	ctx := testCtx(t)
-	tw, jp := etcdtest.Start(t), etcdtest.Start(t)
+	tw, jp := shared.Take(t), etcdtest.Start(t)
 	topo := topologyOf(map[string]*etcdtest.Server{"tw": tw, "jp": jp}, twoRegions().Instances)
 	rawTW, rawJP := tw.Client(t), jp.Client(t)
 

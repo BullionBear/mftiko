@@ -373,7 +373,7 @@ func TestMirrorCompactedMidList(t *testing.T) {
 // not behind it.
 func proxied(t *testing.T) (*etcdtest.Server, *etcdtest.Proxy, *clientv3.Client, Reader) {
 	t.Helper()
-	s := etcdtest.Start(t)
+	s := shared.Take(t)
 	p := etcdtest.NewProxy(t, s)
 	topo := Topology{Regions: map[string]Region{"tw": {Endpoints: p.Endpoints()}}, Instances: map[string]string{"td-tw-1": "tw"}}
 	r, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
@@ -445,7 +445,7 @@ func TestMirrorReconnects(t *testing.T) {
 // etcd itself restarts: same data, same endpoint. The mirror carries on and sees writes made afterwards.
 func TestMirrorServerRestart(t *testing.T) {
 	ctx := testCtx(t)
-	s, topo := singleRegion(t, "td-tw-1")
+	s, topo := privateRegion(t, "td-tw-1")
 	raw := s.Client(t)
 	r, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
 	if err != nil {
@@ -944,7 +944,7 @@ func TestMirrorClusterReplaced(t *testing.T) {
 // The cluster is rebuilt from nothing: same cluster ID, revisions start over. The probe sees the revision go back.
 func TestMirrorClusterRebuilt(t *testing.T) {
 	ctx := testCtx(t)
-	s, topo := singleRegion(t, "td-tw-1")
+	s, topo := privateRegion(t, "td-tw-1")
 	raw := s.Client(t)
 	r, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
 	if err != nil {
