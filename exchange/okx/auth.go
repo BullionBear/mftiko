@@ -72,9 +72,11 @@ func (a *account) passphrase() error {
 	return nil
 }
 
-func (a *account) restBase() string {
-	if a.cfg.RESTEndpoint != "" {
-		return strings.TrimRight(a.cfg.RESTEndpoint, "/")
+func (a *account) restBase() string { return restHost(a.cfg) }
+
+func restHost(cfg exchange.AccountConfig) string {
+	if cfg.RESTEndpoint != "" {
+		return strings.TrimRight(cfg.RESTEndpoint, "/")
 	}
 	return prodREST
 }
@@ -95,10 +97,16 @@ func (a *account) privateURL() string {
 // sign builds one signed request. The prehash is timestamp + method + path + query + body.
 // timestamp is UTC with milliseconds. The body is the bytes that are sent (D008).
 func (a *account) sign(now time.Time, method, path, query string, body []byte, cost []exchange.Cost, mutates bool) (exchange.HTTPRequest, error) {
-	if err := a.passphrase(); err != nil {
-		return exchange.HTTPRequest{}, err
+	return signCfg(&a.signerState, a.cfg, now, method, path, query, body, cost, mutates)
+}
+
+// signCfg is the same signature account.sign builds. History signs with it too: the backfill
+// job does not start an account worker (D601).
+func signCfg(st *signerState, cfg exchange.AccountConfig, now time.Time, method, path, query string, body []byte, cost []exchange.Cost, mutates bool) (exchange.HTTPRequest, error) {
+	if cfg.Credentials.Passphrase == "" {
+		return exchange.HTTPRequest{}, errors.New("okx: passphrase is empty")
 	}
-	sig, err := a.signer()
+	sig, err := st.signer(cfg.Credentials)
 	if err != nil {
 		return exchange.HTTPRequest{}, err
 	}
@@ -113,25 +121,25 @@ func (a *account) sign(now time.Time, method, path, query string, body []byte, c
 	}
 	prehash = append(prehash, body...)
 	header := []exchange.Header{
-		{Name: "OK-ACCESS-KEY", Value: a.cfg.Credentials.Key},
+		{Name: "OK-ACCESS-KEY", Value: cfg.Credentials.Key},
 		{Name: "OK-ACCESS-SIGN", Value: string(sig.SignBase64(nil, prehash))},
 		{Name: "OK-ACCESS-TIMESTAMP", Value: ts},
-		{Name: "OK-ACCESS-PASSPHRASE", Value: a.cfg.Credentials.Passphrase},
+		{Name: "OK-ACCESS-PASSPHRASE", Value: cfg.Credentials.Passphrase},
 		{Name: "User-Agent", Value: userAgent},
 	}
-	if a.cfg.Simulated {
+	if cfg.Simulated {
 		header = append(header, exchange.Header{Name: "x-simulated-trading", Value: "1"})
 	}
 	if method == http.MethodPost {
 		header = append(header, exchange.Header{Name: "Content-Type", Value: "application/json"})
 	}
 	return exchange.HTTPRequest{
-		Method: method, Base: a.restBase(), Path: path,
+		Method: method, Base: restHost(cfg), Path: path,
 		Query: []byte(query), Header: header, Body: body, Cost: cost, Mutates: mutates,
 	}, nil
 }
 
-func (a *account) get(now time.Time, path string, pairs []pair, cost []exchange.Cost) (exchange.HTTPRequest, error) {
+func queryString(pairs []pair) string {
 	var q codec.Query
 	for _, p := range pairs {
 		if p.v == "" {
@@ -139,7 +147,11 @@ func (a *account) get(now time.Time, path string, pairs []pair, cost []exchange.
 		}
 		q = q.Add(p.k, p.v)
 	}
-	return a.sign(now, http.MethodGet, path, string(q), nil, cost, false)
+	return string(q)
+}
+
+func (a *account) get(now time.Time, path string, pairs []pair, cost []exchange.Cost) (exchange.HTTPRequest, error) {
+	return a.sign(now, http.MethodGet, path, queryString(pairs), nil, cost, false)
 }
 
 func (a *account) post(now time.Time, path string, body any, cost []exchange.Cost, mutates bool) (exchange.HTTPRequest, error) {
