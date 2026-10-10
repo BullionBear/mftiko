@@ -1,0 +1,65 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://api.binance.com",
+    "path": "/api/v3/klines",
+    "query": "symbol=BTCUSDT&interval=1m&limit=5",
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 2
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": [
+    {
+      "Close": 82830.9,
+      "Closed": true,
+      "ExchTsNs": 1791619499999000000,
+      "High": 82831.03,
+      "Interval": "1m",
+      "Low": 82830.01,
+      "Open": 82831.02,
+      "OpenTimeNs": 1791619440000000000,
+      "QuoteVolume": 405261.3569657,
+      "Volume": 4.89263
+    },
+    {
+      "Close": 82837.76,
+      "Closed": true,
+      "ExchTsNs": 1791619559999000000,
+      "High": 82837.76,
+      "Interval": "1m",
+      "Low": 82830.9,
+      "Open": 82830.91,
+      "OpenTimeNs": 1791619500000000000,
+      "QuoteVolume": 367966.0339208,
+      "Volume": 4.44214
+    },
+    {
+      "Close": 82837.75,
+      "Closed": true,
+      "ExchTsNs": 1791619619999000000,
+      "High": 82837.76,
+      "Interval": "1m",
+      "Low": 82837.75,
+      "Open": 82837.76,
+      "OpenTimeNs": 1791619560000000000,
+      "QuoteVolume": 70107.2518221,
+      "Volume": 0.84632
+    },
+    {
+      "Close": 82837.76,
+      "Closed": true,
+      "ExchTsNs": 1791619679999000000,
+      "High": 82837.76,
+      "Interval": "1m",
+      "Low": 82837.75,
+      "Open": 82837.76,
+      "OpenTimeNs": 1791619620000000000,
+      "QuoteVolume": 75794.8933389,
+      "Volume": 0.91498
+    }
+  ]
+}

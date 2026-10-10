@@ -2,7 +2,9 @@ package binance
 
 import (
 	"fmt"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/BullionBear/mftiko/contract/symbol"
@@ -11,24 +13,33 @@ import (
 	"github.com/BullionBear/mftiko/exchange/internal/codec"
 )
 
-// rest is the public REST reader. UM is implemented (fapi); spot, CM and EO are not.
+// rest is the public REST reader. UM (fapi) and spot (api) are implemented; CM and EO are not.
 type rest struct{ p product }
 
 var _ exchange.PublicREST = (*rest)(nil)
 
 const (
-	klinePage = 1500
-	depthFull = 1000
+	klinePage     = 1500
+	spotKlinePage = 1000
+	depthFull     = 1000
 )
 
 func (r *rest) Listing(c symbol.Category) (exchange.Call[exchange.Page[symbol.Listing]], error) {
-	if r.p.venue.Name != VenueUM {
+	switch r.p.venue.Name {
+	case VenueUM:
+		return r.umListing(c)
+	case VenueSpot:
+		return r.spotListing(c)
+	default:
 		return exchange.Call[exchange.Page[symbol.Listing]]{}, exchange.ErrNotImplemented
 	}
+}
+
+func (r *rest) umListing(c symbol.Category) (exchange.Call[exchange.Page[symbol.Listing]], error) {
 	if c != symbol.Perp && c != symbol.Future {
 		return exchange.Call[exchange.Page[symbol.Listing]]{}, fmt.Errorf("binance: %s does not list %s", VenueUM, c)
 	}
-	req := publicCall("/fapi/v1/exchangeInfo", nil, 1)
+	req := publicCall(prodREST, "/fapi/v1/exchangeInfo", nil, 1)
 	return exchange.Call[exchange.Page[symbol.Listing]]{
 		Req: req,
 		Parse: func(resp *exchange.HTTPResponse) (exchange.Page[symbol.Listing], error) {
@@ -37,47 +48,76 @@ func (r *rest) Listing(c symbol.Category) (exchange.Call[exchange.Page[symbol.Li
 	}, nil
 }
 
+func (r *rest) spotListing(c symbol.Category) (exchange.Call[exchange.Page[symbol.Listing]], error) {
+	if c != symbol.Spot {
+		return exchange.Call[exchange.Page[symbol.Listing]]{}, fmt.Errorf("binance: %s does not list %s", VenueSpot, c)
+	}
+	// showPermissionSets=false leaves out permissionSets. The listing does not read it, and the
+	// field is most of the payload.
+	q := codec.Query(nil).Add("permissions", "SPOT").Add("showPermissionSets", "false")
+	return exchange.Call[exchange.Page[symbol.Listing]]{
+		Req:   publicCall(spotREST, "/api/v3/exchangeInfo", q, 20),
+		Parse: parseSpotListing,
+	}, nil
+}
+
 func (r *rest) Depth(inst *symbol.Info, limit int) (exchange.Call[*exchange.BookUpdate], error) {
-	if r.p.venue.Name != VenueUM {
+	switch r.p.venue.Name {
+	case VenueUM:
+		return r.depth(inst, VenueUM, prodREST, "/fapi/v1/depth", limit, depthWeight)
+	case VenueSpot:
+		return r.depth(inst, VenueSpot, spotREST, "/api/v3/depth", limit, spotDepthWeight)
+	default:
 		return exchange.Call[*exchange.BookUpdate]{}, exchange.ErrNotImplemented
 	}
-	if err := instrument(inst); err != nil {
+}
+
+func (r *rest) depth(inst *symbol.Info, venue, base, path string, limit int, weight func(int) int) (exchange.Call[*exchange.BookUpdate], error) {
+	if err := instrumentVenue(inst, venue); err != nil {
 		return exchange.Call[*exchange.BookUpdate]{}, err
 	}
 	if limit <= 0 {
 		limit = depthFull
 	}
-	w := depthWeight(limit)
+	w := weight(limit)
 	if w == 0 {
 		return exchange.Call[*exchange.BookUpdate]{}, fmt.Errorf("binance: depth limit %d", limit)
 	}
 	q := codec.Query(nil).Add("symbol", inst.ExchTicker).AddInt("limit", int64(limit))
 	return exchange.Call[*exchange.BookUpdate]{
-		Req:   publicCall("/fapi/v1/depth", q, w),
+		Req:   publicCall(base, path, q, w),
 		Parse: parseDepth,
 	}, nil
 }
 
 func (r *rest) Klines(inst *symbol.Info, interval string, endNs int64, limit int) (exchange.Call[[]exchange.Kline], error) {
-	if r.p.venue.Name != VenueUM {
+	switch r.p.venue.Name {
+	case VenueUM:
+		return r.klines(inst, VenueUM, prodREST, "/fapi/v1/klines", klinePage, klineWeight, interval, endNs, limit)
+	case VenueSpot:
+		return r.klines(inst, VenueSpot, spotREST, "/api/v3/klines", spotKlinePage, func(int) int { return 2 }, interval, endNs, limit)
+	default:
 		return exchange.Call[[]exchange.Kline]{}, exchange.ErrNotImplemented
 	}
-	if err := instrument(inst); err != nil {
+}
+
+func (r *rest) klines(inst *symbol.Info, venue, base, path string, page int, weight func(int) int, interval string, endNs int64, limit int) (exchange.Call[[]exchange.Kline], error) {
+	if err := instrumentVenue(inst, venue); err != nil {
 		return exchange.Call[[]exchange.Kline]{}, err
 	}
 	wire, ok := wireInterval(interval)
 	if !ok {
 		return exchange.Call[[]exchange.Kline]{}, fmt.Errorf("binance: kline interval %q: %w", interval, exchange.ErrUnsupported)
 	}
-	if limit <= 0 || limit > klinePage {
-		limit = klinePage
+	if limit <= 0 || limit > page {
+		limit = page
 	}
 	q := codec.Query(nil).Add("symbol", inst.ExchTicker).Add("interval", wire).AddInt("limit", int64(limit))
 	if endNs != 0 {
 		q = q.AddInt("endTime", endNs/int64(msUnit))
 	}
 	return exchange.Call[[]exchange.Kline]{
-		Req: publicCall("/fapi/v1/klines", q, klineWeight(limit)),
+		Req: publicCall(base, path, q, weight(limit)),
 		Parse: func(resp *exchange.HTTPResponse) ([]exchange.Kline, error) {
 			return parseKlines(resp, interval, endNs)
 		},
@@ -85,14 +125,22 @@ func (r *rest) Klines(inst *symbol.Info, interval string, endNs int64, limit int
 }
 
 func (r *rest) KlinePage() int {
-	if r.p.venue.Name != VenueUM {
+	switch r.p.venue.Name {
+	case VenueUM:
+		return klinePage
+	case VenueSpot:
+		return spotKlinePage
+	default:
 		return 0
 	}
-	return klinePage
 }
 
 func (r *rest) OpenInterest(inst *symbol.Info) (exchange.Call[*exchange.OpenInterest], error) {
-	if r.p.venue.Name != VenueUM {
+	switch r.p.venue.Name {
+	case VenueSpot:
+		return exchange.Call[*exchange.OpenInterest]{}, exchange.ErrUnsupported
+	case VenueUM:
+	default:
 		return exchange.Call[*exchange.OpenInterest]{}, exchange.ErrNotImplemented
 	}
 	if err := instrument(inst); err != nil {
@@ -100,17 +148,17 @@ func (r *rest) OpenInterest(inst *symbol.Info) (exchange.Call[*exchange.OpenInte
 	}
 	q := codec.Query(nil).Add("symbol", inst.ExchTicker)
 	return exchange.Call[*exchange.OpenInterest]{
-		Req:   publicCall("/fapi/v1/openInterest", q, 1),
+		Req:   publicCall(prodREST, "/fapi/v1/openInterest", q, 1),
 		Parse: parseOpenInterest,
 	}, nil
 }
 
 func (r *rest) Usage(resp *exchange.HTTPResponse) []exchange.Used { return usedFrom(resp) }
 
-func publicCall(path string, q codec.Query, weight int) exchange.HTTPRequest {
+func publicCall(base, path string, q codec.Query, weight int) exchange.HTTPRequest {
 	return exchange.HTTPRequest{
 		Method: http.MethodGet,
-		Base:   prodREST,
+		Base:   base,
 		Path:   path,
 		Query:  []byte(q),
 		Cost:   weightCost(weight),
@@ -148,6 +196,22 @@ func klineWeight(limit int) int {
 	}
 }
 
+// spotDepthWeight is GET /api/v3/depth. The bands are 100, 500, 1000 and 5000.
+func spotDepthWeight(limit int) int {
+	switch {
+	case limit >= 1 && limit <= 100:
+		return 5
+	case limit <= 500:
+		return 25
+	case limit <= 1000:
+		return 50
+	case limit <= 5000:
+		return 250
+	default:
+		return 0
+	}
+}
+
 func okStatus(resp *exchange.HTTPResponse) error {
 	if resp == nil {
 		return fmt.Errorf("binance: no response")
@@ -170,14 +234,15 @@ type infoSymbol struct {
 }
 
 type infoFilter struct {
-	Type     string        `json:"filterType"`
-	MinPrice codec.Decimal `json:"minPrice"`
-	MaxPrice codec.Decimal `json:"maxPrice"`
-	Tick     codec.Decimal `json:"tickSize"`
-	Step     codec.Decimal `json:"stepSize"`
-	MinQty   codec.Decimal `json:"minQty"`
-	MaxQty   codec.Decimal `json:"maxQty"`
-	Notional codec.Decimal `json:"notional"`
+	Type        string        `json:"filterType"`
+	MinPrice    codec.Decimal `json:"minPrice"`
+	MaxPrice    codec.Decimal `json:"maxPrice"`
+	Tick        codec.Decimal `json:"tickSize"`
+	Step        codec.Decimal `json:"stepSize"`
+	MinQty      codec.Decimal `json:"minQty"`
+	MaxQty      codec.Decimal `json:"maxQty"`
+	Notional    codec.Decimal `json:"notional"`
+	MinNotional codec.Decimal `json:"minNotional"`
 }
 
 func parseListing(resp *exchange.HTTPResponse, want symbol.Category) (exchange.Page[symbol.Listing], error) {
@@ -201,6 +266,93 @@ func parseListing(resp *exchange.HTTPResponse, want symbol.Category) (exchange.P
 		}
 	}
 	return exchange.Page[symbol.Listing]{Items: items}, nil
+}
+
+func parseSpotListing(resp *exchange.HTTPResponse) (exchange.Page[symbol.Listing], error) {
+	if err := okStatus(resp); err != nil {
+		return exchange.Page[symbol.Listing]{}, err
+	}
+	var body struct {
+		Symbols []infoSymbol `json:"symbols"`
+	}
+	if err := codec.DecodeBody(resp.Body, &body); err != nil {
+		return exchange.Page[symbol.Listing]{}, err
+	}
+	items := make([]symbol.Listing, 0, len(body.Symbols))
+	for _, s := range body.Symbols {
+		item, ok := oneSpot(s)
+		if ok {
+			items = append(items, item)
+		}
+	}
+	return exchange.Page[symbol.Listing]{Items: items}, nil
+}
+
+// oneSpot keeps a spot symbol SYM can store. A row with no positive tick or step, an asset
+// code that is not canonical, or a tick or step that does not fit 15 significant digits (D008)
+// is left out. Spot has no contract size and no settlement asset.
+func oneSpot(s infoSymbol) (symbol.Listing, bool) {
+	base, err := symbol.CanonicalAsset(s.Base)
+	if err != nil {
+		return symbol.Listing{}, false
+	}
+	quote, err := symbol.CanonicalAsset(s.Quote)
+	if err != nil {
+		return symbol.Listing{}, false
+	}
+	filters, err := listingFilters(s.Filters)
+	if err != nil || !fitsFloat(filters) {
+		return symbol.Listing{}, false
+	}
+	item := symbol.Listing{
+		Venue: VenueSpot, Category: symbol.Spot, Base: base, Quote: quote, ExchTicker: s.Symbol,
+		ContractValueCcy: base, PriceCcy: quote, Status: spotStatus(s.Status), Filters: filters,
+	}
+	if item.Validate() != nil {
+		return symbol.Listing{}, false
+	}
+	if _, err := item.Ticker(); err != nil {
+		return symbol.Listing{}, false
+	}
+	return item, true
+}
+
+func spotStatus(s string) symbol.Status {
+	switch s {
+	case "TRADING":
+		return symbol.Tradable
+	case "PRE_TRADING":
+		return symbol.Prelisting
+	case "HALT", "AUCTION_MATCH", "POST_TRADING", "END_OF_DAY":
+		return symbol.Halted
+	default:
+		return symbol.Unknown
+	}
+}
+
+// fitsFloat is the D008 bound conformance checks: the largest price and quantity, written at
+// the step's decimals, have at most 15 significant digits and survive a text round trip.
+func fitsFloat(f symbol.Filters) bool {
+	for _, pair := range [][2]string{{symbol.PriceTick, symbol.MaxPrice}, {symbol.QtyStep, symbol.MaxQty}} {
+		step := f[pair[0]]
+		top := f[pair[1]]
+		if !(top > 0) || math.IsInf(top, 0) {
+			top = 1e7
+		}
+		if !(step > 0) || math.IsInf(step, 0) {
+			return false
+		}
+		digits := len(strconv.FormatFloat(math.Floor(top), 'f', 0, 64)) + decimal.Places(step)
+		if digits > 15 {
+			return false
+		}
+		v := decimal.Snap(top, step)
+		back, err := decimal.Parse(decimal.Format(v, step))
+		if err != nil || decimal.Format(back, step) != decimal.Format(v, step) {
+			return false
+		}
+	}
+	return true
 }
 
 func oneListing(s infoSymbol) (symbol.Listing, bool, error) {
@@ -295,6 +447,12 @@ func listingFilters(in []infoFilter) (symbol.Filters, error) {
 			out[symbol.MaxQty] = float64(f.MaxQty)
 		case "MIN_NOTIONAL":
 			out[symbol.MinNotional] = float64(f.Notional)
+		case "NOTIONAL":
+			n := float64(f.MinNotional)
+			if n == 0 {
+				n = float64(f.Notional)
+			}
+			out[symbol.MinNotional] = n
 		}
 	}
 	if !(tick > 0) || !(step > 0) {

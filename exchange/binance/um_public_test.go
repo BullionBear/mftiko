@@ -442,7 +442,7 @@ func recordPublic(t *testing.T, ctx context.Context, dir string) {
 	if err := replayTape(tp.snapshot()); err != nil {
 		t.Fatal(err)
 	}
-	writeSession(t, dir, "public", "public", "USD-M BTCUSDT bookTicker and diff depth, with a REST snapshot.", tp.snapshot())
+	writeSession(t, dir, "public", VenueUM, "public", "USD-M BTCUSDT bookTicker and diff depth, with a REST snapshot.", tp.snapshot())
 }
 
 func recordMarket(t *testing.T, ctx context.Context, dir string) {
@@ -461,7 +461,7 @@ func recordMarket(t *testing.T, ctx context.Context, dir string) {
 		unsub(t, ctx, conn, sess, ch.name)
 	}
 	stop()
-	writeSession(t, dir, "market", "market", "USD-M BTCUSDT aggTrade, kline, ticker, mark price, and one all-market miniTicker array.", tp.snapshot())
+	writeSession(t, dir, "market", VenueUM, "market", "USD-M BTCUSDT aggTrade, kline, ticker, mark price, and one all-market miniTicker array.", tp.snapshot())
 }
 
 type piece struct {
@@ -520,7 +520,12 @@ func (t *liveTape) snapshotPieces() []piece {
 
 func dialRoute(t *testing.T, ctx context.Context, route string) (*liveTape, *ws.Conn, exchange.Session, func()) {
 	t.Helper()
-	m := &market{p: um}
+	return dialProduct(t, ctx, um, route)
+}
+
+func dialProduct(t *testing.T, ctx context.Context, p product, route string) (*liveTape, *ws.Conn, exchange.Session, func()) {
+	t.Helper()
+	m := &market{p: p}
 	ep, err := m.Endpoint(route, "")
 	if err != nil {
 		t.Fatal(err)
@@ -746,7 +751,7 @@ func replayTape(pieces []piece) error {
 	return nil
 }
 
-func writeSession(t *testing.T, dir, name, route, note string, pieces []piece) {
+func writeSession(t *testing.T, dir, name, venue, route, note string, pieces []piece) {
 	t.Helper()
 	sess := &session{per: um.budget}
 	for i, p := range pieces {
@@ -766,7 +771,7 @@ func writeSession(t *testing.T, dir, name, route, note string, pieces []piece) {
 	}
 	var buf bytes.Buffer
 	w, err := conformance.NewWriter(&buf, conformance.Record{
-		Venue: VenueUM, Side: conformance.SideMkt, Route: route, Note: note,
+		Venue: venue, Side: conformance.SideMkt, Route: route, Note: note,
 	}, time.Now)
 	if err != nil {
 		t.Fatal(err)

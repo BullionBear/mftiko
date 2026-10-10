@@ -57,7 +57,8 @@
 //
 // UM private wire, checked against the USD-M testnet on 2026-10-10. UM public wire, checked the
 // same day against production fapi and fstream. Spot private wire, checked the same day against
-// the spot testnet. CM, EO and PM still return exchange.ErrNotImplemented. Spot market data does too.
+// the spot testnet. Spot public wire, checked the same day against production api.binance.com
+// and stream.binance.com. CM, EO and PM still return exchange.ErrNotImplemented.
 //
 // # Public fields
 //
@@ -109,6 +110,46 @@
 // Open interest is not pushed (D401). GET /fapi/v1/openInterest, weight 1, has no quote value.
 // Depth is GET /fapi/v1/depth. Limits 5, 10, 20 and 50 cost 2, 100 costs 5, 500 costs 10,
 // 1000 costs 20. The book snapshot asks for 1000. Usage reads X-MBX-USED-WEIGHT-1M.
+//
+// # Spot, where it differs from UM
+//
+// One route, "default", on wss://stream.binance.com:9443/ws (the docs also allow :443).
+// JSON SUBSCRIBE, raw events. The combined-stream wrapper is still accepted. Five client
+// messages a second: a ping, a pong and a JSON control message all count. The server pings
+// every 20 seconds and drops the connection if no pong comes back within a minute, so the
+// codec does not also send a client ping. 1024 streams, 24h life, same as UM.
+//
+//	bookTicker        no "e" and no event time, so ExchTsNs stays 0. Fields u, s, b, B, a, A.
+//	                  UM always sends "e":"bookTicker" and a timestamp
+//	depth@100ms       depthUpdate has U and u and no pu. Also @depth (1000ms). Not @250ms or
+//	                  @500ms. Drop an event with u <= lastUpdateId, then the next event's U
+//	                  is at most one past the previous u. UM chains on pu and skips only u < last
+//	aggTrade          the same event as UM. @trade is not subscribed
+//	kline_<interval>  the same interval table as UM, so 1s is not subscribed even though spot
+//	                  offers it. REST klines are at most 1000 and the weight is 2. UM's page
+//	                  is 1500 and the weight steps with the limit
+//	ticker            the same 24hrTicker. 24hrMiniTicker is accepted and still has no P
+//
+// There is no markPrice, forceOrder, funding, or open interest on this socket.
+// OpenInterest returns ErrUnsupported.
+//
+// Listing is GET /api/v3/exchangeInfo?permissions=SPOT&showPermissionSets=false, weight 20,
+// one page. showPermissionSets is false because the listing does not read that field.
+// contract_size is 0 and settle is empty (D203). contract_value_ccy is base and price_ccy is
+// quote. A symbol whose asset code is not canonical, whose tick or step is missing, or whose
+// tick or step does not fit 15 significant digits (D008) is left out.
+//
+//	status            TRADING TRADABLE, PRE_TRADING PRELISTING, HALT AUCTION_MATCH
+//	                  POST_TRADING END_OF_DAY all HALTED. BREAK and anything else is UNKNOWN.
+//	                  UM's PENDING_TRADING, delivery and CLOSE values are not used here
+//	NOTIONAL          min_notional, from minNotional. UM reads MIN_NOTIONAL's notional
+//	PRICE_FILTER      price_tick, min_price, max_price, as on UM
+//	LOT_SIZE          qty_step, min_qty, max_qty, as on UM
+//
+// Depth is GET /api/v3/depth. Weight is 5 up to 100, 25 up to 500, 50 up to 1000 and 250 up
+// to 5000. The book snapshot asks for 1000. lastUpdateId is the snapshot sequence. E and T
+// may be absent, and then the snapshot time stays 0. REST is https://api.binance.com. An
+// endpoint override replaces the websocket host.
 //
 // # Order status
 //

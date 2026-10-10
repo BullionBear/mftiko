@@ -16,6 +16,10 @@ func TestSpotConformance(t *testing.T) { conformance.Run(t, spotSpec()) }
 
 func FuzzDecodeSpotTrade(f *testing.F) { conformance.FuzzDecodeTrade(f, spotSpec()) }
 
+func FuzzDecodeSpotMarket(f *testing.F) {
+	conformance.FuzzDecode(f, spotSpec(), exchange.RouteDefault)
+}
+
 func FuzzDecodePublic(f *testing.F) { conformance.FuzzDecode(f, spec(), "public") }
 
 func FuzzDecodeMarket(f *testing.F) { conformance.FuzzDecode(f, spec(), "market") }
@@ -162,6 +166,8 @@ func spotSpec() conformance.Spec {
 	return conformance.Spec{
 		Venue:   VenueSpot,
 		Dir:     "testdata/conformance/Binance",
+		Market:  &market{p: spot},
+		REST:    &rest{p: spot},
 		Account: accountFactory(kindSpot),
 		History: historyFactory(kindSpot),
 		KeyType: exchange.KeyEd25519,
@@ -201,6 +207,15 @@ func spotSpec() conformance.Spec {
 			}),
 			conformance.Call("order_testnet", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
 				return e.History.Order(e.Now, spotInst(), "1106510")
+			}),
+			conformance.Call("listing_spot", func(e conformance.Env) (exchange.Call[exchange.Page[symbol.Listing]], error) {
+				return e.REST.Listing(symbol.Spot)
+			}),
+			conformance.Call("depth", func(e conformance.Env) (exchange.Call[*exchange.BookUpdate], error) {
+				return e.REST.Depth(spotInst(), 1000)
+			}),
+			conformance.Call("klines", func(e conformance.Env) (exchange.Call[[]exchange.Kline], error) {
+				return e.REST.Klines(spotInst(), "1m", 0, 5)
 			}),
 		},
 		FillPairs: []conformance.FillPair{

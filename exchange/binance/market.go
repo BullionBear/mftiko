@@ -10,7 +10,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange"
 )
 
-// market is the public-market codec. UM is implemented; the other products still refuse.
+// market is the public-market codec. UM and spot are implemented; CM and EO still refuse.
 type market struct{ p product }
 
 var _ exchange.Market = (*market)(nil)
@@ -19,7 +19,8 @@ var _ exchange.Market = (*market)(nil)
 // canon is the platform interval (kline_<canon>); wire is the stream and the REST parameter.
 type klineInterval struct{ canon, wire string }
 
-// UM kline intervals, in the venue's order. 1M is the month; the platform spells it 1mo.
+// Kline intervals UM and spot share, in the venue's order. 1M is the month; the platform spells it 1mo.
+// Spot also offers 1s. It is not in this table, so neither venue subscribes it.
 var klineIntervals = []klineInterval{
 	{"1m", "1m"}, {"3m", "3m"}, {"5m", "5m"}, {"15m", "15m"}, {"30m", "30m"},
 	{"1h", "1h"}, {"2h", "2h"}, {"4h", "4h"}, {"6h", "6h"}, {"8h", "8h"}, {"12h", "12h"},
@@ -43,9 +44,23 @@ func canonInterval(wire string) string {
 }
 
 func (m *market) Topics() []exchange.TopicCaps {
-	if m.p.venue.Name != VenueUM {
+	switch m.p.venue.Name {
+	case VenueUM:
+		return umTopics()
+	case VenueSpot:
+		return appendKlines([]exchange.TopicCaps{
+			{Topic: exchange.TopicBestQuote},
+			{Topic: exchange.TopicAggTrade},
+			{Topic: exchange.TopicOrderBook},
+			{Topic: exchange.TopicOrderBookDelta},
+			{Topic: exchange.TopicTicker},
+		})
+	default:
 		return nil
 	}
+}
+
+func umTopics() []exchange.TopicCaps {
 	out := []exchange.TopicCaps{
 		{Topic: exchange.TopicBestQuote},
 		{Topic: exchange.TopicAggTrade},
@@ -57,6 +72,10 @@ func (m *market) Topics() []exchange.TopicCaps {
 		{Topic: exchange.TopicFundingRate, Absent: []string{"IntervalS"}},
 		{Topic: exchange.TopicMarkPrice},
 	}
+	return appendKlines(out)
+}
+
+func appendKlines(out []exchange.TopicCaps) []exchange.TopicCaps {
 	for _, iv := range klineIntervals {
 		out = append(out, exchange.TopicCaps{Topic: exchange.KlineTopic(iv.canon)})
 	}
@@ -68,9 +87,17 @@ func (m *market) Topics() []exchange.TopicCaps {
 // orderbook and orderbook_delta share btcusdt@depth@100ms. mark_price and funding_rate
 // share btcusdt@markPrice@1s. Open interest is not pushed (D401).
 func (m *market) Atom(topic exchange.Topic, inst *symbol.Info) (exchange.AtomRef, error) {
-	if m.p.venue.Name != VenueUM {
+	switch m.p.venue.Name {
+	case VenueUM:
+		return m.umAtom(topic, inst)
+	case VenueSpot:
+		return m.spotAtom(topic, inst)
+	default:
 		return exchange.AtomRef{}, exchange.ErrNotImplemented
 	}
+}
+
+func (m *market) umAtom(topic exchange.Topic, inst *symbol.Info) (exchange.AtomRef, error) {
 	if err := instrument(inst); err != nil {
 		return exchange.AtomRef{}, err
 	}
@@ -89,16 +116,41 @@ func (m *market) Atom(topic exchange.Topic, inst *symbol.Info) (exchange.AtomRef
 	case exchange.TopicMarkPrice, exchange.TopicFundingRate:
 		return atom("market", sym+"@markPrice@1s"), nil
 	default:
-		rest, ok := strings.CutPrefix(string(topic), exchange.KlinePrefix)
-		if !ok {
-			return exchange.AtomRef{}, exchange.ErrUnsupported
-		}
-		wire, ok := wireInterval(rest)
-		if !ok {
-			return exchange.AtomRef{}, exchange.ErrUnsupported
-		}
-		return atom("market", sym+"@kline_"+wire), nil
+		return klineAtom("market", sym, topic)
 	}
+}
+
+// spotAtom subscribes the one spot route. There is no mark price, liquidation, or open interest.
+// @trade exists and was left out: the shared feed is aggTrade, the same choice as UM.
+func (m *market) spotAtom(topic exchange.Topic, inst *symbol.Info) (exchange.AtomRef, error) {
+	if err := instrumentVenue(inst, VenueSpot); err != nil {
+		return exchange.AtomRef{}, err
+	}
+	sym := strings.ToLower(inst.ExchTicker)
+	switch topic {
+	case exchange.TopicBestQuote:
+		return atom(exchange.RouteDefault, sym+"@bookTicker"), nil
+	case exchange.TopicOrderBook, exchange.TopicOrderBookDelta:
+		return atom(exchange.RouteDefault, sym+"@depth@100ms"), nil
+	case exchange.TopicAggTrade:
+		return atom(exchange.RouteDefault, sym+"@aggTrade"), nil
+	case exchange.TopicTicker:
+		return atom(exchange.RouteDefault, sym+"@ticker"), nil
+	default:
+		return klineAtom(exchange.RouteDefault, sym, topic)
+	}
+}
+
+func klineAtom(route, sym string, topic exchange.Topic) (exchange.AtomRef, error) {
+	rest, ok := strings.CutPrefix(string(topic), exchange.KlinePrefix)
+	if !ok {
+		return exchange.AtomRef{}, exchange.ErrUnsupported
+	}
+	wire, ok := wireInterval(rest)
+	if !ok {
+		return exchange.AtomRef{}, exchange.ErrUnsupported
+	}
+	return atom(route, sym+"@kline_"+wire), nil
 }
 
 func atom(route, channel string) exchange.AtomRef {
@@ -113,13 +165,11 @@ func (m *market) Budget(string) int { return m.p.budget }
 func (m *market) Cost(string) int { return 1 }
 
 func (m *market) Endpoint(route, override string) (string, error) {
-	if m.p.venue.Name != VenueUM {
-		return "", exchange.ErrNotImplemented
+	raw, err := m.endpoint(route)
+	if err != nil {
+		return "", err
 	}
-	if route != "public" && route != "market" {
-		return "", fmt.Errorf("binance: route %q", route)
-	}
-	u, err := url.Parse("wss://fstream.binance.com/" + route + "/ws")
+	u, err := url.Parse(raw)
 	if err != nil {
 		return "", err
 	}
@@ -134,23 +184,53 @@ func (m *market) Endpoint(route, override string) (string, error) {
 	return u.String(), nil
 }
 
-func (m *market) NewSession(route string) (exchange.Session, error) {
-	if m.p.venue.Name != VenueUM {
-		return nil, exchange.ErrNotImplemented
+func (m *market) endpoint(route string) (string, error) {
+	switch m.p.venue.Name {
+	case VenueUM:
+		if route != "public" && route != "market" {
+			return "", fmt.Errorf("binance: route %q", route)
+		}
+		return "wss://fstream.binance.com/" + route + "/ws", nil
+	case VenueSpot:
+		if route != exchange.RouteDefault {
+			return "", fmt.Errorf("binance: route %q", route)
+		}
+		return "wss://stream.binance.com:9443/ws", nil
+	default:
+		return "", exchange.ErrNotImplemented
 	}
-	if route != "public" && route != "market" {
-		return nil, fmt.Errorf("binance: route %q", route)
-	}
-	return &session{per: m.p.budget}, nil
 }
 
-// Book: a diff depth channel (btcusdt@depth, or @100ms / @250ms / @500ms).
-// Partial books (depth5, depth10, depth20) are snapshots and are not this sync.
-func (m *market) Book(channel string) (exchange.BookSync, bool) {
-	if m.p.venue.Name != VenueUM || !diffDepth(channel) {
-		return nil, false
+func (m *market) NewSession(route string) (exchange.Session, error) {
+	if _, err := m.endpoint(route); err != nil {
+		return nil, err
 	}
-	return umBook{}, true
+	s := &session{per: m.p.budget}
+	if m.p.venue.Name == VenueSpot {
+		// Five incoming messages a second, and a ping counts. The server pings every 20s and
+		// drops the socket if no pong comes back within a minute. A client ping would spend
+		// that budget, so the idle limit is the pong deadline and nothing is sent on a timer.
+		s.rateN = 5
+		s.idle = time.Minute
+	}
+	return s, nil
+}
+
+// Book: a diff depth channel. UM accepts @depth and @100ms / @250ms / @500ms.
+// Spot accepts @depth and @100ms. Partial books (depth5, depth10, depth20) are snapshots
+// and are not this sync.
+func (m *market) Book(channel string) (exchange.BookSync, bool) {
+	switch m.p.venue.Name {
+	case VenueUM:
+		if diffDepth(channel) {
+			return umBook{}, true
+		}
+	case VenueSpot:
+		if spotDiff(channel) {
+			return spotBookSync{}, true
+		}
+	}
+	return nil, false
 }
 
 func diffDepth(ch string) bool {
@@ -189,20 +269,65 @@ func (umBook) Check(last exchange.BookSeq, u *exchange.BookUpdate) exchange.Book
 	return exchange.BookResync
 }
 
-// session is one UM public connection. Ids start at 1 and are not reused on it.
+// spotBookSync sequences spot diff depth. The snapshot's lastUpdateId is BookSeq.Last.
+// An event with u <= lastUpdateId is already inside the snapshot. The next event's U
+// is at most one past the previous u: that covers the overlapping first event and the
+// exact continuation. There is no pu. A gap is a resync.
+type spotBookSync struct{}
+
+func (spotBookSync) Snapshot() exchange.SnapshotSource { return exchange.SnapshotREST }
+
+func (spotBookSync) Depth() int { return 1000 }
+
+func (spotBookSync) Check(last exchange.BookSeq, u *exchange.BookUpdate) exchange.BookVerdict {
+	if !last.Valid || u == nil {
+		return exchange.BookResync
+	}
+	if u.Last <= last.Last {
+		return exchange.BookSkip
+	}
+	if u.First > last.Last+1 {
+		return exchange.BookResync
+	}
+	return exchange.BookApply
+}
+
+func spotDiff(ch string) bool {
+	i := strings.Index(ch, "@depth")
+	if i <= 0 {
+		return false
+	}
+	switch ch[i+len("@depth"):] {
+	case "", "@100ms":
+		return true
+	default:
+		return false
+	}
+}
+
+// session is one public connection. Ids start at 1 and are not reused on it.
+// A zero rateN and idle are the UM socket: 10 messages a second, 10 minutes to pong.
 type session struct {
-	per int
-	n   uint64
+	per   int
+	n     uint64
+	rateN int
+	idle  time.Duration
 }
 
 func (s *session) Limits() exchange.SessionLimits {
+	n, idle := s.rateN, s.idle
+	if n == 0 {
+		n = 10
+	}
+	if idle == 0 {
+		idle = 10 * time.Minute
+	}
 	return exchange.SessionLimits{
 		// One subscribe stays within the connection's stream budget.
 		PerRequest: s.per,
-		// The venue accepts 10 client messages a second.
-		Rate: []exchange.RateLimit{{N: 10, Per: time.Second}},
-		// The server pings every 3 minutes and drops a connection that does not pong within 10.
-		Keepalive:   exchange.Keepalive{ServerPing: true, Timeout: 10 * time.Minute},
+		Rate:       []exchange.RateLimit{{N: n, Per: time.Second}},
+		// The server pings. Timeout is how long a missing pong may last.
+		Keepalive:   exchange.Keepalive{ServerPing: true, Timeout: idle},
 		MaxLifetime: 24 * time.Hour,
 		// An all-market array is the largest frame this socket sends.
 		ReadLimit: 8 << 20,
