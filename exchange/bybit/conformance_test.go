@@ -15,10 +15,16 @@ func TestConformance(t *testing.T) { conformance.Run(t, spec()) }
 
 func FuzzDecodePrivate(f *testing.F) { conformance.FuzzDecodePrivate(f, spec()) }
 
+func FuzzDecodeSpot(f *testing.F) { conformance.FuzzDecode(f, spec(), "spot") }
+
+func FuzzDecodeLinear(f *testing.F) { conformance.FuzzDecode(f, spec(), "linear") }
+
 func spec() conformance.Spec {
 	return conformance.Spec{
-		Venue: Name,
-		Dir:   "testdata/conformance/Bybit",
+		Venue:  Name,
+		Dir:    "testdata/conformance/Bybit",
+		Market: &market{},
+		REST:   &rest{},
 		Account: func(cfg exchange.AccountConfig) (exchange.Account, error) {
 			return &account{cfg: cfg}, nil
 		},
@@ -68,6 +74,18 @@ func spec() conformance.Spec {
 			}),
 			conformance.Call("dcp", func(e conformance.Env) (exchange.Call[struct{}], error) {
 				return e.Account.(exchange.CancelOnDisconnect).ArmCancelOnDisconnect(e.Now, 10*time.Second, nil)
+			}),
+			conformance.Call("listing_spot", func(e conformance.Env) (exchange.Call[exchange.Page[symbol.Listing]], error) {
+				return e.REST.Listing(symbol.Spot)
+			}),
+			conformance.Call("listing_perp", func(e conformance.Env) (exchange.Call[exchange.Page[symbol.Listing]], error) {
+				return e.REST.Listing(symbol.Perp)
+			}),
+			conformance.Call("listing_future", func(e conformance.Env) (exchange.Call[exchange.Page[symbol.Listing]], error) {
+				return e.REST.Listing(symbol.Future)
+			}),
+			conformance.Call("klines", func(e conformance.Env) (exchange.Call[[]exchange.Kline], error) {
+				return e.REST.Klines(btcInst(), "1m", 0, 5)
 			}),
 		},
 	}

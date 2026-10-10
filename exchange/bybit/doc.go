@@ -2,31 +2,76 @@
 // D301), a unified account (D403). The category
 // (spot, linear, inverse, option) is part of every request and of every public websocket path.
 //
-// Public facts below were checked 2026-10-05 against bybit-exchange.github.io/docs/v5.
-// Private REST and the private stream were checked on the testnet on 2026-10-10.
+// Public spot and linear were checked on the mainnet on 2026-10-10 (api.bybit.com,
+// stream.bybit.com/v5/public/spot and /linear). Private REST and the private stream were checked
+// on the testnet the same day. Inverse and option have public paths this adapter does not open.
+// Phase 1 sends orders over REST; NewTradeStream is exchange.ErrUnsupported (D303). History is
+// still exchange.ErrNotImplemented (E3-13).
 //
-//   - Routes: "spot", "linear", "inverse", "option" (/v5/public/<category>). Spread trading has its
-//     own path too and is not modeled yet. Private data is on /v5/private, after auth.
-//   - The same channel string exists on several routes: "publicTrade.BTCUSDT" is both a spot and a
-//     linear atom. The route comes from the resolved instrument's category, and it is part of the
-//     atom id <venue>:<route>:<channel> (D202).
-//   - Capacity is characters, not streams: the args of one public connection may total at most
-//     21,000 characters. Cost is len(channel), Budget is 21000.
-//   - Spot takes at most 10 args per subscribe request (SessionLimits.PerRequest); options at most
-//     2000 args per connection, which the character budget reaches first.
-//   - Keepalive: the client sends {"op":"ping"} every 20s. At most 500 new connections per 5 minutes
-//     per domain.
-//   - Books are SnapshotStream: type "snapshot" replaces the book, "delta" chains on u.
+//   - The same channel string exists on both routes: "publicTrade.BTCUSDT" is a spot atom and a
+//     linear atom. The route comes from the instrument's category and is part of the atom id
+//     <venue>:<route>:<channel> (D202).
+//   - Capacity is characters: the args of one public connection may total at most 21,000
+//     characters. Cost is len(channel), Budget is 21000. Spot takes at most 10 args per subscribe
+//     request. The client sends {"op":"ping"} every 20s.
+//   - Books are SnapshotStream. type "snapshot" replaces the book. A delta applies when its u is
+//     the previous u plus one.
 //   - Auth signs "GET/realtime" + expires with HMAC-SHA256.
 //   - Dead-man switch: Disconnected Cancel Protection (DCP), account-wide.
 //   - History: execution list, cursor paginated; execId is the fill id on both REST and the
 //     execution stream. The private stream below uses that id. Order lookup, window size and
 //     retention are still exchange.ErrNotImplemented (E3-13).
 //
-// Private REST and the private stream were checked against the testnet on 2026-10-10
-// (api-testnet.bybit.com, stream-testnet.bybit.com/v5/private). Public market data is still
-// exchange.ErrNotImplemented. Phase 1 sends orders over REST; NewTradeStream is
-// exchange.ErrUnsupported (D303).
+// # Public market data
+//
+// GET /v5/market/instruments-info?category=spot|linear&limit=1000. Perp and Future share the linear
+// page and are split on contractType (LinearPerpetual, LinearFutures). A non-empty nextPageCursor,
+// different from the cursor just sent, is the next page. A row is left out when it has no positive
+// tick and step, an asset that is not canonical, a settlement coin that is neither base nor quote,
+// a future suffix that is not DDMMMYY, or a tick or step that does not fit 15 significant digits
+// (D008). Spot has no contract size and no settlement asset. A linear contract's size is 1 and its
+// settlement coin is settleCoin. ExpiryCode is the symbol's DDMMMYY suffix rewritten as YYMMDD
+// (BTCUSDT-16OCT26 → 261016); ExpiryNs is deliveryTime, a millisecond string.
+//
+//	Trading                         TRADABLE
+//	Trading and isPreListing        PRELISTING
+//	PreLaunch                       PRELISTING
+//	Delivering, Settling            SETTLING
+//	Closed                          DELISTED
+//
+// Spot qty_step is lotSizeFilter.basePrecision. Linear qty_step is qtyStep. Spot notionals are
+// minOrderAmt and maxOrderAmt. Linear min_notional is minNotionalValue. price_tick is tickSize.
+//
+// GET /v5/market/kline. Rows are newest first: start, open, high, low, close, volume, turnover.
+// A request with no end drops the first row, the candle that is still forming, and returns the
+// rest oldest first. turnover is QuoteVolume. The page is 1000. GET /v5/market/orderbook is a
+// snapshot whose u is Last; the conn worker does not call it. Open interest is on the linear
+// ticker, so the REST method is exchange.ErrUnsupported (D401).
+//
+// Subscribe is {"req_id","op":"subscribe","args"}. req_id starts at 1 and is not reused on the
+// connection. An ack with success false is the request's error. A topic this codec does not read
+// is ignored.
+//
+//	orderbook.1.<symbol>          BestQuote from the top of book. Depth 1 is snapshot only, so it
+//	                              is not a BookSync.
+//	orderbook.50.<symbol>         OrderBook and OrderBookDelta. Snapshot replaces the book and
+//	                              records u. A delta applies when u is that plus one; an older u
+//	                              is already inside; a gap resyncs. u of 1 is a snapshot after a
+//	                              matching-engine restart. A level qty of 0 deletes the price.
+//	publicTrade.<symbol>          one Trade per data row. S is the taker side. i is the trade id.
+//	                              Block trades are included.
+//	tickers.<symbol>              Ticker from the 24h fields that this message carries. price24hPcnt
+//	                              is stored as the ratio the venue sends. On linear, the same
+//	                              channel also emits MarkPrice (markPrice, indexPrice), OpenInterest
+//	                              (openInterest, openInterestValue) and FundingRate (fundingRate,
+//	                              nextFundingTime). fundingIntervalHour is whole hours and becomes
+//	                              IntervalS. A delta omits unchanged fields, so a message without
+//	                              the hour leaves IntervalS 0.
+//	kline.<interval>.<symbol>     1 3 5 15 30 60 120 240 360 720 D W M, which are 1m 3m 5m 15m
+//	                              30m 1h 2h 4h 6h 12h 1d 1w 1mo. confirm means the candle closed.
+//	                              turnover is QuoteVolume.
+//	allLiquidation.<symbol>       linear only. S is the side of the liquidated position: Buy is a
+//	                              long. v is the size, p is the bankruptcy price.
 //
 // # Orders
 //

@@ -1,0 +1,65 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://api.bybit.com",
+    "path": "/v5/market/kline",
+    "query": "category=linear&symbol=BTCUSDT&interval=1&limit=5",
+    "cost": [
+      {
+        "bucket": "ip",
+        "n": 1
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": [
+    {
+      "Close": 82799.5,
+      "Closed": true,
+      "ExchTsNs": 1791630300000000000,
+      "High": 82802.8,
+      "Interval": "1m",
+      "Low": 82799.5,
+      "Open": 82802.7,
+      "OpenTimeNs": 1791630300000000000,
+      "QuoteVolume": 245176.22,
+      "Volume": 2.961
+    },
+    {
+      "Close": 82794.7,
+      "Closed": true,
+      "ExchTsNs": 1791630360000000000,
+      "High": 82799.6,
+      "Interval": "1m",
+      "Low": 82794.7,
+      "Open": 82799.5,
+      "OpenTimeNs": 1791630360000000000,
+      "QuoteVolume": 147464.5875,
+      "Volume": 1.781
+    },
+    {
+      "Close": 82790.4,
+      "Closed": true,
+      "ExchTsNs": 1791630420000000000,
+      "High": 82794.8,
+      "Interval": "1m",
+      "Low": 82790.4,
+      "Open": 82794.7,
+      "OpenTimeNs": 1791630420000000000,
+      "QuoteVolume": 91816.8745,
+      "Volume": 1.109
+    },
+    {
+      "Close": 82790.4,
+      "Closed": true,
+      "ExchTsNs": 1791630480000000000,
+      "High": 82790.5,
+      "Interval": "1m",
+      "Low": 82790.4,
+      "Open": 82790.4,
+      "OpenTimeNs": 1791630480000000000,
+      "QuoteVolume": 76498.3739,
+      "Volume": 0.924
+    }
+  ]
+}
