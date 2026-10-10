@@ -1,0 +1,59 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://www.okx.com",
+    "path": "/api/v5/trade/fills-history",
+    "query": "instType=SPOT&instId=BTC-USDT&begin=1767225600000&end=1767229200000&limit=100",
+    "header": [
+      {
+        "name": "OK-ACCESS-KEY",
+        "value": "conformance-api-key"
+      },
+      {
+        "name": "OK-ACCESS-SIGN",
+        "value": "P70md6Ew5huFlgwU2x8Z6v375ZQXHQg81G9qCQAA74o="
+      },
+      {
+        "name": "OK-ACCESS-TIMESTAMP",
+        "value": "2026-01-01T00:00:00.000Z"
+      },
+      {
+        "name": "OK-ACCESS-PASSPHRASE",
+        "value": "conformance-passphrase-9a8b"
+      },
+      {
+        "name": "User-Agent",
+        "value": "mftiko"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": {
+    "Fills": [
+      {
+        "ClientOrderID": "1154756144699822081",
+        "Exch": {
+          "Category": "Spot",
+          "ExchTicker": "BTC-USDT",
+          "Venue": "Okx"
+        },
+        "ExchTsNs": 1791640715995000000,
+        "Fee": -1e-7,
+        "FeeAsset": "BTC",
+        "FillID": "1414981226",
+        "Liquidity": "taker",
+        "OrderID": "3997618522675671041",
+        "Price": 82824.4,
+        "Qty": 0.0001,
+        "Side": 1
+      }
+    ],
+    "Next": ""
+  }
+}

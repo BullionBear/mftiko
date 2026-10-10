@@ -21,6 +21,9 @@ func spec() conformance.Spec {
 		Account: func(cfg exchange.AccountConfig) (exchange.Account, error) {
 			return &account{cfg: cfg}, nil
 		},
+		History: func(cfg exchange.AccountConfig) (exchange.History, error) {
+			return &history{cfg: cfg}, nil
+		},
 		Cases: []conformance.Case{
 			conformance.Call("submit_limit", func(e conformance.Env) (exchange.Call[*exchange.OrderResult], error) {
 				return e.Account.Submit(e.Now, limitOrder(exchange.TIFGTC, cloidGTC))
@@ -67,6 +70,20 @@ func spec() conformance.Spec {
 			conformance.Call("caa", func(e conformance.Env) (exchange.Call[struct{}], error) {
 				return e.Account.(exchange.CancelOnDisconnect).ArmCancelOnDisconnect(e.Now, 10*time.Second, nil)
 			}),
+			conformance.Call("fills", func(e conformance.Env) (exchange.Call[*exchange.FillPage], error) {
+				return e.History.Fills(e.Now, exchange.FillQuery{
+					Instrument: spotInst(),
+					StartNs:    e.Now.UnixNano(),
+					EndNs:      e.Now.Add(time.Hour).UnixNano(),
+					Limit:      100,
+				})
+			}),
+			conformance.Call("order_lookup", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.History.Order(e.Now, spotInst(), "3997618522675671041")
+			}),
+		},
+		FillPairs: []conformance.FillPair{
+			{Session: "fills", Case: "fills"},
 		},
 	}
 }

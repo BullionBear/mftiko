@@ -1,0 +1,213 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://www.okx.com",
+    "path": "/api/v5/trade/order",
+    "query": "instId=BTC-USDT&ordId=3997618522675671041",
+    "header": [
+      {
+        "name": "OK-ACCESS-KEY",
+        "value": "REDACTED"
+      },
+      {
+        "name": "OK-ACCESS-SIGN",
+        "value": "REDACTED"
+      },
+      {
+        "name": "OK-ACCESS-TIMESTAMP",
+        "value": "2026-10-10T13:58:37.078Z"
+      },
+      {
+        "name": "OK-ACCESS-PASSPHRASE",
+        "value": "REDACTED"
+      },
+      {
+        "name": "User-Agent",
+        "value": "mftiko"
+      },
+      {
+        "name": "x-simulated-trading",
+        "value": "1"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "header": [
+      {
+        "name": "Content-Length",
+        "value": "996"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json;charset=UTF-8"
+      },
+      {
+        "name": "Server",
+        "value": "cloudflare"
+      },
+      {
+        "name": "Set-Cookie",
+        "value": "locale=en-US; Max-Age=604800; Expires=Sat, 17 Oct 2026 13:58:37 GMT; Path=/"
+      },
+      {
+        "name": "Set-Cookie",
+        "value": "locale=en-US; Max-Age=604800; Expires=Sat, 17 Oct 2026 13:58:37 GMT; Path=/"
+      },
+      {
+        "name": "Set-Cookie",
+        "value": "__cf_bm=Jtx2NSh9yPoTlSxoFcgw2pbkYI7UVz53RDfoXvivF_A-1791640717.2687135-1.0.1.1-MBOxsX.CGHh8DsYxn1w1xfan_Ho7vhdf54AyCLwTzDgwASBzgwKLE8F7OT84VKQlSpAZryl4OfSqK3kFprQzMu5DQTiz6cuI0AQ2fiv54g_NSRpdfzH0v9ZRQ_c04Rf9; HttpOnly; SameSite=None; Secure; Path=/; Domain=okx.com; Expires=Sat, 10 Oct 2026 14:28:37 GMT"
+      },
+      {
+        "name": "Date",
+        "value": "Sat, 10 Oct 2026 13:58:37 GMT"
+      },
+      {
+        "name": "Connection",
+        "value": "keep-alive"
+      },
+      {
+        "name": "CF-Ray",
+        "value": "a4862412cd934a5d-TPE"
+      },
+      {
+        "name": "CF-Cache-Status",
+        "value": "DYNAMIC"
+      },
+      {
+        "name": "Access-Control-Allow-Origin",
+        "value": "*"
+      },
+      {
+        "name": "Cache-Control",
+        "value": "no-cache, no-store, max-age=0, must-revalidate"
+      },
+      {
+        "name": "Expires",
+        "value": "0"
+      },
+      {
+        "name": "x-xss-protection",
+        "value": "1; mode=block"
+      },
+      {
+        "name": "x-xss-protection",
+        "value": "1; mode=block"
+      },
+      {
+        "name": "Strict-Transport-Security",
+        "value": "max-age=31536000 ; includeSubDomains, max-age=31536000; includeSubDomains"
+      },
+      {
+        "name": "Pragma",
+        "value": "no-cache"
+      },
+      {
+        "name": "b-locale",
+        "value": "en_US"
+      },
+      {
+        "name": "b-locale",
+        "value": "en_US"
+      },
+      {
+        "name": "content-security-policy",
+        "value": "frame-ancestors 'self'"
+      },
+      {
+        "name": "x-brokerid",
+        "value": "9999"
+      },
+      {
+        "name": "x-content-type-options",
+        "value": "nosniff"
+      },
+      {
+        "name": "x-content-type-options",
+        "value": "nosniff"
+      },
+      {
+        "name": "x-frame-options",
+        "value": "SAMEORIGIN"
+      },
+      {
+        "name": "x-frame-options",
+        "value": "DENY"
+      },
+      {
+        "name": "x-routed-to",
+        "value": "TKY"
+      }
+    ],
+    "body": {
+      "code": "0",
+      "data": [
+        {
+          "accFillSz": "0.0001",
+          "algoClOrdId": "",
+          "algoId": "",
+          "attachAlgoClOrdId": "",
+          "attachAlgoOrds": [],
+          "avgPx": "82824.4",
+          "cTime": "1791640715995",
+          "cancelSource": "",
+          "cancelSourceReason": "",
+          "category": "normal",
+          "ccy": "USDT",
+          "clOrdId": "1154756144699822081",
+          "fee": "-0.0000001",
+          "feeCcy": "BTC",
+          "fillPx": "82824.4",
+          "fillSz": "0.0001",
+          "fillTime": "1791640715995",
+          "instId": "BTC-USDT",
+          "instType": "SPOT",
+          "isTpLimit": "false",
+          "lever": "",
+          "linkedAlgoOrd": {
+            "algoId": ""
+          },
+          "ordId": "3997618522675671041",
+          "ordType": "market",
+          "outcome": "",
+          "pnl": "0",
+          "posSide": "net",
+          "px": "",
+          "pxType": "",
+          "pxUsd": "",
+          "pxVol": "",
+          "quickMgnType": "",
+          "rebate": "0",
+          "rebateCcy": "USDT",
+          "reduceOnly": "false",
+          "side": "buy",
+          "slOrdPx": "",
+          "slTriggerPx": "",
+          "slTriggerPxType": "",
+          "slippage": "0",
+          "source": "",
+          "state": "filled",
+          "stpId": "",
+          "stpMode": "cancel_maker",
+          "sz": "0.0001",
+          "tag": "",
+          "tdMode": "cash",
+          "tgtCcy": "base_ccy",
+          "tpOrdPx": "",
+          "tpTriggerPx": "",
+          "tpTriggerPxType": "",
+          "tradeId": "1414981226",
+          "tradeQuoteCcy": "USDT",
+          "uTime": "1791640715995"
+        }
+      ],
+      "msg": ""
+    }
+  }
+}
