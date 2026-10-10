@@ -1,0 +1,146 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://api-testnet.bybit.com",
+    "path": "/v5/execution/list",
+    "query": "category=linear&symbol=BTCUSDT&startTime=1791635976578&endTime=1791635980578&limit=50",
+    "header": [
+      {
+        "name": "X-BAPI-API-KEY",
+        "value": "REDACTED"
+      },
+      {
+        "name": "X-BAPI-TIMESTAMP",
+        "value": "1791635978587"
+      },
+      {
+        "name": "X-BAPI-RECV-WINDOW",
+        "value": "5000"
+      },
+      {
+        "name": "X-BAPI-SIGN",
+        "value": "REDACTED"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "header": [
+      {
+        "name": "Content-Length",
+        "value": "1061"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json; charset=utf-8"
+      },
+      {
+        "name": "Server",
+        "value": "Openresty"
+      },
+      {
+        "name": "Connection",
+        "value": "keep-alive"
+      },
+      {
+        "name": "Date",
+        "value": "Sat, 10 Oct 2026 12:39:38 GMT"
+      },
+      {
+        "name": "x-cld-src",
+        "value": "Loc-A"
+      },
+      {
+        "name": "X-Bapi-Limit",
+        "value": "50"
+      },
+      {
+        "name": "X-Bapi-Limit-Status",
+        "value": "49"
+      },
+      {
+        "name": "X-Bapi-Limit-Reset-Timestamp",
+        "value": "1791635978756"
+      },
+      {
+        "name": "Ret_code",
+        "value": "0"
+      },
+      {
+        "name": "Traceid",
+        "value": "6f0bb26c4d6a923a5fb183df82553925"
+      },
+      {
+        "name": "Timenow",
+        "value": "1791635978773"
+      },
+      {
+        "name": "X-Cache",
+        "value": "Miss from cloudfront"
+      },
+      {
+        "name": "Via",
+        "value": "1.1 a0ad49c0aada7d80942417f4dae12972.cloudfront.net (CloudFront)"
+      },
+      {
+        "name": "X-Amz-Cf-Pop",
+        "value": "TPE53-P3"
+      },
+      {
+        "name": "X-Amz-Cf-Id",
+        "value": "G5ws6pLMYCUaWTyiXVq79Zto6tXANPLMyzeXIyqH1YBbADYJ8BJr8Q=="
+      }
+    ],
+    "body": {
+      "retCode": 0,
+      "retMsg": "OK",
+      "result": {
+        "nextPageCursor": "1791635978578%3A350707%3A2%3AOTBmMDhmYTQtNDQyNi00NzRiLThkZWEtZjY4ZTJiMGZiZDMxfjFiNjhlNjgyLTg0OWMtNTYwMy04MzM5LWJlOTJmNmIyNjVjZA%2C1791635978578%3A350707%3A2%3AOTBmMDhmYTQtNDQyNi00NzRiLThkZWEtZjY4ZTJiMGZiZDMxfjFiNjhlNjgyLTg0OWMtNTYwMy04MzM5LWJlOTJmNmIyNjVjZA",
+        "category": "linear",
+        "list": [
+          {
+            "symbol": "BTCUSDT",
+            "orderType": "Market",
+            "underlyingPrice": "",
+            "orderLinkId": "1154756139848797185",
+            "orderId": "90f08fa4-4426-474b-8dea-f68e2b0fbd31",
+            "stopOrderType": "UNKNOWN",
+            "execTime": "1791635978578",
+            "feeCurrency": "USDT",
+            "createType": "CreateByUser",
+            "execFeeV2": "0.04535845",
+            "feeRate": "0.00055",
+            "tradeIv": "",
+            "blockTradeId": "",
+            "markPrice": "82469.8",
+            "execPrice": "82469.9",
+            "markIv": "",
+            "orderQty": "0.001",
+            "orderPrice": "83294.4",
+            "execValue": "82.4699",
+            "closedSize": "0",
+            "execType": "Trade",
+            "seq": 9689492517,
+            "side": "Buy",
+            "indexPrice": "",
+            "leavesQty": "0",
+            "isMaker": false,
+            "execFee": "0.04535845",
+            "execId": "1b68e682-849c-5603-8339-be92f6b265cd",
+            "marketUnit": "",
+            "execQty": "0.001",
+            "extraFees": ""
+          }
+        ]
+      },
+      "retExtInfo": {},
+      "time": 1791635978773
+    }
+  }
+}

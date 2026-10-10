@@ -105,14 +105,18 @@ func (a *account) tradeURL() string {
 // sign builds one signed request. GET signs the query string; POST signs body, which is sent
 // unchanged (D008). The timestamp and the recv window travel in headers, not in the query.
 func (a *account) sign(now time.Time, method, path, query string, body []byte, cost []exchange.Cost, mutates bool) (exchange.HTTPRequest, error) {
-	sig, err := a.signer()
+	return signCfg(&a.signerState, a.cfg, now, method, path, query, body, cost, mutates)
+}
+
+func signCfg(s *signerState, cfg exchange.AccountConfig, now time.Time, method, path, query string, body []byte, cost []exchange.Cost, mutates bool) (exchange.HTTPRequest, error) {
+	sig, err := s.signer(cfg.Credentials)
 	if err != nil {
 		return exchange.HTTPRequest{}, err
 	}
 	ts := strconv.FormatInt(now.UnixMilli(), 10)
-	payload := make([]byte, 0, len(ts)+len(a.cfg.Credentials.Key)+len(recvWindow)+len(query)+len(body))
+	payload := make([]byte, 0, len(ts)+len(cfg.Credentials.Key)+len(recvWindow)+len(query)+len(body))
 	payload = append(payload, ts...)
-	payload = append(payload, a.cfg.Credentials.Key...)
+	payload = append(payload, cfg.Credentials.Key...)
 	payload = append(payload, recvWindow...)
 	if method == http.MethodPost {
 		payload = append(payload, body...)
@@ -120,7 +124,7 @@ func (a *account) sign(now time.Time, method, path, query string, body []byte, c
 		payload = append(payload, query...)
 	}
 	header := []exchange.Header{
-		{Name: "X-BAPI-API-KEY", Value: a.cfg.Credentials.Key},
+		{Name: "X-BAPI-API-KEY", Value: cfg.Credentials.Key},
 		{Name: "X-BAPI-TIMESTAMP", Value: ts},
 		{Name: "X-BAPI-RECV-WINDOW", Value: recvWindow},
 		{Name: "X-BAPI-SIGN", Value: string(sig.SignHex(nil, payload))},
@@ -128,8 +132,12 @@ func (a *account) sign(now time.Time, method, path, query string, body []byte, c
 	if method == http.MethodPost {
 		header = append(header, exchange.Header{Name: "Content-Type", Value: "application/json"})
 	}
+	base := prodREST
+	if ep := strings.TrimRight(cfg.RESTEndpoint, "/"); ep != "" {
+		base = ep
+	}
 	return exchange.HTTPRequest{
-		Method: method, Base: a.restBase(), Path: path,
+		Method: method, Base: base, Path: path,
 		Query: []byte(query), Header: header, Body: body, Cost: cost, Mutates: mutates,
 	}, nil
 }
