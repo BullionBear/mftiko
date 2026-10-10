@@ -1,0 +1,11 @@
+{
+  "response": {
+    "status": 200,
+    "body": {
+      "assets": [
+        {"asset": "USDT", "walletBalance": "5000", "availableBalance": "4900"},
+        {"asset": "BNB", "walletBalance": "0", "availableBalance": "0"}
+      ]
+    }
+  }
+}

@@ -31,11 +31,85 @@
 //   - Books are SnapshotREST: buffer the diff stream, GET depth, drop updates with u < lastUpdateId,
 //     then chain on U/u (spot) or pu (futures). A break means BookResync.
 //   - Connections live at most 24h; the server pings and expects a pong.
-//   - Private stream: listenKey over REST, extended periodically (PrivateStream.Refresh), or the
-//     websocket API's logon with an ed25519 key. Pick one at implementation time. A BinancePM
-//     stream carries margin, UM and CM events; each event's ExchKey names its venue.
+//   - Private stream: UM orders go over the WebSocket API (ws-fapi, session.logon, ed25519 only).
+//     That socket does not carry private events (D303), so the account opens a second connection.
+//     POST /fapi/v1/listenKey, then wss://fstream.binance.com/private/ws?listenKey=&events=
+//     (testnet: wss://stream.binancefuture.com/private/ws). PUT the listenKey every 30 minutes;
+//     it dies at 60. The 2026-03 path split retired /ws/<listenKey>. A BinancePM stream carries
+//     margin, UM and CM events; each event's ExchKey names its venue. PM is not implemented here.
 //   - Futures have a per-symbol dead-man switch (countdownCancelAll): CancelOnDisconnect.
 //   - userTrades is limited to a 7-day window per request: HistoryTraits.MaxWindow.
 //
-// Shape only: every method that would talk to Binance returns exchange.ErrNotImplemented.
+// UM private wire, checked against the USD-M testnet on 2026-10-10. Other account kinds still
+// return exchange.ErrNotImplemented.
+//
+// # Order status
+//
+//	NEW                OrderStatusNew
+//	PARTIALLY_FILLED   OrderStatusPartiallyFilled
+//	FILLED             OrderStatusFilled
+//	PENDING_CANCEL     OrderStatusPendingCancel
+//	CANCELED           OrderStatusCancelled
+//	REJECTED           OrderStatusRejected
+//	EXPIRED            OrderStatusExpired
+//	EXPIRED_IN_MATCH   OrderStatusExpired   (an IOC that did not fill)
+//
+// Anything else is OrderStatusUnknown. The synchronous answer (order.place result, REST order)
+// and ORDER_TRADE_UPDATE.o.X use this table. ORDER_TRADE_UPDATE.o.x is the execution type: a
+// fill is x=TRADE with a non-zero trade id t, which is the same id userTrades returns as id (D601).
+//
+// # ORDER_TRADE_UPDATE
+//
+//	o.s symbol, o.i order id, o.c client order id, o.S side, o.o type, o.X status
+//	o.q orig qty, o.p price, o.z filled qty, o.ap avg price, o.T transaction time (ms)
+//	o.l last qty, o.L last price, o.n fee, o.N fee asset, o.m maker, o.t trade id
+//	o.ps position side: BOTH keeps the signed amount; SHORT is stored as a negative size
+//
+// # ACCOUNT_UPDATE
+//
+//	a.B[] balances: a asset, wb wallet, cw cross wallet.
+//	  Free is cw. Locked is wb-cw when that is positive (isolated margin).
+//	a.P[] positions: s symbol, pa amount, ep entry, up unrealized, ps position side.
+//
+// listenKeyExpired ends the stream (AccountSink.Expired). Other event names are ignored:
+// a new event type must not drop the connection.
+//
+// # Refusals
+//
+// PROTOCOL §7.2: 200–299 are the platform's names for a refusal, and Native keeps Binance's
+// code. -2010 is 201, which is what the conformance fake uses for insufficient balance.
+// Unlisted codes stay Binance's own number, which is outside 200–299.
+//
+//	200  no such order            -2011 -2013
+//	201  insufficient balance     -2010 -2018 -2019
+//	202  quantity or notional     -1013 -1100 -4003 -4004 -4005 -4164
+//	203  price or precision       -1111 -4001 -4002 -4014 -4131
+//	204  post-only or would take  -2021 -5022
+//	205  reduce-only or position  -2022 -2024 -4118
+//	206  position side            -4061
+//	207  too many orders          -1015 -2025 -2027
+//	208  client order id          -4015
+//
+// A FOK that cannot fill immediately is refused with -5021 and is not stored as an
+// order. An IOC in that position comes back status EXPIRED. -5021 is not in the table
+// above, so Code stays -5021.
+//
+// -1003, HTTP 429 and 418 are RateLimited. -1022, -2014, -2015 and HTTP 401/403 are ErrAuth.
+// A refused session.logon is ErrAuth from Decode; an order refusal is the answer's error.
+//
+// # Signing
+//
+// Ed25519 only, base64 over the query string that is sent (codec.Query, then signature
+// appended). REST sends that query with X-MBX-APIKEY. The WebSocket API signs session.logon
+// the same way, parameters sorted by name. After logon, order.place and order.cancel must
+// not carry a signature: the testnet answers -1106 if they do. The request id is "o"+n for
+// an order and "c"+n for a cancel, so Decode needs no memory of what was sent (D303).
+// The codec's own logon id is "logon", which cannot collide with those.
+//
+// Hosts: REST defaults to https://fapi.binance.com, the trade socket to
+// wss://ws-fapi.binance.com/ws-fapi/v1, the private socket to
+// wss://fstream.binance.com/private/ws. AccountConfig.RESTEndpoint replaces the REST host.
+// When that host is testnet.binancefuture.com, the sockets follow it:
+// wss://testnet.binancefuture.com/ws-fapi/v1 and wss://stream.binancefuture.com/private/ws.
+// AccountConfig.StreamEndpoint, when set, replaces the private base URL.
 package binance

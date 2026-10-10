@@ -1,0 +1,34 @@
+{
+  "response": {
+    "status": 200,
+    "body": [
+      {
+        "symbol": "BTCUSDT",
+        "positionAmt": "0.001",
+        "entryPrice": "65000",
+        "markPrice": "65100",
+        "unRealizedProfit": "0.1",
+        "leverage": "20",
+        "positionSide": "BOTH"
+      },
+      {
+        "symbol": "ETHUSDT",
+        "positionAmt": "0",
+        "entryPrice": "0",
+        "markPrice": "3000",
+        "unRealizedProfit": "0",
+        "leverage": "20",
+        "positionSide": "BOTH"
+      },
+      {
+        "symbol": "BTCUSDT_260327",
+        "positionAmt": "0.002",
+        "entryPrice": "60000",
+        "markPrice": "61000",
+        "unRealizedProfit": "2",
+        "leverage": "10",
+        "positionSide": "SHORT"
+      }
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "response": {
+    "status": 200,
+    "body": {
+      "orderId": 1001,
+      "clientOrderId": "1767225600000000001",
+      "symbol": "BTCUSDT",
+      "status": "NEW",
+      "side": "BUY",
+      "type": "LIMIT",
+      "origQty": "0.001",
+      "price": "65000.0",
+      "avgPrice": "0",
+      "executedQty": "0",
+      "updateTime": 1767225600000
+    }
+  }
+}

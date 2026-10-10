@@ -1,0 +1,5 @@
+{"frame":0,"call":"Ready","value":null}
+{"frame":1,"call":"Submitted","value":{"error":"reject 201 -2019","id":1,"result":null}}
+{"frame":2,"call":"Used","value":[{"Bucket":"weight_1m","N":2},{"Bucket":"orders_10s","N":1}]}
+{"frame":2,"call":"Submitted","value":{"error":"","id":2,"result":{"ExchTsNs":1767225600000000000,"OrderID":"1001","Status":2}}}
+{"frame":3,"call":"Canceled","value":{"error":"","id":3}}

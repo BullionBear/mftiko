@@ -1,0 +1,23 @@
+{
+  "request": {
+    "method": "POST",
+    "base": "https://fapi.binance.com",
+    "path": "/fapi/v1/countdownCancelAll",
+    "query": "symbol=BTCUSDT&countdownTime=120000&recvWindow=5000&timestamp=1767225600000&signature=0FVDRtNRJh6CMPoHiWHljC4Vu0C%2FNuCqPyf5ijmrfRop6oo4p6ccr2d%2BCtiGVxPXsVOyy%2BHp9tY60DBl0p9bAw%3D%3D",
+    "header": [
+      {
+        "name": "X-MBX-APIKEY",
+        "value": "conformance-api-key"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 10
+      }
+    ],
+    "mutates": true
+  },
+  "response": "recorded",
+  "result": {}
+}

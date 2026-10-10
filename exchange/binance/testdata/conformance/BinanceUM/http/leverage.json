@@ -1,0 +1,19 @@
+{
+  "response": {
+    "status": 200,
+    "body": [
+      {
+        "symbol": "ETHUSDT",
+        "positionAmt": "0",
+        "leverage": "5",
+        "positionSide": "BOTH"
+      },
+      {
+        "symbol": "BTCUSDT",
+        "positionAmt": "0.001",
+        "leverage": "20",
+        "positionSide": "BOTH"
+      }
+    ]
+  }
+}

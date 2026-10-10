@@ -1,0 +1,38 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://fapi.binance.com",
+    "path": "/fapi/v2/account",
+    "query": "recvWindow=5000&timestamp=1767225600000&signature=xJyA8B1JJVp99fEO%2FIv2g4uqU6MNWG6mK3gFze1Baezp3DHW3xCg1jBD99OIliaWXgiloLRxdk2ptYwlK%2BdrAw%3D%3D",
+    "header": [
+      {
+        "name": "X-MBX-APIKEY",
+        "value": "conformance-api-key"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 5
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": {
+    "Items": [
+      {
+        "AsOfNs": 0,
+        "Balances": [
+          {
+            "Asset": "USDT",
+            "Free": 4900,
+            "Locked": 100
+          }
+        ],
+        "OpenOrders": null,
+        "Positions": null
+      }
+    ],
+    "Next": null
+  }
+}

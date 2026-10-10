@@ -1,0 +1,37 @@
+{
+  "prepare": {
+    "method": "POST",
+    "base": "https://fapi.binance.com",
+    "path": "/fapi/v1/listenKey",
+    "header": [
+      {
+        "name": "X-MBX-APIKEY",
+        "value": "conformance-api-key"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 1
+      }
+    ]
+  },
+  "url": "wss://fstream.binance.com/private/ws?listenKey=conformance-listen-token&events=ORDER_TRADE_UPDATE/ACCOUNT_UPDATE/listenKeyExpired",
+  "refresh": {
+    "method": "PUT",
+    "base": "https://fapi.binance.com",
+    "path": "/fapi/v1/listenKey",
+    "header": [
+      {
+        "name": "X-MBX-APIKEY",
+        "value": "conformance-api-key"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 1
+      }
+    ]
+  }
+}

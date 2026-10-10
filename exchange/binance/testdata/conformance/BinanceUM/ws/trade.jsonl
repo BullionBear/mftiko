@@ -1,0 +1,5 @@
+{"kind":"meta","venue":"BinanceUM","side":"trade","note":"USD-M WebSocket API answers. Signed logon, then an order refusal, an accepted order with rateLimits, and a cancel."}
+{"kind":"ws.in","frame":"{\"id\":\"logon\",\"status\":200,\"result\":{\"authorizedSince\":1767225600000}}"}
+{"kind":"ws.in","frame":"{\"id\":\"o1\",\"status\":400,\"error\":{\"code\":-2019,\"msg\":\"Margin is insufficient.\"}}"}
+{"kind":"ws.in","frame":"{\"id\":\"o2\",\"status\":200,\"result\":{\"orderId\":1001,\"status\":\"NEW\",\"updateTime\":1767225600000},\"rateLimits\":[{\"rateLimitType\":\"REQUEST_WEIGHT\",\"interval\":\"MINUTE\",\"intervalNum\":1,\"limit\":2400,\"count\":2},{\"rateLimitType\":\"ORDERS\",\"interval\":\"SECOND\",\"intervalNum\":10,\"limit\":300,\"count\":1}]}"}
+{"kind":"ws.in","frame":"{\"id\":\"c3\",\"status\":200,\"result\":{\"orderId\":1001,\"status\":\"CANCELED\",\"updateTime\":1767225600500}}"}

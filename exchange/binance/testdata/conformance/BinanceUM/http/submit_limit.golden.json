@@ -1,0 +1,35 @@
+{
+  "request": {
+    "method": "POST",
+    "base": "https://fapi.binance.com",
+    "path": "/fapi/v1/order",
+    "query": "symbol=BTCUSDT&side=BUY&type=LIMIT&quantity=0.001&price=65000.0&timeInForce=GTC&newClientOrderId=1767225600000000001&newOrderRespType=RESULT&recvWindow=5000&timestamp=1767225600000&signature=fHycdAoWwjBepMe25A8p%2BYxwIt9I3A%2BX3dZyMHVxUjWOISD3VOpIyrCeMXVEXaDhdWBOZNG%2FoAaabt8aJDNtDg%3D%3D",
+    "header": [
+      {
+        "name": "X-MBX-APIKEY",
+        "value": "conformance-api-key"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 1
+      },
+      {
+        "bucket": "orders_10s",
+        "n": 1
+      },
+      {
+        "bucket": "orders_1m",
+        "n": 1
+      }
+    ],
+    "mutates": true
+  },
+  "response": "recorded",
+  "result": {
+    "ExchTsNs": 1767225600000000000,
+    "OrderID": "1001",
+    "Status": 2
+  }
+}

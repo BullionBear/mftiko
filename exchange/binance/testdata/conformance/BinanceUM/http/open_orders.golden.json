@@ -1,0 +1,52 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://fapi.binance.com",
+    "path": "/fapi/v1/openOrders",
+    "query": "recvWindow=5000&timestamp=1767225600000&signature=xJyA8B1JJVp99fEO%2FIv2g4uqU6MNWG6mK3gFze1Baezp3DHW3xCg1jBD99OIliaWXgiloLRxdk2ptYwlK%2BdrAw%3D%3D",
+    "header": [
+      {
+        "name": "X-MBX-APIKEY",
+        "value": "conformance-api-key"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 40
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": {
+    "Items": [
+      {
+        "AsOfNs": 0,
+        "Balances": null,
+        "OpenOrders": [
+          {
+            "AvgPrice": 0,
+            "ClientOrderID": "1767225600000000001",
+            "Exch": {
+              "Category": "Perp",
+              "ExchTicker": "BTCUSDT",
+              "Venue": "BinanceUM"
+            },
+            "ExchTsNs": 1767225600000000000,
+            "FilledQty": 0,
+            "OrderID": "1001",
+            "Price": 65000,
+            "Qty": 0.001,
+            "QuoteQty": 0,
+            "RejectReason": "",
+            "Side": 1,
+            "Status": 2,
+            "Type": 1
+          }
+        ],
+        "Positions": null
+      }
+    ],
+    "Next": null
+  }
+}

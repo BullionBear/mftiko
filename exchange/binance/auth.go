@@ -1,0 +1,380 @@
+package binance
+
+import (
+	"errors"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/BullionBear/mftiko/contract/symbol"
+	"github.com/BullionBear/mftiko/contract/wire/decimal"
+	"github.com/BullionBear/mftiko/exchange"
+	"github.com/BullionBear/mftiko/exchange/internal/codec"
+)
+
+const (
+	prodREST    = "https://fapi.binance.com"
+	prodTrade   = "wss://ws-fapi.binance.com/ws-fapi/v1"
+	prodPrivate = "wss://fstream.binance.com/private/ws"
+
+	testHost    = "testnet.binancefuture.com"
+	testTrade   = "wss://testnet.binancefuture.com/ws-fapi/v1"
+	testPrivate = "wss://stream.binancefuture.com/private/ws"
+
+	recvWindow int64 = 5000
+
+	// cloidMax is newClientOrderId's limit. A D602 id is at most 19 digits and fits.
+	cloidMax = 36
+
+	weight1m  = "weight_1m"
+	orders10s = "orders_10s"
+	orders1m  = "orders_1m"
+)
+
+func (a *account) um() error {
+	if a.k.name != kindUM.name {
+		return exchange.ErrNotImplemented
+	}
+	return nil
+}
+
+func (a *account) signer() (*codec.Signer, error) {
+	return a.get(a.k.name, a.cfg.Credentials)
+}
+
+func (s *signerState) get(name string, c exchange.Credentials) (*codec.Signer, error) {
+	s.once.Do(func() {
+		if c.Type != exchange.KeyEd25519 {
+			s.signErr = fmt.Errorf("binance: %s signs with ed25519: %w", name, exchange.ErrUnsupported)
+			return
+		}
+		s.sig, s.signErr = codec.NewSigner(c)
+	})
+	return s.sig, s.signErr
+}
+
+func (a *account) restBase() string {
+	if a.cfg.RESTEndpoint != "" {
+		return strings.TrimRight(a.cfg.RESTEndpoint, "/")
+	}
+	return prodREST
+}
+
+func (a *account) onTestnet() bool {
+	return strings.Contains(a.restBase(), testHost)
+}
+
+func (a *account) tradeURL() string {
+	if a.onTestnet() {
+		return testTrade
+	}
+	return prodTrade
+}
+
+func (a *account) privateBase() string {
+	if ep := strings.TrimRight(a.cfg.StreamEndpoint, "/"); ep != "" {
+		return ep
+	}
+	if a.onTestnet() {
+		return testPrivate
+	}
+	return prodPrivate
+}
+
+func (a *account) signedCall(now time.Time, method, path string, q codec.Query, cost []exchange.Cost, mutates bool) (exchange.HTTPRequest, error) {
+	return signedCall(&a.signerState, a.k, a.cfg, now, method, path, q, cost, mutates)
+}
+
+func signedCall(st *signerState, k kind, cfg exchange.AccountConfig, now time.Time, method, path string, q codec.Query, cost []exchange.Cost, mutates bool) (exchange.HTTPRequest, error) {
+	if k.name != kindUM.name {
+		return exchange.HTTPRequest{}, exchange.ErrNotImplemented
+	}
+	sig, err := st.get(k.name, cfg.Credentials)
+	if err != nil {
+		return exchange.HTTPRequest{}, err
+	}
+	base := prodREST
+	if cfg.RESTEndpoint != "" {
+		base = strings.TrimRight(cfg.RESTEndpoint, "/")
+	}
+	q = q.AddInt("recvWindow", recvWindow).AddInt("timestamp", now.UnixMilli())
+	q = q.AddBytes("signature", sig.SignBase64(nil, q))
+	return exchange.HTTPRequest{
+		Method:  method,
+		Base:    base,
+		Path:    path,
+		Query:   []byte(q),
+		Header:  []exchange.Header{{Name: "X-MBX-APIKEY", Value: cfg.Credentials.Key}},
+		Cost:    cost,
+		Mutates: mutates,
+	}, nil
+}
+
+func weightCost(n int) []exchange.Cost {
+	return []exchange.Cost{{Bucket: weight1m, N: n}}
+}
+
+// orderCost is one order request: request weight plus one count on each order bucket.
+// n is how many orders the venue charges (a batch charges one per order).
+func orderCost(w, n int) []exchange.Cost {
+	return []exchange.Cost{
+		{Bucket: weight1m, N: w},
+		{Bucket: orders10s, N: n},
+		{Bucket: orders1m, N: n},
+	}
+}
+
+func apiKeyCall(base, key, method, path string, q codec.Query) exchange.HTTPRequest {
+	return exchange.HTTPRequest{
+		Method: method,
+		Base:   base,
+		Path:   path,
+		Query:  []byte(q),
+		Header: []exchange.Header{{Name: "X-MBX-APIKEY", Value: key}},
+		Cost:   []exchange.Cost{{Bucket: weight1m, N: 1}},
+	}
+}
+
+func (a *account) Usage(resp *exchange.HTTPResponse) []exchange.Used { return usedFrom(resp) }
+
+func (h *history) Usage(resp *exchange.HTTPResponse) []exchange.Used { return usedFrom(resp) }
+
+func usedFrom(resp *exchange.HTTPResponse) []exchange.Used {
+	if resp == nil {
+		return nil
+	}
+	var out []exchange.Used
+	if n, ok := headerInt(resp, "X-MBX-USED-WEIGHT-1M"); ok {
+		out = append(out, exchange.Used{Bucket: weight1m, N: n})
+	}
+	if n, ok := headerInt(resp, "X-MBX-ORDER-COUNT-10S"); ok {
+		out = append(out, exchange.Used{Bucket: orders10s, N: n})
+	}
+	if n, ok := headerInt(resp, "X-MBX-ORDER-COUNT-1M"); ok {
+		out = append(out, exchange.Used{Bucket: orders1m, N: n})
+	}
+	return out
+}
+
+func headerInt(resp *exchange.HTTPResponse, name string) (int, bool) {
+	s := resp.Get(name)
+	if s == "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// platformCodes is the 200–299 band in doc.go. A code that is not listed is returned as itself.
+var platformCodes = map[int]int32{
+	-2011: 200, -2013: 200,
+	-2010: 201, -2018: 201, -2019: 201,
+	-1013: 202, -1100: 202, -4003: 202, -4004: 202, -4005: 202, -4164: 202,
+	-1111: 203, -4001: 203, -4002: 203, -4014: 203, -4131: 203,
+	-2021: 204, -5022: 204,
+	-2022: 205, -2024: 205, -4118: 205,
+	-4061: 206,
+	-1015: 207, -2025: 207, -2027: 207,
+	-4015: 208,
+}
+
+func binanceErr(status, code int, msg string) error {
+	switch {
+	case status == http.StatusTooManyRequests || status == 418 || code == -1003:
+		return &exchange.RateLimited{}
+	case code == -1022 || code == -2014 || code == -2015 || status == http.StatusUnauthorized || status == http.StatusForbidden:
+		return fmt.Errorf("binance: %s: %w", msg, exchange.ErrAuth)
+	}
+	if code == 0 {
+		if status >= 400 {
+			return fmt.Errorf("binance: http %d: %s", status, msg)
+		}
+		return nil
+	}
+	mapped := int32(code)
+	if c, ok := platformCodes[code]; ok {
+		mapped = c
+	}
+	return &exchange.Reject{Code: mapped, Native: strconv.Itoa(code), Reason: msg}
+}
+
+type apiError struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+}
+
+func refuse(resp *exchange.HTTPResponse) error {
+	var e apiError
+	if err := codec.DecodeBody(resp.Body, &e); err != nil {
+		switch resp.Status {
+		case http.StatusTooManyRequests, 418:
+			return &exchange.RateLimited{}
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return fmt.Errorf("binance: http %d: %w", resp.Status, exchange.ErrAuth)
+		default:
+			return fmt.Errorf("binance: http %d: %w", resp.Status, err)
+		}
+	}
+	if err := binanceErr(resp.Status, e.Code, e.Msg); err != nil {
+		return err
+	}
+	return fmt.Errorf("binance: http %d", resp.Status)
+}
+
+func ms(v int64) int64 {
+	if v == 0 {
+		return 0
+	}
+	return v * int64(time.Millisecond)
+}
+
+func formatDec(v, step float64) (string, error) {
+	if !decimal.Has(v) {
+		return "", errors.New("binance: number is absent")
+	}
+	if !(step > 0) {
+		return "", errors.New("binance: step is not set")
+	}
+	return decimal.Format(v, step), nil
+}
+
+func checkCloid(s string) error {
+	if s == "" {
+		return errors.New("binance: client order id is empty")
+	}
+	if len(s) > cloidMax {
+		return fmt.Errorf("binance: client order id is %d characters, limit %d", len(s), cloidMax)
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9',
+			c == '.', c == '_', c == '-', c == ':', c == '/':
+		default:
+			return fmt.Errorf("binance: client order id contains %q", c)
+		}
+	}
+	return nil
+}
+
+func instrument(inst *symbol.Info) error {
+	if inst == nil || inst.ExchTicker == "" {
+		return errors.New("binance: instrument is missing")
+	}
+	if v := inst.Ticker.Venue; v != "" && v != VenueUM {
+		return fmt.Errorf("binance: %s belongs to %s", inst.ExchTicker, v)
+	}
+	return nil
+}
+
+func exchOf(sym string) symbol.ExchKey {
+	cat := symbol.Perp
+	if strings.Contains(sym, "_") {
+		cat = symbol.Future
+	}
+	return symbol.ExchKey{Venue: VenueUM, Category: cat, ExchTicker: sym}
+}
+
+func sideOf(s string) exchange.Side {
+	switch s {
+	case "BUY":
+		return exchange.SideBuy
+	case "SELL":
+		return exchange.SideSell
+	default:
+		return exchange.SideUnspecified
+	}
+}
+
+func sideWire(s exchange.Side) (string, error) {
+	switch s {
+	case exchange.SideBuy:
+		return "BUY", nil
+	case exchange.SideSell:
+		return "SELL", nil
+	default:
+		return "", errors.New("binance: side is missing")
+	}
+}
+
+func typeOf(s string) exchange.OrderType {
+	switch s {
+	case "LIMIT":
+		return exchange.OrderTypeLimit
+	case "MARKET":
+		return exchange.OrderTypeMarket
+	default:
+		return exchange.OrderTypeUnspecified
+	}
+}
+
+func typeWire(t exchange.OrderType) (string, error) {
+	switch t {
+	case exchange.OrderTypeLimit:
+		return "LIMIT", nil
+	case exchange.OrderTypeMarket:
+		return "MARKET", nil
+	default:
+		return "", errors.New("binance: order type is missing")
+	}
+}
+
+func tifWire(t exchange.TimeInForce) (string, error) {
+	switch t {
+	case exchange.TIFGTC:
+		return "GTC", nil
+	case exchange.TIFIOC:
+		return "IOC", nil
+	case exchange.TIFFOK:
+		return "FOK", nil
+	case exchange.TIFPostOnly:
+		return "GTX", nil
+	default:
+		return "", errors.New("binance: time in force is missing")
+	}
+}
+
+func statusOf(s string) exchange.OrderStatus {
+	switch s {
+	case "NEW":
+		return exchange.OrderStatusNew
+	case "PARTIALLY_FILLED":
+		return exchange.OrderStatusPartiallyFilled
+	case "FILLED":
+		return exchange.OrderStatusFilled
+	case "PENDING_CANCEL":
+		return exchange.OrderStatusPendingCancel
+	case "CANCELED":
+		return exchange.OrderStatusCancelled
+	case "REJECTED":
+		return exchange.OrderStatusRejected
+	case "EXPIRED", "EXPIRED_IN_MATCH":
+		return exchange.OrderStatusExpired
+	default:
+		return exchange.OrderStatusUnknown
+	}
+}
+
+// positionSize applies hedge mode: a SHORT row's amount is positive on the wire and short here.
+func positionSize(amt float64, side string) float64 {
+	if side == "SHORT" {
+		if amt < 0 {
+			return amt
+		}
+		return -amt
+	}
+	return amt
+}
+
+// account holds the once-parsed key. The fields below are written by signer and then only read.
+type signerState struct {
+	once    sync.Once
+	sig     *codec.Signer
+	signErr error
+}

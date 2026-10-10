@@ -1,0 +1,57 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://fapi.binance.com",
+    "path": "/fapi/v2/positionRisk",
+    "query": "recvWindow=5000&timestamp=1767225600000&signature=xJyA8B1JJVp99fEO%2FIv2g4uqU6MNWG6mK3gFze1Baezp3DHW3xCg1jBD99OIliaWXgiloLRxdk2ptYwlK%2BdrAw%3D%3D",
+    "header": [
+      {
+        "name": "X-MBX-APIKEY",
+        "value": "conformance-api-key"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 5
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": {
+    "Items": [
+      {
+        "AsOfNs": 0,
+        "Balances": null,
+        "OpenOrders": null,
+        "Positions": [
+          {
+            "EntryPrice": 65000,
+            "Exch": {
+              "Category": "Perp",
+              "ExchTicker": "BTCUSDT",
+              "Venue": "BinanceUM"
+            },
+            "Leverage": 20,
+            "MarkPrice": 65100,
+            "Size": 0.001,
+            "UnrealizedPnl": 0.1
+          },
+          {
+            "EntryPrice": 60000,
+            "Exch": {
+              "Category": "Future",
+              "ExchTicker": "BTCUSDT_260327",
+              "Venue": "BinanceUM"
+            },
+            "Leverage": 10,
+            "MarkPrice": 61000,
+            "Size": -0.002,
+            "UnrealizedPnl": 2
+          }
+        ]
+      }
+    ],
+    "Next": null
+  }
+}
