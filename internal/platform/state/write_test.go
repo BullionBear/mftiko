@@ -429,7 +429,7 @@ func TestSessionLostThenNewLeader(t *testing.T) {
 	raw := s.Client(t)
 	key := WorkerStatusKey(PlaneTD, "td-tw-1", WorkerHash("td/42"))
 
-	a := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{ID: "a", SessionTTL: 2 * time.Second})
+	a := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "td-tw-1")), PlaneTD, "td-tw-1", TermOptions{ID: "a", SessionTTL: testSessionTTL})
 	if err := a.Put(ctx, key, "a"); err != nil {
 		t.Fatal(err)
 	}
