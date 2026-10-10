@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"time"
 
 	"github.com/BullionBear/mftiko/contract/symbol"
@@ -48,27 +49,19 @@ type HTTPRequest struct {
 	Mutates bool
 }
 
-// String is the request as it may be logged: header names, every value masked, because headers carry
-// the API key, OKX's passphrase and the signature. Format and MarshalJSON give the same, so neither a
+// String is the request as it may be logged or put in an error: header names with every value
+// masked (headers carry the API key, OKX's passphrase and the signature), and the path, query and
+// body with any listenKey masked (MaskListenKey). Format and MarshalJSON give the same, so neither a
 // %v nor zerolog's Interface can leak one.
 func (r HTTPRequest) String() string {
-	b := make([]byte, 0, 64+len(r.Query)+len(r.Body))
-	b = append(append(append(append(b, r.Method...), ' '), r.Base...), r.Path...)
+	b := make([]byte, 0, 64+len(r.Path)+len(r.Query)+len(r.Body))
+	b = append(append(append(append(b, r.Method...), ' '), r.Base...), MaskListenKey([]byte(r.Path))...)
 	if len(r.Query) > 0 {
-		b = append(append(b, '?'), r.Query...)
+		b = append(append(b, '?'), MaskListenKey(r.Query)...)
 	}
-	if len(r.Header) > 0 {
-		b = append(b, " ["...)
-		for i, h := range r.Header {
-			if i > 0 {
-				b = append(b, ", "...)
-			}
-			b = append(append(b, h.Name...), ": REDACTED"...)
-		}
-		b = append(b, ']')
-	}
+	b = appendHeaders(b, r.Header, true)
 	if len(r.Body) > 0 {
-		b = append(append(b, ' '), r.Body...)
+		b = append(append(b, ' '), MaskListenKey(r.Body)...)
 	}
 	return string(b)
 }
@@ -84,6 +77,22 @@ type HTTPResponse struct {
 	Header []Header
 	Body   []byte
 }
+
+// String is the response as it may be logged: the status, the headers, and the body with any
+// listenKey masked (Binance answers a listenKey's start and keepalive with it). Format and
+// MarshalJSON give the same.
+func (r HTTPResponse) String() string {
+	b := strconv.AppendInt(make([]byte, 0, 32+len(r.Body)), int64(r.Status), 10)
+	b = appendHeaders(b, r.Header, false)
+	if len(r.Body) > 0 {
+		b = append(append(b, ' '), MaskListenKey(r.Body)...)
+	}
+	return string(b)
+}
+
+func (r HTTPResponse) Format(f fmt.State, _ rune) { _, _ = io.WriteString(f, r.String()) }
+
+func (r HTTPResponse) MarshalJSON() ([]byte, error) { return json.Marshal(r.String()) }
 
 // Get returns the first value of header name, compared case-insensitively.
 func (r *HTTPResponse) Get(name string) string {

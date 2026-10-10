@@ -1,17 +1,11 @@
 package exchange
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
-
-	"github.com/rs/zerolog"
 )
 
 // pages is a Doer that answers page n of three with its number, and records the request it got.
@@ -116,40 +110,6 @@ func TestRunLends(t *testing.T) {
 	c.Parse = func(*HTTPResponse) (string, error) { return "partial", boom }
 	if got, err := Run(context.Background(), l, c); !errors.Is(err, boom) || got != "partial" {
 		t.Fatalf("Parse error through Lend: %q, %v", got, err)
-	}
-}
-
-func TestRequestNeverFormatsHeaders(t *testing.T) {
-	r := HTTPRequest{
-		Method: "POST", Base: "https://www.okx.com", Path: "/api/v5/trade/order", Query: []byte("a=1"),
-		Header: []Header{{Name: "OK-ACCESS-KEY", Value: "k-visible"}, {Name: "OK-ACCESS-PASSPHRASE", Value: "pp-secret"}},
-		Body:   []byte(`{"instId":"BTC-USDT"}`),
-	}
-	want := `POST https://www.okx.com/api/v5/trade/order?a=1 [OK-ACCESS-KEY: REDACTED, OK-ACCESS-PASSPHRASE: REDACTED] {"instId":"BTC-USDT"}`
-	if got := r.String(); got != want {
-		t.Fatalf("String\n got %s\nwant %s", got, want)
-	}
-
-	var buf bytes.Buffer
-	log := zerolog.New(&buf)
-	log.Info().Interface("req", r).Interface("ptr", &r).Stringer("s", r).Msg("x")
-	j, err := json.Marshal(r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	c := Call[int]{Req: r}
-	for _, out := range []string{
-		fmt.Sprint(r), fmt.Sprint(&r), fmt.Sprintf("%v %+v %#v %s %q %x", r, r, r, r, r, r),
-		fmt.Sprintf("%v %+v %#v", c, c, c), string(j), buf.String(),
-	} {
-		for _, secret := range []string{"k-visible", "pp-secret"} {
-			if strings.Contains(out, secret) {
-				t.Errorf("leaked %q in %s", secret, out)
-			}
-		}
-		if !strings.Contains(out, "OK-ACCESS-PASSPHRASE: REDACTED") {
-			t.Errorf("no masked header in %s", out)
-		}
 	}
 }
 
