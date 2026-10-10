@@ -1,0 +1,55 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://api.bybit.com",
+    "path": "/v5/account/wallet-balance",
+    "query": "accountType=UNIFIED",
+    "header": [
+      {
+        "name": "X-BAPI-API-KEY",
+        "value": "conformance-api-key"
+      },
+      {
+        "name": "X-BAPI-TIMESTAMP",
+        "value": "1767225600000"
+      },
+      {
+        "name": "X-BAPI-RECV-WINDOW",
+        "value": "5000"
+      },
+      {
+        "name": "X-BAPI-SIGN",
+        "value": "6bff7d6782d390e84124030c82c940f2176aa872f2d3b5f93dcc2823b27e3239"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": {
+    "Items": [
+      {
+        "AsOfNs": 0,
+        "Balances": [
+          {
+            "Asset": "BTC",
+            "Free": 0.06573305,
+            "Locked": 0
+          },
+          {
+            "Asset": "USDT",
+            "Free": 4614.70528219,
+            "Locked": 0
+          }
+        ],
+        "OpenOrders": null,
+        "Positions": null
+      }
+    ],
+    "Next": null
+  }
+}

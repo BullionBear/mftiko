@@ -1,0 +1,116 @@
+{
+  "request": {
+    "method": "POST",
+    "base": "https://api-testnet.bybit.com",
+    "path": "/v5/order/create",
+    "header": [
+      {
+        "name": "X-BAPI-API-KEY",
+        "value": "REDACTED"
+      },
+      {
+        "name": "X-BAPI-TIMESTAMP",
+        "value": "1791628435614"
+      },
+      {
+        "name": "X-BAPI-RECV-WINDOW",
+        "value": "5000"
+      },
+      {
+        "name": "X-BAPI-SIGN",
+        "value": "REDACTED"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json"
+      }
+    ],
+    "body": "{\"category\":\"linear\",\"symbol\":\"BTCUSDT\",\"side\":\"Buy\",\"orderType\":\"Limit\",\"qty\":\"0.001\",\"price\":\"72454.0\",\"timeInForce\":\"GTC\",\"orderLinkId\":\"1154756132124915713\"}",
+    "cost": [
+      {
+        "bucket": "orders",
+        "n": 1
+      }
+    ],
+    "mutates": true
+  },
+  "response": {
+    "status": 200,
+    "header": [
+      {
+        "name": "Content-Length",
+        "value": "160"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json; charset=utf-8"
+      },
+      {
+        "name": "Server",
+        "value": "Openresty"
+      },
+      {
+        "name": "Connection",
+        "value": "keep-alive"
+      },
+      {
+        "name": "Date",
+        "value": "Sat, 10 Oct 2026 10:33:55 GMT"
+      },
+      {
+        "name": "x-cld-src",
+        "value": "Loc-A"
+      },
+      {
+        "name": "X-Bapi-Limit",
+        "value": "10"
+      },
+      {
+        "name": "X-Bapi-Limit-Status",
+        "value": "9"
+      },
+      {
+        "name": "X-Bapi-Limit-Reset-Timestamp",
+        "value": "1791628435933"
+      },
+      {
+        "name": "Ret_code",
+        "value": "0"
+      },
+      {
+        "name": "Traceid",
+        "value": "ffdaffba6dd916b1f36081fcc58b3c55"
+      },
+      {
+        "name": "Timenow",
+        "value": "1791628435970"
+      },
+      {
+        "name": "X-Cache",
+        "value": "Miss from cloudfront"
+      },
+      {
+        "name": "Via",
+        "value": "1.1 1d4017b5d1ddbdf05af097603dc5cf2e.cloudfront.net (CloudFront)"
+      },
+      {
+        "name": "X-Amz-Cf-Pop",
+        "value": "TPE53-P3"
+      },
+      {
+        "name": "X-Amz-Cf-Id",
+        "value": "GuW1EIMK5mVjWwZMzYIrO9ujDmBcvUDn0tzHhkGWVbZyy2zLPuad0w=="
+      }
+    ],
+    "body": {
+      "retCode": 0,
+      "retMsg": "OK",
+      "result": {
+        "orderId": "6fa6ec8f-26f0-443c-ba69-d0d18977dfc0",
+        "orderLinkId": "1154756132124915713"
+      },
+      "retExtInfo": {},
+      "time": 1791628435970
+    }
+  }
+}

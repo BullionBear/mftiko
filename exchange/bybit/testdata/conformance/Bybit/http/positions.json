@@ -1,0 +1,153 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://api-testnet.bybit.com",
+    "path": "/v5/position/list",
+    "query": "category=linear&settleCoin=USDT&limit=200",
+    "header": [
+      {
+        "name": "X-BAPI-API-KEY",
+        "value": "REDACTED"
+      },
+      {
+        "name": "X-BAPI-TIMESTAMP",
+        "value": "1791628437997"
+      },
+      {
+        "name": "X-BAPI-RECV-WINDOW",
+        "value": "5000"
+      },
+      {
+        "name": "X-BAPI-SIGN",
+        "value": "REDACTED"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "header": [
+      {
+        "name": "Content-Length",
+        "value": "979"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json; charset=utf-8"
+      },
+      {
+        "name": "Server",
+        "value": "Openresty"
+      },
+      {
+        "name": "Connection",
+        "value": "keep-alive"
+      },
+      {
+        "name": "Date",
+        "value": "Sat, 10 Oct 2026 10:33:58 GMT"
+      },
+      {
+        "name": "x-cld-src",
+        "value": "Loc-A"
+      },
+      {
+        "name": "X-Bapi-Limit",
+        "value": "50"
+      },
+      {
+        "name": "X-Bapi-Limit-Status",
+        "value": "49"
+      },
+      {
+        "name": "X-Bapi-Limit-Reset-Timestamp",
+        "value": "1791628438063"
+      },
+      {
+        "name": "Ret_code",
+        "value": "0"
+      },
+      {
+        "name": "Traceid",
+        "value": "06962b686840c5f216d9a19b5a11d1ed"
+      },
+      {
+        "name": "Timenow",
+        "value": "1791628438205"
+      },
+      {
+        "name": "X-Cache",
+        "value": "Miss from cloudfront"
+      },
+      {
+        "name": "Via",
+        "value": "1.1 1d4017b5d1ddbdf05af097603dc5cf2e.cloudfront.net (CloudFront)"
+      },
+      {
+        "name": "X-Amz-Cf-Pop",
+        "value": "TPE53-P3"
+      },
+      {
+        "name": "X-Amz-Cf-Id",
+        "value": "5abn5NoNi_Yk0I2YTytBVnDMMR7HOTwTNlSJvmyCT_JN-zTzpSVtJw=="
+      }
+    ],
+    "body": {
+      "retCode": 0,
+      "retMsg": "OK",
+      "result": {
+        "nextPageCursor": "BTCUSDT%2C1791628437615%2C0",
+        "category": "linear",
+        "list": [
+          {
+            "symbol": "BTCUSDT",
+            "leverage": "10",
+            "breakEvenPrice": "80593.30390714",
+            "autoAddMargin": 0,
+            "avgPrice": "80504.7",
+            "liqPrice": "",
+            "riskLimitValue": "300000",
+            "takeProfit": "",
+            "positionValue": "80.5046",
+            "isReduceOnly": false,
+            "positionIMByMp": "8.09030982",
+            "tpslMode": "Full",
+            "riskId": 1,
+            "trailingStop": "0",
+            "unrealisedPnl": "-0.0001",
+            "markPrice": "80504.6",
+            "adlRankIndicator": 2,
+            "cumRealisedPnl": "-0.04427759",
+            "positionMM": "0.305515",
+            "createdTime": "1791628435935",
+            "positionIdx": 0,
+            "openTime": 1791628437611,
+            "positionIM": "8.09030982",
+            "positionMMByMp": "0.305515",
+            "seq": 9689480476,
+            "updatedTime": "1791628437615",
+            "side": "Buy",
+            "bustPrice": "",
+            "positionBalance": "0",
+            "leverageSysUpdatedTime": "",
+            "curRealisedPnl": "-0.04427759",
+            "size": "0.001",
+            "positionStatus": "Normal",
+            "mmrSysUpdatedTime": "",
+            "stopLoss": "",
+            "tradeMode": 0,
+            "sessionAvgPrice": "",
+            "netDeltaRatio": ""
+          }
+        ]
+      },
+      "retExtInfo": {},
+      "time": 1791628438205
+    }
+  }
+}
