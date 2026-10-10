@@ -8,6 +8,8 @@
 //
 // Auth is on, as in production (E1-08): etcd issues JWT tokens (ES256), and a root user exists whose password is
 // RootPassword. Client returns a root client; tests create the other users and roles themselves, with Password.
+// Unlike production, passwords are hashed at bcrypt's lowest cost (4): every test adds users and logs in, and at the
+// default cost (10) that was most of a test's time.
 package etcdtest
 
 import (
@@ -314,6 +316,7 @@ func newServer(bin, dataDir, keyDir string, o options) (*Server, error) {
 		"--initial-cluster-token", name,
 		"--log-level=error",
 		fmt.Sprintf("--auth-token=jwt,pub-key=%s,priv-key=%s,sign-method=ES256,ttl=%s", pubPath, privPath, o.tokenTTL),
+		"--bcrypt-cost=4",
 	}
 	if err := s.launch(); err != nil {
 		return nil, err
