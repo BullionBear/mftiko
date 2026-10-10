@@ -1,0 +1,39 @@
+{
+  "request": {
+    "method": "POST",
+    "base": "https://api.bybit.com",
+    "path": "/v5/order/cancel",
+    "header": [
+      {
+        "name": "X-BAPI-API-KEY",
+        "value": "conformance-api-key"
+      },
+      {
+        "name": "X-BAPI-TIMESTAMP",
+        "value": "1767225600000"
+      },
+      {
+        "name": "X-BAPI-RECV-WINDOW",
+        "value": "5000"
+      },
+      {
+        "name": "X-BAPI-SIGN",
+        "value": "2a0bcfb772fa1c5ff753daa2839679d3f11caf7139b376e9a7476024e30458ba"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json"
+      }
+    ],
+    "body": "{\"category\":\"linear\",\"symbol\":\"BTCUSDT\",\"orderLinkId\":\"1767225600000000001\"}",
+    "cost": [
+      {
+        "bucket": "orders",
+        "n": 1
+      }
+    ],
+    "mutates": true
+  },
+  "response": "recorded",
+  "result": {}
+}

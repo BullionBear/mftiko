@@ -1,0 +1,7 @@
+{
+  "url": "wss://stream.bybit.com/v5/private",
+  "frames": [
+    "{\"op\":\"auth\",\"args\":[\"conformance-api-key\",1767225610000,\"80dd9d3b567890c6be44d5c1e3d1cec9ec67083e3f8d1cc84f3cc70baafacbad\"]}",
+    "{\"op\":\"subscribe\",\"args\":[\"order\",\"execution\",\"position\",\"wallet\",\"dcp\"]}"
+  ]
+}

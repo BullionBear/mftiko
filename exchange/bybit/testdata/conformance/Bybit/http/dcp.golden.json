@@ -1,0 +1,39 @@
+{
+  "request": {
+    "method": "POST",
+    "base": "https://api.bybit.com",
+    "path": "/v5/order/disconnected-cancel-all",
+    "header": [
+      {
+        "name": "X-BAPI-API-KEY",
+        "value": "conformance-api-key"
+      },
+      {
+        "name": "X-BAPI-TIMESTAMP",
+        "value": "1767225600000"
+      },
+      {
+        "name": "X-BAPI-RECV-WINDOW",
+        "value": "5000"
+      },
+      {
+        "name": "X-BAPI-SIGN",
+        "value": "70f9c9b04743b2fc5b04c18e9d2432b07a839060558c1eb4828794297557fe5a"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json"
+      }
+    ],
+    "body": "{\"timeWindow\":10}",
+    "cost": [
+      {
+        "bucket": "dcp",
+        "n": 1
+      }
+    ],
+    "mutates": true
+  },
+  "response": "recorded",
+  "error": "reject 3500716 3500716"
+}

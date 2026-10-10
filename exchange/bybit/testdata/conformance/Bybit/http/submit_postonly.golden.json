@@ -1,0 +1,43 @@
+{
+  "request": {
+    "method": "POST",
+    "base": "https://api.bybit.com",
+    "path": "/v5/order/create",
+    "header": [
+      {
+        "name": "X-BAPI-API-KEY",
+        "value": "conformance-api-key"
+      },
+      {
+        "name": "X-BAPI-TIMESTAMP",
+        "value": "1767225600000"
+      },
+      {
+        "name": "X-BAPI-RECV-WINDOW",
+        "value": "5000"
+      },
+      {
+        "name": "X-BAPI-SIGN",
+        "value": "a4fbfc37c3672f1b59c0daea3107b8b070cdfd79da3e7857d91e69502ffffacf"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json"
+      }
+    ],
+    "body": "{\"category\":\"linear\",\"symbol\":\"BTCUSDT\",\"side\":\"Buy\",\"orderType\":\"Limit\",\"qty\":\"0.001\",\"price\":\"65000.0\",\"timeInForce\":\"PostOnly\",\"orderLinkId\":\"1767225600000000004\"}",
+    "cost": [
+      {
+        "bucket": "orders",
+        "n": 1
+      }
+    ],
+    "mutates": true
+  },
+  "response": "recorded",
+  "result": {
+    "ExchTsNs": 1791628437161000000,
+    "OrderID": "4576c613-f792-403d-ad64-5137941736e0",
+    "Status": 1
+  }
+}

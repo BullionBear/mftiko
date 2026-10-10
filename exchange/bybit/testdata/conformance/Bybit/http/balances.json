@@ -1,0 +1,174 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://api-testnet.bybit.com",
+    "path": "/v5/account/wallet-balance",
+    "query": "accountType=UNIFIED",
+    "header": [
+      {
+        "name": "X-BAPI-API-KEY",
+        "value": "REDACTED"
+      },
+      {
+        "name": "X-BAPI-TIMESTAMP",
+        "value": "1791628439816"
+      },
+      {
+        "name": "X-BAPI-RECV-WINDOW",
+        "value": "5000"
+      },
+      {
+        "name": "X-BAPI-SIGN",
+        "value": "REDACTED"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "header": [
+      {
+        "name": "Content-Length",
+        "value": "1391"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json; charset=utf-8"
+      },
+      {
+        "name": "Server",
+        "value": "Openresty"
+      },
+      {
+        "name": "Connection",
+        "value": "keep-alive"
+      },
+      {
+        "name": "Date",
+        "value": "Sat, 10 Oct 2026 10:33:59 GMT"
+      },
+      {
+        "name": "x-cld-src",
+        "value": "Loc-A"
+      },
+      {
+        "name": "X-Bapi-Limit",
+        "value": "50"
+      },
+      {
+        "name": "X-Bapi-Limit-Status",
+        "value": "49"
+      },
+      {
+        "name": "X-Bapi-Limit-Reset-Timestamp",
+        "value": "1791628439881"
+      },
+      {
+        "name": "Ret_code",
+        "value": "0"
+      },
+      {
+        "name": "Traceid",
+        "value": "02965bf3e9407c33724aa7f43be924a2"
+      },
+      {
+        "name": "Timenow",
+        "value": "1791628439952"
+      },
+      {
+        "name": "X-Cache",
+        "value": "Miss from cloudfront"
+      },
+      {
+        "name": "Via",
+        "value": "1.1 1d4017b5d1ddbdf05af097603dc5cf2e.cloudfront.net (CloudFront)"
+      },
+      {
+        "name": "X-Amz-Cf-Pop",
+        "value": "TPE53-P3"
+      },
+      {
+        "name": "X-Amz-Cf-Id",
+        "value": "a88G5ev5HzEPgfFL1it1x9fL61-3Hba6CU0Hwij-crm_6FgJtFn-qQ=="
+      }
+    ],
+    "body": {
+      "retCode": 0,
+      "retMsg": "OK",
+      "result": {
+        "list": [
+          {
+            "accountIMRate": "0",
+            "totalMaintenanceMarginByMp": "0",
+            "totalInitialMargin": "0",
+            "accountType": "UNIFIED",
+            "accountMMRate": "0",
+            "accountMMRateByMp": "0",
+            "accountIMRateByMp": "0",
+            "totalInitialMarginByMp": "0",
+            "totalMaintenanceMargin": "0",
+            "totalEquity": "10048.62902282",
+            "totalMarginBalance": "4610.39976216",
+            "totalAvailableBalance": "4610.39976216",
+            "totalPerpUPL": "0",
+            "totalWalletBalance": "4610.39976216",
+            "accountLTV": "0",
+            "coin": [
+              {
+                "spotBorrow": "0",
+                "availableToBorrow": "",
+                "bonus": "0",
+                "accruedInterest": "0",
+                "availableToWithdraw": "",
+                "totalOrderIM": "0",
+                "equity": "0.06573305",
+                "totalPositionMM": "0",
+                "usdValue": "5438.22926065",
+                "unrealisedPnl": "0",
+                "collateralSwitch": false,
+                "spotHedgingQty": "0",
+                "borrowAmount": "0.000000000000000000",
+                "totalPositionIM": "0",
+                "walletBalance": "0.06573305",
+                "cumRealisedPnl": "-0.00072895",
+                "locked": "0",
+                "marginCollateral": true,
+                "colRes": "-1",
+                "coin": "BTC"
+              },
+              {
+                "spotBorrow": "0",
+                "availableToBorrow": "",
+                "bonus": "0",
+                "accruedInterest": "0",
+                "availableToWithdraw": "",
+                "totalOrderIM": "0",
+                "equity": "4614.70528219",
+                "totalPositionMM": "0",
+                "usdValue": "4610.39976216",
+                "unrealisedPnl": "0",
+                "collateralSwitch": true,
+                "spotHedgingQty": "0",
+                "borrowAmount": "0.000000000000000000",
+                "totalPositionIM": "0",
+                "walletBalance": "4614.70528219",
+                "cumRealisedPnl": "-5.0866672",
+                "locked": "0",
+                "marginCollateral": true,
+                "colRes": "-1",
+                "coin": "USDT"
+              }
+            ]
+          }
+        ]
+      },
+      "retExtInfo": {},
+      "time": 1791628439952
+    }
+  }
+}

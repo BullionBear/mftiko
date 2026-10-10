@@ -1,0 +1,6 @@
+{
+  "response": {
+    "status": 200,
+    "body": {"retCode": 10006, "retMsg": "Too many visits. Exceeded the API Rate Limit.", "result": {}, "retExtInfo": {}, "time": 1767225600000}
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "response": {
+    "status": 200,
+    "body": {"retCode": 10004, "retMsg": "Error sign, please check your signature generation algorithm.", "result": {}, "retExtInfo": {}, "time": 1767225600000}
+  }
+}

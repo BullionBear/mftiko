@@ -1,0 +1,160 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://api-testnet.bybit.com",
+    "path": "/v5/order/realtime",
+    "query": "category=linear&settleCoin=USDT&openOnly=0&limit=50",
+    "header": [
+      {
+        "name": "X-BAPI-API-KEY",
+        "value": "REDACTED"
+      },
+      {
+        "name": "X-BAPI-TIMESTAMP",
+        "value": "1791628436285"
+      },
+      {
+        "name": "X-BAPI-RECV-WINDOW",
+        "value": "5000"
+      },
+      {
+        "name": "X-BAPI-SIGN",
+        "value": "REDACTED"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "header": [
+      {
+        "name": "Content-Length",
+        "value": "1149"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json; charset=utf-8"
+      },
+      {
+        "name": "Server",
+        "value": "Openresty"
+      },
+      {
+        "name": "Connection",
+        "value": "keep-alive"
+      },
+      {
+        "name": "Date",
+        "value": "Sat, 10 Oct 2026 10:33:56 GMT"
+      },
+      {
+        "name": "x-cld-src",
+        "value": "Loc-A"
+      },
+      {
+        "name": "X-Bapi-Limit",
+        "value": "50"
+      },
+      {
+        "name": "X-Bapi-Limit-Status",
+        "value": "49"
+      },
+      {
+        "name": "X-Bapi-Limit-Reset-Timestamp",
+        "value": "1791628436350"
+      },
+      {
+        "name": "Ret_code",
+        "value": "0"
+      },
+      {
+        "name": "Traceid",
+        "value": "2d209593e962cb1540ab649251bf62ad"
+      },
+      {
+        "name": "Timenow",
+        "value": "1791628436421"
+      },
+      {
+        "name": "X-Cache",
+        "value": "Miss from cloudfront"
+      },
+      {
+        "name": "Via",
+        "value": "1.1 1d4017b5d1ddbdf05af097603dc5cf2e.cloudfront.net (CloudFront)"
+      },
+      {
+        "name": "X-Amz-Cf-Pop",
+        "value": "TPE53-P3"
+      },
+      {
+        "name": "X-Amz-Cf-Id",
+        "value": "6LBhGmqrEqFQSDm6Hak2F6Xjy7-PqOiBrAZfez9wtiRhu4kHbu5PuA=="
+      }
+    ],
+    "body": {
+      "retCode": 0,
+      "retMsg": "OK",
+      "result": {
+        "nextPageCursor": "6fa6ec8f-26f0-443c-ba69-d0d18977dfc0%3A1791628435935%2C6fa6ec8f-26f0-443c-ba69-d0d18977dfc0%3A1791628435935",
+        "category": "linear",
+        "list": [
+          {
+            "symbol": "BTCUSDT",
+            "orderType": "Limit",
+            "orderLinkId": "1154756132124915713",
+            "slLimitPrice": "0",
+            "orderId": "6fa6ec8f-26f0-443c-ba69-d0d18977dfc0",
+            "cancelType": "UNKNOWN",
+            "avgPrice": "",
+            "stopOrderType": "",
+            "lastPriceOnCreated": "80504.6",
+            "orderStatus": "New",
+            "createType": "CreateByUser",
+            "takeProfit": "",
+            "cumExecValue": "0",
+            "tpslMode": "",
+            "smpType": "CancelMaker",
+            "triggerDirection": 0,
+            "blockTradeId": "",
+            "cumFeeDetail": {},
+            "isLeverage": "",
+            "rejectReason": "EC_NoError",
+            "price": "72454",
+            "orderIv": "",
+            "createdTime": "1791628435935",
+            "tpTriggerBy": "",
+            "positionIdx": 0,
+            "timeInForce": "GTC",
+            "leavesValue": "72.454",
+            "updatedTime": "1791628435939",
+            "side": "Buy",
+            "smpGroup": "107081242",
+            "triggerPrice": "",
+            "tpLimitPrice": "0",
+            "cumExecFee": "0",
+            "leavesQty": "0.001",
+            "slTriggerBy": "",
+            "closeOnTrigger": false,
+            "placeType": "",
+            "cumExecQty": "0",
+            "reduceOnly": false,
+            "qty": "0.001",
+            "stopLoss": "",
+            "marketUnit": "",
+            "smpOrderId": "",
+            "parentOrderLinkId": "",
+            "triggerBy": ""
+          }
+        ]
+      },
+      "retExtInfo": {},
+      "time": 1791628436421
+    }
+  }
+}
