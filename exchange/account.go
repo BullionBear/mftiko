@@ -18,6 +18,10 @@ type AccountConfig struct {
 	// mdctl.InitPayload.url does for market data (D403). Empty means the default.
 	RESTEndpoint   string
 	StreamEndpoint string
+	// Simulated selects a venue's demo trading mode when that mode is a flag rather than
+	// another host. OKX adds the header x-simulated-trading: 1 and, unless StreamEndpoint
+	// is set, dials the demo private socket. Other venues ignore it.
+	Simulated bool
 }
 
 // AccountFactory builds an Account for one api_id of one AccountKind.

@@ -1,0 +1,48 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://www.okx.com",
+    "path": "/api/v5/account/positions",
+    "query": "limit=100",
+    "header": [
+      {
+        "name": "OK-ACCESS-KEY",
+        "value": "conformance-api-key"
+      },
+      {
+        "name": "OK-ACCESS-SIGN",
+        "value": "7dspv62gmWM/VVBEFqMJgIyhLZXrczk+aVEk2eVoDic="
+      },
+      {
+        "name": "OK-ACCESS-TIMESTAMP",
+        "value": "2026-01-01T00:00:00.000Z"
+      },
+      {
+        "name": "OK-ACCESS-PASSPHRASE",
+        "value": "conformance-passphrase-9a8b"
+      },
+      {
+        "name": "User-Agent",
+        "value": "mftiko"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": {
+    "Items": [
+      {
+        "AsOfNs": 0,
+        "Balances": null,
+        "OpenOrders": null,
+        "Positions": null
+      }
+    ],
+    "Next": null
+  }
+}

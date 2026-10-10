@@ -1,0 +1,38 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://www.okx.com",
+    "path": "/api/v5/account/leverage-info",
+    "query": "instId=BTC-USDT-SWAP&mgnMode=cross",
+    "header": [
+      {
+        "name": "OK-ACCESS-KEY",
+        "value": "conformance-api-key"
+      },
+      {
+        "name": "OK-ACCESS-SIGN",
+        "value": "TroGIFpfhy7yfvOiftccwyMitbm4rpDclr3426ppW/I="
+      },
+      {
+        "name": "OK-ACCESS-TIMESTAMP",
+        "value": "2026-01-01T00:00:00.000Z"
+      },
+      {
+        "name": "OK-ACCESS-PASSPHRASE",
+        "value": "conformance-passphrase-9a8b"
+      },
+      {
+        "name": "User-Agent",
+        "value": "mftiko"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": 3
+}

@@ -1,0 +1,47 @@
+{
+  "request": {
+    "method": "POST",
+    "base": "https://www.okx.com",
+    "path": "/api/v5/trade/order",
+    "header": [
+      {
+        "name": "OK-ACCESS-KEY",
+        "value": "conformance-api-key"
+      },
+      {
+        "name": "OK-ACCESS-SIGN",
+        "value": "7In+2KtqMclVIJbVZGBjrMrluU7IFa7Z1q/rkWxaT5E="
+      },
+      {
+        "name": "OK-ACCESS-TIMESTAMP",
+        "value": "2026-01-01T00:00:00.000Z"
+      },
+      {
+        "name": "OK-ACCESS-PASSPHRASE",
+        "value": "conformance-passphrase-9a8b"
+      },
+      {
+        "name": "User-Agent",
+        "value": "mftiko"
+      },
+      {
+        "name": "Content-Type",
+        "value": "application/json"
+      }
+    ],
+    "body": "{\"instId\":\"BTC-USDT\",\"tdMode\":\"cash\",\"side\":\"buy\",\"ordType\":\"market\",\"sz\":\"10.00000000\",\"clOrdId\":\"1767225600000000001\",\"tgtCcy\":\"quote_ccy\"}",
+    "cost": [
+      {
+        "bucket": "orders",
+        "n": 1
+      }
+    ],
+    "mutates": true
+  },
+  "response": "recorded",
+  "result": {
+    "ExchTsNs": 1791634460011000000,
+    "OrderID": "3997408606685949953",
+    "Status": 1
+  }
+}
