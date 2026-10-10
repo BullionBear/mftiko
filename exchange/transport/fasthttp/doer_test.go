@@ -22,8 +22,20 @@ func newDoer(timeout time.Duration) *fasthttp.Doer {
 	return fasthttp.New(nil, fasthttp.Options{Timeout: timeout})
 }
 
+// secrets are the credential headers a signed request carries: no error may show their values.
+var secrets = []exchange.Header{{Name: "OK-ACCESS-KEY", Value: "k-visible"}, {Name: "OK-ACCESS-PASSPHRASE", Value: "pp-secret"}}
+
 func get(base, path string) exchange.HTTPRequest {
-	return exchange.HTTPRequest{Method: "GET", Base: base, Path: path}
+	return exchange.HTTPRequest{Method: "GET", Base: base, Path: path, Header: secrets}
+}
+
+func hidesHeaders(t *testing.T, err error) {
+	t.Helper()
+	for _, h := range secrets {
+		if err != nil && strings.Contains(err.Error(), h.Value) {
+			t.Errorf("error shows %s: %v", h.Name, err)
+		}
+	}
 }
 
 func withTimeout(t *testing.T, d time.Duration) context.Context {
@@ -206,9 +218,11 @@ func TestStatus(t *testing.T) {
 		}
 	}
 	for _, code := range []int{500, 502, 503, 504} {
-		if _, err := exchange.Run(withTimeout(t, 5*time.Second), d, call(code)); !errors.Is(err, exchange.ErrUnknownOutcome) {
+		_, err := exchange.Run(withTimeout(t, 5*time.Second), d, call(code))
+		if !errors.Is(err, exchange.ErrUnknownOutcome) {
 			t.Errorf("%d: %v, want ErrUnknownOutcome", code, err)
 		}
+		hidesHeaders(t, err)
 	}
 	if parsed != 3 {
 		t.Fatalf("Parse ran %d times, want 3", parsed)
@@ -245,6 +259,7 @@ func TestTimeout(t *testing.T) {
 		if !errors.Is(err, exchange.ErrUnknownOutcome) {
 			t.Errorf("%s: %v, want ErrUnknownOutcome", name, err)
 		}
+		hidesHeaders(t, err)
 		if el := time.Since(start); el < 100*time.Millisecond || el > 5*time.Second {
 			t.Errorf("%s: returned after %v", name, el)
 		}
@@ -271,7 +286,7 @@ func TestDisconnect(t *testing.T) {
 	d := newDoer(0)
 	for _, req := range []exchange.HTTPRequest{
 		get(srv.URL, "/drop"),
-		{Method: "POST", Base: srv.URL, Path: "/drop", Body: []byte("x=1"), Mutates: true},
+		{Method: "POST", Base: srv.URL, Path: "/drop", Header: secrets, Body: []byte("x=1"), Mutates: true},
 		get(srv.URL, "/partial"),
 	} {
 		hits.Store(0)
@@ -279,6 +294,7 @@ func TestDisconnect(t *testing.T) {
 		if !errors.Is(err, exchange.ErrUnknownOutcome) {
 			t.Errorf("%s %s: %v, want ErrUnknownOutcome", req.Method, req.Path, err)
 		}
+		hidesHeaders(t, err)
 		if n := hits.Load(); n != 1 {
 			t.Errorf("%s %s: sent %d times", req.Method, req.Path, n)
 		}
@@ -314,6 +330,7 @@ func TestNotSent(t *testing.T) {
 		if err == nil || errors.Is(err, exchange.ErrUnknownOutcome) {
 			t.Errorf("%s: %v, want a plain error", name, err)
 		}
+		hidesHeaders(t, err)
 	}
 }
 
