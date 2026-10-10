@@ -1,0 +1,119 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://fapi.binance.com",
+    "path": "/fapi/v1/exchangeInfo",
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 1
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": {
+    "Items": [
+      {
+        "Base": "BTC",
+        "Category": "Future",
+        "ContractSize": 1,
+        "ContractValueCcy": "BTC",
+        "ExchTicker": "BTCUSDT_261225",
+        "ExpiryCode": "261225",
+        "ExpiryNs": 1798185600000000000,
+        "Filters": {
+          "max_price": 1000000,
+          "max_qty": 500,
+          "min_notional": 5,
+          "min_price": 576.3,
+          "min_qty": 0.001,
+          "price_tick": 0.1,
+          "qty_step": 0.001
+        },
+        "OptionType": "",
+        "PriceCcy": "USDT",
+        "Quote": "USDT",
+        "Settle": "USDT",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "BinanceUM"
+      },
+      {
+        "Base": "ETH",
+        "Category": "Future",
+        "ContractSize": 1,
+        "ContractValueCcy": "ETH",
+        "ExchTicker": "ETHUSDT_261225",
+        "ExpiryCode": "261225",
+        "ExpiryNs": 1798185600000000000,
+        "Filters": {
+          "max_price": 100000,
+          "max_qty": 10000,
+          "min_notional": 5,
+          "min_price": 41.1,
+          "min_qty": 0.001,
+          "price_tick": 0.01,
+          "qty_step": 0.001
+        },
+        "OptionType": "",
+        "PriceCcy": "USDT",
+        "Quote": "USDT",
+        "Settle": "USDT",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "BinanceUM"
+      },
+      {
+        "Base": "BTC",
+        "Category": "Future",
+        "ContractSize": 1,
+        "ContractValueCcy": "BTC",
+        "ExchTicker": "BTCUSDT_270326",
+        "ExpiryCode": "270326",
+        "ExpiryNs": 1806048000000000000,
+        "Filters": {
+          "max_price": 1000000,
+          "max_qty": 500,
+          "min_notional": 5,
+          "min_price": 576.3,
+          "min_qty": 0.001,
+          "price_tick": 0.1,
+          "qty_step": 0.001
+        },
+        "OptionType": "",
+        "PriceCcy": "USDT",
+        "Quote": "USDT",
+        "Settle": "USDT",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "BinanceUM"
+      },
+      {
+        "Base": "ETH",
+        "Category": "Future",
+        "ContractSize": 1,
+        "ContractValueCcy": "ETH",
+        "ExchTicker": "ETHUSDT_270326",
+        "ExpiryCode": "270326",
+        "ExpiryNs": 1806048000000000000,
+        "Filters": {
+          "max_price": 100000,
+          "max_qty": 10000,
+          "min_notional": 5,
+          "min_price": 41.1,
+          "min_qty": 0.001,
+          "price_tick": 0.01,
+          "qty_step": 0.001
+        },
+        "OptionType": "",
+        "PriceCcy": "USDT",
+        "Quote": "USDT",
+        "Settle": "USDT",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "BinanceUM"
+      }
+    ],
+    "Next": null
+  }
+}

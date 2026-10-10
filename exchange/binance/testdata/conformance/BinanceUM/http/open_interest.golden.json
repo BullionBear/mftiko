@@ -1,0 +1,20 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://fapi.binance.com",
+    "path": "/fapi/v1/openInterest",
+    "query": "symbol=BTCUSDT",
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 1
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": {
+    "ExchTsNs": 1791616197505000000,
+    "OpenInterest": 92506.789,
+    "OpenInterestValue": null
+  }
+}

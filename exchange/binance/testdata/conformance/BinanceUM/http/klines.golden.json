@@ -1,0 +1,65 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://fapi.binance.com",
+    "path": "/fapi/v1/klines",
+    "query": "symbol=BTCUSDT&interval=1m&limit=5",
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 1
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": [
+    {
+      "Close": 82677.1,
+      "Closed": true,
+      "ExchTsNs": 1791615959999000000,
+      "High": 82680.7,
+      "Interval": "1m",
+      "Low": 82677.1,
+      "Open": 82680.7,
+      "OpenTimeNs": 1791615900000000000,
+      "QuoteVolume": 603140.337,
+      "Volume": 7.295
+    },
+    {
+      "Close": 82668.6,
+      "Closed": true,
+      "ExchTsNs": 1791616019999000000,
+      "High": 82677.2,
+      "Interval": "1m",
+      "Low": 82668.5,
+      "Open": 82677.1,
+      "OpenTimeNs": 1791615960000000000,
+      "QuoteVolume": 1802460.8256,
+      "Volume": 21.802
+    },
+    {
+      "Close": 82673.8,
+      "Closed": true,
+      "ExchTsNs": 1791616079999000000,
+      "High": 82680.8,
+      "Interval": "1m",
+      "Low": 82668.5,
+      "Open": 82668.6,
+      "OpenTimeNs": 1791616020000000000,
+      "QuoteVolume": 1826237.3,
+      "Volume": 22.089
+    },
+    {
+      "Close": 82649,
+      "Closed": true,
+      "ExchTsNs": 1791616139999000000,
+      "High": 82673.9,
+      "Interval": "1m",
+      "Low": 82635,
+      "Open": 82673.8,
+      "OpenTimeNs": 1791616080000000000,
+      "QuoteVolume": 11143489.9368,
+      "Volume": 134.822
+    }
+  ]
+}
