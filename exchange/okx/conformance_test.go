@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/exchange"
 	"github.com/BullionBear/mftiko/exchange/exchangetest/conformance"
 )
@@ -13,11 +14,17 @@ func TestConformance(t *testing.T) { conformance.Run(t, spec()) }
 
 func FuzzDecodePrivate(f *testing.F) { conformance.FuzzDecodePrivate(f, spec()) }
 
+func FuzzDecodePublic(f *testing.F) { conformance.FuzzDecode(f, spec(), "public") }
+
+func FuzzDecodeBusiness(f *testing.F) { conformance.FuzzDecode(f, spec(), "business") }
+
 func spec() conformance.Spec {
 	return conformance.Spec{
 		Venue:      Name,
 		Dir:        "testdata/conformance/Okx",
 		Passphrase: true,
+		Market:     &market{},
+		REST:       &rest{},
 		Account: func(cfg exchange.AccountConfig) (exchange.Account, error) {
 			return &account{cfg: cfg}, nil
 		},
@@ -69,6 +76,21 @@ func spec() conformance.Spec {
 			}),
 			conformance.Call("caa", func(e conformance.Env) (exchange.Call[struct{}], error) {
 				return e.Account.(exchange.CancelOnDisconnect).ArmCancelOnDisconnect(e.Now, 10*time.Second, nil)
+			}),
+			conformance.Call("listing_spot", func(e conformance.Env) (exchange.Call[exchange.Page[symbol.Listing]], error) {
+				return e.REST.Listing(symbol.Spot)
+			}),
+			conformance.Call("listing_perp", func(e conformance.Env) (exchange.Call[exchange.Page[symbol.Listing]], error) {
+				return e.REST.Listing(symbol.Perp)
+			}),
+			conformance.Call("listing_future", func(e conformance.Env) (exchange.Call[exchange.Page[symbol.Listing]], error) {
+				return e.REST.Listing(symbol.Future)
+			}),
+			conformance.Call("listing_inverse", func(e conformance.Env) (exchange.Call[exchange.Page[symbol.Listing]], error) {
+				return e.REST.Listing(symbol.Inverse)
+			}),
+			conformance.Call("klines", func(e conformance.Env) (exchange.Call[[]exchange.Kline], error) {
+				return e.REST.Klines(spotInst(), "1m", 0, 5)
 			}),
 			conformance.Call("fills", func(e conformance.Env) (exchange.Call[*exchange.FillPage], error) {
 				return e.History.Fills(e.Now, exchange.FillQuery{

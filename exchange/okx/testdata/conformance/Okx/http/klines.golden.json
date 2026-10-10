@@ -1,0 +1,65 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://www.okx.com",
+    "path": "/api/v5/market/candles",
+    "query": "instId=BTC-USDT&bar=1m&limit=5",
+    "header": [
+      {
+        "name": "User-Agent",
+        "value": "mftiko"
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": [
+    {
+      "Close": 82864,
+      "Closed": true,
+      "ExchTsNs": 1791638880000000000,
+      "High": 82866.5,
+      "Interval": "1m",
+      "Low": 82855.4,
+      "Open": 82855.4,
+      "OpenTimeNs": 1791638880000000000,
+      "QuoteVolume": 114595.214408757,
+      "Volume": 1.3830162
+    },
+    {
+      "Close": 82854.6,
+      "Closed": true,
+      "ExchTsNs": 1791638940000000000,
+      "High": 82864.5,
+      "Interval": "1m",
+      "Low": 82854.6,
+      "Open": 82864.5,
+      "OpenTimeNs": 1791638940000000000,
+      "QuoteVolume": 73484.596370367,
+      "Volume": 0.88681241
+    },
+    {
+      "Close": 82854.7,
+      "Closed": true,
+      "ExchTsNs": 1791639000000000000,
+      "High": 82854.7,
+      "Interval": "1m",
+      "Low": 82854.6,
+      "Open": 82854.7,
+      "OpenTimeNs": 1791639000000000000,
+      "QuoteVolume": 5909.273591075,
+      "Volume": 0.07132099
+    },
+    {
+      "Close": 82864.4,
+      "Closed": true,
+      "ExchTsNs": 1791639060000000000,
+      "High": 82864.5,
+      "Interval": "1m",
+      "Low": 82854.6,
+      "Open": 82854.7,
+      "OpenTimeNs": 1791639060000000000,
+      "QuoteVolume": 22430.895175106,
+      "Volume": 0.2707192
+    }
+  ]
+}

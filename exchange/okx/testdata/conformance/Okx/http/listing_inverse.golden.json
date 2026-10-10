@@ -1,0 +1,365 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://www.okx.com",
+    "path": "/api/v5/public/instruments",
+    "query": "instType=SWAP",
+    "header": [
+      {
+        "name": "User-Agent",
+        "value": "mftiko"
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": {
+    "Items": [
+      {
+        "Base": "BTC",
+        "Category": "Inverse",
+        "ContractSize": 100,
+        "ContractValueCcy": "USD",
+        "ExchTicker": "BTC-USD-SWAP",
+        "ExpiryCode": "",
+        "ExpiryNs": 0,
+        "Filters": {
+          "max_notional": 20000000,
+          "max_qty": 10000000000,
+          "min_qty": 10,
+          "price_tick": 0.1,
+          "qty_step": 10
+        },
+        "OptionType": "",
+        "PriceCcy": "USD",
+        "Quote": "USD",
+        "Settle": "BTC",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "Okx"
+      },
+      {
+        "Base": "ETH",
+        "Category": "Inverse",
+        "ContractSize": 10,
+        "ContractValueCcy": "USD",
+        "ExchTicker": "ETH-USD-SWAP",
+        "ExpiryCode": "",
+        "ExpiryNs": 0,
+        "Filters": {
+          "max_notional": 20000000,
+          "max_qty": 1000000000,
+          "min_qty": 10,
+          "price_tick": 0.01,
+          "qty_step": 10
+        },
+        "OptionType": "",
+        "PriceCcy": "USD",
+        "Quote": "USD",
+        "Settle": "ETH",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "Okx"
+      },
+      {
+        "Base": "SOL",
+        "Category": "Inverse",
+        "ContractSize": 10,
+        "ContractValueCcy": "USD",
+        "ExchTicker": "SOL-USD-SWAP",
+        "ExpiryCode": "",
+        "ExpiryNs": 0,
+        "Filters": {
+          "max_notional": 20000000,
+          "max_qty": 1000000000,
+          "min_qty": 10,
+          "price_tick": 0.01,
+          "qty_step": 10
+        },
+        "OptionType": "",
+        "PriceCcy": "USD",
+        "Quote": "USD",
+        "Settle": "SOL",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "Okx"
+      },
+      {
+        "Base": "DOGE",
+        "Category": "Inverse",
+        "ContractSize": 10,
+        "ContractValueCcy": "USD",
+        "ExchTicker": "DOGE-USD-SWAP",
+        "ExpiryCode": "",
+        "ExpiryNs": 0,
+        "Filters": {
+          "max_notional": 20000000,
+          "max_qty": 1000000000,
+          "min_qty": 10,
+          "price_tick": 0.00001,
+          "qty_step": 10
+        },
+        "OptionType": "",
+        "PriceCcy": "USD",
+        "Quote": "USD",
+        "Settle": "DOGE",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "Okx"
+      },
+      {
+        "Base": "XRP",
+        "Category": "Inverse",
+        "ContractSize": 10,
+        "ContractValueCcy": "USD",
+        "ExchTicker": "XRP-USD-SWAP",
+        "ExpiryCode": "",
+        "ExpiryNs": 0,
+        "Filters": {
+          "max_notional": 20000000,
+          "max_qty": 1000000000,
+          "min_qty": 10,
+          "price_tick": 0.0001,
+          "qty_step": 10
+        },
+        "OptionType": "",
+        "PriceCcy": "USD",
+        "Quote": "USD",
+        "Settle": "XRP",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "Okx"
+      },
+      {
+        "Base": "BCH",
+        "Category": "Inverse",
+        "ContractSize": 10,
+        "ContractValueCcy": "USD",
+        "ExchTicker": "BCH-USD-SWAP",
+        "ExpiryCode": "",
+        "ExpiryNs": 0,
+        "Filters": {
+          "max_notional": 20000000,
+          "max_qty": 1000000000,
+          "min_qty": 10,
+          "price_tick": 0.1,
+          "qty_step": 10
+        },
+        "OptionType": "",
+        "PriceCcy": "USD",
+        "Quote": "USD",
+        "Settle": "BCH",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "Okx"
+      },
+      {
+        "Base": "ADA",
+        "Category": "Inverse",
+        "ContractSize": 10,
+        "ContractValueCcy": "USD",
+        "ExchTicker": "ADA-USD-SWAP",
+        "ExpiryCode": "",
+        "ExpiryNs": 0,
+        "Filters": {
+          "max_notional": 20000000,
+          "max_qty": 1000000000,
+          "min_qty": 10,
+          "price_tick": 0.0001,
+          "qty_step": 10
+        },
+        "OptionType": "",
+        "PriceCcy": "USD",
+        "Quote": "USD",
+        "Settle": "ADA",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "Okx"
+      },
+      {
+        "Base": "DOT",
+        "Category": "Inverse",
+        "ContractSize": 10,
+        "ContractValueCcy": "USD",
+        "ExchTicker": "DOT-USD-SWAP",
+        "ExpiryCode": "",
+        "ExpiryNs": 0,
+        "Filters": {
+          "max_notional": 20000000,
+          "max_qty": 1000000000,
+          "min_qty": 10,
+          "price_tick": 0.0001,
+          "qty_step": 10
+        },
+        "OptionType": "",
+        "PriceCcy": "USD",
+        "Quote": "USD",
+        "Settle": "DOT",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "Okx"
+      },
+      {
+        "Base": "ETC",
+        "Category": "Inverse",
+        "ContractSize": 10,
+        "ContractValueCcy": "USD",
+        "ExchTicker": "ETC-USD-SWAP",
+        "ExpiryCode": "",
+        "ExpiryNs": 0,
+        "Filters": {
+          "max_notional": 20000000,
+          "max_qty": 1000000000,
+          "min_qty": 10,
+          "price_tick": 0.001,
+          "qty_step": 10
+        },
+        "OptionType": "",
+        "PriceCcy": "USD",
+        "Quote": "USD",
+        "Settle": "ETC",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "Okx"
+      },
+      {
+        "Base": "FIL",
+        "Category": "Inverse",
+        "ContractSize": 10,
+        "ContractValueCcy": "USD",
+        "ExchTicker": "FIL-USD-SWAP",
+        "ExpiryCode": "",
+        "ExpiryNs": 0,
+        "Filters": {
+          "max_notional": 20000000,
+          "max_qty": 1000000000,
+          "min_qty": 10,
+          "price_tick": 0.0001,
+          "qty_step": 10
+        },
+        "OptionType": "",
+        "PriceCcy": "USD",
+        "Quote": "USD",
+        "Settle": "FIL",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "Okx"
+      },
+      {
+        "Base": "HYPE",
+        "Category": "Inverse",
+        "ContractSize": 10,
+        "ContractValueCcy": "USD",
+        "ExchTicker": "HYPE-USD-SWAP",
+        "ExpiryCode": "",
+        "ExpiryNs": 0,
+        "Filters": {
+          "max_notional": 20000000,
+          "max_qty": 1000000000,
+          "min_qty": 10,
+          "price_tick": 0.001,
+          "qty_step": 10
+        },
+        "OptionType": "",
+        "PriceCcy": "USD",
+        "Quote": "USD",
+        "Settle": "HYPE",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "Okx"
+      },
+      {
+        "Base": "LINK",
+        "Category": "Inverse",
+        "ContractSize": 10,
+        "ContractValueCcy": "USD",
+        "ExchTicker": "LINK-USD-SWAP",
+        "ExpiryCode": "",
+        "ExpiryNs": 0,
+        "Filters": {
+          "max_notional": 20000000,
+          "max_qty": 1000000000,
+          "min_qty": 10,
+          "price_tick": 0.001,
+          "qty_step": 10
+        },
+        "OptionType": "",
+        "PriceCcy": "USD",
+        "Quote": "USD",
+        "Settle": "LINK",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "Okx"
+      },
+      {
+        "Base": "LTC",
+        "Category": "Inverse",
+        "ContractSize": 10,
+        "ContractValueCcy": "USD",
+        "ExchTicker": "LTC-USD-SWAP",
+        "ExpiryCode": "",
+        "ExpiryNs": 0,
+        "Filters": {
+          "max_notional": 20000000,
+          "max_qty": 1000000000,
+          "min_qty": 10,
+          "price_tick": 0.01,
+          "qty_step": 10
+        },
+        "OptionType": "",
+        "PriceCcy": "USD",
+        "Quote": "USD",
+        "Settle": "LTC",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "Okx"
+      },
+      {
+        "Base": "SUI",
+        "Category": "Inverse",
+        "ContractSize": 10,
+        "ContractValueCcy": "USD",
+        "ExchTicker": "SUI-USD-SWAP",
+        "ExpiryCode": "",
+        "ExpiryNs": 0,
+        "Filters": {
+          "max_notional": 20000000,
+          "max_qty": 1000000000,
+          "min_qty": 10,
+          "price_tick": 0.0001,
+          "qty_step": 10
+        },
+        "OptionType": "",
+        "PriceCcy": "USD",
+        "Quote": "USD",
+        "Settle": "SUI",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "Okx"
+      },
+      {
+        "Base": "UNI",
+        "Category": "Inverse",
+        "ContractSize": 10,
+        "ContractValueCcy": "USD",
+        "ExchTicker": "UNI-USD-SWAP",
+        "ExpiryCode": "",
+        "ExpiryNs": 0,
+        "Filters": {
+          "max_notional": 20000000,
+          "max_qty": 1000000000,
+          "min_qty": 10,
+          "price_tick": 0.001,
+          "qty_step": 10
+        },
+        "OptionType": "",
+        "PriceCcy": "USD",
+        "Quote": "USD",
+        "Settle": "UNI",
+        "Status": "TRADABLE",
+        "Strike": 0,
+        "Venue": "Okx"
+      }
+    ],
+    "Next": null
+  }
+}

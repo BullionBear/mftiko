@@ -82,6 +82,7 @@ type loginArg struct {
 type subArg struct {
 	Channel  string `json:"channel"`
 	InstType string `json:"instType,omitempty"`
+	InstID   string `json:"instId,omitempty"`
 }
 
 func (p *privateStream) Decode(frame []byte, sink exchange.AccountSink) error {
