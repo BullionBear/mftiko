@@ -6,11 +6,13 @@
 // A feed key is topic.UniversalTicker. Venue is in the ticker. The route comes from the topic
 // and that ticker, which is enough to name md/<venue>/<route>/<n>. The agent sends the feed
 // list. The conn worker loads its venue's active table at Init, follows sym.changed, and turns
-// those feeds into atoms. The owner of a feed is the set of (session, feed) demands, not a
-// counter.
+// those feeds into atoms and reports each one as FeedStatus. SUBSCRIBED becomes READY while
+// the worker is running, and REJECTED is copied onto the ack. The owner of a feed is the set
+// of (session, feed) demands, not a counter.
 //
-// A new feed goes on the (venue, route) connection that has room and the smallest n. n+1 opens
-// only when every lower n is full. The placement is written to etcd before the plan is pushed
+// Feeds that share a channel take one budget slot and stay on one connection. A new channel
+// goes on the (venue, route) connection that has room and the smallest n. n+1 opens only when
+// every lower n is full. The placement is written to etcd before the plan is pushed
 // (D110) and reused after a restart. Nothing is consolidated back onto a lower n.
 //
 // When the owner set hits zero the feed stays on the worker for linger (default 5s, D905), then

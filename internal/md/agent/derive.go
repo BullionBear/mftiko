@@ -21,13 +21,16 @@ type Markets interface {
 }
 
 // placed is one feed as the last commit left it. The key is the feed, topic.UniversalTicker.
+// Channel is the packing key from the adapter: feeds that share it take one budget slot and
+// one connection. It is not subscribed here.
 type placed struct {
-	Conn  string
-	Venue string
-	Route string
-	Feeds []string
-	Cost  int
-	URL   string
+	Conn    string
+	Venue   string
+	Route   string
+	Channel string
+	Feeds   []string
+	Cost    int
+	URL     string
 }
 
 // snapshot is the placement commit last published. ByHash is filled only from etcd at start, so a
@@ -38,13 +41,13 @@ type snapshot struct {
 	ByHash map[string]string // feed hash -> conn, initial load only
 }
 
-// outcome is what one demand key became. Reject is an ack reason; otherwise the feed rides on
-// Worker. The worker, not the agent, names the atom.
+// outcome is what one demand key became. Reject is an ack reason the agent decided itself.
+// Otherwise the feed rides on Worker, and READY or REJECTED comes from that worker's Report.
 type outcome struct {
 	Reject  string
 	Subject string
 	Worker  agent.WorkerKey
-	Atom    string
+	Feed    string
 }
 
 // feedIn is one demand key, or a Reject that skips placement.
@@ -67,10 +70,10 @@ type owner struct {
 }
 
 type atomGroup struct {
-	venue, route string
-	cost         int
-	url          string
-	owners       []owner
+	venue, route, channel string
+	cost                  int
+	url                   string
+	owners                []owner
 }
 
 type routeKey struct {
@@ -163,49 +166,87 @@ func assign(inst string, now time.Time, linger time.Duration, markets Markets, o
 	}
 
 	used := map[routeKey]map[uint32]int{}
-	add := func(venue, route string, n uint32, cost int) {
-		k := routeKey{venue, route}
-		m := used[k]
+	// charged is one slot per channel on a connection. A second feed of that channel is free.
+	charged := map[string]bool{}
+	add := func(venue, route, channel, conn string, n uint32, cost int) {
+		if channel != "" {
+			k := conn + "\n" + channel
+			if charged[k] {
+				return
+			}
+			charged[k] = true
+		}
+		rk := routeKey{venue, route}
+		m := used[rk]
 		if m == nil {
 			m = map[uint32]int{}
-			used[k] = m
+			used[rk] = m
 		}
 		m[n] += cost
 	}
-	for _, a := range out.Atoms {
-		if v, r, n, ok := parseConn(a.Conn); ok {
-			add(v, r, n, a.Cost)
+	for id, a := range out.Atoms {
+		v, r, n, ok := parseConn(a.Conn)
+		if !ok {
+			continue
 		}
+		ch := a.Channel
+		if ch == "" {
+			ch = id
+		}
+		add(v, r, ch, a.Conn, n, a.Cost)
 	}
 
-	var fresh []string
+	type pack struct {
+		venue, route, channel string
+	}
+	clusters := map[pack][]string{}
+	var packs []pack
 	for _, id := range wanted {
 		g := groups[id]
-		conn := stickyConn(prev, id, g.venue, g.route)
-		v, r, n, ok := parseConn(conn)
-		if !ok || v != g.venue || r != g.route {
-			fresh = append(fresh, id)
-			continue
+		p := pack{g.venue, g.route, g.channel}
+		if _, ok := clusters[p]; !ok {
+			packs = append(packs, p)
 		}
-		add(v, r, n, g.cost)
-		out.Atoms[id] = g.placed(conn)
+		clusters[p] = append(clusters[p], id)
 	}
-	for _, id := range fresh {
-		g := groups[id]
-		budget := 0
-		if m, ok := marketOf(markets, g.venue); ok {
-			budget = m.Budget(g.route)
+	slices.SortFunc(packs, func(a, b pack) int {
+		if c := strings.Compare(a.venue, b.venue); c != 0 {
+			return c
 		}
-		n, ok := lowest(used[routeKey{g.venue, g.route}], g.cost, budget)
-		if !ok {
-			for _, o := range g.owners {
-				out.Outcomes[o.key] = outcome{Reject: "connection budget", Subject: feedSubject(inst, o.feed)}
+		if c := strings.Compare(a.route, b.route); c != 0 {
+			return c
+		}
+		return strings.Compare(a.channel, b.channel)
+	})
+	for _, p := range packs {
+		ids := clusters[p]
+		slices.Sort(ids)
+		g0 := groups[ids[0]]
+		conn, sticky := clusterConn(prev, ids, groups)
+		if !sticky {
+			budget := 0
+			if m, ok := marketOf(markets, g0.venue); ok {
+				budget = m.Budget(g0.route)
 			}
+			n, ok := lowest(used[routeKey{g0.venue, g0.route}], g0.cost, budget)
+			if !ok {
+				for _, id := range ids {
+					for _, o := range groups[id].owners {
+						out.Outcomes[o.key] = outcome{Reject: "connection budget", Subject: feedSubject(inst, o.feed)}
+					}
+				}
+				continue
+			}
+			conn = workerKey(g0.venue, g0.route, n)
+		}
+		v, r, n, ok := parseConn(conn)
+		if !ok {
 			continue
 		}
-		conn := workerKey(g.venue, g.route, n)
-		add(g.venue, g.route, n, g.cost)
-		out.Atoms[id] = g.placed(conn)
+		add(v, r, p.channel, conn, n, g0.cost)
+		for _, id := range ids {
+			out.Atoms[id] = groups[id].placed(conn)
+		}
 	}
 
 	for _, id := range wanted {
@@ -215,7 +256,7 @@ func assign(inst string, now time.Time, linger time.Duration, markets Markets, o
 		}
 		wk := agent.WorkerKey(a.Conn)
 		for _, o := range groups[id].owners {
-			out.Outcomes[o.key] = outcome{Subject: feedSubject(inst, o.feed), Worker: wk}
+			out.Outcomes[o.key] = outcome{Subject: feedSubject(inst, o.feed), Worker: wk, Feed: o.feed}
 		}
 	}
 
@@ -261,7 +302,7 @@ func classify(markets Markets, f feedIn) (string, *atomGroup, string) {
 		}
 		return "", nil, err.Error()
 	}
-	if ref.Route == "" {
+	if ref.Route == "" || ref.Channel == "" {
 		return "", nil, "unsupported"
 	}
 	cost := m.Cost(ref.Channel)
@@ -269,7 +310,7 @@ func classify(markets Markets, f feedIn) (string, *atomGroup, string) {
 		cost = 1
 	}
 	g := &atomGroup{
-		venue: t.Venue, route: ref.Route, cost: cost,
+		venue: t.Venue, route: ref.Route, channel: ref.Channel, cost: cost,
 		owners: []owner{{key: f.Key, feed: f.Entry.Feed}},
 	}
 	return f.Entry.Feed, g, ""
@@ -307,7 +348,42 @@ func (g *atomGroup) placed(conn string) placed {
 		feeds = append(feeds, o.feed)
 	}
 	slices.Sort(feeds)
-	return placed{Conn: conn, Venue: g.venue, Route: g.route, Feeds: feeds, Cost: g.cost, URL: g.url}
+	return placed{Conn: conn, Venue: g.venue, Route: g.route, Channel: g.channel, Feeds: feeds, Cost: g.cost, URL: g.url}
+}
+
+// clusterConn is the connection a set of feeds already shares. Feeds of one channel stay
+// together: the lowest n among them, or a feed of that channel still lingering there.
+// sticky is false when none of them has a place yet.
+func clusterConn(prev snapshot, ids []string, groups map[string]*atomGroup) (string, bool) {
+	if len(ids) == 0 {
+		return "", false
+	}
+	g0 := groups[ids[0]]
+	best := ""
+	var bestN uint32
+	found := false
+	consider := func(conn string) {
+		_, _, n, ok := parseConn(conn)
+		if !ok || !connMatches(conn, g0.venue, g0.route) {
+			return
+		}
+		if found && n >= bestN {
+			return
+		}
+		found = true
+		bestN = n
+		best = conn
+	}
+	for _, id := range ids {
+		consider(stickyConn(prev, id, g0.venue, g0.route))
+	}
+	for _, a := range prev.Atoms {
+		if a.Channel == "" || a.Channel != g0.channel || a.Venue != g0.venue || a.Route != g0.route {
+			continue
+		}
+		consider(a.Conn)
+	}
+	return best, found
 }
 
 func storedURL(prev snapshot, id string) string {

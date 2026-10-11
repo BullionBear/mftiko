@@ -276,7 +276,7 @@ func (s *ctl) onInit(m *workerv1.Init) (code int, ok bool) {
 	c := New(Config{
 		Venue: p.GetVenue(), Route: p.GetRoute(), Instance: p.GetMdInstance(), URL: p.GetUrl(),
 		Market: market, Publish: s.cfg.Publish, Now: s.cfg.Now, Epoch: p.GetConnEpoch(),
-		Report: s.reportEpoch, RetryAfter: s.cfg.RetryAfter, RetryMax: s.cfg.RetryMax, Log: s.cfg.Log,
+		Report: s.report, RetryAfter: s.cfg.RetryAfter, RetryMax: s.cfg.RetryMax, Log: s.cfg.Log,
 		REST: rest, Doer: s.cfg.Doer, RateHold: s.cfg.RateHold,
 		BookDepth: p.GetBookDepth(),
 		BufferMax: int(p.GetBookBufferMax()), BufferAge: bufAge,
@@ -310,13 +310,14 @@ func (s *ctl) failInit(why string) int {
 	return s.finish(commonv1.Outcome_OUTCOME_INIT_FAILED, why, false, exitInit)
 }
 
-// reportEpoch writes the number a dial is about to use. Dial is not called until this returns,
-// and the write returns only once the frame has been handed to rw.
-func (s *ctl) reportEpoch(epoch uint64) error {
-	payload, err := proto.Marshal(&mdctlv1.Report{
-		ConnEpoch: epoch,
-		State:     mdctlv1.ConnState_CONN_STATE_CONNECTING,
-	})
+// report writes one mdctl.Report. The pre-dial call carries the next conn_epoch, and Dial is
+// not called until it returns. Later calls carry the same number plus each feed's status.
+// The write returns only once the frame has been handed to rw.
+func (s *ctl) report(rep *mdctlv1.Report) error {
+	if rep == nil {
+		return nil
+	}
+	payload, err := proto.Marshal(rep)
 	if err != nil {
 		return err
 	}

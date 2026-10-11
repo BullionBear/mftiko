@@ -425,8 +425,8 @@ func TestReportBeforeFailedDial(t *testing.T) {
 			return nil
 		},
 		Epoch: 0,
-		Report: func(epoch uint64) error {
-			got = append(got, epoch)
+		Report: func(rep *mdctlv1.Report) error {
+			got = append(got, rep.GetConnEpoch())
 			return nil
 		},
 		RetryAfter: time.Second,
@@ -465,7 +465,7 @@ func TestReportErrorDoesNotDial(t *testing.T) {
 			t.Error("published")
 			return nil
 		},
-		Report: func(uint64) error { return errors.New("no shim") },
+		Report: func(*mdctlv1.Report) error { return errors.New("no shim") },
 	})
 	err = c.Run(t.Context())
 	if err == nil || !strings.Contains(err.Error(), "no shim") {

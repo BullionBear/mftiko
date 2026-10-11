@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/exchange"
+	"github.com/BullionBear/mftiko/exchange/binance"
 	"github.com/BullionBear/mftiko/internal/md/conn"
 	"github.com/BullionBear/mftiko/internal/platform/agent"
 	"github.com/BullionBear/mftiko/internal/platform/state"
@@ -45,6 +47,48 @@ func TestTwoFeedsShareOneConn(t *testing.T) {
 	}
 	if !slices.Equal(got.GetAtoms()[0].GetFeeds(), want) {
 		t.Fatalf("feeds %v", got.GetAtoms()[0].GetFeeds())
+	}
+}
+
+func TestBinanceBookAndDeltaShareTheLastStream(t *testing.T) {
+	var spot exchange.Market
+	for _, v := range binance.Declare().Venues {
+		if v.Venue.Name == binance.VenueSpot {
+			spot = v.Market
+		}
+	}
+	if spot == nil || spot.Budget(exchange.RouteDefault) != 1024 {
+		t.Fatalf("spot budget %v", spot)
+	}
+	const others = 1023
+	feeds := make([]feedIn, 0, others+2)
+	for i := 0; i < others; i++ {
+		feeds = append(feeds, bookFeed(fmt.Sprintf("A%04dUSDT", i)))
+	}
+	book := bookFeed("BTCUSDT")
+	delta := bookFeed("BTCUSDT")
+	delta.Key = "k-delta"
+	delta.Entry.Topic = exchange.TopicOrderBookDelta
+	delta.Entry.Feed = "orderbook_delta." + delta.Entry.Ticker.String()
+	feeds = append(feeds, book, delta)
+
+	d := assign(testInst, time.Unix(1, 0), time.Second, venueMarkets{"Binance": spot}, nil, 20, feeds, snapshot{})
+	conn := "md/Binance/default/0"
+	if len(d.Plans) != 1 || d.Atoms[book.Entry.Feed].Conn != conn || d.Atoms[delta.Entry.Feed].Conn != conn {
+		t.Fatalf("plans %d book %s delta %s", len(d.Plans), d.Atoms[book.Entry.Feed].Conn, d.Atoms[delta.Entry.Feed].Conn)
+	}
+	if _, split := d.Plans["md/Binance/default/1"]; split {
+		t.Fatal("delta opened a second connection")
+	}
+}
+
+func bookFeed(sym string) feedIn {
+	t := symbol.UniversalTicker{Venue: "Binance", Category: symbol.Spot, Symbol: sym}
+	return feedIn{
+		Key: "k-" + sym,
+		Entry: Entry{
+			Feed: "orderbook." + t.String(), Topic: exchange.TopicOrderBook, Ticker: t,
+		},
 	}
 }
 
@@ -197,9 +241,9 @@ func TestDecodeDemand(t *testing.T) {
 }
 
 func TestAckDecision(t *testing.T) {
-	atom := "Binance:public:depth"
+	feed := "orderbook." + testTicker
 	key := agent.WorkerKey("md/Binance/public/0")
-	o := outcome{Subject: "md.f." + testInst + ".orderbook." + testTicker, Worker: key, Atom: atom}
+	o := outcome{Subject: "md.f." + testInst + ".orderbook." + testTicker, Worker: key, Feed: feed}
 	st, reason, write := decide(o, nil, nil)
 	if !write || st != statev1.EntryState_ENTRY_STATE_PENDING || reason != "starting" {
 		t.Fatalf("starting %s %s %v", st, reason, write)
@@ -217,8 +261,8 @@ func TestAckDecision(t *testing.T) {
 	if st != statev1.EntryState_ENTRY_STATE_PENDING || reason != "restarting" {
 		t.Fatalf("restarting %s %s", st, reason)
 	}
-	rep, err := proto.Marshal(&mdctlv1.Report{Atoms: []*mdctlv1.AtomStatus{{
-		AtomId: atom, State: mdctlv1.AtomState_ATOM_STATE_SUBSCRIBED,
+	rep, err := proto.Marshal(&mdctlv1.Report{Feeds: []*mdctlv1.FeedStatus{{
+		Feed: feed, State: mdctlv1.FeedState_FEED_STATE_SUBSCRIBED,
 	}}})
 	if err != nil {
 		t.Fatal(err)
@@ -231,18 +275,30 @@ func TestAckDecision(t *testing.T) {
 	if !write || st != statev1.EntryState_ENTRY_STATE_READY || reason != "" {
 		t.Fatalf("ready %s %q", st, reason)
 	}
-	errRep, err := proto.Marshal(&mdctlv1.Report{Atoms: []*mdctlv1.AtomStatus{{
-		AtomId: atom, State: mdctlv1.AtomState_ATOM_STATE_ERROR,
+	pendingRep, err := proto.Marshal(&mdctlv1.Report{Feeds: []*mdctlv1.FeedStatus{{
+		Feed: feed, State: mdctlv1.FeedState_FEED_STATE_PENDING,
 	}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	obs := running[key]
-	obs.Report = &workerv1.Report{Contract: conn.Contract, Payload: errRep}
+	obs.Report = &workerv1.Report{Contract: conn.Contract, Payload: pendingRep}
 	running[key] = obs
 	st, _, _ = decide(o, running, nil)
 	if st != statev1.EntryState_ENTRY_STATE_PENDING {
-		t.Fatalf("atom error is still pending, got %s", st)
+		t.Fatalf("pending feed is still pending, got %s", st)
+	}
+	rejRep, err := proto.Marshal(&mdctlv1.Report{Feeds: []*mdctlv1.FeedStatus{{
+		Feed: feed, State: mdctlv1.FeedState_FEED_STATE_REJECTED, Reason: "not listed",
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	obs.Report = &workerv1.Report{Contract: conn.Contract, Payload: rejRep}
+	running[key] = obs
+	st, reason, _ = decide(o, running, nil)
+	if st != statev1.EntryState_ENTRY_STATE_REJECTED || reason != "not listed" {
+		t.Fatalf("worker reject %s %s", st, reason)
 	}
 	rej := outcome{Reject: "not found", Subject: o.Subject}
 	st, reason, _ = decide(rej, running, func(agent.WorkerKey) bool { return true })

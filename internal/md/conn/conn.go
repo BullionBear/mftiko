@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
+	mdctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/mdctl/v1"
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/exchange"
 	"github.com/BullionBear/mftiko/exchange/transport/ws"
@@ -43,12 +44,13 @@ type Config struct {
 	// means none has been used, so the first connection is 1. A failed dial does not consume
 	// a number. Report, when set, is how the number reaches the shim before the dial.
 	Epoch uint64
-	// Report is called with the conn_epoch the next dial will use, and Dial waits until it
-	// returns. A peer that reads the report before accepting the socket therefore has the
+	// Report sends one mdctl.Report. Dial waits until the call that carries the next
+	// conn_epoch returns. That report, and every later one, is a full snapshot: conn_epoch
+	// plus every feed's FeedStatus. A peer that reads the latest report therefore has the
 	// number before the connection is up, and md.f for that connection is published only
 	// after. A dial that fails leaves Epoch unchanged, so the next attempt reports the same
 	// number. Nil reports nothing. Report must not call back into the Conn.
-	Report func(epoch uint64) error
+	Report func(*mdctlv1.Report) error
 	// RetryAfter is the wait after a failed dial. The next failure waits twice as long, up to
 	// RetryMax. Zero means 1s and a cap of 30s. Negative means do not wait, which tests use so a
 	// reconnect is immediate. A dial that follows a connection which came up does not wait,
@@ -110,10 +112,18 @@ type Conn struct {
 	mu sync.Mutex
 	// epoch is the connection that is up, or the last one that was, or Config.Epoch before the
 	// first successful dial.
-	epoch  uint64
-	report func(uint64) error
-	have   bool // a Desired has been applied; the next one must be strictly newer
-	ver    commonv1.Version
+	epoch uint64
+	// announced is the conn_epoch handed to Report for a dial that has not landed yet.
+	// A feed snapshot sent while that dial is in flight uses it, so a later report cannot
+	// replace the shim's copy with an older number.
+	announced uint64
+	report    func(*mdctlv1.Report) error
+	reportMu  sync.Mutex
+	// status is the last classification of each feed. statusDirty asks for another Report.
+	status      map[string]feedState
+	statusDirty bool
+	have        bool // a Desired has been applied; the next one must be strictly newer
+	ver         commonv1.Version
 	// feedMode is set once the agent sends topic.UniversalTicker instead of atom ids.
 	// wantFeeds is that list. The reconcile loop derives wanted from it.
 	feedMode  bool
@@ -352,14 +362,19 @@ func (c *Conn) once(ctx context.Context) (up, retry bool, err error) {
 // announce is the conn_epoch the next dial will use. Report runs here, before Dial, and a
 // failure is permanent: publishing with a number the peer was not given would hide a gap.
 func (c *Conn) announce() (uint64, error) {
+	c.reportMu.Lock()
+	defer c.reportMu.Unlock()
 	c.mu.Lock()
 	next := c.epoch + 1
+	c.announced = next
+	rep := c.snapshot(next, mdctlv1.ConnState_CONN_STATE_CONNECTING)
 	report := c.report
+	c.statusDirty = false
 	c.mu.Unlock()
 	if report == nil {
 		return next, nil
 	}
-	if err := report(next); err != nil {
+	if err := report(rep); err != nil {
 		return 0, fmt.Errorf("conn: report conn_epoch %d: %w", next, err)
 	}
 	return next, nil
@@ -393,6 +408,7 @@ func (c *Conn) write(ctx context.Context, conn *ws.Conn, lim *limiter) {
 		if ctx.Err() != nil {
 			return
 		}
+		c.publishStatus()
 		for _, frame := range c.plan() {
 			if err := lim.wait(ctx); err != nil {
 				return

@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	mdctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/mdctl/v1"
 	"github.com/BullionBear/mftiko/contract/symbol"
@@ -105,6 +107,86 @@ func TestReconcileFollowsTheTable(t *testing.T) {
 			t.Fatal("table change did not unsubscribe")
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestFeedReport(t *testing.T) {
+	ticker := symbol.UniversalTicker{Venue: "Binance", Category: symbol.Spot, Symbol: "BTCUSDT"}
+	book := "orderbook.Binance_Spot_BTCUSDT"
+	missing := "orderbook.Binance_Spot_NOSUCHCOIN"
+	var mu sync.Mutex
+	var got []*mdctlv1.Report
+	c := New(Config{
+		Venue: "Binance", Route: "public", Instance: "md",
+		Market: &reconMarket{}, BookDepth: 20,
+		Symbols: stubSymbols{info: &symbol.Info{
+			Ticker: ticker, ExchTicker: "BTCUSDT", Status: symbol.Tradable,
+			Filters: symbol.Filters{symbol.PriceTick: 0.1},
+		}},
+		Report: func(rep *mdctlv1.Report) error {
+			mu.Lock()
+			got = append(got, proto.Clone(rep).(*mdctlv1.Report))
+			mu.Unlock()
+			return nil
+		},
+	})
+	c.SetDesired(feedsDesired(1, book, missing))
+	mu.Lock()
+	if len(got) != 1 {
+		t.Fatalf("reports %d", len(got))
+	}
+	byFeed := map[string]*mdctlv1.FeedStatus{}
+	for _, f := range got[0].GetFeeds() {
+		byFeed[f.GetFeed()] = f
+	}
+	mu.Unlock()
+	if byFeed[book].GetState() != mdctlv1.FeedState_FEED_STATE_PENDING || byFeed[book].GetReason() != "" {
+		t.Fatalf("book %+v", byFeed[book])
+	}
+	if byFeed[missing].GetState() != mdctlv1.FeedState_FEED_STATE_REJECTED || byFeed[missing].GetReason() != feedNotListed {
+		t.Fatalf("missing %+v", byFeed[missing])
+	}
+
+	sess := &memSession{}
+	c.mu.Lock()
+	c.live = newLink(sess)
+	c.epoch = 3
+	c.mu.Unlock()
+	if frames := c.plan(); len(frames) != 1 {
+		t.Fatalf("frames %d", len(frames))
+	}
+	c.mu.Lock()
+	for id := range c.live.subInflight {
+		c.Ack(id, nil)
+	}
+	dirty := c.statusDirty
+	c.mu.Unlock()
+	if !dirty {
+		t.Fatal("ack did not ask for a report")
+	}
+	c.publishStatus()
+	mu.Lock()
+	last := got[len(got)-1]
+	mu.Unlock()
+	if last.GetConnEpoch() != 3 || last.GetState() != mdctlv1.ConnState_CONN_STATE_LIVE {
+		t.Fatalf("subscribed report %+v", last)
+	}
+	for _, f := range last.GetFeeds() {
+		if f.GetFeed() != book {
+			continue
+		}
+		if f.GetState() != mdctlv1.FeedState_FEED_STATE_SUBSCRIBED {
+			t.Fatalf("book after ack %+v", f)
+		}
+	}
+
+	c.symbols = stubSymbols{info: &symbol.Info{Ticker: ticker, ExchTicker: "BTCUSDT", Status: symbol.Halted}}
+	c.SetDesired(feedsDesired(2, book))
+	mu.Lock()
+	halted := got[len(got)-1]
+	mu.Unlock()
+	if len(halted.GetFeeds()) != 1 || halted.GetFeeds()[0].GetState() != mdctlv1.FeedState_FEED_STATE_PENDING || halted.GetFeeds()[0].GetReason() != "HALTED" {
+		t.Fatalf("halted %+v", halted.GetFeeds())
 	}
 }
 

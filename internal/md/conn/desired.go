@@ -421,6 +421,7 @@ func (c *Conn) Ack(id uint64, err error) {
 	}
 	if chs, ok := l.subInflight[id]; ok {
 		delete(l.subInflight, id)
+		var acked []string
 		for _, ch := range chs {
 			delete(l.subPending, ch)
 			if err != nil {
@@ -429,6 +430,7 @@ func (c *Conn) Ack(id uint64, err error) {
 			// Accepted. If desired dropped the channel while the request was in flight, keep
 			// it observed so the next diff unsubscribes what the venue actually has.
 			l.observed[ch] = struct{}{}
+			acked = append(acked, ch)
 			// Only the replacement subscribe ends the cycle. The original ack must not
 			// cancel a resubscribe that was armed while that request was in flight.
 			if _, cycling := l.resub[ch]; cycling {
@@ -438,17 +440,25 @@ func (c *Conn) Ack(id uint64, err error) {
 				}
 			}
 		}
+		if c.noteObserved(acked, true) {
+			c.statusDirty = true
+		}
 		c.poke()
 		return
 	}
 	if chs, ok := l.unsubInflight[id]; ok {
 		delete(l.unsubInflight, id)
+		var gone []string
 		for _, ch := range chs {
 			delete(l.unsubPending, ch)
 			if err != nil {
 				continue
 			}
 			delete(l.observed, ch)
+			gone = append(gone, ch)
+		}
+		if c.noteObserved(gone, false) {
+			c.statusDirty = true
 		}
 		c.poke()
 	}

@@ -63,8 +63,9 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 	return nil
 }
 
-// decide is the ack for one outcome. LOST keeps the previous ack (P6). READY is only an atom the
-// conn worker has reported SUBSCRIBED. gaveUp is DEAD while the demand is still here.
+// decide is the ack for one outcome. LOST keeps the previous ack (P6). READY is a feed the
+// conn worker has reported SUBSCRIBED while that worker is running. REJECTED in the same
+// report is copied through. gaveUp is DEAD while the demand is still here.
 func decide(o outcome, observed map[agent.WorkerKey]agent.Observed, gaveUp func(agent.WorkerKey) bool) (statev1.EntryState, string, bool) {
 	if o.Reject != "" {
 		return statev1.EntryState_ENTRY_STATE_REJECTED, o.Reject, true
@@ -82,7 +83,14 @@ func decide(o outcome, observed map[agent.WorkerKey]agent.Observed, gaveUp func(
 	if obs.State.Ended() {
 		return statev1.EntryState_ENTRY_STATE_PENDING, "restarting", true
 	}
-	if obs.State == agent.StateRunning && subscribed(obs.Report, o.Atom) {
+	st, reason, ok := feedVerdict(obs.Report, o.Feed)
+	if ok && st == mdctlv1.FeedState_FEED_STATE_REJECTED {
+		if reason == "" {
+			reason = "rejected"
+		}
+		return statev1.EntryState_ENTRY_STATE_REJECTED, reason, true
+	}
+	if obs.State == agent.StateRunning && ok && st == mdctlv1.FeedState_FEED_STATE_SUBSCRIBED {
 		return statev1.EntryState_ENTRY_STATE_READY, "", true
 	}
 	return statev1.EntryState_ENTRY_STATE_PENDING, "starting", true
@@ -113,20 +121,22 @@ func sameAck(prev string, next *statev1.EntryStatus) bool {
 		old.GetWorker().GetIncarnation() == next.GetWorker().GetIncarnation()
 }
 
-func subscribed(rep *workerv1.Report, atom string) bool {
-	if rep == nil || rep.GetContract() != conn.Contract || len(rep.GetPayload()) == 0 || atom == "" {
-		return false
+// feedVerdict is this feed's state in the worker's latest Report. ok is false when the report
+// does not mention it.
+func feedVerdict(rep *workerv1.Report, feed string) (mdctlv1.FeedState, string, bool) {
+	if rep == nil || rep.GetContract() != conn.Contract || len(rep.GetPayload()) == 0 || feed == "" {
+		return 0, "", false
 	}
 	p := &mdctlv1.Report{}
 	if err := proto.Unmarshal(rep.GetPayload(), p); err != nil {
-		return false
+		return 0, "", false
 	}
-	for _, a := range p.GetAtoms() {
-		if a.GetAtomId() == atom && a.GetState() == mdctlv1.AtomState_ATOM_STATE_SUBSCRIBED {
-			return true
+	for _, f := range p.GetFeeds() {
+		if f.GetFeed() == feed {
+			return f.GetState(), f.GetReason(), true
 		}
 	}
-	return false
+	return 0, "", false
 }
 
 func demandAck(inst, demandKey string) (string, bool) {
