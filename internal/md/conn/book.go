@@ -14,10 +14,6 @@ import (
 )
 
 const (
-	// DefaultBoundaryBP is the distance from the best price to the snapshot edge, in basis
-	// points of the best price, inside which a SnapshotREST book is fetched again (D426).
-	// The denominator is the best price and is provisional.
-	DefaultBoundaryBP = 500
 	// DefaultBufferMax and DefaultBufferAge bound the updates kept while a snapshot is outstanding.
 	// Either one drops the buffer and makes that snapshot stale (D424).
 	DefaultBufferMax = 10000
@@ -45,9 +41,9 @@ func (g *depthGate) success() {
 	g.notBefore = time.Time{}
 }
 
-// backoff is D424's exponential wait: 1s, then double, cap 30s. A boundary refetch uses it so a
-// book that stays inside the threshold does not call Depth in a loop. The first call after a
-// success waits the base, because success clears wait.
+// backoff is D424's exponential wait after an HTTP failure: 1s, then double, cap 30s. The first
+// call after a success waits the base, because success clears wait. A gap or a checksum failure
+// does not wait; only the HTTP error that follows does.
 func (g *depthGate) backoff(now time.Time) {
 	g.wait = nextDelay(g.wait, false, 0, 0)
 	until := now.Add(g.wait)
@@ -85,13 +81,11 @@ type shelf struct {
 
 func (sh *shelf) inflight() bool { return sh.pending != 0 && sh.pending == sh.token }
 
-// folded is the local book. Outside the snapshot's price bounds the levels stay here and are
-// left out of what is published (D426). SnapshotStream does not use the bounds.
+// folded is the local book. Levels past the snapshot's original prices stay here and are
+// published with the rest (D426).
 type folded struct {
-	bids, asks         map[float64]float64
-	seq                exchange.BookSeq
-	bidBound, askBound float64
-	hasBid, hasAsk     bool
+	bids, asks map[float64]float64
+	seq        exchange.BookSeq
 }
 
 // depthJob is one Depth to send. The token is the shelf's pending value at the start; a buffer
@@ -324,8 +318,8 @@ func (c *Conn) onStream(ch string, sh *shelf, u exchange.BookUpdate) {
 
 // onLive applies one update to a book that is already in sync. A gap or a checksum failure
 // discards the book without publishing that update. The gap update is kept so the next snapshot
-// can bridge it; a checksum failure is not applied again. Crossing the boundary publishes the
-// inside change first, then waits out D424's backoff before the next Depth.
+// can bridge it; a checksum failure is not applied again. A synced book is not fetched again
+// on its own (D426).
 func (c *Conn) onLive(ch string, sh *shelf, u exchange.BookUpdate) {
 	switch sh.bs.Check(sh.book.seq, &u) {
 	case exchange.BookSkip:
@@ -340,11 +334,6 @@ func (c *Conn) onLive(ch string, sh *shelf, u exchange.BookUpdate) {
 			return
 		}
 		c.publishBook(ch, sh, u.ExchTsNs, false)
-		if c.nearEdge(sh) {
-			c.dropBook(sh)
-			c.gate.backoff(c.bookNow())
-			c.wakeBook()
-		}
 		return
 	default:
 		c.beginResync(sh, &u)
@@ -365,16 +354,6 @@ func (c *Conn) beginResync(sh *shelf, keep *exchange.BookUpdate) {
 		sh.bufAt = c.bookNow()
 	}
 	c.wakeBook()
-}
-
-// dropBook forgets the folded book after a boundary crossing. The last published top-N stays, so
-// an unchanged top does not take another seq when the next snapshot lands (D427).
-func (c *Conn) dropBook(sh *shelf) {
-	sh.book = nil
-	sh.havePub = false
-	sh.pubB, sh.pubA = nil, nil
-	sh.buf = nil
-	sh.bufAt = time.Time{}
 }
 
 func (c *Conn) fetch(ctx context.Context, j depthJob) {
@@ -456,27 +435,22 @@ func (c *Conn) finishDepth(j depthJob, snap *exchange.BookUpdate, err error, use
 		return
 	}
 	// The venue answered, including a snapshot the buffer cap throws away. The failure window
-	// starts over; the cap restarts the snapshot immediately. A book kept past the boundary
-	// check waits the exponential backoff before the next try, from the base rather than an
-	// older failure.
+	// starts over; the cap restarts the snapshot immediately.
 	c.gate.success()
 	if c.overCap(sh, now) {
 		c.invalidate(sh)
 		c.wakeBook()
 		return
 	}
-	cp := cloneUpdate(snap)
-	if c.installREST(j.ch, sh, cp) {
-		c.gate.backoff(c.bookNow())
-	}
+	c.installREST(j.ch, sh, cloneUpdate(snap))
 	c.wakeBook()
 }
 
 // installREST folds the snapshot, replays the buffer through Check, and publishes one reset of
-// the book after that replay. It returns true when the best price is inside the boundary, so the
-// caller backs off before the next Depth. A gap or a checksum failure in the buffer publishes
-// nothing and keeps the tail (the checksum failure itself is not kept).
-func (c *Conn) installREST(ch string, sh *shelf, snap exchange.BookUpdate) bool {
+// the book after that replay. A gap or a checksum failure in the buffer publishes nothing and
+// keeps the tail (the checksum failure itself is not kept). The shelf then has no book, so the
+// next plan fetches again. A kept book is not fetched again on its own (D426).
+func (c *Conn) installREST(ch string, sh *shelf, snap exchange.BookUpdate) {
 	f := foldSnapshot(&snap)
 	ts := snap.ExchTsNs
 	for i := 0; i < len(sh.buf); i++ {
@@ -488,36 +462,18 @@ func (c *Conn) installREST(ch string, sh *shelf, snap exchange.BookUpdate) bool 
 			f.apply(&u)
 			if !c.checksumOK(f, sh.bs, &u) {
 				c.keepTail(sh, sh.buf[i+1:])
-				return false
+				return
 			}
 			ts = u.ExchTsNs
-			sh.book = f
-			if c.nearEdge(sh) {
-				tail := append([]exchange.BookUpdate(nil), sh.buf[i+1:]...)
-				at := sh.bufAt
-				c.publishBook(ch, sh, ts, true)
-				c.dropBook(sh)
-				if len(tail) > 0 {
-					sh.buf = tail
-					sh.bufAt = at
-				}
-				return true
-			}
-			sh.book = nil
 		default:
 			c.keepTail(sh, sh.buf[i:])
-			return false
+			return
 		}
 	}
 	sh.book = f
 	sh.buf = nil
 	sh.bufAt = time.Time{}
 	c.publishBook(ch, sh, ts, true)
-	if c.nearEdge(sh) {
-		c.dropBook(sh)
-		return true
-	}
-	return false
 }
 
 func (c *Conn) keepTail(sh *shelf, tail []exchange.BookUpdate) {
@@ -569,74 +525,14 @@ func (c *Conn) checksumOK(f *folded, bs exchange.BookSync, u *exchange.BookUpdat
 	return cs.Verify(sortedLevels(f.bids, true), sortedLevels(f.asks, false), u)
 }
 
-// nearEdge is the provisional basis-point test (D426). Bid distance is best minus the bid
-// boundary; ask distance is the ask boundary minus best. The denominator is the best price on
-// that side. Strictly inside the threshold, either side alone, refetches. A best of zero is not
-// compared. SnapshotStream does not use this.
-func (c *Conn) nearEdge(sh *shelf) bool {
-	if sh == nil || sh.book == nil || sh.bs.Snapshot() != exchange.SnapshotREST {
-		return false
-	}
-	f := sh.book
-	thr := float64(c.boundaryBP)
-	if f.hasBid {
-		if best, ok := bestOf(f.bids, true); ok && best > 0 {
-			if (best-f.bidBound)/best*10000 < thr {
-				return true
-			}
-		}
-	}
-	if f.hasAsk {
-		if best, ok := bestOf(f.asks, false); ok && best > 0 {
-			if (f.askBound-best)/best*10000 < thr {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func bestOf(m map[float64]float64, bid bool) (float64, bool) {
-	var best float64
-	ok := false
-	for p, q := range m {
-		if q == 0 {
-			continue
-		}
-		if !ok || (bid && p > best) || (!bid && p < best) {
-			best = p
-			ok = true
-		}
-	}
-	return best, ok
-}
-
 func foldSnapshot(u *exchange.BookUpdate) *folded {
 	f := &folded{
 		bids: map[float64]float64{},
 		asks: map[float64]float64{},
 		seq:  exchange.BookSeq{Last: u.Last, Valid: true},
 	}
-	for _, l := range u.Bids {
-		if l.Qty == 0 {
-			continue
-		}
-		f.bids[l.Price] = l.Qty
-		if !f.hasBid || l.Price < f.bidBound {
-			f.bidBound = l.Price
-			f.hasBid = true
-		}
-	}
-	for _, l := range u.Asks {
-		if l.Qty == 0 {
-			continue
-		}
-		f.asks[l.Price] = l.Qty
-		if !f.hasAsk || l.Price > f.askBound {
-			f.askBound = l.Price
-			f.hasAsk = true
-		}
-	}
+	applySide(f.bids, u.Bids)
+	applySide(f.asks, u.Asks)
 	return f
 }
 
@@ -657,9 +553,9 @@ func applySide(m map[float64]float64, ls []exchange.Level) {
 	}
 }
 
-// publishBook sends the inside book. reset, or the first publish on this shelf, is one
-// orderbook_delta with reset set, carrying every in-boundary level rather than the top-N.
-// A later update sends the inside diff, and the top-N only when it changed.
+// publishBook sends the local book. reset, or the first publish on this shelf, is one
+// orderbook_delta with reset set, carrying every level rather than the top-N.
+// A later update sends the diff, and the top-N only when it changed.
 func (c *Conn) publishBook(ch string, sh *shelf, ts int64, reset bool) {
 	bids, asks := c.view(sh)
 	if reset || !sh.havePub {
@@ -677,18 +573,13 @@ func (c *Conn) publishBook(ch string, sh *shelf, ts int64, reset bool) {
 	c.emitTop(ch, sh, ts, bids, asks)
 }
 
-// view is what subscribers are allowed to see. SnapshotREST hides levels outside the snapshot
-// bounds. A side with no bound has no accurate region and is omitted. SnapshotStream publishes
-// the book the venue sent.
+// view is the local book, best price first. Levels past the snapshot's original range are
+// included (D426).
 func (c *Conn) view(sh *shelf) (bids, asks []exchange.Level) {
 	if sh == nil || sh.book == nil {
 		return nil, nil
 	}
-	if sh.bs.Snapshot() != exchange.SnapshotREST {
-		return sortedLevels(sh.book.bids, true), sortedLevels(sh.book.asks, false)
-	}
-	return insideLevels(sh.book.bids, sh.book.bidBound, sh.book.hasBid, true),
-		insideLevels(sh.book.asks, sh.book.askBound, sh.book.hasAsk, false)
+	return sortedLevels(sh.book.bids, true), sortedLevels(sh.book.asks, false)
 }
 
 func (c *Conn) emitDelta(ch string, ts int64, reset bool, bids, asks []exchange.Level) {
@@ -713,27 +604,6 @@ func (c *Conn) emitTop(ch string, sh *shelf, ts int64, bids, asks []exchange.Lev
 			Meta: meta(ts), Bids: protoLevels(sh.topB), Asks: protoLevels(sh.topA), Depth: c.bookDepth,
 		}},
 	})
-}
-
-func insideLevels(m map[float64]float64, bound float64, has, bid bool) []exchange.Level {
-	if !has {
-		return nil
-	}
-	var out []exchange.Level
-	for p, q := range m {
-		if q == 0 {
-			continue
-		}
-		if bid && p < bound {
-			continue
-		}
-		if !bid && p > bound {
-			continue
-		}
-		out = append(out, exchange.Level{Price: p, Qty: q})
-	}
-	sortLevels(out, bid)
-	return out
 }
 
 func sortedLevels(m map[float64]float64, bid bool) []exchange.Level {

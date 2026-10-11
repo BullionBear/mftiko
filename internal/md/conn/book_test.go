@@ -53,9 +53,8 @@ func TestBookFirstSnapshotResetsFullBook(t *testing.T) {
 	if got := gotLevels(b[0].ev.GetOrderBook().GetBids()); !sameLevels(got, []exchange.Level{{Price: 100, Qty: 1}}) {
 		t.Fatalf("top-N is the full book: %v", got)
 	}
-	// The boundary price itself is inside.
 	if _, ok := e.level(t, true, 90); !ok {
-		t.Fatal("boundary bid dropped")
+		t.Fatal("deeper bid dropped")
 	}
 }
 
@@ -138,16 +137,26 @@ func TestBookGapResetsWithoutNewEpoch(t *testing.T) {
 	if e.c.Epoch() != 4 {
 		t.Fatalf("conn_epoch %d", e.c.Epoch())
 	}
-	for _, o := range all {
-		if hasPrice(o, 77) {
-			t.Fatal("gapped update was published")
-		}
-	}
 	reset := d[len(d)-1].ev.GetOrderBookDelta()
 	if !reset.GetReset_() {
 		t.Fatal("resync did not reset")
 	}
-	if got := gotLevels(reset.GetBids()); !sameLevels(got, []exchange.Level{{Price: 100, Qty: 1}, {Price: 90, Qty: 4}}) {
+	// The gap itself is not published. The snapshot bridges it, and the level past the
+	// original range is part of that reset (D426).
+	saw77 := 0
+	for _, o := range all {
+		if !hasPrice(o, 77) {
+			continue
+		}
+		saw77++
+		if o.ev.GetOrderBookDelta() == nil || !o.ev.GetOrderBookDelta().GetReset_() {
+			t.Fatal("gapped update was published before the reset")
+		}
+	}
+	if saw77 != 1 {
+		t.Fatalf("bridged level published %d times", saw77)
+	}
+	if got := gotLevels(reset.GetBids()); !sameLevels(got, []exchange.Level{{Price: 100, Qty: 1}, {Price: 90, Qty: 4}, {Price: 77, Qty: 7}}) {
 		t.Fatalf("bridged book %v", got)
 	}
 	if len(booksOf(all)) != 1 {
@@ -155,73 +164,28 @@ func TestBookGapResetsWithoutNewEpoch(t *testing.T) {
 	}
 }
 
-func TestBookBoundaryRefetch(t *testing.T) {
-	e := newBookEnv(t, umBookSync(t), 5, nil, []doerStep{
-		{resp: bookHTTP(100, 1, [][2]float64{{100, 1}, {90, 1}}, [][2]float64{{110, 1}, {200, 1}})},
-		{resp: bookHTTP(200, 2, [][2]float64{{94, 1}, {50, 1}}, [][2]float64{{110, 1}, {200, 1}})},
-	})
+func TestBookPublishesPastTheSnapshot(t *testing.T) {
+	e := newBookEnv(t, umBookSync(t), 5, nil, []doerStep{{
+		resp: bookHTTP(100, 1, [][2]float64{{100, 1}, {90, 1}}, [][2]float64{{110, 1}, {200, 1}}),
+	}})
 	e.doer.wait(t, 1)
 	e.waitPubs(t, 2)
-	// Outside the bid boundary. Kept locally, not published.
 	e.push(exchange.BookUpdate{First: 101, Last: 101, Prev: 100, Bids: []exchange.Level{{Price: 80, Qty: 5}}})
-	if _, ok := e.level(t, true, 80); !ok {
-		t.Fatal("outside level was not kept")
-	}
-	if n := len(e.open(t)); n != 2 {
-		t.Fatalf("outside level published, pubs %d", n)
-	}
-	// (94-90)/94*10000 is under 500. (100-90)/100*10000 is not.
-	before := e.clk.Gen()
-	e.push(exchange.BookUpdate{First: 102, Last: 102, Prev: 101, Bids: []exchange.Level{{Price: 100, Qty: 0}, {Price: 94, Qty: 1}}})
-	e.waitUntil(t, func() bool { return e.clk.Gen() > before })
+	e.waitPubs(t, 3)
 	if e.doer.calls() != 1 {
-		t.Fatalf("depth during backoff: %d", e.doer.calls())
+		t.Fatalf("depth calls %d, want 1", e.doer.calls())
 	}
 	d := deltasOf(e.open(t))
 	last := d[len(d)-1].ev.GetOrderBookDelta()
-	if last.GetReset_() || hasLevel(last.GetBids(), 80, 5) {
-		t.Fatalf("crossing delta %+v", last)
+	if last.GetReset_() {
+		t.Fatal("level past the snapshot was a reset")
 	}
-	if !hasLevel(last.GetBids(), 100, 0) || !hasLevel(last.GetBids(), 94, 1) {
-		t.Fatalf("crossing delta bids %v", gotLevels(last.GetBids()))
+	if got := gotLevels(last.GetBids()); !sameLevels(got, []exchange.Level{{Price: 80, Qty: 5}}) {
+		t.Fatalf("delta bids %v", got)
 	}
-	e.clk.Advance(time.Second)
-	e.doer.wait(t, 2)
-	e.waitUntil(t, func() bool {
-		dd := deltasOf(e.open(t))
-		return len(dd) >= 3 && dd[len(dd)-1].ev.GetOrderBookDelta().GetReset_()
-	})
-	reset := deltasOf(e.open(t))
-	got := gotLevels(reset[len(reset)-1].ev.GetOrderBookDelta().GetBids())
-	if !sameLevels(got, []exchange.Level{{Price: 94, Qty: 1}, {Price: 50, Qty: 1}}) {
-		t.Fatalf("refetched book %v", got)
+	if _, ok := e.level(t, true, 80); !ok {
+		t.Fatal("level past the snapshot was not kept")
 	}
-	for _, o := range e.open(t) {
-		if hasPrice(o, 80) {
-			t.Fatal("outside level was published")
-		}
-	}
-}
-
-func TestBookAskBoundaryAlone(t *testing.T) {
-	e := newBookEnv(t, umBookSync(t), 5, nil, []doerStep{
-		{resp: bookHTTP(100, 1, [][2]float64{{100, 1}, {50, 1}}, [][2]float64{{110, 1}, {200, 1}})},
-		{resp: bookHTTP(200, 2, [][2]float64{{100, 1}, {50, 1}}, [][2]float64{{198, 1}, {400, 1}})},
-	})
-	e.doer.wait(t, 1)
-	e.waitPubs(t, 2)
-	before := e.clk.Gen()
-	e.push(exchange.BookUpdate{First: 101, Last: 101, Prev: 100, Asks: []exchange.Level{{Price: 110, Qty: 0}, {Price: 198, Qty: 1}}})
-	e.waitUntil(t, func() bool { return e.clk.Gen() > before })
-	if e.doer.calls() != 1 {
-		t.Fatalf("depth during backoff: %d", e.doer.calls())
-	}
-	e.clk.Advance(time.Second)
-	e.doer.wait(t, 2)
-	e.waitUntil(t, func() bool {
-		d := deltasOf(e.open(t))
-		return len(d) >= 2 && d[len(d)-1].ev.GetOrderBookDelta().GetReset_()
-	})
 }
 
 func TestBookDepthBackoff(t *testing.T) {

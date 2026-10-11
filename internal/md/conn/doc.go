@@ -11,8 +11,10 @@
 // Init; this package does not.
 //
 // Depth updates are folded into a local book on this connection (D424–D428). orderbook and
-// orderbook_delta are two feeds of that book. The book dies with the connection: reconnect starts
-// again, and conn_epoch changes only when the dial succeeds. A resync keeps the epoch and takes
-// the next seq of each feed. SnapshotREST depth runs in this process, off the read goroutine, so
-// a ping still gets an answer. Tape and md.view are later tickets. Serve is what cmd/mftiko-md-conn runs.
+// orderbook_delta are two feeds of that book. SnapshotREST takes one snapshot and then only
+// increments; it refetches only on a sequence gap or a checksum failure (D426). The book dies
+// with the connection: reconnect starts again, and conn_epoch changes only when the dial
+// succeeds. A resync keeps the epoch and takes the next seq of each feed. SnapshotREST depth
+// runs in this process, off the read goroutine, so a ping still gets an answer. Tape and
+// md.view are later tickets. Serve is what cmd/mftiko-md-conn runs.
 package conn

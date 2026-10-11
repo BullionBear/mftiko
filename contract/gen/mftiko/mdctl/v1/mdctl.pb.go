@@ -140,8 +140,6 @@ type InitPayload struct {
 	ConnEpoch uint64 `protobuf:"varint,7,opt,name=conn_epoch,json=connEpoch,proto3" json:"conn_epoch,omitempty"`
 	// 本地 orderbook 的 top-N。0 是缺，啟動失敗（D426）。同一個 MD instance 固定。
 	BookDepth uint32 `protobuf:"varint,8,opt,name=book_depth,json=bookDepth,proto3" json:"book_depth,omitempty"`
-	// 最優價到快照邊界的距離門檻，單位 bp。0 表示 500。分母暫定為最優價（D426）。
-	BookBoundaryBp uint32 `protobuf:"varint,9,opt,name=book_boundary_bp,json=bookBoundaryBp,proto3" json:"book_boundary_bp,omitempty"`
 	// 等快照時緩衝的筆數上限。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（D424）。
 	BookBufferMax uint32 `protobuf:"varint,10,opt,name=book_buffer_max,json=bookBufferMax,proto3" json:"book_buffer_max,omitempty"`
 	// 等快照時緩衝的時間上限，毫秒。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（D424）。
@@ -225,13 +223,6 @@ func (x *InitPayload) GetConnEpoch() uint64 {
 func (x *InitPayload) GetBookDepth() uint32 {
 	if x != nil {
 		return x.BookDepth
-	}
-	return 0
-}
-
-func (x *InitPayload) GetBookBoundaryBp() uint32 {
-	if x != nil {
-		return x.BookBoundaryBp
 	}
 	return 0
 }
@@ -639,7 +630,7 @@ var File_mftiko_mdctl_v1_mdctl_proto protoreflect.FileDescriptor
 
 const file_mftiko_mdctl_v1_mdctl_proto_rawDesc = "" +
 	"\n" +
-	"\x1bmftiko/mdctl/v1/mdctl.proto\x12\x0fmftiko.mdctl.v1\x1a\x1dmftiko/common/v1/common.proto\"\xc0\x02\n" +
+	"\x1bmftiko/mdctl/v1/mdctl.proto\x12\x0fmftiko.mdctl.v1\x1a\x1dmftiko/common/v1/common.proto\"\xae\x02\n" +
 	"\vInitPayload\x12\x14\n" +
 	"\x05venue\x18\x01 \x01(\tR\x05venue\x12\x14\n" +
 	"\x05route\x18\x02 \x01(\tR\x05route\x12\f\n" +
@@ -650,11 +641,11 @@ const file_mftiko_mdctl_v1_mdctl_proto_rawDesc = "" +
 	"\n" +
 	"conn_epoch\x18\a \x01(\x04R\tconnEpoch\x12\x1d\n" +
 	"\n" +
-	"book_depth\x18\b \x01(\rR\tbookDepth\x12(\n" +
-	"\x10book_boundary_bp\x18\t \x01(\rR\x0ebookBoundaryBp\x12&\n" +
+	"book_depth\x18\b \x01(\rR\tbookDepth\x12&\n" +
 	"\x0fbook_buffer_max\x18\n" +
 	" \x01(\rR\rbookBufferMax\x12$\n" +
-	"\x0ebook_buffer_ms\x18\v \x01(\rR\fbookBufferMsJ\x04\b\x05\x10\x06R\btape_url\"\x0e\n" +
+	"\x0ebook_buffer_ms\x18\v \x01(\rR\fbookBufferMsJ\x04\b\x05\x10\x06J\x04\b\t\x10\n" +
+	"R\btape_urlR\x10book_boundary_bp\"\x0e\n" +
 	"\fStartPayload\"F\n" +
 	"\aCommand\x124\n" +
 	"\adesired\x18\x01 \x01(\v2\x18.mftiko.mdctl.v1.DesiredH\x00R\adesiredB\x05\n" +

@@ -255,7 +255,7 @@ func (s *ctl) onInit(m *workerv1.Init) (code int, ok bool) {
 		Market: market, Publish: s.cfg.Publish, Now: s.cfg.Now, Epoch: p.GetConnEpoch(),
 		Report: s.reportEpoch, RetryAfter: s.cfg.RetryAfter, RetryMax: s.cfg.RetryMax, Log: s.cfg.Log,
 		REST: rest, Doer: s.cfg.Doer, RateHold: s.cfg.RateHold,
-		BookDepth: p.GetBookDepth(), BoundaryBP: p.GetBookBoundaryBp(),
+		BookDepth: p.GetBookDepth(),
 		BufferMax: int(p.GetBookBufferMax()), BufferAge: bufAge,
 	})
 	s.install(c)

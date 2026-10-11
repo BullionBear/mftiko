@@ -56,10 +56,6 @@ type Config struct {
 	// book channel adopted with zero, or with N greater than BookSync.Depth on SnapshotREST,
 	// ends Run.
 	BookDepth uint32
-	// BoundaryBP is the strict distance, in basis points of the best price, inside which a
-	// SnapshotREST side is fetched again (D426). Zero means DefaultBoundaryBP. The denominator
-	// is provisional.
-	BoundaryBP uint32
 	// BufferMax and BufferAge cap the updates kept while a snapshot is outstanding (D424). Zero
 	// means DefaultBufferMax and DefaultBufferAge. Hitting either drops the buffer and makes the
 	// in-flight snapshot stale.
@@ -92,7 +88,6 @@ type Conn struct {
 	rest               exchange.PublicREST
 	doer               exchange.Doer
 	bookDepth          uint32
-	boundaryBP         uint32
 	bufferMax          int
 	bufferAge          time.Duration
 	rateHold           time.Duration
@@ -167,10 +162,6 @@ func New(cfg Config) *Conn {
 	if now == nil {
 		now = time.Now
 	}
-	bp := cfg.BoundaryBP
-	if bp == 0 {
-		bp = DefaultBoundaryBP
-	}
 	bufN := cfg.BufferMax
 	if bufN == 0 {
 		bufN = DefaultBufferMax
@@ -191,7 +182,7 @@ func New(cfg Config) *Conn {
 		venue: cfg.Venue, route: cfg.Route, inst: cfg.Instance,
 		url: cfg.URL, market: cfg.Market, pub: cfg.Publish, now: now,
 		epoch: cfg.Epoch, report: cfg.Report, retryAfter: cfg.RetryAfter, retryMax: cfg.RetryMax,
-		rest: cfg.REST, doer: cfg.Doer, bookDepth: cfg.BookDepth, boundaryBP: bp,
+		rest: cfg.REST, doer: cfg.Doer, bookDepth: cfg.BookDepth,
 		bufferMax: bufN, bufferAge: bufAge, rateHold: hold, bookNow: bookNow, bookAfter: cfg.BookAfter,
 		log: log, kick: make(chan struct{}, 1), bookWake: make(chan struct{}, 1),
 	}

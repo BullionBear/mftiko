@@ -37,9 +37,8 @@ func TestRecordBookFixtures(t *testing.T) {
 func recordBinanceUMBook(t *testing.T, ctx context.Context, path string) {
 	t.Helper()
 	// fapi.binance.com answers 451 from this network. The UM testnet speaks the same public
-	// depth protocol and is what the adapter already uses as the UM test host. BTCUSDT's
-	// 1000-level book sits inside the default 500bp, so the recorded symbol is BCHUSDT,
-	// whose snapshot stays outside that threshold and can be kept.
+	// depth protocol and is what the adapter already uses as the UM test host. The recorded
+	// symbol is BCHUSDT.
 	const ch = "bchusdt@depth@100ms"
 	m := umMarket(t)
 	rest := umREST(t)
