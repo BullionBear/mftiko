@@ -22,14 +22,16 @@ type Markets interface {
 
 // placed is one atom as the last commit left it.
 type placed struct {
-	Conn    string
-	Venue   string
-	Route   string
-	Channel string
-	Feeds   []string
-	Record  bool
-	Cost    int
-	URL     string
+	Conn       string
+	Venue      string
+	Route      string
+	Channel    string
+	Feeds      []string
+	Record     bool
+	ExchTicker string
+	PriceTick  float64
+	Cost       int
+	URL        string
 }
 
 // snapshot is the placement commit last published. ByHash is filled only from etcd at start, so a
@@ -73,6 +75,8 @@ type atomGroup struct {
 	venue, route, channel string
 	cost                  int
 	url                   string
+	exch                  string
+	tick                  float64
 	record                bool
 	owners                []owner
 }
@@ -84,7 +88,7 @@ type routeKey struct {
 // assign places feeds onto conn workers. prev is the last commit. An atom whose owners just hit
 // zero keeps its previous feeds until linger has passed, so the worker does not unsubscribe in
 // the meantime. A later commit at the same moment still sees the timer as just started.
-func assign(inst string, now time.Time, linger time.Duration, markets Markets, overrides map[string]string, feeds []feedIn, prev snapshot) derived {
+func assign(inst string, now time.Time, linger time.Duration, markets Markets, overrides map[string]string, bookDepth uint32, feeds []feedIn, prev snapshot) derived {
 	if linger < 0 {
 		linger = 0
 	}
@@ -116,6 +120,12 @@ func assign(inst string, now time.Time, linger time.Duration, markets Markets, o
 		cur.owners = append(cur.owners, g.owners...)
 		if g.record {
 			cur.record = true
+		}
+		if cur.exch == "" {
+			cur.exch = g.exch
+		}
+		if cur.tick <= 0 {
+			cur.tick = g.tick
 		}
 	}
 	slices.Sort(ids)
@@ -243,10 +253,13 @@ func assign(inst string, now time.Time, linger time.Duration, markets Markets, o
 		live := Live{}
 		for _, id := range atomIDs {
 			a := out.Atoms[id]
-			live.Atoms = append(live.Atoms, LiveAtom{ID: id, Feeds: slices.Clone(a.Feeds), Record: a.Record})
+			live.Atoms = append(live.Atoms, LiveAtom{
+				ID: id, Feeds: slices.Clone(a.Feeds), Record: a.Record,
+				ExchTicker: a.ExchTicker, PriceTick: a.PriceTick,
+			})
 		}
 		out.Plans[agent.WorkerKey(conn)] = agent.Plan[Spec, Live]{
-			Spawn: Spec{Venue: v, Route: r, N: n, URL: out.Atoms[atomIDs[0]].URL},
+			Spawn: Spec{Venue: v, Route: r, N: n, URL: out.Atoms[atomIDs[0]].URL, BookDepth: bookDepth},
 			Live:  live,
 			Start: true,
 		}
@@ -277,10 +290,11 @@ func classify(markets Markets, f feedIn) (string, *atomGroup, string) {
 	if cost < 0 {
 		cost = 0
 	}
+	exch, tick := symbolFields(f.Info)
 	id := venue + ":" + ref.Route + ":" + ref.Channel
 	g := &atomGroup{
 		venue: venue, route: ref.Route, channel: ref.Channel, cost: cost,
-		record: records(f.Entry.Topic),
+		exch: exch, tick: tick, record: records(f.Entry.Topic),
 		owners: []owner{{key: f.Key, feed: f.Entry.Feed}},
 	}
 	return id, g, ""
@@ -319,8 +333,21 @@ func (g *atomGroup) placed(conn string) placed {
 	slices.Sort(feeds)
 	return placed{
 		Conn: conn, Venue: g.venue, Route: g.route, Channel: g.channel,
-		Feeds: feeds, Record: g.record, Cost: g.cost, URL: g.url,
+		Feeds: feeds, Record: g.record, ExchTicker: g.exch, PriceTick: g.tick, Cost: g.cost, URL: g.url,
 	}
+}
+
+// symbolFields is what the conn worker needs and does not look up itself (D426, D433). A missing
+// or non-positive price_tick is zero: the worker logs that book and does not keep it.
+func symbolFields(info *symbol.Info) (exch string, tick float64) {
+	if info == nil {
+		return "", 0
+	}
+	tick = info.Filters[symbol.PriceTick]
+	if tick <= 0 || math.IsNaN(tick) || math.IsInf(tick, 0) {
+		tick = 0
+	}
+	return info.ExchTicker, tick
 }
 
 func storedURL(prev snapshot, id string) string {

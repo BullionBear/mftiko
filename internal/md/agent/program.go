@@ -31,25 +31,29 @@ const reportWait = 200 * time.Millisecond
 
 // Spec is one conn worker's identity. The binary path is not part of it: a new agent binary does
 // not respawn a worker that is already running (P9). The URL is: a different host is a new
-// incarnation (D403). conn_epoch is not part of it either; it rides in Init.
+// incarnation (D403). BookDepth is too: the worker reads it only at Init (D426). conn_epoch is
+// not part of it; it rides in Init.
 type Spec struct {
-	Venue string
-	Route string
-	N     uint32
-	URL   string
+	Venue     string
+	Route     string
+	N         uint32
+	URL       string
+	BookDepth uint32
 }
 
 // Hash is a stable identity of the spec.
 func (s Spec) Hash() string {
-	sum := sha256.Sum256([]byte(s.Venue + "\n" + s.Route + "\n" + strconv.FormatUint(uint64(s.N), 10) + "\n" + s.URL))
+	sum := sha256.Sum256([]byte(s.Venue + "\n" + s.Route + "\n" + strconv.FormatUint(uint64(s.N), 10) + "\n" + s.URL + "\n" + strconv.FormatUint(uint64(s.BookDepth), 10)))
 	return hex.EncodeToString(sum[:8])
 }
 
 // LiveAtom is one atom on a connection's Desired.
 type LiveAtom struct {
-	ID     string
-	Feeds  []string
-	Record bool
+	ID         string
+	Feeds      []string
+	Record     bool
+	ExchTicker string
+	PriceTick  float64
 }
 
 // Live is the Desired of one conn worker, without its version. The version is stamped at push
@@ -70,6 +74,7 @@ func (l Live) desired() *mdctlv1.Desired {
 	for _, a := range l.Atoms {
 		d.Atoms = append(d.Atoms, &mdctlv1.AtomAssignment{
 			AtomId: a.ID, Feeds: append([]string(nil), a.Feeds...), Record: a.Record,
+			ExchTicker: a.ExchTicker, PriceTick: a.PriceTick,
 		})
 	}
 	return d
@@ -114,7 +119,7 @@ func journalFile(dir string, key agent.WorkerKey) string {
 func (p *Program) Init(key agent.WorkerKey, spec Spec, _ Live) (*workerv1.Init, error) {
 	b, err := proto.Marshal(&mdctlv1.InitPayload{
 		Venue: spec.Venue, Route: spec.Route, N: spec.N, MdInstance: p.Instance, Url: spec.URL,
-		ConnEpoch: p.epochOf(key),
+		ConnEpoch: p.epochOf(key), BookDepth: spec.BookDepth,
 	})
 	if err != nil {
 		return nil, err

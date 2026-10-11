@@ -137,7 +137,13 @@ type InitPayload struct {
 	// 實際連線的 URL。host 由 MD instance 的設定選：預設，或交易所提供的替代 endpoint（D403）。換 URL 要換 incarnation。
 	Url string `protobuf:"bytes,6,opt,name=url,proto3" json:"url,omitempty"`
 	// 上次上報的 conn_epoch。0 表示還沒有上報過，第一次撥號用 1（D409）。
-	ConnEpoch     uint64 `protobuf:"varint,7,opt,name=conn_epoch,json=connEpoch,proto3" json:"conn_epoch,omitempty"`
+	ConnEpoch uint64 `protobuf:"varint,7,opt,name=conn_epoch,json=connEpoch,proto3" json:"conn_epoch,omitempty"`
+	// 本地 orderbook 的 top-N。0 是缺，啟動失敗（D426）。同一個 MD instance 固定。
+	BookDepth uint32 `protobuf:"varint,8,opt,name=book_depth,json=bookDepth,proto3" json:"book_depth,omitempty"`
+	// 等快照時緩衝的筆數上限。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（D424）。
+	BookBufferMax uint32 `protobuf:"varint,10,opt,name=book_buffer_max,json=bookBufferMax,proto3" json:"book_buffer_max,omitempty"`
+	// 等快照時緩衝的時間上限，毫秒。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（D424）。
+	BookBufferMs  uint32 `protobuf:"varint,11,opt,name=book_buffer_ms,json=bookBufferMs,proto3" json:"book_buffer_ms,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -210,6 +216,27 @@ func (x *InitPayload) GetUrl() string {
 func (x *InitPayload) GetConnEpoch() uint64 {
 	if x != nil {
 		return x.ConnEpoch
+	}
+	return 0
+}
+
+func (x *InitPayload) GetBookDepth() uint32 {
+	if x != nil {
+		return x.BookDepth
+	}
+	return 0
+}
+
+func (x *InitPayload) GetBookBufferMax() uint32 {
+	if x != nil {
+		return x.BookBufferMax
+	}
+	return 0
+}
+
+func (x *InitPayload) GetBookBufferMs() uint32 {
+	if x != nil {
+		return x.BookBufferMs
 	}
 	return 0
 }
@@ -371,10 +398,15 @@ func (x *Desired) GetAtoms() []*AtomAssignment {
 }
 
 type AtomAssignment struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	AtomId        string                 `protobuf:"bytes,1,opt,name=atom_id,json=atomId,proto3" json:"atom_id,omitempty"`
-	Feeds         []string               `protobuf:"bytes,2,rep,name=feeds,proto3" json:"feeds,omitempty"`    // 這個 atom 要發佈的 feed（atom → 事件 1:N）
-	Record        bool                   `protobuf:"varint,3,opt,name=record,proto3" json:"record,omitempty"` // 錄 tape；MD agent 依 topic 推導（D402）
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	AtomId string                 `protobuf:"bytes,1,opt,name=atom_id,json=atomId,proto3" json:"atom_id,omitempty"`
+	Feeds  []string               `protobuf:"bytes,2,rep,name=feeds,proto3" json:"feeds,omitempty"`    // 這個 atom 要發佈的 feed（atom → 事件 1:N）
+	Record bool                   `protobuf:"varint,3,opt,name=record,proto3" json:"record,omitempty"` // 錄 tape；MD agent 依 topic 推導（D402）
+	// SYM 的 exchTicker。MD agent 在載入 spec、解析商品時抄上。worker 不查 SYM，也不從 channel 解析（D426、D202）。
+	ExchTicker string `protobuf:"bytes,4,opt,name=exch_ticker,json=exchTicker,proto3" json:"exch_ticker,omitempty"`
+	// SYM 的 price_tick。MD agent 在載入 spec、解析商品時從 symbol.Info 抄上，跟 exch_ticker 同一時刻。
+	// 缺或小於等於 0 時這本訂單簿只記日誌、不維護（D433）。
+	PriceTick     float64 `protobuf:"fixed64,5,opt,name=price_tick,json=priceTick,proto3" json:"price_tick,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -428,6 +460,20 @@ func (x *AtomAssignment) GetRecord() bool {
 		return x.Record
 	}
 	return false
+}
+
+func (x *AtomAssignment) GetExchTicker() string {
+	if x != nil {
+		return x.ExchTicker
+	}
+	return ""
+}
+
+func (x *AtomAssignment) GetPriceTick() float64 {
+	if x != nil {
+		return x.PriceTick
+	}
+	return 0
 }
 
 type Report struct {
@@ -594,7 +640,7 @@ var File_mftiko_mdctl_v1_mdctl_proto protoreflect.FileDescriptor
 
 const file_mftiko_mdctl_v1_mdctl_proto_rawDesc = "" +
 	"\n" +
-	"\x1bmftiko/mdctl/v1/mdctl.proto\x12\x0fmftiko.mdctl.v1\x1a\x1dmftiko/common/v1/common.proto\"\xa9\x01\n" +
+	"\x1bmftiko/mdctl/v1/mdctl.proto\x12\x0fmftiko.mdctl.v1\x1a\x1dmftiko/common/v1/common.proto\"\xae\x02\n" +
 	"\vInitPayload\x12\x14\n" +
 	"\x05venue\x18\x01 \x01(\tR\x05venue\x12\x14\n" +
 	"\x05route\x18\x02 \x01(\tR\x05route\x12\f\n" +
@@ -603,18 +649,28 @@ const file_mftiko_mdctl_v1_mdctl_proto_rawDesc = "" +
 	"mdInstance\x12\x10\n" +
 	"\x03url\x18\x06 \x01(\tR\x03url\x12\x1d\n" +
 	"\n" +
-	"conn_epoch\x18\a \x01(\x04R\tconnEpochJ\x04\b\x05\x10\x06R\btape_url\"\x0e\n" +
+	"conn_epoch\x18\a \x01(\x04R\tconnEpoch\x12\x1d\n" +
+	"\n" +
+	"book_depth\x18\b \x01(\rR\tbookDepth\x12&\n" +
+	"\x0fbook_buffer_max\x18\n" +
+	" \x01(\rR\rbookBufferMax\x12$\n" +
+	"\x0ebook_buffer_ms\x18\v \x01(\rR\fbookBufferMsJ\x04\b\x05\x10\x06J\x04\b\t\x10\n" +
+	"R\btape_urlR\x10book_boundary_bp\"\x0e\n" +
 	"\fStartPayload\"F\n" +
 	"\aCommand\x124\n" +
 	"\adesired\x18\x01 \x01(\v2\x18.mftiko.mdctl.v1.DesiredH\x00R\adesiredB\x05\n" +
 	"\x03cmd\"u\n" +
 	"\aDesired\x123\n" +
 	"\aversion\x18\x01 \x01(\v2\x19.mftiko.common.v1.VersionR\aversion\x125\n" +
-	"\x05atoms\x18\x02 \x03(\v2\x1f.mftiko.mdctl.v1.AtomAssignmentR\x05atoms\"W\n" +
+	"\x05atoms\x18\x02 \x03(\v2\x1f.mftiko.mdctl.v1.AtomAssignmentR\x05atoms\"\x97\x01\n" +
 	"\x0eAtomAssignment\x12\x17\n" +
 	"\aatom_id\x18\x01 \x01(\tR\x06atomId\x12\x14\n" +
 	"\x05feeds\x18\x02 \x03(\tR\x05feeds\x12\x16\n" +
-	"\x06record\x18\x03 \x01(\bR\x06record\"\xf4\x01\n" +
+	"\x06record\x18\x03 \x01(\bR\x06record\x12\x1f\n" +
+	"\vexch_ticker\x18\x04 \x01(\tR\n" +
+	"exchTicker\x12\x1d\n" +
+	"\n" +
+	"price_tick\x18\x05 \x01(\x01R\tpriceTick\"\xf4\x01\n" +
 	"\x06Report\x123\n" +
 	"\aapplied\x18\x01 \x01(\v2\x19.mftiko.common.v1.VersionR\aapplied\x12\x1d\n" +
 	"\n" +

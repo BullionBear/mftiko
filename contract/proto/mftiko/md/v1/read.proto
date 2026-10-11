@@ -45,7 +45,7 @@ message Gap {
   int64 end_ns = 2;
 }
 
-// orderbook_delta 這個 feed 在 (conn_epoch, seq) 當下的完整 book。
+// orderbook_delta 這個 feed 在 (conn_epoch, seq) 當下的窗內 book（D430）。窗外的檔不在這裡。
 message BookSnapshot {
   Meta meta = 1;
   repeated Level bids = 2;

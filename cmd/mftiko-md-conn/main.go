@@ -14,6 +14,7 @@ import (
 
 	"github.com/BullionBear/mftiko/exchange"
 	"github.com/BullionBear/mftiko/exchange/all"
+	"github.com/BullionBear/mftiko/exchange/transport/fasthttp"
 	"github.com/BullionBear/mftiko/internal/md/conn"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/logger"
@@ -26,12 +27,17 @@ func main() {
 
 func run() int {
 	version := flag.Bool("version", false, "print the release and exit")
+	hold := flag.Duration("rate-hold", conn.DefaultRateHold, "how long to hold depth after a 429 or 418 that has no Retry-After and no reset time")
 	flag.Parse()
 	if *version {
 		fmt.Println(buildinfo.String())
 		return 0
 	}
 	log := logger.New("mftiko-md-conn")
+	if *hold < 0 {
+		log.Error().Dur("rate_hold", *hold).Msg("rate-hold is negative")
+		return 1
+	}
 	fd, err := ctlFD()
 	if err != nil {
 		log.Error().Err(err).Msg("control fd")
@@ -63,6 +69,7 @@ func run() int {
 	reg := all.Registry()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer stop()
+	doer := fasthttp.New(nil, fasthttp.Options{})
 	return conn.Serve(ctx, f, conn.ServeConfig{
 		Lookup: func(venue string) (exchange.Market, bool) {
 			v, ok := reg.Venue(venue)
@@ -71,9 +78,18 @@ func run() int {
 			}
 			return v.Market, true
 		},
-		Publish: nc.Publish,
-		Log:     &log,
-		Release: buildinfo.Version,
+		REST: func(venue string) (exchange.PublicREST, bool) {
+			v, ok := reg.Venue(venue)
+			if !ok || v.REST == nil {
+				return nil, false
+			}
+			return v.REST, true
+		},
+		Doer:     doer,
+		RateHold: *hold,
+		Publish:  nc.Publish,
+		Log:      &log,
+		Release:  buildinfo.Version,
 	})
 }
 

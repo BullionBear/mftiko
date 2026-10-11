@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"math"
 	"slices"
 	"testing"
 	"time"
@@ -30,7 +31,7 @@ const (
 func TestTwoFeedsShareOneAtom(t *testing.T) {
 	book := feed("s", "k-book", "orderbook")
 	delta := feed("s", "k-delta", "orderbook_delta")
-	d := assign(testInst, time.Unix(1, 0), time.Second, testMarkets(8, 1), nil, []feedIn{book, delta}, snapshot{})
+	d := assign(testInst, time.Unix(1, 0), time.Second, testMarkets(8, 1), nil, 20, []feedIn{book, delta}, snapshot{})
 	id := "Binance:public:depth"
 	a, ok := d.Atoms[id]
 	if !ok || a.Conn != "md/Binance/public/0" || a.Record || len(d.Plans) != 1 {
@@ -39,8 +40,15 @@ func TestTwoFeedsShareOneAtom(t *testing.T) {
 	if !slices.Equal(a.Feeds, []string{book.Entry.Feed, delta.Entry.Feed}) {
 		t.Fatalf("feeds %v", a.Feeds)
 	}
-	if len(d.Plans[agent.WorkerKey(a.Conn)].Live.Atoms) != 1 {
-		t.Fatalf("desired atoms %d", len(d.Plans[agent.WorkerKey(a.Conn)].Live.Atoms))
+	if a.ExchTicker != "BTCUSDT" || a.PriceTick != 0.01 {
+		t.Fatalf("symbol fields %+v", a)
+	}
+	plan := d.Plans[agent.WorkerKey(a.Conn)]
+	if plan.Spawn.BookDepth != 20 || len(plan.Live.Atoms) != 1 {
+		t.Fatalf("desired %+v", plan)
+	}
+	if plan.Live.Atoms[0].ExchTicker != "BTCUSDT" || plan.Live.Atoms[0].PriceTick != 0.01 {
+		t.Fatalf("assignment %+v", plan.Live.Atoms[0])
 	}
 }
 
@@ -51,12 +59,12 @@ func TestOwnerSetIsNotACounter(t *testing.T) {
 		t.Fatal("the two sessions must want the same feed")
 	}
 	now := time.Unix(1, 0)
-	d := assign(testInst, now, time.Second, testMarkets(8, 1), nil, []feedIn{a, b}, snapshot{})
+	d := assign(testInst, now, time.Second, testMarkets(8, 1), nil, 0, []feedIn{a, b}, snapshot{})
 	id := "Binance:public:depth"
 	if len(d.Atoms[id].Feeds) != 1 || len(d.Outcomes) != 2 {
 		t.Fatalf("feeds %v outcomes %d", d.Atoms[id].Feeds, len(d.Outcomes))
 	}
-	kept := assign(testInst, now.Add(time.Minute), time.Second, testMarkets(8, 1), nil, []feedIn{a}, snapOf(d))
+	kept := assign(testInst, now.Add(time.Minute), time.Second, testMarkets(8, 1), nil, 0, []feedIn{a}, snapOf(d))
 	if len(kept.Atoms) != 1 || len(kept.Linger) != 0 || len(kept.Atoms[id].Feeds) != 1 {
 		t.Fatalf("dropping one owner lingered or unsubscribed: %+v linger %v", kept.Atoms[id], kept.Linger)
 	}
@@ -67,20 +75,20 @@ func TestLingerKeepsTheLastFeeds(t *testing.T) {
 	delta := feed("s", "k-delta", "orderbook_delta")
 	now := time.Unix(1_000, 0)
 	linger := time.Second
-	both := assign(testInst, now, linger, testMarkets(8, 1), nil, []feedIn{book, delta}, snapshot{})
-	one := assign(testInst, now, linger, testMarkets(8, 1), nil, []feedIn{book}, snapOf(both))
+	both := assign(testInst, now, linger, testMarkets(8, 1), nil, 0, []feedIn{book, delta}, snapshot{})
+	one := assign(testInst, now, linger, testMarkets(8, 1), nil, 0, []feedIn{book}, snapOf(both))
 	id := "Binance:public:depth"
 	if len(one.Linger) != 0 || !slices.Equal(one.Atoms[id].Feeds, []string{book.Entry.Feed}) {
 		t.Fatalf("one owner: %+v linger %v", one.Atoms[id], one.Linger)
 	}
-	held := assign(testInst, now, linger, testMarkets(8, 1), nil, nil, snapOf(one))
+	held := assign(testInst, now, linger, testMarkets(8, 1), nil, 0, nil, snapOf(one))
 	if len(held.Atoms) != 1 || !held.Linger[id].Equal(now) || !slices.Equal(held.Atoms[id].Feeds, one.Atoms[id].Feeds) {
 		t.Fatalf("linger should keep the feeds at the moment it starts: %+v %v", held.Atoms[id], held.Linger)
 	}
 	if len(held.Plans) != 1 {
 		t.Fatal("the worker stays planned during linger")
 	}
-	gone := assign(testInst, now.Add(linger), linger, testMarkets(8, 1), nil, nil, snapOf(held))
+	gone := assign(testInst, now.Add(linger), linger, testMarkets(8, 1), nil, 0, nil, snapOf(held))
 	if len(gone.Atoms) != 0 || len(gone.Plans) != 0 {
 		t.Fatalf("linger elapsed, atom still there: %+v", gone.Atoms)
 	}
@@ -92,23 +100,23 @@ func TestBudgetOpensTheNextConnAndDoesNotConsolidate(t *testing.T) {
 	book := feed("s", "k-book", "orderbook")
 	tr := feed("s", "k-trade", "trade")
 	now := time.Unix(1_000, 0)
-	d := assign(testInst, now, time.Second, m, nil, []feedIn{book, tr}, snapshot{})
+	d := assign(testInst, now, time.Second, m, nil, 0, []feedIn{book, tr}, snapshot{})
 	if d.Atoms["Binance:public:depth"].Conn != "md/Binance/public/0" || d.Atoms["Binance:public:trade"].Conn != "md/Binance/public/1" {
 		t.Fatalf("placement %+v", d.Atoms)
 	}
 	if !d.Atoms["Binance:public:trade"].Record || d.Atoms["Binance:public:depth"].Record {
 		t.Fatal("tape follows the topic")
 	}
-	held := assign(testInst, now, time.Second, m, nil, []feedIn{tr}, snapOf(d))
+	held := assign(testInst, now, time.Second, m, nil, 0, []feedIn{tr}, snapOf(d))
 	if held.Atoms["Binance:public:depth"].Conn != "md/Binance/public/0" || len(held.Linger) != 1 {
 		t.Fatalf("the empty conn should linger, not drop in the same commit: %+v", held.Atoms)
 	}
-	left := assign(testInst, now.Add(time.Second), time.Second, m, nil, []feedIn{tr}, snapOf(held))
+	left := assign(testInst, now.Add(time.Second), time.Second, m, nil, 0, []feedIn{tr}, snapOf(held))
 	if _, ok := left.Atoms["Binance:public:depth"]; ok || left.Atoms["Binance:public:trade"].Conn != "md/Binance/public/1" {
 		t.Fatalf("trade should stay on n=1: %+v", left.Atoms)
 	}
 	m["Binance"].(*fakeMarket).atoms[exchange.TopicAggTrade] = exchange.AtomRef{Route: "public", Channel: "agg"}
-	again := assign(testInst, now.Add(time.Second), time.Second, m, nil, []feedIn{tr, feed("s", "k-agg", "aggtrade")}, snapOf(left))
+	again := assign(testInst, now.Add(time.Second), time.Second, m, nil, 0, []feedIn{tr, feed("s", "k-agg", "aggtrade")}, snapOf(left))
 	if again.Atoms["Binance:public:agg"].Conn != "md/Binance/public/0" || again.Atoms["Binance:public:trade"].Conn != "md/Binance/public/1" {
 		t.Fatalf("new atom takes the hole, the old one stays: %+v", again.Atoms)
 	}
@@ -117,18 +125,18 @@ func TestBudgetOpensTheNextConnAndDoesNotConsolidate(t *testing.T) {
 func TestStickyPlacementAndBudgetReject(t *testing.T) {
 	id := "Binance:public:depth"
 	book := feed("s", "k", "orderbook")
-	stuck := assign(testInst, time.Unix(1, 0), time.Second, testMarkets(8, 1), nil, []feedIn{book}, snapshot{
+	stuck := assign(testInst, time.Unix(1, 0), time.Second, testMarkets(8, 1), nil, 0, []feedIn{book}, snapshot{
 		ByHash: map[string]string{state.WorkerHash(id): "md/Binance/public/3"},
 	})
 	if stuck.Atoms[id].Conn != "md/Binance/public/3" {
 		t.Fatalf("conn %s", stuck.Atoms[id].Conn)
 	}
 	over := testMarkets(1, 5)
-	kept := assign(testInst, time.Unix(2, 0), time.Second, over, nil, []feedIn{book}, snapOf(stuck))
+	kept := assign(testInst, time.Unix(2, 0), time.Second, over, nil, 0, []feedIn{book}, snapOf(stuck))
 	if kept.Atoms[id].Conn != "md/Binance/public/3" || kept.Outcomes[book.Key].Reject != "" {
 		t.Fatalf("sticky atom over budget: %+v %q", kept.Atoms[id], kept.Outcomes[book.Key].Reject)
 	}
-	rejected := assign(testInst, time.Unix(3, 0), time.Second, over, nil, []feedIn{book}, snapshot{})
+	rejected := assign(testInst, time.Unix(3, 0), time.Second, over, nil, 0, []feedIn{book}, snapshot{})
 	if rejected.Outcomes[book.Key].Reject != "connection budget" || len(rejected.Atoms) != 0 {
 		t.Fatalf("reject %+v atoms %d", rejected.Outcomes[book.Key], len(rejected.Atoms))
 	}
@@ -158,13 +166,13 @@ func TestResolveRejectsAndHolds(t *testing.T) {
 	m := testMarkets(8, 1)
 	m["Binance"].(*fakeMarket).bad = map[exchange.Topic]error{exchange.TopicGreeks: exchange.ErrUnsupported}
 	g := feed("s", "k", "greeks")
-	d := assign(testInst, time.Unix(1, 0), time.Second, m, nil, []feedIn{g}, snapshot{})
+	d := assign(testInst, time.Unix(1, 0), time.Second, m, nil, 0, []feedIn{g}, snapshot{})
 	if d.Outcomes["k"].Reject != "unsupported" {
 		t.Fatalf("reject %q", d.Outcomes["k"].Reject)
 	}
 	unknown := feed("s", "k", "orderbook")
 	unknown.Info = &symbol.Info{UID: 1, Ticker: symbol.UniversalTicker{Venue: "Nope"}, Status: symbol.Tradable}
-	d = assign(testInst, time.Unix(1, 0), time.Second, m, nil, []feedIn{unknown}, snapshot{})
+	d = assign(testInst, time.Unix(1, 0), time.Second, m, nil, 0, []feedIn{unknown}, snapshot{})
 	if d.Outcomes["k"].Reject != "unknown venue" {
 		t.Fatalf("reject %q", d.Outcomes["k"].Reject)
 	}
@@ -193,7 +201,7 @@ func TestEndpointFailure(t *testing.T) {
 	book := feed("s", "k", "orderbook")
 	m := testMarkets(8, 1)
 	m["Binance"].(*fakeMarket).urlErr = errors.New("no host")
-	d := assign(testInst, time.Unix(1, 0), time.Second, m, nil, []feedIn{book}, snapshot{})
+	d := assign(testInst, time.Unix(1, 0), time.Second, m, nil, 0, []feedIn{book}, snapshot{})
 	if d.Outcomes["k"].Reject != "endpoint" || len(d.Atoms) != 0 {
 		t.Fatalf("%+v", d.Outcomes["k"])
 	}
@@ -202,7 +210,7 @@ func TestEndpointFailure(t *testing.T) {
 		Conn: "md/Binance/public/0", Venue: "Binance", Route: "public", Channel: "depth",
 		Feeds: []string{book.Entry.Feed}, URL: "wss://stored/ws", Cost: 1,
 	}}}
-	kept := assign(testInst, time.Unix(2, 0), time.Second, m, nil, []feedIn{book}, prev)
+	kept := assign(testInst, time.Unix(2, 0), time.Second, m, nil, 0, []feedIn{book}, prev)
 	if kept.Atoms[id].URL != "wss://stored/ws" || kept.Outcomes["k"].Reject != "" {
 		t.Fatalf("stored url: %+v %q", kept.Atoms[id], kept.Outcomes["k"].Reject)
 	}
@@ -313,11 +321,17 @@ func TestLiveHashIgnoresVersionAndSpecHashUsesURL(t *testing.T) {
 	if hex.EncodeToString(sum[:8]) == h {
 		t.Fatal("version changed the live hash")
 	}
-	spec := Spec{Venue: "Binance", Route: "public", N: 1, URL: "wss://a"}
+	ticked := Live{Atoms: []LiveAtom{{ID: "Binance:public:depth", Feeds: []string{"a", "b"}, ExchTicker: "BTCUSDT", PriceTick: 0.01}}}
+	if ticked.Hash() == h {
+		t.Fatal("symbol fields left the live hash unchanged")
+	}
+	spec := Spec{Venue: "Binance", Route: "public", N: 1, URL: "wss://a", BookDepth: 20}
 	other := spec
 	other.URL = "wss://b"
-	if spec.Hash() == other.Hash() || spec.Hash() != spec.Hash() {
-		t.Fatalf("spec hash %s %s", spec.Hash(), other.Hash())
+	shallower := spec
+	shallower.BookDepth = 0
+	if spec.Hash() == other.Hash() || spec.Hash() == shallower.Hash() {
+		t.Fatalf("spec hash %s %s %s", spec.Hash(), other.Hash(), shallower.Hash())
 	}
 	if (&Program{}).CarriesLive() {
 		t.Fatal("Init does not carry Desired")
@@ -332,7 +346,7 @@ func TestLiveHashIgnoresVersionAndSpecHashUsesURL(t *testing.T) {
 	if err := proto.Unmarshal(init.GetPayload(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload.GetConnEpoch() != 9 || payload.GetUrl() != spec.URL || init.GetContract() != conn.Contract {
+	if payload.GetConnEpoch() != 9 || payload.GetUrl() != spec.URL || payload.GetBookDepth() != 20 || init.GetContract() != conn.Contract {
 		t.Fatalf("init %+v", &payload)
 	}
 	body, err := proto.Marshal(&mdctlv1.Report{ConnEpoch: 9, State: mdctlv1.ConnState_CONN_STATE_CONNECTING})
@@ -402,7 +416,21 @@ func testMarkets(budget, cost int) venueMarkets {
 }
 
 func btc(st symbol.Status) *symbol.Info {
-	return &symbol.Info{UID: 7, Ticker: mustParse(testTicker), Status: st, ExchTicker: "BTCUSDT"}
+	return &symbol.Info{
+		UID: 7, Ticker: mustParse(testTicker), Status: st, ExchTicker: "BTCUSDT",
+		Filters: symbol.Filters{symbol.PriceTick: 0.01},
+	}
+}
+
+func TestSymbolFieldsSkipABadTick(t *testing.T) {
+	exch, tick := symbolFields(&symbol.Info{ExchTicker: "BTCUSDT", Filters: symbol.Filters{symbol.PriceTick: math.NaN()}})
+	if exch != "BTCUSDT" || tick != 0 {
+		t.Fatalf("%s %v", exch, tick)
+	}
+	_, tick = symbolFields(&symbol.Info{Filters: symbol.Filters{symbol.PriceTick: 0.1}})
+	if tick != 0.1 {
+		t.Fatal(tick)
+	}
 }
 
 func feed(session, key, topic string) feedIn {
