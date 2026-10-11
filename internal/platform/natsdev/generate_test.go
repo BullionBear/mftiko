@@ -211,7 +211,7 @@ func TestGenerateMaterial(t *testing.T) {
 	if md.InboxPrefix != "_INBOX_md" {
 		t.Fatal(md.InboxPrefix)
 	}
-	assertUser(md, []string{"md.f.box.>", "sym"}, []string{"md.view.box.>", "_INBOX_md.>"})
+	assertUser(md, []string{"md.f.box.>", "sym"}, []string{"md.view.box.>", "sym.changed.>", "_INBOX_md.>"})
 	fetch := lay.Manifest.Fetch[0]
 	if fetch.InboxPrefix != "_INBOX_fetch" {
 		t.Fatal(fetch.InboxPrefix)

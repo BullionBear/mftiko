@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"context"
 	"errors"
 	"strings"
 
@@ -26,14 +25,6 @@ type Entry struct {
 	Feed    string
 	Topic   exchange.Topic
 	Ticker  symbol.UniversalTicker
-}
-
-// Resolver is the symbol lookup the agent needs. *sym.Remote and *sym.Resolver both implement it.
-// Get and GetByUID are called with includeInactive so a delisted or expired row comes back as a
-// status instead of ErrNotFound (D203).
-type Resolver interface {
-	Get(ctx context.Context, t symbol.UniversalTicker, includeInactive bool) (*symbol.Info, error)
-	GetByUID(ctx context.Context, uid uint32, includeInactive bool) (*symbol.Info, error)
 }
 
 // Decode reads one demand entry. A selector or an account entry is not a feed: this agent does

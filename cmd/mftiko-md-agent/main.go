@@ -1,7 +1,8 @@
 // Command mftiko-md-agent places feed demand on conn workers (D901, D403).
 //
-// It resolves each feed through SYM, writes the placement before the conn worker is pushed
-// (D110), and spawns mftiko-md-conn. A running worker keeps the binary it was spawned with (P9).
+// It reads the worker from the feed's UniversalTicker, writes the placement before the conn
+// worker is pushed (D110), and sends topic.UniversalTicker. The worker derives the subscription.
+// A running worker keeps the binary it was spawned with (P9). The agent does not talk to SYM.
 package main
 
 import (
@@ -10,7 +11,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log/slog"
 	"math"
 	"os"
 	"os/signal"
@@ -24,10 +24,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/md/agent"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/logger"
-	"github.com/BullionBear/mftiko/internal/platform/natsdev"
-	"github.com/BullionBear/mftiko/internal/platform/natsx"
 	"github.com/BullionBear/mftiko/internal/platform/state"
-	"github.com/BullionBear/mftiko/internal/sym"
 )
 
 func main() {
@@ -93,38 +90,7 @@ func run(ctx context.Context, instance, topology, password, workDir, shimPath, c
 	if err != nil {
 		return err
 	}
-	inbox, err := natsdev.InboxPrefix(natsdev.PlaneMD)
-	if err != nil {
-		return err
-	}
-	nc, err := natsx.Connect(natsURL, natsx.Options{
-		Name:        "mftiko-md-agent",
-		Logger:      slog.Default(),
-		CredsFile:   creds,
-		InboxPrefix: inbox,
-	})
-	if err != nil {
-		return err
-	}
-	defer nc.Close()
-
 	reg := all.Registry()
-	var tables []sym.Table
-	for _, name := range reg.Venues() {
-		v, ok := reg.Venue(name)
-		if !ok {
-			continue
-		}
-		for _, c := range v.Categories {
-			tables = append(tables, sym.Table{Venue: name, Category: c})
-		}
-	}
-	remote, err := sym.OpenRemote(ctx, nc, tables, sym.RemoteOptions{Log: log})
-	if err != nil {
-		return err
-	}
-	defer remote.Close()
-
 	host, err := os.Hostname()
 	if err != nil || host == "" {
 		host = "md-agent"
@@ -134,7 +100,7 @@ func run(ctx context.Context, instance, topology, password, workDir, shimPath, c
 		Term:    state.TermOptions{ID: fmt.Sprintf("%s:%d", host, os.Getpid())},
 		WorkDir: workDir, Shim: shimPath, Conn: connPath,
 		WorkerEnv: []string{"MFTIKO_NATS_URL=" + natsURL, "MFTIKO_NATS_CREDS=" + creds},
-		Resolver:  remote, Markets: agent.MarketsFrom(reg), Overrides: overrides,
+		Markets:   agent.MarketsFrom(reg), Overrides: overrides,
 		Linger: linger, BookDepth: uint32(bookDepth), Release: buildinfo.Version, Log: log,
 	})
 }

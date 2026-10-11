@@ -37,7 +37,8 @@ message Command {
   }
 }
 
-// 這條連線上該有的 atom，完整清單。
+// 這條連線上該有的訂閱，完整清單。atom_id 空白時，feeds 是 topic.UniversalTicker，
+// worker 自己用活躍表推出 atom。有 atom_id 時是已經推出的 channel，沒有表的測試走這條。
 message Desired {
   mftiko.common.v1.Version version = 1;
   repeated AtomAssignment atoms = 2;
@@ -45,11 +46,11 @@ message Desired {
 
 message AtomAssignment {
   string atom_id = 1;
-  repeated string feeds = 2; // 這個 atom 要發佈的 feed（atom → 事件 1:N）
-  bool record = 3;           // 錄 tape；MD agent 依 topic 推導（D402）
-  // SYM 的 exchTicker。MD agent 在載入 spec、解析商品時抄上。worker 不查 SYM，也不從 channel 解析（D426、D202）。
+  repeated string feeds = 2; // topic.UniversalTicker，或這個 atom 要發佈的 feed（atom → 事件 1:N）
+  bool record = 3;           // 錄 tape；worker 依 topic 推導（D402）
+  // SYM 的 exchTicker。worker 從自己的活躍表讀。沒有這份表、而且 atom_id 已給時，用這裡的值。不從 channel 解析（D426、D202）。
   string exch_ticker = 4;
-  // SYM 的 price_tick。MD agent 在載入 spec、解析商品時從 symbol.Info 抄上，跟 exch_ticker 同一時刻。
+  // SYM 的 price_tick。跟 exch_ticker 同一張表、同一時刻。
   // 缺或小於等於 0 時這本訂單簿只記日誌、不維護（D433）。
   double price_tick = 5;
 }

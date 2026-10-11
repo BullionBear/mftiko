@@ -1,0 +1,147 @@
+package conn
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
+	mdctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/mdctl/v1"
+	"github.com/BullionBear/mftiko/contract/symbol"
+	"github.com/BullionBear/mftiko/exchange"
+)
+
+func TestReconcileDerivesTheAtomDiff(t *testing.T) {
+	ticker := symbol.UniversalTicker{Venue: "Binance", Category: symbol.Spot, Symbol: "BTCUSDT"}
+	info := &symbol.Info{
+		Ticker: ticker, ExchTicker: "BTCUSDT", Status: symbol.Tradable,
+		Filters: symbol.Filters{symbol.PriceTick: 0.1},
+	}
+	c := New(Config{
+		Venue: "Binance", Route: "public", Instance: "md",
+		Market: &reconMarket{}, BookDepth: 20,
+		Symbols: stubSymbols{info: info},
+	})
+	book := "orderbook.Binance_Spot_BTCUSDT"
+	delta := "orderbook_delta.Binance_Spot_BTCUSDT"
+	ch := "btcusdt@depth"
+	c.SetDesired(feedsDesired(1, book, delta))
+	if len(c.wanted[ch]) != 2 || c.exch[ch] != "BTCUSDT" || c.tick[ch] != 0.1 {
+		t.Fatalf("derived %+v exch %v tick %v", c.wanted, c.exch, c.tick)
+	}
+
+	sess := &memSession{}
+	c.mu.Lock()
+	c.live = newLink(sess)
+	c.mu.Unlock()
+	if frames := c.plan(); len(frames) != 1 || len(sess.sub) != 1 || len(sess.sub[0]) != 1 || sess.sub[0][0] != ch {
+		t.Fatalf("subscribe %+v frames %d", sess.sub, len(frames))
+	}
+	c.mu.Lock()
+	for id := range c.live.subInflight {
+		c.Ack(id, nil)
+	}
+	c.mu.Unlock()
+
+	c.SetDesired(feedsDesired(2, book))
+	if len(c.wanted[ch]) != 1 {
+		t.Fatalf("shared atom dropped %+v", c.wanted)
+	}
+	if frames := c.plan(); len(frames) != 0 || len(sess.unsub) != 0 {
+		t.Fatalf("unsubscribed a channel that still has a feed: %+v", sess.unsub)
+	}
+
+	c.symbols = stubSymbols{err: errors.New("sym down")}
+	c.SetDesired(feedsDesired(3, book))
+	if len(c.wanted[ch]) != 1 || c.exch[ch] != "BTCUSDT" {
+		t.Fatalf("transient lookup dropped the subscription %+v %+v", c.wanted, c.exch)
+	}
+
+	c.symbols = stubSymbols{info: &symbol.Info{Ticker: ticker, ExchTicker: "BTCUSDT", Status: symbol.Halted}}
+	c.SetDesired(feedsDesired(4, book))
+	if len(c.wanted) != 0 {
+		t.Fatalf("halted stayed subscribed %+v", c.wanted)
+	}
+	if frames := c.plan(); len(frames) != 1 || len(sess.unsub) != 1 || sess.unsub[0][0] != ch {
+		t.Fatalf("unsubscribe %+v", sess.unsub)
+	}
+}
+
+func TestReconcileFollowsTheTable(t *testing.T) {
+	ticker := symbol.UniversalTicker{Venue: "Binance", Category: symbol.Spot, Symbol: "BTCUSDT"}
+	tab := &switchSymbols{cur: stubSymbols{info: &symbol.Info{
+		Ticker: ticker, ExchTicker: "BTCUSDT", Status: symbol.Tradable,
+		Filters: symbol.Filters{symbol.PriceTick: 0.1},
+	}}}
+	c := New(Config{
+		Venue: "Binance", Route: "public", Instance: "md",
+		Market: &reconMarket{}, BookDepth: 20, Symbols: tab,
+	})
+	c.reconEvery = 15 * time.Millisecond
+	c.SetDesired(feedsDesired(1, "orderbook.Binance_Spot_BTCUSDT"))
+	if c.exch["btcusdt@depth"] != "BTCUSDT" {
+		t.Fatalf("before %+v", c.exch)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.reconcile(ctx)
+
+	tab.mu.Lock()
+	tab.cur = stubSymbols{info: &symbol.Info{Ticker: ticker, ExchTicker: "BTCUSDT", Status: symbol.Halted}}
+	tab.mu.Unlock()
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		c.mu.Lock()
+		n := len(c.wanted)
+		c.mu.Unlock()
+		if n == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("table change did not unsubscribe")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func feedsDesired(seq uint64, feeds ...string) *mdctlv1.Desired {
+	return &mdctlv1.Desired{
+		Version: &commonv1.Version{Seq: seq},
+		Atoms:   []*mdctlv1.AtomAssignment{{Feeds: feeds}},
+	}
+}
+
+type switchSymbols struct {
+	mu  sync.Mutex
+	cur stubSymbols
+}
+
+func (s *switchSymbols) Get(ctx context.Context, t symbol.UniversalTicker, includeInactive bool) (*symbol.Info, error) {
+	s.mu.Lock()
+	cur := s.cur
+	s.mu.Unlock()
+	return cur.Get(ctx, t, includeInactive)
+}
+
+type reconMarket struct{ stubMarket }
+
+func (reconMarket) Atom(_ exchange.Topic, info *symbol.Info) (exchange.AtomRef, error) {
+	if info == nil || info.ExchTicker == "" {
+		return exchange.AtomRef{}, exchange.ErrUnsupported
+	}
+	return exchange.AtomRef{Route: "public", Channel: strings.ToLower(info.ExchTicker) + "@depth"}, nil
+}
+
+func (reconMarket) Book(string) (exchange.BookSync, bool) { return streamBook{}, true }
+
+type streamBook struct{}
+
+func (streamBook) Snapshot() exchange.SnapshotSource { return exchange.SnapshotStream }
+func (streamBook) Depth() int                        { return 0 }
+func (streamBook) Check(exchange.BookSeq, *exchange.BookUpdate) exchange.BookVerdict {
+	return exchange.BookApply
+}

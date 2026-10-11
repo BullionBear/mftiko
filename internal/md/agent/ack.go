@@ -16,18 +16,12 @@ import (
 )
 
 // sync writes one ack per demand key (PROTOCOL §3.5). A demand that disappeared loses its ack at
-// once: linger keeps the subscription, not the ack. A transient resolution with nothing to fall
-// back on leaves the previous ack in place.
+// once: linger keeps the subscription, not the ack.
 func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[agent.WorkerKey]agent.Observed, gaveUp func(agent.WorkerKey) bool) error {
 	ctx, cancel := context.WithTimeout(ctx, writeTimeout)
 	defer cancel()
 	want := map[string]string{}
 	keep := map[string]bool{}
-	for key := range p.silent {
-		if ack, ok := demandAck(p.inst, key); ok {
-			keep[ack] = true
-		}
-	}
 	now := p.clock()
 	for key, o := range p.outcomes {
 		ack, ok := demandAck(p.inst, key)

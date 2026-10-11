@@ -534,7 +534,15 @@ func (r *Remote) revisionMap(ctx context.Context) (map[revKey]int64, error) {
 }
 
 func (r *Remote) rpcInfo(ctx context.Context, op string, req *symv1.Request) (*symbol.Info, error) {
-	rep, err := r.rpc(ctx, op, req)
+	return rpcInfo(ctx, r.conn, op, req)
+}
+
+func (r *Remote) rpc(ctx context.Context, op string, req *symv1.Request) (*symv1.Reply, error) {
+	return rpc(ctx, r.conn, op, req)
+}
+
+func rpcInfo(ctx context.Context, c *natsx.Conn, op string, req *symv1.Request) (*symbol.Info, error) {
+	rep, err := rpc(ctx, c, op, req)
 	if err != nil {
 		return nil, err
 	}
@@ -545,9 +553,9 @@ func (r *Remote) rpcInfo(ctx context.Context, op string, req *symv1.Request) (*s
 	return &info, nil
 }
 
-func (r *Remote) rpc(ctx context.Context, op string, req *symv1.Request) (*symv1.Reply, error) {
+func rpc(ctx context.Context, c *natsx.Conn, op string, req *symv1.Request) (*symv1.Reply, error) {
 	var rep symv1.Reply
-	err := r.conn.Request(ctx, Subject, req, &rep)
+	err := c.Request(ctx, Subject, req, &rep)
 	if err == nil {
 		if rep.GetError() != "" || rep.GetReason() != "" {
 			return nil, fmt.Errorf("sym: unavailable: %s: error field %q", op, rep.GetError())

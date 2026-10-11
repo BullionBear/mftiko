@@ -47,19 +47,11 @@ func (s Spec) Hash() string {
 	return hex.EncodeToString(sum[:8])
 }
 
-// LiveAtom is one atom on a connection's Desired.
-type LiveAtom struct {
-	ID         string
-	Feeds      []string
-	Record     bool
-	ExchTicker string
-	PriceTick  float64
-}
-
-// Live is the Desired of one conn worker, without its version. The version is stamped at push
-// time, so two identical placements hash equal across an agent restart and are not pushed again.
+// Live is the Desired of one conn worker, without its version. Feeds are topic.UniversalTicker.
+// The worker turns them into atoms. The version is stamped at push time, so two identical
+// placements hash equal across an agent restart and are not pushed again.
 type Live struct {
-	Atoms []LiveAtom
+	Feeds []string
 }
 
 // Hash is the digest of the Desired with no version.
@@ -71,12 +63,12 @@ func (l Live) Hash() string {
 
 func (l Live) desired() *mdctlv1.Desired {
 	d := &mdctlv1.Desired{}
-	for _, a := range l.Atoms {
-		d.Atoms = append(d.Atoms, &mdctlv1.AtomAssignment{
-			AtomId: a.ID, Feeds: append([]string(nil), a.Feeds...), Record: a.Record,
-			ExchTicker: a.ExchTicker, PriceTick: a.PriceTick,
-		})
+	if len(l.Feeds) == 0 {
+		return d
 	}
+	d.Atoms = []*mdctlv1.AtomAssignment{{
+		Feeds: append([]string(nil), l.Feeds...),
+	}}
 	return d
 }
 

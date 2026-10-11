@@ -504,7 +504,8 @@ func writeServiceUser(dir string, u loadedUser, accountKP nkeys.KeyPair, md bool
 	var pub, sub []string
 	if md {
 		pub = []string{"md.f." + u.inst + ".>", "sym"}
-		sub = []string{"md.view." + u.inst + ".>", u.inbox + ".>"}
+		// sym.changed.> is the active-table reload (D203). The agent loads each venue at startup.
+		sub = []string{"md.view." + u.inst + ".>", "sym.changed.>", u.inbox + ".>"}
 	} else {
 		// md.fetch.> is every venue subject. The process subscribes only to the
 		// venues it can reach (D418). sym.changed.> is the resolver (D422).

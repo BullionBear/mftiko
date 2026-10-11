@@ -1,11 +1,11 @@
 // Package md is the market-data plane: lease intake, feed and selector derivation into atoms, the option-chain orchestrator, connection placement (D403), and the provider that writes acks.
 //
-// Each feed is resolved through SYM first (symbol.Resolver). Specs name it with a UniversalTicker;
-// that string becomes a UID at spec load (D203). exchange Market.Atom turns the Info into an atom
-// and Budget/Cost place it (D403, D202). NATS subjects stay human-readable, not UID. The exact
-// spelling is not final (PROTOCOL §10 P14); md.f is still md.f.{inst}.{topic}.{ticker}.
+// A feed key is topic.UniversalTicker. The MD agent reads the venue from that ticker and the route
+// from the topic, places the feed on md/<venue>/<route>/<n>, and sends the feed list (D403). It
+// does not query SYM. The conn worker loads that venue's active table at Init, follows
+// sym.changed, and calls Market.Atom to subscribe and unsubscribe (D426, D433, D202). NATS
+// subjects stay human-readable, not UID. The exact spelling is not final (PROTOCOL §10 P14);
+// md.f is still md.f.{inst}.{topic}.{ticker}.
 //
-// The agent is internal/md/agent. Selectors are a later epic. When a feed is resolved, the agent
-// copies symbol.Info.ExchTicker onto AtomAssignment.exch_ticker and symbol.Info.Filters["price_tick"]
-// onto price_tick. The conn worker reads those fields and does not query SYM (D426, D433, D202).
+// The agent is internal/md/agent. Selectors are a later epic.
 package md

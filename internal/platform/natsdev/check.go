@@ -67,6 +67,9 @@ func checkMD(url string, lay Layout, u User) error {
 	if err := allowSub(md, u.InboxPrefix+".>"); err != nil {
 		return fmt.Errorf("natsdev: md %s own inbox: %w", u.Inst, err)
 	}
+	if err := allowSub(md, "sym.changed.>"); err != nil {
+		return fmt.Errorf("natsdev: md %s sym.changed: %w", u.Inst, err)
+	}
 	if err := denyOutside(url, lay, u, PlaneMD); err != nil {
 		return err
 	}

@@ -1,11 +1,9 @@
 package agent
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"math"
 	"slices"
 	"testing"
 	"time"
@@ -28,27 +26,25 @@ const (
 	testTicker = "Binance_Spot_BTCUSDT"
 )
 
-func TestTwoFeedsShareOneAtom(t *testing.T) {
+func TestTwoFeedsShareOneConn(t *testing.T) {
 	book := feed("s", "k-book", "orderbook")
 	delta := feed("s", "k-delta", "orderbook_delta")
 	d := assign(testInst, time.Unix(1, 0), time.Second, testMarkets(8, 1), nil, 20, []feedIn{book, delta}, snapshot{})
-	id := "Binance:public:depth"
-	a, ok := d.Atoms[id]
-	if !ok || a.Conn != "md/Binance/public/0" || a.Record || len(d.Plans) != 1 {
-		t.Fatalf("atom %+v plans %d", a, len(d.Plans))
+	conn := "md/Binance/public/0"
+	if d.Atoms[book.Entry.Feed].Conn != conn || d.Atoms[delta.Entry.Feed].Conn != conn || len(d.Plans) != 1 {
+		t.Fatalf("placement %+v plans %d", d.Atoms, len(d.Plans))
 	}
-	if !slices.Equal(a.Feeds, []string{book.Entry.Feed, delta.Entry.Feed}) {
-		t.Fatalf("feeds %v", a.Feeds)
+	plan := d.Plans[agent.WorkerKey(conn)]
+	want := []string{book.Entry.Feed, delta.Entry.Feed}
+	if plan.Spawn.BookDepth != 20 || !slices.Equal(plan.Live.Feeds, want) {
+		t.Fatalf("live %+v", plan.Live.Feeds)
 	}
-	if a.ExchTicker != "BTCUSDT" || a.PriceTick != 0.01 {
-		t.Fatalf("symbol fields %+v", a)
+	got := plan.Live.desired()
+	if len(got.GetAtoms()) != 1 || got.GetAtoms()[0].GetAtomId() != "" || got.GetAtoms()[0].GetExchTicker() != "" {
+		t.Fatalf("the worker is handed feeds, not an atom: %+v", got)
 	}
-	plan := d.Plans[agent.WorkerKey(a.Conn)]
-	if plan.Spawn.BookDepth != 20 || len(plan.Live.Atoms) != 1 {
-		t.Fatalf("desired %+v", plan)
-	}
-	if plan.Live.Atoms[0].ExchTicker != "BTCUSDT" || plan.Live.Atoms[0].PriceTick != 0.01 {
-		t.Fatalf("assignment %+v", plan.Live.Atoms[0])
+	if !slices.Equal(got.GetAtoms()[0].GetFeeds(), want) {
+		t.Fatalf("feeds %v", got.GetAtoms()[0].GetFeeds())
 	}
 }
 
@@ -60,8 +56,8 @@ func TestOwnerSetIsNotACounter(t *testing.T) {
 	}
 	now := time.Unix(1, 0)
 	d := assign(testInst, now, time.Second, testMarkets(8, 1), nil, 0, []feedIn{a, b}, snapshot{})
-	id := "Binance:public:depth"
-	if len(d.Atoms[id].Feeds) != 1 || len(d.Outcomes) != 2 {
+	id := a.Entry.Feed
+	if len(d.Atoms) != 1 || len(d.Atoms[id].Feeds) != 1 || len(d.Outcomes) != 2 {
 		t.Fatalf("feeds %v outcomes %d", d.Atoms[id].Feeds, len(d.Outcomes))
 	}
 	kept := assign(testInst, now.Add(time.Minute), time.Second, testMarkets(8, 1), nil, 0, []feedIn{a}, snapOf(d))
@@ -77,20 +73,23 @@ func TestLingerKeepsTheLastFeeds(t *testing.T) {
 	linger := time.Second
 	both := assign(testInst, now, linger, testMarkets(8, 1), nil, 0, []feedIn{book, delta}, snapshot{})
 	one := assign(testInst, now, linger, testMarkets(8, 1), nil, 0, []feedIn{book}, snapOf(both))
-	id := "Binance:public:depth"
-	if len(one.Linger) != 0 || !slices.Equal(one.Atoms[id].Feeds, []string{book.Entry.Feed}) {
-		t.Fatalf("one owner: %+v linger %v", one.Atoms[id], one.Linger)
+	if len(one.Linger) != 1 || !one.Linger[delta.Entry.Feed].Equal(now) || one.Atoms[book.Entry.Feed].Conn == "" {
+		t.Fatalf("the feed with no owners lingers, the other stays: %+v linger %v", one.Atoms, one.Linger)
+	}
+	plan := one.Plans[agent.WorkerKey("md/Binance/public/0")]
+	if !slices.Equal(plan.Live.Feeds, []string{book.Entry.Feed, delta.Entry.Feed}) {
+		t.Fatalf("linger keeps the feed on the worker: %v", plan.Live.Feeds)
 	}
 	held := assign(testInst, now, linger, testMarkets(8, 1), nil, 0, nil, snapOf(one))
-	if len(held.Atoms) != 1 || !held.Linger[id].Equal(now) || !slices.Equal(held.Atoms[id].Feeds, one.Atoms[id].Feeds) {
-		t.Fatalf("linger should keep the feeds at the moment it starts: %+v %v", held.Atoms[id], held.Linger)
+	if len(held.Atoms) != 2 || !held.Linger[delta.Entry.Feed].Equal(now) || len(held.Linger) != 2 {
+		t.Fatalf("both feeds linger once the book owner is gone too: %+v %v", held.Atoms, held.Linger)
 	}
 	if len(held.Plans) != 1 {
 		t.Fatal("the worker stays planned during linger")
 	}
 	gone := assign(testInst, now.Add(linger), linger, testMarkets(8, 1), nil, 0, nil, snapOf(held))
 	if len(gone.Atoms) != 0 || len(gone.Plans) != 0 {
-		t.Fatalf("linger elapsed, atom still there: %+v", gone.Atoms)
+		t.Fatalf("linger elapsed, feeds still there: %+v", gone.Atoms)
 	}
 }
 
@@ -101,30 +100,28 @@ func TestBudgetOpensTheNextConnAndDoesNotConsolidate(t *testing.T) {
 	tr := feed("s", "k-trade", "trade")
 	now := time.Unix(1_000, 0)
 	d := assign(testInst, now, time.Second, m, nil, 0, []feedIn{book, tr}, snapshot{})
-	if d.Atoms["Binance:public:depth"].Conn != "md/Binance/public/0" || d.Atoms["Binance:public:trade"].Conn != "md/Binance/public/1" {
+	if d.Atoms[book.Entry.Feed].Conn != "md/Binance/public/0" || d.Atoms[tr.Entry.Feed].Conn != "md/Binance/public/1" {
 		t.Fatalf("placement %+v", d.Atoms)
 	}
-	if !d.Atoms["Binance:public:trade"].Record || d.Atoms["Binance:public:depth"].Record {
-		t.Fatal("tape follows the topic")
-	}
 	held := assign(testInst, now, time.Second, m, nil, 0, []feedIn{tr}, snapOf(d))
-	if held.Atoms["Binance:public:depth"].Conn != "md/Binance/public/0" || len(held.Linger) != 1 {
+	if held.Atoms[book.Entry.Feed].Conn != "md/Binance/public/0" || len(held.Linger) != 1 {
 		t.Fatalf("the empty conn should linger, not drop in the same commit: %+v", held.Atoms)
 	}
 	left := assign(testInst, now.Add(time.Second), time.Second, m, nil, 0, []feedIn{tr}, snapOf(held))
-	if _, ok := left.Atoms["Binance:public:depth"]; ok || left.Atoms["Binance:public:trade"].Conn != "md/Binance/public/1" {
+	if _, ok := left.Atoms[book.Entry.Feed]; ok || left.Atoms[tr.Entry.Feed].Conn != "md/Binance/public/1" {
 		t.Fatalf("trade should stay on n=1: %+v", left.Atoms)
 	}
 	m["Binance"].(*fakeMarket).atoms[exchange.TopicAggTrade] = exchange.AtomRef{Route: "public", Channel: "agg"}
-	again := assign(testInst, now.Add(time.Second), time.Second, m, nil, 0, []feedIn{tr, feed("s", "k-agg", "aggtrade")}, snapOf(left))
-	if again.Atoms["Binance:public:agg"].Conn != "md/Binance/public/0" || again.Atoms["Binance:public:trade"].Conn != "md/Binance/public/1" {
-		t.Fatalf("new atom takes the hole, the old one stays: %+v", again.Atoms)
+	agg := feed("s", "k-agg", "aggtrade")
+	again := assign(testInst, now.Add(time.Second), time.Second, m, nil, 0, []feedIn{tr, agg}, snapOf(left))
+	if again.Atoms[agg.Entry.Feed].Conn != "md/Binance/public/0" || again.Atoms[tr.Entry.Feed].Conn != "md/Binance/public/1" {
+		t.Fatalf("new feed takes the hole, the old one stays: %+v", again.Atoms)
 	}
 }
 
 func TestStickyPlacementAndBudgetReject(t *testing.T) {
-	id := "Binance:public:depth"
 	book := feed("s", "k", "orderbook")
+	id := book.Entry.Feed
 	stuck := assign(testInst, time.Unix(1, 0), time.Second, testMarkets(8, 1), nil, 0, []feedIn{book}, snapshot{
 		ByHash: map[string]string{state.WorkerHash(id): "md/Binance/public/3"},
 	})
@@ -142,27 +139,7 @@ func TestStickyPlacementAndBudgetReject(t *testing.T) {
 	}
 }
 
-func TestResolveRejectsAndHolds(t *testing.T) {
-	ctx := context.Background()
-	key := state.MDDemandKey(testInst, "s", "feed/"+feedKey("orderbook"))
-	e := feed("s", key, "orderbook").Entry
-	cases := []struct {
-		st   symbol.Status
-		miss bool
-		want string
-	}{
-		{symbol.Tradable, true, "not found"},
-		{symbol.Expired, false, "expired"},
-		{symbol.Delisted, false, "delisted"},
-		{symbol.Halted, false, "not tradable"},
-	}
-	for _, c := range cases {
-		res := &memResolver{info: btc(c.st), miss: c.miss}
-		got, skip, err := lookup(ctx, res, e)
-		if err != nil || skip || got.Reject != c.want || !res.inactive {
-			t.Fatalf("%s: %+v skip %v err %v inactive %v", c.st, got, skip, err, res.inactive)
-		}
-	}
+func TestUnsupportedAndUnknownVenue(t *testing.T) {
 	m := testMarkets(8, 1)
 	m["Binance"].(*fakeMarket).bad = map[exchange.Topic]error{exchange.TopicGreeks: exchange.ErrUnsupported}
 	g := feed("s", "k", "greeks")
@@ -171,29 +148,10 @@ func TestResolveRejectsAndHolds(t *testing.T) {
 		t.Fatalf("reject %q", d.Outcomes["k"].Reject)
 	}
 	unknown := feed("s", "k", "orderbook")
-	unknown.Info = &symbol.Info{UID: 1, Ticker: symbol.UniversalTicker{Venue: "Nope"}, Status: symbol.Tradable}
+	unknown.Entry.Ticker.Venue = "Nope"
 	d = assign(testInst, time.Unix(1, 0), time.Second, m, nil, 0, []feedIn{unknown}, snapshot{})
 	if d.Outcomes["k"].Reject != "unknown venue" {
 		t.Fatalf("reject %q", d.Outcomes["k"].Reject)
-	}
-
-	res := &memResolver{info: btc(symbol.Tradable)}
-	p := &plane{inst: testInst, res: res, good: map[string]feedIn{}}
-	items := map[string]Entry{key: e}
-	feeds, good, silent, err := p.resolve(ctx, agent.Demand[Entry]{Items: items})
-	if err != nil || len(feeds) != 1 || len(silent) != 0 || feeds[0].Info == nil {
-		t.Fatalf("resolve %+v silent %v err %v", feeds, silent, err)
-	}
-	p.good = good
-	res.err = errors.New("sym down")
-	feeds, _, silent, err = p.resolve(ctx, agent.Demand[Entry]{Items: items})
-	if err != nil || len(silent) != 0 || feeds[0].Info == nil || feeds[0].Info.UID != 7 {
-		t.Fatalf("transient dropped the feed: %+v silent %v err %v", feeds, silent, err)
-	}
-	p.good = nil
-	feeds, _, silent, err = p.resolve(ctx, agent.Demand[Entry]{Items: items})
-	if err != nil || !silent[key] || len(feeds) != 0 {
-		t.Fatalf("no last good should stay silent: feeds %d silent %v err %v", len(feeds), silent, err)
 	}
 }
 
@@ -205,9 +163,9 @@ func TestEndpointFailure(t *testing.T) {
 	if d.Outcomes["k"].Reject != "endpoint" || len(d.Atoms) != 0 {
 		t.Fatalf("%+v", d.Outcomes["k"])
 	}
-	id := "Binance:public:depth"
+	id := book.Entry.Feed
 	prev := snapshot{Atoms: map[string]placed{id: {
-		Conn: "md/Binance/public/0", Venue: "Binance", Route: "public", Channel: "depth",
+		Conn: "md/Binance/public/0", Venue: "Binance", Route: "public",
 		Feeds: []string{book.Entry.Feed}, URL: "wss://stored/ws", Cost: 1,
 	}}}
 	kept := assign(testInst, time.Unix(2, 0), time.Second, m, nil, 0, []feedIn{book}, prev)
@@ -309,7 +267,7 @@ func TestAckDecision(t *testing.T) {
 }
 
 func TestLiveHashIgnoresVersionAndSpecHashUsesURL(t *testing.T) {
-	live := Live{Atoms: []LiveAtom{{ID: "Binance:public:depth", Feeds: []string{"a", "b"}}}}
+	live := Live{Feeds: []string{"orderbook.Binance_Spot_BTCUSDT"}}
 	h := live.Hash()
 	withVer := live.desired()
 	withVer.Version = &commonv1.Version{Epoch: 4, Seq: 9}
@@ -321,9 +279,9 @@ func TestLiveHashIgnoresVersionAndSpecHashUsesURL(t *testing.T) {
 	if hex.EncodeToString(sum[:8]) == h {
 		t.Fatal("version changed the live hash")
 	}
-	ticked := Live{Atoms: []LiveAtom{{ID: "Binance:public:depth", Feeds: []string{"a", "b"}, ExchTicker: "BTCUSDT", PriceTick: 0.01}}}
-	if ticked.Hash() == h {
-		t.Fatal("symbol fields left the live hash unchanged")
+	another := Live{Feeds: []string{"orderbook.Binance_Spot_BTCUSDT", "orderbook_delta.Binance_Spot_BTCUSDT"}}
+	if another.Hash() == h {
+		t.Fatal("another feed left the live hash unchanged")
 	}
 	spec := Spec{Venue: "Binance", Route: "public", N: 1, URL: "wss://a", BookDepth: 20}
 	other := spec
@@ -415,24 +373,6 @@ func testMarkets(budget, cost int) venueMarkets {
 	}}
 }
 
-func btc(st symbol.Status) *symbol.Info {
-	return &symbol.Info{
-		UID: 7, Ticker: mustParse(testTicker), Status: st, ExchTicker: "BTCUSDT",
-		Filters: symbol.Filters{symbol.PriceTick: 0.01},
-	}
-}
-
-func TestSymbolFieldsSkipABadTick(t *testing.T) {
-	exch, tick := symbolFields(&symbol.Info{ExchTicker: "BTCUSDT", Filters: symbol.Filters{symbol.PriceTick: math.NaN()}})
-	if exch != "BTCUSDT" || tick != 0 {
-		t.Fatalf("%s %v", exch, tick)
-	}
-	_, tick = symbolFields(&symbol.Info{Filters: symbol.Filters{symbol.PriceTick: 0.1}})
-	if tick != 0.1 {
-		t.Fatal(tick)
-	}
-}
-
 func feed(session, key, topic string) feedIn {
 	t := mustParse(testTicker)
 	return feedIn{
@@ -440,7 +380,6 @@ func feed(session, key, topic string) feedIn {
 		Entry: Entry{
 			Session: session, Feed: topic + "." + t.String(), Topic: exchange.Topic(topic), Ticker: t,
 		},
-		Info: btc(symbol.Tradable),
 	}
 }
 
@@ -462,33 +401,4 @@ func mustDemand(feed string) []byte {
 		panic(err)
 	}
 	return b
-}
-
-type memResolver struct {
-	info     *symbol.Info
-	miss     bool
-	err      error
-	inactive bool
-}
-
-func (m *memResolver) Get(_ context.Context, t symbol.UniversalTicker, includeInactive bool) (*symbol.Info, error) {
-	m.inactive = includeInactive
-	if m.err != nil {
-		return nil, m.err
-	}
-	if m.miss || m.info == nil || m.info.Ticker != t {
-		return nil, symbol.ErrNotFound
-	}
-	return m.info, nil
-}
-
-func (m *memResolver) GetByUID(_ context.Context, uid uint32, includeInactive bool) (*symbol.Info, error) {
-	m.inactive = includeInactive
-	if m.err != nil {
-		return nil, m.err
-	}
-	if m.miss || m.info == nil || m.info.UID != uid {
-		return nil, symbol.ErrNotFound
-	}
-	return m.info, nil
 }

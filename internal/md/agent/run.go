@@ -14,7 +14,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
-	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/exchange"
 	"github.com/BullionBear/mftiko/internal/platform/agent"
 	"github.com/BullionBear/mftiko/internal/platform/agent/fleet"
@@ -45,7 +44,6 @@ type Config struct {
 	// ExtraEnv is appended to one worker's environment at launch. Tests use it to crash the first spawn.
 	ExtraEnv func(agent.WorkerKey) []string
 
-	Resolver  Resolver
 	Markets   Markets
 	Overrides map[string]string // venue -> Endpoint override; empty uses the venue default
 	BookDepth uint32            // orderbook top-N, fixed for this MD instance (D426)
@@ -120,7 +118,7 @@ func Run(ctx context.Context, cfg Config) error {
 		policy = agent.Always{Backoff: agent.Backoff{Min: time.Second, Max: 30 * time.Second}, Beat: 30 * time.Second}
 	}
 	p := &plane{
-		inst: cfg.Instance, linger: cfg.Linger, res: cfg.Resolver, markets: cfg.Markets,
+		inst: cfg.Instance, linger: cfg.Linger, markets: cfg.Markets,
 		overrides: cfg.Overrides, bookDepth: cfg.BookDepth, get: reader, w: term, log: cfg.Log, now: cfg.Now,
 	}
 	return runner.Run(ctx, runner.Config[Entry, Spec, Live]{
@@ -135,7 +133,7 @@ func (cfg Config) validate() error {
 	switch {
 	case cfg.Instance == "" || cfg.WorkDir == "" || cfg.Shim == "" || cfg.Conn == "":
 		return errors.New("md: agent config incomplete")
-	case cfg.Resolver == nil || cfg.Markets == nil:
+	case cfg.Markets == nil:
 		return errors.New("md: agent config incomplete")
 	default:
 		return nil
@@ -172,7 +170,6 @@ type reader interface {
 type plane struct {
 	inst      string
 	linger    time.Duration
-	res       Resolver
 	markets   Markets
 	overrides map[string]string
 	bookDepth uint32
@@ -182,10 +179,8 @@ type plane struct {
 	now       func() time.Time
 
 	loaded   bool
-	placed   map[string]string // atom hash -> conn, as etcd holds it
+	placed   map[string]string // feed hash -> conn, as etcd holds it
 	acks     map[string]string
-	good     map[string]feedIn
-	silent   map[string]bool
 	snap     snapshot
 	outcomes map[string]outcome
 	plans    map[agent.WorkerKey]agent.Plan[Spec, Live]
@@ -206,8 +201,9 @@ func (p *plane) clock() time.Time {
 	return time.Now()
 }
 
-// commit resolves the demand, writes placements, then publishes the plan. A failure leaves the
-// previous plan in place. The etcd write happens before that publish (D110).
+// commit places the demand, writes placements, then publishes the plan. A failure leaves the
+// previous plan in place. The etcd write happens before that publish (D110). Symbol status is
+// the conn worker's concern.
 func (p *plane) commit(ctx context.Context, d agent.Demand[Entry], _ map[agent.WorkerKey]agent.Observed) error {
 	if !p.loaded {
 		if err := p.load(ctx); err != nil {
@@ -215,19 +211,32 @@ func (p *plane) commit(ctx context.Context, d agent.Demand[Entry], _ map[agent.W
 		}
 		p.loaded = true
 	}
-	feeds, good, silent, err := p.resolve(ctx, d)
-	if err != nil {
-		return err
-	}
-	next := assign(p.inst, p.clock(), p.linger, p.markets, p.overrides, p.bookDepth, feeds, p.snap)
+	next := assign(p.inst, p.clock(), p.linger, p.markets, p.overrides, p.bookDepth, feedsOf(d), p.snap)
 	if err := p.persist(ctx, next.Atoms); err != nil {
 		return err
 	}
-	p.good, p.silent = good, silent
 	p.snap = snapshot{Atoms: next.Atoms, Linger: next.Linger}
 	p.outcomes, p.plans = next.Outcomes, next.Plans
-	p.log.Debug().Int("atoms", len(next.Atoms)).Int("conns", len(next.Plans)).Msg("placement committed")
+	p.log.Debug().Int("feeds", len(next.Atoms)).Int("conns", len(next.Plans)).Msg("placement committed")
 	return nil
+}
+
+// feedsOf is the demand this commit places. A key Decode rejected is a reject, not a feed.
+func feedsOf(d agent.Demand[Entry]) []feedIn {
+	var feeds []feedIn
+	for _, k := range slices.Sorted(maps.Keys(d.Items)) {
+		feeds = append(feeds, feedIn{Key: k, Entry: d.Items[k]})
+	}
+	for k, err := range d.Rejected {
+		in := feedIn{Key: k, Reject: err.Error()}
+		if _, entry, ok := splitDemand(k); ok {
+			if kind, feed, ok := strings.Cut(entry, "/"); ok && kind == "feed" {
+				in.Entry.Feed = feed
+			}
+		}
+		feeds = append(feeds, in)
+	}
+	return feeds
 }
 
 func (p *plane) load(ctx context.Context) error {
@@ -294,83 +303,4 @@ func (p *plane) persist(ctx context.Context, atoms map[string]placed) error {
 		delete(p.placed, h)
 	}
 	return nil
-}
-
-// resolve turns demand into feed inputs. A transient symbol error reuses the last good
-// resolution; with none, the key is silent and its ack is left alone. good and silent replace
-// the plane's copies only after placements are written.
-func (p *plane) resolve(ctx context.Context, d agent.Demand[Entry]) ([]feedIn, map[string]feedIn, map[string]bool, error) {
-	good := map[string]feedIn{}
-	silent := map[string]bool{}
-	var feeds []feedIn
-	for _, k := range slices.Sorted(maps.Keys(d.Items)) {
-		one, skip, err := lookup(ctx, p.res, d.Items[k])
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		one.Key = k
-		if skip {
-			if prev, ok := p.good[k]; ok {
-				prev.Key = k
-				good[k] = prev
-				feeds = append(feeds, prev)
-			} else {
-				silent[k] = true
-			}
-			continue
-		}
-		if one.Reject == "" {
-			good[k] = one
-		}
-		feeds = append(feeds, one)
-	}
-	for k, err := range d.Rejected {
-		in := feedIn{Key: k, Reject: err.Error()}
-		if _, entry, ok := splitDemand(k); ok {
-			if kind, feed, ok := strings.Cut(entry, "/"); ok && kind == "feed" {
-				in.Entry.Feed = feed
-			}
-		}
-		feeds = append(feeds, in)
-	}
-	return feeds, good, silent, nil
-}
-
-// lookup resolves one feed. skip means a transient failure: the caller keeps the last good
-// resolution, or stays silent when there is none. Not found, expired, delisted, and anything
-// else that is not tradable are rejections.
-func lookup(ctx context.Context, res Resolver, e Entry) (feedIn, bool, error) {
-	if err := ctx.Err(); err != nil {
-		return feedIn{}, false, err
-	}
-	got, err := res.Get(ctx, e.Ticker, true)
-	if errors.Is(err, symbol.ErrNotFound) {
-		return feedIn{Entry: e, Reject: "not found"}, false, nil
-	}
-	if err != nil {
-		if ctx.Err() != nil {
-			return feedIn{}, false, ctx.Err()
-		}
-		return feedIn{}, true, nil
-	}
-	full, err := res.GetByUID(ctx, got.UID, true)
-	if errors.Is(err, symbol.ErrNotFound) {
-		return feedIn{Entry: e, Reject: "not found"}, false, nil
-	}
-	if err != nil {
-		if ctx.Err() != nil {
-			return feedIn{}, false, ctx.Err()
-		}
-		return feedIn{}, true, nil
-	}
-	switch full.Status {
-	case symbol.Expired:
-		return feedIn{Entry: e, Reject: "expired"}, false, nil
-	case symbol.Delisted:
-		return feedIn{Entry: e, Reject: "delisted"}, false, nil
-	}
-	if !full.IsTradable() {
-		return feedIn{Entry: e, Reject: "not tradable"}, false, nil
-	}
-	return feedIn{Entry: e, Info: full}, false, nil
 }

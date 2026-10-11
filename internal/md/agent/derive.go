@@ -20,30 +20,26 @@ type Markets interface {
 	Market(venue string) (exchange.Market, bool)
 }
 
-// placed is one atom as the last commit left it.
+// placed is one feed as the last commit left it. The key is the feed, topic.UniversalTicker.
 type placed struct {
-	Conn       string
-	Venue      string
-	Route      string
-	Channel    string
-	Feeds      []string
-	Record     bool
-	ExchTicker string
-	PriceTick  float64
-	Cost       int
-	URL        string
+	Conn  string
+	Venue string
+	Route string
+	Feeds []string
+	Cost  int
+	URL   string
 }
 
 // snapshot is the placement commit last published. ByHash is filled only from etcd at start, so a
-// restart sticks an atom back on its conn, and a hash with no owner is forgotten after that.
+// restart sticks a feed back on its conn, and a hash with no owner is forgotten after that.
 type snapshot struct {
-	Atoms  map[string]placed // atom id -> placement
+	Atoms  map[string]placed // feed -> placement
 	Linger map[string]time.Time
-	ByHash map[string]string // atom hash -> conn, initial load only
+	ByHash map[string]string // feed hash -> conn, initial load only
 }
 
-// outcome is what one demand key became. Reject is an ack reason; otherwise the feed rides Atom
-// on Worker.
+// outcome is what one demand key became. Reject is an ack reason; otherwise the feed rides on
+// Worker. The worker, not the agent, names the atom.
 type outcome struct {
 	Reject  string
 	Subject string
@@ -51,11 +47,10 @@ type outcome struct {
 	Atom    string
 }
 
-// feedIn is one demand key plus the resolution commit decided, or a Reject that skips the market.
+// feedIn is one demand key, or a Reject that skips placement.
 type feedIn struct {
 	Key    string
 	Entry  Entry
-	Info   *symbol.Info
 	Reject string
 }
 
@@ -72,22 +67,21 @@ type owner struct {
 }
 
 type atomGroup struct {
-	venue, route, channel string
-	cost                  int
-	url                   string
-	exch                  string
-	tick                  float64
-	record                bool
-	owners                []owner
+	venue, route string
+	cost         int
+	url          string
+	owners       []owner
 }
 
 type routeKey struct {
 	venue, route string
 }
 
-// assign places feeds onto conn workers. prev is the last commit. An atom whose owners just hit
-// zero keeps its previous feeds until linger has passed, so the worker does not unsubscribe in
-// the meantime. A later commit at the same moment still sees the timer as just started.
+// assign places feeds onto conn workers. prev is the last commit. A feed whose owners just hit
+// zero stays on its worker until linger has passed, so the worker does not drop it in the
+// meantime. A later commit at the same moment still sees the timer as just started. The agent
+// does not resolve symbols or name atoms: the payload is the feed list, and the worker derives
+// the subscription.
 func assign(inst string, now time.Time, linger time.Duration, markets Markets, overrides map[string]string, bookDepth uint32, feeds []feedIn, prev snapshot) derived {
 	if linger < 0 {
 		linger = 0
@@ -118,15 +112,6 @@ func assign(inst string, now time.Time, linger time.Duration, markets Markets, o
 			continue
 		}
 		cur.owners = append(cur.owners, g.owners...)
-		if g.record {
-			cur.record = true
-		}
-		if cur.exch == "" {
-			cur.exch = g.exch
-		}
-		if cur.tick <= 0 {
-			cur.tick = g.tick
-		}
 	}
 	slices.Sort(ids)
 
@@ -230,7 +215,7 @@ func assign(inst string, now time.Time, linger time.Duration, markets Markets, o
 		}
 		wk := agent.WorkerKey(a.Conn)
 		for _, o := range groups[id].owners {
-			out.Outcomes[o.key] = outcome{Subject: feedSubject(inst, o.feed), Worker: wk, Atom: id}
+			out.Outcomes[o.key] = outcome{Subject: feedSubject(inst, o.feed), Worker: wk}
 		}
 	}
 
@@ -250,14 +235,7 @@ func assign(inst string, now time.Time, linger time.Duration, markets Markets, o
 		if !ok {
 			continue
 		}
-		live := Live{}
-		for _, id := range atomIDs {
-			a := out.Atoms[id]
-			live.Atoms = append(live.Atoms, LiveAtom{
-				ID: id, Feeds: slices.Clone(a.Feeds), Record: a.Record,
-				ExchTicker: a.ExchTicker, PriceTick: a.PriceTick,
-			})
-		}
+		live := Live{Feeds: atomIDs}
 		out.Plans[agent.WorkerKey(conn)] = agent.Plan[Spec, Live]{
 			Spawn: Spec{Venue: v, Route: r, N: n, URL: out.Atoms[atomIDs[0]].URL, BookDepth: bookDepth},
 			Live:  live,
@@ -268,36 +246,43 @@ func assign(inst string, now time.Time, linger time.Duration, markets Markets, o
 }
 
 func classify(markets Markets, f feedIn) (string, *atomGroup, string) {
-	if f.Info == nil || f.Info.Ticker.Venue == "" {
+	t := f.Entry.Ticker
+	if t.Venue == "" || f.Entry.Feed == "" {
 		return "", nil, "unknown venue"
 	}
-	venue := f.Info.Ticker.Venue
-	m, ok := marketOf(markets, venue)
+	m, ok := marketOf(markets, t.Venue)
 	if !ok {
 		return "", nil, "unknown venue"
 	}
-	ref, err := m.Atom(f.Entry.Topic, f.Info)
+	ref, err := m.Atom(f.Entry.Topic, routeInfo(t))
 	if err != nil {
 		if errors.Is(err, exchange.ErrUnsupported) {
 			return "", nil, "unsupported"
 		}
 		return "", nil, err.Error()
 	}
-	if ref.Route == "" || ref.Channel == "" {
+	if ref.Route == "" {
 		return "", nil, "unsupported"
 	}
 	cost := m.Cost(ref.Channel)
-	if cost < 0 {
-		cost = 0
+	if cost <= 0 {
+		cost = 1
 	}
-	exch, tick := symbolFields(f.Info)
-	id := venue + ":" + ref.Route + ":" + ref.Channel
 	g := &atomGroup{
-		venue: venue, route: ref.Route, channel: ref.Channel, cost: cost,
-		exch: exch, tick: tick, record: records(f.Entry.Topic),
+		venue: t.Venue, route: ref.Route, cost: cost,
 		owners: []owner{{key: f.Key, feed: f.Entry.Feed}},
 	}
-	return id, g, ""
+	return f.Entry.Feed, g, ""
+}
+
+// routeInfo is enough for an adapter to name the route. The channel it returns is only a packing
+// hint. The conn worker subscribes with the instrument from its own venue table.
+func routeInfo(t symbol.UniversalTicker) *symbol.Info {
+	info := &symbol.Info{Ticker: t, ExchTicker: t.Symbol, Status: symbol.Tradable}
+	if t.Category != symbol.Spot {
+		info.ContractSize = 1
+	}
+	return info
 }
 
 func marketOf(markets Markets, venue string) (exchange.Market, bool) {
@@ -311,15 +296,6 @@ func marketOf(markets Markets, venue string) (exchange.Market, bool) {
 	return m, true
 }
 
-func records(t exchange.Topic) bool {
-	switch t {
-	case exchange.TopicTrade, exchange.TopicAggTrade, exchange.TopicLiquidation:
-		return true
-	default:
-		return false
-	}
-}
-
 func (g *atomGroup) placed(conn string) placed {
 	seen := map[string]bool{}
 	var feeds []string
@@ -331,23 +307,7 @@ func (g *atomGroup) placed(conn string) placed {
 		feeds = append(feeds, o.feed)
 	}
 	slices.Sort(feeds)
-	return placed{
-		Conn: conn, Venue: g.venue, Route: g.route, Channel: g.channel,
-		Feeds: feeds, Record: g.record, ExchTicker: g.exch, PriceTick: g.tick, Cost: g.cost, URL: g.url,
-	}
-}
-
-// symbolFields is what the conn worker needs and does not look up itself (D426, D433). A missing
-// or non-positive price_tick is zero: the worker logs that book and does not keep it.
-func symbolFields(info *symbol.Info) (exch string, tick float64) {
-	if info == nil {
-		return "", 0
-	}
-	tick = info.Filters[symbol.PriceTick]
-	if tick <= 0 || math.IsNaN(tick) || math.IsInf(tick, 0) {
-		tick = 0
-	}
-	return info.ExchTicker, tick
+	return placed{Conn: conn, Venue: g.venue, Route: g.route, Feeds: feeds, Cost: g.cost, URL: g.url}
 }
 
 func storedURL(prev snapshot, id string) string {

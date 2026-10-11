@@ -24,7 +24,6 @@ import (
 	mdctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/mdctl/v1"
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
-	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/contract/wire/frame"
 	"github.com/BullionBear/mftiko/internal/md/conn"
 	"github.com/BullionBear/mftiko/internal/platform/agent"
@@ -52,18 +51,18 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// Two feeds on one atom subscribe once. Dropping one owner leaves the atom up past linger.
-// Dropping the last owner unsubscribes only after linger, by stopping the conn worker.
+// Two feeds land on one conn. Dropping one leaves that worker up past linger.
+// Dropping the last owner stops the conn worker only after linger.
 func TestFeedShareAndLinger(t *testing.T) {
 	e := setup(t)
 	stop, done, ret := e.start()
 	e.put("s1", "orderbook")
 	e.put("s1", "orderbook_delta")
 	path := e.waitJournal()
-	if got := e.waitLive(path, 2); len(got.GetAtoms()) != 1 || got.GetAtoms()[0].GetAtomId() != "Binance:public:depth" {
+	if got := e.waitLive(path, 2); got.GetAtoms()[0].GetAtomId() != "" {
 		t.Fatalf("desired %+v", got)
 	}
-	if conn := e.waitPlacements(1); conn[0] != "md/Binance/public/0" {
+	if conn := e.waitPlacements(2); conn[0] != "md/Binance/public/0" || conn[1] != "md/Binance/public/0" {
 		t.Fatalf("placement %v", conn)
 	}
 	e.waitAcks(2)
@@ -228,7 +227,6 @@ func setup(t *testing.T) *env {
 		ShimEnv:    []string{envTestShim + "=1"},
 		WorkerEnv:  []string{envFake + "=1"},
 		JournalDir: t.TempDir(),
-		Resolver:   &memResolver{info: btc(symbol.Tradable)},
 		Markets:    testMarkets(1024, 1),
 		Policy:     agent.Always{Backoff: agent.Backoff{Min: 50 * time.Millisecond, Max: 200 * time.Millisecond}},
 		Linger:     500 * time.Millisecond,
