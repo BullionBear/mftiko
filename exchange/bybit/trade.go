@@ -163,7 +163,7 @@ func tradeAnswer(head tradeHead, frame []byte, sink exchange.TradeSink) error {
 		return errors.New("bybit: empty order id")
 	}
 	sink.Submitted(id, &exchange.OrderResult{
-		OrderID: strings.Clone(body.Data.OrderID), Status: exchange.OrderStatusPendingNew,
+		OrderID: strings.Clone(body.Data.OrderID), Status: exchange.OrderStatusNew,
 		ExchTsNs: msString(head.Header.Now),
 	}, nil)
 	return nil

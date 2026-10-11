@@ -153,10 +153,10 @@
 //
 // # Order status
 //
-//	NEW                OrderStatusNew
+//	NEW                OrderStatusAccepted   (the matching engine took it; there is no received-only state)
 //	PARTIALLY_FILLED   OrderStatusPartiallyFilled
 //	FILLED             OrderStatusFilled
-//	PENDING_CANCEL     OrderStatusPendingCancel
+//	PENDING_CANCEL     OrderStatusAccepted, or PartiallyFilled once filled (exchange.OnBook; unused today)
 //	CANCELED           OrderStatusCancelled
 //	REJECTED           OrderStatusRejected
 //	EXPIRED            OrderStatusExpired

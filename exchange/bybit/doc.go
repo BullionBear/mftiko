@@ -83,7 +83,7 @@
 // order.create or order.cancel. reqId is the worker's id in decimal, and args holds one object:
 // the body POST /v5/order/create or /v5/order/cancel would send. The connection is already
 // authenticated, so the order frame is not signed. The ack has an order id and no status, so
-// retCode 0 is OrderStatusPendingNew; the private stream carries the status. This socket does
+// retCode 0 is OrderStatusNew; the private stream carries the status. This socket does
 // not carry private events. The client sends {"op":"ping"} every 20s and the venue answers
 // {"op":"pong"}. 10403 and 10429 are RateLimited. 10016 and 10019 are ErrUnknownOutcome.
 //
@@ -92,18 +92,19 @@
 // instrument: spot, linear (Perp and Future), inverse, option. A market order is IOC and carries
 // no price. Spot market orders set marketUnit to baseCoin or quoteCoin; a quote amount is
 // formatted at 1e-8. orderLinkId is at most 36 characters. The create acknowledgement has an
-// order id and no status, so a retCode 0 is OrderStatusPendingNew; the private stream carries
+// order id and no status, so a retCode 0 is OrderStatusNew; the private stream carries
 // the status. Cancel-batch is one category, at most 5 option orders, 10 spot or 20 linear or
 // inverse. The account limit is 5, so one worker chunk fits every category. Each order costs
 // one count on the 10/s order budget (spot's own create limit is 20/s).
 //
 // # Order status
 //
-//	Created, Untriggered          OrderStatusPendingNew
-//	New, Triggered                OrderStatusNew
+//	Created, Untriggered,         OrderStatusNew   (held by the venue, not on the book)
+//	  Triggered
+//	New                           OrderStatusAccepted
 //	PartiallyFilled               OrderStatusPartiallyFilled
 //	Filled                        OrderStatusFilled
-//	PendingCancel                 OrderStatusPendingCancel
+//	PendingCancel                 OrderStatusAccepted, or PartiallyFilled once filled (exchange.OnBook)
 //	Cancelled,                    OrderStatusCancelled
 //	  PartiallyFilledCanceled,
 //	  Deactivated

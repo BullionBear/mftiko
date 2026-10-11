@@ -376,18 +376,18 @@ func tifWire(t exchange.TimeInForce) (string, error) {
 	}
 }
 
+// statusOf maps the venue's order status. Created, Untriggered and Triggered are held by the venue
+// but not on the book: New. The venue's New is on the book: Accepted.
 func statusOf(s string) exchange.OrderStatus {
 	switch s {
-	case "Created", "Untriggered":
-		return exchange.OrderStatusPendingNew
-	case "New", "Triggered":
+	case "Created", "Untriggered", "Triggered":
 		return exchange.OrderStatusNew
+	case "New":
+		return exchange.OrderStatusAccepted
 	case "PartiallyFilled":
 		return exchange.OrderStatusPartiallyFilled
 	case "Filled":
 		return exchange.OrderStatusFilled
-	case "PendingCancel":
-		return exchange.OrderStatusPendingCancel
 	case "Cancelled", "PartiallyFilledCanceled", "Deactivated":
 		return exchange.OrderStatusCancelled
 	case "Rejected":
@@ -395,6 +395,15 @@ func statusOf(s string) exchange.OrderStatus {
 	default:
 		return exchange.OrderStatusUnknown
 	}
+}
+
+// orderStatus is statusOf for an order report, which carries the filled quantity. PendingCancel is
+// an order still on the book: a cancel in flight is the account worker's flag, not a status (D610).
+func orderStatus(s string, filled float64) exchange.OrderStatus {
+	if s == "PendingCancel" {
+		return exchange.OnBook(filled)
+	}
+	return statusOf(s)
 }
 
 // rejectReason keeps a reason only on a rejected order. EC_NoError is the venue's empty value.
