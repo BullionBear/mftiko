@@ -173,12 +173,16 @@ func marshalBody(v any) ([]byte, error) {
 
 type pair struct{ k, v string }
 
-func (a *account) Usage(resp *exchange.HTTPResponse) []exchange.Used { return usedFrom(resp) }
+func (a *account) Usage(resp *exchange.HTTPResponse, now time.Time) []exchange.Used {
+	return usedFrom(resp, now)
+}
 
 // usedFrom reads X-Bapi-Limit and X-Bapi-Limit-Status. Status is how many requests remain in
 // this endpoint's own window, so the used count is limit minus status. The window is not shared
 // across paths: bucket "endpoint" is that one response's window, not a counter to add up.
-func usedFrom(resp *exchange.HTTPResponse) []exchange.Used {
+// X-Bapi-Limit-Reset-Timestamp is that counter's reset, in milliseconds. The header is confirmed
+// with the venue in E4-10. now is unused: the venue sends the absolute time.
+func usedFrom(resp *exchange.HTTPResponse, _ time.Time) []exchange.Used {
 	if resp == nil {
 		return nil
 	}
@@ -187,7 +191,22 @@ func usedFrom(resp *exchange.HTTPResponse) []exchange.Used {
 	if !okL || !okS || left > limit {
 		return nil
 	}
-	return []exchange.Used{{Bucket: bucketEndpoint, N: limit - left}}
+	return []exchange.Used{{Bucket: bucketEndpoint, N: limit - left, ResetAt: bybitReset(resp)}}
+}
+
+func bybitReset(resp *exchange.HTTPResponse) time.Time {
+	if resp == nil {
+		return time.Time{}
+	}
+	return resetMillis(resp.Get("X-Bapi-Limit-Reset-Timestamp"))
+}
+
+func resetMillis(s string) time.Time {
+	ms, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return time.Time{}
+	}
+	return time.UnixMilli(ms).UTC()
 }
 
 func headerInt(resp *exchange.HTTPResponse, name string) (int, bool) {

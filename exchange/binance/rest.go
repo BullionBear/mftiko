@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/contract/wire/decimal"
@@ -153,7 +154,9 @@ func (r *rest) OpenInterest(inst *symbol.Info) (exchange.Call[*exchange.OpenInte
 	}, nil
 }
 
-func (r *rest) Usage(resp *exchange.HTTPResponse) []exchange.Used { return usedFrom(resp) }
+func (r *rest) Usage(resp *exchange.HTTPResponse, now time.Time) []exchange.Used {
+	return usedFrom(resp, now)
+}
 
 func publicCall(base, path string, q codec.Query, weight int) exchange.HTTPRequest {
 	return exchange.HTTPRequest{

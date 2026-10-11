@@ -173,28 +173,56 @@ func apiKeyCall(base, key, method, path string, q codec.Query) exchange.HTTPRequ
 	}
 }
 
-func (a *account) Usage(resp *exchange.HTTPResponse) []exchange.Used { return usedFrom(resp) }
+func (a *account) Usage(resp *exchange.HTTPResponse, now time.Time) []exchange.Used {
+	return usedFrom(resp, now)
+}
 
-func (h *history) Usage(resp *exchange.HTTPResponse) []exchange.Used { return usedFrom(resp) }
+func (h *history) Usage(resp *exchange.HTTPResponse, now time.Time) []exchange.Used {
+	return usedFrom(resp, now)
+}
 
-func usedFrom(resp *exchange.HTTPResponse) []exchange.Used {
+// bucketWindow is the counting window named by the header. The live windows are confirmed
+// with the venue in E4-09; until then these are the intervals the header names state.
+var bucketWindow = map[string]time.Duration{
+	weight1m:  time.Minute,
+	orders10s: 10 * time.Second,
+	orders1m:  time.Minute,
+	orders1d:  24 * time.Hour,
+}
+
+func usedFrom(resp *exchange.HTTPResponse, now time.Time) []exchange.Used {
 	if resp == nil {
 		return nil
 	}
 	var out []exchange.Used
 	if n, ok := headerInt(resp, "X-MBX-USED-WEIGHT-1M"); ok {
-		out = append(out, exchange.Used{Bucket: weight1m, N: n})
+		out = append(out, counted(weight1m, n, now))
 	}
 	if n, ok := headerInt(resp, "X-MBX-ORDER-COUNT-10S"); ok {
-		out = append(out, exchange.Used{Bucket: orders10s, N: n})
+		out = append(out, counted(orders10s, n, now))
 	}
 	if n, ok := headerInt(resp, "X-MBX-ORDER-COUNT-1M"); ok {
-		out = append(out, exchange.Used{Bucket: orders1m, N: n})
+		out = append(out, counted(orders1m, n, now))
 	}
 	if n, ok := headerInt(resp, "X-MBX-ORDER-COUNT-1D"); ok {
-		out = append(out, exchange.Used{Bucket: orders1d, N: n})
+		out = append(out, counted(orders1d, n, now))
 	}
 	return out
+}
+
+func counted(bucket string, n int, now time.Time) exchange.Used {
+	return exchange.Used{Bucket: bucket, N: n, ResetAt: windowReset(now, bucketWindow[bucket])}
+}
+
+// windowReset is the next window boundary at or after the instant just past now, aligned to the
+// Unix epoch. A response that lands on a boundary belongs to the window that just opened, so the
+// counter resets at the following boundary.
+func windowReset(now time.Time, window time.Duration) time.Time {
+	if now.IsZero() || window <= 0 {
+		return time.Time{}
+	}
+	step := window.Nanoseconds()
+	return time.Unix(0, (now.UnixNano()/step+1)*step).UTC()
 }
 
 func headerInt(resp *exchange.HTTPResponse, name string) (int, bool) {
@@ -252,7 +280,7 @@ func refuse(resp *exchange.HTTPResponse) error {
 	if err := codec.DecodeBody(resp.Body, &e); err != nil {
 		switch resp.Status {
 		case http.StatusTooManyRequests, 418:
-			return &exchange.RateLimited{}
+			return limited(resp)
 		case http.StatusUnauthorized, http.StatusForbidden:
 			return fmt.Errorf("binance: http %d: %w", resp.Status, exchange.ErrAuth)
 		default:
@@ -260,9 +288,33 @@ func refuse(resp *exchange.HTTPResponse) error {
 		}
 	}
 	if err := binanceErr(resp.Status, e.Code, e.Msg); err != nil {
-		return err
+		return stampRetry(resp, err)
 	}
 	return fmt.Errorf("binance: http %d", resp.Status)
+}
+
+// limited is a 429 or 418. Retry-After is a delay in seconds; anything else leaves RetryAfterMs at 0.
+func limited(resp *exchange.HTTPResponse) error {
+	return &exchange.RateLimited{RetryAfterMs: retryAfterMs(resp)}
+}
+
+func stampRetry(resp *exchange.HTTPResponse, err error) error {
+	var rl *exchange.RateLimited
+	if errors.As(err, &rl) && rl.RetryAfterMs == 0 {
+		rl.RetryAfterMs = retryAfterMs(resp)
+	}
+	return err
+}
+
+func retryAfterMs(resp *exchange.HTTPResponse) int64 {
+	if resp == nil {
+		return 0
+	}
+	sec, err := strconv.Atoi(strings.TrimSpace(resp.Get("Retry-After")))
+	if err != nil || sec <= 0 {
+		return 0
+	}
+	return int64(sec) * 1000
 }
 
 func ms(v int64) int64 {

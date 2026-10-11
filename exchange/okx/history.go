@@ -87,7 +87,7 @@ func (h *history) Order(now time.Time, inst *symbol.Info, orderID string) (excha
 	}}, nil
 }
 
-func (h *history) Usage(*exchange.HTTPResponse) []exchange.Used { return nil }
+func (h *history) Usage(*exchange.HTTPResponse, time.Time) []exchange.Used { return nil }
 
 func (h *history) get(now time.Time, path string, pairs []pair) (exchange.HTTPRequest, error) {
 	return signCfg(&h.signerState, h.cfg, now, http.MethodGet, path, queryString(pairs), nil, readCost(), false)

@@ -202,7 +202,11 @@
 // order. An IOC in that position comes back status EXPIRED. -5021 is not in the table
 // above, so Code stays -5021.
 //
-// -1003, HTTP 429 and 418 are RateLimited. -1022, -2014, -2015 and HTTP 401/403 are ErrAuth.
+// -1003, HTTP 429 and 418 are RateLimited. Retry-After, in seconds, fills RetryAfterMs.
+// Usage sets ResetAt to the next window boundary after the response time: weight_1m and
+// orders_1m are one minute, orders_10s is ten seconds, orders_1d is 24 hours, aligned to
+// the Unix epoch. The live windows are confirmed in E4-09. -1022, -2014, -2015 and HTTP
+// 401/403 are ErrAuth.
 // A refused session.logon is ErrAuth from Decode; an order refusal is the answer's error.
 //
 // # Signing

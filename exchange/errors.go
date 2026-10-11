@@ -33,9 +33,10 @@ func (r *Reject) Error() string {
 	return "exchange: rejected " + strconv.Itoa(int(r.Code)) + " (" + r.Native + "): " + r.Reason
 }
 
-// RateLimited: the venue answered 429 or its equivalent. The caller decides whether to wait.
+// RateLimited: the venue answered 429, 418, or its equivalent. The caller decides whether to wait.
+// RetryAfterMs is the Retry-After header in milliseconds. 0 means the venue did not say.
 type RateLimited struct {
-	RetryAfterMs int64 // 0 = the venue did not say
+	RetryAfterMs int64
 }
 
 func (e *RateLimited) Error() string { return "exchange: rate limited" }

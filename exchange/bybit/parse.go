@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/BullionBear/mftiko/contract/wire/decimal"
 	"github.com/BullionBear/mftiko/exchange"
@@ -54,13 +55,28 @@ func readEnv(resp *exchange.HTTPResponse) (envelope, error) {
 	}
 	if len(resp.Body) > 0 {
 		if err := codec.DecodeBody(resp.Body, &e); err != nil {
-			return e, statusFallback(resp.Status, err)
+			return e, stampRetry(resp, statusFallback(resp.Status, err))
 		}
 	}
 	if err := classify(resp.Status, e.Code, e.Msg); err != nil {
-		return e, err
+		return e, stampRetry(resp, err)
 	}
 	return e, nil
+}
+
+// stampRetry copies Retry-After, in seconds, onto a rate-limit error. Anything that is not a
+// positive integer leaves RetryAfterMs at 0.
+func stampRetry(resp *exchange.HTTPResponse, err error) error {
+	var rl *exchange.RateLimited
+	if resp == nil || !errors.As(err, &rl) || rl.RetryAfterMs != 0 {
+		return err
+	}
+	sec, conv := strconv.Atoi(strings.TrimSpace(resp.Get("Retry-After")))
+	if conv != nil || sec <= 0 {
+		return err
+	}
+	rl.RetryAfterMs = int64(sec) * 1000
+	return err
 }
 
 func decodeResult(raw json.RawMessage, v any) error {

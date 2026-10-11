@@ -75,7 +75,7 @@ func (sourceREST) OpenInterest(*symbol.Info) (exchange.Call[*exchange.OpenIntere
 	return exchange.Call[*exchange.OpenInterest]{}, exchange.ErrNotImplemented
 }
 
-func (sourceREST) Usage(*exchange.HTTPResponse) []exchange.Used { return nil }
+func (sourceREST) Usage(*exchange.HTTPResponse, time.Time) []exchange.Used { return nil }
 
 // Do answers the requests REST builds, as a venue would: one page of a category, sorted by
 // ExchTicker, in pages of the configured size. A page marked with FailPage fails as a transport error

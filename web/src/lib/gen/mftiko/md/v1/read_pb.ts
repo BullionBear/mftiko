@@ -263,7 +263,7 @@ export type FetchKlines = Message<"mftiko.md.v1.FetchKlines"> & {
   interval: string;
 
   /**
-   * 最近 N 根已收盤的；超過交易所單次上限時由服務分頁
+   * 最近 N 根已收盤的，1 到 5000；超出是 invalid。超過交易所單頁時由服務分頁（D419）
    *
    * @generated from field: uint32 limit = 3;
    */
