@@ -81,7 +81,7 @@ export type GetRequest = Message<"mftiko.sym.v1.GetRequest"> & {
   universalTicker: string;
 
   /**
-   * D203：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢，含 MD 的到期監看。Resolver 與熱路徑不設。表是 symbol_active 與 symbol_terminal
+   * D203：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢。Resolver 與熱路徑不設。表是 symbol_active 與 symbol_terminal
    *
    * @generated from field: bool include_inactive = 2;
    */

@@ -35,6 +35,7 @@
       {
         "AsOfNs": 0,
         "Balances": null,
+        "HedgeMode": false,
         "OpenOrders": null,
         "Positions": [
           {

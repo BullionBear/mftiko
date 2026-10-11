@@ -46,6 +46,7 @@
             "Locked": 0
           }
         ],
+        "HedgeMode": false,
         "OpenOrders": null,
         "Positions": null
       }
