@@ -176,7 +176,10 @@ func (c *Conn) plan() [][]byte {
 		sub = append(sub, ch)
 	}
 	for ch := range l.observed {
-		if _, ok := c.wanted[ch]; ok {
+		_, want := c.wanted[ch]
+		_, resub := l.resub[ch]
+		// A channel still in desired stays, unless this book is cycling it (D434).
+		if want && !resub {
 			continue
 		}
 		if _, ok := l.unsubPending[ch]; ok {
@@ -245,6 +248,14 @@ func (c *Conn) Ack(id uint64, err error) {
 			// Accepted. If desired dropped the channel while the request was in flight, keep
 			// it observed so the next diff unsubscribes what the venue actually has.
 			l.observed[ch] = struct{}{}
+			// Only the replacement subscribe ends the cycle. The original ack must not
+			// cancel a resubscribe that was armed while that request was in flight.
+			if _, cycling := l.resub[ch]; cycling {
+				delete(l.resub, ch)
+				if sh := l.books[ch]; sh != nil {
+					sh.holdResub = false
+				}
+			}
 		}
 		c.poke()
 		return

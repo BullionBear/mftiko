@@ -136,8 +136,11 @@ type link struct {
 	unsubInflight map[uint64][]string
 	subPending    map[string]struct{}
 	unsubPending  map[string]struct{}
-	seq           map[string]uint64 // feed key topic.ticker, last seq handed out
-	books         map[string]*shelf
+	// resub is a SnapshotStream channel whose backoff has elapsed. plan unsubscribes it
+	// before subscribing it again (D434). The session rate limit still paces those frames.
+	resub map[string]struct{}
+	seq   map[string]uint64 // feed key topic.ticker, last seq handed out
+	books map[string]*shelf
 }
 
 func newLink(s exchange.Session) *link {
@@ -148,6 +151,7 @@ func newLink(s exchange.Session) *link {
 		unsubInflight: map[uint64][]string{},
 		subPending:    map[string]struct{}{},
 		unsubPending:  map[string]struct{}{},
+		resub:         map[string]struct{}{},
 		seq:           map[string]uint64{},
 		books:         map[string]*shelf{},
 	}

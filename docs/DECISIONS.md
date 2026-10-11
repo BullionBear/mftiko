@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-11 定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-11 定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 >
@@ -666,7 +666,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **重抓只由斷號（`BookResync`）或 OKX checksum 失敗觸發。** 沒有價格邊界，也不因距離重抓。視窗滑動不重抓；窗外的檔見 D431。`md.view` 回的是窗內的 book（D430）。這一版不實作 `md.view` 服務。
 - **交易所回多少檔就用多少。** 不因為少於 N 檔而重抓。
 - **N 是 `InitPayload.book_depth`。** 缺（0）則 Init 失敗。SnapshotREST 在知道該 channel 的 `BookSync` 之後、第一張快照之前，若 N > `Depth()`，worker 退出。SnapshotStream 不跟 `Depth()` 比。
-- **SnapshotStream 不打 REST。** 全本就是串流給的。斷號或 checksum 丟掉本地本，等下一則串流快照，那一則是 `reset`。快照之前緩衝的增量在快照到達時丟掉。
+- **SnapshotStream 不打 REST。** 全本就是串流給的。斷號或 checksum 丟掉本地本，並只重訂那一個 channel（D434）。下一則串流快照是 `reset`。快照之前緩衝的增量在快照到達時丟掉。
 - **`exch_ticker` 在 `AtomAssignment`。** MD agent 載入 spec、向 SYM 解析時把 `symbol.Info.ExchTicker` 抄上去。worker 不查 SYM，也不從 channel 解析。SnapshotREST 沒有這個欄位就不打 Depth，只記日誌。
 
 ### D427 `orderbook` 不節流
@@ -709,6 +709,13 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 - **`AtomAssignment.price_tick` 是 SYM 的 `price_tick`。** MD agent 載入 spec、解析商品時從 `symbol.Info` 抄上，跟 `exch_ticker` 同一時刻。worker 不查 SYM，也不從 channel 解析。
 - **缺，或小於等於 0，這本訂單簿只記日誌、不維護。** 不打 Depth，也不套用串流。
+
+### D434 SnapshotStream 斷號後重訂該 channel
+
+- **Bybit 與 OKX 的全本只在訂閱之後由串流送來。** 斷號或 checksum 失敗把本地本丟掉之後，後面的增量不會再變成一張快照。不重訂的話這本簿停在最後一次的 top-N，直到整條連線重連。
+- **從已確認的訂閱拿掉這個 channel，經現有的訂閱路徑先退訂再訂閱。** 仍由 session 的速率限制發幀。不拆整條連線，其他 channel 不動。`conn_epoch` 不變。
+- **每一本簿自己一條指數退避，與 D424 相同：1 秒起，加倍，上限 30 秒。** 成功裝上新的串流快照把這本的窗口歸零，下一次斷號再從 1 秒起。已經在退避或重訂途中的，不另起一次，所以連續斷號不會熱迴圈。
+- **下一則串流快照裝上本地本，並推 `reset`。** 快照之前緩衝的增量丟掉（D426）。這一版不打 REST。
 
 ### D906 session worker 的 NATS 憑證：每個 session 一份
 

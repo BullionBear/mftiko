@@ -10,11 +10,13 @@
 // A failed dial does not consume the number. The agent copies the shim's report into the next
 // Init; this package does not.
 //
-// Depth updates are folded into a sdk/book ring on this connection (D424–D433). orderbook and
+// Depth updates are folded into a sdk/book ring on this connection (D424–D434). orderbook and
 // orderbook_delta are two feeds of that book. orderbook_delta forwards each normalized increment
 // unchanged. orderbook is the top-N, rebuilt only when an increment touches it. A reset and the
 // book md.view reads are the levels inside the ring. SnapshotREST takes one snapshot and then
-// only increments; it refetches only on a sequence gap or a checksum failure (D426). The book
+// only increments; it refetches only on a sequence gap or a checksum failure (D426).
+// SnapshotStream does not: a gap or a checksum failure unsubscribes and subscribes that one
+// channel after a per-book backoff, and the venue's next snapshot is the reset (D434). The book
 // dies with the connection: reconnect starts again, and conn_epoch changes only when the dial
 // succeeds. A resync keeps the epoch and takes the next seq of each feed. SnapshotREST depth
 // runs in this process, off the read goroutine, so a ping still gets an answer. Tape and the

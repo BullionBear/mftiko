@@ -77,6 +77,12 @@ type shelf struct {
 	topA    []exchange.Level
 	haveTop bool
 	stalled bool // missing price tick, or SnapshotREST with no exch ticker
+	// SnapshotStream resubscribe (D434). holdResub is set from the gap until the replacement
+	// subscribe is acknowledged. resubWait is the last backoff; an installed snapshot zeroes it.
+	// resubAt is the earliest moment plan may cycle the channel.
+	holdResub bool
+	resubWait time.Duration
+	resubAt   time.Time
 }
 
 func (sh *shelf) inflight() bool { return sh.pending != 0 && sh.pending == sh.token }
@@ -127,6 +133,7 @@ func (c *Conn) planBook() ([]depthJob, time.Duration) {
 	if c.live == nil {
 		return nil, wait
 	}
+	l := c.live
 	c.adopt()
 	now := c.bookNow()
 	var jobs []depthJob
@@ -136,6 +143,16 @@ func (c *Conn) planBook() ([]depthJob, time.Duration) {
 		}
 		if d := c.ageWait(sh, now); d < wait {
 			wait = d
+		}
+		if sh.holdResub {
+			if now.Before(sh.resubAt) {
+				if d := sh.resubAt.Sub(now); d < wait {
+					wait = d
+				}
+			} else {
+				l.resub[ch] = struct{}{}
+				c.poke()
+			}
 		}
 		if sh.book != nil || sh.stalled || sh.bs.Snapshot() != exchange.SnapshotREST {
 			continue
@@ -170,6 +187,7 @@ func (c *Conn) adopt() {
 		}
 		sh.token++
 		delete(l.books, ch)
+		delete(l.resub, ch)
 	}
 	for ch := range c.wanted {
 		if !c.wantBook(ch) {
@@ -321,6 +339,14 @@ func (c *Conn) onStream(ch string, sh *shelf, u exchange.BookUpdate) {
 	b.Apply(bookLevels(u.Bids), bookLevels(u.Asks))
 	sh.book = b
 	sh.seq = exchange.BookSeq{Last: u.Last, Valid: true}
+	// The venue already sent a full book. Drop a cycle that has not been sent yet, and start
+	// the next gap at 1s again (D434). A cycle already on the wire still finishes.
+	sh.holdResub = false
+	sh.resubWait = 0
+	sh.resubAt = time.Time{}
+	if c.live != nil {
+		delete(c.live.resub, ch)
+	}
 	c.publishReset(ch, sh, u.ExchTsNs)
 }
 
@@ -333,19 +359,21 @@ func (c *Conn) onLive(ch string, sh *shelf, u exchange.BookUpdate) {
 	case exchange.BookSkip:
 		return
 	case exchange.BookResync:
-		c.beginResync(sh, &u)
+		c.beginResync(ch, sh, &u)
 		return
 	case exchange.BookApply:
 		c.publishIncremental(ch, sh, u.ExchTsNs, u)
 	default:
-		c.beginResync(sh, &u)
+		c.beginResync(ch, sh, &u)
 	}
 }
 
 // beginResync drops the local book. keep is the update that did not apply; nil drops the buffer,
 // which is what a checksum failure does so that update is not replayed. The last published top
 // is kept, so a resync that leaves it unchanged does not take another orderbook seq (D427).
-func (c *Conn) beginResync(sh *shelf, keep *exchange.BookUpdate) {
+// SnapshotStream then cycles that one channel after its own backoff (D434). SnapshotREST
+// refetches Depth; it does not unsubscribe.
+func (c *Conn) beginResync(ch string, sh *shelf, keep *exchange.BookUpdate) {
 	sh.book = nil
 	sh.seq = exchange.BookSeq{}
 	if keep == nil {
@@ -355,7 +383,25 @@ func (c *Conn) beginResync(sh *shelf, keep *exchange.BookUpdate) {
 		sh.buf = []exchange.BookUpdate{*keep}
 		sh.bufAt = c.bookNow()
 	}
+	if sh.bs.Snapshot() == exchange.SnapshotStream {
+		c.scheduleResub(ch, sh)
+	}
 	c.wakeBook()
+}
+
+// scheduleResub arms one unsubscribe-plus-subscribe for this book. The first attempt waits 1s,
+// then twice the previous wait, up to 30s, the same curve as a failed Depth (D424, D434).
+// A cycle already waiting or in flight is not restarted, so a stream of gaps cannot hot-loop.
+func (c *Conn) scheduleResub(ch string, sh *shelf) {
+	if sh.holdResub || sh.stalled {
+		return
+	}
+	now := c.bookNow()
+	delay := nextDelay(sh.resubWait, false, 0, 0)
+	sh.resubWait = delay
+	sh.resubAt = now.Add(delay)
+	sh.holdResub = true
+	c.log.Warn().Str("channel", ch).Dur("retry_in", delay).Msg("book resubscribe")
 }
 
 func (c *Conn) fetch(ctx context.Context, j depthJob) {
@@ -545,7 +591,7 @@ func (c *Conn) publishIncremental(ch string, sh *shelf, ts int64, u exchange.Boo
 	touch := sh.book.AffectsTop(bids, asks, int(c.bookDepth))
 	sh.book.Apply(bids, asks)
 	if !c.checksumOK(sh.book, sh.bs, &u) {
-		c.beginResync(sh, nil)
+		c.beginResync(ch, sh, nil)
 		return
 	}
 	sh.seq.Last = u.Last
