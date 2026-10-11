@@ -116,7 +116,9 @@ func Serve(ctx context.Context, rw io.ReadWriteCloser, cfg ServeConfig) int {
 	}
 	err = s.worker.Run(runCtx)
 	cancel()
-	if s.halted() || ctx.Err() != nil {
+	// context.Canceled is halt canceling runCtx. That runs before stopped is closed, so
+	// halted() can still be false; the cancellation is the stop, not a failure of the loop.
+	if s.halted() || ctx.Err() != nil || errors.Is(err, context.Canceled) {
 		return s.finish(commonv1.Outcome_OUTCOME_DONE, s.reasonOr("signal"), true, exitDone)
 	}
 	if err != nil {
