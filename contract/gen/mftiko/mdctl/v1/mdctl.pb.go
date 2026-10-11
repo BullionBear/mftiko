@@ -429,9 +429,9 @@ type AtomAssignment struct {
 	AtomId string                 `protobuf:"bytes,1,opt,name=atom_id,json=atomId,proto3" json:"atom_id,omitempty"`
 	Feeds  []string               `protobuf:"bytes,2,rep,name=feeds,proto3" json:"feeds,omitempty"`    // 這個 atom 要發佈的 feed（atom → 事件 1:N）
 	Record bool                   `protobuf:"varint,3,opt,name=record,proto3" json:"record,omitempty"` // 錄 tape；MD agent 依 topic 推導（D402）
-	// SYM 的 exchTicker。MD agent 在載入 spec、解析商品時抄上。worker 不查 SYM，也不從 channel 解析（D426、D202）。
+	// SYM 的 exchTicker。worker 從自己的活躍表讀。沒有這份表、而且 atom_id 已給時，用這裡的值。不從 channel 解析（D426、D202）。
 	ExchTicker string `protobuf:"bytes,4,opt,name=exch_ticker,json=exchTicker,proto3" json:"exch_ticker,omitempty"`
-	// SYM 的 price_tick。MD agent 在載入 spec、解析商品時從 symbol.Info 抄上，跟 exch_ticker 同一時刻。
+	// SYM 的 price_tick。跟 exch_ticker 同一張表、同一時刻。
 	// 缺或小於等於 0 時這本訂單簿只記日誌、不維護（D433）。
 	PriceTick     float64 `protobuf:"fixed64,5,opt,name=price_tick,json=priceTick,proto3" json:"price_tick,omitempty"`
 	unknownFields protoimpl.UnknownFields

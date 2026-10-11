@@ -393,9 +393,9 @@ func parseCreate(resp *exchange.HTTPResponse) (*exchange.OrderResult, error) {
 	if r.OrderID == "" {
 		return nil, fmt.Errorf("bybit: empty order id")
 	}
-	// The ack carries no status. retCode 0 means the venue accepted the request; the private
-	// stream is where the order's status arrives.
-	return &exchange.OrderResult{OrderID: r.OrderID, Status: exchange.OrderStatusPendingNew, ExchTsNs: ms(e.Time)}, nil
+	// The ack carries no status. retCode 0 means the venue has the request and did not refuse it:
+	// New. The private stream is where the order's later status arrives.
+	return &exchange.OrderResult{OrderID: r.OrderID, Status: exchange.OrderStatusNew, ExchTsNs: ms(e.Time)}, nil
 }
 
 func parseBatch(resp *exchange.HTTPResponse) ([]error, error) {

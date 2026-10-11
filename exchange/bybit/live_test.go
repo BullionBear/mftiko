@@ -97,7 +97,7 @@ func TestBybitTestnet(t *testing.T) {
 		t.Fatalf("resting price %s is not below the bid", decimal.Format(restPx, tick))
 	}
 	rest := h.order(exchange.SideBuy, exchange.OrderTypeLimit, exchange.TIFGTC, qty, restPx, false)
-	res := h.place("submit_limit", rest, exchange.OrderStatusNew)
+	res := h.place("submit_limit", rest, exchange.OrderStatusAccepted)
 	h.until(10*time.Second, "snapshot shows the resting order", func() bool { return h.hasOrder(res.OrderID) })
 	h.keepSnap("open_orders", "/v5/order/realtime", "settleCoin=USDT")
 	if sz := math.Abs(h.size()); sz >= step {
@@ -110,7 +110,7 @@ func TestBybitTestnet(t *testing.T) {
 	h.note("GTC rest cancelled")
 
 	po := h.order(exchange.SideBuy, exchange.OrderTypeLimit, exchange.TIFPostOnly, qty, restPx, false)
-	poRes := h.place("submit_postonly", po, exchange.OrderStatusNew)
+	poRes := h.place("submit_postonly", po, exchange.OrderStatusAccepted)
 	h.cancel("", po.ClientOrderID)
 	h.note("post-only px=%s order=%s", decimal.Format(restPx, tick), poRes.OrderID)
 
@@ -140,8 +140,8 @@ func TestBybitTestnet(t *testing.T) {
 	px := restPx
 	a := h.order(exchange.SideBuy, exchange.OrderTypeLimit, exchange.TIFGTC, qty, px, false)
 	b := h.order(exchange.SideBuy, exchange.OrderTypeLimit, exchange.TIFGTC, qty, px, false)
-	ra := h.place("", a, exchange.OrderStatusNew)
-	rb := h.place("", b, exchange.OrderStatusNew)
+	ra := h.place("", a, exchange.OrderStatusAccepted)
+	rb := h.place("", b, exchange.OrderStatusAccepted)
 	batchCall := mustCall(raw.CancelBatch(time.Now(), []exchange.CancelRef{
 		{Instrument: inst, ClientOrderID: a.ClientOrderID},
 		{Instrument: inst, ClientOrderID: b.ClientOrderID},
@@ -280,8 +280,8 @@ func (h *live) place(fixture string, req *exchange.OrderRequest, want exchange.O
 	if err != nil {
 		h.t.Fatalf("%s: %v", req.ClientOrderID, err)
 	}
-	if res == nil || res.Status != exchange.OrderStatusPendingNew || res.OrderID == "" {
-		h.t.Fatalf("%s: ack %+v, want PendingNew", req.ClientOrderID, res)
+	if res == nil || res.Status != exchange.OrderStatusNew || res.OrderID == "" {
+		h.t.Fatalf("%s: ack %+v, want New", req.ClientOrderID, res)
 	}
 	if fixture != "" {
 		h.saved = append(h.saved, saved{name: fixture, req: c.Req, resp: resp})
@@ -614,12 +614,12 @@ func statusName(s exchange.OrderStatus) string {
 		return "PENDING_NEW"
 	case exchange.OrderStatusNew:
 		return "NEW"
+	case exchange.OrderStatusAccepted:
+		return "ACCEPTED"
 	case exchange.OrderStatusPartiallyFilled:
 		return "PARTIALLY_FILLED"
 	case exchange.OrderStatusFilled:
 		return "FILLED"
-	case exchange.OrderStatusPendingCancel:
-		return "PENDING_CANCEL"
 	case exchange.OrderStatusCancelled:
 		return "CANCELED"
 	case exchange.OrderStatusRejected:

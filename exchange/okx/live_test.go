@@ -99,7 +99,7 @@ func TestOkxDemo(t *testing.T) {
 
 	restPx := h.restPx()
 	rest := h.order(exchange.SideBuy, exchange.OrderTypeLimit, exchange.TIFGTC, qty, restPx)
-	res := h.place("submit_limit", rest, exchange.OrderStatusNew)
+	res := h.place("submit_limit", rest, exchange.OrderStatusAccepted)
 	h.until(10*time.Second, "snapshot shows the resting order", func() bool { return h.hasOrder(res.OrderID) })
 	h.keepSnap("open_orders", "/api/v5/trade/orders-pending")
 	h.note("GTC rest px=%s order=%s cloid=%s", decimal.Format(restPx, tick), res.OrderID, rest.ClientOrderID)
@@ -107,7 +107,7 @@ func TestOkxDemo(t *testing.T) {
 	h.until(10*time.Second, "snapshot drops the cancelled order", func() bool { return !h.hasOrder(res.OrderID) })
 
 	po := h.order(exchange.SideBuy, exchange.OrderTypeLimit, exchange.TIFPostOnly, qty, restPx)
-	poRes := h.place("submit_postonly", po, exchange.OrderStatusNew)
+	poRes := h.place("submit_postonly", po, exchange.OrderStatusAccepted)
 	h.cancel("", po.ClientOrderID)
 	h.note("post-only px=%s order=%s", decimal.Format(restPx, tick), poRes.OrderID)
 
@@ -131,8 +131,8 @@ func TestOkxDemo(t *testing.T) {
 
 	a := h.order(exchange.SideBuy, exchange.OrderTypeLimit, exchange.TIFGTC, qty, restPx)
 	b := h.order(exchange.SideBuy, exchange.OrderTypeLimit, exchange.TIFGTC, qty, restPx)
-	ra := h.place("", a, exchange.OrderStatusNew)
-	rb := h.place("", b, exchange.OrderStatusNew)
+	ra := h.place("", a, exchange.OrderStatusAccepted)
+	rb := h.place("", b, exchange.OrderStatusAccepted)
 	batchCall := mustCall(raw.CancelBatch(time.Now(), []exchange.CancelRef{
 		{Instrument: inst, ClientOrderID: a.ClientOrderID},
 		{Instrument: inst, ClientOrderID: b.ClientOrderID},
@@ -303,8 +303,8 @@ func (h *live) place(fixture string, req *exchange.OrderRequest, want exchange.O
 	if err != nil {
 		h.t.Fatalf("%s: %v", req.ClientOrderID, err)
 	}
-	if res == nil || res.Status != exchange.OrderStatusPendingNew || res.OrderID == "" {
-		h.t.Fatalf("%s: ack %+v, want PendingNew", req.ClientOrderID, res)
+	if res == nil || res.Status != exchange.OrderStatusNew || res.OrderID == "" {
+		h.t.Fatalf("%s: ack %+v, want New", req.ClientOrderID, res)
 	}
 	if fixture != "" && h.record {
 		h.saved = append(h.saved, saved{name: fixture, req: c.Req, resp: resp})
@@ -774,6 +774,8 @@ func statusName(s exchange.OrderStatus) string {
 		return "PENDING_NEW"
 	case exchange.OrderStatusNew:
 		return "NEW"
+	case exchange.OrderStatusAccepted:
+		return "ACCEPTED"
 	case exchange.OrderStatusPartiallyFilled:
 		return "PARTIALLY_FILLED"
 	case exchange.OrderStatusFilled:

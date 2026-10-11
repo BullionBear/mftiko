@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	mdctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/mdctl/v1"
@@ -73,7 +72,7 @@ func binanceFixtureProblem(t *testing.T) string {
 	const tick = 0.01
 	e := startFixtureBook(t, binance.VenueUM, "public", ch, "BCHUSDT", tick, umMarket(t), rest, 20, []doerStep{{
 		resp: syncResp, hold: hold,
-	}}, nil)
+	}})
 	e.doer.wait(t, 1)
 	for _, frame := range pre {
 		e.feed(t, frame)
@@ -116,7 +115,7 @@ func TestBookBybitFixture(t *testing.T) {
 		t.Fatal("no bybit market")
 	}
 	const tick = 0.1
-	e := startFixtureBook(t, bybit.Name, "linear", ch, "BTCUSDT", tick, v.Market, nil, 20, nil, nil)
+	e := startFixtureBook(t, bybit.Name, "linear", ch, "BTCUSDT", tick, v.Market, nil, 20, nil)
 	sess, err := v.Market.NewSession("linear")
 	if err != nil {
 		t.Fatal(err)
@@ -187,21 +186,16 @@ func parseDepth(t *testing.T, rest exchange.PublicREST, resp *exchange.HTTPRespo
 	return u
 }
 
-func startFixtureBook(t *testing.T, venue, route, ch, exch string, tick float64, m exchange.Market, rest exchange.PublicREST, depth uint32, steps []doerStep, clk *fakeClock) *bookEnv {
+// startFixtureBook builds a Conn with one book atom and starts syncBooks. Each before func runs on the Conn
+// before that goroutine starts, so a test that swaps the clock does not race with it.
+func startFixtureBook(t *testing.T, venue, route, ch, exch string, tick float64, m exchange.Market, rest exchange.PublicREST, depth uint32, steps []doerStep, before ...func(*Conn)) *bookEnv {
 	t.Helper()
 	doer := &seqDoer{hit: make(chan int, 8), steps: steps}
 	rec := newRecorder()
-	var bookNow func() time.Time
-	var bookAfter func(time.Duration) <-chan time.Time
-	if clk != nil {
-		bookNow = clk.Now
-		bookAfter = clk.After
-	}
 	c := New(Config{
 		Venue: venue, Route: route, Instance: "md", URL: "ws://127.0.0.1:9",
 		Market: m, Publish: rec.publish, BookDepth: depth,
 		REST: rest, Doer: doer, RetryAfter: -1,
-		BookNow: bookNow, BookAfter: bookAfter,
 	})
 	c.SetDesired(&mdctlv1.Desired{
 		Version: &commonv1.Version{Seq: 1},
@@ -221,6 +215,9 @@ func startFixtureBook(t *testing.T, venue, route, ch, exch string, tick float64,
 	c.epoch = 4
 	c.live = newLink(sess)
 	c.mu.Unlock()
+	for _, f := range before {
+		f(c)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
@@ -233,7 +230,7 @@ func startFixtureBook(t *testing.T, venue, route, ch, exch string, tick float64,
 		c.fetchWG.Wait()
 	})
 	c.wakeBook()
-	return &bookEnv{t: t, c: c, rec: rec, clk: clk, doer: doer, ch: ch}
+	return &bookEnv{t: t, c: c, rec: rec, doer: doer, ch: ch}
 }
 
 func (e *bookEnv) feed(t *testing.T, frame []byte) {

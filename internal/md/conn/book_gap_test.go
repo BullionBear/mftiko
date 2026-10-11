@@ -29,7 +29,11 @@ func TestBookBybitGapRecovers(t *testing.T) {
 	}
 	var snap []byte
 	clk := newFakeClock(time.Unix(1_000_000, 0).UTC())
-	e := startFixtureBook(t, bybit.Name, "linear", ch, "BTCUSDT", 0.1, v.Market, nil, 20, nil, clk)
+	e := startFixtureBook(t, bybit.Name, "linear", ch, "BTCUSDT", 0.1, v.Market, nil, 20, nil, func(c *Conn) {
+		c.bookNow = clk.Now
+		c.bookAfter = clk.After
+	})
+	e.clk = clk
 	e.c.mu.Lock()
 	e.c.live.observed[ch] = struct{}{}
 	e.c.wanted[other] = []feed{{topic: "trade", ticker: "ETHUSDT"}}

@@ -204,7 +204,7 @@ func (t *spotTrade) exec(raw []byte, sink exchange.TradeSink) error {
 	}
 	up := exchange.OrderUpdate{
 		Exch: spotKey(o.Symbol), OrderID: strconv.FormatInt(o.OrderID, 10), ClientOrderID: cloid,
-		Side: sideOf(o.Side), Type: typeOf(o.Type), Status: statusOf(o.Status),
+		Side: sideOf(o.Side), Type: typeOf(o.Type), Status: orderStatus(o.Status, filled),
 		Qty: float64(o.Qty), Price: px, FilledQty: filled, AvgPrice: avg, ExchTsNs: ms(ts),
 	}
 	if o.Reason != "" && o.Reason != "NONE" {

@@ -16,7 +16,7 @@ func TestCheckEmbedded(t *testing.T) {
 			dir := t.TempDir()
 			opt := Options{}
 			if inst != "dev" {
-				opt = Options{MDInsts: []string{inst}, FetchInsts: []string{inst}}
+				opt = Options{MDInsts: []string{inst}, FetchInsts: []string{inst}, TDInsts: []string{inst}}
 			}
 			if err := Generate(dir, opt); err != nil {
 				t.Fatal(err)
@@ -36,12 +36,51 @@ func TestCheckEmbedded(t *testing.T) {
 				if strings.Contains(d.Name(), "session") || strings.Contains(d.Name(), "smoke") {
 					t.Errorf("session material was written: %s", d.Name())
 				}
+				if strings.Contains(d.Name(), "account") {
+					t.Errorf("account worker material was written: %s", d.Name())
+				}
 				return nil
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+// TestCheckCatchesBroadAccountWorker: an account worker signed with more than its own account
+// fails the check, so the check does not pass on a user that could serve another account.
+func TestCheckCatchesBroadAccountWorker(t *testing.T) {
+	dir := t.TempDir()
+	if err := Generate(dir, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	lay, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ns := startAuthServer(t, dir, lay.Manifest.System)
+	good, err := newAccountWorker(lay, checkAPIID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := denyWorker(ns.ClientURL(), good); err != nil {
+		t.Fatal(err)
+	}
+	inbox, err := TDAccountInbox(checkAPIID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, sub, err := tdAccountPerms(checkAPIID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	broad, err := signMem(lay, "td-account-broad", inbox, pub, append(sub, "td.order.>"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := denyWorker(ns.ClientURL(), broad); err == nil {
+		t.Fatal("an account worker that may subscribe to td.order.> passed")
 	}
 }
 

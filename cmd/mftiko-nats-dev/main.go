@@ -1,9 +1,10 @@
 // Command mftiko-nats-dev generates the dev NATS operator, accounts, and user credentials,
-// or checks a server that is already using them (D412–D417).
+// or checks a server that is already using them (D412–D417, D611).
 //
 // Generate writes into -out, which make dev-up sets to deploy/dev/data/nats. That directory
 // is gitignored. Keys already present are reused. -check does not generate and does not
-// write session credentials; it signs one ephemeral caller in memory.
+// write session or account worker credentials; it signs one ephemeral caller and one
+// account worker in memory.
 package main
 
 import (
@@ -20,6 +21,7 @@ func main() {
 	out := flag.String("out", "deploy/dev/data/nats", "directory for generated dev NATS files")
 	mdInst := flag.String("md-inst", natsdev.DefaultInst, "MD instance token")
 	fetchInst := flag.String("fetch-inst", natsdev.DefaultInst, "md.fetch instance token")
+	tdInst := flag.String("td-inst", natsdev.DefaultInst, "TD instance token")
 	check := flag.Bool("check", false, "check a running server instead of generating")
 	url := flag.String("url", "nats://127.0.0.1:4222", "server URL for -check")
 	flag.Parse()
@@ -38,6 +40,7 @@ func main() {
 	if err := natsdev.Generate(*out, natsdev.Options{
 		MDInsts:    []string{*mdInst},
 		FetchInsts: []string{*fetchInst},
+		TDInsts:    []string{*tdInst},
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, "mftiko-nats-dev:", err)
 		os.Exit(1)

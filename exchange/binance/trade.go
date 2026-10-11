@@ -345,7 +345,7 @@ func (o restOrder) update(venue string) exchange.OrderUpdate {
 	}
 	return exchange.OrderUpdate{
 		Exch: exchFor(venue, o.Symbol), OrderID: strconv.FormatInt(o.OrderID, 10), ClientOrderID: o.ClientOrderID,
-		Side: sideOf(o.Side), Type: typeOf(o.Type), Status: statusOf(o.Status),
+		Side: sideOf(o.Side), Type: typeOf(o.Type), Status: orderStatus(o.Status, filled),
 		Qty: float64(o.OrigQty), Price: float64(o.Price), FilledQty: filled,
 		AvgPrice: avg, ExchTsNs: ms(ts),
 	}

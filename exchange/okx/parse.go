@@ -153,7 +153,7 @@ func parseCreate(resp *exchange.HTTPResponse) (*exchange.OrderResult, error) {
 	// The ack carries an order id and no state. sCode 0 means the venue accepted the request;
 	// the private stream is where the order's status arrives.
 	return &exchange.OrderResult{
-		OrderID: row.OrdID, Status: exchange.OrderStatusPendingNew, ExchTsNs: exchNs(row.Ts, e.OutTime),
+		OrderID: row.OrdID, Status: exchange.OrderStatusNew, ExchTsNs: exchNs(row.Ts, e.OutTime),
 	}, nil
 }
 

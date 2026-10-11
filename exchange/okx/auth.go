@@ -322,10 +322,11 @@ func typeOf(s string) exchange.OrderType {
 	}
 }
 
+// statusOf maps the orders channel state. live is on the book: Accepted.
 func statusOf(s string) exchange.OrderStatus {
 	switch s {
 	case "live":
-		return exchange.OrderStatusNew
+		return exchange.OrderStatusAccepted
 	case "partially_filled":
 		return exchange.OrderStatusPartiallyFilled
 	case "filled":

@@ -173,7 +173,7 @@ func (o orderRow) update(cat string, fallbackMs int64) exchange.OrderUpdate {
 	}
 	return exchange.OrderUpdate{
 		Exch: exchKey(cat, o.Symbol), OrderID: o.OrderID, ClientOrderID: o.LinkID,
-		Side: sideOf(o.Side), Type: typeOf(o.OrderType), Status: statusOf(o.Status),
+		Side: sideOf(o.Side), Type: typeOf(o.OrderType), Status: orderStatus(o.Status, qtyOf(o.Filled)),
 		Qty: qty, QuoteQty: quote, Price: optNum(o.Price), FilledQty: qtyOf(o.Filled),
 		AvgPrice: optNum(o.Avg), RejectReason: rejectReason(o.Status, o.Reject), ExchTsNs: ts,
 	}
