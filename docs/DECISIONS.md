@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 >
@@ -78,7 +78,7 @@ agent 每次啟動帶 epoch。shim 只接受 epoch 最大的 agent 的指令；�
   - 號碼只保證遞增，可以跳號。key 不刪：worker 停掉之後同一個 worker key 還會再起來，刪了就從 1 重來。例外是 STS 的 session 結束之後，見 PROTOCOL §3.2 W6。
 - 訊息與事件帶 `(身分, incarnation)`：舊的晚到就丟；下游看到 incarnation 變了就重新同步。
 - 換 incarnation 一律 delete-before-create：舊的確認消失之後才起新的。
-- worker 換版一律走換 incarnation。各平面的強制換法：MD 對連線 restart；TD drain-replace；STS 結束 session 後開新的。
+- 換版不排程換 incarnation。下次 spawn 才取當時的版本：MD、TD 取最新（PROTOCOL §8），同一個 session 重拉仍用 spec 釘住的策略 digest。跑著的進程保持原 binary。部署新的 agent，或選主輪換，都不因此重啟 worker：行情連線不斷、tape 還在，account worker 與 session worker 也不斷。
 - **MD 連線不做 make-before-break。** 需要新舊版並存時，在 NATS subject 加版號，新版 worker 發在新的 subject，平台內不做遷移。為此 SDK 一律用 binding 給的 subject，不自己組（PROTOCOL §7），之後加版號只改 MD agent。
 - 和 agent 的 epoch 是兩個獨立的計數：輪換 agent 不動 worker，換 incarnation 只動一個 worker。
 
@@ -204,8 +204,8 @@ UniversalTicker（`<Venue>_<Category>_<SYMBOL>`）、`Parse` 嚴格／`Resolve` 
 
 ### D902 每個 worker 都從 artifact 起，以 OCI image 格式打包
 
-- **三種 worker 都是 artifact，manifest 帶 `kind`：** `strategy`（STS 的 session worker）、`md.conn`（conn worker）、`td.account`（account worker）。agent 只接受自己那一種。agent 依指派、controller 給的 artifact 引用，加上 manifest 的 entrypoint 與參數，找到並起動進程（PROTOCOL §8）。
-- **MD、TD 的 artifact 各只有一種，都在這個 repo 裡實作，** 由 CI 在 release 時建好推上 registry。哪個 instance 用哪一版由 controller 的配置指定，worker 的版本因此可以單獨升級；換版仍然走換 incarnation（D106）。MD、TD 主機上的拉取與驗證和 STS 用同一套程式（`internal/platform/artifact`，D006）。
+- **三種 worker 都是 artifact，manifest 帶 `kind`：** `strategy`（STS 的 session worker）、`md.conn`（conn worker）、`td.account`（account worker）。agent 只接受自己那一種。agent 依指派找到要起的 worker，加上 manifest 的 entrypoint 與參數，起動進程（PROTOCOL §8）。策略的 digest 在 session spec；MD、TD 在 spawn 時取當時的最新。
+- **MD、TD 的 artifact 各只有一種，都在這個 repo 裡實作，** 由 CI 在 release 時建好推上 registry。不按 instance 釘版本：每次 spawn 取當時的最新，跑著的進程保持原 binary，換 agent 不因此換 incarnation（D106、PROTOCOL §8）。E9 的 artifact 管線做好之前，md-agent 與 td-agent 執行這個 repo 建出的 binary。做好之後，主機上的拉取與驗證和 STS 用同一套程式（`internal/platform/artifact`，D006）。
 - 以下各條原本只針對策略 artifact，現在三種都適用，只有標明「策略」的除外。
 - 每個策略各自編譯、各自發版，與平台的 release 無關。session 釘住策略的 image digest，重新掛起也沿用同一個 digest。
 - **只拿 OCI 當打包格式，不跑容器。** STS 把 image 解開成 rootfs，shim 以 rootfs 為工作目錄直接 exec。之後若要隔離，可以換成 Strategon 的 rootless OCI driver，格式不變。
@@ -298,7 +298,7 @@ account worker 依 refcount 起停，沒有常駐層（D901），所以閒置帳
   - WS 重連時在 ring 裡記一個 gap。
   - 接 live：SDK 先訂 `md.f` 再讀 tape，丟掉 `(conn_epoch, seq)` 不小於第一筆 live 的部分。live 和 tape 出自同一個進程、同一套序號，接縫是精確的；沒有 id 的 liquidation 也適用。
   - 不用 Redis。tape 跟著 worker 進程和 atom 一起活：只有進程重新掛起（crash，或停掉後 spawn 新的 incarnation）、或 atom 的 linger 結束，tape 才會沒了。
-  - worker 不隨版本遷移（D103、D106）：發新版只影響之後 spawn 的 worker，跑著的進程繼續用原本的 binary，tape 不受影響。只有刻意強制換版（D106：MD 對連線 restart）才會清空那條連線上的 tape。
+  - worker 不隨版本遷移（D103、D106）：發新版只影響之後 spawn 的 worker，跑著的進程繼續用原本的 binary，tape 不受影響。tape 在這條連線的進程換掉時才沒：crash 後重拉，或連線停掉之後再 spawn。
   - tape 只是熱身用，回覆會說明涵蓋多少。要一直熱的，跑一個 tape keeper：不下單、不綁帳號的策略，跟 mftik 一樣，tape 跟著它的生命週期走（D404）。
 - **md.view：** 持有 atom 的 conn worker 服務 `md.view.{inst}.{topic}.{ticker}`，形狀跟 `md.f` 一樣，對應 `td.view.{api_id}`。回覆依 topic：trade 類回 tape 分頁（由新到舊，以 `(conn_epoch, seq)` 當游標，每頁壓在 NATS 的 1 MiB 以下），`orderbook_delta` 回 seq S 時的 book。沒有 responder，就是沒有 worker 持有這個 atom。
 - **md.fetch：**
