@@ -104,7 +104,11 @@ func (c *Conn) syncBooks(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
+		c.refreshSymbols()
 		jobs, wait := c.planBook()
+		if c.symbols != nil && wait > time.Second {
+			wait = time.Second
+		}
 		for _, j := range jobs {
 			c.fetchWG.Add(1)
 			go func(j depthJob) {
