@@ -3,6 +3,7 @@ package bybit
 import (
 	"bytes"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -261,13 +262,33 @@ func TestDecodePrivate(t *testing.T) {
 }
 
 func TestUsage(t *testing.T) {
+	// X-Bapi-Limit-Reset-Timestamp is the value recorded on the trade socket
+	// (order.create). REST reports the same header, in milliseconds.
 	resp := &exchange.HTTPResponse{Header: []exchange.Header{
 		{Name: "X-Bapi-Limit", Value: "10"},
 		{Name: "X-Bapi-Limit-Status", Value: "9"},
+		{Name: "X-Bapi-Limit-Reset-Timestamp", Value: "1711001595208"},
 	}}
-	got := usedFrom(resp)
-	if len(got) != 1 || got[0].Bucket != "endpoint" || got[0].N != 1 {
+	got := usedFrom(resp, time.Time{})
+	want := time.UnixMilli(1711001595208).UTC()
+	if len(got) != 1 || got[0].Bucket != "endpoint" || got[0].N != 1 || !got[0].ResetAt.Equal(want) {
 		t.Fatalf("%+v", got)
+	}
+	missing := usedFrom(&exchange.HTTPResponse{Header: []exchange.Header{
+		{Name: "X-Bapi-Limit", Value: "10"},
+		{Name: "X-Bapi-Limit-Status", Value: "9"},
+	}}, time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC))
+	if len(missing) != 1 || !missing[0].ResetAt.IsZero() {
+		t.Fatalf("missing reset %+v", missing)
+	}
+	_, err := readEnv(&exchange.HTTPResponse{
+		Status: http.StatusTooManyRequests,
+		Header: []exchange.Header{{Name: "Retry-After", Value: "8"}},
+		Body:   []byte(`{"retCode":10006,"retMsg":"Too many visits"}`),
+	})
+	var rl *exchange.RateLimited
+	if !errors.As(err, &rl) || rl.RetryAfterMs != 8000 {
+		t.Fatalf("retry %v", err)
 	}
 }
 

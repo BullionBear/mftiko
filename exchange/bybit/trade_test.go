@@ -100,7 +100,8 @@ func TestDecodeTrade(t *testing.T) {
 		sink.sub.Status != exchange.OrderStatusPendingNew || sink.sub.ExchTsNs != 1711001595209*int64(time.Millisecond) {
 		t.Fatalf("create %+v id=%d err=%v", sink.sub, sink.subID, sink.subErr)
 	}
-	if len(sink.used) != 1 || sink.used[0].Bucket != bucketEndpoint || sink.used[0].N != 1 {
+	if len(sink.used) != 1 || sink.used[0].Bucket != bucketEndpoint || sink.used[0].N != 1 ||
+		!sink.used[0].ResetAt.Equal(time.UnixMilli(1711001595208).UTC()) {
 		t.Fatalf("used %+v", sink.used)
 	}
 	for i := range create {

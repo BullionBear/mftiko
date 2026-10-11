@@ -506,8 +506,10 @@ func writeServiceUser(dir string, u loadedUser, accountKP nkeys.KeyPair, md bool
 		pub = []string{"md.f." + u.inst + ".>", "sym"}
 		sub = []string{"md.view." + u.inst + ".>", u.inbox + ".>"}
 	} else {
+		// md.fetch.> is every venue subject. The process subscribes only to the
+		// venues it can reach (D418). sym.changed.> is the resolver (D422).
 		pub = []string{"sym"}
-		sub = []string{"md.fetch", u.inbox + ".>"}
+		sub = []string{"md.fetch.>", "sym.changed.>", u.inbox + ".>"}
 	}
 	// Signed by the account identity key, so IssuerAccount stays empty (D414).
 	token, err := encodeUser(u.pub, u.name, pub, sub, true, "", accountKP)

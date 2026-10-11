@@ -202,8 +202,9 @@
 // 10010, 33004, -2015 and HTTP 401 are ErrAuth. 10000, 10016 and 10019 are ErrUnknownOutcome:
 // a timeout or a restart, so the order may have been accepted. Usage reads X-Bapi-Limit minus
 // X-Bapi-Limit-Status into bucket
-// "endpoint". That window belongs to the endpoint that answered, so the numbers are not one
-// shared counter.
+// "endpoint", and X-Bapi-Limit-Reset-Timestamp (milliseconds) into ResetAt. That window belongs
+// to the endpoint that answered, so the numbers are not one shared counter. The live header is
+// confirmed in E4-10. Retry-After, in seconds, fills RateLimited.RetryAfterMs.
 //
 // # Signing
 //

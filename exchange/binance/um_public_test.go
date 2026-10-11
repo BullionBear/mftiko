@@ -215,9 +215,65 @@ func TestUMPublicREST(t *testing.T) {
 	if err != nil || oi.OpenInterest != 1.5 || decimal.Has(oi.OpenInterestValue) {
 		t.Fatalf("oi %+v %v", oi, err)
 	}
-	used := r.Usage(&exchange.HTTPResponse{Header: []exchange.Header{{Name: "X-MBX-USED-WEIGHT-1M", Value: "20"}}})
-	if len(used) != 1 || used[0].N != 20 || used[0].Bucket != "weight_1m" {
+	now := time.Date(2026, 10, 11, 1, 2, 3, 0, time.UTC)
+	used := r.Usage(&exchange.HTTPResponse{Header: []exchange.Header{{Name: "X-MBX-USED-WEIGHT-1M", Value: "20"}}}, now)
+	if len(used) != 1 || used[0].N != 20 || used[0].Bucket != "weight_1m" || !used[0].ResetAt.Equal(time.Date(2026, 10, 11, 1, 3, 0, 0, time.UTC)) {
 		t.Fatalf("usage %+v", used)
+	}
+}
+
+// TestUsageResetAt uses the headers a Binance response carries. ResetAt is the next
+// window boundary after the response time, aligned to the Unix epoch. A response that
+// lands on a boundary belongs to the window that just opened.
+func TestUsageResetAt(t *testing.T) {
+	now := time.Date(2026, 10, 11, 12, 0, 7, 0, time.UTC)
+	resp := &exchange.HTTPResponse{Header: []exchange.Header{
+		{Name: "X-MBX-USED-WEIGHT-1M", Value: "20"},
+		{Name: "X-MBX-ORDER-COUNT-10S", Value: "1"},
+		{Name: "X-MBX-ORDER-COUNT-1M", Value: "2"},
+		{Name: "X-MBX-ORDER-COUNT-1D", Value: "3"},
+	}}
+	got := usedFrom(resp, now)
+	want := map[string]time.Time{
+		weight1m:  time.Date(2026, 10, 11, 12, 1, 0, 0, time.UTC),
+		orders10s: time.Date(2026, 10, 11, 12, 0, 10, 0, time.UTC),
+		orders1m:  time.Date(2026, 10, 11, 12, 1, 0, 0, time.UTC),
+		orders1d:  time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC),
+	}
+	if len(got) != len(want) {
+		t.Fatalf("%+v", got)
+	}
+	for _, u := range got {
+		if !u.ResetAt.Equal(want[u.Bucket]) {
+			t.Fatalf("%s reset %s, want %s", u.Bucket, u.ResetAt, want[u.Bucket])
+		}
+	}
+	on := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+	boundary := usedFrom(&exchange.HTTPResponse{Header: []exchange.Header{
+		{Name: "X-MBX-USED-WEIGHT-1M", Value: "1"},
+	}}, on)
+	if !boundary[0].ResetAt.Equal(on.Add(time.Minute)) {
+		t.Fatalf("on the boundary %+v", boundary)
+	}
+	ban := &exchange.HTTPResponse{
+		Status: 418,
+		Header: []exchange.Header{{Name: "Retry-After", Value: "120"}},
+		Body:   []byte(`{"code":-1003,"msg":"Way too many requests; IP banned."}`),
+	}
+	err := refuse(ban)
+	var rl *exchange.RateLimited
+	if !errors.As(err, &rl) || rl.RetryAfterMs != 120000 {
+		t.Fatalf("418 %v", err)
+	}
+	limited := &exchange.HTTPResponse{
+		Status: http.StatusTooManyRequests,
+		Header: []exchange.Header{{Name: "Retry-After", Value: "12"}},
+		Body:   []byte(`{"code":-1003,"msg":"Too many requests"}`),
+	}
+	err = refuse(limited)
+	rl = nil
+	if !errors.As(err, &rl) || rl.RetryAfterMs != 12000 {
+		t.Fatalf("429 %v", err)
 	}
 }
 

@@ -216,7 +216,7 @@ func TestGenerateMaterial(t *testing.T) {
 	if fetch.InboxPrefix != "_INBOX_fetch" {
 		t.Fatal(fetch.InboxPrefix)
 	}
-	assertUser(fetch, []string{"sym"}, []string{"md.fetch", "_INBOX_fetch.>"})
+	assertUser(fetch, []string{"sym"}, []string{"md.fetch.>", "sym.changed.>", "_INBOX_fetch.>"})
 
 	if _, err := nkeys.FromSeed(seeds["mftiko-signing.nk"]); err != nil {
 		t.Fatal("signing key")

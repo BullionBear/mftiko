@@ -7,6 +7,7 @@ import (
 	"math"
 	"reflect"
 	"slices"
+	"time"
 
 	"github.com/BullionBear/mftiko/exchange"
 )
@@ -22,9 +23,11 @@ type Event struct {
 }
 
 // Normalize turns v into plain JSON values: structs into objects of their exported fields, NaN
-// (decimal.Absent) into null, ±Inf into "+Inf"/"-Inf", errors into their Kind. The result shares no
-// memory with v.
+// (decimal.Absent) into null, ±Inf into "+Inf"/"-Inf", errors into their Kind. A time.Time is UTC
+// RFC3339 with nanoseconds, and a zero time is left out. The result shares no memory with v.
 func Normalize(v any) any { return normalize(reflect.ValueOf(v)) }
+
+var timeType = reflect.TypeFor[time.Time]()
 
 var errType = reflect.TypeFor[error]()
 
@@ -45,12 +48,21 @@ func normalize(v reflect.Value) any {
 		}
 		return normalize(v.Elem())
 	case reflect.Struct:
+		if v.Type() == timeType {
+			return v.Interface().(time.Time).UTC().Format(time.RFC3339Nano)
+		}
 		out := map[string]any{}
 		t := v.Type()
 		for i := 0; i < t.NumField(); i++ {
-			if f := t.Field(i); f.IsExported() {
-				out[f.Name] = normalize(v.Field(i))
+			f := t.Field(i)
+			if !f.IsExported() {
+				continue
 			}
+			fv := v.Field(i)
+			if fv.Type() == timeType && fv.Interface().(time.Time).IsZero() {
+				continue
+			}
+			out[f.Name] = normalize(fv)
 		}
 		return out
 	case reflect.Slice:

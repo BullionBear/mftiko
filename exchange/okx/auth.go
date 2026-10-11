@@ -174,7 +174,7 @@ func marshalBody(v any) ([]byte, error) {
 
 type pair struct{ k, v string }
 
-func (a *account) Usage(*exchange.HTTPResponse) []exchange.Used { return nil }
+func (a *account) Usage(*exchange.HTTPResponse, time.Time) []exchange.Used { return nil }
 
 func msString(s string) int64 {
 	if s == "" || s == "0" {

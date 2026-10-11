@@ -96,7 +96,9 @@ func (h *history) Order(now time.Time, inst *symbol.Info, orderID string) (excha
 	}}, nil
 }
 
-func (h *history) Usage(resp *exchange.HTTPResponse) []exchange.Used { return usedFrom(resp) }
+func (h *history) Usage(resp *exchange.HTTPResponse, now time.Time) []exchange.Used {
+	return usedFrom(resp, now)
+}
 
 func (h *history) get(now time.Time, path string, pairs []pair) (exchange.HTTPRequest, error) {
 	var q codec.Query

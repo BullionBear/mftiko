@@ -74,7 +74,9 @@ type Account interface {
 	NewTradeStream() (TradeStream, error)
 
 	// Usage reads the rate-limit usage the venue reports in a response; nil when it reports none.
-	Usage(resp *HTTPResponse) []Used
+	// now is when the response arrived. The adapter does not read a clock (D302). Each Used.ResetAt
+	// is when that counter returns to zero; the zero time means the venue did not say (D420).
+	Usage(resp *HTTPResponse, now time.Time) []Used
 }
 
 // AccountLimits are the venue's rules for one api_id.

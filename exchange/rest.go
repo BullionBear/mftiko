@@ -1,13 +1,16 @@
 package exchange
 
 import (
+	"time"
+
 	"github.com/BullionBear/mftiko/contract/symbol"
 )
 
 // PublicREST is a venue's public REST, sans-I/O (D302): each method builds a Call, and the caller sends
 // it. It is code, not a service (D402): the conn worker runs Depth in process for book snapshots,
 // md.fetch runs Klines and OpenInterest, SYM runs Listing (through ListingOver). Public requests are
-// not signed, so no method takes the time. Safe for concurrent use.
+// not signed, so those methods do not take the time. Usage takes when the response arrived, so it
+// can fill ResetAt without reading a clock (D420). Safe for concurrent use.
 type PublicREST interface {
 	// Listing is every instrument the venue lists in one category, canonicalized (D201), one page at a
 	// time. One (venue, category) is the unit SYM refreshes and delists within: a spot refresh must
@@ -29,7 +32,9 @@ type PublicREST interface {
 	OpenInterest(inst *symbol.Info) (Call[*OpenInterest], error)
 
 	// Usage reads the rate-limit usage the venue reports in a response; nil when it reports none.
-	Usage(resp *HTTPResponse) []Used
+	// now is when the response arrived. The adapter does not read a clock (D302). Each Used.ResetAt
+	// is when that counter returns to zero; the zero time means the venue did not say (D420).
+	Usage(resp *HTTPResponse, now time.Time) []Used
 }
 
 // InProcessUIDSource is a listing whose instruments are not a real venue. The in-process Resolver

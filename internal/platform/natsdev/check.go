@@ -119,8 +119,19 @@ func checkFetch(url string, lay Layout, u User) error {
 	if err := denyOutside(url, lay, u, PlaneFetch); err != nil {
 		return err
 	}
+	// The exact subject md.fetch has no venue token, so the user may not subscribe to it (D418).
+	if err := denyOnce(url, lay, u, "subscribe md.fetch", func(nc *nats.Conn) error {
+		_, err := nc.SubscribeSync("md.fetch")
+		return err
+	}); err != nil {
+		return err
+	}
+	if err := allowSub(fetch, "sym.changed.>"); err != nil {
+		return fmt.Errorf("natsdev: fetch %s sym.changed: %w", u.Inst, err)
+	}
 	// natsx Serve uses the subject as the queue name when the caller leaves it empty.
-	return roundTrip(url, caller, fetch, "md.fetch", "md.fetch")
+	// md.fetch.Binance is one venue subject; the venue token is only an example.
+	return roundTrip(url, caller, fetch, "md.fetch.Binance", "md.fetch.Binance")
 }
 
 // denyOutside checks the inbox subjects a plane user must not touch: the other
@@ -341,7 +352,7 @@ func newCaller(lay Layout, inst string) (*sessionCaller, error) {
 	// No response permission: the caller does not answer requests.
 	token, err := encodeUser(pub, "session-"+checkSessionID, []string{
 		"md.view." + inst + ".>",
-		"md.fetch",
+		"md.fetch.>",
 	}, []string{
 		"md.f." + inst + ".>",
 		inbox + ".>",

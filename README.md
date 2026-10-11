@@ -34,7 +34,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-shim             per-worker shim
   mftiko-md-conn          MD conn worker: one websocket per (venue, route, n)
   mftiko-td-account       TD account worker: one per api_id
-  mftiko-md-fetch         stateless md.fetch service
+  mftiko-mdfetch          stateless md.fetch service
   mftiko-sym              symbol service
   mftiko-migrate          applies the PostgreSQL migrations (a deploy step)
   mftiko-pack             builds a strategy artifact (OCI image + mftiko manifest)

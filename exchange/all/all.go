@@ -1,5 +1,5 @@
 // Package all builds the registry of every exchange adapter. Binaries that need adapters (md-agent,
-// md-conn, md-fetch, sym, td-agent, td-account, api) call Registry once at startup.
+// md-conn, mftiko-mdfetch, sym, td-agent, td-account, api) call Registry once at startup.
 package all
 
 import (
