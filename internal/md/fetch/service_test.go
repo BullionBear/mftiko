@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -217,6 +218,155 @@ func TestFetch(t *testing.T) {
 		}
 	})
 
+	t.Run("usage expires at the window boundary", func(t *testing.T) {
+		start := time.Date(2026, 10, 11, 0, 0, 30, 0, time.UTC)
+		reset := time.Date(2026, 10, 11, 0, 1, 0, 0, time.UTC)
+		clk := &fakeClock{t: start}
+		tape := closedTape(t)
+		tape.used = 8
+		tape.resetAt = reset
+		res := btcResolver()
+		client := serveWith(t, plane, "BinanceUM", tape, res, Options{RateLimit: 8, Now: clk.Now})
+		if reply := askKline(t, client, "BinanceUM"); reply.GetError() != "" {
+			t.Fatalf("first %+v", reply)
+		}
+		if reply := askKline(t, client, "BinanceUM"); reply.GetError() != CodeRateLimited {
+			t.Fatalf("at threshold %+v", reply)
+		}
+		clk.Set(reset.Add(-time.Nanosecond))
+		if reply := askKline(t, client, "BinanceUM"); reply.GetError() != CodeRateLimited {
+			t.Fatalf("before reset %+v", reply)
+		}
+		if tape.hits.Load() != 1 {
+			t.Fatalf("http calls %d before the window ended", tape.hits.Load())
+		}
+		clk.Set(reset)
+		if reply := askKline(t, client, "BinanceUM"); reply.GetError() != "" {
+			t.Fatalf("at reset %+v", reply)
+		}
+		if tape.hits.Load() != 2 {
+			t.Fatalf("http calls %d after the window", tape.hits.Load())
+		}
+	})
+
+	t.Run("429 waits for Retry-After", func(t *testing.T) {
+		start := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
+		clk := &fakeClock{t: start}
+		tape := closedTape(t)
+		tape.status = http.StatusTooManyRequests
+		tape.retryAfter = 5
+		tape.used = 1
+		tape.resetAt = start.Add(time.Minute)
+		res := btcResolver()
+		client := serveWith(t, plane, "BinanceUM", tape, res, Options{Now: clk.Now})
+		if reply := askKline(t, client, "BinanceUM"); reply.GetError() != CodeRateLimited {
+			t.Fatalf("429 %+v", reply)
+		}
+		clk.Set(start.Add(5*time.Second - time.Nanosecond))
+		if reply := askKline(t, client, "BinanceUM"); reply.GetError() != CodeRateLimited {
+			t.Fatalf("during Retry-After %+v", reply)
+		}
+		if tape.hits.Load() != 1 {
+			t.Fatalf("http calls %d during Retry-After", tape.hits.Load())
+		}
+		clk.Set(start.Add(5 * time.Second))
+		if tape.hits.Load() != 1 {
+			t.Fatal("a probe went out when Retry-After elapsed")
+		}
+		askKline(t, client, "BinanceUM")
+		if tape.hits.Load() != 2 {
+			t.Fatalf("http calls %d after Retry-After", tape.hits.Load())
+		}
+	})
+
+	t.Run("429 without Retry-After waits for ResetAt", func(t *testing.T) {
+		start := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
+		reset := start.Add(time.Minute)
+		clk := &fakeClock{t: start}
+		tape := closedTape(t)
+		tape.status = http.StatusTooManyRequests
+		tape.used = 1
+		tape.resetAt = reset
+		res := btcResolver()
+		client := serveWith(t, plane, "BinanceUM", tape, res, Options{Now: clk.Now, RateHold: time.Second})
+		if reply := askKline(t, client, "BinanceUM"); reply.GetError() != CodeRateLimited {
+			t.Fatalf("429 %+v", reply)
+		}
+		clk.Set(reset.Add(-time.Nanosecond))
+		if reply := askKline(t, client, "BinanceUM"); reply.GetError() != CodeRateLimited {
+			t.Fatalf("before ResetAt %+v", reply)
+		}
+		if tape.hits.Load() != 1 {
+			t.Fatalf("http calls %d before ResetAt", tape.hits.Load())
+		}
+		clk.Set(reset)
+		askKline(t, client, "BinanceUM")
+		if tape.hits.Load() != 2 {
+			t.Fatalf("http calls %d at ResetAt", tape.hits.Load())
+		}
+	})
+
+	t.Run("429 without Retry-After or ResetAt uses the configured hold", func(t *testing.T) {
+		start := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
+		clk := &fakeClock{t: start}
+		tape := closedTape(t)
+		tape.status = http.StatusTooManyRequests
+		res := btcResolver()
+		client := serveWith(t, plane, "BinanceUM", tape, res, Options{Now: clk.Now, RateHold: 15 * time.Second})
+		if reply := askKline(t, client, "BinanceUM"); reply.GetError() != CodeRateLimited {
+			t.Fatalf("429 %+v", reply)
+		}
+		clk.Set(start.Add(15*time.Second - time.Nanosecond))
+		if reply := askKline(t, client, "BinanceUM"); reply.GetError() != CodeRateLimited {
+			t.Fatalf("during hold %+v", reply)
+		}
+		if tape.hits.Load() != 1 {
+			t.Fatalf("http calls %d during the fallback hold", tape.hits.Load())
+		}
+		clk.Set(start.Add(15 * time.Second))
+		if tape.hits.Load() != 1 {
+			t.Fatal("a probe went out when the fallback hold elapsed")
+		}
+		askKline(t, client, "BinanceUM")
+		if tape.hits.Load() != 2 {
+			t.Fatalf("http calls %d after the fallback hold", tape.hits.Load())
+		}
+	})
+
+	t.Run("418 sends nothing until Retry-After", func(t *testing.T) {
+		start := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
+		clk := &fakeClock{t: start}
+		tape := closedTape(t)
+		tape.status = http.StatusTeapot
+		tape.retryAfter = 30
+		tape.used = 1
+		tape.resetAt = start.Add(time.Second)
+		res := btcResolver()
+		client := serveWith(t, plane, "BinanceUM", tape, res, Options{Now: clk.Now})
+		if reply := askKline(t, client, "BinanceUM"); reply.GetError() != CodeRateLimited {
+			t.Fatalf("418 %+v", reply)
+		}
+		clk.Set(start.Add(time.Second))
+		if reply := askKline(t, client, "BinanceUM"); reply.GetError() != CodeRateLimited {
+			t.Fatalf("window reset during the ban %+v", reply)
+		}
+		clk.Set(start.Add(30*time.Second - time.Nanosecond))
+		if reply := askKline(t, client, "BinanceUM"); reply.GetError() != CodeRateLimited {
+			t.Fatalf("during the ban %+v", reply)
+		}
+		if tape.hits.Load() != 1 {
+			t.Fatalf("http calls %d during the IP ban", tape.hits.Load())
+		}
+		clk.Set(start.Add(30 * time.Second))
+		if tape.hits.Load() != 1 {
+			t.Fatal("a probe went out when the IP ban ended")
+		}
+		askKline(t, client, "BinanceUM")
+		if tape.hits.Load() != 2 {
+			t.Fatalf("http calls %d after the IP ban", tape.hits.Load())
+		}
+	})
+
 	t.Run("venue error is not retried", func(t *testing.T) {
 		tape := newTape(t, nil, 10)
 		tape.status = http.StatusBadRequest
@@ -326,7 +476,7 @@ func TestFetch(t *testing.T) {
 		defer cancel()
 		a := dialFetch(t, plane)
 		b := dialFetch(t, plane)
-		svc := mustService(t, "BinanceUM", tape, res, 0)
+		svc := mustService(t, "BinanceUM", tape, res, Options{})
 		subsA := mustServe(t, svc, ctx, a)
 		subsB := mustServe(t, svc, ctx, b)
 		defer unsubscribe(t, a, subsA)
@@ -378,6 +528,9 @@ func TestRejectsBadService(t *testing.T) {
 	if _, err := New([]Venue{{Name: "BinanceUM", REST: stubREST{}}}, res, doer, Options{RateLimit: -1}); err == nil {
 		t.Fatal("negative rate limit")
 	}
+	if _, err := New([]Venue{{Name: "BinanceUM", REST: stubREST{}}}, res, doer, Options{RateHold: -time.Second}); err == nil {
+		t.Fatal("negative rate hold")
+	}
 }
 
 type recorded struct {
@@ -394,15 +547,17 @@ type recorded struct {
 // tape is a fake PublicREST whose Calls are served by httptest from a recorded
 // series. The body is JSON; fasthttp is the Doer the service uses.
 type tape struct {
-	base     string
-	candles  []recorded
-	page     int
-	oi       *exchange.OpenInterest
-	klineErr error
-	oiErr    error
-	status   int
-	used     int
-	hits     atomic.Int32
+	base       string
+	candles    []recorded
+	page       int
+	oi         *exchange.OpenInterest
+	klineErr   error
+	oiErr      error
+	status     int
+	used       int
+	retryAfter int
+	resetAt    time.Time
+	hits       atomic.Int32
 }
 
 func newTape(t *testing.T, candles []recorded, page int) *tape {
@@ -418,6 +573,12 @@ func (tp *tape) serve(w http.ResponseWriter, r *http.Request) {
 	tp.hits.Add(1)
 	if tp.used > 0 {
 		w.Header().Set("X-Used-Weight", strconv.Itoa(tp.used))
+	}
+	if !tp.resetAt.IsZero() {
+		w.Header().Set("X-Reset-At", strconv.FormatInt(tp.resetAt.UnixMilli(), 10))
+	}
+	if tp.retryAfter > 0 {
+		w.Header().Set("Retry-After", strconv.Itoa(tp.retryAfter))
 	}
 	if tp.status != http.StatusOK {
 		w.WriteHeader(tp.status)
@@ -479,8 +640,8 @@ func (tp *tape) Klines(inst *symbol.Info, interval string, endNs int64, limit in
 	return exchange.Call[[]exchange.Kline]{
 		Req: exchange.HTTPRequest{Method: http.MethodGet, Base: tp.base, Path: "/klines", Query: []byte(q.Encode())},
 		Parse: func(resp *exchange.HTTPResponse) ([]exchange.Kline, error) {
-			if resp.Status == http.StatusTooManyRequests {
-				return nil, &exchange.RateLimited{}
+			if err := refused(resp); err != nil {
+				return nil, err
 			}
 			if resp.Status != http.StatusOK {
 				return nil, errors.New("status " + strconv.Itoa(resp.Status))
@@ -514,8 +675,8 @@ func (tp *tape) OpenInterest(inst *symbol.Info) (exchange.Call[*exchange.OpenInt
 	return exchange.Call[*exchange.OpenInterest]{
 		Req: exchange.HTTPRequest{Method: http.MethodGet, Base: tp.base, Path: "/openInterest", Query: []byte(q.Encode())},
 		Parse: func(resp *exchange.HTTPResponse) (*exchange.OpenInterest, error) {
-			if resp.Status == http.StatusTooManyRequests {
-				return nil, &exchange.RateLimited{}
+			if err := refused(resp); err != nil {
+				return nil, err
 			}
 			if resp.Status != http.StatusOK {
 				return nil, errors.New("status " + strconv.Itoa(resp.Status))
@@ -537,7 +698,22 @@ func (tp *tape) OpenInterest(inst *symbol.Info) (exchange.Call[*exchange.OpenInt
 	}, nil
 }
 
-func (tp *tape) Usage(resp *exchange.HTTPResponse) []exchange.Used {
+func refused(resp *exchange.HTTPResponse) error {
+	if resp.Status != http.StatusTooManyRequests && resp.Status != http.StatusTeapot {
+		return nil
+	}
+	return &exchange.RateLimited{RetryAfterMs: retryHeader(resp)}
+}
+
+func retryHeader(resp *exchange.HTTPResponse) int64 {
+	sec, err := strconv.Atoi(resp.Get("Retry-After"))
+	if err != nil || sec <= 0 {
+		return 0
+	}
+	return int64(sec) * 1000
+}
+
+func (tp *tape) Usage(resp *exchange.HTTPResponse, _ time.Time) []exchange.Used {
 	if resp == nil {
 		return nil
 	}
@@ -545,7 +721,14 @@ func (tp *tape) Usage(resp *exchange.HTTPResponse) []exchange.Used {
 	if err != nil {
 		return nil
 	}
-	return []exchange.Used{{Bucket: "weight", N: n}}
+	u := exchange.Used{Bucket: "weight", N: n}
+	if s := resp.Get("X-Reset-At"); s != "" {
+		ms, conv := strconv.ParseInt(s, 10, 64)
+		if conv == nil {
+			u.ResetAt = time.UnixMilli(ms).UTC()
+		}
+	}
+	return []exchange.Used{u}
 }
 
 type memResolver struct {
@@ -650,22 +833,71 @@ func startAuthServer(t *testing.T, dir, system string) *server.Server {
 
 func serveOne(t *testing.T, p plane, venue string, rest exchange.PublicREST, res *memResolver, rate int) *natsx.Conn {
 	t.Helper()
+	return serveWith(t, p, venue, rest, res, Options{RateLimit: rate})
+}
+
+func serveWith(t *testing.T, p plane, venue string, rest exchange.PublicREST, res *memResolver, opt Options) *natsx.Conn {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	nc := dialFetch(t, p)
-	svc := mustService(t, venue, rest, res, rate)
+	svc := mustService(t, venue, rest, res, opt)
 	subs := mustServe(t, svc, ctx, nc)
 	t.Cleanup(func() { unsubscribe(t, nc, subs) })
 	return dialSession(t, p)
 }
 
-func mustService(t *testing.T, venue string, rest exchange.PublicREST, res symbol.Resolver, rate int) *Service {
+func mustService(t *testing.T, venue string, rest exchange.PublicREST, res symbol.Resolver, opt Options) *Service {
 	t.Helper()
-	svc, err := New([]Venue{{Name: venue, REST: rest}}, res, fasthttp.New(nil, fasthttp.Options{Timeout: 5 * time.Second}), Options{RateLimit: rate})
+	svc, err := New([]Venue{{Name: venue, REST: rest}}, res, fasthttp.New(nil, fasthttp.Options{Timeout: 5 * time.Second}), opt)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return svc
+}
+
+func closedTape(t *testing.T) *tape {
+	t.Helper()
+	return newTape(t, []recorded{{
+		OpenTimeNs: int64(time.Minute), Open: 1, High: 1, Low: 1, Close: 1, Volume: 1, Closed: true,
+	}}, 10)
+}
+
+func btcResolver() *memResolver {
+	return &memResolver{rows: map[string]*symbol.Info{
+		"BinanceUM_Perp_BTCUSDT": instrument("BinanceUM", symbol.Perp, "BTCUSDT"),
+	}}
+}
+
+func askKline(t *testing.T, client *natsx.Conn, venue string) *mdv1.FetchReply {
+	t.Helper()
+	var reply mdv1.FetchReply
+	err := client.Request(context.Background(), Subject(venue), &mdv1.FetchRequest{
+		Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{
+			Ticker: venue + "_Perp_BTCUSDT", Interval: "1m", Limit: 1,
+		}},
+	}, &reply)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &reply
+}
+
+type fakeClock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+func (c *fakeClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.t
+}
+
+func (c *fakeClock) Set(t time.Time) {
+	c.mu.Lock()
+	c.t = t
+	c.mu.Unlock()
 }
 
 func mustServe(t *testing.T, svc *Service, ctx context.Context, nc *natsx.Conn) []*natsx.Subscription {

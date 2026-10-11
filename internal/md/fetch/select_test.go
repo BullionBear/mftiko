@@ -2,6 +2,7 @@ package fetch
 
 import (
 	"testing"
+	"time"
 
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/exchange"
@@ -53,4 +54,4 @@ func (stubREST) OpenInterest(*symbol.Info) (exchange.Call[*exchange.OpenInterest
 	return exchange.Call[*exchange.OpenInterest]{}, exchange.ErrUnsupported
 }
 
-func (stubREST) Usage(*exchange.HTTPResponse) []exchange.Used { return nil }
+func (stubREST) Usage(*exchange.HTTPResponse, time.Time) []exchange.Used { return nil }

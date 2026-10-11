@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-11 定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-11 更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 >
@@ -562,9 +562,13 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 ### D420 限速
 
+- **`exchange.Used` 帶 `ResetAt`。** 這是該計數器歸零的絕對時間。`Usage(resp, now)` 由呼叫者傳入收到回應的時間，adapter 不讀時鐘（D302）。Binance 依 bucket 的窗口對齊下一個邊界：`weight_1m` 與 `orders_1m` 是 1 分鐘，`orders_10s` 是 10 秒，`orders_1d` 是 24 小時，對齊 Unix epoch。回應剛好落在邊界上時，屬於剛打開的那一窗，歸零時間是下一個邊界。Bybit 讀 `X-Bapi-Limit-Reset-Timestamp`（毫秒）。各 venue 真實的窗口與標頭在 E4-09 到 E4-11 驗收時確認。
 - **用 `PublicREST.Usage` 記下交易所在回應裡回報的用量。** 這個數字含同一 IP 上的其他人，包括同主機的 conn worker。
-- **閾值是設定。** 未設定（0）不預先拒絕：平台不知道交易所的上限。設了之後，任一 bucket 的回報用量達到閾值，下一筆對該 venue 的呼叫不送出，回 `rate_limited`。
-- **不排隊、不重試。** 交易所自己回 429（`*RateLimited`）也是 `rate_limited`，只送一次。
+- **到 `ResetAt` 用量作廢。** 該 bucket 不再算進閾值，預先拒絕跟著解除。沒有 `ResetAt` 的用量不會自己過期。
+- **閾值是設定。** 未設定（0）不預先拒絕：平台不知道交易所的上限。設了之後，任一尚未作廢的 bucket 的回報用量達到閾值，下一筆對該 venue 的呼叫不送出，回 `rate_limited`。
+- **429 與 418 用 `RateLimited.RetryAfterMs`。** adapter 從 `Retry-After`（秒）填上。這段時間內對該 venue 的呼叫都不送出。418 是 IP ban：期間內一筆都不送，也不送探測。時間到了才允許下一筆真正的請求。回應裡的 `ResetAt` 比較早也不提前放行。
+- **429 沒有 `Retry-After` 時等到回報過的 `ResetAt`。** 有多個 bucket 就等到最晚的那個，讓回報過的計數器都已歸零。`ResetAt` 也沒有，才用可設定的保守預設：行程旗標 `-rate-hold`，預設 1 分鐘。418 沒有 `Retry-After` 時同樣不送出，用同一個後備。
+- **不排隊、不重試。** 只送一次。
 
 ### D421 不快取
 
@@ -658,7 +662,7 @@ E3 開工前先定的介面、設計模式與技術棧。各交易所的實作�
   - 時間：`int64` 奈秒。adapter 只填交易所給的時間（`ExchTsNs`）；收到的時間由 worker 蓋。
   - enum：`exchange` 保留自己的 `Side`、`OrderType`、`TimeInForce`、`OrderStatus`（adapter 不依賴產生碼），數值與 `common.v1`、`td.v1` 逐一相同，worker 以型別轉換映射，`enums_test.go` 鎖住。
   - 錯誤：`Parse` 判讀交易所的回答：`*Reject`（明確拒絕）、`*RateLimited`、`ErrAuth`（簽名、權限、IP 白名單；不重試，告警）。沒有回答的由傳輸判定：請求可能已送出的是 `ErrUnknownOutcome`；`HTTPRequest.Mutates` 的請求（下單、撤單）遇到它，worker 查單或 recon，不當成被拒。`ErrUnsupported`、`ErrNotImplemented` 不變。
-  - 限速：每個 `HTTPRequest` 宣告它的 `Cost`；交易所在回應裡報的用量由 `Usage` 讀出；節流只在 worker。
+  - 限速：每個 `HTTPRequest` 宣告它的 `Cost`；交易所在回應裡報的用量由 `Usage(resp, now)` 讀出，`now` 是收到回應的時間。`Used.ResetAt` 是該計數器歸零的絕對時間（D420）。節流只在 worker。
   - `Account.Leverage` 回 float64（D008 的遺漏）。`Account.Snapshot` 是多個可分頁的 `Call`，worker 全部跑完再合併；`AsOfNs` 由 worker 在第一個請求送出前蓋。
 - SYM 讀的是 `exchange.Lister`（整個 category 讀到最後一頁）：真的 venue 是 `ListingOver(PublicREST, Doer, now)`，測試是 `exchangetest.Source`。`exchangetest.Source.REST()` 是它的 sans-I/O 面，`Source` 本身就是回應它的 `Doer`。`mftiko-sym` 以 `exchange/transport/fasthttp` 的 Doer 執行它；proxy 與 TLS roots 是這個行程的旗標。沒有 Doer 時 refresh 回 `ErrNoTransport`。
 

@@ -29,9 +29,12 @@ type Cost struct {
 }
 
 // Used is a bucket's usage as the venue reports it in a response (Binance X-MBX-USED-WEIGHT-1M).
+// ResetAt is the absolute time that counter returns to zero. The zero time means the venue did
+// not say when (D420).
 type Used struct {
-	Bucket string
-	N      int
+	Bucket  string
+	N       int
+	ResetAt time.Time
 }
 
 // HTTPRequest is one REST request, ready to send: the query is encoded and the request signed. Body is

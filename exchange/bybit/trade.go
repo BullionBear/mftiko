@@ -98,7 +98,7 @@ func (t *tradeStream) Decode(frame []byte, sink exchange.TradeSink) error {
 	if head.Op == "" {
 		return errors.New("bybit: trade frame has no op")
 	}
-	if u := usedHeader(head.Header.Limit, head.Header.Left); len(u) > 0 {
+	if u := usedHeader(head.Header.Limit, head.Header.Left, head.Header.Reset); len(u) > 0 {
 		sink.Used(u)
 	}
 	switch head.Op {
@@ -125,6 +125,7 @@ type tradeHead struct {
 	Header struct {
 		Limit string `json:"X-Bapi-Limit"`
 		Left  string `json:"X-Bapi-Limit-Status"`
+		Reset string `json:"X-Bapi-Limit-Reset-Timestamp"`
 		Now   string `json:"Timenow"`
 	} `json:"header"`
 }
@@ -168,7 +169,7 @@ func tradeAnswer(head tradeHead, frame []byte, sink exchange.TradeSink) error {
 	return nil
 }
 
-func usedHeader(limit, left string) []exchange.Used {
+func usedHeader(limit, left, reset string) []exchange.Used {
 	if limit == "" || left == "" {
 		return nil
 	}
@@ -177,5 +178,5 @@ func usedHeader(limit, left string) []exchange.Used {
 	if errL != nil || errS != nil || rem > lim {
 		return nil
 	}
-	return []exchange.Used{{Bucket: bucketEndpoint, N: lim - rem}}
+	return []exchange.Used{{Bucket: bucketEndpoint, N: lim - rem, ResetAt: resetMillis(reset)}}
 }

@@ -117,7 +117,7 @@ func (r *rest) OpenInterest(*symbol.Info) (exchange.Call[*exchange.OpenInterest]
 	return exchange.Call[*exchange.OpenInterest]{}, fmt.Errorf("okx: open interest is pushed on open-interest: %w", exchange.ErrUnsupported)
 }
 
-func (r *rest) Usage(*exchange.HTTPResponse) []exchange.Used { return nil }
+func (r *rest) Usage(*exchange.HTTPResponse, time.Time) []exchange.Used { return nil }
 
 func marketGet(path string, pairs []pair) exchange.HTTPRequest {
 	var q codec.Query

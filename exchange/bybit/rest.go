@@ -122,7 +122,9 @@ func (r *rest) OpenInterest(inst *symbol.Info) (exchange.Call[*exchange.OpenInte
 	return exchange.Call[*exchange.OpenInterest]{}, exchange.ErrUnsupported
 }
 
-func (r *rest) Usage(resp *exchange.HTTPResponse) []exchange.Used { return usedFrom(resp) }
+func (r *rest) Usage(resp *exchange.HTTPResponse, now time.Time) []exchange.Used {
+	return usedFrom(resp, now)
+}
 
 func marketGet(path string, pairs []pair) exchange.HTTPRequest {
 	var q codec.Query

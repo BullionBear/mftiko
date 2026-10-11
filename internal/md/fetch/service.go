@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
@@ -36,20 +37,31 @@ const (
 	// published reply is accepted (D419). A larger reply is invalid rather
 	// than sent.
 	maxReplyBytes = 1<<20 - 1
+
+	// DefaultRateHold is how long a venue stays closed after a 429 or 418 that
+	// carries neither Retry-After nor a bucket ResetAt (D420).
+	DefaultRateHold = time.Minute
 )
 
 // Subject is the request subject for one venue.
 func Subject(venue string) string { return SubjectPrefix + venue }
 
 // Options tunes New. The zero RateLimit does not refuse early (D420). A venue
-// that answers *RateLimited is still rate_limited.
+// that answers *RateLimited is still rate_limited, and stays closed until the
+// venue's reset time.
 type Options struct {
 	Log zerolog.Logger
 	// RateLimit is the reported usage at which the next call to that venue is
 	// refused. Usage is the exchange's number (PublicREST.Usage), which already
 	// includes every other client on the same IP, including a conn worker on
-	// this host. Zero disables the pre-check. Negative is rejected.
+	// this host. Zero disables the pre-check. Negative is rejected. A bucket
+	// stops counting at its ResetAt.
 	RateLimit int
+	// RateHold is the fallback wait after a 429 or 418 that has no Retry-After
+	// and no ResetAt. Zero uses DefaultRateHold. Negative is rejected.
+	RateHold time.Duration
+	// Now is the clock. Nil uses time.Now. Tests pass a fake.
+	Now func() time.Time
 }
 
 // Service answers md.fetch.{venue} for the venues it was built with.
@@ -59,10 +71,20 @@ type Service struct {
 	res    symbol.Resolver
 	doer   exchange.Doer
 	limit  int
+	hold   time.Duration
+	now    func() time.Time
 	log    zerolog.Logger
 
 	mu   sync.Mutex
-	used map[string]map[string]int
+	used map[string]map[string]sample
+	ban  map[string]time.Time
+}
+
+// sample is one bucket's last reported count and when it returns to zero.
+// A zero resetAt does not expire.
+type sample struct {
+	n       int
+	resetAt time.Time
 }
 
 // New serves venues, in that order, through res and doer. res is the active
@@ -77,16 +99,30 @@ func New(venues []Venue, res symbol.Resolver, doer exchange.Doer, opt Options) (
 	if opt.RateLimit < 0 {
 		return nil, errors.New("fetch: negative rate limit")
 	}
+	hold := opt.RateHold
+	if hold == 0 {
+		hold = DefaultRateHold
+	}
+	if hold < 0 {
+		return nil, errors.New("fetch: negative rate hold")
+	}
 	if len(venues) == 0 {
 		return nil, errors.New("fetch: no venues")
+	}
+	now := opt.Now
+	if now == nil {
+		now = time.Now
 	}
 	s := &Service{
 		venues: map[string]exchange.PublicREST{},
 		res:    res,
 		doer:   doer,
 		limit:  opt.RateLimit,
+		hold:   hold,
+		now:    now,
 		log:    opt.Log,
-		used:   map[string]map[string]int{},
+		used:   map[string]map[string]sample{},
+		ban:    map[string]time.Time{},
 	}
 	seen := map[string]struct{}{}
 	for _, v := range venues {
@@ -376,9 +412,11 @@ func (e *limited) Error() string {
 	return e.reason
 }
 
-// callOne sends one Call. It refuses first when this venue's reported usage
-// is already at the threshold, and records Usage from the response even when
-// Parse fails. It does not retry.
+// callOne sends one Call. It refuses first when this venue is held or a bucket
+// that has not yet reset is already at the threshold, and records Usage from
+// the response even when Parse fails. A 429 or 418 holds the venue until
+// Retry-After, or until ResetAt, and sends nothing in between. It does not
+// retry and it does not probe.
 func callOne[T any](ctx context.Context, s *Service, venue string, rest exchange.PublicREST, c exchange.Call[T]) (T, error) {
 	var zero T
 	if reason, ok := s.over(venue); ok {
@@ -389,10 +427,12 @@ func callOne[T any](ctx context.Context, s *Service, venue string, rest exchange
 	}
 	parse := c.Parse
 	c.Parse = func(resp *exchange.HTTPResponse) (T, error) {
-		s.record(venue, rest.Usage(resp))
+		s.record(venue, rest.Usage(resp, s.now()))
 		return parse(resp)
 	}
-	return exchange.Run(ctx, s.doer, c)
+	out, err := exchange.Run(ctx, s.doer, c)
+	s.arm(venue, err)
+	return out, err
 }
 
 func (s *Service) record(venue string, used []exchange.Used) {
@@ -403,26 +443,76 @@ func (s *Service) record(venue string, used []exchange.Used) {
 	defer s.mu.Unlock()
 	m := s.used[venue]
 	if m == nil {
-		m = map[string]int{}
+		m = map[string]sample{}
 		s.used[venue] = m
 	}
 	for _, u := range used {
 		if u.Bucket == "" {
 			continue
 		}
-		m[u.Bucket] = u.N
+		m[u.Bucket] = sample{n: u.N, resetAt: u.ResetAt}
 	}
 }
 
-func (s *Service) over(venue string) (string, bool) {
-	if s.limit <= 0 {
-		return "", false
+// arm closes the venue after a 429 or 418. Retry-After wins. Without it, the
+// hold lasts until the latest reported ResetAt. With neither, it lasts RateHold.
+// Nothing is sent until that time, including after a 418.
+func (s *Service) arm(venue string, err error) {
+	var rl *exchange.RateLimited
+	if !errors.As(err, &rl) || rl == nil {
+		return
+	}
+	now := s.now()
+	until := time.Time{}
+	fromRetry := false
+	if rl.RetryAfterMs > 0 {
+		until = now.Add(time.Duration(rl.RetryAfterMs) * time.Millisecond)
+		fromRetry = true
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for bucket, n := range s.used[venue] {
-		if n >= s.limit {
-			return fmt.Sprintf("bucket %q used %d has reached the threshold %d", bucket, n, s.limit), true
+	if !fromRetry {
+		var saw bool
+		for _, sample := range s.used[venue] {
+			if sample.resetAt.IsZero() {
+				continue
+			}
+			saw = true
+			if sample.resetAt.After(until) {
+				until = sample.resetAt
+			}
+		}
+		if !saw {
+			until = now.Add(s.hold)
+		}
+	}
+	if prev, ok := s.ban[venue]; ok && !until.After(prev) {
+		return
+	}
+	s.ban[venue] = until
+}
+
+func (s *Service) over(venue string) (string, bool) {
+	now := s.now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if until, ok := s.ban[venue]; ok {
+		if now.Before(until) {
+			return fmt.Sprintf("venue is held until %s", until.UTC().Format(time.RFC3339Nano)), true
+		}
+		delete(s.ban, venue)
+	}
+	if s.limit <= 0 {
+		return "", false
+	}
+	m := s.used[venue]
+	for bucket, sample := range m {
+		if !sample.resetAt.IsZero() && !now.Before(sample.resetAt) {
+			delete(m, bucket)
+			continue
+		}
+		if sample.n >= s.limit {
+			return fmt.Sprintf("bucket %q used %d has reached the threshold %d", bucket, sample.n, s.limit), true
 		}
 	}
 	return "", false

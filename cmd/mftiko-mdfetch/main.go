@@ -49,13 +49,14 @@ func main() {
 	roots := flag.String("tls-roots", "", "PEM file of TLS roots for venue connections; empty uses the system roots")
 	timeout := flag.Duration("http-timeout", defaultHTTPTimeout, "bound on one venue HTTP request whose context has no deadline")
 	rate := flag.Int("rate-limit", 0, "refuse a venue call when its reported usage reaches this count; 0 disables the pre-check")
+	hold := flag.Duration("rate-hold", fetch.DefaultRateHold, "how long to hold a venue after a 429 or 418 that has no Retry-After and no reset time")
 	flag.Parse()
 	if *version {
 		fmt.Println(buildinfo.String())
 		return
 	}
 	log := logger.New("mftiko-mdfetch")
-	if err := run(*natsURL, *creds, *venues, *proxy, *roots, *timeout, *rate, log); err != nil {
+	if err := run(*natsURL, *creds, *venues, *proxy, *roots, *timeout, *rate, *hold, log); err != nil {
 		log.Error().Err(err).Msg("exit")
 		os.Exit(1)
 	}
@@ -68,7 +69,7 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-func run(natsURL, creds, venues, proxy, roots string, timeout time.Duration, rate int, log zerolog.Logger) error {
+func run(natsURL, creds, venues, proxy, roots string, timeout time.Duration, rate int, hold time.Duration, log zerolog.Logger) error {
 	if natsURL == "" {
 		return errors.New("nats URL is empty")
 	}
@@ -115,14 +116,14 @@ func run(natsURL, creds, venues, proxy, roots string, timeout time.Duration, rat
 	}
 	defer remote.Close()
 
-	svc, err := fetch.New(selected, remote, doer, fetch.Options{Log: log, RateLimit: rate})
+	svc, err := fetch.New(selected, remote, doer, fetch.Options{Log: log, RateLimit: rate, RateHold: hold})
 	if err != nil {
 		return err
 	}
 	if _, err := svc.Serve(ctx, nc); err != nil {
 		return err
 	}
-	log.Info().Strs("venues", names).Int("rate_limit", rate).Msg("serving md.fetch")
+	log.Info().Strs("venues", names).Int("rate_limit", rate).Dur("rate_hold", hold).Msg("serving md.fetch")
 	<-ctx.Done()
 	return nil
 }

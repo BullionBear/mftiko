@@ -395,7 +395,7 @@ func (rest) KlinePage() int { return 0 }
 func (rest) OpenInterest(*symbol.Info) (exchange.Call[*exchange.OpenInterest], error) {
 	return exchange.Call[*exchange.OpenInterest]{}, exchange.ErrUnsupported
 }
-func (rest) Usage(resp *exchange.HTTPResponse) []exchange.Used {
+func (rest) Usage(resp *exchange.HTTPResponse, _ time.Time) []exchange.Used {
 	if n, err := strconv.Atoi(resp.Get("X-Used-Weight")); err == nil {
 		return []exchange.Used{{Bucket: "weight", N: n}}
 	}
@@ -490,7 +490,7 @@ func (a *account) NewStream() (exchange.PrivateStream, error) { return &stream{c
 func (a *account) NewTradeStream() (exchange.TradeStream, error) {
 	return &trade{c: a.c, f: a.f}, nil
 }
-func (a *account) Usage(*exchange.HTTPResponse) []exchange.Used { return nil }
+func (a *account) Usage(*exchange.HTTPResponse, time.Time) []exchange.Used { return nil }
 
 type stream struct{ c exchange.Credentials }
 
@@ -592,7 +592,7 @@ func (h history) Fills(now time.Time, q exchange.FillQuery) (exchange.Call[*exch
 func (h history) Order(time.Time, *symbol.Info, string) (exchange.Call[*exchange.OrderUpdate], error) {
 	return exchange.Call[*exchange.OrderUpdate]{}, exchange.ErrUnsupported
 }
-func (h history) Usage(*exchange.HTTPResponse) []exchange.Used { return nil }
+func (h history) Usage(*exchange.HTTPResponse, time.Time) []exchange.Used { return nil }
 
 // --- trade stream (D303): a WebSocket API that also carries the account's events ---
 
