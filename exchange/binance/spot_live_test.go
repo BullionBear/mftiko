@@ -92,7 +92,7 @@ func TestBinanceSpotPrivate(t *testing.T) {
 	h.note("FOK below the bid expired")
 
 	resting := h.order(exchange.SideBuy, exchange.OrderTypeLimit, exchange.TIFGTC, qty, rest, false)
-	h.place(resting, exchange.OrderStatusNew)
+	h.place(resting, exchange.OrderStatusAccepted)
 	held := h.snap()
 	_, lockedNow, _ := usdt(held)
 	if lockedNow < locked+rest*qty-0.01 {
@@ -108,7 +108,7 @@ func TestBinanceSpotPrivate(t *testing.T) {
 	h.note("cancel released the lock")
 
 	maker := h.order(exchange.SideBuy, exchange.OrderTypeLimit, exchange.TIFPostOnly, qty, rest, false)
-	h.place(maker, exchange.OrderStatusNew)
+	h.place(maker, exchange.OrderStatusAccepted)
 	h.cancel(maker.ClientOrderID)
 	h.note("post-only rested and was canceled")
 

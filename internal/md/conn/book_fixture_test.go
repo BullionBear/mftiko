@@ -186,7 +186,9 @@ func parseDepth(t *testing.T, rest exchange.PublicREST, resp *exchange.HTTPRespo
 	return u
 }
 
-func startFixtureBook(t *testing.T, venue, route, ch, exch string, tick float64, m exchange.Market, rest exchange.PublicREST, depth uint32, steps []doerStep) *bookEnv {
+// startFixtureBook builds a Conn with one book atom and starts syncBooks. Each before func runs on the Conn
+// before that goroutine starts, so a test that swaps the clock does not race with it.
+func startFixtureBook(t *testing.T, venue, route, ch, exch string, tick float64, m exchange.Market, rest exchange.PublicREST, depth uint32, steps []doerStep, before ...func(*Conn)) *bookEnv {
 	t.Helper()
 	doer := &seqDoer{hit: make(chan int, 8), steps: steps}
 	rec := newRecorder()
@@ -213,6 +215,9 @@ func startFixtureBook(t *testing.T, venue, route, ch, exch string, tick float64,
 	c.epoch = 4
 	c.live = newLink(sess)
 	c.mu.Unlock()
+	for _, f := range before {
+		f(c)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {

@@ -24,19 +24,21 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// 一張單在交易所那一側的狀態（D610）。出現在 OrderUpdate 與快照的 Order 裡。
+// 撤單在途不是狀態，是 Order.cancel_sent_ns。PENDING_NEW 是 TD 自己的標記，adapter 不產生它。
 type OrderStatus int32
 
 const (
 	OrderStatus_ORDER_STATUS_UNSPECIFIED      OrderStatus = 0
-	OrderStatus_ORDER_STATUS_PENDING_NEW      OrderStatus = 1
-	OrderStatus_ORDER_STATUS_NEW              OrderStatus = 2
-	OrderStatus_ORDER_STATUS_PARTIALLY_FILLED OrderStatus = 3
-	OrderStatus_ORDER_STATUS_FILLED           OrderStatus = 4
-	OrderStatus_ORDER_STATUS_PENDING_CANCEL   OrderStatus = 5
+	OrderStatus_ORDER_STATUS_PENDING_NEW      OrderStatus = 1 // TD 已送出下單，交易所還沒回答
+	OrderStatus_ORDER_STATUS_NEW              OrderStatus = 2 // 交易所收到請求，當下沒有拒絕；還沒上簿，之後仍可能被拒
+	OrderStatus_ORDER_STATUS_ACCEPTED         OrderStatus = 3 // 在訂單簿上，還沒有成交。回覆本身就代表上簿的交易所（Binance）從 PENDING_NEW 直接到這裡
+	OrderStatus_ORDER_STATUS_PARTIALLY_FILLED OrderStatus = 4 // 部分成交；GTC 的剩餘仍在簿上
+	OrderStatus_ORDER_STATUS_FILLED           OrderStatus = 5
 	OrderStatus_ORDER_STATUS_CANCELLED        OrderStatus = 6
-	OrderStatus_ORDER_STATUS_REJECTED         OrderStatus = 7
-	OrderStatus_ORDER_STATUS_EXPIRED          OrderStatus = 8
-	OrderStatus_ORDER_STATUS_UNKNOWN          OrderStatus = 9
+	OrderStatus_ORDER_STATUS_REJECTED         OrderStatus = 7 // 交易所拒單（同步或非同步），或查單後確定沒下成（REJECT_CODE_NOT_PLACED）
+	OrderStatus_ORDER_STATUS_EXPIRED          OrderStatus = 8 // 交易所讓它過期，例如 IOC、FOK 沒成交的部分
+	OrderStatus_ORDER_STATUS_UNKNOWN          OrderStatus = 9 // 下單送出但交易所沒有回答，worker 查單之後收斂（D605）
 )
 
 // Enum value maps for OrderStatus.
@@ -45,9 +47,9 @@ var (
 		0: "ORDER_STATUS_UNSPECIFIED",
 		1: "ORDER_STATUS_PENDING_NEW",
 		2: "ORDER_STATUS_NEW",
-		3: "ORDER_STATUS_PARTIALLY_FILLED",
-		4: "ORDER_STATUS_FILLED",
-		5: "ORDER_STATUS_PENDING_CANCEL",
+		3: "ORDER_STATUS_ACCEPTED",
+		4: "ORDER_STATUS_PARTIALLY_FILLED",
+		5: "ORDER_STATUS_FILLED",
 		6: "ORDER_STATUS_CANCELLED",
 		7: "ORDER_STATUS_REJECTED",
 		8: "ORDER_STATUS_EXPIRED",
@@ -57,9 +59,9 @@ var (
 		"ORDER_STATUS_UNSPECIFIED":      0,
 		"ORDER_STATUS_PENDING_NEW":      1,
 		"ORDER_STATUS_NEW":              2,
-		"ORDER_STATUS_PARTIALLY_FILLED": 3,
-		"ORDER_STATUS_FILLED":           4,
-		"ORDER_STATUS_PENDING_CANCEL":   5,
+		"ORDER_STATUS_ACCEPTED":         3,
+		"ORDER_STATUS_PARTIALLY_FILLED": 4,
+		"ORDER_STATUS_FILLED":           5,
 		"ORDER_STATUS_CANCELLED":        6,
 		"ORDER_STATUS_REJECTED":         7,
 		"ORDER_STATUS_EXPIRED":          8,
@@ -94,12 +96,214 @@ func (OrderStatus) EnumDescriptor() ([]byte, []int) {
 	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{0}
 }
 
+// 1xx 的名字（D610、PROTOCOL §7.2）。代碼欄位是 int32，因為它也帶 2xx 與交易所原生代碼；這個 enum 只替 1xx 取名。
+// 101–119 是本地拒絕，什麼都沒送出，只出現在 td.order 的回覆；120 起是送出之後確定沒下成，只出現在 OrderUpdate。
+// 只列一期會碰到、有票驗收的；之後碰到新的情況再加。
+type RejectCode int32
+
+const (
+	RejectCode_REJECT_CODE_UNSPECIFIED        RejectCode = 0
+	RejectCode_REJECT_CODE_ACCOUNT_OFFLINE    RejectCode = 101 // td.order 沒有 responder：account worker 不在，或還沒完成 Start。由 SDK 產生
+	RejectCode_REJECT_CODE_ACCOUNT_DEGRADED   RejectCode = 102 // 私有連線斷線中，暫停收新單；撤單照常（D603）
+	RejectCode_REJECT_CODE_HEDGE_MODE         RejectCode = 103 // 執行中發現帳號是雙向持倉，或 params 帶了持倉方向鍵（D607）
+	RejectCode_REJECT_CODE_ALGO_MISMATCH      RejectCode = 104 // algo_id 與 client_order_id 的 algo 欄位不一致，或撤的單沒有 client_order_id（D602）
+	RejectCode_REJECT_CODE_VENUE_NOT_TRADABLE RejectCode = 105 // 帳號種類不能交易這個商品的 venue（D301）
+	RejectCode_REJECT_CODE_INVALID_ORDER      RejectCode = 106 // 商品不存在或不是 TRADABLE；數量或價格不合商品規格（tick、step、上下限）；client_order_id 解不開
+	RejectCode_REJECT_CODE_ORDER_NOT_OPEN     RejectCode = 107 // 撤單的目標不是掛單：TD 不認得這張單，或它已經終結（例如撤單與成交擦身而過）
+	RejectCode_REJECT_CODE_RATE_LIMITED       RejectCode = 108 // 這個帳號的下單額度用完，或交易所以 429、418 要求停送（D609、D420）。不排隊、不重試
+	RejectCode_REJECT_CODE_NOT_PLACED         RejectCode = 120 // 主動查單後確定交易所沒有這張單（D605）
+)
+
+// Enum value maps for RejectCode.
+var (
+	RejectCode_name = map[int32]string{
+		0:   "REJECT_CODE_UNSPECIFIED",
+		101: "REJECT_CODE_ACCOUNT_OFFLINE",
+		102: "REJECT_CODE_ACCOUNT_DEGRADED",
+		103: "REJECT_CODE_HEDGE_MODE",
+		104: "REJECT_CODE_ALGO_MISMATCH",
+		105: "REJECT_CODE_VENUE_NOT_TRADABLE",
+		106: "REJECT_CODE_INVALID_ORDER",
+		107: "REJECT_CODE_ORDER_NOT_OPEN",
+		108: "REJECT_CODE_RATE_LIMITED",
+		120: "REJECT_CODE_NOT_PLACED",
+	}
+	RejectCode_value = map[string]int32{
+		"REJECT_CODE_UNSPECIFIED":        0,
+		"REJECT_CODE_ACCOUNT_OFFLINE":    101,
+		"REJECT_CODE_ACCOUNT_DEGRADED":   102,
+		"REJECT_CODE_HEDGE_MODE":         103,
+		"REJECT_CODE_ALGO_MISMATCH":      104,
+		"REJECT_CODE_VENUE_NOT_TRADABLE": 105,
+		"REJECT_CODE_INVALID_ORDER":      106,
+		"REJECT_CODE_ORDER_NOT_OPEN":     107,
+		"REJECT_CODE_RATE_LIMITED":       108,
+		"REJECT_CODE_NOT_PLACED":         120,
+	}
+)
+
+func (x RejectCode) Enum() *RejectCode {
+	p := new(RejectCode)
+	*p = x
+	return p
+}
+
+func (x RejectCode) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RejectCode) Descriptor() protoreflect.EnumDescriptor {
+	return file_mftiko_td_v1_td_proto_enumTypes[1].Descriptor()
+}
+
+func (RejectCode) Type() protoreflect.EnumType {
+	return &file_mftiko_td_v1_td_proto_enumTypes[1]
+}
+
+func (x RejectCode) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RejectCode.Descriptor instead.
+func (RejectCode) EnumDescriptor() ([]byte, []int) {
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{1}
+}
+
+// account worker 的狀態（D603、D606）。td.view 的回覆與 tdctl.Report 都帶它。
+type AccountState int32
+
+const (
+	AccountState_ACCOUNT_STATE_UNSPECIFIED AccountState = 0
+	AccountState_ACCOUNT_STATE_READY       AccountState = 1
+	AccountState_ACCOUNT_STATE_DEGRADED    AccountState = 2 // 私有 websocket 斷線：新單以 102 拒絕，撤單照常（D603）
+	AccountState_ACCOUNT_STATE_UNAVAILABLE AccountState = 3 // 執行中發現雙向持倉：新單以 103 拒絕，撤單照常（D607）
+)
+
+// Enum value maps for AccountState.
+var (
+	AccountState_name = map[int32]string{
+		0: "ACCOUNT_STATE_UNSPECIFIED",
+		1: "ACCOUNT_STATE_READY",
+		2: "ACCOUNT_STATE_DEGRADED",
+		3: "ACCOUNT_STATE_UNAVAILABLE",
+	}
+	AccountState_value = map[string]int32{
+		"ACCOUNT_STATE_UNSPECIFIED": 0,
+		"ACCOUNT_STATE_READY":       1,
+		"ACCOUNT_STATE_DEGRADED":    2,
+		"ACCOUNT_STATE_UNAVAILABLE": 3,
+	}
+)
+
+func (x AccountState) Enum() *AccountState {
+	p := new(AccountState)
+	*p = x
+	return p
+}
+
+func (x AccountState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (AccountState) Descriptor() protoreflect.EnumDescriptor {
+	return file_mftiko_td_v1_td_proto_enumTypes[2].Descriptor()
+}
+
+func (AccountState) Type() protoreflect.EnumType {
+	return &file_mftiko_td_v1_td_proto_enumTypes[2]
+}
+
+func (x AccountState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use AccountState.Descriptor instead.
+func (AccountState) EnumDescriptor() ([]byte, []int) {
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{2}
+}
+
+type OrderCause int32
+
+const (
+	OrderCause_ORDER_CAUSE_UNSPECIFIED      OrderCause = 0
+	OrderCause_ORDER_CAUSE_SUBMITTED        OrderCause = 1  // TD 送出下單 → PENDING_NEW
+	OrderCause_ORDER_CAUSE_ACKNOWLEDGED     OrderCause = 2  // 交易所收到，當下沒有拒絕 → NEW
+	OrderCause_ORDER_CAUSE_ACCEPTED         OrderCause = 3  // 上簿 → ACCEPTED
+	OrderCause_ORDER_CAUSE_FILLED           OrderCause = 4  // 成交 → PARTIALLY_FILLED 或 FILLED；明細在 Fill
+	OrderCause_ORDER_CAUSE_CANCEL_REQUESTED OrderCause = 5  // TD 送出撤單：設定 cancel_sent_ns，status 不變
+	OrderCause_ORDER_CAUSE_CANCELLED        OrderCause = 6  // → CANCELLED：策略撤的、BatchCancel、交易所撤的都是
+	OrderCause_ORDER_CAUSE_CANCEL_REJECTED  OrderCause = 7  // 撤單被拒：清掉 cancel_sent_ns，status 不變
+	OrderCause_ORDER_CAUSE_REJECTED         OrderCause = 8  // → REJECTED
+	OrderCause_ORDER_CAUSE_EXPIRED          OrderCause = 9  // → EXPIRED
+	OrderCause_ORDER_CAUSE_OUTCOME_UNKNOWN  OrderCause = 10 // 下單送出但交易所沒有回答 → UNKNOWN。撤單沒有回答時 cancel_sent_ns 保留，同樣由 worker 查單收斂（D605）
+	OrderCause_ORDER_CAUSE_RECONCILED       OrderCause = 11 // recon 或主動查單之後，交易所的狀態和 TD 原本記的不同（D605）
+)
+
+// Enum value maps for OrderCause.
+var (
+	OrderCause_name = map[int32]string{
+		0:  "ORDER_CAUSE_UNSPECIFIED",
+		1:  "ORDER_CAUSE_SUBMITTED",
+		2:  "ORDER_CAUSE_ACKNOWLEDGED",
+		3:  "ORDER_CAUSE_ACCEPTED",
+		4:  "ORDER_CAUSE_FILLED",
+		5:  "ORDER_CAUSE_CANCEL_REQUESTED",
+		6:  "ORDER_CAUSE_CANCELLED",
+		7:  "ORDER_CAUSE_CANCEL_REJECTED",
+		8:  "ORDER_CAUSE_REJECTED",
+		9:  "ORDER_CAUSE_EXPIRED",
+		10: "ORDER_CAUSE_OUTCOME_UNKNOWN",
+		11: "ORDER_CAUSE_RECONCILED",
+	}
+	OrderCause_value = map[string]int32{
+		"ORDER_CAUSE_UNSPECIFIED":      0,
+		"ORDER_CAUSE_SUBMITTED":        1,
+		"ORDER_CAUSE_ACKNOWLEDGED":     2,
+		"ORDER_CAUSE_ACCEPTED":         3,
+		"ORDER_CAUSE_FILLED":           4,
+		"ORDER_CAUSE_CANCEL_REQUESTED": 5,
+		"ORDER_CAUSE_CANCELLED":        6,
+		"ORDER_CAUSE_CANCEL_REJECTED":  7,
+		"ORDER_CAUSE_REJECTED":         8,
+		"ORDER_CAUSE_EXPIRED":          9,
+		"ORDER_CAUSE_OUTCOME_UNKNOWN":  10,
+		"ORDER_CAUSE_RECONCILED":       11,
+	}
+)
+
+func (x OrderCause) Enum() *OrderCause {
+	p := new(OrderCause)
+	*p = x
+	return p
+}
+
+func (x OrderCause) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (OrderCause) Descriptor() protoreflect.EnumDescriptor {
+	return file_mftiko_td_v1_td_proto_enumTypes[3].Descriptor()
+}
+
+func (OrderCause) Type() protoreflect.EnumType {
+	return &file_mftiko_td_v1_td_proto_enumTypes[3]
+}
+
+func (x OrderCause) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use OrderCause.Descriptor instead.
+func (OrderCause) EnumDescriptor() ([]byte, []int) {
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{3}
+}
+
 type ReconReason int32
 
 const (
 	ReconReason_RECON_REASON_UNSPECIFIED ReconReason = 0
 	ReconReason_RECON_REASON_RECONNECT   ReconReason = 1 // 私有 websocket 重連並 recon 之後
-	ReconReason_RECON_REASON_INCARNATION ReconReason = 2 // account worker 換了 incarnation
+	ReconReason_RECON_REASON_INCARNATION ReconReason = 2 // account worker 換了 incarnation：被重新拉起之後的第一次 recon（D604）
 )
 
 // Enum value maps for ReconReason.
@@ -127,11 +331,11 @@ func (x ReconReason) String() string {
 }
 
 func (ReconReason) Descriptor() protoreflect.EnumDescriptor {
-	return file_mftiko_td_v1_td_proto_enumTypes[1].Descriptor()
+	return file_mftiko_td_v1_td_proto_enumTypes[4].Descriptor()
 }
 
 func (ReconReason) Type() protoreflect.EnumType {
-	return &file_mftiko_td_v1_td_proto_enumTypes[1]
+	return &file_mftiko_td_v1_td_proto_enumTypes[4]
 }
 
 func (x ReconReason) Number() protoreflect.EnumNumber {
@@ -140,7 +344,7 @@ func (x ReconReason) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ReconReason.Descriptor instead.
 func (ReconReason) EnumDescriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{1}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{4}
 }
 
 type OrderRequest struct {
@@ -243,8 +447,8 @@ func (*OrderRequest_BatchCancel) isOrderRequest_Req() {}
 
 type Submit struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	Ticker        string                 `protobuf:"bytes,2,opt,name=ticker,proto3" json:"ticker,omitempty"` // 今天是 UniversalTicker。平面之間改傳 UID 是後續（D203），這一版不改 td 的欄位
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"` // 只給 log 與歸屬
+	Uid           uint32                 `protobuf:"varint,2,opt,name=uid,proto3" json:"uid,omitempty"`                             // 商品（D203）
 	Side          v1.Side                `protobuf:"varint,3,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"`
 	OrderType     v1.OrderType           `protobuf:"varint,4,opt,name=order_type,json=orderType,proto3,enum=mftiko.common.v1.OrderType" json:"order_type,omitempty"`
 	Qty           *float64               `protobuf:"fixed64,5,opt,name=qty,proto3,oneof" json:"qty,omitempty"`                           // 單位是 contract_value_ccy（D203）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數
@@ -253,8 +457,9 @@ type Submit struct {
 	Tif           v1.TimeInForce         `protobuf:"varint,8,opt,name=tif,proto3,enum=mftiko.common.v1.TimeInForce" json:"tif,omitempty"`
 	ReduceOnly    bool                   `protobuf:"varint,9,opt,name=reduce_only,json=reduceOnly,proto3" json:"reduce_only,omitempty"`
 	ClientOrderId string                 `protobuf:"bytes,10,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
-	Params        map[string]string      `protobuf:"bytes,11,rep,name=params,proto3" json:"params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	AlgoId        uint32                 `protobuf:"varint,12,opt,name=algo_id,json=algoId,proto3" json:"algo_id,omitempty"` // 必須等於 client_order_id 的 algo 欄位（D602）
+	// 交易所特有的參數，原樣交給 adapter。positionSide、posSide、positionIdx 一律以 103 拒絕（D607）
+	Params        map[string]string `protobuf:"bytes,11,rep,name=params,proto3" json:"params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	AlgoId        uint32            `protobuf:"varint,12,opt,name=algo_id,json=algoId,proto3" json:"algo_id,omitempty"` // 必須等於 client_order_id 的 algo 欄位（D602）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -296,11 +501,11 @@ func (x *Submit) GetSessionId() string {
 	return ""
 }
 
-func (x *Submit) GetTicker() string {
+func (x *Submit) GetUid() uint32 {
 	if x != nil {
-		return x.Ticker
+		return x.Uid
 	}
-	return ""
+	return 0
 }
 
 func (x *Submit) GetSide() v1.Side {
@@ -375,11 +580,11 @@ func (x *Submit) GetAlgoId() uint32 {
 
 type Cancel struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	Ticker        string                 `protobuf:"bytes,2,opt,name=ticker,proto3" json:"ticker,omitempty"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"` // 只給 log 與歸屬
+	Uid           uint32                 `protobuf:"varint,2,opt,name=uid,proto3" json:"uid,omitempty"`
 	ClientOrderId string                 `protobuf:"bytes,3,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
 	OrderId       string                 `protobuf:"bytes,4,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
-	AlgoId        uint32                 `protobuf:"varint,5,opt,name=algo_id,json=algoId,proto3" json:"algo_id,omitempty"` // 目標單的 client_order_id 的 algo 欄位必須等於它；沒有 client_order_id 的單一律拒絕（D602）
+	AlgoId        uint32                 `protobuf:"varint,5,opt,name=algo_id,json=algoId,proto3" json:"algo_id,omitempty"` // 目標單的 client_order_id 的 algo 欄位必須等於它；沒有 client_order_id 的單一律以 104 拒絕（D602）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -421,11 +626,11 @@ func (x *Cancel) GetSessionId() string {
 	return ""
 }
 
-func (x *Cancel) GetTicker() string {
+func (x *Cancel) GetUid() uint32 {
 	if x != nil {
-		return x.Ticker
+		return x.Uid
 	}
-	return ""
+	return 0
 }
 
 func (x *Cancel) GetClientOrderId() string {
@@ -451,11 +656,11 @@ func (x *Cancel) GetAlgoId() uint32 {
 
 // 撤掉這個帳號上 client_order_id 的 algo 欄位等於 algo_id 的所有掛單（D602）。
 // 只看 algo 欄位，不分 session、incarnation：上一個進程或上一個 session 留下的也算。
+// 回覆只說 TD 收下了；每一張單撤成或撤不成，各自是一則 OrderUpdate（D610）。
 type BatchCancel struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AlgoId        uint32                 `protobuf:"varint,1,opt,name=algo_id,json=algoId,proto3" json:"algo_id,omitempty"`
-	Tickers       []string               `protobuf:"bytes,2,rep,name=tickers,proto3" json:"tickers,omitempty"` // 空 = 全部商品
-	TimeoutMs     uint32                 `protobuf:"varint,3,opt,name=timeout_ms,json=timeoutMs,proto3" json:"timeout_ms,omitempty"`
+	Uids          []uint32               `protobuf:"varint,2,rep,packed,name=uids,proto3" json:"uids,omitempty"` // 空 = 全部商品
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -497,28 +702,20 @@ func (x *BatchCancel) GetAlgoId() uint32 {
 	return 0
 }
 
-func (x *BatchCancel) GetTickers() []string {
+func (x *BatchCancel) GetUids() []uint32 {
 	if x != nil {
-		return x.Tickers
+		return x.Uids
 	}
 	return nil
 }
 
-func (x *BatchCancel) GetTimeoutMs() uint32 {
-	if x != nil {
-		return x.TimeoutMs
-	}
-	return 0
-}
-
+// td.order 的回覆（D610）。
 type OrderReply struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Reply:
-	//
-	//	*OrderReply_Ack
-	//	*OrderReply_Error
-	//	*OrderReply_BatchCancel
-	Reply         isOrderReply_Reply `protobuf_oneof:"reply"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Accepted      bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"` // 真：TD 收下了，接著送往交易所。假：本地拒絕，什麼都沒送出
+	Code          int32                  `protobuf:"varint,2,opt,name=code,proto3" json:"code,omitempty"`         // accepted 為假時是 1xx（RejectCode）
+	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	ClientOrderId string                 `protobuf:"bytes,4,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"` // Submit、Cancel 的 client_order_id；BatchCancel 是空的
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -553,196 +750,32 @@ func (*OrderReply) Descriptor() ([]byte, []int) {
 	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *OrderReply) GetReply() isOrderReply_Reply {
-	if x != nil {
-		return x.Reply
-	}
-	return nil
-}
-
-func (x *OrderReply) GetAck() *OrderAck {
-	if x != nil {
-		if x, ok := x.Reply.(*OrderReply_Ack); ok {
-			return x.Ack
-		}
-	}
-	return nil
-}
-
-func (x *OrderReply) GetError() *v1.Error {
-	if x != nil {
-		if x, ok := x.Reply.(*OrderReply_Error); ok {
-			return x.Error
-		}
-	}
-	return nil
-}
-
-func (x *OrderReply) GetBatchCancel() *BatchCancelResult {
-	if x != nil {
-		if x, ok := x.Reply.(*OrderReply_BatchCancel); ok {
-			return x.BatchCancel
-		}
-	}
-	return nil
-}
-
-type isOrderReply_Reply interface {
-	isOrderReply_Reply()
-}
-
-type OrderReply_Ack struct {
-	Ack *OrderAck `protobuf:"bytes,1,opt,name=ack,proto3,oneof"`
-}
-
-type OrderReply_Error struct {
-	Error *v1.Error `protobuf:"bytes,3,opt,name=error,proto3,oneof"`
-}
-
-type OrderReply_BatchCancel struct {
-	BatchCancel *BatchCancelResult `protobuf:"bytes,4,opt,name=batch_cancel,json=batchCancel,proto3,oneof"`
-}
-
-func (*OrderReply_Ack) isOrderReply_Reply() {}
-
-func (*OrderReply_Error) isOrderReply_Reply() {}
-
-func (*OrderReply_BatchCancel) isOrderReply_Reply() {}
-
-type OrderAck struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ClientOrderId string                 `protobuf:"bytes,1,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
-	Accepted      bool                   `protobuf:"varint,2,opt,name=accepted,proto3" json:"accepted,omitempty"` // TD 收下了請求，不代表交易所接受
-	Code          int32                  `protobuf:"varint,3,opt,name=code,proto3" json:"code,omitempty"`
-	Reason        string                 `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *OrderAck) Reset() {
-	*x = OrderAck{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *OrderAck) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*OrderAck) ProtoMessage() {}
-
-func (x *OrderAck) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use OrderAck.ProtoReflect.Descriptor instead.
-func (*OrderAck) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *OrderAck) GetClientOrderId() string {
-	if x != nil {
-		return x.ClientOrderId
-	}
-	return ""
-}
-
-func (x *OrderAck) GetAccepted() bool {
+func (x *OrderReply) GetAccepted() bool {
 	if x != nil {
 		return x.Accepted
 	}
 	return false
 }
 
-func (x *OrderAck) GetCode() int32 {
+func (x *OrderReply) GetCode() int32 {
 	if x != nil {
 		return x.Code
 	}
 	return 0
 }
 
-func (x *OrderAck) GetReason() string {
+func (x *OrderReply) GetReason() string {
 	if x != nil {
 		return x.Reason
 	}
 	return ""
 }
 
-type BatchCancelResult struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	AlgoId        uint32                 `protobuf:"varint,1,opt,name=algo_id,json=algoId,proto3" json:"algo_id,omitempty"`
-	Confirmed     bool                   `protobuf:"varint,2,opt,name=confirmed,proto3" json:"confirmed,omitempty"`    // 全部撤掉並確認
-	Cancelled     []string               `protobuf:"bytes,3,rep,name=cancelled,proto3" json:"cancelled,omitempty"`     // client_order_id
-	Unconfirmed   []string               `protobuf:"bytes,4,rep,name=unconfirmed,proto3" json:"unconfirmed,omitempty"` // 逾時前沒確認的 client_order_id
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *BatchCancelResult) Reset() {
-	*x = BatchCancelResult{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *BatchCancelResult) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*BatchCancelResult) ProtoMessage() {}
-
-func (x *BatchCancelResult) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[6]
+func (x *OrderReply) GetClientOrderId() string {
 	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
+		return x.ClientOrderId
 	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use BatchCancelResult.ProtoReflect.Descriptor instead.
-func (*BatchCancelResult) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *BatchCancelResult) GetAlgoId() uint32 {
-	if x != nil {
-		return x.AlgoId
-	}
-	return 0
-}
-
-func (x *BatchCancelResult) GetConfirmed() bool {
-	if x != nil {
-		return x.Confirmed
-	}
-	return false
-}
-
-func (x *BatchCancelResult) GetCancelled() []string {
-	if x != nil {
-		return x.Cancelled
-	}
-	return nil
-}
-
-func (x *BatchCancelResult) GetUnconfirmed() []string {
-	if x != nil {
-		return x.Unconfirmed
-	}
-	return nil
+	return ""
 }
 
 type ViewRequest struct {
@@ -759,7 +792,7 @@ type ViewRequest struct {
 
 func (x *ViewRequest) Reset() {
 	*x = ViewRequest{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[7]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -771,7 +804,7 @@ func (x *ViewRequest) String() string {
 func (*ViewRequest) ProtoMessage() {}
 
 func (x *ViewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[7]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -784,7 +817,7 @@ func (x *ViewRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ViewRequest.ProtoReflect.Descriptor instead.
 func (*ViewRequest) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{7}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ViewRequest) GetReq() isViewRequest_Req {
@@ -812,7 +845,7 @@ func (x *ViewRequest) GetLedger() *LedgerViewRequest {
 	return nil
 }
 
-func (x *ViewRequest) GetLeverage() *EnsureLeverageRequest {
+func (x *ViewRequest) GetLeverage() *LeverageRequest {
 	if x != nil {
 		if x, ok := x.Req.(*ViewRequest_Leverage); ok {
 			return x.Leverage
@@ -834,7 +867,7 @@ type ViewRequest_Ledger struct {
 }
 
 type ViewRequest_Leverage struct {
-	Leverage *EnsureLeverageRequest `protobuf:"bytes,3,opt,name=leverage,proto3,oneof"`
+	Leverage *LeverageRequest `protobuf:"bytes,3,opt,name=leverage,proto3,oneof"`
 }
 
 func (*ViewRequest_Oms) isViewRequest_Req() {}
@@ -845,16 +878,15 @@ func (*ViewRequest_Leverage) isViewRequest_Req() {}
 
 type OmsViewRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	Settled       bool                   `protobuf:"varint,2,opt,name=settled,proto3" json:"settled,omitempty"`
-	AlgoId        uint32                 `protobuf:"varint,3,opt,name=algo_id,json=algoId,proto3" json:"algo_id,omitempty"` // 非 0 時改以 algo 篩選，涵蓋上一個進程、上一個 session 留下的單（D602）
+	Settled       bool                   `protobuf:"varint,2,opt,name=settled,proto3" json:"settled,omitempty"`             // 包含記憶體裡保留的已終結單；保留量有上限，更早的在 Postgres（D606）
+	AlgoId        uint32                 `protobuf:"varint,3,opt,name=algo_id,json=algoId,proto3" json:"algo_id,omitempty"` // 非 0 時以 algo 篩選，涵蓋上一個進程、上一個 session 留下的單（D602）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *OmsViewRequest) Reset() {
 	*x = OmsViewRequest{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[8]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -866,7 +898,7 @@ func (x *OmsViewRequest) String() string {
 func (*OmsViewRequest) ProtoMessage() {}
 
 func (x *OmsViewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[8]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -879,14 +911,7 @@ func (x *OmsViewRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OmsViewRequest.ProtoReflect.Descriptor instead.
 func (*OmsViewRequest) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{8}
-}
-
-func (x *OmsViewRequest) GetSessionId() string {
-	if x != nil {
-		return x.SessionId
-	}
-	return ""
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *OmsViewRequest) GetSettled() bool {
@@ -905,13 +930,14 @@ func (x *OmsViewRequest) GetAlgoId() uint32 {
 
 type LedgerViewRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Uids          []uint32               `protobuf:"varint,1,rep,packed,name=uids,proto3" json:"uids,omitempty"` // 只要這些商品的持倉；空 = 全部。餘額一律全部回（D606）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *LedgerViewRequest) Reset() {
 	*x = LedgerViewRequest{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[9]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -923,7 +949,7 @@ func (x *LedgerViewRequest) String() string {
 func (*LedgerViewRequest) ProtoMessage() {}
 
 func (x *LedgerViewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[9]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -936,31 +962,39 @@ func (x *LedgerViewRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LedgerViewRequest.ProtoReflect.Descriptor instead.
 func (*LedgerViewRequest) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{9}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{7}
 }
 
-type EnsureLeverageRequest struct {
+func (x *LedgerViewRequest) GetUids() []uint32 {
+	if x != nil {
+		return x.Uids
+	}
+	return nil
+}
+
+// 本地的槓桿快取：recon 時讀入，私有事件更新（D606）。
+type LeverageRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ticker        string                 `protobuf:"bytes,1,opt,name=ticker,proto3" json:"ticker,omitempty"`
+	Uid           uint32                 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *EnsureLeverageRequest) Reset() {
-	*x = EnsureLeverageRequest{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[10]
+func (x *LeverageRequest) Reset() {
+	*x = LeverageRequest{}
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *EnsureLeverageRequest) String() string {
+func (x *LeverageRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*EnsureLeverageRequest) ProtoMessage() {}
+func (*LeverageRequest) ProtoMessage() {}
 
-func (x *EnsureLeverageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[10]
+func (x *LeverageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -971,18 +1005,19 @@ func (x *EnsureLeverageRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use EnsureLeverageRequest.ProtoReflect.Descriptor instead.
-func (*EnsureLeverageRequest) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{10}
+// Deprecated: Use LeverageRequest.ProtoReflect.Descriptor instead.
+func (*LeverageRequest) Descriptor() ([]byte, []int) {
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *EnsureLeverageRequest) GetTicker() string {
+func (x *LeverageRequest) GetUid() uint32 {
 	if x != nil {
-		return x.Ticker
+		return x.Uid
 	}
-	return ""
+	return 0
 }
 
+// 快照還沒好也照樣回，不擋、不等：呼叫端看 state、reconciled_at_ns 判斷新舊（D606）。
 type ViewReply struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Reply:
@@ -991,14 +1026,18 @@ type ViewReply struct {
 	//	*ViewReply_Ledger
 	//	*ViewReply_Leverage
 	//	*ViewReply_Error
-	Reply         isViewReply_Reply `protobuf_oneof:"reply"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Reply          isViewReply_Reply `protobuf_oneof:"reply"`
+	State          AccountState      `protobuf:"varint,10,opt,name=state,proto3,enum=mftiko.td.v1.AccountState" json:"state,omitempty"`
+	ReconciledAtNs int64             `protobuf:"varint,11,opt,name=reconciled_at_ns,json=reconciledAtNs,proto3" json:"reconciled_at_ns,omitempty"` // 最近一次 recon 完成的時間；0 = 這個 incarnation 還沒完成第一次 recon
+	Incarnation    uint32            `protobuf:"varint,12,opt,name=incarnation,proto3" json:"incarnation,omitempty"`
+	Seq            uint64            `protobuf:"varint,13,opt,name=seq,proto3" json:"seq,omitempty"` // 這份快照已經涵蓋到的 td.evt seq：之後只要套用 seq 更大、incarnation 相同的事件
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ViewReply) Reset() {
 	*x = ViewReply{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[11]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1010,7 +1049,7 @@ func (x *ViewReply) String() string {
 func (*ViewReply) ProtoMessage() {}
 
 func (x *ViewReply) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[11]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1023,7 +1062,7 @@ func (x *ViewReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ViewReply.ProtoReflect.Descriptor instead.
 func (*ViewReply) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{11}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ViewReply) GetReply() isViewReply_Reply {
@@ -1069,6 +1108,34 @@ func (x *ViewReply) GetError() *v1.Error {
 	return nil
 }
 
+func (x *ViewReply) GetState() AccountState {
+	if x != nil {
+		return x.State
+	}
+	return AccountState_ACCOUNT_STATE_UNSPECIFIED
+}
+
+func (x *ViewReply) GetReconciledAtNs() int64 {
+	if x != nil {
+		return x.ReconciledAtNs
+	}
+	return 0
+}
+
+func (x *ViewReply) GetIncarnation() uint32 {
+	if x != nil {
+		return x.Incarnation
+	}
+	return 0
+}
+
+func (x *ViewReply) GetSeq() uint64 {
+	if x != nil {
+		return x.Seq
+	}
+	return 0
+}
+
 type isViewReply_Reply interface {
 	isViewReply_Reply()
 }
@@ -1100,15 +1167,13 @@ func (*ViewReply_Error) isViewReply_Reply() {}
 type OmsView struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Orders        []*Order               `protobuf:"bytes,1,rep,name=orders,proto3" json:"orders,omitempty"`
-	Incarnation   uint32                 `protobuf:"varint,2,opt,name=incarnation,proto3" json:"incarnation,omitempty"`
-	AsOfNs        int64                  `protobuf:"varint,3,opt,name=as_of_ns,json=asOfNs,proto3" json:"as_of_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *OmsView) Reset() {
 	*x = OmsView{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[12]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1120,7 +1185,7 @@ func (x *OmsView) String() string {
 func (*OmsView) ProtoMessage() {}
 
 func (x *OmsView) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[12]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1133,7 +1198,7 @@ func (x *OmsView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OmsView.ProtoReflect.Descriptor instead.
 func (*OmsView) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{12}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *OmsView) GetOrders() []*Order {
@@ -1143,33 +1208,17 @@ func (x *OmsView) GetOrders() []*Order {
 	return nil
 }
 
-func (x *OmsView) GetIncarnation() uint32 {
-	if x != nil {
-		return x.Incarnation
-	}
-	return 0
-}
-
-func (x *OmsView) GetAsOfNs() int64 {
-	if x != nil {
-		return x.AsOfNs
-	}
-	return 0
-}
-
 type LedgerView struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Balances      []*Balance             `protobuf:"bytes,1,rep,name=balances,proto3" json:"balances,omitempty"`
 	Positions     []*Position            `protobuf:"bytes,2,rep,name=positions,proto3" json:"positions,omitempty"`
-	Incarnation   uint32                 `protobuf:"varint,3,opt,name=incarnation,proto3" json:"incarnation,omitempty"`
-	AsOfNs        int64                  `protobuf:"varint,4,opt,name=as_of_ns,json=asOfNs,proto3" json:"as_of_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *LedgerView) Reset() {
 	*x = LedgerView{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[13]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1181,7 +1230,7 @@ func (x *LedgerView) String() string {
 func (*LedgerView) ProtoMessage() {}
 
 func (x *LedgerView) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[13]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1194,7 +1243,7 @@ func (x *LedgerView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LedgerView.ProtoReflect.Descriptor instead.
 func (*LedgerView) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{13}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *LedgerView) GetBalances() []*Balance {
@@ -1211,31 +1260,17 @@ func (x *LedgerView) GetPositions() []*Position {
 	return nil
 }
 
-func (x *LedgerView) GetIncarnation() uint32 {
-	if x != nil {
-		return x.Incarnation
-	}
-	return 0
-}
-
-func (x *LedgerView) GetAsOfNs() int64 {
-	if x != nil {
-		return x.AsOfNs
-	}
-	return 0
-}
-
 type LeverageInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ticker        string                 `protobuf:"bytes,1,opt,name=ticker,proto3" json:"ticker,omitempty"`
-	Leverage      float64                `protobuf:"fixed64,2,opt,name=leverage,proto3" json:"leverage,omitempty"`
+	Uid           uint32                 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"`
+	Leverage      *float64               `protobuf:"fixed64,2,opt,name=leverage,proto3,oneof" json:"leverage,omitempty"` // 不設 = 快取裡沒有這個商品
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *LeverageInfo) Reset() {
 	*x = LeverageInfo{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[14]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1247,7 +1282,7 @@ func (x *LeverageInfo) String() string {
 func (*LeverageInfo) ProtoMessage() {}
 
 func (x *LeverageInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[14]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1260,19 +1295,19 @@ func (x *LeverageInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LeverageInfo.ProtoReflect.Descriptor instead.
 func (*LeverageInfo) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{14}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{12}
 }
 
-func (x *LeverageInfo) GetTicker() string {
+func (x *LeverageInfo) GetUid() uint32 {
 	if x != nil {
-		return x.Ticker
+		return x.Uid
 	}
-	return ""
+	return 0
 }
 
 func (x *LeverageInfo) GetLeverage() float64 {
-	if x != nil {
-		return x.Leverage
+	if x != nil && x.Leverage != nil {
+		return *x.Leverage
 	}
 	return 0
 }
@@ -1285,8 +1320,6 @@ type AccountEvent struct {
 	//
 	//	*AccountEvent_OrderUpdate
 	//	*AccountEvent_Fill
-	//	*AccountEvent_OrderReject
-	//	*AccountEvent_CancelReject
 	//	*AccountEvent_BalanceUpdate
 	//	*AccountEvent_PositionUpdate
 	//	*AccountEvent_Recon
@@ -1297,7 +1330,7 @@ type AccountEvent struct {
 
 func (x *AccountEvent) Reset() {
 	*x = AccountEvent{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[15]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1309,7 +1342,7 @@ func (x *AccountEvent) String() string {
 func (*AccountEvent) ProtoMessage() {}
 
 func (x *AccountEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[15]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1322,7 +1355,7 @@ func (x *AccountEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccountEvent.ProtoReflect.Descriptor instead.
 func (*AccountEvent) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{15}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *AccountEvent) GetSeq() uint64 {
@@ -1346,7 +1379,7 @@ func (x *AccountEvent) GetEvent() isAccountEvent_Event {
 	return nil
 }
 
-func (x *AccountEvent) GetOrderUpdate() *Order {
+func (x *AccountEvent) GetOrderUpdate() *OrderUpdate {
 	if x != nil {
 		if x, ok := x.Event.(*AccountEvent_OrderUpdate); ok {
 			return x.OrderUpdate
@@ -1359,24 +1392,6 @@ func (x *AccountEvent) GetFill() *Fill {
 	if x != nil {
 		if x, ok := x.Event.(*AccountEvent_Fill); ok {
 			return x.Fill
-		}
-	}
-	return nil
-}
-
-func (x *AccountEvent) GetOrderReject() *OrderReject {
-	if x != nil {
-		if x, ok := x.Event.(*AccountEvent_OrderReject); ok {
-			return x.OrderReject
-		}
-	}
-	return nil
-}
-
-func (x *AccountEvent) GetCancelReject() *CancelReject {
-	if x != nil {
-		if x, ok := x.Event.(*AccountEvent_CancelReject); ok {
-			return x.CancelReject
 		}
 	}
 	return nil
@@ -1414,19 +1429,11 @@ type isAccountEvent_Event interface {
 }
 
 type AccountEvent_OrderUpdate struct {
-	OrderUpdate *Order `protobuf:"bytes,10,opt,name=order_update,json=orderUpdate,proto3,oneof"`
+	OrderUpdate *OrderUpdate `protobuf:"bytes,10,opt,name=order_update,json=orderUpdate,proto3,oneof"`
 }
 
 type AccountEvent_Fill struct {
 	Fill *Fill `protobuf:"bytes,11,opt,name=fill,proto3,oneof"`
-}
-
-type AccountEvent_OrderReject struct {
-	OrderReject *OrderReject `protobuf:"bytes,12,opt,name=order_reject,json=orderReject,proto3,oneof"`
-}
-
-type AccountEvent_CancelReject struct {
-	CancelReject *CancelReject `protobuf:"bytes,13,opt,name=cancel_reject,json=cancelReject,proto3,oneof"`
 }
 
 type AccountEvent_BalanceUpdate struct {
@@ -1445,19 +1452,89 @@ func (*AccountEvent_OrderUpdate) isAccountEvent_Event() {}
 
 func (*AccountEvent_Fill) isAccountEvent_Event() {}
 
-func (*AccountEvent_OrderReject) isAccountEvent_Event() {}
-
-func (*AccountEvent_CancelReject) isAccountEvent_Event() {}
-
 func (*AccountEvent_BalanceUpdate) isAccountEvent_Event() {}
 
 func (*AccountEvent_PositionUpdate) isAccountEvent_Event() {}
 
 func (*AccountEvent_Recon) isAccountEvent_Event() {}
 
+// 一張單的一次變化（D610）。order 是變化之後的完整狀態，cause 說為什麼變。
+// 拒單（交易所拒單、查單後確定沒下成）也是一則 OrderUpdate，status 是 REJECTED。
+// 撤單只動 cancel_sent_ns：送出時設定（CANCEL_REQUESTED），被拒時清掉（CANCEL_REJECTED），status 都不變。
+// 本地拒絕只在 td.order 的回覆裡，不發到這裡。同一個 client_order_id 的同一次變化只發一則：交易所的回答與私有事件
+// 都報了，worker 發佈前去重。
+type OrderUpdate struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Order         *Order                 `protobuf:"bytes,1,opt,name=order,proto3" json:"order,omitempty"`
+	Cause         OrderCause             `protobuf:"varint,2,opt,name=cause,proto3,enum=mftiko.td.v1.OrderCause" json:"cause,omitempty"`
+	Code          int32                  `protobuf:"varint,3,opt,name=code,proto3" json:"code,omitempty"` // 只有 REJECTED、CANCEL_REJECTED：2xx、交易所原生代碼，或 120（NOT_PLACED）
+	Reason        string                 `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OrderUpdate) Reset() {
+	*x = OrderUpdate{}
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OrderUpdate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OrderUpdate) ProtoMessage() {}
+
+func (x *OrderUpdate) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OrderUpdate.ProtoReflect.Descriptor instead.
+func (*OrderUpdate) Descriptor() ([]byte, []int) {
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *OrderUpdate) GetOrder() *Order {
+	if x != nil {
+		return x.Order
+	}
+	return nil
+}
+
+func (x *OrderUpdate) GetCause() OrderCause {
+	if x != nil {
+		return x.Cause
+	}
+	return OrderCause_ORDER_CAUSE_UNSPECIFIED
+}
+
+func (x *OrderUpdate) GetCode() int32 {
+	if x != nil {
+		return x.Code
+	}
+	return 0
+}
+
+func (x *OrderUpdate) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+// 一張單的狀態紀錄：OrderUpdate、OmsView、Recon 共用。拒絕的原因在 OrderUpdate 上，不在這裡（D610）。
 type Order struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ticker        string                 `protobuf:"bytes,1,opt,name=ticker,proto3" json:"ticker,omitempty"`
+	Uid           uint32                 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"` // 商品（D203）
 	OrderId       string                 `protobuf:"bytes,2,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
 	ClientOrderId string                 `protobuf:"bytes,3,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
 	Side          v1.Side                `protobuf:"varint,4,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"`
@@ -1468,16 +1545,18 @@ type Order struct {
 	Price         *float64               `protobuf:"fixed64,9,opt,name=price,proto3,oneof" json:"price,omitempty"`                        // 同 Submit.price，單位是 price_ccy（D203）
 	FilledQty     float64                `protobuf:"fixed64,10,opt,name=filled_qty,json=filledQty,proto3" json:"filled_qty,omitempty"`    // 已成交數量，單位同 qty（contract_value_ccy，D203）
 	AvgPrice      *float64               `protobuf:"fixed64,11,opt,name=avg_price,json=avgPrice,proto3,oneof" json:"avg_price,omitempty"` // 同 Submit.price，單位是 price_ccy（D203）
-	RejectReason  string                 `protobuf:"bytes,12,opt,name=reject_reason,json=rejectReason,proto3" json:"reject_reason,omitempty"`
 	ExchTsNs      int64                  `protobuf:"varint,13,opt,name=exch_ts_ns,json=exchTsNs,proto3" json:"exch_ts_ns,omitempty"`
 	TdTsNs        int64                  `protobuf:"varint,14,opt,name=td_ts_ns,json=tdTsNs,proto3" json:"td_ts_ns,omitempty"`
+	// TD 送出撤單的時間；0 = 沒有撤單在途。撤單在途是旗標，不是 status（D610）。
+	// 撤單被拒時清掉；撤單沒有回答時保留，由 worker 查單收斂（D605）；進終態時一律清掉，之後才到的撤單結果不再發 OrderUpdate。
+	CancelSentNs  int64 `protobuf:"varint,15,opt,name=cancel_sent_ns,json=cancelSentNs,proto3" json:"cancel_sent_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Order) Reset() {
 	*x = Order{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[16]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1489,7 +1568,7 @@ func (x *Order) String() string {
 func (*Order) ProtoMessage() {}
 
 func (x *Order) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[16]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1502,14 +1581,14 @@ func (x *Order) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Order.ProtoReflect.Descriptor instead.
 func (*Order) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{16}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{15}
 }
 
-func (x *Order) GetTicker() string {
+func (x *Order) GetUid() uint32 {
 	if x != nil {
-		return x.Ticker
+		return x.Uid
 	}
-	return ""
+	return 0
 }
 
 func (x *Order) GetOrderId() string {
@@ -1582,13 +1661,6 @@ func (x *Order) GetAvgPrice() float64 {
 	return 0
 }
 
-func (x *Order) GetRejectReason() string {
-	if x != nil {
-		return x.RejectReason
-	}
-	return ""
-}
-
 func (x *Order) GetExchTsNs() int64 {
 	if x != nil {
 		return x.ExchTsNs
@@ -1603,9 +1675,16 @@ func (x *Order) GetTdTsNs() int64 {
 	return 0
 }
 
+func (x *Order) GetCancelSentNs() int64 {
+	if x != nil {
+		return x.CancelSentNs
+	}
+	return 0
+}
+
 type Fill struct {
-	state  protoimpl.MessageState `protogen:"open.v1"`
-	Ticker string                 `protobuf:"bytes,1,opt,name=ticker,proto3" json:"ticker,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Uid   uint32                 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"` // 商品（D203）
 	// 交易所的 trade id。WS 與 REST 必須給同一個值：落庫以 (api_id, fill_id) 去重（D601）。
 	FillId        string  `protobuf:"bytes,2,opt,name=fill_id,json=fillId,proto3" json:"fill_id,omitempty"`
 	OrderId       string  `protobuf:"bytes,3,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
@@ -1623,7 +1702,7 @@ type Fill struct {
 
 func (x *Fill) Reset() {
 	*x = Fill{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[17]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1635,7 +1714,7 @@ func (x *Fill) String() string {
 func (*Fill) ProtoMessage() {}
 
 func (x *Fill) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[17]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1648,14 +1727,14 @@ func (x *Fill) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Fill.ProtoReflect.Descriptor instead.
 func (*Fill) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{17}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{16}
 }
 
-func (x *Fill) GetTicker() string {
+func (x *Fill) GetUid() uint32 {
 	if x != nil {
-		return x.Ticker
+		return x.Uid
 	}
-	return ""
+	return 0
 }
 
 func (x *Fill) GetFillId() string {
@@ -1728,150 +1807,6 @@ func (x *Fill) GetExchTsNs() int64 {
 	return 0
 }
 
-type OrderReject struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ClientOrderId string                 `protobuf:"bytes,1,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
-	OrderId       string                 `protobuf:"bytes,2,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
-	Ticker        string                 `protobuf:"bytes,3,opt,name=ticker,proto3" json:"ticker,omitempty"`
-	Code          int32                  `protobuf:"varint,4,opt,name=code,proto3" json:"code,omitempty"`
-	Reason        string                 `protobuf:"bytes,5,opt,name=reason,proto3" json:"reason,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *OrderReject) Reset() {
-	*x = OrderReject{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[18]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *OrderReject) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*OrderReject) ProtoMessage() {}
-
-func (x *OrderReject) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[18]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use OrderReject.ProtoReflect.Descriptor instead.
-func (*OrderReject) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{18}
-}
-
-func (x *OrderReject) GetClientOrderId() string {
-	if x != nil {
-		return x.ClientOrderId
-	}
-	return ""
-}
-
-func (x *OrderReject) GetOrderId() string {
-	if x != nil {
-		return x.OrderId
-	}
-	return ""
-}
-
-func (x *OrderReject) GetTicker() string {
-	if x != nil {
-		return x.Ticker
-	}
-	return ""
-}
-
-func (x *OrderReject) GetCode() int32 {
-	if x != nil {
-		return x.Code
-	}
-	return 0
-}
-
-func (x *OrderReject) GetReason() string {
-	if x != nil {
-		return x.Reason
-	}
-	return ""
-}
-
-type CancelReject struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ClientOrderId string                 `protobuf:"bytes,1,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
-	OrderId       string                 `protobuf:"bytes,2,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
-	Code          int32                  `protobuf:"varint,3,opt,name=code,proto3" json:"code,omitempty"`
-	Reason        string                 `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *CancelReject) Reset() {
-	*x = CancelReject{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[19]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CancelReject) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CancelReject) ProtoMessage() {}
-
-func (x *CancelReject) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[19]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CancelReject.ProtoReflect.Descriptor instead.
-func (*CancelReject) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{19}
-}
-
-func (x *CancelReject) GetClientOrderId() string {
-	if x != nil {
-		return x.ClientOrderId
-	}
-	return ""
-}
-
-func (x *CancelReject) GetOrderId() string {
-	if x != nil {
-		return x.OrderId
-	}
-	return ""
-}
-
-func (x *CancelReject) GetCode() int32 {
-	if x != nil {
-		return x.Code
-	}
-	return 0
-}
-
-func (x *CancelReject) GetReason() string {
-	if x != nil {
-		return x.Reason
-	}
-	return ""
-}
-
 type Balance struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Asset         string                 `protobuf:"bytes,1,opt,name=asset,proto3" json:"asset,omitempty"`
@@ -1884,7 +1819,7 @@ type Balance struct {
 
 func (x *Balance) Reset() {
 	*x = Balance{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[20]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1896,7 +1831,7 @@ func (x *Balance) String() string {
 func (*Balance) ProtoMessage() {}
 
 func (x *Balance) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[20]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1909,7 +1844,7 @@ func (x *Balance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Balance.ProtoReflect.Descriptor instead.
 func (*Balance) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{20}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *Balance) GetAsset() string {
@@ -1940,9 +1875,10 @@ func (x *Balance) GetPrelock() float64 {
 	return 0
 }
 
+// 一期只支援單向持倉，size 帶號：負的是空（D607）。
 type Position struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ticker        string                 `protobuf:"bytes,1,opt,name=ticker,proto3" json:"ticker,omitempty"`
+	Uid           uint32                 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"`                                                 // 商品（D203）
 	Size          float64                `protobuf:"fixed64,2,opt,name=size,proto3" json:"size,omitempty"`                                              // 持倉數量，單位同 Submit.qty（contract_value_ccy，D203）
 	EntryPrice    *float64               `protobuf:"fixed64,3,opt,name=entry_price,json=entryPrice,proto3,oneof" json:"entry_price,omitempty"`          // 同 Submit.price，單位是 price_ccy（D203）
 	MarkPrice     *float64               `protobuf:"fixed64,4,opt,name=mark_price,json=markPrice,proto3,oneof" json:"mark_price,omitempty"`             // 同 Submit.price，單位是 price_ccy（D203）
@@ -1954,7 +1890,7 @@ type Position struct {
 
 func (x *Position) Reset() {
 	*x = Position{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[21]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1966,7 +1902,7 @@ func (x *Position) String() string {
 func (*Position) ProtoMessage() {}
 
 func (x *Position) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[21]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1979,14 +1915,14 @@ func (x *Position) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Position.ProtoReflect.Descriptor instead.
 func (*Position) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{21}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{18}
 }
 
-func (x *Position) GetTicker() string {
+func (x *Position) GetUid() uint32 {
 	if x != nil {
-		return x.Ticker
+		return x.Uid
 	}
-	return ""
+	return 0
 }
 
 func (x *Position) GetSize() float64 {
@@ -2033,7 +1969,7 @@ type BalanceUpdate struct {
 
 func (x *BalanceUpdate) Reset() {
 	*x = BalanceUpdate{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[22]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2045,7 +1981,7 @@ func (x *BalanceUpdate) String() string {
 func (*BalanceUpdate) ProtoMessage() {}
 
 func (x *BalanceUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[22]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2058,7 +1994,7 @@ func (x *BalanceUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BalanceUpdate.ProtoReflect.Descriptor instead.
 func (*BalanceUpdate) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{22}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *BalanceUpdate) GetBalances() []*Balance {
@@ -2077,7 +2013,7 @@ type PositionUpdate struct {
 
 func (x *PositionUpdate) Reset() {
 	*x = PositionUpdate{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[23]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2089,7 +2025,7 @@ func (x *PositionUpdate) String() string {
 func (*PositionUpdate) ProtoMessage() {}
 
 func (x *PositionUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[23]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2102,7 +2038,7 @@ func (x *PositionUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PositionUpdate.ProtoReflect.Descriptor instead.
 func (*PositionUpdate) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{23}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *PositionUpdate) GetPositions() []*Position {
@@ -2112,7 +2048,7 @@ func (x *PositionUpdate) GetPositions() []*Position {
 	return nil
 }
 
-// 帳號狀態的整份快照（DECISIONS D603）。SDK 把它交給策略的 OnRecon：
+// 帳號狀態的整份快照（DECISIONS D603、D604）。SDK 把它交給策略的 OnRecon：
 // open_orders 先篩成自己宣告的 algo_id，positions、balances 原樣給。
 // 和其他事件共用 seq；策略整份換掉自己的狀態，之後的事件照常疊上去。
 type Recon struct {
@@ -2129,7 +2065,7 @@ type Recon struct {
 
 func (x *Recon) Reset() {
 	*x = Recon{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[24]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2141,7 +2077,7 @@ func (x *Recon) String() string {
 func (*Recon) ProtoMessage() {}
 
 func (x *Recon) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[24]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2154,7 +2090,7 @@ func (x *Recon) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Recon.ProtoReflect.Descriptor instead.
 func (*Recon) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{24}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *Recon) GetIncarnation() uint32 {
@@ -2208,11 +2144,11 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\x06submit\x18\x01 \x01(\v2\x14.mftiko.td.v1.SubmitH\x00R\x06submit\x12.\n" +
 	"\x06cancel\x18\x02 \x01(\v2\x14.mftiko.td.v1.CancelH\x00R\x06cancel\x12>\n" +
 	"\fbatch_cancel\x18\x04 \x01(\v2\x19.mftiko.td.v1.BatchCancelH\x00R\vbatchCancelB\x05\n" +
-	"\x03reqJ\x04\b\x03\x10\x04R\x0ecancel_session\"\xa3\x04\n" +
+	"\x03reqJ\x04\b\x03\x10\x04R\x0ecancel_session\"\x9d\x04\n" +
 	"\x06Submit\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x16\n" +
-	"\x06ticker\x18\x02 \x01(\tR\x06ticker\x12*\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x10\n" +
+	"\x03uid\x18\x02 \x01(\rR\x03uid\x12*\n" +
 	"\x04side\x18\x03 \x01(\x0e2\x16.mftiko.common.v1.SideR\x04side\x12:\n" +
 	"\n" +
 	"order_type\x18\x04 \x01(\x0e2\x1b.mftiko.common.v1.OrderTypeR\torderType\x12\x15\n" +
@@ -2232,81 +2168,75 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\x04_qtyB\f\n" +
 	"\n" +
 	"_quote_qtyB\b\n" +
-	"\x06_price\"\x9b\x01\n" +
+	"\x06_price\"\x95\x01\n" +
 	"\x06Cancel\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x16\n" +
-	"\x06ticker\x18\x02 \x01(\tR\x06ticker\x12&\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x10\n" +
+	"\x03uid\x18\x02 \x01(\rR\x03uid\x12&\n" +
 	"\x0fclient_order_id\x18\x03 \x01(\tR\rclientOrderId\x12\x19\n" +
 	"\border_id\x18\x04 \x01(\tR\aorderId\x12\x17\n" +
-	"\aalgo_id\x18\x05 \x01(\rR\x06algoId\"_\n" +
+	"\aalgo_id\x18\x05 \x01(\rR\x06algoId\"L\n" +
 	"\vBatchCancel\x12\x17\n" +
-	"\aalgo_id\x18\x01 \x01(\rR\x06algoId\x12\x18\n" +
-	"\atickers\x18\x02 \x03(\tR\atickers\x12\x1d\n" +
+	"\aalgo_id\x18\x01 \x01(\rR\x06algoId\x12\x12\n" +
+	"\x04uids\x18\x02 \x03(\rR\x04uidsJ\x04\b\x03\x10\x04R\n" +
+	"timeout_ms\"|\n" +
 	"\n" +
-	"timeout_ms\x18\x03 \x01(\rR\ttimeoutMs\"\xce\x01\n" +
-	"\n" +
-	"OrderReply\x12*\n" +
-	"\x03ack\x18\x01 \x01(\v2\x16.mftiko.td.v1.OrderAckH\x00R\x03ack\x12/\n" +
-	"\x05error\x18\x03 \x01(\v2\x17.mftiko.common.v1.ErrorH\x00R\x05error\x12D\n" +
-	"\fbatch_cancel\x18\x04 \x01(\v2\x1f.mftiko.td.v1.BatchCancelResultH\x00R\vbatchCancelB\a\n" +
-	"\x05replyJ\x04\b\x02\x10\x03R\x0ecancel_session\"z\n" +
-	"\bOrderAck\x12&\n" +
-	"\x0fclient_order_id\x18\x01 \x01(\tR\rclientOrderId\x12\x1a\n" +
-	"\baccepted\x18\x02 \x01(\bR\baccepted\x12\x12\n" +
-	"\x04code\x18\x03 \x01(\x05R\x04code\x12\x16\n" +
-	"\x06reason\x18\x04 \x01(\tR\x06reason\"\x8a\x01\n" +
-	"\x11BatchCancelResult\x12\x17\n" +
-	"\aalgo_id\x18\x01 \x01(\rR\x06algoId\x12\x1c\n" +
-	"\tconfirmed\x18\x02 \x01(\bR\tconfirmed\x12\x1c\n" +
-	"\tcancelled\x18\x03 \x03(\tR\tcancelled\x12 \n" +
-	"\vunconfirmed\x18\x04 \x03(\tR\vunconfirmed\"\xc4\x01\n" +
+	"OrderReply\x12\x1a\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x12\n" +
+	"\x04code\x18\x02 \x01(\x05R\x04code\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\x12&\n" +
+	"\x0fclient_order_id\x18\x04 \x01(\tR\rclientOrderId\"\xbe\x01\n" +
 	"\vViewRequest\x120\n" +
 	"\x03oms\x18\x01 \x01(\v2\x1c.mftiko.td.v1.OmsViewRequestH\x00R\x03oms\x129\n" +
-	"\x06ledger\x18\x02 \x01(\v2\x1f.mftiko.td.v1.LedgerViewRequestH\x00R\x06ledger\x12A\n" +
-	"\bleverage\x18\x03 \x01(\v2#.mftiko.td.v1.EnsureLeverageRequestH\x00R\bleverageB\x05\n" +
-	"\x03req\"b\n" +
-	"\x0eOmsViewRequest\x12\x1d\n" +
-	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x18\n" +
+	"\x06ledger\x18\x02 \x01(\v2\x1f.mftiko.td.v1.LedgerViewRequestH\x00R\x06ledger\x12;\n" +
+	"\bleverage\x18\x03 \x01(\v2\x1d.mftiko.td.v1.LeverageRequestH\x00R\bleverageB\x05\n" +
+	"\x03req\"U\n" +
+	"\x0eOmsViewRequest\x12\x18\n" +
 	"\asettled\x18\x02 \x01(\bR\asettled\x12\x17\n" +
-	"\aalgo_id\x18\x03 \x01(\rR\x06algoId\"\x13\n" +
-	"\x11LedgerViewRequest\"/\n" +
-	"\x15EnsureLeverageRequest\x12\x16\n" +
-	"\x06ticker\x18\x01 \x01(\tR\x06ticker\"\xde\x01\n" +
+	"\aalgo_id\x18\x03 \x01(\rR\x06algoIdJ\x04\b\x01\x10\x02R\n" +
+	"session_id\"'\n" +
+	"\x11LedgerViewRequest\x12\x12\n" +
+	"\x04uids\x18\x01 \x03(\rR\x04uids\"#\n" +
+	"\x0fLeverageRequest\x12\x10\n" +
+	"\x03uid\x18\x01 \x01(\rR\x03uid\"\xee\x02\n" +
 	"\tViewReply\x12)\n" +
 	"\x03oms\x18\x01 \x01(\v2\x15.mftiko.td.v1.OmsViewH\x00R\x03oms\x122\n" +
 	"\x06ledger\x18\x02 \x01(\v2\x18.mftiko.td.v1.LedgerViewH\x00R\x06ledger\x128\n" +
 	"\bleverage\x18\x03 \x01(\v2\x1a.mftiko.td.v1.LeverageInfoH\x00R\bleverage\x12/\n" +
-	"\x05error\x18\x04 \x01(\v2\x17.mftiko.common.v1.ErrorH\x00R\x05errorB\a\n" +
-	"\x05reply\"r\n" +
+	"\x05error\x18\x04 \x01(\v2\x17.mftiko.common.v1.ErrorH\x00R\x05error\x120\n" +
+	"\x05state\x18\n" +
+	" \x01(\x0e2\x1a.mftiko.td.v1.AccountStateR\x05state\x12(\n" +
+	"\x10reconciled_at_ns\x18\v \x01(\x03R\x0ereconciledAtNs\x12 \n" +
+	"\vincarnation\x18\f \x01(\rR\vincarnation\x12\x10\n" +
+	"\x03seq\x18\r \x01(\x04R\x03seqB\a\n" +
+	"\x05reply\"Y\n" +
 	"\aOmsView\x12+\n" +
-	"\x06orders\x18\x01 \x03(\v2\x13.mftiko.td.v1.OrderR\x06orders\x12 \n" +
-	"\vincarnation\x18\x02 \x01(\rR\vincarnation\x12\x18\n" +
-	"\bas_of_ns\x18\x03 \x01(\x03R\x06asOfNs\"\xb1\x01\n" +
+	"\x06orders\x18\x01 \x03(\v2\x13.mftiko.td.v1.OrderR\x06ordersJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\vincarnationR\bas_of_ns\"\x98\x01\n" +
 	"\n" +
 	"LedgerView\x121\n" +
 	"\bbalances\x18\x01 \x03(\v2\x15.mftiko.td.v1.BalanceR\bbalances\x124\n" +
-	"\tpositions\x18\x02 \x03(\v2\x16.mftiko.td.v1.PositionR\tpositions\x12 \n" +
-	"\vincarnation\x18\x03 \x01(\rR\vincarnation\x12\x18\n" +
-	"\bas_of_ns\x18\x04 \x01(\x03R\x06asOfNs\"B\n" +
-	"\fLeverageInfo\x12\x16\n" +
-	"\x06ticker\x18\x01 \x01(\tR\x06ticker\x12\x1a\n" +
-	"\bleverage\x18\x02 \x01(\x01R\bleverage\"\x96\x04\n" +
+	"\tpositions\x18\x02 \x03(\v2\x16.mftiko.td.v1.PositionR\tpositionsJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05R\vincarnationR\bas_of_ns\"N\n" +
+	"\fLeverageInfo\x12\x10\n" +
+	"\x03uid\x18\x01 \x01(\rR\x03uid\x12\x1f\n" +
+	"\bleverage\x18\x02 \x01(\x01H\x00R\bleverage\x88\x01\x01B\v\n" +
+	"\t_leverage\"\xc2\x03\n" +
 	"\fAccountEvent\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\x04R\x03seq\x123\n" +
-	"\x06source\x18\x02 \x01(\v2\x1b.mftiko.common.v1.WorkerRefR\x06source\x128\n" +
+	"\x06source\x18\x02 \x01(\v2\x1b.mftiko.common.v1.WorkerRefR\x06source\x12>\n" +
 	"\forder_update\x18\n" +
-	" \x01(\v2\x13.mftiko.td.v1.OrderH\x00R\vorderUpdate\x12(\n" +
-	"\x04fill\x18\v \x01(\v2\x12.mftiko.td.v1.FillH\x00R\x04fill\x12>\n" +
-	"\forder_reject\x18\f \x01(\v2\x19.mftiko.td.v1.OrderRejectH\x00R\vorderReject\x12A\n" +
-	"\rcancel_reject\x18\r \x01(\v2\x1a.mftiko.td.v1.CancelRejectH\x00R\fcancelReject\x12D\n" +
+	" \x01(\v2\x19.mftiko.td.v1.OrderUpdateH\x00R\vorderUpdate\x12(\n" +
+	"\x04fill\x18\v \x01(\v2\x12.mftiko.td.v1.FillH\x00R\x04fill\x12D\n" +
 	"\x0ebalance_update\x18\x0e \x01(\v2\x1b.mftiko.td.v1.BalanceUpdateH\x00R\rbalanceUpdate\x12G\n" +
 	"\x0fposition_update\x18\x0f \x01(\v2\x1c.mftiko.td.v1.PositionUpdateH\x00R\x0epositionUpdate\x12+\n" +
 	"\x05recon\x18\x11 \x01(\v2\x13.mftiko.td.v1.ReconH\x00R\x05reconB\a\n" +
-	"\x05eventJ\x04\b\x10\x10\x11R\raccount_reset\"\x90\x04\n" +
-	"\x05Order\x12\x16\n" +
-	"\x06ticker\x18\x01 \x01(\tR\x06ticker\x12\x19\n" +
+	"\x05eventJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x10\x10\x11R\forder_rejectR\rcancel_rejectR\raccount_reset\"\x94\x01\n" +
+	"\vOrderUpdate\x12)\n" +
+	"\x05order\x18\x01 \x01(\v2\x13.mftiko.td.v1.OrderR\x05order\x12.\n" +
+	"\x05cause\x18\x02 \x01(\x0e2\x18.mftiko.td.v1.OrderCauseR\x05cause\x12\x12\n" +
+	"\x04code\x18\x03 \x01(\x05R\x04code\x12\x16\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\"\xa0\x04\n" +
+	"\x05Order\x12\x10\n" +
+	"\x03uid\x18\x01 \x01(\rR\x03uid\x12\x19\n" +
 	"\border_id\x18\x02 \x01(\tR\aorderId\x12&\n" +
 	"\x0fclient_order_id\x18\x03 \x01(\tR\rclientOrderId\x12*\n" +
 	"\x04side\x18\x04 \x01(\x0e2\x16.mftiko.common.v1.SideR\x04side\x12:\n" +
@@ -2319,18 +2249,18 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\n" +
 	"filled_qty\x18\n" +
 	" \x01(\x01R\tfilledQty\x12 \n" +
-	"\tavg_price\x18\v \x01(\x01H\x02R\bavgPrice\x88\x01\x01\x12#\n" +
-	"\rreject_reason\x18\f \x01(\tR\frejectReason\x12\x1c\n" +
+	"\tavg_price\x18\v \x01(\x01H\x02R\bavgPrice\x88\x01\x01\x12\x1c\n" +
 	"\n" +
 	"exch_ts_ns\x18\r \x01(\x03R\bexchTsNs\x12\x18\n" +
-	"\btd_ts_ns\x18\x0e \x01(\x03R\x06tdTsNsB\f\n" +
+	"\btd_ts_ns\x18\x0e \x01(\x03R\x06tdTsNs\x12$\n" +
+	"\x0ecancel_sent_ns\x18\x0f \x01(\x03R\fcancelSentNsB\f\n" +
 	"\n" +
 	"_quote_qtyB\b\n" +
 	"\x06_priceB\f\n" +
 	"\n" +
-	"_avg_price\"\xb9\x02\n" +
-	"\x04Fill\x12\x16\n" +
-	"\x06ticker\x18\x01 \x01(\tR\x06ticker\x12\x17\n" +
+	"_avg_priceJ\x04\b\f\x10\rR\rreject_reason\"\xb3\x02\n" +
+	"\x04Fill\x12\x10\n" +
+	"\x03uid\x18\x01 \x01(\rR\x03uid\x12\x17\n" +
 	"\afill_id\x18\x02 \x01(\tR\x06fillId\x12\x19\n" +
 	"\border_id\x18\x03 \x01(\tR\aorderId\x12&\n" +
 	"\x0fclient_order_id\x18\x04 \x01(\tR\rclientOrderId\x12*\n" +
@@ -2342,25 +2272,14 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\tliquidity\x18\n" +
 	" \x01(\tR\tliquidity\x12\x1c\n" +
 	"\n" +
-	"exch_ts_ns\x18\v \x01(\x03R\bexchTsNs\"\x94\x01\n" +
-	"\vOrderReject\x12&\n" +
-	"\x0fclient_order_id\x18\x01 \x01(\tR\rclientOrderId\x12\x19\n" +
-	"\border_id\x18\x02 \x01(\tR\aorderId\x12\x16\n" +
-	"\x06ticker\x18\x03 \x01(\tR\x06ticker\x12\x12\n" +
-	"\x04code\x18\x04 \x01(\x05R\x04code\x12\x16\n" +
-	"\x06reason\x18\x05 \x01(\tR\x06reason\"}\n" +
-	"\fCancelReject\x12&\n" +
-	"\x0fclient_order_id\x18\x01 \x01(\tR\rclientOrderId\x12\x19\n" +
-	"\border_id\x18\x02 \x01(\tR\aorderId\x12\x12\n" +
-	"\x04code\x18\x03 \x01(\x05R\x04code\x12\x16\n" +
-	"\x06reason\x18\x04 \x01(\tR\x06reason\"e\n" +
+	"exch_ts_ns\x18\v \x01(\x03R\bexchTsNs\"e\n" +
 	"\aBalance\x12\x14\n" +
 	"\x05asset\x18\x01 \x01(\tR\x05asset\x12\x12\n" +
 	"\x04free\x18\x02 \x01(\x01R\x04free\x12\x16\n" +
 	"\x06locked\x18\x03 \x01(\x01R\x06locked\x12\x18\n" +
-	"\aprelock\x18\x04 \x01(\x01R\aprelock\"\x8c\x02\n" +
-	"\bPosition\x12\x16\n" +
-	"\x06ticker\x18\x01 \x01(\tR\x06ticker\x12\x12\n" +
+	"\aprelock\x18\x04 \x01(\x01R\aprelock\"\x86\x02\n" +
+	"\bPosition\x12\x10\n" +
+	"\x03uid\x18\x01 \x01(\rR\x03uid\x12\x12\n" +
 	"\x04size\x18\x02 \x01(\x01R\x04size\x12$\n" +
 	"\ventry_price\x18\x03 \x01(\x01H\x00R\n" +
 	"entryPrice\x88\x01\x01\x12\"\n" +
@@ -2383,18 +2302,50 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"openOrders\x124\n" +
 	"\tpositions\x18\x04 \x03(\v2\x16.mftiko.td.v1.PositionR\tpositions\x121\n" +
 	"\bbalances\x18\x05 \x03(\v2\x15.mftiko.td.v1.BalanceR\bbalances\x12\x18\n" +
-	"\bas_of_ns\x18\x06 \x01(\x03R\x06asOfNs*\xa7\x02\n" +
+	"\bas_of_ns\x18\x06 \x01(\x03R\x06asOfNs*\xa1\x02\n" +
 	"\vOrderStatus\x12\x1c\n" +
 	"\x18ORDER_STATUS_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18ORDER_STATUS_PENDING_NEW\x10\x01\x12\x14\n" +
-	"\x10ORDER_STATUS_NEW\x10\x02\x12!\n" +
-	"\x1dORDER_STATUS_PARTIALLY_FILLED\x10\x03\x12\x17\n" +
-	"\x13ORDER_STATUS_FILLED\x10\x04\x12\x1f\n" +
-	"\x1bORDER_STATUS_PENDING_CANCEL\x10\x05\x12\x1a\n" +
+	"\x10ORDER_STATUS_NEW\x10\x02\x12\x19\n" +
+	"\x15ORDER_STATUS_ACCEPTED\x10\x03\x12!\n" +
+	"\x1dORDER_STATUS_PARTIALLY_FILLED\x10\x04\x12\x17\n" +
+	"\x13ORDER_STATUS_FILLED\x10\x05\x12\x1a\n" +
 	"\x16ORDER_STATUS_CANCELLED\x10\x06\x12\x19\n" +
 	"\x15ORDER_STATUS_REJECTED\x10\a\x12\x18\n" +
 	"\x14ORDER_STATUS_EXPIRED\x10\b\x12\x18\n" +
-	"\x14ORDER_STATUS_UNKNOWN\x10\t*e\n" +
+	"\x14ORDER_STATUS_UNKNOWN\x10\t*\xc4\x02\n" +
+	"\n" +
+	"RejectCode\x12\x1b\n" +
+	"\x17REJECT_CODE_UNSPECIFIED\x10\x00\x12\x1f\n" +
+	"\x1bREJECT_CODE_ACCOUNT_OFFLINE\x10e\x12 \n" +
+	"\x1cREJECT_CODE_ACCOUNT_DEGRADED\x10f\x12\x1a\n" +
+	"\x16REJECT_CODE_HEDGE_MODE\x10g\x12\x1d\n" +
+	"\x19REJECT_CODE_ALGO_MISMATCH\x10h\x12\"\n" +
+	"\x1eREJECT_CODE_VENUE_NOT_TRADABLE\x10i\x12\x1d\n" +
+	"\x19REJECT_CODE_INVALID_ORDER\x10j\x12\x1e\n" +
+	"\x1aREJECT_CODE_ORDER_NOT_OPEN\x10k\x12\x1c\n" +
+	"\x18REJECT_CODE_RATE_LIMITED\x10l\x12\x1a\n" +
+	"\x16REJECT_CODE_NOT_PLACED\x10x*\x81\x01\n" +
+	"\fAccountState\x12\x1d\n" +
+	"\x19ACCOUNT_STATE_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13ACCOUNT_STATE_READY\x10\x01\x12\x1a\n" +
+	"\x16ACCOUNT_STATE_DEGRADED\x10\x02\x12\x1d\n" +
+	"\x19ACCOUNT_STATE_UNAVAILABLE\x10\x03*\xe2\x02\n" +
+	"\n" +
+	"OrderCause\x12\x1b\n" +
+	"\x17ORDER_CAUSE_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15ORDER_CAUSE_SUBMITTED\x10\x01\x12\x1c\n" +
+	"\x18ORDER_CAUSE_ACKNOWLEDGED\x10\x02\x12\x18\n" +
+	"\x14ORDER_CAUSE_ACCEPTED\x10\x03\x12\x16\n" +
+	"\x12ORDER_CAUSE_FILLED\x10\x04\x12 \n" +
+	"\x1cORDER_CAUSE_CANCEL_REQUESTED\x10\x05\x12\x19\n" +
+	"\x15ORDER_CAUSE_CANCELLED\x10\x06\x12\x1f\n" +
+	"\x1bORDER_CAUSE_CANCEL_REJECTED\x10\a\x12\x18\n" +
+	"\x14ORDER_CAUSE_REJECTED\x10\b\x12\x17\n" +
+	"\x13ORDER_CAUSE_EXPIRED\x10\t\x12\x1f\n" +
+	"\x1bORDER_CAUSE_OUTCOME_UNKNOWN\x10\n" +
+	"\x12\x1a\n" +
+	"\x16ORDER_CAUSE_RECONCILED\x10\v*e\n" +
 	"\vReconReason\x12\x1c\n" +
 	"\x18RECON_REASON_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16RECON_REASON_RECONNECT\x10\x01\x12\x1c\n" +
@@ -2412,87 +2363,85 @@ func file_mftiko_td_v1_td_proto_rawDescGZIP() []byte {
 	return file_mftiko_td_v1_td_proto_rawDescData
 }
 
-var file_mftiko_td_v1_td_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_mftiko_td_v1_td_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
+var file_mftiko_td_v1_td_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
+var file_mftiko_td_v1_td_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_mftiko_td_v1_td_proto_goTypes = []any{
-	(OrderStatus)(0),              // 0: mftiko.td.v1.OrderStatus
-	(ReconReason)(0),              // 1: mftiko.td.v1.ReconReason
-	(*OrderRequest)(nil),          // 2: mftiko.td.v1.OrderRequest
-	(*Submit)(nil),                // 3: mftiko.td.v1.Submit
-	(*Cancel)(nil),                // 4: mftiko.td.v1.Cancel
-	(*BatchCancel)(nil),           // 5: mftiko.td.v1.BatchCancel
-	(*OrderReply)(nil),            // 6: mftiko.td.v1.OrderReply
-	(*OrderAck)(nil),              // 7: mftiko.td.v1.OrderAck
-	(*BatchCancelResult)(nil),     // 8: mftiko.td.v1.BatchCancelResult
-	(*ViewRequest)(nil),           // 9: mftiko.td.v1.ViewRequest
-	(*OmsViewRequest)(nil),        // 10: mftiko.td.v1.OmsViewRequest
-	(*LedgerViewRequest)(nil),     // 11: mftiko.td.v1.LedgerViewRequest
-	(*EnsureLeverageRequest)(nil), // 12: mftiko.td.v1.EnsureLeverageRequest
-	(*ViewReply)(nil),             // 13: mftiko.td.v1.ViewReply
-	(*OmsView)(nil),               // 14: mftiko.td.v1.OmsView
-	(*LedgerView)(nil),            // 15: mftiko.td.v1.LedgerView
-	(*LeverageInfo)(nil),          // 16: mftiko.td.v1.LeverageInfo
-	(*AccountEvent)(nil),          // 17: mftiko.td.v1.AccountEvent
-	(*Order)(nil),                 // 18: mftiko.td.v1.Order
-	(*Fill)(nil),                  // 19: mftiko.td.v1.Fill
-	(*OrderReject)(nil),           // 20: mftiko.td.v1.OrderReject
-	(*CancelReject)(nil),          // 21: mftiko.td.v1.CancelReject
-	(*Balance)(nil),               // 22: mftiko.td.v1.Balance
-	(*Position)(nil),              // 23: mftiko.td.v1.Position
-	(*BalanceUpdate)(nil),         // 24: mftiko.td.v1.BalanceUpdate
-	(*PositionUpdate)(nil),        // 25: mftiko.td.v1.PositionUpdate
-	(*Recon)(nil),                 // 26: mftiko.td.v1.Recon
-	nil,                           // 27: mftiko.td.v1.Submit.ParamsEntry
-	(v1.Side)(0),                  // 28: mftiko.common.v1.Side
-	(v1.OrderType)(0),             // 29: mftiko.common.v1.OrderType
-	(v1.TimeInForce)(0),           // 30: mftiko.common.v1.TimeInForce
-	(*v1.Error)(nil),              // 31: mftiko.common.v1.Error
-	(*v1.WorkerRef)(nil),          // 32: mftiko.common.v1.WorkerRef
+	(OrderStatus)(0),          // 0: mftiko.td.v1.OrderStatus
+	(RejectCode)(0),           // 1: mftiko.td.v1.RejectCode
+	(AccountState)(0),         // 2: mftiko.td.v1.AccountState
+	(OrderCause)(0),           // 3: mftiko.td.v1.OrderCause
+	(ReconReason)(0),          // 4: mftiko.td.v1.ReconReason
+	(*OrderRequest)(nil),      // 5: mftiko.td.v1.OrderRequest
+	(*Submit)(nil),            // 6: mftiko.td.v1.Submit
+	(*Cancel)(nil),            // 7: mftiko.td.v1.Cancel
+	(*BatchCancel)(nil),       // 8: mftiko.td.v1.BatchCancel
+	(*OrderReply)(nil),        // 9: mftiko.td.v1.OrderReply
+	(*ViewRequest)(nil),       // 10: mftiko.td.v1.ViewRequest
+	(*OmsViewRequest)(nil),    // 11: mftiko.td.v1.OmsViewRequest
+	(*LedgerViewRequest)(nil), // 12: mftiko.td.v1.LedgerViewRequest
+	(*LeverageRequest)(nil),   // 13: mftiko.td.v1.LeverageRequest
+	(*ViewReply)(nil),         // 14: mftiko.td.v1.ViewReply
+	(*OmsView)(nil),           // 15: mftiko.td.v1.OmsView
+	(*LedgerView)(nil),        // 16: mftiko.td.v1.LedgerView
+	(*LeverageInfo)(nil),      // 17: mftiko.td.v1.LeverageInfo
+	(*AccountEvent)(nil),      // 18: mftiko.td.v1.AccountEvent
+	(*OrderUpdate)(nil),       // 19: mftiko.td.v1.OrderUpdate
+	(*Order)(nil),             // 20: mftiko.td.v1.Order
+	(*Fill)(nil),              // 21: mftiko.td.v1.Fill
+	(*Balance)(nil),           // 22: mftiko.td.v1.Balance
+	(*Position)(nil),          // 23: mftiko.td.v1.Position
+	(*BalanceUpdate)(nil),     // 24: mftiko.td.v1.BalanceUpdate
+	(*PositionUpdate)(nil),    // 25: mftiko.td.v1.PositionUpdate
+	(*Recon)(nil),             // 26: mftiko.td.v1.Recon
+	nil,                       // 27: mftiko.td.v1.Submit.ParamsEntry
+	(v1.Side)(0),              // 28: mftiko.common.v1.Side
+	(v1.OrderType)(0),         // 29: mftiko.common.v1.OrderType
+	(v1.TimeInForce)(0),       // 30: mftiko.common.v1.TimeInForce
+	(*v1.Error)(nil),          // 31: mftiko.common.v1.Error
+	(*v1.WorkerRef)(nil),      // 32: mftiko.common.v1.WorkerRef
 }
 var file_mftiko_td_v1_td_proto_depIdxs = []int32{
-	3,  // 0: mftiko.td.v1.OrderRequest.submit:type_name -> mftiko.td.v1.Submit
-	4,  // 1: mftiko.td.v1.OrderRequest.cancel:type_name -> mftiko.td.v1.Cancel
-	5,  // 2: mftiko.td.v1.OrderRequest.batch_cancel:type_name -> mftiko.td.v1.BatchCancel
+	6,  // 0: mftiko.td.v1.OrderRequest.submit:type_name -> mftiko.td.v1.Submit
+	7,  // 1: mftiko.td.v1.OrderRequest.cancel:type_name -> mftiko.td.v1.Cancel
+	8,  // 2: mftiko.td.v1.OrderRequest.batch_cancel:type_name -> mftiko.td.v1.BatchCancel
 	28, // 3: mftiko.td.v1.Submit.side:type_name -> mftiko.common.v1.Side
 	29, // 4: mftiko.td.v1.Submit.order_type:type_name -> mftiko.common.v1.OrderType
 	30, // 5: mftiko.td.v1.Submit.tif:type_name -> mftiko.common.v1.TimeInForce
 	27, // 6: mftiko.td.v1.Submit.params:type_name -> mftiko.td.v1.Submit.ParamsEntry
-	7,  // 7: mftiko.td.v1.OrderReply.ack:type_name -> mftiko.td.v1.OrderAck
-	31, // 8: mftiko.td.v1.OrderReply.error:type_name -> mftiko.common.v1.Error
-	8,  // 9: mftiko.td.v1.OrderReply.batch_cancel:type_name -> mftiko.td.v1.BatchCancelResult
-	10, // 10: mftiko.td.v1.ViewRequest.oms:type_name -> mftiko.td.v1.OmsViewRequest
-	11, // 11: mftiko.td.v1.ViewRequest.ledger:type_name -> mftiko.td.v1.LedgerViewRequest
-	12, // 12: mftiko.td.v1.ViewRequest.leverage:type_name -> mftiko.td.v1.EnsureLeverageRequest
-	14, // 13: mftiko.td.v1.ViewReply.oms:type_name -> mftiko.td.v1.OmsView
-	15, // 14: mftiko.td.v1.ViewReply.ledger:type_name -> mftiko.td.v1.LedgerView
-	16, // 15: mftiko.td.v1.ViewReply.leverage:type_name -> mftiko.td.v1.LeverageInfo
-	31, // 16: mftiko.td.v1.ViewReply.error:type_name -> mftiko.common.v1.Error
-	18, // 17: mftiko.td.v1.OmsView.orders:type_name -> mftiko.td.v1.Order
-	22, // 18: mftiko.td.v1.LedgerView.balances:type_name -> mftiko.td.v1.Balance
-	23, // 19: mftiko.td.v1.LedgerView.positions:type_name -> mftiko.td.v1.Position
-	32, // 20: mftiko.td.v1.AccountEvent.source:type_name -> mftiko.common.v1.WorkerRef
-	18, // 21: mftiko.td.v1.AccountEvent.order_update:type_name -> mftiko.td.v1.Order
-	19, // 22: mftiko.td.v1.AccountEvent.fill:type_name -> mftiko.td.v1.Fill
-	20, // 23: mftiko.td.v1.AccountEvent.order_reject:type_name -> mftiko.td.v1.OrderReject
-	21, // 24: mftiko.td.v1.AccountEvent.cancel_reject:type_name -> mftiko.td.v1.CancelReject
-	24, // 25: mftiko.td.v1.AccountEvent.balance_update:type_name -> mftiko.td.v1.BalanceUpdate
-	25, // 26: mftiko.td.v1.AccountEvent.position_update:type_name -> mftiko.td.v1.PositionUpdate
-	26, // 27: mftiko.td.v1.AccountEvent.recon:type_name -> mftiko.td.v1.Recon
-	28, // 28: mftiko.td.v1.Order.side:type_name -> mftiko.common.v1.Side
-	29, // 29: mftiko.td.v1.Order.order_type:type_name -> mftiko.common.v1.OrderType
-	0,  // 30: mftiko.td.v1.Order.status:type_name -> mftiko.td.v1.OrderStatus
-	28, // 31: mftiko.td.v1.Fill.side:type_name -> mftiko.common.v1.Side
-	22, // 32: mftiko.td.v1.BalanceUpdate.balances:type_name -> mftiko.td.v1.Balance
-	23, // 33: mftiko.td.v1.PositionUpdate.positions:type_name -> mftiko.td.v1.Position
-	1,  // 34: mftiko.td.v1.Recon.reason:type_name -> mftiko.td.v1.ReconReason
-	18, // 35: mftiko.td.v1.Recon.open_orders:type_name -> mftiko.td.v1.Order
-	23, // 36: mftiko.td.v1.Recon.positions:type_name -> mftiko.td.v1.Position
-	22, // 37: mftiko.td.v1.Recon.balances:type_name -> mftiko.td.v1.Balance
-	38, // [38:38] is the sub-list for method output_type
-	38, // [38:38] is the sub-list for method input_type
-	38, // [38:38] is the sub-list for extension type_name
-	38, // [38:38] is the sub-list for extension extendee
-	0,  // [0:38] is the sub-list for field type_name
+	11, // 7: mftiko.td.v1.ViewRequest.oms:type_name -> mftiko.td.v1.OmsViewRequest
+	12, // 8: mftiko.td.v1.ViewRequest.ledger:type_name -> mftiko.td.v1.LedgerViewRequest
+	13, // 9: mftiko.td.v1.ViewRequest.leverage:type_name -> mftiko.td.v1.LeverageRequest
+	15, // 10: mftiko.td.v1.ViewReply.oms:type_name -> mftiko.td.v1.OmsView
+	16, // 11: mftiko.td.v1.ViewReply.ledger:type_name -> mftiko.td.v1.LedgerView
+	17, // 12: mftiko.td.v1.ViewReply.leverage:type_name -> mftiko.td.v1.LeverageInfo
+	31, // 13: mftiko.td.v1.ViewReply.error:type_name -> mftiko.common.v1.Error
+	2,  // 14: mftiko.td.v1.ViewReply.state:type_name -> mftiko.td.v1.AccountState
+	20, // 15: mftiko.td.v1.OmsView.orders:type_name -> mftiko.td.v1.Order
+	22, // 16: mftiko.td.v1.LedgerView.balances:type_name -> mftiko.td.v1.Balance
+	23, // 17: mftiko.td.v1.LedgerView.positions:type_name -> mftiko.td.v1.Position
+	32, // 18: mftiko.td.v1.AccountEvent.source:type_name -> mftiko.common.v1.WorkerRef
+	19, // 19: mftiko.td.v1.AccountEvent.order_update:type_name -> mftiko.td.v1.OrderUpdate
+	21, // 20: mftiko.td.v1.AccountEvent.fill:type_name -> mftiko.td.v1.Fill
+	24, // 21: mftiko.td.v1.AccountEvent.balance_update:type_name -> mftiko.td.v1.BalanceUpdate
+	25, // 22: mftiko.td.v1.AccountEvent.position_update:type_name -> mftiko.td.v1.PositionUpdate
+	26, // 23: mftiko.td.v1.AccountEvent.recon:type_name -> mftiko.td.v1.Recon
+	20, // 24: mftiko.td.v1.OrderUpdate.order:type_name -> mftiko.td.v1.Order
+	3,  // 25: mftiko.td.v1.OrderUpdate.cause:type_name -> mftiko.td.v1.OrderCause
+	28, // 26: mftiko.td.v1.Order.side:type_name -> mftiko.common.v1.Side
+	29, // 27: mftiko.td.v1.Order.order_type:type_name -> mftiko.common.v1.OrderType
+	0,  // 28: mftiko.td.v1.Order.status:type_name -> mftiko.td.v1.OrderStatus
+	28, // 29: mftiko.td.v1.Fill.side:type_name -> mftiko.common.v1.Side
+	22, // 30: mftiko.td.v1.BalanceUpdate.balances:type_name -> mftiko.td.v1.Balance
+	23, // 31: mftiko.td.v1.PositionUpdate.positions:type_name -> mftiko.td.v1.Position
+	4,  // 32: mftiko.td.v1.Recon.reason:type_name -> mftiko.td.v1.ReconReason
+	20, // 33: mftiko.td.v1.Recon.open_orders:type_name -> mftiko.td.v1.Order
+	23, // 34: mftiko.td.v1.Recon.positions:type_name -> mftiko.td.v1.Position
+	22, // 35: mftiko.td.v1.Recon.balances:type_name -> mftiko.td.v1.Balance
+	36, // [36:36] is the sub-list for method output_type
+	36, // [36:36] is the sub-list for method input_type
+	36, // [36:36] is the sub-list for extension type_name
+	36, // [36:36] is the sub-list for extension extendee
+	0,  // [0:36] is the sub-list for field type_name
 }
 
 func init() { file_mftiko_td_v1_td_proto_init() }
@@ -2506,40 +2455,34 @@ func file_mftiko_td_v1_td_proto_init() {
 		(*OrderRequest_BatchCancel)(nil),
 	}
 	file_mftiko_td_v1_td_proto_msgTypes[1].OneofWrappers = []any{}
-	file_mftiko_td_v1_td_proto_msgTypes[4].OneofWrappers = []any{
-		(*OrderReply_Ack)(nil),
-		(*OrderReply_Error)(nil),
-		(*OrderReply_BatchCancel)(nil),
-	}
-	file_mftiko_td_v1_td_proto_msgTypes[7].OneofWrappers = []any{
+	file_mftiko_td_v1_td_proto_msgTypes[5].OneofWrappers = []any{
 		(*ViewRequest_Oms)(nil),
 		(*ViewRequest_Ledger)(nil),
 		(*ViewRequest_Leverage)(nil),
 	}
-	file_mftiko_td_v1_td_proto_msgTypes[11].OneofWrappers = []any{
+	file_mftiko_td_v1_td_proto_msgTypes[9].OneofWrappers = []any{
 		(*ViewReply_Oms)(nil),
 		(*ViewReply_Ledger)(nil),
 		(*ViewReply_Leverage)(nil),
 		(*ViewReply_Error)(nil),
 	}
-	file_mftiko_td_v1_td_proto_msgTypes[15].OneofWrappers = []any{
+	file_mftiko_td_v1_td_proto_msgTypes[12].OneofWrappers = []any{}
+	file_mftiko_td_v1_td_proto_msgTypes[13].OneofWrappers = []any{
 		(*AccountEvent_OrderUpdate)(nil),
 		(*AccountEvent_Fill)(nil),
-		(*AccountEvent_OrderReject)(nil),
-		(*AccountEvent_CancelReject)(nil),
 		(*AccountEvent_BalanceUpdate)(nil),
 		(*AccountEvent_PositionUpdate)(nil),
 		(*AccountEvent_Recon)(nil),
 	}
-	file_mftiko_td_v1_td_proto_msgTypes[16].OneofWrappers = []any{}
-	file_mftiko_td_v1_td_proto_msgTypes[21].OneofWrappers = []any{}
+	file_mftiko_td_v1_td_proto_msgTypes[15].OneofWrappers = []any{}
+	file_mftiko_td_v1_td_proto_msgTypes[18].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mftiko_td_v1_td_proto_rawDesc), len(file_mftiko_td_v1_td_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   26,
+			NumEnums:      5,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -202,7 +202,7 @@ type umExec struct {
 func (o umExec) update() exchange.OrderUpdate {
 	return exchange.OrderUpdate{
 		Exch: exchOf(o.Symbol), OrderID: strconv.FormatInt(o.OrderID, 10), ClientOrderID: o.ClientID,
-		Side: sideOf(o.Side), Type: typeOf(o.Type), Status: statusOf(o.Status),
+		Side: sideOf(o.Side), Type: typeOf(o.Type), Status: orderStatus(o.Status, float64(o.Filled)),
 		Qty: float64(o.Qty), Price: float64(o.Price), FilledQty: float64(o.Filled),
 		AvgPrice: float64(o.Avg), ExchTsNs: ms(o.Time),
 	}

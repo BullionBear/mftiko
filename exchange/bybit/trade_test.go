@@ -97,7 +97,7 @@ func TestDecodeTrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !sink.gotSub || sink.subID != 1 || sink.sub == nil || sink.sub.OrderID != "a4c1718e-fe53-4659-a118-1f6ecce04ad9" ||
-		sink.sub.Status != exchange.OrderStatusPendingNew || sink.sub.ExchTsNs != 1711001595209*int64(time.Millisecond) {
+		sink.sub.Status != exchange.OrderStatusNew || sink.sub.ExchTsNs != 1711001595209*int64(time.Millisecond) {
 		t.Fatalf("create %+v id=%d err=%v", sink.sub, sink.subID, sink.subErr)
 	}
 	if len(sink.used) != 1 || sink.used[0].Bucket != bucketEndpoint || sink.used[0].N != 1 ||

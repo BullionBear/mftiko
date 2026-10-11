@@ -170,8 +170,12 @@ func TestStatusAndCategory(t *testing.T) {
 	if statusOf("PartiallyFilledCanceled") != exchange.OrderStatusCancelled {
 		t.Fatal("partial cancel")
 	}
-	if statusOf("Untriggered") != exchange.OrderStatusPendingNew {
-		t.Fatal("untriggered")
+	if statusOf("Untriggered") != exchange.OrderStatusNew || statusOf("New") != exchange.OrderStatusAccepted {
+		t.Fatal("untriggered or new")
+	}
+	if orderStatus("PendingCancel", 0) != exchange.OrderStatusAccepted ||
+		orderStatus("PendingCancel", 0.5) != exchange.OrderStatusPartiallyFilled {
+		t.Fatal("pending cancel is an order on the book")
 	}
 	if got := exchKey("linear", "BTCUSDT-16OCT26"); got.Category != symbol.Future {
 		t.Fatalf("future %s", got.Category)

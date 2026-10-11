@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-11 定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-11 定案 TD 的契約與 NATS 身分（E6-02）：`td.order` 只回 ack 或本地拒絕，單的每一次變化都是 `OrderUpdate`，1xx 只列一期會碰到的；訂單狀態加 `ACCEPTED`（上簿），撤單在途改成旗標 `cancel_sent_ns`，拿掉 `PENDING_CANCEL`；account worker 每個帳號一份 NATS 憑證，由 TD agent 簽，D610–D611。同日定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 >
@@ -446,7 +446,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   - 逾時：SDK 把這張單以 `ORDER_STATUS_UNKNOWN` 交給策略。不查 `td.view`、不重送、不推論。
   - 之後這個 `client_order_id` 的 `OrderUpdate` 來了，SDK 照常更新。一直沒有下文的單怎麼處理是策略的事，例如以 `BatchCancel` 清掉，或等 `OnRecon`。
 - **TD：交易所沒有回答的單，由 worker 主動以 `client_order_id` 查交易所。**
-  - 下單或撤單送出之後沒有讀得到的回答（`ErrUnknownOutcome`，D303），OMS 把這張單記成 `UNKNOWN`，在 `td.evt` 發出。
+  - 下單或撤單送出之後沒有讀得到的回答（`ErrUnknownOutcome`，D303），OMS 把這張單記成 `UNKNOWN`，在 `td.evt` 發出。撤單沒有回答時不記成 `UNKNOWN`，見 D610。
   - 等到「送出時間 ＋ 請求有效期 ＋ 時鐘誤差」之後，以 cloid 查單（`Account.QueryOrder`，REST，E6-16）。有效期是 Binance、Bybit 的 `recvWindow`、OKX 的 `expTime`，下單與撤單一律帶上。過了這條界線，請求就算才到交易所也會被拒，「查無此單」才等於「沒下成」。預設有效期 5 秒、時鐘誤差 1 秒，是部署設定。
   - 查到：照交易所的狀態更新 OMS，發 `OrderUpdate`。查無此單：`REJECTED`，reason `not_placed`。查詢本身失敗：退避重試，直到有結果。不重送原單。
   - 只靠私有事件與 recon 不夠：單沒到交易所時兩者都不會出現；單在私有連線斷線期間就終結時，事件漏了，recon 只讀 open orders 也看不到。
@@ -485,6 +485,60 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **每個 account worker 自己限速。** 依 `AccountLimits.OrderRate` 與交易所回報的 `Usage`；429、418 照 D420 停送。
 - **同一個出口 IP 上多個帳號共用的額度一期不處理。** Binance 的 request weight 依 IP 計，UM 與 CM 共用下單額度（D301）。多個 account worker 在同一台主機上會一起吃同一份額度，各自限速看不到彼此。記在 PROTOCOL §10 P17。
 - **一期不做：** 改單（Amend）與條件單。之後在 `OrderRequest` 加 oneof 分支，是相容擴充。
+
+### D610 `td.order` 只回 ack 或本地拒絕；單的每一次變化都是 `OrderUpdate`
+
+- **`td.order` 的回覆只有兩種。** `accepted` 為真：TD 收下了，接著送往交易所，不代表交易所接受。`accepted` 為假：本地拒絕，code 是 1xx，什麼都沒送出。回覆裡沒有 `Order`，之後的狀態一律從 `td.evt` 拿。
+  - `BatchCancel` 也一樣：回覆只說收下了，每一張單撤成或撤不成，各自是一則 `OrderUpdate`。拿掉 `BatchCancelResult` 與 `timeout_ms`。
+  - account worker 完成 `Start` 之後才服務 `td.order`；在那之前送單和 worker 不在一樣，是 101。`td.view` 從連上 NATS 起就回答（D606）。
+- **單的每一次變化都是一則 `OrderUpdate{order, cause, code, reason}`。** `order` 是變化之後的完整狀態，`cause` 說為什麼變（PROTOCOL §7.2 的表）。成交明細仍是另一則 `Fill`。
+  - 拒單也是 `OrderUpdate`：status `REJECTED`，cause `REJECTED`。交易所的拒絕與查單後確定沒下成（120）都是。
+  - 撤單被拒也是：cause `CANCEL_REJECTED`，清掉 `cancel_sent_ns`，status 不變（見下一條）。
+  - 拿掉 `OrderReject`、`CancelReject`、`OrderAck`。`Order.reject_reason` 移到 `OrderUpdate.code`、`reason`：`Order` 是狀態紀錄，`OmsView`、`Recon` 照舊用它；拒絕的原因屬於那一次變化。
+  - 本地拒絕只在 `td.order` 的回覆裡，不發到 `td.evt`：什麼都沒送出，這張單在 TD 不存在。
+- **`OrderStatus` 是單在交易所那一側的狀態。** 重新編號（草案，沒有已存的資料）：
+  - `PENDING_NEW`：TD 已送出下單，交易所還沒回答。TD 自己的標記，adapter 不產生它。
+  - `NEW`：交易所收到請求，當下沒有拒絕。還沒上簿，之後仍可能被拒（例如 Bybit 的 `Created` 之後 `Rejected`）。
+  - `ACCEPTED`：在訂單簿上，還沒有成交。回覆本身就代表上簿的交易所（Binance 的 `NEW` 是撮合引擎收下）從 `PENDING_NEW` 直接到這裡。OKX、Bybit 的下單回覆只有 order id，是 `NEW`；OKX `live`、Bybit `New` 是 `ACCEPTED`。對照表在 PROTOCOL §7.2 與各 adapter 的 doc。
+  - 市價單、IOC 可能不經過 `ACCEPTED`，從 `NEW` 直接成交或過期。
+- **撤單在途是旗標，不是狀態：`Order.cancel_sent_ns`。** TD 送出撤單的時間，0 表示沒有撤單在途。
+  - 撤單途中 `status` 照交易所的事件走，上簿、成交照常更新。撤單被拒只清掉旗標，沒有要還原的狀態。以「撤單前的狀態」還原是錯的：撤單途中可能已經上簿或部分成交。
+  - 撤單沒有回答時，`status` 不變、旗標保留，worker 照 D605 的界線查單。修改 D605：撤單沒有回答不把單記成 `UNKNOWN`，單還在交易所上，不確定的只有撤單本身。
+  - 進終態時一律清掉旗標；之後才到的撤單結果不再發 `OrderUpdate`。目標單已經有撤單在途時再撤，回 `accepted`，不再送交易所。
+  - 交易所自己的 pending-cancel 狀態（Binance `PENDING_CANCEL`、Bybit `PendingCancel`）是還在簿上的單：`ACCEPTED`，有成交就是 `PARTIALLY_FILLED`（`exchange.OnBook`）。
+  - 拿掉 `ORDER_STATUS_PENDING_CANCEL` 與 `exchange.OrderStatusPendingCancel`。`OrderCause` 加 `ACKNOWLEDGED`（→ `NEW`），`ACCEPTED` 改指上簿。
+  - 不採用：保留 `PENDING_CANCEL` 狀態，另加 `prev_status` 供還原。`prev_status` 要對，撤單途中就得跟著事件更新，那它就是底層狀態本身；快照裡一張 `PENDING_CANCEL` 的單也看不出底下是 `NEW` 還是 `ACCEPTED`。這和 FIX、Binance 把 pending cancel 當成單的狀態不同，是刻意的。
+- **同一次變化只發一則。** 同一張單的同一次變化，交易所的回答與私有事件常常都會報（WS 下單的回答、REST 的回應、user data stream）。worker 依 `client_order_id` 與變化後的狀態去重再發佈，所以每個交易所都是同一個語意。
+- **1xx 以 code 區分，`reason` 只給人讀。** `RejectCode` 替 1xx 取名，名字要讓寫策略的人看得懂：沒有 responder 叫 `ACCOUNT_OFFLINE`。
+  - 只列一期會碰到、有票驗收的，之後碰到新的情況再加。表在 PROTOCOL §7.2。
+  - 101–119 是本地拒絕，只出現在 `td.order` 的回覆；120 起是送出之後確定沒下成，只出現在 `OrderUpdate`。
+  - D301、D603、D605、D607 寫的 `venue_not_tradable`、`account_degraded`、`not_placed`、`hedge_mode`，分別是 105、102、120、103。etcd ack 的 reason `hedge_mode`（D608）不是拒單碼，不變。
+  - 撤單的目標不是掛單（107）與限速（108，D609 照 D420 不排隊）都是一期就會碰到的，所以列入。drain 中的新單沒有拒單碼：一期沒有人送 `Drain`，等 drain-replace 落地時再加。
+- **商品以 UID 指定（D203）。** `Submit`、`Cancel`、`BatchCancel`、`Order`、`Fill`、`Position`、`LedgerViewRequest`、`LeverageRequest` 與 `tdctl.Report.first_submit_ns` 的 key 都換成 `uint32` UID。subject 仍是 `td.*.{api_id}`。
+- **`td.view` 的狀態欄位放在 `ViewReply` 上**：`state`、`reconciled_at_ns`、`incarnation`、`seq`，三種回覆共用（D606）。`OmsView`、`LedgerView` 原本各自的 `incarnation`、`as_of_ns` 拿掉。`AccountState` 從 `tdctl.v1` 移到 `td.v1`，`tdctl.Report` 改用它。`LeverageInfo.leverage` 是 optional：不設表示快取裡沒有。
+- **`OmsViewRequest` 拿掉 `session_id`。** 單上只帶 algo（D602），TD 沒有 session 可以篩。`Submit`、`Cancel` 的 `session_id` 只給 log。
+- 不採用：`td.order` 等交易所回答才回覆，或回覆帶 `Order`。結果會在回覆與 `td.evt` 各報一次，策略要對兩個來源排序、去重；回覆的逾時也得蓋過交易所的延遲。
+- 不採用：保留 `OrderReject`、`CancelReject` 當獨立事件。同一張單的狀態散在三種事件裡，策略要自己拼。
+
+### D611 TD 的 NATS 身分：agent 每個 instance 一份，account worker 每個帳號一份
+
+- **account worker 每個 `api_id` 一份 user JWT，由 TD agent 簽。** 和 session 的憑證一樣（D906）：spawn 時在本機簽，經 `Init` 的 socketpair 送進去（`tdctl.InitPayload.nats`），不放環境變數、不落檔，不設過期。
+- **為什麼每個帳號一份。** 一顆 account worker 只能服務自己的 `td.order.{api_id}`。用平面共用的憑證時，一顆 worker 訂得到別的帳號的 `td.order`；同一個帳號被兩顆 worker 同時服務，同一筆請求會送兩次。交易所只在掛單之間檢查 `client_order_id` 唯一（例如 Binance），已經終結的單擋不住第二次，不能靠交易所去重。
+- **權限：**
+
+  | | TD agent（`td-{inst}`） | account worker（`td-account-{api_id}`） |
+  |---|---|---|
+  | publish | `sym` | `td.evt.{api_id}`、`sym` |
+  | subscribe | `td.evt.>`、`sym.changed.>`、`_INBOX_td.>` | `td.order.{api_id}`、`td.view.{api_id}`、`sym.changed.>`、`_INBOX_td_{api_id}.>` |
+  | 回覆 | 不回答 request | 一則、兩分鐘（D415） |
+
+  - TD agent 訂 `td.evt.>` 落庫（D601）。帳號會在 instance 之間搬，不逐一列出。
+  - account worker 的 inbox 前綴是 `_INBOX_td_{api_id}`，不是平面共用的 `_INBOX_td`：一份憑證一個前綴，和 session 一樣。`session_id` 是六個 hex，不會和它撞。
+  - `sym` 是 publish 恰好這個 subject，不是 `sym.>`（D415）。
+- **TD agent 自己的憑證**和 MD 一樣，每個 instance 一份（`MFTIKO_NATS_CREDS`），由 account 的身分金鑰簽。dev 由 `cmd/mftiko-nats-dev` 產生（`-td-inst`）。
+- **TD agent 持有 `MFTIKO` 的簽章金鑰**，和 STS agent 同一把（D414）。系統是單人使用，兩把只多了輪換的工作。之後要限制 TD agent 能簽出的權限，可以改用 NATS 的 scoped signing key。
+- **檢查（D417）：** 嵌入式 nats-server 上，在記憶體裡簽一顆 account worker，確認它服務得了自己帳號的 `td.order`、`td.view`，發得出自己的 `td.evt`；別的帳號的 `td.evt`、`td.order`、`td.view`、別人的 inbox 一律被拒。TD agent 收得到 `td.evt`，發不出 `td.evt`、`td.order`，也訂不到 `td.order`、`td.view`。
+- 修改 D906 最後一條與 D414 的簽章金鑰。D415 留給 TD 的權限由這一條補上；SYM 仍未定。
 
 ### D905 linger；需求沒有 TTL
 
@@ -576,12 +630,12 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 ### D414 一個 MFTIKO account
 
 - **所有平面共用一個 account `MFTIKO`。** 同一個 subject 空間，沒有 import／export。
-- **`MFTIKO` 另有一把簽章金鑰，給 STS 簽 session user JWT。** account 的身分金鑰不外流，只留在 gitignore 的目錄。MD 與 md.fetch 的 user JWT 由 account 身分金鑰簽，不由這把簽章金鑰簽。
+- **`MFTIKO` 另有一把簽章金鑰，給 STS 簽 session user JWT，TD agent 簽 account worker 的 user JWT（D611）。** account 的身分金鑰不外流，只留在 gitignore 的目錄。MD 與 md.fetch 的 user JWT 由 account 身分金鑰簽，不由這把簽章金鑰簽。
 - **`SYS` 是 system account**，給 resolver 與監控，沒有業務 user。
 
 ### D415 MD 與 md.fetch 兩個 user
 
-寫進 PROTOCOL §7。TD 與 SYM 的權限留到它們自己的票，這一票不加。
+寫進 PROTOCOL §7。TD 與 SYM 的權限留到它們自己的票，這一票不加（TD 見 D611）。
 
 - **MD instance（`MFTIKO_NATS_CREDS`）：** publish `md.f.{inst}.>`、`sym`；subscribe `md.view.{inst}.>`。inbox 見 D416。
 - **md.fetch（D402，無狀態，不是 MD worker）：** queue group subscribe `md.fetch.>`（每個 replica 只訂閱部署設定裡它連得到的 `md.fetch.{venue}`，D418）；subscribe `sym.changed.>`（NATS Resolver，D422）；publish `sym`。inbox 見 D416。可 request `sym` 是 publish 恰好 subject `sym`，不是 `sym.>`。恰好 subject `md.fetch` 不能訂。
@@ -732,7 +786,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **分層：** 跨帳號由 broker 保證，策略只能對自己綁定的帳號發 `td.order`；同一個帳號內的 algo 由 TD 檢查（D602，防呆）。
 - **不設過期、不做撤銷：** 設過期的話，到期時 server 會斷開連線，重連瞬間 core NATS 的 `td.evt` 可能漏。憑證只在進程記憶體裡，session 結束、進程一死就沒了。
 - **不影響下單延遲：** 授權只在建立連線時做一次（`CONNECT` 帶 JWT 與對 nonce 的簽章）。之後每次發佈，server 只拿 subject 比對這條連線的權限快取，訊息本身不帶任何 token。
-- MD、TD 的 worker 是平台程式，用所屬 instance 的憑證。
+- MD 的 worker 是平台程式，用所屬 instance 的憑證。TD 的 account worker 每個帳號一份，由 TD agent 簽（D611）。
 
 ### D202 UniversalTicker 是佔位，解析之後才知道要訂閱什麼
 

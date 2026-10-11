@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,11 +24,13 @@ const (
 	// OperatorName is the dev operator's name.
 	OperatorName = "mftiko-dev"
 
-	// PlaneMD and PlaneFetch are the platform inbox plane tokens (D416).
+	// PlaneMD, PlaneFetch and PlaneTD are the platform inbox plane tokens (D416).
 	// md.fetch is not an etcd plane; "fetch" keeps its inbox off the MD prefix.
-	// Instances of one plane share that prefix.
+	// Instances of one plane share that prefix. PlaneTD is the TD agent's; each account
+	// worker has its own prefix (TDAccountInbox, D611).
 	PlaneMD    = "md"
 	PlaneFetch = "fetch"
+	PlaneTD    = "td"
 
 	// DefaultInst is the instance token make dev-up generates.
 	DefaultInst = "dev"
@@ -55,8 +58,8 @@ const (
 	keySigning  = "mftiko-signing.nk"
 
 	// responseMaxMsgs and responseTTL are nats-server's allow_responses defaults
-	// (one reply, two minutes). MD and md.fetch need them because D416 does not
-	// grant publish on _INBOX.>. They are not a separate decision.
+	// (one reply, two minutes). MD, md.fetch and the TD account worker need them
+	// because D416 does not grant publish on _INBOX.>. They are not a separate decision.
 	responseMaxMsgs = 1
 	responseTTL     = 2 * time.Minute
 )
@@ -69,6 +72,7 @@ var instToken = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 type Options struct {
 	MDInsts    []string
 	FetchInsts []string
+	TDInsts    []string
 }
 
 // User is one generated user. Paths are relative to the output directory and hold no seeds.
@@ -89,6 +93,7 @@ type Manifest struct {
 	SigningKeyFile string `json:"signing_key_file"`
 	MD             []User `json:"md"`
 	Fetch          []User `json:"fetch"`
+	TD             []User `json:"td"`
 }
 
 // Layout is a generated directory plus its manifest.
@@ -119,6 +124,17 @@ func InboxPrefix(plane string) (string, error) {
 	return "_INBOX_" + plane, nil
 }
 
+// TDAccountInbox is the reply prefix _INBOX_td_{api_id} of one TD account worker (D611).
+// Each account worker has its own credential, so it has its own prefix, as a session does
+// (D906). It does not overlap _INBOX_td, the TD agent's prefix, or a session's: a session
+// id is six hex digits. The result has no trailing dot.
+func TDAccountInbox(apiID int64) (string, error) {
+	if apiID <= 0 {
+		return "", errors.New("natsdev: api_id must be positive")
+	}
+	return "_INBOX_" + PlaneTD + "_" + strconv.FormatInt(apiID, 10), nil
+}
+
 // Generate writes operator, account, and user material into dir.
 // Keys that are already there are reused, and JWTs and creds are reissued,
 // so a later dev-up does not rotate the account identity. A seed file that
@@ -132,6 +148,10 @@ func Generate(dir string, opt Options) error {
 		return err
 	}
 	fetchInsts, err := normalizeInsts(opt.FetchInsts)
+	if err != nil {
+		return err
+	}
+	tdInsts, err := normalizeInsts(opt.TDInsts)
 	if err != nil {
 		return err
 	}
@@ -197,6 +217,14 @@ func Generate(dir string, opt Options) error {
 		}
 		fetchUsers = append(fetchUsers, u)
 	}
+	tdUsers := make([]loadedUser, 0, len(tdInsts))
+	for _, inst := range tdInsts {
+		u, err := ensureServiceUser(dir, PlaneTD, inst)
+		if err != nil {
+			return err
+		}
+		tdUsers = append(tdUsers, u)
+	}
 
 	opPub, err := operatorKP.PublicKey()
 	if err != nil {
@@ -248,23 +276,25 @@ func Generate(dir string, opt Options) error {
 		SigningKeyFile: filepath.ToSlash(filepath.Join(dirKeys, keySigning)),
 		MD:             make([]User, 0, len(mdUsers)),
 		Fetch:          make([]User, 0, len(fetchUsers)),
+		TD:             make([]User, 0, len(tdUsers)),
 	}
 	keepCreds := map[string]bool{}
-	for _, u := range mdUsers {
-		entry, err := writeServiceUser(dir, u, accountKP, true)
-		if err != nil {
-			return err
+	for _, plane := range []struct {
+		users []loadedUser
+		out   *[]User
+	}{
+		{mdUsers, &manifest.MD},
+		{fetchUsers, &manifest.Fetch},
+		{tdUsers, &manifest.TD},
+	} {
+		for _, u := range plane.users {
+			entry, err := writeServiceUser(dir, u, accountKP)
+			if err != nil {
+				return err
+			}
+			*plane.out = append(*plane.out, entry)
+			keepCreds[filepath.Base(entry.Creds)] = true
 		}
-		manifest.MD = append(manifest.MD, entry)
-		keepCreds[filepath.Base(entry.Creds)] = true
-	}
-	for _, u := range fetchUsers {
-		entry, err := writeServiceUser(dir, u, accountKP, false)
-		if err != nil {
-			return err
-		}
-		manifest.Fetch = append(manifest.Fetch, entry)
-		keepCreds[filepath.Base(entry.Creds)] = true
 	}
 	if err := removeOther(filepath.Join(dir, dirCreds), keepCreds); err != nil {
 		return err
@@ -332,6 +362,9 @@ func (m Manifest) Summary() string {
 	for _, u := range m.Fetch {
 		fmt.Fprintf(&b, "fetch %s inbox %s creds %s\n", u.Inst, u.InboxPrefix, u.Creds)
 	}
+	for _, u := range m.TD {
+		fmt.Fprintf(&b, "td %s inbox %s creds %s\n", u.Inst, u.InboxPrefix, u.Creds)
+	}
 	fmt.Fprintf(&b, "config %s\n", fileConfig)
 	return b.String()
 }
@@ -383,13 +416,16 @@ func (m Manifest) validate() error {
 	if err := safeRel(m.SigningKeyFile); err != nil {
 		return err
 	}
-	if len(m.MD) == 0 || len(m.Fetch) == 0 {
-		return errors.New("natsdev: manifest needs an MD user and an md.fetch user")
+	if len(m.MD) == 0 || len(m.Fetch) == 0 || len(m.TD) == 0 {
+		return errors.New("natsdev: manifest needs an MD user, an md.fetch user and a TD user; run make dev-up")
 	}
 	if err := validateUsers(PlaneMD, m.MD); err != nil {
 		return err
 	}
-	return validateUsers(PlaneFetch, m.Fetch)
+	if err := validateUsers(PlaneFetch, m.Fetch); err != nil {
+		return err
+	}
+	return validateUsers(PlaneTD, m.TD)
 }
 
 func validateUsers(plane string, users []User) error {
@@ -496,23 +532,51 @@ func credsRel(plane, inst string) string {
 	return filepath.ToSlash(filepath.Join(dirCreds, plane+"-"+inst+".creds"))
 }
 
-func writeServiceUser(dir string, u loadedUser, accountKP nkeys.KeyPair, md bool) (User, error) {
+// servicePerms are the allow lists of one platform instance user (D415, D611), and whether
+// it answers requests.
+func servicePerms(plane, inst, inbox string) (pub, sub []string, resp bool, err error) {
+	switch plane {
+	case PlaneMD:
+		return []string{"md.f." + inst + ".>", "sym"}, []string{"md.view." + inst + ".>", inbox + ".>"}, true, nil
+	case PlaneFetch:
+		// md.fetch.> is every venue subject. The process subscribes only to the
+		// venues it can reach (D418). sym.changed.> is the resolver (D422).
+		return []string{"sym"}, []string{"md.fetch.>", "sym.changed.>", inbox + ".>"}, true, nil
+	case PlaneTD:
+		// td.evt.> is every account: the agent stores fills (D601), and accounts move between
+		// instances, so they are not listed. The agent answers no requests. Its account workers
+		// have their own users (tdAccountPerms).
+		return []string{"sym"}, []string{"td.evt.>", "sym.changed.>", inbox + ".>"}, false, nil
+	}
+	return nil, nil, false, fmt.Errorf("natsdev: no permissions for plane %q", plane)
+}
+
+// tdAccountPerms are the allow lists of the TD account worker for apiID (D611): it serves
+// td.order and td.view of its own account only and publishes that account's td.evt. The TD
+// agent signs a user with these lists at spawn, with the account signing key, and sends it
+// in tdctl.InitPayload.nats; nothing writes it to disk. It answers requests, so the user
+// carries the response permission.
+func tdAccountPerms(apiID int64) (pub, sub []string, err error) {
+	inbox, err := TDAccountInbox(apiID)
+	if err != nil {
+		return nil, nil, err
+	}
+	id := strconv.FormatInt(apiID, 10)
+	return []string{"td.evt." + id, "sym"},
+		[]string{"td.order." + id, "td.view." + id, "sym.changed.>", inbox + ".>"}, nil
+}
+
+func writeServiceUser(dir string, u loadedUser, accountKP nkeys.KeyPair) (User, error) {
 	seed, err := u.kp.Seed()
 	if err != nil {
 		return User{}, err
 	}
-	var pub, sub []string
-	if md {
-		pub = []string{"md.f." + u.inst + ".>", "sym"}
-		sub = []string{"md.view." + u.inst + ".>", u.inbox + ".>"}
-	} else {
-		// md.fetch.> is every venue subject. The process subscribes only to the
-		// venues it can reach (D418). sym.changed.> is the resolver (D422).
-		pub = []string{"sym"}
-		sub = []string{"md.fetch.>", "sym.changed.>", u.inbox + ".>"}
+	pub, sub, resp, err := servicePerms(u.plane, u.inst, u.inbox)
+	if err != nil {
+		return User{}, err
 	}
 	// Signed by the account identity key, so IssuerAccount stays empty (D414).
-	token, err := encodeUser(u.pub, u.name, pub, sub, true, "", accountKP)
+	token, err := encodeUser(u.pub, u.name, pub, sub, resp, "", accountKP)
 	if err != nil {
 		return User{}, err
 	}

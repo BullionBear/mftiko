@@ -27,8 +27,8 @@ func TestEnumsMatchTheContract(t *testing.T) {
 	check("TimeInForce", []uint8{uint8(TIFUnspecified), uint8(TIFGTC), uint8(TIFIOC), uint8(TIFFOK), uint8(TIFPostOnly)},
 		commonv1.TimeInForce_value)
 	check("OrderStatus", []uint8{
-		uint8(OrderStatusUnspecified), uint8(OrderStatusPendingNew), uint8(OrderStatusNew),
-		uint8(OrderStatusPartiallyFilled), uint8(OrderStatusFilled), uint8(OrderStatusPendingCancel),
+		uint8(OrderStatusUnspecified), uint8(OrderStatusPendingNew), uint8(OrderStatusNew), uint8(OrderStatusAccepted),
+		uint8(OrderStatusPartiallyFilled), uint8(OrderStatusFilled),
 		uint8(OrderStatusCancelled), uint8(OrderStatusRejected), uint8(OrderStatusExpired), uint8(OrderStatusUnknown),
 	}, tdv1.OrderStatus_value)
 
@@ -47,9 +47,9 @@ func TestEnumsMatchTheContract(t *testing.T) {
 		{uint8(TIFPostOnly), int32(commonv1.TimeInForce_TIME_IN_FORCE_POST_ONLY)},
 		{uint8(OrderStatusPendingNew), int32(tdv1.OrderStatus_ORDER_STATUS_PENDING_NEW)},
 		{uint8(OrderStatusNew), int32(tdv1.OrderStatus_ORDER_STATUS_NEW)},
+		{uint8(OrderStatusAccepted), int32(tdv1.OrderStatus_ORDER_STATUS_ACCEPTED)},
 		{uint8(OrderStatusPartiallyFilled), int32(tdv1.OrderStatus_ORDER_STATUS_PARTIALLY_FILLED)},
 		{uint8(OrderStatusFilled), int32(tdv1.OrderStatus_ORDER_STATUS_FILLED)},
-		{uint8(OrderStatusPendingCancel), int32(tdv1.OrderStatus_ORDER_STATUS_PENDING_CANCEL)},
 		{uint8(OrderStatusCancelled), int32(tdv1.OrderStatus_ORDER_STATUS_CANCELLED)},
 		{uint8(OrderStatusRejected), int32(tdv1.OrderStatus_ORDER_STATUS_REJECTED)},
 		{uint8(OrderStatusExpired), int32(tdv1.OrderStatus_ORDER_STATUS_EXPIRED)},
@@ -58,5 +58,11 @@ func TestEnumsMatchTheContract(t *testing.T) {
 		if int32(c.ours) != c.theirs {
 			t.Errorf("value %d here is %d in the contract", c.ours, c.theirs)
 		}
+	}
+}
+
+func TestOnBook(t *testing.T) {
+	if OnBook(0) != OrderStatusAccepted || OnBook(0.001) != OrderStatusPartiallyFilled {
+		t.Fatal("an order on the book is Accepted until something fills")
 	}
 }

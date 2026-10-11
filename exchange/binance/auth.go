@@ -439,16 +439,16 @@ func tifWire(t exchange.TimeInForce) (string, error) {
 	}
 }
 
+// statusOf maps the venue's order status. NEW is the matching engine's acceptance, so it is Accepted:
+// Binance has no separate state for a request it has only received.
 func statusOf(s string) exchange.OrderStatus {
 	switch s {
 	case "NEW":
-		return exchange.OrderStatusNew
+		return exchange.OrderStatusAccepted
 	case "PARTIALLY_FILLED":
 		return exchange.OrderStatusPartiallyFilled
 	case "FILLED":
 		return exchange.OrderStatusFilled
-	case "PENDING_CANCEL":
-		return exchange.OrderStatusPendingCancel
 	case "CANCELED":
 		return exchange.OrderStatusCancelled
 	case "REJECTED":
@@ -458,6 +458,16 @@ func statusOf(s string) exchange.OrderStatus {
 	default:
 		return exchange.OrderStatusUnknown
 	}
+}
+
+// orderStatus is statusOf for an order report, which carries the filled quantity. PENDING_CANCEL
+// (unused by the venue today) is an order still on the book: a cancel in flight is the account
+// worker's flag, not a status (D610).
+func orderStatus(s string, filled float64) exchange.OrderStatus {
+	if s == "PENDING_CANCEL" {
+		return exchange.OnBook(filled)
+	}
+	return statusOf(s)
 }
 
 // positionSize applies hedge mode: a SHORT row's amount is positive on the wire and short here.

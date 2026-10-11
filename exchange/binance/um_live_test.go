@@ -85,7 +85,7 @@ func TestBinanceUMTestnet(t *testing.T) {
 		t.Fatalf("resting price %s is not below the bid", decimal.Format(restPx, tick))
 	}
 	rest := h.order(exchange.SideBuy, exchange.OrderTypeLimit, exchange.TIFGTC, qty, restPx, false)
-	res := h.place(rest, exchange.OrderStatusNew)
+	res := h.place(rest, exchange.OrderStatusAccepted)
 	mid := h.snap()
 	h.note("GTC rest px=%s order=%s cloid=%s NEW %s", decimal.Format(restPx, tick), res.OrderID, rest.ClientOrderID, h.fmtSnap(mid))
 	if free, _, ok := usdt(mid); !ok || free > usdtFree(before)-0.5 {
@@ -169,8 +169,8 @@ func TestBinanceUMTestnet(t *testing.T) {
 	px := decimal.SnapDown(h.bid()*0.996, tick)
 	a := h.order(exchange.SideBuy, exchange.OrderTypeLimit, exchange.TIFGTC, qty, px, false)
 	b := h.order(exchange.SideBuy, exchange.OrderTypeLimit, exchange.TIFGTC, qty, px, false)
-	ra := h.place(a, exchange.OrderStatusNew)
-	rb := h.place(b, exchange.OrderStatusNew)
+	ra := h.place(a, exchange.OrderStatusAccepted)
+	rb := h.place(b, exchange.OrderStatusAccepted)
 	errs, err := exchange.Run(ctx, doer, mustCall(raw.CancelBatch(time.Now(), []exchange.CancelRef{
 		{Instrument: inst, ClientOrderID: a.ClientOrderID},
 		{Instrument: inst, ClientOrderID: b.ClientOrderID},
@@ -562,6 +562,8 @@ func statusName(s exchange.OrderStatus) string {
 	switch s {
 	case exchange.OrderStatusNew:
 		return "NEW"
+	case exchange.OrderStatusAccepted:
+		return "ACCEPTED"
 	case exchange.OrderStatusPartiallyFilled:
 		return "PARTIALLY_FILLED"
 	case exchange.OrderStatusFilled:

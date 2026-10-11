@@ -15,14 +15,15 @@ var (
 	ErrAuth = errors.New("exchange: authentication refused")
 	// ErrUnknownOutcome: a request that may have reached the venue got no answer the adapter could
 	// read: a timeout, a dropped connection, a 5xx. The transport wraps it; for a request that
-	// Mutates, the worker finds out from the private stream or a recon, and never counts it as
+	// Mutates, the worker finds out from the private stream, a recon, or by querying the order by
+	// client order id once the request's validity window has passed (D605), and never counts it as
 	// refused (D302).
 	ErrUnknownOutcome = errors.New("exchange: outcome unknown")
 )
 
 // Reject is the venue refusing an order request. Code follows PROTOCOL §7.2: 200–299 for refusals
 // the adapter mapped to the platform table (copied from mftik), otherwise the venue's own code.
-// The account worker passes it to the strategy as OrderReject or CancelReject.
+// The account worker passes it on as a td.v1.OrderUpdate whose cause is REJECTED or CANCEL_REJECTED (D610).
 type Reject struct {
 	Code   int32
 	Native string // the venue's code as sent, kept even when Code is mapped

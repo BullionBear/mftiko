@@ -9,6 +9,7 @@
 package tdctlv1
 
 import (
+	v1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -23,65 +24,14 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type AccountState int32
-
-const (
-	AccountState_ACCOUNT_STATE_UNSPECIFIED AccountState = 0
-	AccountState_ACCOUNT_STATE_READY       AccountState = 1
-	AccountState_ACCOUNT_STATE_DEGRADED    AccountState = 2 // 私有 websocket 斷線：新單以 1xx 拒絕，撤單照常（D603）
-	AccountState_ACCOUNT_STATE_UNAVAILABLE AccountState = 3
-)
-
-// Enum value maps for AccountState.
-var (
-	AccountState_name = map[int32]string{
-		0: "ACCOUNT_STATE_UNSPECIFIED",
-		1: "ACCOUNT_STATE_READY",
-		2: "ACCOUNT_STATE_DEGRADED",
-		3: "ACCOUNT_STATE_UNAVAILABLE",
-	}
-	AccountState_value = map[string]int32{
-		"ACCOUNT_STATE_UNSPECIFIED": 0,
-		"ACCOUNT_STATE_READY":       1,
-		"ACCOUNT_STATE_DEGRADED":    2,
-		"ACCOUNT_STATE_UNAVAILABLE": 3,
-	}
-)
-
-func (x AccountState) Enum() *AccountState {
-	p := new(AccountState)
-	*p = x
-	return p
-}
-
-func (x AccountState) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (AccountState) Descriptor() protoreflect.EnumDescriptor {
-	return file_mftiko_tdctl_v1_tdctl_proto_enumTypes[0].Descriptor()
-}
-
-func (AccountState) Type() protoreflect.EnumType {
-	return &file_mftiko_tdctl_v1_tdctl_proto_enumTypes[0]
-}
-
-func (x AccountState) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use AccountState.Descriptor instead.
-func (AccountState) EnumDescriptor() ([]byte, []int) {
-	return file_mftiko_tdctl_v1_tdctl_proto_rawDescGZIP(), []int{0}
-}
-
 type InitPayload struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	ApiId               int64                  `protobuf:"varint,1,opt,name=api_id,json=apiId,proto3" json:"api_id,omitempty"`
 	Kind                string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"` // 帳號種類（D301），同 state.v1.Account.kind
 	TdInstance          string                 `protobuf:"bytes,3,opt,name=td_instance,json=tdInstance,proto3" json:"td_instance,omitempty"`
 	CancelOnDisconnectS uint32                 `protobuf:"varint,4,opt,name=cancel_on_disconnect_s,json=cancelOnDisconnectS,proto3" json:"cancel_on_disconnect_s,omitempty"`
-	Credentials         *Credentials           `protobuf:"bytes,5,opt,name=credentials,proto3" json:"credentials,omitempty"` // 只經 socketpair 送進去
+	Credentials         *Credentials           `protobuf:"bytes,5,opt,name=credentials,proto3" json:"credentials,omitempty"` // 交易所的憑證，只經 socketpair 送進去
+	Nats                *NatsCredentials       `protobuf:"bytes,6,opt,name=nats,proto3" json:"nats,omitempty"`               // 這個帳號專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D611）
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -147,6 +97,13 @@ func (x *InitPayload) GetCancelOnDisconnectS() uint32 {
 func (x *InitPayload) GetCredentials() *Credentials {
 	if x != nil {
 		return x.Credentials
+	}
+	return nil
+}
+
+func (x *InitPayload) GetNats() *NatsCredentials {
+	if x != nil {
+		return x.Nats
 	}
 	return nil
 }
@@ -219,7 +176,68 @@ func (x *Credentials) GetPassphrase() string {
 	return ""
 }
 
-// Start：建 HTTP 連線池、連私有 websocket、recon。全部完成才回 Done(START, ok)。
+// TD agent 為這個 api_id 簽的 user JWT。權限見 PROTOCOL §7。
+type NatsCredentials struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserJwt       string                 `protobuf:"bytes,1,opt,name=user_jwt,json=userJwt,proto3" json:"user_jwt,omitempty"`
+	Seed          string                 `protobuf:"bytes,2,opt,name=seed,proto3" json:"seed,omitempty"`                                  // NKey seed，只在進程記憶體裡
+	InboxPrefix   string                 `protobuf:"bytes,3,opt,name=inbox_prefix,json=inboxPrefix,proto3" json:"inbox_prefix,omitempty"` // _INBOX_td_{api_id}；worker 以它設定 CustomInboxPrefix
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NatsCredentials) Reset() {
+	*x = NatsCredentials{}
+	mi := &file_mftiko_tdctl_v1_tdctl_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NatsCredentials) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NatsCredentials) ProtoMessage() {}
+
+func (x *NatsCredentials) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_tdctl_v1_tdctl_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NatsCredentials.ProtoReflect.Descriptor instead.
+func (*NatsCredentials) Descriptor() ([]byte, []int) {
+	return file_mftiko_tdctl_v1_tdctl_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *NatsCredentials) GetUserJwt() string {
+	if x != nil {
+		return x.UserJwt
+	}
+	return ""
+}
+
+func (x *NatsCredentials) GetSeed() string {
+	if x != nil {
+		return x.Seed
+	}
+	return ""
+}
+
+func (x *NatsCredentials) GetInboxPrefix() string {
+	if x != nil {
+		return x.InboxPrefix
+	}
+	return ""
+}
+
+// Start：建 HTTP 連線池、連私有 websocket、recon。全部完成才回 Done(START, ok)，之後才服務 td.order（D610）。
 type StartPayload struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -228,7 +246,7 @@ type StartPayload struct {
 
 func (x *StartPayload) Reset() {
 	*x = StartPayload{}
-	mi := &file_mftiko_tdctl_v1_tdctl_proto_msgTypes[2]
+	mi := &file_mftiko_tdctl_v1_tdctl_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -240,7 +258,7 @@ func (x *StartPayload) String() string {
 func (*StartPayload) ProtoMessage() {}
 
 func (x *StartPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_tdctl_v1_tdctl_proto_msgTypes[2]
+	mi := &file_mftiko_tdctl_v1_tdctl_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -253,7 +271,7 @@ func (x *StartPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartPayload.ProtoReflect.Descriptor instead.
 func (*StartPayload) Descriptor() ([]byte, []int) {
-	return file_mftiko_tdctl_v1_tdctl_proto_rawDescGZIP(), []int{2}
+	return file_mftiko_tdctl_v1_tdctl_proto_rawDescGZIP(), []int{3}
 }
 
 type Command struct {
@@ -268,7 +286,7 @@ type Command struct {
 
 func (x *Command) Reset() {
 	*x = Command{}
-	mi := &file_mftiko_tdctl_v1_tdctl_proto_msgTypes[3]
+	mi := &file_mftiko_tdctl_v1_tdctl_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -280,7 +298,7 @@ func (x *Command) String() string {
 func (*Command) ProtoMessage() {}
 
 func (x *Command) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_tdctl_v1_tdctl_proto_msgTypes[3]
+	mi := &file_mftiko_tdctl_v1_tdctl_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -293,7 +311,7 @@ func (x *Command) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Command.ProtoReflect.Descriptor instead.
 func (*Command) Descriptor() ([]byte, []int) {
-	return file_mftiko_tdctl_v1_tdctl_proto_rawDescGZIP(), []int{3}
+	return file_mftiko_tdctl_v1_tdctl_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Command) GetCmd() isCommand_Cmd {
@@ -322,7 +340,7 @@ type Command_Drain struct {
 
 func (*Command_Drain) isCommand_Cmd() {}
 
-// drain-replace 的第一步：新單以可重試的錯誤拒絕，等在途 ack 收齊。
+// drain-replace 的第一步：不收新單，等在途 ack 收齊。一期沒有人送它，新單的拒單碼等 drain-replace 落地時再加（D610）。
 type Drain struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DeadlineMs    uint32                 `protobuf:"varint,1,opt,name=deadline_ms,json=deadlineMs,proto3" json:"deadline_ms,omitempty"`
@@ -332,7 +350,7 @@ type Drain struct {
 
 func (x *Drain) Reset() {
 	*x = Drain{}
-	mi := &file_mftiko_tdctl_v1_tdctl_proto_msgTypes[4]
+	mi := &file_mftiko_tdctl_v1_tdctl_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -344,7 +362,7 @@ func (x *Drain) String() string {
 func (*Drain) ProtoMessage() {}
 
 func (x *Drain) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_tdctl_v1_tdctl_proto_msgTypes[4]
+	mi := &file_mftiko_tdctl_v1_tdctl_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -357,7 +375,7 @@ func (x *Drain) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Drain.ProtoReflect.Descriptor instead.
 func (*Drain) Descriptor() ([]byte, []int) {
-	return file_mftiko_tdctl_v1_tdctl_proto_rawDescGZIP(), []int{4}
+	return file_mftiko_tdctl_v1_tdctl_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Drain) GetDeadlineMs() uint32 {
@@ -369,22 +387,22 @@ func (x *Drain) GetDeadlineMs() uint32 {
 
 type Report struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	State          AccountState           `protobuf:"varint,1,opt,name=state,proto3,enum=mftiko.tdctl.v1.AccountState" json:"state,omitempty"`
+	State          v1.AccountState        `protobuf:"varint,1,opt,name=state,proto3,enum=mftiko.td.v1.AccountState" json:"state,omitempty"` // 與 td.view 回覆的 state 相同（D606）
 	Reason         string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
 	ReconciledAtNs int64                  `protobuf:"varint,3,opt,name=reconciled_at_ns,json=reconciledAtNs,proto3" json:"reconciled_at_ns,omitempty"`
 	OpenOrders     uint32                 `protobuf:"varint,4,opt,name=open_orders,json=openOrders,proto3" json:"open_orders,omitempty"`
 	Inflight       uint32                 `protobuf:"varint,5,opt,name=inflight,proto3" json:"inflight,omitempty"`
 	Draining       bool                   `protobuf:"varint,6,opt,name=draining,proto3" json:"draining,omitempty"`
-	// 這個 incarnation 下過單的商品 → 第一次 Submit 的時間（DECISIONS D601）。TD agent 據此建 backfill 的 scope。
+	// 這個 incarnation 下過單的商品（UID，D203）→ 第一次 Submit 的時間（DECISIONS D601）。TD agent 據此建 backfill 的 scope。
 	// 新商品的第一筆單：worker 先送出含它的 Report，再送單。
-	FirstSubmitNs map[string]int64 `protobuf:"bytes,7,rep,name=first_submit_ns,json=firstSubmitNs,proto3" json:"first_submit_ns,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	FirstSubmitNs map[uint32]int64 `protobuf:"bytes,7,rep,name=first_submit_ns,json=firstSubmitNs,proto3" json:"first_submit_ns,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Report) Reset() {
 	*x = Report{}
-	mi := &file_mftiko_tdctl_v1_tdctl_proto_msgTypes[5]
+	mi := &file_mftiko_tdctl_v1_tdctl_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -396,7 +414,7 @@ func (x *Report) String() string {
 func (*Report) ProtoMessage() {}
 
 func (x *Report) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_tdctl_v1_tdctl_proto_msgTypes[5]
+	mi := &file_mftiko_tdctl_v1_tdctl_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -409,14 +427,14 @@ func (x *Report) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Report.ProtoReflect.Descriptor instead.
 func (*Report) Descriptor() ([]byte, []int) {
-	return file_mftiko_tdctl_v1_tdctl_proto_rawDescGZIP(), []int{5}
+	return file_mftiko_tdctl_v1_tdctl_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *Report) GetState() AccountState {
+func (x *Report) GetState() v1.AccountState {
 	if x != nil {
 		return x.State
 	}
-	return AccountState_ACCOUNT_STATE_UNSPECIFIED
+	return v1.AccountState(0)
 }
 
 func (x *Report) GetReason() string {
@@ -454,7 +472,7 @@ func (x *Report) GetDraining() bool {
 	return false
 }
 
-func (x *Report) GetFirstSubmitNs() map[string]int64 {
+func (x *Report) GetFirstSubmitNs() map[uint32]int64 {
 	if x != nil {
 		return x.FirstSubmitNs
 	}
@@ -465,30 +483,35 @@ var File_mftiko_tdctl_v1_tdctl_proto protoreflect.FileDescriptor
 
 const file_mftiko_tdctl_v1_tdctl_proto_rawDesc = "" +
 	"\n" +
-	"\x1bmftiko/tdctl/v1/tdctl.proto\x12\x0fmftiko.tdctl.v1\"\xce\x01\n" +
+	"\x1bmftiko/tdctl/v1/tdctl.proto\x12\x0fmftiko.tdctl.v1\x1a\x15mftiko/td/v1/td.proto\"\x84\x02\n" +
 	"\vInitPayload\x12\x15\n" +
 	"\x06api_id\x18\x01 \x01(\x03R\x05apiId\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x1f\n" +
 	"\vtd_instance\x18\x03 \x01(\tR\n" +
 	"tdInstance\x123\n" +
 	"\x16cancel_on_disconnect_s\x18\x04 \x01(\rR\x13cancelOnDisconnectS\x12>\n" +
-	"\vcredentials\x18\x05 \x01(\v2\x1c.mftiko.tdctl.v1.CredentialsR\vcredentials\"r\n" +
+	"\vcredentials\x18\x05 \x01(\v2\x1c.mftiko.tdctl.v1.CredentialsR\vcredentials\x124\n" +
+	"\x04nats\x18\x06 \x01(\v2 .mftiko.tdctl.v1.NatsCredentialsR\x04nats\"r\n" +
 	"\vCredentials\x12\x19\n" +
 	"\bkey_type\x18\x01 \x01(\tR\akeyType\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12\x16\n" +
 	"\x06secret\x18\x03 \x01(\tR\x06secret\x12\x1e\n" +
 	"\n" +
 	"passphrase\x18\x04 \x01(\tR\n" +
-	"passphrase\"\x0e\n" +
+	"passphrase\"c\n" +
+	"\x0fNatsCredentials\x12\x19\n" +
+	"\buser_jwt\x18\x01 \x01(\tR\auserJwt\x12\x12\n" +
+	"\x04seed\x18\x02 \x01(\tR\x04seed\x12!\n" +
+	"\finbox_prefix\x18\x03 \x01(\tR\vinboxPrefix\"\x0e\n" +
 	"\fStartPayload\"@\n" +
 	"\aCommand\x12.\n" +
 	"\x05drain\x18\x01 \x01(\v2\x16.mftiko.tdctl.v1.DrainH\x00R\x05drainB\x05\n" +
 	"\x03cmd\"(\n" +
 	"\x05Drain\x12\x1f\n" +
 	"\vdeadline_ms\x18\x01 \x01(\rR\n" +
-	"deadlineMs\"\xee\x02\n" +
-	"\x06Report\x123\n" +
-	"\x05state\x18\x01 \x01(\x0e2\x1d.mftiko.tdctl.v1.AccountStateR\x05state\x12\x16\n" +
+	"deadlineMs\"\xeb\x02\n" +
+	"\x06Report\x120\n" +
+	"\x05state\x18\x01 \x01(\x0e2\x1a.mftiko.td.v1.AccountStateR\x05state\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\x12(\n" +
 	"\x10reconciled_at_ns\x18\x03 \x01(\x03R\x0ereconciledAtNs\x12\x1f\n" +
 	"\vopen_orders\x18\x04 \x01(\rR\n" +
@@ -497,13 +520,8 @@ const file_mftiko_tdctl_v1_tdctl_proto_rawDesc = "" +
 	"\bdraining\x18\x06 \x01(\bR\bdraining\x12R\n" +
 	"\x0ffirst_submit_ns\x18\a \x03(\v2*.mftiko.tdctl.v1.Report.FirstSubmitNsEntryR\rfirstSubmitNs\x1a@\n" +
 	"\x12FirstSubmitNsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01*\x81\x01\n" +
-	"\fAccountState\x12\x1d\n" +
-	"\x19ACCOUNT_STATE_UNSPECIFIED\x10\x00\x12\x17\n" +
-	"\x13ACCOUNT_STATE_READY\x10\x01\x12\x1a\n" +
-	"\x16ACCOUNT_STATE_DEGRADED\x10\x02\x12\x1d\n" +
-	"\x19ACCOUNT_STATE_UNAVAILABLE\x10\x03BDZBgithub.com/BullionBear/mftiko/contract/gen/mftiko/tdctl/v1;tdctlv1b\x06proto3"
+	"\x03key\x18\x01 \x01(\rR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01BDZBgithub.com/BullionBear/mftiko/contract/gen/mftiko/tdctl/v1;tdctlv1b\x06proto3"
 
 var (
 	file_mftiko_tdctl_v1_tdctl_proto_rawDescOnce sync.Once
@@ -517,28 +535,29 @@ func file_mftiko_tdctl_v1_tdctl_proto_rawDescGZIP() []byte {
 	return file_mftiko_tdctl_v1_tdctl_proto_rawDescData
 }
 
-var file_mftiko_tdctl_v1_tdctl_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_mftiko_tdctl_v1_tdctl_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_mftiko_tdctl_v1_tdctl_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_mftiko_tdctl_v1_tdctl_proto_goTypes = []any{
-	(AccountState)(0),    // 0: mftiko.tdctl.v1.AccountState
-	(*InitPayload)(nil),  // 1: mftiko.tdctl.v1.InitPayload
-	(*Credentials)(nil),  // 2: mftiko.tdctl.v1.Credentials
-	(*StartPayload)(nil), // 3: mftiko.tdctl.v1.StartPayload
-	(*Command)(nil),      // 4: mftiko.tdctl.v1.Command
-	(*Drain)(nil),        // 5: mftiko.tdctl.v1.Drain
-	(*Report)(nil),       // 6: mftiko.tdctl.v1.Report
-	nil,                  // 7: mftiko.tdctl.v1.Report.FirstSubmitNsEntry
+	(*InitPayload)(nil),     // 0: mftiko.tdctl.v1.InitPayload
+	(*Credentials)(nil),     // 1: mftiko.tdctl.v1.Credentials
+	(*NatsCredentials)(nil), // 2: mftiko.tdctl.v1.NatsCredentials
+	(*StartPayload)(nil),    // 3: mftiko.tdctl.v1.StartPayload
+	(*Command)(nil),         // 4: mftiko.tdctl.v1.Command
+	(*Drain)(nil),           // 5: mftiko.tdctl.v1.Drain
+	(*Report)(nil),          // 6: mftiko.tdctl.v1.Report
+	nil,                     // 7: mftiko.tdctl.v1.Report.FirstSubmitNsEntry
+	(v1.AccountState)(0),    // 8: mftiko.td.v1.AccountState
 }
 var file_mftiko_tdctl_v1_tdctl_proto_depIdxs = []int32{
-	2, // 0: mftiko.tdctl.v1.InitPayload.credentials:type_name -> mftiko.tdctl.v1.Credentials
-	5, // 1: mftiko.tdctl.v1.Command.drain:type_name -> mftiko.tdctl.v1.Drain
-	0, // 2: mftiko.tdctl.v1.Report.state:type_name -> mftiko.tdctl.v1.AccountState
-	7, // 3: mftiko.tdctl.v1.Report.first_submit_ns:type_name -> mftiko.tdctl.v1.Report.FirstSubmitNsEntry
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	1, // 0: mftiko.tdctl.v1.InitPayload.credentials:type_name -> mftiko.tdctl.v1.Credentials
+	2, // 1: mftiko.tdctl.v1.InitPayload.nats:type_name -> mftiko.tdctl.v1.NatsCredentials
+	5, // 2: mftiko.tdctl.v1.Command.drain:type_name -> mftiko.tdctl.v1.Drain
+	8, // 3: mftiko.tdctl.v1.Report.state:type_name -> mftiko.td.v1.AccountState
+	7, // 4: mftiko.tdctl.v1.Report.first_submit_ns:type_name -> mftiko.tdctl.v1.Report.FirstSubmitNsEntry
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_mftiko_tdctl_v1_tdctl_proto_init() }
@@ -546,7 +565,7 @@ func file_mftiko_tdctl_v1_tdctl_proto_init() {
 	if File_mftiko_tdctl_v1_tdctl_proto != nil {
 		return
 	}
-	file_mftiko_tdctl_v1_tdctl_proto_msgTypes[3].OneofWrappers = []any{
+	file_mftiko_tdctl_v1_tdctl_proto_msgTypes[4].OneofWrappers = []any{
 		(*Command_Drain)(nil),
 	}
 	type x struct{}
@@ -554,14 +573,13 @@ func file_mftiko_tdctl_v1_tdctl_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mftiko_tdctl_v1_tdctl_proto_rawDesc), len(file_mftiko_tdctl_v1_tdctl_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   7,
+			NumEnums:      0,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_mftiko_tdctl_v1_tdctl_proto_goTypes,
 		DependencyIndexes: file_mftiko_tdctl_v1_tdctl_proto_depIdxs,
-		EnumInfos:         file_mftiko_tdctl_v1_tdctl_proto_enumTypes,
 		MessageInfos:      file_mftiko_tdctl_v1_tdctl_proto_msgTypes,
 	}.Build()
 	File_mftiko_tdctl_v1_tdctl_proto = out.File
