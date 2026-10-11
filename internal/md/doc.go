@@ -6,5 +6,6 @@
 // spelling is not final (PROTOCOL §10 P14); md.f is still md.f.{inst}.{topic}.{ticker}.
 //
 // Shape only: not implemented yet. When a spec is loaded, the agent copies symbol.Info.ExchTicker
-// onto AtomAssignment.exch_ticker. The conn worker reads that field and does not query SYM (D426, D202).
+// onto AtomAssignment.exch_ticker and symbol.Info.Filters["price_tick"] onto price_tick. The conn
+// worker reads those fields and does not query SYM (D426, D433, D202).
 package md

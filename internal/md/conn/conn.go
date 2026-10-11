@@ -105,6 +105,8 @@ type Conn struct {
 	wanted map[string][]feed
 	// exch is the assignment's exch ticker for that channel, copied at spec load (D426).
 	exch map[string]string
+	// tick is the assignment's price tick for that channel, copied at spec load (D433).
+	tick map[string]float64
 	live *link
 	kick chan struct{}
 	// bookWake asks the snapshot loop to look again. One slot: the loop reads the current shelves.

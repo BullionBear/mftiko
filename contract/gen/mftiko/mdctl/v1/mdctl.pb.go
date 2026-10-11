@@ -403,7 +403,10 @@ type AtomAssignment struct {
 	Feeds  []string               `protobuf:"bytes,2,rep,name=feeds,proto3" json:"feeds,omitempty"`    // 這個 atom 要發佈的 feed（atom → 事件 1:N）
 	Record bool                   `protobuf:"varint,3,opt,name=record,proto3" json:"record,omitempty"` // 錄 tape；MD agent 依 topic 推導（D402）
 	// SYM 的 exchTicker。MD agent 在載入 spec、解析商品時抄上。worker 不查 SYM，也不從 channel 解析（D426、D202）。
-	ExchTicker    string `protobuf:"bytes,4,opt,name=exch_ticker,json=exchTicker,proto3" json:"exch_ticker,omitempty"`
+	ExchTicker string `protobuf:"bytes,4,opt,name=exch_ticker,json=exchTicker,proto3" json:"exch_ticker,omitempty"`
+	// SYM 的 price_tick。MD agent 在載入 spec、解析商品時從 symbol.Info 抄上，跟 exch_ticker 同一時刻。
+	// 缺或小於等於 0 時這本訂單簿只記日誌、不維護（D433）。
+	PriceTick     float64 `protobuf:"fixed64,5,opt,name=price_tick,json=priceTick,proto3" json:"price_tick,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -464,6 +467,13 @@ func (x *AtomAssignment) GetExchTicker() string {
 		return x.ExchTicker
 	}
 	return ""
+}
+
+func (x *AtomAssignment) GetPriceTick() float64 {
+	if x != nil {
+		return x.PriceTick
+	}
+	return 0
 }
 
 type Report struct {
@@ -652,13 +662,15 @@ const file_mftiko_mdctl_v1_mdctl_proto_rawDesc = "" +
 	"\x03cmd\"u\n" +
 	"\aDesired\x123\n" +
 	"\aversion\x18\x01 \x01(\v2\x19.mftiko.common.v1.VersionR\aversion\x125\n" +
-	"\x05atoms\x18\x02 \x03(\v2\x1f.mftiko.mdctl.v1.AtomAssignmentR\x05atoms\"x\n" +
+	"\x05atoms\x18\x02 \x03(\v2\x1f.mftiko.mdctl.v1.AtomAssignmentR\x05atoms\"\x97\x01\n" +
 	"\x0eAtomAssignment\x12\x17\n" +
 	"\aatom_id\x18\x01 \x01(\tR\x06atomId\x12\x14\n" +
 	"\x05feeds\x18\x02 \x03(\tR\x05feeds\x12\x16\n" +
 	"\x06record\x18\x03 \x01(\bR\x06record\x12\x1f\n" +
 	"\vexch_ticker\x18\x04 \x01(\tR\n" +
-	"exchTicker\"\xf4\x01\n" +
+	"exchTicker\x12\x1d\n" +
+	"\n" +
+	"price_tick\x18\x05 \x01(\x01R\tpriceTick\"\xf4\x01\n" +
 	"\x06Report\x123\n" +
 	"\aapplied\x18\x01 \x01(\v2\x19.mftiko.common.v1.VersionR\aapplied\x12\x1d\n" +
 	"\n" +

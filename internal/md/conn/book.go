@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
-	"sort"
 	"time"
 
-	"github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1"
+	mdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1"
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/exchange"
+	obook "github.com/BullionBear/mftiko/sdk/book"
 )
 
 const (
@@ -65,28 +66,20 @@ func (g *depthGate) hold(until time.Time) {
 type shelf struct {
 	bs      exchange.BookSync
 	exch    string
+	tick    float64
 	token   uint64
 	pending uint64
 	buf     []exchange.BookUpdate
 	bufAt   time.Time // the first buffered update of this attempt
-	book    *folded
+	book    *obook.OrderBook
+	seq     exchange.BookSeq
 	topB    []exchange.Level
 	topA    []exchange.Level
 	haveTop bool
-	stalled bool // SnapshotREST with no exch ticker: do not fetch, do not parse the channel
-	pubB    map[float64]float64
-	pubA    map[float64]float64
-	havePub bool
+	stalled bool // missing price tick, or SnapshotREST with no exch ticker
 }
 
 func (sh *shelf) inflight() bool { return sh.pending != 0 && sh.pending == sh.token }
-
-// folded is the local book. Levels past the snapshot's original prices stay here and are
-// published with the rest (D426).
-type folded struct {
-	bids, asks map[float64]float64
-	seq        exchange.BookSeq
-}
 
 // depthJob is one Depth to send. The token is the shelf's pending value at the start; a buffer
 // cap bumps the shelf token so this response is ignored.
@@ -164,7 +157,8 @@ func (c *Conn) planBook() ([]depthJob, time.Duration) {
 }
 
 // adopt opens a shelf for every wanted book channel and drops one that is no longer wanted.
-// An exch ticker that changed invalidates the in-flight snapshot: it was for the previous instrument.
+// An exch ticker or price tick that changed drops the book: the in-flight snapshot was for the
+// previous instrument or the previous grid.
 func (c *Conn) adopt() {
 	l := c.live
 	if l == nil {
@@ -182,13 +176,16 @@ func (c *Conn) adopt() {
 			continue
 		}
 		want := c.exch[ch]
+		wantTick := c.tick[ch]
 		if sh := l.books[ch]; sh != nil {
-			if sh.exch != want {
+			if sh.exch != want || sh.tick != wantTick {
 				sh.exch = want
+				sh.tick = wantTick
 				sh.token++
 				sh.book = nil
-				sh.havePub = false
-				sh.pubB, sh.pubA = nil, nil
+				sh.seq = exchange.BookSeq{}
+				sh.haveTop = false
+				sh.topB, sh.topA = nil, nil
 				sh.buf = nil
 				sh.bufAt = time.Time{}
 			}
@@ -199,21 +196,25 @@ func (c *Conn) adopt() {
 		if !ok {
 			continue
 		}
-		sh := &shelf{bs: bs, exch: want}
+		sh := &shelf{bs: bs, exch: want, tick: wantTick}
 		c.markStall(sh, ch)
 		l.books[ch] = sh
 	}
 }
 
 func (c *Conn) markStall(sh *shelf, ch string) {
-	if sh.bs.Snapshot() != exchange.SnapshotREST || sh.exch != "" {
+	badTick := !(sh.tick > 0) || math.IsNaN(sh.tick)
+	badExch := sh.bs.Snapshot() == exchange.SnapshotREST && sh.exch == ""
+	if !badTick && !badExch {
 		sh.stalled = false
 		return
 	}
-	if !sh.stalled {
-		sh.stalled = true
-		c.log.Warn().Str("channel", ch).Msg("book has no exch ticker; depth is not fetched")
+	if sh.stalled {
+		return
 	}
+	sh.stalled = true
+	c.log.Warn().Str("channel", ch).Str("exch", sh.exch).Float64("price_tick", sh.tick).
+		Bool("bad_tick", badTick).Bool("bad_exch", badExch).Msg("book stalled")
 }
 
 func (c *Conn) wantBook(ch string) bool {
@@ -236,7 +237,7 @@ func (c *Conn) ensureShelf(ch string) *shelf {
 	if !ok {
 		return nil
 	}
-	sh := &shelf{bs: bs, exch: c.exch[ch]}
+	sh := &shelf{bs: bs, exch: c.exch[ch], tick: c.tick[ch]}
 	c.markStall(sh, ch)
 	c.live.books[ch] = sh
 	return sh
@@ -312,40 +313,41 @@ func (c *Conn) onBook(ch string, u *exchange.BookUpdate) {
 func (c *Conn) onStream(ch string, sh *shelf, u exchange.BookUpdate) {
 	sh.buf = nil
 	sh.bufAt = time.Time{}
-	sh.book = foldSnapshot(&u)
-	c.publishBook(ch, sh, u.ExchTsNs, true)
+	b, err := obook.New(obook.DefaultN, sh.tick)
+	if err != nil {
+		c.log.Warn().Err(err).Str("channel", ch).Msg("book")
+		return
+	}
+	b.Apply(bookLevels(u.Bids), bookLevels(u.Asks))
+	sh.book = b
+	sh.seq = exchange.BookSeq{Last: u.Last, Valid: true}
+	c.publishReset(ch, sh, u.ExchTsNs)
 }
 
 // onLive applies one update to a book that is already in sync. A gap or a checksum failure
 // discards the book without publishing that update. The gap update is kept so the next snapshot
 // can bridge it; a checksum failure is not applied again. A synced book is not fetched again
-// on its own (D426).
+// on its own (D426). The delta is the increment itself; the ring decides what it keeps (D432).
 func (c *Conn) onLive(ch string, sh *shelf, u exchange.BookUpdate) {
-	switch sh.bs.Check(sh.book.seq, &u) {
+	switch sh.bs.Check(sh.seq, &u) {
 	case exchange.BookSkip:
 		return
 	case exchange.BookResync:
 		c.beginResync(sh, &u)
 		return
 	case exchange.BookApply:
-		sh.book.apply(&u)
-		if !c.checksumOK(sh.book, sh.bs, &u) {
-			c.beginResync(sh, nil)
-			return
-		}
-		c.publishBook(ch, sh, u.ExchTsNs, false)
-		return
+		c.publishIncremental(ch, sh, u.ExchTsNs, u)
 	default:
 		c.beginResync(sh, &u)
 	}
 }
 
 // beginResync drops the local book. keep is the update that did not apply; nil drops the buffer,
-// which is what a checksum failure does so that update is not replayed.
+// which is what a checksum failure does so that update is not replayed. The last published top
+// is kept, so a resync that leaves it unchanged does not take another orderbook seq (D427).
 func (c *Conn) beginResync(sh *shelf, keep *exchange.BookUpdate) {
 	sh.book = nil
-	sh.havePub = false
-	sh.pubB, sh.pubA = nil, nil
+	sh.seq = exchange.BookSeq{}
 	if keep == nil {
 		sh.buf = nil
 		sh.bufAt = time.Time{}
@@ -447,39 +449,47 @@ func (c *Conn) finishDepth(j depthJob, snap *exchange.BookUpdate, err error, use
 }
 
 // installREST folds the snapshot, replays the buffer through Check, and publishes one reset of
-// the book after that replay. A gap or a checksum failure in the buffer publishes nothing and
+// the window after that replay. A gap or a checksum failure in the buffer publishes nothing and
 // keeps the tail (the checksum failure itself is not kept). The shelf then has no book, so the
 // next plan fetches again. A kept book is not fetched again on its own (D426).
 func (c *Conn) installREST(ch string, sh *shelf, snap exchange.BookUpdate) {
-	f := foldSnapshot(&snap)
+	b, err := obook.New(obook.DefaultN, sh.tick)
+	if err != nil {
+		c.log.Warn().Err(err).Str("channel", ch).Msg("book")
+		return
+	}
+	b.Apply(bookLevels(snap.Bids), bookLevels(snap.Asks))
+	seq := exchange.BookSeq{Last: snap.Last, Valid: true}
 	ts := snap.ExchTsNs
 	for i := 0; i < len(sh.buf); i++ {
 		u := sh.buf[i]
-		switch sh.bs.Check(f.seq, &u) {
+		switch sh.bs.Check(seq, &u) {
 		case exchange.BookSkip:
 			continue
 		case exchange.BookApply:
-			f.apply(&u)
-			if !c.checksumOK(f, sh.bs, &u) {
+			b.Apply(bookLevels(u.Bids), bookLevels(u.Asks))
+			if !c.checksumOK(b, sh.bs, &u) {
 				c.keepTail(sh, sh.buf[i+1:])
 				return
 			}
+			seq.Last = u.Last
+			seq.Valid = true
 			ts = u.ExchTsNs
 		default:
 			c.keepTail(sh, sh.buf[i:])
 			return
 		}
 	}
-	sh.book = f
+	sh.book = b
+	sh.seq = seq
 	sh.buf = nil
 	sh.bufAt = time.Time{}
-	c.publishBook(ch, sh, ts, true)
+	c.publishReset(ch, sh, ts)
 }
 
 func (c *Conn) keepTail(sh *shelf, tail []exchange.BookUpdate) {
 	sh.book = nil
-	sh.havePub = false
-	sh.pubB, sh.pubA = nil, nil
+	sh.seq = exchange.BookSeq{}
 	sh.buf = append([]exchange.BookUpdate(nil), tail...)
 	if len(sh.buf) == 0 {
 		sh.bufAt = time.Time{}
@@ -517,69 +527,61 @@ func rateDeadline(now time.Time, hold time.Duration, err error, used []exchange.
 	return until, true
 }
 
-func (c *Conn) checksumOK(f *folded, bs exchange.BookSync, u *exchange.BookUpdate) bool {
+func (c *Conn) checksumOK(b *obook.OrderBook, bs exchange.BookSync, u *exchange.BookUpdate) bool {
 	cs, ok := bs.(exchange.BookChecksum)
-	if !ok {
+	if !ok || b == nil {
 		return true
 	}
-	return cs.Verify(sortedLevels(f.bids, true), sortedLevels(f.asks, false), u)
+	n := b.Window()
+	return cs.Verify(sideLevels(b, true, n), sideLevels(b, false, n), u)
 }
 
-func foldSnapshot(u *exchange.BookUpdate) *folded {
-	f := &folded{
-		bids: map[float64]float64{},
-		asks: map[float64]float64{},
-		seq:  exchange.BookSeq{Last: u.Last, Valid: true},
+// publishIncremental forwards the increment unchanged, then rebuilds top-N only when the
+// increment touches it. The ring drops out-of-window levels while applying; that filter is not
+// applied to the delta (D432).
+func (c *Conn) publishIncremental(ch string, sh *shelf, ts int64, u exchange.BookUpdate) {
+	bids := bookLevels(u.Bids)
+	asks := bookLevels(u.Asks)
+	touch := sh.book.AffectsTop(bids, asks, int(c.bookDepth))
+	sh.book.Apply(bids, asks)
+	if !c.checksumOK(sh.book, sh.bs, &u) {
+		c.beginResync(sh, nil)
+		return
 	}
-	applySide(f.bids, u.Bids)
-	applySide(f.asks, u.Asks)
-	return f
-}
-
-func (f *folded) apply(u *exchange.BookUpdate) {
-	applySide(f.bids, u.Bids)
-	applySide(f.asks, u.Asks)
-	f.seq.Last = u.Last
-	f.seq.Valid = true
-}
-
-func applySide(m map[float64]float64, ls []exchange.Level) {
-	for _, l := range ls {
-		if l.Qty == 0 {
-			delete(m, l.Price)
-			continue
-		}
-		m[l.Price] = l.Qty
+	sh.seq.Last = u.Last
+	sh.seq.Valid = true
+	if len(u.Bids)+len(u.Asks) > 0 {
+		c.emitDelta(ch, ts, false, u.Bids, u.Asks)
+	}
+	if touch {
+		c.emitTop(ch, sh, ts)
 	}
 }
 
-// publishBook sends the local book. reset, or the first publish on this shelf, is one
-// orderbook_delta with reset set, carrying every level rather than the top-N.
-// A later update sends the diff, and the top-N only when it changed.
-func (c *Conn) publishBook(ch string, sh *shelf, ts int64, reset bool) {
-	bids, asks := c.view(sh)
-	if reset || !sh.havePub {
-		c.emitDelta(ch, ts, true, bids, asks)
-	} else {
-		db := diffSide(sh.pubB, bids, true)
-		da := diffSide(sh.pubA, asks, false)
-		if len(db)+len(da) > 0 {
-			c.emitDelta(ch, ts, false, db, da)
-		}
+// publishReset is the full in-window book, then the top-N when that top changed (D425, D430).
+func (c *Conn) publishReset(ch string, sh *shelf, ts int64) {
+	if sh.book == nil {
+		return
 	}
-	sh.pubB = levelMap(bids)
-	sh.pubA = levelMap(asks)
-	sh.havePub = true
-	c.emitTop(ch, sh, ts, bids, asks)
+	n := sh.book.Window()
+	c.emitDelta(ch, ts, true, sideLevels(sh.book, true, n), sideLevels(sh.book, false, n))
+	c.emitTop(ch, sh, ts)
 }
 
-// view is the local book, best price first. Levels past the snapshot's original range are
-// included (D426).
-func (c *Conn) view(sh *shelf) (bids, asks []exchange.Level) {
+// BookWindow is the in-window book a future md.view response reads (D430). The service is not
+// served by this process yet. ok is false when this connection is not holding the channel's book.
+func (c *Conn) BookWindow(ch string) (bids, asks []exchange.Level, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.live == nil {
+		return nil, nil, false
+	}
+	sh := c.live.books[ch]
 	if sh == nil || sh.book == nil {
-		return nil, nil
+		return nil, nil, false
 	}
-	return sortedLevels(sh.book.bids, true), sortedLevels(sh.book.asks, false)
+	n := sh.book.Window()
+	return sideLevels(sh.book, true, n), sideLevels(sh.book, false, n), true
 }
 
 func (c *Conn) emitDelta(ch string, ts int64, reset bool, bids, asks []exchange.Level) {
@@ -590,14 +592,17 @@ func (c *Conn) emitDelta(ch string, ts int64, reset bool, bids, asks []exchange.
 	})
 }
 
-func (c *Conn) emitTop(ch string, sh *shelf, ts int64, bids, asks []exchange.Level) {
-	b := topN(bids, int(c.bookDepth))
-	a := topN(asks, int(c.bookDepth))
+func (c *Conn) emitTop(ch string, sh *shelf, ts int64) {
+	if sh.book == nil {
+		return
+	}
+	b := sideLevels(sh.book, true, int(c.bookDepth))
+	a := sideLevels(sh.book, false, int(c.bookDepth))
 	if sh.haveTop && sameLevels(sh.topB, b) && sameLevels(sh.topA, a) {
 		return
 	}
-	sh.topB = append([]exchange.Level(nil), b...)
-	sh.topA = append([]exchange.Level(nil), a...)
+	sh.topB = b
+	sh.topA = a
 	sh.haveTop = true
 	c.publishTopic(ch, string(exchange.TopicOrderBook), &mdv1.FeedEvent{
 		Event: &mdv1.FeedEvent_OrderBook{OrderBook: &mdv1.OrderBook{
@@ -606,65 +611,33 @@ func (c *Conn) emitTop(ch string, sh *shelf, ts int64, bids, asks []exchange.Lev
 	})
 }
 
-func sortedLevels(m map[float64]float64, bid bool) []exchange.Level {
-	var out []exchange.Level
-	for p, q := range m {
-		if q == 0 {
-			continue
-		}
-		out = append(out, exchange.Level{Price: p, Qty: q})
+func sideLevels(b *obook.OrderBook, bid bool, n int) []exchange.Level {
+	if b == nil || n <= 0 {
+		return nil
 	}
-	sortLevels(out, bid)
-	return out
-}
-
-func sortLevels(ls []exchange.Level, bid bool) {
-	sort.Slice(ls, func(i, j int) bool {
-		if bid {
-			return ls[i].Price > ls[j].Price
-		}
-		return ls[i].Price < ls[j].Price
-	})
-}
-
-func diffSide(prev map[float64]float64, next []exchange.Level, bid bool) []exchange.Level {
-	n := make(map[float64]float64, len(next))
-	for _, l := range next {
-		n[l.Price] = l.Qty
+	it := b.Bids(n)
+	if !bid {
+		it = b.Asks(n)
 	}
 	var out []exchange.Level
-	for _, l := range next {
-		if prev[l.Price] != l.Qty {
-			out = append(out, l)
+	for {
+		tick, sz, ok := it.Next()
+		if !ok {
+			return out
 		}
+		out = append(out, exchange.Level{Price: b.Price(tick), Qty: sz})
 	}
-	for p := range prev {
-		if _, ok := n[p]; !ok {
-			out = append(out, exchange.Level{Price: p, Qty: 0})
-		}
+}
+
+func bookLevels(ls []exchange.Level) []obook.Level {
+	if len(ls) == 0 {
+		return nil
 	}
-	sortLevels(out, bid)
+	out := make([]obook.Level, len(ls))
+	for i, l := range ls {
+		out[i] = obook.Level{Price: l.Price, Size: l.Qty}
+	}
 	return out
-}
-
-func levelMap(ls []exchange.Level) map[float64]float64 {
-	m := make(map[float64]float64, len(ls))
-	for _, l := range ls {
-		if l.Qty != 0 {
-			m[l.Price] = l.Qty
-		}
-	}
-	return m
-}
-
-func topN(ls []exchange.Level, n int) []exchange.Level {
-	if n < 0 {
-		n = 0
-	}
-	if len(ls) > n {
-		return ls[:n]
-	}
-	return ls
 }
 
 func sameLevels(a, b []exchange.Level) bool {

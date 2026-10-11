@@ -362,6 +362,54 @@ func TestBookChecksumDropsTheUpdate(t *testing.T) {
 	}
 }
 
+func TestBookForwardsDroppedLevel(t *testing.T) {
+	e := newBookEnv(t, umBookSync(t), 5, nil, []doerStep{{
+		resp: bookHTTP(100, 1, [][2]float64{{100, 1}, {90, 1}}, [][2]float64{{110, 1}, {200, 1}}),
+	}})
+	e.doer.wait(t, 1)
+	e.waitPubs(t, 2)
+	// N ticks under the best. The ring drops it; the delta still carries it.
+	const far = 100 - float64(2048)
+	e.push(exchange.BookUpdate{First: 101, Last: 101, Prev: 100, Bids: []exchange.Level{{Price: far, Qty: 5}}})
+	e.waitPubs(t, 3)
+	if e.doer.calls() != 1 {
+		t.Fatalf("depth calls %d, want 1", e.doer.calls())
+	}
+	d := deltasOf(e.open(t))
+	last := d[len(d)-1].ev.GetOrderBookDelta()
+	if last.GetReset_() {
+		t.Fatal("dropped level was a reset")
+	}
+	if got := gotLevels(last.GetBids()); !sameLevels(got, []exchange.Level{{Price: far, Qty: 5}}) {
+		t.Fatalf("delta bids %v", got)
+	}
+	if _, ok := e.level(t, true, far); ok {
+		t.Fatal("out-of-window level was stored")
+	}
+	bids, _, ok := e.c.BookWindow(bookCh)
+	if !ok {
+		t.Fatal("no window")
+	}
+	for _, l := range bids {
+		if l.Price == far {
+			t.Fatal("md.view window contains the dropped level")
+		}
+	}
+	if len(booksOf(e.open(t))) != 1 {
+		t.Fatal("dropped level rebuilt top-N")
+	}
+}
+
+func TestBookBadPriceTickDoesNotFetch(t *testing.T) {
+	e := newBookEnv(t, umBookSync(t), 5, &bookTune{zeroTick: true}, []doerStep{{
+		resp: bookHTTP(100, 1, [][2]float64{{100, 1}}, [][2]float64{{110, 1}}),
+	}})
+	time.Sleep(40 * time.Millisecond)
+	if e.doer.calls() != 0 {
+		t.Fatalf("fetched without a price tick: %d", e.doer.calls())
+	}
+}
+
 func TestBookEmptyExchTickerDoesNotFetch(t *testing.T) {
 	e := newBookEnv(t, umBookSync(t), 5, &bookTune{bare: true}, []doerStep{{
 		resp: bookHTTP(100, 1, [][2]float64{{100, 1}}, [][2]float64{{110, 1}}),
@@ -604,9 +652,10 @@ func (m *bookMarket) Book(string) (exchange.BookSync, bool) {
 }
 
 type bookTune struct {
-	max  int
-	age  time.Duration
-	bare bool // SnapshotREST assignment with no exch ticker
+	max      int
+	age      time.Duration
+	bare     bool // SnapshotREST assignment with no exch ticker
+	zeroTick bool // price_tick left at 0
 }
 
 type bookEnv struct {
@@ -641,7 +690,11 @@ func newBookEnv(t *testing.T, bs exchange.BookSync, depth uint32, tune *bookTune
 	c.epoch = 4
 	c.live = newLink(&memSession{})
 	c.mu.Unlock()
-	d := bookDesired(exch)
+	tick := 1.0
+	if tune.zeroTick {
+		tick = 0
+	}
+	d := bookDesiredTick(exch, tick)
 	c.SetDesired(d)
 	if c.fatal != nil {
 		t.Fatal(c.fatal)
@@ -661,10 +714,15 @@ func newBookEnv(t *testing.T, bs exchange.BookSync, depth uint32, tune *bookTune
 }
 
 func bookDesired(exch string) *mdctlv1.Desired {
+	return bookDesiredTick(exch, 1)
+}
+
+func bookDesiredTick(exch string, tick float64) *mdctlv1.Desired {
 	return &mdctlv1.Desired{
 		Version: &commonv1.Version{Seq: 1},
 		Atoms: []*mdctlv1.AtomAssignment{{
-			AtomId: "V:r:" + bookCh, Feeds: []string{"orderbook.T", "orderbook_delta.T"}, ExchTicker: exch,
+			AtomId: "V:r:" + bookCh, Feeds: []string{"orderbook.T", "orderbook_delta.T"},
+			ExchTicker: exch, PriceTick: tick,
 		}},
 	}
 }
@@ -725,16 +783,14 @@ func (e *bookEnv) level(t *testing.T, bid bool, price float64) (float64, bool) {
 func (e *bookEnv) levelOK(bid bool, price float64) (float64, bool) {
 	e.c.mu.Lock()
 	defer e.c.mu.Unlock()
+	if e.c.live == nil {
+		return 0, false
+	}
 	sh := e.c.live.books[e.ch]
 	if sh == nil || sh.book == nil {
 		return 0, false
 	}
-	m := sh.book.asks
-	if bid {
-		m = sh.book.bids
-	}
-	q, ok := m[price]
-	return q, ok
+	return sh.book.Qty(bid, price)
 }
 
 type opened struct {

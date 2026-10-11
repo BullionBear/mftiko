@@ -14,6 +14,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange/binance"
 	"github.com/BullionBear/mftiko/exchange/bybit"
 	"github.com/BullionBear/mftiko/exchange/exchangetest/conformance"
+	obook "github.com/BullionBear/mftiko/sdk/book"
 )
 
 // The BinanceUM fixture is the public UM testnet, not fapi.binance.com: that host answers 451
@@ -68,7 +69,8 @@ func binanceFixtureProblem(t *testing.T) string {
 	rest := umREST(t)
 	checkBook := parseDepth(t, rest, checkResp)
 	hold := make(chan struct{})
-	e := startFixtureBook(t, binance.VenueUM, "public", ch, "BCHUSDT", umMarket(t), rest, 20, []doerStep{{
+	const tick = 0.01
+	e := startFixtureBook(t, binance.VenueUM, "public", ch, "BCHUSDT", tick, umMarket(t), rest, 20, []doerStep{{
 		resp: syncResp, hold: hold,
 	}})
 	e.doer.wait(t, 1)
@@ -90,7 +92,7 @@ func binanceFixtureProblem(t *testing.T) string {
 	if !ok {
 		return "book was dropped"
 	}
-	if probs := compareFold(gotB, gotA, checkBook); len(probs) > 0 {
+	if probs := compareWindow(gotB, gotA, checkBook, tick, obook.DefaultN); len(probs) > 0 {
 		return strconv.Itoa(len(probs)) + " book mismatches: " + stringsJoin(probs)
 	}
 	d := deltasOf(e.open(t))
@@ -112,7 +114,8 @@ func TestBookBybitFixture(t *testing.T) {
 	if !ok || v.Market == nil {
 		t.Fatal("no bybit market")
 	}
-	e := startFixtureBook(t, bybit.Name, "linear", ch, "BTCUSDT", v.Market, nil, 20, nil)
+	const tick = 0.1
+	e := startFixtureBook(t, bybit.Name, "linear", ch, "BTCUSDT", tick, v.Market, nil, 20, nil)
 	sess, err := v.Market.NewSession("linear")
 	if err != nil {
 		t.Fatal(err)
@@ -144,7 +147,7 @@ func TestBookBybitFixture(t *testing.T) {
 	if !ok {
 		t.Fatal("stream book missing")
 	}
-	if probs := compareMaps(gotB, gotA, wantB, wantA); len(probs) > 0 {
+	if probs := compareMaps(gotB, gotA, quantize(wantB, tick), quantize(wantA, tick)); len(probs) > 0 {
 		t.Fatalf("%d stream mismatches, first: %s", len(probs), probs[0])
 	}
 	d := deltasOf(e.open(t))
@@ -183,7 +186,7 @@ func parseDepth(t *testing.T, rest exchange.PublicREST, resp *exchange.HTTPRespo
 	return u
 }
 
-func startFixtureBook(t *testing.T, venue, route, ch, exch string, m exchange.Market, rest exchange.PublicREST, depth uint32, steps []doerStep) *bookEnv {
+func startFixtureBook(t *testing.T, venue, route, ch, exch string, tick float64, m exchange.Market, rest exchange.PublicREST, depth uint32, steps []doerStep) *bookEnv {
 	t.Helper()
 	doer := &seqDoer{hit: make(chan int, 8), steps: steps}
 	rec := newRecorder()
@@ -196,7 +199,7 @@ func startFixtureBook(t *testing.T, venue, route, ch, exch string, m exchange.Ma
 		Version: &commonv1.Version{Seq: 1},
 		Atoms: []*mdctlv1.AtomAssignment{{
 			AtomId: venue + ":" + route + ":" + ch,
-			Feeds:  []string{"orderbook.T", "orderbook_delta.T"}, ExchTicker: exch,
+			Feeds:  []string{"orderbook.T", "orderbook_delta.T"}, ExchTicker: exch, PriceTick: tick,
 		}},
 	})
 	if c.fatal != nil {
@@ -247,13 +250,72 @@ func (e *bookEnv) maps() (bids, asks map[float64]float64, ok bool) {
 	if sh == nil || sh.book == nil {
 		return nil, nil, false
 	}
-	return levelMap(sortedLevels(sh.book.bids, true)), levelMap(sortedLevels(sh.book.asks, false)), true
+	return ringMap(sh.book, true), ringMap(sh.book, false), true
 }
 
-// compareFold is the conformance check: every closing-snapshot level is in the folded book, and
-// the folded book has nothing inside that snapshot's range that the snapshot lacks.
-func compareFold(bids, asks map[float64]float64, snap *exchange.BookUpdate) []string {
-	return compareMaps(bids, asks, levelMap(snap.Bids), levelMap(snap.Asks))
+func ringMap(b *obook.OrderBook, bid bool) map[float64]float64 {
+	it := b.Bids(b.Window())
+	if !bid {
+		it = b.Asks(b.Window())
+	}
+	m := map[float64]float64{}
+	for {
+		tick, sz, ok := it.Next()
+		if !ok {
+			return m
+		}
+		m[b.Price(tick)] = sz
+	}
+}
+
+// compareWindow is the conformance check inside the ring. Snapshot levels N or more ticks from
+// the folded best are outside the book and are not required. Prices are compared on the grid.
+func compareWindow(bids, asks map[float64]float64, snap *exchange.BookUpdate, tick float64, n int) []string {
+	return compareMaps(bids, asks, windowMap(bids, snap.Bids, tick, n, true), windowMap(asks, snap.Asks, tick, n, false))
+}
+
+func windowMap(got map[float64]float64, ls []exchange.Level, tick float64, n int, bid bool) map[float64]float64 {
+	best, ok := extreme(got, bid)
+	if !ok {
+		return map[float64]float64{}
+	}
+	bt := obook.Tick(best, tick)
+	out := map[float64]float64{}
+	for _, l := range ls {
+		if l.Qty == 0 {
+			continue
+		}
+		pt := obook.Tick(l.Price, tick)
+		dist := bt - pt
+		if !bid {
+			dist = pt - bt
+		}
+		if dist < 0 || dist >= int64(n) {
+			continue
+		}
+		out[float64(pt)*tick] = l.Qty
+	}
+	return out
+}
+
+func quantize(m map[float64]float64, tick float64) map[float64]float64 {
+	out := make(map[float64]float64, len(m))
+	for p, q := range m {
+		out[float64(obook.Tick(p, tick))*tick] = q
+	}
+	return out
+}
+
+func extreme(m map[float64]float64, bid bool) (float64, bool) {
+	var best float64
+	ok := false
+	for p := range m {
+		if !ok || (bid && p > best) || (!bid && p < best) {
+			best = p
+			ok = true
+		}
+	}
+	return best, ok
 }
 
 func compareMaps(gotB, gotA, wantB, wantA map[float64]float64) []string {

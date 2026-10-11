@@ -170,7 +170,7 @@ export const GapSchema: GenMessage<Gap> = /*@__PURE__*/
   messageDesc(file_mftiko_md_v1_read, 4);
 
 /**
- * orderbook_delta 這個 feed 在 (conn_epoch, seq) 當下的完整 book。
+ * orderbook_delta 這個 feed 在 (conn_epoch, seq) 當下的窗內 book（D430）。窗外的檔不在這裡。
  *
  * @generated from message mftiko.md.v1.BookSnapshot
  */
