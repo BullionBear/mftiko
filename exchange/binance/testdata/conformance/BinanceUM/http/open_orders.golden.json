@@ -23,6 +23,7 @@
       {
         "AsOfNs": 0,
         "Balances": null,
+        "HedgeMode": false,
         "OpenOrders": [
           {
             "AvgPrice": 0,

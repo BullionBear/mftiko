@@ -131,6 +131,10 @@ type AccountSnapshot struct {
 	Positions  []Position
 	Balances   []Balance
 	AsOfNs     int64
+	// HedgeMode: the account holds long and short positions apart (Binance dualSidePosition, OKX
+	// long_short_mode, Bybit positionIdx 1 and 2) somewhere. Phase 1 trades one-way only, so the
+	// worker fails Start, or stops taking new orders, when any page says so (D607, D612).
+	HedgeMode bool
 }
 
 // OrderUpdate follows td.v1.Order, with the instrument as the venue names it. RejectReason goes to
