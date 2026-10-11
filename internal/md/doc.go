@@ -5,5 +5,5 @@
 // and Budget/Cost place it (D403, D202). NATS subjects stay human-readable, not UID. The exact
 // spelling is not final (PROTOCOL §10 P14); md.f is still md.f.{inst}.{topic}.{ticker}.
 //
-// Shape only: not implemented yet.
+// The agent is internal/md/agent. Selectors are a later epic.
 package md

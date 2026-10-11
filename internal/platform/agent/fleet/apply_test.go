@@ -45,6 +45,12 @@ func TestApply(t *testing.T) {
 		t.Fatalf("observed %+v", o)
 	}
 
+	apply(&o, &shimv1.Event{Kind: &shimv1.Event_Report{Report: &workerv1.Report{Contract: "mdctl.v1", Payload: []byte{1}}}})
+	apply(&o, &shimv1.Event{Kind: &shimv1.Event_Report{Report: &workerv1.Report{Contract: "mdctl.v1", Payload: []byte{2}}}})
+	if o.Report.GetPayload()[0] != 2 {
+		t.Fatalf("report %v, want the latest", o.Report)
+	}
+
 	o = agent.Observed{State: agent.StateInitializing}
 	apply(&o, done(workerv1.Verb_VERB_INIT, false))
 	if o.State != agent.StateStopping {
