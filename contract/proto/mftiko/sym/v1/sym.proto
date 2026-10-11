@@ -24,7 +24,7 @@ message Request {
 // One instrument by exact ticker: a single row, never a venue table.
 message GetRequest {
   string universal_ticker = 1;
-  bool include_inactive = 2; // D203：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢，含 MD 的到期監看。Resolver 與熱路徑不設。表是 symbol_active 與 symbol_terminal
+  bool include_inactive = 2; // D203：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢。Resolver 與熱路徑不設。表是 symbol_active 與 symbol_terminal
 }
 
 // 系統內部的查詢（D203）。STS、TD、MD 持有 UID，用它拿這一列的欄位。
