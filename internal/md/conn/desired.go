@@ -20,12 +20,20 @@ import (
 // against what the venue has already acknowledged.
 func (c *Conn) SetDesired(d *mdctlv1.Desired) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if !c.apply(d) {
+	applied := c.apply(d)
+	fatal := c.fatal
+	cancel := c.stop
+	live := c.live != nil
+	c.mu.Unlock()
+	if fatal != nil {
+		if cancel != nil {
+			cancel()
+		}
 		return
 	}
-	if c.live != nil {
+	if applied && live {
 		c.poke()
+		c.wakeBook()
 	}
 }
 
@@ -42,6 +50,8 @@ func (c *Conn) apply(d *mdctlv1.Desired) bool {
 		c.ver = commonv1.Version{Epoch: d.Version.Epoch, Seq: d.Version.Seq}
 	}
 	wanted := make(map[string][]feed)
+	exch := make(map[string]string)
+	tick := make(map[string]float64)
 	for _, a := range d.Atoms {
 		if a == nil {
 			continue
@@ -54,17 +64,44 @@ func (c *Conn) apply(d *mdctlv1.Desired) bool {
 		if venue != c.venue || route != c.route {
 			continue
 		}
+		chKey := strings.Clone(ch)
+		book := false
 		for _, raw := range a.Feeds {
 			topic, ticker, ok := splitFeed(raw)
 			if !ok {
 				c.log.Warn().Str("feed", raw).Str("atom", a.AtomId).Msg("feed key")
 				continue
 			}
-			addFeed(wanted, strings.Clone(ch), feed{topic: strings.Clone(topic), ticker: strings.Clone(ticker)})
+			if topic == string(exchange.TopicOrderBook) || topic == string(exchange.TopicOrderBookDelta) {
+				book = true
+			}
+			addFeed(wanted, chKey, feed{topic: strings.Clone(topic), ticker: strings.Clone(ticker)})
+		}
+		if t := a.GetExchTicker(); t != "" {
+			exch[chKey] = strings.Clone(t)
+		}
+		// The last book assignment on the channel wins, including a missing tick: that stalls the book.
+		if book {
+			tick[chKey] = a.GetPriceTick()
 		}
 	}
+	if err := c.vetBooks(wanted); err != nil {
+		c.abort(err)
+	}
 	c.wanted = wanted
+	c.exch = exch
+	c.tick = tick
 	return true
+}
+
+// abort records an error Run returns instead of dialing again. The cancel happens after the
+// caller drops c.mu: canceling while the lock is held can deadlock a goroutine that needs it to exit.
+func (c *Conn) abort(err error) {
+	if err == nil || c.fatal != nil {
+		return
+	}
+	c.fatal = err
+	c.log.Error().Err(err).Msg("book")
 }
 
 // newerVersion reports whether next is strictly after old. A nil version is 0.
@@ -139,7 +176,10 @@ func (c *Conn) plan() [][]byte {
 		sub = append(sub, ch)
 	}
 	for ch := range l.observed {
-		if _, ok := c.wanted[ch]; ok {
+		_, want := c.wanted[ch]
+		_, resub := l.resub[ch]
+		// A channel still in desired stays, unless this book is cycling it (D434).
+		if want && !resub {
 			continue
 		}
 		if _, ok := l.unsubPending[ch]; ok {
@@ -208,6 +248,14 @@ func (c *Conn) Ack(id uint64, err error) {
 			// Accepted. If desired dropped the channel while the request was in flight, keep
 			// it observed so the next diff unsubscribes what the venue actually has.
 			l.observed[ch] = struct{}{}
+			// Only the replacement subscribe ends the cycle. The original ack must not
+			// cancel a resubscribe that was armed while that request was in flight.
+			if _, cycling := l.resub[ch]; cycling {
+				delete(l.resub, ch)
+				if sh := l.books[ch]; sh != nil {
+					sh.holdResub = false
+				}
+			}
 		}
 		c.poke()
 		return

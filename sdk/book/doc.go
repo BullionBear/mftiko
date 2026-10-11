@@ -1,3 +1,7 @@
-// Package book is an opt-in helper that keeps a local book from orderbook_delta: snapshot from
-// md.view, then deltas with seq > S, refetching on a gap (DECISIONS D402, PROTOCOL §7.1).
+// Package book is the tick-indexed order book shared by the MD conn worker and the STS worker (D430).
+//
+// An OrderBook is two fixed rings, bids and asks, each of length N (default 2048, a power of two).
+// A price is a tick, round(price/tickSize), stored at index tick&(N-1). Slots are never cleared.
+// A slot whose stored tick is not the one being read is empty, and a size of zero is a delete.
+// The strategy helper that folds md.view plus orderbook_delta is a later use of this type.
 package book

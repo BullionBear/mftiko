@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mftiko/mdctl/v1/mdctl.proto.
  */
 export const file_mftiko_mdctl_v1_mdctl: GenFile = /*@__PURE__*/
-  fileDesc("ChttZnRpa28vbWRjdGwvdjEvbWRjdGwucHJvdG8SD21mdGlrby5tZGN0bC52MSJ8CgtJbml0UGF5bG9hZBINCgV2ZW51ZRgBIAEoCRINCgVyb3V0ZRgCIAEoCRIJCgFuGAMgASgNEhMKC21kX2luc3RhbmNlGAQgASgJEgsKA3VybBgGIAEoCRISCgpjb25uX2Vwb2NoGAcgASgESgQIBRAGUgh0YXBlX3VybCIOCgxTdGFydFBheWxvYWQiPQoHQ29tbWFuZBIrCgdkZXNpcmVkGAEgASgLMhgubWZ0aWtvLm1kY3RsLnYxLkRlc2lyZWRIAEIFCgNjbWQiZQoHRGVzaXJlZBIqCgd2ZXJzaW9uGAEgASgLMhkubWZ0aWtvLmNvbW1vbi52MS5WZXJzaW9uEi4KBWF0b21zGAIgAygLMh8ubWZ0aWtvLm1kY3RsLnYxLkF0b21Bc3NpZ25tZW50IkAKDkF0b21Bc3NpZ25tZW50Eg8KB2F0b21faWQYASABKAkSDQoFZmVlZHMYAiADKAkSDgoGcmVjb3JkGAMgASgIIsEBCgZSZXBvcnQSKgoHYXBwbGllZBgBIAEoCzIZLm1mdGlrby5jb21tb24udjEuVmVyc2lvbhISCgpjb25uX2Vwb2NoGAIgASgEEikKBXN0YXRlGAMgASgOMhoubWZ0aWtvLm1kY3RsLnYxLkNvbm5TdGF0ZRIOCgZyZWFzb24YBCABKAkSKgoFYXRvbXMYBSADKAsyGy5tZnRpa28ubWRjdGwudjEuQXRvbVN0YXR1cxIQCghtc2dfcmF0ZRgGIAEoASKIAQoKQXRvbVN0YXR1cxIPCgdhdG9tX2lkGAEgASgJEikKBXN0YXRlGAIgASgOMhoubWZ0aWtvLm1kY3RsLnYxLkF0b21TdGF0ZRIXCg9maXJzdF9tc2dfYXRfbnMYAyABKAMSFgoObGFzdF9tc2dfYXRfbnMYBCABKAMSDQoFZXJyb3IYBSABKAkqbAoJQ29ublN0YXRlEhoKFkNPTk5fU1RBVEVfVU5TUEVDSUZJRUQQABIZChVDT05OX1NUQVRFX0NPTk5FQ1RJTkcQARITCg9DT05OX1NUQVRFX0xJVkUQAhITCg9DT05OX1NUQVRFX0RPV04QAypwCglBdG9tU3RhdGUSGgoWQVRPTV9TVEFURV9VTlNQRUNJRklFRBAAEhYKEkFUT01fU1RBVEVfUEVORElORxABEhkKFUFUT01fU1RBVEVfU1VCU0NSSUJFRBACEhQKEEFUT01fU1RBVEVfRVJST1IQA0JEWkJnaXRodWIuY29tL0J1bGxpb25CZWFyL21mdGlrby9jb250cmFjdC9nZW4vbWZ0aWtvL21kY3RsL3YxO21kY3RsdjFiBnByb3RvMw", [file_mftiko_common_v1_common]);
+  fileDesc("ChttZnRpa28vbWRjdGwvdjEvbWRjdGwucHJvdG8SD21mdGlrby5tZGN0bC52MSLZAQoLSW5pdFBheWxvYWQSDQoFdmVudWUYASABKAkSDQoFcm91dGUYAiABKAkSCQoBbhgDIAEoDRITCgttZF9pbnN0YW5jZRgEIAEoCRILCgN1cmwYBiABKAkSEgoKY29ubl9lcG9jaBgHIAEoBBISCgpib29rX2RlcHRoGAggASgNEhcKD2Jvb2tfYnVmZmVyX21heBgKIAEoDRIWCg5ib29rX2J1ZmZlcl9tcxgLIAEoDUoECAUQBkoECAkQClIIdGFwZV91cmxSEGJvb2tfYm91bmRhcnlfYnAiDgoMU3RhcnRQYXlsb2FkIj0KB0NvbW1hbmQSKwoHZGVzaXJlZBgBIAEoCzIYLm1mdGlrby5tZGN0bC52MS5EZXNpcmVkSABCBQoDY21kImUKB0Rlc2lyZWQSKgoHdmVyc2lvbhgBIAEoCzIZLm1mdGlrby5jb21tb24udjEuVmVyc2lvbhIuCgVhdG9tcxgCIAMoCzIfLm1mdGlrby5tZGN0bC52MS5BdG9tQXNzaWdubWVudCJpCg5BdG9tQXNzaWdubWVudBIPCgdhdG9tX2lkGAEgASgJEg0KBWZlZWRzGAIgAygJEg4KBnJlY29yZBgDIAEoCBITCgtleGNoX3RpY2tlchgEIAEoCRISCgpwcmljZV90aWNrGAUgASgBIsEBCgZSZXBvcnQSKgoHYXBwbGllZBgBIAEoCzIZLm1mdGlrby5jb21tb24udjEuVmVyc2lvbhISCgpjb25uX2Vwb2NoGAIgASgEEikKBXN0YXRlGAMgASgOMhoubWZ0aWtvLm1kY3RsLnYxLkNvbm5TdGF0ZRIOCgZyZWFzb24YBCABKAkSKgoFYXRvbXMYBSADKAsyGy5tZnRpa28ubWRjdGwudjEuQXRvbVN0YXR1cxIQCghtc2dfcmF0ZRgGIAEoASKIAQoKQXRvbVN0YXR1cxIPCgdhdG9tX2lkGAEgASgJEikKBXN0YXRlGAIgASgOMhoubWZ0aWtvLm1kY3RsLnYxLkF0b21TdGF0ZRIXCg9maXJzdF9tc2dfYXRfbnMYAyABKAMSFgoObGFzdF9tc2dfYXRfbnMYBCABKAMSDQoFZXJyb3IYBSABKAkqbAoJQ29ublN0YXRlEhoKFkNPTk5fU1RBVEVfVU5TUEVDSUZJRUQQABIZChVDT05OX1NUQVRFX0NPTk5FQ1RJTkcQARITCg9DT05OX1NUQVRFX0xJVkUQAhITCg9DT05OX1NUQVRFX0RPV04QAypwCglBdG9tU3RhdGUSGgoWQVRPTV9TVEFURV9VTlNQRUNJRklFRBAAEhYKEkFUT01fU1RBVEVfUEVORElORxABEhkKFUFUT01fU1RBVEVfU1VCU0NSSUJFRBACEhQKEEFUT01fU1RBVEVfRVJST1IQA0JEWkJnaXRodWIuY29tL0J1bGxpb25CZWFyL21mdGlrby9jb250cmFjdC9nZW4vbWZ0aWtvL21kY3RsL3YxO21kY3RsdjFiBnByb3RvMw", [file_mftiko_common_v1_common]);
 
 /**
  * @generated from message mftiko.mdctl.v1.InitPayload
@@ -55,6 +55,27 @@ export type InitPayload = Message<"mftiko.mdctl.v1.InitPayload"> & {
    * @generated from field: uint64 conn_epoch = 7;
    */
   connEpoch: bigint;
+
+  /**
+   * 本地 orderbook 的 top-N。0 是缺，啟動失敗（D426）。同一個 MD instance 固定。
+   *
+   * @generated from field: uint32 book_depth = 8;
+   */
+  bookDepth: number;
+
+  /**
+   * 等快照時緩衝的筆數上限。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（D424）。
+   *
+   * @generated from field: uint32 book_buffer_max = 10;
+   */
+  bookBufferMax: number;
+
+  /**
+   * 等快照時緩衝的時間上限，毫秒。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（D424）。
+   *
+   * @generated from field: uint32 book_buffer_ms = 11;
+   */
+  bookBufferMs: number;
 };
 
 /**
@@ -148,6 +169,21 @@ export type AtomAssignment = Message<"mftiko.mdctl.v1.AtomAssignment"> & {
    * @generated from field: bool record = 3;
    */
   record: boolean;
+
+  /**
+   * SYM 的 exchTicker。MD agent 在載入 spec、解析商品時抄上。worker 不查 SYM，也不從 channel 解析（D426、D202）。
+   *
+   * @generated from field: string exch_ticker = 4;
+   */
+  exchTicker: string;
+
+  /**
+   * SYM 的 price_tick。MD agent 在載入 spec、解析商品時從 symbol.Info 抄上，跟 exch_ticker 同一時刻。
+   * 缺或小於等於 0 時這本訂單簿只記日誌、不維護（D433）。
+   *
+   * @generated from field: double price_tick = 5;
+   */
+  priceTick: number;
 };
 
 /**
