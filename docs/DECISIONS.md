@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-12 定案持倉模式由 `AccountSnapshot.HedgeMode` 帶回，以及給 account worker 測試用的假帳號 `exchangetest.AccountVenue`，D612。2026-10-11 定案 TD 的契約與 NATS 身分（E6-02）：`td.order` 只回 ack 或本地拒絕，單的每一次變化都是 `OrderUpdate`，1xx 只列一期會碰到的；訂單狀態加 `ACCEPTED`（上簿），撤單在途改成旗標 `cancel_sent_ns`，拿掉 `PENDING_CANCEL`；account worker 每個帳號一份 NATS 憑證，由 TD agent 簽，D610–D611。同日修訂 D601：TD agent 不查 SYM，歷史補正的交易所讀取比照 md.fetch。同日修訂 D202、D401：MD agent 不查 SYM，conn worker 用活躍表推出 atom 並 diff 訂閱，並在 Report 以 FeedStatus 回報每一筆 feed。同日更新 D415、D426：MD instance 訂閱 `sym.changed.>`，conn worker 在 Init 載入該 venue 的活躍表。同日定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-12 定案帳號憑證以 TD instance 的 X25519 公鑰封裝：NaCl sealed box 加版本與指紋，`api_id`、`kind` 一起封、解開後比對，封裝工具 `mftiko-seal`，D613。同日定案持倉模式由 `AccountSnapshot.HedgeMode` 帶回，以及給 account worker 測試用的假帳號 `exchangetest.AccountVenue`，D612。2026-10-11 定案 TD 的契約與 NATS 身分（E6-02）：`td.order` 只回 ack 或本地拒絕，單的每一次變化都是 `OrderUpdate`，1xx 只列一期會碰到的；訂單狀態加 `ACCEPTED`（上簿），撤單在途改成旗標 `cancel_sent_ns`，拿掉 `PENDING_CANCEL`；account worker 每個帳號一份 NATS 憑證，由 TD agent 簽，D610–D611。同日修訂 D601：TD agent 不查 SYM，歷史補正的交易所讀取比照 md.fetch。同日修訂 D202、D401：MD agent 不查 SYM，conn worker 用活躍表推出 atom 並 diff 訂閱，並在 Report 以 FeedStatus 回報每一筆 feed。同日更新 D415、D426：MD instance 訂閱 `sym.changed.>`，conn worker 在 Init 載入該 venue 的活躍表。同日定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 >
@@ -559,6 +559,18 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   - 私有串流：`Handler` 是真的 websocket，以 httptest 跑，worker 照正式路徑用 `exchange/transport/ws` 連。可以拒絕登入、讓握手失敗、一次斷掉所有連線、暫扣事件以決定先到的是回答還是事件，以及 Binance 式的 listenKey 與到期。
   - 不撮合：單一直掛著，直到測試成交或撤掉。不驗簽章，只比對 key。查單與「請求晚到」在 E6-16 加。
   - 不採用：私有串流用行程內的假連線。那樣 worker 的連線路徑就少測了 ws 傳輸；MD conn worker 的測試也用 httptest。
+
+### D613 帳號憑證以 TD instance 的公鑰封裝
+
+- **每個 TD instance 一對 X25519 金鑰，不是每個帳號、也不是整個平面一把。** 一個帳號只會被一個 TD instance 跑（D908，不跨主機接手），封給它就夠；一台主機被拿走，損失只限於封給它的帳號。私鑰是該主機上的檔案，0600，路徑是部署設定；權限比 0600 寬就拒絕載入。
+- **格式是 `version(1) | fingerprint(8) | NaCl sealed box`**（`golang.org/x/crypto/nacl/box` 的 `SealAnonymous`：X25519、XSalsa20-Poly1305，每次封用新的暫時金鑰）。fingerprint 是收件公鑰 SHA-256 的前 8 bytes，讓 TD agent 不必試解就分得出「封給別的 instance」和「壞掉」。換演算法就換 version。
+  - 不採用：自己組 X25519＋HKDF＋AES-GCM。sealed box 是現成的、介面小，不用自己決定 nonce 與 KDF。
+  - 不採用：age。功能多於需要（多收件人、passphrase、armor），格式也不是我們控制。
+- **明文是 `state.v1.AccountCredentials`，`api_id` 與 `kind` 一起封進去。** sealed box 沒有 associated data，密文從一個帳號搬到另一個帳號底下照樣解得開；TD agent 解開之後比對 etcd key 的 `api_id` 與 `Account.kind`，不符就不用。
+- **解不開時，需求 `REJECTED`，reason 分三種：** `credentials_other_key`（指紋不是本 instance 的，用它的公鑰重封）、`credentials_unreadable`（空、版本不認得、長度不足或損壞；竄改指紋也算這個）、`credentials_other_account`。由 `sealbox.Reason` 產生；TD agent 寫 ack 在 E6-10。
+- **公鑰的交付，一期是檔案或 CLI。** `cmd/mftiko-seal keygen` 寫私鑰並印出公鑰，`pubkey` 從私鑰檔印公鑰，`seal` 從 stdin 讀憑證 JSON、印出 base64 的密文。憑證只走 stdin，不進 flag，免得留在 shell history 與行程列表。TD instance 把公鑰發布到 etcd、API server 寫帳號時自己封，留到 E10。
+- **明文只在記憶體裡。** `sealbox.Credentials` 與私鑰對任何 fmt 動詞與 JSON 都印 `REDACTED`；錯誤只說哪一步失敗，不帶 bytes。解開後經 `tdctl.InitPayload.credentials` 由 socketpair 送進 account worker（§5.4），歷史補正放進該次請求（D601）。
+- **換 key：** 先把舊檔移開才能寫新的（`keygen` 不覆蓋），之後封給舊 key 的帳號全部要重封；在重封之前它們是 `credentials_other_key`。
 
 ### D905 linger；需求沒有 TTL
 

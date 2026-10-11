@@ -153,7 +153,7 @@ type Account struct {
 	// 帳號種類（DECISIONS D301），不是 venue：BinancePM 可以交易 Binance、BinanceUM、BinanceCM 的商品。
 	// 兩個 enum 的名稱可能相同（帳號種類 BinanceUM 交易 venue BinanceUM），不可互查。
 	Kind              string           `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
-	SealedCredentials []byte           `protobuf:"bytes,3,opt,name=sealed_credentials,json=sealedCredentials,proto3" json:"sealed_credentials,omitempty"` // 以 TD instance 的公鑰封裝；etcd 裡不放明文
+	SealedCredentials []byte           `protobuf:"bytes,3,opt,name=sealed_credentials,json=sealedCredentials,proto3" json:"sealed_credentials,omitempty"` // AccountCredentials 以 TD instance 的公鑰封裝（D613、§3.6）；etcd 裡不放明文
 	Settings          *AccountSettings `protobuf:"bytes,4,opt,name=settings,proto3" json:"settings,omitempty"`
 	Enabled           bool             `protobuf:"varint,5,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	unknownFields     protoimpl.UnknownFields
@@ -225,6 +225,92 @@ func (x *Account) GetEnabled() bool {
 	return false
 }
 
+// sealed_credentials 封裝前的明文（D613）。只在封裝工具、API server 與 TD agent 的記憶體裡；不進 etcd、不進 log。
+// api_id 與 kind 一起封進去，解開之後與帳號的 key、宣告比對：一個帳號的密文搬到另一個帳號底下就解不出來用。
+type AccountCredentials struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ApiId         int64                  `protobuf:"varint,1,opt,name=api_id,json=apiId,proto3" json:"api_id,omitempty"`
+	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	KeyType       string                 `protobuf:"bytes,3,opt,name=key_type,json=keyType,proto3" json:"key_type,omitempty"` // hmac | ed25519
+	Key           string                 `protobuf:"bytes,4,opt,name=key,proto3" json:"key,omitempty"`
+	Secret        string                 `protobuf:"bytes,5,opt,name=secret,proto3" json:"secret,omitempty"`         // HMAC secret，或 PEM 編碼的 ed25519 私鑰
+	Passphrase    string                 `protobuf:"bytes,6,opt,name=passphrase,proto3" json:"passphrase,omitempty"` // OKX
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccountCredentials) Reset() {
+	*x = AccountCredentials{}
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountCredentials) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountCredentials) ProtoMessage() {}
+
+func (x *AccountCredentials) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountCredentials.ProtoReflect.Descriptor instead.
+func (*AccountCredentials) Descriptor() ([]byte, []int) {
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *AccountCredentials) GetApiId() int64 {
+	if x != nil {
+		return x.ApiId
+	}
+	return 0
+}
+
+func (x *AccountCredentials) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *AccountCredentials) GetKeyType() string {
+	if x != nil {
+		return x.KeyType
+	}
+	return ""
+}
+
+func (x *AccountCredentials) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *AccountCredentials) GetSecret() string {
+	if x != nil {
+		return x.Secret
+	}
+	return ""
+}
+
+func (x *AccountCredentials) GetPassphrase() string {
+	if x != nil {
+		return x.Passphrase
+	}
+	return ""
+}
+
 type AccountSettings struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	CancelOnDisconnectS uint32                 `protobuf:"varint,1,opt,name=cancel_on_disconnect_s,json=cancelOnDisconnectS,proto3" json:"cancel_on_disconnect_s,omitempty"` // 0 = 關閉
@@ -238,7 +324,7 @@ type AccountSettings struct {
 
 func (x *AccountSettings) Reset() {
 	*x = AccountSettings{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[1]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -250,7 +336,7 @@ func (x *AccountSettings) String() string {
 func (*AccountSettings) ProtoMessage() {}
 
 func (x *AccountSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[1]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -263,7 +349,7 @@ func (x *AccountSettings) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccountSettings.ProtoReflect.Descriptor instead.
 func (*AccountSettings) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{1}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *AccountSettings) GetCancelOnDisconnectS() uint32 {
@@ -304,7 +390,7 @@ type SessionStatus struct {
 
 func (x *SessionStatus) Reset() {
 	*x = SessionStatus{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[2]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -316,7 +402,7 @@ func (x *SessionStatus) String() string {
 func (*SessionStatus) ProtoMessage() {}
 
 func (x *SessionStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[2]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -329,7 +415,7 @@ func (x *SessionStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionStatus.ProtoReflect.Descriptor instead.
 func (*SessionStatus) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{2}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *SessionStatus) GetObservedGeneration() int64 {
@@ -409,7 +495,7 @@ type StateSnapshot struct {
 
 func (x *StateSnapshot) Reset() {
 	*x = StateSnapshot{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[3]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -421,7 +507,7 @@ func (x *StateSnapshot) String() string {
 func (*StateSnapshot) ProtoMessage() {}
 
 func (x *StateSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[3]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -434,7 +520,7 @@ func (x *StateSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StateSnapshot.ProtoReflect.Descriptor instead.
 func (*StateSnapshot) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{3}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *StateSnapshot) GetDigest() string {
@@ -496,7 +582,7 @@ type DemandEntry struct {
 
 func (x *DemandEntry) Reset() {
 	*x = DemandEntry{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[4]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -508,7 +594,7 @@ func (x *DemandEntry) String() string {
 func (*DemandEntry) ProtoMessage() {}
 
 func (x *DemandEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[4]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -521,7 +607,7 @@ func (x *DemandEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DemandEntry.ProtoReflect.Descriptor instead.
 func (*DemandEntry) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{4}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *DemandEntry) GetTarget() isDemandEntry_Target {
@@ -609,7 +695,7 @@ type SessionDemand struct {
 
 func (x *SessionDemand) Reset() {
 	*x = SessionDemand{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[5]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -621,7 +707,7 @@ func (x *SessionDemand) String() string {
 func (*SessionDemand) ProtoMessage() {}
 
 func (x *SessionDemand) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[5]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -634,7 +720,7 @@ func (x *SessionDemand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionDemand.ProtoReflect.Descriptor instead.
 func (*SessionDemand) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{5}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *SessionDemand) GetDesired() v11.DesiredState {
@@ -696,7 +782,7 @@ type Binding struct {
 
 func (x *Binding) Reset() {
 	*x = Binding{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[6]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -708,7 +794,7 @@ func (x *Binding) String() string {
 func (*Binding) ProtoMessage() {}
 
 func (x *Binding) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[6]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -721,7 +807,7 @@ func (x *Binding) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Binding.ProtoReflect.Descriptor instead.
 func (*Binding) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{6}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Binding) GetTarget() isBinding_Target {
@@ -811,7 +897,7 @@ type EntryStatus struct {
 
 func (x *EntryStatus) Reset() {
 	*x = EntryStatus{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[7]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -823,7 +909,7 @@ func (x *EntryStatus) String() string {
 func (*EntryStatus) ProtoMessage() {}
 
 func (x *EntryStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[7]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -836,7 +922,7 @@ func (x *EntryStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EntryStatus.ProtoReflect.Descriptor instead.
 func (*EntryStatus) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{7}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *EntryStatus) GetState() EntryState {
@@ -893,7 +979,7 @@ type Universe struct {
 
 func (x *Universe) Reset() {
 	*x = Universe{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[8]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -905,7 +991,7 @@ func (x *Universe) String() string {
 func (*Universe) ProtoMessage() {}
 
 func (x *Universe) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[8]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -918,7 +1004,7 @@ func (x *Universe) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Universe.ProtoReflect.Descriptor instead.
 func (*Universe) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{8}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Universe) GetEpoch() uint64 {
@@ -963,7 +1049,7 @@ type AgentRecord struct {
 
 func (x *AgentRecord) Reset() {
 	*x = AgentRecord{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[9]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -975,7 +1061,7 @@ func (x *AgentRecord) String() string {
 func (*AgentRecord) ProtoMessage() {}
 
 func (x *AgentRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[9]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -988,7 +1074,7 @@ func (x *AgentRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentRecord.ProtoReflect.Descriptor instead.
 func (*AgentRecord) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{9}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *AgentRecord) GetPlane() string {
@@ -1044,7 +1130,7 @@ type WorkerStatus struct {
 
 func (x *WorkerStatus) Reset() {
 	*x = WorkerStatus{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[10]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1056,7 +1142,7 @@ func (x *WorkerStatus) String() string {
 func (*WorkerStatus) ProtoMessage() {}
 
 func (x *WorkerStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[10]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1069,7 +1155,7 @@ func (x *WorkerStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerStatus.ProtoReflect.Descriptor instead.
 func (*WorkerStatus) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{10}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *WorkerStatus) GetWorker() *v1.WorkerRef {
@@ -1149,7 +1235,7 @@ type SelectorState struct {
 
 func (x *SelectorState) Reset() {
 	*x = SelectorState{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[11]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1161,7 +1247,7 @@ func (x *SelectorState) String() string {
 func (*SelectorState) ProtoMessage() {}
 
 func (x *SelectorState) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[11]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1174,7 +1260,7 @@ func (x *SelectorState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SelectorState.ProtoReflect.Descriptor instead.
 func (*SelectorState) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{11}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *SelectorState) GetSpec() *v11.SelectorDecl {
@@ -1228,7 +1314,7 @@ type Placement struct {
 
 func (x *Placement) Reset() {
 	*x = Placement{}
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[12]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1240,7 +1326,7 @@ func (x *Placement) String() string {
 func (*Placement) ProtoMessage() {}
 
 func (x *Placement) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_state_v1_state_proto_msgTypes[12]
+	mi := &file_mftiko_state_v1_state_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1253,7 +1339,7 @@ func (x *Placement) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Placement.ProtoReflect.Descriptor instead.
 func (*Placement) Descriptor() ([]byte, []int) {
-	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{12}
+	return file_mftiko_state_v1_state_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Placement) GetConn() string {
@@ -1273,7 +1359,16 @@ const file_mftiko_state_v1_state_proto_rawDesc = "" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12-\n" +
 	"\x12sealed_credentials\x18\x03 \x01(\fR\x11sealedCredentials\x12<\n" +
 	"\bsettings\x18\x04 \x01(\v2 .mftiko.state.v1.AccountSettingsR\bsettings\x12\x18\n" +
-	"\aenabled\x18\x05 \x01(\bR\aenabled\"\xaf\x01\n" +
+	"\aenabled\x18\x05 \x01(\bR\aenabled\"\xa4\x01\n" +
+	"\x12AccountCredentials\x12\x15\n" +
+	"\x06api_id\x18\x01 \x01(\x03R\x05apiId\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x19\n" +
+	"\bkey_type\x18\x03 \x01(\tR\akeyType\x12\x10\n" +
+	"\x03key\x18\x04 \x01(\tR\x03key\x12\x16\n" +
+	"\x06secret\x18\x05 \x01(\tR\x06secret\x12\x1e\n" +
+	"\n" +
+	"passphrase\x18\x06 \x01(\tR\n" +
+	"passphrase\"\xaf\x01\n" +
 	"\x0fAccountSettings\x123\n" +
 	"\x16cancel_on_disconnect_s\x18\x01 \x01(\rR\x13cancelOnDisconnectS\x12.\n" +
 	"\x13backfill_interval_s\x18\x02 \x01(\rR\x11backfillIntervalS\x127\n" +
@@ -1393,45 +1488,46 @@ func file_mftiko_state_v1_state_proto_rawDescGZIP() []byte {
 }
 
 var file_mftiko_state_v1_state_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_mftiko_state_v1_state_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_mftiko_state_v1_state_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_mftiko_state_v1_state_proto_goTypes = []any{
-	(Phase)(0),               // 0: mftiko.state.v1.Phase
-	(EntryState)(0),          // 1: mftiko.state.v1.EntryState
-	(*Account)(nil),          // 2: mftiko.state.v1.Account
-	(*AccountSettings)(nil),  // 3: mftiko.state.v1.AccountSettings
-	(*SessionStatus)(nil),    // 4: mftiko.state.v1.SessionStatus
-	(*StateSnapshot)(nil),    // 5: mftiko.state.v1.StateSnapshot
-	(*DemandEntry)(nil),      // 6: mftiko.state.v1.DemandEntry
-	(*SessionDemand)(nil),    // 7: mftiko.state.v1.SessionDemand
-	(*Binding)(nil),          // 8: mftiko.state.v1.Binding
-	(*EntryStatus)(nil),      // 9: mftiko.state.v1.EntryStatus
-	(*Universe)(nil),         // 10: mftiko.state.v1.Universe
-	(*AgentRecord)(nil),      // 11: mftiko.state.v1.AgentRecord
-	(*WorkerStatus)(nil),     // 12: mftiko.state.v1.WorkerStatus
-	(*SelectorState)(nil),    // 13: mftiko.state.v1.SelectorState
-	(*Placement)(nil),        // 14: mftiko.state.v1.Placement
-	(*v1.Condition)(nil),     // 15: mftiko.common.v1.Condition
-	(*v1.ExitInfo)(nil),      // 16: mftiko.common.v1.ExitInfo
-	(*v11.SelectorDecl)(nil), // 17: mftiko.session.v1.SelectorDecl
-	(v11.DesiredState)(0),    // 18: mftiko.session.v1.DesiredState
-	(*v1.WorkerRef)(nil),     // 19: mftiko.common.v1.WorkerRef
+	(Phase)(0),                 // 0: mftiko.state.v1.Phase
+	(EntryState)(0),            // 1: mftiko.state.v1.EntryState
+	(*Account)(nil),            // 2: mftiko.state.v1.Account
+	(*AccountCredentials)(nil), // 3: mftiko.state.v1.AccountCredentials
+	(*AccountSettings)(nil),    // 4: mftiko.state.v1.AccountSettings
+	(*SessionStatus)(nil),      // 5: mftiko.state.v1.SessionStatus
+	(*StateSnapshot)(nil),      // 6: mftiko.state.v1.StateSnapshot
+	(*DemandEntry)(nil),        // 7: mftiko.state.v1.DemandEntry
+	(*SessionDemand)(nil),      // 8: mftiko.state.v1.SessionDemand
+	(*Binding)(nil),            // 9: mftiko.state.v1.Binding
+	(*EntryStatus)(nil),        // 10: mftiko.state.v1.EntryStatus
+	(*Universe)(nil),           // 11: mftiko.state.v1.Universe
+	(*AgentRecord)(nil),        // 12: mftiko.state.v1.AgentRecord
+	(*WorkerStatus)(nil),       // 13: mftiko.state.v1.WorkerStatus
+	(*SelectorState)(nil),      // 14: mftiko.state.v1.SelectorState
+	(*Placement)(nil),          // 15: mftiko.state.v1.Placement
+	(*v1.Condition)(nil),       // 16: mftiko.common.v1.Condition
+	(*v1.ExitInfo)(nil),        // 17: mftiko.common.v1.ExitInfo
+	(*v11.SelectorDecl)(nil),   // 18: mftiko.session.v1.SelectorDecl
+	(v11.DesiredState)(0),      // 19: mftiko.session.v1.DesiredState
+	(*v1.WorkerRef)(nil),       // 20: mftiko.common.v1.WorkerRef
 }
 var file_mftiko_state_v1_state_proto_depIdxs = []int32{
-	3,  // 0: mftiko.state.v1.Account.settings:type_name -> mftiko.state.v1.AccountSettings
+	4,  // 0: mftiko.state.v1.Account.settings:type_name -> mftiko.state.v1.AccountSettings
 	0,  // 1: mftiko.state.v1.SessionStatus.phase:type_name -> mftiko.state.v1.Phase
-	15, // 2: mftiko.state.v1.SessionStatus.conditions:type_name -> mftiko.common.v1.Condition
-	16, // 3: mftiko.state.v1.SessionStatus.last_exit:type_name -> mftiko.common.v1.ExitInfo
-	5,  // 4: mftiko.state.v1.SessionStatus.state_out:type_name -> mftiko.state.v1.StateSnapshot
-	17, // 5: mftiko.state.v1.DemandEntry.selector:type_name -> mftiko.session.v1.SelectorDecl
-	18, // 6: mftiko.state.v1.SessionDemand.desired:type_name -> mftiko.session.v1.DesiredState
-	8,  // 7: mftiko.state.v1.SessionDemand.bindings:type_name -> mftiko.state.v1.Binding
-	9,  // 8: mftiko.state.v1.Binding.status:type_name -> mftiko.state.v1.EntryStatus
+	16, // 2: mftiko.state.v1.SessionStatus.conditions:type_name -> mftiko.common.v1.Condition
+	17, // 3: mftiko.state.v1.SessionStatus.last_exit:type_name -> mftiko.common.v1.ExitInfo
+	6,  // 4: mftiko.state.v1.SessionStatus.state_out:type_name -> mftiko.state.v1.StateSnapshot
+	18, // 5: mftiko.state.v1.DemandEntry.selector:type_name -> mftiko.session.v1.SelectorDecl
+	19, // 6: mftiko.state.v1.SessionDemand.desired:type_name -> mftiko.session.v1.DesiredState
+	9,  // 7: mftiko.state.v1.SessionDemand.bindings:type_name -> mftiko.state.v1.Binding
+	10, // 8: mftiko.state.v1.Binding.status:type_name -> mftiko.state.v1.EntryStatus
 	1,  // 9: mftiko.state.v1.EntryStatus.state:type_name -> mftiko.state.v1.EntryState
-	19, // 10: mftiko.state.v1.EntryStatus.worker:type_name -> mftiko.common.v1.WorkerRef
-	10, // 11: mftiko.state.v1.EntryStatus.universe:type_name -> mftiko.state.v1.Universe
-	19, // 12: mftiko.state.v1.WorkerStatus.worker:type_name -> mftiko.common.v1.WorkerRef
-	16, // 13: mftiko.state.v1.WorkerStatus.last_exit:type_name -> mftiko.common.v1.ExitInfo
-	17, // 14: mftiko.state.v1.SelectorState.spec:type_name -> mftiko.session.v1.SelectorDecl
+	20, // 10: mftiko.state.v1.EntryStatus.worker:type_name -> mftiko.common.v1.WorkerRef
+	11, // 11: mftiko.state.v1.EntryStatus.universe:type_name -> mftiko.state.v1.Universe
+	20, // 12: mftiko.state.v1.WorkerStatus.worker:type_name -> mftiko.common.v1.WorkerRef
+	17, // 13: mftiko.state.v1.WorkerStatus.last_exit:type_name -> mftiko.common.v1.ExitInfo
+	18, // 14: mftiko.state.v1.SelectorState.spec:type_name -> mftiko.session.v1.SelectorDecl
 	15, // [15:15] is the sub-list for method output_type
 	15, // [15:15] is the sub-list for method input_type
 	15, // [15:15] is the sub-list for extension type_name
@@ -1444,12 +1540,12 @@ func file_mftiko_state_v1_state_proto_init() {
 	if File_mftiko_state_v1_state_proto != nil {
 		return
 	}
-	file_mftiko_state_v1_state_proto_msgTypes[4].OneofWrappers = []any{
+	file_mftiko_state_v1_state_proto_msgTypes[5].OneofWrappers = []any{
 		(*DemandEntry_Feed)(nil),
 		(*DemandEntry_Selector)(nil),
 		(*DemandEntry_ApiId)(nil),
 	}
-	file_mftiko_state_v1_state_proto_msgTypes[6].OneofWrappers = []any{
+	file_mftiko_state_v1_state_proto_msgTypes[7].OneofWrappers = []any{
 		(*Binding_Feed)(nil),
 		(*Binding_Selector)(nil),
 		(*Binding_ApiId)(nil),
@@ -1460,7 +1556,7 @@ func file_mftiko_state_v1_state_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mftiko_state_v1_state_proto_rawDesc), len(file_mftiko_state_v1_state_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   13,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -15,9 +15,20 @@ message Account {
   // 帳號種類（DECISIONS D301），不是 venue：BinancePM 可以交易 Binance、BinanceUM、BinanceCM 的商品。
   // 兩個 enum 的名稱可能相同（帳號種類 BinanceUM 交易 venue BinanceUM），不可互查。
   string kind = 2;
-  bytes sealed_credentials = 3; // 以 TD instance 的公鑰封裝；etcd 裡不放明文
+  bytes sealed_credentials = 3; // AccountCredentials 以 TD instance 的公鑰封裝（D613、§3.6）；etcd 裡不放明文
   AccountSettings settings = 4;
   bool enabled = 5;
+}
+
+// sealed_credentials 封裝前的明文（D613）。只在封裝工具、API server 與 TD agent 的記憶體裡；不進 etcd、不進 log。
+// api_id 與 kind 一起封進去，解開之後與帳號的 key、宣告比對：一個帳號的密文搬到另一個帳號底下就解不出來用。
+message AccountCredentials {
+  int64 api_id = 1;
+  string kind = 2;
+  string key_type = 3; // hmac | ed25519
+  string key = 4;
+  string secret = 5; // HMAC secret，或 PEM 編碼的 ed25519 私鑰
+  string passphrase = 6; // OKX
 }
 
 message AccountSettings {
