@@ -50,9 +50,9 @@ func (c *Conn) AggTrade(ch string, e *exchange.AggTrade) {
 	})
 }
 
-// Book does nothing. The local book is folded by a later ticket. Publishing the pre-fold update,
-// or spending a sequence number on it, would put a gap into a feed that does not exist yet.
-func (c *Conn) Book(string, *exchange.BookUpdate) {}
+// Book folds one venue update into the local book. The read goroutine is still inside Decode, so
+// this only buffers or applies; Depth runs on the book's own goroutine.
+func (c *Conn) Book(ch string, u *exchange.BookUpdate) { c.onBook(ch, u) }
 
 func (c *Conn) Kline(ch string, e *exchange.Kline) {
 	if e == nil {

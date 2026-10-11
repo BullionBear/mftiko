@@ -20,12 +20,20 @@ import (
 // against what the venue has already acknowledged.
 func (c *Conn) SetDesired(d *mdctlv1.Desired) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if !c.apply(d) {
+	applied := c.apply(d)
+	fatal := c.fatal
+	cancel := c.stop
+	live := c.live != nil
+	c.mu.Unlock()
+	if fatal != nil {
+		if cancel != nil {
+			cancel()
+		}
 		return
 	}
-	if c.live != nil {
+	if applied && live {
 		c.poke()
+		c.wakeBook()
 	}
 }
 
@@ -42,6 +50,7 @@ func (c *Conn) apply(d *mdctlv1.Desired) bool {
 		c.ver = commonv1.Version{Epoch: d.Version.Epoch, Seq: d.Version.Seq}
 	}
 	wanted := make(map[string][]feed)
+	exch := make(map[string]string)
 	for _, a := range d.Atoms {
 		if a == nil {
 			continue
@@ -54,17 +63,35 @@ func (c *Conn) apply(d *mdctlv1.Desired) bool {
 		if venue != c.venue || route != c.route {
 			continue
 		}
+		chKey := strings.Clone(ch)
 		for _, raw := range a.Feeds {
 			topic, ticker, ok := splitFeed(raw)
 			if !ok {
 				c.log.Warn().Str("feed", raw).Str("atom", a.AtomId).Msg("feed key")
 				continue
 			}
-			addFeed(wanted, strings.Clone(ch), feed{topic: strings.Clone(topic), ticker: strings.Clone(ticker)})
+			addFeed(wanted, chKey, feed{topic: strings.Clone(topic), ticker: strings.Clone(ticker)})
+		}
+		if t := a.GetExchTicker(); t != "" {
+			exch[chKey] = strings.Clone(t)
 		}
 	}
+	if err := c.vetBooks(wanted); err != nil {
+		c.abort(err)
+	}
 	c.wanted = wanted
+	c.exch = exch
 	return true
+}
+
+// abort records an error Run returns instead of dialing again. The cancel happens after the
+// caller drops c.mu: canceling while the lock is held can deadlock a goroutine that needs it to exit.
+func (c *Conn) abort(err error) {
+	if err == nil || c.fatal != nil {
+		return
+	}
+	c.fatal = err
+	c.log.Error().Err(err).Msg("book")
 }
 
 // newerVersion reports whether next is strictly after old. A nil version is 0.

@@ -18,6 +18,14 @@ message InitPayload {
   string url = 6;
   // 上次上報的 conn_epoch。0 表示還沒有上報過，第一次撥號用 1（D409）。
   uint64 conn_epoch = 7;
+  // 本地 orderbook 的 top-N。0 是缺，啟動失敗（D426）。同一個 MD instance 固定。
+  uint32 book_depth = 8;
+  // 最優價到快照邊界的距離門檻，單位 bp。0 表示 500。分母暫定為最優價（D426）。
+  uint32 book_boundary_bp = 9;
+  // 等快照時緩衝的筆數上限。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（D424）。
+  uint32 book_buffer_max = 10;
+  // 等快照時緩衝的時間上限，毫秒。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（D424）。
+  uint32 book_buffer_ms = 11;
 }
 
 // Start 沒有 payload：連上 websocket，等第一份 Desired。
@@ -39,6 +47,8 @@ message AtomAssignment {
   string atom_id = 1;
   repeated string feeds = 2; // 這個 atom 要發佈的 feed（atom → 事件 1:N）
   bool record = 3;           // 錄 tape；MD agent 依 topic 推導（D402）
+  // SYM 的 exchTicker。MD agent 在載入 spec、解析商品時抄上。worker 不查 SYM，也不從 channel 解析（D426、D202）。
+  string exch_ticker = 4;
 }
 
 message Report {
