@@ -1,8 +1,11 @@
 # Local development only: `make dev-up` starts every service and waits until they are healthy; then
-# `make migrate-up`. Ports are bound to 127.0.0.1, so nothing outside this machine can connect, and no service
-# asks for credentials: PostgreSQL trusts local connections, etcd has no auth yet (E1-08 adds it), and NATS has
-# none either. Tests do not use these: state starts its own etcd (etcdtest), natsx its own server (natsxtest),
-# and the symbol tests start their own PostgreSQL (pgtest).
+# `make migrate-up`. Ports are bound to 127.0.0.1, so nothing outside this machine can connect.
+# PostgreSQL trusts local connections, and etcd has no auth yet (E1-08 adds it). NATS uses operator and
+# account JWTs (D412). `make dev-up` generates them into deploy/dev/data/nats before compose starts;
+# that directory is gitignored and is not created here, because a missing bind-mount source makes
+# Docker create a directory in its place. Tests do not use these: state starts its own etcd (etcdtest),
+# natsx its own server (natsxtest), natsdev its own JWT server, and the symbol tests start their own
+# PostgreSQL (pgtest).
 services:
   postgres:
     image: postgres:17
@@ -48,23 +51,23 @@ services:
 
   # Core NATS only, one server, the same release the tests embed
   # (github.com/nats-io/nats-server/v2 v2.15.0). The data plane (D002, D004): no JetStream, no cluster,
-  # no authentication. The image's own config is not used; it opens a cluster port with a fixed route
-  # password. Clients use nats://127.0.0.1:4222. The alpine image, not scratch, because the healthcheck
-  # needs wget, which is busybox in that image. The monitor port stays inside the container.
+  # no TLS. Operator and account JWTs use a full resolver (D412). The image's own config is not used;
+  # it opens a cluster port with a fixed route password. `make dev-up` writes the three mounted files
+  # first. keys/ and creds/ stay on the host and are not mounted. Clients use nats://127.0.0.1:4222
+  # with the generated creds. The alpine image, not scratch, because the healthcheck needs wget, which
+  # is busybox in that image. The monitor port stays inside the container.
   nats:
     image: nats:2.15.0-alpine
     command:
       - nats-server
-      - --port
-      - "4222"
-      - --addr
-      - 0.0.0.0 # inside the container; the port mapping limits it to this machine
-      - --http_port
-      - "8222"
-      - --name
-      - dev
+      - -c
+      - /etc/nats/nats-server.conf
     ports:
       - "127.0.0.1:4222:4222"
+    volumes:
+      - ./data/nats/nats-server.conf:/etc/nats/nats-server.conf:ro
+      - ./data/nats/operator.jwt:/etc/nats/operator.jwt:ro
+      - ./data/nats/resolver:/data/resolver
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8222/healthz"]
       interval: 2s

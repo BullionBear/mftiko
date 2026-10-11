@@ -25,6 +25,7 @@ NODE_BIN := $(abspath $(WEB)/node_modules/.bin)
 # no password (trust auth on 127.0.0.1). Every other environment sets DATABASE_URL itself.
 DATABASE_URL ?= postgres://mftiko@localhost:5432/mftiko?sslmode=disable
 COMPOSE      := docker compose -f deploy/dev/compose.yaml
+DEV_NATS     := deploy/dev/data/nats
 
 PROTOC_GEN_GO_VERSION := v1.36.12
 
@@ -36,7 +37,7 @@ BUF_AGAINST ?= .git\#branch=main
 export PATH := $(TOOLS):$(NODE_BIN):$(PATH)
 
 .PHONY: all help tools proto proto-lint proto-breaking gen-check build examples test test-race vet fmt check \
-        web-install web web-check web-dev dev-up dev-down migrate-up migrate-down migrate-status \
+        web-install web web-check web-dev dev-up dev-down dev-nats-smoke migrate-up migrate-down migrate-status \
         migrate-new clean
 
 all: proto build examples web ## Generate code, build every binary, the example strategies and the web console
@@ -124,11 +125,15 @@ web-dev: web-install ## Dev server; proxies /api to mftiko-api on :8080
 
 # ---------- database ----------
 
-dev-up: ## Start the local PostgreSQL, etcd and NATS (deploy/dev/compose.yaml) and wait until all are healthy
+dev-up: ## Generate dev NATS credentials, then start PostgreSQL, etcd and NATS and wait until all are healthy
+	$(GO) run ./cmd/mftiko-nats-dev -out $(DEV_NATS)
 	$(COMPOSE) up -d --wait
 
-dev-down: ## Stop the local PostgreSQL, etcd and NATS (keeps PostgreSQL and etcd volumes)
+dev-down: ## Stop local PostgreSQL, etcd and NATS. Keeps their data, including the gitignored NATS directory
 	$(COMPOSE) down
+
+dev-nats-smoke: ## Run the dev NATS permission checks against the compose server
+	deploy/dev/nats-smoke.sh
 
 migrate-up: build ## Apply every pending migration to DATABASE_URL
 	$(BIN)/mftiko-migrate -database '$(DATABASE_URL)' up

@@ -35,3 +35,11 @@ go.work.sum
 # mftiko build outputs (make build / make web). The generated code in contract/gen/ and web/src/lib/gen/ is committed
 # (see .gitattributes).
 /bin/
+
+# Dev NATS operator, account keys, and user creds (D413). make dev-up writes these.
+# Never commit them.
+/deploy/dev/data/
+
+# Belt and suspenders: seeds and creds are not source.
+*.creds
+*.nk

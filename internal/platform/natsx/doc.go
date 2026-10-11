@@ -9,5 +9,6 @@
 // Options.Logger. OnReconnect is an additional callback for a process that must
 // reload after a gap; it runs on the client's reconnect goroutine and must not block.
 //
-// Operator and account credentials, and each session's inbox prefix, are not set here (D906).
+// Credentials are not set here (D906). The inbox prefix is Options.InboxPrefix:
+// sessions use _INBOX_{session_id} (D906), platform processes use _INBOX_{plane}_{inst} (D416).
 package natsx

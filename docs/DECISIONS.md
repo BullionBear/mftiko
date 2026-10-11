@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-11 更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-11 定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 >
@@ -500,6 +500,50 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 | 40 | payload |
 
 最終的 offset 也寫在 PROTOCOL §7.1。
+### D412 dev NATS 用 operator／account JWT 與 full resolver
+
+- **dev 與之後的部署用同一種授權。** operator JWT、account JWT、full resolver。不用 MEMORY resolver：account 變更不必重載設定，多台 server 也不必改設定。
+- **account JWT 在 server 啟動前放進 resolver 目錄。** 檔名是 account 的公鑰加 `.jwt`。不走 `$SYS.REQ.CLAIMS.UPDATE`。這是兩種寫法裡較簡單的一種。
+- **resolver 目錄可寫。** compose 把該目錄掛成 volume。種子與 user creds 不掛進容器。
+- **要有 system account。** 名稱 `SYS`，只給 resolver 與 server 監控，沒有 user。
+- **CI 的嵌入式 nats-server 用同一份設定。** 同一個 formatter 產生 compose 的設定與測試的設定：resolver 種類、operator、`SYS`、`MFTIKO` 相同，listen 位址用測試的自由 port。
+- **不開 TLS。** 這一票只有一台 dev server。多 region 的拓撲見 PROTOCOL §10 P16。
+
+### D413 金鑰不進 repo
+
+- **小工具 `cmd/mftiko-nats-dev` 產生金鑰，不用 `nsc`。** `make dev-up` 先跑它，再起 compose。
+- **輸出在 `deploy/dev/data/nats/`，這個目錄被 gitignore。** 裡面有 operator、`MFTIKO`、`SYS`、簽章金鑰，以及 MD 與 md.fetch 的 user creds。沒有 session 的 user JWT：那是 STS 在 spawn 時簽的（D906）。
+- **金鑰檔已存在就沿用，JWT 與 creds 重簽。** 再跑 `make dev-up` 不換 account 身分。種子檔壞了或是空的就失敗，不靜默換一把新的。
+- **repo 裡沒有種子。** 公鑰、設定、account JWT 可以出現在本機輸出目錄，不提交（GitGuardian，見 #122）。
+
+### D414 一個 MFTIKO account
+
+- **所有平面共用一個 account `MFTIKO`。** 同一個 subject 空間，沒有 import／export。
+- **`MFTIKO` 另有一把簽章金鑰，給 STS 簽 session user JWT。** account 的身分金鑰不外流，只留在 gitignore 的目錄。MD 與 md.fetch 的 user JWT 由 account 身分金鑰簽，不由這把簽章金鑰簽。
+- **`SYS` 是 system account**，給 resolver 與監控，沒有業務 user。
+
+### D415 MD 與 md.fetch 兩個 user
+
+寫進 PROTOCOL §7。TD 與 SYM 的權限留到它們自己的票，這一票不加。
+
+- **MD instance（`MFTIKO_NATS_CREDS`）：** publish `md.f.{inst}.>`、`sym`；subscribe `md.view.{inst}.>`。inbox 見 D416。
+- **md.fetch（D402，無狀態，不是 MD worker）：** queue group subscribe `md.fetch`；publish `sym`。inbox 見 D416。可 request `sym` 是 publish 恰好 subject `sym`，不是 `sym.>`。
+- **回覆權限。** D416 不給 `_INBOX.>` 的 publish，服務者仍要能回一則。兩個 user 的 JWT 帶 NATS 的 response permission，上限沿用 server `allow_responses` 的預設：一則、兩分鐘。這不是新的決策編號。session 的呼叫者沒有這條，它只訂自己的 inbox。
+
+### D416 inbox 前綴
+
+- **session 維持 D906 的 `_INBOX_{session_id}`。**
+- **平台行程用 `_INBOX_{plane}_{inst}`。** MD 的 plane token 是 `md`，所以是 `_INBOX_md_{inst}`。md.fetch 的 plane token 是 `fetch`，所以是 `_INBOX_fetch_{inst}`。D416 的例子只寫了 MD；`fetch` 是讓兩個 user 的前綴不撞，記在這一條，不另編號。
+- **權限只開自己的前綴**（`_INBOX_md_{inst}.>`、`_INBOX_fetch_{inst}.>`）。沒有任何 user 拿到預設的 `_INBOX.>`。
+- **`natsx/conn` 加 inbox 前綴選項**，傳給 `nats.CustomInboxPrefix`。空的維持客戶端預設。`natsx/rpc` 的介面不改。
+
+### D417 權限檢查
+
+- **CI 用嵌入式 nats-server 載入同一份設定與產生的 creds**，檢查三件事：發佈 `md.f`；用自訂 inbox 做 request／reply；未授權的發佈與訂閱被拒（`_INBOX.>`、別人的 inbox、另一個 instance 的 `md.f`）。
+- **檢查會在記憶體裡用簽章金鑰簽一個暫時的 session user**，當合法的呼叫者。不把 session creds 寫進磁碟。
+- **md.fetch 的 queue 名稱在檢查裡用 `md.fetch`。** 這是 natsx 的 `Serve` 在 queue 空著時用的預設（subject 本身）。JWT 不鎖 queue 名稱。
+- **compose 的煙測腳本跑同一組檢查：** `deploy/dev/nats-smoke.sh`。
+- **不開 TLS。**
 
 ### D906 session worker 的 NATS 憑證：每個 session 一份
 

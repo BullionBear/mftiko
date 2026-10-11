@@ -22,6 +22,7 @@ func TestConnectRejectsBadOptions(t *testing.T) {
 		{name: "empty url", want: "empty url"},
 		{name: "negative request timeout", url: "nats://127.0.0.1:1", opt: natsx.Options{RequestTimeout: -1}, want: "negative"},
 		{name: "negative connect timeout", url: "nats://127.0.0.1:1", opt: natsx.Options{ConnectTimeout: -1}, want: "negative"},
+		{name: "inbox prefix", url: "nats://127.0.0.1:1", opt: natsx.Options{InboxPrefix: "_INBOX_md_dev.>"}, want: "invalid custom prefix"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -136,5 +137,33 @@ func TestRequestCancel(t *testing.T) {
 	cancel()
 	if err := await(t, errc); !errorIs(err, context.Canceled) {
 		t.Fatalf("cancel: %v", err)
+	}
+}
+
+func TestInboxPrefix(t *testing.T) {
+	s := natsxtest.Start(t)
+	srv := dial(t, s.URL(), natsx.Options{})
+	replies := make(chan string, 1)
+	if _, err := srv.Subscribe(t.Context(), "echo", "", func(m natsx.Msg) {
+		data := append([]byte(nil), m.Data...)
+		select {
+		case replies <- m.Reply:
+		default:
+		}
+		_ = srv.Publish(m.Reply, data)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c := dial(t, s.URL(), natsx.Options{InboxPrefix: "_INBOX_md_dev"})
+	var out wrapperspb.StringValue
+	if err := c.Request(t.Context(), "echo", &wrapperspb.StringValue{Value: "hi"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.GetValue() != "hi" {
+		t.Fatalf("value %q", out.GetValue())
+	}
+	reply := await(t, replies)
+	if !strings.HasPrefix(reply, "_INBOX_md_dev.") {
+		t.Fatalf("reply subject %q", reply)
 	}
 }
