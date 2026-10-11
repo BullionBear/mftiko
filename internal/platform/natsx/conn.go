@@ -23,9 +23,8 @@ const (
 // ErrClosed: the connection is closed, so the operation was not sent.
 var ErrClosed = errors.New("natsx: connection closed")
 
-// Options configures one connection. Zero is an unauthenticated connection, which is what the
-// dev server at nats://127.0.0.1:4222 accepts. Credentials and the per-session inbox prefix
-// are not configured here.
+// Options configures one connection. The zero value is an unauthenticated connection, which is
+// what natsxtest accepts. Credentials are not configured here (D906).
 type Options struct {
 	// Name is the connection name the server shows in monitoring. Empty leaves it unset.
 	Name string
@@ -40,6 +39,11 @@ type Options struct {
 
 	// ConnectTimeout is the dial timeout. Zero keeps the client's own default.
 	ConnectTimeout time.Duration
+
+	// InboxPrefix is the reply inbox prefix, passed to nats.CustomInboxPrefix.
+	// Empty keeps the client default _INBOX. Sessions set _INBOX_{session_id} (D906).
+	// Platform processes set _INBOX_{plane} (D416): _INBOX_md and _INBOX_fetch.
+	InboxPrefix string
 }
 
 // Conn is one core-NATS connection. It is safe for concurrent use. It has no JetStream handle.
@@ -104,6 +108,9 @@ func Connect(url string, opt Options) (*Conn, error) {
 	}
 	if opt.ConnectTimeout > 0 {
 		nopts = append(nopts, nats.Timeout(opt.ConnectTimeout))
+	}
+	if opt.InboxPrefix != "" {
+		nopts = append(nopts, nats.CustomInboxPrefix(opt.InboxPrefix))
 	}
 	nc, err := nats.Connect(url, nopts...)
 	if err != nil {

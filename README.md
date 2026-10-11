@@ -39,6 +39,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-migrate          applies the PostgreSQL migrations (a deploy step)
   mftiko-pack             builds a strategy artifact (OCI image + mftiko manifest)
   mftiko-etcd-roles       prints each region's etcd users and roles, derived from the instance list
+  mftiko-nats-dev         generates dev NATS operator, accounts and user creds, and checks them
   mftiko-conformance      SDK conformance suite
 examples/strategies/      hello, tape-keeper; import only sdk and contract, as an outside author would
 migrations/               PostgreSQL schema: NNNN_name.up.sql / .down.sql, embedded into mftiko-migrate
@@ -61,19 +62,20 @@ docs/                     DECISIONS.md, PROTOCOL.md
 | `make test` / `make test-race` / `make vet` | Go tests / with the race detector, uncached / vet |
 | `make check` | everything CI runs: `proto-lint`, `proto-breaking`, `gen-check`, `vet`, `build`, `test-race`, `web-check` |
 | `make web` / `make web-dev` / `make web-check` | build, dev server, svelte-check |
-| `make dev-up` / `make dev-down` | start / stop a local PostgreSQL, etcd and NATS (Docker); `dev-up` waits until all are healthy |
+| `make dev-up` / `make dev-down` | generate dev NATS credentials, then start / stop a local PostgreSQL, etcd and NATS (Docker); `dev-up` waits until all are healthy |
+| `make dev-nats-smoke` | run the dev NATS permission checks (`deploy/dev/nats-smoke.sh`) against the compose server |
 | `make migrate-up` / `make migrate-down` / `make migrate-status` | apply / roll back one / list migrations against `$DATABASE_URL` |
 | `make migrate-new NAME=...` | creates the next `NNNN_<name>.up.sql` / `.down.sql` pair |
 | `make clean` | removes `bin/` and web build output |
 | `make help` | lists targets |
 
-Building and testing the Go code need only Go 1.26+: the generated code is committed. `make proto`, `make web` and `make check` also need Node 22+ and npm; Docker only for `make dev-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`; its etcd is at `http://127.0.0.1:2379`, one member with no auth. Its NATS is at `nats://127.0.0.1:4222`, core NATS only, no auth.
+Building and testing the Go code need only Go 1.26+: the generated code is committed. `make proto`, `make web` and `make check` also need Node 22+ and npm; Docker only for `make dev-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`; its etcd is at `http://127.0.0.1:2379`, one member with no auth. Its NATS is at `nats://127.0.0.1:4222`, one server, core NATS only, no TLS. `make dev-up` generates the operator, account and user credentials into `deploy/dev/data/nats`, which is gitignored. MD and md.fetch use those creds.
 
 ## Tests
 
 The tests of `internal/platform/state` run a real etcd (v3.7.2). They find it through `MFTIKO_ETCD_BIN`, else `etcd` on `PATH`, and are skipped when there is neither. Set `MFTIKO_REQUIRE_ETCD=1` to make a missing etcd a failure instead; CI does, so a run that skipped them cannot pass.
 
-The tests of `internal/platform/natsx` start an embedded core NATS server (`natsxtest`, nats-server v2.15.0, the same release as the dev image). They do not use the compose service and need no extra binary.
+The tests of `internal/platform/natsx` start an embedded core NATS server (`natsxtest`, nats-server v2.15.0, the same release as the dev image). They do not use the compose service and need no extra binary. The tests of `internal/platform/natsdev` start an embedded server with the same operator, account and full-resolver config `make dev-up` writes, and generated credentials in a temporary directory.
 
 The tests of `migrations` and `internal/sym` run a real PostgreSQL (`pgtest`). They find the server through `MFTIKO_PG_BIN` (the `postgres` binary; `initdb` is the one beside it), else `postgres` on `PATH`, and are skipped when there is neither. Set `MFTIKO_REQUIRE_PG=1` to make a missing binary a failure instead; CI does, so a run that skipped them cannot pass.
 
