@@ -129,14 +129,14 @@ func (s *switchSymbols) Get(ctx context.Context, t symbol.UniversalTicker, inclu
 
 type reconMarket struct{ stubMarket }
 
-func (reconMarket) Atom(_ exchange.Topic, info *symbol.Info) (exchange.AtomRef, error) {
+func (*reconMarket) Atom(_ exchange.Topic, info *symbol.Info) (exchange.AtomRef, error) {
 	if info == nil || info.ExchTicker == "" {
 		return exchange.AtomRef{}, exchange.ErrUnsupported
 	}
 	return exchange.AtomRef{Route: "public", Channel: strings.ToLower(info.ExchTicker) + "@depth"}, nil
 }
 
-func (reconMarket) Book(string) (exchange.BookSync, bool) { return streamBook{}, true }
+func (*reconMarket) Book(string) (exchange.BookSync, bool) { return streamBook{}, true }
 
 type streamBook struct{}
 

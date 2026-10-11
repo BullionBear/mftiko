@@ -267,11 +267,11 @@ enum TimeInForce {
 
 - **owner** 只有 `{session_id}/{entry}`（需求項目）。沒有常駐訂閱；要保持行情或 tape，跑一個 tape keeper 策略（DECISIONS D404）。
 - **推導：** feed key 是 `topic.UniversalTicker`。MD agent 從 ticker 的 venue 與 topic 決定的 route 選 `md/<venue>/<route>/<n>`，把 feed 放進那個 worker。它不查 SYM，也不組 atom。conn worker 載入該 venue 的活躍表，用 `Market.Atom` 推出 atom，跟目前的訂閱做 diff。不在活躍表或不是 `TRADABLE` 的不訂（`EXPIRED`、`DELISTED` 不在活躍表）。adapter 是純函數，不查 SYM。selector 的成員從已載入的表裡挑，仍是後續。selector 的狀態（universe、epoch、置中點）存在 `/md/{inst}/selector/{spec_hash}`，規格相同的 selector 只算一份。
-- **atom 的 refcount 是 owner 集合的大小。**
-  - 0→1：加入 desired，放進同一個 `(venue, route)` 下還有空間、n 最小的連線；都滿了才開 n+1（容量由 adapter 宣告，DECISIONS D403）。有黏性，記在 `/md/{inst}/placement/`，推給 conn worker。不整併。
-  - 1→0：linger 之後才從 desired 移除。
-- **連線在最後一個 atom 退訂時就送 `Stop`**，沒有另外的 linger：最後一個 atom 的 linger 就是連線的 linger（DECISIONS D905）。linger 預設 5 秒，是 MD instance 的部署設定。
-- **重啟：** list ＋ watch 讀回全部 owner、selector 狀態與 placement，再從 shim 取回每條連線實際訂了哪些 atom，然後才開始 reconcile。
+- **feed 的 owner 是集合，不是計數。**
+  - 新的 feed 放進同一個 `(venue, route)` 下還有空間、n 最小的連線；都滿了才開 n+1（容量由 adapter 宣告，DECISIONS D403）。有黏性，記在 `/md/{inst}/placement/`，推給 conn worker 的是 `topic.UniversalTicker`。不整併。
+  - 最後一個 owner 離開：linger 之後才從 desired 移除。worker 再退訂已經沒有 feed 的 atom。
+- **連線在最後一筆 feed 的 linger 結束時就送 `Stop`**，沒有另外的 linger（DECISIONS D905）。linger 預設 5 秒，是 MD instance 的部署設定。
+- **重啟：** list ＋ watch 讀回全部 owner、selector 狀態與 placement，再 reconcile。worker 自己從活躍表推出目前該訂的 atom。
 
 TD 的對應（DECISIONS D901）：每個 `api_id` 一個 owner 集合，refcount 是它的大小。0→1 時 spawn account worker；1→0 時 linger 之後才送 `Stop`，並排一次歷史補正（D601）。account worker 存在與否就等於「這個帳號可以交易」，沒有另外的交易層開關。
 
@@ -1986,15 +1986,15 @@ enum ReconReason {
 
 - **不是 agent。** 每個 region 部署，NATS queue group，任何 replica 都能回答；沒有 lease、fencing。只有 SYM 寫。listing 預定分兩張表，看狀態還會不會變（D203，enum 仍暫定）：活躍表是 `PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`UNKNOWN`，Resolver 與熱路徑只讀它，只有 `TRADABLE` 可交易；終結表是 `EXPIRED`、`DELISTED`，狀態不再變，給歷史查詢（舊成交、持倉、依 UID 或 ticker 反查），不再刷新，可以歸檔。兩張表的主鍵都是 UID，合在一起唯一。UID 是 SYM 分配的隨機整數，永不重用，不是單調序號，跟列一起持久化。列進了終結狀態就從活躍表搬到終結表，UniversalTicker 與 UID 都不變。`symbol_filter` 也分活躍表與終結表，跟列一起搬。同一個 ticker 下架再上市是新的 UID。E2-03 的 `migrations/0002_symbol` 已拆成 `symbol_active` 與 `symbol_terminal`，主鍵是 uid；`symbol_filter_active`、`symbol_filter_terminal` 跟列一起搬。活躍表的 `venue`、`category` 是從 `universal_ticker` 生成的欄位，`UNIQUE (venue, category, exch_ticker)` 與 `universal_ticker` 唯一只在活躍表。
 - **刷新的單位是 `(venue, category)`。** 每個單位一個來源（adapter 的 `PublicREST.Listing`），各自刷新，一個 venue 掛了不影響其他。這次沒出現的列標成 `DELISTED`，只在同一個 `(venue, category)` 裡判斷：現貨的刷新不會讓 perp 下架。`EXPIRED` 或 `DELISTED` 都搬進終結表，之後不再刷新。ticker 字串與 UID 都不變。分頁的 listing 要讀完才算數，讀一半就當失敗。預設每小時一次，也可以 `RefreshRequest`。
-- **使用者是 STS、MD、TD，API 不查（D202）。**
-- **啟動時載入活躍表，之後跟著變更重載（D203）。** 進程啟動時，以 `ListRequest` 把用得到的每個 `(venue, category)` 的未終結列分頁讀進記憶體，每頁最多 500 筆，壓在 NATS 的 1 MiB 以下。分頁是 offset＋limit。翻頁之間列可能搬表或新上市，跨頁不一致可以接受（§10 P13）。Resolver 與熱路徑只查這份記憶體，不打 SYM，也不讀終結表。歷史查詢（舊成交、持倉、依 UID 反查，以及 MD 的到期監看）才讀終結表。SYM 在 revision 推進並 commit 之後發變更通知；收到的進程重載那個 `(venue, category)` 的活躍列。subject 與訊息見下方「變更通知」。`GetRequest` 是 spec 載入時把 ticker 解成 UID 的那一次；`GetByUidRequest` 是之後各平面用 UID 拿欄位；`ReverseRequest` 把交易所寫法換回 listing（回覆帶 UID）。三者都留著，給載入、熱路徑找不到、或要查終結列時用。
+- **使用者是 STS、TD，以及 MD 的 conn worker。MD agent 與 API 不查（D202）。**
+- **啟動時載入活躍表，之後跟著變更重載（D203）。** 進程啟動時，以 `ListRequest` 把用得到的每個 `(venue, category)` 的未終結列分頁讀進記憶體，每頁最多 500 筆，壓在 NATS 的 1 MiB 以下。分頁是 offset＋limit。翻頁之間列可能搬表或新上市，跨頁不一致可以接受（§10 P13）。Resolver 與熱路徑只查這份記憶體，不打 SYM，也不讀終結表。歷史查詢（舊成交、持倉、依 UID 反查）才讀終結表。MD 的 conn worker 只讀活躍表；ticker 離開活躍表就不訂。SYM 在 revision 推進並 commit 之後發變更通知；收到的進程重載那個 `(venue, category)` 的活躍列。subject 與訊息見下方「變更通知」。`GetRequest` 是 STS、TD 載入 spec 時把 ticker 解成 UID 的那一次。MD 的 feed 維持 `topic.UniversalTicker`，由 conn worker 在活躍表裡對 ticker 查。`GetByUidRequest` 是之後 STS、TD 用 UID 拿欄位；`ReverseRequest` 把交易所寫法換回 listing（回覆帶 UID）。三者都留著，給載入、熱路徑找不到、或要查終結列時用。
 - **誰載入什麼（D202）：**
   - session worker：SDK 在啟動時載入 spec 裡用到的 venue，讓策略拿到 tick、qty step 這類 filter 做下單取整。權限見 §7 的 `sym`。
-  - MD agent：載入 instance 服務的 venue。需求項目進來時在表裡解析 feed；selector 的成員從表裡挑。
+  - MD agent 不載表、不查 SYM。它把 `topic.UniversalTicker` 放上 conn worker。selector 的成員仍是後續。
+  - conn worker：Init 載入自己那個 venue 的活躍表，推出 atom。事件上蓋 feed 的 ticker。`md.f` 的 subject 用人讀的名字，不用 UID；拼法還沒定（§10 P14），這一版仍是 ticker。
   - account worker：載入帳號種類可交易的 venue。私有事件帶回交易所的寫法，反查得到 UID。
   - TD agent 的 backfill：同 account worker；REST 拿回的成交同樣反查成 UID。
   - md.fetch：載入它服務的 venue。
-  - conn worker 不解析：它依 `AtomAssignment` 的 feed 在事件蓋上身分。今天蓋的是 ticker；事件改蓋 UID 是後續。`md.f` 的 subject 用人讀的名字，不用 UID；拼法還沒定（§10 P14），這一版仍是 ticker。
 
 **幣與數量（D203）。** `contract_value_ccy`、`price_ccy`、`settlement_asset` 由 adapter 從交易所的原生欄位填（例如 OKX 的 `ctValCcy`、Deribit 期權的 `quote_currency`），下游不推導。不沿用 mftik 的 `reservations.is_linear_margin`，也不為 Deribit 開特例。`SymbolInfo` 帶 `contract_value_ccy` 與 `price_ccy`；結算欄位仍叫 `settle`，不另開 `settlement_asset`。
 
@@ -2026,7 +2026,7 @@ quanto（`settlement_asset` 既不是 base 也不是 quote）不入庫。解析�
 
 分表跟著這個暫定的切法：活躍表是 `PRELISTING`、`TRADABLE`、`HALTED`、`SETTLING`、`UNKNOWN`；終結表是 `EXPIRED`、`DELISTED`。Resolver 與熱路徑只讀活躍表。終結列狀態不再變，不再刷新，可以歸檔；搬過去時 ticker 字串與 UID 都不變。表已拆（E2-03）。
 
-**UID（D203）。** UniversalTicker 只出現在人寫的設定與 spec。載入 spec 時，`GetRequest` 把 feed key 裡的 ticker 解成 UID；這是唯一的翻譯邊界。之後 STS、TD、MD 傳 UID，要 base、filter、狀態時用 `GetByUidRequest` 查，不傳 ticker。UID 由 SYM 分配，是隨機整數：唯一、永不重用，不是單調序號，也不是 Postgres sequence。它是兩張表的主鍵，跨表唯一，跟列一起持久化，所以重啟與重載都不改它。搬到終結表不換 UID。同一個 ticker 下架再上市拿新的 UID，舊資料仍指著舊的。碰撞時 SYM 重試。`symbol_filter` 也分活躍表與終結表，終結時跟列一起搬。`List` 以 offset＋limit 分頁，跨頁不一致可以接受。selector 沒有 UID；`Universe.current` 是 selector，尚未定，不在這一條。契約型別是 `uint32`，範圍 `1..4294967295`（`1..2^32-1`），0 非法（§10 P13）。Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`。E2-03 已落表並抽號。E2-05 的進程內 Resolver 是例外，只給測試與開發，而且來源必須是 exchangetest：它自己發 UID，這種 UID 不落庫，也不跨進程或跨平面傳。它不保留終結表，所以 `include_inactive` 不會多查出列。真實 venue 仍等 SYM 分配的 UID。`sym` 由 SYM 以 queue group 回答 Get、GetByUid、List、Reverse、Refresh、Revisions（E2-08、E2-09）。成功是 `Reply` protobuf。`invalid`、`not_found`、`unavailable` 是 natsx 的 error reply（option A）：訊息是這三個字，接著 `: ` 與原因，原因寫出欄位、值與為什麼，不填 `Reply.error`。NATS subject 用人讀的名字，不用 UID；確切拼法見 §10 P14，這一版的 `md.f` 仍是 `md.f.{inst}.{topic}.{ticker}`。策略 hook 看 ticker 還是 UID 見 §10 P15。`td.order`、需求項目、selector 成員這一版仍是 ticker 字串。
+**UID（D203）。** UniversalTicker 只出現在人寫的設定與 spec。STS、TD 載入 spec 時，`GetRequest` 把 ticker 解成 UID。之後這兩個平面傳 UID，要 base、filter、狀態時用 `GetByUidRequest` 查。MD 的 feed 維持 `topic.UniversalTicker`，conn worker 在活躍表裡對 ticker 查，不把 feed 解成 UID。UID 由 SYM 分配，是隨機整數：唯一、永不重用，不是單調序號，也不是 Postgres sequence。它是兩張表的主鍵，跨表唯一，跟列一起持久化，所以重啟與重載都不改它。搬到終結表不換 UID。同一個 ticker 下架再上市拿新的 UID，舊資料仍指著舊的。碰撞時 SYM 重試。`symbol_filter` 也分活躍表與終結表，終結時跟列一起搬。`List` 以 offset＋limit 分頁，跨頁不一致可以接受。selector 沒有 UID；`Universe.current` 是 selector，尚未定，不在這一條。契約型別是 `uint32`，範圍 `1..4294967295`（`1..2^32-1`），0 非法（§10 P13）。Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`。E2-03 已落表並抽號。E2-05 的進程內 Resolver 是例外，只給測試與開發，而且來源必須是 exchangetest：它自己發 UID，這種 UID 不落庫，也不跨進程或跨平面傳。它不保留終結表，所以 `include_inactive` 不會多查出列。真實 venue 仍等 SYM 分配的 UID。`sym` 由 SYM 以 queue group 回答 Get、GetByUid、List、Reverse、Refresh、Revisions（E2-08、E2-09）。成功是 `Reply` protobuf。`invalid`、`not_found`、`unavailable` 是 natsx 的 error reply（option A）：訊息是這三個字，接著 `: ` 與原因，原因寫出欄位、值與為什麼，不填 `Reply.error`。NATS subject 用人讀的名字，不用 UID；確切拼法見 §10 P14，這一版的 `md.f` 仍是 `md.f.{inst}.{topic}.{ticker}`。策略 hook 看 ticker 還是 UID 見 §10 P15。`td.order`、需求項目、selector 成員這一版仍是 ticker 字串。
 
 **查詢（E2-08，已定）。** Get、GetByUid、List、Reverse 的 `include_inactive` 預設 false，只讀活躍表；設了才含終結表。同一個 ticker 或交易所拼法同時在兩張表時回活躍列，下架再上市會同時存在。只有終結列、而且多於一列時，取 `updated_at_ns` 最大者，再取 uid 最大者。Reverse 在 `include_inactive` 為 true、且活躍表沒有這一列時，回終結列原本的 uid，不另配。`List` 的 `limit` 為 0 是 500，大於 500 是 `invalid`（`limit 600 exceeds max 500`），不截成 500。一頁的 protobuf 達到或超過 1 MiB 是 `unavailable`（`page of N rows is X bytes, exceeds 1 MiB limit; lower limit`），不改成較短的一頁。`RefreshResult` 的三個 map 以 `venue/category` 為 key。一個行程的 `-feeds` 決定它刷新哪些 feed；讀取查整庫，所以任一 replica 答案相同。文法正確、庫裡沒有列的 venue，List 是空清單（`total` 0），不是 `not_found`。Refresh 一個這個行程沒有的 canonical venue 是 `invalid`（`venue Okx is not refreshed by this process`）。venue 拼法不合文法是 `invalid`（`venue "bybit" is not canonical, use "Bybit"`）。`uid` 0 是 `not_found`（`uid 0 not found; 0 is not a valid uid`）。業務錯誤的原因都寫出欄位、值與為什麼，例如 `ticker Bybit_Spot_NOSUCH not found in active table (include_inactive=false)`、`uid 123 not found in active table (include_inactive=false)`。
 
@@ -2059,7 +2059,7 @@ message Request {
 // One instrument by exact ticker: a single row, never a venue table.
 message GetRequest {
   string universal_ticker = 1;
-  bool include_inactive = 2; // D203：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢，含 MD 的到期監看。Resolver 與熱路徑不設。表是 symbol_active 與 symbol_terminal
+  bool include_inactive = 2; // D203：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢。Resolver 與熱路徑不設。表是 symbol_active 與 symbol_terminal
 }
 
 // 系統內部的查詢（D203）。STS、TD、MD 持有 UID，用它拿這一列的欄位。
