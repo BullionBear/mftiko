@@ -552,7 +552,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 - **`exchange.AccountSnapshot` 加 `HedgeMode`。** 帳號在任何地方是雙向持倉就是真，任何一頁說是就是。worker 在 `Start` 的第一次 recon 檢查（`INIT_FAILED`，reason `hedge_mode`），之後每次 recon 也檢查（`UNAVAILABLE`，新單 103），D607 的兩個時點都由它涵蓋。
   - 不另加方法：模式和持倉是同一份帳號狀態，recon 時一起讀；`Start` 的檢查也只是第一次 recon。
-  - 真實 adapter 還沒讀持倉模式，一律是假：Binance UM 要多一個 `GET /fapi/v1/positionSide/dual`，OKX 讀 `GET /api/v5/account/config` 的 `posMode`，Bybit 看持倉的 `positionIdx`。在它們做之前，這個檢查對真實交易所不生效。這一條只定介面。
+  - 真實 adapter 還沒讀持倉模式，一律是假：Binance UM 要多一個 `GET /fapi/v1/positionSide/dual`，OKX 讀 `GET /api/v5/account/config` 的 `posMode`，Bybit 看持倉的 `positionIdx`。在 E6-16 做完之前，這個檢查對真實交易所不生效。這一條只定介面。
 - **`exchangetest.AccountVenue` 是一個帳號的假交易所**，給 account worker 的測試用（E6-05）。
   - 狀態在記憶體：掛單、持倉、餘額、槓桿、持倉模式。測試經由它改狀態（`PutOrder`、`Fill`、`SetBalance`、`SetPosition`）時，同時推出交易所會發的事件，跑完之後可以拿 worker 的 `td.view` 與它比對。不改狀態的重複或亂序事件用 `EmitOrder`、`EmitFill`。
   - REST：它自己就是 `exchange.Doer`。`Snapshot` 可分頁，可在指定頁失敗；`Submit`、`Cancel`、`CancelBatch` 依 cloid 指定接受、拒絕或不回答（`ErrUnknownOutcome`，可選交易所是否照做）；可以回 429（`Retry-After`）與回報用量（`ResetAt`）；換 key 之後一律 `ErrAuth`。`Requests` 列出收到的每個請求。
