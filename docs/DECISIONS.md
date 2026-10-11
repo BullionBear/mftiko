@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-11 更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 >
@@ -356,7 +356,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 - 事件交給 hook 之前，prehook 只看 envelope 做過濾，通過的才把 payload 解析成資料交給 hook。
 - MD 的規則只有一條：`now − envelope.md_ts_ns > recv_window_ms` 就丟。`recv_window_ms` 是 session 的設定，有預設值。
-- envelope 是 `md.f` 訊息開頭的固定長度欄位（PROTOCOL §7.1），不用 NATS header：header 是文字、nats.go 每則都要解析成 map，固定位置的欄位可以直接 unsafe 讀。
+- envelope 是 `md.f` 訊息開頭、由版本決定長度的欄位（PROTOCOL §7.1、D405–D411），不用 NATS header：header 是文字、nats.go 每則都要解析成 map。欄位用 little-endian 的 `encoding/binary` 讀，不用 unsafe，因為 `msg.Data` 不保證 8-byte 對齊（D407）。
 - envelope 的時間是 MD 主機的時鐘，所以 window 包含傳輸延遲與本地排隊。跨 region 的 session 要設得比 WAN 延遲大；主機之間需要時鐘同步。
 - 交易所的時間戳在資料裡。策略對舊資料有自己的判斷，就在 hook 裡 early return，系統不管。
 - 丟掉之後，策略用 `(conn_epoch, seq)` 判斷連續性自己處理。SDK 提供可選的小工具：`orderbook_delta` 跳號就向 `md.view` 重拿快照（D402）；已收盤的 kline 被丟了就用 `md.fetch` 補。
@@ -450,6 +450,56 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - 要讓行情或 tape 一直保持熱的，就跑一個 **tape keeper**：不下單、不綁帳號的策略，跟 mftik 一樣。它和其他策略一樣經 API 開始、結束。
 - 使用者的認知只有一條：行情由策略持有，要全部關掉行情，就是把策略全部關掉。
 - tape keeper 的需求和其他 session 一樣由 controller 發、不綁 TTL：controller 或 STS agent 停機時，它持有的 atom 不會被釋放。
+
+### D405 `version` 是大版本
+
+- `version`（uint8）是大版本。只有行情 schema 出現 breaking change 時才升。envelope 加任何欄位也算 breaking，要升版本。
+- 讀到不認識的版本，讀取端拒收。不靠長度去跳過後代的尾巴：加欄位就是新版本，舊的讀取端不讀。
+
+### D406 v1 envelope 固定 40 bytes
+
+- 長度由版本決定。v1 是 40 bytes，payload 緊接在後面。比 40 bytes 短的訊息拒收。
+- **拿掉 `len`。** offset 1 到 7 全部是保留欄位：寫入填 0，讀取端看到不是 0 就拒收。不留一個必須等於 40 的 byte。保留欄位只有一種合法值，讀取端只檢查是不是 0。
+- 不採用：用 `len` 跳到 payload，並容忍比 32 bytes 長的後代 envelope。那是加欄位仍相容的做法；D405 把加欄位定義成 breaking。
+
+### D407 little-endian，用 `encoding/binary`
+
+- 欄位是 little-endian，用 `encoding/binary` 讀寫。
+- 不用 `unsafe`。NATS 的 `msg.Data` 不保證 8-byte 對齊。
+- 編碼與解碼要 0 alloc。`contract` 只依賴標準庫與 protobuf，所以 xxHash64 寫在 `contract/wire/envelope` 裡，不另加函式庫。
+
+### D408 `Append`、`Parse`、`MDTsNs`
+
+- 實作在 `contract/wire/envelope`。`Append` 寫一則 v1（envelope 接 payload），`Parse` 讀一則，`MDTsNs` 只讀 `md_ts_ns`，給 prehook。三個都做 D406 的拒收檢查。
+- 附 golden bytes。`Parse` 把 payload 指回輸入的那段，不複製。
+
+### D409 `seq` 與 `conn_epoch` 留在 envelope
+
+- `seq`（uint64）和 `conn_epoch`（uint64）做兩件事。一是傳輸層的連續性：conn worker 到策略之間的缺口，包括 prehook 丟棄和 NATS 掉訊息。二是 tape 和 `md.view` 的對齊（D402）。不必解開 payload 就能檢查連續性。
+- 行情本身的連續性另外由交易所在 payload 裡的序號負責（Binance `U`／`u`／`pu`、Bybit `seq`）。兩層並存。
+- `seq` 以 `(feed, conn_epoch)` 起算，重連後從 1 重新起算。conn worker 重啟後 `conn_epoch` 要繼續單調遞增。遞增是 conn worker 那張票的事，不在 envelope 的讀寫裡。
+
+### D410 `digest`
+
+- `digest`（uint64）是只對正規化後的 payload（不含 envelope）算的 xxHash64，seed 0。
+- 用途是以後跨連線去重。去重這次不設計也不實作，讀取端不核對 digest，照讀出。
+- 寫入的一端一律要算出這個值。`Append` 自己算。
+
+### D411 v1 的位元組
+
+40 bytes，全部 little-endian。8-byte 欄位對齊 8。順序沿用下面這張，因為它已經對齊，不必再調：
+
+| offset | 欄位 |
+|---|---|
+| 0 | `version` u8 |
+| 1 | 保留 7 bytes，填 0 |
+| 8 | `md_ts_ns` i64 |
+| 16 | `conn_epoch` u64 |
+| 24 | `seq` u64 |
+| 32 | `digest` u64 |
+| 40 | payload |
+
+最終的 offset 也寫在 PROTOCOL §7.1。
 
 ### D906 session worker 的 NATS 憑證：每個 session 一份
 
