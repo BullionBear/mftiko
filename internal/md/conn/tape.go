@@ -170,8 +170,9 @@ func (c *Conn) headOf(feed string) cursor {
 	return cursor{epoch: c.epoch, seq: 0}
 }
 
-// recordTape stores one published message when this feed is a tape topic and the atom asked to
-// be recorded. Book topics and FeedEnd never get here (D435, D442, D446).
+// recordTape stores one published message when this feed's topic is recorded. The worker
+// decides that from the topic and ignores AtomAssignment.record (D447). Book topics and
+// FeedEnd never get here (D435, D442, D446).
 func (c *Conn) recordTape(key, topic string, mdTs int64, epoch, seq uint64, msg []byte) {
 	if !tapeTopic(topic) || len(msg) < envelope.Size {
 		return

@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mftiko/mdctl/v1/mdctl.proto.
  */
 export const file_mftiko_mdctl_v1_mdctl: GenFile = /*@__PURE__*/
-  fileDesc("ChttZnRpa28vbWRjdGwvdjEvbWRjdGwucHJvdG8SD21mdGlrby5tZGN0bC52MSKiAgoLSW5pdFBheWxvYWQSDQoFdmVudWUYASABKAkSDQoFcm91dGUYAiABKAkSCQoBbhgDIAEoDRITCgttZF9pbnN0YW5jZRgEIAEoCRILCgN1cmwYBiABKAkSEgoKY29ubl9lcG9jaBgHIAEoBBISCgpib29rX2RlcHRoGAggASgNEhcKD2Jvb2tfYnVmZmVyX21heBgKIAEoDRIWCg5ib29rX2J1ZmZlcl9tcxgLIAEoDRIWCg50YXBlX3dpbmRvd19tcxgMIAEoDRIXCg90YXBlX21heF9ldmVudHMYDSABKA0SFgoOdGFwZV9tYXhfYnl0ZXMYDiABKARKBAgFEAZKBAgJEApSCHRhcGVfdXJsUhBib29rX2JvdW5kYXJ5X2JwIg4KDFN0YXJ0UGF5bG9hZCI9CgdDb21tYW5kEisKB2Rlc2lyZWQYASABKAsyGC5tZnRpa28ubWRjdGwudjEuRGVzaXJlZEgAQgUKA2NtZCJlCgdEZXNpcmVkEioKB3ZlcnNpb24YASABKAsyGS5tZnRpa28uY29tbW9uLnYxLlZlcnNpb24SLgoFYXRvbXMYAiADKAsyHy5tZnRpa28ubWRjdGwudjEuQXRvbUFzc2lnbm1lbnQiaQoOQXRvbUFzc2lnbm1lbnQSDwoHYXRvbV9pZBgBIAEoCRINCgVmZWVkcxgCIAMoCRIOCgZyZWNvcmQYAyABKAgSEwoLZXhjaF90aWNrZXIYBCABKAkSEgoKcHJpY2VfdGljaxgFIAEoASLBAQoGUmVwb3J0EioKB2FwcGxpZWQYASABKAsyGS5tZnRpa28uY29tbW9uLnYxLlZlcnNpb24SEgoKY29ubl9lcG9jaBgCIAEoBBIpCgVzdGF0ZRgDIAEoDjIaLm1mdGlrby5tZGN0bC52MS5Db25uU3RhdGUSDgoGcmVhc29uGAQgASgJEioKBWF0b21zGAUgAygLMhsubWZ0aWtvLm1kY3RsLnYxLkF0b21TdGF0dXMSEAoIbXNnX3JhdGUYBiABKAEiiAEKCkF0b21TdGF0dXMSDwoHYXRvbV9pZBgBIAEoCRIpCgVzdGF0ZRgCIAEoDjIaLm1mdGlrby5tZGN0bC52MS5BdG9tU3RhdGUSFwoPZmlyc3RfbXNnX2F0X25zGAMgASgDEhYKDmxhc3RfbXNnX2F0X25zGAQgASgDEg0KBWVycm9yGAUgASgJKmwKCUNvbm5TdGF0ZRIaChZDT05OX1NUQVRFX1VOU1BFQ0lGSUVEEAASGQoVQ09OTl9TVEFURV9DT05ORUNUSU5HEAESEwoPQ09OTl9TVEFURV9MSVZFEAISEwoPQ09OTl9TVEFURV9ET1dOEAMqcAoJQXRvbVN0YXRlEhoKFkFUT01fU1RBVEVfVU5TUEVDSUZJRUQQABIWChJBVE9NX1NUQVRFX1BFTkRJTkcQARIZChVBVE9NX1NUQVRFX1NVQlNDUklCRUQQAhIUChBBVE9NX1NUQVRFX0VSUk9SEANCRFpCZ2l0aHViLmNvbS9CdWxsaW9uQmVhci9tZnRpa28vY29udHJhY3QvZ2VuL21mdGlrby9tZGN0bC92MTttZGN0bHYxYgZwcm90bzM", [file_mftiko_common_v1_common]);
+  fileDesc("ChttZnRpa28vbWRjdGwvdjEvbWRjdGwucHJvdG8SD21mdGlrby5tZGN0bC52MSKiAgoLSW5pdFBheWxvYWQSDQoFdmVudWUYASABKAkSDQoFcm91dGUYAiABKAkSCQoBbhgDIAEoDRITCgttZF9pbnN0YW5jZRgEIAEoCRILCgN1cmwYBiABKAkSEgoKY29ubl9lcG9jaBgHIAEoBBISCgpib29rX2RlcHRoGAggASgNEhcKD2Jvb2tfYnVmZmVyX21heBgKIAEoDRIWCg5ib29rX2J1ZmZlcl9tcxgLIAEoDRIWCg50YXBlX3dpbmRvd19tcxgMIAEoDRIXCg90YXBlX21heF9ldmVudHMYDSABKA0SFgoOdGFwZV9tYXhfYnl0ZXMYDiABKARKBAgFEAZKBAgJEApSCHRhcGVfdXJsUhBib29rX2JvdW5kYXJ5X2JwIg4KDFN0YXJ0UGF5bG9hZCI9CgdDb21tYW5kEisKB2Rlc2lyZWQYASABKAsyGC5tZnRpa28ubWRjdGwudjEuRGVzaXJlZEgAQgUKA2NtZCJlCgdEZXNpcmVkEioKB3ZlcnNpb24YASABKAsyGS5tZnRpa28uY29tbW9uLnYxLlZlcnNpb24SLgoFYXRvbXMYAiADKAsyHy5tZnRpa28ubWRjdGwudjEuQXRvbUFzc2lnbm1lbnQiaQoOQXRvbUFzc2lnbm1lbnQSDwoHYXRvbV9pZBgBIAEoCRINCgVmZWVkcxgCIAMoCRIOCgZyZWNvcmQYAyABKAgSEwoLZXhjaF90aWNrZXIYBCABKAkSEgoKcHJpY2VfdGljaxgFIAEoASLOAQoGUmVwb3J0EioKB2FwcGxpZWQYASABKAsyGS5tZnRpa28uY29tbW9uLnYxLlZlcnNpb24SEgoKY29ubl9lcG9jaBgCIAEoBBIpCgVzdGF0ZRgDIAEoDjIaLm1mdGlrby5tZGN0bC52MS5Db25uU3RhdGUSDgoGcmVhc29uGAQgASgJEhAKCG1zZ19yYXRlGAYgASgBEioKBWZlZWRzGAcgAygLMhsubWZ0aWtvLm1kY3RsLnYxLkZlZWRTdGF0dXNKBAgFEAZSBWF0b21zIlUKCkZlZWRTdGF0dXMSDAoEZmVlZBgBIAEoCRIpCgVzdGF0ZRgCIAEoDjIaLm1mdGlrby5tZGN0bC52MS5GZWVkU3RhdGUSDgoGcmVhc29uGAMgASgJKmwKCUNvbm5TdGF0ZRIaChZDT05OX1NUQVRFX1VOU1BFQ0lGSUVEEAASGQoVQ09OTl9TVEFURV9DT05ORUNUSU5HEAESEwoPQ09OTl9TVEFURV9MSVZFEAISEwoPQ09OTl9TVEFURV9ET1dOEAMqcwoJRmVlZFN0YXRlEhoKFkZFRURfU1RBVEVfVU5TUEVDSUZJRUQQABIWChJGRUVEX1NUQVRFX1BFTkRJTkcQARIZChVGRUVEX1NUQVRFX1NVQlNDUklCRUQQAhIXChNGRUVEX1NUQVRFX1JFSkVDVEVEEANCRFpCZ2l0aHViLmNvbS9CdWxsaW9uQmVhci9tZnRpa28vY29udHJhY3QvZ2VuL21mdGlrby9tZGN0bC92MTttZGN0bHYxYgZwcm90bzM", [file_mftiko_common_v1_common]);
 
 /**
  * @generated from message mftiko.mdctl.v1.InitPayload
@@ -185,7 +185,7 @@ export type AtomAssignment = Message<"mftiko.mdctl.v1.AtomAssignment"> & {
   feeds: string[];
 
   /**
-   * 錄 tape；MD agent 依 topic 推導（D402）
+   * 忽略。錄不錄由 worker 依 topic 決定（D447）。定案時再拿掉或標 reserved。
    *
    * @generated from field: bool record = 3;
    */
@@ -241,14 +241,18 @@ export type Report = Message<"mftiko.mdctl.v1.Report"> & {
   reason: string;
 
   /**
-   * @generated from field: repeated mftiko.mdctl.v1.AtomStatus atoms = 5;
-   */
-  atoms: AtomStatus[];
-
-  /**
    * @generated from field: double msg_rate = 6;
    */
   msgRate: number;
+
+  /**
+   * 這條連線上每一筆 feed 的快照，完整清單。feed 是 topic.UniversalTicker。
+   * 不在活躍表，或這條 route 訂不了，是 REJECTED。在表上但不是 TRADABLE 是 PENDING，這輪不訂。
+   * channel 被交易所 ack 之後，掛在上面的每一筆 feed 是 SUBSCRIBED。
+   *
+   * @generated from field: repeated mftiko.mdctl.v1.FeedStatus feeds = 7;
+   */
+  feeds: FeedStatus[];
 };
 
 /**
@@ -259,40 +263,34 @@ export const ReportSchema: GenMessage<Report> = /*@__PURE__*/
   messageDesc(file_mftiko_mdctl_v1_mdctl, 5);
 
 /**
- * @generated from message mftiko.mdctl.v1.AtomStatus
+ * @generated from message mftiko.mdctl.v1.FeedStatus
  */
-export type AtomStatus = Message<"mftiko.mdctl.v1.AtomStatus"> & {
+export type FeedStatus = Message<"mftiko.mdctl.v1.FeedStatus"> & {
   /**
-   * @generated from field: string atom_id = 1;
+   * topic.UniversalTicker
+   *
+   * @generated from field: string feed = 1;
    */
-  atomId: string;
+  feed: string;
 
   /**
-   * @generated from field: mftiko.mdctl.v1.AtomState state = 2;
+   * @generated from field: mftiko.mdctl.v1.FeedState state = 2;
    */
-  state: AtomState;
+  state: FeedState;
 
   /**
-   * @generated from field: int64 first_msg_at_ns = 3;
+   * REJECTED 或還沒訂的 PENDING 才填
+   *
+   * @generated from field: string reason = 3;
    */
-  firstMsgAtNs: bigint;
-
-  /**
-   * @generated from field: int64 last_msg_at_ns = 4;
-   */
-  lastMsgAtNs: bigint;
-
-  /**
-   * @generated from field: string error = 5;
-   */
-  error: string;
+  reason: string;
 };
 
 /**
- * Describes the message mftiko.mdctl.v1.AtomStatus.
- * Use `create(AtomStatusSchema)` to create a new message.
+ * Describes the message mftiko.mdctl.v1.FeedStatus.
+ * Use `create(FeedStatusSchema)` to create a new message.
  */
-export const AtomStatusSchema: GenMessage<AtomStatus> = /*@__PURE__*/
+export const FeedStatusSchema: GenMessage<FeedStatus> = /*@__PURE__*/
   messageDesc(file_mftiko_mdctl_v1_mdctl, 6);
 
 /**
@@ -327,35 +325,37 @@ export const ConnStateSchema: GenEnum<ConnState> = /*@__PURE__*/
   enumDesc(file_mftiko_mdctl_v1_mdctl, 0);
 
 /**
- * @generated from enum mftiko.mdctl.v1.AtomState
+ * @generated from enum mftiko.mdctl.v1.FeedState
  */
-export enum AtomState {
+export enum FeedState {
   /**
-   * @generated from enum value: ATOM_STATE_UNSPECIFIED = 0;
+   * @generated from enum value: FEED_STATE_UNSPECIFIED = 0;
    */
   UNSPECIFIED = 0,
 
   /**
-   * @generated from enum value: ATOM_STATE_PENDING = 1;
+   * @generated from enum value: FEED_STATE_PENDING = 1;
    */
   PENDING = 1,
 
   /**
-   * 交易所已 ack
+   * 所在 channel 已被交易所 ack
    *
-   * @generated from enum value: ATOM_STATE_SUBSCRIBED = 2;
+   * @generated from enum value: FEED_STATE_SUBSCRIBED = 2;
    */
   SUBSCRIBED = 2,
 
   /**
-   * @generated from enum value: ATOM_STATE_ERROR = 3;
+   * 不在活躍表，或這條 route 訂不了
+   *
+   * @generated from enum value: FEED_STATE_REJECTED = 3;
    */
-  ERROR = 3,
+  REJECTED = 3,
 }
 
 /**
- * Describes the enum mftiko.mdctl.v1.AtomState.
+ * Describes the enum mftiko.mdctl.v1.FeedState.
  */
-export const AtomStateSchema: GenEnum<AtomState> = /*@__PURE__*/
+export const FeedStateSchema: GenEnum<FeedState> = /*@__PURE__*/
   enumDesc(file_mftiko_mdctl_v1_mdctl, 1);
 

@@ -76,55 +76,55 @@ func (ConnState) EnumDescriptor() ([]byte, []int) {
 	return file_mftiko_mdctl_v1_mdctl_proto_rawDescGZIP(), []int{0}
 }
 
-type AtomState int32
+type FeedState int32
 
 const (
-	AtomState_ATOM_STATE_UNSPECIFIED AtomState = 0
-	AtomState_ATOM_STATE_PENDING     AtomState = 1
-	AtomState_ATOM_STATE_SUBSCRIBED  AtomState = 2 // 交易所已 ack
-	AtomState_ATOM_STATE_ERROR       AtomState = 3
+	FeedState_FEED_STATE_UNSPECIFIED FeedState = 0
+	FeedState_FEED_STATE_PENDING     FeedState = 1
+	FeedState_FEED_STATE_SUBSCRIBED  FeedState = 2 // 所在 channel 已被交易所 ack
+	FeedState_FEED_STATE_REJECTED    FeedState = 3 // 不在活躍表，或這條 route 訂不了
 )
 
-// Enum value maps for AtomState.
+// Enum value maps for FeedState.
 var (
-	AtomState_name = map[int32]string{
-		0: "ATOM_STATE_UNSPECIFIED",
-		1: "ATOM_STATE_PENDING",
-		2: "ATOM_STATE_SUBSCRIBED",
-		3: "ATOM_STATE_ERROR",
+	FeedState_name = map[int32]string{
+		0: "FEED_STATE_UNSPECIFIED",
+		1: "FEED_STATE_PENDING",
+		2: "FEED_STATE_SUBSCRIBED",
+		3: "FEED_STATE_REJECTED",
 	}
-	AtomState_value = map[string]int32{
-		"ATOM_STATE_UNSPECIFIED": 0,
-		"ATOM_STATE_PENDING":     1,
-		"ATOM_STATE_SUBSCRIBED":  2,
-		"ATOM_STATE_ERROR":       3,
+	FeedState_value = map[string]int32{
+		"FEED_STATE_UNSPECIFIED": 0,
+		"FEED_STATE_PENDING":     1,
+		"FEED_STATE_SUBSCRIBED":  2,
+		"FEED_STATE_REJECTED":    3,
 	}
 )
 
-func (x AtomState) Enum() *AtomState {
-	p := new(AtomState)
+func (x FeedState) Enum() *FeedState {
+	p := new(FeedState)
 	*p = x
 	return p
 }
 
-func (x AtomState) String() string {
+func (x FeedState) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (AtomState) Descriptor() protoreflect.EnumDescriptor {
+func (FeedState) Descriptor() protoreflect.EnumDescriptor {
 	return file_mftiko_mdctl_v1_mdctl_proto_enumTypes[1].Descriptor()
 }
 
-func (AtomState) Type() protoreflect.EnumType {
+func (FeedState) Type() protoreflect.EnumType {
 	return &file_mftiko_mdctl_v1_mdctl_proto_enumTypes[1]
 }
 
-func (x AtomState) Number() protoreflect.EnumNumber {
+func (x FeedState) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use AtomState.Descriptor instead.
-func (AtomState) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use FeedState.Descriptor instead.
+func (FeedState) EnumDescriptor() ([]byte, []int) {
 	return file_mftiko_mdctl_v1_mdctl_proto_rawDescGZIP(), []int{1}
 }
 
@@ -428,7 +428,7 @@ type AtomAssignment struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	AtomId string                 `protobuf:"bytes,1,opt,name=atom_id,json=atomId,proto3" json:"atom_id,omitempty"`
 	Feeds  []string               `protobuf:"bytes,2,rep,name=feeds,proto3" json:"feeds,omitempty"`    // 這個 atom 要發佈的 feed（atom → 事件 1:N）
-	Record bool                   `protobuf:"varint,3,opt,name=record,proto3" json:"record,omitempty"` // 錄 tape；MD agent 依 topic 推導（D402）
+	Record bool                   `protobuf:"varint,3,opt,name=record,proto3" json:"record,omitempty"` // 忽略。錄不錄由 worker 依 topic 決定（D447）。定案時再拿掉或標 reserved。
 	// SYM 的 exchTicker。worker 從自己的活躍表讀。沒有這份表、而且 atom_id 已給時，用這裡的值。不從 channel 解析（D426、D202）。
 	ExchTicker string `protobuf:"bytes,4,opt,name=exch_ticker,json=exchTicker,proto3" json:"exch_ticker,omitempty"`
 	// SYM 的 price_tick。跟 exch_ticker 同一張表、同一時刻。
@@ -504,13 +504,16 @@ func (x *AtomAssignment) GetPriceTick() float64 {
 }
 
 type Report struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Applied       *v1.Version            `protobuf:"bytes,1,opt,name=applied,proto3" json:"applied,omitempty"`
-	ConnEpoch     uint64                 `protobuf:"varint,2,opt,name=conn_epoch,json=connEpoch,proto3" json:"conn_epoch,omitempty"` // 每次重連 +1
-	State         ConnState              `protobuf:"varint,3,opt,name=state,proto3,enum=mftiko.mdctl.v1.ConnState" json:"state,omitempty"`
-	Reason        string                 `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
-	Atoms         []*AtomStatus          `protobuf:"bytes,5,rep,name=atoms,proto3" json:"atoms,omitempty"`
-	MsgRate       float64                `protobuf:"fixed64,6,opt,name=msg_rate,json=msgRate,proto3" json:"msg_rate,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Applied   *v1.Version            `protobuf:"bytes,1,opt,name=applied,proto3" json:"applied,omitempty"`
+	ConnEpoch uint64                 `protobuf:"varint,2,opt,name=conn_epoch,json=connEpoch,proto3" json:"conn_epoch,omitempty"` // 每次重連 +1
+	State     ConnState              `protobuf:"varint,3,opt,name=state,proto3,enum=mftiko.mdctl.v1.ConnState" json:"state,omitempty"`
+	Reason    string                 `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
+	MsgRate   float64                `protobuf:"fixed64,6,opt,name=msg_rate,json=msgRate,proto3" json:"msg_rate,omitempty"`
+	// 這條連線上每一筆 feed 的快照，完整清單。feed 是 topic.UniversalTicker。
+	// 不在活躍表，或這條 route 訂不了，是 REJECTED。在表上但不是 TRADABLE 是 PENDING，這輪不訂。
+	// channel 被交易所 ack 之後，掛在上面的每一筆 feed 是 SUBSCRIBED。
+	Feeds         []*FeedStatus `protobuf:"bytes,7,rep,name=feeds,proto3" json:"feeds,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -573,13 +576,6 @@ func (x *Report) GetReason() string {
 	return ""
 }
 
-func (x *Report) GetAtoms() []*AtomStatus {
-	if x != nil {
-		return x.Atoms
-	}
-	return nil
-}
-
 func (x *Report) GetMsgRate() float64 {
 	if x != nil {
 		return x.MsgRate
@@ -587,31 +583,36 @@ func (x *Report) GetMsgRate() float64 {
 	return 0
 }
 
-type AtomStatus struct {
+func (x *Report) GetFeeds() []*FeedStatus {
+	if x != nil {
+		return x.Feeds
+	}
+	return nil
+}
+
+type FeedStatus struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	AtomId        string                 `protobuf:"bytes,1,opt,name=atom_id,json=atomId,proto3" json:"atom_id,omitempty"`
-	State         AtomState              `protobuf:"varint,2,opt,name=state,proto3,enum=mftiko.mdctl.v1.AtomState" json:"state,omitempty"`
-	FirstMsgAtNs  int64                  `protobuf:"varint,3,opt,name=first_msg_at_ns,json=firstMsgAtNs,proto3" json:"first_msg_at_ns,omitempty"`
-	LastMsgAtNs   int64                  `protobuf:"varint,4,opt,name=last_msg_at_ns,json=lastMsgAtNs,proto3" json:"last_msg_at_ns,omitempty"`
-	Error         string                 `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
+	Feed          string                 `protobuf:"bytes,1,opt,name=feed,proto3" json:"feed,omitempty"` // topic.UniversalTicker
+	State         FeedState              `protobuf:"varint,2,opt,name=state,proto3,enum=mftiko.mdctl.v1.FeedState" json:"state,omitempty"`
+	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"` // REJECTED 或還沒訂的 PENDING 才填
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *AtomStatus) Reset() {
-	*x = AtomStatus{}
+func (x *FeedStatus) Reset() {
+	*x = FeedStatus{}
 	mi := &file_mftiko_mdctl_v1_mdctl_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *AtomStatus) String() string {
+func (x *FeedStatus) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*AtomStatus) ProtoMessage() {}
+func (*FeedStatus) ProtoMessage() {}
 
-func (x *AtomStatus) ProtoReflect() protoreflect.Message {
+func (x *FeedStatus) ProtoReflect() protoreflect.Message {
 	mi := &file_mftiko_mdctl_v1_mdctl_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -623,42 +624,28 @@ func (x *AtomStatus) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use AtomStatus.ProtoReflect.Descriptor instead.
-func (*AtomStatus) Descriptor() ([]byte, []int) {
+// Deprecated: Use FeedStatus.ProtoReflect.Descriptor instead.
+func (*FeedStatus) Descriptor() ([]byte, []int) {
 	return file_mftiko_mdctl_v1_mdctl_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *AtomStatus) GetAtomId() string {
+func (x *FeedStatus) GetFeed() string {
 	if x != nil {
-		return x.AtomId
+		return x.Feed
 	}
 	return ""
 }
 
-func (x *AtomStatus) GetState() AtomState {
+func (x *FeedStatus) GetState() FeedState {
 	if x != nil {
 		return x.State
 	}
-	return AtomState_ATOM_STATE_UNSPECIFIED
+	return FeedState_FEED_STATE_UNSPECIFIED
 }
 
-func (x *AtomStatus) GetFirstMsgAtNs() int64 {
+func (x *FeedStatus) GetReason() string {
 	if x != nil {
-		return x.FirstMsgAtNs
-	}
-	return 0
-}
-
-func (x *AtomStatus) GetLastMsgAtNs() int64 {
-	if x != nil {
-		return x.LastMsgAtNs
-	}
-	return 0
-}
-
-func (x *AtomStatus) GetError() string {
-	if x != nil {
-		return x.Error
+		return x.Reason
 	}
 	return ""
 }
@@ -700,32 +687,30 @@ const file_mftiko_mdctl_v1_mdctl_proto_rawDesc = "" +
 	"\vexch_ticker\x18\x04 \x01(\tR\n" +
 	"exchTicker\x12\x1d\n" +
 	"\n" +
-	"price_tick\x18\x05 \x01(\x01R\tpriceTick\"\xf4\x01\n" +
+	"price_tick\x18\x05 \x01(\x01R\tpriceTick\"\x81\x02\n" +
 	"\x06Report\x123\n" +
 	"\aapplied\x18\x01 \x01(\v2\x19.mftiko.common.v1.VersionR\aapplied\x12\x1d\n" +
 	"\n" +
 	"conn_epoch\x18\x02 \x01(\x04R\tconnEpoch\x120\n" +
 	"\x05state\x18\x03 \x01(\x0e2\x1a.mftiko.mdctl.v1.ConnStateR\x05state\x12\x16\n" +
-	"\x06reason\x18\x04 \x01(\tR\x06reason\x121\n" +
-	"\x05atoms\x18\x05 \x03(\v2\x1b.mftiko.mdctl.v1.AtomStatusR\x05atoms\x12\x19\n" +
-	"\bmsg_rate\x18\x06 \x01(\x01R\amsgRate\"\xb9\x01\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\x12\x19\n" +
+	"\bmsg_rate\x18\x06 \x01(\x01R\amsgRate\x121\n" +
+	"\x05feeds\x18\a \x03(\v2\x1b.mftiko.mdctl.v1.FeedStatusR\x05feedsJ\x04\b\x05\x10\x06R\x05atoms\"j\n" +
 	"\n" +
-	"AtomStatus\x12\x17\n" +
-	"\aatom_id\x18\x01 \x01(\tR\x06atomId\x120\n" +
-	"\x05state\x18\x02 \x01(\x0e2\x1a.mftiko.mdctl.v1.AtomStateR\x05state\x12%\n" +
-	"\x0ffirst_msg_at_ns\x18\x03 \x01(\x03R\ffirstMsgAtNs\x12#\n" +
-	"\x0elast_msg_at_ns\x18\x04 \x01(\x03R\vlastMsgAtNs\x12\x14\n" +
-	"\x05error\x18\x05 \x01(\tR\x05error*l\n" +
+	"FeedStatus\x12\x12\n" +
+	"\x04feed\x18\x01 \x01(\tR\x04feed\x120\n" +
+	"\x05state\x18\x02 \x01(\x0e2\x1a.mftiko.mdctl.v1.FeedStateR\x05state\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason*l\n" +
 	"\tConnState\x12\x1a\n" +
 	"\x16CONN_STATE_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15CONN_STATE_CONNECTING\x10\x01\x12\x13\n" +
 	"\x0fCONN_STATE_LIVE\x10\x02\x12\x13\n" +
-	"\x0fCONN_STATE_DOWN\x10\x03*p\n" +
-	"\tAtomState\x12\x1a\n" +
-	"\x16ATOM_STATE_UNSPECIFIED\x10\x00\x12\x16\n" +
-	"\x12ATOM_STATE_PENDING\x10\x01\x12\x19\n" +
-	"\x15ATOM_STATE_SUBSCRIBED\x10\x02\x12\x14\n" +
-	"\x10ATOM_STATE_ERROR\x10\x03BDZBgithub.com/BullionBear/mftiko/contract/gen/mftiko/mdctl/v1;mdctlv1b\x06proto3"
+	"\x0fCONN_STATE_DOWN\x10\x03*s\n" +
+	"\tFeedState\x12\x1a\n" +
+	"\x16FEED_STATE_UNSPECIFIED\x10\x00\x12\x16\n" +
+	"\x12FEED_STATE_PENDING\x10\x01\x12\x19\n" +
+	"\x15FEED_STATE_SUBSCRIBED\x10\x02\x12\x17\n" +
+	"\x13FEED_STATE_REJECTED\x10\x03BDZBgithub.com/BullionBear/mftiko/contract/gen/mftiko/mdctl/v1;mdctlv1b\x06proto3"
 
 var (
 	file_mftiko_mdctl_v1_mdctl_proto_rawDescOnce sync.Once
@@ -743,14 +728,14 @@ var file_mftiko_mdctl_v1_mdctl_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_mftiko_mdctl_v1_mdctl_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_mftiko_mdctl_v1_mdctl_proto_goTypes = []any{
 	(ConnState)(0),         // 0: mftiko.mdctl.v1.ConnState
-	(AtomState)(0),         // 1: mftiko.mdctl.v1.AtomState
+	(FeedState)(0),         // 1: mftiko.mdctl.v1.FeedState
 	(*InitPayload)(nil),    // 2: mftiko.mdctl.v1.InitPayload
 	(*StartPayload)(nil),   // 3: mftiko.mdctl.v1.StartPayload
 	(*Command)(nil),        // 4: mftiko.mdctl.v1.Command
 	(*Desired)(nil),        // 5: mftiko.mdctl.v1.Desired
 	(*AtomAssignment)(nil), // 6: mftiko.mdctl.v1.AtomAssignment
 	(*Report)(nil),         // 7: mftiko.mdctl.v1.Report
-	(*AtomStatus)(nil),     // 8: mftiko.mdctl.v1.AtomStatus
+	(*FeedStatus)(nil),     // 8: mftiko.mdctl.v1.FeedStatus
 	(*v1.Version)(nil),     // 9: mftiko.common.v1.Version
 }
 var file_mftiko_mdctl_v1_mdctl_proto_depIdxs = []int32{
@@ -759,8 +744,8 @@ var file_mftiko_mdctl_v1_mdctl_proto_depIdxs = []int32{
 	6, // 2: mftiko.mdctl.v1.Desired.atoms:type_name -> mftiko.mdctl.v1.AtomAssignment
 	9, // 3: mftiko.mdctl.v1.Report.applied:type_name -> mftiko.common.v1.Version
 	0, // 4: mftiko.mdctl.v1.Report.state:type_name -> mftiko.mdctl.v1.ConnState
-	8, // 5: mftiko.mdctl.v1.Report.atoms:type_name -> mftiko.mdctl.v1.AtomStatus
-	1, // 6: mftiko.mdctl.v1.AtomStatus.state:type_name -> mftiko.mdctl.v1.AtomState
+	8, // 5: mftiko.mdctl.v1.Report.feeds:type_name -> mftiko.mdctl.v1.FeedStatus
+	1, // 6: mftiko.mdctl.v1.FeedStatus.state:type_name -> mftiko.mdctl.v1.FeedState
 	7, // [7:7] is the sub-list for method output_type
 	7, // [7:7] is the sub-list for method input_type
 	7, // [7:7] is the sub-list for extension type_name

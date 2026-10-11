@@ -17,6 +17,13 @@
 // TradeVenue is a fake venue for code that drives an exchange.TradeStream (D303): the test chooses
 // the order of the answers, drops some, refuses some, or refuses the logon.
 //
+// AccountVenue is a fake account, for the TD account worker (D612): its state (open orders,
+// positions, balances, leverage, hedge mode) in memory, an exchange.Account whose REST Calls the venue
+// answers as an exchange.Doer, and a private websocket served by Handler that the worker dials with
+// exchange/transport/ws. The test scripts refusals, unanswered requests, 429s, failed snapshot pages,
+// refused logins, failed handshakes and dropped connections, and changes the state, which pushes the
+// events a venue would send.
+//
 // A fixture is a JSON array of symbol.Listing values. Object keys are that struct's exported field
 // names (encoding/json also accepts a different case of the same name), and the loader decodes into
 // the struct itself, so a field added to Listing is picked up here without a new list of fields.

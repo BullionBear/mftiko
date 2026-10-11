@@ -256,9 +256,9 @@ func gapOnPage(g tapeGap, feed string, chosen []tapeEvent, before *cursor, since
 }
 
 // planViewsLocked is the diff between feeds this worker holds and md.view subscriptions.
-// Every held feed is subscribed, including record=false and topics that answer unsupported,
-// so the client gets that error instead of no responder (D442, D443). Pending subscriptions
-// (a nil unlisten) count as present so a second apply does not subscribe twice.
+// Every held feed is subscribed, including topics that answer unsupported, so the client gets
+// that error instead of no responder (D442, D443). Pending subscriptions (a nil unlisten)
+// count as present so a second apply does not subscribe twice.
 func (c *Conn) planViewsLocked() (add []string, remove []func()) {
 	if c.viewListen == nil || c.viewsClosed {
 		return nil, nil

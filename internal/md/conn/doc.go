@@ -10,6 +10,10 @@
 // A failed dial does not consume the number. The agent copies the shim's report into the next
 // Init; this package does not.
 //
+// At Init the process loads this venue's active symbol table and follows sym.changed. A reconcile
+// loop turns the agent's topic.UniversalTicker list into atoms with that table and subscribes the
+// difference. A worker started without a table applies atom ids from the assignment instead.
+//
 // Depth updates are folded into a sdk/book ring on this connection (D424–D434). orderbook and
 // orderbook_delta are two feeds of that book. orderbook_delta forwards each normalized increment
 // unchanged. orderbook is the top-N, rebuilt only when an increment touches it. A reset and the
@@ -20,7 +24,10 @@
 // dies with the connection: reconnect starts again, and conn_epoch changes only when the dial
 // succeeds. A resync keeps the epoch and takes the next seq of each feed. SnapshotREST depth
 // runs in this process, off the read goroutine, so a ping still gets an answer. Tape for
-// trade, aggtrade and liquidation is a per-atom ring of the bytes published on md.f (D435–D440).
-// md.view is served on another goroutine: tape pages, or the current in-window book (D441–D446).
-// Serve is what cmd/mftiko-md-conn runs.
+// trade, aggtrade and liquidation is a per-atom ring of the bytes published on md.f. The worker
+// decides that from the topic and ignores AtomAssignment.record (D435–D447). md.view is served
+// on another goroutine: tape pages, or the current in-window book (D441–D446). Feed mode syncs
+// the ring inside project and rebinds md.view outside the lock. A removed or rejected feed
+// drops both; a listed feed that is not tradable keeps both (D448). Serve is what
+// cmd/mftiko-md-conn runs.
 package conn

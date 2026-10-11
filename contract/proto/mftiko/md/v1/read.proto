@@ -11,7 +11,7 @@ option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1;mdv
 // subject 最後一段今天是 UniversalTicker。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（D203、§10 P14）。
 // 由持有該 atom 的 conn worker 回答。回什麼由 subject 的 topic 決定（D442）：
 // trade、aggtrade、liquidation 回 tape；orderbook 與 orderbook_delta 回現在的窗內全本。
-// 其他 topic，以及 record = false 的 atom 要 tape，回 error = "unsupported"。
+// 其他 topic 回 error = "unsupported"。AtomAssignment.record 忽略，錄不錄由 topic 決定（D447）。
 // 簿還沒同步好回 "not_synced"。read.proto 仍是草案，這一版的 tape 回覆是 breaking（D435）。
 
 message ViewRequest {

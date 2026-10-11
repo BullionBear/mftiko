@@ -20,6 +20,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/logger"
 	"github.com/BullionBear/mftiko/internal/platform/natsx"
+	"github.com/BullionBear/mftiko/internal/sym"
 )
 
 func main() {
@@ -89,8 +90,19 @@ func run() int {
 		Doer:     doer,
 		RateHold: *hold,
 		Publish:  nc.Publish,
-		Log:      &log,
-		Release:  buildinfo.Version,
+		Symbols: func(ctx context.Context, venue string) (conn.Instruments, error) {
+			v, ok := reg.Venue(venue)
+			if !ok {
+				return nil, fmt.Errorf("unknown venue %s", venue)
+			}
+			tables := make([]sym.Table, 0, len(v.Categories))
+			for _, c := range v.Categories {
+				tables = append(tables, sym.Table{Venue: venue, Category: c})
+			}
+			return sym.OpenRemote(ctx, nc, tables, sym.RemoteOptions{Log: log})
+		},
+		Log:     &log,
+		Release: buildinfo.Version,
 		// One holder, so no queue group. The callback is already off the websocket read (D445).
 		// Data is valid only until the callback returns, so the request is cloned first.
 		ViewListen: func(subject string, handler func(req []byte) []byte) (func(), error) {

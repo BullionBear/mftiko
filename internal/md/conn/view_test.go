@@ -18,6 +18,7 @@ import (
 
 	mdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1"
 	mdctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/mdctl/v1"
+	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/contract/wire/envelope"
 	"github.com/BullionBear/mftiko/exchange"
 	"github.com/BullionBear/mftiko/exchange/binance"
@@ -607,36 +608,30 @@ func TestTapeUnsupportedAndFeedEnd(t *testing.T) {
 	c.mu.Lock()
 	c.Kline("ch", &exchange.Kline{Interval: "1m", Open: 1, Close: 1, Volume: 1})
 	c.mu.Unlock()
-	for _, subj := range []struct{ topic, ticker string }{{"trade", "T"}, {"kline_1m", "T"}} {
-		raw := c.handleView(viewSubject("md1", subj.topic, subj.ticker), mustReq(t, &mdv1.ViewRequest{}))
-		reply := &mdv1.ViewReply{}
-		if err := proto.Unmarshal(raw, reply); err != nil {
-			t.Fatal(err)
-		}
-		if reply.GetError() != errUnsupported || reply.GetTape() != nil {
-			t.Fatalf("%s %+v", subj.topic, reply)
-		}
+
+	// Record is unset on the trade. The topic still stores it (D447).
+	page, _ := askTape(t, c, "trade", "T", &mdv1.ViewRequest{})
+	if idsOf(page) != "nope" || page.GetEvents()[0].GetSeq() != 1 {
+		t.Fatalf("record flag ignored %s", idsOf(page))
 	}
-	c.mu.Lock()
-	stored := 0
-	for _, r := range c.rings {
-		stored += len(r.events)
+	raw := c.handleView(viewSubject("md1", "kline_1m", "T"), mustReq(t, &mdv1.ViewRequest{}))
+	reply := &mdv1.ViewReply{}
+	if err := proto.Unmarshal(raw, reply); err != nil {
+		t.Fatal(err)
 	}
-	c.mu.Unlock()
-	if stored != 0 {
-		t.Fatalf("stored %d", stored)
+	if reply.GetError() != errUnsupported || reply.GetTape() != nil {
+		t.Fatalf("kline %+v", reply)
+	}
+	if storedEvents(c) != 1 {
+		t.Fatalf("stored %d", storedEvents(c))
 	}
 
-	on := atom("V:r:ch", "trade.T")
-	on.Record = true
-	c.SetDesired(desired(1, 2, on))
-	pushTrade(c, "ch", "yes")
 	c.mu.Lock()
 	c.FeedEnd("ch", &exchange.FeedEnd{Reason: "expired", AtNs: 9})
 	c.mu.Unlock()
-	page, raw := askTape(t, c, "trade", "T", &mdv1.ViewRequest{})
-	// The unrecorded trade still took seq 1, "yes" is seq 2, and FeedEnd takes seq 3 without being stored.
-	if idsOf(page) != "yes" || page.GetEvents()[0].GetSeq() != 2 || page.GetHead().GetSeq() != 3 {
+	page, raw = askTape(t, c, "trade", "T", &mdv1.ViewRequest{})
+	// "nope" is seq 1. FeedEnd takes seq 2 and is not stored.
+	if idsOf(page) != "nope" || page.GetEvents()[0].GetSeq() != 1 || page.GetHead().GetSeq() != 2 {
 		t.Fatalf("feed end page %s head %+v", idsOf(page), page.GetHead())
 	}
 	if page.GetEvents()[0].GetEvent().GetFeedEnd() != nil {
@@ -657,7 +652,7 @@ func TestTapeUnsupportedAndFeedEnd(t *testing.T) {
 	c.pub = func(string, []byte) error { return errors.New("down") }
 	pushTrade(c, "ch", "kept")
 	page, _ = askTape(t, c, "trade", "T", &mdv1.ViewRequest{})
-	if idsOf(page) != "kept,yes" || page.GetHead().GetSeq() != 4 {
+	if idsOf(page) != "kept,nope" || page.GetHead().GetSeq() != 3 {
 		t.Fatalf("failed publish %s head %d", idsOf(page), page.GetHead().GetSeq())
 	}
 
@@ -665,7 +660,7 @@ func TestTapeUnsupportedAndFeedEnd(t *testing.T) {
 	c.live = nil
 	c.mu.Unlock()
 	page, _ = askTape(t, c, "trade", "T", &mdv1.ViewRequest{})
-	if idsOf(page) != "kept,yes" {
+	if idsOf(page) != "kept,nope" {
 		t.Fatalf("down tape %s", idsOf(page))
 	}
 }
@@ -730,11 +725,11 @@ func TestViewLeavesNoResponder(t *testing.T) {
 		t.Fatalf("kline %+v", &reply)
 	}
 	reply.Reset()
-	if err := client.Request(ctx, "md.view.md1.trade.Q", &mdv1.ViewRequest{Limit: 99999}, &reply); err != nil {
+	if err := client.Request(ctx, "md.view.md1.trade.Q", &mdv1.ViewRequest{}, &reply); err != nil {
 		t.Fatal(err)
 	}
-	if reply.GetError() != errUnsupported {
-		t.Fatalf("record false %+v", &reply)
+	if reply.GetError() != "" || reply.GetTape() == nil || len(reply.GetTape().GetEvents()) != 0 {
+		t.Fatalf("record ignored %+v", &reply)
 	}
 	// Still held, including while an agent would be lingering: the worker has no linger timer.
 	reply.Reset()
@@ -753,6 +748,135 @@ func TestViewLeavesNoResponder(t *testing.T) {
 	if err := proto.Unmarshal(raw, &reply); err != nil || reply.GetError() != errNotHeld {
 		t.Fatalf("in-flight %+v %v", &reply, err)
 	}
+}
+
+func TestSetFeedsRecordsTape(t *testing.T) {
+	ns := natsxtest.Start(t)
+	worker, err := natsx.Connect(ns.URL(), natsx.Options{Name: "worker", InboxPrefix: "_INBOX_md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := natsx.Connect(ns.URL(), natsx.Options{Name: "client"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		worker.Close()
+		client.Close()
+	})
+	ticker := symbol.UniversalTicker{Venue: "Binance", Category: symbol.Spot, Symbol: "BTCUSDT"}
+	tradable := &symbol.Info{Ticker: ticker, ExchTicker: "BTCUSDT", Status: symbol.Tradable}
+	tab := &switchSymbols{cur: stubSymbols{info: &symbol.Info{Ticker: ticker, ExchTicker: "BTCUSDT", Status: symbol.Halted}}}
+	feed := "trade.Binance_Spot_BTCUSDT"
+	subj := viewSubject("md1", "trade", "Binance_Spot_BTCUSDT")
+	ctx := t.Context()
+	c := New(Config{
+		Venue: "Binance", Route: "public", Instance: "md1",
+		Market: &reconMarket{}, Symbols: tab,
+		Publish: func(string, []byte) error { return nil },
+		ViewListen: func(subject string, handler func(req []byte) []byte) (func(), error) {
+			sub, err := worker.Subscribe(ctx, subject, "", func(m natsx.Msg) {
+				if m.Reply == "" {
+					return
+				}
+				reply := handler(bytes.Clone(m.Data))
+				if len(reply) == 0 {
+					return
+				}
+				_ = worker.Publish(m.Reply, reply)
+			})
+			if err != nil {
+				return nil, err
+			}
+			return func() {
+				_ = sub.Unsubscribe()
+				_ = worker.Flush()
+			}, nil
+		},
+	})
+	c.mu.Lock()
+	c.live = newLink(nil)
+	c.mu.Unlock()
+
+	// On the table but not tradable, and never subscribed: there is no ring to keep.
+	c.SetDesired(feedsDesired(1, feed))
+	if storedEvents(c) != 0 {
+		t.Fatalf("pending from the start stored %d", storedEvents(c))
+	}
+	var reply mdv1.ViewReply
+	if err := client.Request(ctx, subj, &mdv1.ViewRequest{}, &reply); !errors.Is(err, natsx.ErrNoResponders) {
+		t.Fatalf("pending from the start %v %+v", err, &reply)
+	}
+
+	tab.mu.Lock()
+	tab.cur = stubSymbols{info: tradable}
+	tab.mu.Unlock()
+	// Record is unset. setFeeds still stores a trade (D447).
+	c.SetDesired(feedsDesired(2, feed))
+	pushTrade(c, "btcusdt@depth", "1")
+	reply.Reset()
+	if err := client.Request(ctx, subj, &mdv1.ViewRequest{}, &reply); err != nil {
+		t.Fatal(err)
+	}
+	if reply.GetError() != "" || idsOf(reply.GetTape()) != "1" {
+		t.Fatalf("feed mode tape %+v", &reply)
+	}
+
+	tab.mu.Lock()
+	tab.cur = stubSymbols{info: &symbol.Info{Ticker: ticker, ExchTicker: "BTCUSDT", Status: symbol.Halted}}
+	tab.mu.Unlock()
+	c.SetDesired(feedsDesired(3, feed))
+	c.mu.Lock()
+	pendingWanted := len(c.wanted)
+	c.mu.Unlock()
+	if pendingWanted != 0 || storedEvents(c) != 1 {
+		t.Fatalf("pending wanted %d stored %d", pendingWanted, storedEvents(c))
+	}
+	pushTrade(c, "btcusdt@depth", "2")
+	reply.Reset()
+	if err := client.Request(ctx, subj, &mdv1.ViewRequest{}, &reply); err != nil || idsOf(reply.GetTape()) != "1" {
+		t.Fatalf("pending view %v %s", err, idsOf(reply.GetTape()))
+	}
+
+	c.SetDesired(feedsDesired(4))
+	if storedEvents(c) != 0 {
+		t.Fatalf("removed stored %d", storedEvents(c))
+	}
+	reply.Reset()
+	if err := client.Request(ctx, subj, &mdv1.ViewRequest{}, &reply); !errors.Is(err, natsx.ErrNoResponders) {
+		t.Fatalf("removed %v %+v", err, &reply)
+	}
+
+	tab.mu.Lock()
+	tab.cur = stubSymbols{info: tradable}
+	tab.mu.Unlock()
+	c.SetDesired(feedsDesired(5, feed))
+	pushTrade(c, "btcusdt@depth", "3")
+	reply.Reset()
+	if err := client.Request(ctx, subj, &mdv1.ViewRequest{}, &reply); err != nil || idsOf(reply.GetTape()) != "3" {
+		t.Fatalf("restored %v %s", err, idsOf(reply.GetTape()))
+	}
+	tab.mu.Lock()
+	tab.cur = stubSymbols{miss: true}
+	tab.mu.Unlock()
+	c.SetDesired(feedsDesired(6, feed))
+	if storedEvents(c) != 0 {
+		t.Fatalf("rejected stored %d", storedEvents(c))
+	}
+	reply.Reset()
+	if err := client.Request(ctx, subj, &mdv1.ViewRequest{}, &reply); !errors.Is(err, natsx.ErrNoResponders) {
+		t.Fatalf("rejected %v %+v", err, &reply)
+	}
+}
+
+func storedEvents(c *Conn) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for _, r := range c.rings {
+		n += len(r.events)
+	}
+	return n
 }
 
 func TestBookView(t *testing.T) {

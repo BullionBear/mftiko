@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-11 定案 TD 的契約與 NATS 身分（E6-02）：`td.order` 只回 ack 或本地拒絕，單的每一次變化都是 `OrderUpdate`，1xx 只列一期會碰到的；訂單狀態加 `ACCEPTED`（上簿），撤單在途改成旗標 `cancel_sent_ns`，拿掉 `PENDING_CANCEL`；account worker 每個帳號一份 NATS 憑證，由 TD agent 簽，D610–D611。同日修訂 D601：TD agent 不查 SYM，歷史補正的交易所讀取比照 md.fetch。同日修訂 D202、D401：MD agent 不查 SYM，conn worker 用活躍表推出 atom 並 diff 訂閱。同日更新 D415、D426：MD instance 訂閱 `sym.changed.>`，conn worker 在 Init 載入該 venue 的活躍表。同日定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日定案 tape ring 與 md.view，D435–D446。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-12 定案持倉模式由 `AccountSnapshot.HedgeMode` 帶回，以及給 account worker 測試用的假帳號 `exchangetest.AccountVenue`，D612。同日補充 tape：錄不錄由 worker 依 topic 決定，feed 從清單移除或 `REJECTED` 時退訂 `md.view` 並清掉 ring，在表上但不是 `TRADABLE` 的 `PENDING` 保留 ring 與 `md.view`，D447–D448。2026-10-11 定案 TD 的契約與 NATS 身分（E6-02）：`td.order` 只回 ack 或本地拒絕，單的每一次變化都是 `OrderUpdate`，1xx 只列一期會碰到的；訂單狀態加 `ACCEPTED`（上簿），撤單在途改成旗標 `cancel_sent_ns`，拿掉 `PENDING_CANCEL`；account worker 每個帳號一份 NATS 憑證，由 TD agent 簽，D610–D611。同日修訂 D601：TD agent 不查 SYM，歷史補正的交易所讀取比照 md.fetch。同日修訂 D202、D401：MD agent 不查 SYM，conn worker 用活躍表推出 atom 並 diff 訂閱，並在 Report 以 FeedStatus 回報每一筆 feed。同日更新 D415、D426：MD instance 訂閱 `sym.changed.>`，conn worker 在 Init 載入該 venue 的活躍表。同日定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日定案 tape ring 與 md.view，D435–D446。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 >
@@ -302,14 +302,14 @@ account worker 依 refcount 起停，沒有常駐層（D901），所以閒置帳
   - 環長與 `price_tick` 見 D430、D433。發布的 top-N 與 `exchTicker` 見 D426。重抓只在斷號或 checksum 失敗。重抓節奏見 D424。
   - 晚加入：SDK 先訂 `md.f`，再向持有者要 `md.view`，拿到現在的窗內全本與游標 S，之後只套用大於 S 的增量。seq 斷號或 `conn_epoch` 改變時，重新要一次。還沒同步好是 `not_synced`（D441）。這是 SDK 提供的可選小工具，fold 跟交易所無關。
 - **tape：**
-  - 只錄 `trade`、`aggtrade`、`liquidation`，book 類不錄。錄不錄由 topic 決定，MD agent 推導 `AtomAssignment.record`。
+  - 只錄 `trade`、`aggtrade`、`liquidation`，book 類不錄。錄不錄由 worker 依 topic 決定，`AtomAssignment.record` 忽略（D447）。
   - 每個 atom 一個 ring，存已經發佈的訊息 bytes（envelope ＋ `FeedEvent`，D803）。回覆的形狀見 D435：不重新編碼 `FeedEvent`。上限見 D438，算進 `Limits.memory_mb`。
   - WS 重連時在 ring 裡記 gap（D440）。ring 跨 `conn_epoch` 保留。
   - 接 live：SDK 先訂 `md.f` 並緩衝，同時讀 tape，以 `head` 對齊（D437）。live 和 tape 出自同一個進程、同一套序號，接縫是精確的；沒有 id 的 liquidation 也適用。
   - 不用 Redis。tape 跟著 worker 進程和 atom 一起活：只有進程重新掛起（crash，或停掉後 spawn 新的 incarnation）、或 atom 的 linger 結束，tape 才會沒了。
   - worker 不隨版本遷移（D103、D106）：發新版只影響之後 spawn 的 worker，跑著的進程繼續用原本的 binary，tape 不受影響。tape 在這條連線的進程換掉時才沒：crash 後重拉，或連線停掉之後再 spawn。
   - tape 只是熱身用，回覆會說明涵蓋多少。要一直熱的，跑一個 tape keeper：不下單、不綁帳號的策略，跟 mftik 一樣，tape 跟著它的生命週期走（D404）。
-- **md.view：** 持有 atom 的 conn worker 服務 `md.view.{inst}.{topic}.{ticker}`，形狀跟 `md.f` 一樣，對應 `td.view.{api_id}`。回覆依 topic：trade 類回 tape 分頁（由新到舊，以 `(conn_epoch, seq)` 當游標，每頁壓在 NATS 的 1 MiB 以下），book 類回現在的窗內全本，不是歷史 seq（D441、D442）。沒有 responder，就是沒有 worker 持有這個 atom。細節見 D435–D446。
+- **md.view：** 持有 atom 的 conn worker 服務 `md.view.{inst}.{topic}.{ticker}`，形狀跟 `md.f` 一樣，對應 `td.view.{api_id}`。回覆依 topic：trade 類回 tape 分頁（由新到舊，以 `(conn_epoch, seq)` 當游標，每頁壓在 NATS 的 1 MiB 以下），book 類回現在的窗內全本，不是歷史 seq（D441、D442）。沒有 responder，就是沒有 worker 持有這個 feed。細節見 D435–D448。
 - **md.fetch：**
   - 無狀態的服務，跟 SYM 一樣：每個 region 部署，NATS queue group，任何 replica 都能回答。不需要 agent、lease、fencing。不落庫。subject、分頁、限速、解析與部署見 D418–D423。
   - 只轉發交易所的公開 REST：K 線，以及交易所不推送、只能查詢的值（D401，例如 Binance UM 的 open interest）。
@@ -420,7 +420,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **endpoint 是連線的可選參數，不是身分。** 同一家交易所提供的替代 host（例如針對某個雲端優化的 endpoint）視為同一個 venue，由 MD instance 的設定選擇，進 conn worker 的 spawn spec。換 endpoint 要換 incarnation（D106）。
 - **route：同一個 venue 裡，商品和 topic 決定要連哪條 WS 路徑。** 例如 OKX 的 K 線在 `/ws/v5/business`，其他公開行情在 `/ws/v5/public`；Bybit 的公開行情依類別分成 `/v5/public/spot`、`linear`、`inverse`、`option`。不同 route 不能共用連線。OKX、Bybit 是一份憑證的統一帳戶，拆成不同 venue 會破壞 UniversalTicker 與 TD 的帳號，所以由 adapter 從商品推出 route（D202）。conn worker 用活躍表上的商品。MD agent 只為了選 worker，用 ticker 問 route，不訂那個 channel。大多數 venue 只有一個 route。
 - **連線的身分是 `(venue, route, n)`。** 之後加版號（D106）就是 `(version, venue, route, n)`。同一組 atom 一律共用連線，兩個 session 要同一個 atom 就是 refcount=2，不會多開連線。
-- **只有連線達到交易所的上限才開 n+1。** 上限由 adapter 宣告，例如 Binance USDⓈ-M 一條連線 1024 個 stream。新 atom 放進同一個 `(venue, route)` 下還有空間、n 最小的那條。不整併：1024 連期權鏈也用不完，實際上幾乎只會有 n=0。
+- **只有連線達到交易所的上限才開 n+1。** 上限由 adapter 宣告，例如 Binance 一條連線 1024 個 stream。新 atom 放進同一個 `(venue, route)` 下還有空間、n 最小的那條。共用同一個 channel 的 feed 是同一個 atom，只佔一份額度，放在同一條連線。agent 用 ticker 問出的 channel 只做這次放置，不拿來訂閱；conn worker 再用活躍表推出真正要訂的 channel。不整併：1024 連期權鏈也用不完，實際上幾乎只會有 n=0。
 
 ### D603 行情過舊與 TD 降級
 
@@ -547,6 +547,18 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **TD agent 持有 `MFTIKO` 的簽章金鑰**，和 STS agent 同一把（D414）。系統是單人使用，兩把只多了輪換的工作。之後要限制 TD agent 能簽出的權限，可以改用 NATS 的 scoped signing key。
 - **檢查（D417）：** 嵌入式 nats-server 上，在記憶體裡簽一顆 account worker，確認它服務得了自己帳號的 `td.order`、`td.view`，發得出自己的 `td.evt`；別的帳號的 `td.evt`、`td.order`、`td.view`、別人的 inbox 一律被拒。TD agent 收得到 `td.evt`，發不出 `td.evt`、`td.order`，也訂不到 `td.order`、`td.view`。
 - 修改 D906 最後一條與 D414 的簽章金鑰。D415 留給 TD 的權限由這一條補上；SYM 仍未定。
+
+### D612 持倉模式由 Snapshot 帶回；假帳號 `AccountVenue`
+
+- **`exchange.AccountSnapshot` 加 `HedgeMode`。** 帳號在任何地方是雙向持倉就是真，任何一頁說是就是。worker 在 `Start` 的第一次 recon 檢查（`INIT_FAILED`，reason `hedge_mode`），之後每次 recon 也檢查（`UNAVAILABLE`，新單 103），D607 的兩個時點都由它涵蓋。
+  - 不另加方法：模式和持倉是同一份帳號狀態，recon 時一起讀；`Start` 的檢查也只是第一次 recon。
+  - 真實 adapter 還沒讀持倉模式，一律是假：Binance UM 要多一個 `GET /fapi/v1/positionSide/dual`，OKX 讀 `GET /api/v5/account/config` 的 `posMode`，Bybit 看持倉的 `positionIdx`。在 E6-16 做完之前，這個檢查對真實交易所不生效。這一條只定介面。
+- **`exchangetest.AccountVenue` 是一個帳號的假交易所**，給 account worker 的測試用（E6-05）。
+  - 狀態在記憶體：掛單、持倉、餘額、槓桿、持倉模式。測試經由它改狀態（`PutOrder`、`Fill`、`SetBalance`、`SetPosition`）時，同時推出交易所會發的事件，跑完之後可以拿 worker 的 `td.view` 與它比對。不改狀態的重複或亂序事件用 `EmitOrder`、`EmitFill`。
+  - REST：它自己就是 `exchange.Doer`。`Snapshot` 可分頁，可在指定頁失敗；`Submit`、`Cancel`、`CancelBatch` 依 cloid 指定接受、拒絕或不回答（`ErrUnknownOutcome`，可選交易所是否照做）；可以回 429（`Retry-After`）與回報用量（`ResetAt`）；換 key 之後一律 `ErrAuth`。`Requests` 列出收到的每個請求。
+  - 私有串流：`Handler` 是真的 websocket，以 httptest 跑，worker 照正式路徑用 `exchange/transport/ws` 連。可以拒絕登入、讓握手失敗、一次斷掉所有連線、暫扣事件以決定先到的是回答還是事件，以及 Binance 式的 listenKey 與到期。
+  - 不撮合：單一直掛著，直到測試成交或撤掉。不驗簽章，只比對 key。查單與「請求晚到」在 E6-16 加。
+  - 不採用：私有串流用行程內的假連線。那樣 worker 的連線路徑就少測了 ws 傳輸；MD conn worker 的測試也用 httptest。
 
 ### D905 linger；需求沒有 TTL
 
@@ -826,12 +838,12 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 - **book 類回 `BookSnapshot`。** 沒有 top-N 行情，`orderbook` 一律等於 `orderbook_delta`。拿掉 top-N 是 #180，這張不依賴它。#180 合併前，subject 是 `orderbook` 時因為是同一個 atom，也回 `BookSnapshot`（窗內全本，不是 top-N）。
 - **`trade`、`aggtrade`、`liquidation` 回 tape。**
-- **其他 topic（kline、best_quote 等），以及 `record = false` 的 atom 要 tape，回 `unsupported`。** book 不看 `record`。
+- **其他 topic（kline、best_quote 等）回 `unsupported`。** `AtomAssignment.record` 忽略，錄不錄由 topic 決定（D447）。book 不看這個旗標。
 
 ### D443 linger
 
 - **atom 在 linger 期間照常回 `md.view`。** linger 與 refcount 在 MD agent（§6.2）。worker 不另計時：atom 還在 `Desired` 裡就回答。
-- **atom 移除時退訂 `md.view` 並清掉 ring。** 退訂之後客戶端看到的是 NATS 沒有 responder，不是一則 `error` 字串。
+- **atom 移除時退訂 `md.view` 並清掉 ring。** 退訂之後客戶端看到的是 NATS 沒有 responder，不是一則 `error` 字串。feed 模式的移除、`REJECTED` 與 `PENDING` 見 D448。
 
 ### D444 subject
 
@@ -846,6 +858,17 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 - **不錄進 tape。** `FeedEnd` 仍佔該 feed 的 seq，所以 `head` 會往前，tape 裡沒有它。
 - **不另做處理。** `FeedEnd` 留在 proto 裡；拿掉是 #180。
+
+### D447 錄不錄由 topic 決定
+
+- **worker 依 topic 決定。** `trade`、`aggtrade`、`liquidation` 錄進 tape，其他不錄（D402、D442）。
+- **`AtomAssignment.record` 忽略。** MD agent 不填。等 #152 的 proto 定案時再拿掉或標 `reserved`。這一張不刪欄位。
+
+### D448 feed 模式下 ring 的生命週期
+
+- **在 `project()` 換掉 `wanted` 的同一個臨界區裡，依 `wanted`（feed key）算 owners，同步 tape。** 鎖外再 rebind `md.view`。`setFeeds` 走這條，不只舊的 `apply()`。
+- **feed 從清單移除，或變成 `REJECTED`，退訂 `md.view` 並清掉 ring（D443）。** 從清單拿掉一筆已經 `PENDING` 的 feed 時 `wanted` 沒有變，仍重算 owners，否則 ring 會留下。
+- **商品在表上但不是 `TRADABLE`（`PENDING`）時，保留 ring 和 `md.view`，直到 feed 真的從清單移除。** 這時不在 `wanted` 裡，所以不再發新的 `md.f`，已經錄的還在。沿用的是本來就有的 owner；從來沒有訂過的 feed 不為此新開 view。
 
 ### D906 session worker 的 NATS 憑證：每個 session 一份
 
@@ -872,7 +895,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **翻譯是查表，經 SYM 解析，不是字串轉換。** `BTCUSDT` 不帶 base／quote 的切法，交易所的寫法也不一定是 base＋分隔＋quote。
 - **ticker 的 base／quote 是 SYM 正規化之後的資產（D203）。** 資產代碼一律大寫，再套別名表（例如 `XBT` → `BTC`），只在 SYM。先正規化，再做 quanto 判斷，再推 ticker；strike 先依 `spell_strike` 正規化，`6400.0` 與 `6400` 是同一個 ticker。`USD`、`USDC`、`USDT` 不合併。quanto 不入庫。
 - **MD agent 不查 SYM。** 它從 ticker 的 venue，以及 topic 決定的 route，選 `md/<venue>/<route>/<n>`，把 `topic.UniversalTicker` 送進那個 worker。問 route 時只用 ticker 組出的 Info，channel 丟掉，不拿來訂閱。
-  - conn worker 在 Init 載入該 venue 的活躍表（D203：不讀終結表），用表上的 `symbol.Info` 呼叫 `Market.Atom`，跟目前的訂閱做 diff。不在活躍表，或不是 `TRADABLE`（quanto 不入庫），這筆就不訂。`EXPIRED` 與 `DELISTED` 不在活躍表。agent 不因此寫 `REJECTED`。
+  - conn worker 在 Init 載入該 venue 的活躍表（D203：不讀終結表），用表上的 `symbol.Info` 呼叫 `Market.Atom`，跟目前的訂閱做 diff。不在活躍表，或不是 `TRADABLE`（quanto 不入庫），這筆就不訂。`EXPIRED` 與 `DELISTED` 不在活躍表。worker 把每一筆 feed 放進 `Report.feeds`：不在活躍表，或這條 route 訂不了，是 `REJECTED`，agent 照寫；在表上但不是 `TRADABLE` 是 `PENDING`。channel 被交易所 ack 之後，掛在上面的 feed 是 `SUBSCRIBED`，worker 在跑時 agent 寫 `READY`。
   - adapter 仍是純函數：不查 SYM、不做 I/O，只用資料就能測。
   - mftik 的 adapter 自己帶 SymbolResolver，在裡面查；mftik refactor 的 B7-01 改成先解析再 `atoms_for`。這裡由 conn worker 先從表拿出 Info，再呼叫 `Atom`。
 - **回程帶交易所那一側的 key。** 私有事件、REST 拿回的成交與訂單帶 `(venue, category, exch_ticker)`（venue 見 D301），account worker 與歷史補正服務以 SYM 反查換回 UniversalTicker。TD agent 不反查。category 是 key 的一部分：統一帳戶的 venue 上，同一個寫法可能是兩個商品（Bybit 現貨與 linear 的 `BTCUSDT`）。

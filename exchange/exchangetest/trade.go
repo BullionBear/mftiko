@@ -236,10 +236,8 @@ func classify(f venueFrame) error {
 		return exchange.ErrAuth
 	case f.Status == 429:
 		return &exchange.RateLimited{}
-	case f.Code == -2010:
-		return &exchange.Reject{Code: 201, Native: "-2010", Reason: f.Msg}
 	default:
-		return &exchange.Reject{Code: int32(f.Code), Native: strconv.Itoa(f.Code), Reason: f.Msg}
+		return venueReject(f.Code, f.Msg)
 	}
 }
 

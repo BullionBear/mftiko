@@ -52,7 +52,7 @@ message Desired {
 message AtomAssignment {
   string atom_id = 1;
   repeated string feeds = 2; // 這個 atom 要發佈的 feed（atom → 事件 1:N）
-  bool record = 3;           // 錄 tape；MD agent 依 topic 推導（D402）
+  bool record = 3;           // 忽略。錄不錄由 worker 依 topic 決定（D447）。定案時再拿掉或標 reserved。
   // SYM 的 exchTicker。worker 從自己的活躍表讀。沒有這份表、而且 atom_id 已給時，用這裡的值。不從 channel 解析（D426、D202）。
   string exch_ticker = 4;
   // SYM 的 price_tick。跟 exch_ticker 同一張表、同一時刻。
@@ -65,8 +65,13 @@ message Report {
   uint64 conn_epoch = 2; // 每次重連 +1
   ConnState state = 3;
   string reason = 4;
-  repeated AtomStatus atoms = 5;
+  reserved 5; // 原本的 atoms：ack 改看 feed（D426）
+  reserved "atoms";
   double msg_rate = 6;
+  // 這條連線上每一筆 feed 的快照，完整清單。feed 是 topic.UniversalTicker。
+  // 不在活躍表，或這條 route 訂不了，是 REJECTED。在表上但不是 TRADABLE 是 PENDING，這輪不訂。
+  // channel 被交易所 ack 之後，掛在上面的每一筆 feed 是 SUBSCRIBED。
+  repeated FeedStatus feeds = 7;
 }
 
 enum ConnState {
@@ -76,17 +81,15 @@ enum ConnState {
   CONN_STATE_DOWN = 3;
 }
 
-message AtomStatus {
-  string atom_id = 1;
-  AtomState state = 2;
-  int64 first_msg_at_ns = 3;
-  int64 last_msg_at_ns = 4;
-  string error = 5;
+message FeedStatus {
+  string feed = 1; // topic.UniversalTicker
+  FeedState state = 2;
+  string reason = 3; // REJECTED 或還沒訂的 PENDING 才填
 }
 
-enum AtomState {
-  ATOM_STATE_UNSPECIFIED = 0;
-  ATOM_STATE_PENDING = 1;
-  ATOM_STATE_SUBSCRIBED = 2; // 交易所已 ack
-  ATOM_STATE_ERROR = 3;
+enum FeedState {
+  FEED_STATE_UNSPECIFIED = 0;
+  FEED_STATE_PENDING = 1;
+  FEED_STATE_SUBSCRIBED = 2; // 所在 channel 已被交易所 ack
+  FEED_STATE_REJECTED = 3; // 不在活躍表，或這條 route 訂不了
 }

@@ -537,7 +537,9 @@ func credsRel(plane, inst string) string {
 func servicePerms(plane, inst, inbox string) (pub, sub []string, resp bool, err error) {
 	switch plane {
 	case PlaneMD:
-		return []string{"md.f." + inst + ".>", "sym"}, []string{"md.view." + inst + ".>", inbox + ".>"}, true, nil
+		// sym.changed.> reloads the venue table the conn worker loaded at Init (D203, D426).
+		// The MD agent does not subscribe.
+		return []string{"md.f." + inst + ".>", "sym"}, []string{"md.view." + inst + ".>", "sym.changed.>", inbox + ".>"}, true, nil
 	case PlaneFetch:
 		// md.fetch.> is every venue subject. The process subscribes only to the
 		// venues it can reach (D418). sym.changed.> is the resolver (D422).
