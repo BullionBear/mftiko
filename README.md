@@ -13,7 +13,7 @@ Three blocks plus the exchange package (DECISIONS D006); `internal/archtest` che
 ```
 internal/                 ① the planes, private
   api/                    API server: declarations into etcd, serves the web console
-  platform/               trading-agnostic runtime: agent skeleton, shim, state (etcd), natsx, artifact, logger, buildinfo
+  platform/               trading-agnostic runtime: agent skeleton, shim, state (etcd), natsx, artifact, sealbox, logger, buildinfo
   sts/                    strategy plane; conformance/ (SDK conformance suite)
   md/                     market-data plane; conn/ (conn worker), fetch/ (md.fetch)
   td/                     execution plane; account/ (account worker), history/ (PostgreSQL)
@@ -40,6 +40,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-pack             builds a strategy artifact (OCI image + mftiko manifest)
   mftiko-etcd-roles       prints each region's etcd users and roles, derived from the instance list
   mftiko-nats-dev         generates dev NATS operator, accounts and user creds, and checks them
+  mftiko-seal             makes a TD instance's key pair and seals account credentials to it
   mftiko-conformance      SDK conformance suite
 examples/strategies/      hello, tape-keeper; import only sdk and contract, as an outside author would
 migrations/               PostgreSQL schema: NNNN_name.up.sql / .down.sql, embedded into mftiko-migrate

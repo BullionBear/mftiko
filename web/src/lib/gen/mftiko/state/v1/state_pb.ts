@@ -16,7 +16,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mftiko/state/v1/state.proto.
  */
 export const file_mftiko_state_v1_state: GenFile = /*@__PURE__*/
-  fileDesc("ChttZnRpa28vc3RhdGUvdjEvc3RhdGUucHJvdG8SD21mdGlrby5zdGF0ZS52MSKGAQoHQWNjb3VudBIMCgRuYW1lGAEgASgJEgwKBGtpbmQYAiABKAkSGgoSc2VhbGVkX2NyZWRlbnRpYWxzGAMgASgMEjIKCHNldHRpbmdzGAQgASgLMiAubWZ0aWtvLnN0YXRlLnYxLkFjY291bnRTZXR0aW5ncxIPCgdlbmFibGVkGAUgASgIInAKD0FjY291bnRTZXR0aW5ncxIeChZjYW5jZWxfb25fZGlzY29ubmVjdF9zGAEgASgNEhsKE2JhY2tmaWxsX2ludGVydmFsX3MYAiABKA0SIAoYYmFja2ZpbGxfcmVxdWVzdGVkX2F0X25zGAMgASgDIrkCCg1TZXNzaW9uU3RhdHVzEhsKE29ic2VydmVkX2dlbmVyYXRpb24YASABKAMSJQoFcGhhc2UYAiABKA4yFi5tZnRpa28uc3RhdGUudjEuUGhhc2USLwoKY29uZGl0aW9ucxgDIAMoCzIbLm1mdGlrby5jb21tb24udjEuQ29uZGl0aW9uEhMKC2luY2FybmF0aW9uGAQgASgNEhUKDXJlc3RhcnRfY291bnQYBSABKA0SDgoGcmVhc29uGAYgASgJEi0KCWxhc3RfZXhpdBgHIAEoCzIaLm1mdGlrby5jb21tb24udjEuRXhpdEluZm8SFQoNdXBkYXRlZF9hdF9ucxgIIAEoAxIxCglzdGF0ZV9vdXQYCSABKAsyHi5tZnRpa28uc3RhdGUudjEuU3RhdGVTbmFwc2hvdCJ6Cg1TdGF0ZVNuYXBzaG90Eg4KBmRpZ2VzdBgBIAEoCRISCgpyZXBvc2l0b3J5GAIgASgJEg0KBWNsZWFuGAMgASgIEhMKC2luY2FybmF0aW9uGAQgASgNEg0KBWF0X25zGAUgASgDEhIKCnNpemVfYnl0ZXMYBiABKAQilwEKC0RlbWFuZEVudHJ5Eg4KBGZlZWQYASABKAlIABIzCghzZWxlY3RvchgCIAEoCzIfLm1mdGlrby5zZXNzaW9uLnYxLlNlbGVjdG9yRGVjbEgAEhAKBmFwaV9pZBgDIAEoA0gAEhUKDXNwZWNfcmV2aXNpb24YCiABKAMSEAoIYWxnb19pZHMYCyADKA1CCAoGdGFyZ2V0Ir4BCg1TZXNzaW9uRGVtYW5kEjAKB2Rlc2lyZWQYASABKA4yHy5tZnRpa28uc2Vzc2lvbi52MS5EZXNpcmVkU3RhdGUSDQoFc3RhcnQYAiABKAgSEgoKZW5kX3JlYXNvbhgDIAEoCRIqCghiaW5kaW5ncxgEIAMoCzIYLm1mdGlrby5zdGF0ZS52MS5CaW5kaW5nEhUKDXNwZWNfcmV2aXNpb24YBSABKAMSFQoNdXBkYXRlZF9hdF9ucxgGIAEoAyKJAQoHQmluZGluZxIOCgRmZWVkGAEgASgJSAASEgoIc2VsZWN0b3IYAiABKAlIABIQCgZhcGlfaWQYAyABKANIABIQCghpbnN0YW5jZRgEIAEoCRIsCgZzdGF0dXMYBSABKAsyHC5tZnRpa28uc3RhdGUudjEuRW50cnlTdGF0dXNCCAoGdGFyZ2V0IssBCgtFbnRyeVN0YXR1cxIqCgVzdGF0ZRgBIAEoDjIbLm1mdGlrby5zdGF0ZS52MS5FbnRyeVN0YXRlEg4KBnJlYXNvbhgCIAEoCRIPCgdzdWJqZWN0GAMgASgJEisKBndvcmtlchgEIAEoCzIbLm1mdGlrby5jb21tb24udjEuV29ya2VyUmVmEisKCHVuaXZlcnNlGAUgASgLMhkubWZ0aWtvLnN0YXRlLnYxLlVuaXZlcnNlEhUKDXVwZGF0ZWRfYXRfbnMYBiABKAMiSwoIVW5pdmVyc2USDQoFZXBvY2gYASABKAQSDwoHbWVtYmVycxgCIAMoCRIPCgdjdXJyZW50GAMgASgJEg4KBnRvcGljcxgEIAMoCSJlCgtBZ2VudFJlY29yZBINCgVwbGFuZRgBIAEoCRIQCghpbnN0YW5jZRgCIAEoCRINCgVlcG9jaBgDIAEoAxIPCgdyZWxlYXNlGAQgASgJEhUKDXN0YXJ0ZWRfYXRfbnMYBSABKAMi6wEKDFdvcmtlclN0YXR1cxIrCgZ3b3JrZXIYASABKAsyGy5tZnRpa28uY29tbW9uLnYxLldvcmtlclJlZhINCgVwaGFzZRgCIAEoCRINCgVzdGFnZRgDIAEoCRIPCgdyZWxlYXNlGAQgASgJEhQKDHNoaW1fcmVsZWFzZRgFIAEoCRIQCghyZXN0YXJ0cxgGIAEoDRIRCglyc3NfYnl0ZXMYByABKAMSFQoNc3RhcnRlZF9hdF9ucxgIIAEoAxItCglsYXN0X2V4aXQYCSABKAsyGi5tZnRpa28uY29tbW9uLnYxLkV4aXRJbmZvIpUBCg1TZWxlY3RvclN0YXRlEi0KBHNwZWMYASABKAsyHy5tZnRpa28uc2Vzc2lvbi52MS5TZWxlY3RvckRlY2wSDQoFZXBvY2gYAiABKAQSDwoHbWVtYmVycxgDIAMoCRIPCgdjdXJyZW50GAQgASgJEg4KBmNlbnRlchgFIAEoCRIUCgxjZW50ZXJfYXRfbnMYBiABKAMiGQoJUGxhY2VtZW50EgwKBGNvbm4YASABKAkqtwEKBVBoYXNlEhUKEVBIQVNFX1VOU1BFQ0lGSUVEEAASEQoNUEhBU0VfUEVORElORxABEhEKDVBIQVNFX1dBSVRJTkcQAhISCg5QSEFTRV9TVEFSVElORxADEhEKDVBIQVNFX1JVTk5JTkcQBBISCg5QSEFTRV9TVE9QUElORxAFEhQKEFBIQVNFX1JFU1RBUlRJTkcQBhIOCgpQSEFTRV9ET05FEAcSEAoMUEhBU0VfRkFJTEVEEAgqiQEKCkVudHJ5U3RhdGUSGwoXRU5UUllfU1RBVEVfVU5TUEVDSUZJRUQQABIXChNFTlRSWV9TVEFURV9QRU5ESU5HEAESFQoRRU5UUllfU1RBVEVfUkVBRFkQAhIYChRFTlRSWV9TVEFURV9SRUpFQ1RFRBADEhQKEEVOVFJZX1NUQVRFX0RFQUQQBEJEWkJnaXRodWIuY29tL0J1bGxpb25CZWFyL21mdGlrby9jb250cmFjdC9nZW4vbWZ0aWtvL3N0YXRlL3YxO3N0YXRldjFiBnByb3RvMw", [file_mftiko_common_v1_common, file_mftiko_session_v1_session]);
+  fileDesc("ChttZnRpa28vc3RhdGUvdjEvc3RhdGUucHJvdG8SD21mdGlrby5zdGF0ZS52MSKGAQoHQWNjb3VudBIMCgRuYW1lGAEgASgJEgwKBGtpbmQYAiABKAkSGgoSc2VhbGVkX2NyZWRlbnRpYWxzGAMgASgMEjIKCHNldHRpbmdzGAQgASgLMiAubWZ0aWtvLnN0YXRlLnYxLkFjY291bnRTZXR0aW5ncxIPCgdlbmFibGVkGAUgASgIInUKEkFjY291bnRDcmVkZW50aWFscxIOCgZhcGlfaWQYASABKAMSDAoEa2luZBgCIAEoCRIQCghrZXlfdHlwZRgDIAEoCRILCgNrZXkYBCABKAkSDgoGc2VjcmV0GAUgASgJEhIKCnBhc3NwaHJhc2UYBiABKAkicAoPQWNjb3VudFNldHRpbmdzEh4KFmNhbmNlbF9vbl9kaXNjb25uZWN0X3MYASABKA0SGwoTYmFja2ZpbGxfaW50ZXJ2YWxfcxgCIAEoDRIgChhiYWNrZmlsbF9yZXF1ZXN0ZWRfYXRfbnMYAyABKAMiuQIKDVNlc3Npb25TdGF0dXMSGwoTb2JzZXJ2ZWRfZ2VuZXJhdGlvbhgBIAEoAxIlCgVwaGFzZRgCIAEoDjIWLm1mdGlrby5zdGF0ZS52MS5QaGFzZRIvCgpjb25kaXRpb25zGAMgAygLMhsubWZ0aWtvLmNvbW1vbi52MS5Db25kaXRpb24SEwoLaW5jYXJuYXRpb24YBCABKA0SFQoNcmVzdGFydF9jb3VudBgFIAEoDRIOCgZyZWFzb24YBiABKAkSLQoJbGFzdF9leGl0GAcgASgLMhoubWZ0aWtvLmNvbW1vbi52MS5FeGl0SW5mbxIVCg11cGRhdGVkX2F0X25zGAggASgDEjEKCXN0YXRlX291dBgJIAEoCzIeLm1mdGlrby5zdGF0ZS52MS5TdGF0ZVNuYXBzaG90InoKDVN0YXRlU25hcHNob3QSDgoGZGlnZXN0GAEgASgJEhIKCnJlcG9zaXRvcnkYAiABKAkSDQoFY2xlYW4YAyABKAgSEwoLaW5jYXJuYXRpb24YBCABKA0SDQoFYXRfbnMYBSABKAMSEgoKc2l6ZV9ieXRlcxgGIAEoBCKXAQoLRGVtYW5kRW50cnkSDgoEZmVlZBgBIAEoCUgAEjMKCHNlbGVjdG9yGAIgASgLMh8ubWZ0aWtvLnNlc3Npb24udjEuU2VsZWN0b3JEZWNsSAASEAoGYXBpX2lkGAMgASgDSAASFQoNc3BlY19yZXZpc2lvbhgKIAEoAxIQCghhbGdvX2lkcxgLIAMoDUIICgZ0YXJnZXQivgEKDVNlc3Npb25EZW1hbmQSMAoHZGVzaXJlZBgBIAEoDjIfLm1mdGlrby5zZXNzaW9uLnYxLkRlc2lyZWRTdGF0ZRINCgVzdGFydBgCIAEoCBISCgplbmRfcmVhc29uGAMgASgJEioKCGJpbmRpbmdzGAQgAygLMhgubWZ0aWtvLnN0YXRlLnYxLkJpbmRpbmcSFQoNc3BlY19yZXZpc2lvbhgFIAEoAxIVCg11cGRhdGVkX2F0X25zGAYgASgDIokBCgdCaW5kaW5nEg4KBGZlZWQYASABKAlIABISCghzZWxlY3RvchgCIAEoCUgAEhAKBmFwaV9pZBgDIAEoA0gAEhAKCGluc3RhbmNlGAQgASgJEiwKBnN0YXR1cxgFIAEoCzIcLm1mdGlrby5zdGF0ZS52MS5FbnRyeVN0YXR1c0IICgZ0YXJnZXQiywEKC0VudHJ5U3RhdHVzEioKBXN0YXRlGAEgASgOMhsubWZ0aWtvLnN0YXRlLnYxLkVudHJ5U3RhdGUSDgoGcmVhc29uGAIgASgJEg8KB3N1YmplY3QYAyABKAkSKwoGd29ya2VyGAQgASgLMhsubWZ0aWtvLmNvbW1vbi52MS5Xb3JrZXJSZWYSKwoIdW5pdmVyc2UYBSABKAsyGS5tZnRpa28uc3RhdGUudjEuVW5pdmVyc2USFQoNdXBkYXRlZF9hdF9ucxgGIAEoAyJLCghVbml2ZXJzZRINCgVlcG9jaBgBIAEoBBIPCgdtZW1iZXJzGAIgAygJEg8KB2N1cnJlbnQYAyABKAkSDgoGdG9waWNzGAQgAygJImUKC0FnZW50UmVjb3JkEg0KBXBsYW5lGAEgASgJEhAKCGluc3RhbmNlGAIgASgJEg0KBWVwb2NoGAMgASgDEg8KB3JlbGVhc2UYBCABKAkSFQoNc3RhcnRlZF9hdF9ucxgFIAEoAyLrAQoMV29ya2VyU3RhdHVzEisKBndvcmtlchgBIAEoCzIbLm1mdGlrby5jb21tb24udjEuV29ya2VyUmVmEg0KBXBoYXNlGAIgASgJEg0KBXN0YWdlGAMgASgJEg8KB3JlbGVhc2UYBCABKAkSFAoMc2hpbV9yZWxlYXNlGAUgASgJEhAKCHJlc3RhcnRzGAYgASgNEhEKCXJzc19ieXRlcxgHIAEoAxIVCg1zdGFydGVkX2F0X25zGAggASgDEi0KCWxhc3RfZXhpdBgJIAEoCzIaLm1mdGlrby5jb21tb24udjEuRXhpdEluZm8ilQEKDVNlbGVjdG9yU3RhdGUSLQoEc3BlYxgBIAEoCzIfLm1mdGlrby5zZXNzaW9uLnYxLlNlbGVjdG9yRGVjbBINCgVlcG9jaBgCIAEoBBIPCgdtZW1iZXJzGAMgAygJEg8KB2N1cnJlbnQYBCABKAkSDgoGY2VudGVyGAUgASgJEhQKDGNlbnRlcl9hdF9ucxgGIAEoAyIZCglQbGFjZW1lbnQSDAoEY29ubhgBIAEoCSq3AQoFUGhhc2USFQoRUEhBU0VfVU5TUEVDSUZJRUQQABIRCg1QSEFTRV9QRU5ESU5HEAESEQoNUEhBU0VfV0FJVElORxACEhIKDlBIQVNFX1NUQVJUSU5HEAMSEQoNUEhBU0VfUlVOTklORxAEEhIKDlBIQVNFX1NUT1BQSU5HEAUSFAoQUEhBU0VfUkVTVEFSVElORxAGEg4KClBIQVNFX0RPTkUQBxIQCgxQSEFTRV9GQUlMRUQQCCqJAQoKRW50cnlTdGF0ZRIbChdFTlRSWV9TVEFURV9VTlNQRUNJRklFRBAAEhcKE0VOVFJZX1NUQVRFX1BFTkRJTkcQARIVChFFTlRSWV9TVEFURV9SRUFEWRACEhgKFEVOVFJZX1NUQVRFX1JFSkVDVEVEEAMSFAoQRU5UUllfU1RBVEVfREVBRBAEQkRaQmdpdGh1Yi5jb20vQnVsbGlvbkJlYXIvbWZ0aWtvL2NvbnRyYWN0L2dlbi9tZnRpa28vc3RhdGUvdjE7c3RhdGV2MWIGcHJvdG8z", [file_mftiko_common_v1_common, file_mftiko_session_v1_session]);
 
 /**
  * @generated from message mftiko.state.v1.Account
@@ -36,7 +36,7 @@ export type Account = Message<"mftiko.state.v1.Account"> & {
   kind: string;
 
   /**
-   * 以 TD instance 的公鑰封裝；etcd 裡不放明文
+   * AccountCredentials 以 TD instance 的公鑰封裝（D613、§3.6）；etcd 裡不放明文
    *
    * @generated from field: bytes sealed_credentials = 3;
    */
@@ -59,6 +59,57 @@ export type Account = Message<"mftiko.state.v1.Account"> & {
  */
 export const AccountSchema: GenMessage<Account> = /*@__PURE__*/
   messageDesc(file_mftiko_state_v1_state, 0);
+
+/**
+ * sealed_credentials 封裝前的明文（D613）。只在封裝工具、API server 與 TD agent 的記憶體裡；不進 etcd、不進 log。
+ * api_id 與 kind 一起封進去，解開之後與帳號的 key、宣告比對：一個帳號的密文搬到另一個帳號底下就解不出來用。
+ *
+ * @generated from message mftiko.state.v1.AccountCredentials
+ */
+export type AccountCredentials = Message<"mftiko.state.v1.AccountCredentials"> & {
+  /**
+   * @generated from field: int64 api_id = 1;
+   */
+  apiId: bigint;
+
+  /**
+   * @generated from field: string kind = 2;
+   */
+  kind: string;
+
+  /**
+   * hmac | ed25519
+   *
+   * @generated from field: string key_type = 3;
+   */
+  keyType: string;
+
+  /**
+   * @generated from field: string key = 4;
+   */
+  key: string;
+
+  /**
+   * HMAC secret，或 PEM 編碼的 ed25519 私鑰
+   *
+   * @generated from field: string secret = 5;
+   */
+  secret: string;
+
+  /**
+   * OKX
+   *
+   * @generated from field: string passphrase = 6;
+   */
+  passphrase: string;
+};
+
+/**
+ * Describes the message mftiko.state.v1.AccountCredentials.
+ * Use `create(AccountCredentialsSchema)` to create a new message.
+ */
+export const AccountCredentialsSchema: GenMessage<AccountCredentials> = /*@__PURE__*/
+  messageDesc(file_mftiko_state_v1_state, 1);
 
 /**
  * @generated from message mftiko.state.v1.AccountSettings
@@ -93,7 +144,7 @@ export type AccountSettings = Message<"mftiko.state.v1.AccountSettings"> & {
  * Use `create(AccountSettingsSchema)` to create a new message.
  */
 export const AccountSettingsSchema: GenMessage<AccountSettings> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 1);
+  messageDesc(file_mftiko_state_v1_state, 2);
 
 /**
  * @generated from message mftiko.state.v1.SessionStatus
@@ -154,7 +205,7 @@ export type SessionStatus = Message<"mftiko.state.v1.SessionStatus"> & {
  * Use `create(SessionStatusSchema)` to create a new message.
  */
 export const SessionStatusSchema: GenMessage<SessionStatus> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 2);
+  messageDesc(file_mftiko_state_v1_state, 3);
 
 /**
  * @generated from message mftiko.state.v1.StateSnapshot
@@ -200,7 +251,7 @@ export type StateSnapshot = Message<"mftiko.state.v1.StateSnapshot"> & {
  * Use `create(StateSnapshotSchema)` to create a new message.
  */
 export const StateSnapshotSchema: GenMessage<StateSnapshot> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 3);
+  messageDesc(file_mftiko_state_v1_state, 4);
 
 /**
  * MD、TD 的需求項目（§3.3）。
@@ -251,7 +302,7 @@ export type DemandEntry = Message<"mftiko.state.v1.DemandEntry"> & {
  * Use `create(DemandEntrySchema)` to create a new message.
  */
 export const DemandEntrySchema: GenMessage<DemandEntry> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 4);
+  messageDesc(file_mftiko_state_v1_state, 5);
 
 /**
  * STS 的指派（§3.3）。STS agent 只跑有指派的 session。
@@ -303,7 +354,7 @@ export type SessionDemand = Message<"mftiko.state.v1.SessionDemand"> & {
  * Use `create(SessionDemandSchema)` to create a new message.
  */
 export const SessionDemandSchema: GenMessage<SessionDemand> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 5);
+  messageDesc(file_mftiko_state_v1_state, 6);
 
 /**
  * 一個需求項目目前的 ack，由 controller 從 provider 的 EntryStatus 抄來。
@@ -358,7 +409,7 @@ export type Binding = Message<"mftiko.state.v1.Binding"> & {
  * Use `create(BindingSchema)` to create a new message.
  */
 export const BindingSchema: GenMessage<Binding> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 6);
+  messageDesc(file_mftiko_state_v1_state, 7);
 
 /**
  * 不綁 lease（§3.2 W7）。provider 的 AgentRecord 不在時，是它最後寫下的狀態。
@@ -407,7 +458,7 @@ export type EntryStatus = Message<"mftiko.state.v1.EntryStatus"> & {
  * Use `create(EntryStatusSchema)` to create a new message.
  */
 export const EntryStatusSchema: GenMessage<EntryStatus> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 7);
+  messageDesc(file_mftiko_state_v1_state, 8);
 
 /**
  * @generated from message mftiko.state.v1.Universe
@@ -443,7 +494,7 @@ export type Universe = Message<"mftiko.state.v1.Universe"> & {
  * Use `create(UniverseSchema)` to create a new message.
  */
 export const UniverseSchema: GenMessage<Universe> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 8);
+  messageDesc(file_mftiko_state_v1_state, 9);
 
 /**
  * 綁在選主 session 的 lease 上（§3.2 W7）：存在就表示這個 instance 有活著的 agent。
@@ -482,7 +533,7 @@ export type AgentRecord = Message<"mftiko.state.v1.AgentRecord"> & {
  * Use `create(AgentRecordSchema)` to create a new message.
  */
 export const AgentRecordSchema: GenMessage<AgentRecord> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 9);
+  messageDesc(file_mftiko_state_v1_state, 10);
 
 /**
  * 不綁 lease（§3.2 W7），只在階段改變時寫；worker 確定不在之後由 agent 刪除。
@@ -547,7 +598,7 @@ export type WorkerStatus = Message<"mftiko.state.v1.WorkerStatus"> & {
  * Use `create(WorkerStatusSchema)` to create a new message.
  */
 export const WorkerStatusSchema: GenMessage<WorkerStatus> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 10);
+  messageDesc(file_mftiko_state_v1_state, 11);
 
 /**
  * @generated from message mftiko.state.v1.SelectorState
@@ -595,7 +646,7 @@ export type SelectorState = Message<"mftiko.state.v1.SelectorState"> & {
  * Use `create(SelectorStateSchema)` to create a new message.
  */
 export const SelectorStateSchema: GenMessage<SelectorState> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 11);
+  messageDesc(file_mftiko_state_v1_state, 12);
 
 /**
  * @generated from message mftiko.state.v1.Placement
@@ -614,7 +665,7 @@ export type Placement = Message<"mftiko.state.v1.Placement"> & {
  * Use `create(PlacementSchema)` to create a new message.
  */
 export const PlacementSchema: GenMessage<Placement> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 12);
+  messageDesc(file_mftiko_state_v1_state, 13);
 
 /**
  * @generated from enum mftiko.state.v1.Phase
