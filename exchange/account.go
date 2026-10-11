@@ -61,7 +61,8 @@ type Account interface {
 	// first request goes out.
 	Snapshot(now time.Time) ([]Call[Page[AccountSnapshot]], error)
 
-	// Leverage answers td.view's EnsureLeverage.
+	// Leverage fills the account worker's leverage cache at recon. td.view's Leverage answers from
+	// that cache and never calls this (D606).
 	Leverage(now time.Time, inst *symbol.Info) (Call[float64], error)
 
 	// NewStream returns the private websocket codec for one connection. Not needed, and not opened,
@@ -132,7 +133,8 @@ type AccountSnapshot struct {
 	AsOfNs     int64
 }
 
-// OrderUpdate follows td.v1.Order, with the instrument as the venue names it.
+// OrderUpdate follows td.v1.Order, with the instrument as the venue names it. RejectReason goes to
+// td.v1.OrderUpdate.reason, not to the Order record (D610).
 type OrderUpdate struct {
 	Exch          symbol.ExchKey
 	OrderID       string

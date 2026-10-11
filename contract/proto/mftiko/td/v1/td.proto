@@ -7,20 +7,48 @@ import "mftiko/common/v1/common.proto";
 
 option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1;tdv1";
 
+// 一張單的狀態（D610）。出現在 OrderUpdate 與快照的 Order 裡。
+// PENDING_NEW、PENDING_CANCEL 是 TD 的在途標記：請求已經送往交易所，還沒有確定的結果。
 enum OrderStatus {
   ORDER_STATUS_UNSPECIFIED = 0;
-  ORDER_STATUS_PENDING_NEW = 1;
+  ORDER_STATUS_PENDING_NEW = 1; // TD 已送出下單，交易所還沒回答
   ORDER_STATUS_NEW = 2;
   ORDER_STATUS_PARTIALLY_FILLED = 3;
   ORDER_STATUS_FILLED = 4;
-  ORDER_STATUS_PENDING_CANCEL = 5;
+  ORDER_STATUS_PENDING_CANCEL = 5; // TD 已送出撤單，交易所還沒回答
   ORDER_STATUS_CANCELLED = 6;
-  ORDER_STATUS_REJECTED = 7;
+  ORDER_STATUS_REJECTED = 7; // 交易所拒單，或查單後確定沒下成（REJECT_CODE_NOT_PLACED）
   ORDER_STATUS_EXPIRED = 8;
-  ORDER_STATUS_UNKNOWN = 9;
+  ORDER_STATUS_UNKNOWN = 9; // 下單送出但交易所沒有回答，worker 查單之後收斂（D605）
+}
+
+// 1xx 的名字（D610、PROTOCOL §7.2）。代碼欄位是 int32，因為它也帶 2xx 與交易所原生代碼；這個 enum 只替 1xx 取名。
+// 101–119 是本地拒絕，什麼都沒送出，只出現在 td.order 的回覆；120 起是送出之後確定沒下成，只出現在 OrderUpdate。
+// 只列一期會碰到、有票驗收的；之後碰到新的情況再加。
+enum RejectCode {
+  REJECT_CODE_UNSPECIFIED = 0;
+  REJECT_CODE_ACCOUNT_OFFLINE = 101; // td.order 沒有 responder：account worker 不在，或還沒完成 Start。由 SDK 產生
+  REJECT_CODE_ACCOUNT_DEGRADED = 102; // 私有連線斷線中，暫停收新單；撤單照常（D603）
+  REJECT_CODE_HEDGE_MODE = 103; // 執行中發現帳號是雙向持倉，或 params 帶了持倉方向鍵（D607）
+  REJECT_CODE_ALGO_MISMATCH = 104; // algo_id 與 client_order_id 的 algo 欄位不一致，或撤的單沒有 client_order_id（D602）
+  REJECT_CODE_VENUE_NOT_TRADABLE = 105; // 帳號種類不能交易這個商品的 venue（D301）
+  REJECT_CODE_INVALID_ORDER = 106; // 商品不存在或不是 TRADABLE；數量或價格不合商品規格（tick、step、上下限）；client_order_id 解不開
+  REJECT_CODE_ORDER_NOT_OPEN = 107; // 撤單的目標不是掛單：TD 不認得這張單，或它已經終結（例如撤單與成交擦身而過）
+  REJECT_CODE_RATE_LIMITED = 108; // 這個帳號的下單額度用完，或交易所以 429、418 要求停送（D609、D420）。不排隊、不重試
+  REJECT_CODE_NOT_PLACED = 120; // 主動查單後確定交易所沒有這張單（D605）
+}
+
+// account worker 的狀態（D603、D606）。td.view 的回覆與 tdctl.Report 都帶它。
+enum AccountState {
+  ACCOUNT_STATE_UNSPECIFIED = 0;
+  ACCOUNT_STATE_READY = 1;
+  ACCOUNT_STATE_DEGRADED = 2; // 私有 websocket 斷線：新單以 102 拒絕，撤單照常（D603）
+  ACCOUNT_STATE_UNAVAILABLE = 3; // 執行中發現雙向持倉：新單以 103 拒絕，撤單照常（D607）
 }
 
 // ---------- td.order.{api_id} ----------
+// request／reply（D610）。回覆只有兩種：ack（TD 收下了，接著送往交易所），或本地拒絕（1xx，什麼都沒送出）。
+// 之後的狀態一律從 td.evt.{api_id} 拿。
 
 message OrderRequest {
   oneof req {
@@ -33,8 +61,8 @@ message OrderRequest {
 }
 
 message Submit {
-  string session_id = 1;
-  string ticker = 2; // 今天是 UniversalTicker。平面之間改傳 UID 是後續（D203），這一版不改 td 的欄位
+  string session_id = 1; // 只給 log 與歸屬
+  uint32 uid = 2; // 商品（D203）
   mftiko.common.v1.Side side = 3;
   mftiko.common.v1.OrderType order_type = 4;
   optional double qty = 5; // 單位是 contract_value_ccy（D203）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數
@@ -43,72 +71,65 @@ message Submit {
   mftiko.common.v1.TimeInForce tif = 8;
   bool reduce_only = 9;
   string client_order_id = 10;
+  // 交易所特有的參數，原樣交給 adapter。positionSide、posSide、positionIdx 一律以 103 拒絕（D607）
   map<string, string> params = 11;
   uint32 algo_id = 12; // 必須等於 client_order_id 的 algo 欄位（D602）
 }
 
 message Cancel {
-  string session_id = 1;
-  string ticker = 2;
+  string session_id = 1; // 只給 log 與歸屬
+  uint32 uid = 2;
   string client_order_id = 3;
   string order_id = 4;
-  uint32 algo_id = 5; // 目標單的 client_order_id 的 algo 欄位必須等於它；沒有 client_order_id 的單一律拒絕（D602）
+  uint32 algo_id = 5; // 目標單的 client_order_id 的 algo 欄位必須等於它；沒有 client_order_id 的單一律以 104 拒絕（D602）
 }
 
 // 撤掉這個帳號上 client_order_id 的 algo 欄位等於 algo_id 的所有掛單（D602）。
 // 只看 algo 欄位，不分 session、incarnation：上一個進程或上一個 session 留下的也算。
+// 回覆只說 TD 收下了；每一張單撤成或撤不成，各自是一則 OrderUpdate（D610）。
 message BatchCancel {
   uint32 algo_id = 1;
-  repeated string tickers = 2; // 空 = 全部商品
-  uint32 timeout_ms = 3;
+  repeated uint32 uids = 2; // 空 = 全部商品
+  reserved 3; // 原本的 timeout_ms：結果改由 td.evt 交付（D610）
+  reserved "timeout_ms";
 }
 
+// td.order 的回覆（D610）。
 message OrderReply {
-  oneof reply {
-    OrderAck ack = 1;
-    mftiko.common.v1.Error error = 3;
-    BatchCancelResult batch_cancel = 4;
-  }
-  reserved 2; // 原本的 cancel_session
-  reserved "cancel_session";
-}
-
-message OrderAck {
-  string client_order_id = 1;
-  bool accepted = 2; // TD 收下了請求，不代表交易所接受
-  int32 code = 3;
-  string reason = 4;
-}
-
-message BatchCancelResult {
-  uint32 algo_id = 1;
-  bool confirmed = 2;               // 全部撤掉並確認
-  repeated string cancelled = 3;    // client_order_id
-  repeated string unconfirmed = 4;  // 逾時前沒確認的 client_order_id
+  bool accepted = 1; // 真：TD 收下了，接著送往交易所。假：本地拒絕，什麼都沒送出
+  int32 code = 2; // accepted 為假時是 1xx（RejectCode）
+  string reason = 3;
+  string client_order_id = 4; // Submit、Cancel 的 client_order_id；BatchCancel 是空的
 }
 
 // ---------- td.view.{api_id} ----------
+// 只讀 account worker 的記憶體，不打交易所（D606）。
 
 message ViewRequest {
   oneof req {
     OmsViewRequest oms = 1;
     LedgerViewRequest ledger = 2;
-    EnsureLeverageRequest leverage = 3;
+    LeverageRequest leverage = 3;
   }
 }
 
 message OmsViewRequest {
-  string session_id = 1;
-  bool settled = 2;
-  uint32 algo_id = 3; // 非 0 時改以 algo 篩選，涵蓋上一個進程、上一個 session 留下的單（D602）
+  reserved 1; // 原本的 session_id：訂單只帶 algo，不帶 session（D602、D610）
+  reserved "session_id";
+  bool settled = 2; // 包含記憶體裡保留的已終結單；保留量有上限，更早的在 Postgres（D606）
+  uint32 algo_id = 3; // 非 0 時以 algo 篩選，涵蓋上一個進程、上一個 session 留下的單（D602）
 }
 
-message LedgerViewRequest {}
-
-message EnsureLeverageRequest {
-  string ticker = 1;
+message LedgerViewRequest {
+  repeated uint32 uids = 1; // 只要這些商品的持倉；空 = 全部。餘額一律全部回（D606）
 }
 
+// 本地的槓桿快取：recon 時讀入，私有事件更新（D606）。
+message LeverageRequest {
+  uint32 uid = 1;
+}
+
+// 快照還沒好也照樣回，不擋、不等：呼叫端看 state、reconciled_at_ns 判斷新舊（D606）。
 message ViewReply {
   oneof reply {
     OmsView oms = 1;
@@ -116,24 +137,28 @@ message ViewReply {
     LeverageInfo leverage = 3;
     mftiko.common.v1.Error error = 4;
   }
+  AccountState state = 10;
+  int64 reconciled_at_ns = 11; // 最近一次 recon 完成的時間；0 = 這個 incarnation 還沒完成第一次 recon
+  uint32 incarnation = 12;
+  uint64 seq = 13; // 這份快照已經涵蓋到的 td.evt seq：之後只要套用 seq 更大、incarnation 相同的事件
 }
 
 message OmsView {
   repeated Order orders = 1;
-  uint32 incarnation = 2;
-  int64 as_of_ns = 3;
+  reserved 2, 3; // incarnation、as_of_ns 移到 ViewReply（D606）
+  reserved "incarnation", "as_of_ns";
 }
 
 message LedgerView {
   repeated Balance balances = 1;
   repeated Position positions = 2;
-  uint32 incarnation = 3;
-  int64 as_of_ns = 4;
+  reserved 3, 4; // incarnation、as_of_ns 移到 ViewReply（D606）
+  reserved "incarnation", "as_of_ns";
 }
 
 message LeverageInfo {
-  string ticker = 1;
-  double leverage = 2;
+  uint32 uid = 1;
+  optional double leverage = 2; // 不設 = 快取裡沒有這個商品
 }
 
 // ---------- td.evt.{api_id} ----------
@@ -142,20 +167,47 @@ message AccountEvent {
   uint64 seq = 1; // 每個 incarnation 從 1 起算
   mftiko.common.v1.WorkerRef source = 2;
   oneof event {
-    Order order_update = 10;
+    OrderUpdate order_update = 10;
     Fill fill = 11;
-    OrderReject order_reject = 12;
-    CancelReject cancel_reject = 13;
     BalanceUpdate balance_update = 14;
     PositionUpdate position_update = 15;
     Recon recon = 17;
   }
+  reserved 12, 13; // 原本的 order_reject、cancel_reject：收進 OrderUpdate（D610）
+  reserved "order_reject", "cancel_reject";
   reserved 16; // 原本的 account_reset：由 Recon 取代（D603）
   reserved "account_reset";
 }
 
+// 一張單的一次變化（D610）。order 是變化之後的完整狀態，cause 說為什麼變。
+// 拒單（交易所拒單、查單後確定沒下成）也是一則 OrderUpdate，status 是 REJECTED。
+// 撤單被拒：status 從 PENDING_CANCEL 回到原本的狀態（太晚了就是 FILLED），cause 是 CANCEL_REJECTED。
+// 本地拒絕只在 td.order 的回覆裡，不發到這裡。同一個 client_order_id 的同一次變化只發一則：交易所的回答與私有事件
+// 都報了，worker 發佈前去重。
+message OrderUpdate {
+  Order order = 1;
+  OrderCause cause = 2;
+  int32 code = 3; // 只有 REJECTED、CANCEL_REJECTED：2xx、交易所原生代碼，或 120（NOT_PLACED）
+  string reason = 4;
+}
+
+enum OrderCause {
+  ORDER_CAUSE_UNSPECIFIED = 0;
+  ORDER_CAUSE_SUBMITTED = 1; // TD 送出下單 → PENDING_NEW
+  ORDER_CAUSE_ACCEPTED = 2; // 交易所接受 → NEW
+  ORDER_CAUSE_FILLED = 3; // 成交 → PARTIALLY_FILLED 或 FILLED；明細在 Fill
+  ORDER_CAUSE_CANCEL_REQUESTED = 4; // TD 送出撤單 → PENDING_CANCEL
+  ORDER_CAUSE_CANCELLED = 5; // → CANCELLED：策略撤的、BatchCancel、交易所撤的都是
+  ORDER_CAUSE_CANCEL_REJECTED = 6; // 撤單被拒，回到原本的狀態
+  ORDER_CAUSE_REJECTED = 7; // → REJECTED
+  ORDER_CAUSE_EXPIRED = 8; // → EXPIRED
+  ORDER_CAUSE_OUTCOME_UNKNOWN = 9; // 下單送出但交易所沒有回答 → UNKNOWN。撤單沒有回答時停在 PENDING_CANCEL（D605）
+  ORDER_CAUSE_RECONCILED = 10; // recon 或主動查單之後，交易所的狀態和 TD 原本記的不同（D605）
+}
+
+// 一張單的狀態紀錄：OrderUpdate、OmsView、Recon 共用。拒絕的原因在 OrderUpdate 上，不在這裡（D610）。
 message Order {
-  string ticker = 1;
+  uint32 uid = 1; // 商品（D203）
   string order_id = 2;
   string client_order_id = 3;
   mftiko.common.v1.Side side = 4;
@@ -166,13 +218,14 @@ message Order {
   optional double price = 9; // 同 Submit.price，單位是 price_ccy（D203）
   double filled_qty = 10; // 已成交數量，單位同 qty（contract_value_ccy，D203）
   optional double avg_price = 11; // 同 Submit.price，單位是 price_ccy（D203）
-  string reject_reason = 12;
+  reserved 12; // 原本的 reject_reason：改在 OrderUpdate.code、reason（D610）
+  reserved "reject_reason";
   int64 exch_ts_ns = 13;
   int64 td_ts_ns = 14;
 }
 
 message Fill {
-  string ticker = 1;
+  uint32 uid = 1; // 商品（D203）
   // 交易所的 trade id。WS 與 REST 必須給同一個值：落庫以 (api_id, fill_id) 去重（D601）。
   string fill_id = 2;
   string order_id = 3;
@@ -186,21 +239,6 @@ message Fill {
   int64 exch_ts_ns = 11;
 }
 
-message OrderReject {
-  string client_order_id = 1;
-  string order_id = 2;
-  string ticker = 3;
-  int32 code = 4;
-  string reason = 5;
-}
-
-message CancelReject {
-  string client_order_id = 1;
-  string order_id = 2;
-  int32 code = 3;
-  string reason = 4;
-}
-
 message Balance {
   string asset = 1;
   double free = 2;
@@ -208,8 +246,9 @@ message Balance {
   double prelock = 4;
 }
 
+// 一期只支援單向持倉，size 帶號：負的是空（D607）。
 message Position {
-  string ticker = 1;
+  uint32 uid = 1; // 商品（D203）
   double size = 2; // 持倉數量，單位同 Submit.qty（contract_value_ccy，D203）
   optional double entry_price = 3; // 同 Submit.price，單位是 price_ccy（D203）
   optional double mark_price = 4; // 同 Submit.price，單位是 price_ccy（D203）
@@ -225,7 +264,7 @@ message PositionUpdate {
   repeated Position positions = 1;
 }
 
-// 帳號狀態的整份快照（DECISIONS D603）。SDK 把它交給策略的 OnRecon：
+// 帳號狀態的整份快照（DECISIONS D603、D604）。SDK 把它交給策略的 OnRecon：
 // open_orders 先篩成自己宣告的 algo_id，positions、balances 原樣給。
 // 和其他事件共用 seq；策略整份換掉自己的狀態，之後的事件照常疊上去。
 message Recon {
@@ -239,6 +278,6 @@ message Recon {
 
 enum ReconReason {
   RECON_REASON_UNSPECIFIED = 0;
-  RECON_REASON_RECONNECT = 1;   // 私有 websocket 重連並 recon 之後
-  RECON_REASON_INCARNATION = 2; // account worker 換了 incarnation
+  RECON_REASON_RECONNECT = 1; // 私有 websocket 重連並 recon 之後
+  RECON_REASON_INCARNATION = 2; // account worker 換了 incarnation：被重新拉起之後的第一次 recon（D604）
 }

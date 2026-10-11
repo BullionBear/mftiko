@@ -3,6 +3,8 @@ syntax = "proto3";
 
 package mftiko.tdctl.v1;
 
+import "mftiko/td/v1/td.proto";
+
 option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/tdctl/v1;tdctlv1";
 
 message InitPayload {
@@ -10,7 +12,8 @@ message InitPayload {
   string kind = 2; // 帳號種類（D301），同 state.v1.Account.kind
   string td_instance = 3;
   uint32 cancel_on_disconnect_s = 4;
-  Credentials credentials = 5; // 只經 socketpair 送進去
+  Credentials credentials = 5; // 交易所的憑證，只經 socketpair 送進去
+  NatsCredentials nats = 6; // 這個帳號專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D611）
 }
 
 message Credentials {
@@ -20,7 +23,14 @@ message Credentials {
   string passphrase = 4;
 }
 
-// Start：建 HTTP 連線池、連私有 websocket、recon。全部完成才回 Done(START, ok)。
+// TD agent 為這個 api_id 簽的 user JWT。權限見 PROTOCOL §7。
+message NatsCredentials {
+  string user_jwt = 1;
+  string seed = 2; // NKey seed，只在進程記憶體裡
+  string inbox_prefix = 3; // _INBOX_td_{api_id}；worker 以它設定 CustomInboxPrefix
+}
+
+// Start：建 HTTP 連線池、連私有 websocket、recon。全部完成才回 Done(START, ok)，之後才服務 td.order（D610）。
 message StartPayload {}
 
 message Command {
@@ -29,26 +39,19 @@ message Command {
   }
 }
 
-// drain-replace 的第一步：新單以可重試的錯誤拒絕，等在途 ack 收齊。
+// drain-replace 的第一步：不收新單，等在途 ack 收齊。一期沒有人送它，新單的拒單碼等 drain-replace 落地時再加（D610）。
 message Drain {
   uint32 deadline_ms = 1;
 }
 
 message Report {
-  AccountState state = 1;
+  mftiko.td.v1.AccountState state = 1; // 與 td.view 回覆的 state 相同（D606）
   string reason = 2;
   int64 reconciled_at_ns = 3;
   uint32 open_orders = 4;
   uint32 inflight = 5;
   bool draining = 6;
-  // 這個 incarnation 下過單的商品 → 第一次 Submit 的時間（DECISIONS D601）。TD agent 據此建 backfill 的 scope。
+  // 這個 incarnation 下過單的商品（UID，D203）→ 第一次 Submit 的時間（DECISIONS D601）。TD agent 據此建 backfill 的 scope。
   // 新商品的第一筆單：worker 先送出含它的 Report，再送單。
-  map<string, int64> first_submit_ns = 7;
-}
-
-enum AccountState {
-  ACCOUNT_STATE_UNSPECIFIED = 0;
-  ACCOUNT_STATE_READY = 1;
-  ACCOUNT_STATE_DEGRADED = 2; // 私有 websocket 斷線：新單以 1xx 拒絕，撤單照常（D603）
-  ACCOUNT_STATE_UNAVAILABLE = 3;
+  map<uint32, int64> first_submit_ns = 7;
 }

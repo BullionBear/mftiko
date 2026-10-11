@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mftiko/td/v1/td.proto.
  */
 export const file_mftiko_td_v1_td: GenFile = /*@__PURE__*/
-  fileDesc("ChVtZnRpa28vdGQvdjEvdGQucHJvdG8SDG1mdGlrby50ZC52MSKuAQoMT3JkZXJSZXF1ZXN0EiYKBnN1Ym1pdBgBIAEoCzIULm1mdGlrby50ZC52MS5TdWJtaXRIABImCgZjYW5jZWwYAiABKAsyFC5tZnRpa28udGQudjEuQ2FuY2VsSAASMQoMYmF0Y2hfY2FuY2VsGAQgASgLMhkubWZ0aWtvLnRkLnYxLkJhdGNoQ2FuY2VsSABCBQoDcmVxSgQIAxAEUg5jYW5jZWxfc2Vzc2lvbiKtAwoGU3VibWl0EhIKCnNlc3Npb25faWQYASABKAkSDgoGdGlja2VyGAIgASgJEiQKBHNpZGUYAyABKA4yFi5tZnRpa28uY29tbW9uLnYxLlNpZGUSLwoKb3JkZXJfdHlwZRgEIAEoDjIbLm1mdGlrby5jb21tb24udjEuT3JkZXJUeXBlEhAKA3F0eRgFIAEoAUgAiAEBEhYKCXF1b3RlX3F0eRgGIAEoAUgBiAEBEhIKBXByaWNlGAcgASgBSAKIAQESKgoDdGlmGAggASgOMh0ubWZ0aWtvLmNvbW1vbi52MS5UaW1lSW5Gb3JjZRITCgtyZWR1Y2Vfb25seRgJIAEoCBIXCg9jbGllbnRfb3JkZXJfaWQYCiABKAkSMAoGcGFyYW1zGAsgAygLMiAubWZ0aWtvLnRkLnYxLlN1Ym1pdC5QYXJhbXNFbnRyeRIPCgdhbGdvX2lkGAwgASgNGi0KC1BhcmFtc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAFCBgoEX3F0eUIMCgpfcXVvdGVfcXR5QggKBl9wcmljZSJoCgZDYW5jZWwSEgoKc2Vzc2lvbl9pZBgBIAEoCRIOCgZ0aWNrZXIYAiABKAkSFwoPY2xpZW50X29yZGVyX2lkGAMgASgJEhAKCG9yZGVyX2lkGAQgASgJEg8KB2FsZ29faWQYBSABKA0iQwoLQmF0Y2hDYW5jZWwSDwoHYWxnb19pZBgBIAEoDRIPCgd0aWNrZXJzGAIgAygJEhIKCnRpbWVvdXRfbXMYAyABKA0itQEKCk9yZGVyUmVwbHkSJQoDYWNrGAEgASgLMhYubWZ0aWtvLnRkLnYxLk9yZGVyQWNrSAASKAoFZXJyb3IYAyABKAsyFy5tZnRpa28uY29tbW9uLnYxLkVycm9ySAASNwoMYmF0Y2hfY2FuY2VsGAQgASgLMh8ubWZ0aWtvLnRkLnYxLkJhdGNoQ2FuY2VsUmVzdWx0SABCBwoFcmVwbHlKBAgCEANSDmNhbmNlbF9zZXNzaW9uIlMKCE9yZGVyQWNrEhcKD2NsaWVudF9vcmRlcl9pZBgBIAEoCRIQCghhY2NlcHRlZBgCIAEoCBIMCgRjb2RlGAMgASgFEg4KBnJlYXNvbhgEIAEoCSJfChFCYXRjaENhbmNlbFJlc3VsdBIPCgdhbGdvX2lkGAEgASgNEhEKCWNvbmZpcm1lZBgCIAEoCBIRCgljYW5jZWxsZWQYAyADKAkSEwoLdW5jb25maXJtZWQYBCADKAkirQEKC1ZpZXdSZXF1ZXN0EisKA29tcxgBIAEoCzIcLm1mdGlrby50ZC52MS5PbXNWaWV3UmVxdWVzdEgAEjEKBmxlZGdlchgCIAEoCzIfLm1mdGlrby50ZC52MS5MZWRnZXJWaWV3UmVxdWVzdEgAEjcKCGxldmVyYWdlGAMgASgLMiMubWZ0aWtvLnRkLnYxLkVuc3VyZUxldmVyYWdlUmVxdWVzdEgAQgUKA3JlcSJGCg5PbXNWaWV3UmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEg8KB3NldHRsZWQYAiABKAgSDwoHYWxnb19pZBgDIAEoDSITChFMZWRnZXJWaWV3UmVxdWVzdCInChVFbnN1cmVMZXZlcmFnZVJlcXVlc3QSDgoGdGlja2VyGAEgASgJIsABCglWaWV3UmVwbHkSJAoDb21zGAEgASgLMhUubWZ0aWtvLnRkLnYxLk9tc1ZpZXdIABIqCgZsZWRnZXIYAiABKAsyGC5tZnRpa28udGQudjEuTGVkZ2VyVmlld0gAEi4KCGxldmVyYWdlGAMgASgLMhoubWZ0aWtvLnRkLnYxLkxldmVyYWdlSW5mb0gAEigKBWVycm9yGAQgASgLMhcubWZ0aWtvLmNvbW1vbi52MS5FcnJvckgAQgcKBXJlcGx5IlUKB09tc1ZpZXcSIwoGb3JkZXJzGAEgAygLMhMubWZ0aWtvLnRkLnYxLk9yZGVyEhMKC2luY2FybmF0aW9uGAIgASgNEhAKCGFzX29mX25zGAMgASgDIocBCgpMZWRnZXJWaWV3EicKCGJhbGFuY2VzGAEgAygLMhUubWZ0aWtvLnRkLnYxLkJhbGFuY2USKQoJcG9zaXRpb25zGAIgAygLMhYubWZ0aWtvLnRkLnYxLlBvc2l0aW9uEhMKC2luY2FybmF0aW9uGAMgASgNEhAKCGFzX29mX25zGAQgASgDIjAKDExldmVyYWdlSW5mbxIOCgZ0aWNrZXIYASABKAkSEAoIbGV2ZXJhZ2UYAiABKAEitQMKDEFjY291bnRFdmVudBILCgNzZXEYASABKAQSKwoGc291cmNlGAIgASgLMhsubWZ0aWtvLmNvbW1vbi52MS5Xb3JrZXJSZWYSKwoMb3JkZXJfdXBkYXRlGAogASgLMhMubWZ0aWtvLnRkLnYxLk9yZGVySAASIgoEZmlsbBgLIAEoCzISLm1mdGlrby50ZC52MS5GaWxsSAASMQoMb3JkZXJfcmVqZWN0GAwgASgLMhkubWZ0aWtvLnRkLnYxLk9yZGVyUmVqZWN0SAASMwoNY2FuY2VsX3JlamVjdBgNIAEoCzIaLm1mdGlrby50ZC52MS5DYW5jZWxSZWplY3RIABI1Cg5iYWxhbmNlX3VwZGF0ZRgOIAEoCzIbLm1mdGlrby50ZC52MS5CYWxhbmNlVXBkYXRlSAASNwoPcG9zaXRpb25fdXBkYXRlGA8gASgLMhwubWZ0aWtvLnRkLnYxLlBvc2l0aW9uVXBkYXRlSAASJAoFcmVjb24YESABKAsyEy5tZnRpa28udGQudjEuUmVjb25IAEIHCgVldmVudEoECBAQEVINYWNjb3VudF9yZXNldCKMAwoFT3JkZXISDgoGdGlja2VyGAEgASgJEhAKCG9yZGVyX2lkGAIgASgJEhcKD2NsaWVudF9vcmRlcl9pZBgDIAEoCRIkCgRzaWRlGAQgASgOMhYubWZ0aWtvLmNvbW1vbi52MS5TaWRlEi8KCm9yZGVyX3R5cGUYBSABKA4yGy5tZnRpa28uY29tbW9uLnYxLk9yZGVyVHlwZRIpCgZzdGF0dXMYBiABKA4yGS5tZnRpa28udGQudjEuT3JkZXJTdGF0dXMSCwoDcXR5GAcgASgBEhYKCXF1b3RlX3F0eRgIIAEoAUgAiAEBEhIKBXByaWNlGAkgASgBSAGIAQESEgoKZmlsbGVkX3F0eRgKIAEoARIWCglhdmdfcHJpY2UYCyABKAFIAogBARIVCg1yZWplY3RfcmVhc29uGAwgASgJEhIKCmV4Y2hfdHNfbnMYDSABKAMSEAoIdGRfdHNfbnMYDiABKANCDAoKX3F1b3RlX3F0eUIICgZfcHJpY2VCDAoKX2F2Z19wcmljZSLbAQoERmlsbBIOCgZ0aWNrZXIYASABKAkSDwoHZmlsbF9pZBgCIAEoCRIQCghvcmRlcl9pZBgDIAEoCRIXCg9jbGllbnRfb3JkZXJfaWQYBCABKAkSJAoEc2lkZRgFIAEoDjIWLm1mdGlrby5jb21tb24udjEuU2lkZRINCgVwcmljZRgGIAEoARILCgNxdHkYByABKAESCwoDZmVlGAggASgBEhEKCWZlZV9hc3NldBgJIAEoCRIRCglsaXF1aWRpdHkYCiABKAkSEgoKZXhjaF90c19ucxgLIAEoAyJmCgtPcmRlclJlamVjdBIXCg9jbGllbnRfb3JkZXJfaWQYASABKAkSEAoIb3JkZXJfaWQYAiABKAkSDgoGdGlja2VyGAMgASgJEgwKBGNvZGUYBCABKAUSDgoGcmVhc29uGAUgASgJIlcKDENhbmNlbFJlamVjdBIXCg9jbGllbnRfb3JkZXJfaWQYASABKAkSEAoIb3JkZXJfaWQYAiABKAkSDAoEY29kZRgDIAEoBRIOCgZyZWFzb24YBCABKAkiRwoHQmFsYW5jZRINCgVhc3NldBgBIAEoCRIMCgRmcmVlGAIgASgBEg4KBmxvY2tlZBgDIAEoARIPCgdwcmVsb2NrGAQgASgBIs4BCghQb3NpdGlvbhIOCgZ0aWNrZXIYASABKAkSDAoEc2l6ZRgCIAEoARIYCgtlbnRyeV9wcmljZRgDIAEoAUgAiAEBEhcKCm1hcmtfcHJpY2UYBCABKAFIAYgBARIbCg51bnJlYWxpemVkX3BubBgFIAEoAUgCiAEBEhUKCGxldmVyYWdlGAYgASgBSAOIAQFCDgoMX2VudHJ5X3ByaWNlQg0KC19tYXJrX3ByaWNlQhEKD191bnJlYWxpemVkX3BubEILCglfbGV2ZXJhZ2UiOAoNQmFsYW5jZVVwZGF0ZRInCghiYWxhbmNlcxgBIAMoCzIVLm1mdGlrby50ZC52MS5CYWxhbmNlIjsKDlBvc2l0aW9uVXBkYXRlEikKCXBvc2l0aW9ucxgBIAMoCzIWLm1mdGlrby50ZC52MS5Qb3NpdGlvbiLXAQoFUmVjb24SEwoLaW5jYXJuYXRpb24YASABKA0SKQoGcmVhc29uGAIgASgOMhkubWZ0aWtvLnRkLnYxLlJlY29uUmVhc29uEigKC29wZW5fb3JkZXJzGAMgAygLMhMubWZ0aWtvLnRkLnYxLk9yZGVyEikKCXBvc2l0aW9ucxgEIAMoCzIWLm1mdGlrby50ZC52MS5Qb3NpdGlvbhInCghiYWxhbmNlcxgFIAMoCzIVLm1mdGlrby50ZC52MS5CYWxhbmNlEhAKCGFzX29mX25zGAYgASgDKqcCCgtPcmRlclN0YXR1cxIcChhPUkRFUl9TVEFUVVNfVU5TUEVDSUZJRUQQABIcChhPUkRFUl9TVEFUVVNfUEVORElOR19ORVcQARIUChBPUkRFUl9TVEFUVVNfTkVXEAISIQodT1JERVJfU1RBVFVTX1BBUlRJQUxMWV9GSUxMRUQQAxIXChNPUkRFUl9TVEFUVVNfRklMTEVEEAQSHwobT1JERVJfU1RBVFVTX1BFTkRJTkdfQ0FOQ0VMEAUSGgoWT1JERVJfU1RBVFVTX0NBTkNFTExFRBAGEhkKFU9SREVSX1NUQVRVU19SRUpFQ1RFRBAHEhgKFE9SREVSX1NUQVRVU19FWFBJUkVEEAgSGAoUT1JERVJfU1RBVFVTX1VOS05PV04QCSplCgtSZWNvblJlYXNvbhIcChhSRUNPTl9SRUFTT05fVU5TUEVDSUZJRUQQABIaChZSRUNPTl9SRUFTT05fUkVDT05ORUNUEAESHAoYUkVDT05fUkVBU09OX0lOQ0FSTkFUSU9OEAJCPlo8Z2l0aHViLmNvbS9CdWxsaW9uQmVhci9tZnRpa28vY29udHJhY3QvZ2VuL21mdGlrby90ZC92MTt0ZHYxYgZwcm90bzM", [file_mftiko_common_v1_common]);
+  fileDesc("ChVtZnRpa28vdGQvdjEvdGQucHJvdG8SDG1mdGlrby50ZC52MSKuAQoMT3JkZXJSZXF1ZXN0EiYKBnN1Ym1pdBgBIAEoCzIULm1mdGlrby50ZC52MS5TdWJtaXRIABImCgZjYW5jZWwYAiABKAsyFC5tZnRpa28udGQudjEuQ2FuY2VsSAASMQoMYmF0Y2hfY2FuY2VsGAQgASgLMhkubWZ0aWtvLnRkLnYxLkJhdGNoQ2FuY2VsSABCBQoDcmVxSgQIAxAEUg5jYW5jZWxfc2Vzc2lvbiKqAwoGU3VibWl0EhIKCnNlc3Npb25faWQYASABKAkSCwoDdWlkGAIgASgNEiQKBHNpZGUYAyABKA4yFi5tZnRpa28uY29tbW9uLnYxLlNpZGUSLwoKb3JkZXJfdHlwZRgEIAEoDjIbLm1mdGlrby5jb21tb24udjEuT3JkZXJUeXBlEhAKA3F0eRgFIAEoAUgAiAEBEhYKCXF1b3RlX3F0eRgGIAEoAUgBiAEBEhIKBXByaWNlGAcgASgBSAKIAQESKgoDdGlmGAggASgOMh0ubWZ0aWtvLmNvbW1vbi52MS5UaW1lSW5Gb3JjZRITCgtyZWR1Y2Vfb25seRgJIAEoCBIXCg9jbGllbnRfb3JkZXJfaWQYCiABKAkSMAoGcGFyYW1zGAsgAygLMiAubWZ0aWtvLnRkLnYxLlN1Ym1pdC5QYXJhbXNFbnRyeRIPCgdhbGdvX2lkGAwgASgNGi0KC1BhcmFtc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAFCBgoEX3F0eUIMCgpfcXVvdGVfcXR5QggKBl9wcmljZSJlCgZDYW5jZWwSEgoKc2Vzc2lvbl9pZBgBIAEoCRILCgN1aWQYAiABKA0SFwoPY2xpZW50X29yZGVyX2lkGAMgASgJEhAKCG9yZGVyX2lkGAQgASgJEg8KB2FsZ29faWQYBSABKA0iPgoLQmF0Y2hDYW5jZWwSDwoHYWxnb19pZBgBIAEoDRIMCgR1aWRzGAIgAygNSgQIAxAEUgp0aW1lb3V0X21zIlUKCk9yZGVyUmVwbHkSEAoIYWNjZXB0ZWQYASABKAgSDAoEY29kZRgCIAEoBRIOCgZyZWFzb24YAyABKAkSFwoPY2xpZW50X29yZGVyX2lkGAQgASgJIqcBCgtWaWV3UmVxdWVzdBIrCgNvbXMYASABKAsyHC5tZnRpa28udGQudjEuT21zVmlld1JlcXVlc3RIABIxCgZsZWRnZXIYAiABKAsyHy5tZnRpa28udGQudjEuTGVkZ2VyVmlld1JlcXVlc3RIABIxCghsZXZlcmFnZRgDIAEoCzIdLm1mdGlrby50ZC52MS5MZXZlcmFnZVJlcXVlc3RIAEIFCgNyZXEiRAoOT21zVmlld1JlcXVlc3QSDwoHc2V0dGxlZBgCIAEoCBIPCgdhbGdvX2lkGAMgASgNSgQIARACUgpzZXNzaW9uX2lkIiEKEUxlZGdlclZpZXdSZXF1ZXN0EgwKBHVpZHMYASADKA0iHgoPTGV2ZXJhZ2VSZXF1ZXN0EgsKA3VpZBgBIAEoDSKnAgoJVmlld1JlcGx5EiQKA29tcxgBIAEoCzIVLm1mdGlrby50ZC52MS5PbXNWaWV3SAASKgoGbGVkZ2VyGAIgASgLMhgubWZ0aWtvLnRkLnYxLkxlZGdlclZpZXdIABIuCghsZXZlcmFnZRgDIAEoCzIaLm1mdGlrby50ZC52MS5MZXZlcmFnZUluZm9IABIoCgVlcnJvchgEIAEoCzIXLm1mdGlrby5jb21tb24udjEuRXJyb3JIABIpCgVzdGF0ZRgKIAEoDjIaLm1mdGlrby50ZC52MS5BY2NvdW50U3RhdGUSGAoQcmVjb25jaWxlZF9hdF9ucxgLIAEoAxITCgtpbmNhcm5hdGlvbhgMIAEoDRILCgNzZXEYDSABKARCBwoFcmVwbHkiUQoHT21zVmlldxIjCgZvcmRlcnMYASADKAsyEy5tZnRpa28udGQudjEuT3JkZXJKBAgCEANKBAgDEARSC2luY2FybmF0aW9uUghhc19vZl9ucyKDAQoKTGVkZ2VyVmlldxInCghiYWxhbmNlcxgBIAMoCzIVLm1mdGlrby50ZC52MS5CYWxhbmNlEikKCXBvc2l0aW9ucxgCIAMoCzIWLm1mdGlrby50ZC52MS5Qb3NpdGlvbkoECAMQBEoECAQQBVILaW5jYXJuYXRpb25SCGFzX29mX25zIj8KDExldmVyYWdlSW5mbxILCgN1aWQYASABKA0SFQoIbGV2ZXJhZ2UYAiABKAFIAIgBAUILCglfbGV2ZXJhZ2Ui/AIKDEFjY291bnRFdmVudBILCgNzZXEYASABKAQSKwoGc291cmNlGAIgASgLMhsubWZ0aWtvLmNvbW1vbi52MS5Xb3JrZXJSZWYSMQoMb3JkZXJfdXBkYXRlGAogASgLMhkubWZ0aWtvLnRkLnYxLk9yZGVyVXBkYXRlSAASIgoEZmlsbBgLIAEoCzISLm1mdGlrby50ZC52MS5GaWxsSAASNQoOYmFsYW5jZV91cGRhdGUYDiABKAsyGy5tZnRpa28udGQudjEuQmFsYW5jZVVwZGF0ZUgAEjcKD3Bvc2l0aW9uX3VwZGF0ZRgPIAEoCzIcLm1mdGlrby50ZC52MS5Qb3NpdGlvblVwZGF0ZUgAEiQKBXJlY29uGBEgASgLMhMubWZ0aWtvLnRkLnYxLlJlY29uSABCBwoFZXZlbnRKBAgMEA1KBAgNEA5KBAgQEBFSDG9yZGVyX3JlamVjdFINY2FuY2VsX3JlamVjdFINYWNjb3VudF9yZXNldCJ4CgtPcmRlclVwZGF0ZRIiCgVvcmRlchgBIAEoCzITLm1mdGlrby50ZC52MS5PcmRlchInCgVjYXVzZRgCIAEoDjIYLm1mdGlrby50ZC52MS5PcmRlckNhdXNlEgwKBGNvZGUYAyABKAUSDgoGcmVhc29uGAQgASgJIocDCgVPcmRlchILCgN1aWQYASABKA0SEAoIb3JkZXJfaWQYAiABKAkSFwoPY2xpZW50X29yZGVyX2lkGAMgASgJEiQKBHNpZGUYBCABKA4yFi5tZnRpa28uY29tbW9uLnYxLlNpZGUSLwoKb3JkZXJfdHlwZRgFIAEoDjIbLm1mdGlrby5jb21tb24udjEuT3JkZXJUeXBlEikKBnN0YXR1cxgGIAEoDjIZLm1mdGlrby50ZC52MS5PcmRlclN0YXR1cxILCgNxdHkYByABKAESFgoJcXVvdGVfcXR5GAggASgBSACIAQESEgoFcHJpY2UYCSABKAFIAYgBARISCgpmaWxsZWRfcXR5GAogASgBEhYKCWF2Z19wcmljZRgLIAEoAUgCiAEBEhIKCmV4Y2hfdHNfbnMYDSABKAMSEAoIdGRfdHNfbnMYDiABKANCDAoKX3F1b3RlX3F0eUIICgZfcHJpY2VCDAoKX2F2Z19wcmljZUoECAwQDVINcmVqZWN0X3JlYXNvbiLYAQoERmlsbBILCgN1aWQYASABKA0SDwoHZmlsbF9pZBgCIAEoCRIQCghvcmRlcl9pZBgDIAEoCRIXCg9jbGllbnRfb3JkZXJfaWQYBCABKAkSJAoEc2lkZRgFIAEoDjIWLm1mdGlrby5jb21tb24udjEuU2lkZRINCgVwcmljZRgGIAEoARILCgNxdHkYByABKAESCwoDZmVlGAggASgBEhEKCWZlZV9hc3NldBgJIAEoCRIRCglsaXF1aWRpdHkYCiABKAkSEgoKZXhjaF90c19ucxgLIAEoAyJHCgdCYWxhbmNlEg0KBWFzc2V0GAEgASgJEgwKBGZyZWUYAiABKAESDgoGbG9ja2VkGAMgASgBEg8KB3ByZWxvY2sYBCABKAEiywEKCFBvc2l0aW9uEgsKA3VpZBgBIAEoDRIMCgRzaXplGAIgASgBEhgKC2VudHJ5X3ByaWNlGAMgASgBSACIAQESFwoKbWFya19wcmljZRgEIAEoAUgBiAEBEhsKDnVucmVhbGl6ZWRfcG5sGAUgASgBSAKIAQESFQoIbGV2ZXJhZ2UYBiABKAFIA4gBAUIOCgxfZW50cnlfcHJpY2VCDQoLX21hcmtfcHJpY2VCEQoPX3VucmVhbGl6ZWRfcG5sQgsKCV9sZXZlcmFnZSI4Cg1CYWxhbmNlVXBkYXRlEicKCGJhbGFuY2VzGAEgAygLMhUubWZ0aWtvLnRkLnYxLkJhbGFuY2UiOwoOUG9zaXRpb25VcGRhdGUSKQoJcG9zaXRpb25zGAEgAygLMhYubWZ0aWtvLnRkLnYxLlBvc2l0aW9uItcBCgVSZWNvbhITCgtpbmNhcm5hdGlvbhgBIAEoDRIpCgZyZWFzb24YAiABKA4yGS5tZnRpa28udGQudjEuUmVjb25SZWFzb24SKAoLb3Blbl9vcmRlcnMYAyADKAsyEy5tZnRpa28udGQudjEuT3JkZXISKQoJcG9zaXRpb25zGAQgAygLMhYubWZ0aWtvLnRkLnYxLlBvc2l0aW9uEicKCGJhbGFuY2VzGAUgAygLMhUubWZ0aWtvLnRkLnYxLkJhbGFuY2USEAoIYXNfb2ZfbnMYBiABKAMqpwIKC09yZGVyU3RhdHVzEhwKGE9SREVSX1NUQVRVU19VTlNQRUNJRklFRBAAEhwKGE9SREVSX1NUQVRVU19QRU5ESU5HX05FVxABEhQKEE9SREVSX1NUQVRVU19ORVcQAhIhCh1PUkRFUl9TVEFUVVNfUEFSVElBTExZX0ZJTExFRBADEhcKE09SREVSX1NUQVRVU19GSUxMRUQQBBIfChtPUkRFUl9TVEFUVVNfUEVORElOR19DQU5DRUwQBRIaChZPUkRFUl9TVEFUVVNfQ0FOQ0VMTEVEEAYSGQoVT1JERVJfU1RBVFVTX1JFSkVDVEVEEAcSGAoUT1JERVJfU1RBVFVTX0VYUElSRUQQCBIYChRPUkRFUl9TVEFUVVNfVU5LTk9XThAJKsQCCgpSZWplY3RDb2RlEhsKF1JFSkVDVF9DT0RFX1VOU1BFQ0lGSUVEEAASHwobUkVKRUNUX0NPREVfQUNDT1VOVF9PRkZMSU5FEGUSIAocUkVKRUNUX0NPREVfQUNDT1VOVF9ERUdSQURFRBBmEhoKFlJFSkVDVF9DT0RFX0hFREdFX01PREUQZxIdChlSRUpFQ1RfQ09ERV9BTEdPX01JU01BVENIEGgSIgoeUkVKRUNUX0NPREVfVkVOVUVfTk9UX1RSQURBQkxFEGkSHQoZUkVKRUNUX0NPREVfSU5WQUxJRF9PUkRFUhBqEh4KGlJFSkVDVF9DT0RFX09SREVSX05PVF9PUEVOEGsSHAoYUkVKRUNUX0NPREVfUkFURV9MSU1JVEVEEGwSGgoWUkVKRUNUX0NPREVfTk9UX1BMQUNFRBB4KoEBCgxBY2NvdW50U3RhdGUSHQoZQUNDT1VOVF9TVEFURV9VTlNQRUNJRklFRBAAEhcKE0FDQ09VTlRfU1RBVEVfUkVBRFkQARIaChZBQ0NPVU5UX1NUQVRFX0RFR1JBREVEEAISHQoZQUNDT1VOVF9TVEFURV9VTkFWQUlMQUJMRRADKsQCCgpPcmRlckNhdXNlEhsKF09SREVSX0NBVVNFX1VOU1BFQ0lGSUVEEAASGQoVT1JERVJfQ0FVU0VfU1VCTUlUVEVEEAESGAoUT1JERVJfQ0FVU0VfQUNDRVBURUQQAhIWChJPUkRFUl9DQVVTRV9GSUxMRUQQAxIgChxPUkRFUl9DQVVTRV9DQU5DRUxfUkVRVUVTVEVEEAQSGQoVT1JERVJfQ0FVU0VfQ0FOQ0VMTEVEEAUSHwobT1JERVJfQ0FVU0VfQ0FOQ0VMX1JFSkVDVEVEEAYSGAoUT1JERVJfQ0FVU0VfUkVKRUNURUQQBxIXChNPUkRFUl9DQVVTRV9FWFBJUkVEEAgSHwobT1JERVJfQ0FVU0VfT1VUQ09NRV9VTktOT1dOEAkSGgoWT1JERVJfQ0FVU0VfUkVDT05DSUxFRBAKKmUKC1JlY29uUmVhc29uEhwKGFJFQ09OX1JFQVNPTl9VTlNQRUNJRklFRBAAEhoKFlJFQ09OX1JFQVNPTl9SRUNPTk5FQ1QQARIcChhSRUNPTl9SRUFTT05fSU5DQVJOQVRJT04QAkI+WjxnaXRodWIuY29tL0J1bGxpb25CZWFyL21mdGlrby9jb250cmFjdC9nZW4vbWZ0aWtvL3RkL3YxO3RkdjFiBnByb3RvMw", [file_mftiko_common_v1_common]);
 
 /**
  * @generated from message mftiko.td.v1.OrderRequest
@@ -56,16 +56,18 @@ export const OrderRequestSchema: GenMessage<OrderRequest> = /*@__PURE__*/
  */
 export type Submit = Message<"mftiko.td.v1.Submit"> & {
   /**
+   * 只給 log 與歸屬
+   *
    * @generated from field: string session_id = 1;
    */
   sessionId: string;
 
   /**
-   * 今天是 UniversalTicker。平面之間改傳 UID 是後續（D203），這一版不改 td 的欄位
+   * 商品（D203）
    *
-   * @generated from field: string ticker = 2;
+   * @generated from field: uint32 uid = 2;
    */
-  ticker: string;
+  uid: number;
 
   /**
    * @generated from field: mftiko.common.v1.Side side = 3;
@@ -114,6 +116,8 @@ export type Submit = Message<"mftiko.td.v1.Submit"> & {
   clientOrderId: string;
 
   /**
+   * 交易所特有的參數，原樣交給 adapter。positionSide、posSide、positionIdx 一律以 103 拒絕（D607）
+   *
    * @generated from field: map<string, string> params = 11;
    */
   params: { [key: string]: string };
@@ -138,14 +142,16 @@ export const SubmitSchema: GenMessage<Submit> = /*@__PURE__*/
  */
 export type Cancel = Message<"mftiko.td.v1.Cancel"> & {
   /**
+   * 只給 log 與歸屬
+   *
    * @generated from field: string session_id = 1;
    */
   sessionId: string;
 
   /**
-   * @generated from field: string ticker = 2;
+   * @generated from field: uint32 uid = 2;
    */
-  ticker: string;
+  uid: number;
 
   /**
    * @generated from field: string client_order_id = 3;
@@ -158,7 +164,7 @@ export type Cancel = Message<"mftiko.td.v1.Cancel"> & {
   orderId: string;
 
   /**
-   * 目標單的 client_order_id 的 algo 欄位必須等於它；沒有 client_order_id 的單一律拒絕（D602）
+   * 目標單的 client_order_id 的 algo 欄位必須等於它；沒有 client_order_id 的單一律以 104 拒絕（D602）
    *
    * @generated from field: uint32 algo_id = 5;
    */
@@ -175,6 +181,7 @@ export const CancelSchema: GenMessage<Cancel> = /*@__PURE__*/
 /**
  * 撤掉這個帳號上 client_order_id 的 algo 欄位等於 algo_id 的所有掛單（D602）。
  * 只看 algo 欄位，不分 session、incarnation：上一個進程或上一個 session 留下的也算。
+ * 回覆只說 TD 收下了；每一張單撤成或撤不成，各自是一則 OrderUpdate（D610）。
  *
  * @generated from message mftiko.td.v1.BatchCancel
  */
@@ -187,14 +194,9 @@ export type BatchCancel = Message<"mftiko.td.v1.BatchCancel"> & {
   /**
    * 空 = 全部商品
    *
-   * @generated from field: repeated string tickers = 2;
+   * @generated from field: repeated uint32 uids = 2;
    */
-  tickers: string[];
-
-  /**
-   * @generated from field: uint32 timeout_ms = 3;
-   */
-  timeoutMs: number;
+  uids: number[];
 };
 
 /**
@@ -205,31 +207,36 @@ export const BatchCancelSchema: GenMessage<BatchCancel> = /*@__PURE__*/
   messageDesc(file_mftiko_td_v1_td, 3);
 
 /**
+ * td.order 的回覆（D610）。
+ *
  * @generated from message mftiko.td.v1.OrderReply
  */
 export type OrderReply = Message<"mftiko.td.v1.OrderReply"> & {
   /**
-   * @generated from oneof mftiko.td.v1.OrderReply.reply
+   * 真：TD 收下了，接著送往交易所。假：本地拒絕，什麼都沒送出
+   *
+   * @generated from field: bool accepted = 1;
    */
-  reply: {
-    /**
-     * @generated from field: mftiko.td.v1.OrderAck ack = 1;
-     */
-    value: OrderAck;
-    case: "ack";
-  } | {
-    /**
-     * @generated from field: mftiko.common.v1.Error error = 3;
-     */
-    value: Error;
-    case: "error";
-  } | {
-    /**
-     * @generated from field: mftiko.td.v1.BatchCancelResult batch_cancel = 4;
-     */
-    value: BatchCancelResult;
-    case: "batchCancel";
-  } | { case: undefined; value?: undefined };
+  accepted: boolean;
+
+  /**
+   * accepted 為假時是 1xx（RejectCode）
+   *
+   * @generated from field: int32 code = 2;
+   */
+  code: number;
+
+  /**
+   * @generated from field: string reason = 3;
+   */
+  reason: string;
+
+  /**
+   * Submit、Cancel 的 client_order_id；BatchCancel 是空的
+   *
+   * @generated from field: string client_order_id = 4;
+   */
+  clientOrderId: string;
 };
 
 /**
@@ -238,78 +245,6 @@ export type OrderReply = Message<"mftiko.td.v1.OrderReply"> & {
  */
 export const OrderReplySchema: GenMessage<OrderReply> = /*@__PURE__*/
   messageDesc(file_mftiko_td_v1_td, 4);
-
-/**
- * @generated from message mftiko.td.v1.OrderAck
- */
-export type OrderAck = Message<"mftiko.td.v1.OrderAck"> & {
-  /**
-   * @generated from field: string client_order_id = 1;
-   */
-  clientOrderId: string;
-
-  /**
-   * TD 收下了請求，不代表交易所接受
-   *
-   * @generated from field: bool accepted = 2;
-   */
-  accepted: boolean;
-
-  /**
-   * @generated from field: int32 code = 3;
-   */
-  code: number;
-
-  /**
-   * @generated from field: string reason = 4;
-   */
-  reason: string;
-};
-
-/**
- * Describes the message mftiko.td.v1.OrderAck.
- * Use `create(OrderAckSchema)` to create a new message.
- */
-export const OrderAckSchema: GenMessage<OrderAck> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 5);
-
-/**
- * @generated from message mftiko.td.v1.BatchCancelResult
- */
-export type BatchCancelResult = Message<"mftiko.td.v1.BatchCancelResult"> & {
-  /**
-   * @generated from field: uint32 algo_id = 1;
-   */
-  algoId: number;
-
-  /**
-   * 全部撤掉並確認
-   *
-   * @generated from field: bool confirmed = 2;
-   */
-  confirmed: boolean;
-
-  /**
-   * client_order_id
-   *
-   * @generated from field: repeated string cancelled = 3;
-   */
-  cancelled: string[];
-
-  /**
-   * 逾時前沒確認的 client_order_id
-   *
-   * @generated from field: repeated string unconfirmed = 4;
-   */
-  unconfirmed: string[];
-};
-
-/**
- * Describes the message mftiko.td.v1.BatchCancelResult.
- * Use `create(BatchCancelResultSchema)` to create a new message.
- */
-export const BatchCancelResultSchema: GenMessage<BatchCancelResult> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 6);
 
 /**
  * @generated from message mftiko.td.v1.ViewRequest
@@ -332,9 +267,9 @@ export type ViewRequest = Message<"mftiko.td.v1.ViewRequest"> & {
     case: "ledger";
   } | {
     /**
-     * @generated from field: mftiko.td.v1.EnsureLeverageRequest leverage = 3;
+     * @generated from field: mftiko.td.v1.LeverageRequest leverage = 3;
      */
-    value: EnsureLeverageRequest;
+    value: LeverageRequest;
     case: "leverage";
   } | { case: undefined; value?: undefined };
 };
@@ -344,24 +279,21 @@ export type ViewRequest = Message<"mftiko.td.v1.ViewRequest"> & {
  * Use `create(ViewRequestSchema)` to create a new message.
  */
 export const ViewRequestSchema: GenMessage<ViewRequest> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 7);
+  messageDesc(file_mftiko_td_v1_td, 5);
 
 /**
  * @generated from message mftiko.td.v1.OmsViewRequest
  */
 export type OmsViewRequest = Message<"mftiko.td.v1.OmsViewRequest"> & {
   /**
-   * @generated from field: string session_id = 1;
-   */
-  sessionId: string;
-
-  /**
+   * 包含記憶體裡保留的已終結單；保留量有上限，更早的在 Postgres（D606）
+   *
    * @generated from field: bool settled = 2;
    */
   settled: boolean;
 
   /**
-   * 非 0 時改以 algo 篩選，涵蓋上一個進程、上一個 session 留下的單（D602）
+   * 非 0 時以 algo 篩選，涵蓋上一個進程、上一個 session 留下的單（D602）
    *
    * @generated from field: uint32 algo_id = 3;
    */
@@ -373,12 +305,18 @@ export type OmsViewRequest = Message<"mftiko.td.v1.OmsViewRequest"> & {
  * Use `create(OmsViewRequestSchema)` to create a new message.
  */
 export const OmsViewRequestSchema: GenMessage<OmsViewRequest> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 8);
+  messageDesc(file_mftiko_td_v1_td, 6);
 
 /**
  * @generated from message mftiko.td.v1.LedgerViewRequest
  */
 export type LedgerViewRequest = Message<"mftiko.td.v1.LedgerViewRequest"> & {
+  /**
+   * 只要這些商品的持倉；空 = 全部。餘額一律全部回（D606）
+   *
+   * @generated from field: repeated uint32 uids = 1;
+   */
+  uids: number[];
 };
 
 /**
@@ -386,26 +324,30 @@ export type LedgerViewRequest = Message<"mftiko.td.v1.LedgerViewRequest"> & {
  * Use `create(LedgerViewRequestSchema)` to create a new message.
  */
 export const LedgerViewRequestSchema: GenMessage<LedgerViewRequest> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 9);
+  messageDesc(file_mftiko_td_v1_td, 7);
 
 /**
- * @generated from message mftiko.td.v1.EnsureLeverageRequest
+ * 本地的槓桿快取：recon 時讀入，私有事件更新（D606）。
+ *
+ * @generated from message mftiko.td.v1.LeverageRequest
  */
-export type EnsureLeverageRequest = Message<"mftiko.td.v1.EnsureLeverageRequest"> & {
+export type LeverageRequest = Message<"mftiko.td.v1.LeverageRequest"> & {
   /**
-   * @generated from field: string ticker = 1;
+   * @generated from field: uint32 uid = 1;
    */
-  ticker: string;
+  uid: number;
 };
 
 /**
- * Describes the message mftiko.td.v1.EnsureLeverageRequest.
- * Use `create(EnsureLeverageRequestSchema)` to create a new message.
+ * Describes the message mftiko.td.v1.LeverageRequest.
+ * Use `create(LeverageRequestSchema)` to create a new message.
  */
-export const EnsureLeverageRequestSchema: GenMessage<EnsureLeverageRequest> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 10);
+export const LeverageRequestSchema: GenMessage<LeverageRequest> = /*@__PURE__*/
+  messageDesc(file_mftiko_td_v1_td, 8);
 
 /**
+ * 快照還沒好也照樣回，不擋、不等：呼叫端看 state、reconciled_at_ns 判斷新舊（D606）。
+ *
  * @generated from message mftiko.td.v1.ViewReply
  */
 export type ViewReply = Message<"mftiko.td.v1.ViewReply"> & {
@@ -437,6 +379,30 @@ export type ViewReply = Message<"mftiko.td.v1.ViewReply"> & {
     value: Error;
     case: "error";
   } | { case: undefined; value?: undefined };
+
+  /**
+   * @generated from field: mftiko.td.v1.AccountState state = 10;
+   */
+  state: AccountState;
+
+  /**
+   * 最近一次 recon 完成的時間；0 = 這個 incarnation 還沒完成第一次 recon
+   *
+   * @generated from field: int64 reconciled_at_ns = 11;
+   */
+  reconciledAtNs: bigint;
+
+  /**
+   * @generated from field: uint32 incarnation = 12;
+   */
+  incarnation: number;
+
+  /**
+   * 這份快照已經涵蓋到的 td.evt seq：之後只要套用 seq 更大、incarnation 相同的事件
+   *
+   * @generated from field: uint64 seq = 13;
+   */
+  seq: bigint;
 };
 
 /**
@@ -444,7 +410,7 @@ export type ViewReply = Message<"mftiko.td.v1.ViewReply"> & {
  * Use `create(ViewReplySchema)` to create a new message.
  */
 export const ViewReplySchema: GenMessage<ViewReply> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 11);
+  messageDesc(file_mftiko_td_v1_td, 9);
 
 /**
  * @generated from message mftiko.td.v1.OmsView
@@ -454,16 +420,6 @@ export type OmsView = Message<"mftiko.td.v1.OmsView"> & {
    * @generated from field: repeated mftiko.td.v1.Order orders = 1;
    */
   orders: Order[];
-
-  /**
-   * @generated from field: uint32 incarnation = 2;
-   */
-  incarnation: number;
-
-  /**
-   * @generated from field: int64 as_of_ns = 3;
-   */
-  asOfNs: bigint;
 };
 
 /**
@@ -471,7 +427,7 @@ export type OmsView = Message<"mftiko.td.v1.OmsView"> & {
  * Use `create(OmsViewSchema)` to create a new message.
  */
 export const OmsViewSchema: GenMessage<OmsView> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 12);
+  messageDesc(file_mftiko_td_v1_td, 10);
 
 /**
  * @generated from message mftiko.td.v1.LedgerView
@@ -486,16 +442,6 @@ export type LedgerView = Message<"mftiko.td.v1.LedgerView"> & {
    * @generated from field: repeated mftiko.td.v1.Position positions = 2;
    */
   positions: Position[];
-
-  /**
-   * @generated from field: uint32 incarnation = 3;
-   */
-  incarnation: number;
-
-  /**
-   * @generated from field: int64 as_of_ns = 4;
-   */
-  asOfNs: bigint;
 };
 
 /**
@@ -503,21 +449,23 @@ export type LedgerView = Message<"mftiko.td.v1.LedgerView"> & {
  * Use `create(LedgerViewSchema)` to create a new message.
  */
 export const LedgerViewSchema: GenMessage<LedgerView> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 13);
+  messageDesc(file_mftiko_td_v1_td, 11);
 
 /**
  * @generated from message mftiko.td.v1.LeverageInfo
  */
 export type LeverageInfo = Message<"mftiko.td.v1.LeverageInfo"> & {
   /**
-   * @generated from field: string ticker = 1;
+   * @generated from field: uint32 uid = 1;
    */
-  ticker: string;
+  uid: number;
 
   /**
-   * @generated from field: double leverage = 2;
+   * 不設 = 快取裡沒有這個商品
+   *
+   * @generated from field: optional double leverage = 2;
    */
-  leverage: number;
+  leverage?: number | undefined;
 };
 
 /**
@@ -525,7 +473,7 @@ export type LeverageInfo = Message<"mftiko.td.v1.LeverageInfo"> & {
  * Use `create(LeverageInfoSchema)` to create a new message.
  */
 export const LeverageInfoSchema: GenMessage<LeverageInfo> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 14);
+  messageDesc(file_mftiko_td_v1_td, 12);
 
 /**
  * @generated from message mftiko.td.v1.AccountEvent
@@ -548,9 +496,9 @@ export type AccountEvent = Message<"mftiko.td.v1.AccountEvent"> & {
    */
   event: {
     /**
-     * @generated from field: mftiko.td.v1.Order order_update = 10;
+     * @generated from field: mftiko.td.v1.OrderUpdate order_update = 10;
      */
-    value: Order;
+    value: OrderUpdate;
     case: "orderUpdate";
   } | {
     /**
@@ -558,18 +506,6 @@ export type AccountEvent = Message<"mftiko.td.v1.AccountEvent"> & {
      */
     value: Fill;
     case: "fill";
-  } | {
-    /**
-     * @generated from field: mftiko.td.v1.OrderReject order_reject = 12;
-     */
-    value: OrderReject;
-    case: "orderReject";
-  } | {
-    /**
-     * @generated from field: mftiko.td.v1.CancelReject cancel_reject = 13;
-     */
-    value: CancelReject;
-    case: "cancelReject";
   } | {
     /**
      * @generated from field: mftiko.td.v1.BalanceUpdate balance_update = 14;
@@ -596,16 +532,60 @@ export type AccountEvent = Message<"mftiko.td.v1.AccountEvent"> & {
  * Use `create(AccountEventSchema)` to create a new message.
  */
 export const AccountEventSchema: GenMessage<AccountEvent> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 15);
+  messageDesc(file_mftiko_td_v1_td, 13);
 
 /**
+ * 一張單的一次變化（D610）。order 是變化之後的完整狀態，cause 說為什麼變。
+ * 拒單（交易所拒單、查單後確定沒下成）也是一則 OrderUpdate，status 是 REJECTED。
+ * 撤單被拒：status 從 PENDING_CANCEL 回到原本的狀態（太晚了就是 FILLED），cause 是 CANCEL_REJECTED。
+ * 本地拒絕只在 td.order 的回覆裡，不發到這裡。同一個 client_order_id 的同一次變化只發一則：交易所的回答與私有事件
+ * 都報了，worker 發佈前去重。
+ *
+ * @generated from message mftiko.td.v1.OrderUpdate
+ */
+export type OrderUpdate = Message<"mftiko.td.v1.OrderUpdate"> & {
+  /**
+   * @generated from field: mftiko.td.v1.Order order = 1;
+   */
+  order?: Order | undefined;
+
+  /**
+   * @generated from field: mftiko.td.v1.OrderCause cause = 2;
+   */
+  cause: OrderCause;
+
+  /**
+   * 只有 REJECTED、CANCEL_REJECTED：2xx、交易所原生代碼，或 120（NOT_PLACED）
+   *
+   * @generated from field: int32 code = 3;
+   */
+  code: number;
+
+  /**
+   * @generated from field: string reason = 4;
+   */
+  reason: string;
+};
+
+/**
+ * Describes the message mftiko.td.v1.OrderUpdate.
+ * Use `create(OrderUpdateSchema)` to create a new message.
+ */
+export const OrderUpdateSchema: GenMessage<OrderUpdate> = /*@__PURE__*/
+  messageDesc(file_mftiko_td_v1_td, 14);
+
+/**
+ * 一張單的狀態紀錄：OrderUpdate、OmsView、Recon 共用。拒絕的原因在 OrderUpdate 上，不在這裡（D610）。
+ *
  * @generated from message mftiko.td.v1.Order
  */
 export type Order = Message<"mftiko.td.v1.Order"> & {
   /**
-   * @generated from field: string ticker = 1;
+   * 商品（D203）
+   *
+   * @generated from field: uint32 uid = 1;
    */
-  ticker: string;
+  uid: number;
 
   /**
    * @generated from field: string order_id = 2;
@@ -668,11 +648,6 @@ export type Order = Message<"mftiko.td.v1.Order"> & {
   avgPrice?: number | undefined;
 
   /**
-   * @generated from field: string reject_reason = 12;
-   */
-  rejectReason: string;
-
-  /**
    * @generated from field: int64 exch_ts_ns = 13;
    */
   exchTsNs: bigint;
@@ -688,16 +663,18 @@ export type Order = Message<"mftiko.td.v1.Order"> & {
  * Use `create(OrderSchema)` to create a new message.
  */
 export const OrderSchema: GenMessage<Order> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 16);
+  messageDesc(file_mftiko_td_v1_td, 15);
 
 /**
  * @generated from message mftiko.td.v1.Fill
  */
 export type Fill = Message<"mftiko.td.v1.Fill"> & {
   /**
-   * @generated from field: string ticker = 1;
+   * 商品（D203）
+   *
+   * @generated from field: uint32 uid = 1;
    */
-  ticker: string;
+  uid: number;
 
   /**
    * 交易所的 trade id。WS 與 REST 必須給同一個值：落庫以 (api_id, fill_id) 去重（D601）。
@@ -761,76 +738,7 @@ export type Fill = Message<"mftiko.td.v1.Fill"> & {
  * Use `create(FillSchema)` to create a new message.
  */
 export const FillSchema: GenMessage<Fill> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 17);
-
-/**
- * @generated from message mftiko.td.v1.OrderReject
- */
-export type OrderReject = Message<"mftiko.td.v1.OrderReject"> & {
-  /**
-   * @generated from field: string client_order_id = 1;
-   */
-  clientOrderId: string;
-
-  /**
-   * @generated from field: string order_id = 2;
-   */
-  orderId: string;
-
-  /**
-   * @generated from field: string ticker = 3;
-   */
-  ticker: string;
-
-  /**
-   * @generated from field: int32 code = 4;
-   */
-  code: number;
-
-  /**
-   * @generated from field: string reason = 5;
-   */
-  reason: string;
-};
-
-/**
- * Describes the message mftiko.td.v1.OrderReject.
- * Use `create(OrderRejectSchema)` to create a new message.
- */
-export const OrderRejectSchema: GenMessage<OrderReject> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 18);
-
-/**
- * @generated from message mftiko.td.v1.CancelReject
- */
-export type CancelReject = Message<"mftiko.td.v1.CancelReject"> & {
-  /**
-   * @generated from field: string client_order_id = 1;
-   */
-  clientOrderId: string;
-
-  /**
-   * @generated from field: string order_id = 2;
-   */
-  orderId: string;
-
-  /**
-   * @generated from field: int32 code = 3;
-   */
-  code: number;
-
-  /**
-   * @generated from field: string reason = 4;
-   */
-  reason: string;
-};
-
-/**
- * Describes the message mftiko.td.v1.CancelReject.
- * Use `create(CancelRejectSchema)` to create a new message.
- */
-export const CancelRejectSchema: GenMessage<CancelReject> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 19);
+  messageDesc(file_mftiko_td_v1_td, 16);
 
 /**
  * @generated from message mftiko.td.v1.Balance
@@ -862,16 +770,20 @@ export type Balance = Message<"mftiko.td.v1.Balance"> & {
  * Use `create(BalanceSchema)` to create a new message.
  */
 export const BalanceSchema: GenMessage<Balance> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 20);
+  messageDesc(file_mftiko_td_v1_td, 17);
 
 /**
+ * 一期只支援單向持倉，size 帶號：負的是空（D607）。
+ *
  * @generated from message mftiko.td.v1.Position
  */
 export type Position = Message<"mftiko.td.v1.Position"> & {
   /**
-   * @generated from field: string ticker = 1;
+   * 商品（D203）
+   *
+   * @generated from field: uint32 uid = 1;
    */
-  ticker: string;
+  uid: number;
 
   /**
    * 持倉數量，單位同 Submit.qty（contract_value_ccy，D203）
@@ -912,7 +824,7 @@ export type Position = Message<"mftiko.td.v1.Position"> & {
  * Use `create(PositionSchema)` to create a new message.
  */
 export const PositionSchema: GenMessage<Position> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 21);
+  messageDesc(file_mftiko_td_v1_td, 18);
 
 /**
  * @generated from message mftiko.td.v1.BalanceUpdate
@@ -929,7 +841,7 @@ export type BalanceUpdate = Message<"mftiko.td.v1.BalanceUpdate"> & {
  * Use `create(BalanceUpdateSchema)` to create a new message.
  */
 export const BalanceUpdateSchema: GenMessage<BalanceUpdate> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 22);
+  messageDesc(file_mftiko_td_v1_td, 19);
 
 /**
  * @generated from message mftiko.td.v1.PositionUpdate
@@ -946,10 +858,10 @@ export type PositionUpdate = Message<"mftiko.td.v1.PositionUpdate"> & {
  * Use `create(PositionUpdateSchema)` to create a new message.
  */
 export const PositionUpdateSchema: GenMessage<PositionUpdate> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 23);
+  messageDesc(file_mftiko_td_v1_td, 20);
 
 /**
- * 帳號狀態的整份快照（DECISIONS D603）。SDK 把它交給策略的 OnRecon：
+ * 帳號狀態的整份快照（DECISIONS D603、D604）。SDK 把它交給策略的 OnRecon：
  * open_orders 先篩成自己宣告的 algo_id，positions、balances 原樣給。
  * 和其他事件共用 seq；策略整份換掉自己的狀態，之後的事件照常疊上去。
  *
@@ -992,9 +904,12 @@ export type Recon = Message<"mftiko.td.v1.Recon"> & {
  * Use `create(ReconSchema)` to create a new message.
  */
 export const ReconSchema: GenMessage<Recon> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 24);
+  messageDesc(file_mftiko_td_v1_td, 21);
 
 /**
+ * 一張單的狀態（D610）。出現在 OrderUpdate 與快照的 Order 裡。
+ * PENDING_NEW、PENDING_CANCEL 是 TD 的在途標記：請求已經送往交易所，還沒有確定的結果。
+ *
  * @generated from enum mftiko.td.v1.OrderStatus
  */
 export enum OrderStatus {
@@ -1004,6 +919,8 @@ export enum OrderStatus {
   UNSPECIFIED = 0,
 
   /**
+   * TD 已送出下單，交易所還沒回答
+   *
    * @generated from enum value: ORDER_STATUS_PENDING_NEW = 1;
    */
   PENDING_NEW = 1,
@@ -1024,6 +941,8 @@ export enum OrderStatus {
   FILLED = 4,
 
   /**
+   * TD 已送出撤單，交易所還沒回答
+   *
    * @generated from enum value: ORDER_STATUS_PENDING_CANCEL = 5;
    */
   PENDING_CANCEL = 5,
@@ -1034,6 +953,8 @@ export enum OrderStatus {
   CANCELLED = 6,
 
   /**
+   * 交易所拒單，或查單後確定沒下成（REJECT_CODE_NOT_PLACED）
+   *
    * @generated from enum value: ORDER_STATUS_REJECTED = 7;
    */
   REJECTED = 7,
@@ -1044,6 +965,8 @@ export enum OrderStatus {
   EXPIRED = 8,
 
   /**
+   * 下單送出但交易所沒有回答，worker 查單之後收斂（D605）
+   *
    * @generated from enum value: ORDER_STATUS_UNKNOWN = 9;
    */
   UNKNOWN = 9,
@@ -1054,6 +977,212 @@ export enum OrderStatus {
  */
 export const OrderStatusSchema: GenEnum<OrderStatus> = /*@__PURE__*/
   enumDesc(file_mftiko_td_v1_td, 0);
+
+/**
+ * 1xx 的名字（D610、PROTOCOL §7.2）。代碼欄位是 int32，因為它也帶 2xx 與交易所原生代碼；這個 enum 只替 1xx 取名。
+ * 101–119 是本地拒絕，什麼都沒送出，只出現在 td.order 的回覆；120 起是送出之後確定沒下成，只出現在 OrderUpdate。
+ * 只列一期會碰到、有票驗收的；之後碰到新的情況再加。
+ *
+ * @generated from enum mftiko.td.v1.RejectCode
+ */
+export enum RejectCode {
+  /**
+   * @generated from enum value: REJECT_CODE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * td.order 沒有 responder：account worker 不在，或還沒完成 Start。由 SDK 產生
+   *
+   * @generated from enum value: REJECT_CODE_ACCOUNT_OFFLINE = 101;
+   */
+  ACCOUNT_OFFLINE = 101,
+
+  /**
+   * 私有連線斷線中，暫停收新單；撤單照常（D603）
+   *
+   * @generated from enum value: REJECT_CODE_ACCOUNT_DEGRADED = 102;
+   */
+  ACCOUNT_DEGRADED = 102,
+
+  /**
+   * 執行中發現帳號是雙向持倉，或 params 帶了持倉方向鍵（D607）
+   *
+   * @generated from enum value: REJECT_CODE_HEDGE_MODE = 103;
+   */
+  HEDGE_MODE = 103,
+
+  /**
+   * algo_id 與 client_order_id 的 algo 欄位不一致，或撤的單沒有 client_order_id（D602）
+   *
+   * @generated from enum value: REJECT_CODE_ALGO_MISMATCH = 104;
+   */
+  ALGO_MISMATCH = 104,
+
+  /**
+   * 帳號種類不能交易這個商品的 venue（D301）
+   *
+   * @generated from enum value: REJECT_CODE_VENUE_NOT_TRADABLE = 105;
+   */
+  VENUE_NOT_TRADABLE = 105,
+
+  /**
+   * 商品不存在或不是 TRADABLE；數量或價格不合商品規格（tick、step、上下限）；client_order_id 解不開
+   *
+   * @generated from enum value: REJECT_CODE_INVALID_ORDER = 106;
+   */
+  INVALID_ORDER = 106,
+
+  /**
+   * 撤單的目標不是掛單：TD 不認得這張單，或它已經終結（例如撤單與成交擦身而過）
+   *
+   * @generated from enum value: REJECT_CODE_ORDER_NOT_OPEN = 107;
+   */
+  ORDER_NOT_OPEN = 107,
+
+  /**
+   * 這個帳號的下單額度用完，或交易所以 429、418 要求停送（D609、D420）。不排隊、不重試
+   *
+   * @generated from enum value: REJECT_CODE_RATE_LIMITED = 108;
+   */
+  RATE_LIMITED = 108,
+
+  /**
+   * 主動查單後確定交易所沒有這張單（D605）
+   *
+   * @generated from enum value: REJECT_CODE_NOT_PLACED = 120;
+   */
+  NOT_PLACED = 120,
+}
+
+/**
+ * Describes the enum mftiko.td.v1.RejectCode.
+ */
+export const RejectCodeSchema: GenEnum<RejectCode> = /*@__PURE__*/
+  enumDesc(file_mftiko_td_v1_td, 1);
+
+/**
+ * account worker 的狀態（D603、D606）。td.view 的回覆與 tdctl.Report 都帶它。
+ *
+ * @generated from enum mftiko.td.v1.AccountState
+ */
+export enum AccountState {
+  /**
+   * @generated from enum value: ACCOUNT_STATE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: ACCOUNT_STATE_READY = 1;
+   */
+  READY = 1,
+
+  /**
+   * 私有 websocket 斷線：新單以 102 拒絕，撤單照常（D603）
+   *
+   * @generated from enum value: ACCOUNT_STATE_DEGRADED = 2;
+   */
+  DEGRADED = 2,
+
+  /**
+   * 執行中發現雙向持倉：新單以 103 拒絕，撤單照常（D607）
+   *
+   * @generated from enum value: ACCOUNT_STATE_UNAVAILABLE = 3;
+   */
+  UNAVAILABLE = 3,
+}
+
+/**
+ * Describes the enum mftiko.td.v1.AccountState.
+ */
+export const AccountStateSchema: GenEnum<AccountState> = /*@__PURE__*/
+  enumDesc(file_mftiko_td_v1_td, 2);
+
+/**
+ * @generated from enum mftiko.td.v1.OrderCause
+ */
+export enum OrderCause {
+  /**
+   * @generated from enum value: ORDER_CAUSE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * TD 送出下單 → PENDING_NEW
+   *
+   * @generated from enum value: ORDER_CAUSE_SUBMITTED = 1;
+   */
+  SUBMITTED = 1,
+
+  /**
+   * 交易所接受 → NEW
+   *
+   * @generated from enum value: ORDER_CAUSE_ACCEPTED = 2;
+   */
+  ACCEPTED = 2,
+
+  /**
+   * 成交 → PARTIALLY_FILLED 或 FILLED；明細在 Fill
+   *
+   * @generated from enum value: ORDER_CAUSE_FILLED = 3;
+   */
+  FILLED = 3,
+
+  /**
+   * TD 送出撤單 → PENDING_CANCEL
+   *
+   * @generated from enum value: ORDER_CAUSE_CANCEL_REQUESTED = 4;
+   */
+  CANCEL_REQUESTED = 4,
+
+  /**
+   * → CANCELLED：策略撤的、BatchCancel、交易所撤的都是
+   *
+   * @generated from enum value: ORDER_CAUSE_CANCELLED = 5;
+   */
+  CANCELLED = 5,
+
+  /**
+   * 撤單被拒，回到原本的狀態
+   *
+   * @generated from enum value: ORDER_CAUSE_CANCEL_REJECTED = 6;
+   */
+  CANCEL_REJECTED = 6,
+
+  /**
+   * → REJECTED
+   *
+   * @generated from enum value: ORDER_CAUSE_REJECTED = 7;
+   */
+  REJECTED = 7,
+
+  /**
+   * → EXPIRED
+   *
+   * @generated from enum value: ORDER_CAUSE_EXPIRED = 8;
+   */
+  EXPIRED = 8,
+
+  /**
+   * 下單送出但交易所沒有回答 → UNKNOWN。撤單沒有回答時停在 PENDING_CANCEL（D605）
+   *
+   * @generated from enum value: ORDER_CAUSE_OUTCOME_UNKNOWN = 9;
+   */
+  OUTCOME_UNKNOWN = 9,
+
+  /**
+   * recon 或主動查單之後，交易所的狀態和 TD 原本記的不同（D605）
+   *
+   * @generated from enum value: ORDER_CAUSE_RECONCILED = 10;
+   */
+  RECONCILED = 10,
+}
+
+/**
+ * Describes the enum mftiko.td.v1.OrderCause.
+ */
+export const OrderCauseSchema: GenEnum<OrderCause> = /*@__PURE__*/
+  enumDesc(file_mftiko_td_v1_td, 3);
 
 /**
  * @generated from enum mftiko.td.v1.ReconReason
@@ -1072,7 +1201,7 @@ export enum ReconReason {
   RECONNECT = 1,
 
   /**
-   * account worker 換了 incarnation
+   * account worker 換了 incarnation：被重新拉起之後的第一次 recon（D604）
    *
    * @generated from enum value: RECON_REASON_INCARNATION = 2;
    */
@@ -1083,5 +1212,5 @@ export enum ReconReason {
  * Describes the enum mftiko.td.v1.ReconReason.
  */
 export const ReconReasonSchema: GenEnum<ReconReason> = /*@__PURE__*/
-  enumDesc(file_mftiko_td_v1_td, 1);
+  enumDesc(file_mftiko_td_v1_td, 4);
 

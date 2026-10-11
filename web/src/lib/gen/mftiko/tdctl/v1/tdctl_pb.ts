@@ -4,15 +4,17 @@
 // @generated from file mftiko/tdctl/v1/tdctl.proto (package mftiko.tdctl.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenEnum, GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
-import { enumDesc, fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv2";
+import type { GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
+import { fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv2";
+import type { AccountState } from "../../td/v1/td_pb";
+import { file_mftiko_td_v1_td } from "../../td/v1/td_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file mftiko/tdctl/v1/tdctl.proto.
  */
 export const file_mftiko_tdctl_v1_tdctl: GenFile = /*@__PURE__*/
-  fileDesc("ChttZnRpa28vdGRjdGwvdjEvdGRjdGwucHJvdG8SD21mdGlrby50ZGN0bC52MSKTAQoLSW5pdFBheWxvYWQSDgoGYXBpX2lkGAEgASgDEgwKBGtpbmQYAiABKAkSEwoLdGRfaW5zdGFuY2UYAyABKAkSHgoWY2FuY2VsX29uX2Rpc2Nvbm5lY3RfcxgEIAEoDRIxCgtjcmVkZW50aWFscxgFIAEoCzIcLm1mdGlrby50ZGN0bC52MS5DcmVkZW50aWFscyJQCgtDcmVkZW50aWFscxIQCghrZXlfdHlwZRgBIAEoCRILCgNrZXkYAiABKAkSDgoGc2VjcmV0GAMgASgJEhIKCnBhc3NwaHJhc2UYBCABKAkiDgoMU3RhcnRQYXlsb2FkIjkKB0NvbW1hbmQSJwoFZHJhaW4YASABKAsyFi5tZnRpa28udGRjdGwudjEuRHJhaW5IAEIFCgNjbWQiHAoFRHJhaW4SEwoLZGVhZGxpbmVfbXMYASABKA0ilAIKBlJlcG9ydBIsCgVzdGF0ZRgBIAEoDjIdLm1mdGlrby50ZGN0bC52MS5BY2NvdW50U3RhdGUSDgoGcmVhc29uGAIgASgJEhgKEHJlY29uY2lsZWRfYXRfbnMYAyABKAMSEwoLb3Blbl9vcmRlcnMYBCABKA0SEAoIaW5mbGlnaHQYBSABKA0SEAoIZHJhaW5pbmcYBiABKAgSQwoPZmlyc3Rfc3VibWl0X25zGAcgAygLMioubWZ0aWtvLnRkY3RsLnYxLlJlcG9ydC5GaXJzdFN1Ym1pdE5zRW50cnkaNAoSRmlyc3RTdWJtaXROc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoAzoCOAEqgQEKDEFjY291bnRTdGF0ZRIdChlBQ0NPVU5UX1NUQVRFX1VOU1BFQ0lGSUVEEAASFwoTQUNDT1VOVF9TVEFURV9SRUFEWRABEhoKFkFDQ09VTlRfU1RBVEVfREVHUkFERUQQAhIdChlBQ0NPVU5UX1NUQVRFX1VOQVZBSUxBQkxFEANCRFpCZ2l0aHViLmNvbS9CdWxsaW9uQmVhci9tZnRpa28vY29udHJhY3QvZ2VuL21mdGlrby90ZGN0bC92MTt0ZGN0bHYxYgZwcm90bzM");
+  fileDesc("ChttZnRpa28vdGRjdGwvdjEvdGRjdGwucHJvdG8SD21mdGlrby50ZGN0bC52MSLDAQoLSW5pdFBheWxvYWQSDgoGYXBpX2lkGAEgASgDEgwKBGtpbmQYAiABKAkSEwoLdGRfaW5zdGFuY2UYAyABKAkSHgoWY2FuY2VsX29uX2Rpc2Nvbm5lY3RfcxgEIAEoDRIxCgtjcmVkZW50aWFscxgFIAEoCzIcLm1mdGlrby50ZGN0bC52MS5DcmVkZW50aWFscxIuCgRuYXRzGAYgASgLMiAubWZ0aWtvLnRkY3RsLnYxLk5hdHNDcmVkZW50aWFscyJQCgtDcmVkZW50aWFscxIQCghrZXlfdHlwZRgBIAEoCRILCgNrZXkYAiABKAkSDgoGc2VjcmV0GAMgASgJEhIKCnBhc3NwaHJhc2UYBCABKAkiRwoPTmF0c0NyZWRlbnRpYWxzEhAKCHVzZXJfand0GAEgASgJEgwKBHNlZWQYAiABKAkSFAoMaW5ib3hfcHJlZml4GAMgASgJIg4KDFN0YXJ0UGF5bG9hZCI5CgdDb21tYW5kEicKBWRyYWluGAEgASgLMhYubWZ0aWtvLnRkY3RsLnYxLkRyYWluSABCBQoDY21kIhwKBURyYWluEhMKC2RlYWRsaW5lX21zGAEgASgNIpECCgZSZXBvcnQSKQoFc3RhdGUYASABKA4yGi5tZnRpa28udGQudjEuQWNjb3VudFN0YXRlEg4KBnJlYXNvbhgCIAEoCRIYChByZWNvbmNpbGVkX2F0X25zGAMgASgDEhMKC29wZW5fb3JkZXJzGAQgASgNEhAKCGluZmxpZ2h0GAUgASgNEhAKCGRyYWluaW5nGAYgASgIEkMKD2ZpcnN0X3N1Ym1pdF9ucxgHIAMoCzIqLm1mdGlrby50ZGN0bC52MS5SZXBvcnQuRmlyc3RTdWJtaXROc0VudHJ5GjQKEkZpcnN0U3VibWl0TnNFbnRyeRILCgNrZXkYASABKA0SDQoFdmFsdWUYAiABKAM6AjgBQkRaQmdpdGh1Yi5jb20vQnVsbGlvbkJlYXIvbWZ0aWtvL2NvbnRyYWN0L2dlbi9tZnRpa28vdGRjdGwvdjE7dGRjdGx2MWIGcHJvdG8z", [file_mftiko_td_v1_td]);
 
 /**
  * @generated from message mftiko.tdctl.v1.InitPayload
@@ -41,11 +43,18 @@ export type InitPayload = Message<"mftiko.tdctl.v1.InitPayload"> & {
   cancelOnDisconnectS: number;
 
   /**
-   * 只經 socketpair 送進去
+   * 交易所的憑證，只經 socketpair 送進去
    *
    * @generated from field: mftiko.tdctl.v1.Credentials credentials = 5;
    */
   credentials?: Credentials | undefined;
+
+  /**
+   * 這個帳號專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D611）
+   *
+   * @generated from field: mftiko.tdctl.v1.NatsCredentials nats = 6;
+   */
+  nats?: NatsCredentials | undefined;
 };
 
 /**
@@ -90,7 +99,40 @@ export const CredentialsSchema: GenMessage<Credentials> = /*@__PURE__*/
   messageDesc(file_mftiko_tdctl_v1_tdctl, 1);
 
 /**
- * Start：建 HTTP 連線池、連私有 websocket、recon。全部完成才回 Done(START, ok)。
+ * TD agent 為這個 api_id 簽的 user JWT。權限見 PROTOCOL §7。
+ *
+ * @generated from message mftiko.tdctl.v1.NatsCredentials
+ */
+export type NatsCredentials = Message<"mftiko.tdctl.v1.NatsCredentials"> & {
+  /**
+   * @generated from field: string user_jwt = 1;
+   */
+  userJwt: string;
+
+  /**
+   * NKey seed，只在進程記憶體裡
+   *
+   * @generated from field: string seed = 2;
+   */
+  seed: string;
+
+  /**
+   * _INBOX_td_{api_id}；worker 以它設定 CustomInboxPrefix
+   *
+   * @generated from field: string inbox_prefix = 3;
+   */
+  inboxPrefix: string;
+};
+
+/**
+ * Describes the message mftiko.tdctl.v1.NatsCredentials.
+ * Use `create(NatsCredentialsSchema)` to create a new message.
+ */
+export const NatsCredentialsSchema: GenMessage<NatsCredentials> = /*@__PURE__*/
+  messageDesc(file_mftiko_tdctl_v1_tdctl, 2);
+
+/**
+ * Start：建 HTTP 連線池、連私有 websocket、recon。全部完成才回 Done(START, ok)，之後才服務 td.order（D610）。
  *
  * @generated from message mftiko.tdctl.v1.StartPayload
  */
@@ -102,7 +144,7 @@ export type StartPayload = Message<"mftiko.tdctl.v1.StartPayload"> & {
  * Use `create(StartPayloadSchema)` to create a new message.
  */
 export const StartPayloadSchema: GenMessage<StartPayload> = /*@__PURE__*/
-  messageDesc(file_mftiko_tdctl_v1_tdctl, 2);
+  messageDesc(file_mftiko_tdctl_v1_tdctl, 3);
 
 /**
  * @generated from message mftiko.tdctl.v1.Command
@@ -125,10 +167,10 @@ export type Command = Message<"mftiko.tdctl.v1.Command"> & {
  * Use `create(CommandSchema)` to create a new message.
  */
 export const CommandSchema: GenMessage<Command> = /*@__PURE__*/
-  messageDesc(file_mftiko_tdctl_v1_tdctl, 3);
+  messageDesc(file_mftiko_tdctl_v1_tdctl, 4);
 
 /**
- * drain-replace 的第一步：新單以可重試的錯誤拒絕，等在途 ack 收齊。
+ * drain-replace 的第一步：不收新單，等在途 ack 收齊。一期沒有人送它，新單的拒單碼等 drain-replace 落地時再加（D610）。
  *
  * @generated from message mftiko.tdctl.v1.Drain
  */
@@ -144,14 +186,16 @@ export type Drain = Message<"mftiko.tdctl.v1.Drain"> & {
  * Use `create(DrainSchema)` to create a new message.
  */
 export const DrainSchema: GenMessage<Drain> = /*@__PURE__*/
-  messageDesc(file_mftiko_tdctl_v1_tdctl, 4);
+  messageDesc(file_mftiko_tdctl_v1_tdctl, 5);
 
 /**
  * @generated from message mftiko.tdctl.v1.Report
  */
 export type Report = Message<"mftiko.tdctl.v1.Report"> & {
   /**
-   * @generated from field: mftiko.tdctl.v1.AccountState state = 1;
+   * 與 td.view 回覆的 state 相同（D606）
+   *
+   * @generated from field: mftiko.td.v1.AccountState state = 1;
    */
   state: AccountState;
 
@@ -181,12 +225,12 @@ export type Report = Message<"mftiko.tdctl.v1.Report"> & {
   draining: boolean;
 
   /**
-   * 這個 incarnation 下過單的商品 → 第一次 Submit 的時間（DECISIONS D601）。TD agent 據此建 backfill 的 scope。
+   * 這個 incarnation 下過單的商品（UID，D203）→ 第一次 Submit 的時間（DECISIONS D601）。TD agent 據此建 backfill 的 scope。
    * 新商品的第一筆單：worker 先送出含它的 Report，再送單。
    *
-   * @generated from field: map<string, int64> first_submit_ns = 7;
+   * @generated from field: map<uint32, int64> first_submit_ns = 7;
    */
-  firstSubmitNs: { [key: string]: bigint };
+  firstSubmitNs: { [key: number]: bigint };
 };
 
 /**
@@ -194,38 +238,5 @@ export type Report = Message<"mftiko.tdctl.v1.Report"> & {
  * Use `create(ReportSchema)` to create a new message.
  */
 export const ReportSchema: GenMessage<Report> = /*@__PURE__*/
-  messageDesc(file_mftiko_tdctl_v1_tdctl, 5);
-
-/**
- * @generated from enum mftiko.tdctl.v1.AccountState
- */
-export enum AccountState {
-  /**
-   * @generated from enum value: ACCOUNT_STATE_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
-
-  /**
-   * @generated from enum value: ACCOUNT_STATE_READY = 1;
-   */
-  READY = 1,
-
-  /**
-   * 私有 websocket 斷線：新單以 1xx 拒絕，撤單照常（D603）
-   *
-   * @generated from enum value: ACCOUNT_STATE_DEGRADED = 2;
-   */
-  DEGRADED = 2,
-
-  /**
-   * @generated from enum value: ACCOUNT_STATE_UNAVAILABLE = 3;
-   */
-  UNAVAILABLE = 3,
-}
-
-/**
- * Describes the enum mftiko.tdctl.v1.AccountState.
- */
-export const AccountStateSchema: GenEnum<AccountState> = /*@__PURE__*/
-  enumDesc(file_mftiko_tdctl_v1_tdctl, 0);
+  messageDesc(file_mftiko_tdctl_v1_tdctl, 6);
 
