@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-11 更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-11 定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 >
@@ -428,6 +428,62 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   - 快照是整個帳號的。SDK 把 `open_orders` 篩成自己宣告的 algo_id；`positions`、`balances` 是帳號層級、所有 algo 共用的，原樣給。
   - 斷線期間的個別成交不會補發給策略，策略拿到的是重置後的狀態。DB 的完整紀錄由 D601 的 backfill 補。
   - 這不是 D801 說的可用性 hook：策略不會被告知「TD 斷了」，只會拿到拒單，之後拿到一份新的狀態。
+
+### D604 連線與重建是 TD 的事，STS 是最後一道防線
+
+- **TD 自己處理連線與重建。** account worker 的私有連線斷了就自己重連（D603）。worker 被重新拉起（換 incarnation，D106）之後，第一件事是 recon：重建倉位、餘額與活訂單，建完就在 `td.evt` 發一則 `Recon(INCARNATION)`。STS 以最快的方式拿到新的帳號狀態，不必自己去要。
+- **SDK 沒有任何讓 TD 重建或重連的請求。** `td.order` 只有下單與撤單，`td.view` 只讀本地快照（D606）。
+- **TD 自己也處理不了時，STS 自保。** `DEGRADED`、沒有 responder，策略拿到的是 1xx 拒單，例如不再送單；平台不替策略做別的事（D602、D801）。
+- incarnation 只在 worker 的實體進程換掉時加一：crash 後重拉、linger 停掉之後又被需要、刻意換版、主機重開機。換 td-agent 的行程（收養，換的是 epoch）與私有連線重連（`DEGRADED` → `Recon(RECONNECT)`）都不換 incarnation。
+
+### D605 結果未知：STS 交出 UNKNOWN，TD 主動查單
+
+結果未知有兩層，是兩件獨立的事，不混在一起。
+
+- **STS：`td.order` 逾時是結果未知，不是 1xx。** 1xx 的意思是「什麼都沒送出」（PROTOCOL §7.2）。逾時的單可能已經到了交易所，當成被拒再送一次，部位就加倍。
+  - 沒有 responder（account worker 不在）與 TD 的本地拒絕才是 1xx。
+  - 逾時：SDK 把這張單以 `ORDER_STATUS_UNKNOWN` 交給策略。不查 `td.view`、不重送、不推論。
+  - 之後這個 `client_order_id` 的 `OrderUpdate` 來了，SDK 照常更新。一直沒有下文的單怎麼處理是策略的事，例如以 `BatchCancel` 清掉，或等 `OnRecon`。
+- **TD：交易所沒有回答的單，由 worker 主動以 `client_order_id` 查交易所。**
+  - 下單或撤單送出之後沒有讀得到的回答（`ErrUnknownOutcome`，D303），OMS 把這張單記成 `UNKNOWN`，在 `td.evt` 發出。
+  - 等到「送出時間 ＋ 請求有效期 ＋ 時鐘誤差」之後，以 cloid 查單（`Account.QueryOrder`，REST，E6-16）。有效期是 Binance、Bybit 的 `recvWindow`、OKX 的 `expTime`，下單與撤單一律帶上。過了這條界線，請求就算才到交易所也會被拒，「查無此單」才等於「沒下成」。預設有效期 5 秒、時鐘誤差 1 秒，是部署設定。
+  - 查到：照交易所的狀態更新 OMS，發 `OrderUpdate`。查無此單：`REJECTED`，reason `not_placed`。查詢本身失敗：退避重試，直到有結果。不重送原單。
+  - 只靠私有事件與 recon 不夠：單沒到交易所時兩者都不會出現；單在私有連線斷線期間就終結時，事件漏了，recon 只讀 open orders 也看不到。
+  - 打交易所查單的只有 worker。
+- **以 `client_order_id` 冪等。** 同一個 incarnation 裡，account worker 收到已經見過的 cloid，回原本的結果，不再送交易所。
+- 不採用：SDK 逾時之後查 `td.view` 並以同一個 cloid 重送。worker 換了 incarnation 之後，新的 worker 不認得上一個 incarnation 收過的 cloid，重送可能讓已經成交的單再下一次。
+
+### D606 `td.view` 只讀本地快照
+
+- **任何查詢都只讀 account worker 的記憶體，不打交易所，不消耗交易所的 REST 額度。** OMS、帳本（持倉與餘額）、槓桿都是。帳本與交易所的差異只由 recon 與 `Recon` 處理（D603、D604）。不提供「向交易所重新查詢」的選項。
+- **槓桿讀本地快取。** 原本的 `EnsureLeverage` 對應 `Account.Leverage`，是一次 REST 呼叫，違反這條。改名 `Leverage`：recon 時一併讀入，私有事件更新；快取裡沒有的商品回未知，不去查。設定槓桿是寫入，一期不做。
+- **快照還沒好也照樣回，不擋、不等。** 還沒完成第一次 recon，或正在 `DEGRADED` 時，回當下的快照，附上 `AccountState` 與 `reconciled_at_ns`，由呼叫端判斷新舊。
+- **回覆帶 incarnation 與當下的 `td.evt` seq。** 快照加上 seq 之後的事件，能接成同一份狀態。STS 自己這一端漏收 `td.evt`（NATS 斷線、被當成 slow consumer）時，TD 不會知道；SDK 怎麼用它接回屬於 E8。
+- **帳本可以依商品篩選。** `LedgerViewRequest` 帶 UID 清單，空的是全部；持倉與餘額照舊一起回。
+- **`settled` 只涵蓋記憶體裡保留的已終結單。** 保留量有上限，是部署設定。更早的歷史在 Postgres（D601），不從交易所補。
+
+### D607 一期只支援單向持倉
+
+- **雙向持倉（hedge mode）一期不支援。** 雙向持倉下 `Submit` 的 side 分不出開多或平空，交易所要求帶持倉方向（Binance 的 `positionSide`、OKX 的 `posSide`、Bybit 的 `positionIdx`）。E3 的 adapter 把持倉方向折進帶號的 `Size`，同一商品的多空兩列會互相蓋掉。支援它要動契約（`Position` 以 `(UID, 方向)` 為鍵、`Submit` 與事件帶方向）、adapter 與 ledger，一期不做。
+- **檢查：**
+  - account worker `Start` 時確認持倉模式。Binance UM 是帳號層級的 `dualSidePosition`（與 CM 共用），OKX 是帳號的 `posMode`，Bybit 依商品或結算幣。是雙向就 `INIT_FAILED`，reason `hedge_mode`；TD 的 ack 是 `REJECTED`，不重拉（D608）。
+  - 執行中的 recon 才發現（有人在交易所改了設定）：新單以 1xx 拒絕（`hedge_mode`），撤單照常。
+  - `Submit.params` 帶 `positionSide`、`posSide`、`positionIdx` 一律以 1xx 拒絕，不讓這個逃生口繞過。
+- 不採用：跟著帳號的設定走、不指定模式。持倉方向必須進契約與帳本，成本見上。
+
+### D608 TD 的 Policy
+
+- **與 MD 相同：結束了的 account worker 一律重拉，需求過舊時也重拉（`KeepWhileStale` 為真，D109）。** 需求過舊時本來就不停正在跑的 worker，重拉一顆 crash 的 worker 是同一個立場：策略還在跑，帳號應該維持可以交易。代價是失聯期間有人停用了帳號，要等聯繫恢復、下一輪 reconcile 才生效。
+- **設定錯誤不重拉：** `ErrAuth`（簽章錯誤、金鑰沒有權限或被撤銷）與 `hedge_mode`（D607）。重拉也一樣會失敗。ack 是 `REJECTED`，reason 是 `auth` 或 `hedge_mode`：這個帳號在現在的設定下不可能成立（PROTOCOL §3.5）。
+- **退避與放棄：** 退避 1 秒起，每次加倍，上限 60 秒。連續重拉 10 次（其間沒有穩定跑過 `StableAfter`，預設 1 分鐘）就放棄，依 P6 寫 `DEAD`（PROTOCOL §3.5）。
+- **Beat 逾時 10 秒。** 逾時就停掉，照上面的規則重拉。
+- 以上數字是部署設定。`DEGRADED` 不是 `DEAD`（D603）。
+
+### D609 TD 的限速，以及一期不做的
+
+- **每個 account worker 自己限速。** 依 `AccountLimits.OrderRate` 與交易所回報的 `Usage`；429、418 照 D420 停送。
+- **同一個出口 IP 上多個帳號共用的額度一期不處理。** Binance 的 request weight 依 IP 計，UM 與 CM 共用下單額度（D301）。多個 account worker 在同一台主機上會一起吃同一份額度，各自限速看不到彼此。記在 PROTOCOL §10 P17。
+- **一期不做：** 改單（Amend）與條件單。之後在 `OrderRequest` 加 oneof 分支，是相容擴充。
 
 ### D905 linger；需求沒有 TTL
 
