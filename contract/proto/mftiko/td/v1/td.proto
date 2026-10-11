@@ -7,18 +7,18 @@ import "mftiko/common/v1/common.proto";
 
 option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1;tdv1";
 
-// 一張單的狀態（D610）。出現在 OrderUpdate 與快照的 Order 裡。
-// PENDING_NEW、PENDING_CANCEL 是 TD 的在途標記：請求已經送往交易所，還沒有確定的結果。
+// 一張單在交易所那一側的狀態（D610）。出現在 OrderUpdate 與快照的 Order 裡。
+// 撤單在途不是狀態，是 Order.cancel_sent_ns。PENDING_NEW 是 TD 自己的標記，adapter 不產生它。
 enum OrderStatus {
   ORDER_STATUS_UNSPECIFIED = 0;
   ORDER_STATUS_PENDING_NEW = 1; // TD 已送出下單，交易所還沒回答
-  ORDER_STATUS_NEW = 2;
-  ORDER_STATUS_PARTIALLY_FILLED = 3;
-  ORDER_STATUS_FILLED = 4;
-  ORDER_STATUS_PENDING_CANCEL = 5; // TD 已送出撤單，交易所還沒回答
+  ORDER_STATUS_NEW = 2; // 交易所收到請求，當下沒有拒絕；還沒上簿，之後仍可能被拒
+  ORDER_STATUS_ACCEPTED = 3; // 在訂單簿上，還沒有成交。回覆本身就代表上簿的交易所（Binance）從 PENDING_NEW 直接到這裡
+  ORDER_STATUS_PARTIALLY_FILLED = 4; // 部分成交；GTC 的剩餘仍在簿上
+  ORDER_STATUS_FILLED = 5;
   ORDER_STATUS_CANCELLED = 6;
-  ORDER_STATUS_REJECTED = 7; // 交易所拒單，或查單後確定沒下成（REJECT_CODE_NOT_PLACED）
-  ORDER_STATUS_EXPIRED = 8;
+  ORDER_STATUS_REJECTED = 7; // 交易所拒單（同步或非同步），或查單後確定沒下成（REJECT_CODE_NOT_PLACED）
+  ORDER_STATUS_EXPIRED = 8; // 交易所讓它過期，例如 IOC、FOK 沒成交的部分
   ORDER_STATUS_UNKNOWN = 9; // 下單送出但交易所沒有回答，worker 查單之後收斂（D605）
 }
 
@@ -82,6 +82,7 @@ message Cancel {
   string client_order_id = 3;
   string order_id = 4;
   uint32 algo_id = 5; // 目標單的 client_order_id 的 algo 欄位必須等於它；沒有 client_order_id 的單一律以 104 拒絕（D602）
+  // 目標單已經有撤單在途（cancel_sent_ns 不是 0）：回 accepted，不再送交易所（D610）。
 }
 
 // 撤掉這個帳號上 client_order_id 的 algo 欄位等於 algo_id 的所有掛單（D602）。
@@ -181,7 +182,7 @@ message AccountEvent {
 
 // 一張單的一次變化（D610）。order 是變化之後的完整狀態，cause 說為什麼變。
 // 拒單（交易所拒單、查單後確定沒下成）也是一則 OrderUpdate，status 是 REJECTED。
-// 撤單被拒：status 從 PENDING_CANCEL 回到原本的狀態（太晚了就是 FILLED），cause 是 CANCEL_REJECTED。
+// 撤單只動 cancel_sent_ns：送出時設定（CANCEL_REQUESTED），被拒時清掉（CANCEL_REJECTED），status 都不變。
 // 本地拒絕只在 td.order 的回覆裡，不發到這裡。同一個 client_order_id 的同一次變化只發一則：交易所的回答與私有事件
 // 都報了，worker 發佈前去重。
 message OrderUpdate {
@@ -194,15 +195,16 @@ message OrderUpdate {
 enum OrderCause {
   ORDER_CAUSE_UNSPECIFIED = 0;
   ORDER_CAUSE_SUBMITTED = 1; // TD 送出下單 → PENDING_NEW
-  ORDER_CAUSE_ACCEPTED = 2; // 交易所接受 → NEW
-  ORDER_CAUSE_FILLED = 3; // 成交 → PARTIALLY_FILLED 或 FILLED；明細在 Fill
-  ORDER_CAUSE_CANCEL_REQUESTED = 4; // TD 送出撤單 → PENDING_CANCEL
-  ORDER_CAUSE_CANCELLED = 5; // → CANCELLED：策略撤的、BatchCancel、交易所撤的都是
-  ORDER_CAUSE_CANCEL_REJECTED = 6; // 撤單被拒，回到原本的狀態
-  ORDER_CAUSE_REJECTED = 7; // → REJECTED
-  ORDER_CAUSE_EXPIRED = 8; // → EXPIRED
-  ORDER_CAUSE_OUTCOME_UNKNOWN = 9; // 下單送出但交易所沒有回答 → UNKNOWN。撤單沒有回答時停在 PENDING_CANCEL（D605）
-  ORDER_CAUSE_RECONCILED = 10; // recon 或主動查單之後，交易所的狀態和 TD 原本記的不同（D605）
+  ORDER_CAUSE_ACKNOWLEDGED = 2; // 交易所收到，當下沒有拒絕 → NEW
+  ORDER_CAUSE_ACCEPTED = 3; // 上簿 → ACCEPTED
+  ORDER_CAUSE_FILLED = 4; // 成交 → PARTIALLY_FILLED 或 FILLED；明細在 Fill
+  ORDER_CAUSE_CANCEL_REQUESTED = 5; // TD 送出撤單：設定 cancel_sent_ns，status 不變
+  ORDER_CAUSE_CANCELLED = 6; // → CANCELLED：策略撤的、BatchCancel、交易所撤的都是
+  ORDER_CAUSE_CANCEL_REJECTED = 7; // 撤單被拒：清掉 cancel_sent_ns，status 不變
+  ORDER_CAUSE_REJECTED = 8; // → REJECTED
+  ORDER_CAUSE_EXPIRED = 9; // → EXPIRED
+  ORDER_CAUSE_OUTCOME_UNKNOWN = 10; // 下單送出但交易所沒有回答 → UNKNOWN。撤單沒有回答時 cancel_sent_ns 保留，同樣由 worker 查單收斂（D605）
+  ORDER_CAUSE_RECONCILED = 11; // recon 或主動查單之後，交易所的狀態和 TD 原本記的不同（D605）
 }
 
 // 一張單的狀態紀錄：OrderUpdate、OmsView、Recon 共用。拒絕的原因在 OrderUpdate 上，不在這裡（D610）。
@@ -222,6 +224,9 @@ message Order {
   reserved "reject_reason";
   int64 exch_ts_ns = 13;
   int64 td_ts_ns = 14;
+  // TD 送出撤單的時間；0 = 沒有撤單在途。撤單在途是旗標，不是 status（D610）。
+  // 撤單被拒時清掉；撤單沒有回答時保留，由 worker 查單收斂（D605）；進終態時一律清掉，之後才到的撤單結果不再發 OrderUpdate。
+  int64 cancel_sent_ns = 15;
 }
 
 message Fill {

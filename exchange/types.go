@@ -58,21 +58,36 @@ const (
 	TIFPostOnly
 )
 
-// OrderStatus follows td.v1.OrderStatus.
+// OrderStatus follows td.v1.OrderStatus: the order as the venue holds it (D610). A cancel in flight
+// is the account worker's flag, not a status, so there is no pending-cancel value.
 type OrderStatus uint8
 
 const (
 	OrderStatusUnspecified OrderStatus = iota
+	// OrderStatusPendingNew is the account worker's own mark for a request the venue has not
+	// answered. An adapter does not report it.
 	OrderStatusPendingNew
+	// OrderStatusNew: the venue has the request and did not refuse it at once. It is not on the
+	// book yet and may still be rejected.
 	OrderStatusNew
+	// OrderStatusAccepted: on the book, nothing filled.
+	OrderStatusAccepted
 	OrderStatusPartiallyFilled
 	OrderStatusFilled
-	OrderStatusPendingCancel
 	OrderStatusCancelled
 	OrderStatusRejected
 	OrderStatusExpired
 	OrderStatusUnknown
 )
+
+// OnBook is the status of an order resting on the book: Accepted, or PartiallyFilled once part of
+// it filled. A venue's own pending-cancel state maps here (D610).
+func OnBook(filled float64) OrderStatus {
+	if filled > 0 {
+		return OrderStatusPartiallyFilled
+	}
+	return OrderStatusAccepted
+}
 
 // Level is one price level. Qty 0 deletes the level.
 type Level struct {

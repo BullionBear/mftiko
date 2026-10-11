@@ -232,7 +232,7 @@ func TestDecodePrivate(t *testing.T) {
 	if err := s.Decode(order, sink); err != nil || len(sink.orders) != 1 {
 		t.Fatalf("order %v %+v", err, sink.orders)
 	}
-	if sink.orders[0].Status != exchange.OrderStatusNew || sink.orders[0].Exch.Category != symbol.Spot {
+	if sink.orders[0].Status != exchange.OrderStatusAccepted || sink.orders[0].Exch.Category != symbol.Spot {
 		t.Fatalf("parsed %+v", sink.orders[0])
 	}
 	fill := []byte(`{"arg":{"channel":"orders","instType":"SPOT"},"data":[{"instType":"SPOT","instId":"BTC-USDT","ordId":"1","clOrdId":"9","side":"buy","ordType":"market","state":"filled","px":"","sz":"0.00002","accFillSz":"0.00002","avgPx":"83000","fillPx":"83000","fillSz":"0.00002","fillFee":"-0.01","fillFeeCcy":"USDT","tradeId":"t1","execType":"T","fillTime":"1791633374675","uTime":"1791633374675","tgtCcy":"base_ccy"}]}`)

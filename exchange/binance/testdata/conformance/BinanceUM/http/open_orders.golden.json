@@ -40,7 +40,7 @@
             "QuoteQty": 0,
             "RejectReason": "",
             "Side": 1,
-            "Status": 2,
+            "Status": 3,
             "Type": 1
           }
         ],

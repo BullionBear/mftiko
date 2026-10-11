@@ -108,13 +108,14 @@
 // reduceOnly is the string "true"; spot has none. Cancel-batch is at most 20 orders and may mix
 // instruments. Each order costs one count on the 60-per-2s order budget.
 //
-// The create acknowledgement has an order id and no state, so sCode 0 is OrderStatusPendingNew.
+// The create acknowledgement has an order id and no state, so sCode 0 is OrderStatusNew: the venue
+// has the request and did not refuse it, and the order is not on the book yet.
 // The private stream carries the state. inTime and outTime are on the envelope; ts on the row is
 // milliseconds, and outTime is microseconds when it is longer than a millisecond stamp.
 //
 // # Order status
 //
-//	live                 OrderStatusNew
+//	live                 OrderStatusAccepted
 //	partially_filled     OrderStatusPartiallyFilled
 //	filled               OrderStatusFilled
 //	canceled,            OrderStatusCancelled

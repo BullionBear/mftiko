@@ -24,20 +24,20 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// 一張單的狀態（D610）。出現在 OrderUpdate 與快照的 Order 裡。
-// PENDING_NEW、PENDING_CANCEL 是 TD 的在途標記：請求已經送往交易所，還沒有確定的結果。
+// 一張單在交易所那一側的狀態（D610）。出現在 OrderUpdate 與快照的 Order 裡。
+// 撤單在途不是狀態，是 Order.cancel_sent_ns。PENDING_NEW 是 TD 自己的標記，adapter 不產生它。
 type OrderStatus int32
 
 const (
 	OrderStatus_ORDER_STATUS_UNSPECIFIED      OrderStatus = 0
 	OrderStatus_ORDER_STATUS_PENDING_NEW      OrderStatus = 1 // TD 已送出下單，交易所還沒回答
-	OrderStatus_ORDER_STATUS_NEW              OrderStatus = 2
-	OrderStatus_ORDER_STATUS_PARTIALLY_FILLED OrderStatus = 3
-	OrderStatus_ORDER_STATUS_FILLED           OrderStatus = 4
-	OrderStatus_ORDER_STATUS_PENDING_CANCEL   OrderStatus = 5 // TD 已送出撤單，交易所還沒回答
+	OrderStatus_ORDER_STATUS_NEW              OrderStatus = 2 // 交易所收到請求，當下沒有拒絕；還沒上簿，之後仍可能被拒
+	OrderStatus_ORDER_STATUS_ACCEPTED         OrderStatus = 3 // 在訂單簿上，還沒有成交。回覆本身就代表上簿的交易所（Binance）從 PENDING_NEW 直接到這裡
+	OrderStatus_ORDER_STATUS_PARTIALLY_FILLED OrderStatus = 4 // 部分成交；GTC 的剩餘仍在簿上
+	OrderStatus_ORDER_STATUS_FILLED           OrderStatus = 5
 	OrderStatus_ORDER_STATUS_CANCELLED        OrderStatus = 6
-	OrderStatus_ORDER_STATUS_REJECTED         OrderStatus = 7 // 交易所拒單，或查單後確定沒下成（REJECT_CODE_NOT_PLACED）
-	OrderStatus_ORDER_STATUS_EXPIRED          OrderStatus = 8
+	OrderStatus_ORDER_STATUS_REJECTED         OrderStatus = 7 // 交易所拒單（同步或非同步），或查單後確定沒下成（REJECT_CODE_NOT_PLACED）
+	OrderStatus_ORDER_STATUS_EXPIRED          OrderStatus = 8 // 交易所讓它過期，例如 IOC、FOK 沒成交的部分
 	OrderStatus_ORDER_STATUS_UNKNOWN          OrderStatus = 9 // 下單送出但交易所沒有回答，worker 查單之後收斂（D605）
 )
 
@@ -47,9 +47,9 @@ var (
 		0: "ORDER_STATUS_UNSPECIFIED",
 		1: "ORDER_STATUS_PENDING_NEW",
 		2: "ORDER_STATUS_NEW",
-		3: "ORDER_STATUS_PARTIALLY_FILLED",
-		4: "ORDER_STATUS_FILLED",
-		5: "ORDER_STATUS_PENDING_CANCEL",
+		3: "ORDER_STATUS_ACCEPTED",
+		4: "ORDER_STATUS_PARTIALLY_FILLED",
+		5: "ORDER_STATUS_FILLED",
 		6: "ORDER_STATUS_CANCELLED",
 		7: "ORDER_STATUS_REJECTED",
 		8: "ORDER_STATUS_EXPIRED",
@@ -59,9 +59,9 @@ var (
 		"ORDER_STATUS_UNSPECIFIED":      0,
 		"ORDER_STATUS_PENDING_NEW":      1,
 		"ORDER_STATUS_NEW":              2,
-		"ORDER_STATUS_PARTIALLY_FILLED": 3,
-		"ORDER_STATUS_FILLED":           4,
-		"ORDER_STATUS_PENDING_CANCEL":   5,
+		"ORDER_STATUS_ACCEPTED":         3,
+		"ORDER_STATUS_PARTIALLY_FILLED": 4,
+		"ORDER_STATUS_FILLED":           5,
 		"ORDER_STATUS_CANCELLED":        6,
 		"ORDER_STATUS_REJECTED":         7,
 		"ORDER_STATUS_EXPIRED":          8,
@@ -227,15 +227,16 @@ type OrderCause int32
 const (
 	OrderCause_ORDER_CAUSE_UNSPECIFIED      OrderCause = 0
 	OrderCause_ORDER_CAUSE_SUBMITTED        OrderCause = 1  // TD 送出下單 → PENDING_NEW
-	OrderCause_ORDER_CAUSE_ACCEPTED         OrderCause = 2  // 交易所接受 → NEW
-	OrderCause_ORDER_CAUSE_FILLED           OrderCause = 3  // 成交 → PARTIALLY_FILLED 或 FILLED；明細在 Fill
-	OrderCause_ORDER_CAUSE_CANCEL_REQUESTED OrderCause = 4  // TD 送出撤單 → PENDING_CANCEL
-	OrderCause_ORDER_CAUSE_CANCELLED        OrderCause = 5  // → CANCELLED：策略撤的、BatchCancel、交易所撤的都是
-	OrderCause_ORDER_CAUSE_CANCEL_REJECTED  OrderCause = 6  // 撤單被拒，回到原本的狀態
-	OrderCause_ORDER_CAUSE_REJECTED         OrderCause = 7  // → REJECTED
-	OrderCause_ORDER_CAUSE_EXPIRED          OrderCause = 8  // → EXPIRED
-	OrderCause_ORDER_CAUSE_OUTCOME_UNKNOWN  OrderCause = 9  // 下單送出但交易所沒有回答 → UNKNOWN。撤單沒有回答時停在 PENDING_CANCEL（D605）
-	OrderCause_ORDER_CAUSE_RECONCILED       OrderCause = 10 // recon 或主動查單之後，交易所的狀態和 TD 原本記的不同（D605）
+	OrderCause_ORDER_CAUSE_ACKNOWLEDGED     OrderCause = 2  // 交易所收到，當下沒有拒絕 → NEW
+	OrderCause_ORDER_CAUSE_ACCEPTED         OrderCause = 3  // 上簿 → ACCEPTED
+	OrderCause_ORDER_CAUSE_FILLED           OrderCause = 4  // 成交 → PARTIALLY_FILLED 或 FILLED；明細在 Fill
+	OrderCause_ORDER_CAUSE_CANCEL_REQUESTED OrderCause = 5  // TD 送出撤單：設定 cancel_sent_ns，status 不變
+	OrderCause_ORDER_CAUSE_CANCELLED        OrderCause = 6  // → CANCELLED：策略撤的、BatchCancel、交易所撤的都是
+	OrderCause_ORDER_CAUSE_CANCEL_REJECTED  OrderCause = 7  // 撤單被拒：清掉 cancel_sent_ns，status 不變
+	OrderCause_ORDER_CAUSE_REJECTED         OrderCause = 8  // → REJECTED
+	OrderCause_ORDER_CAUSE_EXPIRED          OrderCause = 9  // → EXPIRED
+	OrderCause_ORDER_CAUSE_OUTCOME_UNKNOWN  OrderCause = 10 // 下單送出但交易所沒有回答 → UNKNOWN。撤單沒有回答時 cancel_sent_ns 保留，同樣由 worker 查單收斂（D605）
+	OrderCause_ORDER_CAUSE_RECONCILED       OrderCause = 11 // recon 或主動查單之後，交易所的狀態和 TD 原本記的不同（D605）
 )
 
 // Enum value maps for OrderCause.
@@ -243,28 +244,30 @@ var (
 	OrderCause_name = map[int32]string{
 		0:  "ORDER_CAUSE_UNSPECIFIED",
 		1:  "ORDER_CAUSE_SUBMITTED",
-		2:  "ORDER_CAUSE_ACCEPTED",
-		3:  "ORDER_CAUSE_FILLED",
-		4:  "ORDER_CAUSE_CANCEL_REQUESTED",
-		5:  "ORDER_CAUSE_CANCELLED",
-		6:  "ORDER_CAUSE_CANCEL_REJECTED",
-		7:  "ORDER_CAUSE_REJECTED",
-		8:  "ORDER_CAUSE_EXPIRED",
-		9:  "ORDER_CAUSE_OUTCOME_UNKNOWN",
-		10: "ORDER_CAUSE_RECONCILED",
+		2:  "ORDER_CAUSE_ACKNOWLEDGED",
+		3:  "ORDER_CAUSE_ACCEPTED",
+		4:  "ORDER_CAUSE_FILLED",
+		5:  "ORDER_CAUSE_CANCEL_REQUESTED",
+		6:  "ORDER_CAUSE_CANCELLED",
+		7:  "ORDER_CAUSE_CANCEL_REJECTED",
+		8:  "ORDER_CAUSE_REJECTED",
+		9:  "ORDER_CAUSE_EXPIRED",
+		10: "ORDER_CAUSE_OUTCOME_UNKNOWN",
+		11: "ORDER_CAUSE_RECONCILED",
 	}
 	OrderCause_value = map[string]int32{
 		"ORDER_CAUSE_UNSPECIFIED":      0,
 		"ORDER_CAUSE_SUBMITTED":        1,
-		"ORDER_CAUSE_ACCEPTED":         2,
-		"ORDER_CAUSE_FILLED":           3,
-		"ORDER_CAUSE_CANCEL_REQUESTED": 4,
-		"ORDER_CAUSE_CANCELLED":        5,
-		"ORDER_CAUSE_CANCEL_REJECTED":  6,
-		"ORDER_CAUSE_REJECTED":         7,
-		"ORDER_CAUSE_EXPIRED":          8,
-		"ORDER_CAUSE_OUTCOME_UNKNOWN":  9,
-		"ORDER_CAUSE_RECONCILED":       10,
+		"ORDER_CAUSE_ACKNOWLEDGED":     2,
+		"ORDER_CAUSE_ACCEPTED":         3,
+		"ORDER_CAUSE_FILLED":           4,
+		"ORDER_CAUSE_CANCEL_REQUESTED": 5,
+		"ORDER_CAUSE_CANCELLED":        6,
+		"ORDER_CAUSE_CANCEL_REJECTED":  7,
+		"ORDER_CAUSE_REJECTED":         8,
+		"ORDER_CAUSE_EXPIRED":          9,
+		"ORDER_CAUSE_OUTCOME_UNKNOWN":  10,
+		"ORDER_CAUSE_RECONCILED":       11,
 	}
 )
 
@@ -1457,7 +1460,7 @@ func (*AccountEvent_Recon) isAccountEvent_Event() {}
 
 // 一張單的一次變化（D610）。order 是變化之後的完整狀態，cause 說為什麼變。
 // 拒單（交易所拒單、查單後確定沒下成）也是一則 OrderUpdate，status 是 REJECTED。
-// 撤單被拒：status 從 PENDING_CANCEL 回到原本的狀態（太晚了就是 FILLED），cause 是 CANCEL_REJECTED。
+// 撤單只動 cancel_sent_ns：送出時設定（CANCEL_REQUESTED），被拒時清掉（CANCEL_REJECTED），status 都不變。
 // 本地拒絕只在 td.order 的回覆裡，不發到這裡。同一個 client_order_id 的同一次變化只發一則：交易所的回答與私有事件
 // 都報了，worker 發佈前去重。
 type OrderUpdate struct {
@@ -1544,6 +1547,9 @@ type Order struct {
 	AvgPrice      *float64               `protobuf:"fixed64,11,opt,name=avg_price,json=avgPrice,proto3,oneof" json:"avg_price,omitempty"` // 同 Submit.price，單位是 price_ccy（D203）
 	ExchTsNs      int64                  `protobuf:"varint,13,opt,name=exch_ts_ns,json=exchTsNs,proto3" json:"exch_ts_ns,omitempty"`
 	TdTsNs        int64                  `protobuf:"varint,14,opt,name=td_ts_ns,json=tdTsNs,proto3" json:"td_ts_ns,omitempty"`
+	// TD 送出撤單的時間；0 = 沒有撤單在途。撤單在途是旗標，不是 status（D610）。
+	// 撤單被拒時清掉；撤單沒有回答時保留，由 worker 查單收斂（D605）；進終態時一律清掉，之後才到的撤單結果不再發 OrderUpdate。
+	CancelSentNs  int64 `protobuf:"varint,15,opt,name=cancel_sent_ns,json=cancelSentNs,proto3" json:"cancel_sent_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1665,6 +1671,13 @@ func (x *Order) GetExchTsNs() int64 {
 func (x *Order) GetTdTsNs() int64 {
 	if x != nil {
 		return x.TdTsNs
+	}
+	return 0
+}
+
+func (x *Order) GetCancelSentNs() int64 {
+	if x != nil {
+		return x.CancelSentNs
 	}
 	return 0
 }
@@ -2221,7 +2234,7 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\x05order\x18\x01 \x01(\v2\x13.mftiko.td.v1.OrderR\x05order\x12.\n" +
 	"\x05cause\x18\x02 \x01(\x0e2\x18.mftiko.td.v1.OrderCauseR\x05cause\x12\x12\n" +
 	"\x04code\x18\x03 \x01(\x05R\x04code\x12\x16\n" +
-	"\x06reason\x18\x04 \x01(\tR\x06reason\"\xfa\x03\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\"\xa0\x04\n" +
 	"\x05Order\x12\x10\n" +
 	"\x03uid\x18\x01 \x01(\rR\x03uid\x12\x19\n" +
 	"\border_id\x18\x02 \x01(\tR\aorderId\x12&\n" +
@@ -2239,7 +2252,8 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\tavg_price\x18\v \x01(\x01H\x02R\bavgPrice\x88\x01\x01\x12\x1c\n" +
 	"\n" +
 	"exch_ts_ns\x18\r \x01(\x03R\bexchTsNs\x12\x18\n" +
-	"\btd_ts_ns\x18\x0e \x01(\x03R\x06tdTsNsB\f\n" +
+	"\btd_ts_ns\x18\x0e \x01(\x03R\x06tdTsNs\x12$\n" +
+	"\x0ecancel_sent_ns\x18\x0f \x01(\x03R\fcancelSentNsB\f\n" +
 	"\n" +
 	"_quote_qtyB\b\n" +
 	"\x06_priceB\f\n" +
@@ -2288,14 +2302,14 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"openOrders\x124\n" +
 	"\tpositions\x18\x04 \x03(\v2\x16.mftiko.td.v1.PositionR\tpositions\x121\n" +
 	"\bbalances\x18\x05 \x03(\v2\x15.mftiko.td.v1.BalanceR\bbalances\x12\x18\n" +
-	"\bas_of_ns\x18\x06 \x01(\x03R\x06asOfNs*\xa7\x02\n" +
+	"\bas_of_ns\x18\x06 \x01(\x03R\x06asOfNs*\xa1\x02\n" +
 	"\vOrderStatus\x12\x1c\n" +
 	"\x18ORDER_STATUS_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18ORDER_STATUS_PENDING_NEW\x10\x01\x12\x14\n" +
-	"\x10ORDER_STATUS_NEW\x10\x02\x12!\n" +
-	"\x1dORDER_STATUS_PARTIALLY_FILLED\x10\x03\x12\x17\n" +
-	"\x13ORDER_STATUS_FILLED\x10\x04\x12\x1f\n" +
-	"\x1bORDER_STATUS_PENDING_CANCEL\x10\x05\x12\x1a\n" +
+	"\x10ORDER_STATUS_NEW\x10\x02\x12\x19\n" +
+	"\x15ORDER_STATUS_ACCEPTED\x10\x03\x12!\n" +
+	"\x1dORDER_STATUS_PARTIALLY_FILLED\x10\x04\x12\x17\n" +
+	"\x13ORDER_STATUS_FILLED\x10\x05\x12\x1a\n" +
 	"\x16ORDER_STATUS_CANCELLED\x10\x06\x12\x19\n" +
 	"\x15ORDER_STATUS_REJECTED\x10\a\x12\x18\n" +
 	"\x14ORDER_STATUS_EXPIRED\x10\b\x12\x18\n" +
@@ -2316,21 +2330,22 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\x19ACCOUNT_STATE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13ACCOUNT_STATE_READY\x10\x01\x12\x1a\n" +
 	"\x16ACCOUNT_STATE_DEGRADED\x10\x02\x12\x1d\n" +
-	"\x19ACCOUNT_STATE_UNAVAILABLE\x10\x03*\xc4\x02\n" +
+	"\x19ACCOUNT_STATE_UNAVAILABLE\x10\x03*\xe2\x02\n" +
 	"\n" +
 	"OrderCause\x12\x1b\n" +
 	"\x17ORDER_CAUSE_UNSPECIFIED\x10\x00\x12\x19\n" +
-	"\x15ORDER_CAUSE_SUBMITTED\x10\x01\x12\x18\n" +
-	"\x14ORDER_CAUSE_ACCEPTED\x10\x02\x12\x16\n" +
-	"\x12ORDER_CAUSE_FILLED\x10\x03\x12 \n" +
-	"\x1cORDER_CAUSE_CANCEL_REQUESTED\x10\x04\x12\x19\n" +
-	"\x15ORDER_CAUSE_CANCELLED\x10\x05\x12\x1f\n" +
-	"\x1bORDER_CAUSE_CANCEL_REJECTED\x10\x06\x12\x18\n" +
-	"\x14ORDER_CAUSE_REJECTED\x10\a\x12\x17\n" +
-	"\x13ORDER_CAUSE_EXPIRED\x10\b\x12\x1f\n" +
-	"\x1bORDER_CAUSE_OUTCOME_UNKNOWN\x10\t\x12\x1a\n" +
-	"\x16ORDER_CAUSE_RECONCILED\x10\n" +
-	"*e\n" +
+	"\x15ORDER_CAUSE_SUBMITTED\x10\x01\x12\x1c\n" +
+	"\x18ORDER_CAUSE_ACKNOWLEDGED\x10\x02\x12\x18\n" +
+	"\x14ORDER_CAUSE_ACCEPTED\x10\x03\x12\x16\n" +
+	"\x12ORDER_CAUSE_FILLED\x10\x04\x12 \n" +
+	"\x1cORDER_CAUSE_CANCEL_REQUESTED\x10\x05\x12\x19\n" +
+	"\x15ORDER_CAUSE_CANCELLED\x10\x06\x12\x1f\n" +
+	"\x1bORDER_CAUSE_CANCEL_REJECTED\x10\a\x12\x18\n" +
+	"\x14ORDER_CAUSE_REJECTED\x10\b\x12\x17\n" +
+	"\x13ORDER_CAUSE_EXPIRED\x10\t\x12\x1f\n" +
+	"\x1bORDER_CAUSE_OUTCOME_UNKNOWN\x10\n" +
+	"\x12\x1a\n" +
+	"\x16ORDER_CAUSE_RECONCILED\x10\v*e\n" +
 	"\vReconReason\x12\x1c\n" +
 	"\x18RECON_REASON_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16RECON_REASON_RECONNECT\x10\x01\x12\x1c\n" +

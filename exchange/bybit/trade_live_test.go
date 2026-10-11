@@ -114,7 +114,7 @@ func TestBybitTradeSocket(t *testing.T) {
 			t.Errorf("cleanup cancel: %v", err)
 		}
 	})
-	if res.OrderID == "" || res.Status != exchange.OrderStatusPendingNew {
+	if res.OrderID == "" || res.Status != exchange.OrderStatusNew {
 		t.Fatalf("ack %+v", res)
 	}
 	t.Logf("created %s at %s qty %v", res.OrderID, decimal.Format(px, tick), qty)
