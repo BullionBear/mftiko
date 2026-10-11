@@ -50,6 +50,9 @@ type ServeConfig struct {
 	REST     func(venue string) (exchange.PublicREST, bool)
 	Doer     exchange.Doer
 	RateHold time.Duration
+	// Symbols loads this venue's active table before Init completes. Nil leaves exch_ticker and
+	// price_tick on the assignment. The returned value is closed when it has a Close method.
+	Symbols func(ctx context.Context, venue string) (Instruments, error)
 	// Log is optional. Nil discards.
 	Log *zerolog.Logger
 	// Release is Hello.release. Empty leaves it empty.
@@ -85,6 +88,9 @@ func Serve(ctx context.Context, rw io.ReadWriteCloser, cfg ServeConfig) int {
 	}
 	defer func() {
 		s.halt("exit")
+		if s.closeSymbols != nil {
+			s.closeSymbols()
+		}
 		rw.Close()
 	}()
 	go s.read()
@@ -96,6 +102,7 @@ func Serve(ctx context.Context, rw io.ReadWriteCloser, cfg ServeConfig) int {
 	}
 	go s.beat(ctx)
 
+	s.ctx = ctx
 	initMsg, err := s.wait(ctx, func(m *workerv1.WorkerDown) bool { return m.GetInit() != nil })
 	if err != nil {
 		return s.finish(commonv1.Outcome_OUTCOME_DONE, s.reasonOr("signal"), false, exitDone)
@@ -141,9 +148,11 @@ type ctl struct {
 	cfg ServeConfig
 	log zerolog.Logger
 
-	incoming chan *workerv1.WorkerDown
-	stopped  chan struct{}
-	stopOnce sync.Once
+	ctx          context.Context
+	incoming     chan *workerv1.WorkerDown
+	stopped      chan struct{}
+	stopOnce     sync.Once
+	closeSymbols func()
 
 	mu        sync.Mutex
 	worker    *Conn
@@ -248,15 +257,30 @@ func (s *ctl) onInit(m *workerv1.Init) (code int, ok bool) {
 	if ms := p.GetBookBufferMs(); ms > 0 {
 		bufAge = time.Duration(ms) * time.Millisecond
 	}
+	var symbols Instruments
+	if s.cfg.Symbols != nil {
+		loaded, err := s.cfg.Symbols(s.ctx, p.GetVenue())
+		if err != nil || loaded == nil {
+			if err == nil {
+				err = errors.New("symbol table is missing")
+			}
+			return s.failInit("symbols: " + err.Error()), false
+		}
+		symbols = loaded
+		if cl, ok := loaded.(interface{ Close() }); ok {
+			s.closeSymbols = cl.Close
+		}
+	}
 	s.log.Info().Str("venue", p.GetVenue()).Str("route", p.GetRoute()).Uint32("n", p.GetN()).
 		Uint64("conn_epoch", p.GetConnEpoch()).Uint32("book_depth", p.GetBookDepth()).Msg("init")
 	c := New(Config{
 		Venue: p.GetVenue(), Route: p.GetRoute(), Instance: p.GetMdInstance(), URL: p.GetUrl(),
 		Market: market, Publish: s.cfg.Publish, Now: s.cfg.Now, Epoch: p.GetConnEpoch(),
-		Report: s.reportEpoch, RetryAfter: s.cfg.RetryAfter, RetryMax: s.cfg.RetryMax, Log: s.cfg.Log,
+		Report: s.report, RetryAfter: s.cfg.RetryAfter, RetryMax: s.cfg.RetryMax, Log: s.cfg.Log,
 		REST: rest, Doer: s.cfg.Doer, RateHold: s.cfg.RateHold,
 		BookDepth: p.GetBookDepth(),
 		BufferMax: int(p.GetBookBufferMax()), BufferAge: bufAge,
+		Symbols: symbols,
 	})
 	s.install(c)
 	if err := s.send(done(workerv1.Verb_VERB_INIT, true, "")); err != nil {
@@ -286,13 +310,14 @@ func (s *ctl) failInit(why string) int {
 	return s.finish(commonv1.Outcome_OUTCOME_INIT_FAILED, why, false, exitInit)
 }
 
-// reportEpoch writes the number a dial is about to use. Dial is not called until this returns,
-// and the write returns only once the frame has been handed to rw.
-func (s *ctl) reportEpoch(epoch uint64) error {
-	payload, err := proto.Marshal(&mdctlv1.Report{
-		ConnEpoch: epoch,
-		State:     mdctlv1.ConnState_CONN_STATE_CONNECTING,
-	})
+// report writes one mdctl.Report. The pre-dial call carries the next conn_epoch, and Dial is
+// not called until it returns. Later calls carry the same number plus each feed's status.
+// The write returns only once the frame has been handed to rw.
+func (s *ctl) report(rep *mdctlv1.Report) error {
+	if rep == nil {
+		return nil
+	}
+	payload, err := proto.Marshal(rep)
 	if err != nil {
 		return err
 	}

@@ -87,6 +87,14 @@ type Config[I any, S, L agent.Hashed] struct {
 	// Prepare is the plane's part of W7.3, once the Fleet has adopted and before the AgentRecord: its acks, for
 	// MD and TD. Optional.
 	Prepare func(ctx context.Context, d agent.Demand[I], observed map[agent.WorkerKey]agent.Observed) error
+	// Commit runs before Plan: once at start, and in the loop while the demand is not stale. A plane writes
+	// the state Plan is about to read, so a crash cannot push a placement that etcd does not hold yet (D110).
+	// Optional. A failure at start ends the term. In the loop it is logged and Plan keeps the previous commit.
+	Commit func(ctx context.Context, d agent.Demand[I], observed map[agent.WorkerKey]agent.Observed) error
+	// Sync runs after WorkerStatus is written: at start, before the AgentRecord, and at the end of a step
+	// that is not stale. MD writes acks here (PROTOCOL §3.5). gaveUp is the Reconciler's; at start it is
+	// never true. Optional.
+	Sync func(ctx context.Context, d agent.Demand[I], observed map[agent.WorkerKey]agent.Observed, gaveUp func(agent.WorkerKey) bool) error
 
 	Release     string        // AgentRecord.release
 	StaleAfter  time.Duration // DefaultStaleAfter if 0
@@ -195,10 +203,20 @@ func (r *run[I, S, L]) start(ctx context.Context) error {
 		return err
 	}
 	d := r.intake.Demand()
-	plans := r.cfg.Planner.Plan(d)
 	observed := r.cfg.Fleet.Observe()
+	if r.cfg.Commit != nil {
+		if err := r.cfg.Commit(ctx, d, observed); err != nil {
+			return fmt.Errorf("agent: commit: %w", err)
+		}
+	}
+	plans := r.cfg.Planner.Plan(d)
 	if err := r.writeStatuses(ctx, plans, observed); err != nil {
 		return err
+	}
+	if r.cfg.Sync != nil {
+		if err := r.cfg.Sync(ctx, d, observed, func(agent.WorkerKey) bool { return false }); err != nil {
+			return fmt.Errorf("agent: sync: %w", err)
+		}
 	}
 	if r.cfg.Prepare != nil {
 		if err := r.cfg.Prepare(ctx, d, observed); err != nil {
@@ -233,6 +251,12 @@ func (r *run[I, S, L]) step(ctx context.Context) time.Time {
 	for k, err := range d.Rejected {
 		r.log.Debug().Str("key", k).Err(err).Msg("demand entry rejected")
 	}
+	observed := r.cfg.Fleet.Observe()
+	if !stale && r.cfg.Commit != nil {
+		if err := r.cfg.Commit(ctx, d, observed); err != nil {
+			r.log.Warn().Err(err).Msg("commit failed")
+		}
+	}
 	plans := r.cfg.Planner.Plan(d)
 	acts, wake := r.rec.Step(now, stale, plans, r.cfg.Fleet.Observe())
 	for _, a := range acts {
@@ -245,8 +269,14 @@ func (r *run[I, S, L]) step(ctx context.Context) time.Time {
 		}
 	}
 	if !stale && ctx.Err() == nil { // the writes would wait on a cluster the agent cannot reach; they catch up later
-		if err := r.writeStatuses(ctx, plans, r.cfg.Fleet.Observe()); err != nil {
+		observed := r.cfg.Fleet.Observe()
+		if err := r.writeStatuses(ctx, plans, observed); err != nil {
 			r.log.Warn().Err(err).Msg("worker status not written")
+		}
+		if r.cfg.Sync != nil {
+			if err := r.cfg.Sync(ctx, d, observed, r.rec.GaveUp); err != nil {
+				r.log.Warn().Err(err).Msg("sync failed")
+			}
 		}
 	}
 	return wake

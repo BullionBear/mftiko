@@ -17,12 +17,11 @@ type Market interface {
 	// Topics is the capability table (D401). A topic missing here is unsupported on this venue.
 	Topics() []TopicCaps
 
-	// Atom maps a feed to its atom (D401, D202, D203). A spec names the feed with a UniversalTicker; the
-	// caller resolves that to *symbol.Info at load (symbol.Resolver.Get) and passes what came back,
-	// so this stays a pure function. The Info's UID is the instrument inside the system. The answer
-	// is the venue channel to subscribe and the route (websocket
-	// path) it lives on (D403); several topics may land on one atom (orderbook and orderbook_delta,
-	// D402; Bybit's linear tickers carry ticker, funding, open interest and mark price).
+	// Atom maps a feed to its atom (D401, D202, D203). The conn worker passes *symbol.Info from its
+	// venue table, so this stays a pure function. The answer is the venue channel to subscribe and
+	// the route (websocket path) it lives on (D403); several topics may land on one atom (orderbook
+	// and orderbook_delta, D402; Bybit's linear tickers carry ticker, funding, open interest and
+	// mark price). The MD agent calls it only to learn the route, and does not subscribe the channel.
 	// ErrUnsupported when the venue does not push this topic: the lease item becomes REJECTED
 	// (PROTOCOL §3.5), and query-only values go to md.fetch instead.
 	Atom(topic Topic, inst *symbol.Info) (AtomRef, error)

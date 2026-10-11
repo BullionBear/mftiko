@@ -10,6 +10,10 @@
 // A failed dial does not consume the number. The agent copies the shim's report into the next
 // Init; this package does not.
 //
+// At Init the process loads this venue's active symbol table and follows sym.changed. A reconcile
+// loop turns the agent's topic.UniversalTicker list into atoms with that table and subscribes the
+// difference. A worker started without a table applies atom ids from the assignment instead.
+//
 // Depth updates are folded into a sdk/book ring on this connection (D424–D434). orderbook and
 // orderbook_delta are two feeds of that book. orderbook_delta forwards each normalized increment
 // unchanged. orderbook is the top-N, rebuilt only when an increment touches it. A reset and the

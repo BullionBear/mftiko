@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"google.golang.org/protobuf/proto"
 
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	shimv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/shim/v1"
@@ -57,6 +58,14 @@ type Program[S, L agent.Hashed] interface {
 	Start(key agent.WorkerKey, spec S) (*workerv1.Start, error)
 	// Push is live as the worker takes it: its C5 contract and payload. The Fleet sets the digest (D111).
 	Push(key agent.WorkerKey, live L) (*workerv1.Live, error)
+}
+
+// carriesLive reports whether Init's payload is the live config the worker applies. A Program that
+// says otherwise (MD: Init is mdctl.InitPayload, Desired arrives as Live) is not recorded as
+// already pushed at spawn.
+func carriesLive[S, L agent.Hashed](p Program[S, L]) bool {
+	c, ok := p.(interface{ CarriesLive() bool })
+	return !ok || c.CarriesLive()
 }
 
 // Numbers hands out incarnations: a *state.Incarnations (PROTOCOL §3.2 W6).
@@ -252,8 +261,15 @@ func (f *Fleet[S, L]) Spawn(ctx context.Context, key agent.WorkerKey, spec S, li
 		return fmt.Errorf("fleet: spawn %s/%d: attach: %w", key, n, err)
 	}
 	at := conn.Attached()
+	obs := spawned(at, spec.Hash(), live.Hash(), time.Now())
+	if !carriesLive(f.cfg.Program) {
+		// Init's payload is not the live config, so it has not been pushed. MD's Desired is a
+		// later Live; recording it here would make the Reconciler wait out LiveRetry.
+		obs.Pushed = ""
+		obs.PushedAt = time.Time{}
+	}
 	w := &worker[S]{conn: conn, socket: socket, shimDone: shimDone, pid: int(at.GetPid()), startTime: at.GetStartTime(),
-		obs: spawned(at, spec.Hash(), live.Hash(), time.Now())}
+		obs: obs}
 	f.mu.Lock()
 	f.workers[key] = w
 	f.mu.Unlock()
@@ -398,6 +414,10 @@ func apply(o *agent.Observed, ev *shimv1.Event) {
 		o.Stage = k.Stage.GetName()
 	case *shimv1.Event_Applied:
 		o.LiveHash = k.Applied.GetDigest()
+	case *shimv1.Event_Report:
+		if k.Report != nil {
+			o.Report = proto.Clone(k.Report).(*workerv1.Report)
+		}
 	case *shimv1.Event_Beat:
 		if ev.GetAtNs() != 0 {
 			o.LastBeat = time.Unix(0, ev.GetAtNs())
