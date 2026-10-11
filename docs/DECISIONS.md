@@ -477,7 +477,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 - `seq`（uint64）和 `conn_epoch`（uint64）做兩件事。一是傳輸層的連續性：conn worker 到策略之間的缺口，包括 prehook 丟棄和 NATS 掉訊息。二是 tape 和 `md.view` 的對齊（D402）。不必解開 payload 就能檢查連續性。
 - 行情本身的連續性另外由交易所在 payload 裡的序號負責（Binance `U`／`u`／`pu`、Bybit `seq`）。兩層並存。
-- `seq` 以 `(feed, conn_epoch)` 起算，重連後從 1 重新起算。conn worker 重啟後 `conn_epoch` 要繼續單調遞增。遞增是 conn worker 那張票的事，不在 envelope 的讀寫裡。
+- `seq` 以 `(feed, conn_epoch)` 起算，重連後從 1 重新起算。conn worker 重啟後 `conn_epoch` 要繼續單調遞增。遞增是 conn worker 的事，不在 envelope 的讀寫裡：下一個號先寫進 C4 的 `Report`，寫完才撥，`md.f` 才用它（PROTOCOL §6.2）。
 
 ### D410 `digest`
 

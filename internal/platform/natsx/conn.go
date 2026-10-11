@@ -24,7 +24,8 @@ const (
 var ErrClosed = errors.New("natsx: connection closed")
 
 // Options configures one connection. The zero value is an unauthenticated connection, which is
-// what natsxtest accepts. Credentials are not configured here (D906).
+// what natsxtest accepts. A session's credentials are not read here (D906); a platform
+// process passes its file as CredsFile.
 type Options struct {
 	// Name is the connection name the server shows in monitoring. Empty leaves it unset.
 	Name string
@@ -44,6 +45,11 @@ type Options struct {
 	// Empty keeps the client default _INBOX. Sessions set _INBOX_{session_id} (D906).
 	// Platform processes set _INBOX_{plane} (D416): _INBOX_md and _INBOX_fetch.
 	InboxPrefix string
+
+	// CredsFile is a NATS user credentials file. Empty connects without one.
+	// An MD or md.fetch process sets it from MFTIKO_NATS_CREDS. A session worker leaves
+	// it empty: its credentials arrive in Init and never touch this field (D906).
+	CredsFile string
 }
 
 // Conn is one core-NATS connection. It is safe for concurrent use. It has no JetStream handle.
@@ -111,6 +117,9 @@ func Connect(url string, opt Options) (*Conn, error) {
 	}
 	if opt.InboxPrefix != "" {
 		nopts = append(nopts, nats.CustomInboxPrefix(opt.InboxPrefix))
+	}
+	if opt.CredsFile != "" {
+		nopts = append(nopts, nats.UserCredentials(opt.CredsFile))
 	}
 	nc, err := nats.Connect(url, nopts...)
 	if err != nil {
