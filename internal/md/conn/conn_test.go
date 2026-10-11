@@ -406,6 +406,78 @@ func TestDialFailureKeepsEpoch(t *testing.T) {
 	}
 }
 
+func TestReportBeforeFailedDial(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	ln.Close()
+
+	var got []uint64
+	m := &stubMarket{s: &memSession{lim: exchange.SessionLimits{ReadLimit: 1 << 20}}}
+	c := New(Config{
+		Venue: "V", Route: "r", Instance: "i",
+		URL:    "ws://" + addr,
+		Market: m,
+		Publish: func(string, []byte) error {
+			t.Error("published")
+			return nil
+		},
+		Epoch: 0,
+		Report: func(epoch uint64) error {
+			got = append(got, epoch)
+			return nil
+		},
+		RetryAfter: time.Second,
+	})
+	ctx, cancel := context.WithTimeout(t.Context(), 700*time.Millisecond)
+	defer cancel()
+	err = c.Run(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("run: %v", err)
+	}
+	if c.Epoch() != 0 || len(got) != 1 || got[0] != 1 {
+		t.Fatalf("epoch %d reported %v", c.Epoch(), got)
+	}
+}
+
+func TestReportErrorDoesNotDial(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	accepted := make(chan struct{})
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		close(accepted)
+		c.Close()
+	}()
+	c := New(Config{
+		Venue: "V", Route: "r", Instance: "i",
+		URL:    "ws://" + ln.Addr().String(),
+		Market: &stubMarket{s: &memSession{lim: exchange.SessionLimits{ReadLimit: 1 << 20}}},
+		Publish: func(string, []byte) error {
+			t.Error("published")
+			return nil
+		},
+		Report: func(uint64) error { return errors.New("no shim") },
+	})
+	err = c.Run(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "no shim") {
+		t.Fatalf("run: %v", err)
+	}
+	select {
+	case <-accepted:
+		t.Fatal("dialed after the report failed")
+	default:
+	}
+}
+
 func TestRateLimit(t *testing.T) {
 	s := &memSession{
 		per: 1,

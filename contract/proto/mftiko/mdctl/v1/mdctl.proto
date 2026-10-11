@@ -16,6 +16,8 @@ message InitPayload {
   reserved "tape_url";
   // 實際連線的 URL。host 由 MD instance 的設定選：預設，或交易所提供的替代 endpoint（D403）。換 URL 要換 incarnation。
   string url = 6;
+  // 上次上報的 conn_epoch。0 表示還沒有上報過，第一次撥號用 1（D409）。
+  uint64 conn_epoch = 7;
 }
 
 // Start 沒有 payload：連上 websocket，等第一份 Desired。

@@ -135,7 +135,9 @@ type InitPayload struct {
 	N          uint32                 `protobuf:"varint,3,opt,name=n,proto3" json:"n,omitempty"`
 	MdInstance string                 `protobuf:"bytes,4,opt,name=md_instance,json=mdInstance,proto3" json:"md_instance,omitempty"`
 	// 實際連線的 URL。host 由 MD instance 的設定選：預設，或交易所提供的替代 endpoint（D403）。換 URL 要換 incarnation。
-	Url           string `protobuf:"bytes,6,opt,name=url,proto3" json:"url,omitempty"`
+	Url string `protobuf:"bytes,6,opt,name=url,proto3" json:"url,omitempty"`
+	// 上次上報的 conn_epoch。0 表示還沒有上報過，第一次撥號用 1（D409）。
+	ConnEpoch     uint64 `protobuf:"varint,7,opt,name=conn_epoch,json=connEpoch,proto3" json:"conn_epoch,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -203,6 +205,13 @@ func (x *InitPayload) GetUrl() string {
 		return x.Url
 	}
 	return ""
+}
+
+func (x *InitPayload) GetConnEpoch() uint64 {
+	if x != nil {
+		return x.ConnEpoch
+	}
+	return 0
 }
 
 // Start 沒有 payload：連上 websocket，等第一份 Desired。
@@ -585,14 +594,16 @@ var File_mftiko_mdctl_v1_mdctl_proto protoreflect.FileDescriptor
 
 const file_mftiko_mdctl_v1_mdctl_proto_rawDesc = "" +
 	"\n" +
-	"\x1bmftiko/mdctl/v1/mdctl.proto\x12\x0fmftiko.mdctl.v1\x1a\x1dmftiko/common/v1/common.proto\"\x8a\x01\n" +
+	"\x1bmftiko/mdctl/v1/mdctl.proto\x12\x0fmftiko.mdctl.v1\x1a\x1dmftiko/common/v1/common.proto\"\xa9\x01\n" +
 	"\vInitPayload\x12\x14\n" +
 	"\x05venue\x18\x01 \x01(\tR\x05venue\x12\x14\n" +
 	"\x05route\x18\x02 \x01(\tR\x05route\x12\f\n" +
 	"\x01n\x18\x03 \x01(\rR\x01n\x12\x1f\n" +
 	"\vmd_instance\x18\x04 \x01(\tR\n" +
 	"mdInstance\x12\x10\n" +
-	"\x03url\x18\x06 \x01(\tR\x03urlJ\x04\b\x05\x10\x06R\btape_url\"\x0e\n" +
+	"\x03url\x18\x06 \x01(\tR\x03url\x12\x1d\n" +
+	"\n" +
+	"conn_epoch\x18\a \x01(\x04R\tconnEpochJ\x04\b\x05\x10\x06R\btape_url\"\x0e\n" +
 	"\fStartPayload\"F\n" +
 	"\aCommand\x124\n" +
 	"\adesired\x18\x01 \x01(\v2\x18.mftiko.mdctl.v1.DesiredH\x00R\adesiredB\x05\n" +

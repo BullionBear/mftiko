@@ -24,8 +24,8 @@ const (
 var ErrClosed = errors.New("natsx: connection closed")
 
 // Options configures one connection. The zero value is an unauthenticated connection, which is
-// what natsxtest accepts. md.fetch sets CredsFile (D415). A session does not: its JWT arrives
-// in Init (D906).
+// what natsxtest accepts. MD and md.fetch set CredsFile (D415). A session does not: its JWT
+// arrives in Init (D906).
 type Options struct {
 	// Name is the connection name the server shows in monitoring. Empty leaves it unset.
 	Name string
@@ -47,8 +47,9 @@ type Options struct {
 	InboxPrefix string
 
 	// CredsFile is a NATS user credentials file, a user JWT and its seed.
-	// Empty connects without credentials. md.fetch passes the file from
-	// MFTIKO_NATS_CREDS (D415). A session leaves it empty (D906).
+	// Empty connects without one. An MD or md.fetch process sets it from
+	// MFTIKO_NATS_CREDS (D415). A session worker leaves it empty: its
+	// credentials arrive in Init and never touch this field (D906).
 	CredsFile string
 }
 
