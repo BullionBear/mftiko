@@ -48,6 +48,28 @@ type Config struct {
 	// whatever the previous failure had grown to.
 	RetryAfter time.Duration
 	RetryMax   time.Duration
+	// REST and Doer run SnapshotREST depth in this process. Nil is left alone until a book asks
+	// for a snapshot. The call does not go through md.fetch (D402).
+	REST exchange.PublicREST
+	Doer exchange.Doer
+	// BookDepth is the orderbook top-N (D426). Zero means missing. Serve rejects that at init. A
+	// book channel adopted with zero, or with N greater than BookSync.Depth on SnapshotREST,
+	// ends Run.
+	BookDepth uint32
+	// BufferMax and BufferAge cap the updates kept while a snapshot is outstanding (D424). Zero
+	// means DefaultBufferMax and DefaultBufferAge. Hitting either drops the buffer and makes the
+	// in-flight snapshot stale.
+	BufferMax int
+	BufferAge time.Duration
+	// RateHold is the wait after a 429 or 418 that has neither Retry-After nor ResetAt (D424).
+	// Zero means DefaultRateHold. Negative is rejected by Serve. It is not an Init field.
+	RateHold time.Duration
+	// BookNow is the clock for buffer age, snapshot backoff and rate holds. Nil means time.Now.
+	// It is not the md_ts_ns clock and not the dial clock.
+	BookNow func() time.Time
+	// BookAfter fires on the book clock. Nil means time.After. Tests pass a fake so the waits
+	// above do not sleep.
+	BookAfter func(time.Duration) <-chan time.Time
 	// Log is optional. Nil discards.
 	Log *zerolog.Logger
 }
@@ -63,6 +85,14 @@ type Conn struct {
 	retryAfter         time.Duration
 	retryMax           time.Duration
 	log                zerolog.Logger
+	rest               exchange.PublicREST
+	doer               exchange.Doer
+	bookDepth          uint32
+	bufferMax          int
+	bufferAge          time.Duration
+	rateHold           time.Duration
+	bookNow            func() time.Time
+	bookAfter          func(time.Duration) <-chan time.Time
 
 	mu sync.Mutex
 	// epoch is the connection that is up, or the last one that was, or Config.Epoch before the
@@ -73,8 +103,22 @@ type Conn struct {
 	ver    commonv1.Version
 	// wanted is the current desired set for this venue and route, keyed by channel.
 	wanted map[string][]feed
-	live   *link
-	kick   chan struct{}
+	// exch is the assignment's exch ticker for that channel, copied at spec load (D426).
+	exch map[string]string
+	// tick is the assignment's price tick for that channel, copied at spec load (D433).
+	tick map[string]float64
+	live *link
+	kick chan struct{}
+	// bookWake asks the snapshot loop to look again. One slot: the loop reads the current shelves.
+	bookWake chan struct{}
+	// gate times Depth for every book on this worker. It outlives a reconnect: the IP does not change.
+	gate depthGate
+	// fetchWG is the Depth calls of the connection that is up. The link is cleared only after they
+	// return, so a late response cannot land on the next connection.
+	fetchWG sync.WaitGroup
+	// fatal is a book the worker will not run (missing N, or N above Depth). stop cancels Run.
+	fatal error
+	stop  context.CancelFunc
 }
 
 // feed is one assigned publication: the subject is md.f.{instance}.{topic}.{ticker}.
@@ -92,7 +136,11 @@ type link struct {
 	unsubInflight map[uint64][]string
 	subPending    map[string]struct{}
 	unsubPending  map[string]struct{}
-	seq           map[string]uint64 // feed key topic.ticker, last seq handed out
+	// resub is a SnapshotStream channel whose backoff has elapsed. plan unsubscribes it
+	// before subscribing it again (D434). The session rate limit still paces those frames.
+	resub map[string]struct{}
+	seq   map[string]uint64 // feed key topic.ticker, last seq handed out
+	books map[string]*shelf
 }
 
 func newLink(s exchange.Session) *link {
@@ -103,7 +151,9 @@ func newLink(s exchange.Session) *link {
 		unsubInflight: map[uint64][]string{},
 		subPending:    map[string]struct{}{},
 		unsubPending:  map[string]struct{}{},
+		resub:         map[string]struct{}{},
 		seq:           map[string]uint64{},
+		books:         map[string]*shelf{},
 	}
 }
 
@@ -118,11 +168,29 @@ func New(cfg Config) *Conn {
 	if now == nil {
 		now = time.Now
 	}
+	bufN := cfg.BufferMax
+	if bufN == 0 {
+		bufN = DefaultBufferMax
+	}
+	bufAge := cfg.BufferAge
+	if bufAge == 0 {
+		bufAge = DefaultBufferAge
+	}
+	hold := cfg.RateHold
+	if hold == 0 {
+		hold = DefaultRateHold
+	}
+	bookNow := cfg.BookNow
+	if bookNow == nil {
+		bookNow = time.Now
+	}
 	return &Conn{
 		venue: cfg.Venue, route: cfg.Route, inst: cfg.Instance,
 		url: cfg.URL, market: cfg.Market, pub: cfg.Publish, now: now,
 		epoch: cfg.Epoch, report: cfg.Report, retryAfter: cfg.RetryAfter, retryMax: cfg.RetryMax,
-		log: log, kick: make(chan struct{}, 1),
+		rest: cfg.REST, doer: cfg.Doer, bookDepth: cfg.BookDepth,
+		bufferMax: bufN, bufferAge: bufAge, rateHold: hold, bookNow: bookNow, bookAfter: cfg.BookAfter,
+		log: log, kick: make(chan struct{}, 1), bookWake: make(chan struct{}, 1),
 	}
 }
 
@@ -140,13 +208,28 @@ func (c *Conn) Run(ctx context.Context) error {
 	if err := c.resolve(); err != nil {
 		return err
 	}
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	c.mu.Lock()
+	c.stop = cancel
+	fatal := c.fatal
+	c.mu.Unlock()
+	if fatal != nil {
+		return fatal
+	}
 	var wait time.Duration
 	for {
-		if err := sleep(ctx, wait); err != nil {
-			return err
+		if err := sleep(runCtx, wait); err != nil {
+			if ferr := c.fatalErr(); ferr != nil {
+				return ferr
+			}
+			return ctx.Err()
 		}
-		up, retry, err := c.once(ctx)
-		if ctx.Err() != nil {
+		up, retry, err := c.once(runCtx)
+		if ferr := c.fatalErr(); ferr != nil {
+			return ferr
+		}
+		if runCtx.Err() != nil {
 			return ctx.Err()
 		}
 		if err != nil && !retry {
@@ -157,6 +240,12 @@ func (c *Conn) Run(ctx context.Context) error {
 			c.log.Warn().Err(err).Dur("retry_in", wait).Msg("dial")
 		}
 	}
+}
+
+func (c *Conn) fatalErr() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.fatal
 }
 
 func (c *Conn) resolve() error {
@@ -210,18 +299,27 @@ func (c *Conn) once(ctx context.Context) (up, retry bool, err error) {
 	c.log.Info().Uint64("conn_epoch", epoch).Msg("connected")
 
 	wctx, cancel := context.WithCancel(ctx)
+	bdone := make(chan struct{})
+	go func() {
+		defer close(bdone)
+		c.syncBooks(wctx)
+	}()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		c.write(wctx, conn, newLimiter(lim.Rate))
 	}()
 	// Kick after the writer exists. A desired set before dial is applied here; one buffered
-	// kick is enough because plan reads the current set.
+	// kick is enough because plan reads the current set. The book loop reads the same set.
 	c.poke()
+	c.wakeBook()
 	err = conn.Run(ctx, c.handle)
-	// The writer must finish before live is cleared, or it could plan against the next connection.
+	// The writer and any Depth must finish before live is cleared, or they could land on the
+	// next connection. Depth runs off the read goroutine, so cancel is what stops it.
 	cancel()
 	<-done
+	<-bdone
+	c.fetchWG.Wait()
 	c.mu.Lock()
 	c.live = nil
 	c.mu.Unlock()

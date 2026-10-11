@@ -44,6 +44,12 @@ type ServeConfig struct {
 	// RetryAfter and RetryMax are Conn's dial backoff. Zero means 1s growing to 30s.
 	RetryAfter time.Duration
 	RetryMax   time.Duration
+	// REST is the venue's public REST, used for SnapshotREST depth. Nil leaves depth without a
+	// reader. Doer sends it. RateHold is the 429/418 fallback (D424): zero means one minute,
+	// negative fails init. It is a process flag, not an Init field.
+	REST     func(venue string) (exchange.PublicREST, bool)
+	Doer     exchange.Doer
+	RateHold time.Duration
 	// Log is optional. Nil discards.
 	Log *zerolog.Logger
 	// Release is Hello.release. Empty leaves it empty.
@@ -221,6 +227,12 @@ func (s *ctl) onInit(m *workerv1.Init) (code int, ok bool) {
 	if p.GetVenue() == "" || p.GetRoute() == "" || p.GetMdInstance() == "" {
 		return s.failInit("venue, route and md_instance are required"), false
 	}
+	if p.GetBookDepth() == 0 {
+		return s.failInit("book depth is required"), false
+	}
+	if s.cfg.RateHold < 0 {
+		return s.failInit("rate hold is negative"), false
+	}
 	if s.cfg.Lookup == nil || s.cfg.Publish == nil {
 		return s.failInit("lookup and publish are required"), false
 	}
@@ -228,12 +240,23 @@ func (s *ctl) onInit(m *workerv1.Init) (code int, ok bool) {
 	if !found || market == nil {
 		return s.failInit("unknown venue " + p.GetVenue()), false
 	}
+	var rest exchange.PublicREST
+	if s.cfg.REST != nil {
+		rest, _ = s.cfg.REST(p.GetVenue())
+	}
+	var bufAge time.Duration
+	if ms := p.GetBookBufferMs(); ms > 0 {
+		bufAge = time.Duration(ms) * time.Millisecond
+	}
 	s.log.Info().Str("venue", p.GetVenue()).Str("route", p.GetRoute()).Uint32("n", p.GetN()).
-		Uint64("conn_epoch", p.GetConnEpoch()).Msg("init")
+		Uint64("conn_epoch", p.GetConnEpoch()).Uint32("book_depth", p.GetBookDepth()).Msg("init")
 	c := New(Config{
 		Venue: p.GetVenue(), Route: p.GetRoute(), Instance: p.GetMdInstance(), URL: p.GetUrl(),
 		Market: market, Publish: s.cfg.Publish, Now: s.cfg.Now, Epoch: p.GetConnEpoch(),
 		Report: s.reportEpoch, RetryAfter: s.cfg.RetryAfter, RetryMax: s.cfg.RetryMax, Log: s.cfg.Log,
+		REST: rest, Doer: s.cfg.Doer, RateHold: s.cfg.RateHold,
+		BookDepth: p.GetBookDepth(),
+		BufferMax: int(p.GetBookBufferMax()), BufferAge: bufAge,
 	})
 	s.install(c)
 	if err := s.send(done(workerv1.Verb_VERB_INIT, true, "")); err != nil {

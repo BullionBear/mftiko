@@ -347,7 +347,7 @@ func (x *Gap) GetEndNs() int64 {
 	return 0
 }
 
-// orderbook_delta 這個 feed 在 (conn_epoch, seq) 當下的完整 book。
+// orderbook_delta 這個 feed 在 (conn_epoch, seq) 當下的窗內 book（D430）。窗外的檔不在這裡。
 type BookSnapshot struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Meta          *Meta                  `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
