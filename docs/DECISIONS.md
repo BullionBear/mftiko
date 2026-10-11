@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-11 定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-11 定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 >
@@ -302,7 +302,7 @@ account worker 依 refcount 起停，沒有常駐層（D901），所以閒置帳
   - tape 只是熱身用，回覆會說明涵蓋多少。要一直熱的，跑一個 tape keeper：不下單、不綁帳號的策略，跟 mftik 一樣，tape 跟著它的生命週期走（D404）。
 - **md.view：** 持有 atom 的 conn worker 服務 `md.view.{inst}.{topic}.{ticker}`，形狀跟 `md.f` 一樣，對應 `td.view.{api_id}`。回覆依 topic：trade 類回 tape 分頁（由新到舊，以 `(conn_epoch, seq)` 當游標，每頁壓在 NATS 的 1 MiB 以下），`orderbook_delta` 回 seq S 時的 book。沒有 responder，就是沒有 worker 持有這個 atom。
 - **md.fetch：**
-  - 無狀態的服務，跟 SYM 一樣：每個 region 部署，NATS queue group，任何 replica 都能回答。不需要 agent、lease、fencing。不落庫。
+  - 無狀態的服務，跟 SYM 一樣：每個 region 部署，NATS queue group，任何 replica 都能回答。不需要 agent、lease、fencing。不落庫。subject、分頁、限速、解析與部署見 D418–D423。
   - 只轉發交易所的公開 REST：K 線，以及交易所不推送、只能查詢的值（D401，例如 Binance UM 的 open interest）。
   - K 線接 live 的 kline feed，以 `open_time` 對齊。
   - book 快照不走 md.fetch，走 `md.view`。best quote 這類交易所有推送的值，訂閱 feed。
@@ -527,7 +527,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 寫進 PROTOCOL §7。TD 與 SYM 的權限留到它們自己的票，這一票不加。
 
 - **MD instance（`MFTIKO_NATS_CREDS`）：** publish `md.f.{inst}.>`、`sym`；subscribe `md.view.{inst}.>`。inbox 見 D416。
-- **md.fetch（D402，無狀態，不是 MD worker）：** queue group subscribe `md.fetch`；publish `sym`。inbox 見 D416。可 request `sym` 是 publish 恰好 subject `sym`，不是 `sym.>`。
+- **md.fetch（D402，無狀態，不是 MD worker）：** queue group subscribe `md.fetch.>`（每個 replica 只訂閱部署設定裡它連得到的 `md.fetch.{venue}`，D418）；subscribe `sym.changed.>`（NATS Resolver，D422）；publish `sym`。inbox 見 D416。可 request `sym` 是 publish 恰好 subject `sym`，不是 `sym.>`。恰好 subject `md.fetch` 不能訂。
 - **回覆權限。** D416 不給 `_INBOX.>` 的 publish，服務者仍要能回一則。兩個 user 的 JWT 帶 NATS 的 response permission，上限沿用 server `allow_responses` 的預設：一則、兩分鐘。這不是新的決策編號。session 的呼叫者沒有這條，它只訂自己的 inbox。
 
 ### D416 inbox 前綴
@@ -542,9 +542,45 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 - **CI 用嵌入式 nats-server 載入同一份設定與產生的 creds**，檢查三件事：發佈 `md.f`；用自訂 inbox 做 request／reply；未授權的發佈與訂閱被拒（另一個平面的 inbox、session 的 inbox、`_INBOX.>`，以及另一個 instance 的 `md.f`）。
 - **檢查會在記憶體裡用簽章金鑰簽一個暫時的 session user**，當合法的呼叫者。不把 session creds 寫進磁碟。
-- **md.fetch 的 queue 名稱在檢查裡用 `md.fetch`。** 這是 natsx 的 `Serve` 在 queue 空著時用的預設（subject 本身）。JWT 不鎖 queue 名稱。
+- **md.fetch 的 queue 名稱在檢查裡用 `md.fetch.Binance`。** 這是一個 venue subject；natsx 的 `Serve` 在 queue 空著時用 subject 本身（D418）。恰好 subject `md.fetch` 不能訂。JWT 不鎖 queue 名稱。
 - **compose 的煙測腳本跑同一組檢查：** `deploy/dev/nats-smoke.sh`。
 - **不開 TLS。**
+
+### D418 md.fetch 的 subject 分 venue
+
+- **subject 是 `md.fetch.{venue}`。** venue 是人讀的名字，與 `sym.changed.{venue}.{category}` 的 venue 相同。
+- **每個 replica 只訂閱它連得到的 venue。** queue group 的名稱是 subject（natsx `Serve` 在 queue 空著時的預設）。哪些 venue 由部署設定決定，不是全部。
+- **程式不寫跨 region 路由。** queue group 優先本地，本地沒有 responder 才轉到別的 region。
+- **權限用 `md.fetch.>`。** 這是「每個 venue 一條」與「萬用字元加上部署清單」裡較簡單的一種。行程仍只訂清單裡的 venue。session 的 publish 從 `md.fetch` 改成 `md.fetch.>`（D906）。SDK 的 fetch 走 `md.fetch.{venue}`，venue 取自 ticker，不選 region。
+- **恰好 subject `md.fetch` 沒有 venue，不能訂。**
+
+### D419 K 線分頁與上限
+
+- **`limit` 不在 1 到 5000 回 `invalid`。** 5000 是單次最多的已收盤 K 線。
+- **超過 `KlinePage()` 時**，服務用 `Klines(endNs)` 從已拿到的最早一根往回翻。回覆只有已收盤的，由舊到新。某一頁失敗就整筆失敗，不回半頁。邊界那根若又出現，丟掉，不重試。
+- **回覆達到或超過 NATS 的 1 MiB 回 `invalid`，不送出。** 5000 根的大小由測試驗證，在這個上限以下。
+
+### D420 限速
+
+- **用 `PublicREST.Usage` 記下交易所在回應裡回報的用量。** 這個數字含同一 IP 上的其他人，包括同主機的 conn worker。
+- **閾值是設定。** 未設定（0）不預先拒絕：平台不知道交易所的上限。設了之後，任一 bucket 的回報用量達到閾值，下一筆對該 venue 的呼叫不送出，回 `rate_limited`。
+- **不排隊、不重試。** 交易所自己回 429（`*RateLimited`）也是 `rate_limited`，只送一次。
+
+### D421 不快取
+
+- **這一版不快取。** 每次請求都打交易所。服務維持無狀態。
+
+### D422 商品解析
+
+- **ticker 經 NATS Resolver 換成 `symbol.Info`。** 只查活躍表。不在活躍表的（含已下架、已到期）回 `invalid`。
+- **ticker 的 venue 與 subject 的 venue 不符回 `invalid`。** 在查表之前。
+- **`ErrUnsupported` 回 `unsupported`。** 其他讀取失敗回 `venue_error`。Resolver 暫時不可用不是這四個業務碼，走 natsx 的錯誤回覆。
+- **md.fetch user 另外 subscribe `sym.changed.>`**，Resolver 才能收到變更通知。publish `sym` 維持 D415。
+
+### D423 位置與部署
+
+- **程式在 `internal/md/fetch`，執行檔是 `cmd/mftiko-mdfetch`。** 平台服務，跟 SYM 一樣隨平台發版、逐台重啟 replica。不放進 md-agent，不是 worker artifact。
+- **連線用 md.fetch 的 user creds（`MFTIKO_NATS_CREDS`）與 `_INBOX_fetch`。** `natsx.Options.CredsFile` 把 creds 交給客戶端。
 
 ### D906 session worker 的 NATS 憑證：每個 session 一份
 
@@ -553,7 +589,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
   | | 允許 |
   |---|---|
-  | publish | `td.order.{綁定的 api_id}`、`td.view.{綁定的 api_id}`、`md.view.{綁定的 MD instance}.>`、`md.fetch`、`sym`（D202）、`log.sts.{session_id}` |
+  | publish | `td.order.{綁定的 api_id}`、`td.view.{綁定的 api_id}`、`md.view.{綁定的 MD instance}.>`、`md.fetch.>`（D418）、`sym`（D202）、`log.sts.{session_id}` |
   | subscribe | `md.f.{綁定的 MD instance}.>`、`td.evt.{綁定的 api_id}`、`_INBOX_{session_id}.>`、`sym.changed.>`（E2-09） |
 
   - 行情的訂閱權限用萬用字元，只分到 instance：selector 的成員會變，沒辦法逐一列出；行情是公開資料，放寬讀取的風險很低。

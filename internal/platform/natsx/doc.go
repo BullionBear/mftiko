@@ -9,6 +9,8 @@
 // Options.Logger. OnReconnect is an additional callback for a process that must
 // reload after a gap; it runs on the client's reconnect goroutine and must not block.
 //
-// Credentials are not set here (D906). The inbox prefix is Options.InboxPrefix:
-// sessions use _INBOX_{session_id} (D906), platform processes use _INBOX_{plane} (D416).
+// md.fetch sets Options.CredsFile to its user credentials (D415). A session
+// does not: its JWT arrives in Init (D906). The inbox prefix is
+// Options.InboxPrefix: sessions use _INBOX_{session_id} (D906), platform
+// processes use _INBOX_{plane} (D416).
 package natsx
