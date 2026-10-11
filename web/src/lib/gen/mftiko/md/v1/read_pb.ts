@@ -6,7 +6,7 @@
 
 import type { GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
 import { fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv2";
-import type { Kline, Level, Meta, OpenInterest } from "./md_pb";
+import type { FeedEvent, Kline, Level, Meta, OpenInterest } from "./md_pb";
 import { file_mftiko_md_v1_md } from "./md_pb";
 import type { Message } from "@bufbuild/protobuf";
 
@@ -14,25 +14,32 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mftiko/md/v1/read.proto.
  */
 export const file_mftiko_md_v1_read: GenFile = /*@__PURE__*/
-  fileDesc("ChdtZnRpa28vbWQvdjEvcmVhZC5wcm90bxIMbWZ0aWtvLm1kLnYxIlIKC1ZpZXdSZXF1ZXN0Eg0KBWxpbWl0GAEgASgNEikKBmJlZm9yZRgCIAEoCzIULm1mdGlrby5tZC52MS5DdXJzb3JIAIgBAUIJCgdfYmVmb3JlIikKBkN1cnNvchISCgpjb25uX2Vwb2NoGAEgASgEEgsKA3NlcRgCIAEoBCJ4CglWaWV3UmVwbHkSDQoFZXJyb3IYASABKAkSJgoEdGFwZRgKIAEoCzIWLm1mdGlrby5tZC52MS5UYXBlUGFnZUgAEioKBGJvb2sYCyABKAsyGi5tZnRpa28ubWQudjEuQm9va1NuYXBzaG90SABCCAoGcmVzdWx0IpgBCghUYXBlUGFnZRIOCgZldmVudHMYASADKAwSDAoEbW9yZRgCIAEoCBInCgRuZXh0GAMgASgLMhQubWZ0aWtvLm1kLnYxLkN1cnNvckgAiAEBEhsKE2NvbnRpbnVvdXNfc2luY2VfbnMYBCABKAMSHwoEZ2FwcxgFIAMoCzIRLm1mdGlrby5tZC52MS5HYXBCBwoFX25leHQiJwoDR2FwEhAKCHN0YXJ0X25zGAEgASgDEg4KBmVuZF9ucxgCIAEoAyKpAQoMQm9va1NuYXBzaG90EiAKBG1ldGEYASABKAsyEi5tZnRpa28ubWQudjEuTWV0YRIhCgRiaWRzGAIgAygLMhMubWZ0aWtvLm1kLnYxLkxldmVsEiEKBGFza3MYAyADKAsyEy5tZnRpa28ubWQudjEuTGV2ZWwSEgoKY29ubl9lcG9jaBgEIAEoBBILCgNzZXEYBSABKAQSEAoIbWRfdHNfbnMYBiABKAMifAoMRmV0Y2hSZXF1ZXN0EisKBmtsaW5lcxgBIAEoCzIZLm1mdGlrby5tZC52MS5GZXRjaEtsaW5lc0gAEjgKDW9wZW5faW50ZXJlc3QYAiABKAsyHy5tZnRpa28ubWQudjEuRmV0Y2hPcGVuSW50ZXJlc3RIAEIFCgNyZXEiPgoLRmV0Y2hLbGluZXMSDgoGdGlja2VyGAEgASgJEhAKCGludGVydmFsGAIgASgJEg0KBWxpbWl0GAMgASgNIiMKEUZldGNoT3BlbkludGVyZXN0Eg4KBnRpY2tlchgBIAEoCSKSAQoKRmV0Y2hSZXBseRINCgVlcnJvchgBIAEoCRIOCgZyZWFzb24YAiABKAkSJgoGa2xpbmVzGAogASgLMhQubWZ0aWtvLm1kLnYxLktsaW5lc0gAEjMKDW9wZW5faW50ZXJlc3QYCyABKAsyGi5tZnRpa28ubWQudjEuT3BlbkludGVyZXN0SABCCAoGcmVzdWx0Ii0KBktsaW5lcxIjCgZrbGluZXMYASADKAsyEy5tZnRpa28ubWQudjEuS2xpbmVCPlo8Z2l0aHViLmNvbS9CdWxsaW9uQmVhci9tZnRpa28vY29udHJhY3QvZ2VuL21mdGlrby9tZC92MTttZHYxYgZwcm90bzM", [file_mftiko_md_v1_md]);
+  fileDesc("ChdtZnRpa28vbWQvdjEvcmVhZC5wcm90bxIMbWZ0aWtvLm1kLnYxInYKC1ZpZXdSZXF1ZXN0Eg0KBWxpbWl0GAEgASgNEikKBmJlZm9yZRgCIAEoCzIULm1mdGlrby5tZC52MS5DdXJzb3JIAIgBARIVCghzaW5jZV9ucxgDIAEoA0gBiAEBQgkKB19iZWZvcmVCCwoJX3NpbmNlX25zIikKBkN1cnNvchISCgpjb25uX2Vwb2NoGAEgASgEEgsKA3NlcRgCIAEoBCJ4CglWaWV3UmVwbHkSDQoFZXJyb3IYASABKAkSJgoEdGFwZRgKIAEoCzIWLm1mdGlrby5tZC52MS5UYXBlUGFnZUgAEioKBGJvb2sYCyABKAsyGi5tZnRpa28ubWQudjEuQm9va1NuYXBzaG90SABCCAoGcmVzdWx0ImYKCVRhcGVFdmVudBISCgpjb25uX2Vwb2NoGAEgASgEEgsKA3NlcRgCIAEoBBIQCghtZF90c19ucxgDIAEoAxImCgVldmVudBgEIAEoCzIXLm1mdGlrby5tZC52MS5GZWVkRXZlbnQi1QEKCFRhcGVQYWdlEicKBmV2ZW50cxgBIAMoCzIXLm1mdGlrby5tZC52MS5UYXBlRXZlbnQSDAoEbW9yZRgCIAEoCBInCgRuZXh0GAMgASgLMhQubWZ0aWtvLm1kLnYxLkN1cnNvckgAiAEBEhsKE2NvbnRpbnVvdXNfc2luY2VfbnMYBCABKAMSHwoEZ2FwcxgFIAMoCzIRLm1mdGlrby5tZC52MS5HYXASIgoEaGVhZBgGIAEoCzIULm1mdGlrby5tZC52MS5DdXJzb3JCBwoFX25leHQicAoDR2FwEhAKCHN0YXJ0X25zGAEgASgDEg4KBmVuZF9ucxgCIAEoAxIiCgRsYXN0GAMgASgLMhQubWZ0aWtvLm1kLnYxLkN1cnNvchIjCgVmaXJzdBgEIAEoCzIULm1mdGlrby5tZC52MS5DdXJzb3IiqQEKDEJvb2tTbmFwc2hvdBIgCgRtZXRhGAEgASgLMhIubWZ0aWtvLm1kLnYxLk1ldGESIQoEYmlkcxgCIAMoCzITLm1mdGlrby5tZC52MS5MZXZlbBIhCgRhc2tzGAMgAygLMhMubWZ0aWtvLm1kLnYxLkxldmVsEhIKCmNvbm5fZXBvY2gYBCABKAQSCwoDc2VxGAUgASgEEhAKCG1kX3RzX25zGAYgASgDInwKDEZldGNoUmVxdWVzdBIrCgZrbGluZXMYASABKAsyGS5tZnRpa28ubWQudjEuRmV0Y2hLbGluZXNIABI4Cg1vcGVuX2ludGVyZXN0GAIgASgLMh8ubWZ0aWtvLm1kLnYxLkZldGNoT3BlbkludGVyZXN0SABCBQoDcmVxIj4KC0ZldGNoS2xpbmVzEg4KBnRpY2tlchgBIAEoCRIQCghpbnRlcnZhbBgCIAEoCRINCgVsaW1pdBgDIAEoDSIjChFGZXRjaE9wZW5JbnRlcmVzdBIOCgZ0aWNrZXIYASABKAkikgEKCkZldGNoUmVwbHkSDQoFZXJyb3IYASABKAkSDgoGcmVhc29uGAIgASgJEiYKBmtsaW5lcxgKIAEoCzIULm1mdGlrby5tZC52MS5LbGluZXNIABIzCg1vcGVuX2ludGVyZXN0GAsgASgLMhoubWZ0aWtvLm1kLnYxLk9wZW5JbnRlcmVzdEgAQggKBnJlc3VsdCItCgZLbGluZXMSIwoGa2xpbmVzGAEgAygLMhMubWZ0aWtvLm1kLnYxLktsaW5lQj5aPGdpdGh1Yi5jb20vQnVsbGlvbkJlYXIvbWZ0aWtvL2NvbnRyYWN0L2dlbi9tZnRpa28vbWQvdjE7bWR2MWIGcHJvdG8z", [file_mftiko_md_v1_md]);
 
 /**
  * @generated from message mftiko.md.v1.ViewRequest
  */
 export type ViewRequest = Message<"mftiko.md.v1.ViewRequest"> & {
   /**
-   * 只用於 tape：這一頁最多幾筆
+   * 只用於 tape。0 是 1000，上限 5000，超過回 invalid，不截短（D439）
    *
    * @generated from field: uint32 limit = 1;
    */
   limit: number;
 
   /**
-   * 只用於 tape：第一頁不填
+   * 只用於 tape：第一頁不填。不含本身，以 (conn_epoch, seq) 的字典序比較（D436）
    *
    * @generated from field: optional mftiko.md.v1.Cursor before = 2;
    */
   before?: Cursor | undefined;
+
+  /**
+   * 只用於 tape：只回 md_ts_ns ≥ since_ns 的事件。讀到更舊的就停，more = false（D436）
+   *
+   * @generated from field: optional int64 since_ns = 3;
+   */
+  sinceNs?: bigint | undefined;
 };
 
 /**
@@ -71,7 +78,7 @@ export const CursorSchema: GenMessage<Cursor> = /*@__PURE__*/
  */
 export type ViewReply = Message<"mftiko.md.v1.ViewReply"> & {
   /**
-   * 空字串 = 成功；unsupported | not_held | invalid
+   * 空字串 = 成功；unsupported | not_held | invalid | not_synced
    *
    * @generated from field: string error = 1;
    */
@@ -103,15 +110,49 @@ export const ViewReplySchema: GenMessage<ViewReply> = /*@__PURE__*/
   messageDesc(file_mftiko_md_v1_read, 2);
 
 /**
+ * 一則 tape。不帶 envelope、不帶 digest（D435）。event 的位元組是 ring 裡 offset 40 之後的 payload，原樣寫入，不重新編碼。
+ *
+ * @generated from message mftiko.md.v1.TapeEvent
+ */
+export type TapeEvent = Message<"mftiko.md.v1.TapeEvent"> & {
+  /**
+   * @generated from field: uint64 conn_epoch = 1;
+   */
+  connEpoch: bigint;
+
+  /**
+   * @generated from field: uint64 seq = 2;
+   */
+  seq: bigint;
+
+  /**
+   * @generated from field: int64 md_ts_ns = 3;
+   */
+  mdTsNs: bigint;
+
+  /**
+   * @generated from field: mftiko.md.v1.FeedEvent event = 4;
+   */
+  event?: FeedEvent | undefined;
+};
+
+/**
+ * Describes the message mftiko.md.v1.TapeEvent.
+ * Use `create(TapeEventSchema)` to create a new message.
+ */
+export const TapeEventSchema: GenMessage<TapeEvent> = /*@__PURE__*/
+  messageDesc(file_mftiko_md_v1_read, 3);
+
+/**
  * @generated from message mftiko.md.v1.TapePage
  */
 export type TapePage = Message<"mftiko.md.v1.TapePage"> & {
   /**
-   * 由新到舊。每則是 md.f 上發佈過的原始訊息（envelope ＋ FeedEvent），worker 直接從 ring 拷貝，不重新編碼。
+   * 由新到舊。
    *
-   * @generated from field: repeated bytes events = 1;
+   * @generated from field: repeated mftiko.md.v1.TapeEvent events = 1;
    */
-  events: Uint8Array[];
+  events: TapeEvent[];
 
   /**
    * @generated from field: bool more = 2;
@@ -119,7 +160,7 @@ export type TapePage = Message<"mftiko.md.v1.TapePage"> & {
   more: boolean;
 
   /**
-   * 下一頁的 before
+   * 下一頁的 before。more 為 false 時不填
    *
    * @generated from field: optional mftiko.md.v1.Cursor next = 3;
    */
@@ -138,6 +179,13 @@ export type TapePage = Message<"mftiko.md.v1.TapePage"> & {
    * @generated from field: repeated mftiko.md.v1.Gap gaps = 5;
    */
   gaps: Gap[];
+
+  /**
+   * 回覆當下這個 feed 已發佈到 md.f 的最新 (conn_epoch, seq)。ring 還是空的、而且這個 feed 還沒發過，是目前的 epoch、seq 0（D437）。
+   *
+   * @generated from field: mftiko.md.v1.Cursor head = 6;
+   */
+  head?: Cursor | undefined;
 };
 
 /**
@@ -145,21 +193,39 @@ export type TapePage = Message<"mftiko.md.v1.TapePage"> & {
  * Use `create(TapePageSchema)` to create a new message.
  */
 export const TapePageSchema: GenMessage<TapePage> = /*@__PURE__*/
-  messageDesc(file_mftiko_md_v1_read, 3);
+  messageDesc(file_mftiko_md_v1_read, 4);
 
 /**
  * @generated from message mftiko.md.v1.Gap
  */
 export type Gap = Message<"mftiko.md.v1.Gap"> & {
   /**
+   * 上一條連線結束的時間，md_ts_ns 那隻鐘（D440）
+   *
    * @generated from field: int64 start_ns = 1;
    */
   startNs: bigint;
 
   /**
+   * 新連線起來的時間，同一隻鐘（D440）
+   *
    * @generated from field: int64 end_ns = 2;
    */
   endNs: bigint;
+
+  /**
+   * 斷線前這個 feed 的最後一則（D440）
+   *
+   * @generated from field: mftiko.md.v1.Cursor last = 3;
+   */
+  last?: Cursor | undefined;
+
+  /**
+   * 重連後這個 feed 的第一則。第一則還沒到時不填（D440）
+   *
+   * @generated from field: mftiko.md.v1.Cursor first = 4;
+   */
+  first?: Cursor | undefined;
 };
 
 /**
@@ -167,10 +233,11 @@ export type Gap = Message<"mftiko.md.v1.Gap"> & {
  * Use `create(GapSchema)` to create a new message.
  */
 export const GapSchema: GenMessage<Gap> = /*@__PURE__*/
-  messageDesc(file_mftiko_md_v1_read, 4);
+  messageDesc(file_mftiko_md_v1_read, 5);
 
 /**
- * orderbook_delta 這個 feed 在 (conn_epoch, seq) 當下的窗內 book（D430）。窗外的檔不在這裡。
+ * 這個 feed 目前的窗內全本，不是歷史 seq，也不是 top-N（D430、D441）。窗外的檔不在這裡。
+ * conn_epoch、seq、md_ts_ns 是這個 feed 最後一則 md.f 的游標，讓訂閱者丟掉不大於它的 live。
  *
  * @generated from message mftiko.md.v1.BookSnapshot
  */
@@ -211,7 +278,7 @@ export type BookSnapshot = Message<"mftiko.md.v1.BookSnapshot"> & {
  * Use `create(BookSnapshotSchema)` to create a new message.
  */
 export const BookSnapshotSchema: GenMessage<BookSnapshot> = /*@__PURE__*/
-  messageDesc(file_mftiko_md_v1_read, 5);
+  messageDesc(file_mftiko_md_v1_read, 6);
 
 /**
  * @generated from message mftiko.md.v1.FetchRequest
@@ -242,7 +309,7 @@ export type FetchRequest = Message<"mftiko.md.v1.FetchRequest"> & {
  * Use `create(FetchRequestSchema)` to create a new message.
  */
 export const FetchRequestSchema: GenMessage<FetchRequest> = /*@__PURE__*/
-  messageDesc(file_mftiko_md_v1_read, 6);
+  messageDesc(file_mftiko_md_v1_read, 7);
 
 /**
  * @generated from message mftiko.md.v1.FetchKlines
@@ -275,7 +342,7 @@ export type FetchKlines = Message<"mftiko.md.v1.FetchKlines"> & {
  * Use `create(FetchKlinesSchema)` to create a new message.
  */
 export const FetchKlinesSchema: GenMessage<FetchKlines> = /*@__PURE__*/
-  messageDesc(file_mftiko_md_v1_read, 7);
+  messageDesc(file_mftiko_md_v1_read, 8);
 
 /**
  * @generated from message mftiko.md.v1.FetchOpenInterest
@@ -292,7 +359,7 @@ export type FetchOpenInterest = Message<"mftiko.md.v1.FetchOpenInterest"> & {
  * Use `create(FetchOpenInterestSchema)` to create a new message.
  */
 export const FetchOpenInterestSchema: GenMessage<FetchOpenInterest> = /*@__PURE__*/
-  messageDesc(file_mftiko_md_v1_read, 8);
+  messageDesc(file_mftiko_md_v1_read, 9);
 
 /**
  * @generated from message mftiko.md.v1.FetchReply
@@ -333,7 +400,7 @@ export type FetchReply = Message<"mftiko.md.v1.FetchReply"> & {
  * Use `create(FetchReplySchema)` to create a new message.
  */
 export const FetchReplySchema: GenMessage<FetchReply> = /*@__PURE__*/
-  messageDesc(file_mftiko_md_v1_read, 9);
+  messageDesc(file_mftiko_md_v1_read, 10);
 
 /**
  * @generated from message mftiko.md.v1.Klines
@@ -352,5 +419,5 @@ export type Klines = Message<"mftiko.md.v1.Klines"> & {
  * Use `create(KlinesSchema)` to create a new message.
  */
 export const KlinesSchema: GenMessage<Klines> = /*@__PURE__*/
-  messageDesc(file_mftiko_md_v1_read, 10);
+  messageDesc(file_mftiko_md_v1_read, 11);
 

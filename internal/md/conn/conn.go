@@ -70,6 +70,16 @@ type Config struct {
 	// BookAfter fires on the book clock. Nil means time.After. Tests pass a fake so the waits
 	// above do not sleep.
 	BookAfter func(time.Duration) <-chan time.Time
+	// TapeWindow, TapeEvents and TapeBytes bound the tape ring (D438). Zero means
+	// DefaultTapeWindow, DefaultTapeEvents and DefaultTapeBytes. InitPayload uses the same rule.
+	TapeWindow time.Duration
+	TapeEvents int
+	TapeBytes  int64
+	// ViewListen subscribes one md.view subject. The handler runs off the websocket read, takes
+	// the request bytes, and returns the reply. unlisten removes the interest. Nil leaves
+	// md.view unserved; tests then call handleView directly. It must not be called with the
+	// worker lock held.
+	ViewListen func(subject string, handler func(req []byte) []byte) (unlisten func(), err error)
 	// Log is optional. Nil discards.
 	Log *zerolog.Logger
 }
@@ -119,6 +129,26 @@ type Conn struct {
 	// fatal is a book the worker will not run (missing N, or N above Depth). stop cancels Run.
 	fatal error
 	stop  context.CancelFunc
+
+	// Tape (D435–D446). owners is the feed key topic.ticker. rings is per atom. marks is the
+	// latest md.f cursor of a feed and outlives a trim. bound is the md.view unlisten for a
+	// subject; nil means a subscribe is in flight. The byte cap counts stored messages.
+	viewListen   func(string, func([]byte) []byte) (func(), error)
+	owners       map[string]feedOwner
+	rings        map[string]*tapeRing
+	marks        map[string]pubMark
+	bound        map[string]func()
+	viewsClosed  bool
+	tapeWindow   time.Duration
+	tapeMax      int
+	tapeMaxBytes int64
+	tapeBytes    int64
+	tapeOrd      uint64
+	// seenUp is set after the first successful dial. downNs and downFeeds are the disconnect
+	// that the next successful dial turns into gaps. A failed dial leaves them alone.
+	seenUp    bool
+	downNs    int64
+	downFeeds []string
 }
 
 // feed is one assigned publication: the subject is md.f.{instance}.{topic}.{ticker}.
@@ -184,6 +214,18 @@ func New(cfg Config) *Conn {
 	if bookNow == nil {
 		bookNow = time.Now
 	}
+	window := cfg.TapeWindow
+	if window <= 0 {
+		window = DefaultTapeWindow
+	}
+	events := cfg.TapeEvents
+	if events <= 0 {
+		events = DefaultTapeEvents
+	}
+	capBytes := cfg.TapeBytes
+	if capBytes <= 0 {
+		capBytes = DefaultTapeBytes
+	}
 	return &Conn{
 		venue: cfg.Venue, route: cfg.Route, inst: cfg.Instance,
 		url: cfg.URL, market: cfg.Market, pub: cfg.Publish, now: now,
@@ -191,6 +233,12 @@ func New(cfg Config) *Conn {
 		rest: cfg.REST, doer: cfg.Doer, bookDepth: cfg.BookDepth,
 		bufferMax: bufN, bufferAge: bufAge, rateHold: hold, bookNow: bookNow, bookAfter: cfg.BookAfter,
 		log: log, kick: make(chan struct{}, 1), bookWake: make(chan struct{}, 1),
+		viewListen: cfg.ViewListen,
+		owners:     map[string]feedOwner{},
+		rings:      map[string]*tapeRing{},
+		marks:      map[string]pubMark{},
+		bound:      map[string]func(){},
+		tapeWindow: window, tapeMax: events, tapeMaxBytes: capBytes,
 	}
 }
 
@@ -292,9 +340,19 @@ func (c *Conn) once(ctx context.Context) (up, retry bool, err error) {
 	defer conn.Close()
 
 	c.mu.Lock()
+	prev := c.epoch
+	start := c.downNs
+	feeds := append([]string(nil), c.downFeeds...)
+	c.downFeeds = nil
+	upNs := c.now().UnixNano()
+	wasUp := c.seenUp
 	c.epoch = next
 	epoch := c.epoch
 	c.live = newLink(session)
+	if wasUp {
+		c.openGaps(feeds, prev, start, upNs)
+	}
+	c.seenUp = true
 	c.mu.Unlock()
 	c.log.Info().Uint64("conn_epoch", epoch).Msg("connected")
 
@@ -321,6 +379,7 @@ func (c *Conn) once(ctx context.Context) (up, retry bool, err error) {
 	<-bdone
 	c.fetchWG.Wait()
 	c.mu.Lock()
+	c.markDown()
 	c.live = nil
 	c.mu.Unlock()
 	if ctx.Err() == nil {

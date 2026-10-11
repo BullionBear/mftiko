@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -90,6 +91,27 @@ func run() int {
 		Publish:  nc.Publish,
 		Log:      &log,
 		Release:  buildinfo.Version,
+		// One holder, so no queue group. The callback is already off the websocket read (D445).
+		// Data is valid only until the callback returns, so the request is cloned first.
+		ViewListen: func(subject string, handler func(req []byte) []byte) (func(), error) {
+			sub, err := nc.Subscribe(ctx, subject, "", func(m natsx.Msg) {
+				if m.Reply == "" {
+					return
+				}
+				reply := handler(bytes.Clone(m.Data))
+				if len(reply) == 0 {
+					return
+				}
+				_ = nc.Publish(m.Reply, reply)
+			})
+			if err != nil {
+				return nil, err
+			}
+			return func() {
+				_ = sub.Unsubscribe()
+				_ = nc.Flush()
+			}, nil
+		},
 	})
 }
 

@@ -54,6 +54,10 @@ type ServeConfig struct {
 	Log *zerolog.Logger
 	// Release is Hello.release. Empty leaves it empty.
 	Release string
+	// ViewListen subscribes md.view for each feed this worker holds. Nil leaves the service
+	// unserved. cmd/mftiko-md-conn passes the process NATS connection. There is no queue group:
+	// one worker holds the atom (D444).
+	ViewListen func(subject string, handler func(req []byte) []byte) (unlisten func(), err error)
 }
 
 // Serve speaks C4 on rw, which is the worker's end of fd 3, and runs one connection until Stop,
@@ -85,6 +89,12 @@ func Serve(ctx context.Context, rw io.ReadWriteCloser, cfg ServeConfig) int {
 	}
 	defer func() {
 		s.halt("exit")
+		s.mu.Lock()
+		w := s.worker
+		s.mu.Unlock()
+		if w != nil {
+			w.closeViews()
+		}
 		rw.Close()
 	}()
 	go s.read()
@@ -248,8 +258,11 @@ func (s *ctl) onInit(m *workerv1.Init) (code int, ok bool) {
 	if ms := p.GetBookBufferMs(); ms > 0 {
 		bufAge = time.Duration(ms) * time.Millisecond
 	}
+	tapeWindow, tapeEvents, tapeBytes := tapeFromInit(p.GetTapeWindowMs(), p.GetTapeMaxEvents(), p.GetTapeMaxBytes())
 	s.log.Info().Str("venue", p.GetVenue()).Str("route", p.GetRoute()).Uint32("n", p.GetN()).
-		Uint64("conn_epoch", p.GetConnEpoch()).Uint32("book_depth", p.GetBookDepth()).Msg("init")
+		Uint64("conn_epoch", p.GetConnEpoch()).Uint32("book_depth", p.GetBookDepth()).
+		Uint32("tape_window_ms", p.GetTapeWindowMs()).Uint32("tape_max_events", p.GetTapeMaxEvents()).
+		Uint64("tape_max_bytes", p.GetTapeMaxBytes()).Msg("init")
 	c := New(Config{
 		Venue: p.GetVenue(), Route: p.GetRoute(), Instance: p.GetMdInstance(), URL: p.GetUrl(),
 		Market: market, Publish: s.cfg.Publish, Now: s.cfg.Now, Epoch: p.GetConnEpoch(),
@@ -257,6 +270,8 @@ func (s *ctl) onInit(m *workerv1.Init) (code int, ok bool) {
 		REST: rest, Doer: s.cfg.Doer, RateHold: s.cfg.RateHold,
 		BookDepth: p.GetBookDepth(),
 		BufferMax: int(p.GetBookBufferMax()), BufferAge: bufAge,
+		TapeWindow: tapeWindow, TapeEvents: tapeEvents, TapeBytes: tapeBytes,
+		ViewListen: s.cfg.ViewListen,
 	})
 	s.install(c)
 	if err := s.send(done(workerv1.Verb_VERB_INIT, true, "")); err != nil {

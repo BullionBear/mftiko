@@ -26,6 +26,12 @@ message InitPayload {
   uint32 book_buffer_max = 10;
   // 等快照時緩衝的時間上限，毫秒。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（D424）。
   uint32 book_buffer_ms = 11;
+  // 每個 atom 的 tape 時間窗，毫秒。0 表示 600000（10 分鐘）。和筆數上限先到先砍（D438）。
+  uint32 tape_window_ms = 12;
+  // 每個 atom 的 tape 筆數上限。0 表示 100000（D438）。
+  uint32 tape_max_events = 13;
+  // 這個 worker 的 tape 總位元組上限。0 表示 268435456（256 MiB）。超過時砍全 worker 最舊的事件（D438）。
+  uint64 tape_max_bytes = 14;
 }
 
 // Start 沒有 payload：連上 websocket，等第一份 Desired。

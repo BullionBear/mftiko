@@ -73,6 +73,7 @@ type shelf struct {
 	bufAt   time.Time // the first buffered update of this attempt
 	book    *obook.OrderBook
 	seq     exchange.BookSeq
+	exchTs  int64 // exchange time of the last apply that was kept (D441)
 	topB    []exchange.Level
 	topA    []exchange.Level
 	haveTop bool
@@ -594,6 +595,7 @@ func (c *Conn) publishIncremental(ch string, sh *shelf, ts int64, u exchange.Boo
 		c.beginResync(ch, sh, nil)
 		return
 	}
+	sh.exchTs = ts
 	sh.seq.Last = u.Last
 	sh.seq.Valid = true
 	if len(u.Bids)+len(u.Asks) > 0 {
@@ -609,13 +611,14 @@ func (c *Conn) publishReset(ch string, sh *shelf, ts int64) {
 	if sh.book == nil {
 		return
 	}
+	sh.exchTs = ts
 	n := sh.book.Window()
 	c.emitDelta(ch, ts, true, sideLevels(sh.book, true, n), sideLevels(sh.book, false, n))
 	c.emitTop(ch, sh, ts)
 }
 
-// BookWindow is the in-window book a future md.view response reads (D430). The service is not
-// served by this process yet. ok is false when this connection is not holding the channel's book.
+// BookWindow is the in-window book md.view returns (D430, D441). ok is false when this
+// connection is not holding the channel's book.
 func (c *Conn) BookWindow(ch string) (bids, asks []exchange.Level, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

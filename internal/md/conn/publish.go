@@ -157,7 +157,8 @@ func (c *Conn) FeedEnd(ch string, e *exchange.FeedEnd) {
 		return
 	}
 	for _, f := range feeds {
-		c.send(f, payload)
+		// FeedEnd takes a seq, and therefore moves head, but it is not tape (D446).
+		c.deliver(f, payload, false)
 	}
 }
 
@@ -193,6 +194,13 @@ func (c *Conn) publishTopic(ch, topic string, ev *mdv1.FeedEvent) {
 // send takes the next seq for the feed and then publishes. A publish error still consumes the
 // number: the subscriber sees a gap instead of a silent duplicate once the publisher recovers.
 func (c *Conn) send(f feed, payload []byte) {
+	c.deliver(f, payload, true)
+}
+
+// deliver hands out the next seq, notes it as head, and optionally stores the message. keep is
+// false for FeedEnd. The cursor is noted even when the publish fails, because the seq is spent.
+// Decode holds c.mu, so the ring write and the md.f publish share that critical section (D437).
+func (c *Conn) deliver(f feed, payload []byte, keep bool) {
 	l := c.live
 	if l == nil || c.pub == nil {
 		return
@@ -200,7 +208,12 @@ func (c *Conn) send(f feed, payload []byte) {
 	key := f.topic + "." + f.ticker
 	l.seq[key]++
 	seq := l.seq[key]
-	msg := envelope.Append(nil, c.now().UnixNano(), c.epoch, seq, payload)
+	mdTs := c.now().UnixNano()
+	msg := envelope.Append(nil, mdTs, c.epoch, seq, payload)
+	c.notePublish(key, c.epoch, seq, mdTs)
+	if keep {
+		c.recordTape(key, f.topic, mdTs, c.epoch, seq, msg)
+	}
 	if err := c.pub(subject(c.inst, f.topic, f.ticker), msg); err != nil {
 		c.log.Warn().Err(err).Str("subject", subject(c.inst, f.topic, f.ticker)).Uint64("seq", seq).Msg("publish")
 	}

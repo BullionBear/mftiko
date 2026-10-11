@@ -14,17 +14,27 @@ import (
 // The first call applies even when its version is 0, or absent: "have a version" is tracked on
 // its own, so a real 0 is not mistaken for "nothing yet". An older or equal version is ignored,
 // which is what makes a stale read from the agent harmless. Atoms for another venue or route are
-// dropped. Record is not read; tape is a later ticket.
+// dropped. Record selects which tape topics are stored (D402, D442). The worker answers md.view
+// for every feed it holds, and drops the subscription and the ring when the atom leaves (D443).
+// Linger is the MD agent's: while the atom is still in Desired, the view keeps answering.
 //
 // Safe to call while Run is in progress. A change is picked up by the write loop, which diffs
 // against what the venue has already acknowledged.
 func (c *Conn) SetDesired(d *mdctlv1.Desired) {
 	c.mu.Lock()
 	applied := c.apply(d)
+	var (
+		add    []string
+		remove []func()
+	)
+	if applied {
+		add, remove = c.planViewsLocked()
+	}
 	fatal := c.fatal
 	cancel := c.stop
 	live := c.live != nil
 	c.mu.Unlock()
+	c.rebind(add, remove)
 	if fatal != nil {
 		if cancel != nil {
 			cancel()
@@ -52,6 +62,7 @@ func (c *Conn) apply(d *mdctlv1.Desired) bool {
 	wanted := make(map[string][]feed)
 	exch := make(map[string]string)
 	tick := make(map[string]float64)
+	owners := make(map[string]feedOwner)
 	for _, a := range d.Atoms {
 		if a == nil {
 			continue
@@ -75,7 +86,13 @@ func (c *Conn) apply(d *mdctlv1.Desired) bool {
 			if topic == string(exchange.TopicOrderBook) || topic == string(exchange.TopicOrderBookDelta) {
 				book = true
 			}
-			addFeed(wanted, chKey, feed{topic: strings.Clone(topic), ticker: strings.Clone(ticker)})
+			topic = strings.Clone(topic)
+			ticker = strings.Clone(ticker)
+			addFeed(wanted, chKey, feed{topic: topic, ticker: ticker})
+			// One feed belongs to one atom (D401). A repeated key keeps the later assignment.
+			owners[topic+"."+ticker] = feedOwner{
+				atomID: strings.Clone(a.GetAtomId()), ch: chKey, record: a.GetRecord(),
+			}
 		}
 		if t := a.GetExchTicker(); t != "" {
 			exch[chKey] = strings.Clone(t)
@@ -91,6 +108,7 @@ func (c *Conn) apply(d *mdctlv1.Desired) bool {
 	c.wanted = wanted
 	c.exch = exch
 	c.tick = tick
+	c.syncTape(owners)
 	return true
 }
 

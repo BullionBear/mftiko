@@ -143,7 +143,13 @@ type InitPayload struct {
 	// 等快照時緩衝的筆數上限。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（D424）。
 	BookBufferMax uint32 `protobuf:"varint,10,opt,name=book_buffer_max,json=bookBufferMax,proto3" json:"book_buffer_max,omitempty"`
 	// 等快照時緩衝的時間上限，毫秒。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（D424）。
-	BookBufferMs  uint32 `protobuf:"varint,11,opt,name=book_buffer_ms,json=bookBufferMs,proto3" json:"book_buffer_ms,omitempty"`
+	BookBufferMs uint32 `protobuf:"varint,11,opt,name=book_buffer_ms,json=bookBufferMs,proto3" json:"book_buffer_ms,omitempty"`
+	// 每個 atom 的 tape 時間窗，毫秒。0 表示 600000（10 分鐘）。和筆數上限先到先砍（D438）。
+	TapeWindowMs uint32 `protobuf:"varint,12,opt,name=tape_window_ms,json=tapeWindowMs,proto3" json:"tape_window_ms,omitempty"`
+	// 每個 atom 的 tape 筆數上限。0 表示 100000（D438）。
+	TapeMaxEvents uint32 `protobuf:"varint,13,opt,name=tape_max_events,json=tapeMaxEvents,proto3" json:"tape_max_events,omitempty"`
+	// 這個 worker 的 tape 總位元組上限。0 表示 268435456（256 MiB）。超過時砍全 worker 最舊的事件（D438）。
+	TapeMaxBytes  uint64 `protobuf:"varint,14,opt,name=tape_max_bytes,json=tapeMaxBytes,proto3" json:"tape_max_bytes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -237,6 +243,27 @@ func (x *InitPayload) GetBookBufferMax() uint32 {
 func (x *InitPayload) GetBookBufferMs() uint32 {
 	if x != nil {
 		return x.BookBufferMs
+	}
+	return 0
+}
+
+func (x *InitPayload) GetTapeWindowMs() uint32 {
+	if x != nil {
+		return x.TapeWindowMs
+	}
+	return 0
+}
+
+func (x *InitPayload) GetTapeMaxEvents() uint32 {
+	if x != nil {
+		return x.TapeMaxEvents
+	}
+	return 0
+}
+
+func (x *InitPayload) GetTapeMaxBytes() uint64 {
+	if x != nil {
+		return x.TapeMaxBytes
 	}
 	return 0
 }
@@ -640,7 +667,7 @@ var File_mftiko_mdctl_v1_mdctl_proto protoreflect.FileDescriptor
 
 const file_mftiko_mdctl_v1_mdctl_proto_rawDesc = "" +
 	"\n" +
-	"\x1bmftiko/mdctl/v1/mdctl.proto\x12\x0fmftiko.mdctl.v1\x1a\x1dmftiko/common/v1/common.proto\"\xae\x02\n" +
+	"\x1bmftiko/mdctl/v1/mdctl.proto\x12\x0fmftiko.mdctl.v1\x1a\x1dmftiko/common/v1/common.proto\"\xa2\x03\n" +
 	"\vInitPayload\x12\x14\n" +
 	"\x05venue\x18\x01 \x01(\tR\x05venue\x12\x14\n" +
 	"\x05route\x18\x02 \x01(\tR\x05route\x12\f\n" +
@@ -654,7 +681,10 @@ const file_mftiko_mdctl_v1_mdctl_proto_rawDesc = "" +
 	"book_depth\x18\b \x01(\rR\tbookDepth\x12&\n" +
 	"\x0fbook_buffer_max\x18\n" +
 	" \x01(\rR\rbookBufferMax\x12$\n" +
-	"\x0ebook_buffer_ms\x18\v \x01(\rR\fbookBufferMsJ\x04\b\x05\x10\x06J\x04\b\t\x10\n" +
+	"\x0ebook_buffer_ms\x18\v \x01(\rR\fbookBufferMs\x12$\n" +
+	"\x0etape_window_ms\x18\f \x01(\rR\ftapeWindowMs\x12&\n" +
+	"\x0ftape_max_events\x18\r \x01(\rR\rtapeMaxEvents\x12$\n" +
+	"\x0etape_max_bytes\x18\x0e \x01(\x04R\ftapeMaxBytesJ\x04\b\x05\x10\x06J\x04\b\t\x10\n" +
 	"R\btape_urlR\x10book_boundary_bp\"\x0e\n" +
 	"\fStartPayload\"F\n" +
 	"\aCommand\x124\n" +

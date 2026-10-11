@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-11 定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-11 定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日定案 tape ring 與 md.view，D435–D446。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 >
@@ -295,13 +295,13 @@ account worker 依 refcount 起停，沒有常駐層（D901），所以閒置帳
   - 晚加入：SDK 先訂 `md.f`，再向持有者要 `md.view`，拿到 seq S 時的 book，之後只套用 seq > S 的增量。seq 斷號或 `conn_epoch` 改變時，重新要一次。這是 SDK 提供的可選小工具，fold 跟交易所無關。
 - **tape：**
   - 只錄 `trade`、`aggtrade`、`liquidation`，book 類不錄。錄不錄由 topic 決定，MD agent 推導 `AtomAssignment.record`。
-  - 每個 atom 一個 ring，存已經發佈的訊息 bytes（envelope ＋ `FeedEvent`，D803），回覆時不用重新編碼。上限是時間窗加筆數，worker 另有總上限，算進 `Limits.memory_mb`。
-  - WS 重連時在 ring 裡記一個 gap。
-  - 接 live：SDK 先訂 `md.f` 再讀 tape，丟掉 `(conn_epoch, seq)` 不小於第一筆 live 的部分。live 和 tape 出自同一個進程、同一套序號，接縫是精確的；沒有 id 的 liquidation 也適用。
+  - 每個 atom 一個 ring，存已經發佈的訊息 bytes（envelope ＋ `FeedEvent`，D803）。回覆的形狀見 D435：不重新編碼 `FeedEvent`。上限見 D438，算進 `Limits.memory_mb`。
+  - WS 重連時在 ring 裡記 gap（D440）。ring 跨 `conn_epoch` 保留。
+  - 接 live：SDK 先訂 `md.f` 並緩衝，同時讀 tape，以 `head` 對齊（D437）。live 和 tape 出自同一個進程、同一套序號，接縫是精確的；沒有 id 的 liquidation 也適用。
   - 不用 Redis。tape 跟著 worker 進程和 atom 一起活：只有進程重新掛起（crash，或停掉後 spawn 新的 incarnation）、或 atom 的 linger 結束，tape 才會沒了。
   - worker 不隨版本遷移（D103、D106）：發新版只影響之後 spawn 的 worker，跑著的進程繼續用原本的 binary，tape 不受影響。tape 在這條連線的進程換掉時才沒：crash 後重拉，或連線停掉之後再 spawn。
   - tape 只是熱身用，回覆會說明涵蓋多少。要一直熱的，跑一個 tape keeper：不下單、不綁帳號的策略，跟 mftik 一樣，tape 跟著它的生命週期走（D404）。
-- **md.view：** 持有 atom 的 conn worker 服務 `md.view.{inst}.{topic}.{ticker}`，形狀跟 `md.f` 一樣，對應 `td.view.{api_id}`。回覆依 topic：trade 類回 tape 分頁（由新到舊，以 `(conn_epoch, seq)` 當游標，每頁壓在 NATS 的 1 MiB 以下），`orderbook_delta` 回 seq S 時的 book。沒有 responder，就是沒有 worker 持有這個 atom。
+- **md.view：** 持有 atom 的 conn worker 服務 `md.view.{inst}.{topic}.{ticker}`，形狀跟 `md.f` 一樣，對應 `td.view.{api_id}`。回覆依 topic：trade 類回 tape 分頁（由新到舊，以 `(conn_epoch, seq)` 當游標，每頁壓在 NATS 的 1 MiB 以下），book 類回現在的窗內全本，不是歷史 seq（D441、D442）。沒有 responder，就是沒有 worker 持有這個 atom。細節見 D435–D446。
 - **md.fetch：**
   - 無狀態的服務，跟 SYM 一樣：每個 region 部署，NATS queue group，任何 replica 都能回答。不需要 agent、lease、fencing。不落庫。subject、分頁、限速、解析與部署見 D418–D423。
   - 只轉發交易所的公開 REST：K 線，以及交易所不推送、只能查詢的值（D401，例如 Binance UM 的 open interest）。
@@ -663,7 +663,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 ### D426 一張快照加增量（SnapshotREST）
 
 - **SnapshotREST 抓一張快照，之後只套增量，不自己重抓。** 靠近盤口的檔更新得快，價格走到某一檔之前，增量已經把它更新過了。
-- **重抓只由斷號（`BookResync`）或 OKX checksum 失敗觸發。** 沒有價格邊界，也不因距離重抓。視窗滑動不重抓；窗外的檔見 D431。`md.view` 回的是窗內的 book（D430）。這一版不實作 `md.view` 服務。
+- **重抓只由斷號（`BookResync`）或 OKX checksum 失敗觸發。** 沒有價格邊界，也不因距離重抓。視窗滑動不重抓；窗外的檔見 D431。`md.view` 回的是窗內的 book（D430、D441）。
 - **交易所回多少檔就用多少。** 不因為少於 N 檔而重抓。
 - **N 是 `InitPayload.book_depth`。** 缺（0）則 Init 失敗。SnapshotREST 在知道該 channel 的 `BookSync` 之後、第一張快照之前，若 N > `Depth()`，worker 退出。SnapshotStream 不跟 `Depth()` 比。
 - **SnapshotStream 不打 REST。** 全本就是串流給的。斷號或 checksum 丟掉本地本，並只重訂那一個 channel（D434）。下一則串流快照是 `reset`。快照之前緩衝的增量在快照到達時丟掉。
@@ -690,7 +690,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **每一格只存 `tick int64` 與 `size float64`。** 不另存 bool，也不把格子清掉。讀的時候，格子裡的 tick 與要的 tick 不同就是空的；`size == 0` 是刪除。
 - **價格換成 tick 用 `round(price / price_tick)`，一半進位遠離零。** 從環上讀回的價格是 `tick * price_tick`。`price_tick` 見 D433。
 - **`BestBidTick`、`BestAskTick` 是目前的最佳 tick。** 比最佳價更好、而且 size > 0 的價格改寫最佳。最佳檔被刪掉時，往外掃到下一個 tick 相符且 size > 0 的格子。
-- **Iterator 從最佳價往外走，跳過空格，不配置記憶體。** `orderbook` 走到 top-N 就停。`reset` 與 `md.view` 走完整個窗。這一版仍不實作 `md.view` 服務；它要讀的就是這個窗。
+- **Iterator 從最佳價往外走，跳過空格，不配置記憶體。** `orderbook` 走到 top-N 就停。`reset` 與 `md.view` 走完整個窗（D441）。
 
 ### D431 窗外的檔
 
@@ -716,6 +716,74 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **從已確認的訂閱拿掉這個 channel，經現有的訂閱路徑先退訂再訂閱。** 仍由 session 的速率限制發幀。不拆整條連線，其他 channel 不動。`conn_epoch` 不變。
 - **每一本簿自己一條指數退避，與 D424 相同：1 秒起，加倍，上限 30 秒。** 成功裝上新的串流快照把這本的窗口歸零，下一次斷號再從 1 秒起。已經在退避或重訂途中的，不另起一次，所以連續斷號不會熱迴圈。
 - **下一則串流快照裝上本地本，並推 `reset`。** 快照之前緩衝的增量丟掉（D426）。這一版不打 REST。
+
+### D435 md.f 不變，md.view 的 tape 不帶 envelope
+
+- **`md.f` 仍是 40-byte envelope ＋ protobuf `FeedEvent`（D405–D411）。** ring 存發佈出去的整段 bytes：發一次、存一次，不重新編碼。
+- **`md.view` 回 tape 時去掉每則的 envelope。** 只帶對齊要用的欄位與 `FeedEvent`。`TapeEvent` 是 `conn_epoch`、`seq`、`md_ts_ns`、`event`。`TapePage.events` 從 `repeated bytes` 改成 `repeated TapeEvent`。不帶 `digest`。
+- **不重新編碼。** embedded message 與 bytes 的 wire 格式相同。worker 以 protowire 把 ring 裡 offset 40 之後的 payload 原樣寫進 field 4，不 unmarshal 再 marshal。
+- **`read.proto` 還是草案（#152 才定案），可以 breaking。**
+
+### D436 tape 分頁，可以用時間查
+
+- **照舊由新到舊。** 游標是 `(conn_epoch, seq)` 的字典序，`before` 不含本身。
+- **`ViewRequest` 加 `optional int64 since_ns`。** 只回 `md_ts_ns ≥ since_ns` 的事件。由新到舊讀到比 `since_ns` 舊的就停，`more = false`。可以和 `before` 一起用。
+- **要讀完整段就照 `next` 一頁一頁拿。** `more` 為 false 時不填 `next`。
+
+### D437 TapePage 帶回覆當下的 high-water
+
+- **`TapePage` 加 `Cursor head`。** worker 回覆當下，這個 feed 已發佈到 `md.f` 的最新 `(conn_epoch, seq)`。`FeedEnd` 也佔 seq，所以算進 `head`，只是不進 tape（D446）。
+- **寫進 ring 與發佈 `md.f` 在同一個臨界區。** 第一頁最新一則一定 ≤ `head`。
+- **接 live：SDK 先訂 `md.f` 並緩衝，同時要 tape。** live 的 `(conn_epoch, seq)` 大於 `head` 就套用，小於等於就丟。不必等第一筆 live。
+- **ring 還是空的、而且這個 feed 還沒在 `md.f` 發過時，`head` 是目前的 epoch、seq 0。** 已經發過、後來被上限砍光，`head` 仍是最後一次發佈的游標，不退回 seq 0。
+
+### D438 ring 上限
+
+- **每個 atom 10 分鐘或 100,000 筆，先到先砍最舊的。** 筆數是這個 atom 的 ring 裡全部 feed 加在一起。
+- **整個 worker 總上限 256 MiB。** 超過時砍全 worker 最舊的事件。比較的是 `md_ts_ns`，相同時較早寫入的先砍。計的是存下來的訊息長度（envelope ＋ payload），不是 Go 的額外開銷。
+- **三個值放 `mdctl.InitPayload`，可設定，0 用預設。** `tape_window_ms` 預設 600000，`tape_max_events` 預設 100000，`tape_max_bytes` 預設 268435456。
+
+### D439 一頁大小
+
+- **`limit` 為 0 時是 1000，上限 5000。** 超過回 `invalid`，不截短。`limit` 只用於 tape；book 與 `unsupported` 不拿它判斷。
+- **一頁編碼到約 900 KiB 就截斷，`more = true`。** 900 KiB 是編碼後的 `ViewReply`，壓在 NATS 1 MiB 以下並留餘量。單則本身就超過時仍回那一則，游標才進得去。
+
+### D440 gap
+
+- **`Gap` 保留 `start_ns`、`end_ns`，加 `Cursor last` 與 `Cursor first`。** `start_ns` 是上一條連線結束的時間，`end_ns` 是新連線起來的時間，都用 `md_ts_ns` 那隻鐘。
+- **seq 是每個 feed 的（D409），所以 gap 記在該 atom 的 ring 裡、按 feed 分開。** 斷線當下正在錄的 tape feed 各記一筆。斷線期間才加進來的不補。第一次撥號不記 gap。撥號失敗不記、也不清掉已經記下的。
+- **`last` 是斷線前這個 feed 的最後一則 `md.f`。** 沒發過則是上一個 epoch、seq 0。`first` 等重連後第一則寫進 ring 再填；第一則還沒到時不填。
+- **ring 跨 `conn_epoch` 保留。** 重連後 seq 從 1 起算（D409）。`continuous_since_ns` 維持：這個 feed 還有 gap 時是最新一個 gap 的 `end_ns`，否則是還留著的最舊一則的 `md_ts_ns`，都沒有就是 0。
+
+### D441 BookSnapshot 只回現在那本
+
+- **本來就不支援歷史 seq。** 回最後套用成功的窗內全本（D430），不是 top-N。`Meta.exch_ts_ns` 是最後一次套用成功的交易所時間。`conn_epoch`、`seq`、`md_ts_ns` 是這個 feed 最後一則 `md.f` 的游標；`orderbook` 與 `orderbook_delta` 各算各的 seq（D409）。
+- **簿還沒同步好時回 `not_synced`。** 快照中、退避中、窗口無效，以及連線不在，都是。`ViewReply.error` 加這個值。SDK 退避重試。
+
+### D442 依 topic 回什麼
+
+- **book 類回 `BookSnapshot`。** 沒有 top-N 行情，`orderbook` 一律等於 `orderbook_delta`。拿掉 top-N 是 #180，這張不依賴它。#180 合併前，subject 是 `orderbook` 時因為是同一個 atom，也回 `BookSnapshot`（窗內全本，不是 top-N）。
+- **`trade`、`aggtrade`、`liquidation` 回 tape。**
+- **其他 topic（kline、best_quote 等），以及 `record = false` 的 atom 要 tape，回 `unsupported`。** book 不看 `record`。
+
+### D443 linger
+
+- **atom 在 linger 期間照常回 `md.view`。** linger 與 refcount 在 MD agent（§6.2）。worker 不另計時：atom 還在 `Desired` 裡就回答。
+- **atom 移除時退訂 `md.view` 並清掉 ring。** 退訂之後客戶端看到的是 NATS 沒有 responder，不是一則 `error` 字串。
+
+### D444 subject
+
+- **維持 `md.view.{inst}.{topic}.{ticker}`。** §7 的權限不動。拿掉 `inst` 收在 #181（P14），這張不改。
+
+### D445 併發
+
+- **`md.view` 在另一個 goroutine 上處理。** NATS 的訂閱回呼本來就不是 websocket 的讀與發佈路徑。
+- **持鎖期間只複製這一頁的切片與 `head`。** 編碼在鎖外做，不擋 `md.f` 的發佈。
+
+### D446 FeedEnd
+
+- **不錄進 tape。** `FeedEnd` 仍佔該 feed 的 seq，所以 `head` 會往前，tape 裡沒有它。
+- **不另做處理。** `FeedEnd` 留在 proto 裡；拿掉是 #180。
 
 ### D906 session worker 的 NATS 憑證：每個 session 一份
 

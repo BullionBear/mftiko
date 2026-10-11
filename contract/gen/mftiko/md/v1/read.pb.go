@@ -25,8 +25,9 @@ const (
 
 type ViewRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Limit         uint32                 `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`        // 只用於 tape：這一頁最多幾筆
-	Before        *Cursor                `protobuf:"bytes,2,opt,name=before,proto3,oneof" json:"before,omitempty"` // 只用於 tape：第一頁不填
+	Limit         uint32                 `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`                          // 只用於 tape。0 是 1000，上限 5000，超過回 invalid，不截短（D439）
+	Before        *Cursor                `protobuf:"bytes,2,opt,name=before,proto3,oneof" json:"before,omitempty"`                   // 只用於 tape：第一頁不填。不含本身，以 (conn_epoch, seq) 的字典序比較（D436）
+	SinceNs       *int64                 `protobuf:"varint,3,opt,name=since_ns,json=sinceNs,proto3,oneof" json:"since_ns,omitempty"` // 只用於 tape：只回 md_ts_ns ≥ since_ns 的事件。讀到更舊的就停，more = false（D436）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -73,6 +74,13 @@ func (x *ViewRequest) GetBefore() *Cursor {
 		return x.Before
 	}
 	return nil
+}
+
+func (x *ViewRequest) GetSinceNs() int64 {
+	if x != nil && x.SinceNs != nil {
+		return *x.SinceNs
+	}
+	return 0
 }
 
 // 以 (conn_epoch, seq) 的字典序比較。
@@ -130,7 +138,7 @@ func (x *Cursor) GetSeq() uint64 {
 
 type ViewReply struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	Error string                 `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"` // 空字串 = 成功；unsupported | not_held | invalid
+	Error string                 `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"` // 空字串 = 成功；unsupported | not_held | invalid | not_synced
 	// Types that are valid to be assigned to Result:
 	//
 	//	*ViewReply_Tape
@@ -218,21 +226,92 @@ func (*ViewReply_Tape) isViewReply_Result() {}
 
 func (*ViewReply_Book) isViewReply_Result() {}
 
+// 一則 tape。不帶 envelope、不帶 digest（D435）。event 的位元組是 ring 裡 offset 40 之後的 payload，原樣寫入，不重新編碼。
+type TapeEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ConnEpoch     uint64                 `protobuf:"varint,1,opt,name=conn_epoch,json=connEpoch,proto3" json:"conn_epoch,omitempty"`
+	Seq           uint64                 `protobuf:"varint,2,opt,name=seq,proto3" json:"seq,omitempty"`
+	MdTsNs        int64                  `protobuf:"varint,3,opt,name=md_ts_ns,json=mdTsNs,proto3" json:"md_ts_ns,omitempty"`
+	Event         *FeedEvent             `protobuf:"bytes,4,opt,name=event,proto3" json:"event,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TapeEvent) Reset() {
+	*x = TapeEvent{}
+	mi := &file_mftiko_md_v1_read_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TapeEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TapeEvent) ProtoMessage() {}
+
+func (x *TapeEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_md_v1_read_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TapeEvent.ProtoReflect.Descriptor instead.
+func (*TapeEvent) Descriptor() ([]byte, []int) {
+	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *TapeEvent) GetConnEpoch() uint64 {
+	if x != nil {
+		return x.ConnEpoch
+	}
+	return 0
+}
+
+func (x *TapeEvent) GetSeq() uint64 {
+	if x != nil {
+		return x.Seq
+	}
+	return 0
+}
+
+func (x *TapeEvent) GetMdTsNs() int64 {
+	if x != nil {
+		return x.MdTsNs
+	}
+	return 0
+}
+
+func (x *TapeEvent) GetEvent() *FeedEvent {
+	if x != nil {
+		return x.Event
+	}
+	return nil
+}
+
 type TapePage struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 由新到舊。每則是 md.f 上發佈過的原始訊息（envelope ＋ FeedEvent），worker 直接從 ring 拷貝，不重新編碼。
-	Events            [][]byte `protobuf:"bytes,1,rep,name=events,proto3" json:"events,omitempty"`
-	More              bool     `protobuf:"varint,2,opt,name=more,proto3" json:"more,omitempty"`
-	Next              *Cursor  `protobuf:"bytes,3,opt,name=next,proto3,oneof" json:"next,omitempty"`                                                 // 下一頁的 before
-	ContinuousSinceNs int64    `protobuf:"varint,4,opt,name=continuous_since_ns,json=continuousSinceNs,proto3" json:"continuous_since_ns,omitempty"` // 從這個時間起沒有 gap
-	Gaps              []*Gap   `protobuf:"bytes,5,rep,name=gaps,proto3" json:"gaps,omitempty"`                                                       // 這一頁涵蓋範圍內的 gap
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// 由新到舊。
+	Events            []*TapeEvent `protobuf:"bytes,1,rep,name=events,proto3" json:"events,omitempty"`
+	More              bool         `protobuf:"varint,2,opt,name=more,proto3" json:"more,omitempty"`
+	Next              *Cursor      `protobuf:"bytes,3,opt,name=next,proto3,oneof" json:"next,omitempty"`                                                 // 下一頁的 before。more 為 false 時不填
+	ContinuousSinceNs int64        `protobuf:"varint,4,opt,name=continuous_since_ns,json=continuousSinceNs,proto3" json:"continuous_since_ns,omitempty"` // 從這個時間起沒有 gap
+	Gaps              []*Gap       `protobuf:"bytes,5,rep,name=gaps,proto3" json:"gaps,omitempty"`                                                       // 這一頁涵蓋範圍內的 gap
+	// 回覆當下這個 feed 已發佈到 md.f 的最新 (conn_epoch, seq)。ring 還是空的、而且這個 feed 還沒發過，是目前的 epoch、seq 0（D437）。
+	Head          *Cursor `protobuf:"bytes,6,opt,name=head,proto3" json:"head,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *TapePage) Reset() {
 	*x = TapePage{}
-	mi := &file_mftiko_md_v1_read_proto_msgTypes[3]
+	mi := &file_mftiko_md_v1_read_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -244,7 +323,7 @@ func (x *TapePage) String() string {
 func (*TapePage) ProtoMessage() {}
 
 func (x *TapePage) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_md_v1_read_proto_msgTypes[3]
+	mi := &file_mftiko_md_v1_read_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -257,10 +336,10 @@ func (x *TapePage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TapePage.ProtoReflect.Descriptor instead.
 func (*TapePage) Descriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{3}
+	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *TapePage) GetEvents() [][]byte {
+func (x *TapePage) GetEvents() []*TapeEvent {
 	if x != nil {
 		return x.Events
 	}
@@ -295,17 +374,26 @@ func (x *TapePage) GetGaps() []*Gap {
 	return nil
 }
 
+func (x *TapePage) GetHead() *Cursor {
+	if x != nil {
+		return x.Head
+	}
+	return nil
+}
+
 type Gap struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	StartNs       int64                  `protobuf:"varint,1,opt,name=start_ns,json=startNs,proto3" json:"start_ns,omitempty"`
-	EndNs         int64                  `protobuf:"varint,2,opt,name=end_ns,json=endNs,proto3" json:"end_ns,omitempty"`
+	StartNs       int64                  `protobuf:"varint,1,opt,name=start_ns,json=startNs,proto3" json:"start_ns,omitempty"` // 上一條連線結束的時間，md_ts_ns 那隻鐘（D440）
+	EndNs         int64                  `protobuf:"varint,2,opt,name=end_ns,json=endNs,proto3" json:"end_ns,omitempty"`       // 新連線起來的時間，同一隻鐘（D440）
+	Last          *Cursor                `protobuf:"bytes,3,opt,name=last,proto3" json:"last,omitempty"`                       // 斷線前這個 feed 的最後一則（D440）
+	First         *Cursor                `protobuf:"bytes,4,opt,name=first,proto3" json:"first,omitempty"`                     // 重連後這個 feed 的第一則。第一則還沒到時不填（D440）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Gap) Reset() {
 	*x = Gap{}
-	mi := &file_mftiko_md_v1_read_proto_msgTypes[4]
+	mi := &file_mftiko_md_v1_read_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -317,7 +405,7 @@ func (x *Gap) String() string {
 func (*Gap) ProtoMessage() {}
 
 func (x *Gap) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_md_v1_read_proto_msgTypes[4]
+	mi := &file_mftiko_md_v1_read_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -330,7 +418,7 @@ func (x *Gap) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Gap.ProtoReflect.Descriptor instead.
 func (*Gap) Descriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{4}
+	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Gap) GetStartNs() int64 {
@@ -347,7 +435,22 @@ func (x *Gap) GetEndNs() int64 {
 	return 0
 }
 
-// orderbook_delta 這個 feed 在 (conn_epoch, seq) 當下的窗內 book（D430）。窗外的檔不在這裡。
+func (x *Gap) GetLast() *Cursor {
+	if x != nil {
+		return x.Last
+	}
+	return nil
+}
+
+func (x *Gap) GetFirst() *Cursor {
+	if x != nil {
+		return x.First
+	}
+	return nil
+}
+
+// 這個 feed 目前的窗內全本，不是歷史 seq，也不是 top-N（D430、D441）。窗外的檔不在這裡。
+// conn_epoch、seq、md_ts_ns 是這個 feed 最後一則 md.f 的游標，讓訂閱者丟掉不大於它的 live。
 type BookSnapshot struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Meta          *Meta                  `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
@@ -362,7 +465,7 @@ type BookSnapshot struct {
 
 func (x *BookSnapshot) Reset() {
 	*x = BookSnapshot{}
-	mi := &file_mftiko_md_v1_read_proto_msgTypes[5]
+	mi := &file_mftiko_md_v1_read_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -374,7 +477,7 @@ func (x *BookSnapshot) String() string {
 func (*BookSnapshot) ProtoMessage() {}
 
 func (x *BookSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_md_v1_read_proto_msgTypes[5]
+	mi := &file_mftiko_md_v1_read_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -387,7 +490,7 @@ func (x *BookSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BookSnapshot.ProtoReflect.Descriptor instead.
 func (*BookSnapshot) Descriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{5}
+	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *BookSnapshot) GetMeta() *Meta {
@@ -445,7 +548,7 @@ type FetchRequest struct {
 
 func (x *FetchRequest) Reset() {
 	*x = FetchRequest{}
-	mi := &file_mftiko_md_v1_read_proto_msgTypes[6]
+	mi := &file_mftiko_md_v1_read_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -457,7 +560,7 @@ func (x *FetchRequest) String() string {
 func (*FetchRequest) ProtoMessage() {}
 
 func (x *FetchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_md_v1_read_proto_msgTypes[6]
+	mi := &file_mftiko_md_v1_read_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -470,7 +573,7 @@ func (x *FetchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchRequest.ProtoReflect.Descriptor instead.
 func (*FetchRequest) Descriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{6}
+	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *FetchRequest) GetReq() isFetchRequest_Req {
@@ -525,7 +628,7 @@ type FetchKlines struct {
 
 func (x *FetchKlines) Reset() {
 	*x = FetchKlines{}
-	mi := &file_mftiko_md_v1_read_proto_msgTypes[7]
+	mi := &file_mftiko_md_v1_read_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -537,7 +640,7 @@ func (x *FetchKlines) String() string {
 func (*FetchKlines) ProtoMessage() {}
 
 func (x *FetchKlines) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_md_v1_read_proto_msgTypes[7]
+	mi := &file_mftiko_md_v1_read_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -550,7 +653,7 @@ func (x *FetchKlines) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchKlines.ProtoReflect.Descriptor instead.
 func (*FetchKlines) Descriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{7}
+	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *FetchKlines) GetTicker() string {
@@ -583,7 +686,7 @@ type FetchOpenInterest struct {
 
 func (x *FetchOpenInterest) Reset() {
 	*x = FetchOpenInterest{}
-	mi := &file_mftiko_md_v1_read_proto_msgTypes[8]
+	mi := &file_mftiko_md_v1_read_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -595,7 +698,7 @@ func (x *FetchOpenInterest) String() string {
 func (*FetchOpenInterest) ProtoMessage() {}
 
 func (x *FetchOpenInterest) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_md_v1_read_proto_msgTypes[8]
+	mi := &file_mftiko_md_v1_read_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -608,7 +711,7 @@ func (x *FetchOpenInterest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchOpenInterest.ProtoReflect.Descriptor instead.
 func (*FetchOpenInterest) Descriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{8}
+	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *FetchOpenInterest) GetTicker() string {
@@ -633,7 +736,7 @@ type FetchReply struct {
 
 func (x *FetchReply) Reset() {
 	*x = FetchReply{}
-	mi := &file_mftiko_md_v1_read_proto_msgTypes[9]
+	mi := &file_mftiko_md_v1_read_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -645,7 +748,7 @@ func (x *FetchReply) String() string {
 func (*FetchReply) ProtoMessage() {}
 
 func (x *FetchReply) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_md_v1_read_proto_msgTypes[9]
+	mi := &file_mftiko_md_v1_read_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -658,7 +761,7 @@ func (x *FetchReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchReply.ProtoReflect.Descriptor instead.
 func (*FetchReply) Descriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{9}
+	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *FetchReply) GetError() string {
@@ -725,7 +828,7 @@ type Klines struct {
 
 func (x *Klines) Reset() {
 	*x = Klines{}
-	mi := &file_mftiko_md_v1_read_proto_msgTypes[10]
+	mi := &file_mftiko_md_v1_read_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -737,7 +840,7 @@ func (x *Klines) String() string {
 func (*Klines) ProtoMessage() {}
 
 func (x *Klines) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_md_v1_read_proto_msgTypes[10]
+	mi := &file_mftiko_md_v1_read_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -750,7 +853,7 @@ func (x *Klines) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Klines.ProtoReflect.Descriptor instead.
 func (*Klines) Descriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{10}
+	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Klines) GetKlines() []*Kline {
@@ -764,11 +867,13 @@ var File_mftiko_md_v1_read_proto protoreflect.FileDescriptor
 
 const file_mftiko_md_v1_read_proto_rawDesc = "" +
 	"\n" +
-	"\x17mftiko/md/v1/read.proto\x12\fmftiko.md.v1\x1a\x15mftiko/md/v1/md.proto\"a\n" +
+	"\x17mftiko/md/v1/read.proto\x12\fmftiko.md.v1\x1a\x15mftiko/md/v1/md.proto\"\x8e\x01\n" +
 	"\vViewRequest\x12\x14\n" +
 	"\x05limit\x18\x01 \x01(\rR\x05limit\x121\n" +
-	"\x06before\x18\x02 \x01(\v2\x14.mftiko.md.v1.CursorH\x00R\x06before\x88\x01\x01B\t\n" +
-	"\a_before\"9\n" +
+	"\x06before\x18\x02 \x01(\v2\x14.mftiko.md.v1.CursorH\x00R\x06before\x88\x01\x01\x12\x1e\n" +
+	"\bsince_ns\x18\x03 \x01(\x03H\x01R\asinceNs\x88\x01\x01B\t\n" +
+	"\a_beforeB\v\n" +
+	"\t_since_ns\"9\n" +
 	"\x06Cursor\x12\x1d\n" +
 	"\n" +
 	"conn_epoch\x18\x01 \x01(\x04R\tconnEpoch\x12\x10\n" +
@@ -778,17 +883,26 @@ const file_mftiko_md_v1_read_proto_rawDesc = "" +
 	"\x04tape\x18\n" +
 	" \x01(\v2\x16.mftiko.md.v1.TapePageH\x00R\x04tape\x120\n" +
 	"\x04book\x18\v \x01(\v2\x1a.mftiko.md.v1.BookSnapshotH\x00R\x04bookB\b\n" +
-	"\x06result\"\xc5\x01\n" +
-	"\bTapePage\x12\x16\n" +
-	"\x06events\x18\x01 \x03(\fR\x06events\x12\x12\n" +
+	"\x06result\"\x85\x01\n" +
+	"\tTapeEvent\x12\x1d\n" +
+	"\n" +
+	"conn_epoch\x18\x01 \x01(\x04R\tconnEpoch\x12\x10\n" +
+	"\x03seq\x18\x02 \x01(\x04R\x03seq\x12\x18\n" +
+	"\bmd_ts_ns\x18\x03 \x01(\x03R\x06mdTsNs\x12-\n" +
+	"\x05event\x18\x04 \x01(\v2\x17.mftiko.md.v1.FeedEventR\x05event\"\x88\x02\n" +
+	"\bTapePage\x12/\n" +
+	"\x06events\x18\x01 \x03(\v2\x17.mftiko.md.v1.TapeEventR\x06events\x12\x12\n" +
 	"\x04more\x18\x02 \x01(\bR\x04more\x12-\n" +
 	"\x04next\x18\x03 \x01(\v2\x14.mftiko.md.v1.CursorH\x00R\x04next\x88\x01\x01\x12.\n" +
 	"\x13continuous_since_ns\x18\x04 \x01(\x03R\x11continuousSinceNs\x12%\n" +
-	"\x04gaps\x18\x05 \x03(\v2\x11.mftiko.md.v1.GapR\x04gapsB\a\n" +
-	"\x05_next\"7\n" +
+	"\x04gaps\x18\x05 \x03(\v2\x11.mftiko.md.v1.GapR\x04gaps\x12(\n" +
+	"\x04head\x18\x06 \x01(\v2\x14.mftiko.md.v1.CursorR\x04headB\a\n" +
+	"\x05_next\"\x8d\x01\n" +
 	"\x03Gap\x12\x19\n" +
 	"\bstart_ns\x18\x01 \x01(\x03R\astartNs\x12\x15\n" +
-	"\x06end_ns\x18\x02 \x01(\x03R\x05endNs\"\xd3\x01\n" +
+	"\x06end_ns\x18\x02 \x01(\x03R\x05endNs\x12(\n" +
+	"\x04last\x18\x03 \x01(\v2\x14.mftiko.md.v1.CursorR\x04last\x12*\n" +
+	"\x05first\x18\x04 \x01(\v2\x14.mftiko.md.v1.CursorR\x05first\"\xd3\x01\n" +
 	"\fBookSnapshot\x12&\n" +
 	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12'\n" +
 	"\x04bids\x18\x02 \x03(\v2\x13.mftiko.md.v1.LevelR\x04bids\x12'\n" +
@@ -830,43 +944,50 @@ func file_mftiko_md_v1_read_proto_rawDescGZIP() []byte {
 	return file_mftiko_md_v1_read_proto_rawDescData
 }
 
-var file_mftiko_md_v1_read_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_mftiko_md_v1_read_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_mftiko_md_v1_read_proto_goTypes = []any{
 	(*ViewRequest)(nil),       // 0: mftiko.md.v1.ViewRequest
 	(*Cursor)(nil),            // 1: mftiko.md.v1.Cursor
 	(*ViewReply)(nil),         // 2: mftiko.md.v1.ViewReply
-	(*TapePage)(nil),          // 3: mftiko.md.v1.TapePage
-	(*Gap)(nil),               // 4: mftiko.md.v1.Gap
-	(*BookSnapshot)(nil),      // 5: mftiko.md.v1.BookSnapshot
-	(*FetchRequest)(nil),      // 6: mftiko.md.v1.FetchRequest
-	(*FetchKlines)(nil),       // 7: mftiko.md.v1.FetchKlines
-	(*FetchOpenInterest)(nil), // 8: mftiko.md.v1.FetchOpenInterest
-	(*FetchReply)(nil),        // 9: mftiko.md.v1.FetchReply
-	(*Klines)(nil),            // 10: mftiko.md.v1.Klines
-	(*Meta)(nil),              // 11: mftiko.md.v1.Meta
-	(*Level)(nil),             // 12: mftiko.md.v1.Level
-	(*OpenInterest)(nil),      // 13: mftiko.md.v1.OpenInterest
-	(*Kline)(nil),             // 14: mftiko.md.v1.Kline
+	(*TapeEvent)(nil),         // 3: mftiko.md.v1.TapeEvent
+	(*TapePage)(nil),          // 4: mftiko.md.v1.TapePage
+	(*Gap)(nil),               // 5: mftiko.md.v1.Gap
+	(*BookSnapshot)(nil),      // 6: mftiko.md.v1.BookSnapshot
+	(*FetchRequest)(nil),      // 7: mftiko.md.v1.FetchRequest
+	(*FetchKlines)(nil),       // 8: mftiko.md.v1.FetchKlines
+	(*FetchOpenInterest)(nil), // 9: mftiko.md.v1.FetchOpenInterest
+	(*FetchReply)(nil),        // 10: mftiko.md.v1.FetchReply
+	(*Klines)(nil),            // 11: mftiko.md.v1.Klines
+	(*FeedEvent)(nil),         // 12: mftiko.md.v1.FeedEvent
+	(*Meta)(nil),              // 13: mftiko.md.v1.Meta
+	(*Level)(nil),             // 14: mftiko.md.v1.Level
+	(*OpenInterest)(nil),      // 15: mftiko.md.v1.OpenInterest
+	(*Kline)(nil),             // 16: mftiko.md.v1.Kline
 }
 var file_mftiko_md_v1_read_proto_depIdxs = []int32{
 	1,  // 0: mftiko.md.v1.ViewRequest.before:type_name -> mftiko.md.v1.Cursor
-	3,  // 1: mftiko.md.v1.ViewReply.tape:type_name -> mftiko.md.v1.TapePage
-	5,  // 2: mftiko.md.v1.ViewReply.book:type_name -> mftiko.md.v1.BookSnapshot
-	1,  // 3: mftiko.md.v1.TapePage.next:type_name -> mftiko.md.v1.Cursor
-	4,  // 4: mftiko.md.v1.TapePage.gaps:type_name -> mftiko.md.v1.Gap
-	11, // 5: mftiko.md.v1.BookSnapshot.meta:type_name -> mftiko.md.v1.Meta
-	12, // 6: mftiko.md.v1.BookSnapshot.bids:type_name -> mftiko.md.v1.Level
-	12, // 7: mftiko.md.v1.BookSnapshot.asks:type_name -> mftiko.md.v1.Level
-	7,  // 8: mftiko.md.v1.FetchRequest.klines:type_name -> mftiko.md.v1.FetchKlines
-	8,  // 9: mftiko.md.v1.FetchRequest.open_interest:type_name -> mftiko.md.v1.FetchOpenInterest
-	10, // 10: mftiko.md.v1.FetchReply.klines:type_name -> mftiko.md.v1.Klines
-	13, // 11: mftiko.md.v1.FetchReply.open_interest:type_name -> mftiko.md.v1.OpenInterest
-	14, // 12: mftiko.md.v1.Klines.klines:type_name -> mftiko.md.v1.Kline
-	13, // [13:13] is the sub-list for method output_type
-	13, // [13:13] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	4,  // 1: mftiko.md.v1.ViewReply.tape:type_name -> mftiko.md.v1.TapePage
+	6,  // 2: mftiko.md.v1.ViewReply.book:type_name -> mftiko.md.v1.BookSnapshot
+	12, // 3: mftiko.md.v1.TapeEvent.event:type_name -> mftiko.md.v1.FeedEvent
+	3,  // 4: mftiko.md.v1.TapePage.events:type_name -> mftiko.md.v1.TapeEvent
+	1,  // 5: mftiko.md.v1.TapePage.next:type_name -> mftiko.md.v1.Cursor
+	5,  // 6: mftiko.md.v1.TapePage.gaps:type_name -> mftiko.md.v1.Gap
+	1,  // 7: mftiko.md.v1.TapePage.head:type_name -> mftiko.md.v1.Cursor
+	1,  // 8: mftiko.md.v1.Gap.last:type_name -> mftiko.md.v1.Cursor
+	1,  // 9: mftiko.md.v1.Gap.first:type_name -> mftiko.md.v1.Cursor
+	13, // 10: mftiko.md.v1.BookSnapshot.meta:type_name -> mftiko.md.v1.Meta
+	14, // 11: mftiko.md.v1.BookSnapshot.bids:type_name -> mftiko.md.v1.Level
+	14, // 12: mftiko.md.v1.BookSnapshot.asks:type_name -> mftiko.md.v1.Level
+	8,  // 13: mftiko.md.v1.FetchRequest.klines:type_name -> mftiko.md.v1.FetchKlines
+	9,  // 14: mftiko.md.v1.FetchRequest.open_interest:type_name -> mftiko.md.v1.FetchOpenInterest
+	11, // 15: mftiko.md.v1.FetchReply.klines:type_name -> mftiko.md.v1.Klines
+	15, // 16: mftiko.md.v1.FetchReply.open_interest:type_name -> mftiko.md.v1.OpenInterest
+	16, // 17: mftiko.md.v1.Klines.klines:type_name -> mftiko.md.v1.Kline
+	18, // [18:18] is the sub-list for method output_type
+	18, // [18:18] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_mftiko_md_v1_read_proto_init() }
@@ -880,12 +1001,12 @@ func file_mftiko_md_v1_read_proto_init() {
 		(*ViewReply_Tape)(nil),
 		(*ViewReply_Book)(nil),
 	}
-	file_mftiko_md_v1_read_proto_msgTypes[3].OneofWrappers = []any{}
-	file_mftiko_md_v1_read_proto_msgTypes[6].OneofWrappers = []any{
+	file_mftiko_md_v1_read_proto_msgTypes[4].OneofWrappers = []any{}
+	file_mftiko_md_v1_read_proto_msgTypes[7].OneofWrappers = []any{
 		(*FetchRequest_Klines)(nil),
 		(*FetchRequest_OpenInterest)(nil),
 	}
-	file_mftiko_md_v1_read_proto_msgTypes[9].OneofWrappers = []any{
+	file_mftiko_md_v1_read_proto_msgTypes[10].OneofWrappers = []any{
 		(*FetchReply_Klines)(nil),
 		(*FetchReply_OpenInterest)(nil),
 	}
@@ -895,7 +1016,7 @@ func file_mftiko_md_v1_read_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mftiko_md_v1_read_proto_rawDesc), len(file_mftiko_md_v1_read_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
