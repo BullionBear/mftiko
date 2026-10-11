@@ -124,7 +124,8 @@ export const CommandSchema: GenMessage<Command> = /*@__PURE__*/
   messageDesc(file_mftiko_mdctl_v1_mdctl, 2);
 
 /**
- * 這條連線上該有的 atom，完整清單。
+ * 這條連線上該有的訂閱，完整清單。atom_id 空白時，feeds 是 topic.UniversalTicker，
+ * worker 自己用活躍表推出 atom。有 atom_id 時是已經推出的 channel，沒有表的測試走這條。
  *
  * @generated from message mftiko.mdctl.v1.Desired
  */
@@ -157,14 +158,14 @@ export type AtomAssignment = Message<"mftiko.mdctl.v1.AtomAssignment"> & {
   atomId: string;
 
   /**
-   * 這個 atom 要發佈的 feed（atom → 事件 1:N）
+   * topic.UniversalTicker，或這個 atom 要發佈的 feed（atom → 事件 1:N）
    *
    * @generated from field: repeated string feeds = 2;
    */
   feeds: string[];
 
   /**
-   * 錄 tape；MD agent 依 topic 推導（D402）
+   * 錄 tape；worker 依 topic 推導（D402）
    *
    * @generated from field: bool record = 3;
    */

@@ -344,7 +344,8 @@ type Command_Desired struct {
 
 func (*Command_Desired) isCommand_Cmd() {}
 
-// 這條連線上該有的 atom，完整清單。
+// 這條連線上該有的訂閱，完整清單。atom_id 空白時，feeds 是 topic.UniversalTicker，
+// worker 自己用活躍表推出 atom。有 atom_id 時是已經推出的 channel，沒有表的測試走這條。
 type Desired struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Version       *v1.Version            `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
@@ -400,8 +401,8 @@ func (x *Desired) GetAtoms() []*AtomAssignment {
 type AtomAssignment struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	AtomId string                 `protobuf:"bytes,1,opt,name=atom_id,json=atomId,proto3" json:"atom_id,omitempty"`
-	Feeds  []string               `protobuf:"bytes,2,rep,name=feeds,proto3" json:"feeds,omitempty"`    // 這個 atom 要發佈的 feed（atom → 事件 1:N）
-	Record bool                   `protobuf:"varint,3,opt,name=record,proto3" json:"record,omitempty"` // 錄 tape；MD agent 依 topic 推導（D402）
+	Feeds  []string               `protobuf:"bytes,2,rep,name=feeds,proto3" json:"feeds,omitempty"`    // topic.UniversalTicker，或這個 atom 要發佈的 feed（atom → 事件 1:N）
+	Record bool                   `protobuf:"varint,3,opt,name=record,proto3" json:"record,omitempty"` // 錄 tape；worker 依 topic 推導（D402）
 	// SYM 的 exchTicker。worker 從自己的活躍表讀。沒有這份表、而且 atom_id 已給時，用這裡的值。不從 channel 解析（D426、D202）。
 	ExchTicker string `protobuf:"bytes,4,opt,name=exch_ticker,json=exchTicker,proto3" json:"exch_ticker,omitempty"`
 	// SYM 的 price_tick。跟 exch_ticker 同一張表、同一時刻。
