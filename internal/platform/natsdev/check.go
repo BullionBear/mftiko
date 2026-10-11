@@ -67,35 +67,14 @@ func checkMD(url string, lay Layout, u User) error {
 	if err := allowSub(md, u.InboxPrefix+".>"); err != nil {
 		return fmt.Errorf("natsdev: md %s own inbox: %w", u.Inst, err)
 	}
-	other := foreignInst(u.Inst)
-	otherInbox, err := InboxPrefix(PlaneFetch, u.Inst)
-	if err != nil {
+	if err := denyOutside(url, lay, u, PlaneMD); err != nil {
 		return err
 	}
-	denies := []struct {
-		what string
-		do   func(*nats.Conn) error
-	}{
-		{"publish _INBOX", func(nc *nats.Conn) error { return nc.Publish("_INBOX.not-allowed", []byte("x")) }},
-		{"subscribe _INBOX.>", func(nc *nats.Conn) error { _, err := nc.SubscribeSync("_INBOX.>"); return err }},
-		{"subscribe other inbox", func(nc *nats.Conn) error { _, err := nc.SubscribeSync(otherInbox + ".>"); return err }},
-		{"publish other inbox", func(nc *nats.Conn) error {
-			return nc.Publish(otherInbox+".not-allowed", []byte("x"))
-		}},
-		{"publish other md.f", func(nc *nats.Conn) error {
-			return nc.Publish("md.f."+other+".trade.BTC", []byte("x"))
-		}},
-	}
-	for _, d := range denies {
-		nc, err := dialCreds(url, filepath.Join(lay.Dir, filepath.FromSlash(u.Creds)), u.InboxPrefix)
-		if err != nil {
-			return err
-		}
-		err = expectDenied(nc, d.do)
-		nc.Close()
-		if err != nil {
-			return fmt.Errorf("natsdev: md %s %s: %w", u.Inst, d.what, err)
-		}
+	other := foreignInst(u.Inst)
+	if err := denyOnce(url, lay, u, "publish other md.f", func(nc *nats.Conn) error {
+		return nc.Publish("md.f."+other+".trade.BTC", []byte("x"))
+	}); err != nil {
+		return err
 	}
 	sess, err = dialCaller(url, caller)
 	if err != nil {
@@ -134,8 +113,61 @@ func checkFetch(url string, lay Layout, u User) error {
 		return fmt.Errorf("natsdev: fetch %s: %w", u.Inst, err)
 	}
 	defer fetch.Close()
+	if err := allowSub(fetch, u.InboxPrefix+".>"); err != nil {
+		return fmt.Errorf("natsdev: fetch %s own inbox: %w", u.Inst, err)
+	}
+	if err := denyOutside(url, lay, u, PlaneFetch); err != nil {
+		return err
+	}
 	// natsx Serve uses the subject as the queue name when the caller leaves it empty.
 	return roundTrip(url, caller, fetch, "md.fetch", "md.fetch")
+}
+
+// denyOutside checks the inbox subjects a plane user must not touch: the other
+// plane's prefix, this check's session inbox, and the default _INBOX.>.
+func denyOutside(url string, lay Layout, u User, plane string) error {
+	otherPlane := PlaneFetch
+	if plane == PlaneFetch {
+		otherPlane = PlaneMD
+	}
+	other, err := InboxPrefix(otherPlane)
+	if err != nil {
+		return err
+	}
+	session, err := sessionInbox(checkSessionID)
+	if err != nil {
+		return err
+	}
+	denies := []struct {
+		what string
+		do   func(*nats.Conn) error
+	}{
+		{"subscribe _INBOX.>", func(nc *nats.Conn) error { _, err := nc.SubscribeSync("_INBOX.>"); return err }},
+		{"publish _INBOX", func(nc *nats.Conn) error { return nc.Publish("_INBOX.not-allowed", []byte("x")) }},
+		{"subscribe other plane", func(nc *nats.Conn) error { _, err := nc.SubscribeSync(other + ".>"); return err }},
+		{"publish other plane", func(nc *nats.Conn) error { return nc.Publish(other+".not-allowed", []byte("x")) }},
+		{"subscribe session inbox", func(nc *nats.Conn) error { _, err := nc.SubscribeSync(session + ".>"); return err }},
+		{"publish session inbox", func(nc *nats.Conn) error { return nc.Publish(session+".not-allowed", []byte("x")) }},
+	}
+	for _, d := range denies {
+		if err := denyOnce(url, lay, u, d.what, d.do); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func denyOnce(url string, lay Layout, u User, what string, do func(*nats.Conn) error) error {
+	nc, err := dialCreds(url, filepath.Join(lay.Dir, filepath.FromSlash(u.Creds)), u.InboxPrefix)
+	if err != nil {
+		return err
+	}
+	err = expectDenied(nc, do)
+	nc.Close()
+	if err != nil {
+		return fmt.Errorf("natsdev: %s %s %s: %w", u.Name, u.Inst, what, err)
+	}
+	return nil
 }
 
 func deliverFeed(sess, md *nats.Conn, inst string) error {

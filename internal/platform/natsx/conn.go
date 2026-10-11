@@ -42,7 +42,7 @@ type Options struct {
 
 	// InboxPrefix is the reply inbox prefix, passed to nats.CustomInboxPrefix.
 	// Empty keeps the client default _INBOX. Sessions set _INBOX_{session_id} (D906).
-	// Platform processes set _INBOX_{plane}_{inst} (D416).
+	// Platform processes set _INBOX_{plane} (D416): _INBOX_md and _INBOX_fetch.
 	InboxPrefix string
 }
 

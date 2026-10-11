@@ -10,5 +10,5 @@
 // reload after a gap; it runs on the client's reconnect goroutine and must not block.
 //
 // Credentials are not set here (D906). The inbox prefix is Options.InboxPrefix:
-// sessions use _INBOX_{session_id} (D906), platform processes use _INBOX_{plane}_{inst} (D416).
+// sessions use _INBOX_{session_id} (D906), platform processes use _INBOX_{plane} (D416).
 package natsx

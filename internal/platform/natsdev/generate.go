@@ -25,6 +25,7 @@ const (
 
 	// PlaneMD and PlaneFetch are the platform inbox plane tokens (D416).
 	// md.fetch is not an etcd plane; "fetch" keeps its inbox off the MD prefix.
+	// Instances of one plane share that prefix.
 	PlaneMD    = "md"
 	PlaneFetch = "fetch"
 
@@ -108,13 +109,14 @@ type ServerConfig struct {
 	ServerName    string
 }
 
-// InboxPrefix is the platform reply prefix _INBOX_{plane}_{inst} (D416).
-// plane and inst are each one token. The result has no trailing dot.
-func InboxPrefix(plane, inst string) (string, error) {
-	if !tokenOK(plane) || !tokenOK(inst) {
-		return "", errors.New("natsdev: inbox prefix needs a plane token and an instance token")
+// InboxPrefix is the platform reply prefix _INBOX_{plane} (D416).
+// plane is one token. The result has no trailing dot. Every instance of the
+// plane uses it, so one plane credential can subscribe to every same-plane reply.
+func InboxPrefix(plane string) (string, error) {
+	if !tokenOK(plane) {
+		return "", errors.New("natsdev: inbox prefix needs a plane token")
 	}
-	return "_INBOX_" + plane + "_" + inst, nil
+	return "_INBOX_" + plane, nil
 }
 
 // Generate writes operator, account, and user material into dir.
@@ -400,7 +402,7 @@ func validateUsers(plane string, users []User) error {
 		if !nkeys.IsValidPublicUserKey(u.PublicKey) {
 			return fmt.Errorf("natsdev: manifest user %s is missing a public key", u.Inst)
 		}
-		want, err := InboxPrefix(plane, u.Inst)
+		want, err := InboxPrefix(plane)
 		if err != nil {
 			return err
 		}
@@ -465,7 +467,7 @@ type loadedUser struct {
 }
 
 func ensureServiceUser(dir, plane, inst string) (loadedUser, error) {
-	inbox, err := InboxPrefix(plane, inst)
+	inbox, err := InboxPrefix(plane)
 	if err != nil {
 		return loadedUser{}, err
 	}

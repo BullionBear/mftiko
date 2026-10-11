@@ -1420,13 +1420,13 @@ enum AccountState {
   - 授權只在連線時做一次，訊息不帶 token。對沒綁定的帳號發 `td.order`，broker 直接拒絕。
 - **MD instance 的 NATS 權限（D415）。** 每個 MD instance 一份 user JWT，憑證是 `MFTIKO_NATS_CREDS`：
   - publish：`md.f.{inst}.>`、`sym`。
-  - subscribe：`md.view.{inst}.>`、`_INBOX_md_{inst}.>`。
+  - subscribe：`md.view.{inst}.>`、`_INBOX_md.>`。
   - 回答 `md.view` 時帶 response permission：一則、兩分鐘（NATS `allow_responses` 的預設）。不能發佈到 `_INBOX.>`。
 - **md.fetch 的 NATS 權限（D415）。** 無狀態服務，不是 MD worker（D402）。每個 md.fetch instance 一份 user JWT：
   - publish：`sym`。
-  - subscribe：`md.fetch`（queue group）、`_INBOX_fetch_{inst}.>`。
+  - subscribe：`md.fetch`（queue group）、`_INBOX_fetch.>`。
   - 回答 `md.fetch` 時同樣是一則、兩分鐘，不能發佈到 `_INBOX.>`。
-- **平台 inbox 前綴（D416）。** session 仍是 `_INBOX_{session_id}`（D906）。平台行程是 `_INBOX_{plane}_{inst}`：MD 的 plane token 是 `md`，所以是 `_INBOX_md_{inst}`；md.fetch 的 plane token 是 `fetch`，所以是 `_INBOX_fetch_{inst}`。權限只開自己的前綴，沒有人拿到 `_INBOX.>`。`natsx` 以 `Options.InboxPrefix` 設定這個前綴。TD 與 SYM 的 user 權限留到它們自己的票。
+- **平台 inbox 前綴（D416）。** session 仍是 `_INBOX_{session_id}`（D906）。平台行程是 `_INBOX_{plane}`，不含 instance：MD 是 `_INBOX_md`，md.fetch 是 `_INBOX_fetch`。同一個平面的 instance 共用前綴，一把平面憑證可以讀到該平面每一個 instance 的回覆。系統是單人使用，跨 region 取資料是設計目的，因為有些交易所鎖 region，要另一個 region 轉發。權限只開自己平面的前綴，沒有人拿到 `_INBOX.>`。`natsx` 以 `Options.InboxPrefix` 設定這個前綴。TD 與 SYM 的 user 權限留到它們自己的票。
 - **帳號只交易它的種類可交易的 venue（D301）。** `Submit` 的 ticker 所屬的 venue 不在帳號種類的清單裡，account worker 以 1xx 拒絕（`venue_not_tradable`），不送出。
 - **數量與價格的單位（D203）。** `qty`、`filled_qty`、`Fill.qty`、`Position.size` 的單位是 `contract_value_ccy`（qty = 張數 × `contract_size`）：linear 與期權是 base，inverse 是 quote，不是張數。`quote_qty` 的單位是 quote。`price`、`avg_price`、持倉的 `entry_price` 與 `mark_price`，以及 `price_tick`，用 `price_ccy`：現貨與期貨（含 inverse）是 quote，幣本位期權是 base，U 本位期權是 quote（穩定幣）。`unrealized_pnl` 用 `settlement_asset`（契約欄位 `settle`），是損益結算幣，不是保證金幣。不是 `TRADABLE` 的商品，交易路徑拒單。見 §7.3。
 - **策略只能動自己的單（D602）。** TD 檢查 `Submit`、`Cancel`、`BatchCancel` 帶的 `algo_id` 與 `client_order_id` 的 algo 欄位一致，不符就以 1xx 拒絕。沒有 `client_order_id` 的單（人工下的）不屬於任何策略。SDK 只允許使用 spec 裡宣告給該帳號的 algo_id；這是防呆，不是防惡意。平台不替策略撤單，STS agent 沒有 `td.order` 的權限。

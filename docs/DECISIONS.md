@@ -533,13 +533,14 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 ### D416 inbox 前綴
 
 - **session 維持 D906 的 `_INBOX_{session_id}`。**
-- **平台行程用 `_INBOX_{plane}_{inst}`。** MD 的 plane token 是 `md`，所以是 `_INBOX_md_{inst}`。md.fetch 的 plane token 是 `fetch`，所以是 `_INBOX_fetch_{inst}`。D416 的例子只寫了 MD；`fetch` 是讓兩個 user 的前綴不撞，記在這一條，不另編號。
-- **權限只開自己的前綴**（`_INBOX_md_{inst}.>`、`_INBOX_fetch_{inst}.>`）。沒有任何 user 拿到預設的 `_INBOX.>`。
+- **平台行程用 `_INBOX_{plane}`，不含 instance。** MD 的 plane token 是 `md`，所以是 `_INBOX_md`。md.fetch 的 plane token 是 `fetch`，所以是 `_INBOX_fetch`。同一個平面的每個 instance 共用這個前綴。`fetch` 是讓兩個平面的前綴不撞，記在這一條，不另編號。
+- **權限只開自己平面的前綴**（`_INBOX_md.>`、`_INBOX_fetch.>`）。沒有任何 user 拿到預設的 `_INBOX.>`。
+- **同一個平面的 instance 可以讀到彼此的回覆。** nats.go 在前綴後面加隨機 nuid，平常的 mux 只訂 `_INBOX_{plane}.<nuid>.*`，所以不會自動收到別的 instance 的回覆，inbox 也不會撞。這把平面憑證仍然可以另外訂閱整個 `_INBOX_{plane}.>`，讀到該平面每一個 instance 的回覆。這是接受的：系統是單人使用，跨 region 取資料是設計目的，因為有些交易所鎖 region，要另一個 region 轉發。
 - **`natsx/conn` 加 inbox 前綴選項**，傳給 `nats.CustomInboxPrefix`。空的維持客戶端預設。`natsx/rpc` 的介面不改。
 
 ### D417 權限檢查
 
-- **CI 用嵌入式 nats-server 載入同一份設定與產生的 creds**，檢查三件事：發佈 `md.f`；用自訂 inbox 做 request／reply；未授權的發佈與訂閱被拒（`_INBOX.>`、別人的 inbox、另一個 instance 的 `md.f`）。
+- **CI 用嵌入式 nats-server 載入同一份設定與產生的 creds**，檢查三件事：發佈 `md.f`；用自訂 inbox 做 request／reply；未授權的發佈與訂閱被拒（另一個平面的 inbox、session 的 inbox、`_INBOX.>`，以及另一個 instance 的 `md.f`）。
 - **檢查會在記憶體裡用簽章金鑰簽一個暫時的 session user**，當合法的呼叫者。不把 session creds 寫進磁碟。
 - **md.fetch 的 queue 名稱在檢查裡用 `md.fetch`。** 這是 natsx 的 `Serve` 在 queue 空著時用的預設（subject 本身）。JWT 不鎖 queue 名稱。
 - **compose 的煙測腳本跑同一組檢查：** `deploy/dev/nats-smoke.sh`。

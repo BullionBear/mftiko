@@ -208,15 +208,15 @@ func TestGenerateMaterial(t *testing.T) {
 		t.Fatalf("md users %+v", lay.Manifest.MD)
 	}
 	md := lay.Manifest.MD[0]
-	if md.InboxPrefix != "_INBOX_md_box" {
+	if md.InboxPrefix != "_INBOX_md" {
 		t.Fatal(md.InboxPrefix)
 	}
-	assertUser(md, []string{"md.f.box.>", "sym"}, []string{"md.view.box.>", "_INBOX_md_box.>"})
+	assertUser(md, []string{"md.f.box.>", "sym"}, []string{"md.view.box.>", "_INBOX_md.>"})
 	fetch := lay.Manifest.Fetch[0]
-	if fetch.InboxPrefix != "_INBOX_fetch_box" {
+	if fetch.InboxPrefix != "_INBOX_fetch" {
 		t.Fatal(fetch.InboxPrefix)
 	}
-	assertUser(fetch, []string{"sym"}, []string{"md.fetch", "_INBOX_fetch_box.>"})
+	assertUser(fetch, []string{"sym"}, []string{"md.fetch", "_INBOX_fetch.>"})
 
 	if _, err := nkeys.FromSeed(seeds["mftiko-signing.nk"]); err != nil {
 		t.Fatal("signing key")
@@ -224,11 +224,15 @@ func TestGenerateMaterial(t *testing.T) {
 }
 
 func TestInboxPrefixAndConfig(t *testing.T) {
-	got, err := InboxPrefix(PlaneMD, "dev")
-	if err != nil || got != "_INBOX_md_dev" {
+	got, err := InboxPrefix(PlaneMD)
+	if err != nil || got != "_INBOX_md" {
 		t.Fatalf("%s %v", got, err)
 	}
-	if _, err := InboxPrefix("md.fetch", "dev"); err == nil {
+	got, err = InboxPrefix(PlaneFetch)
+	if err != nil || got != "_INBOX_fetch" {
+		t.Fatalf("%s %v", got, err)
+	}
+	if _, err := InboxPrefix("md.fetch"); err == nil {
 		t.Fatal("dot in plane was accepted")
 	}
 	if _, err := FormatServerConfig(ServerConfig{
