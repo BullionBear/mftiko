@@ -67,6 +67,11 @@ func run() int {
 	}
 	defer nc.Close()
 
+	restOverrides, err := conn.RESTOverridesFromEnv()
+	if err != nil {
+		log.Error().Err(err).Msg("rest endpoints")
+		return 1
+	}
 	reg := all.Registry()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer stop()
@@ -83,6 +88,9 @@ func run() int {
 			v, ok := reg.Venue(venue)
 			if !ok || v.REST == nil {
 				return nil, false
+			}
+			if base := restOverrides[venue]; base != "" {
+				return conn.WithRESTBase(v.REST, base), true
 			}
 			return v.REST, true
 		},

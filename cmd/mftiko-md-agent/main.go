@@ -21,6 +21,7 @@ import (
 
 	"github.com/BullionBear/mftiko/exchange/all"
 	"github.com/BullionBear/mftiko/internal/md/agent"
+	mdconn "github.com/BullionBear/mftiko/internal/md/conn"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/logger"
 	"github.com/BullionBear/mftiko/internal/platform/state"
@@ -37,6 +38,7 @@ func main() {
 	natsURL := flag.String("nats", envOr("NATS_URL", "nats://127.0.0.1:4222"), "NATS URL (default $NATS_URL or the dev server)")
 	creds := flag.String("nats-creds", os.Getenv("MFTIKO_NATS_CREDS"), "NATS user credentials file (default $MFTIKO_NATS_CREDS)")
 	endpoints := flag.String("endpoints", "", "JSON object of venue to websocket URL override")
+	restEndpoints := flag.String("rest-endpoints", "", "JSON object of venue to REST URL override for the conn worker's depth snapshot")
 	linger := flag.Duration("linger", agent.DefaultLinger, "how long an atom with no owners stays subscribed")
 	flag.Parse()
 	if *version {
@@ -46,7 +48,7 @@ func main() {
 	log := logger.New("mftiko-md-agent")
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	if err := run(ctx, *instance, *topology, *password, *workDir, *shim, *conn, *natsURL, *creds, *endpoints, *linger, log); err != nil && !errors.Is(err, context.Canceled) {
+	if err := run(ctx, *instance, *topology, *password, *workDir, *shim, *conn, *natsURL, *creds, *endpoints, *restEndpoints, *linger, log); err != nil && !errors.Is(err, context.Canceled) {
 		log.Error().Err(err).Msg("exit")
 		os.Exit(1)
 	}
@@ -59,7 +61,7 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-func run(ctx context.Context, instance, topology, password, workDir, shimPath, connPath, natsURL, creds, endpoints string, linger time.Duration, log zerolog.Logger) error {
+func run(ctx context.Context, instance, topology, password, workDir, shimPath, connPath, natsURL, creds, endpoints, restEndpoints string, linger time.Duration, log zerolog.Logger) error {
 	switch {
 	case instance == "" || topology == "" || password == "" || workDir == "" || shimPath == "" || connPath == "":
 		return errors.New("instance, topology, etcd password, work dir, shim, and conn are required")
@@ -86,6 +88,18 @@ func run(ctx context.Context, instance, topology, password, workDir, shimPath, c
 	if err != nil {
 		return err
 	}
+	workerEnv := []string{"MFTIKO_NATS_URL=" + natsURL, "MFTIKO_NATS_CREDS=" + creds}
+	if restEndpoints != "" {
+		rest, err := readOverrides(restEndpoints)
+		if err != nil {
+			return err
+		}
+		v, err := mdconn.EncodeRESTOverrides(rest)
+		if err != nil {
+			return err
+		}
+		workerEnv = append(workerEnv, mdconn.EnvRESTOverrides+"="+v)
+	}
 	reg := all.Registry()
 	host, err := os.Hostname()
 	if err != nil || host == "" {
@@ -95,7 +109,7 @@ func run(ctx context.Context, instance, topology, password, workDir, shimPath, c
 		Topology: topo, Instance: instance, Dial: state.AuthDial(instance, password),
 		Term:    state.TermOptions{ID: fmt.Sprintf("%s:%d", host, os.Getpid())},
 		WorkDir: workDir, Shim: shimPath, Conn: connPath,
-		WorkerEnv: []string{"MFTIKO_NATS_URL=" + natsURL, "MFTIKO_NATS_CREDS=" + creds},
+		WorkerEnv: workerEnv,
 		Markets:   agent.MarketsFrom(reg), Overrides: overrides,
 		Linger: linger, Release: buildinfo.Version, Log: log,
 	})
