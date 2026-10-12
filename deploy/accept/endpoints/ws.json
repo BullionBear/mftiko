@@ -1,4 +1,6 @@
 {
   "Binance": "wss://stream.testnet.binance.vision",
-  "BinanceUM": "wss://fstream.binancefuture.com"
+  "BinanceUM": "wss://fstream.binancefuture.com",
+  "Bybit": "wss://stream-testnet.bybit.com",
+  "Okx": "wss://wspap.okx.com:8443"
 }
