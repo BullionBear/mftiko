@@ -42,9 +42,11 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-nats-dev         generates dev NATS operator, accounts and user creds, and checks them
   mftiko-seal             makes a TD instance's key pair and seals account credentials to it
   mftiko-conformance      SDK conformance suite
+  mftiko-md-accept        drives the MD feed-path acceptance (deploy/accept)
 examples/strategies/      hello, tape-keeper; import only sdk and contract, as an outside author would
 migrations/               PostgreSQL schema: NNNN_name.up.sql / .down.sql, embedded into mftiko-migrate
 deploy/dev/               local development services (PostgreSQL, etcd, NATS)
+deploy/accept/            MD feed-path acceptance against a venue's testnet: compose stack, accept.sh, runbook
 web/                      SvelteKit console (single-page app served by mftiko-api)
 docs/                     DECISIONS.md, PROTOCOL.md
 ```
@@ -64,6 +66,7 @@ docs/                     DECISIONS.md, PROTOCOL.md
 | `make check` | everything CI runs: `proto-lint`, `proto-breaking`, `gen-check`, `vet`, `build`, `test-race`, `web-check` |
 | `make web` / `make web-dev` / `make web-check` | build, dev server, svelte-check |
 | `make dev-up` / `make dev-down` | generate dev NATS credentials, then start / stop a local PostgreSQL, etcd and NATS (Docker); `dev-up` waits until all are healthy |
+| `make accept-up` / `make accept-down` | start / stop the MD acceptance stack; the checks themselves are in `deploy/accept/README.md` |
 | `make dev-nats-smoke` | run the dev NATS permission checks (`deploy/dev/nats-smoke.sh`) against the compose server |
 | `make migrate-up` / `make migrate-down` / `make migrate-status` | apply / roll back one / list migrations against `$DATABASE_URL` |
 | `make migrate-new NAME=...` | creates the next `NNNN_<name>.up.sql` / `.down.sql` pair |

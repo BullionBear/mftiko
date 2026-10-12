@@ -37,7 +37,7 @@ BUF_AGAINST ?= .git\#branch=main
 export PATH := $(TOOLS):$(NODE_BIN):$(PATH)
 
 .PHONY: all help tools proto proto-lint proto-breaking gen-check build examples test test-race vet fmt check \
-        web-install web web-check web-dev dev-up dev-down dev-nats-smoke migrate-up migrate-down migrate-status \
+        web-install web web-check web-dev dev-up dev-down dev-nats-smoke accept-up accept-down migrate-up migrate-down migrate-status \
         migrate-new clean
 
 all: proto build examples web ## Generate code, build every binary, the example strategies and the web console
@@ -134,6 +134,12 @@ dev-down: ## Stop local PostgreSQL, etcd and NATS. Keeps their data, including t
 
 dev-nats-smoke: ## Run the dev NATS permission checks against the compose server
 	deploy/dev/nats-smoke.sh
+
+accept-up: ## Start the MD acceptance stack (deploy/accept/README.md): Linux binaries, etcd, NATS, PostgreSQL, SYM
+	deploy/accept/accept.sh up
+
+accept-down: ## Stop the MD acceptance stack and drop its volumes
+	deploy/accept/accept.sh down
 
 migrate-up: build ## Apply every pending migration to DATABASE_URL
 	$(BIN)/mftiko-migrate -database '$(DATABASE_URL)' up

@@ -1,0 +1,88 @@
+# MD feed-path acceptance (E4-09..E4-11), driven by accept.sh; README.md is the runbook. A compose
+# project of its own, apart from deploy/dev, and with no published ports: nothing here collides with
+# a dev stack or anything else on the host. The shim needs Linux (setsid, PR_SET_CHILD_SUBREAPER,
+# /proc), so md-agent, the shims and the conn workers run in the runner container from bin/linux/,
+# which accept.sh builds. The agent's work dir stays inside the runner: its unix sockets do not work
+# on a bind mount from a macOS host.
+name: mftiko-accept
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: mftiko
+      POSTGRES_DB: mftiko
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../../migrations:/migrations:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "mftiko", "-d", "mftiko"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # setup turns auth on, with the same roles state.AuthTables gives a deployment. The healthcheck
+  # passes root's password (MFTIKO_ETCD_PASSWORD below): endpoint health is refused without it once
+  # auth is on, and the flag is accepted while auth is still off.
+  etcd:
+    image: gcr.io/etcd-development/etcd:v3.7.2
+    command:
+      - /usr/local/bin/etcd
+      - --name=accept
+      - --data-dir=/var/lib/etcd/data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-peer-urls=http://127.0.0.1:2380
+      - --initial-advertise-peer-urls=http://127.0.0.1:2380
+      - --initial-cluster=accept=http://127.0.0.1:2380
+      - --initial-cluster-state=new
+      - --log-level=warn
+    volumes:
+      - etcddata:/var/lib/etcd
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/etcdctl", "--endpoints=http://127.0.0.1:2379", "--user=root:accept", "endpoint", "health"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # The dev operator and accounts from mftiko-nats-dev, written to ./data/nats by accept.sh up.
+  nats:
+    image: nats:2.15.0-alpine
+    command: [nats-server, -c, /etc/nats/nats-server.conf]
+    volumes:
+      - ./data/nats/nats-server.conf:/etc/nats/nats-server.conf:ro
+      - ./data/nats/operator.jwt:/etc/nats/operator.jwt:ro
+      - ./data/nats/resolver:/data/resolver
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8222/healthz"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Every process of the acceptance runs here. init reaps the shims an agent leaves behind when it
+  # is replaced. cut needs pidfd_getfd on the conn workers: same user, same PID namespace.
+  runner:
+    image: alpine:3.22
+    init: true
+    command: [sleep, infinity]
+    working_dir: /work
+    environment:
+      MFTIKO_ETCD: http://etcd:2379
+      MFTIKO_ETCD_PASSWORD: accept
+      NATS_URL: nats://nats:4222
+      MFTIKO_NATS_CREDS: /work/observer.creds
+      DATABASE_URL: postgres://mftiko@postgres:5432/mftiko?sslmode=disable
+    volumes:
+      - ../../bin/linux:/mftiko:ro
+      - ./data/nats:/nats:ro
+      - ./data/work:/work
+      - ./endpoints:/endpoints:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+      etcd: {condition: service_healthy}
+      nats: {condition: service_healthy}
+
+volumes:
+  pgdata:
+  etcddata:
