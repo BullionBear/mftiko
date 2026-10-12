@@ -153,7 +153,7 @@ func TestEpochReportedBeforeDial(t *testing.T) {
 
 	got := rec.wait(t, 1)
 	_, epoch, seq, ev := openPub(t, got[0])
-	if got[0].subject != "md.f.md1.trade.T" || epoch != start+1 || seq != 1 || ev.GetTrade().GetTradeId() != "t1" {
+	if got[0].subject != "md.v1.f.md1.trade.T" || epoch != start+1 || seq != 1 || ev.GetTrade().GetTradeId() != "t1" {
 		t.Fatalf("%s epoch %d seq %d id %s", got[0].subject, epoch, seq, ev.GetTrade().GetTradeId())
 	}
 	close(drop)

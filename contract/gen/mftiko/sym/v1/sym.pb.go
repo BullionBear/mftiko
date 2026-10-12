@@ -682,7 +682,7 @@ func (*Reply_Refresh) isReply_Result() {}
 func (*Reply_Revisions) isReply_Result() {}
 
 // Every (venue, category) revision. A client that may have missed
-// sym.changed compares these with the revision it loaded (P7, PROTOCOL §7.3).
+// sym.v1.changed compares these with the revision it loaded (P7, D457, PROTOCOL §7.3).
 type RevisionsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -824,9 +824,9 @@ func (x *RevisionList) GetTables() []*TableRevision {
 	return nil
 }
 
-// Published on sym.changed.{venue}.{category} after that table's revision
-// commits (P7). Venue and category are the human-readable names, not a UID.
-// PROTOCOL §10 P14 may rename this subject.
+// Published on sym.v1.changed.{venue}.{category} after that table's revision
+// commits (P7, D457). Venue and category are the human-readable names, not a UID.
+// SYM has no inst. A conn worker subscribes only its own venue.
 type Changed struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Venue         string                 `protobuf:"bytes,1,opt,name=venue,proto3" json:"venue,omitempty"`

@@ -2,8 +2,8 @@
 
 E4 的驗收（#6；E4-09 BinanceUM、E4-10 Binance 現貨、E4-11 Bybit／OKX）。需求項目手寫（E13 之前），對交易所的 testnet 跑四條：
 
-1. `md.f` 收到事件，同一個 feed 上 `seq` 連續。
-2. 晚加入：先訂 `md.f`，再向 `md.view` 拿當時的 book 或 tape，之後只套用較新的 seq。
+1. `md.v1.f` 收到事件，同一個 feed 上 `seq` 連續。
+2. 晚加入：先訂 `md.v1.f`，再向 `md.v1.view` 拿當時的 book 或 tape，之後只套用較新的 seq。
 3. 連線斷掉再接上，`conn_epoch` 加一。
 4. 換掉 md-agent 的行程，websocket 不斷，事件繼續來。
 
@@ -44,7 +44,7 @@ ACCEPT_VENUE=Binance ACCEPT_SYM_FEEDS=Binance/Spot ACCEPT_TICKER=Binance_Spot_BT
 ## 1. 收到事件，seq 連續
 
 ```sh
-$A bg watch watch -out /work/watch.jsonl     # 訂 md.f.dev.>，每則寫進 watch.jsonl
+$A bg watch watch -out /work/watch.jsonl     # 訂 md.v1.f.dev.>，每則寫進 watch.jsonl
 $A agent                                     # log: data/work/agent-1.log
 $A demand put s1 aggtrade.BinanceUM_Perp_BTCUSDT
 $A demand put s1 orderbook_delta.BinanceUM_Perp_BTCUSDT
@@ -61,9 +61,9 @@ $A late -feed orderbook_delta.BinanceUM_Perp_BTCUSDT -follow 15s
 $A late -feed aggtrade.BinanceUM_Perp_BTCUSDT -follow 10s
 ```
 
-`late` 會先訂 `md.f` 並 flush，再問 `md.view`：
+`late` 會先訂 `md.v1.f` 並 flush，再問 `md.v1.view`：
 
-- book：從 `BookSnapshot` 的 `(epoch, S)` 開始，丟掉 ≤ S 的 live，第一則套用的必須是 S+1。用 `sdk/book` 折（tick 從 SYM 取），跟完一段之後再問一次 `md.view`，在同一個 cursor 上逐檔比對。
+- book：從 `BookSnapshot` 的 `(epoch, S)` 開始，丟掉 ≤ S 的 live，第一則套用的必須是 S+1。用 `sdk/book` 折（tick 從 SYM 取），跟完一段之後再問一次 `md.v1.view`，在同一個 cursor 上逐檔比對。
 - tape：往回分頁讀到 `-since`，印出 gap，從 `TapePage.head` 接上 live（D437）。
 
 通過的條件：`gaps=0`；book 的比對結果是 `differing within 1024 ticks of the best: 0`。離最佳價較遠的檔（窗的外半）若有差異，只印出、不算失敗。這是 D431 的結果：一檔在晚加入者的快照當下落在窗外，或曾經在窗外被丟掉，在它下一筆更新之前晚加入者都不會知道它；worker 的環則還留著那一格。
@@ -104,4 +104,4 @@ $A stop watch                                # 印出最後的 SUMMARY；有 gap
 make accept-down                             # 停掉並刪除 volume；data/work 留著
 ```
 
-紀錄：`data/work/watch.log`、`watch.jsonl`（每一則 md.f 的 `(epoch, seq)`）、`agent-*.log`、`sym.log`，以及上面各個指令的輸出。新的一輪要乾淨的紀錄時，先清空 `data/work/`。E4-09 的紀錄在 #193，E4-10 的在 #195。
+紀錄：`data/work/watch.log`、`watch.jsonl`（每一則 md.v1.f 的 `(epoch, seq)`）、`agent-*.log`、`sym.log`，以及上面各個指令的輸出。新的一輪要乾淨的紀錄時，先清空 `data/work/`。E4-09 的紀錄在 #193，E4-10 的在 #195。

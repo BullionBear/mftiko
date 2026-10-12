@@ -5,9 +5,8 @@
 // Inside the system the instrument is a UID: STS, TD and MD pass that integer, and each plane
 // loads the fields it needs with GetByUID. Lease items and td.order still carry the ticker
 // string; switching those fields to UID is later work. NATS subjects stay human-readable, not
-// UID; the exact spelling is not final (PROTOCOL §10 P14), so md.f is still
-// md.f.{inst}.{topic}.{ticker}. A venue's own spelling (ExchTicker) appears in two places only: in the
-// exchange adapters and in SYM's tables.
+// UID. A feed is md.v1.f.{inst}.{topic}.{ticker} (D455). A venue's own spelling (ExchTicker)
+// appears in two places only: in the exchange adapters and in SYM's tables.
 //
 // Getting from one to the other is a lookup, never string surgery. "BTCUSDT" does not carry its
 // base/quote split, and venues publish tickers that are not base + separator + quote at all. So:
@@ -19,7 +18,7 @@
 // Callers resolve before they call an adapter, and adapters never call SYM: adapter functions stay
 // pure (D202). The market-data hot path does no lookup at all: a conn worker stamps each event with
 // the instrument of the feed it serves (mdctl.AtomAssignment). That stamp is still the ticker.
-// Subjects stay human-readable; their exact spelling is PROTOCOL §10 P14.
+// Subjects stay human-readable. Feed subjects are md.v1.f.{inst}.{topic}.{ticker} (D455).
 //
 // The plane itself (refresh, tables, the sym subject) is internal/sym.
 //

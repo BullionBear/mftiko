@@ -119,7 +119,12 @@ func run() int {
 			for _, c := range v.Categories {
 				tables = append(tables, sym.Table{Venue: venue, Category: c})
 			}
-			return sym.OpenRemote(ctx, nc, tables, sym.RemoteOptions{Log: log})
+			// One venue per conn worker. The instance JWT allows every venue (D457).
+			notify, err := sym.ChangedVenueWildcard(venue)
+			if err != nil {
+				return nil, err
+			}
+			return sym.OpenRemote(ctx, nc, tables, sym.RemoteOptions{Log: log, NotifySubject: notify})
 		},
 		Log:     &log,
 		Release: buildinfo.Version,

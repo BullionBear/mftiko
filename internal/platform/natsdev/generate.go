@@ -537,18 +537,20 @@ func credsRel(plane, inst string) string {
 func servicePerms(plane, inst, inbox string) (pub, sub []string, resp bool, err error) {
 	switch plane {
 	case PlaneMD:
-		// sym.changed.> reloads the venue table the conn worker loaded at Init (D203, D426).
-		// The MD agent does not subscribe.
-		return []string{"md.f." + inst + ".>", "sym"}, []string{"md.view." + inst + ".>", "sym.changed.>", inbox + ".>"}, true, nil
+		// md.v1.f.{inst}.> is the feed and md.v1.view.{inst}.> is the read (D455).
+		// sym.v1.changed.> is the JWT. The conn worker subscribes only its own
+		// venue, sym.v1.changed.{venue}.> (D457). The MD agent does not subscribe.
+		return []string{"md.v1.f." + inst + ".>", "sym"}, []string{"md.v1.view." + inst + ".>", "sym.v1.changed.>", inbox + ".>"}, true, nil
 	case PlaneFetch:
-		// md.fetch.> is every venue subject. The process subscribes only to the
-		// venues it can reach (D418). sym.changed.> is the resolver (D422).
-		return []string{"sym"}, []string{"md.fetch.>", "sym.changed.>", inbox + ".>"}, true, nil
+		// md.v1.fetch.> is every venue subject. The process subscribes only to the
+		// venues it can reach (D418, D456). The exact subject md.v1.fetch is not
+		// in this list. sym.v1.changed.> is the resolver (D422, D457).
+		return []string{"sym"}, []string{"md.v1.fetch.>", "sym.v1.changed.>", inbox + ".>"}, true, nil
 	case PlaneTD:
 		// td.evt.> is every account: the agent stores fills (D601), and accounts move between
 		// instances, so they are not listed. The agent answers no requests. Its account workers
 		// have their own users (tdAccountPerms).
-		return []string{"sym"}, []string{"td.evt.>", "sym.changed.>", inbox + ".>"}, false, nil
+		return []string{"sym"}, []string{"td.evt.>", "sym.v1.changed.>", inbox + ".>"}, false, nil
 	}
 	return nil, nil, false, fmt.Errorf("natsdev: no permissions for plane %q", plane)
 }
@@ -565,7 +567,7 @@ func tdAccountPerms(apiID int64) (pub, sub []string, err error) {
 	}
 	id := strconv.FormatInt(apiID, 10)
 	return []string{"td.evt." + id, "sym"},
-		[]string{"td.order." + id, "td.view." + id, "sym.changed.>", inbox + ".>"}, nil
+		[]string{"td.order." + id, "td.view." + id, "sym.v1.changed.>", inbox + ".>"}, nil
 }
 
 func writeServiceUser(dir string, u loadedUser, accountKP nkeys.KeyPair) (User, error) {

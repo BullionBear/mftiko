@@ -21,7 +21,7 @@ func TestSmokeBinanceUM(t *testing.T) {
 	if os.Getenv("MFTIKO_MD_SMOKE") != "1" {
 		t.Skip("set MFTIKO_MD_SMOKE=1 to dial BinanceUM public aggTrade")
 	}
-	const subject = "md.f.smoke.aggtrade.BinanceUM_Perp_BTCUSDT"
+	const subject = "md.v1.f.smoke.aggtrade.BinanceUM_Perp_BTCUSDT"
 	var logBuf bytes.Buffer
 	log := zerolog.New(&logBuf)
 	got := make(chan []byte, 1)

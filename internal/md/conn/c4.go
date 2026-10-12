@@ -42,7 +42,7 @@ type ServeConfig struct {
 	// Symbols loads this venue's active table before Init completes. Nil leaves exch_ticker and
 	// price_tick on the assignment. The returned value is closed when it has a Close method.
 	Symbols func(ctx context.Context, venue string) (Instruments, error)
-	// Subscribe registers one md.view responder. Nil leaves the worker without md.view.
+	// Subscribe registers one md.v1.view responder. Nil leaves the worker without md.v1.view.
 	// The handler runs off the websocket read. The returned function removes the interest.
 	Subscribe func(subject string, handler func(reply string, req []byte)) (func(), error)
 	// Log is optional. Nil discards.

@@ -106,7 +106,7 @@ func root() (*clientv3.Client, error) {
 }
 
 // signCreds signs a user for every subject with the account signing key mftiko-nats-dev wrote.
-// The observer reads md.f and asks md.view as a session would; SYM uses it because mftiko-nats-dev
+// The observer reads md.v1.f and asks md.v1.view as a session would; SYM uses it because mftiko-nats-dev
 // issues no SYM user.
 func signCreds() error {
 	dir := flag.String("nats-dir", "deploy/dev/data/nats", "mftiko-nats-dev output")

@@ -563,7 +563,7 @@ type SelectorBinding struct {
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	MdInstance    string                 `protobuf:"bytes,2,opt,name=md_instance,json=mdInstance,proto3" json:"md_instance,omitempty"`
 	Universe      *Universe              `protobuf:"bytes,3,opt,name=universe,proto3" json:"universe,omitempty"`
-	SubjectPrefix string                 `protobuf:"bytes,4,opt,name=subject_prefix,json=subjectPrefix,proto3" json:"subject_prefix,omitempty"` // 成員的 subject 是 {subject_prefix}.{topic}.{ticker}。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（D203、§10 P14）
+	SubjectPrefix string                 `protobuf:"bytes,4,opt,name=subject_prefix,json=subjectPrefix,proto3" json:"subject_prefix,omitempty"` // 成員的 subject 是 {subject_prefix}.{topic}.{ticker}。前綴是 md.v1.f.{inst}（D455）。NATS topic 用人讀的名字，不用 UID
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

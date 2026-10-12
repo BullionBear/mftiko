@@ -262,7 +262,7 @@ func TestDecodeDemand(t *testing.T) {
 func TestAckDecision(t *testing.T) {
 	feed := "orderbook_delta." + testTicker
 	key := agent.WorkerKey("md/Binance/public/0")
-	o := outcome{Subject: "md.f." + testInst + ".orderbook_delta." + testTicker, Worker: key, Feed: feed}
+	o := outcome{Subject: "md.v1.f." + testInst + ".orderbook_delta." + testTicker, Worker: key, Feed: feed}
 	st, reason, write := decide(o, nil, nil)
 	if !write || st != statev1.EntryState_ENTRY_STATE_PENDING || reason != "starting" {
 		t.Fatalf("starting %s %s %v", st, reason, write)

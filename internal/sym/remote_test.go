@@ -18,7 +18,7 @@ import (
 
 func TestChangedSubject(t *testing.T) {
 	got, err := ChangedSubject("Bybit", "Spot")
-	if err != nil || got != "sym.changed.Bybit.Spot" {
+	if err != nil || got != "sym.v1.changed.Bybit.Spot" {
 		t.Fatalf("subject %q %v", got, err)
 	}
 	if _, err := ChangedSubject("Bybit.Spot", "Spot"); err == nil {
@@ -26,6 +26,16 @@ func TestChangedSubject(t *testing.T) {
 	}
 	if _, err := ChangedSubject("", "Spot"); err == nil {
 		t.Fatal("empty venue was accepted")
+	}
+	wild, err := ChangedVenueWildcard("Bybit")
+	if err != nil || wild != "sym.v1.changed.Bybit.>" {
+		t.Fatalf("venue %q %v", wild, err)
+	}
+	if ChangedWildcard != "sym.v1.changed.>" {
+		t.Fatal(ChangedWildcard)
+	}
+	if _, err := ChangedVenueWildcard("Bybit.Spot"); err == nil {
+		t.Fatal("dot in venue wildcard was accepted")
 	}
 }
 
@@ -48,7 +58,7 @@ func TestOpenRemoteRejectsTable(t *testing.T) {
 	}
 }
 
-// A single sym.changed message replaces the cached table. The check interval
+// A single sym.v1.changed message replaces the cached table. The check interval
 // is an hour, so the timer is not what makes the row visible.
 func TestRemoteNotification(t *testing.T) {
 	fx := newSymFixture(t)
@@ -86,7 +96,7 @@ func TestRemoteNotification(t *testing.T) {
 		t.Fatal(err)
 	}
 	note := awaitMsg(t, notes)
-	if note.Subject != "sym.changed.Bybit.Spot" {
+	if note.Subject != "sym.v1.changed.Bybit.Spot" {
 		t.Fatalf("subject %s", note.Subject)
 	}
 	var changed symv1.Changed
@@ -256,10 +266,15 @@ func (d *dropPub) Changed(ctx context.Context, venue, category string, revision 
 func openRemote(t *testing.T, fx *symFixture, every time.Duration) *Remote {
 	t.Helper()
 	c := dialSym(t, fx.url)
+	// The conn worker subscribes only its venue (D457). These tables are both Bybit.
+	notify, err := ChangedVenueWildcard("Bybit")
+	if err != nil {
+		t.Fatal(err)
+	}
 	r, err := OpenRemote(t.Context(), c, []Table{
 		{Venue: "Bybit", Category: symbol.Spot},
 		{Venue: "Bybit", Category: symbol.Perp},
-	}, RemoteOptions{CheckInterval: every, Log: zerolog.Nop()})
+	}, RemoteOptions{CheckInterval: every, Log: zerolog.Nop(), NotifySubject: notify})
 	if err != nil {
 		t.Fatal(err)
 	}
