@@ -143,9 +143,15 @@ type InitPayload struct {
 	// 等快照時緩衝的筆數上限。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（D424）。
 	BookBufferMax uint32 `protobuf:"varint,10,opt,name=book_buffer_max,json=bookBufferMax,proto3" json:"book_buffer_max,omitempty"`
 	// 等快照時緩衝的時間上限，毫秒。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（D424）。
-	BookBufferMs  uint32 `protobuf:"varint,11,opt,name=book_buffer_ms,json=bookBufferMs,proto3" json:"book_buffer_ms,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	BookBufferMs uint32 `protobuf:"varint,11,opt,name=book_buffer_ms,json=bookBufferMs,proto3" json:"book_buffer_ms,omitempty"`
+	// 每個 feed 的 tape 時間窗，毫秒。0 表示 10 分鐘。先到這個窗或 tape_max_events 就從最舊的砍（D438、D449）。
+	TapeWindowMs uint32 `protobuf:"varint,12,opt,name=tape_window_ms,json=tapeWindowMs,proto3" json:"tape_window_ms,omitempty"`
+	// 每個 feed 的 tape 筆數上限。0 表示 100000。
+	TapeMaxEvents uint32 `protobuf:"varint,13,opt,name=tape_max_events,json=tapeMaxEvents,proto3" json:"tape_max_events,omitempty"`
+	// 這個 worker 全部 tape 的位元組上限。0 表示 256 MiB。超過時砍全 worker 最舊的事件（D438、D449）。
+	TapeBudgetBytes uint64 `protobuf:"varint,14,opt,name=tape_budget_bytes,json=tapeBudgetBytes,proto3" json:"tape_budget_bytes,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *InitPayload) Reset() {
@@ -237,6 +243,27 @@ func (x *InitPayload) GetBookBufferMax() uint32 {
 func (x *InitPayload) GetBookBufferMs() uint32 {
 	if x != nil {
 		return x.BookBufferMs
+	}
+	return 0
+}
+
+func (x *InitPayload) GetTapeWindowMs() uint32 {
+	if x != nil {
+		return x.TapeWindowMs
+	}
+	return 0
+}
+
+func (x *InitPayload) GetTapeMaxEvents() uint32 {
+	if x != nil {
+		return x.TapeMaxEvents
+	}
+	return 0
+}
+
+func (x *InitPayload) GetTapeBudgetBytes() uint64 {
+	if x != nil {
+		return x.TapeBudgetBytes
 	}
 	return 0
 }
@@ -401,7 +428,7 @@ type AtomAssignment struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	AtomId string                 `protobuf:"bytes,1,opt,name=atom_id,json=atomId,proto3" json:"atom_id,omitempty"`
 	Feeds  []string               `protobuf:"bytes,2,rep,name=feeds,proto3" json:"feeds,omitempty"`    // 這個 atom 要發佈的 feed（atom → 事件 1:N）
-	Record bool                   `protobuf:"varint,3,opt,name=record,proto3" json:"record,omitempty"` // 錄 tape；MD agent 依 topic 推導（D402）
+	Record bool                   `protobuf:"varint,3,opt,name=record,proto3" json:"record,omitempty"` // 忽略。錄不錄由 conn worker 依 topic 決定（D447）。#152 定案 proto 時再拿掉或標成 reserved
 	// SYM 的 exchTicker。worker 從自己的活躍表讀。沒有這份表、而且 atom_id 已給時，用這裡的值。不從 channel 解析（D426、D202）。
 	ExchTicker string `protobuf:"bytes,4,opt,name=exch_ticker,json=exchTicker,proto3" json:"exch_ticker,omitempty"`
 	// SYM 的 price_tick。跟 exch_ticker 同一張表、同一時刻。
@@ -627,7 +654,7 @@ var File_mftiko_mdctl_v1_mdctl_proto protoreflect.FileDescriptor
 
 const file_mftiko_mdctl_v1_mdctl_proto_rawDesc = "" +
 	"\n" +
-	"\x1bmftiko/mdctl/v1/mdctl.proto\x12\x0fmftiko.mdctl.v1\x1a\x1dmftiko/common/v1/common.proto\"\xae\x02\n" +
+	"\x1bmftiko/mdctl/v1/mdctl.proto\x12\x0fmftiko.mdctl.v1\x1a\x1dmftiko/common/v1/common.proto\"\xa8\x03\n" +
 	"\vInitPayload\x12\x14\n" +
 	"\x05venue\x18\x01 \x01(\tR\x05venue\x12\x14\n" +
 	"\x05route\x18\x02 \x01(\tR\x05route\x12\f\n" +
@@ -641,7 +668,10 @@ const file_mftiko_mdctl_v1_mdctl_proto_rawDesc = "" +
 	"book_depth\x18\b \x01(\rR\tbookDepth\x12&\n" +
 	"\x0fbook_buffer_max\x18\n" +
 	" \x01(\rR\rbookBufferMax\x12$\n" +
-	"\x0ebook_buffer_ms\x18\v \x01(\rR\fbookBufferMsJ\x04\b\x05\x10\x06J\x04\b\t\x10\n" +
+	"\x0ebook_buffer_ms\x18\v \x01(\rR\fbookBufferMs\x12$\n" +
+	"\x0etape_window_ms\x18\f \x01(\rR\ftapeWindowMs\x12&\n" +
+	"\x0ftape_max_events\x18\r \x01(\rR\rtapeMaxEvents\x12*\n" +
+	"\x11tape_budget_bytes\x18\x0e \x01(\x04R\x0ftapeBudgetBytesJ\x04\b\x05\x10\x06J\x04\b\t\x10\n" +
 	"R\btape_urlR\x10book_boundary_bp\"\x0e\n" +
 	"\fStartPayload\"F\n" +
 	"\aCommand\x124\n" +

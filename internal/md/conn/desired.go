@@ -18,7 +18,8 @@ import (
 // The first call applies even when its version is 0, or absent: "have a version" is tracked on
 // its own, so a real 0 is not mistaken for "nothing yet". An older or equal version is ignored,
 // which is what makes a stale read from the agent harmless. Atoms for another venue or route are
-// dropped. Record is not read; tape is a later ticket.
+// dropped. Record is ignored (D447). Tape follows the feed list on the setFeeds path:
+// trade, aggtrade and liquidation are recorded when project applies that list (D452).
 //
 // Safe to call while Run is in progress. A change is picked up by the write loop, which diffs
 // against what the venue has already acknowledged.

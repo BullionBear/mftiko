@@ -157,7 +157,7 @@ func (c *Conn) FeedEnd(ch string, e *exchange.FeedEnd) {
 		return
 	}
 	for _, f := range feeds {
-		c.send(f, payload)
+		c.send(f, payload, false)
 	}
 }
 
@@ -186,13 +186,16 @@ func (c *Conn) publishTopic(ch, topic string, ev *mdv1.FeedEvent) {
 			}
 			built = true
 		}
-		c.send(f, payload)
+		c.send(f, payload, tapeTopic(topic))
 	}
 }
 
-// send takes the next seq for the feed and then publishes. A publish error still consumes the
-// number: the subscriber sees a gap instead of a silent duplicate once the publisher recovers.
-func (c *Conn) send(f feed, payload []byte) {
+// send takes the next seq for the feed, records a tape topic, then publishes.
+// Recording finishes before the publish, in this same critical section, so a
+// tape page's newest event is never past head (D437). A publish error still
+// consumes the number: the subscriber sees a gap instead of a silent duplicate
+// once the publisher recovers. FeedEnd passes record false (D446).
+func (c *Conn) send(f feed, payload []byte, record bool) {
 	l := c.live
 	if l == nil || c.pub == nil {
 		return
@@ -200,7 +203,15 @@ func (c *Conn) send(f feed, payload []byte) {
 	key := f.topic + "." + f.ticker
 	l.seq[key]++
 	seq := l.seq[key]
-	msg := envelope.Append(nil, c.now().UnixNano(), c.epoch, seq, payload)
+	mdTs := c.now().UnixNano()
+	if l.mdTs == nil {
+		l.mdTs = map[string]int64{}
+	}
+	l.mdTs[key] = mdTs
+	msg := envelope.Append(nil, mdTs, c.epoch, seq, payload)
+	if record {
+		c.recordTape(key, c.epoch, seq, mdTs, msg)
+	}
 	if err := c.pub(subject(c.inst, f.topic, f.ticker), msg); err != nil {
 		c.log.Warn().Err(err).Str("subject", subject(c.inst, f.topic, f.ticker)).Uint64("seq", seq).Msg("publish")
 	}

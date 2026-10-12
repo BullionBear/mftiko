@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mftiko/mdctl/v1/mdctl.proto.
  */
 export const file_mftiko_mdctl_v1_mdctl: GenFile = /*@__PURE__*/
-  fileDesc("ChttZnRpa28vbWRjdGwvdjEvbWRjdGwucHJvdG8SD21mdGlrby5tZGN0bC52MSLZAQoLSW5pdFBheWxvYWQSDQoFdmVudWUYASABKAkSDQoFcm91dGUYAiABKAkSCQoBbhgDIAEoDRITCgttZF9pbnN0YW5jZRgEIAEoCRILCgN1cmwYBiABKAkSEgoKY29ubl9lcG9jaBgHIAEoBBISCgpib29rX2RlcHRoGAggASgNEhcKD2Jvb2tfYnVmZmVyX21heBgKIAEoDRIWCg5ib29rX2J1ZmZlcl9tcxgLIAEoDUoECAUQBkoECAkQClIIdGFwZV91cmxSEGJvb2tfYm91bmRhcnlfYnAiDgoMU3RhcnRQYXlsb2FkIj0KB0NvbW1hbmQSKwoHZGVzaXJlZBgBIAEoCzIYLm1mdGlrby5tZGN0bC52MS5EZXNpcmVkSABCBQoDY21kImUKB0Rlc2lyZWQSKgoHdmVyc2lvbhgBIAEoCzIZLm1mdGlrby5jb21tb24udjEuVmVyc2lvbhIuCgVhdG9tcxgCIAMoCzIfLm1mdGlrby5tZGN0bC52MS5BdG9tQXNzaWdubWVudCJpCg5BdG9tQXNzaWdubWVudBIPCgdhdG9tX2lkGAEgASgJEg0KBWZlZWRzGAIgAygJEg4KBnJlY29yZBgDIAEoCBITCgtleGNoX3RpY2tlchgEIAEoCRISCgpwcmljZV90aWNrGAUgASgBIs4BCgZSZXBvcnQSKgoHYXBwbGllZBgBIAEoCzIZLm1mdGlrby5jb21tb24udjEuVmVyc2lvbhISCgpjb25uX2Vwb2NoGAIgASgEEikKBXN0YXRlGAMgASgOMhoubWZ0aWtvLm1kY3RsLnYxLkNvbm5TdGF0ZRIOCgZyZWFzb24YBCABKAkSEAoIbXNnX3JhdGUYBiABKAESKgoFZmVlZHMYByADKAsyGy5tZnRpa28ubWRjdGwudjEuRmVlZFN0YXR1c0oECAUQBlIFYXRvbXMiVQoKRmVlZFN0YXR1cxIMCgRmZWVkGAEgASgJEikKBXN0YXRlGAIgASgOMhoubWZ0aWtvLm1kY3RsLnYxLkZlZWRTdGF0ZRIOCgZyZWFzb24YAyABKAkqbAoJQ29ublN0YXRlEhoKFkNPTk5fU1RBVEVfVU5TUEVDSUZJRUQQABIZChVDT05OX1NUQVRFX0NPTk5FQ1RJTkcQARITCg9DT05OX1NUQVRFX0xJVkUQAhITCg9DT05OX1NUQVRFX0RPV04QAypzCglGZWVkU3RhdGUSGgoWRkVFRF9TVEFURV9VTlNQRUNJRklFRBAAEhYKEkZFRURfU1RBVEVfUEVORElORxABEhkKFUZFRURfU1RBVEVfU1VCU0NSSUJFRBACEhcKE0ZFRURfU1RBVEVfUkVKRUNURUQQA0JEWkJnaXRodWIuY29tL0J1bGxpb25CZWFyL21mdGlrby9jb250cmFjdC9nZW4vbWZ0aWtvL21kY3RsL3YxO21kY3RsdjFiBnByb3RvMw", [file_mftiko_common_v1_common]);
+  fileDesc("ChttZnRpa28vbWRjdGwvdjEvbWRjdGwucHJvdG8SD21mdGlrby5tZGN0bC52MSKlAgoLSW5pdFBheWxvYWQSDQoFdmVudWUYASABKAkSDQoFcm91dGUYAiABKAkSCQoBbhgDIAEoDRITCgttZF9pbnN0YW5jZRgEIAEoCRILCgN1cmwYBiABKAkSEgoKY29ubl9lcG9jaBgHIAEoBBISCgpib29rX2RlcHRoGAggASgNEhcKD2Jvb2tfYnVmZmVyX21heBgKIAEoDRIWCg5ib29rX2J1ZmZlcl9tcxgLIAEoDRIWCg50YXBlX3dpbmRvd19tcxgMIAEoDRIXCg90YXBlX21heF9ldmVudHMYDSABKA0SGQoRdGFwZV9idWRnZXRfYnl0ZXMYDiABKARKBAgFEAZKBAgJEApSCHRhcGVfdXJsUhBib29rX2JvdW5kYXJ5X2JwIg4KDFN0YXJ0UGF5bG9hZCI9CgdDb21tYW5kEisKB2Rlc2lyZWQYASABKAsyGC5tZnRpa28ubWRjdGwudjEuRGVzaXJlZEgAQgUKA2NtZCJlCgdEZXNpcmVkEioKB3ZlcnNpb24YASABKAsyGS5tZnRpa28uY29tbW9uLnYxLlZlcnNpb24SLgoFYXRvbXMYAiADKAsyHy5tZnRpa28ubWRjdGwudjEuQXRvbUFzc2lnbm1lbnQiaQoOQXRvbUFzc2lnbm1lbnQSDwoHYXRvbV9pZBgBIAEoCRINCgVmZWVkcxgCIAMoCRIOCgZyZWNvcmQYAyABKAgSEwoLZXhjaF90aWNrZXIYBCABKAkSEgoKcHJpY2VfdGljaxgFIAEoASLOAQoGUmVwb3J0EioKB2FwcGxpZWQYASABKAsyGS5tZnRpa28uY29tbW9uLnYxLlZlcnNpb24SEgoKY29ubl9lcG9jaBgCIAEoBBIpCgVzdGF0ZRgDIAEoDjIaLm1mdGlrby5tZGN0bC52MS5Db25uU3RhdGUSDgoGcmVhc29uGAQgASgJEhAKCG1zZ19yYXRlGAYgASgBEioKBWZlZWRzGAcgAygLMhsubWZ0aWtvLm1kY3RsLnYxLkZlZWRTdGF0dXNKBAgFEAZSBWF0b21zIlUKCkZlZWRTdGF0dXMSDAoEZmVlZBgBIAEoCRIpCgVzdGF0ZRgCIAEoDjIaLm1mdGlrby5tZGN0bC52MS5GZWVkU3RhdGUSDgoGcmVhc29uGAMgASgJKmwKCUNvbm5TdGF0ZRIaChZDT05OX1NUQVRFX1VOU1BFQ0lGSUVEEAASGQoVQ09OTl9TVEFURV9DT05ORUNUSU5HEAESEwoPQ09OTl9TVEFURV9MSVZFEAISEwoPQ09OTl9TVEFURV9ET1dOEAMqcwoJRmVlZFN0YXRlEhoKFkZFRURfU1RBVEVfVU5TUEVDSUZJRUQQABIWChJGRUVEX1NUQVRFX1BFTkRJTkcQARIZChVGRUVEX1NUQVRFX1NVQlNDUklCRUQQAhIXChNGRUVEX1NUQVRFX1JFSkVDVEVEEANCRFpCZ2l0aHViLmNvbS9CdWxsaW9uQmVhci9tZnRpa28vY29udHJhY3QvZ2VuL21mdGlrby9tZGN0bC92MTttZGN0bHYxYgZwcm90bzM", [file_mftiko_common_v1_common]);
 
 /**
  * @generated from message mftiko.mdctl.v1.InitPayload
@@ -76,6 +76,27 @@ export type InitPayload = Message<"mftiko.mdctl.v1.InitPayload"> & {
    * @generated from field: uint32 book_buffer_ms = 11;
    */
   bookBufferMs: number;
+
+  /**
+   * 每個 feed 的 tape 時間窗，毫秒。0 表示 10 分鐘。先到這個窗或 tape_max_events 就從最舊的砍（D438、D449）。
+   *
+   * @generated from field: uint32 tape_window_ms = 12;
+   */
+  tapeWindowMs: number;
+
+  /**
+   * 每個 feed 的 tape 筆數上限。0 表示 100000。
+   *
+   * @generated from field: uint32 tape_max_events = 13;
+   */
+  tapeMaxEvents: number;
+
+  /**
+   * 這個 worker 全部 tape 的位元組上限。0 表示 256 MiB。超過時砍全 worker 最舊的事件（D438、D449）。
+   *
+   * @generated from field: uint64 tape_budget_bytes = 14;
+   */
+  tapeBudgetBytes: bigint;
 };
 
 /**
@@ -164,7 +185,7 @@ export type AtomAssignment = Message<"mftiko.mdctl.v1.AtomAssignment"> & {
   feeds: string[];
 
   /**
-   * 錄 tape；MD agent 依 topic 推導（D402）
+   * 忽略。錄不錄由 conn worker 依 topic 決定（D447）。#152 定案 proto 時再拿掉或標成 reserved
    *
    * @generated from field: bool record = 3;
    */

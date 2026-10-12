@@ -53,6 +53,9 @@ type ServeConfig struct {
 	// Symbols loads this venue's active table before Init completes. Nil leaves exch_ticker and
 	// price_tick on the assignment. The returned value is closed when it has a Close method.
 	Symbols func(ctx context.Context, venue string) (Instruments, error)
+	// Subscribe registers one md.view responder. Nil leaves the worker without md.view.
+	// The handler runs off the websocket read. The returned function removes the interest.
+	Subscribe func(subject string, handler func(reply string, req []byte)) (func(), error)
 	// Log is optional. Nil discards.
 	Log *zerolog.Logger
 	// Release is Hello.release. Empty leaves it empty.
@@ -257,6 +260,10 @@ func (s *ctl) onInit(m *workerv1.Init) (code int, ok bool) {
 	if ms := p.GetBookBufferMs(); ms > 0 {
 		bufAge = time.Duration(ms) * time.Millisecond
 	}
+	var tapeWindow time.Duration
+	if ms := p.GetTapeWindowMs(); ms > 0 {
+		tapeWindow = time.Duration(ms) * time.Millisecond
+	}
 	var symbols Instruments
 	if s.cfg.Symbols != nil {
 		loaded, err := s.cfg.Symbols(s.ctx, p.GetVenue())
@@ -280,7 +287,8 @@ func (s *ctl) onInit(m *workerv1.Init) (code int, ok bool) {
 		REST: rest, Doer: s.cfg.Doer, RateHold: s.cfg.RateHold,
 		BookDepth: p.GetBookDepth(),
 		BufferMax: int(p.GetBookBufferMax()), BufferAge: bufAge,
-		Symbols: symbols,
+		Symbols: symbols, Subscribe: s.cfg.Subscribe,
+		TapeWindow: tapeWindow, TapeMaxEvents: int(p.GetTapeMaxEvents()), TapeBudget: int64(p.GetTapeBudgetBytes()),
 	})
 	s.install(c)
 	if err := s.send(done(workerv1.Verb_VERB_INIT, true, "")); err != nil {

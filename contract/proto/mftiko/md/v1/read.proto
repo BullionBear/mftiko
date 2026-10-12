@@ -9,12 +9,14 @@ option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1;mdv
 
 // ---------- md.view.{inst}.{topic}.{ticker} ----------
 // subject 最後一段今天是 UniversalTicker。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（D203、§10 P14）。
-// 由持有該 atom 的 conn worker 回答。回什麼由 subject 的 topic 決定：
-// trade、aggtrade、liquidation 回 tape；orderbook_delta 回 book。其他 topic 回 error = "unsupported"。
+// 由持有該 feed 的 conn worker 回答（D444、D448）。回什麼由 subject 的 topic 決定（D442）：
+// trade、aggtrade、liquidation 回 tape；orderbook 與 orderbook_delta 回現在的窗內 book。
+// 其他 topic 回 error = "unsupported"。沒有 responder 就是沒有 worker 持有這個 feed。
 
 message ViewRequest {
-  uint32 limit = 1;            // 只用於 tape：這一頁最多幾筆
-  optional Cursor before = 2;  // 只用於 tape：第一頁不填
+  uint32 limit = 1;             // 只用於 tape。0 是 1000，上限 5000，超過是 invalid，不截短（D439）
+  optional Cursor before = 2;   // 只用於 tape：不含本身。第一頁不填（D436）
+  optional int64 since_ns = 3;  // 只用於 tape：只回 md_ts_ns ≥ since_ns 的事件（D436）
 }
 
 // 以 (conn_epoch, seq) 的字典序比較。
@@ -24,28 +26,41 @@ message Cursor {
 }
 
 message ViewReply {
-  string error = 1; // 空字串 = 成功；unsupported | not_held | invalid
+  string error = 1; // 空字串 = 成功；unsupported | not_held | invalid | not_synced
   oneof result {
     TapePage tape = 10;
     BookSnapshot book = 11;
   }
 }
 
+// 一則 tape 事件。不帶 envelope，也不帶 digest（D435）。
+// event 的位元組就是 ring 裡 md.f 訊息 offset 40 之後的 payload，原樣寫入，不重新編碼。
+message TapeEvent {
+  uint64 conn_epoch = 1;
+  uint64 seq = 2;
+  int64 md_ts_ns = 3;
+  FeedEvent event = 4;
+}
+
 message TapePage {
-  // 由新到舊。每則是 md.f 上發佈過的原始訊息（envelope ＋ FeedEvent），worker 直接從 ring 拷貝，不重新編碼。
-  repeated bytes events = 1;
+  // 由新到舊（D436）。
+  repeated TapeEvent events = 1;
   bool more = 2;
-  optional Cursor next = 3;      // 下一頁的 before
-  int64 continuous_since_ns = 4; // 從這個時間起沒有 gap
+  optional Cursor next = 3;      // 下一頁的 before。more 為假時不填
+  int64 continuous_since_ns = 4; // 從這個時間起，留下的 tape 沒有 gap（D440）
   repeated Gap gaps = 5;         // 這一頁涵蓋範圍內的 gap
+  Cursor head = 6;               // 回覆當下這個 feed 已發佈到 md.f 的最新游標（D437）
 }
 
 message Gap {
-  int64 start_ns = 1;
-  int64 end_ns = 2;
+  int64 start_ns = 1; // 斷線的時間，md 主機時鐘
+  int64 end_ns = 2;   // 重連完成的時間，md 主機時鐘
+  Cursor last = 3;    // 斷線前最後一則。沒有發佈過則不填（D440）
+  Cursor first = 4;   // 重連後第一則。那則還沒進 ring 則不填（D440）
 }
 
-// orderbook_delta 這個 feed 在 (conn_epoch, seq) 當下的窗內 book（D430）。窗外的檔不在這裡。
+// 這個 feed 最後套用的 (conn_epoch, seq) 的窗內 book（D430、D441）。窗外的檔不在這裡。
+// 不支援指定歷史 seq。簿還沒同步好時 ViewReply.error 是 not_synced，不帶 book。
 message BookSnapshot {
   Meta meta = 1;
   repeated Level bids = 2;

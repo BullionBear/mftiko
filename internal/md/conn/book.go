@@ -210,6 +210,7 @@ func (c *Conn) adopt() {
 				sh.topB, sh.topA = nil, nil
 				sh.buf = nil
 				sh.bufAt = time.Time{}
+				c.clearBook(ch)
 			}
 			c.markStall(sh, ch)
 			continue
@@ -235,6 +236,7 @@ func (c *Conn) markStall(sh *shelf, ch string) {
 		return
 	}
 	sh.stalled = true
+	c.clearBook(ch)
 	c.log.Warn().Str("channel", ch).Str("exch", sh.exch).Float64("price_tick", sh.tick).
 		Bool("bad_tick", badTick).Bool("bad_exch", badExch).Msg("book stalled")
 }
@@ -379,6 +381,7 @@ func (c *Conn) onLive(ch string, sh *shelf, u exchange.BookUpdate) {
 // refetches Depth; it does not unsubscribe.
 func (c *Conn) beginResync(ch string, sh *shelf, keep *exchange.BookUpdate) {
 	sh.book = nil
+	c.clearBook(ch)
 	sh.seq = exchange.BookSeq{}
 	if keep == nil {
 		sh.buf = nil
@@ -519,14 +522,14 @@ func (c *Conn) installREST(ch string, sh *shelf, snap exchange.BookUpdate) {
 		case exchange.BookApply:
 			b.Apply(bookLevels(u.Bids), bookLevels(u.Asks))
 			if !c.checksumOK(b, sh.bs, &u) {
-				c.keepTail(sh, sh.buf[i+1:])
+				c.keepTail(ch, sh, sh.buf[i+1:])
 				return
 			}
 			seq.Last = u.Last
 			seq.Valid = true
 			ts = u.ExchTsNs
 		default:
-			c.keepTail(sh, sh.buf[i:])
+			c.keepTail(ch, sh, sh.buf[i:])
 			return
 		}
 	}
@@ -537,8 +540,9 @@ func (c *Conn) installREST(ch string, sh *shelf, snap exchange.BookUpdate) {
 	c.publishReset(ch, sh, ts)
 }
 
-func (c *Conn) keepTail(sh *shelf, tail []exchange.BookUpdate) {
+func (c *Conn) keepTail(ch string, sh *shelf, tail []exchange.BookUpdate) {
 	sh.book = nil
+	c.clearBook(ch)
 	sh.seq = exchange.BookSeq{}
 	sh.buf = append([]exchange.BookUpdate(nil), tail...)
 	if len(sh.buf) == 0 {
@@ -606,6 +610,7 @@ func (c *Conn) publishIncremental(ch string, sh *shelf, ts int64, u exchange.Boo
 	if touch {
 		c.emitTop(ch, sh, ts)
 	}
+	c.noteBook(ch, sh, ts)
 }
 
 // publishReset is the full in-window book, then the top-N when that top changed (D425, D430).
@@ -616,10 +621,12 @@ func (c *Conn) publishReset(ch string, sh *shelf, ts int64) {
 	n := sh.book.Window()
 	c.emitDelta(ch, ts, true, sideLevels(sh.book, true, n), sideLevels(sh.book, false, n))
 	c.emitTop(ch, sh, ts)
+	c.noteBook(ch, sh, ts)
 }
 
-// BookWindow is the in-window book a future md.view response reads (D430). The service is not
-// served by this process yet. ok is false when this connection is not holding the channel's book.
+// BookWindow is the in-window book. md.view reads a snapshot published beside it (D430, D441),
+// not this method: this method takes the connection lock. ok is false when this connection is
+// not holding the channel's book.
 func (c *Conn) BookWindow(ch string) (bids, asks []exchange.Level, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
