@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"testing"
@@ -30,6 +31,7 @@ type fake struct {
 	liveErr    error
 
 	mu      sync.Mutex
+	relays  []string
 	lives   []string
 	started bool
 	sess    *Session
@@ -384,5 +386,77 @@ func waitFor(t *testing.T, ok func() bool) {
 			t.Fatal("condition not met")
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// relayer is a fake that takes Commands.
+type relayer struct{ fake }
+
+func (f *relayer) Relay(corrID, payload []byte) {
+	f.mu.Lock()
+	f.relays = append(f.relays, string(corrID)+"="+string(payload))
+	f.mu.Unlock()
+}
+
+func relayMsg(c, corr, payload string) *workerv1.WorkerDown {
+	return &workerv1.WorkerDown{Msg: &workerv1.WorkerDown_Relay{Relay: &workerv1.Relay{Contract: c, CorrId: []byte(corr), Payload: []byte(payload)}}}
+}
+
+func TestRelay(t *testing.T) {
+	f := &relayer{}
+	p := run(t, t.Context(), Config{}, f)
+	p.expect(hello)
+	p.send(relayMsg(contract, "c0", "before init")) // dropped: the agent sends a full snapshot after Init
+	p.send(initMsg(contract))
+	p.expect(doneOf(workerv1.Verb_VERB_INIT, true))
+	p.send(relayMsg(contract, "c1", "drain"))
+	p.send(relayMsg("other.v1", "c2", "x"))
+	p.send(relayMsg("", "c3", "fail"))
+	// A Live after the Relays: its Applied says the reader has passed them.
+	p.send(liveMsg("l", "d1"))
+	p.expect(applied("d1"))
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.relays) != 2 || f.relays[0] != "c1=drain" || f.relays[1] != "c3=fail" {
+		t.Fatalf("relays %v", f.relays)
+	}
+}
+
+// A plane that is not a Relayer drops Commands and keeps reading.
+func TestRelayDropped(t *testing.T) {
+	p := run(t, t.Context(), Config{}, &fake{})
+	p.expect(hello)
+	p.send(initMsg(contract))
+	p.expect(doneOf(workerv1.Verb_VERB_INIT, true))
+	p.send(relayMsg(contract, "c1", "drain"))
+	p.send(liveMsg("l", "d1"))
+	p.expect(applied("d1"))
+}
+
+func TestRunExit(t *testing.T) {
+	for name, c := range map[string]struct {
+		x      *Exit
+		code   int
+		onStop bool
+	}{
+		"failed": {&Exit{commonv1.Outcome_OUTCOME_FAILED, "agent asked"}, ExitFailed, true},
+		"hung":   {&Exit{commonv1.Outcome_OUTCOME_HUNG, "on_order"}, ExitHung, false},
+		"other":  {&Exit{commonv1.Outcome_OUTCOME_UNSPECIFIED, "?"}, ExitCrash, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := run(t, t.Context(), Config{}, &fake{runReturns: true, runErr: fmt.Errorf("hook: %w", c.x)})
+			p.expect(hello)
+			p.send(initMsg(contract))
+			p.expect(doneOf(workerv1.Verb_VERB_INIT, true))
+			p.send(startMsg())
+			want := c.x.Outcome
+			if name == "other" {
+				want = commonv1.Outcome_OUTCOME_CRASHED
+			}
+			p.expect(doneOf(workerv1.Verb_VERB_START, true), stage, exiting(want, c.x.Reason), stopped(c.onStop))
+			if got := p.exit(); got != c.code {
+				t.Fatalf("exit %d", got)
+			}
+		})
 	}
 }

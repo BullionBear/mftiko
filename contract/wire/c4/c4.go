@@ -1,18 +1,22 @@
-// Package c4 is a platform worker's end of C4, the protocol between the shim and the worker on fd 3
+// Package c4 is the worker's end of C4, the protocol between the shim and the worker on fd 3
 // (PROTOCOL §5). It speaks the part every plane speaks the same way, so that each plane writes only
 // what its C5 payloads mean:
 //
 //   - Hello first, then Beat once a second from a goroutine of its own.
 //   - A goroutine of its own reads fd 3, so Stop and Live are taken while Init, Start or Run block.
 //   - Live that arrives before Init has succeeded is held and applied before Done(INIT) (D111).
+//   - A Relay from the agent (a C5 Command) goes to the plane, when the plane takes them.
 //   - The ending of §5.3: Done, then Exiting(outcome, reason), then Stopped(on_stop_completed),
 //     then the exit code.
 //
 // The plane is a Plane. Its Init, Start and Run take one context, which ends on Stop, on the shim's
 // EOF, or when the caller's context ends.
 //
-// The strategy plane's SDK does not use this package: sdk depends only on contract (D802), and it
-// keeps its own C4.
+// It is in contract so that every worker can use it: the MD conn worker, the TD account worker, and
+// the Go SDK's session worker, which depends only on contract (D802). Like the rest of contract it
+// depends only on the standard library and protobuf, so logging is a function the worker supplies.
+// What only the strategy plane needs (OnStop, Relay to the agent, Controller and Undeliverable) is
+// added with the SDK (E8).
 package c4
 
 import (
@@ -25,7 +29,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
 
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
@@ -35,14 +38,33 @@ import (
 
 // Exit codes (PROTOCOL §5.3).
 const (
-	ExitDone  = 0
-	ExitOther = 1 // the control connection could not be spoken
-	ExitInit  = 10
-	ExitCrash = 20
+	ExitDone   = 0
+	ExitOther  = 1 // the control connection could not be spoken
+	ExitInit   = 10
+	ExitCrash  = 20
+	ExitHung   = 21
+	ExitFailed = 30
 )
 
 // BeatEvery is how often Beat goes out (PROTOCOL §5.2).
 const BeatEvery = time.Second
+
+// Exit is how Run asks for an ending other than DONE or CRASHED: FAILED (exit 30) when the worker
+// was told to fail, HUNG (exit 21) when a hook overran its budget. Return it, or an error wrapping
+// it, from Run.
+type Exit struct {
+	Outcome commonv1.Outcome
+	Reason  string
+}
+
+func (e *Exit) Error() string { return "c4: exit " + e.Outcome.String() + ": " + e.Reason }
+
+// Relayer is a Plane that takes the agent's C5 Commands. Each arrives as a Relay (PROTOCOL §4.2);
+// Relay is called on the goroutine that reads fd 3, in the order they arrived, so it must not
+// block. A Plane that is not a Relayer drops them.
+type Relayer interface {
+	Relay(corrID, payload []byte)
+}
 
 // Plane is what one plane's worker does with its C5 payloads.
 type Plane interface {
@@ -70,7 +92,9 @@ type Config struct {
 	// InitCarriesLive: Init.payload is the first live config, and Init.live_digest is its digest,
 	// sent as Applied before Done(INIT) (D111). False when live config only arrives as Live (MD).
 	InitCarriesLive bool
-	Log             *zerolog.Logger // nil discards
+	// Log receives what the worker would log: an init or start that failed, a Live that was not
+	// applied. Nil discards.
+	Log func(msg string, err error)
 }
 
 // Session is what a Plane sends on its own. Safe for concurrent use.
@@ -104,9 +128,9 @@ func Serve(ctx context.Context, rw io.ReadWriteCloser, cfg Config, p Plane) int 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	log := zerolog.Nop()
-	if cfg.Log != nil {
-		log = *cfg.Log
+	log := cfg.Log
+	if log == nil {
+		log = func(string, error) {}
 	}
 	life, cancel := context.WithCancel(ctx)
 	s := &ctl{
@@ -147,6 +171,9 @@ func Serve(ctx context.Context, rw io.ReadWriteCloser, cfg Config, p Plane) int 
 	}
 
 	err = p.Run(life)
+	if x := (*Exit)(nil); errors.As(err, &x) {
+		return s.exit(x)
+	}
 	// Canceled is halt ending life, which happens before stopped is closed; it is the stop, not a
 	// failure of the plane.
 	if s.halted() || ctx.Err() != nil || life.Err() != nil || errors.Is(err, context.Canceled) {
@@ -162,7 +189,7 @@ func Serve(ctx context.Context, rw io.ReadWriteCloser, cfg Config, p Plane) int 
 type ctl struct {
 	cfg   Config
 	plane Plane
-	log   zerolog.Logger
+	log   func(msg string, err error)
 	sess  *Session
 
 	cancel   context.CancelFunc
@@ -191,6 +218,8 @@ func (s *ctl) read(rw io.Reader) {
 			s.live(msg.Live)
 		case *workerv1.WorkerDown_Stop:
 			s.halt(msg.Stop.GetReason())
+		case *workerv1.WorkerDown_Relay:
+			s.relay(msg.Relay)
 		case *workerv1.WorkerDown_Init, *workerv1.WorkerDown_Start:
 			select {
 			case s.incoming <- m:
@@ -289,14 +318,14 @@ func (s *ctl) start(ctx context.Context, m *workerv1.Start) (code int, ok bool) 
 
 // failInit is an Init the worker will not run: Done, then Exiting, and OnStop does not run.
 func (s *ctl) failInit(why string) int {
-	s.log.Info().Str("error", why).Msg("init failed")
+	s.log("init failed", errors.New(why))
 	_ = s.sess.send(done(workerv1.Verb_VERB_INIT, false, why))
 	return s.finish(commonv1.Outcome_OUTCOME_INIT_FAILED, why, false, ExitInit)
 }
 
 // failStart is a Start that failed: OnStop runs (§5.3).
 func (s *ctl) failStart(why string) int {
-	s.log.Info().Str("error", why).Msg("start failed")
+	s.log("start failed", errors.New(why))
 	_ = s.sess.send(done(workerv1.Verb_VERB_START, false, why))
 	return s.finish(commonv1.Outcome_OUTCOME_INIT_FAILED, why, true, ExitInit)
 }
@@ -320,10 +349,43 @@ func (s *ctl) apply(m *workerv1.Live) {
 	s.liveMu.Lock()
 	defer s.liveMu.Unlock()
 	if err := s.plane.Live(m.GetPayload()); err != nil {
-		s.log.Warn().Err(err).Msg("live")
+		s.log("live not applied", err)
 		return
 	}
 	_ = s.applied(m.GetDigest())
+}
+
+// relay hands a C5 Command to the plane. One in another contract is dropped, as is every one that
+// arrives before Init has succeeded: Commands are full snapshots (PROTOCOL §6), and the agent sends
+// the next one after Init.
+func (s *ctl) relay(m *workerv1.Relay) {
+	r, ok := s.plane.(Relayer)
+	if !ok || m == nil || (m.GetContract() != "" && m.GetContract() != s.cfg.Contract) {
+		return
+	}
+	s.mu.Lock()
+	inited := s.inited
+	s.mu.Unlock()
+	if !inited {
+		return
+	}
+	r.Relay(m.GetCorrId(), m.GetPayload())
+}
+
+// exit ends the worker as Run asked. HUNG skips OnStop (§5.3).
+func (s *ctl) exit(x *Exit) int {
+	switch x.Outcome {
+	case commonv1.Outcome_OUTCOME_FAILED:
+		return s.finish(x.Outcome, x.Reason, true, ExitFailed)
+	case commonv1.Outcome_OUTCOME_HUNG:
+		return s.finish(x.Outcome, x.Reason, false, ExitHung)
+	case commonv1.Outcome_OUTCOME_INIT_FAILED:
+		return s.finish(x.Outcome, x.Reason, true, ExitInit)
+	case commonv1.Outcome_OUTCOME_DONE:
+		return s.finish(x.Outcome, x.Reason, true, ExitDone)
+	default:
+		return s.finish(commonv1.Outcome_OUTCOME_CRASHED, x.Reason, true, ExitCrash)
+	}
 }
 
 func (s *ctl) applied(digest string) error {

@@ -12,8 +12,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	mdctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/mdctl/v1"
+	"github.com/BullionBear/mftiko/contract/wire/c4"
 	"github.com/BullionBear/mftiko/exchange"
-	"github.com/BullionBear/mftiko/internal/platform/c4"
 )
 
 // Contract is the C5 contract this worker speaks (PROTOCOL §5.2, §6.2).
@@ -71,8 +71,11 @@ func Serve(ctx context.Context, rw io.ReadWriteCloser, cfg ServeConfig) int {
 			p.closeSymbols()
 		}
 	}()
-	return c4.Serve(ctx, rw, c4.Config{Kind: "conn", Contract: Contract, Release: cfg.Release, Log: cfg.Log}, p)
+	return c4.Serve(ctx, rw, c4.Config{Kind: "conn", Contract: Contract, Release: cfg.Release, Log: p.logC4}, p)
 }
+
+// logC4 is where the C4 lifecycle logs.
+func (s *plane) logC4(msg string, err error) { s.log.Info().Err(err).Msg(msg) }
 
 // plane is the MD part of one C4 session.
 type plane struct {
