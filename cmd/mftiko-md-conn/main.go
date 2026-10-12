@@ -89,6 +89,19 @@ func run() int {
 		Doer:     doer,
 		RateHold: *hold,
 		Publish:  nc.Publish,
+		Subscribe: func(subject string, handler func(reply string, req []byte)) (func(), error) {
+			sub, err := nc.Subscribe(ctx, subject, "", func(m natsx.Msg) {
+				if m.Reply == "" {
+					return
+				}
+				req := append([]byte(nil), m.Data...)
+				handler(m.Reply, req)
+			})
+			if err != nil {
+				return nil, err
+			}
+			return func() { _ = sub.Unsubscribe() }, nil
+		},
 		Symbols: func(ctx context.Context, venue string) (conn.Instruments, error) {
 			v, ok := reg.Venue(venue)
 			if !ok {

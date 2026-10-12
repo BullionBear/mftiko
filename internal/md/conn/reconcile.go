@@ -117,11 +117,14 @@ func (c *Conn) project() {
 		c.exch = exch
 		c.tick = tick
 	}
+	// Same critical section as the wanted swap: tape follows the feed list (D448).
+	c.syncViewsLocked()
 	fatal := c.fatal
 	cancel := c.stop
 	live := c.live != nil
 	dirty := c.statusDirty
 	c.mu.Unlock()
+	c.rebindViews()
 	if len(sub) > 0 || len(unsub) > 0 {
 		c.log.Info().Strs("subscribe", sub).Strs("unsubscribe", unsub).Msg("reconcile")
 	}

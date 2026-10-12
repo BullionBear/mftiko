@@ -23,6 +23,8 @@
 // channel after a per-book backoff, and the venue's next snapshot is the reset (D434). The book
 // dies with the connection: reconnect starts again, and conn_epoch changes only when the dial
 // succeeds. A resync keeps the epoch and takes the next seq of each feed. SnapshotREST depth
-// runs in this process, off the read goroutine, so a ping still gets an answer. Tape and the
-// md.view service are later tickets. Serve is what cmd/mftiko-md-conn runs.
+// runs in this process, off the read goroutine, so a ping still gets an answer. Tape is one
+// ring per feed for trade, aggtrade and liquidation. md.view answers from that ring, or from
+// the current in-window book, without taking the connection lock. Serve is what
+// cmd/mftiko-md-conn runs.
 package conn

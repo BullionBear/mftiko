@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -82,6 +83,15 @@ type Config struct {
 	// Symbols is this venue's active table. Nil uses exch_ticker and price_tick from the assignment,
 	// which is what tests do. A running worker passes the table loaded at Init.
 	Symbols Instruments
+	// TapeWindow, TapeMaxEvents and TapeBudget bound each feed's ring and the worker's tape
+	// bytes (D438, D449). Zero means 10 minutes, 100000 events and 256 MiB.
+	TapeWindow    time.Duration
+	TapeMaxEvents int
+	TapeBudget    int64
+	// Subscribe registers one md.view responder. The handler runs off the read goroutine and
+	// must not call back into the Conn. Nil records tape and does not serve md.view. The
+	// returned function removes the interest.
+	Subscribe func(subject string, handler func(reply string, req []byte)) (func(), error)
 	// Log is optional. Nil discards.
 	Log *zerolog.Logger
 }
@@ -147,6 +157,19 @@ type Conn struct {
 	// fatal is a book the worker will not run (missing N, or N above Depth). stop cancels Run.
 	fatal error
 	stop  context.CancelFunc
+
+	subscribe  func(subject string, handler func(reply string, req []byte)) (func(), error)
+	tapeWindow int64
+	tapeMax    int
+	tapeBudget int64
+	tapeBytes  int64
+	views      map[string]*viewFeed
+	viewStop   map[string]*viewSub
+	viewMu     sync.Mutex
+	books      map[string]*atomic.Pointer[bookSnap]
+	// wasDown is set when the connection that was up has ended, until the next one is up.
+	wasDown bool
+	downNs  int64
 }
 
 // feed is one assigned publication: the subject is md.f.{instance}.{topic}.{ticker}.
@@ -168,6 +191,7 @@ type link struct {
 	// before subscribing it again (D434). The session rate limit still paces those frames.
 	resub map[string]struct{}
 	seq   map[string]uint64 // feed key topic.ticker, last seq handed out
+	mdTs  map[string]int64  // md_ts_ns of that publish
 	books map[string]*shelf
 }
 
@@ -181,6 +205,7 @@ func newLink(s exchange.Session) *link {
 		unsubPending:  map[string]struct{}{},
 		resub:         map[string]struct{}{},
 		seq:           map[string]uint64{},
+		mdTs:          map[string]int64{},
 		books:         map[string]*shelf{},
 	}
 }
@@ -212,14 +237,29 @@ func New(cfg Config) *Conn {
 	if bookNow == nil {
 		bookNow = time.Now
 	}
+	window := int64(cfg.TapeWindow)
+	if window <= 0 {
+		window = defaultTapeWindow
+	}
+	maxEvents := cfg.TapeMaxEvents
+	if maxEvents <= 0 {
+		maxEvents = defaultTapeMaxEvents
+	}
+	budget := cfg.TapeBudget
+	if budget <= 0 {
+		budget = defaultTapeBudget
+	}
 	return &Conn{
 		venue: cfg.Venue, route: cfg.Route, inst: cfg.Instance,
 		url: cfg.URL, market: cfg.Market, pub: cfg.Publish, now: now,
 		epoch: cfg.Epoch, report: cfg.Report, retryAfter: cfg.RetryAfter, retryMax: cfg.RetryMax,
 		rest: cfg.REST, doer: cfg.Doer, bookDepth: cfg.BookDepth,
 		bufferMax: bufN, bufferAge: bufAge, rateHold: hold, bookNow: bookNow, bookAfter: cfg.BookAfter,
-		symbols: cfg.Symbols,
-		log:     log, kick: make(chan struct{}, 1), bookWake: make(chan struct{}, 1),
+		symbols: cfg.Symbols, subscribe: cfg.Subscribe,
+		tapeWindow: window, tapeMax: maxEvents, tapeBudget: budget,
+		views: map[string]*viewFeed{}, viewStop: map[string]*viewSub{},
+		books: map[string]*atomic.Pointer[bookSnap]{},
+		log:   log, kick: make(chan struct{}, 1), bookWake: make(chan struct{}, 1),
 	}
 }
 
@@ -246,6 +286,7 @@ func (c *Conn) Run(ctx context.Context) error {
 	if fatal != nil {
 		return fatal
 	}
+	defer c.closeViews()
 	go c.reconcile(runCtx)
 	var wait time.Duration
 	for {
@@ -325,6 +366,7 @@ func (c *Conn) once(ctx context.Context) (up, retry bool, err error) {
 	c.epoch = next
 	epoch := c.epoch
 	c.live = newLink(session)
+	c.onUpLocked()
 	c.mu.Unlock()
 	c.log.Info().Uint64("conn_epoch", epoch).Msg("connected")
 
@@ -351,6 +393,7 @@ func (c *Conn) once(ctx context.Context) (up, retry bool, err error) {
 	<-bdone
 	c.fetchWG.Wait()
 	c.mu.Lock()
+	c.onDownLocked()
 	c.live = nil
 	c.mu.Unlock()
 	if ctx.Err() == nil {
