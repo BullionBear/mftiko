@@ -147,6 +147,7 @@ const (
 	feedNotListed   = "not listed"
 	feedUnsupported = "unsupported"
 	feedBad         = "bad feed"
+	feedInvalid     = "invalid"
 )
 
 // feedState is one feed's place in the next Report. ch is the channel it rides on; empty when
@@ -169,6 +170,10 @@ func (c *Conn) atomsFrom(feeds []string) (wanted map[string][]feed, exch map[str
 		topic, ticker, ok := splitFeed(raw)
 		if !ok {
 			status[raw] = feedState{state: mdctlv1.FeedState_FEED_STATE_REJECTED, reason: feedBad}
+			continue
+		}
+		if exchange.RetiredTopic(topic) {
+			status[raw] = feedState{state: mdctlv1.FeedState_FEED_STATE_REJECTED, reason: feedInvalid}
 			continue
 		}
 		info, keep := c.lookupFeed(ticker)
@@ -201,7 +206,7 @@ func (c *Conn) atomsFrom(feeds []string) (wanted map[string][]feed, exch map[str
 		if info.ExchTicker != "" {
 			exch[ch] = strings.Clone(info.ExchTicker)
 		}
-		if topic == string(exchange.TopicOrderBook) || topic == string(exchange.TopicOrderBookDelta) {
+		if bookTopic(topic) {
 			tick[ch] = priceTick(info)
 		}
 	}

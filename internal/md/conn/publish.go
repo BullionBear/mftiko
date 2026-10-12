@@ -139,28 +139,6 @@ func (c *Conn) MarkPrice(ch string, e *exchange.MarkPrice) {
 	})
 }
 
-// FeedEnd is not a topic of its own. The instrument stopped, so every feed assigned to the
-// channel gets a copy, and each copy takes the next sequence number of that feed.
-func (c *Conn) FeedEnd(ch string, e *exchange.FeedEnd) {
-	if e == nil || c.live == nil {
-		return
-	}
-	feeds := c.wanted[ch]
-	if len(feeds) == 0 {
-		return
-	}
-	payload, err := proto.Marshal(&mdv1.FeedEvent{
-		Event: &mdv1.FeedEvent_FeedEnd{FeedEnd: &mdv1.FeedEnd{Reason: e.Reason, AtNs: e.AtNs}},
-	})
-	if err != nil {
-		c.log.Warn().Err(err).Msg("marshal")
-		return
-	}
-	for _, f := range feeds {
-		c.send(f, payload, false)
-	}
-}
-
 // publishTopic sends ev on every feed of ch whose topic is topic. A channel that is not in the
 // current desired set, or whose assigned feeds are a different topic, is dropped and does not
 // consume a sequence number. Acknowledgement is not required: desired is enough, so a trade that
@@ -194,7 +172,7 @@ func (c *Conn) publishTopic(ch, topic string, ev *mdv1.FeedEvent) {
 // Recording finishes before the publish, in this same critical section, so a
 // tape page's newest event is never past head (D437). A publish error still
 // consumes the number: the subscriber sees a gap instead of a silent duplicate
-// once the publisher recovers. FeedEnd passes record false (D446).
+// once the publisher recovers.
 func (c *Conn) send(f feed, payload []byte, record bool) {
 	l := c.live
 	if l == nil || c.pub == nil {

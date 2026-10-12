@@ -53,7 +53,6 @@ func TestTapeRecordsThroughSetFeeds(t *testing.T) {
 	h.liq("L")
 	h.c.mu.Lock()
 	h.c.BestQuote(tapeCh, &exchange.BestQuote{Bid: 1, Ask: 2})
-	h.c.FeedEnd(tapeCh, &exchange.FeedEnd{Reason: "expired", AtNs: 1})
 	h.c.mu.Unlock()
 
 	rep, ok = h.ask("trade", nil)
@@ -479,8 +478,8 @@ func TestTapeTrimWindowCountAndBudget(t *testing.T) {
 }
 
 func TestBookViewSnapshotAndNotSynced(t *testing.T) {
-	h := newTapeBox(t, tapeBoxOptions{depth: 20})
-	h.want("orderbook", "orderbook_delta")
+	h := newTapeBox(t, tapeBoxOptions{})
+	h.want("orderbook_delta")
 	h.up(4)
 	if rep, ok := h.ask("orderbook_delta", nil); !ok || rep.GetError() != "not_synced" || rep.GetBook() != nil {
 		t.Fatalf("before sync %+v", rep)
@@ -493,16 +492,12 @@ func TestBookViewSnapshotAndNotSynced(t *testing.T) {
 	})
 	h.c.mu.Unlock()
 	delta, _ := h.ask("orderbook_delta", nil)
-	top, _ := h.ask("orderbook", nil)
-	if delta.GetError() != "" || top.GetError() != "" {
-		t.Fatalf("delta %s top %s", delta.GetError(), top.GetError())
+	if delta.GetError() != "" {
+		t.Fatalf("delta %s", delta.GetError())
 	}
 	b := delta.GetBook()
 	if b.GetConnEpoch() != 4 || b.GetSeq() == 0 || b.GetMeta().GetExchTsNs() != 77 || len(b.GetBids()) != 1 || len(b.GetAsks()) != 1 {
 		t.Fatalf("book %+v", b)
-	}
-	if top.GetBook().GetConnEpoch() != b.GetConnEpoch() || top.GetBook().GetSeq() != b.GetSeq() {
-		t.Fatalf("subjects differ %d/%d vs %d/%d", top.GetBook().GetConnEpoch(), top.GetBook().GetSeq(), b.GetConnEpoch(), b.GetSeq())
 	}
 	if b.GetBids()[0].GetQty() != 1 || b.GetAsks()[0].GetQty() != 2 {
 		t.Fatalf("levels %+v %+v", b.GetBids(), b.GetAsks())
@@ -512,7 +507,7 @@ func TestBookViewSnapshotAndNotSynced(t *testing.T) {
 	sh := h.c.live.books[tapeCh]
 	h.c.beginResync(tapeCh, sh, nil)
 	h.c.mu.Unlock()
-	if rep, _ := h.ask("orderbook", nil); rep.GetError() != "not_synced" {
+	if rep, _ := h.ask("orderbook_delta", nil); rep.GetError() != "not_synced" {
 		t.Fatalf("resync %+v", rep)
 	}
 
@@ -666,7 +661,6 @@ type tapeBoxOptions struct {
 	window time.Duration
 	max    int
 	budget int64
-	depth  uint32
 }
 
 type tapeBox struct {
@@ -685,7 +679,7 @@ func newTapeBox(t *testing.T, opt tapeBoxOptions) *tapeBox {
 	h.clock.Store(1)
 	h.c = New(Config{
 		Venue: "Binance", Route: "public", Instance: "md",
-		Market: &reconMarket{}, BookDepth: opt.depth,
+		Market:        &reconMarket{},
 		Symbols:       stubSymbols{info: tapeInfo(symbol.Tradable)},
 		TapeWindow:    opt.window,
 		TapeMaxEvents: opt.max,

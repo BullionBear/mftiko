@@ -221,20 +221,3 @@ func TestIterTopAndAllocs(t *testing.T) {
 		t.Fatalf("apply allocs %v", allocs)
 	}
 }
-
-func TestAffectsTop(t *testing.T) {
-	b := newBook(t, 16, 1)
-	b.Apply([]Level{{Price: 100, Size: 1}, {Price: 99, Size: 1}, {Price: 90, Size: 1}}, nil)
-	if b.AffectsTop([]Level{{Price: 90, Size: 2}}, nil, 1) {
-		t.Fatal("deep level touched top-1")
-	}
-	if !b.AffectsTop([]Level{{Price: 100, Size: 2}}, nil, 1) {
-		t.Fatal("best did not touch")
-	}
-	if !b.AffectsTop([]Level{{Price: 99, Size: 0}}, nil, 2) {
-		t.Fatal("deleting the nth did not touch")
-	}
-	if b.AffectsTop([]Level{{Price: 80, Size: 1}}, nil, 2) {
-		t.Fatal("outside the top and the side is already full")
-	}
-}

@@ -3,7 +3,6 @@ package conn
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"slices"
 	"time"
@@ -73,9 +72,6 @@ type shelf struct {
 	bufAt   time.Time // the first buffered update of this attempt
 	book    *obook.OrderBook
 	seq     exchange.BookSeq
-	topB    []exchange.Level
-	topA    []exchange.Level
-	haveTop bool
 	stalled bool // missing price tick, or SnapshotREST with no exch ticker
 	// SnapshotStream resubscribe (D434). holdResub is set from the gap until the replacement
 	// subscribe is acknowledged. resubWait is the last backoff; an installed snapshot zeroes it.
@@ -206,8 +202,6 @@ func (c *Conn) adopt() {
 				sh.token++
 				sh.book = nil
 				sh.seq = exchange.BookSeq{}
-				sh.haveTop = false
-				sh.topB, sh.topA = nil, nil
 				sh.buf = nil
 				sh.bufAt = time.Time{}
 				c.clearBook(ch)
@@ -242,12 +236,7 @@ func (c *Conn) markStall(sh *shelf, ch string) {
 }
 
 func (c *Conn) wantBook(ch string) bool {
-	for _, f := range c.wanted[ch] {
-		if f.topic == string(exchange.TopicOrderBook) || f.topic == string(exchange.TopicOrderBookDelta) {
-			return true
-		}
-	}
-	return false
+	return bookFeed(c.wanted[ch])
 }
 
 func (c *Conn) ensureShelf(ch string) *shelf {
@@ -375,10 +364,9 @@ func (c *Conn) onLive(ch string, sh *shelf, u exchange.BookUpdate) {
 }
 
 // beginResync drops the local book. keep is the update that did not apply; nil drops the buffer,
-// which is what a checksum failure does so that update is not replayed. The last published top
-// is kept, so a resync that leaves it unchanged does not take another orderbook seq (D427).
-// SnapshotStream then cycles that one channel after its own backoff (D434). SnapshotREST
-// refetches Depth; it does not unsubscribe.
+// which is what a checksum failure does so that update is not replayed. SnapshotStream then
+// cycles that one channel after its own backoff (D434). SnapshotREST refetches Depth; it does
+// not unsubscribe.
 func (c *Conn) beginResync(ch string, sh *shelf, keep *exchange.BookUpdate) {
 	sh.book = nil
 	c.clearBook(ch)
@@ -590,14 +578,10 @@ func (c *Conn) checksumOK(b *obook.OrderBook, bs exchange.BookSync, u *exchange.
 	return cs.Verify(sideLevels(b, true, n), sideLevels(b, false, n), u)
 }
 
-// publishIncremental forwards the increment unchanged, then rebuilds top-N only when the
-// increment touches it. The ring drops out-of-window levels while applying; that filter is not
-// applied to the delta (D432).
+// publishIncremental forwards the increment unchanged. The ring drops out-of-window levels while
+// applying; that filter is not applied to the delta (D432).
 func (c *Conn) publishIncremental(ch string, sh *shelf, ts int64, u exchange.BookUpdate) {
-	bids := bookLevels(u.Bids)
-	asks := bookLevels(u.Asks)
-	touch := sh.book.AffectsTop(bids, asks, int(c.bookDepth))
-	sh.book.Apply(bids, asks)
+	sh.book.Apply(bookLevels(u.Bids), bookLevels(u.Asks))
 	if !c.checksumOK(sh.book, sh.bs, &u) {
 		c.beginResync(ch, sh, nil)
 		return
@@ -607,20 +591,16 @@ func (c *Conn) publishIncremental(ch string, sh *shelf, ts int64, u exchange.Boo
 	if len(u.Bids)+len(u.Asks) > 0 {
 		c.emitDelta(ch, ts, false, u.Bids, u.Asks)
 	}
-	if touch {
-		c.emitTop(ch, sh, ts)
-	}
 	c.noteBook(ch, sh, ts)
 }
 
-// publishReset is the full in-window book, then the top-N when that top changed (D425, D430).
+// publishReset is the full in-window book as one orderbook_delta with reset set (D425, D430, D453).
 func (c *Conn) publishReset(ch string, sh *shelf, ts int64) {
 	if sh.book == nil {
 		return
 	}
 	n := sh.book.Window()
 	c.emitDelta(ch, ts, true, sideLevels(sh.book, true, n), sideLevels(sh.book, false, n))
-	c.emitTop(ch, sh, ts)
 	c.noteBook(ch, sh, ts)
 }
 
@@ -645,25 +625,6 @@ func (c *Conn) emitDelta(ch string, ts int64, reset bool, bids, asks []exchange.
 	c.publishTopic(ch, string(exchange.TopicOrderBookDelta), &mdv1.FeedEvent{
 		Event: &mdv1.FeedEvent_OrderBookDelta{OrderBookDelta: &mdv1.OrderBookDelta{
 			Meta: meta(ts), Bids: protoLevels(bids), Asks: protoLevels(asks), Reset_: reset,
-		}},
-	})
-}
-
-func (c *Conn) emitTop(ch string, sh *shelf, ts int64) {
-	if sh.book == nil {
-		return
-	}
-	b := sideLevels(sh.book, true, int(c.bookDepth))
-	a := sideLevels(sh.book, false, int(c.bookDepth))
-	if sh.haveTop && sameLevels(sh.topB, b) && sameLevels(sh.topA, a) {
-		return
-	}
-	sh.topB = b
-	sh.topA = a
-	sh.haveTop = true
-	c.publishTopic(ch, string(exchange.TopicOrderBook), &mdv1.FeedEvent{
-		Event: &mdv1.FeedEvent_OrderBook{OrderBook: &mdv1.OrderBook{
-			Meta: meta(ts), Bids: protoLevels(sh.topB), Asks: protoLevels(sh.topA), Depth: c.bookDepth,
 		}},
 	})
 }
@@ -741,9 +702,8 @@ func (c *Conn) after(d time.Duration) <-chan time.Time {
 	return time.After(d)
 }
 
-// vetBooks is the startup check that needs a channel. Missing N fails here as well as at Init.
-// SnapshotREST with N above Depth fails before the first snapshot. SnapshotStream is not compared
-// with Depth: Bybit's is zero. The worker exits with this error and does not dial again.
+// vetBooks rejects a book feed whose channel is not a book. SnapshotREST fetches
+// BookSync.Depth(); there is no published top-N to compare with that limit (D453).
 func (c *Conn) vetBooks(wanted map[string][]feed) error {
 	if c.market == nil {
 		return nil
@@ -752,18 +712,8 @@ func (c *Conn) vetBooks(wanted map[string][]feed) error {
 		if !bookFeed(feeds) {
 			continue
 		}
-		if c.bookDepth == 0 {
-			return errors.New("conn: book depth is required")
-		}
-		bs, ok := c.market.Book(ch)
-		if !ok {
+		if _, ok := c.market.Book(ch); !ok {
 			return errors.New("conn: " + ch + " is not a book")
-		}
-		if bs.Snapshot() != exchange.SnapshotREST {
-			continue
-		}
-		if d := bs.Depth(); int(c.bookDepth) > d {
-			return fmt.Errorf("conn: book depth %d is above %s depth %d", c.bookDepth, ch, d)
 		}
 	}
 	return nil
@@ -771,7 +721,7 @@ func (c *Conn) vetBooks(wanted map[string][]feed) error {
 
 func bookFeed(feeds []feed) bool {
 	for _, f := range feeds {
-		if f.topic == string(exchange.TopicOrderBook) || f.topic == string(exchange.TopicOrderBookDelta) {
+		if bookTopic(f.topic) {
 			return true
 		}
 	}

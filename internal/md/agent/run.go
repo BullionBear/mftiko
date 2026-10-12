@@ -46,7 +46,6 @@ type Config struct {
 
 	Markets   Markets
 	Overrides map[string]string // venue -> Endpoint override; empty uses the venue default
-	BookDepth uint32            // orderbook top-N, fixed for this MD instance (D426)
 
 	Policy     agent.Policy
 	Linger     time.Duration // DefaultLinger if <= 0
@@ -119,7 +118,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	p := &plane{
 		inst: cfg.Instance, linger: cfg.Linger, markets: cfg.Markets,
-		overrides: cfg.Overrides, bookDepth: cfg.BookDepth, get: reader, w: term, log: cfg.Log, now: cfg.Now,
+		overrides: cfg.Overrides, get: reader, w: term, log: cfg.Log, now: cfg.Now,
 	}
 	return runner.Run(ctx, runner.Config[Entry, Spec, Live]{
 		Term: term, Demand: m, Statuses: reader, Decode: Decode, Planner: p,
@@ -172,7 +171,6 @@ type plane struct {
 	linger    time.Duration
 	markets   Markets
 	overrides map[string]string
-	bookDepth uint32
 	get       reader
 	w         writer
 	log       zerolog.Logger
@@ -211,7 +209,7 @@ func (p *plane) commit(ctx context.Context, d agent.Demand[Entry], _ map[agent.W
 		}
 		p.loaded = true
 	}
-	next := assign(p.inst, p.clock(), p.linger, p.markets, p.overrides, p.bookDepth, feedsOf(d), p.snap)
+	next := assign(p.inst, p.clock(), p.linger, p.markets, p.overrides, feedsOf(d), p.snap)
 	if err := p.persist(ctx, next.Atoms); err != nil {
 		return err
 	}

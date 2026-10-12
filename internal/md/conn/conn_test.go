@@ -355,22 +355,6 @@ func TestPublish(t *testing.T) {
 	if ev.GetMarkPrice().GetMarkPrice() != 5 || ev.GetMarkPrice().IndexPrice != nil {
 		t.Fatal(ev.GetMarkPrice())
 	}
-
-	before := len(rec.snapshot())
-	c.FeedEnd(ch, &exchange.FeedEnd{Reason: "expired", AtNs: 9})
-	got := rec.snapshot()
-	if len(got)-before != len(c.wanted[ch]) {
-		t.Fatalf("feed end %d, want %d", len(got)-before, len(c.wanted[ch]))
-	}
-	_, _, seq, ev = openPub(t, got[len(got)-1])
-	if ev.GetFeedEnd().GetReason() != "expired" || seq != 2 {
-		t.Fatalf("feed end seq %d %+v", seq, ev.GetFeedEnd())
-	}
-	// trade was already at 4, so its end is 5. It is the first feed of the channel.
-	_, _, seq, _ = openPub(t, got[before])
-	if seq != 5 {
-		t.Fatalf("trade feed end seq %d", seq)
-	}
 }
 
 func TestDialFailureKeepsEpoch(t *testing.T) {

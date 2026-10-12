@@ -5,11 +5,11 @@ package exchange
 type Topic string
 
 // Platform topics (PROTOCOL §2), mftik's names plus orderbook_delta and mark_price.
+// orderbook, the old top-N name, is not a topic and not an alias (D453).
 const (
 	TopicBestQuote      Topic = "bestquote"
 	TopicTrade          Topic = "trade"
 	TopicAggTrade       Topic = "aggtrade"
-	TopicOrderBook      Topic = "orderbook"
 	TopicOrderBookDelta Topic = "orderbook_delta"
 	TopicTicker         Topic = "ticker"
 	TopicLiquidation    Topic = "liquidation"
@@ -24,6 +24,11 @@ const (
 const KlinePrefix = "kline_"
 
 func KlineTopic(interval string) Topic { return Topic(KlinePrefix + interval) }
+
+// RetiredTopic reports a name the platform no longer accepts (D453).
+// "orderbook" was the top-N book. A config or subscription of that name is invalid.
+// It is not rewritten to orderbook_delta.
+func RetiredTopic(topic string) bool { return topic == "orderbook" }
 
 // TopicCaps is one row of a venue's capability table (D401): the topic is supported, and these
 // optional fields of its event are never filled on this venue.

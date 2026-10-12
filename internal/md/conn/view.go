@@ -34,7 +34,7 @@ type bookSnap struct {
 }
 
 func bookTopic(topic string) bool {
-	return topic == string(exchange.TopicOrderBook) || topic == string(exchange.TopicOrderBookDelta)
+	return topic == string(exchange.TopicOrderBookDelta)
 }
 
 func viewSubject(inst, topic, ticker string) string {
@@ -314,9 +314,8 @@ func (c *Conn) clearBook(ch string) {
 	}
 }
 
-// noteBook publishes the in-window book. The cursor prefers orderbook_delta,
-// because that is the increment a subscriber folds; the top-N feed is used when
-// the delta feed did not publish (D441, D442).
+// noteBook publishes the in-window book. The cursor is the orderbook_delta seq,
+// because that is the increment a subscriber folds (D441, D453).
 func (c *Conn) noteBook(ch string, sh *shelf, exchTs int64) {
 	if sh == nil || sh.book == nil {
 		return
@@ -345,7 +344,7 @@ func (c *Conn) seamLocked(ch string) (epoch, seq uint64, mdTs int64, ok bool) {
 	if l == nil {
 		return 0, 0, 0, false
 	}
-	for _, topic := range []string{string(exchange.TopicOrderBookDelta), string(exchange.TopicOrderBook)} {
+	for _, topic := range []string{string(exchange.TopicOrderBookDelta)} {
 		for _, f := range c.wanted[ch] {
 			if f.topic != topic {
 				continue

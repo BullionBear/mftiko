@@ -72,7 +72,7 @@
 //	                the contract count. The frame has no ctVal, so this codec does not multiply by
 //	                ContractSize; the conn worker does that when it resolves the instrument (D203).
 //	                Spot sz is already base.
-//	books           orderbook and orderbook_delta. A level is [price, sz, deprecated, numOrders];
+//	books           orderbook_delta. A level is [price, sz, deprecated, numOrders];
 //	                sz "0" deletes the level. Derivative sz is the contract count, same as trades.
 //	                books5 and bbo-tbt are not this book.
 //	tickers         Ticker. Spot vol24h is base and volCcy24h is quote. A contract's vol24h is

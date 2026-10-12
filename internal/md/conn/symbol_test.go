@@ -42,7 +42,7 @@ func symbolDesired(seq uint64, exch string, tick float64) *mdctlv1.Desired {
 		Version: &commonv1.Version{Seq: seq},
 		Atoms: []*mdctlv1.AtomAssignment{{
 			AtomId:     "Binance:public:btcusdt@depth",
-			Feeds:      []string{"orderbook.Binance_Spot_BTCUSDT", "orderbook_delta.Binance_Spot_BTCUSDT"},
+			Feeds:      []string{"orderbook_delta.Binance_Spot_BTCUSDT"},
 			ExchTicker: exch, PriceTick: tick,
 		}},
 	}

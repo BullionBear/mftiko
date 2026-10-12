@@ -116,7 +116,7 @@ func (c *Conn) symbolOverlay(d *mdctlv1.Desired) map[string]symHit {
 func assignmentBook(a *mdctlv1.AtomAssignment) bool {
 	for _, raw := range a.Feeds {
 		topic, _, ok := splitFeed(raw)
-		if ok && (topic == string(exchange.TopicOrderBook) || topic == string(exchange.TopicOrderBookDelta)) {
+		if ok && bookTopic(topic) {
 			return true
 		}
 	}
@@ -245,7 +245,11 @@ func (c *Conn) apply(d *mdctlv1.Desired, over map[string]symHit) bool {
 				c.log.Warn().Str("feed", raw).Str("atom", a.AtomId).Msg("feed key")
 				continue
 			}
-			if topic == string(exchange.TopicOrderBook) || topic == string(exchange.TopicOrderBookDelta) {
+			if exchange.RetiredTopic(topic) {
+				c.log.Warn().Str("feed", raw).Msg("invalid topic")
+				continue
+			}
+			if bookTopic(topic) {
 				book = true
 			}
 			addFeed(wanted, chKey, feed{topic: strings.Clone(topic), ticker: strings.Clone(ticker)})

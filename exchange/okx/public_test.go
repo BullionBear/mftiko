@@ -23,7 +23,7 @@ func TestPublicAtom(t *testing.T) {
 		bad     bool
 	}{
 		{exchange.TopicBestQuote, spot, "public", "bbo-tbt:BTC-USDT", false},
-		{exchange.TopicOrderBook, spot, "public", "books:BTC-USDT", false},
+		{exchange.TopicOrderBookDelta, spot, "public", "books:BTC-USDT", false},
 		{exchange.TopicOrderBookDelta, swap, "public", "books:BTC-USDT-SWAP", false},
 		{exchange.TopicTrade, spot, "public", "trades:BTC-USDT", false},
 		{exchange.TopicTicker, spot, "public", "tickers:BTC-USDT", false},
@@ -353,5 +353,4 @@ func (s *pubSink) FundingRate(_ string, e *exchange.FundingRate) {
 }
 func (s *pubSink) OpenInterest(string, *exchange.OpenInterest) {}
 func (s *pubSink) Greeks(string, *exchange.Greeks)             {}
-func (s *pubSink) MarkPrice(string, *exchange.MarkPrice)       {}
-func (s *pubSink) FeedEnd(string, *exchange.FeedEnd)           {}
+func (s *pubSink) MarkPrice(string, *exchange.MarkPrice) {}

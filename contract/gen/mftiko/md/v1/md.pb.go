@@ -76,7 +76,6 @@ type FeedEvent struct {
 	//	*FeedEvent_BestQuote
 	//	*FeedEvent_Trade
 	//	*FeedEvent_AggTrade
-	//	*FeedEvent_OrderBook
 	//	*FeedEvent_Kline
 	//	*FeedEvent_Ticker
 	//	*FeedEvent_Liquidation
@@ -85,7 +84,6 @@ type FeedEvent struct {
 	//	*FeedEvent_Greeks
 	//	*FeedEvent_MarkPrice
 	//	*FeedEvent_OrderBookDelta
-	//	*FeedEvent_FeedEnd
 	Event         isFeedEvent_Event `protobuf_oneof:"event"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -150,15 +148,6 @@ func (x *FeedEvent) GetAggTrade() *AggTrade {
 	if x != nil {
 		if x, ok := x.Event.(*FeedEvent_AggTrade); ok {
 			return x.AggTrade
-		}
-	}
-	return nil
-}
-
-func (x *FeedEvent) GetOrderBook() *OrderBook {
-	if x != nil {
-		if x, ok := x.Event.(*FeedEvent_OrderBook); ok {
-			return x.OrderBook
 		}
 	}
 	return nil
@@ -236,15 +225,6 @@ func (x *FeedEvent) GetOrderBookDelta() *OrderBookDelta {
 	return nil
 }
 
-func (x *FeedEvent) GetFeedEnd() *FeedEnd {
-	if x != nil {
-		if x, ok := x.Event.(*FeedEvent_FeedEnd); ok {
-			return x.FeedEnd
-		}
-	}
-	return nil
-}
-
 type isFeedEvent_Event interface {
 	isFeedEvent_Event()
 }
@@ -259,10 +239,6 @@ type FeedEvent_Trade struct {
 
 type FeedEvent_AggTrade struct {
 	AggTrade *AggTrade `protobuf:"bytes,3,opt,name=agg_trade,json=aggTrade,proto3,oneof"`
-}
-
-type FeedEvent_OrderBook struct {
-	OrderBook *OrderBook `protobuf:"bytes,4,opt,name=order_book,json=orderBook,proto3,oneof"`
 }
 
 type FeedEvent_Kline struct {
@@ -297,17 +273,11 @@ type FeedEvent_OrderBookDelta struct {
 	OrderBookDelta *OrderBookDelta `protobuf:"bytes,12,opt,name=order_book_delta,json=orderBookDelta,proto3,oneof"`
 }
 
-type FeedEvent_FeedEnd struct {
-	FeedEnd *FeedEnd `protobuf:"bytes,100,opt,name=feed_end,json=feedEnd,proto3,oneof"`
-}
-
 func (*FeedEvent_BestQuote) isFeedEvent_Event() {}
 
 func (*FeedEvent_Trade) isFeedEvent_Event() {}
 
 func (*FeedEvent_AggTrade) isFeedEvent_Event() {}
-
-func (*FeedEvent_OrderBook) isFeedEvent_Event() {}
 
 func (*FeedEvent_Kline) isFeedEvent_Event() {}
 
@@ -324,8 +294,6 @@ func (*FeedEvent_Greeks) isFeedEvent_Event() {}
 func (*FeedEvent_MarkPrice) isFeedEvent_Event() {}
 
 func (*FeedEvent_OrderBookDelta) isFeedEvent_Event() {}
-
-func (*FeedEvent_FeedEnd) isFeedEvent_Event() {}
 
 type BestQuote struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -631,76 +599,7 @@ func (x *Level) GetQty() float64 {
 	return 0
 }
 
-// orderbook：conn worker 本地全量 book 的 top-N，top-N 有變才推（D402）。
-type OrderBook struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Meta          *Meta                  `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`
-	Bids          []*Level               `protobuf:"bytes,2,rep,name=bids,proto3" json:"bids,omitempty"`
-	Asks          []*Level               `protobuf:"bytes,3,rep,name=asks,proto3" json:"asks,omitempty"`
-	Depth         uint32                 `protobuf:"varint,4,opt,name=depth,proto3" json:"depth,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *OrderBook) Reset() {
-	*x = OrderBook{}
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *OrderBook) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*OrderBook) ProtoMessage() {}
-
-func (x *OrderBook) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use OrderBook.ProtoReflect.Descriptor instead.
-func (*OrderBook) Descriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *OrderBook) GetMeta() *Meta {
-	if x != nil {
-		return x.Meta
-	}
-	return nil
-}
-
-func (x *OrderBook) GetBids() []*Level {
-	if x != nil {
-		return x.Bids
-	}
-	return nil
-}
-
-func (x *OrderBook) GetAsks() []*Level {
-	if x != nil {
-		return x.Asks
-	}
-	return nil
-}
-
-func (x *OrderBook) GetDepth() uint32 {
-	if x != nil {
-		return x.Depth
-	}
-	return 0
-}
-
-// orderbook_delta：本地全量 book 的增量（D402）。qty 為 0 表示刪除該價位。
+// orderbook_delta：本地全量 book 的增量（D402、D453）。qty 為 0 表示刪除該價位。
 // reset 為 true 時，bids／asks 是完整的 book，取代本地狀態（conn worker 對交易所重新同步之後）。
 // 晚加入的接法見 read.proto 的 md.view。
 type OrderBookDelta struct {
@@ -715,7 +614,7 @@ type OrderBookDelta struct {
 
 func (x *OrderBookDelta) Reset() {
 	*x = OrderBookDelta{}
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[7]
+	mi := &file_mftiko_md_v1_md_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -727,7 +626,7 @@ func (x *OrderBookDelta) String() string {
 func (*OrderBookDelta) ProtoMessage() {}
 
 func (x *OrderBookDelta) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[7]
+	mi := &file_mftiko_md_v1_md_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -740,7 +639,7 @@ func (x *OrderBookDelta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrderBookDelta.ProtoReflect.Descriptor instead.
 func (*OrderBookDelta) Descriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{7}
+	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *OrderBookDelta) GetMeta() *Meta {
@@ -789,7 +688,7 @@ type Kline struct {
 
 func (x *Kline) Reset() {
 	*x = Kline{}
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[8]
+	mi := &file_mftiko_md_v1_md_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -801,7 +700,7 @@ func (x *Kline) String() string {
 func (*Kline) ProtoMessage() {}
 
 func (x *Kline) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[8]
+	mi := &file_mftiko_md_v1_md_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -814,7 +713,7 @@ func (x *Kline) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Kline.ProtoReflect.Descriptor instead.
 func (*Kline) Descriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{8}
+	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Kline) GetMeta() *Meta {
@@ -904,7 +803,7 @@ type Ticker struct {
 
 func (x *Ticker) Reset() {
 	*x = Ticker{}
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[9]
+	mi := &file_mftiko_md_v1_md_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -916,7 +815,7 @@ func (x *Ticker) String() string {
 func (*Ticker) ProtoMessage() {}
 
 func (x *Ticker) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[9]
+	mi := &file_mftiko_md_v1_md_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -929,7 +828,7 @@ func (x *Ticker) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ticker.ProtoReflect.Descriptor instead.
 func (*Ticker) Descriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{9}
+	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Ticker) GetMeta() *Meta {
@@ -1000,7 +899,7 @@ type Liquidation struct {
 
 func (x *Liquidation) Reset() {
 	*x = Liquidation{}
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[10]
+	mi := &file_mftiko_md_v1_md_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1012,7 +911,7 @@ func (x *Liquidation) String() string {
 func (*Liquidation) ProtoMessage() {}
 
 func (x *Liquidation) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[10]
+	mi := &file_mftiko_md_v1_md_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1025,7 +924,7 @@ func (x *Liquidation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Liquidation.ProtoReflect.Descriptor instead.
 func (*Liquidation) Descriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{10}
+	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Liquidation) GetMeta() *Meta {
@@ -1068,7 +967,7 @@ type FundingRate struct {
 
 func (x *FundingRate) Reset() {
 	*x = FundingRate{}
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[11]
+	mi := &file_mftiko_md_v1_md_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1080,7 +979,7 @@ func (x *FundingRate) String() string {
 func (*FundingRate) ProtoMessage() {}
 
 func (x *FundingRate) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[11]
+	mi := &file_mftiko_md_v1_md_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1093,7 +992,7 @@ func (x *FundingRate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FundingRate.ProtoReflect.Descriptor instead.
 func (*FundingRate) Descriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{11}
+	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *FundingRate) GetMeta() *Meta {
@@ -1135,7 +1034,7 @@ type OpenInterest struct {
 
 func (x *OpenInterest) Reset() {
 	*x = OpenInterest{}
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[12]
+	mi := &file_mftiko_md_v1_md_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1147,7 +1046,7 @@ func (x *OpenInterest) String() string {
 func (*OpenInterest) ProtoMessage() {}
 
 func (x *OpenInterest) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[12]
+	mi := &file_mftiko_md_v1_md_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1160,7 +1059,7 @@ func (x *OpenInterest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenInterest.ProtoReflect.Descriptor instead.
 func (*OpenInterest) Descriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{12}
+	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *OpenInterest) GetMeta() *Meta {
@@ -1203,7 +1102,7 @@ type Greeks struct {
 
 func (x *Greeks) Reset() {
 	*x = Greeks{}
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[13]
+	mi := &file_mftiko_md_v1_md_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1215,7 +1114,7 @@ func (x *Greeks) String() string {
 func (*Greeks) ProtoMessage() {}
 
 func (x *Greeks) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[13]
+	mi := &file_mftiko_md_v1_md_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1228,7 +1127,7 @@ func (x *Greeks) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Greeks.ProtoReflect.Descriptor instead.
 func (*Greeks) Descriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{13}
+	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Greeks) GetMeta() *Meta {
@@ -1319,7 +1218,7 @@ type MarkPrice struct {
 
 func (x *MarkPrice) Reset() {
 	*x = MarkPrice{}
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[14]
+	mi := &file_mftiko_md_v1_md_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1331,7 +1230,7 @@ func (x *MarkPrice) String() string {
 func (*MarkPrice) ProtoMessage() {}
 
 func (x *MarkPrice) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[14]
+	mi := &file_mftiko_md_v1_md_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1344,7 +1243,7 @@ func (x *MarkPrice) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MarkPrice.ProtoReflect.Descriptor instead.
 func (*MarkPrice) Descriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{14}
+	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *MarkPrice) GetMeta() *Meta {
@@ -1368,58 +1267,6 @@ func (x *MarkPrice) GetIndexPrice() float64 {
 	return 0
 }
 
-type FeedEnd struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Reason        string                 `protobuf:"bytes,1,opt,name=reason,proto3" json:"reason,omitempty"` // expired | delisted
-	AtNs          int64                  `protobuf:"varint,2,opt,name=at_ns,json=atNs,proto3" json:"at_ns,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *FeedEnd) Reset() {
-	*x = FeedEnd{}
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[15]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *FeedEnd) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*FeedEnd) ProtoMessage() {}
-
-func (x *FeedEnd) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_md_v1_md_proto_msgTypes[15]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use FeedEnd.ProtoReflect.Descriptor instead.
-func (*FeedEnd) Descriptor() ([]byte, []int) {
-	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{15}
-}
-
-func (x *FeedEnd) GetReason() string {
-	if x != nil {
-		return x.Reason
-	}
-	return ""
-}
-
-func (x *FeedEnd) GetAtNs() int64 {
-	if x != nil {
-		return x.AtNs
-	}
-	return 0
-}
-
 var File_mftiko_md_v1_md_proto protoreflect.FileDescriptor
 
 const file_mftiko_md_v1_md_proto_rawDesc = "" +
@@ -1428,14 +1275,12 @@ const file_mftiko_md_v1_md_proto_rawDesc = "" +
 	"\x04Meta\x12\x1c\n" +
 	"\n" +
 	"exch_ts_ns\x18\x03 \x01(\x03R\bexchTsNsJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x04\x10\x05R\x03seqR\n" +
-	"conn_epochR\bmd_ts_ns\"\xf3\x05\n" +
+	"conn_epochR\bmd_ts_ns\"\xa7\x05\n" +
 	"\tFeedEvent\x128\n" +
 	"\n" +
 	"best_quote\x18\x01 \x01(\v2\x17.mftiko.md.v1.BestQuoteH\x00R\tbestQuote\x12+\n" +
 	"\x05trade\x18\x02 \x01(\v2\x13.mftiko.md.v1.TradeH\x00R\x05trade\x125\n" +
-	"\tagg_trade\x18\x03 \x01(\v2\x16.mftiko.md.v1.AggTradeH\x00R\baggTrade\x128\n" +
-	"\n" +
-	"order_book\x18\x04 \x01(\v2\x17.mftiko.md.v1.OrderBookH\x00R\torderBook\x12+\n" +
+	"\tagg_trade\x18\x03 \x01(\v2\x16.mftiko.md.v1.AggTradeH\x00R\baggTrade\x12+\n" +
 	"\x05kline\x18\x05 \x01(\v2\x13.mftiko.md.v1.KlineH\x00R\x05kline\x12.\n" +
 	"\x06ticker\x18\x06 \x01(\v2\x14.mftiko.md.v1.TickerH\x00R\x06ticker\x12=\n" +
 	"\vliquidation\x18\a \x01(\v2\x19.mftiko.md.v1.LiquidationH\x00R\vliquidation\x12>\n" +
@@ -1445,9 +1290,9 @@ const file_mftiko_md_v1_md_proto_rawDesc = "" +
 	" \x01(\v2\x14.mftiko.md.v1.GreeksH\x00R\x06greeks\x128\n" +
 	"\n" +
 	"mark_price\x18\v \x01(\v2\x17.mftiko.md.v1.MarkPriceH\x00R\tmarkPrice\x12H\n" +
-	"\x10order_book_delta\x18\f \x01(\v2\x1c.mftiko.md.v1.OrderBookDeltaH\x00R\x0eorderBookDelta\x122\n" +
-	"\bfeed_end\x18d \x01(\v2\x15.mftiko.md.v1.FeedEndH\x00R\afeedEndB\a\n" +
-	"\x05event\"\x89\x01\n" +
+	"\x10order_book_delta\x18\f \x01(\v2\x1c.mftiko.md.v1.OrderBookDeltaH\x00R\x0eorderBookDeltaB\a\n" +
+	"\x05eventJ\x04\b\x04\x10\x05J\x04\bd\x10eR\n" +
+	"order_bookR\bfeed_end\"\x89\x01\n" +
 	"\tBestQuote\x12&\n" +
 	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12\x10\n" +
 	"\x03bid\x18\x02 \x01(\x01R\x03bid\x12\x17\n" +
@@ -1472,12 +1317,7 @@ const file_mftiko_md_v1_md_proto_rawDesc = "" +
 	"matchCount\"/\n" +
 	"\x05Level\x12\x14\n" +
 	"\x05price\x18\x01 \x01(\x01R\x05price\x12\x10\n" +
-	"\x03qty\x18\x02 \x01(\x01R\x03qty\"\x9b\x01\n" +
-	"\tOrderBook\x12&\n" +
-	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12'\n" +
-	"\x04bids\x18\x02 \x03(\v2\x13.mftiko.md.v1.LevelR\x04bids\x12'\n" +
-	"\x04asks\x18\x03 \x03(\v2\x13.mftiko.md.v1.LevelR\x04asks\x12\x14\n" +
-	"\x05depth\x18\x04 \x01(\rR\x05depth\"\xa0\x01\n" +
+	"\x03qty\x18\x02 \x01(\x01R\x03qty\"\xa0\x01\n" +
 	"\x0eOrderBookDelta\x12&\n" +
 	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12'\n" +
 	"\x04bids\x18\x02 \x03(\v2\x13.mftiko.md.v1.LevelR\x04bids\x12'\n" +
@@ -1563,10 +1403,7 @@ const file_mftiko_md_v1_md_proto_rawDesc = "" +
 	"mark_price\x18\x02 \x01(\x01R\tmarkPrice\x12$\n" +
 	"\vindex_price\x18\x03 \x01(\x01H\x00R\n" +
 	"indexPrice\x88\x01\x01B\x0e\n" +
-	"\f_index_price\"6\n" +
-	"\aFeedEnd\x12\x16\n" +
-	"\x06reason\x18\x01 \x01(\tR\x06reason\x12\x13\n" +
-	"\x05at_ns\x18\x02 \x01(\x03R\x04atNsB>Z<github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1;mdv1b\x06proto3"
+	"\f_index_priceB>Z<github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1;mdv1b\x06proto3"
 
 var (
 	file_mftiko_md_v1_md_proto_rawDescOnce sync.Once
@@ -1580,7 +1417,7 @@ func file_mftiko_md_v1_md_proto_rawDescGZIP() []byte {
 	return file_mftiko_md_v1_md_proto_rawDescData
 }
 
-var file_mftiko_md_v1_md_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_mftiko_md_v1_md_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_mftiko_md_v1_md_proto_goTypes = []any{
 	(*Meta)(nil),           // 0: mftiko.md.v1.Meta
 	(*FeedEvent)(nil),      // 1: mftiko.md.v1.FeedEvent
@@ -1588,56 +1425,49 @@ var file_mftiko_md_v1_md_proto_goTypes = []any{
 	(*Trade)(nil),          // 3: mftiko.md.v1.Trade
 	(*AggTrade)(nil),       // 4: mftiko.md.v1.AggTrade
 	(*Level)(nil),          // 5: mftiko.md.v1.Level
-	(*OrderBook)(nil),      // 6: mftiko.md.v1.OrderBook
-	(*OrderBookDelta)(nil), // 7: mftiko.md.v1.OrderBookDelta
-	(*Kline)(nil),          // 8: mftiko.md.v1.Kline
-	(*Ticker)(nil),         // 9: mftiko.md.v1.Ticker
-	(*Liquidation)(nil),    // 10: mftiko.md.v1.Liquidation
-	(*FundingRate)(nil),    // 11: mftiko.md.v1.FundingRate
-	(*OpenInterest)(nil),   // 12: mftiko.md.v1.OpenInterest
-	(*Greeks)(nil),         // 13: mftiko.md.v1.Greeks
-	(*MarkPrice)(nil),      // 14: mftiko.md.v1.MarkPrice
-	(*FeedEnd)(nil),        // 15: mftiko.md.v1.FeedEnd
-	(v1.Side)(0),           // 16: mftiko.common.v1.Side
+	(*OrderBookDelta)(nil), // 6: mftiko.md.v1.OrderBookDelta
+	(*Kline)(nil),          // 7: mftiko.md.v1.Kline
+	(*Ticker)(nil),         // 8: mftiko.md.v1.Ticker
+	(*Liquidation)(nil),    // 9: mftiko.md.v1.Liquidation
+	(*FundingRate)(nil),    // 10: mftiko.md.v1.FundingRate
+	(*OpenInterest)(nil),   // 11: mftiko.md.v1.OpenInterest
+	(*Greeks)(nil),         // 12: mftiko.md.v1.Greeks
+	(*MarkPrice)(nil),      // 13: mftiko.md.v1.MarkPrice
+	(v1.Side)(0),           // 14: mftiko.common.v1.Side
 }
 var file_mftiko_md_v1_md_proto_depIdxs = []int32{
 	2,  // 0: mftiko.md.v1.FeedEvent.best_quote:type_name -> mftiko.md.v1.BestQuote
 	3,  // 1: mftiko.md.v1.FeedEvent.trade:type_name -> mftiko.md.v1.Trade
 	4,  // 2: mftiko.md.v1.FeedEvent.agg_trade:type_name -> mftiko.md.v1.AggTrade
-	6,  // 3: mftiko.md.v1.FeedEvent.order_book:type_name -> mftiko.md.v1.OrderBook
-	8,  // 4: mftiko.md.v1.FeedEvent.kline:type_name -> mftiko.md.v1.Kline
-	9,  // 5: mftiko.md.v1.FeedEvent.ticker:type_name -> mftiko.md.v1.Ticker
-	10, // 6: mftiko.md.v1.FeedEvent.liquidation:type_name -> mftiko.md.v1.Liquidation
-	11, // 7: mftiko.md.v1.FeedEvent.funding_rate:type_name -> mftiko.md.v1.FundingRate
-	12, // 8: mftiko.md.v1.FeedEvent.open_interest:type_name -> mftiko.md.v1.OpenInterest
-	13, // 9: mftiko.md.v1.FeedEvent.greeks:type_name -> mftiko.md.v1.Greeks
-	14, // 10: mftiko.md.v1.FeedEvent.mark_price:type_name -> mftiko.md.v1.MarkPrice
-	7,  // 11: mftiko.md.v1.FeedEvent.order_book_delta:type_name -> mftiko.md.v1.OrderBookDelta
-	15, // 12: mftiko.md.v1.FeedEvent.feed_end:type_name -> mftiko.md.v1.FeedEnd
-	0,  // 13: mftiko.md.v1.BestQuote.meta:type_name -> mftiko.md.v1.Meta
-	0,  // 14: mftiko.md.v1.Trade.meta:type_name -> mftiko.md.v1.Meta
-	16, // 15: mftiko.md.v1.Trade.side:type_name -> mftiko.common.v1.Side
-	0,  // 16: mftiko.md.v1.AggTrade.meta:type_name -> mftiko.md.v1.Meta
-	16, // 17: mftiko.md.v1.AggTrade.side:type_name -> mftiko.common.v1.Side
-	0,  // 18: mftiko.md.v1.OrderBook.meta:type_name -> mftiko.md.v1.Meta
-	5,  // 19: mftiko.md.v1.OrderBook.bids:type_name -> mftiko.md.v1.Level
-	5,  // 20: mftiko.md.v1.OrderBook.asks:type_name -> mftiko.md.v1.Level
-	0,  // 21: mftiko.md.v1.OrderBookDelta.meta:type_name -> mftiko.md.v1.Meta
-	5,  // 22: mftiko.md.v1.OrderBookDelta.bids:type_name -> mftiko.md.v1.Level
-	5,  // 23: mftiko.md.v1.OrderBookDelta.asks:type_name -> mftiko.md.v1.Level
-	0,  // 24: mftiko.md.v1.Kline.meta:type_name -> mftiko.md.v1.Meta
-	0,  // 25: mftiko.md.v1.Ticker.meta:type_name -> mftiko.md.v1.Meta
-	0,  // 26: mftiko.md.v1.Liquidation.meta:type_name -> mftiko.md.v1.Meta
-	16, // 27: mftiko.md.v1.Liquidation.side:type_name -> mftiko.common.v1.Side
-	0,  // 28: mftiko.md.v1.FundingRate.meta:type_name -> mftiko.md.v1.Meta
-	0,  // 29: mftiko.md.v1.OpenInterest.meta:type_name -> mftiko.md.v1.Meta
-	0,  // 30: mftiko.md.v1.Greeks.meta:type_name -> mftiko.md.v1.Meta
-	0,  // 31: mftiko.md.v1.MarkPrice.meta:type_name -> mftiko.md.v1.Meta
-	32, // [32:32] is the sub-list for method output_type
-	32, // [32:32] is the sub-list for method input_type
-	32, // [32:32] is the sub-list for extension type_name
-	32, // [32:32] is the sub-list for extension extendee
-	0,  // [0:32] is the sub-list for field type_name
+	7,  // 3: mftiko.md.v1.FeedEvent.kline:type_name -> mftiko.md.v1.Kline
+	8,  // 4: mftiko.md.v1.FeedEvent.ticker:type_name -> mftiko.md.v1.Ticker
+	9,  // 5: mftiko.md.v1.FeedEvent.liquidation:type_name -> mftiko.md.v1.Liquidation
+	10, // 6: mftiko.md.v1.FeedEvent.funding_rate:type_name -> mftiko.md.v1.FundingRate
+	11, // 7: mftiko.md.v1.FeedEvent.open_interest:type_name -> mftiko.md.v1.OpenInterest
+	12, // 8: mftiko.md.v1.FeedEvent.greeks:type_name -> mftiko.md.v1.Greeks
+	13, // 9: mftiko.md.v1.FeedEvent.mark_price:type_name -> mftiko.md.v1.MarkPrice
+	6,  // 10: mftiko.md.v1.FeedEvent.order_book_delta:type_name -> mftiko.md.v1.OrderBookDelta
+	0,  // 11: mftiko.md.v1.BestQuote.meta:type_name -> mftiko.md.v1.Meta
+	0,  // 12: mftiko.md.v1.Trade.meta:type_name -> mftiko.md.v1.Meta
+	14, // 13: mftiko.md.v1.Trade.side:type_name -> mftiko.common.v1.Side
+	0,  // 14: mftiko.md.v1.AggTrade.meta:type_name -> mftiko.md.v1.Meta
+	14, // 15: mftiko.md.v1.AggTrade.side:type_name -> mftiko.common.v1.Side
+	0,  // 16: mftiko.md.v1.OrderBookDelta.meta:type_name -> mftiko.md.v1.Meta
+	5,  // 17: mftiko.md.v1.OrderBookDelta.bids:type_name -> mftiko.md.v1.Level
+	5,  // 18: mftiko.md.v1.OrderBookDelta.asks:type_name -> mftiko.md.v1.Level
+	0,  // 19: mftiko.md.v1.Kline.meta:type_name -> mftiko.md.v1.Meta
+	0,  // 20: mftiko.md.v1.Ticker.meta:type_name -> mftiko.md.v1.Meta
+	0,  // 21: mftiko.md.v1.Liquidation.meta:type_name -> mftiko.md.v1.Meta
+	14, // 22: mftiko.md.v1.Liquidation.side:type_name -> mftiko.common.v1.Side
+	0,  // 23: mftiko.md.v1.FundingRate.meta:type_name -> mftiko.md.v1.Meta
+	0,  // 24: mftiko.md.v1.OpenInterest.meta:type_name -> mftiko.md.v1.Meta
+	0,  // 25: mftiko.md.v1.Greeks.meta:type_name -> mftiko.md.v1.Meta
+	0,  // 26: mftiko.md.v1.MarkPrice.meta:type_name -> mftiko.md.v1.Meta
+	27, // [27:27] is the sub-list for method output_type
+	27, // [27:27] is the sub-list for method input_type
+	27, // [27:27] is the sub-list for extension type_name
+	27, // [27:27] is the sub-list for extension extendee
+	0,  // [0:27] is the sub-list for field type_name
 }
 
 func init() { file_mftiko_md_v1_md_proto_init() }
@@ -1649,7 +1479,6 @@ func file_mftiko_md_v1_md_proto_init() {
 		(*FeedEvent_BestQuote)(nil),
 		(*FeedEvent_Trade)(nil),
 		(*FeedEvent_AggTrade)(nil),
-		(*FeedEvent_OrderBook)(nil),
 		(*FeedEvent_Kline)(nil),
 		(*FeedEvent_Ticker)(nil),
 		(*FeedEvent_Liquidation)(nil),
@@ -1658,21 +1487,20 @@ func file_mftiko_md_v1_md_proto_init() {
 		(*FeedEvent_Greeks)(nil),
 		(*FeedEvent_MarkPrice)(nil),
 		(*FeedEvent_OrderBookDelta)(nil),
-		(*FeedEvent_FeedEnd)(nil),
 	}
+	file_mftiko_md_v1_md_proto_msgTypes[7].OneofWrappers = []any{}
 	file_mftiko_md_v1_md_proto_msgTypes[8].OneofWrappers = []any{}
-	file_mftiko_md_v1_md_proto_msgTypes[9].OneofWrappers = []any{}
+	file_mftiko_md_v1_md_proto_msgTypes[10].OneofWrappers = []any{}
 	file_mftiko_md_v1_md_proto_msgTypes[11].OneofWrappers = []any{}
 	file_mftiko_md_v1_md_proto_msgTypes[12].OneofWrappers = []any{}
 	file_mftiko_md_v1_md_proto_msgTypes[13].OneofWrappers = []any{}
-	file_mftiko_md_v1_md_proto_msgTypes[14].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mftiko_md_v1_md_proto_rawDesc), len(file_mftiko_md_v1_md_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

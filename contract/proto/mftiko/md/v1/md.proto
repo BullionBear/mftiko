@@ -15,11 +15,12 @@ message Meta {
 }
 
 message FeedEvent {
+  reserved 4, 100;
+  reserved "order_book", "feed_end";
   oneof event {
     BestQuote best_quote = 1;
     Trade trade = 2;
     AggTrade agg_trade = 3;
-    OrderBook order_book = 4;
     Kline kline = 5;
     Ticker ticker = 6;
     Liquidation liquidation = 7;
@@ -28,7 +29,6 @@ message FeedEvent {
     Greeks greeks = 10;
     MarkPrice mark_price = 11;
     OrderBookDelta order_book_delta = 12;
-    FeedEnd feed_end = 100;
   }
 }
 
@@ -64,15 +64,7 @@ message Level {
   double qty = 2;
 }
 
-// orderbook：conn worker 本地全量 book 的 top-N，top-N 有變才推（D402）。
-message OrderBook {
-  Meta meta = 1;
-  repeated Level bids = 2;
-  repeated Level asks = 3;
-  uint32 depth = 4;
-}
-
-// orderbook_delta：本地全量 book 的增量（D402）。qty 為 0 表示刪除該價位。
+// orderbook_delta：本地全量 book 的增量（D402、D453）。qty 為 0 表示刪除該價位。
 // reset 為 true 時，bids／asks 是完整的 book，取代本地狀態（conn worker 對交易所重新同步之後）。
 // 晚加入的接法見 read.proto 的 md.view。
 message OrderBookDelta {
@@ -145,9 +137,4 @@ message MarkPrice {
   Meta meta = 1;
   double mark_price = 2;
   optional double index_price = 3;
-}
-
-message FeedEnd {
-  string reason = 1; // expired | delisted
-  int64 at_ns = 2;
 }

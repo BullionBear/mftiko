@@ -11,7 +11,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"math"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -39,7 +38,6 @@ func main() {
 	creds := flag.String("nats-creds", os.Getenv("MFTIKO_NATS_CREDS"), "NATS user credentials file (default $MFTIKO_NATS_CREDS)")
 	endpoints := flag.String("endpoints", "", "JSON object of venue to websocket URL override")
 	linger := flag.Duration("linger", agent.DefaultLinger, "how long an atom with no owners stays subscribed")
-	bookDepth := flag.Uint("book-depth", 0, "orderbook top-N for this MD instance (D426); required")
 	flag.Parse()
 	if *version {
 		fmt.Println(buildinfo.String())
@@ -48,7 +46,7 @@ func main() {
 	log := logger.New("mftiko-md-agent")
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	if err := run(ctx, *instance, *topology, *password, *workDir, *shim, *conn, *natsURL, *creds, *endpoints, *linger, *bookDepth, log); err != nil && !errors.Is(err, context.Canceled) {
+	if err := run(ctx, *instance, *topology, *password, *workDir, *shim, *conn, *natsURL, *creds, *endpoints, *linger, log); err != nil && !errors.Is(err, context.Canceled) {
 		log.Error().Err(err).Msg("exit")
 		os.Exit(1)
 	}
@@ -61,14 +59,12 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-func run(ctx context.Context, instance, topology, password, workDir, shimPath, connPath, natsURL, creds, endpoints string, linger time.Duration, bookDepth uint, log zerolog.Logger) error {
+func run(ctx context.Context, instance, topology, password, workDir, shimPath, connPath, natsURL, creds, endpoints string, linger time.Duration, log zerolog.Logger) error {
 	switch {
 	case instance == "" || topology == "" || password == "" || workDir == "" || shimPath == "" || connPath == "":
 		return errors.New("instance, topology, etcd password, work dir, shim, and conn are required")
 	case natsURL == "" || creds == "":
 		return errors.New("nats URL and creds are required")
-	case bookDepth == 0 || bookDepth > math.MaxUint32:
-		return errors.New("book-depth is required")
 	}
 	topo, err := readTopology(topology)
 	if err != nil {
@@ -101,7 +97,7 @@ func run(ctx context.Context, instance, topology, password, workDir, shimPath, c
 		WorkDir: workDir, Shim: shimPath, Conn: connPath,
 		WorkerEnv: []string{"MFTIKO_NATS_URL=" + natsURL, "MFTIKO_NATS_CREDS=" + creds},
 		Markets:   agent.MarketsFrom(reg), Overrides: overrides,
-		Linger: linger, BookDepth: uint32(bookDepth), Release: buildinfo.Version, Log: log,
+		Linger: linger, Release: buildinfo.Version, Log: log,
 	})
 }
 

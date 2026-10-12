@@ -93,7 +93,7 @@ func TestSpotPlanning(t *testing.T) {
 		topics[c.Topic] = true
 	}
 	for _, want := range []exchange.Topic{
-		exchange.TopicBestQuote, exchange.TopicAggTrade, exchange.TopicOrderBook,
+		exchange.TopicBestQuote, exchange.TopicAggTrade,
 		exchange.TopicOrderBookDelta, exchange.TopicTicker, exchange.KlineTopic("1m"),
 	} {
 		if !topics[want] {
@@ -115,7 +115,7 @@ func TestSpotPlanning(t *testing.T) {
 	if err != nil || a.Route != exchange.RouteDefault || a.Channel != "btcusdt@bookTicker" {
 		t.Fatalf("book %+v %v", a, err)
 	}
-	a, err = m.Atom(exchange.TopicOrderBook, spotInst())
+	a, err = m.Atom(exchange.TopicOrderBookDelta, spotInst())
 	if err != nil || a.Channel != "btcusdt@depth@100ms" {
 		t.Fatalf("depth %+v %v", a, err)
 	}

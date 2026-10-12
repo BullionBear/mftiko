@@ -21,7 +21,6 @@ type Sink interface {
 	OpenInterest(ch string, e *OpenInterest)
 	Greeks(ch string, e *Greeks)
 	MarkPrice(ch string, e *MarkPrice)
-	FeedEnd(ch string, e *FeedEnd)
 }
 
 // The event types follow md.v1 field for field, except where noted. Numbers are float64 (D008); an
@@ -110,10 +109,4 @@ type MarkPrice struct {
 	ExchTsNs   int64
 	MarkPrice  float64
 	IndexPrice float64 // optional
-}
-
-// FeedEnd: the instrument stopped trading.
-type FeedEnd struct {
-	Reason string // expired | delisted
-	AtNs   int64
 }

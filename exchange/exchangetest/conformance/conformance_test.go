@@ -274,8 +274,7 @@ func (nopSink) Liquidation(string, *exchange.Liquidation)   {}
 func (nopSink) FundingRate(string, *exchange.FundingRate)   {}
 func (nopSink) OpenInterest(string, *exchange.OpenInterest) {}
 func (nopSink) Greeks(string, *exchange.Greeks)             {}
-func (nopSink) MarkPrice(string, *exchange.MarkPrice)       {}
-func (nopSink) FeedEnd(string, *exchange.FeedEnd)           {}
+func (nopSink) MarkPrice(string, *exchange.MarkPrice) {}
 
 // venuePipe is a pipe whose other end is an exchangetest.TradeVenue: what the recorder writes is
 // handled, and the venue's answers come back.

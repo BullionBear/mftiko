@@ -10,8 +10,8 @@ var (
 	errTick = errors.New("book: tick size must be positive")
 )
 
-// DefaultN is the ring length used when a caller does not choose one (D430).
-// It is not the published top-N. That depth is the caller's.
+// DefaultN is the in-window ring length used when a caller does not choose one (D430).
+// It is not a venue snapshot depth.
 const DefaultN = 2048
 
 // stackN is how many levels Apply orders without a heap allocation.
@@ -118,16 +118,6 @@ func (b *OrderBook) Apply(bids, asks []Level) {
 	}
 	b.bids.apply(bids, b.tickSize, true)
 	b.asks.apply(asks, b.tickSize, false)
-}
-
-// AffectsTop reports whether any level that Apply would store touches the current top n
-// occupied levels. n is the published depth, not the ring length. Call it before Apply.
-// An empty side, or a side with fewer than n levels, is touched by any level that is stored.
-func (b *OrderBook) AffectsTop(bids, asks []Level, n int) bool {
-	if b == nil || n <= 0 {
-		return false
-	}
-	return b.bids.affects(bids, b.tickSize, true, n) || b.asks.affects(asks, b.tickSize, false, n)
 }
 
 // Bids walks bids from the best outward, at most limit occupied levels, and at most one window.
@@ -311,30 +301,8 @@ func (s *side) qty(tick int64, bid bool) (float64, bool) {
 	return sl.Size, true
 }
 
-func (s *side) affects(levels []Level, tickSize float64, bid bool, n int) bool {
-	nth, count := s.nth(n, bid)
-	for i := range levels {
-		size := levels[i].Size
-		if size < 0 || math.IsNaN(size) || math.IsInf(size, 0) {
-			size = 0
-		}
-		tick := Tick(levels[i].Price, tickSize)
-		if !s.keeps(tick, size, bid) {
-			continue
-		}
-		if count < n {
-			return true
-		}
-		// Equal to the nth, or better, changes the published top.
-		if !worse(bid, tick, nth) {
-			return true
-		}
-	}
-	return false
-}
-
 // keeps reports whether applyTick would write this level against the best as it stands now.
-// It does not look ahead at earlier levels of the same update; AffectsTop is a pre-check.
+// It does not look ahead at earlier levels of the same update.
 func (s *side) keeps(tick int64, size float64, bid bool) bool {
 	if !s.hasBest() {
 		return size > 0
@@ -350,26 +318,6 @@ func (s *side) keeps(tick int64, size float64, bid bool) bool {
 		dist = tick - s.best
 	}
 	return dist < int64(s.n)
-}
-
-func (s *side) nth(n int, bid bool) (tick int64, count int) {
-	if !s.hasBest() || n <= 0 {
-		return 0, 0
-	}
-	step := int64(-1)
-	if !bid {
-		step = 1
-	}
-	t := s.best
-	for span := 0; span < s.n && count < n; span++ {
-		sl := &s.slots[t&s.mask]
-		if sl.Tick == t && sl.Size > 0 {
-			tick = t
-			count++
-		}
-		t += step
-	}
-	return tick, count
 }
 
 func (s *side) iter(limit int, bid bool) Iter {
@@ -393,9 +341,7 @@ func better(bid bool, tick, best int64) bool {
 	return tick < best
 }
 
-func worse(bid bool, tick, other int64) bool {
-	if bid {
-		return tick < other
-	}
-	return tick > other
+// worse orders one update so the better price is applied first (D431).
+func worse(bid bool, a, b int64) bool {
+	return better(bid, b, a)
 }

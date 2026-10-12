@@ -56,7 +56,7 @@ func TestMain(m *testing.M) {
 func TestFeedShareAndLinger(t *testing.T) {
 	e := setup(t)
 	stop, done, ret := e.start()
-	e.put("s1", "orderbook")
+	e.put("s1", "mark_price")
 	e.put("s1", "orderbook_delta")
 	path := e.waitJournal()
 	if got := e.waitLive(path, 2); got.GetAtoms()[0].GetAtomId() != "" {
@@ -69,7 +69,7 @@ func TestFeedShareAndLinger(t *testing.T) {
 	e.waitRunning("md/Binance/public/0", 1)
 
 	e.del("s1", "orderbook_delta")
-	if got := e.waitLive(path, 1); got.GetAtoms()[0].GetFeeds()[0] != feedKey("orderbook") {
+	if got := e.waitLive(path, 1); got.GetAtoms()[0].GetFeeds()[0] != feedKey("mark_price") {
 		t.Fatalf("after one removal: %+v", got)
 	}
 	time.Sleep(e.cfg.Linger + 200*time.Millisecond)
@@ -81,7 +81,7 @@ func TestFeedShareAndLinger(t *testing.T) {
 		t.Fatalf("placement %v", conn)
 	}
 
-	e.del("s1", "orderbook")
+	e.del("s1", "mark_price")
 	removed := time.Now()
 	time.Sleep(200 * time.Millisecond)
 	if n := countEvent(t, path, "stop"); n != 0 {
@@ -102,7 +102,7 @@ func TestFeedShareAndLinger(t *testing.T) {
 func TestAdoptedConnSurvivesAgentReplacement(t *testing.T) {
 	e := setup(t)
 	stop, done, ret := e.start()
-	e.put("s1", "orderbook")
+	e.put("s1", "mark_price")
 	path := e.waitJournal()
 	e.waitLive(path, 1)
 	e.waitRunning("md/Binance/public/0", 1)
@@ -159,7 +159,7 @@ func TestRespawnCarriesConnEpoch(t *testing.T) {
 		stop()
 		waitDone(t, done, ret)
 	}()
-	e.put("s1", "orderbook")
+	e.put("s1", "mark_price")
 	path := e.waitJournal()
 	var epochs []uint64
 	deadline := time.Now().Add(15 * time.Second)

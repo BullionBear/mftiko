@@ -246,7 +246,7 @@ func (r *runner) depth(ch string, ex *Exchange) (*exchange.BookUpdate, error) {
 	}
 	inst := r.instFor(ch)
 	if inst == nil {
-		return nil, fmt.Errorf("no instrument whose orderbook atom is %q: add it to Spec.Instruments or a listing case", ch)
+		return nil, fmt.Errorf("no instrument whose orderbook_delta atom is %q: add it to Spec.Instruments or a listing case", ch)
 	}
 	bs, _ := r.spec.Market.Book(ch)
 	limit := 0
@@ -266,7 +266,7 @@ func (r *runner) depth(ch string, ex *Exchange) (*exchange.BookUpdate, error) {
 
 func (r *runner) instFor(ch string) *symbol.Info {
 	for _, inst := range r.instruments() {
-		for _, t := range []exchange.Topic{exchange.TopicOrderBook, exchange.TopicOrderBookDelta} {
+		for _, t := range []exchange.Topic{exchange.TopicOrderBookDelta} {
 			if a, err := r.spec.Market.Atom(t, inst); err == nil && a.Channel == ch {
 				return inst
 			}
@@ -277,7 +277,7 @@ func (r *runner) instFor(ch string) *symbol.Info {
 
 // Platform topics: what Atom must refuse when Topics does not list it.
 var platformTopics = []exchange.Topic{
-	exchange.TopicBestQuote, exchange.TopicTrade, exchange.TopicAggTrade, exchange.TopicOrderBook,
+	exchange.TopicBestQuote, exchange.TopicTrade, exchange.TopicAggTrade,
 	exchange.TopicOrderBookDelta, exchange.TopicTicker, exchange.TopicLiquidation, exchange.TopicFundingRate,
 	exchange.TopicOpenInterest, exchange.TopicGreeks, exchange.TopicMarkPrice,
 }

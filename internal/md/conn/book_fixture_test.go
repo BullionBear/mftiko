@@ -70,7 +70,7 @@ func binanceFixtureProblem(t *testing.T) string {
 	checkBook := parseDepth(t, rest, checkResp)
 	hold := make(chan struct{})
 	const tick = 0.01
-	e := startFixtureBook(t, binance.VenueUM, "public", ch, "BCHUSDT", tick, umMarket(t), rest, 20, []doerStep{{
+	e := startFixtureBook(t, binance.VenueUM, "public", ch, "BCHUSDT", tick, umMarket(t), rest, []doerStep{{
 		resp: syncResp, hold: hold,
 	}})
 	e.doer.wait(t, 1)
@@ -115,7 +115,7 @@ func TestBookBybitFixture(t *testing.T) {
 		t.Fatal("no bybit market")
 	}
 	const tick = 0.1
-	e := startFixtureBook(t, bybit.Name, "linear", ch, "BTCUSDT", tick, v.Market, nil, 20, nil)
+	e := startFixtureBook(t, bybit.Name, "linear", ch, "BTCUSDT", tick, v.Market, nil, nil)
 	sess, err := v.Market.NewSession("linear")
 	if err != nil {
 		t.Fatal(err)
@@ -188,20 +188,20 @@ func parseDepth(t *testing.T, rest exchange.PublicREST, resp *exchange.HTTPRespo
 
 // startFixtureBook builds a Conn with one book atom and starts syncBooks. Each before func runs on the Conn
 // before that goroutine starts, so a test that swaps the clock does not race with it.
-func startFixtureBook(t *testing.T, venue, route, ch, exch string, tick float64, m exchange.Market, rest exchange.PublicREST, depth uint32, steps []doerStep, before ...func(*Conn)) *bookEnv {
+func startFixtureBook(t *testing.T, venue, route, ch, exch string, tick float64, m exchange.Market, rest exchange.PublicREST, steps []doerStep, before ...func(*Conn)) *bookEnv {
 	t.Helper()
 	doer := &seqDoer{hit: make(chan int, 8), steps: steps}
 	rec := newRecorder()
 	c := New(Config{
 		Venue: venue, Route: route, Instance: "md", URL: "ws://127.0.0.1:9",
-		Market: m, Publish: rec.publish, BookDepth: depth,
+		Market: m, Publish: rec.publish,
 		REST: rest, Doer: doer, RetryAfter: -1,
 	})
 	c.SetDesired(&mdctlv1.Desired{
 		Version: &commonv1.Version{Seq: 1},
 		Atoms: []*mdctlv1.AtomAssignment{{
 			AtomId: venue + ":" + route + ":" + ch,
-			Feeds:  []string{"orderbook.T", "orderbook_delta.T"}, ExchTicker: exch, PriceTick: tick,
+			Feeds:  []string{"orderbook_delta.T"}, ExchTicker: exch, PriceTick: tick,
 		}},
 	})
 	if c.fatal != nil {
@@ -422,7 +422,6 @@ func (s *bookCatch) OpenInterest(string, *exchange.OpenInterest) {
 }
 func (s *bookCatch) Greeks(string, *exchange.Greeks)       {}
 func (s *bookCatch) MarkPrice(string, *exchange.MarkPrice) {}
-func (s *bookCatch) FeedEnd(string, *exchange.FeedEnd)     {}
 func (s *bookCatch) Book(_ string, u *exchange.BookUpdate) {
 	if u != nil {
 		s.ups = append(s.ups, cloneUpdate(u))

@@ -452,4 +452,3 @@ func (s *recSink) MarkPrice(_ string, e *exchange.MarkPrice) {
 	m := *e
 	s.marks = append(s.marks, &m)
 }
-func (s *recSink) FeedEnd(string, *exchange.FeedEnd) {}

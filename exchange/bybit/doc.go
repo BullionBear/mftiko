@@ -54,7 +54,7 @@
 //
 //	orderbook.1.<symbol>          BestQuote from the top of book. Depth 1 is snapshot only, so it
 //	                              is not a BookSync.
-//	orderbook.50.<symbol>         OrderBook and OrderBookDelta. Snapshot replaces the book and
+//	orderbook.50.<symbol>         OrderBookDelta. Snapshot replaces the book and
 //	                              records u. A delta applies when u is that plus one; an older u
 //	                              is already inside; a gap resyncs. u of 1 is a snapshot after a
 //	                              matching-engine restart. A level qty of 0 deletes the price.
