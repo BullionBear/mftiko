@@ -104,4 +104,4 @@ $A stop watch                                # 印出最後的 SUMMARY；有 gap
 make accept-down                             # 停掉並刪除 volume；data/work 留著
 ```
 
-紀錄：`data/work/watch.log`、`watch.jsonl`（每一則 md.f 的 `(epoch, seq)`）、`agent-*.log`、`sym.log`，以及上面各個指令的輸出。新的一輪要乾淨的紀錄時，先清空 `data/work/`。E4-09 的紀錄在 #193，E4-10 的在 #194。
+紀錄：`data/work/watch.log`、`watch.jsonl`（每一則 md.f 的 `(epoch, seq)`）、`agent-*.log`、`sym.log`，以及上面各個指令的輸出。新的一輪要乾淨的紀錄時，先清空 `data/work/`。E4-09 的紀錄在 #193，E4-10 的在 #195。
