@@ -22,7 +22,7 @@ sdk/                      ② Go strategy SDK, the reference implementation of P
 contract/                 ③ what both ends compile against; source of truth is docs/PROTOCOL.md
   proto/mftiko/<pkg>/v1/  protobuf contracts
   gen/                    generated Go (make proto; committed, do not edit)
-  wire/                   encodings protobuf cannot express: frame (C3, C4), envelope (md.f), cloid (client_order_id)
+  wire/                   encodings protobuf cannot express: frame (C3, C4), envelope (md.f), cloid (client_order_id); c4, the worker side of C4
   symbol/                 UniversalTicker, venue registry, the Resolver interface
 exchange/                 exchange adapters: interfaces by plane, one package per exchange (binance, okx, bybit)
   transport/              the workers' network: proxy, TLS and DNS shared by fasthttp/ (REST Doer) and ws/ (websocket conn)
