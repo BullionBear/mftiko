@@ -3,9 +3,9 @@ package conn
 import (
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"google.golang.org/protobuf/encoding/protowire"
-	"google.golang.org/protobuf/proto"
 
 	mdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1"
 	"github.com/BullionBear/mftiko/contract/wire/envelope"
@@ -39,6 +39,10 @@ type tapeRec struct {
 	lastEpoch, lastSeq uint64
 	hasLast            bool
 	raw                []byte
+	// wire is the encoded size of this event as one TapePage.events field:
+	// the FeedEvent length plus the protobuf tags around it. The writer fills
+	// it once; the page walk only adds the integer (D439).
+	wire int
 }
 
 // tapeSnap is one published index. Readers load it, then the slots. The writer
@@ -56,14 +60,29 @@ type tapeSlot struct {
 	ptr atomic.Pointer[tapeRec]
 }
 
+// tapeRingPad keeps the slots slice header off the cache line, and off the
+// adjacent 128-byte prefetcher pair, that holds pub and the writer index.
+const tapeRingPad = 128
+
+// tapeRingAlign is the alignment of a tapeRing allocation.
+const tapeRingAlign = 128
+
 // tapeRing is one feed's append-only log. The conn worker is the only writer.
 // page reads the atomics below and takes no lock (D450, D451).
+//
+// slots is the header every load touches. pub, tail, and the rest of the
+// writer index move on every append. 128 bytes between them, and a
+// 128-aligned base, keep those on different lines. tailPad exists so
+// sizeof(tapeRing) % 128 == 8: the arena in newAlignedRing can then always
+// place one element on a 128-byte boundary. Add a field and this pad has to
+// change with it.
 type tapeRing struct {
 	slots []tapeSlot
 	max   int
+	_     [tapeRingPad]byte
 	pub   atomic.Pointer[tapeSnap]
 
-	// Writer fields. The read path does not touch them.
+	// Writer fields. The read path does not touch them, apart from one load of pub per page.
 	tail, written uint64
 	events        int
 	bytes         int
@@ -76,15 +95,35 @@ type tapeRing struct {
 	savedOK       bool
 	savedEpoch    uint64
 	savedSeq      uint64
+	keep          []tapeRing
+	tailPad       [104]byte
 }
 
 func newTapeRing(max int) *tapeRing {
 	if max < 1 {
 		max = 1
 	}
-	r := &tapeRing{slots: make([]tapeSlot, max), max: max}
+	r := newAlignedRing()
+	r.slots = make([]tapeSlot, max)
+	r.max = max
 	r.publish()
 	return r
+}
+
+// newAlignedRing returns a tapeRing at a 128-byte-aligned address. The ring
+// lives inside keep, which is what the GC scans, so the slice header and pub
+// stay real pointers.
+func newAlignedRing() *tapeRing {
+	buf := make([]tapeRing, 16)
+	for i := range buf {
+		if uintptr(unsafe.Pointer(&buf[i]))%tapeRingAlign == 0 {
+			r := &buf[i]
+			r.keep = buf
+			return r
+		}
+	}
+	buf[0].keep = buf
+	return &buf[0]
 }
 
 func tapeTopic(topic string) bool {
@@ -198,6 +237,7 @@ func (r *tapeRing) appendEvent(epoch, seq uint64, mdTs int64, raw []byte, window
 		kind: kindEvent, epoch: epoch, seqNo: seq, mdTs: mdTs,
 		raw: append([]byte(nil), raw...),
 	}
+	rec.wire = tapeEventFieldSize(rec)
 	r.write(r.written, rec)
 	r.written++
 	r.events++
@@ -302,39 +342,42 @@ func (r *tapeRing) page(before *mdv1.Cursor, since int64, hasSince bool, limit i
 	return out
 }
 
+// pageCut is the range a page will encode. stop is the oldest kept index.
+// Sizes are protobuf bytes, summed from the wire length stored at append.
+type pageCut struct {
+	hi, stop              uint64
+	kept, evSize, gapSize int
+	nextEpoch, nextSeq    uint64
+	more, hitSince, torn  bool
+}
+
 func (r *tapeRing) build(snap *tapeSnap, before *mdv1.Cursor, since int64, hasSince bool, limit int, shrink bool) ([]byte, bool) {
 	if snap == nil || snap.tail >= snap.written {
-		return encodeTape(nil, nil, false, nil, snap), false
+		return r.finishPage(snap, pageCut{}, shrink)
 	}
 	hi, found, ok := r.findBefore(snap, before)
 	if !ok {
-		if shrink {
-			return encodeTape(nil, nil, false, nil, snap), false
-		}
-		return nil, true
+		return r.finishPage(snap, pageCut{torn: true}, shrink)
 	}
 	if !found {
-		return encodeTape(nil, nil, false, nil, snap), false
+		return r.finishPage(snap, pageCut{}, shrink)
 	}
 	lo, ok := r.findSince(snap, since, hasSince)
 	if !ok {
-		if shrink {
-			return encodeTape(nil, nil, false, nil, snap), false
-		}
-		return nil, true
+		return r.finishPage(snap, pageCut{torn: true}, shrink)
 	}
 	if hi < lo {
-		return encodeTape(nil, nil, false, nil, snap), false
+		return r.finishPage(snap, pageCut{}, shrink)
 	}
+	return r.finishPage(snap, r.measure(snap, hi, lo, since, hasSince, limit), shrink)
+}
 
-	var (
-		events    []*tapeRec
-		evSize    int
-		gaps      []*mdv1.Gap
-		oldestRec *tapeRec
-		hitSince  bool
-		torn      bool
-	)
+// measure walks newest to oldest and sums stored event sizes. It allocates nothing.
+func (r *tapeRing) measure(snap *tapeSnap, hi, lo uint64, since int64, hasSince bool, limit int) pageCut {
+	cut := pageCut{hi: hi}
+	evSize, gapSize, events, kept := 0, 0, 0, 0
+	var nextEpoch, nextSeq, stop uint64
+	hitSince, torn := false, false
 	for i := hi; ; {
 		rec, good := r.load(i)
 		if !good {
@@ -345,60 +388,63 @@ func (r *tapeRing) build(snap *tapeSnap, before *mdv1.Cursor, since int64, hasSi
 			hitSince = true
 			break
 		}
-		if rec.kind == kindEvent && len(events) >= limit {
+		if rec.kind == kindEvent && events >= limit {
 			break
 		}
-		var gap *mdv1.Gap
-		if rec.kind == kindGap {
-			var gapTorn bool
-			gap, gapTorn = r.gapProto(snap, i, rec)
-			if gapTorn {
+		field, addGap := 0, 0
+		if rec.kind == kindEvent {
+			field = rec.wire
+		} else {
+			var ok bool
+			addGap, ok = r.gapEncodedSize(snap, i, rec)
+			if !ok {
 				torn = true
 				break
 			}
 		}
-		field := 0
-		if rec.kind == kindEvent {
-			field = tapeEventFieldSize(rec)
-		}
-		nextGaps := gaps
-		if gap != nil {
-			nextGaps = append(append([]*mdv1.Gap{}, gaps...), gap)
-		}
-		// more is false only when this entry is the last qualifying one.
-		// Otherwise the reply also carries next, so the fit check includes it.
-		nextCur := &mdv1.Cursor{ConnEpoch: rec.epoch, Seq: rec.seqNo}
-		size := pageBytes(evSize+field, nextGaps, true, nextCur, snap)
-		if i == lo {
-			size = pageBytes(evSize+field, nextGaps, false, nil, snap)
-		}
+		// Stopping here publishes next, unless this entry is the last one that qualifies.
+		size := replySize(evSize+field, gapSize+addGap, i != lo, rec.epoch, rec.seqNo, snap)
 		if size > tapePageMax {
 			break
 		}
+		evSize += field
+		gapSize += addGap
 		if rec.kind == kindEvent {
-			events = append(events, rec)
-			evSize += field
-		} else {
-			gaps = nextGaps
+			events++
 		}
-		oldestRec = rec
+		kept++
+		nextEpoch, nextSeq = rec.epoch, rec.seqNo
+		stop = i
 		if i == lo {
 			break
 		}
 		i--
 	}
-
-	more := false
-	var next *mdv1.Cursor
-	kept := len(events) + len(gaps)
-	if !hitSince && !torn && kept > 0 && oldestRec != nil {
-		oldestIdx := hi + 1 - uint64(kept)
-		if oldestIdx > lo {
-			more = true
-			next = &mdv1.Cursor{ConnEpoch: oldestRec.epoch, Seq: oldestRec.seqNo}
-		}
+	cut.stop = stop
+	cut.kept = kept
+	cut.evSize = evSize
+	cut.gapSize = gapSize
+	cut.nextEpoch, cut.nextSeq = nextEpoch, nextSeq
+	cut.hitSince = hitSince
+	cut.torn = torn
+	if !hitSince && !torn && kept > 0 && stop > lo {
+		cut.more = true
 	}
-	return encodeTape(events, gaps, more, next, snap), torn && !shrink
+	return cut
+}
+
+func (r *tapeRing) finishPage(snap *tapeSnap, cut pageCut, shrink bool) ([]byte, bool) {
+	if cut.torn && !shrink {
+		return nil, true
+	}
+	out, torn := r.writePage(snap, cut)
+	if torn {
+		if !shrink {
+			return nil, true
+		}
+		out, _ = r.writePage(snap, pageCut{})
+	}
+	return out, false
 }
 
 // findBefore is the rightmost entry strictly older than before, or the newest
@@ -451,59 +497,97 @@ func (r *tapeRing) findSince(snap *tapeSnap, since int64, has bool) (uint64, boo
 	return lo, true
 }
 
-func (r *tapeRing) gapProto(snap *tapeSnap, idx uint64, rec *tapeRec) (*mdv1.Gap, bool) {
-	g := &mdv1.Gap{StartNs: rec.start, EndNs: rec.end}
-	if rec.hasLast {
-		g.Last = &mdv1.Cursor{ConnEpoch: rec.lastEpoch, Seq: rec.lastSeq}
+// writePage encodes the cut into one buffer. torn means a slot moved and the
+// bytes were discarded. The only allocation is the reply itself.
+func (r *tapeRing) writePage(snap *tapeSnap, cut pageCut) ([]byte, bool) {
+	epoch, seq := uint64(0), uint64(0)
+	if cut.more {
+		epoch, seq = cut.nextEpoch, cut.nextSeq
 	}
-	if idx+1 < snap.written {
-		next, ok := r.load(idx + 1)
+	body := cut.evSize + shellSize(cut.gapSize, cut.more, epoch, seq, snap)
+	total := protowire.SizeTag(10) + protowire.SizeVarint(uint64(body)) + body
+	buf := make([]byte, 0, total)
+	buf = protowire.AppendTag(buf, 10, protowire.BytesType)
+	buf = protowire.AppendVarint(buf, uint64(body))
+	if cut.kept > 0 {
+		var torn bool
+		buf, torn = r.appendEvents(buf, cut.hi, cut.stop)
+		if torn {
+			return nil, true
+		}
+	}
+	buf = appendShellPrefix(buf, cut.more, epoch, seq, snap)
+	if cut.gapSize > 0 {
+		var torn bool
+		buf, torn = r.appendGaps(buf, snap, cut.hi, cut.stop)
+		if torn {
+			return nil, true
+		}
+	}
+	buf = appendHead(buf, snap)
+	if len(buf) != total {
+		return nil, true
+	}
+	return buf, false
+}
+
+func (r *tapeRing) appendEvents(buf []byte, hi, stop uint64) ([]byte, bool) {
+	for i := hi; ; {
+		rec, ok := r.load(i)
 		if !ok {
 			return nil, true
 		}
-		if next != nil && next.kind == kindEvent {
-			g.First = &mdv1.Cursor{ConnEpoch: next.epoch, Seq: next.seqNo}
+		if rec.kind == kindEvent {
+			buf = appendTapeEvent(buf, rec)
 		}
+		if i == stop {
+			return buf, false
+		}
+		i--
 	}
-	return g, false
 }
 
-func pageBytes(evSize int, gaps []*mdv1.Gap, more bool, next *mdv1.Cursor, snap *tapeSnap) int {
-	shell := &mdv1.TapePage{More: more, Gaps: gaps}
-	if more {
-		shell.Next = next
+func (r *tapeRing) appendGaps(buf []byte, snap *tapeSnap, hi, stop uint64) ([]byte, bool) {
+	for i := hi; ; {
+		rec, ok := r.load(i)
+		if !ok {
+			return nil, true
+		}
+		if rec.kind == kindGap {
+			has, epoch, seq, good := r.gapFirst(snap, i)
+			if !good {
+				return nil, true
+			}
+			buf = appendGap(buf, rec, has, epoch, seq)
+		}
+		if i == stop {
+			return buf, false
+		}
+		i--
 	}
-	if snap != nil {
-		shell.ContinuousSinceNs = snap.continuous
-		shell.Head = &mdv1.Cursor{ConnEpoch: snap.headEpoch, Seq: snap.headSeq}
-	}
-	body := proto.Size(shell) + evSize
-	return protowire.SizeTag(10) + protowire.SizeVarint(uint64(body)) + body
 }
 
-func encodeTape(events []*tapeRec, gaps []*mdv1.Gap, more bool, next *mdv1.Cursor, snap *tapeSnap) []byte {
-	shell := &mdv1.TapePage{More: more, Gaps: gaps}
-	if more {
-		shell.Next = next
+func (r *tapeRing) gapEncodedSize(snap *tapeSnap, idx uint64, rec *tapeRec) (int, bool) {
+	has, epoch, seq, ok := r.gapFirst(snap, idx)
+	if !ok {
+		return 0, false
 	}
-	if snap != nil {
-		shell.ContinuousSinceNs = snap.continuous
-		shell.Head = &mdv1.Cursor{ConnEpoch: snap.headEpoch, Seq: snap.headSeq}
+	return gapFieldSize(rec, has, epoch, seq), true
+}
+
+// gapFirst is the event published just after the gap, when that slot is still there.
+func (r *tapeRing) gapFirst(snap *tapeSnap, idx uint64) (has bool, epoch, seq uint64, ok bool) {
+	if idx+1 >= snap.written {
+		return false, 0, 0, true
 	}
-	shellBytes, err := proto.Marshal(shell)
-	if err != nil {
-		return viewError("invalid")
+	next, good := r.load(idx + 1)
+	if !good {
+		return false, 0, 0, false
 	}
-	var evBuf []byte
-	for _, rec := range events {
-		evBuf = protowire.AppendTag(evBuf, 1, protowire.BytesType)
-		evBuf = protowire.AppendBytes(evBuf, encodeTapeEvent(rec))
+	if next != nil && next.kind == kindEvent {
+		return true, next.epoch, next.seqNo, true
 	}
-	page := make([]byte, 0, len(evBuf)+len(shellBytes))
-	page = append(page, evBuf...)
-	page = append(page, shellBytes...)
-	out := protowire.AppendTag(nil, 10, protowire.BytesType)
-	return protowire.AppendBytes(out, page)
+	return false, 0, 0, true
 }
 
 func payloadOf(raw []byte) []byte {
@@ -514,25 +598,141 @@ func payloadOf(raw []byte) []byte {
 }
 
 func encodeTapeEvent(rec *tapeRec) []byte {
-	payload := payloadOf(rec.raw)
-	var b []byte
+	return appendTapeEventInner(nil, rec)
+}
+
+func appendTapeEvent(b []byte, rec *tapeRec) []byte {
+	b = protowire.AppendTag(b, 1, protowire.BytesType)
+	b = protowire.AppendVarint(b, uint64(tapeEventInnerSize(rec)))
+	return appendTapeEventInner(b, rec)
+}
+
+func appendTapeEventInner(b []byte, rec *tapeRec) []byte {
 	b = appendVarintField(b, 1, rec.epoch)
 	b = appendVarintField(b, 2, rec.seqNo)
-	if rec.mdTs != 0 {
-		b = appendVarintField(b, 3, uint64(rec.mdTs))
-	}
+	b = appendInt64Field(b, 3, rec.mdTs)
+	payload := payloadOf(rec.raw)
 	b = protowire.AppendTag(b, 4, protowire.BytesType)
 	return protowire.AppendBytes(b, payload)
 }
 
 func tapeEventFieldSize(rec *tapeRec) int {
-	payload := payloadOf(rec.raw)
-	n := sizeVarintField(1, rec.epoch) + sizeVarintField(2, rec.seqNo)
-	if rec.mdTs != 0 {
-		n += sizeVarintField(3, uint64(rec.mdTs))
-	}
-	n += protowire.SizeTag(4) + protowire.SizeVarint(uint64(len(payload))) + len(payload)
+	n := tapeEventInnerSize(rec)
 	return protowire.SizeTag(1) + protowire.SizeVarint(uint64(n)) + n
+}
+
+func tapeEventInnerSize(rec *tapeRec) int {
+	payload := payloadOf(rec.raw)
+	n := sizeVarintField(1, rec.epoch) + sizeVarintField(2, rec.seqNo) + sizeInt64Field(3, rec.mdTs)
+	n += protowire.SizeTag(4) + protowire.SizeVarint(uint64(len(payload))) + len(payload)
+	return n
+}
+
+func appendGap(b []byte, rec *tapeRec, hasFirst bool, epoch, seq uint64) []byte {
+	b = protowire.AppendTag(b, 5, protowire.BytesType)
+	b = protowire.AppendVarint(b, uint64(gapInnerSize(rec, hasFirst, epoch, seq)))
+	b = appendInt64Field(b, 1, rec.start)
+	b = appendInt64Field(b, 2, rec.end)
+	if rec.hasLast {
+		b = appendCursor(b, 3, rec.lastEpoch, rec.lastSeq)
+	}
+	if hasFirst {
+		b = appendCursor(b, 4, epoch, seq)
+	}
+	return b
+}
+
+func gapFieldSize(rec *tapeRec, hasFirst bool, epoch, seq uint64) int {
+	n := gapInnerSize(rec, hasFirst, epoch, seq)
+	return protowire.SizeTag(5) + protowire.SizeVarint(uint64(n)) + n
+}
+
+func gapInnerSize(rec *tapeRec, hasFirst bool, epoch, seq uint64) int {
+	n := sizeInt64Field(1, rec.start) + sizeInt64Field(2, rec.end)
+	if rec.hasLast {
+		n += cursorFieldSize(3, rec.lastEpoch, rec.lastSeq)
+	}
+	if hasFirst {
+		n += cursorFieldSize(4, epoch, seq)
+	}
+	return n
+}
+
+func appendShellPrefix(b []byte, more bool, epoch, seq uint64, snap *tapeSnap) []byte {
+	if more {
+		b = protowire.AppendTag(b, 2, protowire.VarintType)
+		b = protowire.AppendVarint(b, 1)
+		b = appendCursor(b, 3, epoch, seq)
+	}
+	if snap != nil {
+		b = appendInt64Field(b, 4, snap.continuous)
+	}
+	return b
+}
+
+func appendHead(b []byte, snap *tapeSnap) []byte {
+	if snap == nil {
+		return b
+	}
+	return appendCursor(b, 6, snap.headEpoch, snap.headSeq)
+}
+
+func appendCursor(b []byte, num protowire.Number, epoch, seq uint64) []byte {
+	b = protowire.AppendTag(b, num, protowire.BytesType)
+	b = protowire.AppendVarint(b, uint64(cursorInnerSize(epoch, seq)))
+	b = appendVarintField(b, 1, epoch)
+	return appendVarintField(b, 2, seq)
+}
+
+func shellSize(gapSize int, more bool, epoch, seq uint64, snap *tapeSnap) int {
+	return shellPrefixSize(more, epoch, seq, snap) + gapSize + headSize(snap)
+}
+
+func shellPrefixSize(more bool, epoch, seq uint64, snap *tapeSnap) int {
+	n := 0
+	if more {
+		n += protowire.SizeTag(2) + 1
+		n += cursorFieldSize(3, epoch, seq)
+	}
+	if snap != nil {
+		n += sizeInt64Field(4, snap.continuous)
+	}
+	return n
+}
+
+func headSize(snap *tapeSnap) int {
+	if snap == nil {
+		return 0
+	}
+	return cursorFieldSize(6, snap.headEpoch, snap.headSeq)
+}
+
+func replySize(evSize, gapSize int, more bool, epoch, seq uint64, snap *tapeSnap) int {
+	body := evSize + shellSize(gapSize, more, epoch, seq, snap)
+	return protowire.SizeTag(10) + protowire.SizeVarint(uint64(body)) + body
+}
+
+func cursorFieldSize(num protowire.Number, epoch, seq uint64) int {
+	n := cursorInnerSize(epoch, seq)
+	return protowire.SizeTag(num) + protowire.SizeVarint(uint64(n)) + n
+}
+
+func cursorInnerSize(epoch, seq uint64) int {
+	return sizeVarintField(1, epoch) + sizeVarintField(2, seq)
+}
+
+func appendInt64Field(b []byte, num protowire.Number, v int64) []byte {
+	if v == 0 {
+		return b
+	}
+	return appendVarintField(b, num, uint64(v))
+}
+
+func sizeInt64Field(num protowire.Number, v int64) int {
+	if v == 0 {
+		return 0
+	}
+	return sizeVarintField(num, uint64(v))
 }
 
 func appendVarintField(b []byte, num protowire.Number, v uint64) []byte {

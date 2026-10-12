@@ -1,13 +1,18 @@
 package conn
 
 import (
+	"bytes"
 	"fmt"
+	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
@@ -140,6 +145,55 @@ func TestTapePageBeforeSinceAndLimit(t *testing.T) {
 	}
 }
 
+func TestTapeRingSeparated(t *testing.T) {
+	if got := unsafe.Sizeof(tapeRing{}) % 128; got != 8 {
+		t.Fatalf("sizeof tapeRing %% 128 = %d, want 8 so the arena can align", got)
+	}
+	if d := unsafe.Offsetof(tapeRing{}.pub) - unsafe.Offsetof(tapeRing{}.slots); d < tapeRingPad {
+		t.Fatalf("slots to pub is %d bytes", d)
+	}
+	for range 32 {
+		r := newTapeRing(8)
+		base := uintptr(unsafe.Pointer(r))
+		if base%tapeRingAlign != 0 {
+			t.Fatalf("ring %#x is not %d-aligned", base, tapeRingAlign)
+		}
+		slots := base + unsafe.Offsetof(r.slots)
+		pub := base + unsafe.Offsetof(r.pub)
+		if slots/64 == pub/64 {
+			t.Fatalf("slots and pub share a cache line (%#x, %#x)", slots, pub)
+		}
+		if slots/128 == pub/128 {
+			t.Fatalf("slots and pub share a 128-byte sector (%#x, %#x)", slots, pub)
+		}
+	}
+}
+
+func TestTapeAccumulatedSizeMatchesEncoded(t *testing.T) {
+	h := newTapeBox(t, tapeBoxOptions{})
+	h.want("trade")
+	h.up(1)
+	ring := h.ring()
+	checkPageSize(t, ring, ring.page(nil, 0, false, 10))
+
+	for i := 1; i <= 10; i++ {
+		h.at(int64(i) * 1000)
+		h.trade(fmt.Sprintf("1/%d", i))
+	}
+	checkPageSize(t, ring, ring.page(nil, 0, false, 10))
+	checkPageSize(t, ring, ring.page(nil, 0, false, 3))
+	since := int64(5000)
+	checkPageSize(t, ring, ring.page(&mdv1.Cursor{ConnEpoch: 1, Seq: 8}, since, true, 10))
+
+	h.at(2000)
+	h.down()
+	h.at(3000)
+	h.up(2)
+	h.at(3100)
+	h.trade("2/1")
+	checkPageSize(t, ring, ring.page(nil, 0, false, 10))
+}
+
 func TestTapePageStopsNear900KiB(t *testing.T) {
 	h := newTapeBox(t, tapeBoxOptions{})
 	h.want("trade")
@@ -149,18 +203,103 @@ func TestTapePageStopsNear900KiB(t *testing.T) {
 		h.at(int64(i))
 		h.trade(strings.Repeat("x", 20000) + fmt.Sprintf("-%d", i))
 	}
-	rep, _ := h.ask("trade", &mdv1.ViewRequest{Limit: 5000})
-	raw, err := proto.Marshal(rep)
-	if err != nil {
-		t.Fatal(err)
-	}
+	ring := h.ring()
+	raw := ring.page(nil, 0, false, 5000)
+	rep := checkPageSize(t, ring, raw)
 	if !rep.GetTape().GetMore() || len(rep.GetTape().GetEvents()) >= n || len(raw) > tapePageMax || len(raw) < 800*1024 {
 		t.Fatalf("events %d bytes %d more %v", len(rep.GetTape().GetEvents()), len(raw), rep.GetTape().GetMore())
+	}
+	excluded := ring.page(rep.GetTape().GetNext(), 0, false, 1)
+	exRep := checkPageSize(t, ring, excluded)
+	if len(exRep.GetTape().GetEvents()) != 1 {
+		t.Fatalf("excluded events %d", len(exRep.GetTape().GetEvents()))
+	}
+	ev, gap := summedWire(t, ring, rep)
+	one := exRep.GetTape().GetEvents()[0]
+	field := protoFieldSize(1, one)
+	// The cut rejected this event with more set and next equal to its cursor.
+	bigger := replySize(ev+field, gap, true, one.GetConnEpoch(), one.GetSeq(), ring.pub.Load())
+	if bigger <= tapePageMax {
+		t.Fatalf("page %d plus the next event %d fits in %d (%d)", len(raw), field, tapePageMax, bigger)
 	}
 	next, _ := h.ask("trade", &mdv1.ViewRequest{Limit: 5000, Before: rep.GetTape().GetNext()})
 	if len(next.GetTape().GetEvents()) == 0 || next.GetTape().GetEvents()[0].GetSeq() >= rep.GetTape().GetEvents()[len(rep.GetTape().GetEvents())-1].GetSeq() {
 		t.Fatalf("next page %+v", tapeSeqs(t, next))
 	}
+}
+
+func (h *tapeBox) ring() *tapeRing {
+	h.t.Helper()
+	h.c.mu.Lock()
+	defer h.c.mu.Unlock()
+	r := h.c.views["trade."+tapeTicker].ring
+	if r == nil {
+		h.t.Fatal("no ring")
+	}
+	return r
+}
+
+func checkPageSize(t *testing.T, ring *tapeRing, raw []byte) *mdv1.ViewReply {
+	t.Helper()
+	rep := &mdv1.ViewReply{}
+	if err := proto.Unmarshal(raw, rep); err != nil {
+		t.Fatal(err)
+	}
+	again, err := proto.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(raw, again) {
+		t.Fatalf("encoded %d bytes, proto.Marshal %d", len(raw), len(again))
+	}
+	if proto.Size(rep) != len(raw) {
+		t.Fatalf("proto.Size %d len %d", proto.Size(rep), len(raw))
+	}
+	ev, gap := summedWire(t, ring, rep)
+	tape := rep.GetTape()
+	var epoch, seq uint64
+	if tape.GetMore() {
+		epoch, seq = tape.GetNext().GetConnEpoch(), tape.GetNext().GetSeq()
+	}
+	if got := replySize(ev, gap, tape.GetMore(), epoch, seq, ring.pub.Load()); got != len(raw) {
+		t.Fatalf("accumulated %d encoded %d", got, len(raw))
+	}
+	return rep
+}
+
+func summedWire(t *testing.T, ring *tapeRing, rep *mdv1.ViewReply) (ev, gap int) {
+	t.Helper()
+	snap := ring.pub.Load()
+	wires := map[[2]uint64]int{}
+	for i := snap.tail; i < snap.written; i++ {
+		rec, ok := ring.load(i)
+		if !ok || rec == nil || rec.kind != kindEvent {
+			continue
+		}
+		if rec.wire != tapeEventFieldSize(rec) {
+			t.Fatalf("stored wire %d recomputed %d", rec.wire, tapeEventFieldSize(rec))
+		}
+		wires[[2]uint64{rec.epoch, rec.seqNo}] = rec.wire
+	}
+	for _, e := range rep.GetTape().GetEvents() {
+		w, ok := wires[[2]uint64{e.GetConnEpoch(), e.GetSeq()}]
+		if !ok {
+			t.Fatalf("no stored size for %d/%d", e.GetConnEpoch(), e.GetSeq())
+		}
+		if field := protoFieldSize(1, e); field != w {
+			t.Fatalf("seq %d stored %d proto %d", e.GetSeq(), w, field)
+		}
+		ev += w
+	}
+	for _, g := range rep.GetTape().GetGaps() {
+		gap += protoFieldSize(5, g)
+	}
+	return ev, gap
+}
+
+func protoFieldSize(num protowire.Number, m proto.Message) int {
+	n := proto.Size(m)
+	return protowire.SizeTag(num) + protowire.SizeVarint(uint64(n)) + n
 }
 
 func TestTapeReconnectGap(t *testing.T) {
@@ -481,9 +620,11 @@ func TestPublishNotStalledByTapeRead(t *testing.T) {
 	ring := h.c.views["trade."+tapeTicker].ring
 	h.c.mu.Unlock()
 
+	readers, restore := publishBenchReaders()
+	defer restore()
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
-	for range 4 {
+	for range readers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -498,22 +639,27 @@ func TestPublishNotStalledByTapeRead(t *testing.T) {
 		}()
 	}
 	time.Sleep(20 * time.Millisecond)
-	var max time.Duration
-	for i := 0; i < 100; i++ {
+	const n = 8192
+	samples := make([]time.Duration, n)
+	for i := 0; i < n; i++ {
 		start := time.Now()
 		h.c.mu.Lock()
 		h.c.Trade(tapeCh, &exchange.Trade{TradeID: "more", Price: 1, Qty: 1})
 		h.c.mu.Unlock()
-		if d := time.Since(start); d > max {
-			max = d
-		}
+		samples[i] = time.Since(start)
 	}
 	close(stop)
 	wg.Wait()
+	sort.Slice(samples, func(i, j int) bool { return samples[i] < samples[j] })
+	p50 := durationPercentile(samples, 0.50)
+	p99 := durationPercentile(samples, 0.99)
+	p999 := durationPercentile(samples, 0.999)
+	max := samples[len(samples)-1]
+	t.Logf("readers=%d gomaxprocs=%d n=%d p50=%s p99=%s p999=%s max=%s",
+		readers, runtime.GOMAXPROCS(0), n, p50, p99, p999, max)
 	if max > 100*time.Millisecond {
-		t.Fatalf("slowest publish %s while reading limit 5000 from 100k", max)
+		t.Fatalf("publish p99 %s max %s while reading limit 5000 from 100k", p99, max)
 	}
-	t.Logf("slowest publish %s", max)
 }
 
 type tapeBoxOptions struct {

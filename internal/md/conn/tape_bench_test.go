@@ -2,6 +2,8 @@ package conn
 
 import (
 	"fmt"
+	"runtime"
+	"sort"
 	"strconv"
 	"sync"
 	"testing"
@@ -16,7 +18,27 @@ func BenchmarkTapePublishQuiet(b *testing.B) {
 }
 
 func BenchmarkTapePublishWhileReading(b *testing.B) {
-	benchPublish(b, 4)
+	readers, restore := publishBenchReaders()
+	defer restore()
+	b.Run(fmt.Sprintf("readers=%d", readers), func(b *testing.B) {
+		benchPublish(b, readers)
+	})
+}
+
+// publishBenchReaders leaves the publisher a core and one core idle:
+// readers <= GOMAXPROCS-2, and never more than two. A machine with fewer
+// than three cores is raised to 3 for the duration of the returned restore.
+func publishBenchReaders() (readers int, restore func()) {
+	procs := runtime.GOMAXPROCS(0)
+	readers = procs - 2
+	if readers > 2 {
+		readers = 2
+	}
+	if readers >= 1 {
+		return readers, func() {}
+	}
+	prev := runtime.GOMAXPROCS(3)
+	return 1, func() { runtime.GOMAXPROCS(prev) }
 }
 
 func BenchmarkTapePage(b *testing.B) {
@@ -57,12 +79,33 @@ func benchPublish(b *testing.B, readers int) {
 			wg.Wait()
 		})
 	}
+	samples := make([]time.Duration, b.N)
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	cpu0 := threadCPU()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+		start := time.Now()
 		c.mu.Lock()
 		c.Trade(tapeCh, &exchange.Trade{TradeID: strconv.Itoa(i), Price: 1, Qty: 1})
 		c.mu.Unlock()
+		samples[i] = time.Since(start)
 	}
+	b.StopTimer()
+	if cpu1 := threadCPU(); b.N > 0 && cpu1 > cpu0 {
+		b.ReportMetric(float64(cpu1-cpu0)/float64(b.N), "cpu-ns/op")
+	}
+	sort.Slice(samples, func(i, j int) bool { return samples[i] < samples[j] })
+	b.ReportMetric(float64(durationPercentile(samples, 0.50)), "p50-ns")
+	b.ReportMetric(float64(durationPercentile(samples, 0.99)), "p99-ns")
+}
+
+func durationPercentile(samples []time.Duration, p float64) time.Duration {
+	if len(samples) == 0 {
+		return 0
+	}
+	i := int(float64(len(samples)-1) * p)
+	return samples[i]
 }
 
 func fillTape(b *testing.B, n int) (*Conn, *tapeRing) {
