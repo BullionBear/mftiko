@@ -1,3 +1,4 @@
 {
+  "Binance": "wss://stream.testnet.binance.vision",
   "BinanceUM": "wss://fstream.binancefuture.com"
 }

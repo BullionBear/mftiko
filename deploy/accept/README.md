@@ -29,7 +29,15 @@ make accept-up        # 等於 deploy/accept/accept.sh up
 ... BinanceUM_Perp_BTCUSDT uid=... exch=BTCUSDT status=SYMBOL_STATUS_TRADABLE price_tick=0.1
 ```
 
-換交易所時設定 `ACCEPT_VENUE`、`ACCEPT_SYM_FEEDS`（conn worker 會載入該 venue 的每一個 category，所以要全部列出）、`ACCEPT_TICKER`，並在 `endpoints/ws.json`、`endpoints/rest.json` 加上那個 venue 的 testnet 位址。目前只列了驗證過的 BinanceUM。`rest.json` 給 SnapshotREST 的快照用（`md-agent -rest-endpoints`）：testnet 的串流必須搭配 testnet 的快照，正式站的 update id 對不上。
+換交易所時設定 `ACCEPT_VENUE`、`ACCEPT_SYM_FEEDS`（conn worker 會載入該 venue 的每一個 category，所以要全部列出）、`ACCEPT_TICKER`，並在 `endpoints/ws.json`、`endpoints/rest.json` 加上那個 venue 的 testnet 位址。目前列了驗證過的 BinanceUM（E4-09）與 Binance 現貨（E4-10）。`rest.json` 給 SnapshotREST 的快照用（`md-agent -rest-endpoints`）：testnet 的串流必須搭配 testnet 的快照，正式站的 update id 對不上。
+
+Binance 現貨：
+
+```sh
+ACCEPT_VENUE=Binance ACCEPT_SYM_FEEDS=Binance/Spot ACCEPT_TICKER=Binance_Spot_BTCUSDT make accept-up
+```
+
+現貨只有一條 route（`default`），`aggtrade` 與 `orderbook_delta` 會放在同一個 conn（`md/Binance/default/0`）上，所以第 3 條切一次就會讓兩個 feed 一起進到下一個 epoch。tick 是 0.01，2048 tick 的窗大約只有最佳價上下 20 USD。
 
 以下以 BinanceUM 為例。`A=deploy/accept/accept.sh`。BinanceUM 沒有 `trade` topic，trade 類用 `aggtrade`。
 
@@ -96,4 +104,4 @@ $A stop watch                                # 印出最後的 SUMMARY；有 gap
 make accept-down                             # 停掉並刪除 volume；data/work 留著
 ```
 
-紀錄：`data/work/watch.log`、`watch.jsonl`（每一則 md.f 的 `(epoch, seq)`）、`agent-*.log`、`sym.log`，以及上面各個指令的輸出。新的一輪要乾淨的紀錄時，先清空 `data/work/`。E4-09 的紀錄在 #193。
+紀錄：`data/work/watch.log`、`watch.jsonl`（每一則 md.f 的 `(epoch, seq)`）、`agent-*.log`、`sym.log`，以及上面各個指令的輸出。新的一輪要乾淨的紀錄時，先清空 `data/work/`。E4-09 的紀錄在 #193，E4-10 的在 #194。
