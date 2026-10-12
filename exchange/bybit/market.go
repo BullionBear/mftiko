@@ -19,7 +19,7 @@ const (
 	// spotArgs is how many args one spot subscribe message may carry.
 	spotArgs = 10
 
-	// bookLevels is the order book depth orderbook and orderbook_delta share. Depth 1 is the
+	// bookLevels is the order book depth orderbook_delta subscribes. Depth 1 is the
 	// best quote: every push is a snapshot, so it is not a BookSync.
 	bookLevels = 50
 
@@ -62,7 +62,6 @@ func (m *market) Topics() []exchange.TopicCaps {
 	out := []exchange.TopicCaps{
 		{Topic: exchange.TopicBestQuote},
 		{Topic: exchange.TopicTrade},
-		{Topic: exchange.TopicOrderBook},
 		{Topic: exchange.TopicOrderBookDelta},
 		{Topic: exchange.TopicTicker},
 		{Topic: exchange.TopicLiquidation},
@@ -78,7 +77,7 @@ func (m *market) Topics() []exchange.TopicCaps {
 
 // Atom: the route is spot or linear. The channel is the venue arg, and the same string is a
 // different atom on each route (D202): publicTrade.BTCUSDT is both.
-// orderbook and orderbook_delta share orderbook.50. On linear, ticker, funding_rate,
+// orderbook_delta subscribes orderbook.50. On linear, ticker, funding_rate,
 // open_interest and mark_price share tickers.<symbol>. Liquidation, funding, open interest
 // and mark price are linear only.
 func (m *market) Atom(topic exchange.Topic, inst *symbol.Info) (exchange.AtomRef, error) {
@@ -90,7 +89,7 @@ func (m *market) Atom(topic exchange.Topic, inst *symbol.Info) (exchange.AtomRef
 	switch topic {
 	case exchange.TopicBestQuote:
 		return atom(route, "orderbook.1."+sym), nil
-	case exchange.TopicOrderBook, exchange.TopicOrderBookDelta:
+	case exchange.TopicOrderBookDelta:
 		return atom(route, fmt.Sprintf("orderbook.%d.%s", bookLevels, sym)), nil
 	case exchange.TopicTrade:
 		return atom(route, "publicTrade."+sym), nil

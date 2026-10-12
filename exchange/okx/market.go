@@ -60,7 +60,6 @@ func (m *market) Topics() []exchange.TopicCaps {
 	out := []exchange.TopicCaps{
 		{Topic: exchange.TopicBestQuote},
 		{Topic: exchange.TopicTrade},
-		{Topic: exchange.TopicOrderBook},
 		{Topic: exchange.TopicOrderBookDelta},
 		{Topic: exchange.TopicTicker, Absent: []string{"ChangePct24h"}},
 		{Topic: exchange.TopicFundingRate},
@@ -74,7 +73,7 @@ func (m *market) Topics() []exchange.TopicCaps {
 }
 
 // Atom: the channel is "<channel>:<instId>", and instId is the instrument's ExchTicker.
-// orderbook and orderbook_delta share books. Candles go to business. Funding, open interest
+// orderbook_delta subscribes books. Candles go to business. Funding, open interest
 // and mark price are contracts only. Liquidation is not an atom: OKX's liquidation-orders
 // channel is one feed per instType, and the event has no instrument to route it by.
 func (m *market) Atom(topic exchange.Topic, inst *symbol.Info) (exchange.AtomRef, error) {
@@ -85,7 +84,7 @@ func (m *market) Atom(topic exchange.Topic, inst *symbol.Info) (exchange.AtomRef
 	switch topic {
 	case exchange.TopicBestQuote:
 		return atom("public", "bbo-tbt:"+id), nil
-	case exchange.TopicOrderBook, exchange.TopicOrderBookDelta:
+	case exchange.TopicOrderBookDelta:
 		return atom("public", "books:"+id), nil
 	case exchange.TopicTrade:
 		return atom("public", "trades:"+id), nil

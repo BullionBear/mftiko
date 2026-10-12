@@ -33,7 +33,7 @@ func TestSameChannelTwoRoutes(t *testing.T) {
 	if atomID(spot) == atomID(lin) {
 		t.Fatalf("atom id %s is one atom for two routes", atomID(spot))
 	}
-	sb, err := m.Atom(exchange.TopicOrderBook, spotInst())
+	sb, err := m.Atom(exchange.TopicOrderBookDelta, spotInst())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,7 +414,6 @@ func (s *memSink) Greeks(ch string, e *exchange.Greeks) {}
 func (s *memSink) MarkPrice(ch string, e *exchange.MarkPrice) {
 	s.marks = append(s.marks, *e)
 }
-func (s *memSink) FeedEnd(ch string, e *exchange.FeedEnd) {}
 
 func tickerCovered(rows []exchange.Ticker) bool {
 	var last, open, high, low, vol, quote, pct bool

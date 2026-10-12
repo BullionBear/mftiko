@@ -88,7 +88,7 @@
 // keeps the stream name it arrived with.
 //
 //	bookTicker                 bestquote. Bid b, bid qty B, ask a, ask qty A, time T else E
-//	depth / depth@100ms        orderbook and orderbook_delta. U first, u last, pu the previous u.
+//	depth / depth@100ms        orderbook_delta. U first, u last, pu the previous u.
 //	                           REST lastUpdateId is the snapshot. Updates with u below it are
 //	                           already in the snapshot; the first one that still overlaps it
 //	                           bridges; after that pu must equal the previous u

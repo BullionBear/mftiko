@@ -27,15 +27,14 @@ import (
 const bookCh = "btcusdt@depth@100ms"
 
 func TestBookFirstSnapshotResetsFullBook(t *testing.T) {
-	e := newBookEnv(t, umBookSync(t), 1, nil, []doerStep{{
+	e := newBookEnv(t, umBookSync(t), nil, []doerStep{{
 		resp: bookHTTP(100, 1, [][2]float64{{100, 1}, {90, 1}}, [][2]float64{{110, 1}, {200, 1}}),
 	}})
 	e.doer.wait(t, 1)
-	e.waitPubs(t, 2)
+	e.waitPubs(t, 1)
 	all := e.open(t)
 	d := deltasOf(all)
-	b := booksOf(all)
-	if len(d) != 1 || !d[0].ev.GetOrderBookDelta().GetReset_() {
+	if len(d) != 1 || len(all) != 1 || !d[0].ev.GetOrderBookDelta().GetReset_() {
 		t.Fatalf("reset %+v", d)
 	}
 	if d[0].epoch != 4 || d[0].seq != 1 || d[0].subject != "md.f.md.orderbook_delta.T" {
@@ -47,32 +46,21 @@ func TestBookFirstSnapshotResetsFullBook(t *testing.T) {
 	if got := gotLevels(d[0].ev.GetOrderBookDelta().GetAsks()); !sameLevels(got, []exchange.Level{{Price: 110, Qty: 1}, {Price: 200, Qty: 1}}) {
 		t.Fatalf("reset asks %v", got)
 	}
-	if len(b) != 1 || b[0].seq != 1 || b[0].ev.GetOrderBook().GetDepth() != 1 {
-		t.Fatalf("top %+v", b)
-	}
-	if got := gotLevels(b[0].ev.GetOrderBook().GetBids()); !sameLevels(got, []exchange.Level{{Price: 100, Qty: 1}}) {
-		t.Fatalf("top-N is the full book: %v", got)
-	}
 	if _, ok := e.level(t, true, 90); !ok {
 		t.Fatal("deeper bid dropped")
 	}
 }
 
-func TestBookTopNAndDelta(t *testing.T) {
-	e := newBookEnv(t, umBookSync(t), 1, nil, []doerStep{{
+func TestBookDeltaForwardsIncrements(t *testing.T) {
+	e := newBookEnv(t, umBookSync(t), nil, []doerStep{{
 		resp: bookHTTP(100, 1, [][2]float64{{100, 1}, {90, 1}}, [][2]float64{{110, 1}, {200, 1}}),
 	}})
 	e.doer.wait(t, 1)
-	e.waitPubs(t, 2)
+	e.waitPubs(t, 1)
 
-	// A level behind the top changes: a delta, and no second orderbook.
 	e.push(exchange.BookUpdate{First: 101, Last: 101, Prev: 100, Bids: []exchange.Level{{Price: 90, Qty: 2}}})
-	e.waitPubs(t, 3)
-	all := e.open(t)
-	if len(booksOf(all)) != 1 {
-		t.Fatalf("top republished: %d", len(booksOf(all)))
-	}
-	d := deltasOf(all)
+	e.waitPubs(t, 2)
+	d := deltasOf(e.open(t))
 	if len(d) != 2 || d[1].ev.GetOrderBookDelta().GetReset_() || d[1].seq != 2 {
 		t.Fatalf("delta %+v", d)
 	}
@@ -80,43 +68,37 @@ func TestBookTopNAndDelta(t *testing.T) {
 		t.Fatalf("normalized delta %v", got)
 	}
 
-	// Deleting the level is qty 0. The top is still the best bid.
 	e.push(exchange.BookUpdate{First: 102, Last: 102, Prev: 101, Bids: []exchange.Level{{Price: 90, Qty: 0}}})
-	e.waitPubs(t, 4)
-	all = e.open(t)
-	d = deltasOf(all)
+	e.waitPubs(t, 3)
+	d = deltasOf(e.open(t))
 	if got := gotLevels(d[len(d)-1].ev.GetOrderBookDelta().GetBids()); !sameLevels(got, []exchange.Level{{Price: 90, Qty: 0}}) {
 		t.Fatalf("delete %v", got)
-	}
-	if len(booksOf(all)) != 1 {
-		t.Fatal("delete behind the top republished orderbook")
 	}
 	if _, ok := e.level(t, true, 90); ok {
 		t.Fatal("deleted level kept")
 	}
 
-	// The best qty changes, so the top goes out again.
 	e.push(exchange.BookUpdate{First: 103, Last: 103, Prev: 102, Bids: []exchange.Level{{Price: 100, Qty: 3}}})
-	e.waitPubs(t, 6)
-	all = e.open(t)
-	b := booksOf(all)
-	if len(b) != 2 || b[1].seq != 2 {
-		t.Fatalf("second top %+v", b)
+	e.waitPubs(t, 4)
+	d = deltasOf(e.open(t))
+	last := d[len(d)-1].ev.GetOrderBookDelta()
+	if last.GetReset_() || d[len(d)-1].seq != 4 {
+		t.Fatalf("best qty delta %+v", d)
 	}
-	if got := gotLevels(b[1].ev.GetOrderBook().GetBids()); !sameLevels(got, []exchange.Level{{Price: 100, Qty: 3}}) {
-		t.Fatalf("new top %v", got)
+	if got := gotLevels(last.GetBids()); !sameLevels(got, []exchange.Level{{Price: 100, Qty: 3}}) {
+		t.Fatalf("best qty %v", got)
 	}
 }
 
 func TestBookGapResetsWithoutNewEpoch(t *testing.T) {
-	e := newBookEnv(t, umBookSync(t), 1, nil, []doerStep{
+	e := newBookEnv(t, umBookSync(t), nil, []doerStep{
 		{resp: bookHTTP(100, 1, [][2]float64{{100, 1}, {90, 1}}, [][2]float64{{110, 1}, {200, 1}})},
 		{resp: bookHTTP(102, 2, [][2]float64{{100, 1}, {90, 1}}, [][2]float64{{110, 1}, {200, 1}})},
 	})
 	e.doer.wait(t, 1)
-	e.waitPubs(t, 2)
+	e.waitPubs(t, 1)
 	e.push(exchange.BookUpdate{First: 101, Last: 101, Prev: 100, Bids: []exchange.Level{{Price: 90, Qty: 2}}})
-	e.waitPubs(t, 3)
+	e.waitPubs(t, 2)
 	// pu skips 101. The update is not published; the next snapshot bridges it.
 	e.push(exchange.BookUpdate{First: 103, Last: 103, Prev: 102, Bids: []exchange.Level{{Price: 90, Qty: 4}, {Price: 77, Qty: 7}}})
 	e.doer.wait(t, 2)
@@ -159,19 +141,16 @@ func TestBookGapResetsWithoutNewEpoch(t *testing.T) {
 	if got := gotLevels(reset.GetBids()); !sameLevels(got, []exchange.Level{{Price: 100, Qty: 1}, {Price: 90, Qty: 4}, {Price: 77, Qty: 7}}) {
 		t.Fatalf("bridged book %v", got)
 	}
-	if len(booksOf(all)) != 1 {
-		t.Fatal("top changed across a resync that left it alone")
-	}
 }
 
 func TestBookPublishesPastTheSnapshot(t *testing.T) {
-	e := newBookEnv(t, umBookSync(t), 5, nil, []doerStep{{
+	e := newBookEnv(t, umBookSync(t), nil, []doerStep{{
 		resp: bookHTTP(100, 1, [][2]float64{{100, 1}, {90, 1}}, [][2]float64{{110, 1}, {200, 1}}),
 	}})
 	e.doer.wait(t, 1)
-	e.waitPubs(t, 2)
+	e.waitPubs(t, 1)
 	e.push(exchange.BookUpdate{First: 101, Last: 101, Prev: 100, Bids: []exchange.Level{{Price: 80, Qty: 5}}})
-	e.waitPubs(t, 3)
+	e.waitPubs(t, 2)
 	if e.doer.calls() != 1 {
 		t.Fatalf("depth calls %d, want 1", e.doer.calls())
 	}
@@ -190,7 +169,7 @@ func TestBookPublishesPastTheSnapshot(t *testing.T) {
 
 func TestBookDepthBackoff(t *testing.T) {
 	t.Run("429 without retry or reset holds a minute", func(t *testing.T) {
-		e := newBookEnv(t, umBookSync(t), 5, nil, []doerStep{
+		e := newBookEnv(t, umBookSync(t), nil, []doerStep{
 			{resp: &exchange.HTTPResponse{Status: 429, Body: []byte(`{"code":-1003}`)}},
 			{resp: bookHTTP(100, 1, [][2]float64{{100, 1}, {90, 1}}, [][2]float64{{110, 1}, {200, 1}})},
 		})
@@ -204,7 +183,7 @@ func TestBookDepthBackoff(t *testing.T) {
 		e.doer.wait(t, 2)
 	})
 	t.Run("418 uses the same hold", func(t *testing.T) {
-		e := newBookEnv(t, umBookSync(t), 5, nil, []doerStep{
+		e := newBookEnv(t, umBookSync(t), nil, []doerStep{
 			{resp: &exchange.HTTPResponse{Status: 418, Body: []byte(`{"code":-1003}`)}},
 			{resp: bookHTTP(100, 1, [][2]float64{{100, 1}, {90, 1}}, [][2]float64{{110, 1}, {200, 1}})},
 		})
@@ -218,7 +197,7 @@ func TestBookDepthBackoff(t *testing.T) {
 		e.doer.wait(t, 2)
 	})
 	t.Run("Retry-After wins", func(t *testing.T) {
-		e := newBookEnv(t, umBookSync(t), 5, nil, []doerStep{
+		e := newBookEnv(t, umBookSync(t), nil, []doerStep{
 			{resp: &exchange.HTTPResponse{Status: 429, Header: []exchange.Header{{Name: "Retry-After-Ms", Value: "5000"}}, Body: []byte(`{}`)}},
 			{resp: bookHTTP(100, 1, [][2]float64{{100, 1}, {90, 1}}, [][2]float64{{110, 1}, {200, 1}})},
 		})
@@ -234,7 +213,7 @@ func TestBookDepthBackoff(t *testing.T) {
 	t.Run("ResetAt when Retry-After is absent", func(t *testing.T) {
 		start := time.Unix(1_000_000, 0)
 		reset := start.Add(30 * time.Second)
-		e := newBookEnv(t, umBookSync(t), 5, nil, []doerStep{
+		e := newBookEnv(t, umBookSync(t), nil, []doerStep{
 			{resp: &exchange.HTTPResponse{
 				Status: 429,
 				Header: []exchange.Header{{Name: "Reset-At-Ms", Value: strconv.FormatInt(reset.UnixMilli(), 10)}},
@@ -252,7 +231,7 @@ func TestBookDepthBackoff(t *testing.T) {
 		e.doer.wait(t, 2)
 	})
 	t.Run("other failures double from one second and reset after success", func(t *testing.T) {
-		e := newBookEnv(t, umBookSync(t), 5, nil, []doerStep{
+		e := newBookEnv(t, umBookSync(t), nil, []doerStep{
 			{resp: &exchange.HTTPResponse{Status: 500, Body: []byte(`no`)}},
 			{resp: &exchange.HTTPResponse{Status: 500, Body: []byte(`no`)}},
 			{resp: bookHTTP(100, 1, [][2]float64{{100, 1}, {90, 1}}, [][2]float64{{110, 1}, {200, 1}})},
@@ -287,7 +266,7 @@ func TestBookDepthBackoff(t *testing.T) {
 func TestBookBufferCaps(t *testing.T) {
 	t.Run("count", func(t *testing.T) {
 		hold := make(chan struct{})
-		e := newBookEnv(t, umBookSync(t), 5, &bookTune{max: 3}, []doerStep{
+		e := newBookEnv(t, umBookSync(t), &bookTune{max: 3}, []doerStep{
 			{resp: bookHTTP(100, 1, [][2]float64{{100, 1}, {90, 1}}, [][2]float64{{110, 1}, {200, 1}}), hold: hold},
 			{resp: bookHTTP(300, 2, [][2]float64{{80, 1}, {70, 1}}, [][2]float64{{120, 1}, {220, 1}})},
 		})
@@ -314,7 +293,7 @@ func TestBookBufferCaps(t *testing.T) {
 	})
 	t.Run("age", func(t *testing.T) {
 		hold := make(chan struct{})
-		e := newBookEnv(t, umBookSync(t), 5, &bookTune{age: 10 * time.Second}, []doerStep{
+		e := newBookEnv(t, umBookSync(t), &bookTune{age: 10 * time.Second}, []doerStep{
 			{resp: bookHTTP(100, 1, [][2]float64{{100, 1}, {90, 1}}, [][2]float64{{110, 1}, {200, 1}}), hold: hold},
 			{resp: bookHTTP(300, 2, [][2]float64{{80, 1}, {70, 1}}, [][2]float64{{120, 1}, {220, 1}})},
 		})
@@ -339,12 +318,12 @@ func TestBookBufferCaps(t *testing.T) {
 }
 
 func TestBookChecksumDropsTheUpdate(t *testing.T) {
-	e := newBookEnv(t, checksumSync{}, 5, nil, []doerStep{
+	e := newBookEnv(t, checksumSync{}, nil, []doerStep{
 		{resp: bookHTTP(1, 1, [][2]float64{{100, 1}, {90, 1}}, [][2]float64{{110, 1}, {200, 1}})},
 		{resp: bookHTTP(2, 2, [][2]float64{{100, 3}, {90, 1}}, [][2]float64{{110, 1}, {200, 1}})},
 	})
 	e.doer.wait(t, 1)
-	e.waitPubs(t, 2)
+	e.waitPubs(t, 1)
 	e.push(exchange.BookUpdate{Last: 2, Checksum: 1, Bids: []exchange.Level{{Price: 100, Qty: 9}}})
 	e.doer.wait(t, 2)
 	e.waitUntil(t, func() bool {
@@ -363,15 +342,15 @@ func TestBookChecksumDropsTheUpdate(t *testing.T) {
 }
 
 func TestBookForwardsDroppedLevel(t *testing.T) {
-	e := newBookEnv(t, umBookSync(t), 5, nil, []doerStep{{
+	e := newBookEnv(t, umBookSync(t), nil, []doerStep{{
 		resp: bookHTTP(100, 1, [][2]float64{{100, 1}, {90, 1}}, [][2]float64{{110, 1}, {200, 1}}),
 	}})
 	e.doer.wait(t, 1)
-	e.waitPubs(t, 2)
+	e.waitPubs(t, 1)
 	// N ticks under the best. The ring drops it; the delta still carries it.
 	const far = 100 - float64(2048)
 	e.push(exchange.BookUpdate{First: 101, Last: 101, Prev: 100, Bids: []exchange.Level{{Price: far, Qty: 5}}})
-	e.waitPubs(t, 3)
+	e.waitPubs(t, 2)
 	if e.doer.calls() != 1 {
 		t.Fatalf("depth calls %d, want 1", e.doer.calls())
 	}
@@ -395,13 +374,10 @@ func TestBookForwardsDroppedLevel(t *testing.T) {
 			t.Fatal("md.view window contains the dropped level")
 		}
 	}
-	if len(booksOf(e.open(t))) != 1 {
-		t.Fatal("dropped level rebuilt top-N")
-	}
 }
 
 func TestBookBadPriceTickDoesNotFetch(t *testing.T) {
-	e := newBookEnv(t, umBookSync(t), 5, &bookTune{zeroTick: true}, []doerStep{{
+	e := newBookEnv(t, umBookSync(t), &bookTune{zeroTick: true}, []doerStep{{
 		resp: bookHTTP(100, 1, [][2]float64{{100, 1}}, [][2]float64{{110, 1}}),
 	}})
 	time.Sleep(40 * time.Millisecond)
@@ -411,7 +387,7 @@ func TestBookBadPriceTickDoesNotFetch(t *testing.T) {
 }
 
 func TestBookEmptyExchTickerDoesNotFetch(t *testing.T) {
-	e := newBookEnv(t, umBookSync(t), 5, &bookTune{bare: true}, []doerStep{{
+	e := newBookEnv(t, umBookSync(t), &bookTune{bare: true}, []doerStep{{
 		resp: bookHTTP(100, 1, [][2]float64{{100, 1}}, [][2]float64{{110, 1}}),
 	}})
 	time.Sleep(40 * time.Millisecond)
@@ -425,13 +401,13 @@ func TestBookStreamDoesNotCallREST(t *testing.T) {
 	if bs.Snapshot() != exchange.SnapshotStream || bs.Depth() != 0 {
 		t.Fatalf("bybit book %+v", bs)
 	}
-	e := newBookEnv(t, bs, 50, nil, nil)
+	e := newBookEnv(t, bs, nil, nil)
 	e.push(exchange.BookUpdate{
 		Snapshot: true, Last: 10,
 		Bids: []exchange.Level{{Price: 16493.5, Qty: 0.006}},
 		Asks: []exchange.Level{{Price: 16611, Qty: 0.029}},
 	})
-	e.waitPubs(t, 2)
+	e.waitPubs(t, 1)
 	d := deltasOf(e.open(t))
 	if len(d) != 1 || !d[0].ev.GetOrderBookDelta().GetReset_() {
 		t.Fatalf("stream reset %+v", d)
@@ -441,7 +417,7 @@ func TestBookStreamDoesNotCallREST(t *testing.T) {
 		Bids: []exchange.Level{{Price: 16493.5, Qty: 0}},
 		Asks: []exchange.Level{{Price: 16611, Qty: 1}},
 	})
-	e.waitPubs(t, 3)
+	e.waitPubs(t, 2)
 	delta := deltasOf(e.open(t))[1].ev.GetOrderBookDelta()
 	if delta.GetReset_() || !hasLevel(delta.GetBids(), 16493.5, 0) || !hasLevel(delta.GetAsks(), 16611, 1) {
 		t.Fatalf("stream delta %+v", delta)
@@ -487,7 +463,6 @@ func TestBookSyncStartsOnConnect(t *testing.T) {
 		Venue: "V", Route: "r", Instance: "md", URL: url,
 		Market:     &bookMarket{stubMarket: stubMarket{s: &memSession{lim: exchange.SessionLimits{ReadLimit: 1 << 20}}}, bs: umBookSync(t)},
 		Publish:    rec.publish,
-		BookDepth:  2,
 		REST:       scriptREST{},
 		Doer:       doer,
 		RetryAfter: -1,
@@ -516,63 +491,8 @@ func TestBookSyncStartsOnConnect(t *testing.T) {
 	}
 }
 
-func TestBookDepthAboveVenueFails(t *testing.T) {
-	c := New(Config{
-		Venue: "BinanceUM", Route: "public", Instance: "md", URL: "ws://127.0.0.1:1",
-		Market: umMarket(t), Publish: func(string, []byte) error { return nil },
-		BookDepth: 1001,
-	})
-	c.SetDesired(&mdctlv1.Desired{Atoms: []*mdctlv1.AtomAssignment{{
-		AtomId: "BinanceUM:public:btcusdt@depth@100ms", Feeds: []string{"orderbook.T"}, ExchTicker: "BTCUSDT",
-	}}})
-	err := c.Run(context.Background())
-	if err == nil || !contains(err.Error(), "above") {
-		t.Fatal(err)
-	}
-	if c.Epoch() != 0 {
-		t.Fatalf("dialed, epoch %d", c.Epoch())
-	}
-}
-
-func TestBookStreamSkipsDepthCompare(t *testing.T) {
-	bs := bybitBookSync(t)
-	c := New(Config{
-		Venue: "Bybit", Route: "linear", Instance: "md", URL: "ws://127.0.0.1:1",
-		Market: &bookMarket{bs: bs}, Publish: func(string, []byte) error { return nil },
-		BookDepth: 50,
-	})
-	c.SetDesired(&mdctlv1.Desired{Atoms: []*mdctlv1.AtomAssignment{{
-		AtomId: "Bybit:linear:orderbook.50.BTCUSDT", Feeds: []string{"orderbook.T"}, ExchTicker: "BTCUSDT",
-	}}})
-	if c.fatal != nil {
-		t.Fatal(c.fatal)
-	}
-}
-
-func TestBookDepthRequired(t *testing.T) {
-	c := New(Config{
-		Venue: "V", Route: "r", Instance: "md", URL: "ws://127.0.0.1:1",
-		Market: &bookMarket{bs: umBookSync(t)}, Publish: func(string, []byte) error { return nil },
-	})
-	c.SetDesired(bookDesired("BTCUSDT"))
-	err := c.Run(context.Background())
-	if err == nil || !contains(err.Error(), "required") {
-		t.Fatal(err)
-	}
-}
-
-func TestInitRequiresBookDepth(t *testing.T) {
-	code, done := serveInit(t, &mdctlv1.InitPayload{Venue: "V", Route: "r", MdInstance: "md", Url: "ws://127.0.0.1:1"}, 0)
-	if done.GetOk() || !contains(done.GetError(), "book depth") {
-		t.Fatalf("done %+v", done)
-	}
-	if got := <-code; got != exitInit {
-		t.Fatalf("exit %d", got)
-	}
-}
-
 func TestInitRejectsNegativeRateHold(t *testing.T) {
-	code, done := serveInit(t, &mdctlv1.InitPayload{Venue: "V", Route: "r", MdInstance: "md", BookDepth: 1}, -time.Second)
+	code, done := serveInit(t, &mdctlv1.InitPayload{Venue: "V", Route: "r", MdInstance: "md"}, -time.Second)
 	if done.GetOk() || !contains(done.GetError(), "rate hold") {
 		t.Fatalf("done %+v", done)
 	}
@@ -667,7 +587,7 @@ type bookEnv struct {
 	ch   string
 }
 
-func newBookEnv(t *testing.T, bs exchange.BookSync, depth uint32, tune *bookTune, steps []doerStep) *bookEnv {
+func newBookEnv(t *testing.T, bs exchange.BookSync, tune *bookTune, steps []doerStep) *bookEnv {
 	t.Helper()
 	if tune == nil {
 		tune = &bookTune{}
@@ -682,7 +602,7 @@ func newBookEnv(t *testing.T, bs exchange.BookSync, depth uint32, tune *bookTune
 	c := New(Config{
 		Venue: "V", Route: "r", Instance: "md", URL: "ws://127.0.0.1:9",
 		Market: &bookMarket{bs: bs}, Publish: rec.publish,
-		BookDepth: depth, REST: scriptREST{}, Doer: doer,
+		REST: scriptREST{}, Doer: doer,
 		BookNow: clk.Now, BookAfter: clk.After, RetryAfter: -1,
 		BufferMax: tune.max, BufferAge: tune.age,
 	})
@@ -721,7 +641,7 @@ func bookDesiredTick(exch string, tick float64) *mdctlv1.Desired {
 	return &mdctlv1.Desired{
 		Version: &commonv1.Version{Seq: 1},
 		Atoms: []*mdctlv1.AtomAssignment{{
-			AtomId: "V:r:" + bookCh, Feeds: []string{"orderbook.T", "orderbook_delta.T"},
+			AtomId: "V:r:" + bookCh, Feeds: []string{"orderbook_delta.T"},
 			ExchTicker: exch, PriceTick: tick,
 		}},
 	}
@@ -819,16 +739,6 @@ func deltasOf(all []opened) []opened {
 	return out
 }
 
-func booksOf(all []opened) []opened {
-	var out []opened
-	for _, o := range all {
-		if o.ev.GetOrderBook() != nil {
-			out = append(out, o)
-		}
-	}
-	return out
-}
-
 func seqs(os []opened) []uint64 {
 	s := make([]uint64, len(os))
 	for i, o := range os {
@@ -859,9 +769,6 @@ func hasPrice(o opened, price float64) bool {
 	if d := o.ev.GetOrderBookDelta(); d != nil {
 		ls = append(d.GetBids(), d.GetAsks()...)
 	}
-	if b := o.ev.GetOrderBook(); b != nil {
-		ls = append(b.GetBids(), b.GetAsks()...)
-	}
 	for _, l := range ls {
 		if l.GetPrice() == price {
 			return true
@@ -873,9 +780,6 @@ func hasPrice(o opened, price float64) bool {
 func levelsOf(o opened) []*mdv1.Level {
 	if d := o.ev.GetOrderBookDelta(); d != nil {
 		return append(append([]*mdv1.Level{}, d.GetBids()...), d.GetAsks()...)
-	}
-	if b := o.ev.GetOrderBook(); b != nil {
-		return append(append([]*mdv1.Level{}, b.GetBids()...), b.GetAsks()...)
 	}
 	return nil
 }

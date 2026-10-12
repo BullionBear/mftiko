@@ -14,11 +14,11 @@
 // loop turns the agent's topic.UniversalTicker list into atoms with that table and subscribes the
 // difference. A worker started without a table applies atom ids from the assignment instead.
 //
-// Depth updates are folded into a sdk/book ring on this connection (D424–D434). orderbook and
-// orderbook_delta are two feeds of that book. orderbook_delta forwards each normalized increment
-// unchanged. orderbook is the top-N, rebuilt only when an increment touches it. A reset and the
-// book md.view reads are the levels inside the ring. SnapshotREST takes one snapshot and then
-// only increments; it refetches only on a sequence gap or a checksum failure (D426).
+// Depth updates are folded into a sdk/book ring on this connection (D424–D434, D453). The only
+// book feed is orderbook_delta. It forwards each normalized increment unchanged. A reset and the
+// book md.view reads are the levels inside the ring. SnapshotREST takes one snapshot at
+// BookSync.Depth() and then only increments; it refetches only on a sequence gap or a checksum
+// failure (D426). A subscription of the retired name orderbook is rejected as invalid.
 // SnapshotStream does not: a gap or a checksum failure unsubscribes and subscribes that one
 // channel after a per-book backoff, and the venue's next snapshot is the reset (D434). The book
 // dies with the connection: reconnect starts again, and conn_epoch changes only when the dial

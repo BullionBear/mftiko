@@ -18,8 +18,8 @@ message InitPayload {
   string url = 6;
   // 上次上報的 conn_epoch。0 表示還沒有上報過，第一次撥號用 1（D409）。
   uint64 conn_epoch = 7;
-  // 本地 orderbook 的 top-N。0 是缺，啟動失敗（D426）。同一個 MD instance 固定。
-  uint32 book_depth = 8;
+  reserved 8; // 原本的 book_depth：沒有 top-N（D453）
+  reserved "book_depth";
   reserved 9; // 原本的 book_boundary_bp：SnapshotREST 不設邊界、不因距離重抓（D426）
   reserved "book_boundary_bp";
   // 等快照時緩衝的筆數上限。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（D424）。

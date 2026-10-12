@@ -301,7 +301,7 @@ func TestUMEndpoint(t *testing.T) {
 	if _, err := m.Atom(exchange.TopicTrade, btcInst()); !errorsIs(err, exchange.ErrUnsupported) {
 		t.Fatalf("trade: %v", err)
 	}
-	a, err := m.Atom(exchange.TopicOrderBook, btcInst())
+	a, err := m.Atom(exchange.TopicOrderBookDelta, btcInst())
 	b, err2 := m.Atom(exchange.TopicOrderBookDelta, btcInst())
 	if err != nil || err2 != nil || a != b || a.Route != "public" || a.Channel != "btcusdt@depth@100ms" {
 		t.Fatalf("book atom %+v %+v %v %v", a, b, err, err2)
@@ -377,8 +377,7 @@ func (c *capture) FundingRate(_ string, e *exchange.FundingRate) {
 }
 func (c *capture) OpenInterest(string, *exchange.OpenInterest) {}
 func (c *capture) Greeks(string, *exchange.Greeks)             {}
-func (c *capture) MarkPrice(string, *exchange.MarkPrice)       { c.marks++ }
-func (c *capture) FeedEnd(string, *exchange.FeedEnd)           {}
+func (c *capture) MarkPrice(string, *exchange.MarkPrice) { c.marks++ }
 
 func TestRecordBinanceUMPublic(t *testing.T) {
 	if os.Getenv("MFTIKO_BINANCE_UM_RECORD") != "1" {
@@ -724,8 +723,7 @@ func (s *seqSink) Liquidation(string, *exchange.Liquidation)   {}
 func (s *seqSink) FundingRate(string, *exchange.FundingRate)   {}
 func (s *seqSink) OpenInterest(string, *exchange.OpenInterest) {}
 func (s *seqSink) Greeks(string, *exchange.Greeks)             {}
-func (s *seqSink) MarkPrice(string, *exchange.MarkPrice)       {}
-func (s *seqSink) FeedEnd(string, *exchange.FeedEnd)           {}
+func (s *seqSink) MarkPrice(string, *exchange.MarkPrice) {}
 
 func replayTape(pieces []piece) error {
 	sess := &session{per: um.budget}

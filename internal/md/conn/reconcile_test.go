@@ -24,13 +24,13 @@ func TestReconcileDerivesTheAtomDiff(t *testing.T) {
 	}
 	c := New(Config{
 		Venue: "Binance", Route: "public", Instance: "md",
-		Market: &reconMarket{}, BookDepth: 20,
+		Market:  &reconMarket{},
 		Symbols: stubSymbols{info: info},
 	})
-	book := "orderbook.Binance_Spot_BTCUSDT"
 	delta := "orderbook_delta.Binance_Spot_BTCUSDT"
+	trade := "trade.Binance_Spot_BTCUSDT"
 	ch := "btcusdt@depth"
-	c.SetDesired(feedsDesired(1, book, delta))
+	c.SetDesired(feedsDesired(1, delta, trade))
 	if len(c.wanted[ch]) != 2 || c.exch[ch] != "BTCUSDT" || c.tick[ch] != 0.1 {
 		t.Fatalf("derived %+v exch %v tick %v", c.wanted, c.exch, c.tick)
 	}
@@ -48,7 +48,7 @@ func TestReconcileDerivesTheAtomDiff(t *testing.T) {
 	}
 	c.mu.Unlock()
 
-	c.SetDesired(feedsDesired(2, book))
+	c.SetDesired(feedsDesired(2, delta))
 	if len(c.wanted[ch]) != 1 {
 		t.Fatalf("shared atom dropped %+v", c.wanted)
 	}
@@ -57,13 +57,13 @@ func TestReconcileDerivesTheAtomDiff(t *testing.T) {
 	}
 
 	c.symbols = stubSymbols{err: errors.New("sym down")}
-	c.SetDesired(feedsDesired(3, book))
+	c.SetDesired(feedsDesired(3, delta))
 	if len(c.wanted[ch]) != 1 || c.exch[ch] != "BTCUSDT" {
 		t.Fatalf("transient lookup dropped the subscription %+v %+v", c.wanted, c.exch)
 	}
 
 	c.symbols = stubSymbols{info: &symbol.Info{Ticker: ticker, ExchTicker: "BTCUSDT", Status: symbol.Halted}}
-	c.SetDesired(feedsDesired(4, book))
+	c.SetDesired(feedsDesired(4, delta))
 	if len(c.wanted) != 0 {
 		t.Fatalf("halted stayed subscribed %+v", c.wanted)
 	}
@@ -80,10 +80,10 @@ func TestReconcileFollowsTheTable(t *testing.T) {
 	}}}
 	c := New(Config{
 		Venue: "Binance", Route: "public", Instance: "md",
-		Market: &reconMarket{}, BookDepth: 20, Symbols: tab,
+		Market: &reconMarket{}, Symbols: tab,
 	})
 	c.reconEvery = 15 * time.Millisecond
-	c.SetDesired(feedsDesired(1, "orderbook.Binance_Spot_BTCUSDT"))
+	c.SetDesired(feedsDesired(1, "orderbook_delta.Binance_Spot_BTCUSDT"))
 	if c.exch["btcusdt@depth"] != "BTCUSDT" {
 		t.Fatalf("before %+v", c.exch)
 	}
@@ -112,13 +112,14 @@ func TestReconcileFollowsTheTable(t *testing.T) {
 
 func TestFeedReport(t *testing.T) {
 	ticker := symbol.UniversalTicker{Venue: "Binance", Category: symbol.Spot, Symbol: "BTCUSDT"}
-	book := "orderbook.Binance_Spot_BTCUSDT"
-	missing := "orderbook.Binance_Spot_NOSUCHCOIN"
+	book := "orderbook_delta.Binance_Spot_BTCUSDT"
+	retired := "orderbook.Binance_Spot_BTCUSDT"
+	missing := "trade.Binance_Spot_NOSUCHCOIN"
 	var mu sync.Mutex
 	var got []*mdctlv1.Report
 	c := New(Config{
 		Venue: "Binance", Route: "public", Instance: "md",
-		Market: &reconMarket{}, BookDepth: 20,
+		Market: &reconMarket{},
 		Symbols: stubSymbols{info: &symbol.Info{
 			Ticker: ticker, ExchTicker: "BTCUSDT", Status: symbol.Tradable,
 			Filters: symbol.Filters{symbol.PriceTick: 0.1},
@@ -130,7 +131,7 @@ func TestFeedReport(t *testing.T) {
 			return nil
 		},
 	})
-	c.SetDesired(feedsDesired(1, book, missing))
+	c.SetDesired(feedsDesired(1, book, missing, retired))
 	mu.Lock()
 	if len(got) != 1 {
 		t.Fatalf("reports %d", len(got))
@@ -145,6 +146,9 @@ func TestFeedReport(t *testing.T) {
 	}
 	if byFeed[missing].GetState() != mdctlv1.FeedState_FEED_STATE_REJECTED || byFeed[missing].GetReason() != feedNotListed {
 		t.Fatalf("missing %+v", byFeed[missing])
+	}
+	if byFeed[retired].GetState() != mdctlv1.FeedState_FEED_STATE_REJECTED || byFeed[retired].GetReason() != feedInvalid {
+		t.Fatalf("retired %+v", byFeed[retired])
 	}
 
 	sess := &memSession{}

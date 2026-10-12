@@ -29,7 +29,7 @@ func TestBookBybitGapRecovers(t *testing.T) {
 	}
 	var snap []byte
 	clk := newFakeClock(time.Unix(1_000_000, 0).UTC())
-	e := startFixtureBook(t, bybit.Name, "linear", ch, "BTCUSDT", 0.1, v.Market, nil, 20, nil, func(c *Conn) {
+	e := startFixtureBook(t, bybit.Name, "linear", ch, "BTCUSDT", 0.1, v.Market, nil, nil, func(c *Conn) {
 		c.bookNow = clk.Now
 		c.bookAfter = clk.After
 	})
@@ -148,7 +148,7 @@ func (streamChecksum) Verify(_, _ []exchange.Level, u *exchange.BookUpdate) bool
 
 func TestBookOKXChecksumResubscribes(t *testing.T) {
 	const other = "other"
-	e := newBookEnv(t, streamChecksum{}, 5, nil, nil)
+	e := newBookEnv(t, streamChecksum{}, nil, nil)
 	e.c.mu.Lock()
 	e.c.live.observed[bookCh] = struct{}{}
 	e.c.wanted[other] = []feed{{topic: "trade", ticker: "T"}}
@@ -160,7 +160,7 @@ func TestBookOKXChecksumResubscribes(t *testing.T) {
 		Bids: []exchange.Level{{Price: 100, Qty: 1}},
 		Asks: []exchange.Level{{Price: 110, Qty: 1}},
 	})
-	e.waitPubs(t, 2)
+	e.waitPubs(t, 1)
 	e.push(exchange.BookUpdate{
 		Last: 11, Checksum: 1,
 		Bids: []exchange.Level{{Price: 100, Qty: 9}},

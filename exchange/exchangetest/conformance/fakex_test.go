@@ -100,13 +100,13 @@ type market struct{ f faults }
 func (m *market) Topics() []exchange.TopicCaps {
 	return []exchange.TopicCaps{
 		{Topic: exchange.TopicTrade},
-		{Topic: exchange.TopicOrderBook},
+		{Topic: exchange.TopicOrderBookDelta},
 		{Topic: exchange.TopicTicker, Absent: []string{"ChangePct24h", "QuoteVolume24h"}},
 	}
 }
 
 func (m *market) Atom(t exchange.Topic, inst *symbol.Info) (exchange.AtomRef, error) {
-	prefix := map[exchange.Topic]string{exchange.TopicTrade: "trade:", exchange.TopicOrderBook: "book:", exchange.TopicTicker: "ticker:"}[t]
+	prefix := map[exchange.Topic]string{exchange.TopicTrade: "trade:", exchange.TopicOrderBookDelta: "book:", exchange.TopicTicker: "ticker:"}[t]
 	if prefix == "" || inst.Ticker.Category != symbol.Perp {
 		return exchange.AtomRef{}, exchange.ErrUnsupported
 	}

@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-12 定案 tape ring 與 `md.view`（E4-06）：一個 feed 一個 ring，讀取無鎖，以 `head` 接 live，D435–D452。同日定案帳號憑證以 TD instance 的 X25519 公鑰封裝：NaCl sealed box 加版本與指紋，`api_id`、`kind` 一起封、解開後比對，封裝工具 `mftiko-seal`，D613。同日定案持倉模式由 `AccountSnapshot.HedgeMode` 帶回，以及給 account worker 測試用的假帳號 `exchangetest.AccountVenue`，D612。2026-10-11 定案 TD 的契約與 NATS 身分（E6-02）：`td.order` 只回 ack 或本地拒絕，單的每一次變化都是 `OrderUpdate`，1xx 只列一期會碰到的；訂單狀態加 `ACCEPTED`（上簿），撤單在途改成旗標 `cancel_sent_ns`，拿掉 `PENDING_CANCEL`；account worker 每個帳號一份 NATS 憑證，由 TD agent 簽，D610–D611。同日修訂 D601：TD agent 不查 SYM，歷史補正的交易所讀取比照 md.fetch。同日修訂 D202、D401：MD agent 不查 SYM，conn worker 用活躍表推出 atom 並 diff 訂閱，並在 Report 以 FeedStatus 回報每一筆 feed。同日更新 D415、D426：MD instance 訂閱 `sym.changed.>`，conn worker 在 Init 載入該 venue 的活躍表。同日定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-12 拿掉 top-N 與 FeedEnd（#180）：book topic 只剩 `orderbook_delta`，寫 `orderbook` 回 `invalid`，D453–D454。2026-10-12 定案 tape ring 與 `md.view`（E4-06）：一個 feed 一個 ring，讀取無鎖，以 `head` 接 live，D435–D452。同日定案帳號憑證以 TD instance 的 X25519 公鑰封裝：NaCl sealed box 加版本與指紋，`api_id`、`kind` 一起封、解開後比對，封裝工具 `mftiko-seal`，D613。同日定案持倉模式由 `AccountSnapshot.HedgeMode` 帶回，以及給 account worker 測試用的假帳號 `exchangetest.AccountVenue`，D612。2026-10-11 定案 TD 的契約與 NATS 身分（E6-02）：`td.order` 只回 ack 或本地拒絕，單的每一次變化都是 `OrderUpdate`，1xx 只列一期會碰到的；訂單狀態加 `ACCEPTED`（上簿），撤單在途改成旗標 `cancel_sent_ns`，拿掉 `PENDING_CANCEL`；account worker 每個帳號一份 NATS 憑證，由 TD agent 簽，D610–D611。同日修訂 D601：TD agent 不查 SYM，歷史補正的交易所讀取比照 md.fetch。同日修訂 D202、D401：MD agent 不查 SYM，conn worker 用活躍表推出 atom 並 diff 訂閱，並在 Report 以 FeedStatus 回報每一筆 feed。同日更新 D415、D426：MD instance 訂閱 `sym.changed.>`，conn worker 在 Init 載入該 venue 的活躍表。同日定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 >
@@ -295,11 +295,10 @@ account worker 依 refcount 起停，沒有常駐層（D901），所以閒置帳
 行情狀態（book、tape）的權威在持有該 atom 的 conn worker 記憶體裡，跟 TD 的 ledger 在 account worker 裡是同一個模式：快照打底，fold 串流的增量，有變化就推出去，晚加入的人向持有者要目前的狀態。
 
 - **book：**
-  - 不管策略訂的是 `orderbook` 還是 `orderbook_delta`，conn worker 都維護一本本地全量 book，再依 feed 決定推什麼。兩個 topic 對到同一個 atom：交易所的增量 channel；沒有增量 channel 的交易所，用它最完整的 book channel。
+  - conn worker 維護一本本地全量 book，只從 `orderbook_delta` 推出。topic 對到交易所的增量 channel；沒有增量 channel 的交易所，用它最完整的 book channel。`orderbook` 已刪除，寫這個名字是 `invalid`，不換成 delta（D453）。
   - 跟交易所同步的邏輯全在 conn worker 裡：快照與增量對齊、驗序號、斷號後重抓。快照用 adapter 的 REST reader 在進程內抓（Binance 類），或用訂閱時 WS 推來的那一張（OKX、Bybit 類）。不經過 md.fetch 服務：正確性不依賴另一個服務，而且對齊有時序要求，多一跳 NATS 只會讓快照變慢。
-  - `orderbook`：本地 book 的 top-N 全量（`OrderBook`），top-N 有變才推。N 由 MD 的設定決定，同一個 venue 上固定。
   - `orderbook_delta`：正規化後的增量原樣轉發（`OrderBookDelta`：價位 → 數量，`0` 為刪除），worker 不預先過濾（D432）。重新同步之後推一則 `reset`，內容是窗內的完整 book（D430）。第一次成功的快照也是一則 `reset`（D425）。增量被 prehook 丟掉（D803）時，seq 會跳號，SDK 的小工具就向 `md.view` 重拿。
-  - 環長與 `price_tick` 見 D430、D433。發布的 top-N 與 `exchTicker` 見 D426。重抓只在斷號或 checksum 失敗。重抓節奏見 D424。
+  - 環長與 `price_tick` 見 D430、D433。`exchTicker` 見 D426。重抓只在斷號或 checksum 失敗。重抓節奏見 D424。SnapshotREST 抓 `BookSync.Depth()`（D453）。
   - 晚加入：SDK 先訂 `md.f`，再向持有者要 `md.view`，拿到 seq S 時的 book，之後只套用 seq > S 的增量。seq 斷號或 `conn_epoch` 改變時，重新要一次。這是 SDK 提供的可選小工具，fold 跟交易所無關。
 - **tape：**
   - 只錄 `trade`、`aggtrade`、`liquidation`，book 類不錄。錄不錄由 conn worker 依 topic 決定。`AtomAssignment.record` 忽略（D447）。一個 feed 一個 ring（D449）。
@@ -739,26 +738,24 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 ### D425 簿的訊息佔 seq
 
-- **`orderbook` 與 `orderbook_delta` 各是一個 feed。** 每發布一則佔該 feed 的下一個 envelope `seq`。沒有發出去的變化不佔號。
-- **`reset` 是一則 `orderbook_delta`（`reset` 為 true），佔 delta feed 的 seq。** 內容是窗內的完整 book，不是 top-N（D430）。
+- **`orderbook_delta` 是唯一的 book feed。** 每發布一則佔該 feed 的下一個 envelope `seq`。沒有發出去的變化不佔號。
+- **`reset` 是一則 `orderbook_delta`（`reset` 為 true），佔這個 feed 的 seq。** 內容是窗內的完整 book（D430）。
 - **第一次成功的快照，在把緩衝裡接得上的更新套完之後，也推一則 `reset`。** 重抓同樣。套用緩衝的過程不逐筆推增量。
 - **斷號或 checksum 失敗不發布那一筆。** checksum 失敗的那筆不留在緩衝裡重套。
 - **重抓不改 `conn_epoch`。** 序號在同一條連線上連續。重連才換 epoch，本地本跟著那條連線丟掉。
-- **交易所序號只給 `BookSync.Check`。** 不進 envelope，也不進 `OrderBook`／`OrderBookDelta`。
+- **交易所序號只給 `BookSync.Check`。** 不進 envelope，也不進 `OrderBookDelta`。
 
 ### D426 一張快照加增量（SnapshotREST）
 
 - **SnapshotREST 抓一張快照，之後只套增量，不自己重抓。** 靠近盤口的檔更新得快，價格走到某一檔之前，增量已經把它更新過了。
 - **重抓只由斷號（`BookResync`）或 OKX checksum 失敗觸發。** 沒有價格邊界，也不因距離重抓。視窗滑動不重抓；窗外的檔見 D431。`md.view` 回的是窗內的 book（D430、D441）。
-- **交易所回多少檔就用多少。** 不因為少於 N 檔而重抓。
-- **N 是 `InitPayload.book_depth`。** 缺（0）則 Init 失敗。SnapshotREST 在知道該 channel 的 `BookSync` 之後、第一張快照之前，若 N > `Depth()`，worker 退出。SnapshotStream 不跟 `Depth()` 比。
+- **交易所回多少檔就用多少。** REST 的 limit 是 `BookSync.Depth()`（D453）。不因為少於某個檔數而重抓，也不因為想要的檔數大於 `Depth()` 而退出。沒有 N。
 - **SnapshotStream 不打 REST。** 全本就是串流給的。斷號或 checksum 丟掉本地本，並只重訂那一個 channel（D434）。下一則串流快照是 `reset`。快照之前緩衝的增量在快照到達時丟掉。
 - **`exch_ticker` 來自該 venue 的活躍表。** conn worker 在 Init 載入這張表，並跟著 `sym.changed` 重載。Agent 只把 `topic.UniversalTicker` 送進 worker 的 reconcile loop；worker 用表上的 `symbol.Info` 呼叫 `Market.Atom`，自己 diff 要訂與要退的 channel。不從 channel 解析。沒有這份表時才用 assignment 上的 atom id 與 `exch_ticker`（測試）。SnapshotREST 沒有這個欄位就不打 Depth，只記日誌。
 
 ### D427 `orderbook` 不節流
 
-- **top-N 有變才推。** 增量沒碰到目前的 top-N 就不重算（D432）。沒有另外的時間節流。推送頻率的上限就是交易所自己的推送頻率；策略跟不上由 prehook 丟（D803）。
-- **`OrderBook.depth` 是設定的 N。** 實際檔數可以少於 N。
+- **已由 D453 取代。** 沒有 top-N，也沒有 `orderbook` 這個 feed。增量原樣轉成 `orderbook_delta`（D432），沒有另外的節流。推送頻率的上限就是交易所自己的推送頻率；策略跟不上由 prehook 丟（D803）。
 
 ### D428 以交易所序號為權威
 
@@ -772,11 +769,11 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 ### D430 刻度環狀訂單簿
 
-- **本地 book 是 `sdk/book` 的環。** STS worker 與 MD conn worker 用同一份。bids、asks 各一個固定長度的 slice，長度 N，預設 2048，必須是 2 的冪，索引是 `tick & (N-1)`。這一 N 不是 `book_depth`。`book_depth` 仍是發布的 top-N（D426、D427）。
+- **本地 book 是 `sdk/book` 的環。** STS worker 與 MD conn worker 用同一份。bids、asks 各一個固定長度的 slice，長度 N，預設 2048，必須是 2 的冪，索引是 `tick & (N-1)`。這一 N 是環長。沒有發布的 top-N（D453）。
 - **每一格只存 `tick int64` 與 `size float64`。** 不另存 bool，也不把格子清掉。讀的時候，格子裡的 tick 與要的 tick 不同就是空的；`size == 0` 是刪除。
 - **價格換成 tick 用 `round(price / price_tick)`，一半進位遠離零。** 從環上讀回的價格是 `tick * price_tick`。`price_tick` 見 D433。
 - **`BestBidTick`、`BestAskTick` 是目前的最佳 tick。** 比最佳價更好、而且 size > 0 的價格改寫最佳。最佳檔被刪掉時，往外掃到下一個 tick 相符且 size > 0 的格子。
-- **Iterator 從最佳價往外走，跳過空格，不配置記憶體。** `orderbook` 走到 top-N 就停。`reset` 與 `md.view` 走完整個窗（D441）。
+- **Iterator 從最佳價往外走，跳過空格，不配置記憶體。** `reset` 與 `md.view` 走完整個窗（D441）。
 
 ### D431 窗外的檔
 
@@ -788,8 +785,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 - **`orderbook_delta` 轉發正規化後的增量，內容與順序都不改，worker 不先過濾。** 不對整本做 diff。qty 0 仍是刪除。
 - **丟不丟只在 `sdk/book` 套用時決定，依那一刻的最佳 tick。**
-- **`orderbook` 的 top-N 只在增量碰到目前的 top-N 檔時才重算。** 有變才推（D427）。沒碰到就不重算。
-- **`reset` 是窗內的完整 book，不是 top-N。** 第一次成功的快照與重抓都是這則 `reset`。套用緩衝的過程仍不逐筆推增量（D425）。
+- **`reset` 是窗內的完整 book。** 第一次成功的快照與重抓都是這則 `reset`。套用緩衝的過程仍不逐筆推增量（D425）。
 
 ### D433 `price_tick` 在指派上
 
@@ -798,7 +794,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 ### D434 SnapshotStream 斷號後重訂該 channel
 
-- **Bybit 與 OKX 的全本只在訂閱之後由串流送來。** 斷號或 checksum 失敗把本地本丟掉之後，後面的增量不會再變成一張快照。不重訂的話這本簿停在最後一次的 top-N，直到整條連線重連。
+- **Bybit 與 OKX 的全本只在訂閱之後由串流送來。** 斷號或 checksum 失敗把本地本丟掉之後，後面的增量不會再變成一張快照。不重訂的話這本簿停在斷掉之前的窗內狀態，直到整條連線重連。
 - **從已確認的訂閱拿掉這個 channel，經現有的訂閱路徑先退訂再訂閱。** 仍由 session 的速率限制發幀。不拆整條連線，其他 channel 不動。`conn_epoch` 不變。
 - **每一本簿自己一條指數退避，與 D424 相同：1 秒起，加倍，上限 30 秒。** 成功裝上新的串流快照把這本的窗口歸零，下一次斷號再從 1 秒起。已經在退避或重訂途中的，不另起一次，所以連續斷號不會熱迴圈。
 - **下一則串流快照裝上本地本，並推 `reset`。** 快照之前緩衝的增量丟掉（D426）。這一版不打 REST。
@@ -844,13 +840,13 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 ### D441 `BookSnapshot` 只回現在那本
 
 - **不支援指定歷史 seq。** 回最後套用的 `(conn_epoch, seq)` 的窗內全本（D430）。
-- **同一個 channel 的 `orderbook` 與 `orderbook_delta` 共用這一張快照。** 兩個 feed 各有自己的 seq（D425）。快照上的游標優先用 `orderbook_delta` 已發佈的 `(conn_epoch, seq)`，因為增量接縫比的是它；這個 feed 還沒發佈過時，才用 `orderbook` 的。
+- **快照上的游標是 `orderbook_delta` 已發佈的 `(conn_epoch, seq)`。** 增量接縫比的是它（D425、D453）。這個 feed 還沒發佈過時，簿還沒同步好。
 - **簿還沒同步好時回 `not_synced`。** 快照中、退避中、窗口無效，或這條連線已經斷，都是。`ViewReply.error` 加這個值，不帶 book。SDK 退避重試。
 - **讀取不拿連線鎖。** 寫入端在發布之後換上一份不可變的快照；`md.view` 只讀那份。
 
 ### D442 依 topic 回什麼
 
-- **book 類回 `BookSnapshot`。** 沒有 top-N 行情，`orderbook` 一律等於 `orderbook_delta`。拿掉 top-N 是 #180，這張不依賴它，也不改它。#180 合併前，subject 是 `orderbook` 時也回 `BookSnapshot`。
+- **book topic 只有 `orderbook_delta`，回 `BookSnapshot`。** 沒有 top-N。`orderbook` 已刪除（D453）。
 - **`trade`、`aggtrade`、`liquidation` 回 tape。**
 - **其他 topic（kline、best_quote 等）回 `unsupported`。** 錄不錄不看 `record`（D447）。持有這個 feed 就有 responder；沒有 responder 是沒有持有，不是 `unsupported`。
 
@@ -871,7 +867,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 ### D446 `FeedEnd`
 
-- **不錄進 tape。** 不從 proto 拿掉 `FeedEnd`。拿掉是 #180。
+- **已由 D453、D454 取代。** `FeedEnd` 從 proto 與 `exchange.Sink` 拿掉。沒有這個訊息可錄。
 
 ### D447 錄不錄由 worker 依 topic 決定
 
@@ -909,6 +905,18 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **測試走 `setFeeds`，不得手動設 `Record`。**
 - **舊的 `apply()` 路徑不接 tape。** 那條路徑沒有 ring，也不訂 `md.view`。
 
+### D453 沒有 top-N，book topic 只剩 `orderbook_delta`
+
+- **`orderbook` 刪掉，不是 `orderbook_delta` 的別名。** 設定或訂閱寫 `orderbook` 回 `invalid`，不自動換成 delta。只有 `orderbook_delta`。
+- **`FeedEvent` 拿掉 `OrderBook` 與 `FeedEnd`。** field 4、100 reserved。`InitPayload.book_depth` reserved。
+- **SnapshotREST 抓 `BookSync.Depth()`。** 不再因為 N 大於 `Depth()` 而退出。沒有 N。
+- **修訂 D402 的 book、D425、D426、D430、D432、D441、D442。** D427 整條由這條取代。
+
+### D454 `exchange.Sink` 沒有 `FeedEnd`
+
+- **拿掉方法與型別。** 沒有 adapter 發布它，proto 訊息也沒了。留一個空方法會讓每個 Sink 都實作空函數。
+- **修訂 D446。**
+
 ### D906 session worker 的 NATS 憑證：每個 session 一份
 
 - **簽發：** STS agent 持有 NATS account 的簽章金鑰，spawn 時為每個 session 簽一份 user JWT（NKeys）。和其他憑證一樣經 `Init` 的 socketpair 送進去，不放環境變數、不落檔。簽發是本機的密碼學運算，不需要連 server。
@@ -940,9 +948,9 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **回程帶交易所那一側的 key。** 私有事件、REST 拿回的成交與訂單帶 `(venue, category, exch_ticker)`（venue 見 D301），account worker 與歷史補正服務以 SYM 反查換回 UniversalTicker。TD agent 不反查。category 是 key 的一部分：統一帳戶的 venue 上，同一個寫法可能是兩個商品（Bybit 現貨與 linear 的 `BTCUSDT`）。
 - **發布路徑不查 SYM。** conn worker 在 reconcile 時讀記憶體裡的活躍表，表跟著 `sym.changed` 重載。事件上的 UniversalTicker 來自 feed。account worker 每個 ticker 第一次下單時解析一次，之後查記憶體。
 - **atom 的身分是解析後的 `(venue, route, channel)`，id 為 `<venue>:<route>:<channel>`。** channel 仍逐字照抄交易所參數；route 從解析後的商品推得（Bybit 依 category），所以同一個 channel 字串在不同 route 上是不同的 atom。
-  - 不拿 `topic.UniversalTicker` 當 atom 的身分。一個 channel 常同時服務多個 topic：`orderbook` 和 `orderbook_delta`；Bybit linear 的 `tickers.*` 帶 ticker、funding、OI、mark price。以 (topic, ticker) 當身分，同一條連線上會重複訂閱同一個 channel，退訂一個就把其他的斷掉。這是 mftik `MdVenueSubscriptions` 處理過的問題：產品的 refcount 和 wire 上的訂閱是兩本帳。
+  - 不拿 `topic.UniversalTicker` 當 atom 的身分。一個 channel 常同時服務多個 topic：Bybit linear 的 `tickers.*` 帶 ticker、funding、OI、mark price；Binance UM 的 `markPrice` 帶 mark price 與 funding。以 (topic, ticker) 當身分，同一條連線上會重複訂閱同一個 channel，退訂一個就把其他的斷掉。這是 mftik `MdVenueSubscriptions` 處理過的問題：產品的 refcount 和 wire 上的訂閱是兩本帳。
   - 佔位留在 MD 外面：`md.f` 的 subject 是 feed（`topic.UniversalTicker`），atom 不出現在資料面（PROTOCOL §7）。
-- **topic 名稱沿用 mftik：** `bestquote`、`trade`、`aggtrade`、`orderbook`、`ticker`、`liquidation`、`funding_rate`、`open_interest`、`greeks`、`kline_<interval>`，加上這裡自己的 `orderbook_delta`、`mark_price`。表在 PROTOCOL §2。
+- **topic 名稱沿用 mftik：** `bestquote`、`trade`、`aggtrade`、`ticker`、`liquidation`、`funding_rate`、`open_interest`、`greeks`、`kline_<interval>`，加上這裡自己的 `orderbook_delta`、`mark_price`。`orderbook` 已刪除（D453）。表在 PROTOCOL §2。
 - **SYM 照 mftik：**
   - 刷新以 `(venue, category)` 為單位，各自刷新、各自下架：現貨的刷新不會讓 perp 下架。
   - 下架與到期不改 UniversalTicker（D203）。狀態還會變的留在活躍表；進了終結狀態就搬到終結表，ticker 字串不變。訂單與 session 仍指向同一個 ticker。

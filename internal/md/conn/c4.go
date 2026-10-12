@@ -239,9 +239,6 @@ func (s *ctl) onInit(m *workerv1.Init) (code int, ok bool) {
 	if p.GetVenue() == "" || p.GetRoute() == "" || p.GetMdInstance() == "" {
 		return s.failInit("venue, route and md_instance are required"), false
 	}
-	if p.GetBookDepth() == 0 {
-		return s.failInit("book depth is required"), false
-	}
 	if s.cfg.RateHold < 0 {
 		return s.failInit("rate hold is negative"), false
 	}
@@ -279,13 +276,12 @@ func (s *ctl) onInit(m *workerv1.Init) (code int, ok bool) {
 		}
 	}
 	s.log.Info().Str("venue", p.GetVenue()).Str("route", p.GetRoute()).Uint32("n", p.GetN()).
-		Uint64("conn_epoch", p.GetConnEpoch()).Uint32("book_depth", p.GetBookDepth()).Msg("init")
+		Uint64("conn_epoch", p.GetConnEpoch()).Msg("init")
 	c := New(Config{
 		Venue: p.GetVenue(), Route: p.GetRoute(), Instance: p.GetMdInstance(), URL: p.GetUrl(),
 		Market: market, Publish: s.cfg.Publish, Now: s.cfg.Now, Epoch: p.GetConnEpoch(),
 		Report: s.report, RetryAfter: s.cfg.RetryAfter, RetryMax: s.cfg.RetryMax, Log: s.cfg.Log,
 		REST: rest, Doer: s.cfg.Doer, RateHold: s.cfg.RateHold,
-		BookDepth: p.GetBookDepth(),
 		BufferMax: int(p.GetBookBufferMax()), BufferAge: bufAge,
 		Symbols: symbols, Subscribe: s.cfg.Subscribe,
 		TapeWindow: tapeWindow, TapeMaxEvents: int(p.GetTapeMaxEvents()), TapeBudget: int64(p.GetTapeBudgetBytes()),

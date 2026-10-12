@@ -85,7 +85,7 @@ type routeKey struct {
 // meantime. A later commit at the same moment still sees the timer as just started. The agent
 // does not resolve symbols or name atoms: the payload is the feed list, and the worker derives
 // the subscription.
-func assign(inst string, now time.Time, linger time.Duration, markets Markets, overrides map[string]string, bookDepth uint32, feeds []feedIn, prev snapshot) derived {
+func assign(inst string, now time.Time, linger time.Duration, markets Markets, overrides map[string]string, feeds []feedIn, prev snapshot) derived {
 	if linger < 0 {
 		linger = 0
 	}
@@ -278,7 +278,7 @@ func assign(inst string, now time.Time, linger time.Duration, markets Markets, o
 		}
 		live := Live{Feeds: atomIDs}
 		out.Plans[agent.WorkerKey(conn)] = agent.Plan[Spec, Live]{
-			Spawn: Spec{Venue: v, Route: r, N: n, URL: out.Atoms[atomIDs[0]].URL, BookDepth: bookDepth},
+			Spawn: Spec{Venue: v, Route: r, N: n, URL: out.Atoms[atomIDs[0]].URL},
 			Live:  live,
 			Start: true,
 		}
@@ -287,6 +287,9 @@ func assign(inst string, now time.Time, linger time.Duration, markets Markets, o
 }
 
 func classify(markets Markets, f feedIn) (string, *atomGroup, string) {
+	if exchange.RetiredTopic(string(f.Entry.Topic)) {
+		return "", nil, "invalid"
+	}
 	t := f.Entry.Ticker
 	if t.Venue == "" || f.Entry.Feed == "" {
 		return "", nil, "unknown venue"

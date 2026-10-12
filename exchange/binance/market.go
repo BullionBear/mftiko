@@ -51,7 +51,6 @@ func (m *market) Topics() []exchange.TopicCaps {
 		return appendKlines([]exchange.TopicCaps{
 			{Topic: exchange.TopicBestQuote},
 			{Topic: exchange.TopicAggTrade},
-			{Topic: exchange.TopicOrderBook},
 			{Topic: exchange.TopicOrderBookDelta},
 			{Topic: exchange.TopicTicker},
 		})
@@ -64,7 +63,6 @@ func umTopics() []exchange.TopicCaps {
 	out := []exchange.TopicCaps{
 		{Topic: exchange.TopicBestQuote},
 		{Topic: exchange.TopicAggTrade},
-		{Topic: exchange.TopicOrderBook},
 		{Topic: exchange.TopicOrderBookDelta},
 		{Topic: exchange.TopicTicker},
 		{Topic: exchange.TopicLiquidation},
@@ -84,8 +82,8 @@ func appendKlines(out []exchange.TopicCaps) []exchange.TopicCaps {
 
 // Atom: the channel is the venue's subscribe parameter, lowercase symbol included.
 // bookTicker and depth are the public route; everything else is market.
-// orderbook and orderbook_delta share btcusdt@depth@100ms. mark_price and funding_rate
-// share btcusdt@markPrice@1s. Open interest is not pushed (D401).
+// orderbook_delta subscribes btcusdt@depth@100ms. mark_price and funding_rate
+// share btcusdt@markPrice@1s. Open interest is not pushed (D401). There is no top-N topic (D453).
 func (m *market) Atom(topic exchange.Topic, inst *symbol.Info) (exchange.AtomRef, error) {
 	switch m.p.venue.Name {
 	case VenueUM:
@@ -105,7 +103,7 @@ func (m *market) umAtom(topic exchange.Topic, inst *symbol.Info) (exchange.AtomR
 	switch topic {
 	case exchange.TopicBestQuote:
 		return atom("public", sym+"@bookTicker"), nil
-	case exchange.TopicOrderBook, exchange.TopicOrderBookDelta:
+	case exchange.TopicOrderBookDelta:
 		return atom("public", sym+"@depth@100ms"), nil
 	case exchange.TopicAggTrade:
 		return atom("market", sym+"@aggTrade"), nil
@@ -130,7 +128,7 @@ func (m *market) spotAtom(topic exchange.Topic, inst *symbol.Info) (exchange.Ato
 	switch topic {
 	case exchange.TopicBestQuote:
 		return atom(exchange.RouteDefault, sym+"@bookTicker"), nil
-	case exchange.TopicOrderBook, exchange.TopicOrderBookDelta:
+	case exchange.TopicOrderBookDelta:
 		return atom(exchange.RouteDefault, sym+"@depth@100ms"), nil
 	case exchange.TopicAggTrade:
 		return atom(exchange.RouteDefault, sym+"@aggTrade"), nil

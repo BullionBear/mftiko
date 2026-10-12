@@ -59,13 +59,10 @@ type Config struct {
 	RetryAfter time.Duration
 	RetryMax   time.Duration
 	// REST and Doer run SnapshotREST depth in this process. Nil is left alone until a book asks
-	// for a snapshot. The call does not go through md.fetch (D402).
+	// for a snapshot. The call does not go through md.fetch (D402). Depth asks for BookSync.Depth()
+	// (D453).
 	REST exchange.PublicREST
 	Doer exchange.Doer
-	// BookDepth is the orderbook top-N (D426). Zero means missing. Serve rejects that at init. A
-	// book channel adopted with zero, or with N greater than BookSync.Depth on SnapshotREST,
-	// ends Run.
-	BookDepth uint32
 	// BufferMax and BufferAge cap the updates kept while a snapshot is outstanding (D424). Zero
 	// means DefaultBufferMax and DefaultBufferAge. Hitting either drops the buffer and makes the
 	// in-flight snapshot stale.
@@ -109,7 +106,6 @@ type Conn struct {
 	log                zerolog.Logger
 	rest               exchange.PublicREST
 	doer               exchange.Doer
-	bookDepth          uint32
 	bufferMax          int
 	bufferAge          time.Duration
 	rateHold           time.Duration
@@ -154,7 +150,7 @@ type Conn struct {
 	// fetchWG is the Depth calls of the connection that is up. The link is cleared only after they
 	// return, so a late response cannot land on the next connection.
 	fetchWG sync.WaitGroup
-	// fatal is a book the worker will not run (missing N, or N above Depth). stop cancels Run.
+	// fatal is a book the worker will not run (a channel that is not a book). stop cancels Run.
 	fatal error
 	stop  context.CancelFunc
 
@@ -253,7 +249,7 @@ func New(cfg Config) *Conn {
 		venue: cfg.Venue, route: cfg.Route, inst: cfg.Instance,
 		url: cfg.URL, market: cfg.Market, pub: cfg.Publish, now: now,
 		epoch: cfg.Epoch, report: cfg.Report, retryAfter: cfg.RetryAfter, retryMax: cfg.RetryMax,
-		rest: cfg.REST, doer: cfg.Doer, bookDepth: cfg.BookDepth,
+		rest: cfg.REST, doer: cfg.Doer,
 		bufferMax: bufN, bufferAge: bufAge, rateHold: hold, bookNow: bookNow, bookAfter: cfg.BookAfter,
 		symbols: cfg.Symbols, subscribe: cfg.Subscribe,
 		tapeWindow: window, tapeMax: maxEvents, tapeBudget: budget,

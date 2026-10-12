@@ -185,8 +185,7 @@ func (s *marketSink) Liquidation(ch string, e *exchange.Liquidation)   { s.add("
 func (s *marketSink) FundingRate(ch string, e *exchange.FundingRate)   { s.add("FundingRate", ch, e) }
 func (s *marketSink) OpenInterest(ch string, e *exchange.OpenInterest) { s.add("OpenInterest", ch, e) }
 func (s *marketSink) Greeks(ch string, e *exchange.Greeks)             { s.add("Greeks", ch, e) }
-func (s *marketSink) MarkPrice(ch string, e *exchange.MarkPrice)       { s.add("MarkPrice", ch, e) }
-func (s *marketSink) FeedEnd(ch string, e *exchange.FeedEnd)           { s.add("FeedEnd", ch, e) }
+func (s *marketSink) MarkPrice(ch string, e *exchange.MarkPrice) { s.add("MarkPrice", ch, e) }
 
 // accountSink records a private session.
 type accountSink struct {

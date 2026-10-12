@@ -111,7 +111,6 @@ func TestEpochReportedBeforeDial(t *testing.T) {
 	}
 	initRaw, err := proto.Marshal(&mdctlv1.InitPayload{
 		Venue: "V", Route: "r", N: 1, MdInstance: "md1", Url: url, ConnEpoch: start,
-		BookDepth: 1,
 	})
 	if err != nil {
 		t.Fatal(err)
