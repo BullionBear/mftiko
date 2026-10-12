@@ -29,7 +29,7 @@ make accept-up        # 等於 deploy/accept/accept.sh up
 ... BinanceUM_Perp_BTCUSDT uid=... exch=BTCUSDT status=SYMBOL_STATUS_TRADABLE price_tick=0.1
 ```
 
-換交易所時設定 `ACCEPT_VENUE`、`ACCEPT_SYM_FEEDS`（conn worker 會載入該 venue 的每一個 category，所以要全部列出）、`ACCEPT_TICKER`，並在 `endpoints/ws.json`、`endpoints/rest.json` 加上那個 venue 的 testnet 位址。目前列了驗證過的 BinanceUM（E4-09）與 Binance 現貨（E4-10）。`rest.json` 給 SnapshotREST 的快照用（`md-agent -rest-endpoints`）：testnet 的串流必須搭配 testnet 的快照，正式站的 update id 對不上。
+換交易所時設定 `ACCEPT_VENUE`、`ACCEPT_SYM_FEEDS`（conn worker 會載入該 venue 的每一個 category，所以要全部列出）、`ACCEPT_TICKER`，並在 `endpoints/ws.json`、`endpoints/rest.json` 加上那個 venue 的 testnet 位址。目前列了驗證過的 BinanceUM（E4-09）、Binance 現貨（E4-10）、Bybit testnet 與 OKX demo（E4-11）。`rest.json` 給 SnapshotREST 的快照用（`md-agent -rest-endpoints`）：testnet 的串流必須搭配 testnet 的快照，正式站的 update id 對不上。
 
 Binance 現貨：
 
@@ -38,6 +38,16 @@ ACCEPT_VENUE=Binance ACCEPT_SYM_FEEDS=Binance/Spot ACCEPT_TICKER=Binance_Spot_BT
 ```
 
 現貨只有一條 route（`default`），`aggtrade` 與 `orderbook_delta` 會放在同一個 conn（`md/Binance/default/0`）上，所以第 3 條切一次就會讓兩個 feed 一起進到下一個 epoch。tick 是 0.01，2048 tick 的窗大約只有最佳價上下 20 USD。
+
+Bybit linear 與 OKX USDT 本位永續（E4-11）可以在同一組環境一起跑：
+
+```sh
+ACCEPT_VENUE=Bybit ACCEPT_TICKER=Bybit_Perp_BTCUSDT \
+ACCEPT_SYM_FEEDS=Bybit/Spot,Bybit/Perp,Bybit/Future,Okx/Spot,Okx/Perp,Okx/Future,Okx/Inverse make accept-up
+deploy/accept/accept.sh refresh -venue Okx -ticker Okx_Perp_BTCUSDT
+```
+
+這兩家的簿是 SnapshotStream：訂閱後的第一則就是全本，不打 depth REST，所以不需要 `rest.json`。兩家都有 `trade` topic。Bybit 走 `linear` route，OKX 走 `public` route（位址是 `wss://wspap.okx.com:8443`，即 demo，不需要額外的 header）。Bybit testnet 的 `orderbook.50` 很稀疏，50 檔分散在最佳價上下大約 2000 USD，落在窗內（±204.8 USD）的只有十幾檔，這是 D431 的結果。
 
 以下以 BinanceUM 為例。`A=deploy/accept/accept.sh`。BinanceUM 沒有 `trade` topic，trade 類用 `aggtrade`。
 
@@ -104,4 +114,4 @@ $A stop watch                                # 印出最後的 SUMMARY；有 gap
 make accept-down                             # 停掉並刪除 volume；data/work 留著
 ```
 
-紀錄：`data/work/watch.log`、`watch.jsonl`（每一則 md.f 的 `(epoch, seq)`）、`agent-*.log`、`sym.log`，以及上面各個指令的輸出。新的一輪要乾淨的紀錄時，先清空 `data/work/`。E4-09 的紀錄在 #193，E4-10 的在 #195。
+紀錄：`data/work/watch.log`、`watch.jsonl`（每一則 md.f 的 `(epoch, seq)`）、`agent-*.log`、`sym.log`，以及上面各個指令的輸出。新的一輪要乾淨的紀錄時，先清空 `data/work/`。E4-09 的紀錄在 #193，E4-10 在 #195，E4-11 則在這張票的 PR。
