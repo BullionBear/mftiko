@@ -39,6 +39,7 @@ func main() {
 	version := flag.Bool("version", false, "print the release and exit")
 	database := flag.String("database", os.Getenv("DATABASE_URL"), "PostgreSQL URL (default $DATABASE_URL)")
 	natsURL := flag.String("nats", envOr("NATS_URL", "nats://127.0.0.1:4222"), "NATS URL (default $NATS_URL or the dev server)")
+	creds := flag.String("nats-creds", os.Getenv("MFTIKO_NATS_CREDS"), "NATS user credentials file (default $MFTIKO_NATS_CREDS); empty connects without, which the dev server refuses")
 	feeds := flag.String("feeds", "", "comma-separated Venue/Category; empty serves every registered category that has a public REST reader")
 	proxy := flag.String("proxy", "", "HTTP proxy for venue connections (http://host:port); empty connects directly")
 	roots := flag.String("tls-roots", "", "PEM file of TLS roots for venue connections; empty uses the system roots")
@@ -49,7 +50,7 @@ func main() {
 		return
 	}
 	log := logger.New("mftiko-sym")
-	if err := run(*database, *natsURL, *feeds, *proxy, *roots, *timeout, log); err != nil {
+	if err := run(*database, *natsURL, *creds, *feeds, *proxy, *roots, *timeout, log); err != nil {
 		log.Error().Err(err).Msg("exit")
 		os.Exit(1)
 	}
@@ -62,7 +63,7 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-func run(database, natsURL, feeds, proxy, roots string, timeout time.Duration, log zerolog.Logger) error {
+func run(database, natsURL, creds, feeds, proxy, roots string, timeout time.Duration, log zerolog.Logger) error {
 	if database == "" {
 		return errors.New("database URL is empty")
 	}
@@ -90,7 +91,7 @@ func run(database, natsURL, feeds, proxy, roots string, timeout time.Duration, l
 	if err != nil {
 		return err
 	}
-	nc, err := natsx.Connect(natsURL, natsx.Options{Name: "mftiko-sym", Logger: slog.Default()})
+	nc, err := natsx.Connect(natsURL, natsx.Options{Name: "mftiko-sym", Logger: slog.Default(), CredsFile: creds})
 	if err != nil {
 		return err
 	}
