@@ -33,7 +33,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-td-agent         execution-plane agent (also backfill and history drain)
   mftiko-shim             per-worker shim
   mftiko-md-conn          MD conn worker: one websocket per (venue, route, n)
-  mftiko-td-account       TD account worker: one per api_id
+  mftiko-td-account       TD account worker: one per api_id (connections, recon, account state)
   mftiko-mdfetch          stateless md.fetch service
   mftiko-sym              symbol service
   mftiko-migrate          applies the PostgreSQL migrations (a deploy step)

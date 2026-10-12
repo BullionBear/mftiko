@@ -16,7 +16,8 @@ import (
 // TradeVenue is a fake venue for code that drives an exchange.TradeStream (D303): the account
 // worker's request ids, deadlines and reconnects. It has two ends. Stream is the client's codec;
 // Handle is the venue receiving what the client sent, and Release hands back the answers in the order
-// the test chooses, with any it chose to Drop missing. Nothing goes over a network.
+// the test chooses, with any it chose to Drop missing. Nothing goes over a network, unless the test
+// serves Handler: then the codec dials it, and each request is answered as it arrives.
 //
 // The wire format is its own JSON. With events set, the connection also carries private events
 // (TradeLimits.Events), as Binance spot's does after userDataStream.subscribe.
@@ -29,6 +30,10 @@ type TradeVenue struct {
 	reject  map[uint64]int // id -> the venue's refusal code
 	refuse  bool           // refuse the next logon
 	orders  int
+
+	url        string // what the codec dials; Handler serves it
+	conns      map[*streamConn]struct{}
+	connsTotal int
 }
 
 type answer struct {
@@ -39,12 +44,13 @@ type answer struct {
 // NewTradeVenue returns a venue whose logon takes key. With events set, its connection carries
 // private events.
 func NewTradeVenue(key string, events bool) *TradeVenue {
-	return &TradeVenue{key: key, events: events, drop: map[uint64]bool{}, reject: map[uint64]int{}}
+	return &TradeVenue{key: key, events: events, drop: map[uint64]bool{}, reject: map[uint64]int{},
+		url: "wss://trade.exchangetest.invalid/ws", conns: map[*streamConn]struct{}{}}
 }
 
 // Stream is a new client codec for one connection to this venue.
 func (v *TradeVenue) Stream() exchange.TradeStream {
-	return &tradeStream{key: v.key, events: v.events}
+	return &tradeStream{v: v, key: v.key, events: v.events}
 }
 
 // Drop makes the answer to request id never come, queued or not.
@@ -178,6 +184,7 @@ func (v *TradeVenue) Fill(fillID, order, sym string, side exchange.Side, px, qty
 }
 
 type tradeStream struct {
+	v      *TradeVenue
 	key    string
 	events bool
 }
@@ -200,11 +207,16 @@ func (s *tradeStream) Dial(now time.Time) (*exchange.Dial, error) {
 	if s.events {
 		frames = append(frames, mustJSON(clientFrame{Op: "subscribe", ID: "sub"}))
 	}
-	return &exchange.Dial{URL: "wss://trade.exchangetest.invalid/ws", Frames: frames}, nil
+	s.v.mu.Lock()
+	u := s.v.url
+	s.v.mu.Unlock()
+	return &exchange.Dial{URL: u, Frames: frames}, nil
 }
 
-func (s *tradeStream) Limits() exchange.TradeLimits { return exchange.TradeLimits{Events: s.events} }
-func (s *tradeStream) Ping() []byte                 { return nil }
+func (s *tradeStream) Limits() exchange.TradeLimits {
+	return exchange.TradeLimits{Events: s.events, ReadLimit: 1 << 20}
+}
+func (s *tradeStream) Ping() []byte { return nil }
 
 func (s *tradeStream) Submit(now time.Time, id uint64, req *exchange.OrderRequest) ([]byte, error) {
 	if id == 0 {
