@@ -2,9 +2,14 @@ package account
 
 import (
 	"bufio"
+	"context"
+	"errors"
+	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,6 +24,7 @@ import (
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/contract/wire/c4"
+	"github.com/BullionBear/mftiko/contract/wire/decimal"
 	"github.com/BullionBear/mftiko/contract/wire/frame"
 	"github.com/BullionBear/mftiko/exchange"
 	"github.com/BullionBear/mftiko/exchange/exchangetest"
@@ -32,39 +38,107 @@ const (
 
 var secret = secretPart + "-secret"
 
-// recLedger records what the worker hands it.
-type recLedger struct {
-	mu     sync.Mutex
-	recons []exchange.AccountSnapshot
-	orders []string
-	fills  []string
+// fakeBus is the account's NATS in memory: it decodes what is published on td.evt, and calls the
+// td.view responder directly.
+type fakeBus struct {
+	mu      sync.Mutex
+	events  []*tdv1.AccountEvent
+	respond map[string]func([]byte) []byte
 }
 
-func (l *recLedger) Recon(s *exchange.AccountSnapshot) {
-	l.mu.Lock()
-	l.recons = append(l.recons, *s)
-	l.mu.Unlock()
-}
-func (l *recLedger) Order(e *exchange.OrderUpdate) {
-	l.mu.Lock()
-	l.orders = append(l.orders, e.ClientOrderID)
-	l.mu.Unlock()
-}
-func (l *recLedger) Fill(e *exchange.Fill) {
-	l.mu.Lock()
-	l.fills = append(l.fills, e.FillID)
-	l.mu.Unlock()
-}
-func (l *recLedger) Balances([]exchange.Balance)   {}
-func (l *recLedger) Positions([]exchange.Position) {}
+func newFakeBus() *fakeBus { return &fakeBus{respond: map[string]func([]byte) []byte{}} }
 
-func (l *recLedger) reconCount() int { l.mu.Lock(); defer l.mu.Unlock(); return len(l.recons) }
+func (b *fakeBus) Publish(subject string, data []byte) error {
+	if subject != "td.evt.42" {
+		return errors.New("published on " + subject)
+	}
+	ev := &tdv1.AccountEvent{}
+	if err := proto.Unmarshal(data, ev); err != nil {
+		return err
+	}
+	b.mu.Lock()
+	b.events = append(b.events, ev)
+	b.mu.Unlock()
+	return nil
+}
+
+func (b *fakeBus) Respond(subject string, h func([]byte) []byte) (func(), error) {
+	b.mu.Lock()
+	b.respond[subject] = h
+	b.mu.Unlock()
+	return func() { b.mu.Lock(); delete(b.respond, subject); b.mu.Unlock() }, nil
+}
+
+func (b *fakeBus) all() []*tdv1.AccountEvent {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]*tdv1.AccountEvent(nil), b.events...)
+}
+
+// recons are the Recon events so far.
+func (b *fakeBus) recons() []*tdv1.Recon {
+	var out []*tdv1.Recon
+	for _, e := range b.all() {
+		if r := e.GetRecon(); r != nil {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func (b *fakeBus) view(t *testing.T, req *tdv1.ViewRequest) *tdv1.ViewReply {
+	t.Helper()
+	b.mu.Lock()
+	h := b.respond["td.view.42"]
+	b.mu.Unlock()
+	if h == nil {
+		t.Fatal("td.view is not served")
+	}
+	q, _ := proto.Marshal(req)
+	r := &tdv1.ViewReply{}
+	if err := proto.Unmarshal(h(q), r); err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+// fakeInstruments is a symbol table keyed by exch_ticker alone: the fake venues fill the rest of an
+// ExchKey unevenly. inactive are only found with includeInactive.
+type fakeInstruments struct {
+	active, inactive map[string]*symbol.Info
+	asked            atomic.Int32 // questions with includeInactive
+}
+
+func (f *fakeInstruments) Reverse(_ context.Context, k symbol.ExchKey, includeInactive bool) (*symbol.Info, error) {
+	if i, ok := f.active[k.ExchTicker]; ok {
+		return i, nil
+	}
+	if includeInactive {
+		f.asked.Add(1)
+		if i, ok := f.inactive[k.ExchTicker]; ok {
+			return i, nil
+		}
+	}
+	return nil, errors.New("not found")
+}
+
+func instruments() *fakeInstruments {
+	return &fakeInstruments{
+		active: map[string]*symbol.Info{
+			"BTCUSDT":  {UID: 7, ContractSize: 1},
+			"BTC-SWAP": {UID: 8, ContractSize: 0.01}, // counted in contracts, as OKX's swaps
+			"ETHUSDT":  {UID: 10, ContractSize: 1},
+		},
+		inactive: map[string]*symbol.Info{"OLD": {UID: 9}},
+	}
+}
 
 type harness struct {
-	t      *testing.T
-	v      *exchangetest.AccountVenue
-	ledger *recLedger
-	dials  atomic.Int32 // handshakes the private stream's server received
+	t     *testing.T
+	v     *exchangetest.AccountVenue
+	bus   *fakeBus
+	ins   *fakeInstruments
+	dials atomic.Int32 // handshakes the private stream's server received
 
 	conn net.Conn
 	w    *frame.Writer
@@ -83,7 +157,7 @@ func start(t *testing.T, s setup) *harness {
 	t.Helper()
 	s.opts.Key = apiKey
 	v := exchangetest.NewAccountVenue(s.opts)
-	h := &harness{t: t, v: v, ledger: &recLedger{}, ups: make(chan *workerv1.WorkerUp, 256), code: make(chan int, 1)}
+	h := &harness{t: t, v: v, bus: newFakeBus(), ins: instruments(), ups: make(chan *workerv1.WorkerUp, 256), code: make(chan int, 1)}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.dials.Add(1)
 		v.Handler().ServeHTTP(w, r)
@@ -94,10 +168,14 @@ func start(t *testing.T, s setup) *harness {
 		Kinds:          func(n string) (exchange.AccountKind, bool) { k, ok := kinds[n]; return k, ok },
 		Doer:           v,
 		StreamEndpoint: "ws" + strings.TrimPrefix(srv.URL, "http"),
-		Ledger:         h.ledger,
-		RetryAfter:     20 * time.Millisecond,
-		RetryMax:       100 * time.Millisecond,
-		ReadyTimeout:   2 * time.Second,
+		Connect: func(context.Context, *tdctlv1.NatsCredentials, string) (*Env, error) {
+			return &Env{Bus: h.bus, Instruments: h.ins}, nil
+		},
+		WorkerKey:    "td-1/42",
+		Incarnation:  3,
+		RetryAfter:   20 * time.Millisecond,
+		RetryMax:     100 * time.Millisecond,
+		ReadyTimeout: 2 * time.Second,
 	}
 	if s.cfg != nil {
 		s.cfg(&cfg)
@@ -259,19 +337,19 @@ func TestLifecycle(t *testing.T) {
 	h.v.SetBalance(exchange.Balance{Asset: "BTC", Free: 1})
 	h.v.PutOrder(exchange.OrderUpdate{Exch: btc, ClientOrderID: "c1", Status: exchange.OrderStatusAccepted, Qty: 1, Price: 10})
 	h.startReady()
-	if n := h.ledger.reconCount(); n != 1 {
-		t.Fatalf("%d recons", n)
-	}
-	r := h.ledger.recons[0]
-	if len(r.Balances) != 2 || len(r.OpenOrders) != 1 || r.HedgeMode {
-		t.Fatalf("recon %+v", r)
+	evs := h.bus.all()
+	r := evs[0].GetRecon()
+	if len(evs) != 1 || evs[0].GetSeq() != 1 || r.GetReason() != tdv1.ReconReason_RECON_REASON_INCARNATION ||
+		r.GetIncarnation() != 3 || evs[0].GetSource().GetKey() != "td-1/42" ||
+		len(r.GetBalances()) != 2 || len(r.GetOpenOrders()) != 1 || r.GetOpenOrders()[0].GetUid() != 7 || r.GetAsOfNs() == 0 {
+		t.Fatalf("events %v", evs)
 	}
 	h.v.PutOrder(exchange.OrderUpdate{Exch: btc, ClientOrderID: "c2", Status: exchange.OrderStatusAccepted, Qty: 1, Price: 10})
-	waitFor(t, "the event did not reach the ledger", func() bool {
-		h.ledger.mu.Lock()
-		defer h.ledger.mu.Unlock()
-		return len(h.ledger.orders) == 1 && h.ledger.orders[0] == "c2"
-	})
+	waitFor(t, "the event did not reach td.evt", func() bool { return len(h.bus.all()) == 2 })
+	if u := h.bus.all()[1]; u.GetSeq() != 2 || u.GetOrderUpdate().GetOrder().GetClientOrderId() != "c2" ||
+		u.GetOrderUpdate().GetCause() != tdv1.OrderCause_ORDER_CAUSE_ACCEPTED {
+		t.Fatalf("event %v", u)
+	}
 	h.stop()
 	if open, _ := h.v.Connections(); open != 0 {
 		waitFor(t, "the stream is still open", func() bool { o, _ := h.v.Connections(); return o == 0 })
@@ -322,8 +400,8 @@ func TestReconRetried(t *testing.T) {
 	h.v.SetBalance(exchange.Balance{Asset: "BTC", Free: 1})
 	h.v.FailSnapshot(exchangetest.SnapshotBalances, 1, 2)
 	h.startReady()
-	if n := h.ledger.reconCount(); n != 1 || len(h.ledger.recons[0].Balances) != 2 {
-		t.Fatalf("recons %+v", h.ledger.recons)
+	if rs := h.bus.recons(); len(rs) != 1 || len(rs[0].GetBalances()) != 2 {
+		t.Fatalf("recons %v", rs)
 	}
 	h.stop()
 }
@@ -384,7 +462,7 @@ func TestReplacedAheadOfLifetime(t *testing.T) {
 	if _, total := h.v.Connections(); total < 3 {
 		t.Fatalf("%d connections", total)
 	}
-	if n := h.ledger.reconCount(); n != 1 {
+	if n := len(h.bus.recons()); n != 1 {
 		t.Fatalf("%d recons", n)
 	}
 	h.stop()
@@ -402,10 +480,9 @@ func TestTradeStreamWithEvents(t *testing.T) {
 		t.Fatalf("%d private dials", n)
 	}
 	tv.Push(tv.Fill("f1", "o1", "BTCUSDT", exchange.SideBuy, "10", "1"))
-	waitFor(t, "the fill did not reach the ledger", func() bool {
-		h.ledger.mu.Lock()
-		defer h.ledger.mu.Unlock()
-		return len(h.ledger.fills) == 1
+	waitFor(t, "the fill did not reach td.evt", func() bool {
+		evs := h.bus.all()
+		return len(evs) == 2 && evs[1].GetFill().GetFillId() == "f1" && evs[1].GetFill().GetUid() == 7
 	})
 	tv.Disconnect()
 	h.report(tdv1.AccountState_ACCOUNT_STATE_DEGRADED, ReasonStreamLost)
@@ -481,4 +558,259 @@ func count(reqs []string, want string) int {
 		}
 	}
 	return n
+}
+
+// ---------- E6-07: td.view and td.evt against the venue ----------
+
+func (h *harness) oms() *tdv1.ViewReply {
+	return h.bus.view(h.t, &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Oms{Oms: &tdv1.OmsViewRequest{}}})
+}
+
+func (h *harness) ledgerView() *tdv1.ViewReply {
+	return h.bus.view(h.t, &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Ledger{Ledger: &tdv1.LedgerViewRequest{}}})
+}
+
+// matches compares the worker's td.view with the venue's own state.
+func (h *harness) matches() string {
+	got := map[string]string{}
+	for _, o := range h.oms().GetOms().GetOrders() {
+		got[o.GetOrderId()] = o.GetStatus().String() + "/" + strconv.FormatFloat(o.GetFilledQty(), 'f', -1, 64)
+	}
+	want := map[string]string{}
+	for _, o := range h.v.OpenOrders() {
+		want[o.OrderID] = tdv1.OrderStatus(o.Status).String() + "/" + strconv.FormatFloat(o.FilledQty, 'f', -1, 64)
+	}
+	if !maps.Equal(got, want) {
+		return "orders " + fmt.Sprint(got) + " vs " + fmt.Sprint(want)
+	}
+	l := h.ledgerView().GetLedger()
+	gp, wp := map[uint32]float64{}, map[uint32]float64{}
+	for _, p := range l.GetPositions() {
+		gp[p.GetUid()] = p.GetSize()
+	}
+	for _, p := range h.v.Positions() {
+		wp[h.ins.active[p.Exch.ExchTicker].UID] = p.Size
+	}
+	if !maps.Equal(gp, wp) {
+		return "positions " + fmt.Sprint(gp) + " vs " + fmt.Sprint(wp)
+	}
+	gb, wb := map[string][2]float64{}, map[string][2]float64{}
+	for _, b := range l.GetBalances() {
+		gb[b.GetAsset()] = [2]float64{b.GetFree(), b.GetLocked()}
+	}
+	for _, b := range h.v.Balances() {
+		wb[b.Asset] = [2]float64{b.Free, b.Locked}
+	}
+	if !maps.Equal(gb, wb) {
+		return "balances " + fmt.Sprint(gb) + " vs " + fmt.Sprint(wb)
+	}
+	return ""
+}
+
+func (h *harness) waitMatch() {
+	h.t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		last := h.matches()
+		if last == "" {
+			return
+		}
+		if time.Now().After(deadline) {
+			h.t.Fatalf("td.view does not match the venue: %s\nevents %q", last, kinds(h.bus.all()))
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func limit(cid string, qty float64) exchange.OrderUpdate {
+	return exchange.OrderUpdate{Exch: btc, ClientOrderID: cid, Side: exchange.SideBuy, Type: exchange.OrderTypeLimit,
+		Status: exchange.OrderStatusAccepted, Qty: qty, Price: 10, QuoteQty: decimal.Absent(), AvgPrice: decimal.Absent()}
+}
+
+// The acceptance: after a run of events, td.view's OMS and ledger are the venue's state; and asking
+// td.view, however often, sends the venue nothing.
+func TestViewMatchesVenue(t *testing.T) {
+	h := start(t, setup{})
+	h.v.SetBalance(exchange.Balance{Asset: "USDT", Free: 1000})
+	h.v.PutOrder(limit("a", 2))
+	h.startReady()
+	h.waitMatch()
+
+	h.v.PutOrder(limit("b", 1))
+	h.v.PutOrder(limit("c", 1))
+	if _, err := h.v.Fill("a", 0.5, 10); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.v.Fill("b", 1, 10); err != nil { // b fills and leaves
+		t.Fatal(err)
+	}
+	for _, c := range h.v.OpenOrders() {
+		if c.ClientOrderID == "c" {
+			c.Status = exchange.OrderStatusCancelled
+			h.v.PutOrder(c) // c is cancelled and leaves
+		}
+	}
+	h.v.SetPosition(exchange.Position{Exch: btc, Size: 1.5, EntryPrice: 10, MarkPrice: decimal.Absent(), UnrealizedPnl: decimal.Absent(), Leverage: 3})
+	h.v.SetBalance(exchange.Balance{Asset: "USDT", Free: 985, Locked: 15})
+	h.waitMatch()
+
+	h.v.ResetRequests()
+	for range 20 {
+		h.oms()
+		h.ledgerView()
+		h.bus.view(t, &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Leverage{Leverage: &tdv1.LeverageRequest{Uid: 7}}})
+	}
+	if reqs := h.v.Requests(); len(reqs) != 0 {
+		t.Fatalf("td.view sent the venue %v", reqs)
+	}
+	if v := h.oms(); v.GetState() != tdv1.AccountState_ACCOUNT_STATE_READY || v.GetIncarnation() != 3 || v.GetReconciledAtNs() == 0 {
+		t.Fatalf("view header %v", v)
+	}
+	h.stop()
+}
+
+// The acceptance: a reconnect publishes one Recon (RECONNECT), and the seq goes on across it.
+func TestReconAfterReconnect(t *testing.T) {
+	h := start(t, setup{})
+	h.startReady()
+	h.v.PutOrder(limit("a", 1))
+	waitFor(t, "no order event", func() bool { return len(h.bus.all()) == 2 })
+	h.v.Disconnect()
+	h.report(tdv1.AccountState_ACCOUNT_STATE_DEGRADED, ReasonStreamLost)
+	h.report(tdv1.AccountState_ACCOUNT_STATE_READY, "")
+	h.v.PutOrder(limit("b", 1))
+	waitFor(t, "no order event after the reconnect", func() bool { return len(h.bus.all()) == 4 })
+	evs := h.bus.all()
+	seqsFrom1(t, evs)
+	rc := evs[2].GetRecon()
+	if rc.GetReason() != tdv1.ReconReason_RECON_REASON_RECONNECT || len(rc.GetOpenOrders()) != 1 || len(h.bus.recons()) != 2 {
+		t.Fatalf("events %v", kinds(evs))
+	}
+	h.stop()
+}
+
+// replay rebuilds an account from a td.view snapshot and the td.evt events after its seq: what a
+// session does after it missed events (D606).
+type replay struct {
+	orders    map[string]*tdv1.Order
+	positions map[uint32]float64
+	balances  map[string][2]float64
+}
+
+func (r *replay) apply(e *tdv1.AccountEvent) {
+	switch x := e.GetEvent().(type) {
+	case *tdv1.AccountEvent_Recon:
+		r.orders, r.positions, r.balances = map[string]*tdv1.Order{}, map[uint32]float64{}, map[string][2]float64{}
+		for _, o := range x.Recon.GetOpenOrders() {
+			r.orders[o.GetOrderId()] = o
+		}
+		for _, p := range x.Recon.GetPositions() {
+			r.positions[p.GetUid()] = p.GetSize()
+		}
+		for _, b := range x.Recon.GetBalances() {
+			r.balances[b.GetAsset()] = [2]float64{b.GetFree(), b.GetLocked()}
+		}
+	case *tdv1.AccountEvent_OrderUpdate:
+		o := x.OrderUpdate.GetOrder()
+		if terminal(o.GetStatus()) {
+			delete(r.orders, o.GetOrderId())
+		} else {
+			r.orders[o.GetOrderId()] = o
+		}
+	case *tdv1.AccountEvent_PositionUpdate:
+		for _, p := range x.PositionUpdate.GetPositions() {
+			if p.GetSize() == 0 {
+				delete(r.positions, p.GetUid())
+			} else {
+				r.positions[p.GetUid()] = p.GetSize()
+			}
+		}
+	case *tdv1.AccountEvent_BalanceUpdate:
+		for _, b := range x.BalanceUpdate.GetBalances() {
+			r.balances[b.GetAsset()] = [2]float64{b.GetFree(), b.GetLocked()}
+		}
+	}
+}
+
+func (r *replay) state() string {
+	o := map[string]string{}
+	for id, x := range r.orders {
+		o[id] = x.GetStatus().String() + "/" + strconv.FormatFloat(x.GetFilledQty(), 'f', -1, 64)
+	}
+	return fmt.Sprint(o, r.positions, r.balances)
+}
+
+func viewState(oms, ledger *tdv1.ViewReply) *replay {
+	r := &replay{}
+	r.apply(&tdv1.AccountEvent{Event: &tdv1.AccountEvent_Recon{Recon: &tdv1.Recon{
+		OpenOrders: oms.GetOms().GetOrders(), Positions: ledger.GetLedger().GetPositions(), Balances: ledger.GetLedger().GetBalances(),
+	}}})
+	return r
+}
+
+// The acceptance: a td.view snapshot plus the td.evt events after its seq rebuild the same state,
+// across a reconnect and its Recon.
+func TestRebuildFromViewAndEvents(t *testing.T) {
+	h := start(t, setup{})
+	h.v.SetBalance(exchange.Balance{Asset: "USDT", Free: 1000})
+	h.v.PutOrder(limit("a", 2))
+	h.startReady()
+	h.v.PutOrder(limit("b", 1))
+	h.waitMatch()
+
+	// The session's snapshot: the OMS and the ledger at the same seq.
+	oms, ledger := h.oms(), h.ledgerView()
+	if oms.GetSeq() != ledger.GetSeq() {
+		t.Fatalf("seq %d and %d", oms.GetSeq(), ledger.GetSeq())
+	}
+	base := oms.GetSeq()
+	r := viewState(oms, ledger)
+
+	if _, err := h.v.Fill("a", 2, 10); err != nil {
+		t.Fatal(err)
+	}
+	h.v.SetPosition(exchange.Position{Exch: btc, Size: 2, EntryPrice: 10, MarkPrice: decimal.Absent(), UnrealizedPnl: decimal.Absent(), Leverage: decimal.Absent()})
+	// Let the events land: a fill lost with the connection leaves its order UNKNOWN until E6-08
+	// asks the venue (TestOrderLostWithTheConnection).
+	h.waitMatch()
+	h.v.Disconnect()
+	h.report(tdv1.AccountState_ACCOUNT_STATE_DEGRADED, ReasonStreamLost)
+	h.report(tdv1.AccountState_ACCOUNT_STATE_READY, "")
+	h.v.PutOrder(limit("c", 1))
+	h.v.SetBalance(exchange.Balance{Asset: "USDT", Free: 970, Locked: 10})
+	h.waitMatch()
+
+	final := viewState(h.oms(), h.ledgerView())
+	for _, e := range h.bus.all() {
+		if e.GetSeq() > base {
+			r.apply(e)
+		}
+	}
+	if got, want := r.state(), final.state(); got != want {
+		t.Fatalf("rebuilt %s\nwant    %s", got, want)
+	}
+	h.stop()
+}
+
+// An order that finished while its event was lost with the connection is UNKNOWN after the recon,
+// in td.view and in the Recon, until the venue is asked by client order id (E6-08, D615).
+func TestOrderLostWithTheConnection(t *testing.T) {
+	h := start(t, setup{})
+	h.v.PutOrder(limit("a", 1))
+	h.startReady()
+	h.v.Hold() // the venue's events wait
+	if _, err := h.v.Fill("a", 1, 10); err != nil {
+		t.Fatal(err)
+	}
+	h.v.Disconnect() // and never reach the worker: the venue keeps holding them
+	h.report(tdv1.AccountState_ACCOUNT_STATE_DEGRADED, ReasonStreamLost)
+	h.report(tdv1.AccountState_ACCOUNT_STATE_READY, "")
+	o := h.oms().GetOms().GetOrders()
+	if len(o) != 1 || o[0].GetClientOrderId() != "a" || o[0].GetStatus() != tdv1.OrderStatus_ORDER_STATUS_UNKNOWN {
+		t.Fatalf("oms %v", o)
+	}
+	if rc := h.bus.recons(); len(rc) != 2 || rc[1].GetOpenOrders()[0].GetStatus() != tdv1.OrderStatus_ORDER_STATUS_UNKNOWN {
+		t.Fatalf("recons %v", rc)
+	}
+	h.stop()
 }

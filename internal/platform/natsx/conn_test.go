@@ -23,6 +23,9 @@ func TestConnectRejectsBadOptions(t *testing.T) {
 		{name: "negative request timeout", url: "nats://127.0.0.1:1", opt: natsx.Options{RequestTimeout: -1}, want: "negative"},
 		{name: "negative connect timeout", url: "nats://127.0.0.1:1", opt: natsx.Options{ConnectTimeout: -1}, want: "negative"},
 		{name: "inbox prefix", url: "nats://127.0.0.1:1", opt: natsx.Options{InboxPrefix: "_INBOX_md.>"}, want: "invalid custom prefix"},
+		{name: "jwt without seed", url: "nats://127.0.0.1:1", opt: natsx.Options{UserJWT: "jwt"}, want: "go together"},
+		{name: "seed without jwt", url: "nats://127.0.0.1:1", opt: natsx.Options{Seed: "seed"}, want: "go together"},
+		{name: "memory and file", url: "nats://127.0.0.1:1", opt: natsx.Options{UserJWT: "jwt", Seed: "seed", CredsFile: "/x"}, want: "in memory and in a file"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

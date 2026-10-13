@@ -286,7 +286,7 @@ export const ViewRequestSchema: GenMessage<ViewRequest> = /*@__PURE__*/
  */
 export type OmsViewRequest = Message<"mftiko.td.v1.OmsViewRequest"> & {
   /**
-   * 包含記憶體裡保留的已終結單；保留量有上限，更早的在 Postgres（D606）
+   * 不再有作用：OMS 只放活著的單，終結的單從 td.evt 與落庫的歷史拿（D615）。E6-15 定案時決定是否拿掉
    *
    * @generated from field: bool settled = 2;
    */
@@ -327,7 +327,7 @@ export const LedgerViewRequestSchema: GenMessage<LedgerViewRequest> = /*@__PURE_
   messageDesc(file_mftiko_td_v1_td, 7);
 
 /**
- * 本地的槓桿快取：recon 時讀入，私有事件更新（D606）。
+ * 本地的槓桿快取：取自持倉的 leverage（recon 與持倉事件），持倉平掉之後仍保留；沒看過的商品回未知（D606、D615）。
  *
  * @generated from message mftiko.td.v1.LeverageRequest
  */

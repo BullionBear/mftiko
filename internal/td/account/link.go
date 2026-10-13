@@ -145,7 +145,7 @@ func (l *link) connect(ctx context.Context) (*conn, error) {
 		return nil, err
 	}
 	c := &conn{ws: wc, codec: cd, born: time.Now(), done: make(chan struct{}), ready: make(chan struct{}), expired: make(chan string, 1)}
-	c.sink = &sink{w: w, c: c}
+	c.sink = &sink{ctx: ctx, w: w, c: c}
 	go func() {
 		c.err = wc.Run(ctx, func(frame []byte) error { return cd.decode(frame, c.sink) })
 		close(c.done)
@@ -262,6 +262,7 @@ func (l *link) serve(ctx context.Context, c *conn) error {
 // sink is what a connection's codec reports to. It is a TradeSink, so it serves both codecs; the
 // answers to orders are E6-08's.
 type sink struct {
+	ctx       context.Context
 	w         *Worker
 	c         *conn
 	readyOnce sync.Once
@@ -278,10 +279,11 @@ func (s *sink) Expired(reason string) {
 	}
 }
 
-func (s *sink) Order(e *exchange.OrderUpdate)   { s.w.event(func(l Ledger) { l.Order(e) }) }
-func (s *sink) Fill(e *exchange.Fill)           { s.w.event(func(l Ledger) { l.Fill(e) }) }
-func (s *sink) Balances(e []exchange.Balance)   { s.w.event(func(l Ledger) { l.Balances(e) }) }
-func (s *sink) Positions(e []exchange.Position) { s.w.event(func(l Ledger) { l.Positions(e) }) }
+// The events go to the book, which copies them: they are lent (D302).
+func (s *sink) Order(e *exchange.OrderUpdate)   { s.w.book.order(s.ctx, e) }
+func (s *sink) Fill(e *exchange.Fill)           { s.w.book.fill(s.ctx, e) }
+func (s *sink) Balances(e []exchange.Balance)   { s.w.book.balanceEvent(s.ctx, e) }
+func (s *sink) Positions(e []exchange.Position) { s.w.book.positionEvent(s.ctx, e) }
 
 func (s *sink) Submitted(uint64, *exchange.OrderResult, error) {}
 func (s *sink) Canceled(uint64, error)                         {}

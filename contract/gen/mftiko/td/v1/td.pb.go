@@ -878,7 +878,7 @@ func (*ViewRequest_Leverage) isViewRequest_Req() {}
 
 type OmsViewRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Settled       bool                   `protobuf:"varint,2,opt,name=settled,proto3" json:"settled,omitempty"`             // 包含記憶體裡保留的已終結單；保留量有上限，更早的在 Postgres（D606）
+	Settled       bool                   `protobuf:"varint,2,opt,name=settled,proto3" json:"settled,omitempty"`             // 不再有作用：OMS 只放活著的單，終結的單從 td.evt 與落庫的歷史拿（D615）。E6-15 定案時決定是否拿掉
 	AlgoId        uint32                 `protobuf:"varint,3,opt,name=algo_id,json=algoId,proto3" json:"algo_id,omitempty"` // 非 0 時以 algo 篩選，涵蓋上一個進程、上一個 session 留下的單（D602）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -972,7 +972,7 @@ func (x *LedgerViewRequest) GetUids() []uint32 {
 	return nil
 }
 
-// 本地的槓桿快取：recon 時讀入，私有事件更新（D606）。
+// 本地的槓桿快取：取自持倉的 leverage（recon 與持倉事件），持倉平掉之後仍保留；沒看過的商品回未知（D606、D615）。
 type LeverageRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Uid           uint32                 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"`
