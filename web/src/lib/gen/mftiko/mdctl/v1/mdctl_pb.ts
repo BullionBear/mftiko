@@ -178,7 +178,7 @@ export type AtomAssignment = Message<"mftiko.mdctl.v1.AtomAssignment"> & {
   feeds: string[];
 
   /**
-   * 忽略。錄不錄由 conn worker 依 topic 決定（D447）。#152 定案 proto 時再拿掉或標成 reserved
+   * 忽略。錄不錄由 conn worker 依 topic 決定（D447）。定案時保留（D460）
    *
    * @generated from field: bool record = 3;
    */
