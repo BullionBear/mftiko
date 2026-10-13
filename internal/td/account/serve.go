@@ -11,6 +11,8 @@ import (
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
 
+	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
+	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
 	tdctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/tdctl/v1"
 	"github.com/BullionBear/mftiko/contract/wire/c4"
 	"github.com/BullionBear/mftiko/exchange"
@@ -43,8 +45,14 @@ type ServeConfig struct {
 	RESTEndpoint   string
 	StreamEndpoint string
 	Simulated      bool
-	// Ledger receives the account's state. Nil discards it, until E6-07.
-	Ledger Ledger
+	// Connect opens the account's NATS with the credentials Init carries (D611), and loads the
+	// symbol table of the venue the account trades. Its error is the INIT_FAILED reason, so it must
+	// not quote the credentials. The Env is closed when the worker ends.
+	Connect func(ctx context.Context, creds *tdctlv1.NatsCredentials, venue string) (*Env, error)
+	// WorkerKey and Incarnation are the worker's identity (MFTIKO_WORKER_KEY, MFTIKO_INCARNATION):
+	// td.evt's source, and Recon's incarnation.
+	WorkerKey   string
+	Incarnation uint32
 	// Now is the clock that signs requests and stamps recons. Nil is time.Now.
 	Now func() time.Time
 	// RetryAfter and RetryMax bound the waits between failed dials and failed recons: the first
@@ -58,6 +66,16 @@ type ServeConfig struct {
 	Release      string          // Hello.release
 }
 
+// Env is the account's NATS and symbol table.
+type Env struct {
+	Bus         Bus
+	Instruments Instruments
+	Close       func() // nil when there is nothing to close
+}
+
+// viewWait bounds the book's answer to one td.view request.
+const viewWait = 2 * time.Second
+
 // Serve speaks C4 on rw, the worker's end of fd 3, and runs one account until Stop, the shim's EOF,
 // or ctx. It closes rw when it returns. The int is the exit code (PROTOCOL §5.3).
 //
@@ -70,6 +88,7 @@ func Serve(ctx context.Context, rw io.ReadWriteCloser, cfg ServeConfig) int {
 		log = *cfg.Log
 	}
 	p := &plane{cfg: cfg, log: log}
+	defer p.close()
 	return c4.Serve(ctx, rw, c4.Config{
 		Kind: "account", Contract: Contract, Release: cfg.Release,
 		Log: func(msg string, err error) { log.Info().Err(err).Msg(msg) },
@@ -77,12 +96,23 @@ func Serve(ctx context.Context, rw io.ReadWriteCloser, cfg ServeConfig) int {
 }
 
 type plane struct {
-	cfg ServeConfig
-	log zerolog.Logger
-	w   *Worker
+	cfg      ServeConfig
+	log      zerolog.Logger
+	w        *Worker
+	env      *Env
+	stopView func()
 }
 
-func (p *plane) Init(_ context.Context, s *c4.Session, payload []byte) error {
+func (p *plane) close() {
+	if p.stopView != nil {
+		p.stopView()
+	}
+	if p.env != nil && p.env.Close != nil {
+		p.env.Close()
+	}
+}
+
+func (p *plane) Init(ctx context.Context, s *c4.Session, payload []byte) error {
 	in := &tdctlv1.InitPayload{}
 	if err := proto.Unmarshal(payload, in); err != nil {
 		return errors.New("init payload")
@@ -90,8 +120,8 @@ func (p *plane) Init(_ context.Context, s *c4.Session, payload []byte) error {
 	if in.GetApiId() <= 0 || in.GetKind() == "" {
 		return errors.New("api_id and kind are required")
 	}
-	if p.cfg.Kinds == nil || p.cfg.Doer == nil {
-		return errors.New("kinds and doer are required")
+	if p.cfg.Kinds == nil || p.cfg.Doer == nil || p.cfg.Connect == nil {
+		return errors.New("kinds, doer and connect are required")
 	}
 	kind, ok := p.cfg.Kinds(in.GetKind())
 	if !ok || kind.Account == nil {
@@ -114,9 +144,49 @@ func (p *plane) Init(_ context.Context, s *c4.Session, payload []byte) error {
 		// The factory's error may quote what it could not parse.
 		return fmt.Errorf("credentials: %s cannot build an account from them", kind.Name)
 	}
+	env, err := p.cfg.Connect(ctx, in.GetNats(), kind.Trades[0])
+	if err != nil {
+		return fmt.Errorf("connect: %w", err)
+	}
+	if env == nil || env.Bus == nil || env.Instruments == nil {
+		return errors.New("connect: no bus or symbol table")
+	}
+	p.env = env
+	now := p.cfg.Now
+	if now == nil {
+		now = time.Now
+	}
+	source := &commonv1.WorkerRef{Key: p.cfg.WorkerKey, Incarnation: p.cfg.Incarnation}
+	bk := newBook(env.Instruments, env.Bus, in.GetApiId(), source, p.log, now)
+	go bk.run(ctx)
+	// td.view answers from here on, before the first recon: the reply says how far along the
+	// account is (D606).
+	stop, err := env.Bus.Respond(viewSubject(in.GetApiId()), func(req []byte) []byte { return viewReply(ctx, bk, req) })
+	if err != nil {
+		return fmt.Errorf("td.view: %w", err)
+	}
+	p.stopView = stop
 	p.log.Info().Int64("api_id", in.GetApiId()).Str("kind", kind.Name).Msg("init")
-	p.w = newWorker(p.cfg, p.log, acct, func(r *tdctlv1.Report) error { return s.Report(r) })
+	p.w = newWorker(p.cfg, p.log, acct, bk, func(r *tdctlv1.Report) error { return s.Report(r) })
 	return nil
+}
+
+// viewReply answers one td.view request.
+func viewReply(ctx context.Context, bk *book, req []byte) []byte {
+	q := &tdv1.ViewRequest{}
+	var r *tdv1.ViewReply
+	if err := proto.Unmarshal(req, q); err != nil {
+		r = &tdv1.ViewReply{Reply: &tdv1.ViewReply_Error{Error: &commonv1.Error{Code: "invalid", Message: "view request does not parse"}}}
+	} else {
+		vctx, cancel := context.WithTimeout(ctx, viewWait)
+		r = bk.view(vctx, q)
+		cancel()
+		if r == nil {
+			r = &tdv1.ViewReply{Reply: &tdv1.ViewReply_Error{Error: &commonv1.Error{Code: "unavailable", Message: "the worker is stopping", Retryable: true}}}
+		}
+	}
+	b, _ := proto.Marshal(r)
+	return b
 }
 
 // credentials checks the unsealed credentials against what the kind takes. The errors never quote

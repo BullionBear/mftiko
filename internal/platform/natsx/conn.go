@@ -51,6 +51,12 @@ type Options struct {
 	// MFTIKO_NATS_CREDS (D415). A session worker leaves it empty: its
 	// credentials arrive in Init and never touch this field (D906).
 	CredsFile string
+
+	// UserJWT and Seed are a user's credentials held in memory: a session or account worker's, which
+	// arrive in Init and are never written to a file (D906, D611). Set both or neither, and not with
+	// CredsFile.
+	UserJWT string
+	Seed    string
 }
 
 // Conn is one core-NATS connection. It is safe for concurrent use. It has no JetStream handle.
@@ -122,6 +128,9 @@ func Connect(url string, opt Options) (*Conn, error) {
 	if opt.CredsFile != "" {
 		nopts = append(nopts, nats.UserCredentials(opt.CredsFile))
 	}
+	if opt.UserJWT != "" {
+		nopts = append(nopts, nats.UserJWTAndSeed(opt.UserJWT, opt.Seed))
+	}
 	nc, err := nats.Connect(url, nopts...)
 	if err != nil {
 		return nil, fmt.Errorf("natsx: connect: %w", err)
@@ -155,6 +164,12 @@ func (c *Conn) notifyReconnect() {
 func (o Options) validate() error {
 	if o.RequestTimeout < 0 || o.ConnectTimeout < 0 {
 		return errors.New("natsx: negative timeout")
+	}
+	if (o.UserJWT == "") != (o.Seed == "") {
+		return errors.New("natsx: UserJWT and Seed go together")
+	}
+	if o.UserJWT != "" && o.CredsFile != "" {
+		return errors.New("natsx: credentials in memory and in a file")
 	}
 	return nil
 }

@@ -13,6 +13,9 @@
 // recon has run; an orders connection that drops leaves orders to REST (D614). A connection about to
 // reach its MaxLifetime is replaced before it closes, so the replacement is not a reconnect (D614).
 //
-// Not yet: the OMS, ledger, td.evt and td.view (E6-07, behind Ledger), orders (E6-08), batch cancel
-// and cancel-on-disconnect (E6-09).
+// The account's state is the book's (book.go): the OMS holds live orders only, the ledger positions,
+// balances and leverage. It publishes every change on td.evt and answers td.view from memory (D606,
+// D615).
+//
+// Not yet: orders (E6-08), batch cancel and cancel-on-disconnect (E6-09).
 package account
