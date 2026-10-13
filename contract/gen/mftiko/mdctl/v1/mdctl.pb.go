@@ -146,7 +146,7 @@ type InitPayload struct {
 	TapeWindowMs uint32 `protobuf:"varint,12,opt,name=tape_window_ms,json=tapeWindowMs,proto3" json:"tape_window_ms,omitempty"`
 	// 每個 feed 的 tape 筆數上限。0 表示 100000。
 	TapeMaxEvents uint32 `protobuf:"varint,13,opt,name=tape_max_events,json=tapeMaxEvents,proto3" json:"tape_max_events,omitempty"`
-	// 這個 worker 全部 tape 的位元組上限。0 表示 256 MiB。超過時砍全 worker 最舊的事件（D438、D449）。
+	// 這個 worker 全部 tape 的位元組上限。0 表示 256 MiB。訊息、slot、索引與 chunk 都算。超過時回收最舊的 64 KiB chunk（D458）。
 	TapeBudgetBytes uint64 `protobuf:"varint,14,opt,name=tape_budget_bytes,json=tapeBudgetBytes,proto3" json:"tape_budget_bytes,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache

@@ -85,7 +85,7 @@ export type InitPayload = Message<"mftiko.mdctl.v1.InitPayload"> & {
   tapeMaxEvents: number;
 
   /**
-   * 這個 worker 全部 tape 的位元組上限。0 表示 256 MiB。超過時砍全 worker 最舊的事件（D438、D449）。
+   * 這個 worker 全部 tape 的位元組上限。0 表示 256 MiB。訊息、slot、索引與 chunk 都算。超過時回收最舊的 64 KiB chunk（D458）。
    *
    * @generated from field: uint64 tape_budget_bytes = 14;
    */

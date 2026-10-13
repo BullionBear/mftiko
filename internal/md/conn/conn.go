@@ -81,7 +81,8 @@ type Config struct {
 	// which is what tests do. A running worker passes the table loaded at Init.
 	Symbols Instruments
 	// TapeWindow, TapeMaxEvents and TapeBudget bound each feed's ring and the worker's tape
-	// bytes (D438, D449). Zero means 10 minutes, 100000 events and 256 MiB.
+	// memory (D458). Zero means 10 minutes, 100000 events and 256 MiB. The budget counts
+	// chunks, slots and the chunk-pointer index, not only message bytes.
 	TapeWindow    time.Duration
 	TapeMaxEvents int
 	TapeBudget    int64
@@ -158,7 +159,7 @@ type Conn struct {
 	tapeWindow int64
 	tapeMax    int
 	tapeBudget int64
-	tapeBytes  int64
+	tape       *tapeArena
 	views      map[string]*viewFeed
 	viewStop   map[string]*viewSub
 	viewMu     sync.Mutex
@@ -253,6 +254,7 @@ func New(cfg Config) *Conn {
 		bufferMax: bufN, bufferAge: bufAge, rateHold: hold, bookNow: bookNow, bookAfter: cfg.BookAfter,
 		symbols: cfg.Symbols, subscribe: cfg.Subscribe,
 		tapeWindow: window, tapeMax: maxEvents, tapeBudget: budget,
+		tape:  newTapeArena(budget),
 		views: map[string]*viewFeed{}, viewStop: map[string]*viewSub{},
 		books: map[string]*atomic.Pointer[bookSnap]{},
 		log:   log, kick: make(chan struct{}, 1), bookWake: make(chan struct{}, 1),
