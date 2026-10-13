@@ -506,15 +506,20 @@ func newCaller(lay Layout, inst string) (*memUser, error) {
 
 // newAccountWorker signs the account worker of apiID as the TD agent does at spawn (D611).
 func newAccountWorker(lay Layout, apiID int64) (*memUser, error) {
-	inbox, err := TDAccountInbox(apiID)
+	// The same Signer the TD agent uses (D611).
+	signer, err := LoadSigner(lay.Manifest.Account, filepath.Join(lay.Dir, filepath.FromSlash(lay.Manifest.SigningKeyFile)))
 	if err != nil {
 		return nil, err
 	}
-	pub, sub, err := tdAccountPerms(apiID)
+	token, seed, inbox, err := signer.AccountWorker(apiID)
 	if err != nil {
 		return nil, err
 	}
-	return signMem(lay, "td-account-"+strconv.FormatInt(apiID, 10), inbox, pub, sub, true)
+	kp, err := nkeys.FromSeed([]byte(seed))
+	if err != nil {
+		return nil, err
+	}
+	return &memUser{name: "td-account-" + strconv.FormatInt(apiID, 10), jwt: token, kp: kp, inbox: inbox}, nil
 }
 
 func signMem(lay Layout, name, inbox string, pub, sub []string, resp bool) (*memUser, error) {

@@ -348,7 +348,7 @@ export type AccountDecl = Message<"mftiko.session.v1.AccountDecl"> & {
 
   /**
    * 這個 session 在這個帳號上可以使用的 algo_id，每個 1–1023（D602）。
-   * 同一個帳號上和其他非 terminal 的 session 重疊時，TD 的 ack 是 REJECTED（algo_conflict）。
+   * 同一個帳號上不可與其他非 terminal 的 session 重疊：STS agent 檢查它自己的 session，跨 instance 的由使用者保證（D616）。
    *
    * @generated from field: repeated uint32 algo_ids = 4;
    */

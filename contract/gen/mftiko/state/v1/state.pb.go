@@ -575,7 +575,7 @@ type DemandEntry struct {
 	//	*DemandEntry_ApiId
 	Target        isDemandEntry_Target `protobuf_oneof:"target"`
 	SpecRevision  int64                `protobuf:"varint,10,opt,name=spec_revision,json=specRevision,proto3" json:"spec_revision,omitempty"` // 推導自哪一版 session spec；只供除錯，可能來自另一個 cluster，不做比較
-	AlgoIds       []uint32             `protobuf:"varint,11,rep,packed,name=algo_ids,json=algoIds,proto3" json:"algo_ids,omitempty"`         // 只有帳號項目：同 AccountDecl.algo_ids，TD agent 用來檢查衝突（D602）
+	AlgoIds       []uint32             `protobuf:"varint,11,rep,packed,name=algo_ids,json=algoIds,proto3" json:"algo_ids,omitempty"`         // 只有帳號項目：同 AccountDecl.algo_ids。TD agent 不讀它（D616）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

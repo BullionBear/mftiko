@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-13 定案 `mdctl.proto`、`md.proto`、`read.proto`（E4-12，#152）：三份移出草案清單，PROTOCOL §1 改為定案，D460。2026-10-13 刪掉 `mdctl.proto`、`md.proto` 的 `reserved`，現有欄位號碼不重排；三份仍在草案清單，移出清單與 PROTOCOL §1 定案是 #204 合併後的後續，D460。2026-10-13 定案 account worker 的 OMS 與帳本：OMS 只放活著的單，`settled` 不再有作用；recon 期間事件先排著再重放；斷線期間消失的掛單記成 UNKNOWN；槓桿取自持倉，D615（修改 D605、D606）。同日定案 tape 的 worker 級 arena（#189）：64 KiB chunk、硬上限含 slot 與索引、回收全 worker 最舊的 chunk，D458–D459。2026-10-13 定案 P14（#181）：行情 subject `md.v1.f.{inst}.{topic}.{ticker}`、`md.v1.view.{inst}.{topic}.{ticker}`，`md.v1.fetch.{venue}`，`sym.v1.changed.{venue}.{category}`，D455–D457。實作在 #194。2026-10-12 定案 account worker 的連線角色與狀態：只有事件連線決定 DEGRADED，計畫性換線先接後斷；一期不做 BinancePM，D614。同日拿掉 top-N 與 FeedEnd（#180）：book topic 只剩 `orderbook_delta`，寫 `orderbook` 回 `invalid`，D453–D454。2026-10-12 定案 tape ring 與 `md.view`（E4-06）：一個 feed 一個 ring，讀取無鎖，以 `head` 接 live，D435–D452。同日定案帳號憑證以 TD instance 的 X25519 公鑰封裝：NaCl sealed box 加版本與指紋，`api_id`、`kind` 一起封、解開後比對，封裝工具 `mftiko-seal`，D613。同日定案持倉模式由 `AccountSnapshot.HedgeMode` 帶回，以及給 account worker 測試用的假帳號 `exchangetest.AccountVenue`，D612。2026-10-11 定案 TD 的契約與 NATS 身分（E6-02）：`td.order` 只回 ack 或本地拒絕，單的每一次變化都是 `OrderUpdate`，1xx 只列一期會碰到的；訂單狀態加 `ACCEPTED`（上簿），撤單在途改成旗標 `cancel_sent_ns`，拿掉 `PENDING_CANCEL`；account worker 每個帳號一份 NATS 憑證，由 TD agent 簽，D610–D611。同日修訂 D601：TD agent 不查 SYM，歷史補正的交易所讀取比照 md.fetch。同日修訂 D202、D401：MD agent 不查 SYM，conn worker 用活躍表推出 atom 並 diff 訂閱，並在 Report 以 FeedStatus 回報每一筆 feed。同日更新 D415、D426：MD instance 訂閱 `sym.changed.>`，conn worker 在 Init 載入該 venue 的活躍表。同日定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-13 定案 td-agent：兩個前綴、ack、spec、endpoint 經 Init；執行中不檢查持倉模式，拿掉 `UNAVAILABLE`；algo 由 STS agent 檢查，D616（修改 D602、D607、D612、D614）。2026-10-13 定案 `mdctl.proto`、`md.proto`、`read.proto`（E4-12，#152）：三份移出草案清單，PROTOCOL §1 改為定案，D460。2026-10-13 刪掉 `mdctl.proto`、`md.proto` 的 `reserved`，現有欄位號碼不重排；三份仍在草案清單，移出清單與 PROTOCOL §1 定案是 #204 合併後的後續，D460。2026-10-13 定案 account worker 的 OMS 與帳本：OMS 只放活著的單，`settled` 不再有作用；recon 期間事件先排著再重放；斷線期間消失的掛單記成 UNKNOWN；槓桿取自持倉，D615（修改 D605、D606）。同日定案 tape 的 worker 級 arena（#189）：64 KiB chunk、硬上限含 slot 與索引、回收全 worker 最舊的 chunk，D458–D459。2026-10-13 定案 P14（#181）：行情 subject `md.v1.f.{inst}.{topic}.{ticker}`、`md.v1.view.{inst}.{topic}.{ticker}`，`md.v1.fetch.{venue}`，`sym.v1.changed.{venue}.{category}`，D455–D457。實作在 #194。2026-10-12 定案 account worker 的連線角色與狀態：只有事件連線決定 DEGRADED，計畫性換線先接後斷；一期不做 BinancePM，D614。同日拿掉 top-N 與 FeedEnd（#180）：book topic 只剩 `orderbook_delta`，寫 `orderbook` 回 `invalid`，D453–D454。2026-10-12 定案 tape ring 與 `md.view`（E4-06）：一個 feed 一個 ring，讀取無鎖，以 `head` 接 live，D435–D452。同日定案帳號憑證以 TD instance 的 X25519 公鑰封裝：NaCl sealed box 加版本與指紋，`api_id`、`kind` 一起封、解開後比對，封裝工具 `mftiko-seal`，D613。同日定案持倉模式由 `AccountSnapshot.HedgeMode` 帶回，以及給 account worker 測試用的假帳號 `exchangetest.AccountVenue`，D612。2026-10-11 定案 TD 的契約與 NATS 身分（E6-02）：`td.order` 只回 ack 或本地拒絕，單的每一次變化都是 `OrderUpdate`，1xx 只列一期會碰到的；訂單狀態加 `ACCEPTED`（上簿），撤單在途改成旗標 `cancel_sent_ns`，拿掉 `PENDING_CANCEL`；account worker 每個帳號一份 NATS 憑證，由 TD agent 簽，D610–D611。同日修訂 D601：TD agent 不查 SYM，歷史補正的交易所讀取比照 md.fetch。同日修訂 D202、D401：MD agent 不查 SYM，conn worker 用活躍表推出 atom 並 diff 訂閱，並在 Report 以 FeedStatus 回報每一筆 feed。同日更新 D415、D426：MD instance 訂閱 `sym.changed.>`，conn worker 在 Init 載入該 venue 的活躍表。同日定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 >
@@ -396,7 +396,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   - 一個 session 可以宣告多個，例如同一個帳號上 BTCUSDT、ETHUSDT、BNBUSDT 各一個。宣告在 spec 的帳號綁定上（`AccountDecl.algo_ids`），策略下單時自己選用哪一個。
   - 1–1023（10 bits），0 保留，讓人工單或格式不對的 id 不會被當成某個 algo。只需要在同一個帳號內唯一：`client_order_id` 與 `batch_cancel` 都以帳號為範圍。
   - 跨 session、跨 incarnation 不變：新 session 宣告同樣的 algo_id，就能接手上一個 session 留下的單。
-- **同一個帳號上，一個 algo_id 同時只屬於一個非 terminal 的 session**，否則兩邊會撤到對方的單。由 TD agent 檢查：TD 的需求項目帶 algo_id 清單，和同帳號其他 owner 重疊就回 `REJECTED`（`algo_conflict`）。帳號的權威在 TD，檢查留在那裡；controller 是唯一的寫入者，本身不會並行寫出衝突，但 API server 在不同 region 並行建立 session 時仍可能宣告重疊的 algo_id。
+- **同一個帳號上，一個 algo_id 同時只屬於一個非 terminal 的 session**，否則兩邊會撤到對方的單。由 STS agent 檢查它自己 instance 上的 session；跨 instance 的重疊由使用者保證，TD 不檢查（D616 修改）。
 - **編進 `client_order_id`：** uint64 `ver(4) | algo(10) | ts_ms(40) | seq(10)`，以十進位字串傳。沿用 mftik 的 uint64 形式，欄位重新分配：
   - `ts_ms`：自 2026-01-01 UTC 起算的毫秒，40 bits 可用約 34 年（到 2060 年）。
   - `seq`：每個進程每毫秒 1024 個。超過時 `ts_ms` 往前借一毫秒，實際上不會發生。
@@ -475,7 +475,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **雙向持倉（hedge mode）一期不支援。** 雙向持倉下 `Submit` 的 side 分不出開多或平空，交易所要求帶持倉方向（Binance 的 `positionSide`、OKX 的 `posSide`、Bybit 的 `positionIdx`）。E3 的 adapter 把持倉方向折進帶號的 `Size`，同一商品的多空兩列會互相蓋掉。支援它要動契約（`Position` 以 `(UID, 方向)` 為鍵、`Submit` 與事件帶方向）、adapter 與 ledger，一期不做。
 - **檢查：**
   - account worker `Start` 時確認持倉模式。Binance UM 是帳號層級的 `dualSidePosition`（與 CM 共用），OKX 是帳號的 `posMode`，Bybit 依商品或結算幣。是雙向就 `INIT_FAILED`，reason `hedge_mode`；TD 的 ack 是 `REJECTED`，不重拉（D608）。
-  - 執行中的 recon 才發現（有人在交易所改了設定）：新單以 1xx 拒絕（`hedge_mode`），撤單照常。
+  - 執行中不檢查：假設 worker 執行期間沒有人改持倉模式（D616 修改）。
   - `Submit.params` 帶 `positionSide`、`posSide`、`positionIdx` 一律以 1xx 拒絕，不讓這個逃生口繞過。
 - 不採用：跟著帳號的設定走、不指定模式。持倉方向必須進契約與帳本，成本見上。
 
@@ -549,7 +549,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 ### D612 持倉模式由 Snapshot 帶回；假帳號 `AccountVenue`
 
-- **`exchange.AccountSnapshot` 加 `HedgeMode`。** 帳號在任何地方是雙向持倉就是真，任何一頁說是就是。worker 在 `Start` 的第一次 recon 檢查（`INIT_FAILED`，reason `hedge_mode`），之後每次 recon 也檢查（`UNAVAILABLE`，新單 103），D607 的兩個時點都由它涵蓋。
+- **`exchange.AccountSnapshot` 加 `HedgeMode`。** 帳號在任何地方是雙向持倉就是真，任何一頁說是就是。worker 只在 `Start` 的第一次 recon 檢查（`INIT_FAILED`，reason `hedge_mode`），之後的 recon 不看它（D616 修改）。
   - 不另加方法：模式和持倉是同一份帳號狀態，recon 時一起讀；`Start` 的檢查也只是第一次 recon。
   - 真實 adapter 還沒讀持倉模式，一律是假：Binance UM 要多一個 `GET /fapi/v1/positionSide/dual`，OKX 讀 `GET /api/v5/account/config` 的 `posMode`，Bybit 看持倉的 `positionIdx`。在 E6-16 做完之前，這個檢查對真實交易所不生效。這一條只定介面。
 - **`exchangetest.AccountVenue` 是一個帳號的假交易所**，給 account worker 的測試用（E6-05）。
@@ -584,7 +584,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   - 不採用：先斷後接。每條連線每天會有一次固定的 `DEGRADED` 和一次 recon（Binance 是 24 小時）。
 - **reason：**
   - `auth`：交易所拒絕憑證。Start 時是 `INIT_FAILED`，執行中重撥被拒是 `CRASHED`（exit 20）。
-  - `hedge_mode`：Start 時是 `INIT_FAILED`，執行中是 `UNAVAILABLE`。
+  - `hedge_mode`：Start 時是 `INIT_FAILED`；執行中不檢查（D616）。
   - `kind_unsupported`。
   - `stream_lost`：`DEGRADED` 的 reason。
 
@@ -592,7 +592,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **listenKey：**
   - 每 `RefreshEvery` 續約一次。續約失敗只記 log，不斷線：key 真的到期時，交易所會送到期事件（`Expired`），worker 收到才重連並重新 `Prepare`。
   - 續約被拒絕憑證時，依 `auth` 處理。
-- **endpoint 是 worker 的旗標**（`-rest-endpoint`、`-stream-endpoint`、`-simulated`），比照 MD 由 instance 決定 host（D403）。`InitPayload` 不帶它們。agent 怎麼依帳號種類傳入，在 E6-10 定。
+- **endpoint 由 Init 帶入**（`tdctl.InitPayload` 的 `rest_url`、`stream_url`、`simulated`），值是 td-agent 依帳號種類的設定（D616 修改；原本是 worker 的旗標）。
 
 ### D615 OMS 只放活著的單；recon 期間的事件先排著
 
@@ -612,6 +612,18 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **槓桿快取取自持倉的 leverage。** recon 與持倉事件帶的 `Position.leverage` 寫進快取；持倉平掉之後仍保留（槓桿是商品的設定）。沒有持倉過的商品回未知。不另外打 `Account.Leverage`。
   - 不採用：recon 時對每個商品打 `Leverage`。對哪些商品查沒有好答案，額度也不划算；策略需要「還沒下單就知道槓桿」時另開票。
 - **account worker 從 Init 起連 NATS。** 用 `InitPayload.nats` 的 user JWT 與 seed（不落檔，`natsx.Options.UserJWT`、`Seed`），inbox `_INBOX_td_{api_id}`；載入帳號種類那個 venue 的活躍表並訂閱變更；訂閱 `td.view.{api_id}`，第一次 recon 之前就回答（D606）。連不上或載不到是 `INIT_FAILED`。
+
+### D616 td-agent；執行中不檢查持倉模式；algo 由 STS agent 檢查
+
+- **td-agent 照 MD agent 的寫法，在 `internal/td/agent`。** 讀兩個前綴：controller 寫的需求 `/td/{inst}/demand/{session}/{api_id}` 與 API server 寫的帳號 `/td/{inst}/account/{api_id}`。一個 `api_id` 的 owner 是它的需求集合；有 owner 就跑一顆 account worker（worker key `account/{api_id}`），最後一個 owner 離開後等 linger 才停（D901、D905）。需求離開時 ack 立刻刪掉，linger 留的是 worker。
+- **不跑 worker、ack 寫 `REJECTED` 的帳號：** 不存在（`account_not_found`）、停用（`account_disabled`）、種類不認得（`unknown_kind`）、一期不跑的種類（`kind_unsupported`，D614）、封裝的憑證打不開（`sealbox.Reason`，D613）。帳號在 linger 期間被停用，worker 立刻停。
+- **ack：** worker 回報 `READY` 或 `DEGRADED` 時是 `READY`（D603）；worker 以 `auth`、`hedge_mode`、`kind_unsupported` 結束時是 `REJECTED`，不重拉（D608）；重拉 10 次放棄時是 `DEAD`（P6）；其他是 `PENDING`。
+- **spec：** 帳號 id、種類、封裝憑證的 digest、`cancel_on_disconnect_s`、這個種類的 endpoint。任何一項變了就換 incarnation：重封的憑證、改了 host。TD 沒有 live config，`Init` 帶全部。
+- **spawn 時才解封**，明文只在組 `Init` 的那一刻。每次 spawn 以 MFTIKO account 的簽章金鑰簽一個新的 NATS user（`natsdev.Signer`，D611），JWT 不設到期：worker 重拉就換一份。
+- **endpoint 比照 MD（D403）：** td-agent 的 `-endpoints`（帳號種類 → 私有 websocket URL）、`-rest-endpoints`（帳號種類 → REST URL）、`-simulated`，經 `InitPayload` 交給 worker，算進 spec。
+- **持倉模式只在 Start 檢查。** 假設 worker 執行期間沒有人改持倉模式；改了也不偵測。`AccountState` 拿掉 `UNAVAILABLE`，103 只剩 `Submit.params` 帶持倉方向鍵的拒絕。修改 D607、D612。
+- **algo_id 重疊不由 TD 檢查。** STS agent 檢查它自己 instance 上的 session；跨 STS instance 的重疊由使用者保證不發生。`DemandEntry.algo_ids` 留著，TD 不讀。修改 D602。
+  - 不採用：TD 以需求的建立順序拒絕較晚的那筆（`algo_conflict`）。使用者行為受限，保持簡單。
 
 ### D905 linger；需求沒有 TTL
 

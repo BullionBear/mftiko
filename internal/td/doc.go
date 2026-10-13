@@ -1,7 +1,5 @@
-// Package td is the execution plane: account refcount and linger (D901, D905), the provider that writes acks and checks algo_id conflicts (D602), the backfill scheduler, and the history queue and drain (D601).
-//
-// Backfill reads through exchange History, with each scope's ticker resolved through SYM
-// (D202).
-//
-// Shape only: not implemented yet.
+// Package td is the execution plane. The agent is in internal/td/agent: it starts one account worker
+// per api_id that sessions need and writes their acks (D901, D905, D616). The account worker is in
+// internal/td/account (D603, D606). The history store and backfill are internal/td/history (D601,
+// E7).
 package td

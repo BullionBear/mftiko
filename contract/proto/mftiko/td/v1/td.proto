@@ -29,7 +29,7 @@ enum RejectCode {
   REJECT_CODE_UNSPECIFIED = 0;
   REJECT_CODE_ACCOUNT_OFFLINE = 101; // td.order 沒有 responder：account worker 不在，或還沒完成 Start。由 SDK 產生
   REJECT_CODE_ACCOUNT_DEGRADED = 102; // 私有連線斷線中，暫停收新單；撤單照常（D603）
-  REJECT_CODE_HEDGE_MODE = 103; // 執行中發現帳號是雙向持倉，或 params 帶了持倉方向鍵（D607）
+  REJECT_CODE_HEDGE_MODE = 103; // params 帶了持倉方向鍵（D607）。雙向持倉的帳號在 Start 就起不來，執行中不檢查（D616）
   REJECT_CODE_ALGO_MISMATCH = 104; // algo_id 與 client_order_id 的 algo 欄位不一致，或撤的單沒有 client_order_id（D602）
   REJECT_CODE_VENUE_NOT_TRADABLE = 105; // 帳號種類不能交易這個商品的 venue（D301）
   REJECT_CODE_INVALID_ORDER = 106; // 商品不存在或不是 TRADABLE；數量或價格不合商品規格（tick、step、上下限）；client_order_id 解不開
@@ -43,7 +43,8 @@ enum AccountState {
   ACCOUNT_STATE_UNSPECIFIED = 0;
   ACCOUNT_STATE_READY = 1;
   ACCOUNT_STATE_DEGRADED = 2; // 私有 websocket 斷線：新單以 102 拒絕，撤單照常（D603）
-  ACCOUNT_STATE_UNAVAILABLE = 3; // 執行中發現雙向持倉：新單以 103 拒絕，撤單照常（D607）
+  reserved 3; // 原本的 UNAVAILABLE：執行中不檢查持倉模式（D616）
+  reserved "ACCOUNT_STATE_UNAVAILABLE";
 }
 
 // ---------- td.order.{api_id} ----------

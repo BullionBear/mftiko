@@ -718,7 +718,7 @@ type AccountDecl struct {
 	ApiId      int64                  `protobuf:"varint,2,opt,name=api_id,json=apiId,proto3" json:"api_id,omitempty"`
 	TdInstance string                 `protobuf:"bytes,3,opt,name=td_instance,json=tdInstance,proto3" json:"td_instance,omitempty"`
 	// 這個 session 在這個帳號上可以使用的 algo_id，每個 1–1023（D602）。
-	// 同一個帳號上和其他非 terminal 的 session 重疊時，TD 的 ack 是 REJECTED（algo_conflict）。
+	// 同一個帳號上不可與其他非 terminal 的 session 重疊：STS agent 檢查它自己的 session，跨 instance 的由使用者保證（D616）。
 	AlgoIds       []uint32 `protobuf:"varint,4,rep,packed,name=algo_ids,json=algoIds,proto3" json:"algo_ids,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

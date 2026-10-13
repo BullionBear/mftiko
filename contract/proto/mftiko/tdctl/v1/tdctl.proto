@@ -14,6 +14,10 @@ message InitPayload {
   uint32 cancel_on_disconnect_s = 4;
   Credentials credentials = 5; // 交易所的憑證，只經 socketpair 送進去
   NatsCredentials nats = 6; // 這個帳號專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D611）
+  // 交易所的 host，由 TD instance 依帳號種類設定（D616，比照 MD 的 url，D403）。空的是 adapter 的預設。
+  string rest_url = 7;
+  string stream_url = 8; // 私有 websocket
+  bool simulated = 9; // 交易所的模擬交易模式是旗標而不是另一個 host 時（OKX）
 }
 
 message Credentials {

@@ -290,7 +290,7 @@ export type DemandEntry = Message<"mftiko.state.v1.DemandEntry"> & {
   specRevision: bigint;
 
   /**
-   * 只有帳號項目：同 AccountDecl.algo_ids，TD agent 用來檢查衝突（D602）
+   * 只有帳號項目：同 AccountDecl.algo_ids。TD agent 不讀它（D616）
    *
    * @generated from field: repeated uint32 algo_ids = 11;
    */

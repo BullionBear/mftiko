@@ -165,9 +165,8 @@ func start(t *testing.T, s setup) *harness {
 	t.Cleanup(srv.Close)
 	kinds := map[string]exchange.AccountKind{"Fake": v.Kind("Fake"), "Multi": v.Kind("Multi", "Fake", "Other")}
 	cfg := ServeConfig{
-		Kinds:          func(n string) (exchange.AccountKind, bool) { k, ok := kinds[n]; return k, ok },
-		Doer:           v,
-		StreamEndpoint: "ws" + strings.TrimPrefix(srv.URL, "http"),
+		Kinds: func(n string) (exchange.AccountKind, bool) { k, ok := kinds[n]; return k, ok },
+		Doer:  v,
 		Connect: func(context.Context, *tdctlv1.NatsCredentials, string) (*Env, error) {
 			return &Env{Bus: h.bus, Instruments: h.ins}, nil
 		},
@@ -207,7 +206,8 @@ func start(t *testing.T, s setup) *harness {
 	if creds == nil {
 		creds = &tdctlv1.Credentials{KeyType: "hmac", Key: apiKey, Secret: secret}
 	}
-	payload, err := proto.Marshal(&tdctlv1.InitPayload{ApiId: 42, Kind: kind, TdInstance: "td-1", Credentials: creds})
+	payload, err := proto.Marshal(&tdctlv1.InitPayload{ApiId: 42, Kind: kind, TdInstance: "td-1", Credentials: creds,
+		StreamUrl: "ws" + strings.TrimPrefix(srv.URL, "http")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -413,15 +413,11 @@ func TestHedgeModeAtStart(t *testing.T) {
 	h.startFails(ReasonHedgeMode)
 }
 
-// Hedge mode found by a later recon is UNAVAILABLE; the worker keeps running (D612).
-func TestHedgeModeLater(t *testing.T) {
+// The position mode is checked at Start only (D616): a later recon does not look at it.
+func TestHedgeModeOnlyAtStart(t *testing.T) {
 	h := start(t, setup{})
 	h.startReady()
 	h.v.SetHedgeMode(true)
-	h.v.Disconnect()
-	h.report(tdv1.AccountState_ACCOUNT_STATE_DEGRADED, ReasonStreamLost)
-	h.report(tdv1.AccountState_ACCOUNT_STATE_UNAVAILABLE, ReasonHedgeMode)
-	h.v.SetHedgeMode(false)
 	h.v.Disconnect()
 	h.report(tdv1.AccountState_ACCOUNT_STATE_DEGRADED, ReasonStreamLost)
 	h.report(tdv1.AccountState_ACCOUNT_STATE_READY, "")
