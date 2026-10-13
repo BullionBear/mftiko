@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-13 刪掉 `mdctl.proto`、`md.proto` 的 `reserved`，現有欄位號碼不重排；三份仍在草案清單，移出清單與 PROTOCOL §1 定案是 #204 合併後的後續，D460。2026-10-13 定案 account worker 的 OMS 與帳本：OMS 只放活著的單，`settled` 不再有作用；recon 期間事件先排著再重放；斷線期間消失的掛單記成 UNKNOWN；槓桿取自持倉，D615（修改 D605、D606）。同日定案 tape 的 worker 級 arena（#189）：64 KiB chunk、硬上限含 slot 與索引、回收全 worker 最舊的 chunk，D458–D459。2026-10-13 定案 P14（#181）：行情 subject `md.v1.f.{inst}.{topic}.{ticker}`、`md.v1.view.{inst}.{topic}.{ticker}`，`md.v1.fetch.{venue}`，`sym.v1.changed.{venue}.{category}`，D455–D457。實作在 #194。2026-10-12 定案 account worker 的連線角色與狀態：只有事件連線決定 DEGRADED，計畫性換線先接後斷；一期不做 BinancePM，D614。同日拿掉 top-N 與 FeedEnd（#180）：book topic 只剩 `orderbook_delta`，寫 `orderbook` 回 `invalid`，D453–D454。2026-10-12 定案 tape ring 與 `md.view`（E4-06）：一個 feed 一個 ring，讀取無鎖，以 `head` 接 live，D435–D452。同日定案帳號憑證以 TD instance 的 X25519 公鑰封裝：NaCl sealed box 加版本與指紋，`api_id`、`kind` 一起封、解開後比對，封裝工具 `mftiko-seal`，D613。同日定案持倉模式由 `AccountSnapshot.HedgeMode` 帶回，以及給 account worker 測試用的假帳號 `exchangetest.AccountVenue`，D612。2026-10-11 定案 TD 的契約與 NATS 身分（E6-02）：`td.order` 只回 ack 或本地拒絕，單的每一次變化都是 `OrderUpdate`，1xx 只列一期會碰到的；訂單狀態加 `ACCEPTED`（上簿），撤單在途改成旗標 `cancel_sent_ns`，拿掉 `PENDING_CANCEL`；account worker 每個帳號一份 NATS 憑證，由 TD agent 簽，D610–D611。同日修訂 D601：TD agent 不查 SYM，歷史補正的交易所讀取比照 md.fetch。同日修訂 D202、D401：MD agent 不查 SYM，conn worker 用活躍表推出 atom 並 diff 訂閱，並在 Report 以 FeedStatus 回報每一筆 feed。同日更新 D415、D426：MD instance 訂閱 `sym.changed.>`，conn worker 在 Init 載入該 venue 的活躍表。同日定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-13 定案 `mdctl.proto`、`md.proto`、`read.proto`（E4-12，#152）：三份移出草案清單，PROTOCOL §1 改為定案，D460。2026-10-13 刪掉 `mdctl.proto`、`md.proto` 的 `reserved`，現有欄位號碼不重排；三份仍在草案清單，移出清單與 PROTOCOL §1 定案是 #204 合併後的後續，D460。2026-10-13 定案 account worker 的 OMS 與帳本：OMS 只放活著的單，`settled` 不再有作用；recon 期間事件先排著再重放；斷線期間消失的掛單記成 UNKNOWN；槓桿取自持倉，D615（修改 D605、D606）。同日定案 tape 的 worker 級 arena（#189）：64 KiB chunk、硬上限含 slot 與索引、回收全 worker 最舊的 chunk，D458–D459。2026-10-13 定案 P14（#181）：行情 subject `md.v1.f.{inst}.{topic}.{ticker}`、`md.v1.view.{inst}.{topic}.{ticker}`，`md.v1.fetch.{venue}`，`sym.v1.changed.{venue}.{category}`，D455–D457。實作在 #194。2026-10-12 定案 account worker 的連線角色與狀態：只有事件連線決定 DEGRADED，計畫性換線先接後斷；一期不做 BinancePM，D614。同日拿掉 top-N 與 FeedEnd（#180）：book topic 只剩 `orderbook_delta`，寫 `orderbook` 回 `invalid`，D453–D454。2026-10-12 定案 tape ring 與 `md.view`（E4-06）：一個 feed 一個 ring，讀取無鎖，以 `head` 接 live，D435–D452。同日定案帳號憑證以 TD instance 的 X25519 公鑰封裝：NaCl sealed box 加版本與指紋，`api_id`、`kind` 一起封、解開後比對，封裝工具 `mftiko-seal`，D613。同日定案持倉模式由 `AccountSnapshot.HedgeMode` 帶回，以及給 account worker 測試用的假帳號 `exchangetest.AccountVenue`，D612。2026-10-11 定案 TD 的契約與 NATS 身分（E6-02）：`td.order` 只回 ack 或本地拒絕，單的每一次變化都是 `OrderUpdate`，1xx 只列一期會碰到的；訂單狀態加 `ACCEPTED`（上簿），撤單在途改成旗標 `cancel_sent_ns`，拿掉 `PENDING_CANCEL`；account worker 每個帳號一份 NATS 憑證，由 TD agent 簽，D610–D611。同日修訂 D601：TD agent 不查 SYM，歷史補正的交易所讀取比照 md.fetch。同日修訂 D202、D401：MD agent 不查 SYM，conn worker 用活躍表推出 atom 並 diff 訂閱，並在 Report 以 FeedStatus 回報每一筆 feed。同日更新 D415、D426：MD instance 訂閱 `sym.changed.>`，conn worker 在 Init 載入該 venue 的活躍表。同日定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 >
@@ -846,7 +846,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **`md.f` 仍是 40-byte envelope ＋ protobuf `FeedEvent`（D405–D411）。** ring 存發佈出去的整段 bytes：發一次、存一次，不重新編碼。
 - **`md.view` 回 tape 時去掉每則的 envelope。** 只帶對齊要用的欄位與 `FeedEvent`：`TapeEvent` 是 `conn_epoch`、`seq`、`md_ts_ns`、`event`。`TapePage.events` 是 `repeated TapeEvent`。不帶 `digest`。
 - **不重新編碼。** embedded message 與 bytes 的 wire 格式相同。worker 以 protowire 把 ring 裡 offset 40 之後的 payload 原樣寫進 field 4，不 unmarshal 再 marshal。
-- **`read.proto` 還是草案（#152 才定案），可以 breaking。**
+- **`read.proto` 已在 E4-12 定案（D460）。** 定案之後同一個 major 只做相容擴充。
 
 ### D436 tape 分頁，可以用時間查
 
@@ -914,7 +914,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 ### D447 錄不錄由 worker 依 topic 決定
 
 - **`trade`、`aggtrade`、`liquidation` 錄進 tape，其他不錄（D402、D442）。**
-- **`AtomAssignment.record` 忽略。** 不刪這個欄位，也不標成 reserved。#152 定案 proto 時再處理。
+- **`AtomAssignment.record` 忽略。** 不刪這個欄位，也不標成 reserved。E4-12 定案時照現狀保留（D460）。
 
 ### D448 feed 模式下 ring 的生命週期
 
@@ -1004,7 +1004,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **一筆紀錄完全寫不進去時，不推進 `head`。** 連 gap 都沒有 chunk 可放就是這種。ring 是空的話，`head` 維持 `(conn_epoch, 0)`（D437），live 仍能把這筆送出去。
 - **修訂 D450 的覆蓋確認，以及 D451 的二分搜尋。** 時間窗與筆數仍在寫入端從最舊的事件拿；worker 上限拿的是最舊的 chunk（D458）。
 
-### D460 定案前刪掉 `reserved`（E4-12，#152）
+### D460 定案前刪掉 `reserved`；`mdctl`、`md`、`read` 定案（E4-12，#152）
 
 - **系統尚未上線。** `mdctl.proto`、`md.proto` 裡已刪欄位留下的 `reserved` 直接刪除，不保留。現有欄位號碼不重新編號。`read.proto` 沒有 `reserved`。
 - **刪掉的是：**
@@ -1012,7 +1012,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   - `Report` 的 5 `atoms`（D426）
   - `Meta` 的 1 `seq`、2 `conn_epoch`、4 `md_ts_ns`（移到 envelope，D803、D409）
   - `FeedEvent` 的 4 `order_book`、100 `feed_end`（D453）
-- **這三份仍是草案。** 留在 `buf.yaml` 的 `breaking.ignore`。PROTOCOL §1 仍是草案。移出草案清單、把 §1 改成定案，是 #204 合併之後的後續。
+- **這三份定案。** 從 `buf.yaml` 的 `breaking.ignore` 移出，`buf breaking` 開始檢查。PROTOCOL §1 的 `mdctl.proto` 列，以及 `md.proto`、`read.proto`、envelope（§7.1）那一列，改為定案。envelope 的位元組已由 D405–D411 定死。
 - **`AtomAssignment.record` 這張不改。** 仍忽略（D447）。
 - **修訂 D453 裡「reserved」的說法。**
 
@@ -1174,8 +1174,8 @@ Binance 一律以 ed25519 經 WS API 收發單（2026-10-10 定）。D302 的 `A
 
 ### D007 契約分成草案與定案
 
-- 每份契約都有狀態與定案的 EPIC，表在 PROTOCOL §1。`sym.proto` 在 E2-10 定案。exchange 的 adaptor 介面在 E3-17 定案。其餘仍是草案。
-- `buf.yaml` 的 `breaking.ignore` 列出草案的 proto：草案可以自由改，CI 不擋。定案的 EPIC 把自己的檔案移出清單，寫進完成標準。`sym.proto` 已移出。adaptor 介面是 Go，沒有 proto，不進這份清單；定案之後靠 review 維持相容。C3、C4 在 E1 結束時移出。
+- 每份契約都有狀態與定案的 EPIC，表在 PROTOCOL §1。`sym.proto` 在 E2-10 定案。`mdctl.proto`、`md.proto`、`read.proto` 在 E4-12 定案（D460）。exchange 的 adaptor 介面在 E3-17 定案。其餘仍是草案。
+- `buf.yaml` 的 `breaking.ignore` 列出草案的 proto：草案可以自由改，CI 不擋。定案的 EPIC 把自己的檔案移出清單，寫進完成標準。`sym.proto` 已移出。`mdctl.proto`、`md.proto`、`read.proto` 已移出（D460）。adaptor 介面是 Go，沒有 proto，不進這份清單；定案之後靠 review 維持相容。C3、C4 在 E1 結束時移出。
 - 代價：定案之前，不小心改壞草案不會被 CI 抓到，只能靠 review。還沒有任何東西部署，沒有相容性要保護，可以接受。
 - **趁還是草案，拿掉兩條跨契約的 import：**
   - `stsctl.v1` 不再 import `state.v1`。策略的契約版本偏差最久（PROTOCOL §1），etcd 的 schema 卻是不相容就換 key 根，兩者不該綁在一起。session 的宣告（`SessionSpec` 與它的組成）抽成獨立的套件 `mftiko.session.v1`，歸 STS；`state.v1`、`stsctl.v1` 與 E10 的 API 契約都 import 它。`EntryState`、`Universe` 在 `stsctl` 裡另定綁定自己的型別。
