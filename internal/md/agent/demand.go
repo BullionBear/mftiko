@@ -84,10 +84,13 @@ func splitFeed(s string) (topic, ticker string, ok bool) {
 	return topic, ticker, true
 }
 
-// feedSubject is the ack subject. The feed key is already topic.ticker (P14).
+// feedSubject is the ack subject md.v1.f.{inst}.{topic}.{ticker} (D455).
+// The feed key is already topic.ticker. A selector's subject_prefix is the
+// same root without the feed key, md.v1.f.{inst}; this agent does not write
+// selectors.
 func feedSubject(inst, feed string) string {
 	if feed == "" {
 		return ""
 	}
-	return "md.f." + inst + "." + feed
+	return "md.v1.f." + inst + "." + feed
 }

@@ -960,7 +960,7 @@ func dialSession(t *testing.T, p plane) *natsx.Conn {
 	}
 	uc := jwt.NewUserClaims(pub)
 	uc.Name = "session-fetchtest"
-	uc.Pub.Allow.Add("md.fetch.>")
+	uc.Pub.Allow.Add("md.v1.fetch.>")
 	uc.Sub.Allow.Add(inbox + ".>")
 	uc.IssuerAccount = p.lay.Manifest.Account
 	token, err := uc.Encode(signer)

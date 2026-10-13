@@ -37,7 +37,7 @@ func TestBookFirstSnapshotResetsFullBook(t *testing.T) {
 	if len(d) != 1 || len(all) != 1 || !d[0].ev.GetOrderBookDelta().GetReset_() {
 		t.Fatalf("reset %+v", d)
 	}
-	if d[0].epoch != 4 || d[0].seq != 1 || d[0].subject != "md.f.md.orderbook_delta.T" {
+	if d[0].epoch != 4 || d[0].seq != 1 || d[0].subject != "md.v1.f.md.orderbook_delta.T" {
 		t.Fatalf("delta header %+v", d[0])
 	}
 	if got := gotLevels(d[0].ev.GetOrderBookDelta().GetBids()); !sameLevels(got, []exchange.Level{{Price: 100, Qty: 1}, {Price: 90, Qty: 1}}) {

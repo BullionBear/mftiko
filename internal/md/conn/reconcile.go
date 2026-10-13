@@ -13,7 +13,7 @@ import (
 )
 
 // reconcile re-reads the venue table and derives the atom diff again. A feed-list change is
-// applied immediately by setFeeds; this loop is what follows sym.changed without a new Desired.
+// applied immediately by setFeeds; this loop is what follows sym.v1.changed without a new Desired.
 func (c *Conn) reconcile(ctx context.Context) {
 	if c.symbols == nil {
 		return

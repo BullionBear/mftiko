@@ -110,7 +110,7 @@ func run(natsURL, creds, venues, proxy, roots string, timeout time.Duration, rat
 			tables = append(tables, sym.Table{Venue: v.Name, Category: c})
 		}
 	}
-	remote, err := sym.OpenRemote(ctx, nc, tables, sym.RemoteOptions{Log: log})
+	remote, err := sym.OpenRemote(ctx, nc, tables, sym.RemoteOptions{Log: log, NotifySubject: sym.ChangedWildcard})
 	if err != nil {
 		return err
 	}

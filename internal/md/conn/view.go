@@ -1,6 +1,7 @@
 package conn
 
 import (
+	"strings"
 	"sync/atomic"
 
 	"google.golang.org/protobuf/proto"
@@ -38,7 +39,7 @@ func bookTopic(topic string) bool {
 }
 
 func viewSubject(inst, topic, ticker string) string {
-	return "md.view." + inst + "." + topic + "." + ticker
+	return viewPrefix + strings.TrimPrefix(subject(inst, topic, ticker), feedPrefix)
 }
 
 // syncViewsLocked creates a ring when a feed enters wanted, keeps a feed that

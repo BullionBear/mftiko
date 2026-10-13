@@ -195,8 +195,16 @@ func (c *Conn) send(f feed, payload []byte, record bool) {
 	}
 }
 
+const (
+	// feedPrefix is the published subject root, md.v1.f. (D455).
+	feedPrefix = "md.v1.f."
+	// viewPrefix is the read subject root, md.v1.view. A view subject is the
+	// feed subject with feedPrefix replaced by viewPrefix (D455).
+	viewPrefix = "md.v1.view."
+)
+
 func subject(inst, topic, ticker string) string {
-	return "md.f." + inst + "." + topic + "." + ticker
+	return feedPrefix + inst + "." + topic + "." + ticker
 }
 
 func meta(ns int64) *mdv1.Meta { return &mdv1.Meta{ExchTsNs: ns} }

@@ -35,7 +35,7 @@
 -- contract_value_ccy is the unit of qty. price_ccy is the unit of price, price_tick and premium.
 --
 -- symbol_revision is the per-(venue, category) counter change notifications compare (PROTOCOL §7.3).
--- After that revision commits, SYM publishes Changed on sym.changed.{venue}.{category}.
+-- After that revision commits, SYM publishes Changed on sym.v1.changed.{venue}.{category}.
 --
 -- The status enum is still provisional as a set. It is TEXT plus a CHECK, not a Postgres enum,
 -- so adding a value is a change to the check. The contract uses this enum. UNSPECIFIED is not a

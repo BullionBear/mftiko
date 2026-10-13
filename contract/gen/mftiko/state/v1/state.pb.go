@@ -885,7 +885,7 @@ type EntryStatus struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	State  EntryState             `protobuf:"varint,1,opt,name=state,proto3,enum=mftiko.state.v1.EntryState" json:"state,omitempty"`
 	Reason string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
-	// feed：完整的 subject（今天是 md.f.{inst}.{topic}.{ticker}）。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（§10 P14）。selector：成員 subject 的前綴（今天是 md.f.{inst}）；
+	// feed：完整的 subject（md.v1.f.{inst}.{topic}.{ticker}，D455）。NATS topic 用人讀的名字，不用 UID。selector：成員 subject 的前綴（md.v1.f.{inst}）；
 	// 帳號：td.order.{api_id}。由 provider 決定，訂閱端不自己組（PROTOCOL §7、DECISIONS D106）。
 	Subject       string        `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
 	Worker        *v1.WorkerRef `protobuf:"bytes,4,opt,name=worker,proto3" json:"worker,omitempty"`

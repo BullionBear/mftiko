@@ -241,6 +241,17 @@ func TestPlan(t *testing.T) {
 	}
 }
 
+func TestViewSubjectReplacesFeedPrefix(t *testing.T) {
+	feed := subject("md1", "orderbook_delta", "BinanceUM_Perp_BTCUSDT")
+	view := viewSubject("md1", "orderbook_delta", "BinanceUM_Perp_BTCUSDT")
+	if feed != "md.v1.f.md1.orderbook_delta.BinanceUM_Perp_BTCUSDT" {
+		t.Fatal(feed)
+	}
+	if !strings.HasPrefix(feed, feedPrefix) || viewPrefix+strings.TrimPrefix(feed, feedPrefix) != view {
+		t.Fatalf("view %s", view)
+	}
+}
+
 func TestPublish(t *testing.T) {
 	rec := newRecorder()
 	stamp := time.Unix(0, 42)
@@ -275,7 +286,7 @@ func TestPublish(t *testing.T) {
 
 	c.Trade(ch, &exchange.Trade{ExchTsNs: 5, TradeID: "id", Price: 1, Qty: 2, Side: exchange.SideSell})
 	p := rec.next(t)
-	if p.subject != "md.f.md1.trade.T" {
+	if p.subject != "md.v1.f.md1.trade.T" {
 		t.Fatal(p.subject)
 	}
 	mdTs, epoch, seq, ev := openPub(t, p)
@@ -296,7 +307,7 @@ func TestPublish(t *testing.T) {
 
 	c.AggTrade(ch, &exchange.AggTrade{TradeID: "g", Side: exchange.SideBuy, FirstTradeID: "1", LastTradeID: "2", MatchCount: 2})
 	p = rec.next(t)
-	if p.subject != "md.f.md1.aggtrade.T" {
+	if p.subject != "md.v1.f.md1.aggtrade.T" {
 		t.Fatal(p.subject)
 	}
 	_, _, seq, ev = openPub(t, p)
@@ -305,14 +316,14 @@ func TestPublish(t *testing.T) {
 	}
 
 	c.BestQuote(ch, &exchange.BestQuote{Bid: 1, Ask: 2})
-	if rec.next(t).subject != "md.f.md1.bestquote.T" {
+	if rec.next(t).subject != "md.v1.f.md1.bestquote.T" {
 		t.Fatal("bestquote")
 	}
 
 	c.Kline(ch, &exchange.Kline{Interval: "5m"})
 	c.Kline(ch, &exchange.Kline{Interval: "1m", QuoteVolume: decimal.Absent(), Open: 3})
 	p = rec.next(t)
-	if p.subject != "md.f.md1.kline_1m.T" {
+	if p.subject != "md.v1.f.md1.kline_1m.T" {
 		t.Fatal(p.subject)
 	}
 	_, _, _, ev = openPub(t, p)
@@ -590,7 +601,7 @@ func TestDecodeErrorKeepsEpoch(t *testing.T) {
 		t.Fatalf("pubs %d", len(got))
 	}
 	_, epoch, seq, ev := openPub(t, got[0])
-	if got[0].subject != "md.f.md1.aggtrade.BinanceUM_Perp_BTCUSDT" || epoch != 1 || seq != 1 || ev.GetAggTrade().GetTradeId() != "3481002985" {
+	if got[0].subject != "md.v1.f.md1.aggtrade.BinanceUM_Perp_BTCUSDT" || epoch != 1 || seq != 1 || ev.GetAggTrade().GetTradeId() != "3481002985" {
 		t.Fatalf("%s epoch %d seq %d id %s", got[0].subject, epoch, seq, ev.GetAggTrade().GetTradeId())
 	}
 	time.Sleep(200 * time.Millisecond)
@@ -691,7 +702,7 @@ func TestTradeSession(t *testing.T) {
 	wantStamp := stamp.UnixNano()
 	checkAgg := func(p publication, seq, epoch uint64) {
 		t.Helper()
-		if p.subject != "md.f.md1.aggtrade.BinanceUM_Perp_BTCUSDT" {
+		if p.subject != "md.v1.f.md1.aggtrade.BinanceUM_Perp_BTCUSDT" {
 			t.Fatal(p.subject)
 		}
 		mdTs, gotEpoch, gotSeq, ev := openPub(t, p)
@@ -704,7 +715,7 @@ func TestTradeSession(t *testing.T) {
 		}
 	}
 	checkAgg(got[0], 1, 1)
-	if got[1].subject != "md.f.md1.kline_1m.BinanceUM_Perp_BTCUSDT" {
+	if got[1].subject != "md.v1.f.md1.kline_1m.BinanceUM_Perp_BTCUSDT" {
 		t.Fatal(got[1].subject)
 	}
 	mdTs, epoch, seq, ev := openPub(t, got[1])

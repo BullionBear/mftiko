@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	// ChangedWildcard is the subscription that receives every table's change
-	// notification. Session credentials allow this subject (D906).
-	ChangedWildcard = "sym.changed.>"
+	// ChangedWildcard is sym.v1.changed.> (D457). Session, account worker,
+	// md.fetch and the historical backfill subscribe this. An MD instance's
+	// JWT allows it too; the conn worker itself subscribes only its venue.
+	ChangedWildcard = "sym.v1.changed.>"
 )
 
 // ChangedPublisher is invoked after a revision commit. The revision is the
@@ -24,9 +25,9 @@ type ChangedPublisher interface {
 	Changed(ctx context.Context, venue, category string, revision int64)
 }
 
-// ChangedSubject is sym.changed.{venue}.{category}. Venue and category are
-// the human-readable names. A token that cannot be one NATS subject token
-// is rejected. PROTOCOL §10 P14 may rename this subject.
+// ChangedSubject is sym.v1.changed.{venue}.{category} (D457). Venue and
+// category are the human-readable names. A token that cannot be one NATS
+// subject token is rejected. The request subject stays exactly "sym".
 func ChangedSubject(venue, category string) (string, error) {
 	if err := subjectToken("venue", venue); err != nil {
 		return "", err
@@ -34,7 +35,17 @@ func ChangedSubject(venue, category string) (string, error) {
 	if err := subjectToken("category", category); err != nil {
 		return "", err
 	}
-	return "sym.changed." + venue + "." + category, nil
+	return "sym.v1.changed." + venue + "." + category, nil
+}
+
+// ChangedVenueWildcard is sym.v1.changed.{venue}.> (D457). A conn worker
+// subscribes this and no other venue. The MD instance JWT stays
+// ChangedWildcard, because one instance can hold more than one venue.
+func ChangedVenueWildcard(venue string) (string, error) {
+	if err := subjectToken("venue", venue); err != nil {
+		return "", err
+	}
+	return "sym.v1.changed." + venue + ".>", nil
 }
 
 func subjectToken(field, value string) error {
@@ -47,7 +58,7 @@ func subjectToken(field, value string) error {
 	return nil
 }
 
-// NATSChanged publishes Changed on sym.changed.{venue}.{category} and flushes
+// NATSChanged publishes Changed on sym.v1.changed.{venue}.{category} and flushes
 // so the message is on the server before Changed returns. A publish failure
 // is logged. The revision is already committed; a missed message is what the
 // periodic revision check is for.

@@ -263,7 +263,7 @@ export type SelectorBinding = Message<"mftiko.stsctl.v1.SelectorBinding"> & {
   universe?: Universe | undefined;
 
   /**
-   * 成員的 subject 是 {subject_prefix}.{topic}.{ticker}。NATS topic 用人讀的名字，不用 UID；確切拼法還沒定（D203、§10 P14）
+   * 成員的 subject 是 {subject_prefix}.{topic}.{ticker}。前綴是 md.v1.f.{inst}（D455）。NATS topic 用人讀的名字，不用 UID
    *
    * @generated from field: string subject_prefix = 4;
    */

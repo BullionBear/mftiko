@@ -220,12 +220,12 @@ func TestGenerateMaterial(t *testing.T) {
 	if md.InboxPrefix != "_INBOX_md" {
 		t.Fatal(md.InboxPrefix)
 	}
-	assertUser(md, []string{"md.f.box.>", "sym"}, []string{"md.view.box.>", "sym.changed.>", "_INBOX_md.>"}, true)
+	assertUser(md, []string{"md.v1.f.box.>", "sym"}, []string{"md.v1.view.box.>", "sym.v1.changed.>", "_INBOX_md.>"}, true)
 	fetch := lay.Manifest.Fetch[0]
 	if fetch.InboxPrefix != "_INBOX_fetch" {
 		t.Fatal(fetch.InboxPrefix)
 	}
-	assertUser(fetch, []string{"sym"}, []string{"md.fetch.>", "sym.changed.>", "_INBOX_fetch.>"}, true)
+	assertUser(fetch, []string{"sym"}, []string{"md.v1.fetch.>", "sym.v1.changed.>", "_INBOX_fetch.>"}, true)
 	if len(lay.Manifest.TD) != 1 || lay.Manifest.TD[0].Inst != "box" {
 		t.Fatalf("td users %+v", lay.Manifest.TD)
 	}
@@ -233,7 +233,7 @@ func TestGenerateMaterial(t *testing.T) {
 	if td.InboxPrefix != "_INBOX_td" || td.Name != "td-box" {
 		t.Fatal(td.InboxPrefix, td.Name)
 	}
-	assertUser(td, []string{"sym"}, []string{"td.evt.>", "sym.changed.>", "_INBOX_td.>"}, false)
+	assertUser(td, []string{"sym"}, []string{"td.evt.>", "sym.v1.changed.>", "_INBOX_td.>"}, false)
 
 	if _, err := nkeys.FromSeed(seeds["mftiko-signing.nk"]); err != nil {
 		t.Fatal("signing key")
@@ -253,7 +253,7 @@ func TestInboxPrefixAndConfig(t *testing.T) {
 	if err != nil || got != "_INBOX_td" {
 		t.Fatalf("%s %v", got, err)
 	}
-	if _, err := InboxPrefix("md.fetch"); err == nil {
+	if _, err := InboxPrefix("not.a.plane"); err == nil {
 		t.Fatal("dot in plane was accepted")
 	}
 	got, err = TDAccountInbox(42)
@@ -295,7 +295,7 @@ func TestTDAccountPerms(t *testing.T) {
 	if !sameSubjects(pub, "td.evt.42", "sym") {
 		t.Fatalf("pub %v", pub)
 	}
-	if !sameSubjects(sub, "td.order.42", "td.view.42", "sym.changed.>", "_INBOX_td_42.>") {
+	if !sameSubjects(sub, "td.order.42", "td.view.42", "sym.v1.changed.>", "_INBOX_td_42.>") {
 		t.Fatalf("sub %v", sub)
 	}
 	if _, _, err := tdAccountPerms(0); err == nil {

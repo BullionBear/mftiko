@@ -296,7 +296,7 @@ export const ReplySchema: GenMessage<Reply> = /*@__PURE__*/
 
 /**
  * Every (venue, category) revision. A client that may have missed
- * sym.changed compares these with the revision it loaded (P7, PROTOCOL §7.3).
+ * sym.v1.changed compares these with the revision it loaded (P7, D457, PROTOCOL §7.3).
  *
  * @generated from message mftiko.sym.v1.RevisionsRequest
  */
@@ -357,9 +357,9 @@ export const RevisionListSchema: GenMessage<RevisionList> = /*@__PURE__*/
   messageDesc(file_mftiko_sym_v1_sym, 9);
 
 /**
- * Published on sym.changed.{venue}.{category} after that table's revision
- * commits (P7). Venue and category are the human-readable names, not a UID.
- * PROTOCOL §10 P14 may rename this subject.
+ * Published on sym.v1.changed.{venue}.{category} after that table's revision
+ * commits (P7, D457). Venue and category are the human-readable names, not a UID.
+ * SYM has no inst. A conn worker subscribes only its own venue.
  *
  * @generated from message mftiko.sym.v1.Changed
  */

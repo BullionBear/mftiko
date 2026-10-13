@@ -38,6 +38,10 @@ type RemoteOptions struct {
 	// DefaultCheckInterval. Negative is rejected.
 	CheckInterval time.Duration
 	Log           zerolog.Logger
+	// NotifySubject is the Changed subscription. Empty selects ChangedWildcard
+	// (sym.v1.changed.>), which md.fetch uses (D457). A conn worker sets
+	// ChangedVenueWildcard(venue).
+	NotifySubject string
 }
 
 // Remote is the symbol.Resolver that loads the active table from SYM over NATS
@@ -45,7 +49,7 @@ type RemoteOptions struct {
 //
 // At startup it pages List for each configured table and swaps in one snapshot.
 // Indexes match the in-process resolver: UID to Info, ticker to UID, and
-// ExchKey to UID. A notification on sym.changed.{venue}.{category}, a periodic
+// ExchKey to UID. A notification on sym.v1.changed.{venue}.{category}, a periodic
 // revision comparison, a NATS reconnect, or Invalidate reloads that table and
 // swaps the whole snapshot. A row that moved to the terminal table is absent
 // from the new snapshot.
@@ -126,7 +130,11 @@ func OpenRemote(ctx context.Context, c *natsx.Conn, tables []Table, opt RemoteOp
 		cancel:   cancel,
 	}
 	r.snap.Store(newSnapshot())
-	if _, err := c.Subscribe(runCtx, ChangedWildcard, "", r.onChanged); err != nil {
+	notify := opt.NotifySubject
+	if notify == "" {
+		notify = ChangedWildcard
+	}
+	if _, err := c.Subscribe(runCtx, notify, "", r.onChanged); err != nil {
 		cancel()
 		return nil, err
 	}

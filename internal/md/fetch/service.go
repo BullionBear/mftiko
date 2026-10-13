@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	// SubjectPrefix is md.fetch.{venue}. Venue is the human-readable name, the
-	// same token sym.changed uses (D418).
-	SubjectPrefix = "md.fetch."
+	// SubjectPrefix is md.v1.fetch.{venue} (D456). Venue is the human-readable
+	// name, the same token sym.v1.changed uses (D418, D457). The exact subject
+	// md.v1.fetch is not a subscription.
+	SubjectPrefix = "md.v1.fetch."
 
 	// MaxKlines is the most closed candles one reply carries (D419).
 	MaxKlines = 5000
@@ -64,7 +65,7 @@ type Options struct {
 	Now func() time.Time
 }
 
-// Service answers md.fetch.{venue} for the venues it was built with.
+// Service answers md.v1.fetch.{venue} for the venues it was built with.
 type Service struct {
 	venues map[string]exchange.PublicREST
 	order  []string

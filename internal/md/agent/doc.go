@@ -5,7 +5,7 @@
 //
 // A feed key is topic.UniversalTicker. Venue is in the ticker. The route comes from the topic
 // and that ticker, which is enough to name md/<venue>/<route>/<n>. The agent sends the feed
-// list. The conn worker loads its venue's active table at Init, follows sym.changed, and turns
+// list. The conn worker loads its venue's active table at Init, follows sym.v1.changed, and turns
 // those feeds into atoms and reports each one as FeedStatus. SUBSCRIBED becomes READY while
 // the worker is running, and REJECTED is copied onto the ack. The owner of a feed is the set
 // of (session, feed) demands, not a counter.

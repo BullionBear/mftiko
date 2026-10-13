@@ -1,6 +1,6 @@
 // Command mftiko-md-accept drives the MD feed-path acceptance against a running stack (E4-09,
-// E4-10, E4-11; epic #6): demand written by hand, md.f watched for seq and conn_epoch, a late
-// join through md.view, a websocket cut from outside the conn worker, and an agent rotation.
+// E4-10, E4-11; epic #6): demand written by hand, md.v1.f watched for seq and conn_epoch, a late
+// join through md.v1.view, a websocket cut from outside the conn worker, and an agent rotation.
 // deploy/accept/README.md is the runbook. It is a dev tool: it signs an all-subjects NATS user
 // and gives every etcd user it creates one password.
 //
@@ -9,8 +9,8 @@
 //	mftiko-md-accept refresh -venue V [-ticker T]       ask SYM to refresh V; print T's uid and price_tick
 //	mftiko-md-accept demand  put|del SESSION FEED       write or delete one feed demand entry
 //	mftiko-md-accept acks                               print the instance's acks and placements
-//	mftiko-md-accept watch   [-out FILE]                follow md.f.{inst}.>, check seq and conn_epoch
-//	mftiko-md-accept late    -feed FEED                 join through md.view, then follow md.f
+//	mftiko-md-accept watch   [-out FILE]                follow md.v1.f.{inst}.>, check seq and conn_epoch
+//	mftiko-md-accept late    -feed FEED                 join through md.v1.view, then follow md.v1.f
 //	mftiko-md-accept conns                              list conn workers: key, pid, venue sockets
 //	mftiko-md-accept cut     -conn KEY | -pid PID       shut down a conn worker's venue sockets (Linux)
 //
@@ -36,7 +36,7 @@ var (
 	password = flag.String("etcd-password", os.Getenv("MFTIKO_ETCD_PASSWORD"), "password of root and of the users setup creates (default $MFTIKO_ETCD_PASSWORD)")
 	natsURL  = flag.String("nats", envOr("NATS_URL", "nats://127.0.0.1:4222"), "NATS URL (default $NATS_URL)")
 	creds    = flag.String("nats-creds", os.Getenv("MFTIKO_NATS_CREDS"), "NATS credentials of the observer (default $MFTIKO_NATS_CREDS)")
-	instance = flag.String("instance", "dev", "MD instance; md.f and md.view subjects carry it")
+	instance = flag.String("instance", "dev", "MD instance; md.v1.f and md.v1.view subjects carry it")
 )
 
 var commands = map[string]func() error{

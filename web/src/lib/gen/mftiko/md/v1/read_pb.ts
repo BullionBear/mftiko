@@ -317,7 +317,7 @@ export const FetchRequestSchema: GenMessage<FetchRequest> = /*@__PURE__*/
  */
 export type FetchKlines = Message<"mftiko.md.v1.FetchKlines"> & {
   /**
-   * 今天是 UniversalTicker。改成 UID 是後續（D203）。subject 用人讀的名字，拼法還沒定（§10 P14）
+   * 今天是 UniversalTicker。改成 UID 是後續（D203）。subject 是 md.v1.fetch.{venue}，用人讀的名字（D456）
    *
    * @generated from field: string ticker = 1;
    */

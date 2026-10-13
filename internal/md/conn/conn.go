@@ -18,7 +18,7 @@ import (
 )
 
 // Instruments is one venue's active symbol table. Get with includeInactive false reads that
-// table. The conn worker loads it at Init and follows sym.changed; the agent does not.
+// table. The conn worker loads it at Init and follows sym.v1.changed.{venue}; the agent does not.
 type Instruments interface {
 	Get(ctx context.Context, t symbol.UniversalTicker, includeInactive bool) (*symbol.Info, error)
 }
@@ -41,7 +41,7 @@ type Config struct {
 	// Now is the clock written into md_ts_ns. Nil means time.Now. It is not the reconnect or
 	// rate-limit clock.
 	Now func() time.Time
-	// Epoch is the last conn_epoch already used on md.f. The next dial uses Epoch+1. Zero
+	// Epoch is the last conn_epoch already used on md.v1.f. The next dial uses Epoch+1. Zero
 	// means none has been used, so the first connection is 1. A failed dial does not consume
 	// a number. Report, when set, is how the number reaches the shim before the dial.
 	Epoch uint64
@@ -85,8 +85,8 @@ type Config struct {
 	TapeWindow    time.Duration
 	TapeMaxEvents int
 	TapeBudget    int64
-	// Subscribe registers one md.view responder. The handler runs off the read goroutine and
-	// must not call back into the Conn. Nil records tape and does not serve md.view. The
+	// Subscribe registers one md.v1.view responder. The handler runs off the read goroutine and
+	// must not call back into the Conn. Nil records tape and does not serve md.v1.view. The
 	// returned function removes the interest.
 	Subscribe func(subject string, handler func(reply string, req []byte)) (func(), error)
 	// Log is optional. Nil discards.
@@ -168,7 +168,7 @@ type Conn struct {
 	downNs  int64
 }
 
-// feed is one assigned publication: the subject is md.f.{instance}.{topic}.{ticker}.
+// feed is one assigned publication: the subject is md.v1.f.{instance}.{topic}.{ticker} (D455).
 type feed struct {
 	topic, ticker string
 }

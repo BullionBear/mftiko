@@ -20,7 +20,7 @@ import (
 	"github.com/BullionBear/mftiko/contract/wire/envelope"
 )
 
-// record is one md.f message in the -out file.
+// record is one md.v1.f message in the -out file.
 type record struct {
 	Wall    string  `json:"wall"`
 	Subject string  `json:"subject"`
@@ -104,7 +104,7 @@ func describe(payload []byte) (kind string, reset bool, levels int, price float6
 	}
 }
 
-// watch follows md.f.{inst}.> until SIGINT or -for, checks every subject with step, and writes
+// watch follows md.v1.f.{inst}.> until SIGINT or -for, checks every subject with step, and writes
 // every message to -out. It prints the epoch changes and resets as they happen and a summary
 // per subject every -every. It fails when any subject had a gap, a duplicate or a bad message.
 func watch() error {
@@ -127,7 +127,7 @@ func watch() error {
 	var mu sync.Mutex
 	feeds := map[string]*feedState{}
 	bad := 0
-	sub, err := nc.Subscribe("md.f."+*instance+".>", func(m *nats.Msg) {
+	sub, err := nc.Subscribe("md.v1.f."+*instance+".>", func(m *nats.Msg) {
 		now := time.Now()
 		ts, epoch, seq, _, payload, err := envelope.Parse(m.Data)
 		mu.Lock()
@@ -174,7 +174,7 @@ func watch() error {
 	if err := nc.Flush(); err != nil {
 		return err
 	}
-	fmt.Printf("%s watching md.f.%s.> into %s\n", stamp(), *instance, *out)
+	fmt.Printf("%s watching md.v1.f.%s.> into %s\n", stamp(), *instance, *out)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

@@ -38,11 +38,11 @@ type liveMsg struct {
 	payload []byte
 }
 
-// late is a late joiner (PROTOCOL §9.4, D437): subscribe md.f for one feed and flush, then ask
-// md.view. A book starts from the BookSnapshot at (epoch, S); a tape pages back to -since and
+// late is a late joiner (PROTOCOL §9.4, D437): subscribe md.v1.f for one feed and flush, then ask
+// md.v1.view. A book starts from the BookSnapshot at (epoch, S); a tape pages back to -since and
 // joins at TapePage.head. Live messages at or before the join cursor are dropped, and the first
 // one applied must follow it. It then follows live for -follow. A book is folded with sdk/book,
-// as a strategy would, and compared level by level with a second md.view at the same cursor.
+// as a strategy would, and compared level by level with a second md.v1.view at the same cursor.
 func late() error {
 	feed := flag.String("feed", "", "topic.UniversalTicker, e.g. orderbook_delta.BinanceUM_Perp_BTCUSDT")
 	follow := flag.Duration("follow", 20*time.Second, "how long to follow live after joining")
@@ -72,7 +72,8 @@ func late() error {
 	}
 	defer nc.Close()
 	live := make(chan liveMsg, 1<<16)
-	sub, err := nc.Subscribe("md.f."+*instance+"."+*feed, func(m *nats.Msg) {
+	feedSubject := "md.v1.f." + *instance + "." + *feed
+	sub, err := nc.Subscribe(feedSubject, func(m *nats.Msg) {
 		_, epoch, seq, _, payload, err := envelope.Parse(m.Data)
 		if err != nil {
 			return
@@ -86,8 +87,8 @@ func late() error {
 	if err := nc.Flush(); err != nil {
 		return err
 	}
-	fmt.Printf("%s subscribed md.f.%s.%s\n", stamp(), *instance, *feed)
-	v := viewer{nc: nc, subject: "md.view." + *instance + "." + *feed}
+	fmt.Printf("%s subscribed %s\n", stamp(), feedSubject)
+	v := viewer{nc: nc, subject: "md.v1.view." + strings.TrimPrefix(feedSubject, "md.v1.f.")}
 
 	var join cursor
 	var ob *book.OrderBook

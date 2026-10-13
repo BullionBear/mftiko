@@ -1,16 +1,16 @@
 // Package conn is one MD conn worker: a single websocket for a (venue, route, n), the diff
-// from the latest desired subscription, and publication of decoded events on md.f (D402, D403, D409).
+// from the latest desired subscription, and publication of decoded events on md.v1.f (D402, D403, D409, D455).
 //
 // What a frame means is exchange.Session. The socket, its pings, its idle timeout and its
 // MaxLifetime are exchange/transport/ws. That package never reconnects. This one does. The dial
 // right after a drop is immediate. A dial that fails waits, then twice as long, up to a cap.
 // conn_epoch increases only after a dial succeeds, and each feed's seq starts at 1 on that
 // connection. Both ride in the envelope. Before the dial, Serve writes the number it is about
-// to use into a C4 Report, so the shim holds it before any md.f byte of that connection exists.
+// to use into a C4 Report, so the shim holds it before any md.v1.f byte of that connection exists.
 // A failed dial does not consume the number. The agent copies the shim's report into the next
 // Init; this package does not.
 //
-// At Init the process loads this venue's active symbol table and follows sym.changed. A reconcile
+// At Init the process loads this venue's active symbol table and follows sym.v1.changed.{venue}. A reconcile
 // loop turns the agent's topic.UniversalTicker list into atoms with that table and subscribes the
 // difference. A worker started without a table applies atom ids from the assignment instead.
 //

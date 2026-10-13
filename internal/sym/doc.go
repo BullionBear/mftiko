@@ -31,8 +31,8 @@
 //     stay on the active table. EXPIRED and DELISTED move. Changing from one non-terminal status
 //     to another is a content change. Unspecified is invalid and is not written.
 //   - After that transaction commits, and only when the revision advanced, SYM publishes
-//     Changed{venue, category, revision} on sym.changed.{venue}.{category} (PROTOCOL §7.3).
-//     Venue and category are the human-readable names. PROTOCOL §10 P14 may rename the subject.
+//     Changed{venue, category, revision} on sym.v1.changed.{venue}.{category} (PROTOCOL §7.3, D457).
+//     Venue and category are the human-readable names. There is no inst.
 //     A failed publish is logged and the commit stands. A later revision check recovers a missed one.
 //
 // Storage is PostgreSQL (migrations/0002_symbol). symbol_active holds PRELISTING, TRADABLE,

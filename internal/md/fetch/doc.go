@@ -1,7 +1,7 @@
 // Package fetch is the stateless md.fetch service (D402, D418–D423).
 //
 // One process per region joins the queue group of each venue it can reach,
-// md.fetch.{venue}. Any replica answers. There is no agent, no lease, and no
+// md.v1.fetch.{venue}. Any replica answers. There is no agent, no lease, and no
 // database. The program does not route across regions: NATS delivers a request
 // to a local member of the queue group when there is one.
 //

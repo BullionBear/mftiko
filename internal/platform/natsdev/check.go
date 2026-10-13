@@ -23,7 +23,7 @@ const (
 )
 
 // Check dials url with the credentials in dir and checks the three D417 cases:
-// an MD publish of md.f is delivered, request/reply uses the caller's inbox prefix,
+// an MD publish of md.v1.f is delivered, request/reply uses the caller's inbox prefix,
 // and publish/subscribe outside the allow lists is denied. The legal caller is an
 // ephemeral session user signed in memory with the account signing key. The TD
 // account workers are signed the same way (D611). None of these credentials are written.
@@ -72,21 +72,21 @@ func checkMD(url string, lay Layout, u User) error {
 	}
 	defer sess.Close()
 
-	if err := deliver(md, "md.f."+u.Inst+".trade.BTC", sess); err != nil {
+	if err := deliver(md, "md.v1.f."+u.Inst+".trade.BTC", sess); err != nil {
 		return err
 	}
 	if err := allowSub(md, u.InboxPrefix+".>"); err != nil {
 		return fmt.Errorf("natsdev: md %s own inbox: %w", u.Inst, err)
 	}
-	if err := allowSub(md, "sym.changed.>"); err != nil {
-		return fmt.Errorf("natsdev: md %s sym.changed: %w", u.Inst, err)
+	if err := allowSub(md, "sym.v1.changed.>"); err != nil {
+		return fmt.Errorf("natsdev: md %s sym.v1.changed: %w", u.Inst, err)
 	}
 	if err := denyOutside(url, lay, u, PlaneMD); err != nil {
 		return err
 	}
 	other := foreignInst(u.Inst)
-	if err := denyOnce(url, lay, u, "publish other md.f", func(nc *nats.Conn) error {
-		return nc.Publish("md.f."+other+".trade.BTC", []byte("x"))
+	if err := denyOnce(url, lay, u, "publish other md.v1.f", func(nc *nats.Conn) error {
+		return nc.Publish("md.v1.f."+other+".trade.BTC", []byte("x"))
 	}); err != nil {
 		return err
 	}
@@ -95,12 +95,12 @@ func checkMD(url string, lay Layout, u User) error {
 		return err
 	}
 	err = expectDenied(sess, func(nc *nats.Conn) error {
-		_, err := nc.SubscribeSync("md.f." + other + ".>")
+		_, err := nc.SubscribeSync("md.v1.f." + other + ".>")
 		return err
 	})
 	sess.Close()
 	if err != nil {
-		return fmt.Errorf("natsdev: session subscribe other md.f: %w", err)
+		return fmt.Errorf("natsdev: session subscribe other md.v1.f: %w", err)
 	}
 	sess, err = dialCaller(url, caller)
 	if err != nil {
@@ -114,7 +114,7 @@ func checkMD(url string, lay Layout, u User) error {
 	if err != nil {
 		return fmt.Errorf("natsdev: session subscribe md inbox: %w", err)
 	}
-	return roundTrip(url, caller, md, "md.view."+u.Inst+".trade.BTC", "")
+	return roundTrip(url, caller, md, "md.v1.view."+u.Inst+".trade.BTC", "")
 }
 
 func checkFetch(url string, lay Layout, u User) error {
@@ -133,19 +133,19 @@ func checkFetch(url string, lay Layout, u User) error {
 	if err := denyOutside(url, lay, u, PlaneFetch); err != nil {
 		return err
 	}
-	// The exact subject md.fetch has no venue token, so the user may not subscribe to it (D418).
-	if err := denyOnce(url, lay, u, "subscribe md.fetch", func(nc *nats.Conn) error {
-		_, err := nc.SubscribeSync("md.fetch")
+	// The exact subject md.v1.fetch has no venue token, so the user may not subscribe to it (D418, D456).
+	if err := denyOnce(url, lay, u, "subscribe md.v1.fetch", func(nc *nats.Conn) error {
+		_, err := nc.SubscribeSync("md.v1.fetch")
 		return err
 	}); err != nil {
 		return err
 	}
-	if err := allowSub(fetch, "sym.changed.>"); err != nil {
-		return fmt.Errorf("natsdev: fetch %s sym.changed: %w", u.Inst, err)
+	if err := allowSub(fetch, "sym.v1.changed.>"); err != nil {
+		return fmt.Errorf("natsdev: fetch %s sym.v1.changed: %w", u.Inst, err)
 	}
 	// natsx Serve uses the subject as the queue name when the caller leaves it empty.
-	// md.fetch.Binance is one venue subject; the venue token is only an example.
-	return roundTrip(url, caller, fetch, "md.fetch.Binance", "md.fetch.Binance")
+	// md.v1.fetch.Binance is one venue subject; the venue token is only an example.
+	return roundTrip(url, caller, fetch, "md.v1.fetch.Binance", "md.v1.fetch.Binance")
 }
 
 // checkTD checks the TD agent's user and the account worker of checkAPIID (D611). The agent
@@ -169,8 +169,8 @@ func checkTD(url string, lay Layout, u User) error {
 	if err := allowSub(agent, u.InboxPrefix+".>"); err != nil {
 		return fmt.Errorf("natsdev: td %s own inbox: %w", u.Inst, err)
 	}
-	if err := allowSub(agent, "sym.changed.>"); err != nil {
-		return fmt.Errorf("natsdev: td %s sym.changed: %w", u.Inst, err)
+	if err := allowSub(agent, "sym.v1.changed.>"); err != nil {
+		return fmt.Errorf("natsdev: td %s sym.v1.changed: %w", u.Inst, err)
 	}
 	if err := denyOutside(url, lay, u, PlaneTD); err != nil {
 		return err
@@ -195,8 +195,8 @@ func checkTD(url string, lay Layout, u User) error {
 	if err := allowSub(w, worker.inbox+".>"); err != nil {
 		return fmt.Errorf("natsdev: account worker %s own inbox: %w", own, err)
 	}
-	if err := allowSub(w, "sym.changed.>"); err != nil {
-		return fmt.Errorf("natsdev: account worker %s sym.changed: %w", own, err)
+	if err := allowSub(w, "sym.v1.changed.>"); err != nil {
+		return fmt.Errorf("natsdev: account worker %s sym.v1.changed: %w", own, err)
 	}
 	sess, err := dialCaller(url, caller)
 	if err != nil {
@@ -493,12 +493,12 @@ func newCaller(lay Layout, inst string) (*memUser, error) {
 	// Publish is only what this check calls. Subscribe is the feed, the bound account's events,
 	// and this session's inbox. No response permission: the caller does not answer requests.
 	return signMem(lay, "session-"+checkSessionID, inbox, []string{
-		"md.view." + inst + ".>",
-		"md.fetch.>",
+		"md.v1.view." + inst + ".>",
+		"md.v1.fetch.>",
 		"td.order." + account,
 		"td.view." + account,
 	}, []string{
-		"md.f." + inst + ".>",
+		"md.v1.f." + inst + ".>",
 		"td.evt." + account,
 		inbox + ".>",
 	}, false)
