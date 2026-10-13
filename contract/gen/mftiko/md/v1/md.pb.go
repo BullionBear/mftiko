@@ -1271,11 +1271,10 @@ var File_mftiko_md_v1_md_proto protoreflect.FileDescriptor
 
 const file_mftiko_md_v1_md_proto_rawDesc = "" +
 	"\n" +
-	"\x15mftiko/md/v1/md.proto\x12\fmftiko.md.v1\x1a\x1dmftiko/common/v1/common.proto\"Q\n" +
+	"\x15mftiko/md/v1/md.proto\x12\fmftiko.md.v1\x1a\x1dmftiko/common/v1/common.proto\"$\n" +
 	"\x04Meta\x12\x1c\n" +
 	"\n" +
-	"exch_ts_ns\x18\x03 \x01(\x03R\bexchTsNsJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x04\x10\x05R\x03seqR\n" +
-	"conn_epochR\bmd_ts_ns\"\xa7\x05\n" +
+	"exch_ts_ns\x18\x03 \x01(\x03R\bexchTsNs\"\x85\x05\n" +
 	"\tFeedEvent\x128\n" +
 	"\n" +
 	"best_quote\x18\x01 \x01(\v2\x17.mftiko.md.v1.BestQuoteH\x00R\tbestQuote\x12+\n" +
@@ -1291,8 +1290,7 @@ const file_mftiko_md_v1_md_proto_rawDesc = "" +
 	"\n" +
 	"mark_price\x18\v \x01(\v2\x17.mftiko.md.v1.MarkPriceH\x00R\tmarkPrice\x12H\n" +
 	"\x10order_book_delta\x18\f \x01(\v2\x1c.mftiko.md.v1.OrderBookDeltaH\x00R\x0eorderBookDeltaB\a\n" +
-	"\x05eventJ\x04\b\x04\x10\x05J\x04\bd\x10eR\n" +
-	"order_bookR\bfeed_end\"\x89\x01\n" +
+	"\x05event\"\x89\x01\n" +
 	"\tBestQuote\x12&\n" +
 	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12\x10\n" +
 	"\x03bid\x18\x02 \x01(\x01R\x03bid\x12\x17\n" +

@@ -645,7 +645,7 @@ var File_mftiko_mdctl_v1_mdctl_proto protoreflect.FileDescriptor
 
 const file_mftiko_mdctl_v1_mdctl_proto_rawDesc = "" +
 	"\n" +
-	"\x1bmftiko/mdctl/v1/mdctl.proto\x12\x0fmftiko.mdctl.v1\x1a\x1dmftiko/common/v1/common.proto\"\x9b\x03\n" +
+	"\x1bmftiko/mdctl/v1/mdctl.proto\x12\x0fmftiko.mdctl.v1\x1a\x1dmftiko/common/v1/common.proto\"\xe1\x02\n" +
 	"\vInitPayload\x12\x14\n" +
 	"\x05venue\x18\x01 \x01(\tR\x05venue\x12\x14\n" +
 	"\x05route\x18\x02 \x01(\tR\x05route\x12\f\n" +
@@ -660,9 +660,7 @@ const file_mftiko_mdctl_v1_mdctl_proto_rawDesc = "" +
 	"\x0ebook_buffer_ms\x18\v \x01(\rR\fbookBufferMs\x12$\n" +
 	"\x0etape_window_ms\x18\f \x01(\rR\ftapeWindowMs\x12&\n" +
 	"\x0ftape_max_events\x18\r \x01(\rR\rtapeMaxEvents\x12*\n" +
-	"\x11tape_budget_bytes\x18\x0e \x01(\x04R\x0ftapeBudgetBytesJ\x04\b\x05\x10\x06J\x04\b\b\x10\tJ\x04\b\t\x10\n" +
-	"R\btape_urlR\n" +
-	"book_depthR\x10book_boundary_bp\"\x0e\n" +
+	"\x11tape_budget_bytes\x18\x0e \x01(\x04R\x0ftapeBudgetBytes\"\x0e\n" +
 	"\fStartPayload\"F\n" +
 	"\aCommand\x124\n" +
 	"\adesired\x18\x01 \x01(\v2\x18.mftiko.mdctl.v1.DesiredH\x00R\adesiredB\x05\n" +
@@ -677,7 +675,7 @@ const file_mftiko_mdctl_v1_mdctl_proto_rawDesc = "" +
 	"\vexch_ticker\x18\x04 \x01(\tR\n" +
 	"exchTicker\x12\x1d\n" +
 	"\n" +
-	"price_tick\x18\x05 \x01(\x01R\tpriceTick\"\x81\x02\n" +
+	"price_tick\x18\x05 \x01(\x01R\tpriceTick\"\xf4\x01\n" +
 	"\x06Report\x123\n" +
 	"\aapplied\x18\x01 \x01(\v2\x19.mftiko.common.v1.VersionR\aapplied\x12\x1d\n" +
 	"\n" +
@@ -685,7 +683,7 @@ const file_mftiko_mdctl_v1_mdctl_proto_rawDesc = "" +
 	"\x05state\x18\x03 \x01(\x0e2\x1a.mftiko.mdctl.v1.ConnStateR\x05state\x12\x16\n" +
 	"\x06reason\x18\x04 \x01(\tR\x06reason\x12\x19\n" +
 	"\bmsg_rate\x18\x06 \x01(\x01R\amsgRate\x121\n" +
-	"\x05feeds\x18\a \x03(\v2\x1b.mftiko.mdctl.v1.FeedStatusR\x05feedsJ\x04\b\x05\x10\x06R\x05atoms\"j\n" +
+	"\x05feeds\x18\a \x03(\v2\x1b.mftiko.mdctl.v1.FeedStatusR\x05feeds\"j\n" +
 	"\n" +
 	"FeedStatus\x12\x12\n" +
 	"\x04feed\x18\x01 \x01(\tR\x04feed\x120\n" +
