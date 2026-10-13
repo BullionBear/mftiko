@@ -69,10 +69,7 @@ func (c *Conn) syncViewsLocked() {
 			continue
 		}
 		if v.ring != nil {
-			c.tapeBytes -= int64(v.ring.bytes)
-			if c.tapeBytes < 0 {
-				c.tapeBytes = 0
-			}
+			c.tape.release(v.ring)
 		}
 		delete(c.views, key)
 	}
@@ -82,7 +79,7 @@ func (c *Conn) newViewLocked(key string, f feed, ch string) *viewFeed {
 	vf := &viewFeed{key: key, topic: f.topic, ticker: f.ticker, channel: ch}
 	switch {
 	case tapeTopic(f.topic):
-		vf.ring = newTapeRing(c.tapeMax)
+		vf.ring = c.tape.newRing(c.tapeMax, key)
 		if !c.wasDown {
 			vf.ring.setEmptyHead(c.epoch)
 		}
@@ -158,14 +155,11 @@ func (c *Conn) onUpLocked() {
 		if v.ring == nil {
 			continue
 		}
-		before := v.ring.bytes
 		if wasDown && v.ring.pendingDown {
 			v.ring.appendGap(c.downNs, now, c.epoch, c.tapeWindow)
 		}
 		v.ring.setEmptyHead(c.epoch)
-		c.tapeBytes += int64(v.ring.bytes - before)
 	}
-	c.trimBudget()
 }
 
 // onDownLocked remembers each ring's head and drops book snapshots. The book
@@ -193,41 +187,7 @@ func (c *Conn) recordTape(key string, epoch, seq uint64, mdTs int64, raw []byte)
 	if v == nil || v.ring == nil {
 		return
 	}
-	before := v.ring.bytes
 	v.ring.appendEvent(epoch, seq, mdTs, raw, c.tapeWindow)
-	c.tapeBytes += int64(v.ring.bytes - before)
-	c.trimBudget()
-}
-
-func (c *Conn) trimBudget() {
-	for c.tapeBytes > c.tapeBudget {
-		var (
-			best    *tapeRing
-			bestTs  int64
-			bestKey string
-		)
-		for key, v := range c.views {
-			if v.ring == nil || v.ring.events == 0 {
-				continue
-			}
-			ts := v.ring.oldest
-			if best == nil || ts < bestTs || (ts == bestTs && key < bestKey) {
-				best, bestTs, bestKey = v.ring, ts, key
-			}
-		}
-		if best == nil {
-			return
-		}
-		before := best.bytes
-		if !best.dropOneEvent(c.epoch) {
-			return
-		}
-		freed := int64(before - best.bytes)
-		c.tapeBytes -= freed
-		if freed <= 0 {
-			return
-		}
-	}
 }
 
 func (c *Conn) serveView(vf *viewFeed, reply string, req []byte) {

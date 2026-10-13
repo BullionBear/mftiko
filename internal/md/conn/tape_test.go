@@ -152,7 +152,7 @@ func TestTapeRingSeparated(t *testing.T) {
 		t.Fatalf("slots to pub is %d bytes", d)
 	}
 	for range 32 {
-		r := newTapeRing(8)
+		r := newTapeArena(defaultTapeBudget).newRing(8, "align")
 		base := uintptr(unsafe.Pointer(r))
 		if base%tapeRingAlign != 0 {
 			t.Fatalf("ring %#x is not %d-aligned", base, tapeRingAlign)
@@ -443,27 +443,30 @@ func TestTapeTrimWindowCountAndBudget(t *testing.T) {
 		t.Fatalf("count %+v", seqsOf(rep))
 	}
 
-	budget := newTapeBox(t, tapeBoxOptions{max: 1000, budget: 400})
+	// A 64 KiB chunk does not fit in a few hundred bytes. The cap is the
+	// arena, and it has to leave some of these events out.
+	budget := newTapeBox(t, tapeBoxOptions{max: 1000, budget: 256 << 10})
 	budget.want("trade", "aggtrade")
 	budget.up(1)
+	body := strings.Repeat("x", 8000)
 	for i := 0; i < 30; i++ {
 		budget.at(int64(i + 1))
 		if i%2 == 0 {
-			budget.trade(fmt.Sprintf("t%d", i))
+			budget.trade(fmt.Sprintf("t%d-%s", i, body))
 		} else {
-			budget.agg(fmt.Sprintf("a%d", i))
+			budget.agg(fmt.Sprintf("a%d-%s", i, body))
 		}
 	}
 	budget.c.mu.Lock()
-	bytes, events := budget.c.tapeBytes, 0
+	used, events := budget.c.tape.used, 0
 	for _, v := range budget.c.views {
 		if v.ring != nil {
 			events += v.ring.events
 		}
 	}
 	budget.c.mu.Unlock()
-	if bytes > 400 || events >= 30 || events == 0 {
-		t.Fatalf("budget bytes %d events %d", bytes, events)
+	if used > budget.c.tapeBudget || events >= 30 || events == 0 {
+		t.Fatalf("budget used %d events %d", used, events)
 	}
 
 	// A ring with no events left reports the current epoch and seq 0 (D437).
@@ -618,6 +621,8 @@ func TestPublishNotStalledByTapeRead(t *testing.T) {
 	readers, restore := publishBenchReaders()
 	defer restore()
 	stop := make(chan struct{})
+	paged := make(chan struct{})
+	var once sync.Once
 	var wg sync.WaitGroup
 	for range readers {
 		wg.Add(1)
@@ -629,11 +634,16 @@ func TestPublishNotStalledByTapeRead(t *testing.T) {
 					return
 				default:
 					ring.page(nil, 0, false, 5000)
+					once.Do(func() { close(paged) })
 				}
 			}
 		}()
 	}
-	time.Sleep(20 * time.Millisecond)
+	select {
+	case <-paged:
+	case <-time.After(5 * time.Second):
+		t.Fatal("reader did not finish a page")
+	}
 	const n = 8192
 	samples := make([]time.Duration, n)
 	for i := 0; i < n; i++ {

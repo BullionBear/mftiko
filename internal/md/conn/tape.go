@@ -12,7 +12,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange"
 )
 
-// Tape limits (D438, D439, D449). Zero in InitPayload selects these.
+// Tape limits (D438, D439, D449, D458). Zero in InitPayload selects these.
 const (
 	defaultTapeWindow    = int64(10 * time.Minute)
 	defaultTapeMaxEvents = 100_000
@@ -28,9 +28,11 @@ const (
 	kindGap   uint8 = 2
 )
 
-// tapeRec is one immutable ring entry. The writer publishes it and never mutates it.
-// raw is the md.f message for an event. A gap orders as (epoch, 0) — the new
-// conn_epoch — and mdTs is its end_ns, so the time index follows append order.
+// tapeRec is one ring entry, copied out of a chunk. raw is the md.f message
+// while the wire size is measured, and again when a test loads the record.
+// A reconnect gap orders as (epoch, 0). An oversize gap orders as the event's
+// own cursor (D459). mdTs is the event time, or a gap's end_ns, so the time
+// index follows append order.
 type tapeRec struct {
 	kind               uint8
 	epoch, seqNo       uint64
@@ -45,19 +47,13 @@ type tapeRec struct {
 	wire int
 }
 
-// tapeSnap is one published index. Readers load it, then the slots. The writer
+// tapeSnap is one published index. Readers load it, then the chunks. The writer
 // stores a new value; it does not mutate a snap a reader might hold.
 type tapeSnap struct {
-	tail, written      uint64
-	headEpoch, headSeq uint64
-	continuous         int64
-}
-
-// tapeSlot is a seqlock. seq is (index+1)<<1 while the pointer is stable, and odd
-// while the writer replaces it. A mismatch means the slot was overwritten (D450).
-type tapeSlot struct {
-	seq atomic.Uint64
-	ptr atomic.Pointer[tapeRec]
+	tail, written           uint64
+	chunkTail, chunkWritten uint64
+	headEpoch, headSeq      uint64
+	continuous              int64
 }
 
 // tapeRingPad keeps the slots slice header off the cache line, and off the
@@ -68,46 +64,38 @@ const tapeRingPad = 128
 const tapeRingAlign = 128
 
 // tapeRing is one feed's append-only log. The conn worker is the only writer.
-// page reads the atomics below and takes no lock (D450, D451).
+// page reads the atomics below and takes no lock (D450, D459).
 //
-// slots is the header every load touches. pub, tail, and the rest of the
-// writer index move on every append. 128 bytes between them, and a
-// 128-aligned base, keep those on different lines. tailPad exists so
-// sizeof(tapeRing) % 128 == 8: the arena in newAlignedRing can then always
-// place one element on a 128-byte boundary. Add a field and this pad has to
-// change with it.
+// slots is the header every load touches: a fixed ring of chunk pointers.
+// pub and the writer index move on every append. 128 bytes between them, and
+// a 128-aligned base, keep those on different lines. tailPad exists so
+// sizeof(tapeRing) % 128 == 8: newAlignedRing can then always place one
+// element on a 128-byte boundary. Add a field and this pad has to change.
 type tapeRing struct {
-	slots []tapeSlot
+	slots []atomic.Pointer[tapeChunk]
 	max   int
 	_     [tapeRingPad]byte
 	pub   atomic.Pointer[tapeSnap]
 
 	// Writer fields. The read path does not touch them, apart from one load of pub per page.
-	tail, written uint64
-	events        int
-	bytes         int
-	gapCount      int
-	oldest        int64
-	newestGapEnd  int64
-	headEpoch     uint64
-	headSeq       uint64
-	pendingDown   bool
-	savedOK       bool
-	savedEpoch    uint64
-	savedSeq      uint64
-	keep          []tapeRing
-	tailPad       [104]byte
-}
-
-func newTapeRing(max int) *tapeRing {
-	if max < 1 {
-		max = 1
-	}
-	r := newAlignedRing()
-	r.slots = make([]tapeSlot, max)
-	r.max = max
-	r.publish()
-	return r
+	tail, written           uint64
+	chunkTail, chunkWritten uint64
+	events                  int
+	bytes                   int
+	gapCount                int
+	oldest                  int64
+	newestGapEnd            int64
+	headEpoch, headSeq      uint64
+	connEpoch               uint64
+	pendingDown             bool
+	savedOK                 bool
+	savedEpoch, savedSeq    uint64
+	key                     string
+	arena                   *tapeArena
+	open                    *tapeChunk
+	held                    int64
+	keep                    []tapeRing
+	tailPad                 [40]byte
 }
 
 // newAlignedRing returns a tapeRing at a 128-byte-aligned address. The ring
@@ -145,125 +133,10 @@ func (r *tapeRing) publish() {
 	}
 	r.pub.Store(&tapeSnap{
 		tail: r.tail, written: r.written,
+		chunkTail: r.chunkTail, chunkWritten: r.chunkWritten,
 		headEpoch: r.headEpoch, headSeq: r.headSeq,
 		continuous: cont,
 	})
-}
-
-func (r *tapeRing) write(abs uint64, rec *tapeRec) {
-	s := &r.slots[abs%uint64(len(r.slots))]
-	s.seq.Store(((abs + 1) << 1) | 1)
-	s.ptr.Store(rec)
-	s.seq.Store((abs + 1) << 1)
-}
-
-func (r *tapeRing) load(abs uint64) (*tapeRec, bool) {
-	s := &r.slots[abs%uint64(len(r.slots))]
-	s1 := s.seq.Load()
-	if s1&1 == 1 {
-		return nil, false
-	}
-	p := s.ptr.Load()
-	s2 := s.seq.Load()
-	if s1 != s2 || s1>>1 != abs+1 || p == nil {
-		return nil, false
-	}
-	return p, true
-}
-
-func (r *tapeRing) loadWriter(abs uint64) *tapeRec {
-	return r.slots[abs%uint64(len(r.slots))].ptr.Load()
-}
-
-func (r *tapeRing) removeTail() {
-	if r.tail >= r.written {
-		return
-	}
-	rec := r.loadWriter(r.tail)
-	if rec != nil {
-		if rec.kind == kindEvent {
-			r.events--
-			r.bytes -= len(rec.raw)
-		} else {
-			r.gapCount--
-		}
-	}
-	r.tail++
-	r.noteOldest()
-}
-
-func (r *tapeRing) noteOldest() {
-	r.oldest = 0
-	for i := r.tail; i < r.written; i++ {
-		rec := r.loadWriter(i)
-		if rec != nil && rec.kind == kindEvent {
-			r.oldest = rec.mdTs
-			return
-		}
-	}
-}
-
-// trim drops the tail until the event count and the time window both hold.
-// The caller publishes the new tail before a slot is reused.
-func (r *tapeRing) trim(cutoff int64) {
-	for r.tail < r.written {
-		rec := r.loadWriter(r.tail)
-		if rec == nil {
-			r.tail++
-			continue
-		}
-		if r.events <= r.max && rec.mdTs >= cutoff {
-			break
-		}
-		r.removeTail()
-	}
-}
-
-func (r *tapeRing) ensureCap() {
-	capn := uint64(len(r.slots))
-	for r.written-r.tail >= capn && r.tail < r.written {
-		r.removeTail()
-	}
-}
-
-func (r *tapeRing) appendEvent(epoch, seq uint64, mdTs int64, raw []byte, windowNs int64) {
-	r.trim(windowCutoff(mdTs, windowNs))
-	r.ensureCap()
-	// An empty ring's head is this epoch, seq 0, including the moment after the
-	// last retained event was just dropped (D437).
-	r.noteEmpty(epoch)
-	r.publish()
-	rec := &tapeRec{
-		kind: kindEvent, epoch: epoch, seqNo: seq, mdTs: mdTs,
-		raw: append([]byte(nil), raw...),
-	}
-	rec.wire = tapeEventFieldSize(rec)
-	r.write(r.written, rec)
-	r.written++
-	r.events++
-	r.bytes += len(rec.raw)
-	if r.events == 1 {
-		r.oldest = mdTs
-	}
-	r.headEpoch, r.headSeq = epoch, seq
-	r.publish()
-}
-
-func (r *tapeRing) appendGap(start, end int64, epoch uint64, windowNs int64) {
-	r.trim(windowCutoff(end, windowNs))
-	r.ensureCap()
-	r.noteEmpty(epoch)
-	r.publish()
-	rec := &tapeRec{
-		kind: kindGap, epoch: epoch, seqNo: 0, mdTs: end, start: start, end: end,
-		hasLast: r.savedOK, lastEpoch: r.savedEpoch, lastSeq: r.savedSeq,
-	}
-	r.write(r.written, rec)
-	r.written++
-	r.gapCount++
-	r.newestGapEnd = end
-	r.pendingDown = false
-	r.publish()
 }
 
 func windowCutoff(now, windowNs int64) int64 {
@@ -271,27 +144,6 @@ func windowCutoff(now, windowNs int64) int64 {
 		return 0
 	}
 	return now - windowNs
-}
-
-// dropOneEvent removes the oldest event, and any gaps sitting in front of it.
-// epoch is the connection's current conn_epoch, used when the ring becomes empty.
-func (r *tapeRing) dropOneEvent(epoch uint64) bool {
-	if r.events == 0 {
-		return false
-	}
-	for r.tail < r.written && r.events > 0 {
-		rec := r.loadWriter(r.tail)
-		event := rec != nil && rec.kind == kindEvent
-		r.removeTail()
-		if event {
-			r.noteEmpty(epoch)
-			r.publish()
-			return true
-		}
-	}
-	r.noteEmpty(epoch)
-	r.publish()
-	return false
 }
 
 func (r *tapeRing) markDown() {
@@ -378,12 +230,15 @@ func (r *tapeRing) measure(snap *tapeSnap, hi, lo uint64, since int64, hasSince 
 	evSize, gapSize, events, kept := 0, 0, 0, 0
 	var nextEpoch, nextSeq, stop uint64
 	hitSince, torn := false, false
+	var hint loc
 	for i := hi; ; {
-		rec, good := r.load(i)
+		meta, next, good := r.metaAt(snap, i, &hint)
 		if !good {
 			torn = true
 			break
 		}
+		hint = next
+		rec := meta.rec
 		if rec.kind == kindEvent && hasSince && rec.mdTs < since {
 			hitSince = true
 			break
@@ -396,7 +251,7 @@ func (r *tapeRing) measure(snap *tapeSnap, hi, lo uint64, since int64, hasSince 
 			field = rec.wire
 		} else {
 			var ok bool
-			addGap, ok = r.gapEncodedSize(snap, i, rec)
+			addGap, ok = r.gapEncodedSize(snap, i, &rec)
 			if !ok {
 				torn = true
 				break
@@ -448,20 +303,57 @@ func (r *tapeRing) finishPage(snap *tapeSnap, cut pageCut, shrink bool) ([]byte,
 }
 
 // findBefore is the rightmost entry strictly older than before, or the newest
-// entry when before is unset. ok is false when a slot was overwritten.
+// entry when before is unset. ok is false when a chunk generation moved.
+// The search is chunks first, then the slot inside that chunk (D459).
 func (r *tapeRing) findBefore(snap *tapeSnap, before *mdv1.Cursor) (idx uint64, found, ok bool) {
-	lo, hi := snap.tail, snap.written
-	if lo >= hi {
+	if snap == nil || snap.tail >= snap.written {
 		return 0, false, true
 	}
 	if before == nil {
-		return hi - 1, true, true
+		return snap.written - 1, true, true
 	}
 	be, bs := before.GetConnEpoch(), before.GetSeq()
+	lo, hi := snap.chunkTail, snap.chunkWritten
+	var chunk uint64
+	have := false
 	for lo < hi {
 		mid := lo + (hi-lo)/2
-		rec, good := r.load(mid)
+		start, end, ch, gen, base, good := r.bounds(snap, mid)
 		if !good {
+			return 0, false, false
+		}
+		if start >= end {
+			if end <= snap.tail {
+				lo = mid + 1
+			} else {
+				hi = mid
+			}
+			continue
+		}
+		rec, _, _, good := readSlot(ch, gen, uint32(start-base))
+		if !good {
+			return 0, false, false
+		}
+		if cursorLess(rec.epoch, rec.seqNo, be, bs) {
+			have = true
+			chunk = mid
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	if !have {
+		return 0, false, true
+	}
+	start, end, ch, gen, base, good := r.bounds(snap, chunk)
+	if !good || start >= end {
+		return 0, false, false
+	}
+	lo, hi = start, end
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		rec, _, _, slotOK := readSlot(ch, gen, uint32(mid-base))
+		if !slotOK {
 			return 0, false, false
 		}
 		if cursorLess(rec.epoch, rec.seqNo, be, bs) {
@@ -476,16 +368,55 @@ func (r *tapeRing) findBefore(snap *tapeSnap, before *mdv1.Cursor) (idx uint64, 
 }
 
 // findSince is the leftmost entry whose time is >= since. The writer clock does
-// not go backwards, so time follows the index (D451).
+// not go backwards, so time follows the index (D451). Chunks first, then slots.
 func (r *tapeRing) findSince(snap *tapeSnap, since int64, has bool) (uint64, bool) {
-	lo, hi := snap.tail, snap.written
-	if !has || lo >= hi {
+	if snap == nil {
+		return 0, false
+	}
+	if !has || snap.tail >= snap.written {
 		return snap.tail, true
 	}
+	lo, hi := snap.chunkTail, snap.chunkWritten
+	var chunk uint64
+	have := false
 	for lo < hi {
 		mid := lo + (hi-lo)/2
-		rec, good := r.load(mid)
+		start, end, ch, gen, base, good := r.bounds(snap, mid)
 		if !good {
+			return 0, false
+		}
+		if start >= end {
+			if end <= snap.tail {
+				lo = mid + 1
+			} else {
+				hi = mid
+			}
+			continue
+		}
+		rec, _, _, slotOK := readSlot(ch, gen, uint32(end-1-base))
+		if !slotOK {
+			return 0, false
+		}
+		if rec.mdTs < since {
+			lo = mid + 1
+		} else {
+			have = true
+			chunk = mid
+			hi = mid
+		}
+	}
+	if !have {
+		return snap.written, true
+	}
+	start, end, ch, gen, base, good := r.bounds(snap, chunk)
+	if !good || start >= end {
+		return 0, false
+	}
+	lo, hi = start, end
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		rec, _, _, slotOK := readSlot(ch, gen, uint32(mid-base))
+		if !slotOK {
 			return 0, false
 		}
 		if rec.mdTs >= since {
@@ -495,6 +426,27 @@ func (r *tapeRing) findSince(snap *tapeSnap, since int64, has bool) (uint64, boo
 		}
 	}
 	return lo, true
+}
+
+// bounds is the visible absolute range of one chunk inside snap.
+func (r *tapeRing) bounds(snap *tapeSnap, seq uint64) (start, end uint64, ch *tapeChunk, gen, base uint64, ok bool) {
+	if snap == nil || seq < snap.chunkTail || seq >= snap.chunkWritten {
+		return 0, 0, nil, 0, 0, false
+	}
+	var count uint32
+	ch, gen, base, count, ok = r.chunkMeta(seq)
+	if !ok {
+		return 0, 0, nil, 0, 0, false
+	}
+	start = base
+	if start < snap.tail {
+		start = snap.tail
+	}
+	end = base + uint64(count)
+	if end > snap.written {
+		end = snap.written
+	}
+	return start, end, ch, gen, base, true
 }
 
 // writePage encodes the cut into one buffer. torn means a slot moved and the
@@ -511,7 +463,7 @@ func (r *tapeRing) writePage(snap *tapeSnap, cut pageCut) ([]byte, bool) {
 	buf = protowire.AppendVarint(buf, uint64(body))
 	if cut.kept > 0 {
 		var torn bool
-		buf, torn = r.appendEvents(buf, cut.hi, cut.stop)
+		buf, torn = r.appendEvents(buf, snap, cut.hi, cut.stop)
 		if torn {
 			return nil, true
 		}
@@ -531,14 +483,20 @@ func (r *tapeRing) writePage(snap *tapeSnap, cut pageCut) ([]byte, bool) {
 	return buf, false
 }
 
-func (r *tapeRing) appendEvents(buf []byte, hi, stop uint64) ([]byte, bool) {
+func (r *tapeRing) appendEvents(buf []byte, snap *tapeSnap, hi, stop uint64) ([]byte, bool) {
+	var hint loc
 	for i := hi; ; {
-		rec, ok := r.load(i)
+		meta, next, ok := r.metaAt(snap, i, &hint)
 		if !ok {
 			return nil, true
 		}
-		if rec.kind == kindEvent {
-			buf = appendTapeEvent(buf, rec)
+		hint = next
+		if meta.rec.kind == kindEvent {
+			var good bool
+			buf, good = appendEventFrom(buf, &meta)
+			if !good {
+				return nil, true
+			}
 		}
 		if i == stop {
 			return buf, false
@@ -548,17 +506,19 @@ func (r *tapeRing) appendEvents(buf []byte, hi, stop uint64) ([]byte, bool) {
 }
 
 func (r *tapeRing) appendGaps(buf []byte, snap *tapeSnap, hi, stop uint64) ([]byte, bool) {
+	var hint loc
 	for i := hi; ; {
-		rec, ok := r.load(i)
+		meta, next, ok := r.metaAt(snap, i, &hint)
 		if !ok {
 			return nil, true
 		}
-		if rec.kind == kindGap {
+		hint = next
+		if meta.rec.kind == kindGap {
 			has, epoch, seq, good := r.gapFirst(snap, i)
 			if !good {
 				return nil, true
 			}
-			buf = appendGap(buf, rec, has, epoch, seq)
+			buf = appendGap(buf, &meta.rec, has, epoch, seq)
 		}
 		if i == stop {
 			return buf, false
@@ -580,14 +540,48 @@ func (r *tapeRing) gapFirst(snap *tapeSnap, idx uint64) (has bool, epoch, seq ui
 	if idx+1 >= snap.written {
 		return false, 0, 0, true
 	}
-	next, good := r.load(idx + 1)
+	next, _, good := r.metaAt(snap, idx+1, nil)
 	if !good {
 		return false, 0, 0, false
 	}
-	if next != nil && next.kind == kindEvent {
-		return true, next.epoch, next.seqNo, true
+	if next.rec.kind == kindEvent {
+		return true, next.rec.epoch, next.rec.seqNo, true
 	}
 	return false, 0, 0, true
+}
+
+// appendEventFrom writes one TapeEvent, copying the payload out of the chunk.
+// A generation change drops the bytes.
+func appendEventFrom(b []byte, m *slotMeta) ([]byte, bool) {
+	if m.ch != nil && m.ch.gen.Load() != m.gen {
+		return nil, false
+	}
+	pLen := 0
+	pOff := 0
+	if int(m.n) > envelope.Size {
+		pLen = int(m.n) - envelope.Size
+		pOff = int(m.off) + envelope.Size
+	}
+	inner := sizeVarintField(1, m.rec.epoch) + sizeVarintField(2, m.rec.seqNo) + sizeInt64Field(3, m.rec.mdTs)
+	inner += protowire.SizeTag(4) + protowire.SizeVarint(uint64(pLen)) + pLen
+	b = protowire.AppendTag(b, 1, protowire.BytesType)
+	b = protowire.AppendVarint(b, uint64(inner))
+	b = appendVarintField(b, 1, m.rec.epoch)
+	b = appendVarintField(b, 2, m.rec.seqNo)
+	b = appendInt64Field(b, 3, m.rec.mdTs)
+	b = protowire.AppendTag(b, 4, protowire.BytesType)
+	b = protowire.AppendVarint(b, uint64(pLen))
+	if pLen > 0 {
+		var ok bool
+		b, ok = appendAtomic(b, m.ch, m.gen, pOff, pLen)
+		if !ok {
+			return nil, false
+		}
+	}
+	if m.ch != nil && m.ch.gen.Load() != m.gen {
+		return nil, false
+	}
+	return b, true
 }
 
 func payloadOf(raw []byte) []byte {
