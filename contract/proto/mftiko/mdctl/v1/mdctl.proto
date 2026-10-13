@@ -12,16 +12,10 @@ message InitPayload {
   string route = 2; // 由 adapter 從解析後的商品推得（D403、D202）
   uint32 n = 3;
   string md_instance = 4;
-  reserved 5; // 原本的 tape_url：tape 在 worker 記憶體（D402）
-  reserved "tape_url";
   // 實際連線的 URL。host 由 MD instance 的設定選：預設，或交易所提供的替代 endpoint（D403）。換 URL 要換 incarnation。
   string url = 6;
   // 上次上報的 conn_epoch。0 表示還沒有上報過，第一次撥號用 1（D409）。
   uint64 conn_epoch = 7;
-  reserved 8; // 原本的 book_depth：沒有 top-N（D453）
-  reserved "book_depth";
-  reserved 9; // 原本的 book_boundary_bp：SnapshotREST 不設邊界、不因距離重抓（D426）
-  reserved "book_boundary_bp";
   // 等快照時緩衝的筆數上限。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（D424）。
   uint32 book_buffer_max = 10;
   // 等快照時緩衝的時間上限，毫秒。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（D424）。
@@ -65,8 +59,6 @@ message Report {
   uint64 conn_epoch = 2; // 每次重連 +1
   ConnState state = 3;
   string reason = 4;
-  reserved 5; // 原本的 atoms：ack 改看 feed（D426）
-  reserved "atoms";
   double msg_rate = 6;
   // 這條連線上每一筆 feed 的快照，完整清單。feed 是 topic.UniversalTicker。
   // 不在活躍表，或這條 route 訂不了，是 REJECTED。在表上但不是 TRADABLE 是 PENDING，這輪不訂。

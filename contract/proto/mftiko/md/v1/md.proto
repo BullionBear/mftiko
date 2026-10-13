@@ -9,14 +9,10 @@ option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1;mdv
 
 // seq、conn_epoch、md_ts_ns 移到 envelope（上表）。
 message Meta {
-  reserved 1, 2, 4;
-  reserved "seq", "conn_epoch", "md_ts_ns";
   int64 exch_ts_ns = 3;
 }
 
 message FeedEvent {
-  reserved 4, 100;
-  reserved "order_book", "feed_end";
   oneof event {
     BestQuote best_quote = 1;
     Trade trade = 2;
