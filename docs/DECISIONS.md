@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-14 定案以 cloid 查單（`Account.QueryOrder`，不存在是 `ErrNotFound`）、請求有效期 `AccountConfig.Validity`，以及三家讀持倉模式；Bybit 以 `positionIdx` 判斷，D617。2026-10-13 定案 td-agent：兩個前綴、ack、spec、endpoint 經 Init；執行中不檢查持倉模式，拿掉 `UNAVAILABLE`；algo 由 STS agent 檢查，D616（修改 D602、D607、D612、D614）。2026-10-13 定案 `mdctl.proto`、`md.proto`、`read.proto`（E4-12，#152）：三份移出草案清單，PROTOCOL §1 改為定案，D460。2026-10-13 刪掉 `mdctl.proto`、`md.proto` 的 `reserved`，現有欄位號碼不重排；三份仍在草案清單，移出清單與 PROTOCOL §1 定案是 #204 合併後的後續，D460。2026-10-13 定案 account worker 的 OMS 與帳本：OMS 只放活著的單，`settled` 不再有作用；recon 期間事件先排著再重放；斷線期間消失的掛單記成 UNKNOWN；槓桿取自持倉，D615（修改 D605、D606）。同日定案 tape 的 worker 級 arena（#189）：64 KiB chunk、硬上限含 slot 與索引、回收全 worker 最舊的 chunk，D458–D459。2026-10-13 定案 P14（#181）：行情 subject `md.v1.f.{inst}.{topic}.{ticker}`、`md.v1.view.{inst}.{topic}.{ticker}`，`md.v1.fetch.{venue}`，`sym.v1.changed.{venue}.{category}`，D455–D457。實作在 #194。2026-10-12 定案 account worker 的連線角色與狀態：只有事件連線決定 DEGRADED，計畫性換線先接後斷；一期不做 BinancePM，D614。同日拿掉 top-N 與 FeedEnd（#180）：book topic 只剩 `orderbook_delta`，寫 `orderbook` 回 `invalid`，D453–D454。2026-10-12 定案 tape ring 與 `md.view`（E4-06）：一個 feed 一個 ring，讀取無鎖，以 `head` 接 live，D435–D452。同日定案帳號憑證以 TD instance 的 X25519 公鑰封裝：NaCl sealed box 加版本與指紋，`api_id`、`kind` 一起封、解開後比對，封裝工具 `mftiko-seal`，D613。同日定案持倉模式由 `AccountSnapshot.HedgeMode` 帶回，以及給 account worker 測試用的假帳號 `exchangetest.AccountVenue`，D612。2026-10-11 定案 TD 的契約與 NATS 身分（E6-02）：`td.order` 只回 ack 或本地拒絕，單的每一次變化都是 `OrderUpdate`，1xx 只列一期會碰到的；訂單狀態加 `ACCEPTED`（上簿），撤單在途改成旗標 `cancel_sent_ns`，拿掉 `PENDING_CANCEL`；account worker 每個帳號一份 NATS 憑證，由 TD agent 簽，D610–D611。同日修訂 D601：TD agent 不查 SYM，歷史補正的交易所讀取比照 md.fetch。同日修訂 D202、D401：MD agent 不查 SYM，conn worker 用活躍表推出 atom 並 diff 訂閱，並在 Report 以 FeedStatus 回報每一筆 feed。同日更新 D415、D426：MD instance 訂閱 `sym.changed.>`，conn worker 在 Init 載入該 venue 的活躍表。同日定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-14 定案下單與撤單（E6-08，#168）：記憶體 cloid 冪等、同 cloid 內容不同回 106、每筆 `recv_window_ms`、`OrderRate` 用到 90% 回 108、查單失敗逾 5 分鐘 `DEGRADED`、`UNKNOWN` 可撤、`TradeStream` 不可用改走 REST，D618–D624（修改 D605、D617）。2026-10-14 定案以 cloid 查單（`Account.QueryOrder`，不存在是 `ErrNotFound`）、請求有效期 `AccountConfig.Validity`，以及三家讀持倉模式；Bybit 以 `positionIdx` 判斷，D617。2026-10-13 定案 td-agent：兩個前綴、ack、spec、endpoint 經 Init；執行中不檢查持倉模式，拿掉 `UNAVAILABLE`；algo 由 STS agent 檢查，D616（修改 D602、D607、D612、D614）。2026-10-13 定案 `mdctl.proto`、`md.proto`、`read.proto`（E4-12，#152）：三份移出草案清單，PROTOCOL §1 改為定案，D460。2026-10-13 刪掉 `mdctl.proto`、`md.proto` 的 `reserved`，現有欄位號碼不重排；三份仍在草案清單，移出清單與 PROTOCOL §1 定案是 #204 合併後的後續，D460。2026-10-13 定案 account worker 的 OMS 與帳本：OMS 只放活著的單，`settled` 不再有作用；recon 期間事件先排著再重放；斷線期間消失的掛單記成 UNKNOWN；槓桿取自持倉，D615（修改 D605、D606）。同日定案 tape 的 worker 級 arena（#189）：64 KiB chunk、硬上限含 slot 與索引、回收全 worker 最舊的 chunk，D458–D459。2026-10-13 定案 P14（#181）：行情 subject `md.v1.f.{inst}.{topic}.{ticker}`、`md.v1.view.{inst}.{topic}.{ticker}`，`md.v1.fetch.{venue}`，`sym.v1.changed.{venue}.{category}`，D455–D457。實作在 #194。2026-10-12 定案 account worker 的連線角色與狀態：只有事件連線決定 DEGRADED，計畫性換線先接後斷；一期不做 BinancePM，D614。同日拿掉 top-N 與 FeedEnd（#180）：book topic 只剩 `orderbook_delta`，寫 `orderbook` 回 `invalid`，D453–D454。2026-10-12 定案 tape ring 與 `md.view`（E4-06）：一個 feed 一個 ring，讀取無鎖，以 `head` 接 live，D435–D452。同日定案帳號憑證以 TD instance 的 X25519 公鑰封裝：NaCl sealed box 加版本與指紋，`api_id`、`kind` 一起封、解開後比對，封裝工具 `mftiko-seal`，D613。同日定案持倉模式由 `AccountSnapshot.HedgeMode` 帶回，以及給 account worker 測試用的假帳號 `exchangetest.AccountVenue`，D612。2026-10-11 定案 TD 的契約與 NATS 身分（E6-02）：`td.order` 只回 ack 或本地拒絕，單的每一次變化都是 `OrderUpdate`，1xx 只列一期會碰到的；訂單狀態加 `ACCEPTED`（上簿），撤單在途改成旗標 `cancel_sent_ns`，拿掉 `PENDING_CANCEL`；account worker 每個帳號一份 NATS 憑證，由 TD agent 簽，D610–D611。同日修訂 D601：TD agent 不查 SYM，歷史補正的交易所讀取比照 md.fetch。同日修訂 D202、D401：MD agent 不查 SYM，conn worker 用活躍表推出 atom 並 diff 訂閱，並在 Report 以 FeedStatus 回報每一筆 feed。同日更新 D415、D426：MD instance 訂閱 `sym.changed.>`，conn worker 在 Init 載入該 venue 的活躍表。同日定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 >
@@ -643,6 +643,40 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   - 不採用：Bybit 對每個要交易的商品帶 `symbol` 查持倉（帶 symbol 時空倉也會回 `positionIdx`）。`Snapshot` 不知道要交易哪些商品，請求數也隨商品數長。
 - **假帳號（D612）：** `AccountVenue` 保留已終結的單，`QueryOrder` 查得到；`Outcome.Late` 讓 `Submit` 或 `Cancel` 在路上耽擱：`Do` 回 `ErrUnknownOutcome`，交易所什麼都不做，直到測試呼叫 `Arrive(cloid, at)`。`at` 不晚於「簽名時間＋`Validity`」就照常生效並推事件，晚了就被拒、什麼都不變。只有 REST 的請求能晚到；`TradeVenue` 沒有。
 - **conformance：** 四家都有查單的資料（掛單、部分成交、成交、撤單、不存在）與持倉模式的資料（單向、雙向；Bybit 是帶 `positionIdx` 1、2 的掛單與持倉）。這些回應是依交易所文件手寫的，不是 testnet 錄下來的；在 E6-12 到 E6-14 的 testnet 驗收時以真實回應核對。
+
+### D618 cloid 冪等（E6-08）
+
+- **D618 cloid 冪等：** TD 只在記憶體記得本次執行見過的 cloid（最近 24 小時或 10 萬筆，取先到者），不持久化。重啟後靠 recon 取回仍在交易所的單，已結束的單交由交易所自身的重複 cloid 檢查。
+- 修改 D605：冪等不是「同一個 incarnation 裡還活著的單」。這次執行結束就忘掉；重啟之後不認得已結束的單。
+
+### D619 同 cloid 內容不同（E6-08）
+
+- **D619 同 cloid 內容不同：** 同一 cloid 重送但內容不同，回 106 `INVALID_ORDER`，不送交易所。內容相同則回原結果。
+- 比的是 `uid`、`side`、`order_type`、`qty`、`quote_qty`、`price`、`tif`、`reduce_only`、`params`、`algo_id`，不含 `session_id` 與 `recv_window_ms`。數量與價格用刻度相等（D008）。本地拒絕也記下來，重送回原本那一次的結果，不送出。recon 取回、記憶體裡還沒有的活單：重疊的欄位相同回原結果（`accepted`），不同回 106，而且這次不對的嘗試不記進記憶體。撤單不是同一筆 cloid 的重送。
+
+### D620 有效期（E6-08）
+
+- **D620 有效期：** `Submit`/`Cancel` 加有效期欄位（即 Binance `recvWindow`、Bybit `recv_window`、OKX `expTime`），由策略或 SDK 填（SDK 預設 5 秒，對應 E8 D803）。0 表示用 TD instance 預設值，超過交易所上限就壓到上限。時鐘誤差由 TD instance 設定（預設 1 秒）。此欄位一併納入 E6-15 td proto 定案。
+- 修改 D617 的「不放在每個請求」：`AccountConfig.Validity` 仍是 TD instance 的預設（0 是 5 秒，上限 60 秒，須為整毫秒），每一筆 `Submit`、`Cancel` 的 `recv_window_ms` 可以蓋過它。0 用預設，負值當 0，超過上限壓到上限，不拒絕。worker 接到 `-validity`（0 即 5 秒）與 `-clock-skew`（預設 1 秒）。
+
+### D621 本地限速（E6-08）
+
+- **D621 本地限速：** 用到 `OrderRate` 的 90% 就回 108 `RATE_LIMITED`。
+- 送出前檢查，`used * 10 >= limit * 9` 就拒絕。`Submit` 與 `Cancel` 都算；本地拒絕與冪等重放不扣額度。429 與 418 仍照 D420 停送，不排隊、不重試。
+
+### D622 查單失敗（E6-08）
+
+- **D622 查單失敗：** 指數退避 1–30 秒並持續重試；超過 5 分鐘仍查不到結果，帳號標成 `DEGRADED`。
+- 用既有的 `ACCOUNT_STATE_DEGRADED`，不另開狀態。reason 是 `query_failed`；已經是 `stream_lost` 時不改寫。事件連線斷線會把 `query_failed` 改成 `stream_lost`。新單仍是 102，撤單照常，查單繼續重試。5 分鐘從該筆查單的第一次失敗起算。每一筆失敗中的查單都有結論（查到或 `ErrNotFound`），而且事件連線在，才回到 `READY`。重連後的 recon 若先回到 `READY`，還沒查到的單仍可能再標成 `DEGRADED`。限速停送不算查單失敗。
+
+### D623 撤 UNKNOWN 單（E6-08）
+
+- **D623 撤 UNKNOWN 單：** 狀態為 `UNKNOWN` 的單可以用 cloid 撤，不回 107。
+
+### D624 WS 斷線（E6-08）
+
+- **D624 WS 斷線：** `TradeStream` 不可用時改走 REST，不拒單。
+- 請求還沒寫出去才改走 REST。寫出去之後的錯誤是 `ErrUnknownOutcome`，不重送、不改走 REST。`DEGRADED` 時撤單走 HTTP（D603）。
 
 ### D905 linger；需求沒有 TTL
 

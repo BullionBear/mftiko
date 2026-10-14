@@ -50,6 +50,16 @@ type ServeConfig struct {
 	Incarnation uint32
 	// Now is the clock that signs requests and stamps recons. Nil is time.Now.
 	Now func() time.Time
+	// After waits for a query. Nil is time.After. Tests pass a fake clock.
+	After func(time.Duration) <-chan time.Time
+	// Validity is the default order window (D620). Zero is exchange.DefaultValidity. It must be
+	// whole milliseconds from 1ms to exchange.MaxValidity; AccountConfig.Window checks it.
+	Validity time.Duration
+	// ClockSkew is added to the query deadline. Zero is 1s (D620).
+	ClockSkew time.Duration
+	// RateHold is how long to pause sends after a 429 or 418 that names neither Retry-After nor a
+	// reset time. Zero is 1 minute (D420).
+	RateHold time.Duration
 	// RetryAfter and RetryMax bound the waits between failed dials and failed recons: the first
 	// waits RetryAfter, each next one twice as long, up to RetryMax. Zero is 1s and 30s.
 	RetryAfter time.Duration
@@ -91,14 +101,19 @@ func Serve(ctx context.Context, rw io.ReadWriteCloser, cfg ServeConfig) int {
 }
 
 type plane struct {
-	cfg      ServeConfig
-	log      zerolog.Logger
-	w        *Worker
-	env      *Env
-	stopView func()
+	cfg       ServeConfig
+	log       zerolog.Logger
+	w         *Worker
+	env       *Env
+	apiID     int64
+	stopView  func()
+	stopOrder func()
 }
 
 func (p *plane) close() {
+	if p.stopOrder != nil {
+		p.stopOrder()
+	}
 	if p.stopView != nil {
 		p.stopView()
 	}
@@ -131,10 +146,17 @@ func (p *plane) Init(ctx context.Context, s *c4.Session, payload []byte) error {
 	if err != nil {
 		return err
 	}
+	if _, err := (exchange.AccountConfig{Validity: p.cfg.Validity}).Window(); err != nil {
+		return err
+	}
+	if p.cfg.ClockSkew < 0 {
+		return errors.New("clock skew must not be negative")
+	}
 	acct, err := kind.Account(exchange.AccountConfig{
 		APIID: in.GetApiId(), Credentials: creds,
 		// The hosts are the TD instance's, per account kind, carried in Init (D616).
 		RESTEndpoint: in.GetRestUrl(), StreamEndpoint: in.GetStreamUrl(), Simulated: in.GetSimulated(),
+		Validity: p.cfg.Validity,
 	})
 	if err != nil || acct == nil {
 		// The factory's error may quote what it could not parse.
@@ -154,6 +176,20 @@ func (p *plane) Init(ctx context.Context, s *c4.Session, payload []byte) error {
 	}
 	source := &commonv1.WorkerRef{Key: p.cfg.WorkerKey, Incarnation: p.cfg.Incarnation}
 	bk := newBook(env.Instruments, env.Bus, in.GetApiId(), source, p.log, now)
+	skew, hold := p.cfg.ClockSkew, p.cfg.RateHold
+	if skew == 0 {
+		skew = time.Second
+	}
+	if hold == 0 {
+		hold = time.Minute
+	}
+	win, _ := (exchange.AccountConfig{Validity: p.cfg.Validity}).Window()
+	p.apiID = in.GetApiId()
+	p.w = newWorker(p.cfg, p.log, acct, bk, func(r *tdctlv1.Report) error { return s.Report(r) })
+	bk.configure(orderEnv{
+		trades: kind.Trades, limits: acct.Limits(), validity: win, skew: skew, hold: hold,
+		onState: p.w.noteState, report: func(r *tdctlv1.Report) error { return s.Report(r) },
+	})
 	go bk.run(ctx)
 	// td.view answers from here on, before the first recon: the reply says how far along the
 	// account is (D606).
@@ -163,7 +199,6 @@ func (p *plane) Init(ctx context.Context, s *c4.Session, payload []byte) error {
 	}
 	p.stopView = stop
 	p.log.Info().Int64("api_id", in.GetApiId()).Str("kind", kind.Name).Msg("init")
-	p.w = newWorker(p.cfg, p.log, acct, bk, func(r *tdctlv1.Report) error { return s.Report(r) })
 	return nil
 }
 
@@ -200,7 +235,18 @@ func credentials(kind *exchange.AccountKind, c *tdctlv1.Credentials) (exchange.C
 	return out, nil
 }
 
-func (p *plane) Start(ctx context.Context, _ []byte) error { return p.w.Start(ctx) }
+func (p *plane) Start(ctx context.Context, _ []byte) error {
+	if err := p.w.Start(ctx); err != nil {
+		return err
+	}
+	// td.order is served only once the account is READY (D610).
+	stop, err := p.env.Bus.Respond(orderSubject(p.apiID), func(req []byte) []byte { return p.w.handleOrder(ctx, req) })
+	if err != nil {
+		return fmt.Errorf("td.order: %w", err)
+	}
+	p.stopOrder = stop
+	return nil
+}
 
 func (p *plane) Run(ctx context.Context) error { return p.w.Run(ctx) }
 

@@ -97,10 +97,12 @@ type SessionLimits struct {
 	ReadLimit int64
 }
 
-// RateLimit is at most N events per window.
+// RateLimit is at most N events per window. Bucket, when set, is the name Usage reports for this
+// window (Binance orders_10s); empty means the worker only counts what it sent itself.
 type RateLimit struct {
-	N   int
-	Per time.Duration
+	N      int
+	Per    time.Duration
+	Bucket string
 }
 
 type Keepalive struct {

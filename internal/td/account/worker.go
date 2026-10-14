@@ -3,6 +3,7 @@ package account
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -25,6 +26,10 @@ type Worker struct {
 	book *book
 
 	events chan linkEvent
+
+	mu        sync.Mutex
+	ordersUp  bool
+	orderConn *conn
 
 	// Owned by the goroutine in Start, then Run.
 	ctx          context.Context
@@ -71,6 +76,7 @@ func (w *Worker) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	go w.queries(ctx)
 	for _, l := range links {
 		go l.run(ctx)
 	}
@@ -113,11 +119,11 @@ func (w *Worker) links() ([]*link, error) {
 		return privateCodec(s), nil
 	}
 	if ts != nil && ts.Limits().Events {
-		return []*link{{w: w, role: roleEvents, name: "trade", open: trade}}, nil
+		return []*link{{w: w, role: roleEvents, orders: true, name: "trade", open: trade}}, nil
 	}
 	out := []*link{{w: w, role: roleEvents, name: "private", open: private}}
 	if ts != nil {
-		out = append(out, &link{w: w, role: roleOrders, name: "trade", open: trade})
+		out = append(out, &link{w: w, role: roleOrders, orders: true, name: "trade", open: trade})
 	}
 	return out, nil
 }
@@ -186,12 +192,21 @@ func (w *Worker) linkEvent(e linkEvent, starting bool) error {
 	if e.err != nil {
 		return errors.New(ReasonAuth)
 	}
+	if e.orders {
+		w.mu.Lock()
+		w.ordersUp = e.up
+		w.mu.Unlock()
+	}
 	if e.role != roleEvents {
 		return nil
 	}
 	w.eventsUp = e.up
+	w.book.setEvents(w.ctx, e.up)
 	w.needRecon = true
-	if !e.up && !starting && w.state != tdv1.AccountState_ACCOUNT_STATE_DEGRADED {
+	w.mu.Lock()
+	state, reason := w.state, w.reason
+	w.mu.Unlock()
+	if !e.up && !starting && !(state == tdv1.AccountState_ACCOUNT_STATE_DEGRADED && reason == ReasonStreamLost) {
 		w.set(tdv1.AccountState_ACCOUNT_STATE_DEGRADED, ReasonStreamLost)
 	}
 	return nil
@@ -248,11 +263,21 @@ func (w *Worker) apply(ctx context.Context, snap *exchange.AccountSnapshot) {
 
 // set reports the account state. A recon always reports, since reconciled_at changed.
 func (w *Worker) set(state tdv1.AccountState, reason string) {
+	w.mu.Lock()
 	w.state, w.reason = state, reason
-	w.book.setState(w.ctx, state)
-	if err := w.report(&tdctlv1.Report{State: state, Reason: reason, ReconciledAtNs: w.reconciledAt}); err != nil {
+	w.mu.Unlock()
+	w.book.setState(w.ctx, state, reason)
+	if err := w.report(&tdctlv1.Report{State: state, Reason: reason, ReconciledAtNs: w.reconciledAt, FirstSubmitNs: w.book.firstCopy()}); err != nil {
 		w.log.Warn().Err(err).Msg("report")
 	}
+}
+
+// noteState copies a state the book decided (a query failure, or the recovery from one) so the
+// connection loop does not report over it by mistake.
+func (w *Worker) noteState(state tdv1.AccountState, reason string) {
+	w.mu.Lock()
+	w.state, w.reason = state, reason
+	w.mu.Unlock()
 }
 
 func (w *Worker) post(ctx context.Context, e linkEvent) {

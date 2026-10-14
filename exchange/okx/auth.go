@@ -165,10 +165,16 @@ func (a *account) post(now time.Time, path string, body any, cost []exchange.Cos
 // postOrder is post with the expTime header: now plus AccountConfig.Validity, Unix ms. The venue
 // refuses the request when it arrives after that (D605). The header is not part of the prehash.
 func (a *account) postOrder(now time.Time, path string, body any, cost []exchange.Cost) (exchange.HTTPRequest, error) {
+	return a.postOrderSpan(now, path, body, cost, 0)
+}
+
+// postOrderSpan is postOrder with a per-request window. span 0 uses AccountConfig.Validity (D620).
+func (a *account) postOrderSpan(now time.Time, path string, body any, cost []exchange.Cost, span time.Duration) (exchange.HTTPRequest, error) {
 	w, err := a.cfg.Window()
 	if err != nil {
 		return exchange.HTTPRequest{}, err
 	}
+	w = exchange.RequestWindow(w, span)
 	req, err := a.post(now, path, body, cost, true)
 	if err != nil {
 		return exchange.HTTPRequest{}, err

@@ -280,7 +280,7 @@ func TestBookViewHeader(t *testing.T) {
 		t.Fatalf("before the first recon: %v", v)
 	}
 	r.recon(&exchange.AccountSnapshot{AsOfNs: 77})
-	r.b.setState(r.ctx, tdv1.AccountState_ACCOUNT_STATE_READY)
+	r.b.setState(r.ctx, tdv1.AccountState_ACCOUNT_STATE_READY, "")
 	if v := r.sync(); v.GetSeq() != 1 || v.GetReconciledAtNs() != 77 || v.GetState() != tdv1.AccountState_ACCOUNT_STATE_READY {
 		t.Fatalf("after: %v", v)
 	}

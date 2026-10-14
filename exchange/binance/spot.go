@@ -77,7 +77,7 @@ func (t *spotTrade) Submit(now time.Time, id uint64, req *exchange.OrderRequest)
 	if err != nil {
 		return nil, err
 	}
-	p.RecvWindow = t.window
+	p.RecvWindow = windowMS(t.window, req.Validity)
 	return codec.Marshal(wsCall{ID: "o" + strconv.FormatUint(id, 10), Method: "order.place", Params: p})
 }
 
@@ -85,7 +85,7 @@ func (t *spotTrade) Cancel(now time.Time, id uint64, ref exchange.CancelRef) ([]
 	if id == 0 {
 		return nil, fmt.Errorf("binance: request id is 0")
 	}
-	p, err := cancelParamsOf(now, ref, VenueSpot, t.window)
+	p, err := cancelParamsOf(now, ref, VenueSpot, windowMS(t.window, ref.Validity))
 	if err != nil {
 		return nil, err
 	}

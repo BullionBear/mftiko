@@ -45,8 +45,8 @@ func (a *account) Limits() exchange.AccountLimits {
 			ClientOrderIDMaxLen: cloidMax,
 			CancelBatch:         10,
 			OrderRate: []exchange.RateLimit{
-				{N: 300, Per: 10 * time.Second},
-				{N: 1200, Per: time.Minute},
+				{N: 300, Per: 10 * time.Second, Bucket: orders10s},
+				{N: 1200, Per: time.Minute, Bucket: orders1m},
 			},
 		}
 	case kindSpot.name:
@@ -54,8 +54,8 @@ func (a *account) Limits() exchange.AccountLimits {
 			ClientOrderIDMaxLen: cloidMax,
 			CancelBatch:         1,
 			OrderRate: []exchange.RateLimit{
-				{N: 100, Per: 10 * time.Second},
-				{N: 200000, Per: 24 * time.Hour},
+				{N: 100, Per: 10 * time.Second, Bucket: orders10s},
+				{N: 200000, Per: 24 * time.Hour, Bucket: orders1d},
 			},
 		}
 	default:

@@ -32,9 +32,9 @@ enum RejectCode {
   REJECT_CODE_HEDGE_MODE = 103; // params 帶了持倉方向鍵（D607）。雙向持倉的帳號在 Start 就起不來，執行中不檢查（D616）
   REJECT_CODE_ALGO_MISMATCH = 104; // algo_id 與 client_order_id 的 algo 欄位不一致，或撤的單沒有 client_order_id（D602）
   REJECT_CODE_VENUE_NOT_TRADABLE = 105; // 帳號種類不能交易這個商品的 venue（D301）
-  REJECT_CODE_INVALID_ORDER = 106; // 商品不存在或不是 TRADABLE；數量或價格不合商品規格（tick、step、上下限）；client_order_id 解不開
-  REJECT_CODE_ORDER_NOT_OPEN = 107; // 撤單的目標不是掛單：TD 不認得這張單，或它已經終結（例如撤單與成交擦身而過）
-  REJECT_CODE_RATE_LIMITED = 108; // 這個帳號的下單額度用完，或交易所以 429、418 要求停送（D609、D420）。不排隊、不重試
+  REJECT_CODE_INVALID_ORDER = 106; // 商品不存在或不是 TRADABLE；數量或價格不合商品規格（tick、step、上下限）；client_order_id 解不開；同一 cloid 內容不同（D619）
+  REJECT_CODE_ORDER_NOT_OPEN = 107; // 撤單的目標不是掛單：TD 不認得這張單，或它已經終結。UNKNOWN 可以用 cloid 撤，不回 107（D623）
+  REJECT_CODE_RATE_LIMITED = 108; // 這個帳號的下單額度用到 90%，或交易所以 429、418 要求停送（D609、D420、D621）。不排隊、不重試
   REJECT_CODE_NOT_PLACED = 120; // 主動查單後確定交易所沒有這張單（D605）
 }
 
@@ -42,7 +42,7 @@ enum RejectCode {
 enum AccountState {
   ACCOUNT_STATE_UNSPECIFIED = 0;
   ACCOUNT_STATE_READY = 1;
-  ACCOUNT_STATE_DEGRADED = 2; // 私有 websocket 斷線：新單以 102 拒絕，撤單照常（D603）
+  ACCOUNT_STATE_DEGRADED = 2; // 私有 websocket 斷線，或查單失敗超過 5 分鐘：新單以 102 拒絕，撤單照常（D603、D622）
   reserved 3; // 原本的 UNAVAILABLE：執行中不檢查持倉模式（D616）
   reserved "ACCOUNT_STATE_UNAVAILABLE";
 }
@@ -75,15 +75,21 @@ message Submit {
   // 交易所特有的參數，原樣交給 adapter。positionSide、posSide、positionIdx 一律以 103 拒絕（D607）
   map<string, string> params = 11;
   uint32 algo_id = 12; // 必須等於 client_order_id 的 algo 欄位（D602）
+  // 請求有效期，毫秒（D620）。0 = 這個 TD instance 的預設（部署設定，預設 5 秒）。
+  // 超過交易所上限（60 秒）時 TD 壓到上限。時鐘誤差是 instance 的設定，預設 1 秒，不在這則訊息裡。
+  int64 recv_window_ms = 13;
 }
 
+// 目標單已經有撤單在途（cancel_sent_ns 不是 0）：回 accepted，不再送交易所（D610）。
 message Cancel {
   string session_id = 1; // 只給 log 與歸屬
   uint32 uid = 2;
   string client_order_id = 3;
   string order_id = 4;
   uint32 algo_id = 5; // 目標單的 client_order_id 的 algo 欄位必須等於它；沒有 client_order_id 的單一律以 104 拒絕（D602）
-  // 目標單已經有撤單在途（cancel_sent_ns 不是 0）：回 accepted，不再送交易所（D610）。
+  // 請求有效期，毫秒（D620）。0 = 這個 TD instance 的預設（部署設定，預設 5 秒）。
+  // 超過交易所上限（60 秒）時 TD 壓到上限。時鐘誤差是 instance 的設定，預設 1 秒，不在這則訊息裡。
+  int64 recv_window_ms = 6;
 }
 
 // 撤掉這個帳號上 client_order_id 的 algo 欄位等於 algo_id 的所有掛單（D602）。

@@ -37,7 +37,7 @@ func (a *account) Submit(now time.Time, req *exchange.OrderRequest) (exchange.Ca
 	if err != nil {
 		return exchange.Call[*exchange.OrderResult]{}, err
 	}
-	httpReq, err := a.postOrder(now, "/api/v5/trade/order", body, orderCost(1))
+	httpReq, err := a.postOrderSpan(now, "/api/v5/trade/order", body, orderCost(1), req.Validity)
 	if err != nil {
 		return exchange.Call[*exchange.OrderResult]{}, err
 	}
@@ -49,7 +49,7 @@ func (a *account) Cancel(now time.Time, ref exchange.CancelRef) (exchange.Call[s
 	if err != nil {
 		return exchange.Call[struct{}]{}, err
 	}
-	httpReq, err := a.postOrder(now, "/api/v5/trade/cancel-order", body, orderCost(1))
+	httpReq, err := a.postOrderSpan(now, "/api/v5/trade/cancel-order", body, orderCost(1), ref.Validity)
 	if err != nil {
 		return exchange.Call[struct{}]{}, err
 	}

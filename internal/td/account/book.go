@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -12,6 +13,7 @@ import (
 
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
+	tdctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/tdctl/v1"
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/contract/wire/cloid"
 	"github.com/BullionBear/mftiko/contract/wire/decimal"
@@ -22,6 +24,7 @@ import (
 // and, with includeInactive, a question to SYM. internal/sym's Remote is one.
 type Instruments interface {
 	Reverse(ctx context.Context, key symbol.ExchKey, includeInactive bool) (*symbol.Info, error)
+	GetByUID(ctx context.Context, uid uint32, includeInactive bool) (*symbol.Info, error)
 }
 
 // Bus is the account's NATS: it publishes td.evt and answers td.view (D611).
@@ -32,8 +35,9 @@ type Bus interface {
 }
 
 // Subjects of one account (PROTOCOL §7).
-func evtSubject(apiID int64) string  { return "td.evt." + strconv.FormatInt(apiID, 10) }
-func viewSubject(apiID int64) string { return "td.view." + strconv.FormatInt(apiID, 10) }
+func evtSubject(apiID int64) string   { return "td.evt." + strconv.FormatInt(apiID, 10) }
+func viewSubject(apiID int64) string  { return "td.view." + strconv.FormatInt(apiID, 10) }
+func orderSubject(apiID int64) string { return "td.order." + strconv.FormatInt(apiID, 10) }
 
 // inactiveWait bounds a question to SYM about an instrument that is not in the active table.
 const inactiveWait = 2 * time.Second
@@ -79,7 +83,25 @@ type book struct {
 	dropped      int
 	recons       int
 	state        tdv1.AccountState
+	reason       string
 	reconciledAt int64
+
+	// Orders (E6-08). The book goroutine owns these; firstSubmits is also read when a report
+	// is built, under mu.
+	mu       sync.Mutex
+	trades   []string
+	limits   exchange.AccountLimits
+	validity time.Duration
+	skew     time.Duration
+	hold     time.Duration
+	rate     *limiter
+	seen     *seenMem
+	queries  map[string]*query
+	eventsUp bool
+	first    map[uint32]int64
+	onState  func(tdv1.AccountState, string)
+	reportFn func(*tdctlv1.Report) error
+	qwake    chan struct{}
 }
 
 func newBook(ins Instruments, bus Bus, apiID int64, source *commonv1.WorkerRef, log zerolog.Logger, now func() time.Time) *book {
@@ -94,7 +116,11 @@ func newBook(ins Instruments, bus Bus, apiID int64, source *commonv1.WorkerRef, 
 
 // Messages to the book.
 type (
-	msgOrder     struct{ e exchange.OrderUpdate }
+	msgOrder struct {
+		e     exchange.OrderUpdate
+		cause tdv1.OrderCause
+		code  int32
+	}
 	msgFill      struct{ e exchange.Fill }
 	msgBalances  struct{ e []exchange.Balance }
 	msgPositions struct{ e []exchange.Position }
@@ -104,9 +130,32 @@ type (
 		done chan struct{}
 	}
 	msgState struct {
-		state tdv1.AccountState
+		state  tdv1.AccountState
+		reason string
 	}
-	msgView struct {
+	msgEvents struct{ up bool }
+	msgAdmit  struct {
+		req   *tdv1.OrderRequest
+		reply chan admitOut
+	}
+	msgResult struct {
+		kind     resultKind
+		cloid    string
+		orderID  string
+		res      *exchange.OrderResult
+		upd      *exchange.OrderUpdate
+		err      error
+		sent     time.Time
+		window   time.Duration
+		deadline time.Time
+		used     []exchange.Used
+	}
+	msgCall struct {
+		fn   func()
+		done chan struct{}
+	}
+	msgUsage struct{ used []exchange.Used }
+	msgView  struct {
 		req   *tdv1.ViewRequest
 		reply chan *tdv1.ViewReply
 	}
@@ -139,7 +188,7 @@ func (b *book) order(ctx context.Context, e *exchange.OrderUpdate) {
 	c := *e
 	c.Exch = cloneKey(c.Exch)
 	c.OrderID, c.ClientOrderID, c.RejectReason = strings.Clone(c.OrderID), strings.Clone(c.ClientOrderID), strings.Clone(c.RejectReason)
-	b.send(ctx, msgOrder{c})
+	b.send(ctx, msgOrder{e: c})
 }
 
 func (b *book) fill(ctx context.Context, e *exchange.Fill) {
@@ -183,7 +232,11 @@ func (b *book) applyRecon(ctx context.Context, snap *exchange.AccountSnapshot) {
 	}
 }
 
-func (b *book) setState(ctx context.Context, s tdv1.AccountState) { b.send(ctx, msgState{s}) }
+func (b *book) setState(ctx context.Context, s tdv1.AccountState, reason string) {
+	b.send(ctx, msgState{s, reason})
+}
+
+func (b *book) setEvents(ctx context.Context, up bool) { b.send(ctx, msgEvents{up}) }
 
 // view answers one td.view request from memory.
 func (b *book) view(ctx context.Context, req *tdv1.ViewRequest) *tdv1.ViewReply {
@@ -207,7 +260,19 @@ func (b *book) handle(m any) {
 		b.recon(m.snap)
 		close(m.done)
 	case msgState:
-		b.state = m.state
+		b.state, b.reason = m.state, m.reason
+	case msgEvents:
+		b.eventsUp = m.up
+		if m.up {
+			b.maybeHeal()
+		}
+	case msgAdmit:
+		m.reply <- b.decide(m.req)
+	case msgCall:
+		m.fn()
+		close(m.done)
+	case msgUsage:
+		b.rate.note(b.now(), m.used)
 	case msgView:
 		m.reply <- b.answer(m.req)
 	default:
@@ -226,7 +291,9 @@ func (b *book) handle(m any) {
 func (b *book) apply(m any) {
 	switch m := m.(type) {
 	case msgOrder:
-		b.applyOrder(&m.e)
+		b.applyOrder(&m.e, m.cause, m.code)
+	case msgResult:
+		b.applyResult(m)
 	case msgFill:
 		b.applyFill(&m.e)
 	case msgBalances:
@@ -345,7 +412,7 @@ func sameOrder(a, b *tdv1.Order) bool {
 	return proto.Equal(x, y)
 }
 
-func (b *book) applyOrder(e *exchange.OrderUpdate) {
+func (b *book) applyOrder(e *exchange.OrderUpdate, cause tdv1.OrderCause, code int32) {
 	o, ok := b.convertOrder(e)
 	if !ok {
 		return
@@ -360,6 +427,7 @@ func (b *book) applyOrder(e *exchange.OrderUpdate) {
 		}
 		o.TdTsNs, o.CancelSentNs = cur.TdTsNs, cur.CancelSentNs
 		if sameOrder(cur, o) {
+			b.settleQuery(cur)
 			return
 		}
 	} else {
@@ -377,9 +445,13 @@ func (b *book) applyOrder(e *exchange.OrderUpdate) {
 	} else {
 		b.put(k, o)
 	}
+	if cause == tdv1.OrderCause_ORDER_CAUSE_UNSPECIFIED {
+		cause = causeOf(o.Status)
+	}
 	b.publish(&tdv1.AccountEvent{Event: &tdv1.AccountEvent_OrderUpdate{OrderUpdate: &tdv1.OrderUpdate{
-		Order: o, Cause: causeOf(o.Status), Reason: e.RejectReason,
+		Order: o, Cause: cause, Code: code, Reason: e.RejectReason,
 	}}})
+	b.settleQuery(o)
 }
 
 // ---------- fills, balances, positions ----------
@@ -505,6 +577,14 @@ func (b *book) recon(snap *exchange.AccountSnapshot) {
 	for _, m := range held {
 		b.apply(m)
 	}
+	// A live order the snapshot did not have is UNKNOWN. Ask the venue, unless a send is still
+	// inside its validity window and already has a query waiting (D615, D605).
+	for _, o := range b.orders {
+		if o.GetStatus() == tdv1.OrderStatus_ORDER_STATUS_UNKNOWN && o.GetClientOrderId() != "" {
+			b.ensureQuery(o, b.now())
+		}
+	}
+	b.wakeQueries()
 }
 
 func findIn(orders map[string]*tdv1.Order, o *tdv1.Order) *tdv1.Order {
@@ -666,7 +746,7 @@ func (b *book) convertPosition(e *exchange.Position) (*tdv1.Position, bool) {
 	}, true
 }
 
-// convertBalance: prelock is the worker's, from the orders it has sent (E6-08); 0 until then.
+// convertBalance: prelock stays 0. Submit and cancel do not reserve balance.
 func convertBalance(e *exchange.Balance) *tdv1.Balance {
 	return &tdv1.Balance{Asset: e.Asset, Free: e.Free, Locked: e.Locked}
 }

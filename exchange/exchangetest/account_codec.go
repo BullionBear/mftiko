@@ -82,7 +82,7 @@ func classifyResp(resp *exchange.HTTPResponse) error {
 	case 401:
 		return exchange.ErrAuth
 	case 429:
-		e := &exchange.RateLimited{}
+		e := &exchange.RateLimited{Status: int32(resp.Status)}
 		if s, err := strconv.ParseInt(resp.Get("Retry-After"), 10, 64); err == nil {
 			e.RetryAfterMs = s * 1000
 		}
@@ -112,7 +112,7 @@ func (a *account) Submit(now time.Time, req *exchange.OrderRequest) (exchange.Ca
 		return exchange.Call[*exchange.OrderResult]{}, errors.New("exchangetest: order without an instrument")
 	}
 	body := mustJSON(orderReq{
-		Ts: now.UnixNano(), Exp: now.Add(a.window).UnixNano(), Cat: req.Instrument.Ticker.Category, Sym: req.Instrument.ExchTicker,
+		Ts: now.UnixNano(), Exp: now.Add(exchange.RequestWindow(a.window, req.Validity)).UnixNano(), Cat: req.Instrument.Ticker.Category, Sym: req.Instrument.ExchTicker,
 		Side: req.Side, Type: req.Type, TIF: req.TIF, Qty: num(req.Qty), Quote: num(req.QuoteQty),
 		Price: num(req.Price), Reduce: req.ReduceOnly, Cid: req.ClientOrderID, Params: req.Params,
 	})
@@ -129,7 +129,7 @@ func (a *account) Submit(now time.Time, req *exchange.OrderRequest) (exchange.Ca
 }
 
 func (a *account) cancelOf(now time.Time, ref exchange.CancelRef) cancelReq {
-	r := cancelReq{Ts: now.UnixNano(), Exp: now.Add(a.window).UnixNano(), ID: ref.OrderID, Cid: ref.ClientOrderID}
+	r := cancelReq{Ts: now.UnixNano(), Exp: now.Add(exchange.RequestWindow(a.window, ref.Validity)).UnixNano(), ID: ref.OrderID, Cid: ref.ClientOrderID}
 	if ref.Instrument != nil {
 		r.Cat, r.Sym = ref.Instrument.Ticker.Category, ref.Instrument.ExchTicker
 	}
