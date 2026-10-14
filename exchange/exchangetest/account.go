@@ -65,7 +65,8 @@ type AccountVenue struct {
 	throttle  int
 	retry     time.Duration
 	used      []exchange.Used
-	failSnap  map[snapKey]int
+	failSnap    map[snapKey]int
+	failQueries int // GET /order failures left, each a 500
 	arms      []Arm
 	listenKey string
 	keys      int
@@ -380,6 +381,14 @@ func (v *AccountVenue) ReportUsage(u ...exchange.Used) {
 	v.mu.Unlock()
 }
 
+// FailQueries makes the next n GET /order reads fail with 500. A query the worker cannot read is
+// a failure it backs off, not ErrNotFound (D622).
+func (v *AccountVenue) FailQueries(n int) {
+	v.mu.Lock()
+	v.failQueries = n
+	v.mu.Unlock()
+}
+
 // FailSnapshot makes the next times reads of page (from 0) of part fail as a dropped connection
 // would: no response.
 func (v *AccountVenue) FailSnapshot(part SnapshotPart, page, times int) {
@@ -531,6 +540,10 @@ func (v *AccountVenue) Do(ctx context.Context, req *exchange.HTTPRequest) (*exch
 	case "DELETE /batch":
 		return v.doBatch(req.Body)
 	case "GET /order":
+		if v.failQueries > 0 {
+			v.failQueries--
+			return v.respond(500, []byte("query failed")), nil
+		}
 		o := v.lookup(q.Get("id"), q.Get("cid"))
 		if o == nil {
 			return v.refusal(-2013, "order does not exist"), nil

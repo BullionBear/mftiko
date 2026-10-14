@@ -103,10 +103,18 @@ func (a *account) tradeURL() string {
 // sign builds one signed request. GET signs the query string; POST signs body, which is sent
 // unchanged (D008). The timestamp and the recv window travel in headers, not in the query.
 func (a *account) sign(now time.Time, method, path, query string, body []byte, cost []exchange.Cost, mutates bool) (exchange.HTTPRequest, error) {
-	return signCfg(&a.signerState, a.cfg, now, method, path, query, body, cost, mutates)
+	return a.signSpan(now, method, path, query, body, cost, mutates, 0)
+}
+
+func (a *account) signSpan(now time.Time, method, path, query string, body []byte, cost []exchange.Cost, mutates bool, span time.Duration) (exchange.HTTPRequest, error) {
+	return signCfgSpan(&a.signerState, a.cfg, now, method, path, query, body, cost, mutates, span)
 }
 
 func signCfg(s *signerState, cfg exchange.AccountConfig, now time.Time, method, path, query string, body []byte, cost []exchange.Cost, mutates bool) (exchange.HTTPRequest, error) {
+	return signCfgSpan(s, cfg, now, method, path, query, body, cost, mutates, 0)
+}
+
+func signCfgSpan(s *signerState, cfg exchange.AccountConfig, now time.Time, method, path, query string, body []byte, cost []exchange.Cost, mutates bool, span time.Duration) (exchange.HTTPRequest, error) {
 	sig, err := s.signer(cfg.Credentials)
 	if err != nil {
 		return exchange.HTTPRequest{}, err
@@ -114,6 +122,9 @@ func signCfg(s *signerState, cfg exchange.AccountConfig, now time.Time, method, 
 	recvWindow, err := windowOf(cfg)
 	if err != nil {
 		return exchange.HTTPRequest{}, err
+	}
+	if span > 0 {
+		recvWindow = strconv.FormatInt(span.Milliseconds(), 10)
 	}
 	ts := strconv.FormatInt(now.UnixMilli(), 10)
 	payload := make([]byte, 0, len(ts)+len(cfg.Credentials.Key)+len(recvWindow)+len(query)+len(body))
@@ -145,6 +156,14 @@ func signCfg(s *signerState, cfg exchange.AccountConfig, now time.Time, method, 
 }
 
 // windowOf is X-BAPI-RECV-WINDOW: AccountConfig.Validity in milliseconds (D605).
+// recvWindow is X-BAPI-RECV-WINDOW. span 0 keeps the account window string (D620).
+func recvWindow(account string, span time.Duration) string {
+	if span > 0 {
+		return strconv.FormatInt(span.Milliseconds(), 10)
+	}
+	return account
+}
+
 func windowOf(cfg exchange.AccountConfig) (string, error) {
 	w, err := cfg.Window()
 	if err != nil {
@@ -165,11 +184,15 @@ func (a *account) get(now time.Time, path string, pairs []pair, cost []exchange.
 }
 
 func (a *account) post(now time.Time, path string, body any, cost []exchange.Cost, mutates bool) (exchange.HTTPRequest, error) {
+	return a.postSpan(now, path, body, cost, mutates, 0)
+}
+
+func (a *account) postSpan(now time.Time, path string, body any, cost []exchange.Cost, mutates bool, span time.Duration) (exchange.HTTPRequest, error) {
 	raw, err := marshalBody(body)
 	if err != nil {
 		return exchange.HTTPRequest{}, err
 	}
-	return a.sign(now, http.MethodPost, path, "", raw, cost, mutates)
+	return a.signSpan(now, http.MethodPost, path, "", raw, cost, mutates, span)
 }
 
 // marshalBody is the JSON that is signed and sent. sonic may end it with a newline; that

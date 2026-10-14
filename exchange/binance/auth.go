@@ -98,10 +98,25 @@ func (a *account) privateBase() string {
 }
 
 func (a *account) signedCall(now time.Time, method, path string, q codec.Query, cost []exchange.Cost, mutates bool) (exchange.HTTPRequest, error) {
-	return signedCall(&a.signerState, a.k, a.cfg, now, method, path, q, cost, mutates)
+	return a.signedCallSpan(now, method, path, q, cost, mutates, 0)
+}
+
+// signedCallSpan is signedCall with a per-request window. span 0 uses AccountConfig.Validity (D620).
+func (a *account) signedCallSpan(now time.Time, method, path string, q codec.Query, cost []exchange.Cost, mutates bool, span time.Duration) (exchange.HTTPRequest, error) {
+	return signedCallSpan(&a.signerState, a.k, a.cfg, now, method, path, q, cost, mutates, span)
+}
+
+// windowMS is recvWindow in milliseconds: the stream's account window, or span when the request
+// carries its own (D620).
+func windowMS(accountMs int64, span time.Duration) int64 {
+	return exchange.RequestWindow(time.Duration(accountMs)*time.Millisecond, span).Milliseconds()
 }
 
 func signedCall(st *signerState, k kind, cfg exchange.AccountConfig, now time.Time, method, path string, q codec.Query, cost []exchange.Cost, mutates bool) (exchange.HTTPRequest, error) {
+	return signedCallSpan(st, k, cfg, now, method, path, q, cost, mutates, 0)
+}
+
+func signedCallSpan(st *signerState, k kind, cfg exchange.AccountConfig, now time.Time, method, path string, q codec.Query, cost []exchange.Cost, mutates bool, span time.Duration) (exchange.HTTPRequest, error) {
 	base, err := defaultREST(k)
 	if err != nil {
 		return exchange.HTTPRequest{}, err
@@ -117,6 +132,7 @@ func signedCall(st *signerState, k kind, cfg exchange.AccountConfig, now time.Ti
 	if err != nil {
 		return exchange.HTTPRequest{}, err
 	}
+	w = exchange.RequestWindow(w, span)
 	q = q.AddInt("recvWindow", w.Milliseconds()).AddInt("timestamp", now.UnixMilli())
 	q = q.AddBytes("signature", sig.SignBase64(nil, q))
 	return exchange.HTTPRequest{
@@ -255,7 +271,11 @@ var platformCodes = map[int]int32{
 func binanceErr(status, code int, msg string) error {
 	switch {
 	case status == http.StatusTooManyRequests || status == 418 || code == -1003:
-		return &exchange.RateLimited{}
+		rl := &exchange.RateLimited{}
+		if status == http.StatusTooManyRequests || status == 418 {
+			rl.Status = int32(status)
+		}
+		return rl
 	case code == -1022 || code == -2014 || code == -2015 || status == http.StatusUnauthorized || status == http.StatusForbidden:
 		return fmt.Errorf("binance: %s: %w", msg, exchange.ErrAuth)
 	}
@@ -297,7 +317,7 @@ func refuse(resp *exchange.HTTPResponse) error {
 
 // limited is a 429 or 418. Retry-After is a delay in seconds; anything else leaves RetryAfterMs at 0.
 func limited(resp *exchange.HTTPResponse) error {
-	return &exchange.RateLimited{RetryAfterMs: retryAfterMs(resp)}
+	return &exchange.RateLimited{RetryAfterMs: retryAfterMs(resp), Status: int32(resp.Status)}
 }
 
 func stampRetry(resp *exchange.HTTPResponse, err error) error {

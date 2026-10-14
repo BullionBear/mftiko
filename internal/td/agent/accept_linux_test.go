@@ -104,6 +104,10 @@ func (anyInstrument) Reverse(context.Context, symbol.ExchKey, bool) (*symbol.Inf
 	return &symbol.Info{UID: 7, ContractSize: 1}, nil
 }
 
+func (anyInstrument) GetByUID(context.Context, uint32, bool) (*symbol.Info, error) {
+	return &symbol.Info{UID: 7, ContractSize: 1}, nil
+}
+
 type env struct {
 	t       *testing.T
 	root    *clientv3.Client

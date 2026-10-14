@@ -25,7 +25,7 @@ func (a *account) Submit(now time.Time, req *exchange.OrderRequest) (exchange.Ca
 		if err != nil {
 			return exchange.Call[*exchange.OrderResult]{}, err
 		}
-		httpReq, err := a.signedCall(now, http.MethodPost, "/api/v3/order", q, spotOrderCost(1, 1), true)
+		httpReq, err := a.signedCallSpan(now, http.MethodPost, "/api/v3/order", q, spotOrderCost(1, 1), true, req.Validity)
 		if err != nil {
 			return exchange.Call[*exchange.OrderResult]{}, err
 		}
@@ -35,7 +35,7 @@ func (a *account) Submit(now time.Time, req *exchange.OrderRequest) (exchange.Ca
 	if err != nil {
 		return exchange.Call[*exchange.OrderResult]{}, err
 	}
-	httpReq, err := a.signedCall(now, http.MethodPost, "/fapi/v1/order", q, orderCost(1, 1), true)
+	httpReq, err := a.signedCallSpan(now, http.MethodPost, "/fapi/v1/order", q, orderCost(1, 1), true, req.Validity)
 	if err != nil {
 		return exchange.Call[*exchange.OrderResult]{}, err
 	}
@@ -54,7 +54,7 @@ func (a *account) Cancel(now time.Time, ref exchange.CancelRef) (exchange.Call[s
 	if p.OrigClientOrderID != "" {
 		q = q.Add("origClientOrderId", p.OrigClientOrderID)
 	}
-	httpReq, err := a.signedCall(now, http.MethodDelete, path, q, cost, true)
+	httpReq, err := a.signedCallSpan(now, http.MethodDelete, path, q, cost, true, ref.Validity)
 	if err != nil {
 		return exchange.Call[struct{}]{}, err
 	}

@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 
 	tdctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/tdctl/v1"
 
@@ -33,6 +34,9 @@ func main() {
 
 func run() int {
 	version := flag.Bool("version", false, "print the release and exit")
+	validity := flag.Duration("validity", 0, "default order validity (recvWindow / expTime); 0 is 5s")
+	skew := flag.Duration("clock-skew", time.Second, "clock skew added to the order-query deadline")
+	hold := flag.Duration("rate-hold", time.Minute, "pause after a 429 or 418 with no Retry-After and no reset time")
 	flag.Parse()
 	if *version {
 		fmt.Println(buildinfo.String())
@@ -66,6 +70,14 @@ func run() int {
 		incarnation = uint32(n)
 	}
 
+	if _, err := (exchange.AccountConfig{Validity: *validity}).Window(); err != nil {
+		log.Error().Err(err).Msg("validity")
+		return 1
+	}
+	if *skew < 0 {
+		log.Error().Msg("clock skew must not be negative")
+		return 1
+	}
 	reg := all.Registry()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer stop()
@@ -74,6 +86,9 @@ func run() int {
 		Doer:        fasthttp.New(nil, fasthttp.Options{}),
 		WorkerKey:   os.Getenv("MFTIKO_WORKER_KEY"),
 		Incarnation: incarnation,
+		Validity:    *validity,
+		ClockSkew:   *skew,
+		RateHold:    *hold,
 		Connect: func(ctx context.Context, c *tdctlv1.NatsCredentials, venue string) (*account.Env, error) {
 			nc, err := natsx.Connect(natsURL, natsx.Options{
 				Name: "mftiko-td-account", InboxPrefix: c.GetInboxPrefix(), UserJWT: c.GetUserJwt(), Seed: c.GetSeed(),

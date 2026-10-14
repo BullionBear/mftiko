@@ -40,8 +40,11 @@ func (r *Reject) Error() string {
 
 // RateLimited: the venue answered 429, 418, or its equivalent. The caller decides whether to wait.
 // RetryAfterMs is the Retry-After header in milliseconds. 0 means the venue did not say.
+// Status is the HTTP status when the venue sent one (429 or 418); 0 when a venue code was mapped
+// without one.
 type RateLimited struct {
 	RetryAfterMs int64
+	Status       int32
 }
 
 func (e *RateLimited) Error() string { return "exchange: rate limited" }

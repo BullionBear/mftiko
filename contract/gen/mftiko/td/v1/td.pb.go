@@ -108,9 +108,9 @@ const (
 	RejectCode_REJECT_CODE_HEDGE_MODE         RejectCode = 103 // params 帶了持倉方向鍵（D607）。雙向持倉的帳號在 Start 就起不來，執行中不檢查（D616）
 	RejectCode_REJECT_CODE_ALGO_MISMATCH      RejectCode = 104 // algo_id 與 client_order_id 的 algo 欄位不一致，或撤的單沒有 client_order_id（D602）
 	RejectCode_REJECT_CODE_VENUE_NOT_TRADABLE RejectCode = 105 // 帳號種類不能交易這個商品的 venue（D301）
-	RejectCode_REJECT_CODE_INVALID_ORDER      RejectCode = 106 // 商品不存在或不是 TRADABLE；數量或價格不合商品規格（tick、step、上下限）；client_order_id 解不開
-	RejectCode_REJECT_CODE_ORDER_NOT_OPEN     RejectCode = 107 // 撤單的目標不是掛單：TD 不認得這張單，或它已經終結（例如撤單與成交擦身而過）
-	RejectCode_REJECT_CODE_RATE_LIMITED       RejectCode = 108 // 這個帳號的下單額度用完，或交易所以 429、418 要求停送（D609、D420）。不排隊、不重試
+	RejectCode_REJECT_CODE_INVALID_ORDER      RejectCode = 106 // 商品不存在或不是 TRADABLE；數量或價格不合商品規格（tick、step、上下限）；client_order_id 解不開；同一 cloid 內容不同（D619）
+	RejectCode_REJECT_CODE_ORDER_NOT_OPEN     RejectCode = 107 // 撤單的目標不是掛單：TD 不認得這張單，或它已經終結。UNKNOWN 可以用 cloid 撤，不回 107（D623）
+	RejectCode_REJECT_CODE_RATE_LIMITED       RejectCode = 108 // 這個帳號的下單額度用到 90%，或交易所以 429、418 要求停送（D609、D420、D621）。不排隊、不重試
 	RejectCode_REJECT_CODE_NOT_PLACED         RejectCode = 120 // 主動查單後確定交易所沒有這張單（D605）
 )
 
@@ -175,7 +175,7 @@ type AccountState int32
 const (
 	AccountState_ACCOUNT_STATE_UNSPECIFIED AccountState = 0
 	AccountState_ACCOUNT_STATE_READY       AccountState = 1
-	AccountState_ACCOUNT_STATE_DEGRADED    AccountState = 2 // 私有 websocket 斷線：新單以 102 拒絕，撤單照常（D603）
+	AccountState_ACCOUNT_STATE_DEGRADED    AccountState = 2 // 私有 websocket 斷線，或查單失敗超過 5 分鐘：新單以 102 拒絕，撤單照常（D603、D622）
 )
 
 // Enum value maps for AccountState.
@@ -455,8 +455,11 @@ type Submit struct {
 	ReduceOnly    bool                   `protobuf:"varint,9,opt,name=reduce_only,json=reduceOnly,proto3" json:"reduce_only,omitempty"`
 	ClientOrderId string                 `protobuf:"bytes,10,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
 	// 交易所特有的參數，原樣交給 adapter。positionSide、posSide、positionIdx 一律以 103 拒絕（D607）
-	Params        map[string]string `protobuf:"bytes,11,rep,name=params,proto3" json:"params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	AlgoId        uint32            `protobuf:"varint,12,opt,name=algo_id,json=algoId,proto3" json:"algo_id,omitempty"` // 必須等於 client_order_id 的 algo 欄位（D602）
+	Params map[string]string `protobuf:"bytes,11,rep,name=params,proto3" json:"params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	AlgoId uint32            `protobuf:"varint,12,opt,name=algo_id,json=algoId,proto3" json:"algo_id,omitempty"` // 必須等於 client_order_id 的 algo 欄位（D602）
+	// 請求有效期，毫秒（D620）。0 = 這個 TD instance 的預設（部署設定，預設 5 秒）。
+	// 超過交易所上限（60 秒）時 TD 壓到上限。時鐘誤差是 instance 的設定，預設 1 秒，不在這則訊息裡。
+	RecvWindowMs  int64 `protobuf:"varint,13,opt,name=recv_window_ms,json=recvWindowMs,proto3" json:"recv_window_ms,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -575,6 +578,14 @@ func (x *Submit) GetAlgoId() uint32 {
 	return 0
 }
 
+func (x *Submit) GetRecvWindowMs() int64 {
+	if x != nil {
+		return x.RecvWindowMs
+	}
+	return 0
+}
+
+// 目標單已經有撤單在途（cancel_sent_ns 不是 0）：回 accepted，不再送交易所（D610）。
 type Cancel struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"` // 只給 log 與歸屬
@@ -582,6 +593,9 @@ type Cancel struct {
 	ClientOrderId string                 `protobuf:"bytes,3,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
 	OrderId       string                 `protobuf:"bytes,4,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
 	AlgoId        uint32                 `protobuf:"varint,5,opt,name=algo_id,json=algoId,proto3" json:"algo_id,omitempty"` // 目標單的 client_order_id 的 algo 欄位必須等於它；沒有 client_order_id 的單一律以 104 拒絕（D602）
+	// 請求有效期，毫秒（D620）。0 = 這個 TD instance 的預設（部署設定，預設 5 秒）。
+	// 超過交易所上限（60 秒）時 TD 壓到上限。時鐘誤差是 instance 的設定，預設 1 秒，不在這則訊息裡。
+	RecvWindowMs  int64 `protobuf:"varint,6,opt,name=recv_window_ms,json=recvWindowMs,proto3" json:"recv_window_ms,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -647,6 +661,13 @@ func (x *Cancel) GetOrderId() string {
 func (x *Cancel) GetAlgoId() uint32 {
 	if x != nil {
 		return x.AlgoId
+	}
+	return 0
+}
+
+func (x *Cancel) GetRecvWindowMs() int64 {
+	if x != nil {
+		return x.RecvWindowMs
 	}
 	return 0
 }
@@ -2141,7 +2162,7 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\x06submit\x18\x01 \x01(\v2\x14.mftiko.td.v1.SubmitH\x00R\x06submit\x12.\n" +
 	"\x06cancel\x18\x02 \x01(\v2\x14.mftiko.td.v1.CancelH\x00R\x06cancel\x12>\n" +
 	"\fbatch_cancel\x18\x04 \x01(\v2\x19.mftiko.td.v1.BatchCancelH\x00R\vbatchCancelB\x05\n" +
-	"\x03reqJ\x04\b\x03\x10\x04R\x0ecancel_session\"\x9d\x04\n" +
+	"\x03reqJ\x04\b\x03\x10\x04R\x0ecancel_session\"\xc3\x04\n" +
 	"\x06Submit\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x10\n" +
@@ -2158,21 +2179,23 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\x0fclient_order_id\x18\n" +
 	" \x01(\tR\rclientOrderId\x128\n" +
 	"\x06params\x18\v \x03(\v2 .mftiko.td.v1.Submit.ParamsEntryR\x06params\x12\x17\n" +
-	"\aalgo_id\x18\f \x01(\rR\x06algoId\x1a9\n" +
+	"\aalgo_id\x18\f \x01(\rR\x06algoId\x12$\n" +
+	"\x0erecv_window_ms\x18\r \x01(\x03R\frecvWindowMs\x1a9\n" +
 	"\vParamsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x06\n" +
 	"\x04_qtyB\f\n" +
 	"\n" +
 	"_quote_qtyB\b\n" +
-	"\x06_price\"\x95\x01\n" +
+	"\x06_price\"\xbb\x01\n" +
 	"\x06Cancel\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x10\n" +
 	"\x03uid\x18\x02 \x01(\rR\x03uid\x12&\n" +
 	"\x0fclient_order_id\x18\x03 \x01(\tR\rclientOrderId\x12\x19\n" +
 	"\border_id\x18\x04 \x01(\tR\aorderId\x12\x17\n" +
-	"\aalgo_id\x18\x05 \x01(\rR\x06algoId\"L\n" +
+	"\aalgo_id\x18\x05 \x01(\rR\x06algoId\x12$\n" +
+	"\x0erecv_window_ms\x18\x06 \x01(\x03R\frecvWindowMs\"L\n" +
 	"\vBatchCancel\x12\x17\n" +
 	"\aalgo_id\x18\x01 \x01(\rR\x06algoId\x12\x12\n" +
 	"\x04uids\x18\x02 \x03(\rR\x04uidsJ\x04\b\x03\x10\x04R\n" +

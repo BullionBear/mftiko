@@ -80,7 +80,7 @@ func (t *tradeStream) Submit(now time.Time, id uint64, req *exchange.OrderReques
 		NewClientOrderID: req.ClientOrderID,
 		NewOrderRespType: "RESULT",
 		Quantity:         qty,
-		RecvWindow:       t.window,
+		RecvWindow:       windowMS(t.window, req.Validity),
 		Side:             side,
 		Symbol:           req.Instrument.ExchTicker,
 		Timestamp:        now.UnixMilli(),
@@ -111,7 +111,7 @@ func (t *tradeStream) Cancel(now time.Time, id uint64, ref exchange.CancelRef) (
 	if id == 0 {
 		return nil, fmt.Errorf("binance: request id is 0")
 	}
-	p, err := cancelParamsOf(now, ref, VenueUM, t.window)
+	p, err := cancelParamsOf(now, ref, VenueUM, windowMS(t.window, ref.Validity))
 	if err != nil {
 		return nil, err
 	}

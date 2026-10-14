@@ -47,7 +47,7 @@ func (t *tradeStream) Submit(now time.Time, id uint64, req *exchange.OrderReques
 	if err != nil {
 		return nil, err
 	}
-	return t.order(now, id, "order.create", body)
+	return t.order(now, id, "order.create", body, req.Validity)
 }
 
 func (t *tradeStream) Cancel(now time.Time, id uint64, ref exchange.CancelRef) ([]byte, error) {
@@ -55,7 +55,7 @@ func (t *tradeStream) Cancel(now time.Time, id uint64, ref exchange.CancelRef) (
 	if err != nil {
 		return nil, err
 	}
-	return t.order(now, id, "order.cancel", body)
+	return t.order(now, id, "order.cancel", body, ref.Validity)
 }
 
 type tradeCall struct {
@@ -70,7 +70,7 @@ type tradeHeader struct {
 	RecvWindow string `json:"X-BAPI-RECV-WINDOW"`
 }
 
-func (t *tradeStream) order(now time.Time, id uint64, op string, arg any) ([]byte, error) {
+func (t *tradeStream) order(now time.Time, id uint64, op string, arg any, span time.Duration) ([]byte, error) {
 	if id == 0 {
 		return nil, errors.New("bybit: request id is 0")
 	}
@@ -80,7 +80,7 @@ func (t *tradeStream) order(now time.Time, id uint64, op string, arg any) ([]byt
 	}
 	return marshalBody(tradeCall{
 		ReqID:  reqID,
-		Header: tradeHeader{Timestamp: strconv.FormatInt(now.UnixMilli(), 10), RecvWindow: t.window},
+		Header: tradeHeader{Timestamp: strconv.FormatInt(now.UnixMilli(), 10), RecvWindow: recvWindow(t.window, span)},
 		Op:     op,
 		Args:   []any{arg},
 	})

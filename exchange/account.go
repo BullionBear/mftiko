@@ -24,9 +24,11 @@ type AccountConfig struct {
 	Simulated bool
 	// Validity is how long after it is signed a Submit or Cancel may still take effect: Binance's
 	// and Bybit's recvWindow, OKX's expTime (now plus Validity). Past it the venue refuses the
-	// request even when it arrives, so a QueryOrder after now + Validity + clock skew that finds
-	// nothing means the order was not placed (D605). Zero is DefaultValidity; it is at most
-	// MaxValidity. Adapters put it on every request that carries a window.
+	// request even when it arrives, so a QueryOrder after the request's window plus clock skew
+	// that finds nothing means the order was not placed (D605). Zero is DefaultValidity; it is at
+	// most MaxValidity. This is the account's default. A Submit or Cancel may carry its own
+	// (OrderRequest.Validity, CancelRef.Validity); zero there means this value (D620, modifies the
+	// "one value per account" line of D617).
 	Validity time.Duration
 }
 
@@ -48,6 +50,16 @@ func (c AccountConfig) Window() (time.Duration, error) {
 		return 0, fmt.Errorf("exchange: validity %v must be whole milliseconds from 1ms to %v", c.Validity, MaxValidity)
 	}
 	return w, nil
+}
+
+// RequestWindow is the validity one Submit or Cancel carries. override is the request's own
+// (OrderRequest.Validity, CancelRef.Validity): zero uses the account window; a positive override
+// is that request's window, already clamped by the account worker (D620).
+func RequestWindow(account, override time.Duration) time.Duration {
+	if override > 0 {
+		return override
+	}
+	return account
 }
 
 // AccountFactory builds an Account for one api_id of one AccountKind.
@@ -84,8 +96,8 @@ type Account interface {
 	// QueryOrder reads one order from the venue by ref.ClientOrderID (or ref.OrderID), open or
 	// recently ended, over REST (D605). Parse returns ErrNotFound when the venue says it has no
 	// such order, never a plain error or a *Reject. The account worker calls it for an order whose
-	// Submit or Cancel had an unknown outcome, once now + AccountConfig.Validity + clock skew has
-	// passed.
+	// Submit or Cancel had an unknown outcome, once the request's own window (RequestWindow) plus
+	// the worker's clock skew has passed.
 	QueryOrder(now time.Time, ref CancelRef) (Call[*OrderUpdate], error)
 
 	// Snapshot is the recon read (D603): open orders, positions, balances. A venue answers them in
@@ -140,6 +152,10 @@ type OrderRequest struct {
 	ReduceOnly    bool
 	ClientOrderID string            // contract/wire/cloid, decimal (D602)
 	Params        map[string]string // td.v1.Submit.params, venue-specific, passed through
+	// Validity is this request's window (D620). Zero means AccountConfig.Validity: adapters call
+	// RequestWindow and put that on recvWindow or expTime. The account worker sets it to the
+	// resolved value, so the wire window and the query deadline are the same.
+	Validity time.Duration
 }
 
 // OrderResult is the venue's synchronous answer to Submit. Later states arrive on the private stream.
@@ -155,6 +171,8 @@ type CancelRef struct {
 	Instrument    *symbol.Info
 	OrderID       string
 	ClientOrderID string
+	// Validity is this request's window (D620). Zero means AccountConfig.Validity.
+	Validity time.Duration
 }
 
 // AccountSnapshot is the whole account at one moment (td.v1.Recon before the worker adds incarnation

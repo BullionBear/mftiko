@@ -122,12 +122,37 @@ func (f *fakeInstruments) Reverse(_ context.Context, k symbol.ExchKey, includeIn
 	return nil, errors.New("not found")
 }
 
+func (f *fakeInstruments) GetByUID(_ context.Context, uid uint32, includeInactive bool) (*symbol.Info, error) {
+	for _, i := range f.active {
+		if i.UID == uid {
+			return i, nil
+		}
+	}
+	if includeInactive {
+		f.asked.Add(1)
+		for _, i := range f.inactive {
+			if i.UID == uid {
+				return i, nil
+			}
+		}
+	}
+	return nil, errors.New("not found")
+}
+
+func testInst(uid uint32, ticker string, size float64) *symbol.Info {
+	return &symbol.Info{
+		UID: uid, ExchTicker: ticker, ContractSize: size, Status: symbol.Tradable,
+		Ticker:  symbol.UniversalTicker{Venue: "Fake", Category: symbol.Perp},
+		Filters: symbol.Filters{symbol.PriceTick: 0.1, symbol.QtyStep: 0.001, symbol.MinQty: 0.001},
+	}
+}
+
 func instruments() *fakeInstruments {
 	return &fakeInstruments{
 		active: map[string]*symbol.Info{
-			"BTCUSDT":  {UID: 7, ContractSize: 1},
-			"BTC-SWAP": {UID: 8, ContractSize: 0.01}, // counted in contracts, as OKX's swaps
-			"ETHUSDT":  {UID: 10, ContractSize: 1},
+			"BTCUSDT":  testInst(7, "BTCUSDT", 1),
+			"BTC-SWAP": testInst(8, "BTC-SWAP", 0.01), // counted in contracts, as OKX's swaps
+			"ETHUSDT":  testInst(10, "ETHUSDT", 1),
 		},
 		inactive: map[string]*symbol.Info{"OLD": {UID: 9}},
 	}
@@ -788,8 +813,8 @@ func TestRebuildFromViewAndEvents(t *testing.T) {
 	h.stop()
 }
 
-// An order that finished while its event was lost with the connection is UNKNOWN after the recon,
-// in td.view and in the Recon, until the venue is asked by client order id (E6-08, D615).
+// An order that finished while its event was lost with the connection is UNKNOWN in that recon
+// (D615). The worker then asks the venue by client order id and the fill comes back (D605).
 func TestOrderLostWithTheConnection(t *testing.T) {
 	h := start(t, setup{})
 	h.v.PutOrder(limit("a", 1))
@@ -801,12 +826,23 @@ func TestOrderLostWithTheConnection(t *testing.T) {
 	h.v.Disconnect() // and never reach the worker: the venue keeps holding them
 	h.report(tdv1.AccountState_ACCOUNT_STATE_DEGRADED, ReasonStreamLost)
 	h.report(tdv1.AccountState_ACCOUNT_STATE_READY, "")
-	o := h.oms().GetOms().GetOrders()
-	if len(o) != 1 || o[0].GetClientOrderId() != "a" || o[0].GetStatus() != tdv1.OrderStatus_ORDER_STATUS_UNKNOWN {
-		t.Fatalf("oms %v", o)
-	}
-	if rc := h.bus.recons(); len(rc) != 2 || rc[1].GetOpenOrders()[0].GetStatus() != tdv1.OrderStatus_ORDER_STATUS_UNKNOWN {
+	if rc := h.bus.recons(); len(rc) != 2 || len(rc[1].GetOpenOrders()) != 1 || rc[1].GetOpenOrders()[0].GetClientOrderId() != "a" ||
+		rc[1].GetOpenOrders()[0].GetStatus() != tdv1.OrderStatus_ORDER_STATUS_UNKNOWN {
 		t.Fatalf("recons %v", rc)
+	}
+	// The recon leaves it UNKNOWN, then the worker asks by client order id and the fill comes back.
+	waitFor(t, "the lost order was not queried", func() bool {
+		for _, e := range h.bus.all() {
+			u := e.GetOrderUpdate()
+			if u.GetOrder().GetClientOrderId() == "a" && u.GetOrder().GetStatus() == tdv1.OrderStatus_ORDER_STATUS_FILLED &&
+				u.GetCause() == tdv1.OrderCause_ORDER_CAUSE_RECONCILED {
+				return true
+			}
+		}
+		return false
+	})
+	if len(h.oms().GetOms().GetOrders()) != 0 {
+		t.Fatalf("filled order still live: %v", h.oms().GetOms().GetOrders())
 	}
 	h.stop()
 }
