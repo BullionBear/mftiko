@@ -27,7 +27,7 @@ const Contract = "tdctl.v1"
 // ReasonHedgeMode (D608).
 const (
 	ReasonAuth            = "auth"             // the venue refused the credentials
-	ReasonHedgeMode       = "hedge_mode"       // the account holds long and short apart (D607, D612)
+	ReasonHedgeMode       = "hedge_mode"       // the account holds long and short apart, found at Start (D607, D616)
 	ReasonKindUnsupported = "kind_unsupported" // an account kind phase 1 does not run (D614)
 	ReasonStreamLost      = "stream_lost"      // the events connection dropped (DEGRADED, D603)
 )
@@ -40,11 +40,6 @@ type ServeConfig struct {
 	// Doer sends the REST Calls. Net dials the websockets; nil connects directly.
 	Doer exchange.Doer
 	Net  *transport.Net
-	// RESTEndpoint, StreamEndpoint and Simulated go to exchange.AccountConfig: the TD instance's
-	// choice of host, the way MD's url is (D403). Empty is the venue's default.
-	RESTEndpoint   string
-	StreamEndpoint string
-	Simulated      bool
 	// Connect opens the account's NATS with the credentials Init carries (D611), and loads the
 	// symbol table of the venue the account trades. Its error is the INIT_FAILED reason, so it must
 	// not quote the credentials. The Env is closed when the worker ends.
@@ -138,7 +133,8 @@ func (p *plane) Init(ctx context.Context, s *c4.Session, payload []byte) error {
 	}
 	acct, err := kind.Account(exchange.AccountConfig{
 		APIID: in.GetApiId(), Credentials: creds,
-		RESTEndpoint: p.cfg.RESTEndpoint, StreamEndpoint: p.cfg.StreamEndpoint, Simulated: p.cfg.Simulated,
+		// The hosts are the TD instance's, per account kind, carried in Init (D616).
+		RESTEndpoint: in.GetRestUrl(), StreamEndpoint: in.GetStreamUrl(), Simulated: in.GetSimulated(),
 	})
 	if err != nil || acct == nil {
 		// The factory's error may quote what it could not parse.

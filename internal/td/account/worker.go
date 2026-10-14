@@ -78,7 +78,7 @@ func (w *Worker) Start(ctx context.Context) error {
 }
 
 // Run keeps the account until ctx ends: it reports DEGRADED while the events connection is down,
-// recons once it is back, and reports READY, or UNAVAILABLE in hedge mode. It ends with ReasonAuth
+// recons once it is back, and reports READY. It ends with ReasonAuth
 // when the venue refuses the credentials on a reconnect.
 func (w *Worker) Run(ctx context.Context) error {
 	w.ctx = ctx
@@ -241,10 +241,7 @@ func (w *Worker) recon(ctx context.Context) (*exchange.AccountSnapshot, error) {
 func (w *Worker) apply(ctx context.Context, snap *exchange.AccountSnapshot) {
 	w.book.applyRecon(ctx, snap)
 	w.reconciledAt = snap.AsOfNs
-	if snap.HedgeMode {
-		w.set(tdv1.AccountState_ACCOUNT_STATE_UNAVAILABLE, ReasonHedgeMode)
-		return
-	}
+	// The position mode is checked at Start only: nobody changes it while a worker runs (D616).
 	w.set(tdv1.AccountState_ACCOUNT_STATE_READY, "")
 	w.log.Info().Int("open_orders", len(snap.OpenOrders)).Int("positions", len(snap.Positions)).Msg("recon")
 }

@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mftiko/tdctl/v1/tdctl.proto.
  */
 export const file_mftiko_tdctl_v1_tdctl: GenFile = /*@__PURE__*/
-  fileDesc("ChttZnRpa28vdGRjdGwvdjEvdGRjdGwucHJvdG8SD21mdGlrby50ZGN0bC52MSLDAQoLSW5pdFBheWxvYWQSDgoGYXBpX2lkGAEgASgDEgwKBGtpbmQYAiABKAkSEwoLdGRfaW5zdGFuY2UYAyABKAkSHgoWY2FuY2VsX29uX2Rpc2Nvbm5lY3RfcxgEIAEoDRIxCgtjcmVkZW50aWFscxgFIAEoCzIcLm1mdGlrby50ZGN0bC52MS5DcmVkZW50aWFscxIuCgRuYXRzGAYgASgLMiAubWZ0aWtvLnRkY3RsLnYxLk5hdHNDcmVkZW50aWFscyJQCgtDcmVkZW50aWFscxIQCghrZXlfdHlwZRgBIAEoCRILCgNrZXkYAiABKAkSDgoGc2VjcmV0GAMgASgJEhIKCnBhc3NwaHJhc2UYBCABKAkiRwoPTmF0c0NyZWRlbnRpYWxzEhAKCHVzZXJfand0GAEgASgJEgwKBHNlZWQYAiABKAkSFAoMaW5ib3hfcHJlZml4GAMgASgJIg4KDFN0YXJ0UGF5bG9hZCI5CgdDb21tYW5kEicKBWRyYWluGAEgASgLMhYubWZ0aWtvLnRkY3RsLnYxLkRyYWluSABCBQoDY21kIhwKBURyYWluEhMKC2RlYWRsaW5lX21zGAEgASgNIpECCgZSZXBvcnQSKQoFc3RhdGUYASABKA4yGi5tZnRpa28udGQudjEuQWNjb3VudFN0YXRlEg4KBnJlYXNvbhgCIAEoCRIYChByZWNvbmNpbGVkX2F0X25zGAMgASgDEhMKC29wZW5fb3JkZXJzGAQgASgNEhAKCGluZmxpZ2h0GAUgASgNEhAKCGRyYWluaW5nGAYgASgIEkMKD2ZpcnN0X3N1Ym1pdF9ucxgHIAMoCzIqLm1mdGlrby50ZGN0bC52MS5SZXBvcnQuRmlyc3RTdWJtaXROc0VudHJ5GjQKEkZpcnN0U3VibWl0TnNFbnRyeRILCgNrZXkYASABKA0SDQoFdmFsdWUYAiABKAM6AjgBQkRaQmdpdGh1Yi5jb20vQnVsbGlvbkJlYXIvbWZ0aWtvL2NvbnRyYWN0L2dlbi9tZnRpa28vdGRjdGwvdjE7dGRjdGx2MWIGcHJvdG8z", [file_mftiko_td_v1_td]);
+  fileDesc("ChttZnRpa28vdGRjdGwvdjEvdGRjdGwucHJvdG8SD21mdGlrby50ZGN0bC52MSL8AQoLSW5pdFBheWxvYWQSDgoGYXBpX2lkGAEgASgDEgwKBGtpbmQYAiABKAkSEwoLdGRfaW5zdGFuY2UYAyABKAkSHgoWY2FuY2VsX29uX2Rpc2Nvbm5lY3RfcxgEIAEoDRIxCgtjcmVkZW50aWFscxgFIAEoCzIcLm1mdGlrby50ZGN0bC52MS5DcmVkZW50aWFscxIuCgRuYXRzGAYgASgLMiAubWZ0aWtvLnRkY3RsLnYxLk5hdHNDcmVkZW50aWFscxIQCghyZXN0X3VybBgHIAEoCRISCgpzdHJlYW1fdXJsGAggASgJEhEKCXNpbXVsYXRlZBgJIAEoCCJQCgtDcmVkZW50aWFscxIQCghrZXlfdHlwZRgBIAEoCRILCgNrZXkYAiABKAkSDgoGc2VjcmV0GAMgASgJEhIKCnBhc3NwaHJhc2UYBCABKAkiRwoPTmF0c0NyZWRlbnRpYWxzEhAKCHVzZXJfand0GAEgASgJEgwKBHNlZWQYAiABKAkSFAoMaW5ib3hfcHJlZml4GAMgASgJIg4KDFN0YXJ0UGF5bG9hZCI5CgdDb21tYW5kEicKBWRyYWluGAEgASgLMhYubWZ0aWtvLnRkY3RsLnYxLkRyYWluSABCBQoDY21kIhwKBURyYWluEhMKC2RlYWRsaW5lX21zGAEgASgNIpECCgZSZXBvcnQSKQoFc3RhdGUYASABKA4yGi5tZnRpa28udGQudjEuQWNjb3VudFN0YXRlEg4KBnJlYXNvbhgCIAEoCRIYChByZWNvbmNpbGVkX2F0X25zGAMgASgDEhMKC29wZW5fb3JkZXJzGAQgASgNEhAKCGluZmxpZ2h0GAUgASgNEhAKCGRyYWluaW5nGAYgASgIEkMKD2ZpcnN0X3N1Ym1pdF9ucxgHIAMoCzIqLm1mdGlrby50ZGN0bC52MS5SZXBvcnQuRmlyc3RTdWJtaXROc0VudHJ5GjQKEkZpcnN0U3VibWl0TnNFbnRyeRILCgNrZXkYASABKA0SDQoFdmFsdWUYAiABKAM6AjgBQkRaQmdpdGh1Yi5jb20vQnVsbGlvbkJlYXIvbWZ0aWtvL2NvbnRyYWN0L2dlbi9tZnRpa28vdGRjdGwvdjE7dGRjdGx2MWIGcHJvdG8z", [file_mftiko_td_v1_td]);
 
 /**
  * @generated from message mftiko.tdctl.v1.InitPayload
@@ -55,6 +55,27 @@ export type InitPayload = Message<"mftiko.tdctl.v1.InitPayload"> & {
    * @generated from field: mftiko.tdctl.v1.NatsCredentials nats = 6;
    */
   nats?: NatsCredentials | undefined;
+
+  /**
+   * 交易所的 host，由 TD instance 依帳號種類設定（D616，比照 MD 的 url，D403）。空的是 adapter 的預設。
+   *
+   * @generated from field: string rest_url = 7;
+   */
+  restUrl: string;
+
+  /**
+   * 私有 websocket
+   *
+   * @generated from field: string stream_url = 8;
+   */
+  streamUrl: string;
+
+  /**
+   * 交易所的模擬交易模式是旗標而不是另一個 host 時（OKX）
+   *
+   * @generated from field: bool simulated = 9;
+   */
+  simulated: boolean;
 };
 
 /**

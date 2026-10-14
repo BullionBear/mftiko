@@ -32,8 +32,12 @@ type InitPayload struct {
 	CancelOnDisconnectS uint32                 `protobuf:"varint,4,opt,name=cancel_on_disconnect_s,json=cancelOnDisconnectS,proto3" json:"cancel_on_disconnect_s,omitempty"`
 	Credentials         *Credentials           `protobuf:"bytes,5,opt,name=credentials,proto3" json:"credentials,omitempty"` // 交易所的憑證，只經 socketpair 送進去
 	Nats                *NatsCredentials       `protobuf:"bytes,6,opt,name=nats,proto3" json:"nats,omitempty"`               // 這個帳號專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D611）
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// 交易所的 host，由 TD instance 依帳號種類設定（D616，比照 MD 的 url，D403）。空的是 adapter 的預設。
+	RestUrl       string `protobuf:"bytes,7,opt,name=rest_url,json=restUrl,proto3" json:"rest_url,omitempty"`
+	StreamUrl     string `protobuf:"bytes,8,opt,name=stream_url,json=streamUrl,proto3" json:"stream_url,omitempty"` // 私有 websocket
+	Simulated     bool   `protobuf:"varint,9,opt,name=simulated,proto3" json:"simulated,omitempty"`                 // 交易所的模擬交易模式是旗標而不是另一個 host 時（OKX）
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *InitPayload) Reset() {
@@ -106,6 +110,27 @@ func (x *InitPayload) GetNats() *NatsCredentials {
 		return x.Nats
 	}
 	return nil
+}
+
+func (x *InitPayload) GetRestUrl() string {
+	if x != nil {
+		return x.RestUrl
+	}
+	return ""
+}
+
+func (x *InitPayload) GetStreamUrl() string {
+	if x != nil {
+		return x.StreamUrl
+	}
+	return ""
+}
+
+func (x *InitPayload) GetSimulated() bool {
+	if x != nil {
+		return x.Simulated
+	}
+	return false
 }
 
 type Credentials struct {
@@ -483,7 +508,7 @@ var File_mftiko_tdctl_v1_tdctl_proto protoreflect.FileDescriptor
 
 const file_mftiko_tdctl_v1_tdctl_proto_rawDesc = "" +
 	"\n" +
-	"\x1bmftiko/tdctl/v1/tdctl.proto\x12\x0fmftiko.tdctl.v1\x1a\x15mftiko/td/v1/td.proto\"\x84\x02\n" +
+	"\x1bmftiko/tdctl/v1/tdctl.proto\x12\x0fmftiko.tdctl.v1\x1a\x15mftiko/td/v1/td.proto\"\xdc\x02\n" +
 	"\vInitPayload\x12\x15\n" +
 	"\x06api_id\x18\x01 \x01(\x03R\x05apiId\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x1f\n" +
@@ -491,7 +516,11 @@ const file_mftiko_tdctl_v1_tdctl_proto_rawDesc = "" +
 	"tdInstance\x123\n" +
 	"\x16cancel_on_disconnect_s\x18\x04 \x01(\rR\x13cancelOnDisconnectS\x12>\n" +
 	"\vcredentials\x18\x05 \x01(\v2\x1c.mftiko.tdctl.v1.CredentialsR\vcredentials\x124\n" +
-	"\x04nats\x18\x06 \x01(\v2 .mftiko.tdctl.v1.NatsCredentialsR\x04nats\"r\n" +
+	"\x04nats\x18\x06 \x01(\v2 .mftiko.tdctl.v1.NatsCredentialsR\x04nats\x12\x19\n" +
+	"\brest_url\x18\a \x01(\tR\arestUrl\x12\x1d\n" +
+	"\n" +
+	"stream_url\x18\b \x01(\tR\tstreamUrl\x12\x1c\n" +
+	"\tsimulated\x18\t \x01(\bR\tsimulated\"r\n" +
 	"\vCredentials\x12\x19\n" +
 	"\bkey_type\x18\x01 \x01(\tR\akeyType\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12\x16\n" +

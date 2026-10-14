@@ -84,7 +84,7 @@ message DemandEntry {
     int64 api_id = 3;
   }
   int64 spec_revision = 10; // 推導自哪一版 session spec；只供除錯，可能來自另一個 cluster，不做比較
-  repeated uint32 algo_ids = 11; // 只有帳號項目：同 AccountDecl.algo_ids，TD agent 用來檢查衝突（D602）
+  repeated uint32 algo_ids = 11; // 只有帳號項目：同 AccountDecl.algo_ids。TD agent 不讀它（D616）
 }
 
 // STS 的指派（§3.3）。STS agent 只跑有指派的 session。

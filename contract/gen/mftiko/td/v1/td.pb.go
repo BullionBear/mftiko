@@ -105,7 +105,7 @@ const (
 	RejectCode_REJECT_CODE_UNSPECIFIED        RejectCode = 0
 	RejectCode_REJECT_CODE_ACCOUNT_OFFLINE    RejectCode = 101 // td.order 沒有 responder：account worker 不在，或還沒完成 Start。由 SDK 產生
 	RejectCode_REJECT_CODE_ACCOUNT_DEGRADED   RejectCode = 102 // 私有連線斷線中，暫停收新單；撤單照常（D603）
-	RejectCode_REJECT_CODE_HEDGE_MODE         RejectCode = 103 // 執行中發現帳號是雙向持倉，或 params 帶了持倉方向鍵（D607）
+	RejectCode_REJECT_CODE_HEDGE_MODE         RejectCode = 103 // params 帶了持倉方向鍵（D607）。雙向持倉的帳號在 Start 就起不來，執行中不檢查（D616）
 	RejectCode_REJECT_CODE_ALGO_MISMATCH      RejectCode = 104 // algo_id 與 client_order_id 的 algo 欄位不一致，或撤的單沒有 client_order_id（D602）
 	RejectCode_REJECT_CODE_VENUE_NOT_TRADABLE RejectCode = 105 // 帳號種類不能交易這個商品的 venue（D301）
 	RejectCode_REJECT_CODE_INVALID_ORDER      RejectCode = 106 // 商品不存在或不是 TRADABLE；數量或價格不合商品規格（tick、step、上下限）；client_order_id 解不開
@@ -176,7 +176,6 @@ const (
 	AccountState_ACCOUNT_STATE_UNSPECIFIED AccountState = 0
 	AccountState_ACCOUNT_STATE_READY       AccountState = 1
 	AccountState_ACCOUNT_STATE_DEGRADED    AccountState = 2 // 私有 websocket 斷線：新單以 102 拒絕，撤單照常（D603）
-	AccountState_ACCOUNT_STATE_UNAVAILABLE AccountState = 3 // 執行中發現雙向持倉：新單以 103 拒絕，撤單照常（D607）
 )
 
 // Enum value maps for AccountState.
@@ -185,13 +184,11 @@ var (
 		0: "ACCOUNT_STATE_UNSPECIFIED",
 		1: "ACCOUNT_STATE_READY",
 		2: "ACCOUNT_STATE_DEGRADED",
-		3: "ACCOUNT_STATE_UNAVAILABLE",
 	}
 	AccountState_value = map[string]int32{
 		"ACCOUNT_STATE_UNSPECIFIED": 0,
 		"ACCOUNT_STATE_READY":       1,
 		"ACCOUNT_STATE_DEGRADED":    2,
-		"ACCOUNT_STATE_UNAVAILABLE": 3,
 	}
 )
 
@@ -2325,12 +2322,11 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\x19REJECT_CODE_INVALID_ORDER\x10j\x12\x1e\n" +
 	"\x1aREJECT_CODE_ORDER_NOT_OPEN\x10k\x12\x1c\n" +
 	"\x18REJECT_CODE_RATE_LIMITED\x10l\x12\x1a\n" +
-	"\x16REJECT_CODE_NOT_PLACED\x10x*\x81\x01\n" +
+	"\x16REJECT_CODE_NOT_PLACED\x10x*\x83\x01\n" +
 	"\fAccountState\x12\x1d\n" +
 	"\x19ACCOUNT_STATE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13ACCOUNT_STATE_READY\x10\x01\x12\x1a\n" +
-	"\x16ACCOUNT_STATE_DEGRADED\x10\x02\x12\x1d\n" +
-	"\x19ACCOUNT_STATE_UNAVAILABLE\x10\x03*\xe2\x02\n" +
+	"\x16ACCOUNT_STATE_DEGRADED\x10\x02\"\x04\b\x03\x10\x03*\x19ACCOUNT_STATE_UNAVAILABLE*\xe2\x02\n" +
 	"\n" +
 	"OrderCause\x12\x1b\n" +
 	"\x17ORDER_CAUSE_UNSPECIFIED\x10\x00\x12\x19\n" +

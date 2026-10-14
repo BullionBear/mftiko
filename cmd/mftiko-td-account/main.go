@@ -3,9 +3,7 @@
 // (PROTOCOL §5); Init carries the api_id, its account kind, its unsealed credentials and its own NATS
 // credentials (D611). NATS is at MFTIKO_NATS_URL.
 //
-// The hosts are the TD instance's choice, as flags (D403): -rest-endpoint and -stream-endpoint
-// override the venue's defaults, and -simulated selects a venue's demo mode where that is a flag
-// (OKX).
+// The venue's hosts are the TD instance's, per account kind, and come in Init (D616).
 package main
 
 import (
@@ -35,9 +33,6 @@ func main() {
 
 func run() int {
 	version := flag.Bool("version", false, "print the release and exit")
-	restEndpoint := flag.String("rest-endpoint", "", "the venue's REST host, scheme://host; empty is the default")
-	streamEndpoint := flag.String("stream-endpoint", "", "the venue's private websocket host; empty is the default")
-	simulated := flag.Bool("simulated", false, "use the venue's demo trading mode where it is a flag (OKX)")
 	flag.Parse()
 	if *version {
 		fmt.Println(buildinfo.String())
@@ -75,13 +70,10 @@ func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer stop()
 	return account.Serve(ctx, f, account.ServeConfig{
-		Kinds:          func(name string) (exchange.AccountKind, bool) { return reg.AccountKind(name) },
-		Doer:           fasthttp.New(nil, fasthttp.Options{}),
-		RESTEndpoint:   *restEndpoint,
-		StreamEndpoint: *streamEndpoint,
-		Simulated:      *simulated,
-		WorkerKey:      os.Getenv("MFTIKO_WORKER_KEY"),
-		Incarnation:    incarnation,
+		Kinds:       func(name string) (exchange.AccountKind, bool) { return reg.AccountKind(name) },
+		Doer:        fasthttp.New(nil, fasthttp.Options{}),
+		WorkerKey:   os.Getenv("MFTIKO_WORKER_KEY"),
+		Incarnation: incarnation,
 		Connect: func(ctx context.Context, c *tdctlv1.NatsCredentials, venue string) (*account.Env, error) {
 			nc, err := natsx.Connect(natsURL, natsx.Options{
 				Name: "mftiko-td-account", InboxPrefix: c.GetInboxPrefix(), UserJWT: c.GetUserJwt(), Seed: c.GetSeed(),
