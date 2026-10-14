@@ -29,8 +29,6 @@ const (
 	spotTestHost  = "testnet.binance.vision"
 	spotTestTrade = "wss://ws-api.testnet.binance.vision/ws-api/v3"
 
-	recvWindow int64 = 5000
-
 	// cloidMax is newClientOrderId's limit. A D602 id is at most 19 digits and fits.
 	cloidMax = 36
 
@@ -115,7 +113,11 @@ func signedCall(st *signerState, k kind, cfg exchange.AccountConfig, now time.Ti
 	if cfg.RESTEndpoint != "" {
 		base = strings.TrimRight(cfg.RESTEndpoint, "/")
 	}
-	q = q.AddInt("recvWindow", recvWindow).AddInt("timestamp", now.UnixMilli())
+	w, err := cfg.Window()
+	if err != nil {
+		return exchange.HTTPRequest{}, err
+	}
+	q = q.AddInt("recvWindow", w.Milliseconds()).AddInt("timestamp", now.UnixMilli())
 	q = q.AddBytes("signature", sig.SignBase64(nil, q))
 	return exchange.HTTPRequest{
 		Method:  method,

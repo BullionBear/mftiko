@@ -16,9 +16,10 @@ import (
 // socket. Orders are not signed again. The connection does not carry private events; those
 // stay on /v5/private. Cancel-batch stays on REST.
 type tradeStream struct {
-	ws  string
-	key string
-	sig *codec.Signer
+	ws     string
+	key    string
+	sig    *codec.Signer
+	window string // X-BAPI-RECV-WINDOW, ms: AccountConfig.Validity
 }
 
 var _ exchange.TradeStream = (*tradeStream)(nil)
@@ -79,7 +80,7 @@ func (t *tradeStream) order(now time.Time, id uint64, op string, arg any) ([]byt
 	}
 	return marshalBody(tradeCall{
 		ReqID:  reqID,
-		Header: tradeHeader{Timestamp: strconv.FormatInt(now.UnixMilli(), 10), RecvWindow: recvWindow},
+		Header: tradeHeader{Timestamp: strconv.FormatInt(now.UnixMilli(), 10), RecvWindow: t.window},
 		Op:     op,
 		Args:   []any{arg},
 	})

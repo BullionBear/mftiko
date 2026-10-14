@@ -16,7 +16,8 @@ import (
 )
 
 // Account is this venue's adapter for cfg: REST Calls to cfg.RESTEndpoint (the venue's own base when
-// empty), signed with cfg.Credentials.Key, and a stream codec that dials cfg.StreamEndpoint.
+// empty), signed with cfg.Credentials.Key, and a stream codec that dials cfg.StreamEndpoint. A Validity
+// that AccountConfig.Window refuses is DefaultValidity here; Kind's factory refuses it.
 func (v *AccountVenue) Account(cfg exchange.AccountConfig) exchange.Account {
 	base := cfg.RESTEndpoint
 	if base == "" {
@@ -26,7 +27,11 @@ func (v *AccountVenue) Account(cfg exchange.AccountConfig) exchange.Account {
 	if stream == "" {
 		stream = "ws://stream.exchangetest.invalid"
 	}
-	return &account{v: v, base: base, stream: strings.TrimSuffix(stream, "/"), key: cfg.Credentials.Key}
+	w, err := cfg.Window()
+	if err != nil {
+		w = exchange.DefaultValidity
+	}
+	return &account{v: v, base: base, stream: strings.TrimSuffix(stream, "/"), key: cfg.Credentials.Key, window: w}
 }
 
 type account struct {
@@ -34,6 +39,7 @@ type account struct {
 	base   string
 	stream string
 	key    string
+	window time.Duration // AccountConfig.Validity: each Submit and Cancel carries now + window
 }
 
 var (
@@ -106,7 +112,7 @@ func (a *account) Submit(now time.Time, req *exchange.OrderRequest) (exchange.Ca
 		return exchange.Call[*exchange.OrderResult]{}, errors.New("exchangetest: order without an instrument")
 	}
 	body := mustJSON(orderReq{
-		Ts: now.UnixNano(), Cat: req.Instrument.Ticker.Category, Sym: req.Instrument.ExchTicker,
+		Ts: now.UnixNano(), Exp: now.Add(a.window).UnixNano(), Cat: req.Instrument.Ticker.Category, Sym: req.Instrument.ExchTicker,
 		Side: req.Side, Type: req.Type, TIF: req.TIF, Qty: num(req.Qty), Quote: num(req.QuoteQty),
 		Price: num(req.Price), Reduce: req.ReduceOnly, Cid: req.ClientOrderID, Params: req.Params,
 	})
@@ -122,8 +128,8 @@ func (a *account) Submit(now time.Time, req *exchange.OrderRequest) (exchange.Ca
 	}, nil
 }
 
-func cancelOf(now time.Time, ref exchange.CancelRef) cancelReq {
-	r := cancelReq{Ts: now.UnixNano(), ID: ref.OrderID, Cid: ref.ClientOrderID}
+func (a *account) cancelOf(now time.Time, ref exchange.CancelRef) cancelReq {
+	r := cancelReq{Ts: now.UnixNano(), Exp: now.Add(a.window).UnixNano(), ID: ref.OrderID, Cid: ref.ClientOrderID}
 	if ref.Instrument != nil {
 		r.Cat, r.Sym = ref.Instrument.Ticker.Category, ref.Instrument.ExchTicker
 	}
@@ -135,7 +141,7 @@ func (a *account) Cancel(now time.Time, ref exchange.CancelRef) (exchange.Call[s
 		return exchange.Call[struct{}]{}, errors.New("exchangetest: cancel names no order")
 	}
 	return exchange.Call[struct{}]{
-		Req: a.req("DELETE", "/order", nil, mustJSON(cancelOf(now, ref)), true),
+		Req: a.req("DELETE", "/order", nil, mustJSON(a.cancelOf(now, ref)), true),
 		Parse: func(resp *exchange.HTTPResponse) (struct{}, error) {
 			return struct{}{}, classifyResp(resp)
 		},
@@ -148,7 +154,7 @@ func (a *account) CancelBatch(now time.Time, refs []exchange.CancelRef) (exchang
 	}
 	body := make([]cancelReq, len(refs))
 	for i, r := range refs {
-		body[i] = cancelOf(now, r)
+		body[i] = a.cancelOf(now, r)
 	}
 	n := len(refs)
 	return exchange.Call[[]error]{
@@ -168,6 +174,34 @@ func (a *account) CancelBatch(now time.Time, refs []exchange.CancelRef) (exchang
 				}
 			}
 			return out, nil
+		},
+	}, nil
+}
+
+// QueryOrder is GET /order by client order id, or order id. The venue's -2013 is ErrNotFound.
+func (a *account) QueryOrder(now time.Time, ref exchange.CancelRef) (exchange.Call[*exchange.OrderUpdate], error) {
+	if ref.OrderID == "" && ref.ClientOrderID == "" {
+		return exchange.Call[*exchange.OrderUpdate]{}, errors.New("exchangetest: query names no order")
+	}
+	q := url.Values{}
+	if ref.ClientOrderID != "" {
+		q.Set("cid", ref.ClientOrderID)
+	} else {
+		q.Set("id", ref.OrderID)
+	}
+	return exchange.Call[*exchange.OrderUpdate]{
+		Req: a.req("GET", "/order", q, nil, false),
+		Parse: func(resp *exchange.HTTPResponse) (*exchange.OrderUpdate, error) {
+			w, err := parseJSON[wireOrder](resp)
+			var rej *exchange.Reject
+			if errors.As(err, &rej) && rej.Native == "-2013" {
+				return nil, fmt.Errorf("exchangetest: %s: %w", rej.Reason, exchange.ErrNotFound)
+			}
+			if err != nil {
+				return nil, err
+			}
+			u := w.update()
+			return &u, nil
 		},
 	}, nil
 }
@@ -375,6 +409,7 @@ func parseNum(s string) float64 {
 
 type orderReq struct {
 	Ts     int64                `json:"ts"`
+	Exp    int64                `json:"exp,omitempty"` // the deadline, unix ns: ts + validity
 	Cat    symbol.Category      `json:"cat"`
 	Sym    string               `json:"sym"`
 	Side   exchange.Side        `json:"side"`
@@ -390,6 +425,7 @@ type orderReq struct {
 
 type cancelReq struct {
 	Ts  int64           `json:"ts"`
+	Exp int64           `json:"exp,omitempty"`
 	Cat symbol.Category `json:"cat,omitempty"`
 	Sym string          `json:"sym,omitempty"`
 	ID  string          `json:"id,omitempty"`

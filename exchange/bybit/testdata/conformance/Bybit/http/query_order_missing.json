@@ -1,0 +1,16 @@
+{
+  "response": {
+    "status": 200,
+    "body": {
+      "retCode": 0,
+      "retMsg": "OK",
+      "result": {
+        "nextPageCursor": "",
+        "category": "linear",
+        "list": []
+      },
+      "retExtInfo": {},
+      "time": 1767225600500
+    }
+  }
+}

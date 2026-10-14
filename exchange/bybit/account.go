@@ -89,9 +89,50 @@ func (a *account) CancelBatch(now time.Time, refs []exchange.CancelRef) (exchang
 	return exchange.Call[[]error]{Req: httpReq, Parse: parseBatch}, nil
 }
 
+// QueryOrder is GET /v5/order/realtime by orderLinkId (orderId when the ref has none). With
+// either id the venue ignores openOnly and also returns a closed order, among the 500 most recent
+// per category. An empty list is ErrNotFound.
+func (a *account) QueryOrder(now time.Time, ref exchange.CancelRef) (exchange.Call[*exchange.OrderUpdate], error) {
+	cat, err := product(ref.Instrument)
+	if err != nil {
+		return exchange.Call[*exchange.OrderUpdate]{}, err
+	}
+	item, err := cancelItemOf(ref)
+	if err != nil {
+		return exchange.Call[*exchange.OrderUpdate]{}, err
+	}
+	pairs := []pair{{"category", cat}, {"symbol", item.Symbol}, {"orderLinkId", item.OrderLinkID}}
+	if item.OrderLinkID == "" {
+		pairs = append(pairs, pair{"orderId", item.OrderID})
+	}
+	req, err := a.get(now, "/v5/order/realtime", pairs, readCost())
+	if err != nil {
+		return exchange.Call[*exchange.OrderUpdate]{}, err
+	}
+	return exchange.Call[*exchange.OrderUpdate]{Req: req, Parse: func(resp *exchange.HTTPResponse) (*exchange.OrderUpdate, error) {
+		e, err := readEnv(resp)
+		if err != nil {
+			return nil, err
+		}
+		var page listPage[orderRow]
+		if err := decodeResult(e.Result, &page); err != nil {
+			return nil, err
+		}
+		for _, row := range page.List {
+			if (item.OrderLinkID != "" && row.LinkID == item.OrderLinkID) || (item.OrderLinkID == "" && row.OrderID == item.OrderID) {
+				up := row.update(page.Category, e.Time)
+				return &up, nil
+			}
+		}
+		return nil, fmt.Errorf("bybit: %s %s%s: %w", item.Symbol, item.OrderLinkID, item.OrderID, exchange.ErrNotFound)
+	}}, nil
+}
+
 // Snapshot reads the unified account. Open orders and positions are one page per category the
 // API will list without a symbol: spot, linear USDT, linear USDC, inverse, option. Balances are
-// one wallet-balance call. Each page follows nextPageCursor.
+// one wallet-balance call. Each page follows nextPageCursor. v5 has no read of the position mode:
+// an order or a position with positionIdx 1 or 2 is hedge mode, so the orders and positions pages
+// carry HedgeMode (D617).
 func (a *account) Snapshot(now time.Time) ([]exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
 	orders := []struct{ cat, settle string }{
 		{"spot", ""},
@@ -176,7 +217,11 @@ func (a *account) NewTradeStream() (exchange.TradeStream, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &tradeStream{ws: a.tradeURL(), key: a.cfg.Credentials.Key, sig: sig}, nil
+	w, err := windowOf(a.cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &tradeStream{ws: a.tradeURL(), key: a.cfg.Credentials.Key, sig: sig, window: w}, nil
 }
 
 // ArmCancelOnDisconnect sets Disconnected Cancel Protection. syms is ignored: the switch is
@@ -197,6 +242,9 @@ func (a *account) ArmCancelOnDisconnect(now time.Time, timeout time.Duration, _ 
 	}
 	return exchange.Call[struct{}]{Req: req, Parse: parseAck}, nil
 }
+
+// hedgeIdx: positionIdx 1 (buy side) and 2 (sell side) exist only in hedge mode; 0 is one-way.
+func hedgeIdx(idx int) bool { return idx == 1 || idx == 2 }
 
 func batchMax(cat string) int {
 	switch cat {
@@ -448,10 +496,12 @@ func (a *account) openOrders(now time.Time, cat, settle, cursor string) (exchang
 			return exchange.Page[exchange.AccountSnapshot]{}, err
 		}
 		orders := make([]exchange.OrderUpdate, len(page.List))
+		hedge := false
 		for i, row := range page.List {
 			orders[i] = row.update(page.Category, e.Time)
+			hedge = hedge || hedgeIdx(row.PositionIdx)
 		}
-		out := snapPage(exchange.AccountSnapshot{OpenOrders: orders})
+		out := snapPage(exchange.AccountSnapshot{OpenOrders: orders, HedgeMode: hedge})
 		if page.Cursor != "" && page.Cursor != cursor && len(page.List) > 0 {
 			out.Next = func(now time.Time) (exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
 				return a.openOrders(now, cat, settle, page.Cursor)
@@ -478,12 +528,14 @@ func (a *account) positions(now time.Time, cat, settle, cursor string) (exchange
 			return exchange.Page[exchange.AccountSnapshot]{}, err
 		}
 		var pos []exchange.Position
+		hedge := false
 		for _, row := range page.List {
 			if p, ok := row.position(page.Category); ok {
 				pos = append(pos, p)
 			}
+			hedge = hedge || hedgeIdx(row.PosIdx)
 		}
-		out := snapPage(exchange.AccountSnapshot{Positions: pos})
+		out := snapPage(exchange.AccountSnapshot{Positions: pos, HedgeMode: hedge})
 		if page.Cursor != "" && page.Cursor != cursor && len(page.List) > 0 {
 			out.Next = func(now time.Time) (exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
 				return a.positions(now, cat, settle, page.Cursor)

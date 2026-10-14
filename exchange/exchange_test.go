@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 
@@ -117,5 +118,26 @@ func TestRegistry(t *testing.T) {
 	pm, _ := r.AccountKind("XPM")
 	if !pm.CanTrade("W") || pm.CanTrade("XPM") {
 		t.Fatal("CanTrade")
+	}
+}
+
+func TestAccountConfigWindow(t *testing.T) {
+	for _, c := range []struct {
+		in   time.Duration
+		want time.Duration
+		ok   bool
+	}{
+		{0, DefaultValidity, true},
+		{time.Millisecond, time.Millisecond, true},
+		{2 * time.Second, 2 * time.Second, true},
+		{MaxValidity, MaxValidity, true},
+		{MaxValidity + time.Millisecond, 0, false},
+		{-time.Second, 0, false},
+		{1500 * time.Microsecond, 0, false},
+	} {
+		got, err := AccountConfig{Validity: c.in}.Window()
+		if (err == nil) != c.ok || got != c.want {
+			t.Errorf("Validity %v: got %v, %v", c.in, got, err)
+		}
 	}
 }

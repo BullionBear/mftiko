@@ -1,0 +1,58 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://api.bybit.com",
+    "path": "/v5/position/list",
+    "query": "category=linear&settleCoin=USDT&limit=200",
+    "header": [
+      {
+        "name": "X-BAPI-API-KEY",
+        "value": "conformance-api-key"
+      },
+      {
+        "name": "X-BAPI-TIMESTAMP",
+        "value": "1767225600000"
+      },
+      {
+        "name": "X-BAPI-RECV-WINDOW",
+        "value": "5000"
+      },
+      {
+        "name": "X-BAPI-SIGN",
+        "value": "700ffcba4e7bd5bc19ca2d92da10b2b45c9555f29fc4529dbbddec826455e0b5"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": {
+    "Items": [
+      {
+        "AsOfNs": 0,
+        "Balances": null,
+        "HedgeMode": true,
+        "OpenOrders": null,
+        "Positions": [
+          {
+            "EntryPrice": 65000,
+            "Exch": {
+              "Category": "Perp",
+              "ExchTicker": "BTCUSDT",
+              "Venue": "Bybit"
+            },
+            "Leverage": 10,
+            "MarkPrice": 64900,
+            "Size": -0.002,
+            "UnrealizedPnl": 0.2
+          }
+        ]
+      }
+    ],
+    "Next": null
+  }
+}

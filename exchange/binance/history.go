@@ -112,7 +112,7 @@ func (h *history) fillsRoute() (venue, path string, weight int, window time.Dura
 }
 
 func (h *history) Order(now time.Time, inst *symbol.Info, orderID string) (exchange.Call[*exchange.OrderUpdate], error) {
-	venue, path, weight, err := h.orderRoute()
+	venue, path, weight, err := orderRoute(h.k)
 	if err != nil {
 		return exchange.Call[*exchange.OrderUpdate]{}, err
 	}
@@ -133,8 +133,9 @@ func (h *history) Order(now time.Time, inst *symbol.Info, orderID string) (excha
 	}}, nil
 }
 
-func (h *history) orderRoute() (venue, path string, weight int, err error) {
-	switch h.k.name {
+// orderRoute is the single-order read of k: GET /fapi/v1/order or /api/v3/order.
+func orderRoute(k kind) (venue, path string, weight int, err error) {
+	switch k.name {
 	case kindUM.name:
 		return VenueUM, "/fapi/v1/order", 1, nil
 	case kindSpot.name:

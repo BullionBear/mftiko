@@ -9,6 +9,9 @@ import (
 
 func accountFactory(k kind) exchange.AccountFactory {
 	return func(cfg exchange.AccountConfig) (exchange.Account, error) {
+		if _, err := cfg.Window(); err != nil {
+			return nil, err
+		}
 		a := &account{k: k, cfg: cfg}
 		if k.name == kindUM.name {
 			return &umAccount{account: a}, nil
@@ -81,11 +84,15 @@ func (a *account) NewTradeStream() (exchange.TradeStream, error) {
 	if err != nil {
 		return nil, err
 	}
+	w, err := a.cfg.Window()
+	if err != nil {
+		return nil, err
+	}
 	switch a.k.name {
 	case kindUM.name:
-		return &tradeStream{url: a.tradeURL(), key: a.cfg.Credentials.Key, sig: sig}, nil
+		return &tradeStream{url: a.tradeURL(), key: a.cfg.Credentials.Key, sig: sig, window: w.Milliseconds()}, nil
 	case kindSpot.name:
-		return &spotTrade{url: a.tradeURL(), key: a.cfg.Credentials.Key, sig: sig}, nil
+		return &spotTrade{url: a.tradeURL(), key: a.cfg.Credentials.Key, sig: sig, window: w.Milliseconds()}, nil
 	default:
 		return nil, exchange.ErrNotImplemented
 	}

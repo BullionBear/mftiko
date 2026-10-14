@@ -44,7 +44,8 @@
 // # Checks
 //
 //   - cases: each case's request and parse match the golden file; the parse records the error kind
-//     (Kind), so recorded refusals pin the classification as *Reject, *RateLimited or ErrAuth (D302).
+//     (Kind), so recorded refusals pin the classification as *Reject, *RateLimited, ErrAuth (D302) or,
+//     for QueryOrder, ErrNotFound (D605).
 //   - listing: every listing passes Listing.Validate and Ticker after asset canonicalization (D203),
 //     and its tick and step fit float64 at the instrument's magnitude (D008).
 //   - sessions: each session decodes to its golden events, and decodes the same when every frame goes

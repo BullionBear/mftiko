@@ -2,6 +2,7 @@ package okx
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -345,3 +346,54 @@ func (c *capture) Order(e *exchange.OrderUpdate)   { c.orders = append(c.orders,
 func (c *capture) Fill(e *exchange.Fill)           { c.fills = append(c.fills, *e) }
 func (c *capture) Balances(e []exchange.Balance)   { c.bals = append([]exchange.Balance(nil), e...) }
 func (c *capture) Positions(e []exchange.Position) { c.pos = append([]exchange.Position(nil), e...) }
+
+// TestExpTime: Submit, Cancel and CancelBatch carry expTime, now plus AccountConfig.Validity in Unix
+// ms (D605); reads do not. A window out of range is refused when the account is built.
+func TestExpTime(t *testing.T) {
+	kind := Declare().AccountKinds[0]
+	cfg := exchange.AccountConfig{Credentials: conformance.TestCredentials(exchange.KeyHMAC, true), Validity: 3 * time.Second}
+	a, err := kind.Account(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := conformance.DefaultNow
+	want := strconv.FormatInt(now.Add(3*time.Second).UnixMilli(), 10)
+	ref := exchange.CancelRef{Instrument: spotInst(), ClientOrderID: cloidGTC}
+	sub, err := a.Submit(now, limitOrder(exchange.TIFGTC, cloidGTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	can, err := a.Cancel(now, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch, err := a.CancelBatch(now, []exchange.CancelRef{ref})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range []exchange.HTTPRequest{sub.Req, can.Req, batch.Req} {
+		if got := expTimeOf(r); got != want {
+			t.Errorf("%s expTime %q, want %s", r.Path, got, want)
+		}
+	}
+	q, err := a.QueryOrder(now, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := expTimeOf(q.Req); got != "" {
+		t.Errorf("a read carries expTime %q", got)
+	}
+	cfg.Validity = time.Hour
+	if _, err := kind.Account(cfg); err == nil {
+		t.Error("an hour's window was taken")
+	}
+}
+
+func expTimeOf(r exchange.HTTPRequest) string {
+	for _, h := range r.Header {
+		if h.Name == "expTime" {
+			return h.Value
+		}
+	}
+	return ""
+}

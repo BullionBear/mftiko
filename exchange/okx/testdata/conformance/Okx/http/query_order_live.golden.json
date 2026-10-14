@@ -1,0 +1,56 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://www.okx.com",
+    "path": "/api/v5/trade/order",
+    "query": "instId=BTC-USDT&clOrdId=1767225600000000001",
+    "header": [
+      {
+        "name": "OK-ACCESS-KEY",
+        "value": "conformance-api-key"
+      },
+      {
+        "name": "OK-ACCESS-SIGN",
+        "value": "hHukUl6fcims3XXsXO9EPPf2H9e3U/v+JmXSoeDk2Ss="
+      },
+      {
+        "name": "OK-ACCESS-TIMESTAMP",
+        "value": "2026-01-01T00:00:00.000Z"
+      },
+      {
+        "name": "OK-ACCESS-PASSPHRASE",
+        "value": "conformance-passphrase-9a8b"
+      },
+      {
+        "name": "User-Agent",
+        "value": "mftiko"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": {
+    "AvgPrice": null,
+    "ClientOrderID": "1767225600000000001",
+    "Exch": {
+      "Category": "Spot",
+      "ExchTicker": "BTC-USDT",
+      "Venue": "Okx"
+    },
+    "ExchTsNs": 1767225600000000000,
+    "FilledQty": 0,
+    "OrderID": "3997618522675671041",
+    "Price": 41000,
+    "Qty": 0.00002,
+    "QuoteQty": null,
+    "RejectReason": "",
+    "Side": 1,
+    "Status": 3,
+    "Type": 1
+  }
+}

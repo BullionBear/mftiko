@@ -1,0 +1,38 @@
+{
+  "response": {
+    "status": 200,
+    "body": {
+      "code": "0",
+      "msg": "",
+      "data": [
+        {
+          "acctLv": "2",
+          "acctStpMode": "cancel_maker",
+          "autoLoan": false,
+          "ctIsoMode": "automatic",
+          "enableSpotBorrow": false,
+          "greeksType": "PA",
+          "ip": "",
+          "kycLv": "2",
+          "label": "mftiko",
+          "level": "Lv1",
+          "levelTmp": "",
+          "liquidationGear": "-1",
+          "mainUid": "44705892343619584",
+          "mgnIsoMode": "automatic",
+          "opAuth": "1",
+          "perm": "read_only,trade",
+          "posMode": "long_short_mode",
+          "roleType": "0",
+          "spotBorrowAutoRepay": false,
+          "spotOffsetType": "",
+          "spotRoleType": "0",
+          "spotTraderInsts": [],
+          "traderInsts": [],
+          "type": "0",
+          "uid": "44705892343619584"
+        }
+      ]
+    }
+  }
+}

@@ -134,21 +134,22 @@ func parseAck(resp *exchange.HTTPResponse) (struct{}, error) {
 }
 
 type orderRow struct {
-	Category   string        `json:"category"`
-	Symbol     string        `json:"symbol"`
-	OrderID    string        `json:"orderId"`
-	LinkID     string        `json:"orderLinkId"`
-	Side       string        `json:"side"`
-	OrderType  string        `json:"orderType"`
-	Status     string        `json:"orderStatus"`
-	Qty        codec.Decimal `json:"qty"`
-	Price      codec.Decimal `json:"price"`
-	Avg        codec.Decimal `json:"avgPrice"`
-	Filled     codec.Decimal `json:"cumExecQty"`
-	MarketUnit string        `json:"marketUnit"`
-	Reject     string        `json:"rejectReason"`
-	Created    string        `json:"createdTime"`
-	Updated    string        `json:"updatedTime"`
+	Category    string        `json:"category"`
+	Symbol      string        `json:"symbol"`
+	OrderID     string        `json:"orderId"`
+	LinkID      string        `json:"orderLinkId"`
+	Side        string        `json:"side"`
+	OrderType   string        `json:"orderType"`
+	Status      string        `json:"orderStatus"`
+	Qty         codec.Decimal `json:"qty"`
+	Price       codec.Decimal `json:"price"`
+	Avg         codec.Decimal `json:"avgPrice"`
+	Filled      codec.Decimal `json:"cumExecQty"`
+	MarketUnit  string        `json:"marketUnit"`
+	Reject      string        `json:"rejectReason"`
+	PositionIdx int           `json:"positionIdx"`
+	Created     string        `json:"createdTime"`
+	Updated     string        `json:"updatedTime"`
 }
 
 func (o orderRow) update(cat string, fallbackMs int64) exchange.OrderUpdate {
@@ -230,6 +231,7 @@ type posRow struct {
 	Mark     codec.Decimal `json:"markPrice"`
 	UPL      codec.Decimal `json:"unrealisedPnl"`
 	Lev      string        `json:"leverage"`
+	PosIdx   int           `json:"positionIdx"`
 	Updated  string        `json:"updatedTime"`
 }
 

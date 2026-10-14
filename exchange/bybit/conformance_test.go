@@ -74,6 +74,27 @@ func spec() conformance.Spec {
 			conformance.Call("balances", func(e conformance.Env) (exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
 				return snapCall(e, "/v5/account/wallet-balance", "accountType=UNIFIED")
 			}),
+			conformance.Call("query_order_new", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: btcInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("query_order_partial", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: btcInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("query_order_filled", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: btcInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("query_order_canceled", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: btcInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("query_order_missing", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: btcInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("open_orders_hedge", func(e conformance.Env) (exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
+				return snapCall(e, "/v5/order/realtime", "settleCoin=USDT")
+			}),
+			conformance.Call("positions_hedge", func(e conformance.Env) (exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
+				return snapCall(e, "/v5/position/list", "settleCoin=USDT")
+			}),
 			conformance.Call("leverage", func(e conformance.Env) (exchange.Call[float64], error) {
 				return e.Account.Leverage(e.Now, btcInst())
 			}),

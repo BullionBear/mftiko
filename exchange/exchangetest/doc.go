@@ -22,7 +22,9 @@
 // answers as an exchange.Doer, and a private websocket served by Handler that the worker dials with
 // exchange/transport/ws. The test scripts refusals, unanswered requests, 429s, failed snapshot pages,
 // refused logins, failed handshakes and dropped connections, and changes the state, which pushes the
-// events a venue would send.
+// events a venue would send. QueryOrder finds orders open or ended; a Submit or Cancel held back with
+// Outcome.Late takes effect when it Arrives within its validity window and is refused after it
+// (D605, D617).
 //
 // A fixture is a JSON array of symbol.Listing values. Object keys are that struct's exported field
 // names (encoding/json also accepts a different case of the same name), and the loader decodes into

@@ -31,6 +31,9 @@ func Declare() exchange.Declaration {
 			Trades:   []string{Name},
 			KeyTypes: []exchange.KeyType{exchange.KeyHMAC},
 			Account: func(cfg exchange.AccountConfig) (exchange.Account, error) {
+				if _, err := cfg.Window(); err != nil {
+					return nil, err
+				}
 				return &account{cfg: cfg}, nil
 			},
 			History: func(cfg exchange.AccountConfig) (exchange.History, error) {

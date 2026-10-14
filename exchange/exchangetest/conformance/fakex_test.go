@@ -480,6 +480,9 @@ func (a *account) Cancel(time.Time, exchange.CancelRef) (exchange.Call[struct{}]
 func (a *account) CancelBatch(time.Time, []exchange.CancelRef) (exchange.Call[[]error], error) {
 	return exchange.Call[[]error]{}, exchange.ErrUnsupported
 }
+func (a *account) QueryOrder(time.Time, exchange.CancelRef) (exchange.Call[*exchange.OrderUpdate], error) {
+	return exchange.Call[*exchange.OrderUpdate]{}, exchange.ErrUnsupported
+}
 func (a *account) Snapshot(time.Time) ([]exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
 	return nil, exchange.ErrUnsupported
 }

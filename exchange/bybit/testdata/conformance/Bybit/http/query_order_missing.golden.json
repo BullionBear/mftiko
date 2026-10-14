@@ -1,0 +1,34 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://api.bybit.com",
+    "path": "/v5/order/realtime",
+    "query": "category=linear&symbol=BTCUSDT&orderLinkId=1767225600000000001",
+    "header": [
+      {
+        "name": "X-BAPI-API-KEY",
+        "value": "conformance-api-key"
+      },
+      {
+        "name": "X-BAPI-TIMESTAMP",
+        "value": "1767225600000"
+      },
+      {
+        "name": "X-BAPI-RECV-WINDOW",
+        "value": "5000"
+      },
+      {
+        "name": "X-BAPI-SIGN",
+        "value": "8b24ee97ba073fa4f2989781dbc0baa880f0d127589725588a19c37c9dd1cef2"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": "recorded",
+  "error": "not_found"
+}

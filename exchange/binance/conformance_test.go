@@ -82,6 +82,35 @@ func spec() conformance.Spec {
 				}
 				return calls[2], nil
 			}),
+			conformance.Call("query_order_new", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: btcInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("query_order_partial", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: btcInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("query_order_filled", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: btcInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("query_order_canceled", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: btcInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("query_order_missing", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: btcInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("position_mode_oneway", func(e conformance.Env) (exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
+				calls, err := e.Account.Snapshot(e.Now)
+				if err != nil {
+					return exchange.Call[exchange.Page[exchange.AccountSnapshot]]{}, err
+				}
+				return calls[3], nil
+			}),
+			conformance.Call("position_mode_hedge", func(e conformance.Env) (exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
+				calls, err := e.Account.Snapshot(e.Now)
+				if err != nil {
+					return exchange.Call[exchange.Page[exchange.AccountSnapshot]]{}, err
+				}
+				return calls[3], nil
+			}),
 			conformance.Call("leverage", func(e conformance.Env) (exchange.Call[float64], error) {
 				return e.Account.Leverage(e.Now, btcInst())
 			}),
@@ -194,6 +223,18 @@ func spotSpec() conformance.Spec {
 					return exchange.Call[exchange.Page[exchange.AccountSnapshot]]{}, err
 				}
 				return calls[1], nil
+			}),
+			conformance.Call("query_order_new", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: spotInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("query_order_filled", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: spotInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("query_order_canceled", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: spotInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("query_order_missing", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: spotInst(), ClientOrderID: cloidGTC})
 			}),
 			conformance.Call("my_trades", func(e conformance.Env) (exchange.Call[*exchange.FillPage], error) {
 				return e.History.Fills(e.Now, exchange.FillQuery{Instrument: spotInst(), FromID: "100", Limit: 1})

@@ -209,6 +209,18 @@
 // 401/403 are ErrAuth.
 // A refused session.logon is ErrAuth from Decode; an order refusal is the answer's error.
 //
+// # Recon and order queries
+//
+// USD-M Snapshot is four calls: GET /fapi/v1/openOrders (weight 40), /fapi/v2/positionRisk,
+// /fapi/v2/account, and /fapi/v1/positionSide/dual (weight 30), whose dualSidePosition true is
+// AccountSnapshot.HedgeMode (D607). The position mode is the account's, shared by USD-M and
+// COIN-M. Spot has no positions and its Snapshot never sets HedgeMode.
+//
+// QueryOrder is GET /fapi/v1/order (spot: /api/v3/order) by symbol and origClientOrderId, or
+// orderId when the ref has no client order id. It finds open and ended orders; USD-M forgets a
+// cancelled or expired order with no fill three days after it was created, far longer than the
+// worker waits. -2013 (Order does not exist) is exchange.ErrNotFound (D605).
+//
 // # Signing
 //
 // Ed25519 only, base64 over the query string that is sent (codec.Query, then signature
@@ -217,6 +229,11 @@
 // not carry a signature: the testnet answers -1106 if they do. The request id is "o"+n for
 // an order and "c"+n for a cancel, so Decode needs no memory of what was sent (D303).
 // The codec's own logon id is "logon", which cannot collide with those.
+//
+// Every signed request, and the socket's logon, order.place and order.cancel, carries recvWindow:
+// AccountConfig.Validity in milliseconds, 5000 by default, at most 60000. A request that reaches
+// the venue more than recvWindow after its timestamp is refused, which is what lets the worker read
+// "no such order" as "not placed" (D605).
 //
 // Hosts: REST defaults to https://fapi.binance.com, the trade socket to
 // wss://ws-fapi.binance.com/ws-fapi/v1, the private socket to

@@ -27,6 +27,10 @@
       {
         "name": "Content-Type",
         "value": "application/json"
+      },
+      {
+        "name": "expTime",
+        "value": "1767225605000"
       }
     ],
     "body": "{\"instId\":\"BTC-USDT\",\"clOrdId\":\"1767225600000000001\"}",
