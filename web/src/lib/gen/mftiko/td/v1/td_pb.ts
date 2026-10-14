@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mftiko/td/v1/td.proto.
  */
 export const file_mftiko_td_v1_td: GenFile = /*@__PURE__*/
-  fileDesc("ChVtZnRpa28vdGQvdjEvdGQucHJvdG8SDG1mdGlrby50ZC52MSKuAQoMT3JkZXJSZXF1ZXN0EiYKBnN1Ym1pdBgBIAEoCzIULm1mdGlrby50ZC52MS5TdWJtaXRIABImCgZjYW5jZWwYAiABKAsyFC5tZnRpa28udGQudjEuQ2FuY2VsSAASMQoMYmF0Y2hfY2FuY2VsGAQgASgLMhkubWZ0aWtvLnRkLnYxLkJhdGNoQ2FuY2VsSABCBQoDcmVxSgQIAxAEUg5jYW5jZWxfc2Vzc2lvbiLCAwoGU3VibWl0EhIKCnNlc3Npb25faWQYASABKAkSCwoDdWlkGAIgASgNEiQKBHNpZGUYAyABKA4yFi5tZnRpa28uY29tbW9uLnYxLlNpZGUSLwoKb3JkZXJfdHlwZRgEIAEoDjIbLm1mdGlrby5jb21tb24udjEuT3JkZXJUeXBlEhAKA3F0eRgFIAEoAUgAiAEBEhYKCXF1b3RlX3F0eRgGIAEoAUgBiAEBEhIKBXByaWNlGAcgASgBSAKIAQESKgoDdGlmGAggASgOMh0ubWZ0aWtvLmNvbW1vbi52MS5UaW1lSW5Gb3JjZRITCgtyZWR1Y2Vfb25seRgJIAEoCBIXCg9jbGllbnRfb3JkZXJfaWQYCiABKAkSMAoGcGFyYW1zGAsgAygLMiAubWZ0aWtvLnRkLnYxLlN1Ym1pdC5QYXJhbXNFbnRyeRIPCgdhbGdvX2lkGAwgASgNEhYKDnJlY3Zfd2luZG93X21zGA0gASgDGi0KC1BhcmFtc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAFCBgoEX3F0eUIMCgpfcXVvdGVfcXR5QggKBl9wcmljZSJ9CgZDYW5jZWwSEgoKc2Vzc2lvbl9pZBgBIAEoCRILCgN1aWQYAiABKA0SFwoPY2xpZW50X29yZGVyX2lkGAMgASgJEhAKCG9yZGVyX2lkGAQgASgJEg8KB2FsZ29faWQYBSABKA0SFgoOcmVjdl93aW5kb3dfbXMYBiABKAMiPgoLQmF0Y2hDYW5jZWwSDwoHYWxnb19pZBgBIAEoDRIMCgR1aWRzGAIgAygNSgQIAxAEUgp0aW1lb3V0X21zIlUKCk9yZGVyUmVwbHkSEAoIYWNjZXB0ZWQYASABKAgSDAoEY29kZRgCIAEoBRIOCgZyZWFzb24YAyABKAkSFwoPY2xpZW50X29yZGVyX2lkGAQgASgJIqcBCgtWaWV3UmVxdWVzdBIrCgNvbXMYASABKAsyHC5tZnRpa28udGQudjEuT21zVmlld1JlcXVlc3RIABIxCgZsZWRnZXIYAiABKAsyHy5tZnRpa28udGQudjEuTGVkZ2VyVmlld1JlcXVlc3RIABIxCghsZXZlcmFnZRgDIAEoCzIdLm1mdGlrby50ZC52MS5MZXZlcmFnZVJlcXVlc3RIAEIFCgNyZXEiRAoOT21zVmlld1JlcXVlc3QSDwoHc2V0dGxlZBgCIAEoCBIPCgdhbGdvX2lkGAMgASgNSgQIARACUgpzZXNzaW9uX2lkIiEKEUxlZGdlclZpZXdSZXF1ZXN0EgwKBHVpZHMYASADKA0iHgoPTGV2ZXJhZ2VSZXF1ZXN0EgsKA3VpZBgBIAEoDSKnAgoJVmlld1JlcGx5EiQKA29tcxgBIAEoCzIVLm1mdGlrby50ZC52MS5PbXNWaWV3SAASKgoGbGVkZ2VyGAIgASgLMhgubWZ0aWtvLnRkLnYxLkxlZGdlclZpZXdIABIuCghsZXZlcmFnZRgDIAEoCzIaLm1mdGlrby50ZC52MS5MZXZlcmFnZUluZm9IABIoCgVlcnJvchgEIAEoCzIXLm1mdGlrby5jb21tb24udjEuRXJyb3JIABIpCgVzdGF0ZRgKIAEoDjIaLm1mdGlrby50ZC52MS5BY2NvdW50U3RhdGUSGAoQcmVjb25jaWxlZF9hdF9ucxgLIAEoAxITCgtpbmNhcm5hdGlvbhgMIAEoDRILCgNzZXEYDSABKARCBwoFcmVwbHkiUQoHT21zVmlldxIjCgZvcmRlcnMYASADKAsyEy5tZnRpa28udGQudjEuT3JkZXJKBAgCEANKBAgDEARSC2luY2FybmF0aW9uUghhc19vZl9ucyKDAQoKTGVkZ2VyVmlldxInCghiYWxhbmNlcxgBIAMoCzIVLm1mdGlrby50ZC52MS5CYWxhbmNlEikKCXBvc2l0aW9ucxgCIAMoCzIWLm1mdGlrby50ZC52MS5Qb3NpdGlvbkoECAMQBEoECAQQBVILaW5jYXJuYXRpb25SCGFzX29mX25zIj8KDExldmVyYWdlSW5mbxILCgN1aWQYASABKA0SFQoIbGV2ZXJhZ2UYAiABKAFIAIgBAUILCglfbGV2ZXJhZ2Ui/AIKDEFjY291bnRFdmVudBILCgNzZXEYASABKAQSKwoGc291cmNlGAIgASgLMhsubWZ0aWtvLmNvbW1vbi52MS5Xb3JrZXJSZWYSMQoMb3JkZXJfdXBkYXRlGAogASgLMhkubWZ0aWtvLnRkLnYxLk9yZGVyVXBkYXRlSAASIgoEZmlsbBgLIAEoCzISLm1mdGlrby50ZC52MS5GaWxsSAASNQoOYmFsYW5jZV91cGRhdGUYDiABKAsyGy5tZnRpa28udGQudjEuQmFsYW5jZVVwZGF0ZUgAEjcKD3Bvc2l0aW9uX3VwZGF0ZRgPIAEoCzIcLm1mdGlrby50ZC52MS5Qb3NpdGlvblVwZGF0ZUgAEiQKBXJlY29uGBEgASgLMhMubWZ0aWtvLnRkLnYxLlJlY29uSABCBwoFZXZlbnRKBAgMEA1KBAgNEA5KBAgQEBFSDG9yZGVyX3JlamVjdFINY2FuY2VsX3JlamVjdFINYWNjb3VudF9yZXNldCJ4CgtPcmRlclVwZGF0ZRIiCgVvcmRlchgBIAEoCzITLm1mdGlrby50ZC52MS5PcmRlchInCgVjYXVzZRgCIAEoDjIYLm1mdGlrby50ZC52MS5PcmRlckNhdXNlEgwKBGNvZGUYAyABKAUSDgoGcmVhc29uGAQgASgJIp8DCgVPcmRlchILCgN1aWQYASABKA0SEAoIb3JkZXJfaWQYAiABKAkSFwoPY2xpZW50X29yZGVyX2lkGAMgASgJEiQKBHNpZGUYBCABKA4yFi5tZnRpa28uY29tbW9uLnYxLlNpZGUSLwoKb3JkZXJfdHlwZRgFIAEoDjIbLm1mdGlrby5jb21tb24udjEuT3JkZXJUeXBlEikKBnN0YXR1cxgGIAEoDjIZLm1mdGlrby50ZC52MS5PcmRlclN0YXR1cxILCgNxdHkYByABKAESFgoJcXVvdGVfcXR5GAggASgBSACIAQESEgoFcHJpY2UYCSABKAFIAYgBARISCgpmaWxsZWRfcXR5GAogASgBEhYKCWF2Z19wcmljZRgLIAEoAUgCiAEBEhIKCmV4Y2hfdHNfbnMYDSABKAMSEAoIdGRfdHNfbnMYDiABKAMSFgoOY2FuY2VsX3NlbnRfbnMYDyABKANCDAoKX3F1b3RlX3F0eUIICgZfcHJpY2VCDAoKX2F2Z19wcmljZUoECAwQDVINcmVqZWN0X3JlYXNvbiLYAQoERmlsbBILCgN1aWQYASABKA0SDwoHZmlsbF9pZBgCIAEoCRIQCghvcmRlcl9pZBgDIAEoCRIXCg9jbGllbnRfb3JkZXJfaWQYBCABKAkSJAoEc2lkZRgFIAEoDjIWLm1mdGlrby5jb21tb24udjEuU2lkZRINCgVwcmljZRgGIAEoARILCgNxdHkYByABKAESCwoDZmVlGAggASgBEhEKCWZlZV9hc3NldBgJIAEoCRIRCglsaXF1aWRpdHkYCiABKAkSEgoKZXhjaF90c19ucxgLIAEoAyJHCgdCYWxhbmNlEg0KBWFzc2V0GAEgASgJEgwKBGZyZWUYAiABKAESDgoGbG9ja2VkGAMgASgBEg8KB3ByZWxvY2sYBCABKAEiywEKCFBvc2l0aW9uEgsKA3VpZBgBIAEoDRIMCgRzaXplGAIgASgBEhgKC2VudHJ5X3ByaWNlGAMgASgBSACIAQESFwoKbWFya19wcmljZRgEIAEoAUgBiAEBEhsKDnVucmVhbGl6ZWRfcG5sGAUgASgBSAKIAQESFQoIbGV2ZXJhZ2UYBiABKAFIA4gBAUIOCgxfZW50cnlfcHJpY2VCDQoLX21hcmtfcHJpY2VCEQoPX3VucmVhbGl6ZWRfcG5sQgsKCV9sZXZlcmFnZSI4Cg1CYWxhbmNlVXBkYXRlEicKCGJhbGFuY2VzGAEgAygLMhUubWZ0aWtvLnRkLnYxLkJhbGFuY2UiOwoOUG9zaXRpb25VcGRhdGUSKQoJcG9zaXRpb25zGAEgAygLMhYubWZ0aWtvLnRkLnYxLlBvc2l0aW9uItcBCgVSZWNvbhITCgtpbmNhcm5hdGlvbhgBIAEoDRIpCgZyZWFzb24YAiABKA4yGS5tZnRpa28udGQudjEuUmVjb25SZWFzb24SKAoLb3Blbl9vcmRlcnMYAyADKAsyEy5tZnRpa28udGQudjEuT3JkZXISKQoJcG9zaXRpb25zGAQgAygLMhYubWZ0aWtvLnRkLnYxLlBvc2l0aW9uEicKCGJhbGFuY2VzGAUgAygLMhUubWZ0aWtvLnRkLnYxLkJhbGFuY2USEAoIYXNfb2ZfbnMYBiABKAMqoQIKC09yZGVyU3RhdHVzEhwKGE9SREVSX1NUQVRVU19VTlNQRUNJRklFRBAAEhwKGE9SREVSX1NUQVRVU19QRU5ESU5HX05FVxABEhQKEE9SREVSX1NUQVRVU19ORVcQAhIZChVPUkRFUl9TVEFUVVNfQUNDRVBURUQQAxIhCh1PUkRFUl9TVEFUVVNfUEFSVElBTExZX0ZJTExFRBAEEhcKE09SREVSX1NUQVRVU19GSUxMRUQQBRIaChZPUkRFUl9TVEFUVVNfQ0FOQ0VMTEVEEAYSGQoVT1JERVJfU1RBVFVTX1JFSkVDVEVEEAcSGAoUT1JERVJfU1RBVFVTX0VYUElSRUQQCBIYChRPUkRFUl9TVEFUVVNfVU5LTk9XThAJKsQCCgpSZWplY3RDb2RlEhsKF1JFSkVDVF9DT0RFX1VOU1BFQ0lGSUVEEAASHwobUkVKRUNUX0NPREVfQUNDT1VOVF9PRkZMSU5FEGUSIAocUkVKRUNUX0NPREVfQUNDT1VOVF9ERUdSQURFRBBmEhoKFlJFSkVDVF9DT0RFX0hFREdFX01PREUQZxIdChlSRUpFQ1RfQ09ERV9BTEdPX01JU01BVENIEGgSIgoeUkVKRUNUX0NPREVfVkVOVUVfTk9UX1RSQURBQkxFEGkSHQoZUkVKRUNUX0NPREVfSU5WQUxJRF9PUkRFUhBqEh4KGlJFSkVDVF9DT0RFX09SREVSX05PVF9PUEVOEGsSHAoYUkVKRUNUX0NPREVfUkFURV9MSU1JVEVEEGwSGgoWUkVKRUNUX0NPREVfTk9UX1BMQUNFRBB4KoMBCgxBY2NvdW50U3RhdGUSHQoZQUNDT1VOVF9TVEFURV9VTlNQRUNJRklFRBAAEhcKE0FDQ09VTlRfU1RBVEVfUkVBRFkQARIaChZBQ0NPVU5UX1NUQVRFX0RFR1JBREVEEAIiBAgDEAMqGUFDQ09VTlRfU1RBVEVfVU5BVkFJTEFCTEUq4gIKCk9yZGVyQ2F1c2USGwoXT1JERVJfQ0FVU0VfVU5TUEVDSUZJRUQQABIZChVPUkRFUl9DQVVTRV9TVUJNSVRURUQQARIcChhPUkRFUl9DQVVTRV9BQ0tOT1dMRURHRUQQAhIYChRPUkRFUl9DQVVTRV9BQ0NFUFRFRBADEhYKEk9SREVSX0NBVVNFX0ZJTExFRBAEEiAKHE9SREVSX0NBVVNFX0NBTkNFTF9SRVFVRVNURUQQBRIZChVPUkRFUl9DQVVTRV9DQU5DRUxMRUQQBhIfChtPUkRFUl9DQVVTRV9DQU5DRUxfUkVKRUNURUQQBxIYChRPUkRFUl9DQVVTRV9SRUpFQ1RFRBAIEhcKE09SREVSX0NBVVNFX0VYUElSRUQQCRIfChtPUkRFUl9DQVVTRV9PVVRDT01FX1VOS05PV04QChIaChZPUkRFUl9DQVVTRV9SRUNPTkNJTEVEEAsqZQoLUmVjb25SZWFzb24SHAoYUkVDT05fUkVBU09OX1VOU1BFQ0lGSUVEEAASGgoWUkVDT05fUkVBU09OX1JFQ09OTkVDVBABEhwKGFJFQ09OX1JFQVNPTl9JTkNBUk5BVElPThACQj5aPGdpdGh1Yi5jb20vQnVsbGlvbkJlYXIvbWZ0aWtvL2NvbnRyYWN0L2dlbi9tZnRpa28vdGQvdjE7dGR2MWIGcHJvdG8z", [file_mftiko_common_v1_common]);
+  fileDesc("ChVtZnRpa28vdGQvdjEvdGQucHJvdG8SDG1mdGlrby50ZC52MSKuAQoMT3JkZXJSZXF1ZXN0EiYKBnN1Ym1pdBgBIAEoCzIULm1mdGlrby50ZC52MS5TdWJtaXRIABImCgZjYW5jZWwYAiABKAsyFC5tZnRpa28udGQudjEuQ2FuY2VsSAASMQoMYmF0Y2hfY2FuY2VsGAQgASgLMhkubWZ0aWtvLnRkLnYxLkJhdGNoQ2FuY2VsSABCBQoDcmVxSgQIAxAEUg5jYW5jZWxfc2Vzc2lvbiLCAwoGU3VibWl0EhIKCnNlc3Npb25faWQYASABKAkSCwoDdWlkGAIgASgNEiQKBHNpZGUYAyABKA4yFi5tZnRpa28uY29tbW9uLnYxLlNpZGUSLwoKb3JkZXJfdHlwZRgEIAEoDjIbLm1mdGlrby5jb21tb24udjEuT3JkZXJUeXBlEhAKA3F0eRgFIAEoAUgAiAEBEhYKCXF1b3RlX3F0eRgGIAEoAUgBiAEBEhIKBXByaWNlGAcgASgBSAKIAQESKgoDdGlmGAggASgOMh0ubWZ0aWtvLmNvbW1vbi52MS5UaW1lSW5Gb3JjZRITCgtyZWR1Y2Vfb25seRgJIAEoCBIXCg9jbGllbnRfb3JkZXJfaWQYCiABKAkSMAoGcGFyYW1zGAsgAygLMiAubWZ0aWtvLnRkLnYxLlN1Ym1pdC5QYXJhbXNFbnRyeRIPCgdhbGdvX2lkGAwgASgNEhYKDnJlY3Zfd2luZG93X21zGA0gASgDGi0KC1BhcmFtc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAFCBgoEX3F0eUIMCgpfcXVvdGVfcXR5QggKBl9wcmljZSJ9CgZDYW5jZWwSEgoKc2Vzc2lvbl9pZBgBIAEoCRILCgN1aWQYAiABKA0SFwoPY2xpZW50X29yZGVyX2lkGAMgASgJEhAKCG9yZGVyX2lkGAQgASgJEg8KB2FsZ29faWQYBSABKA0SFgoOcmVjdl93aW5kb3dfbXMYBiABKAMiagoLQmF0Y2hDYW5jZWwSLgoGb3JkZXJzGAQgAygLMh4ubWZ0aWtvLnRkLnYxLkJhdGNoQ2FuY2VsT3JkZXJKBAgBEAJKBAgCEANKBAgDEARSB2FsZ29faWRSBHVpZHNSCnRpbWVvdXRfbXMiPQoQQmF0Y2hDYW5jZWxPcmRlchIXCg9jbGllbnRfb3JkZXJfaWQYASABKAkSEAoIb3JkZXJfaWQYAiABKAkiVQoKT3JkZXJSZXBseRIQCghhY2NlcHRlZBgBIAEoCBIMCgRjb2RlGAIgASgFEg4KBnJlYXNvbhgDIAEoCRIXCg9jbGllbnRfb3JkZXJfaWQYBCABKAkipwEKC1ZpZXdSZXF1ZXN0EisKA29tcxgBIAEoCzIcLm1mdGlrby50ZC52MS5PbXNWaWV3UmVxdWVzdEgAEjEKBmxlZGdlchgCIAEoCzIfLm1mdGlrby50ZC52MS5MZWRnZXJWaWV3UmVxdWVzdEgAEjEKCGxldmVyYWdlGAMgASgLMh0ubWZ0aWtvLnRkLnYxLkxldmVyYWdlUmVxdWVzdEgAQgUKA3JlcSJECg5PbXNWaWV3UmVxdWVzdBIPCgdzZXR0bGVkGAIgASgIEg8KB2FsZ29faWQYAyABKA1KBAgBEAJSCnNlc3Npb25faWQiIQoRTGVkZ2VyVmlld1JlcXVlc3QSDAoEdWlkcxgBIAMoDSIeCg9MZXZlcmFnZVJlcXVlc3QSCwoDdWlkGAEgASgNIqcCCglWaWV3UmVwbHkSJAoDb21zGAEgASgLMhUubWZ0aWtvLnRkLnYxLk9tc1ZpZXdIABIqCgZsZWRnZXIYAiABKAsyGC5tZnRpa28udGQudjEuTGVkZ2VyVmlld0gAEi4KCGxldmVyYWdlGAMgASgLMhoubWZ0aWtvLnRkLnYxLkxldmVyYWdlSW5mb0gAEigKBWVycm9yGAQgASgLMhcubWZ0aWtvLmNvbW1vbi52MS5FcnJvckgAEikKBXN0YXRlGAogASgOMhoubWZ0aWtvLnRkLnYxLkFjY291bnRTdGF0ZRIYChByZWNvbmNpbGVkX2F0X25zGAsgASgDEhMKC2luY2FybmF0aW9uGAwgASgNEgsKA3NlcRgNIAEoBEIHCgVyZXBseSJRCgdPbXNWaWV3EiMKBm9yZGVycxgBIAMoCzITLm1mdGlrby50ZC52MS5PcmRlckoECAIQA0oECAMQBFILaW5jYXJuYXRpb25SCGFzX29mX25zIoMBCgpMZWRnZXJWaWV3EicKCGJhbGFuY2VzGAEgAygLMhUubWZ0aWtvLnRkLnYxLkJhbGFuY2USKQoJcG9zaXRpb25zGAIgAygLMhYubWZ0aWtvLnRkLnYxLlBvc2l0aW9uSgQIAxAESgQIBBAFUgtpbmNhcm5hdGlvblIIYXNfb2ZfbnMiPwoMTGV2ZXJhZ2VJbmZvEgsKA3VpZBgBIAEoDRIVCghsZXZlcmFnZRgCIAEoAUgAiAEBQgsKCV9sZXZlcmFnZSL8AgoMQWNjb3VudEV2ZW50EgsKA3NlcRgBIAEoBBIrCgZzb3VyY2UYAiABKAsyGy5tZnRpa28uY29tbW9uLnYxLldvcmtlclJlZhIxCgxvcmRlcl91cGRhdGUYCiABKAsyGS5tZnRpa28udGQudjEuT3JkZXJVcGRhdGVIABIiCgRmaWxsGAsgASgLMhIubWZ0aWtvLnRkLnYxLkZpbGxIABI1Cg5iYWxhbmNlX3VwZGF0ZRgOIAEoCzIbLm1mdGlrby50ZC52MS5CYWxhbmNlVXBkYXRlSAASNwoPcG9zaXRpb25fdXBkYXRlGA8gASgLMhwubWZ0aWtvLnRkLnYxLlBvc2l0aW9uVXBkYXRlSAASJAoFcmVjb24YESABKAsyEy5tZnRpa28udGQudjEuUmVjb25IAEIHCgVldmVudEoECAwQDUoECA0QDkoECBAQEVIMb3JkZXJfcmVqZWN0Ug1jYW5jZWxfcmVqZWN0Ug1hY2NvdW50X3Jlc2V0IngKC09yZGVyVXBkYXRlEiIKBW9yZGVyGAEgASgLMhMubWZ0aWtvLnRkLnYxLk9yZGVyEicKBWNhdXNlGAIgASgOMhgubWZ0aWtvLnRkLnYxLk9yZGVyQ2F1c2USDAoEY29kZRgDIAEoBRIOCgZyZWFzb24YBCABKAkinwMKBU9yZGVyEgsKA3VpZBgBIAEoDRIQCghvcmRlcl9pZBgCIAEoCRIXCg9jbGllbnRfb3JkZXJfaWQYAyABKAkSJAoEc2lkZRgEIAEoDjIWLm1mdGlrby5jb21tb24udjEuU2lkZRIvCgpvcmRlcl90eXBlGAUgASgOMhsubWZ0aWtvLmNvbW1vbi52MS5PcmRlclR5cGUSKQoGc3RhdHVzGAYgASgOMhkubWZ0aWtvLnRkLnYxLk9yZGVyU3RhdHVzEgsKA3F0eRgHIAEoARIWCglxdW90ZV9xdHkYCCABKAFIAIgBARISCgVwcmljZRgJIAEoAUgBiAEBEhIKCmZpbGxlZF9xdHkYCiABKAESFgoJYXZnX3ByaWNlGAsgASgBSAKIAQESEgoKZXhjaF90c19ucxgNIAEoAxIQCgh0ZF90c19ucxgOIAEoAxIWCg5jYW5jZWxfc2VudF9ucxgPIAEoA0IMCgpfcXVvdGVfcXR5QggKBl9wcmljZUIMCgpfYXZnX3ByaWNlSgQIDBANUg1yZWplY3RfcmVhc29uItgBCgRGaWxsEgsKA3VpZBgBIAEoDRIPCgdmaWxsX2lkGAIgASgJEhAKCG9yZGVyX2lkGAMgASgJEhcKD2NsaWVudF9vcmRlcl9pZBgEIAEoCRIkCgRzaWRlGAUgASgOMhYubWZ0aWtvLmNvbW1vbi52MS5TaWRlEg0KBXByaWNlGAYgASgBEgsKA3F0eRgHIAEoARILCgNmZWUYCCABKAESEQoJZmVlX2Fzc2V0GAkgASgJEhEKCWxpcXVpZGl0eRgKIAEoCRISCgpleGNoX3RzX25zGAsgASgDIkcKB0JhbGFuY2USDQoFYXNzZXQYASABKAkSDAoEZnJlZRgCIAEoARIOCgZsb2NrZWQYAyABKAESDwoHcHJlbG9jaxgEIAEoASLLAQoIUG9zaXRpb24SCwoDdWlkGAEgASgNEgwKBHNpemUYAiABKAESGAoLZW50cnlfcHJpY2UYAyABKAFIAIgBARIXCgptYXJrX3ByaWNlGAQgASgBSAGIAQESGwoOdW5yZWFsaXplZF9wbmwYBSABKAFIAogBARIVCghsZXZlcmFnZRgGIAEoAUgDiAEBQg4KDF9lbnRyeV9wcmljZUINCgtfbWFya19wcmljZUIRCg9fdW5yZWFsaXplZF9wbmxCCwoJX2xldmVyYWdlIjgKDUJhbGFuY2VVcGRhdGUSJwoIYmFsYW5jZXMYASADKAsyFS5tZnRpa28udGQudjEuQmFsYW5jZSI7Cg5Qb3NpdGlvblVwZGF0ZRIpCglwb3NpdGlvbnMYASADKAsyFi5tZnRpa28udGQudjEuUG9zaXRpb24i1wEKBVJlY29uEhMKC2luY2FybmF0aW9uGAEgASgNEikKBnJlYXNvbhgCIAEoDjIZLm1mdGlrby50ZC52MS5SZWNvblJlYXNvbhIoCgtvcGVuX29yZGVycxgDIAMoCzITLm1mdGlrby50ZC52MS5PcmRlchIpCglwb3NpdGlvbnMYBCADKAsyFi5tZnRpa28udGQudjEuUG9zaXRpb24SJwoIYmFsYW5jZXMYBSADKAsyFS5tZnRpa28udGQudjEuQmFsYW5jZRIQCghhc19vZl9ucxgGIAEoAyqhAgoLT3JkZXJTdGF0dXMSHAoYT1JERVJfU1RBVFVTX1VOU1BFQ0lGSUVEEAASHAoYT1JERVJfU1RBVFVTX1BFTkRJTkdfTkVXEAESFAoQT1JERVJfU1RBVFVTX05FVxACEhkKFU9SREVSX1NUQVRVU19BQ0NFUFRFRBADEiEKHU9SREVSX1NUQVRVU19QQVJUSUFMTFlfRklMTEVEEAQSFwoTT1JERVJfU1RBVFVTX0ZJTExFRBAFEhoKFk9SREVSX1NUQVRVU19DQU5DRUxMRUQQBhIZChVPUkRFUl9TVEFUVVNfUkVKRUNURUQQBxIYChRPUkRFUl9TVEFUVVNfRVhQSVJFRBAIEhgKFE9SREVSX1NUQVRVU19VTktOT1dOEAkqxAIKClJlamVjdENvZGUSGwoXUkVKRUNUX0NPREVfVU5TUEVDSUZJRUQQABIfChtSRUpFQ1RfQ09ERV9BQ0NPVU5UX09GRkxJTkUQZRIgChxSRUpFQ1RfQ09ERV9BQ0NPVU5UX0RFR1JBREVEEGYSGgoWUkVKRUNUX0NPREVfSEVER0VfTU9ERRBnEh0KGVJFSkVDVF9DT0RFX0FMR09fTUlTTUFUQ0gQaBIiCh5SRUpFQ1RfQ09ERV9WRU5VRV9OT1RfVFJBREFCTEUQaRIdChlSRUpFQ1RfQ09ERV9JTlZBTElEX09SREVSEGoSHgoaUkVKRUNUX0NPREVfT1JERVJfTk9UX09QRU4QaxIcChhSRUpFQ1RfQ09ERV9SQVRFX0xJTUlURUQQbBIaChZSRUpFQ1RfQ09ERV9OT1RfUExBQ0VEEHgqgwEKDEFjY291bnRTdGF0ZRIdChlBQ0NPVU5UX1NUQVRFX1VOU1BFQ0lGSUVEEAASFwoTQUNDT1VOVF9TVEFURV9SRUFEWRABEhoKFkFDQ09VTlRfU1RBVEVfREVHUkFERUQQAiIECAMQAyoZQUNDT1VOVF9TVEFURV9VTkFWQUlMQUJMRSriAgoKT3JkZXJDYXVzZRIbChdPUkRFUl9DQVVTRV9VTlNQRUNJRklFRBAAEhkKFU9SREVSX0NBVVNFX1NVQk1JVFRFRBABEhwKGE9SREVSX0NBVVNFX0FDS05PV0xFREdFRBACEhgKFE9SREVSX0NBVVNFX0FDQ0VQVEVEEAMSFgoST1JERVJfQ0FVU0VfRklMTEVEEAQSIAocT1JERVJfQ0FVU0VfQ0FOQ0VMX1JFUVVFU1RFRBAFEhkKFU9SREVSX0NBVVNFX0NBTkNFTExFRBAGEh8KG09SREVSX0NBVVNFX0NBTkNFTF9SRUpFQ1RFRBAHEhgKFE9SREVSX0NBVVNFX1JFSkVDVEVEEAgSFwoTT1JERVJfQ0FVU0VfRVhQSVJFRBAJEh8KG09SREVSX0NBVVNFX09VVENPTUVfVU5LTk9XThAKEhoKFk9SREVSX0NBVVNFX1JFQ09OQ0lMRUQQCyplCgtSZWNvblJlYXNvbhIcChhSRUNPTl9SRUFTT05fVU5TUEVDSUZJRUQQABIaChZSRUNPTl9SRUFTT05fUkVDT05ORUNUEAESHAoYUkVDT05fUkVBU09OX0lOQ0FSTkFUSU9OEAJCPlo8Z2l0aHViLmNvbS9CdWxsaW9uQmVhci9tZnRpa28vY29udHJhY3QvZ2VuL21mdGlrby90ZC92MTt0ZHYxYgZwcm90bzM", [file_mftiko_common_v1_common]);
 
 /**
  * @generated from message mftiko.td.v1.OrderRequest
@@ -197,27 +197,21 @@ export const CancelSchema: GenMessage<Cancel> = /*@__PURE__*/
   messageDesc(file_mftiko_td_v1_td, 2);
 
 /**
- * 撤掉這個帳號上 client_order_id 的 algo 欄位等於 algo_id 的所有掛單（D602、D625）。
- * 只看 algo 欄位，不分 session、incarnation：上一個進程或上一個 session 留下的也算。
- * 回覆只說 TD 收下了；每一張單撤成或撤不成，各自是一則 OrderUpdate（D610）。
- * 沒有要送的也回 accepted。整筆放不進 OrderRate（一張算一次，可用到 100%）是 108，什麼都不送（D628）。
- * 其中任何一張的商品解不出來是 106。DEGRADED 照常，走 REST 的 CancelBatch，不走 TradeStream（D627）。
- * 整批結果不明時，批內每張以 cloid 查單，不重送（D626）。cancel-on-disconnect 不接（D625）。
+ * 一筆交易所的批次撤單（D625）。TD 把 orders 原樣轉成一筆 CancelBatch，不挑單、不分批、不排隊、不重試。
+ * algo_id 不是 TD 的索引。每一筆是 client_order_id 或 order_id；兩個都給時必須是同一張活單。
+ * 商品取自 OMS 裡那張活單的 UID。對不到活單，整筆 107；商品解不出來，整筆 106。兩種都什麼都不送，不影響別的 BatchCancel。
+ * CancelBatch 為 1（交易所沒有批次撤單）是 106，不改走單筆 Cancel。長過交易所上限仍送出，交易所的拒絕原樣回報。
+ * 這則訊息算 OrderRate 的一筆，與 Cancel 相同可用到 100%（D628）。沒有 recv_window_ms，有效期用 instance 預設。
+ * 回覆只說收下了；每一張單撤成或撤不成，各自是一則 OrderUpdate（D610）。DEGRADED 照常，走 REST，不走 TradeStream（D627）。
+ * 整筆結果不明時，批內每張以 cloid 查單，不重送（D626）。cancel-on-disconnect 不接。
  *
  * @generated from message mftiko.td.v1.BatchCancel
  */
 export type BatchCancel = Message<"mftiko.td.v1.BatchCancel"> & {
   /**
-   * @generated from field: uint32 algo_id = 1;
+   * @generated from field: repeated mftiko.td.v1.BatchCancelOrder orders = 4;
    */
-  algoId: number;
-
-  /**
-   * 空 = 全部商品
-   *
-   * @generated from field: repeated uint32 uids = 2;
-   */
-  uids: number[];
+  orders: BatchCancelOrder[];
 };
 
 /**
@@ -226,6 +220,30 @@ export type BatchCancel = Message<"mftiko.td.v1.BatchCancel"> & {
  */
 export const BatchCancelSchema: GenMessage<BatchCancel> = /*@__PURE__*/
   messageDesc(file_mftiko_td_v1_td, 3);
+
+/**
+ * BatchCancel 清單裡的一張單。client_order_id 與 order_id 至少要有一個。
+ *
+ * @generated from message mftiko.td.v1.BatchCancelOrder
+ */
+export type BatchCancelOrder = Message<"mftiko.td.v1.BatchCancelOrder"> & {
+  /**
+   * @generated from field: string client_order_id = 1;
+   */
+  clientOrderId: string;
+
+  /**
+   * @generated from field: string order_id = 2;
+   */
+  orderId: string;
+};
+
+/**
+ * Describes the message mftiko.td.v1.BatchCancelOrder.
+ * Use `create(BatchCancelOrderSchema)` to create a new message.
+ */
+export const BatchCancelOrderSchema: GenMessage<BatchCancelOrder> = /*@__PURE__*/
+  messageDesc(file_mftiko_td_v1_td, 4);
 
 /**
  * td.order 的回覆（D610）。
@@ -265,7 +283,7 @@ export type OrderReply = Message<"mftiko.td.v1.OrderReply"> & {
  * Use `create(OrderReplySchema)` to create a new message.
  */
 export const OrderReplySchema: GenMessage<OrderReply> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 4);
+  messageDesc(file_mftiko_td_v1_td, 5);
 
 /**
  * @generated from message mftiko.td.v1.ViewRequest
@@ -300,7 +318,7 @@ export type ViewRequest = Message<"mftiko.td.v1.ViewRequest"> & {
  * Use `create(ViewRequestSchema)` to create a new message.
  */
 export const ViewRequestSchema: GenMessage<ViewRequest> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 5);
+  messageDesc(file_mftiko_td_v1_td, 6);
 
 /**
  * @generated from message mftiko.td.v1.OmsViewRequest
@@ -326,7 +344,7 @@ export type OmsViewRequest = Message<"mftiko.td.v1.OmsViewRequest"> & {
  * Use `create(OmsViewRequestSchema)` to create a new message.
  */
 export const OmsViewRequestSchema: GenMessage<OmsViewRequest> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 6);
+  messageDesc(file_mftiko_td_v1_td, 7);
 
 /**
  * @generated from message mftiko.td.v1.LedgerViewRequest
@@ -345,7 +363,7 @@ export type LedgerViewRequest = Message<"mftiko.td.v1.LedgerViewRequest"> & {
  * Use `create(LedgerViewRequestSchema)` to create a new message.
  */
 export const LedgerViewRequestSchema: GenMessage<LedgerViewRequest> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 7);
+  messageDesc(file_mftiko_td_v1_td, 8);
 
 /**
  * 本地的槓桿快取：取自持倉的 leverage（recon 與持倉事件），持倉平掉之後仍保留；沒看過的商品回未知（D606、D615）。
@@ -364,7 +382,7 @@ export type LeverageRequest = Message<"mftiko.td.v1.LeverageRequest"> & {
  * Use `create(LeverageRequestSchema)` to create a new message.
  */
 export const LeverageRequestSchema: GenMessage<LeverageRequest> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 8);
+  messageDesc(file_mftiko_td_v1_td, 9);
 
 /**
  * 快照還沒好也照樣回，不擋、不等：呼叫端看 state、reconciled_at_ns 判斷新舊（D606）。
@@ -431,7 +449,7 @@ export type ViewReply = Message<"mftiko.td.v1.ViewReply"> & {
  * Use `create(ViewReplySchema)` to create a new message.
  */
 export const ViewReplySchema: GenMessage<ViewReply> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 9);
+  messageDesc(file_mftiko_td_v1_td, 10);
 
 /**
  * @generated from message mftiko.td.v1.OmsView
@@ -448,7 +466,7 @@ export type OmsView = Message<"mftiko.td.v1.OmsView"> & {
  * Use `create(OmsViewSchema)` to create a new message.
  */
 export const OmsViewSchema: GenMessage<OmsView> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 10);
+  messageDesc(file_mftiko_td_v1_td, 11);
 
 /**
  * @generated from message mftiko.td.v1.LedgerView
@@ -470,7 +488,7 @@ export type LedgerView = Message<"mftiko.td.v1.LedgerView"> & {
  * Use `create(LedgerViewSchema)` to create a new message.
  */
 export const LedgerViewSchema: GenMessage<LedgerView> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 11);
+  messageDesc(file_mftiko_td_v1_td, 12);
 
 /**
  * @generated from message mftiko.td.v1.LeverageInfo
@@ -494,7 +512,7 @@ export type LeverageInfo = Message<"mftiko.td.v1.LeverageInfo"> & {
  * Use `create(LeverageInfoSchema)` to create a new message.
  */
 export const LeverageInfoSchema: GenMessage<LeverageInfo> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 12);
+  messageDesc(file_mftiko_td_v1_td, 13);
 
 /**
  * @generated from message mftiko.td.v1.AccountEvent
@@ -553,7 +571,7 @@ export type AccountEvent = Message<"mftiko.td.v1.AccountEvent"> & {
  * Use `create(AccountEventSchema)` to create a new message.
  */
 export const AccountEventSchema: GenMessage<AccountEvent> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 13);
+  messageDesc(file_mftiko_td_v1_td, 14);
 
 /**
  * 一張單的一次變化（D610）。order 是變化之後的完整狀態，cause 說為什麼變。
@@ -593,7 +611,7 @@ export type OrderUpdate = Message<"mftiko.td.v1.OrderUpdate"> & {
  * Use `create(OrderUpdateSchema)` to create a new message.
  */
 export const OrderUpdateSchema: GenMessage<OrderUpdate> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 14);
+  messageDesc(file_mftiko_td_v1_td, 15);
 
 /**
  * 一張單的狀態紀錄：OrderUpdate、OmsView、Recon 共用。拒絕的原因在 OrderUpdate 上，不在這裡（D610）。
@@ -692,7 +710,7 @@ export type Order = Message<"mftiko.td.v1.Order"> & {
  * Use `create(OrderSchema)` to create a new message.
  */
 export const OrderSchema: GenMessage<Order> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 15);
+  messageDesc(file_mftiko_td_v1_td, 16);
 
 /**
  * @generated from message mftiko.td.v1.Fill
@@ -767,7 +785,7 @@ export type Fill = Message<"mftiko.td.v1.Fill"> & {
  * Use `create(FillSchema)` to create a new message.
  */
 export const FillSchema: GenMessage<Fill> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 16);
+  messageDesc(file_mftiko_td_v1_td, 17);
 
 /**
  * @generated from message mftiko.td.v1.Balance
@@ -799,7 +817,7 @@ export type Balance = Message<"mftiko.td.v1.Balance"> & {
  * Use `create(BalanceSchema)` to create a new message.
  */
 export const BalanceSchema: GenMessage<Balance> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 17);
+  messageDesc(file_mftiko_td_v1_td, 18);
 
 /**
  * 一期只支援單向持倉，size 帶號：負的是空（D607）。
@@ -853,7 +871,7 @@ export type Position = Message<"mftiko.td.v1.Position"> & {
  * Use `create(PositionSchema)` to create a new message.
  */
 export const PositionSchema: GenMessage<Position> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 18);
+  messageDesc(file_mftiko_td_v1_td, 19);
 
 /**
  * @generated from message mftiko.td.v1.BalanceUpdate
@@ -870,7 +888,7 @@ export type BalanceUpdate = Message<"mftiko.td.v1.BalanceUpdate"> & {
  * Use `create(BalanceUpdateSchema)` to create a new message.
  */
 export const BalanceUpdateSchema: GenMessage<BalanceUpdate> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 19);
+  messageDesc(file_mftiko_td_v1_td, 20);
 
 /**
  * @generated from message mftiko.td.v1.PositionUpdate
@@ -887,7 +905,7 @@ export type PositionUpdate = Message<"mftiko.td.v1.PositionUpdate"> & {
  * Use `create(PositionUpdateSchema)` to create a new message.
  */
 export const PositionUpdateSchema: GenMessage<PositionUpdate> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 20);
+  messageDesc(file_mftiko_td_v1_td, 21);
 
 /**
  * 帳號狀態的整份快照（DECISIONS D603、D604）。SDK 把它交給策略的 OnRecon：
@@ -933,7 +951,7 @@ export type Recon = Message<"mftiko.td.v1.Recon"> & {
  * Use `create(ReconSchema)` to create a new message.
  */
 export const ReconSchema: GenMessage<Recon> = /*@__PURE__*/
-  messageDesc(file_mftiko_td_v1_td, 21);
+  messageDesc(file_mftiko_td_v1_td, 22);
 
 /**
  * 一張單在交易所那一側的狀態（D610）。出現在 OrderUpdate 與快照的 Order 裡。
@@ -1062,21 +1080,21 @@ export enum RejectCode {
   VENUE_NOT_TRADABLE = 105,
 
   /**
-   * 商品不存在或不是 TRADABLE；數量或價格不合商品規格（tick、step、上下限）；client_order_id 解不開；同一 cloid 內容不同（D619）
+   * 商品不存在或不是 TRADABLE；數量或價格不合商品規格（tick、step、上下限）；client_order_id 解不開；同一 cloid 內容不同（D619）；BatchCancel 在沒有批次撤單的交易所上不能用（D625）
    *
    * @generated from enum value: REJECT_CODE_INVALID_ORDER = 106;
    */
   INVALID_ORDER = 106,
 
   /**
-   * 撤單的目標不是掛單：TD 不認得這張單，或它已經終結。UNKNOWN 可以用 cloid 撤，不回 107（D623）
+   * 撤單的目標不是掛單：TD 不認得這張單，或它已經終結。UNKNOWN 可以用 cloid 撤，不回 107（D623）。BatchCancel 的清單裡有一張對不到活單時，整筆是 107，什麼都不送（D625）
    *
    * @generated from enum value: REJECT_CODE_ORDER_NOT_OPEN = 107;
    */
   ORDER_NOT_OPEN = 107,
 
   /**
-   * Submit 用到 OrderRate 的 90%，Cancel 與 BatchCancel 用到 100%，或交易所以 429、418 要求停送（D609、D420、D621、D628）。不排隊、不重試
+   * Submit 用到 OrderRate 的 90%，Cancel 與 BatchCancel 用到 100%（BatchCancel 算一筆，不是一張），或交易所以 429、418 要求停送（D609、D420、D621、D628）。不排隊、不重試
    *
    * @generated from enum value: REJECT_CODE_RATE_LIMITED = 108;
    */

@@ -21,6 +21,7 @@
 // D615). After Start it also answers td.order: local rejects stay on the reply, and every later
 // change is one OrderUpdate (D610, D618–D624).
 //
-// Batch cancel is served (D625–D628). Cancel-on-disconnect is not: AccountSettings.cancel_on_disconnect_s
-// and CancelOnDisconnect stay unwired (D625).
+// Batch cancel is one explicit list forwarded as one venue request (D625–D628). The worker does not
+// choose orders or split the list. Cancel-on-disconnect is not wired: AccountSettings.cancel_on_disconnect_s
+// and CancelOnDisconnect stay unused (D625).
 package account

@@ -149,8 +149,8 @@ func (a *account) Cancel(now time.Time, ref exchange.CancelRef) (exchange.Call[s
 }
 
 func (a *account) CancelBatch(now time.Time, refs []exchange.CancelRef) (exchange.Call[[]error], error) {
-	if len(refs) == 0 || len(refs) > a.v.opts.Limits.CancelBatch {
-		return exchange.Call[[]error]{}, fmt.Errorf("exchangetest: %d orders in one batch, limit %d", len(refs), a.v.opts.Limits.CancelBatch)
+	if len(refs) == 0 {
+		return exchange.Call[[]error]{}, errors.New("exchangetest: batch cancel is empty")
 	}
 	body := make([]cancelReq, len(refs))
 	for i, r := range refs {

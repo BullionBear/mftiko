@@ -3,7 +3,6 @@ package account
 import (
 	"context"
 	"net/http/httptest"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -645,9 +644,17 @@ func TestOrderSeenExpires(t *testing.T) {
 	waitFor(t, "expired cloid was not sent again", func() bool { return count(h.v.Requests(), "POST /order") == 2 })
 }
 
-func (h *harness) batch(algo uint32, uids ...uint32) *tdv1.OrderReply {
+func (h *harness) batch(cloids ...string) *tdv1.OrderReply {
+	orders := make([]*tdv1.BatchCancelOrder, len(cloids))
+	for i, cid := range cloids {
+		orders[i] = &tdv1.BatchCancelOrder{ClientOrderId: cid}
+	}
+	return h.batchOrders(orders...)
+}
+
+func (h *harness) batchOrders(orders ...*tdv1.BatchCancelOrder) *tdv1.OrderReply {
 	return h.order(&tdv1.OrderRequest{Req: &tdv1.OrderRequest_BatchCancel{BatchCancel: &tdv1.BatchCancel{
-		AlgoId: algo, Uids: uids,
+		Orders: orders,
 	}}})
 }
 
@@ -679,127 +686,160 @@ func openCloid(orders []exchange.OrderUpdate, cid string) bool {
 	return false
 }
 
-// Two algos share the book: BatchCancel takes only the one it names, on every symbol.
-func TestBatchCancelOwnsItsAlgo(t *testing.T) {
+func batchHas(batches [][]string, cid string) bool {
+	for _, b := range batches {
+		for _, id := range b {
+			if id == cid {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// The list is forwarded as one request. Orders that were not named stay open, on every symbol.
+func TestBatchCancelForwardsTheList(t *testing.T) {
 	h := start(t, setup{opts: exchangetest.AccountOptions{Limits: exchange.AccountLimits{CancelBatch: 5}}})
-	h.v.PutOrder(exchange.OrderUpdate{Exch: btc, ClientOrderID: "manual", Side: exchange.SideBuy,
-		Type: exchange.OrderTypeLimit, Status: exchange.OrderStatusAccepted, Qty: 0.01, Price: 100})
 	h.startReady()
 	own := h.place(7, 7, 30)
 	ownETH := h.place(10, 7, 31)
 	other := h.place(7, 8, 32)
-	if r := h.batch(7); !r.GetAccepted() || r.GetClientOrderId() != "" {
+	if r := h.batch(own, ownETH); !r.GetAccepted() || r.GetClientOrderId() != "" {
 		t.Fatalf("reply %+v", r)
 	}
 	h.waitStatus(own, tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
 	h.waitStatus(ownETH, tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
-	waitFor(t, "the other algo was cancelled", func() bool {
-		return h.omsOrder(other) != nil && openCloid(h.v.OpenOrders(), other) && openCloid(h.v.OpenOrders(), "manual") &&
+	waitFor(t, "the unnamed order was cancelled", func() bool {
+		return h.omsOrder(other) != nil && openCloid(h.v.OpenOrders(), other) &&
 			!openCloid(h.v.OpenOrders(), own) && !openCloid(h.v.OpenOrders(), ownETH)
 	})
 	if !h.hasCause(own, tdv1.OrderCause_ORDER_CAUSE_CANCEL_REQUESTED) || !h.hasCause(ownETH, tdv1.OrderCause_ORDER_CAUSE_CANCEL_REQUESTED) {
 		t.Fatal("missing CANCEL_REQUESTED")
 	}
-	if h.hasCause(other, tdv1.OrderCause_ORDER_CAUSE_CANCEL_REQUESTED) || h.hasCause("manual", tdv1.OrderCause_ORDER_CAUSE_CANCEL_REQUESTED) {
-		t.Fatal("cancelled an order that is not this algo's")
+	if h.hasCause(other, tdv1.OrderCause_ORDER_CAUSE_CANCEL_REQUESTED) {
+		t.Fatal("cancelled an order that was not named")
 	}
-	// One instrument per chunk, even though both would fit in CancelBatch. Chunks go out together,
-	// so their arrival order is not the book order.
-	got := map[string]bool{}
-	for _, b := range h.v.Batches() {
-		if len(b) != 1 {
-			t.Fatalf("batches %v", h.v.Batches())
-		}
-		got[b[0]] = true
-	}
-	if len(got) != 2 || !got[own] || !got[ownETH] {
-		t.Fatalf("batches %v", h.v.Batches())
+	batches := h.v.Batches()
+	if len(batches) != 1 || len(batches[0]) != 2 || !batchHas(batches, own) || !batchHas(batches, ownETH) {
+		t.Fatalf("batches %v", batches)
 	}
 }
 
-// More orders than one CancelBatch: several requests, and each order gets its own update.
-func TestBatchCancelChunks(t *testing.T) {
+// CancelBatch of 1 means the venue has no batch cancel. TD rejects it and does not send single cancels.
+func TestBatchCancelNotAvailable(t *testing.T) {
+	h := start(t, setup{opts: exchangetest.AccountOptions{Limits: exchange.AccountLimits{CancelBatch: 1}}})
+	h.startReady()
+	cid := h.place(7, 7, 50)
+	r := h.batch(cid)
+	if r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER) || r.GetReason() != reasonNoBatch {
+		t.Fatalf("reply %+v", r)
+	}
+	if len(h.v.Batches()) != 0 || count(h.v.Requests(), "DELETE /order") != 0 {
+		t.Fatalf("unavailable batch was sent: batches %v requests %v", h.v.Batches(), h.v.Requests())
+	}
+	if h.omsOrder(cid).GetCancelSentNs() != 0 {
+		t.Fatal("a rejected batch marked the order")
+	}
+}
+
+// A list longer than the venue cap is still one request. The venue's reject is reported as-is.
+func TestBatchCancelOverCap(t *testing.T) {
 	h := start(t, setup{opts: exchangetest.AccountOptions{Limits: exchange.AccountLimits{CancelBatch: 2}}})
 	h.startReady()
 	var ids []string
 	for seq := uint32(40); seq < 43; seq++ {
 		ids = append(ids, h.place(7, 7, seq))
 	}
-	if r := h.batch(7); !r.GetAccepted() {
+	if r := h.batch(ids...); !r.GetAccepted() {
 		t.Fatal(r)
 	}
 	for _, cid := range ids {
-		h.waitStatus(cid, tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
+		u := h.waitCause(cid, tdv1.OrderCause_ORDER_CAUSE_CANCEL_REJECTED)
+		if u.GetCode() != -4000 || u.GetOrder().GetStatus() != tdv1.OrderStatus_ORDER_STATUS_ACCEPTED || u.GetOrder().GetCancelSentNs() != 0 {
+			t.Fatalf("%s %+v", cid, u)
+		}
 		if !h.hasCause(cid, tdv1.OrderCause_ORDER_CAUSE_CANCEL_REQUESTED) {
 			t.Fatalf("%s has no CANCEL_REQUESTED", cid)
 		}
 	}
 	batches := h.v.Batches()
-	if len(batches) != 2 {
-		t.Fatalf("batches %v", batches)
-	}
-	got := map[string]int{}
-	var sizes []int
-	for _, b := range batches {
-		sizes = append(sizes, len(b))
-		for _, cid := range b {
-			got[cid]++
-		}
-	}
-	sort.Ints(sizes)
-	if sizes[0] != 1 || sizes[1] != 2 {
+	if len(batches) != 1 || len(batches[0]) != 3 {
 		t.Fatalf("batches %v", batches)
 	}
 	for _, cid := range ids {
-		if got[cid] != 1 {
-			t.Fatalf("%s sent %d times, batches %v", cid, got[cid], batches)
+		if !openCloid(h.v.OpenOrders(), cid) {
+			t.Fatalf("%s was cancelled", cid)
 		}
 	}
 }
 
-// CancelBatch of 1 is one REST cancel per order, still not the single-cancel path.
-func TestBatchCancelOneByOne(t *testing.T) {
-	h := start(t, setup{opts: exchangetest.AccountOptions{Limits: exchange.AccountLimits{CancelBatch: 1}}})
-	h.startReady()
-	a := h.place(7, 7, 50)
-	b := h.place(7, 7, 51)
-	if r := h.batch(7); !r.GetAccepted() {
-		t.Fatal(r)
-	}
-	h.waitStatus(a, tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
-	h.waitStatus(b, tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
-	waitFor(t, "the two cancels were not sent", func() bool { return len(h.v.Batches()) == 2 })
-	if n := count(h.v.Requests(), "DELETE /order"); n != 0 {
-		t.Fatalf("single cancel path used: %d", n)
-	}
-}
-
-// uids limits the instruments. An algo with nothing open is accepted and sends nothing.
-func TestBatchCancelFilters(t *testing.T) {
+// One order the book does not have rejects this request. A later request of the live order still cancels it.
+func TestBatchCancelUnknownOrder(t *testing.T) {
 	h := start(t, setup{})
 	h.startReady()
-	btcID := h.place(7, 7, 60)
-	ethID := h.place(10, 7, 61)
-	if r := h.batch(9); !r.GetAccepted() {
+	live := h.place(7, 7, 60)
+	missing := mustCloid(t, 7, 61)
+	if r := h.batch(live, missing); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_ORDER_NOT_OPEN) {
+		t.Fatalf("reply %+v", r)
+	}
+	if len(h.v.Batches()) != 0 || h.omsOrder(live).GetCancelSentNs() != 0 {
+		t.Fatal("a rejected batch was sent")
+	}
+	if r := h.batch(live); !r.GetAccepted() {
 		t.Fatal(r)
 	}
-	if len(h.v.Batches()) != 0 {
-		t.Fatalf("empty batch sent %v", h.v.Batches())
+	h.waitStatus(live, tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
+	waitFor(t, "the live order was not sent on its own", func() bool {
+		b := h.v.Batches()
+		return len(b) == 1 && len(b[0]) == 1 && b[0][0] == live
+	})
+}
+
+// An instrument that cannot be resolved rejects only the batch that names it.
+func TestBatchCancelUnresolvable(t *testing.T) {
+	h := start(t, setup{opts: exchangetest.AccountOptions{Limits: exchange.AccountLimits{CancelBatch: 5}}})
+	h.startReady()
+	btcID := h.place(7, 7, 62)
+	ethID := h.place(10, 7, 63)
+	delete(h.ins.active, "BTCUSDT")
+	if r := h.batch(btcID, ethID); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER) || r.GetReason() != reasonInstrument {
+		t.Fatalf("reply %+v", r)
 	}
-	if r := h.batch(7, 10); !r.GetAccepted() {
+	if len(h.v.Batches()) != 0 || h.omsOrder(ethID).GetCancelSentNs() != 0 {
+		t.Fatal("the bad instrument sent the batch")
+	}
+	if r := h.batch(ethID); !r.GetAccepted() {
 		t.Fatal(r)
 	}
 	h.waitStatus(ethID, tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
-	waitFor(t, "btc was cancelled too", func() bool {
-		return h.omsOrder(btcID) != nil && openCloid(h.v.OpenOrders(), btcID) && !openCloid(h.v.OpenOrders(), ethID)
+	waitFor(t, "btc was cancelled with the other instrument", func() bool {
+		return openCloid(h.v.OpenOrders(), btcID) && !openCloid(h.v.OpenOrders(), ethID)
 	})
-	if batches := h.v.Batches(); len(batches) != 1 || len(batches[0]) != 1 || batches[0][0] != ethID {
-		t.Fatalf("batches %v", batches)
+}
+
+// An order id names the order on its own. A cloid paired with a different order id rejects the batch.
+func TestBatchCancelOrderID(t *testing.T) {
+	h := start(t, setup{opts: exchangetest.AccountOptions{Limits: exchange.AccountLimits{CancelBatch: 5}}})
+	h.startReady()
+	a := h.place(7, 7, 64)
+	b := h.place(7, 7, 65)
+	if r := h.batchOrders(&tdv1.BatchCancelOrder{ClientOrderId: a, OrderId: h.omsOrder(b).GetOrderId()}); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_ORDER_NOT_OPEN) {
+		t.Fatalf("mismatched ids %+v", r)
+	}
+	if len(h.v.Batches()) != 0 {
+		t.Fatal("mismatched ids were sent")
+	}
+	if r := h.batchOrders(&tdv1.BatchCancelOrder{OrderId: h.omsOrder(a).GetOrderId()}); !r.GetAccepted() {
+		t.Fatal(r)
+	}
+	h.waitStatus(a, tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
+	if h.omsOrder(b) == nil {
+		t.Fatal("the other order was cancelled")
 	}
 }
 
-// An order that already has a cancel in flight is not sent again.
-func TestBatchCancelSkipsInFlight(t *testing.T) {
+// A cancel already in flight is still sent: TD does not drop entries from the list.
+func TestBatchCancelIncludesInFlight(t *testing.T) {
 	h := start(t, setup{opts: exchangetest.AccountOptions{Limits: exchange.AccountLimits{CancelBatch: 5}}})
 	h.startReady()
 	first := h.place(7, 7, 70)
@@ -809,13 +849,13 @@ func TestBatchCancelSkipsInFlight(t *testing.T) {
 		t.Fatal(r)
 	}
 	waitFor(t, "the single cancel was not sent", func() bool { return count(h.v.Requests(), "DELETE /order") == 1 })
-	if r := h.batch(7); !r.GetAccepted() {
+	if r := h.batch(first, second); !r.GetAccepted() {
 		t.Fatal(r)
 	}
 	h.waitStatus(second, tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
-	waitFor(t, "the in-flight order was sent again", func() bool {
+	waitFor(t, "the in-flight order was left out", func() bool {
 		b := h.v.Batches()
-		return len(b) == 1 && len(b[0]) == 1 && b[0][0] == second && count(h.v.Requests(), "DELETE /order") == 1
+		return len(b) == 1 && len(b[0]) == 2 && batchHas(b, first) && batchHas(b, second) && count(h.v.Requests(), "DELETE /order") == 1
 	})
 }
 
@@ -826,7 +866,7 @@ func TestBatchCancelPerOrder(t *testing.T) {
 	bad := h.place(7, 7, 80)
 	good := h.place(7, 7, 81)
 	h.v.OnCancel(bad, exchangetest.Outcome{Code: -2011})
-	if r := h.batch(7); !r.GetAccepted() {
+	if r := h.batch(bad, good); !r.GetAccepted() {
 		t.Fatal(r)
 	}
 	h.waitStatus(good, tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
@@ -853,7 +893,7 @@ func TestBatchCancelUnknownOutcome(t *testing.T) {
 	a := h.place(7, 7, 90)
 	b := h.place(7, 7, 91)
 	h.v.OnBatch(exchangetest.Outcome{NoAnswer: true})
-	if r := h.batch(7); !r.GetAccepted() {
+	if r := h.batch(a, b); !r.GetAccepted() {
 		t.Fatal(r)
 	}
 	waitFor(t, "batch was not sent", func() bool { return len(h.v.Batches()) == 1 })
@@ -887,14 +927,14 @@ func TestBatchCancelDegraded(t *testing.T) {
 	}
 	h.v.Disconnect()
 	h.report(tdv1.AccountState_ACCOUNT_STATE_DEGRADED, ReasonStreamLost)
-	if r := h.batch(7); !r.GetAccepted() {
+	if r := h.batch(cid); !r.GetAccepted() {
 		t.Fatalf("degraded batch %+v", r)
 	}
 	h.waitStatus(cid, tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
 	waitFor(t, "degraded batch was not sent", func() bool { return len(h.v.Batches()) == 1 })
 }
 
-// Submit stops at 90%. Cancel and BatchCancel may use the rest of the window, and stop at 100% (D628).
+// Submit stops at 90%. One BatchCancel is one request and may use the rest of the window (D628).
 func TestCancelUsesFullRate(t *testing.T) {
 	clock := newFakeClock(time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
 	h := start(t, setup{
@@ -916,21 +956,15 @@ func TestCancelUsesFullRate(t *testing.T) {
 	if r := h.submit(7, 7, extra, 0.01, 100); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_RATE_LIMITED) {
 		t.Fatalf("submit at 90%% %+v", r)
 	}
-	if r := h.batch(7, 7); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_RATE_LIMITED) {
-		t.Fatalf("batch that does not fit %+v", r)
+	if r := h.batch(ids[:8]...); !r.GetAccepted() {
+		t.Fatalf("batch in the last slot %+v", r)
 	}
-	if len(h.v.Batches()) != 0 {
-		t.Fatalf("rate-limited batch was sent %v", h.v.Batches())
+	if r := h.cancel(7, ids[8], ""); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_RATE_LIMITED) {
+		t.Fatalf("cancel at 100%% %+v", r)
 	}
-	if r := h.cancel(7, ids[0], ""); !r.GetAccepted() {
-		t.Fatalf("cancel in the last slot %+v", r)
-	}
-	h.waitStatus(ids[0], tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
-	if r := h.batch(7); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_RATE_LIMITED) {
-		t.Fatalf("batch at 100%% %+v", r)
-	}
-	if len(h.v.Batches()) != 0 {
-		t.Fatalf("full window sent a batch %v", h.v.Batches())
+	waitFor(t, "the batch was not sent", func() bool { return len(h.v.Batches()) == 1 })
+	if n := count(h.v.Requests(), "DELETE /order"); n != 0 {
+		t.Fatalf("full window sent a cancel: %d", n)
 	}
 }
 
@@ -952,7 +986,7 @@ func TestBatchCancelRestWhileStreamUp(t *testing.T) {
 	}
 	h.waitStatus(cid, tdv1.OrderStatus_ORDER_STATUS_NEW)
 	h.v.ResetRequests()
-	if r := h.batch(7); !r.GetAccepted() {
+	if r := h.batch(cid); !r.GetAccepted() {
 		t.Fatal(r)
 	}
 	waitFor(t, "batch did not go out on REST", func() bool { return len(h.v.Batches()) == 1 })

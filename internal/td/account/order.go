@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"maps"
-	"sort"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -43,6 +42,7 @@ const (
 	reasonInvalid    = "invalid order"
 	reasonNotOpen    = "order is not open"
 	reasonRate       = "rate limited"
+	reasonNoBatch    = "batch cancel is not available"
 	reasonDegraded   = "account is degraded"
 	reasonHedge      = "position side is not allowed"
 	reasonNotPlaced  = "order was not placed"
@@ -131,7 +131,7 @@ type sendJob struct {
 	window time.Duration
 	req    *exchange.OrderRequest
 	ref    exchange.CancelRef
-	refs   []exchange.CancelRef // set on a CancelBatch; one instrument, at most CancelBatch orders
+	refs   []exchange.CancelRef // set on a BatchCancel: one CancelBatch, however long the list is
 	info   *symbol.Info
 }
 
@@ -297,121 +297,69 @@ func (b *book) decideCancel(c *tdv1.Cancel) admitOut {
 	return admitOut{reply: orderReply(true, 0, "", cid), jobs: []*sendJob{{cancel: true, cloid: cid, window: win, ref: ref, info: info}}}
 }
 
-// decideBatch cancels the live orders whose client_order_id carries algo_id, optionally limited to
-// uids (D602, D625). The reply only says the request was taken. Each order that will be sent gets
-// its own CANCEL_REQUESTED; the venue answer is that order's later update (D610).
+// decideBatch forwards the named orders as one CancelBatch (D625). It does not choose orders, split
+// the list, queue, or retry. The reply only says the request was taken. Each order that is sent
+// gets its own CANCEL_REQUESTED; the venue answer is that order's later update (D610).
 func (b *book) decideBatch(c *tdv1.BatchCancel) admitOut {
-	if c == nil {
+	if c == nil || len(c.GetOrders()) == 0 {
 		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonInvalid, "")}
 	}
-	want := uidSet(c.GetUids())
-	var picked []*tdv1.Order
-	for _, o := range b.orders {
-		if batchCandidate(o, c.GetAlgoId(), want) {
-			picked = append(picked, o)
-		}
+	if b.limits.CancelBatch == 1 {
+		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonNoBatch, "")}
 	}
-	sort.Slice(picked, func(i, j int) bool {
-		if picked[i].GetUid() != picked[j].GetUid() {
-			return picked[i].GetUid() < picked[j].GetUid()
+	// No recv_window_ms on this message; the instance default applies (D620).
+	win := b.window(0)
+	refs := make([]exchange.CancelRef, 0, len(c.GetOrders()))
+	orders := make([]*tdv1.Order, 0, len(c.GetOrders()))
+	for _, item := range c.GetOrders() {
+		o, code, reason := b.batchOrder(item)
+		if code != 0 {
+			return admitOut{reply: orderReply(false, code, reason, "")}
 		}
-		if picked[i].GetClientOrderId() != picked[j].GetClientOrderId() {
-			return picked[i].GetClientOrderId() < picked[j].GetClientOrderId()
-		}
-		return picked[i].GetOrderId() < picked[j].GetOrderId()
-	})
-	win := b.window(0) // BatchCancel has no recv_window_ms; the instance default applies (D620)
-	type grp struct {
-		orders []*tdv1.Order
-		refs   []exchange.CancelRef
-	}
-	var groups []*grp
-	byUID := map[uint32]*grp{}
-	for _, o := range picked {
 		info, err := b.ins.GetByUID(b.ctx, o.GetUid(), false)
 		if err != nil || info == nil {
-			// Same check as Cancel, and a local reject sends nothing (D610).
+			// One unresolvable instrument rejects this request and no other (D625).
 			return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonInstrument, "")}
 		}
-		g := byUID[o.GetUid()]
-		if g == nil {
-			g = &grp{}
-			byUID[o.GetUid()] = g
-			groups = append(groups, g)
-		}
-		g.orders = append(g.orders, o)
-		g.refs = append(g.refs, exchange.CancelRef{
-			Instrument: info, OrderID: o.GetOrderId(), ClientOrderID: o.GetClientOrderId(), Validity: win,
+		refs = append(refs, exchange.CancelRef{
+			Instrument: info, OrderID: item.GetOrderId(), ClientOrderID: item.GetClientOrderId(), Validity: win,
 		})
-	}
-	n := 0
-	for _, g := range groups {
-		n += len(g.refs)
-	}
-	if n == 0 {
-		return admitOut{reply: orderReply(true, 0, "", "")}
+		orders = append(orders, o)
 	}
 	now := b.now()
-	if !b.rate.allowCancel(now, n) {
+	if !b.rate.allowCancel(now, 1) {
 		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_RATE_LIMITED), reasonRate, "")}
 	}
-	b.rate.consumeN(now, n)
-	size := b.limits.CancelBatch
-	if size < 1 {
-		size = 1
+	b.rate.consume(now)
+	for _, o := range orders {
+		o.CancelSentNs = now.UnixNano()
+		b.publishOrder(o, tdv1.OrderCause_ORDER_CAUSE_CANCEL_REQUESTED, 0, "")
 	}
-	var jobs []*sendJob
-	for _, g := range groups {
-		for i := 0; i < len(g.refs); i += size {
-			j := i + size
-			if j > len(g.refs) {
-				j = len(g.refs)
-			}
-			refs := append([]exchange.CancelRef(nil), g.refs[i:j]...)
-			jobs = append(jobs, &sendJob{cancel: true, window: win, refs: refs})
-			for _, o := range g.orders[i:j] {
-				o.CancelSentNs = now.UnixNano()
-				b.publishOrder(o, tdv1.OrderCause_ORDER_CAUSE_CANCEL_REQUESTED, 0, "")
-			}
-		}
-	}
-	return admitOut{reply: orderReply(true, 0, "", ""), jobs: jobs}
+	return admitOut{reply: orderReply(true, 0, "", ""), jobs: []*sendJob{{cancel: true, window: win, refs: refs}}}
 }
 
-// batchCandidate is a live order BatchCancel will send: its cloid carries algo, the uid filter
-// allows it, and no cancel is already in flight (D610). Hand-placed ids carry no algo (D602).
-func batchCandidate(o *tdv1.Order, algo uint32, uids map[uint32]struct{}) bool {
-	if o == nil || o.GetCancelSentNs() != 0 {
-		return false
+// batchOrder is the live order one list entry names. An entry that names nothing, or names two
+// different orders, rejects the whole batch: TD forwards the list as given and does not drop items.
+func (b *book) batchOrder(item *tdv1.BatchCancelOrder) (*tdv1.Order, int32, string) {
+	if item == nil {
+		return nil, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonInvalid
 	}
-	if len(uids) > 0 {
-		if _, ok := uids[o.GetUid()]; !ok {
-			return false
-		}
+	cid, oid := item.GetClientOrderId(), item.GetOrderId()
+	if cid == "" && oid == "" {
+		return nil, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonInvalid
 	}
-	got, ok := cloid.AlgoOf(o.GetClientOrderId())
-	if !ok || got != algo {
-		return false
+	_, o := b.find(&tdv1.Order{ClientOrderId: cid, OrderId: oid})
+	if o == nil || terminal(o.GetStatus()) || (cid != "" && o.GetClientOrderId() != cid) || (oid != "" && o.GetOrderId() != oid) {
+		return nil, int32(tdv1.RejectCode_REJECT_CODE_ORDER_NOT_OPEN), reasonNotOpen
 	}
 	switch o.GetStatus() {
 	case tdv1.OrderStatus_ORDER_STATUS_PENDING_NEW, tdv1.OrderStatus_ORDER_STATUS_NEW,
 		tdv1.OrderStatus_ORDER_STATUS_ACCEPTED, tdv1.OrderStatus_ORDER_STATUS_PARTIALLY_FILLED,
 		tdv1.OrderStatus_ORDER_STATUS_UNKNOWN:
-		return true
+		return o, 0, ""
 	default:
-		return false
+		return nil, int32(tdv1.RejectCode_REJECT_CODE_ORDER_NOT_OPEN), reasonNotOpen
 	}
-}
-
-func uidSet(ids []uint32) map[uint32]struct{} {
-	if len(ids) == 0 {
-		return nil
-	}
-	out := make(map[uint32]struct{}, len(ids))
-	for _, id := range ids {
-		out[id] = struct{}{}
-	}
-	return out
 }
 
 // rejectSubmit remembers the reply so a retry of the same cloid returns it and is not sent (D619).
@@ -468,7 +416,7 @@ func (w *Worker) dispatch(ctx context.Context, job *sendJob) {
 	now := w.now()
 	deadline := now.Add(job.window + w.book.clockSkew())
 	if len(job.refs) > 0 {
-		// CancelBatch stays on REST. One chunk is one venue request (D303, D625).
+		// One BatchCancel is one CancelBatch, and it stays on REST (D303, D625).
 		perrs, used, err := w.restBatch(ctx, job, now)
 		w.book.send(ctx, msgResult{
 			kind: resultBatch, refs: job.refs, perrs: perrs, err: err,

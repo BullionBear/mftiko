@@ -21,9 +21,10 @@ var (
 	_ exchange.CancelOnDisconnect = (*account)(nil)
 )
 
-// Limits: clOrdId is 32 characters. CancelBatch is 20, which is cancel-batch-orders' cap.
-// The order budget is 60 requests per 2 seconds. OKX applies that per instrument; enforcing it
-// on the account keeps every instrument inside its own budget. A batch consumes one count per order.
+// Limits: clOrdId is 32 characters. CancelBatch is 20, which is cancel-batch-orders' cap. The SDK
+// splits to that; a longer list is still sent and the venue rejects it (D625). The order budget
+// is 60 requests per 2 seconds. OKX applies that per instrument; enforcing it on the account keeps
+// every instrument inside its own budget. A batch consumes one count per order on that budget.
 func (a *account) Limits() exchange.AccountLimits {
 	return exchange.AccountLimits{
 		ClientOrderIDMaxLen: cloidMax,
@@ -59,9 +60,6 @@ func (a *account) Cancel(now time.Time, ref exchange.CancelRef) (exchange.Call[s
 func (a *account) CancelBatch(now time.Time, refs []exchange.CancelRef) (exchange.Call[[]error], error) {
 	if len(refs) == 0 {
 		return exchange.Call[[]error]{}, fmt.Errorf("okx: batch cancel is empty")
-	}
-	if len(refs) > 20 {
-		return exchange.Call[[]error]{}, fmt.Errorf("okx: batch cancel takes at most 20 orders, got %d", len(refs))
 	}
 	items := make([]cancelBody, 0, len(refs))
 	for _, ref := range refs {

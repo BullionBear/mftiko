@@ -108,9 +108,9 @@ const (
 	RejectCode_REJECT_CODE_HEDGE_MODE         RejectCode = 103 // params 帶了持倉方向鍵（D607）。雙向持倉的帳號在 Start 就起不來，執行中不檢查（D616）
 	RejectCode_REJECT_CODE_ALGO_MISMATCH      RejectCode = 104 // algo_id 與 client_order_id 的 algo 欄位不一致，或撤的單沒有 client_order_id（D602）
 	RejectCode_REJECT_CODE_VENUE_NOT_TRADABLE RejectCode = 105 // 帳號種類不能交易這個商品的 venue（D301）
-	RejectCode_REJECT_CODE_INVALID_ORDER      RejectCode = 106 // 商品不存在或不是 TRADABLE；數量或價格不合商品規格（tick、step、上下限）；client_order_id 解不開；同一 cloid 內容不同（D619）
-	RejectCode_REJECT_CODE_ORDER_NOT_OPEN     RejectCode = 107 // 撤單的目標不是掛單：TD 不認得這張單，或它已經終結。UNKNOWN 可以用 cloid 撤，不回 107（D623）
-	RejectCode_REJECT_CODE_RATE_LIMITED       RejectCode = 108 // Submit 用到 OrderRate 的 90%，Cancel 與 BatchCancel 用到 100%，或交易所以 429、418 要求停送（D609、D420、D621、D628）。不排隊、不重試
+	RejectCode_REJECT_CODE_INVALID_ORDER      RejectCode = 106 // 商品不存在或不是 TRADABLE；數量或價格不合商品規格（tick、step、上下限）；client_order_id 解不開；同一 cloid 內容不同（D619）；BatchCancel 在沒有批次撤單的交易所上不能用（D625）
+	RejectCode_REJECT_CODE_ORDER_NOT_OPEN     RejectCode = 107 // 撤單的目標不是掛單：TD 不認得這張單，或它已經終結。UNKNOWN 可以用 cloid 撤，不回 107（D623）。BatchCancel 的清單裡有一張對不到活單時，整筆是 107，什麼都不送（D625）
+	RejectCode_REJECT_CODE_RATE_LIMITED       RejectCode = 108 // Submit 用到 OrderRate 的 90%，Cancel 與 BatchCancel 用到 100%（BatchCancel 算一筆，不是一張），或交易所以 429、418 要求停送（D609、D420、D621、D628）。不排隊、不重試
 	RejectCode_REJECT_CODE_NOT_PLACED         RejectCode = 120 // 主動查單後確定交易所沒有這張單（D605）
 )
 
@@ -672,16 +672,16 @@ func (x *Cancel) GetRecvWindowMs() int64 {
 	return 0
 }
 
-// 撤掉這個帳號上 client_order_id 的 algo 欄位等於 algo_id 的所有掛單（D602、D625）。
-// 只看 algo 欄位，不分 session、incarnation：上一個進程或上一個 session 留下的也算。
-// 回覆只說 TD 收下了；每一張單撤成或撤不成，各自是一則 OrderUpdate（D610）。
-// 沒有要送的也回 accepted。整筆放不進 OrderRate（一張算一次，可用到 100%）是 108，什麼都不送（D628）。
-// 其中任何一張的商品解不出來是 106。DEGRADED 照常，走 REST 的 CancelBatch，不走 TradeStream（D627）。
-// 整批結果不明時，批內每張以 cloid 查單，不重送（D626）。cancel-on-disconnect 不接（D625）。
+// 一筆交易所的批次撤單（D625）。TD 把 orders 原樣轉成一筆 CancelBatch，不挑單、不分批、不排隊、不重試。
+// algo_id 不是 TD 的索引。每一筆是 client_order_id 或 order_id；兩個都給時必須是同一張活單。
+// 商品取自 OMS 裡那張活單的 UID。對不到活單，整筆 107；商品解不出來，整筆 106。兩種都什麼都不送，不影響別的 BatchCancel。
+// CancelBatch 為 1（交易所沒有批次撤單）是 106，不改走單筆 Cancel。長過交易所上限仍送出，交易所的拒絕原樣回報。
+// 這則訊息算 OrderRate 的一筆，與 Cancel 相同可用到 100%（D628）。沒有 recv_window_ms，有效期用 instance 預設。
+// 回覆只說收下了；每一張單撤成或撤不成，各自是一則 OrderUpdate（D610）。DEGRADED 照常，走 REST，不走 TradeStream（D627）。
+// 整筆結果不明時，批內每張以 cloid 查單，不重送（D626）。cancel-on-disconnect 不接。
 type BatchCancel struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	AlgoId        uint32                 `protobuf:"varint,1,opt,name=algo_id,json=algoId,proto3" json:"algo_id,omitempty"`
-	Uids          []uint32               `protobuf:"varint,2,rep,packed,name=uids,proto3" json:"uids,omitempty"` // 空 = 全部商品
+	Orders        []*BatchCancelOrder    `protobuf:"bytes,4,rep,name=orders,proto3" json:"orders,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -716,18 +716,64 @@ func (*BatchCancel) Descriptor() ([]byte, []int) {
 	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *BatchCancel) GetAlgoId() uint32 {
+func (x *BatchCancel) GetOrders() []*BatchCancelOrder {
 	if x != nil {
-		return x.AlgoId
-	}
-	return 0
-}
-
-func (x *BatchCancel) GetUids() []uint32 {
-	if x != nil {
-		return x.Uids
+		return x.Orders
 	}
 	return nil
+}
+
+// BatchCancel 清單裡的一張單。client_order_id 與 order_id 至少要有一個。
+type BatchCancelOrder struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ClientOrderId string                 `protobuf:"bytes,1,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
+	OrderId       string                 `protobuf:"bytes,2,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchCancelOrder) Reset() {
+	*x = BatchCancelOrder{}
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchCancelOrder) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchCancelOrder) ProtoMessage() {}
+
+func (x *BatchCancelOrder) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchCancelOrder.ProtoReflect.Descriptor instead.
+func (*BatchCancelOrder) Descriptor() ([]byte, []int) {
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *BatchCancelOrder) GetClientOrderId() string {
+	if x != nil {
+		return x.ClientOrderId
+	}
+	return ""
+}
+
+func (x *BatchCancelOrder) GetOrderId() string {
+	if x != nil {
+		return x.OrderId
+	}
+	return ""
 }
 
 // td.order 的回覆（D610）。
@@ -743,7 +789,7 @@ type OrderReply struct {
 
 func (x *OrderReply) Reset() {
 	*x = OrderReply{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[4]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -755,7 +801,7 @@ func (x *OrderReply) String() string {
 func (*OrderReply) ProtoMessage() {}
 
 func (x *OrderReply) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[4]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -768,7 +814,7 @@ func (x *OrderReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrderReply.ProtoReflect.Descriptor instead.
 func (*OrderReply) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{4}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *OrderReply) GetAccepted() bool {
@@ -813,7 +859,7 @@ type ViewRequest struct {
 
 func (x *ViewRequest) Reset() {
 	*x = ViewRequest{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[5]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -825,7 +871,7 @@ func (x *ViewRequest) String() string {
 func (*ViewRequest) ProtoMessage() {}
 
 func (x *ViewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[5]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -838,7 +884,7 @@ func (x *ViewRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ViewRequest.ProtoReflect.Descriptor instead.
 func (*ViewRequest) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{5}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ViewRequest) GetReq() isViewRequest_Req {
@@ -907,7 +953,7 @@ type OmsViewRequest struct {
 
 func (x *OmsViewRequest) Reset() {
 	*x = OmsViewRequest{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[6]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -919,7 +965,7 @@ func (x *OmsViewRequest) String() string {
 func (*OmsViewRequest) ProtoMessage() {}
 
 func (x *OmsViewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[6]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -932,7 +978,7 @@ func (x *OmsViewRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OmsViewRequest.ProtoReflect.Descriptor instead.
 func (*OmsViewRequest) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{6}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *OmsViewRequest) GetSettled() bool {
@@ -958,7 +1004,7 @@ type LedgerViewRequest struct {
 
 func (x *LedgerViewRequest) Reset() {
 	*x = LedgerViewRequest{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[7]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -970,7 +1016,7 @@ func (x *LedgerViewRequest) String() string {
 func (*LedgerViewRequest) ProtoMessage() {}
 
 func (x *LedgerViewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[7]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -983,7 +1029,7 @@ func (x *LedgerViewRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LedgerViewRequest.ProtoReflect.Descriptor instead.
 func (*LedgerViewRequest) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{7}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *LedgerViewRequest) GetUids() []uint32 {
@@ -1003,7 +1049,7 @@ type LeverageRequest struct {
 
 func (x *LeverageRequest) Reset() {
 	*x = LeverageRequest{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[8]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1015,7 +1061,7 @@ func (x *LeverageRequest) String() string {
 func (*LeverageRequest) ProtoMessage() {}
 
 func (x *LeverageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[8]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1028,7 +1074,7 @@ func (x *LeverageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LeverageRequest.ProtoReflect.Descriptor instead.
 func (*LeverageRequest) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{8}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *LeverageRequest) GetUid() uint32 {
@@ -1058,7 +1104,7 @@ type ViewReply struct {
 
 func (x *ViewReply) Reset() {
 	*x = ViewReply{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[9]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1070,7 +1116,7 @@ func (x *ViewReply) String() string {
 func (*ViewReply) ProtoMessage() {}
 
 func (x *ViewReply) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[9]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1083,7 +1129,7 @@ func (x *ViewReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ViewReply.ProtoReflect.Descriptor instead.
 func (*ViewReply) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{9}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ViewReply) GetReply() isViewReply_Reply {
@@ -1194,7 +1240,7 @@ type OmsView struct {
 
 func (x *OmsView) Reset() {
 	*x = OmsView{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[10]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1206,7 +1252,7 @@ func (x *OmsView) String() string {
 func (*OmsView) ProtoMessage() {}
 
 func (x *OmsView) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[10]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1219,7 +1265,7 @@ func (x *OmsView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OmsView.ProtoReflect.Descriptor instead.
 func (*OmsView) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{10}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *OmsView) GetOrders() []*Order {
@@ -1239,7 +1285,7 @@ type LedgerView struct {
 
 func (x *LedgerView) Reset() {
 	*x = LedgerView{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[11]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1251,7 +1297,7 @@ func (x *LedgerView) String() string {
 func (*LedgerView) ProtoMessage() {}
 
 func (x *LedgerView) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[11]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1264,7 +1310,7 @@ func (x *LedgerView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LedgerView.ProtoReflect.Descriptor instead.
 func (*LedgerView) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{11}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *LedgerView) GetBalances() []*Balance {
@@ -1291,7 +1337,7 @@ type LeverageInfo struct {
 
 func (x *LeverageInfo) Reset() {
 	*x = LeverageInfo{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[12]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1303,7 +1349,7 @@ func (x *LeverageInfo) String() string {
 func (*LeverageInfo) ProtoMessage() {}
 
 func (x *LeverageInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[12]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1316,7 +1362,7 @@ func (x *LeverageInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LeverageInfo.ProtoReflect.Descriptor instead.
 func (*LeverageInfo) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{12}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *LeverageInfo) GetUid() uint32 {
@@ -1351,7 +1397,7 @@ type AccountEvent struct {
 
 func (x *AccountEvent) Reset() {
 	*x = AccountEvent{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[13]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1363,7 +1409,7 @@ func (x *AccountEvent) String() string {
 func (*AccountEvent) ProtoMessage() {}
 
 func (x *AccountEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[13]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1376,7 +1422,7 @@ func (x *AccountEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccountEvent.ProtoReflect.Descriptor instead.
 func (*AccountEvent) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{13}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *AccountEvent) GetSeq() uint64 {
@@ -1496,7 +1542,7 @@ type OrderUpdate struct {
 
 func (x *OrderUpdate) Reset() {
 	*x = OrderUpdate{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[14]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1508,7 +1554,7 @@ func (x *OrderUpdate) String() string {
 func (*OrderUpdate) ProtoMessage() {}
 
 func (x *OrderUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[14]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1521,7 +1567,7 @@ func (x *OrderUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrderUpdate.ProtoReflect.Descriptor instead.
 func (*OrderUpdate) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{14}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *OrderUpdate) GetOrder() *Order {
@@ -1577,7 +1623,7 @@ type Order struct {
 
 func (x *Order) Reset() {
 	*x = Order{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[15]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1589,7 +1635,7 @@ func (x *Order) String() string {
 func (*Order) ProtoMessage() {}
 
 func (x *Order) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[15]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1602,7 +1648,7 @@ func (x *Order) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Order.ProtoReflect.Descriptor instead.
 func (*Order) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{15}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Order) GetUid() uint32 {
@@ -1723,7 +1769,7 @@ type Fill struct {
 
 func (x *Fill) Reset() {
 	*x = Fill{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[16]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1735,7 +1781,7 @@ func (x *Fill) String() string {
 func (*Fill) ProtoMessage() {}
 
 func (x *Fill) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[16]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1748,7 +1794,7 @@ func (x *Fill) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Fill.ProtoReflect.Descriptor instead.
 func (*Fill) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{16}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *Fill) GetUid() uint32 {
@@ -1840,7 +1886,7 @@ type Balance struct {
 
 func (x *Balance) Reset() {
 	*x = Balance{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[17]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1852,7 +1898,7 @@ func (x *Balance) String() string {
 func (*Balance) ProtoMessage() {}
 
 func (x *Balance) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[17]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1865,7 +1911,7 @@ func (x *Balance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Balance.ProtoReflect.Descriptor instead.
 func (*Balance) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{17}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Balance) GetAsset() string {
@@ -1911,7 +1957,7 @@ type Position struct {
 
 func (x *Position) Reset() {
 	*x = Position{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[18]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1923,7 +1969,7 @@ func (x *Position) String() string {
 func (*Position) ProtoMessage() {}
 
 func (x *Position) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[18]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1936,7 +1982,7 @@ func (x *Position) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Position.ProtoReflect.Descriptor instead.
 func (*Position) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{18}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *Position) GetUid() uint32 {
@@ -1990,7 +2036,7 @@ type BalanceUpdate struct {
 
 func (x *BalanceUpdate) Reset() {
 	*x = BalanceUpdate{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[19]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2002,7 +2048,7 @@ func (x *BalanceUpdate) String() string {
 func (*BalanceUpdate) ProtoMessage() {}
 
 func (x *BalanceUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[19]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2015,7 +2061,7 @@ func (x *BalanceUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BalanceUpdate.ProtoReflect.Descriptor instead.
 func (*BalanceUpdate) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{19}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *BalanceUpdate) GetBalances() []*Balance {
@@ -2034,7 +2080,7 @@ type PositionUpdate struct {
 
 func (x *PositionUpdate) Reset() {
 	*x = PositionUpdate{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[20]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2046,7 +2092,7 @@ func (x *PositionUpdate) String() string {
 func (*PositionUpdate) ProtoMessage() {}
 
 func (x *PositionUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[20]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2059,7 +2105,7 @@ func (x *PositionUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PositionUpdate.ProtoReflect.Descriptor instead.
 func (*PositionUpdate) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{20}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *PositionUpdate) GetPositions() []*Position {
@@ -2086,7 +2132,7 @@ type Recon struct {
 
 func (x *Recon) Reset() {
 	*x = Recon{}
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[21]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2098,7 +2144,7 @@ func (x *Recon) String() string {
 func (*Recon) ProtoMessage() {}
 
 func (x *Recon) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_td_v1_td_proto_msgTypes[21]
+	mi := &file_mftiko_td_v1_td_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2111,7 +2157,7 @@ func (x *Recon) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Recon.ProtoReflect.Descriptor instead.
 func (*Recon) Descriptor() ([]byte, []int) {
-	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{21}
+	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *Recon) GetIncarnation() uint32 {
@@ -2198,11 +2244,13 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\x0fclient_order_id\x18\x03 \x01(\tR\rclientOrderId\x12\x19\n" +
 	"\border_id\x18\x04 \x01(\tR\aorderId\x12\x17\n" +
 	"\aalgo_id\x18\x05 \x01(\rR\x06algoId\x12$\n" +
-	"\x0erecv_window_ms\x18\x06 \x01(\x03R\frecvWindowMs\"L\n" +
-	"\vBatchCancel\x12\x17\n" +
-	"\aalgo_id\x18\x01 \x01(\rR\x06algoId\x12\x12\n" +
-	"\x04uids\x18\x02 \x03(\rR\x04uidsJ\x04\b\x03\x10\x04R\n" +
-	"timeout_ms\"|\n" +
+	"\x0erecv_window_ms\x18\x06 \x01(\x03R\frecvWindowMs\"r\n" +
+	"\vBatchCancel\x126\n" +
+	"\x06orders\x18\x04 \x03(\v2\x1e.mftiko.td.v1.BatchCancelOrderR\x06ordersJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\aalgo_idR\x04uidsR\n" +
+	"timeout_ms\"U\n" +
+	"\x10BatchCancelOrder\x12&\n" +
+	"\x0fclient_order_id\x18\x01 \x01(\tR\rclientOrderId\x12\x19\n" +
+	"\border_id\x18\x02 \x01(\tR\aorderId\"|\n" +
 	"\n" +
 	"OrderReply\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x12\n" +
@@ -2386,7 +2434,7 @@ func file_mftiko_td_v1_td_proto_rawDescGZIP() []byte {
 }
 
 var file_mftiko_td_v1_td_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_mftiko_td_v1_td_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_mftiko_td_v1_td_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_mftiko_td_v1_td_proto_goTypes = []any{
 	(OrderStatus)(0),          // 0: mftiko.td.v1.OrderStatus
 	(RejectCode)(0),           // 1: mftiko.td.v1.RejectCode
@@ -2397,73 +2445,75 @@ var file_mftiko_td_v1_td_proto_goTypes = []any{
 	(*Submit)(nil),            // 6: mftiko.td.v1.Submit
 	(*Cancel)(nil),            // 7: mftiko.td.v1.Cancel
 	(*BatchCancel)(nil),       // 8: mftiko.td.v1.BatchCancel
-	(*OrderReply)(nil),        // 9: mftiko.td.v1.OrderReply
-	(*ViewRequest)(nil),       // 10: mftiko.td.v1.ViewRequest
-	(*OmsViewRequest)(nil),    // 11: mftiko.td.v1.OmsViewRequest
-	(*LedgerViewRequest)(nil), // 12: mftiko.td.v1.LedgerViewRequest
-	(*LeverageRequest)(nil),   // 13: mftiko.td.v1.LeverageRequest
-	(*ViewReply)(nil),         // 14: mftiko.td.v1.ViewReply
-	(*OmsView)(nil),           // 15: mftiko.td.v1.OmsView
-	(*LedgerView)(nil),        // 16: mftiko.td.v1.LedgerView
-	(*LeverageInfo)(nil),      // 17: mftiko.td.v1.LeverageInfo
-	(*AccountEvent)(nil),      // 18: mftiko.td.v1.AccountEvent
-	(*OrderUpdate)(nil),       // 19: mftiko.td.v1.OrderUpdate
-	(*Order)(nil),             // 20: mftiko.td.v1.Order
-	(*Fill)(nil),              // 21: mftiko.td.v1.Fill
-	(*Balance)(nil),           // 22: mftiko.td.v1.Balance
-	(*Position)(nil),          // 23: mftiko.td.v1.Position
-	(*BalanceUpdate)(nil),     // 24: mftiko.td.v1.BalanceUpdate
-	(*PositionUpdate)(nil),    // 25: mftiko.td.v1.PositionUpdate
-	(*Recon)(nil),             // 26: mftiko.td.v1.Recon
-	nil,                       // 27: mftiko.td.v1.Submit.ParamsEntry
-	(v1.Side)(0),              // 28: mftiko.common.v1.Side
-	(v1.OrderType)(0),         // 29: mftiko.common.v1.OrderType
-	(v1.TimeInForce)(0),       // 30: mftiko.common.v1.TimeInForce
-	(*v1.Error)(nil),          // 31: mftiko.common.v1.Error
-	(*v1.WorkerRef)(nil),      // 32: mftiko.common.v1.WorkerRef
+	(*BatchCancelOrder)(nil),  // 9: mftiko.td.v1.BatchCancelOrder
+	(*OrderReply)(nil),        // 10: mftiko.td.v1.OrderReply
+	(*ViewRequest)(nil),       // 11: mftiko.td.v1.ViewRequest
+	(*OmsViewRequest)(nil),    // 12: mftiko.td.v1.OmsViewRequest
+	(*LedgerViewRequest)(nil), // 13: mftiko.td.v1.LedgerViewRequest
+	(*LeverageRequest)(nil),   // 14: mftiko.td.v1.LeverageRequest
+	(*ViewReply)(nil),         // 15: mftiko.td.v1.ViewReply
+	(*OmsView)(nil),           // 16: mftiko.td.v1.OmsView
+	(*LedgerView)(nil),        // 17: mftiko.td.v1.LedgerView
+	(*LeverageInfo)(nil),      // 18: mftiko.td.v1.LeverageInfo
+	(*AccountEvent)(nil),      // 19: mftiko.td.v1.AccountEvent
+	(*OrderUpdate)(nil),       // 20: mftiko.td.v1.OrderUpdate
+	(*Order)(nil),             // 21: mftiko.td.v1.Order
+	(*Fill)(nil),              // 22: mftiko.td.v1.Fill
+	(*Balance)(nil),           // 23: mftiko.td.v1.Balance
+	(*Position)(nil),          // 24: mftiko.td.v1.Position
+	(*BalanceUpdate)(nil),     // 25: mftiko.td.v1.BalanceUpdate
+	(*PositionUpdate)(nil),    // 26: mftiko.td.v1.PositionUpdate
+	(*Recon)(nil),             // 27: mftiko.td.v1.Recon
+	nil,                       // 28: mftiko.td.v1.Submit.ParamsEntry
+	(v1.Side)(0),              // 29: mftiko.common.v1.Side
+	(v1.OrderType)(0),         // 30: mftiko.common.v1.OrderType
+	(v1.TimeInForce)(0),       // 31: mftiko.common.v1.TimeInForce
+	(*v1.Error)(nil),          // 32: mftiko.common.v1.Error
+	(*v1.WorkerRef)(nil),      // 33: mftiko.common.v1.WorkerRef
 }
 var file_mftiko_td_v1_td_proto_depIdxs = []int32{
 	6,  // 0: mftiko.td.v1.OrderRequest.submit:type_name -> mftiko.td.v1.Submit
 	7,  // 1: mftiko.td.v1.OrderRequest.cancel:type_name -> mftiko.td.v1.Cancel
 	8,  // 2: mftiko.td.v1.OrderRequest.batch_cancel:type_name -> mftiko.td.v1.BatchCancel
-	28, // 3: mftiko.td.v1.Submit.side:type_name -> mftiko.common.v1.Side
-	29, // 4: mftiko.td.v1.Submit.order_type:type_name -> mftiko.common.v1.OrderType
-	30, // 5: mftiko.td.v1.Submit.tif:type_name -> mftiko.common.v1.TimeInForce
-	27, // 6: mftiko.td.v1.Submit.params:type_name -> mftiko.td.v1.Submit.ParamsEntry
-	11, // 7: mftiko.td.v1.ViewRequest.oms:type_name -> mftiko.td.v1.OmsViewRequest
-	12, // 8: mftiko.td.v1.ViewRequest.ledger:type_name -> mftiko.td.v1.LedgerViewRequest
-	13, // 9: mftiko.td.v1.ViewRequest.leverage:type_name -> mftiko.td.v1.LeverageRequest
-	15, // 10: mftiko.td.v1.ViewReply.oms:type_name -> mftiko.td.v1.OmsView
-	16, // 11: mftiko.td.v1.ViewReply.ledger:type_name -> mftiko.td.v1.LedgerView
-	17, // 12: mftiko.td.v1.ViewReply.leverage:type_name -> mftiko.td.v1.LeverageInfo
-	31, // 13: mftiko.td.v1.ViewReply.error:type_name -> mftiko.common.v1.Error
-	2,  // 14: mftiko.td.v1.ViewReply.state:type_name -> mftiko.td.v1.AccountState
-	20, // 15: mftiko.td.v1.OmsView.orders:type_name -> mftiko.td.v1.Order
-	22, // 16: mftiko.td.v1.LedgerView.balances:type_name -> mftiko.td.v1.Balance
-	23, // 17: mftiko.td.v1.LedgerView.positions:type_name -> mftiko.td.v1.Position
-	32, // 18: mftiko.td.v1.AccountEvent.source:type_name -> mftiko.common.v1.WorkerRef
-	19, // 19: mftiko.td.v1.AccountEvent.order_update:type_name -> mftiko.td.v1.OrderUpdate
-	21, // 20: mftiko.td.v1.AccountEvent.fill:type_name -> mftiko.td.v1.Fill
-	24, // 21: mftiko.td.v1.AccountEvent.balance_update:type_name -> mftiko.td.v1.BalanceUpdate
-	25, // 22: mftiko.td.v1.AccountEvent.position_update:type_name -> mftiko.td.v1.PositionUpdate
-	26, // 23: mftiko.td.v1.AccountEvent.recon:type_name -> mftiko.td.v1.Recon
-	20, // 24: mftiko.td.v1.OrderUpdate.order:type_name -> mftiko.td.v1.Order
-	3,  // 25: mftiko.td.v1.OrderUpdate.cause:type_name -> mftiko.td.v1.OrderCause
-	28, // 26: mftiko.td.v1.Order.side:type_name -> mftiko.common.v1.Side
-	29, // 27: mftiko.td.v1.Order.order_type:type_name -> mftiko.common.v1.OrderType
-	0,  // 28: mftiko.td.v1.Order.status:type_name -> mftiko.td.v1.OrderStatus
-	28, // 29: mftiko.td.v1.Fill.side:type_name -> mftiko.common.v1.Side
-	22, // 30: mftiko.td.v1.BalanceUpdate.balances:type_name -> mftiko.td.v1.Balance
-	23, // 31: mftiko.td.v1.PositionUpdate.positions:type_name -> mftiko.td.v1.Position
-	4,  // 32: mftiko.td.v1.Recon.reason:type_name -> mftiko.td.v1.ReconReason
-	20, // 33: mftiko.td.v1.Recon.open_orders:type_name -> mftiko.td.v1.Order
-	23, // 34: mftiko.td.v1.Recon.positions:type_name -> mftiko.td.v1.Position
-	22, // 35: mftiko.td.v1.Recon.balances:type_name -> mftiko.td.v1.Balance
-	36, // [36:36] is the sub-list for method output_type
-	36, // [36:36] is the sub-list for method input_type
-	36, // [36:36] is the sub-list for extension type_name
-	36, // [36:36] is the sub-list for extension extendee
-	0,  // [0:36] is the sub-list for field type_name
+	29, // 3: mftiko.td.v1.Submit.side:type_name -> mftiko.common.v1.Side
+	30, // 4: mftiko.td.v1.Submit.order_type:type_name -> mftiko.common.v1.OrderType
+	31, // 5: mftiko.td.v1.Submit.tif:type_name -> mftiko.common.v1.TimeInForce
+	28, // 6: mftiko.td.v1.Submit.params:type_name -> mftiko.td.v1.Submit.ParamsEntry
+	9,  // 7: mftiko.td.v1.BatchCancel.orders:type_name -> mftiko.td.v1.BatchCancelOrder
+	12, // 8: mftiko.td.v1.ViewRequest.oms:type_name -> mftiko.td.v1.OmsViewRequest
+	13, // 9: mftiko.td.v1.ViewRequest.ledger:type_name -> mftiko.td.v1.LedgerViewRequest
+	14, // 10: mftiko.td.v1.ViewRequest.leverage:type_name -> mftiko.td.v1.LeverageRequest
+	16, // 11: mftiko.td.v1.ViewReply.oms:type_name -> mftiko.td.v1.OmsView
+	17, // 12: mftiko.td.v1.ViewReply.ledger:type_name -> mftiko.td.v1.LedgerView
+	18, // 13: mftiko.td.v1.ViewReply.leverage:type_name -> mftiko.td.v1.LeverageInfo
+	32, // 14: mftiko.td.v1.ViewReply.error:type_name -> mftiko.common.v1.Error
+	2,  // 15: mftiko.td.v1.ViewReply.state:type_name -> mftiko.td.v1.AccountState
+	21, // 16: mftiko.td.v1.OmsView.orders:type_name -> mftiko.td.v1.Order
+	23, // 17: mftiko.td.v1.LedgerView.balances:type_name -> mftiko.td.v1.Balance
+	24, // 18: mftiko.td.v1.LedgerView.positions:type_name -> mftiko.td.v1.Position
+	33, // 19: mftiko.td.v1.AccountEvent.source:type_name -> mftiko.common.v1.WorkerRef
+	20, // 20: mftiko.td.v1.AccountEvent.order_update:type_name -> mftiko.td.v1.OrderUpdate
+	22, // 21: mftiko.td.v1.AccountEvent.fill:type_name -> mftiko.td.v1.Fill
+	25, // 22: mftiko.td.v1.AccountEvent.balance_update:type_name -> mftiko.td.v1.BalanceUpdate
+	26, // 23: mftiko.td.v1.AccountEvent.position_update:type_name -> mftiko.td.v1.PositionUpdate
+	27, // 24: mftiko.td.v1.AccountEvent.recon:type_name -> mftiko.td.v1.Recon
+	21, // 25: mftiko.td.v1.OrderUpdate.order:type_name -> mftiko.td.v1.Order
+	3,  // 26: mftiko.td.v1.OrderUpdate.cause:type_name -> mftiko.td.v1.OrderCause
+	29, // 27: mftiko.td.v1.Order.side:type_name -> mftiko.common.v1.Side
+	30, // 28: mftiko.td.v1.Order.order_type:type_name -> mftiko.common.v1.OrderType
+	0,  // 29: mftiko.td.v1.Order.status:type_name -> mftiko.td.v1.OrderStatus
+	29, // 30: mftiko.td.v1.Fill.side:type_name -> mftiko.common.v1.Side
+	23, // 31: mftiko.td.v1.BalanceUpdate.balances:type_name -> mftiko.td.v1.Balance
+	24, // 32: mftiko.td.v1.PositionUpdate.positions:type_name -> mftiko.td.v1.Position
+	4,  // 33: mftiko.td.v1.Recon.reason:type_name -> mftiko.td.v1.ReconReason
+	21, // 34: mftiko.td.v1.Recon.open_orders:type_name -> mftiko.td.v1.Order
+	24, // 35: mftiko.td.v1.Recon.positions:type_name -> mftiko.td.v1.Position
+	23, // 36: mftiko.td.v1.Recon.balances:type_name -> mftiko.td.v1.Balance
+	37, // [37:37] is the sub-list for method output_type
+	37, // [37:37] is the sub-list for method input_type
+	37, // [37:37] is the sub-list for extension type_name
+	37, // [37:37] is the sub-list for extension extendee
+	0,  // [0:37] is the sub-list for field type_name
 }
 
 func init() { file_mftiko_td_v1_td_proto_init() }
@@ -2477,34 +2527,34 @@ func file_mftiko_td_v1_td_proto_init() {
 		(*OrderRequest_BatchCancel)(nil),
 	}
 	file_mftiko_td_v1_td_proto_msgTypes[1].OneofWrappers = []any{}
-	file_mftiko_td_v1_td_proto_msgTypes[5].OneofWrappers = []any{
+	file_mftiko_td_v1_td_proto_msgTypes[6].OneofWrappers = []any{
 		(*ViewRequest_Oms)(nil),
 		(*ViewRequest_Ledger)(nil),
 		(*ViewRequest_Leverage)(nil),
 	}
-	file_mftiko_td_v1_td_proto_msgTypes[9].OneofWrappers = []any{
+	file_mftiko_td_v1_td_proto_msgTypes[10].OneofWrappers = []any{
 		(*ViewReply_Oms)(nil),
 		(*ViewReply_Ledger)(nil),
 		(*ViewReply_Leverage)(nil),
 		(*ViewReply_Error)(nil),
 	}
-	file_mftiko_td_v1_td_proto_msgTypes[12].OneofWrappers = []any{}
-	file_mftiko_td_v1_td_proto_msgTypes[13].OneofWrappers = []any{
+	file_mftiko_td_v1_td_proto_msgTypes[13].OneofWrappers = []any{}
+	file_mftiko_td_v1_td_proto_msgTypes[14].OneofWrappers = []any{
 		(*AccountEvent_OrderUpdate)(nil),
 		(*AccountEvent_Fill)(nil),
 		(*AccountEvent_BalanceUpdate)(nil),
 		(*AccountEvent_PositionUpdate)(nil),
 		(*AccountEvent_Recon)(nil),
 	}
-	file_mftiko_td_v1_td_proto_msgTypes[15].OneofWrappers = []any{}
-	file_mftiko_td_v1_td_proto_msgTypes[18].OneofWrappers = []any{}
+	file_mftiko_td_v1_td_proto_msgTypes[16].OneofWrappers = []any{}
+	file_mftiko_td_v1_td_proto_msgTypes[19].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mftiko_td_v1_td_proto_rawDesc), len(file_mftiko_td_v1_td_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   23,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

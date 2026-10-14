@@ -7,9 +7,10 @@ import (
 )
 
 // limiter is the account's order-rate gate (D621, D628, D420). The book goroutine owns it.
-// A submit is refused once a window is at 90% (used*10 >= limit*9). A cancel, including each
-// order of a BatchCancel, may use the window up to 100%. A 429 or 418 pauses every send,
-// including queries, until Retry-After, else the reported reset, else the configured hold.
+// A submit is refused once a window is at 90% (used*10 >= limit*9). A cancel may use the window
+// up to 100%. One BatchCancel is one request on that same gate, not one count per order. A 429
+// or 418 pauses every send, including queries, until Retry-After, else the reported reset, else
+// the configured hold.
 type limiter struct {
 	wins       []rateWin
 	pauseUntil time.Time
@@ -42,9 +43,8 @@ func (l *limiter) allow(now time.Time) bool {
 	return l.fits(now, false, 1)
 }
 
-// allowCancel is false when n more order counts would pass 100% of any window, or a pause is in
-// force (D628). One Cancel is n = 1. A BatchCancel passes how many orders it is about to send,
-// one count each, which is what the venue charges a batch.
+// allowCancel is false when n more requests would pass 100% of any window, or a pause is in
+// force (D628). One Cancel and one BatchCancel are each n = 1.
 func (l *limiter) allowCancel(now time.Time, n int) bool {
 	if n < 1 {
 		n = 1
@@ -74,7 +74,7 @@ func (l *limiter) paused(now time.Time) bool {
 // consume counts one order the worker is about to send.
 func (l *limiter) consume(now time.Time) { l.consumeN(now, 1) }
 
-// consumeN counts n orders. A batch cancel counts one per order (D628).
+// consumeN counts n requests.
 func (l *limiter) consumeN(now time.Time, n int) {
 	if l == nil || n <= 0 {
 		return

@@ -197,12 +197,11 @@ func TestAccountCancelBatch(t *testing.T) {
 		}
 		return exchange.Run(bgCtx, v, c)
 	}
-	if _, err := a.CancelBatch(testNow, refs("1", "2", "3", "4")); err == nil {
-		t.Fatal("a batch over the limit was built")
-	}
+	_, err := run("1", "2", "3", "4")
+	wantReject(t, err, -4000)
 
 	v.OnBatch(Outcome{Code: -1000})
-	_, err := run("1")
+	_, err = run("1")
 	wantReject(t, err, -1000)
 
 	v.OnBatch(Outcome{NoAnswer: true})
