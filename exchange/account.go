@@ -78,7 +78,8 @@ type AccountFactory func(cfg AccountConfig) (Account, error)
 //
 // It knows nothing about algo_id (D602). The worker checks algo ownership, and translates
 // BatchCancel(algo_id) by filtering its OMS for open orders whose client_order_id carries that algo,
-// then running CancelBatch in chunks of Limits().CancelBatch.
+// then running CancelBatch in chunks of Limits().CancelBatch, one instrument per chunk: Binance's
+// batch is one symbol and Bybit's is one category, and a single instrument is inside both.
 type Account interface {
 	Limits() AccountLimits
 

@@ -28,13 +28,13 @@ enum OrderStatus {
 enum RejectCode {
   REJECT_CODE_UNSPECIFIED = 0;
   REJECT_CODE_ACCOUNT_OFFLINE = 101; // td.order 沒有 responder：account worker 不在，或還沒完成 Start。由 SDK 產生
-  REJECT_CODE_ACCOUNT_DEGRADED = 102; // 私有連線斷線中，暫停收新單；撤單照常（D603）
+  REJECT_CODE_ACCOUNT_DEGRADED = 102; // 私有連線斷線中，暫停收新單；Cancel 與 BatchCancel 照常（D603、D627）
   REJECT_CODE_HEDGE_MODE = 103; // params 帶了持倉方向鍵（D607）。雙向持倉的帳號在 Start 就起不來，執行中不檢查（D616）
   REJECT_CODE_ALGO_MISMATCH = 104; // algo_id 與 client_order_id 的 algo 欄位不一致，或撤的單沒有 client_order_id（D602）
   REJECT_CODE_VENUE_NOT_TRADABLE = 105; // 帳號種類不能交易這個商品的 venue（D301）
   REJECT_CODE_INVALID_ORDER = 106; // 商品不存在或不是 TRADABLE；數量或價格不合商品規格（tick、step、上下限）；client_order_id 解不開；同一 cloid 內容不同（D619）
   REJECT_CODE_ORDER_NOT_OPEN = 107; // 撤單的目標不是掛單：TD 不認得這張單，或它已經終結。UNKNOWN 可以用 cloid 撤，不回 107（D623）
-  REJECT_CODE_RATE_LIMITED = 108; // 這個帳號的下單額度用到 90%，或交易所以 429、418 要求停送（D609、D420、D621）。不排隊、不重試
+  REJECT_CODE_RATE_LIMITED = 108; // Submit 用到 OrderRate 的 90%，Cancel 與 BatchCancel 用到 100%，或交易所以 429、418 要求停送（D609、D420、D621、D628）。不排隊、不重試
   REJECT_CODE_NOT_PLACED = 120; // 主動查單後確定交易所沒有這張單（D605）
 }
 
@@ -42,7 +42,7 @@ enum RejectCode {
 enum AccountState {
   ACCOUNT_STATE_UNSPECIFIED = 0;
   ACCOUNT_STATE_READY = 1;
-  ACCOUNT_STATE_DEGRADED = 2; // 私有 websocket 斷線，或查單失敗超過 5 分鐘：新單以 102 拒絕，撤單照常（D603、D622）
+  ACCOUNT_STATE_DEGRADED = 2; // 私有 websocket 斷線，或查單失敗超過 5 分鐘：新單以 102 拒絕，Cancel 與 BatchCancel 照常（D603、D622、D627）
   reserved 3; // 原本的 UNAVAILABLE：執行中不檢查持倉模式（D616）
   reserved "ACCOUNT_STATE_UNAVAILABLE";
 }
@@ -92,9 +92,12 @@ message Cancel {
   int64 recv_window_ms = 6;
 }
 
-// 撤掉這個帳號上 client_order_id 的 algo 欄位等於 algo_id 的所有掛單（D602）。
+// 撤掉這個帳號上 client_order_id 的 algo 欄位等於 algo_id 的所有掛單（D602、D625）。
 // 只看 algo 欄位，不分 session、incarnation：上一個進程或上一個 session 留下的也算。
 // 回覆只說 TD 收下了；每一張單撤成或撤不成，各自是一則 OrderUpdate（D610）。
+// 沒有要送的也回 accepted。整筆放不進 OrderRate（一張算一次，可用到 100%）是 108，什麼都不送（D628）。
+// 其中任何一張的商品解不出來是 106。DEGRADED 照常，走 REST 的 CancelBatch，不走 TradeStream（D627）。
+// 整批結果不明時，批內每張以 cloid 查單，不重送（D626）。cancel-on-disconnect 不接（D625）。
 message BatchCancel {
   uint32 algo_id = 1;
   repeated uint32 uids = 2; // 空 = 全部商品

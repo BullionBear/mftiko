@@ -57,19 +57,20 @@ type AccountVenue struct {
 	lev      map[symbol.ExchKey]float64
 	hedge    bool
 	requests []string
+	batches  [][]string // client order ids of each CancelBatch, in arrival order
 
-	submit    map[string]Outcome // by client order id, used once
-	cancel    map[string]Outcome
-	late      map[string]lateReq // by client order id: held until Arrive
-	batch     []Outcome
-	throttle  int
-	retry     time.Duration
-	used      []exchange.Used
+	submit      map[string]Outcome // by client order id, used once
+	cancel      map[string]Outcome
+	late        map[string]lateReq // by client order id: held until Arrive
+	batch       []Outcome
+	throttle    int
+	retry       time.Duration
+	used        []exchange.Used
 	failSnap    map[snapKey]int
 	failQueries int // GET /order failures left, each a 500
-	arms      []Arm
-	listenKey string
-	keys      int
+	arms        []Arm
+	listenKey   string
+	keys        int
 
 	conns      map[*streamConn]struct{}
 	hold       bool
@@ -408,8 +409,23 @@ func (v *AccountVenue) Requests() []string {
 	return slices.Clone(v.requests)
 }
 
+// Batches is the client order ids of each CancelBatch, in arrival order.
+func (v *AccountVenue) Batches() [][]string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	out := make([][]string, len(v.batches))
+	for i, b := range v.batches {
+		out[i] = slices.Clone(b)
+	}
+	return out
+}
+
 // ResetRequests forgets the requests received so far.
-func (v *AccountVenue) ResetRequests() { v.mu.Lock(); v.requests = nil; v.mu.Unlock() }
+func (v *AccountVenue) ResetRequests() {
+	v.mu.Lock()
+	v.requests, v.batches = nil, nil
+	v.mu.Unlock()
+}
 
 // Arms is every ArmCancelOnDisconnect the venue received, in order.
 func (v *AccountVenue) Arms() []Arm {
@@ -672,6 +688,11 @@ func (v *AccountVenue) doBatch(body []byte) (*exchange.HTTPResponse, error) {
 	if err := json.Unmarshal(body, &refs); err != nil {
 		return v.respond(400, nil), nil
 	}
+	ids := make([]string, len(refs))
+	for i, r := range refs {
+		ids[i] = r.Cid
+	}
+	v.batches = append(v.batches, ids)
 	var whole Outcome
 	if len(v.batch) > 0 {
 		whole, v.batch = v.batch[0], v.batch[1:]

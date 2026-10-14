@@ -145,6 +145,8 @@ type (
 		res      *exchange.OrderResult
 		upd      *exchange.OrderUpdate
 		err      error
+		refs     []exchange.CancelRef // a CancelBatch, one entry per order
+		perrs    []error              // one per ref; nil is success. Set only for resultBatch
 		sent     time.Time
 		window   time.Duration
 		deadline time.Time

@@ -197,9 +197,12 @@ export const CancelSchema: GenMessage<Cancel> = /*@__PURE__*/
   messageDesc(file_mftiko_td_v1_td, 2);
 
 /**
- * 撤掉這個帳號上 client_order_id 的 algo 欄位等於 algo_id 的所有掛單（D602）。
+ * 撤掉這個帳號上 client_order_id 的 algo 欄位等於 algo_id 的所有掛單（D602、D625）。
  * 只看 algo 欄位，不分 session、incarnation：上一個進程或上一個 session 留下的也算。
  * 回覆只說 TD 收下了；每一張單撤成或撤不成，各自是一則 OrderUpdate（D610）。
+ * 沒有要送的也回 accepted。整筆放不進 OrderRate（一張算一次，可用到 100%）是 108，什麼都不送（D628）。
+ * 其中任何一張的商品解不出來是 106。DEGRADED 照常，走 REST 的 CancelBatch，不走 TradeStream（D627）。
+ * 整批結果不明時，批內每張以 cloid 查單，不重送（D626）。cancel-on-disconnect 不接（D625）。
  *
  * @generated from message mftiko.td.v1.BatchCancel
  */
@@ -1031,7 +1034,7 @@ export enum RejectCode {
   ACCOUNT_OFFLINE = 101,
 
   /**
-   * 私有連線斷線中，暫停收新單；撤單照常（D603）
+   * 私有連線斷線中，暫停收新單；Cancel 與 BatchCancel 照常（D603、D627）
    *
    * @generated from enum value: REJECT_CODE_ACCOUNT_DEGRADED = 102;
    */
@@ -1073,7 +1076,7 @@ export enum RejectCode {
   ORDER_NOT_OPEN = 107,
 
   /**
-   * 這個帳號的下單額度用到 90%，或交易所以 429、418 要求停送（D609、D420、D621）。不排隊、不重試
+   * Submit 用到 OrderRate 的 90%，Cancel 與 BatchCancel 用到 100%，或交易所以 429、418 要求停送（D609、D420、D621、D628）。不排隊、不重試
    *
    * @generated from enum value: REJECT_CODE_RATE_LIMITED = 108;
    */
@@ -1110,7 +1113,7 @@ export enum AccountState {
   READY = 1,
 
   /**
-   * 私有 websocket 斷線，或查單失敗超過 5 分鐘：新單以 102 拒絕，撤單照常（D603、D622）
+   * 私有 websocket 斷線，或查單失敗超過 5 分鐘：新單以 102 拒絕，Cancel 與 BatchCancel 照常（D603、D622、D627）
    *
    * @generated from enum value: ACCOUNT_STATE_DEGRADED = 2;
    */

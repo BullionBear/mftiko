@@ -21,5 +21,6 @@
 // D615). After Start it also answers td.order: local rejects stay on the reply, and every later
 // change is one OrderUpdate (D610, D618–D624).
 //
-// Not yet: batch cancel and cancel-on-disconnect (E6-09).
+// Batch cancel is served (D625–D628). Cancel-on-disconnect is not: AccountSettings.cancel_on_disconnect_s
+// and CancelOnDisconnect stay unwired (D625).
 package account
