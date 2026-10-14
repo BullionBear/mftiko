@@ -15,9 +15,10 @@ import (
 // on the listenKey socket. After session.logon the order frames are not signed; the testnet
 // rejects a signature on a logged-on session.
 type tradeStream struct {
-	url string
-	key string
-	sig *codec.Signer
+	url    string
+	key    string
+	sig    *codec.Signer
+	window int64 // recvWindow, ms: AccountConfig.Validity
 }
 
 var _ exchange.TradeStream = (*tradeStream)(nil)
@@ -46,7 +47,7 @@ func (t *tradeStream) Dial(now time.Time) (*exchange.Dial, error) {
 
 func (t *tradeStream) logon(now time.Time) ([]byte, error) {
 	// The signature payload is the parameters except signature, sorted by name.
-	return logonFrame(t.key, t.sig, now)
+	return logonFrame(t.key, t.sig, now, t.window)
 }
 
 func (t *tradeStream) Submit(now time.Time, id uint64, req *exchange.OrderRequest) ([]byte, error) {
@@ -79,7 +80,7 @@ func (t *tradeStream) Submit(now time.Time, id uint64, req *exchange.OrderReques
 		NewClientOrderID: req.ClientOrderID,
 		NewOrderRespType: "RESULT",
 		Quantity:         qty,
-		RecvWindow:       recvWindow,
+		RecvWindow:       t.window,
 		Side:             side,
 		Symbol:           req.Instrument.ExchTicker,
 		Timestamp:        now.UnixMilli(),
@@ -110,18 +111,20 @@ func (t *tradeStream) Cancel(now time.Time, id uint64, ref exchange.CancelRef) (
 	if id == 0 {
 		return nil, fmt.Errorf("binance: request id is 0")
 	}
-	p, err := cancelParamsOf(now, ref, VenueUM)
+	p, err := cancelParamsOf(now, ref, VenueUM, t.window)
 	if err != nil {
 		return nil, err
 	}
 	return codec.Marshal(wsCall{ID: "c" + strconv.FormatUint(id, 10), Method: "order.cancel", Params: p})
 }
 
-func cancelParamsOf(now time.Time, ref exchange.CancelRef, venue string) (cancelParams, error) {
+// cancelParamsOf names the order to cancel, or to query. window is recvWindow in ms; REST leaves it
+// 0 because signedCall adds it to the query.
+func cancelParamsOf(now time.Time, ref exchange.CancelRef, venue string, window int64) (cancelParams, error) {
 	if err := instrumentVenue(ref.Instrument, venue); err != nil {
 		return cancelParams{}, err
 	}
-	p := cancelParams{RecvWindow: recvWindow, Symbol: ref.Instrument.ExchTicker, Timestamp: now.UnixMilli()}
+	p := cancelParams{RecvWindow: window, Symbol: ref.Instrument.ExchTicker, Timestamp: now.UnixMilli()}
 	if ref.ClientOrderID != "" {
 		if err := checkCloid(ref.ClientOrderID); err != nil {
 			return cancelParams{}, err

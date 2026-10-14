@@ -16,10 +16,11 @@ import (
 // userDataStream.subscribe: orders, cancels and private events share the socket.
 // After logon the order frames are not signed.
 type spotTrade struct {
-	url   string
-	key   string
-	sig   *codec.Signer
-	ready bool
+	url    string
+	key    string
+	sig    *codec.Signer
+	window int64 // recvWindow, ms: AccountConfig.Validity
+	ready  bool
 }
 
 var _ exchange.TradeStream = (*spotTrade)(nil)
@@ -44,7 +45,7 @@ func (t *spotTrade) Ping() []byte { return nil }
 // frame only after the previous one is answered: the venue rejects an order when logon has not
 // finished, even if subscribe was written behind it.
 func (t *spotTrade) Dial(now time.Time) (*exchange.Dial, error) {
-	logon, err := logonFrame(t.key, t.sig, now)
+	logon, err := logonFrame(t.key, t.sig, now, t.window)
 	if err != nil {
 		return nil, err
 	}
@@ -55,13 +56,13 @@ func (t *spotTrade) Dial(now time.Time) (*exchange.Dial, error) {
 	return &exchange.Dial{URL: t.url, Frames: [][]byte{logon, sub}}, nil
 }
 
-func logonFrame(key string, sig *codec.Signer, now time.Time) ([]byte, error) {
-	q := codec.Query(nil).Add("apiKey", key).AddInt("recvWindow", recvWindow).AddInt("timestamp", now.UnixMilli())
+func logonFrame(key string, sig *codec.Signer, now time.Time, window int64) ([]byte, error) {
+	q := codec.Query(nil).Add("apiKey", key).AddInt("recvWindow", window).AddInt("timestamp", now.UnixMilli())
 	body := wsCall{
 		ID:     "logon",
 		Method: "session.logon",
 		Params: logonParams{
-			APIKey: key, RecvWindow: recvWindow,
+			APIKey: key, RecvWindow: window,
 			Signature: string(sig.SignBase64(nil, q)), Timestamp: now.UnixMilli(),
 		},
 	}
@@ -76,6 +77,7 @@ func (t *spotTrade) Submit(now time.Time, id uint64, req *exchange.OrderRequest)
 	if err != nil {
 		return nil, err
 	}
+	p.RecvWindow = t.window
 	return codec.Marshal(wsCall{ID: "o" + strconv.FormatUint(id, 10), Method: "order.place", Params: p})
 }
 
@@ -83,7 +85,7 @@ func (t *spotTrade) Cancel(now time.Time, id uint64, ref exchange.CancelRef) ([]
 	if id == 0 {
 		return nil, fmt.Errorf("binance: request id is 0")
 	}
-	p, err := cancelParamsOf(now, ref, VenueSpot)
+	p, err := cancelParamsOf(now, ref, VenueSpot, t.window)
 	if err != nil {
 		return nil, err
 	}
@@ -316,7 +318,6 @@ func spotOrderParamsOf(now time.Time, req *exchange.OrderRequest) (spotOrderWire
 	p := spotOrderWire{
 		NewClientOrderID: req.ClientOrderID,
 		NewOrderRespType: "RESULT",
-		RecvWindow:       recvWindow,
 		Side:             side,
 		Symbol:           req.Instrument.ExchTicker,
 		Timestamp:        now.UnixMilli(),
@@ -407,7 +408,7 @@ func (a *account) cancelQuery(now time.Time, ref exchange.CancelRef) (cancelPara
 	default:
 		return cancelParams{}, "", nil, exchange.ErrNotImplemented
 	}
-	p, err := cancelParamsOf(now, ref, venue)
+	p, err := cancelParamsOf(now, ref, venue, 0)
 	if err != nil {
 		return cancelParams{}, "", nil, err
 	}

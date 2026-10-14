@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://fapi.binance.com",
+    "path": "/fapi/v1/order",
+    "query": "symbol=BTCUSDT&origClientOrderId=1767225600000000001&recvWindow=5000&timestamp=1767225600000&signature=EoT42Uf%2BaVYD0SgQ5Xo8RbP%2BVb0qPDPX8ZgPscsKAsNS9%2Fs610BLStk76KUbs3BZG3Frvtrx7C8%2FK%2BNSSvhGCA%3D%3D",
+    "header": [
+      {
+        "name": "X-MBX-APIKEY",
+        "value": "conformance-api-key"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "weight_1m",
+        "n": 1
+      }
+    ]
+  },
+  "response": "recorded",
+  "error": "not_found"
+}

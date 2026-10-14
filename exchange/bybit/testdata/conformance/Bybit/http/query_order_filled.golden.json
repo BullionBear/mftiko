@@ -1,0 +1,52 @@
+{
+  "request": {
+    "method": "GET",
+    "base": "https://api.bybit.com",
+    "path": "/v5/order/realtime",
+    "query": "category=linear&symbol=BTCUSDT&orderLinkId=1767225600000000001",
+    "header": [
+      {
+        "name": "X-BAPI-API-KEY",
+        "value": "conformance-api-key"
+      },
+      {
+        "name": "X-BAPI-TIMESTAMP",
+        "value": "1767225600000"
+      },
+      {
+        "name": "X-BAPI-RECV-WINDOW",
+        "value": "5000"
+      },
+      {
+        "name": "X-BAPI-SIGN",
+        "value": "8b24ee97ba073fa4f2989781dbc0baa880f0d127589725588a19c37c9dd1cef2"
+      }
+    ],
+    "cost": [
+      {
+        "bucket": "read",
+        "n": 1
+      }
+    ]
+  },
+  "response": "recorded",
+  "result": {
+    "AvgPrice": 65000,
+    "ClientOrderID": "1767225600000000001",
+    "Exch": {
+      "Category": "Perp",
+      "ExchTicker": "BTCUSDT",
+      "Venue": "Bybit"
+    },
+    "ExchTsNs": 1767225600200000000,
+    "FilledQty": 0.002,
+    "OrderID": "6fa6ec8f-26f0-443c-ba69-d0d18977dfc0",
+    "Price": 65000,
+    "Qty": 0.002,
+    "QuoteQty": null,
+    "RejectReason": "",
+    "Side": 1,
+    "Status": 5,
+    "Type": 1
+  }
+}

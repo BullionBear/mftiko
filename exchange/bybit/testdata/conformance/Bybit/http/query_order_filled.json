@@ -1,0 +1,61 @@
+{
+  "response": {
+    "status": 200,
+    "body": {
+      "retCode": 0,
+      "retMsg": "OK",
+      "result": {
+        "nextPageCursor": "",
+        "category": "linear",
+        "list": [
+          {
+            "orderId": "6fa6ec8f-26f0-443c-ba69-d0d18977dfc0",
+            "orderLinkId": "1767225600000000001",
+            "blockTradeId": "",
+            "symbol": "BTCUSDT",
+            "price": "65000",
+            "qty": "0.002",
+            "side": "Buy",
+            "isLeverage": "",
+            "positionIdx": 0,
+            "orderStatus": "Filled",
+            "cancelType": "UNKNOWN",
+            "rejectReason": "EC_NoError",
+            "avgPrice": "65000",
+            "leavesQty": "0",
+            "leavesValue": "0",
+            "cumExecQty": "0.002",
+            "cumExecValue": "0",
+            "cumExecFee": "0",
+            "timeInForce": "GTC",
+            "orderType": "Limit",
+            "stopOrderType": "",
+            "orderIv": "",
+            "triggerPrice": "",
+            "takeProfit": "",
+            "stopLoss": "",
+            "tpTriggerBy": "",
+            "slTriggerBy": "",
+            "triggerDirection": 0,
+            "triggerBy": "",
+            "lastPriceOnCreated": "65010",
+            "reduceOnly": false,
+            "closeOnTrigger": false,
+            "smpType": "None",
+            "smpGroup": 0,
+            "smpOrderId": "",
+            "tpslMode": "",
+            "tpLimitPrice": "",
+            "slLimitPrice": "",
+            "placeType": "",
+            "marketUnit": "",
+            "createdTime": "1767225600000",
+            "updatedTime": "1767225600200"
+          }
+        ]
+      },
+      "retExtInfo": {},
+      "time": 1767225600500
+    }
+  }
+}

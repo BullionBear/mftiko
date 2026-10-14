@@ -162,6 +162,21 @@ func (a *account) post(now time.Time, path string, body any, cost []exchange.Cos
 	return a.sign(now, http.MethodPost, path, "", raw, cost, mutates)
 }
 
+// postOrder is post with the expTime header: now plus AccountConfig.Validity, Unix ms. The venue
+// refuses the request when it arrives after that (D605). The header is not part of the prehash.
+func (a *account) postOrder(now time.Time, path string, body any, cost []exchange.Cost) (exchange.HTTPRequest, error) {
+	w, err := a.cfg.Window()
+	if err != nil {
+		return exchange.HTTPRequest{}, err
+	}
+	req, err := a.post(now, path, body, cost, true)
+	if err != nil {
+		return exchange.HTTPRequest{}, err
+	}
+	req.Header = append(req.Header, exchange.Header{Name: "expTime", Value: strconv.FormatInt(now.Add(w).UnixMilli(), 10)})
+	return req, nil
+}
+
 // marshalBody is the JSON that is signed and sent. sonic may end it with a newline; that
 // byte is not part of the body.
 func marshalBody(v any) ([]byte, error) {

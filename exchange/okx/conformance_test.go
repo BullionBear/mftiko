@@ -71,6 +71,27 @@ func spec() conformance.Spec {
 			conformance.Call("balances", func(e conformance.Env) (exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
 				return snapCall(e, "/api/v5/account/balance")
 			}),
+			conformance.Call("query_order_live", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: spotInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("query_order_partial", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: spotInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("query_order_filled", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: spotInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("query_order_canceled", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: spotInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("query_order_missing", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
+				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: spotInst(), ClientOrderID: cloidGTC})
+			}),
+			conformance.Call("account_config_net", func(e conformance.Env) (exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
+				return snapCall(e, "/api/v5/account/config")
+			}),
+			conformance.Call("account_config_hedge", func(e conformance.Env) (exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
+				return snapCall(e, "/api/v5/account/config")
+			}),
 			conformance.Call("leverage", func(e conformance.Env) (exchange.Call[float64], error) {
 				return e.Account.Leverage(e.Now, swapInst())
 			}),

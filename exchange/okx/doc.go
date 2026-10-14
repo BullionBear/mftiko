@@ -106,7 +106,9 @@
 // quote amount is formatted at 1e-8. A contract's sz is the contract count: platform qty divided
 // by ContractSize (D203). Spot sz is the platform quantity. clOrdId is 1 to 32 letters or digits.
 // reduceOnly is the string "true"; spot has none. Cancel-batch is at most 20 orders and may mix
-// instruments. Each order costs one count on the 60-per-2s order budget.
+// instruments. Each order costs one count on the 60-per-2s order budget. The three carry the
+// expTime header: the signing time plus AccountConfig.Validity (5 seconds by default), Unix ms.
+// The venue refuses a request that arrives after it (D605). expTime is not part of the prehash.
 //
 // The create acknowledgement has an order id and no state, so sCode 0 is OrderStatusNew: the venue
 // has the request and did not refuse it, and the order is not on the book yet.
@@ -132,12 +134,16 @@
 //
 // # Recon
 //
-// Snapshot is three calls. Open orders are GET /api/v5/trade/orders-pending with limit 100, every
+// Snapshot is four calls. Open orders are GET /api/v5/trade/orders-pending with limit 100, every
 // instType in one list. Positions are GET /api/v5/account/positions, limit 100. A row with pos 0
 // is left out. posSide short makes the size negative; long stays positive; net keeps the sign
 // OKX sent. Balances are GET /api/v5/account/balance. Free is availBal and Locked is frozenBal. A
 // coin with neither is left out. A full page of 100, with a new cursor, is the next page: after
-// is the last ordId, or the last posId for positions.
+// is the last ordId, or the last posId for positions. GET /api/v5/account/config gives posMode:
+// long_short_mode is AccountSnapshot.HedgeMode, net_mode is not (D607).
+//
+// QueryOrder is GET /api/v5/trade/order by instId and clOrdId, or ordId when the ref has none.
+// It finds live and ended orders. 51603 (Order does not exist) is exchange.ErrNotFound (D605).
 //
 // Leverage is GET /api/v5/account/leverage-info for that instId and mgnMode cross. Spot has none.
 // A net row is the answer. Long and short rows that disagree are an error.

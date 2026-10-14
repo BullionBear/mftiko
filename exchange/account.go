@@ -22,6 +22,32 @@ type AccountConfig struct {
 	// another host. OKX adds the header x-simulated-trading: 1 and, unless StreamEndpoint
 	// is set, dials the demo private socket. Other venues ignore it.
 	Simulated bool
+	// Validity is how long after it is signed a Submit or Cancel may still take effect: Binance's
+	// and Bybit's recvWindow, OKX's expTime (now plus Validity). Past it the venue refuses the
+	// request even when it arrives, so a QueryOrder after now + Validity + clock skew that finds
+	// nothing means the order was not placed (D605). Zero is DefaultValidity; it is at most
+	// MaxValidity. Adapters put it on every request that carries a window.
+	Validity time.Duration
+}
+
+const (
+	// DefaultValidity is AccountConfig.Validity when it is zero (D605).
+	DefaultValidity = 5 * time.Second
+	// MaxValidity is the longest window every venue takes: Binance caps recvWindow at 60000 ms.
+	MaxValidity = 60 * time.Second
+)
+
+// Window is c.Validity, DefaultValidity when zero. A negative window, one over MaxValidity, or
+// one that is not whole milliseconds is an error: adapters check it when they are built.
+func (c AccountConfig) Window() (time.Duration, error) {
+	w := c.Validity
+	if w == 0 {
+		w = DefaultValidity
+	}
+	if w < time.Millisecond || w > MaxValidity || w%time.Millisecond != 0 {
+		return 0, fmt.Errorf("exchange: validity %v must be whole milliseconds from 1ms to %v", c.Validity, MaxValidity)
+	}
+	return w, nil
 }
 
 // AccountFactory builds an Account for one api_id of one AccountKind.
@@ -54,6 +80,13 @@ type Account interface {
 	// CancelBatch cancels up to Limits().CancelBatch orders in one venue request. The result has one
 	// entry per ref, nil for success; Parse's error is for a failure of the whole request.
 	CancelBatch(now time.Time, refs []CancelRef) (Call[[]error], error)
+
+	// QueryOrder reads one order from the venue by ref.ClientOrderID (or ref.OrderID), open or
+	// recently ended, over REST (D605). Parse returns ErrNotFound when the venue says it has no
+	// such order, never a plain error or a *Reject. The account worker calls it for an order whose
+	// Submit or Cancel had an unknown outcome, once now + AccountConfig.Validity + clock skew has
+	// passed.
+	QueryOrder(now time.Time, ref CancelRef) (Call[*OrderUpdate], error)
 
 	// Snapshot is the recon read (D603): open orders, positions, balances. A venue answers them in
 	// several requests (BinancePM: one per product), each of them paginated or not: the worker runs
@@ -132,8 +165,8 @@ type AccountSnapshot struct {
 	Balances   []Balance
 	AsOfNs     int64
 	// HedgeMode: the account holds long and short positions apart (Binance dualSidePosition, OKX
-	// long_short_mode, Bybit positionIdx 1 and 2) somewhere. Phase 1 trades one-way only, so the
-	// worker fails Start, or stops taking new orders, when any page says so (D607, D612).
+	// long_short_mode, Bybit positionIdx 1 and 2 on an open order or a position) somewhere. Phase 1
+	// trades one-way only, so the worker fails Start when any page says so (D607, D612, D616, D617).
 	HedgeMode bool
 }
 

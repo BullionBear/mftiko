@@ -199,3 +199,46 @@ func (c *tradeCap) Submitted(id uint64, res *exchange.OrderResult, err error) {
 func (c *tradeCap) Canceled(id uint64, err error) {
 	c.gotCan, c.canID, c.canErr = true, id, err
 }
+
+// TestValidity: AccountConfig.Validity is X-BAPI-RECV-WINDOW on REST and on the trade socket's
+// order frames (D605). A window out of range is refused when the account is built.
+func TestValidity(t *testing.T) {
+	kind := Declare().AccountKinds[0]
+	cfg := exchange.AccountConfig{Credentials: conformance.TestCredentials(exchange.KeyHMAC, false), Validity: 3 * time.Second}
+	a, err := kind.Account(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := conformance.DefaultNow
+	sub, err := a.Submit(now, limitOrder(exchange.TIFGTC, cloidGTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reqHeader(sub.Req, "X-BAPI-RECV-WINDOW"); got != "3000" {
+		t.Errorf("REST window %q", got)
+	}
+	ts, err := a.NewTradeStream()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := ts.Cancel(now, 1, exchange.CancelRef{Instrument: btcInst(), ClientOrderID: cloidGTC})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(f), `"X-BAPI-RECV-WINDOW":"3000"`) {
+		t.Errorf("frame %s", f)
+	}
+	cfg.Validity = -time.Second
+	if _, err := kind.Account(cfg); err == nil {
+		t.Error("a negative window was taken")
+	}
+}
+
+func reqHeader(r exchange.HTTPRequest, name string) string {
+	for _, h := range r.Header {
+		if h.Name == name {
+			return h.Value
+		}
+	}
+	return ""
+}

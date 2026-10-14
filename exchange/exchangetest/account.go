@@ -29,10 +29,15 @@ import (
 //     server's ws:// URL in AccountConfig.StreamEndpoint; the worker dials it with exchange/transport/ws.
 //
 // The test sets the account's state, scripts how the venue answers order requests (accept, refuse, no
-// answer), throttles requests with 429, reports usage, drops stream connections, refuses logins, and
+// answer, or arrive late: OnSubmit, OnCancel, Arrive), throttles requests with 429, reports usage, drops stream connections, refuses logins, and
 // pushes private events. Changing the state through the venue (PutOrder, Fill, SetBalance,
 // SetPosition) also pushes the event a venue would send, so after a run the worker's view can be
 // compared with the venue's.
+//
+// QueryOrder finds an order open or ended, by client order id or order id; one the venue never took
+// is ErrNotFound. Every Submit and Cancel carries its deadline (AccountConfig.Validity after it was
+// signed): a request held back with Outcome.Late takes effect when it Arrives before the deadline,
+// and is refused after it, as on a real venue (D605).
 //
 // The venue does not match orders: an accepted order rests until the test fills or cancels it. Its
 // wire format is its own JSON; it checks the API key but not signatures. Everything goes over
@@ -44,6 +49,7 @@ type AccountVenue struct {
 	mu       sync.Mutex
 	key      string
 	orders   map[string]*exchange.OrderUpdate // by order id; open orders only
+	ended    map[string]*exchange.OrderUpdate // by order id; filled, cancelled, rejected, expired
 	nextID   int
 	fills    int
 	balances map[string]exchange.Balance
@@ -54,6 +60,7 @@ type AccountVenue struct {
 
 	submit    map[string]Outcome // by client order id, used once
 	cancel    map[string]Outcome
+	late      map[string]lateReq // by client order id: held until Arrive
 	batch     []Outcome
 	throttle  int
 	retry     time.Duration
@@ -106,6 +113,15 @@ type Outcome struct {
 	// wrapping exchange.ErrUnknownOutcome. Applied says whether the venue acted on it all the same.
 	NoAnswer bool
 	Applied  bool
+	// Late: the request is delayed on its way. Do returns no answer (ErrUnknownOutcome) and the
+	// venue does nothing until the test calls Arrive. Not for CancelBatch.
+	Late bool
+}
+
+// lateReq is a Submit or Cancel held back by Outcome.Late.
+type lateReq struct {
+	submit *orderReq
+	cancel *cancelReq
 }
 
 // SnapshotPart is one of the reads Snapshot makes.
@@ -156,9 +172,9 @@ func NewAccountVenue(o AccountOptions) *AccountVenue {
 	}
 	return &AccountVenue{
 		opts: o, base: "exchangetest://" + o.Venue + "-account", key: o.Key,
-		orders: map[string]*exchange.OrderUpdate{}, balances: map[string]exchange.Balance{},
+		orders: map[string]*exchange.OrderUpdate{}, ended: map[string]*exchange.OrderUpdate{}, balances: map[string]exchange.Balance{},
 		pos: map[symbol.ExchKey]exchange.Position{}, lev: map[symbol.ExchKey]float64{},
-		submit: map[string]Outcome{}, cancel: map[string]Outcome{}, failSnap: map[snapKey]int{},
+		submit: map[string]Outcome{}, cancel: map[string]Outcome{}, late: map[string]lateReq{}, failSnap: map[snapKey]int{},
 		conns: map[*streamConn]struct{}{},
 	}
 }
@@ -171,7 +187,12 @@ func (v *AccountVenue) Kind(name string, trades ...string) exchange.AccountKind 
 	}
 	return exchange.AccountKind{
 		Name: name, Label: name, Trades: trades, KeyTypes: []exchange.KeyType{exchange.KeyHMAC, exchange.KeyEd25519},
-		Account: func(cfg exchange.AccountConfig) (exchange.Account, error) { return v.Account(cfg), nil },
+		Account: func(cfg exchange.AccountConfig) (exchange.Account, error) {
+			if _, err := cfg.Window(); err != nil {
+				return nil, err
+			}
+			return v.Account(cfg), nil
+		},
 	}
 }
 
@@ -303,6 +324,44 @@ func (v *AccountVenue) OnCancel(cloid string, o Outcome) {
 	v.mu.Unlock()
 }
 
+// Arrive delivers the request held back for client order id cloid (Outcome.Late) at venue time at.
+// Before or at its deadline the venue acts on it as it would on time: it places the order, or cancels
+// it, and pushes the event. After the deadline the venue refuses it and nothing changes. took says
+// which; the error is for a cloid with no request held.
+func (v *AccountVenue) Arrive(cloid string, at time.Time) (took bool, err error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	r, ok := v.late[cloid]
+	if !ok {
+		return false, fmt.Errorf("exchangetest: no request held for %q", cloid)
+	}
+	delete(v.late, cloid)
+	exp := int64(0)
+	if r.submit != nil {
+		exp = r.submit.Exp
+	} else {
+		exp = r.cancel.Exp
+	}
+	if exp != 0 && at.UnixNano() > exp {
+		return false, nil
+	}
+	if r.submit != nil {
+		if v.byCloid(r.submit.Cid) != nil {
+			return false, nil
+		}
+		v.place(r.submit)
+		return true, nil
+	}
+	return v.cancelOne(*r.cancel, true) == 0, nil
+}
+
+// Held is the client order ids of the requests held back by Outcome.Late, sorted.
+func (v *AccountVenue) Held() []string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return slices.Sorted(maps.Keys(v.late))
+}
+
 // OnBatch scripts the answer to the next CancelBatch as a whole. Code refuses the whole request.
 func (v *AccountVenue) OnBatch(o Outcome) { v.mu.Lock(); v.batch = append(v.batch, o); v.mu.Unlock() }
 
@@ -356,7 +415,9 @@ func (v *AccountVenue) setOrder(o exchange.OrderUpdate) {
 	switch o.Status {
 	case exchange.OrderStatusFilled, exchange.OrderStatusCancelled, exchange.OrderStatusRejected, exchange.OrderStatusExpired:
 		delete(v.orders, o.OrderID)
+		v.ended[o.OrderID] = &o
 	default:
+		delete(v.ended, o.OrderID)
 		v.orders[o.OrderID] = &o
 	}
 }
@@ -371,6 +432,26 @@ func (v *AccountVenue) byCloid(cloid string) *exchange.OrderUpdate {
 		}
 	}
 	return nil
+}
+
+// lookup finds an order open or ended: by order id, else the latest with client order id cid.
+func (v *AccountVenue) lookup(id, cid string) *exchange.OrderUpdate {
+	if id != "" {
+		if o := v.orders[id]; o != nil {
+			return o
+		}
+		return v.ended[id]
+	}
+	if o := v.byCloid(cid); o != nil {
+		return o
+	}
+	var last *exchange.OrderUpdate
+	for _, o := range v.ended {
+		if o.ClientOrderID == cid && cid != "" && (last == nil || o.ExchTsNs > last.ExchTsNs) {
+			last = o
+		}
+	}
+	return last
 }
 
 func (v *AccountVenue) find(ref cancelReq) *exchange.OrderUpdate {
@@ -449,6 +530,12 @@ func (v *AccountVenue) Do(ctx context.Context, req *exchange.HTTPRequest) (*exch
 		return v.doCancel(req.Body)
 	case "DELETE /batch":
 		return v.doBatch(req.Body)
+	case "GET /order":
+		o := v.lookup(q.Get("id"), q.Get("cid"))
+		if o == nil {
+			return v.refusal(-2013, "order does not exist"), nil
+		}
+		return v.respond(200, mustJSON(toWireOrder(o))), nil
 	case "GET /orders", "GET /positions", "GET /balances":
 		return v.doSnapshot(req.Path, q)
 	case "GET /leverage":
@@ -490,6 +577,10 @@ func (v *AccountVenue) doSubmit(body []byte) (*exchange.HTTPResponse, error) {
 	if scripted && out.Code != 0 {
 		return v.refusal(out.Code, "refused"), nil
 	}
+	if scripted && out.Late {
+		v.late[r.Cid] = lateReq{submit: &r}
+		return nil, errNoAnswer
+	}
 	place := !scripted || !out.NoAnswer || out.Applied
 	if place && r.Cid != "" && v.byCloid(r.Cid) != nil {
 		if scripted && out.NoAnswer {
@@ -499,20 +590,26 @@ func (v *AccountVenue) doSubmit(body []byte) (*exchange.HTTPResponse, error) {
 	}
 	var o exchange.OrderUpdate
 	if place {
-		v.nextID++
-		o = exchange.OrderUpdate{
-			Exch:    symbol.ExchKey{Venue: v.opts.Venue, Category: r.Cat, ExchTicker: r.Sym},
-			OrderID: strconv.Itoa(v.nextID), ClientOrderID: r.Cid, Side: r.Side, Type: r.Type,
-			Status: exchange.OrderStatusAccepted, Qty: parseNum(r.Qty), QuoteQty: parseNum(r.Quote),
-			Price: parseNum(r.Price), FilledQty: 0, AvgPrice: decimal.Absent(), ExchTsNs: r.Ts,
-		}
-		v.setOrder(o)
-		v.broadcast(orderFrame(&o))
+		o = v.place(&r)
 	}
 	if scripted && out.NoAnswer {
 		return nil, errNoAnswer
 	}
 	return v.respond(200, mustJSON(submitAns{ID: o.OrderID, Status: v.opts.Ack, Ts: r.Ts})), nil
+}
+
+// place puts the order of r on the book and pushes it.
+func (v *AccountVenue) place(r *orderReq) exchange.OrderUpdate {
+	v.nextID++
+	o := exchange.OrderUpdate{
+		Exch:    symbol.ExchKey{Venue: v.opts.Venue, Category: r.Cat, ExchTicker: r.Sym},
+		OrderID: strconv.Itoa(v.nextID), ClientOrderID: r.Cid, Side: r.Side, Type: r.Type,
+		Status: exchange.OrderStatusAccepted, Qty: parseNum(r.Qty), QuoteQty: parseNum(r.Quote),
+		Price: parseNum(r.Price), FilledQty: 0, AvgPrice: decimal.Absent(), ExchTsNs: r.Ts,
+	}
+	v.setOrder(o)
+	v.broadcast(orderFrame(&o))
+	return o
 }
 
 // cancelOne applies one cancel: nil, or the venue's refusal code.
@@ -540,6 +637,10 @@ func (v *AccountVenue) doCancel(body []byte) (*exchange.HTTPResponse, error) {
 	delete(v.cancel, r.Cid)
 	if scripted && out.Code != 0 {
 		return v.refusal(out.Code, "refused"), nil
+	}
+	if scripted && out.Late {
+		v.late[r.Cid] = lateReq{cancel: &r}
+		return nil, errNoAnswer
 	}
 	if scripted && out.NoAnswer {
 		if out.Applied {

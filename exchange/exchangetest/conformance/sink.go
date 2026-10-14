@@ -139,6 +139,8 @@ func Kind(err error) string {
 		return "auth"
 	case errors.Is(err, exchange.ErrUnknownOutcome):
 		return "unknown_outcome"
+	case errors.Is(err, exchange.ErrNotFound):
+		return "not_found"
 	case errors.Is(err, exchange.ErrUnsupported):
 		return "unsupported"
 	case errors.Is(err, exchange.ErrNotImplemented):

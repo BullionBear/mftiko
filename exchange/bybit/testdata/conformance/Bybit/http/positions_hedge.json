@@ -1,0 +1,52 @@
+{
+  "response": {
+    "status": 200,
+    "body": {
+      "retCode": 0,
+      "retMsg": "OK",
+      "result": {
+        "nextPageCursor": "",
+        "category": "linear",
+        "list": [
+          {
+            "positionIdx": 2,
+            "riskId": 1,
+            "riskLimitValue": "2000000",
+            "symbol": "BTCUSDT",
+            "side": "Sell",
+            "size": "0.002",
+            "avgPrice": "65000",
+            "positionValue": "130",
+            "tradeMode": 0,
+            "positionStatus": "Normal",
+            "autoAddMargin": 0,
+            "adlRankIndicator": 2,
+            "leverage": "10",
+            "positionBalance": "13",
+            "markPrice": "64900",
+            "liqPrice": "",
+            "bustPrice": "",
+            "positionMM": "0.7",
+            "positionIM": "13",
+            "tpslMode": "Full",
+            "takeProfit": "0",
+            "stopLoss": "0",
+            "trailingStop": "0",
+            "unrealisedPnl": "0.2",
+            "curRealisedPnl": "-0.078",
+            "cumRealisedPnl": "-0.078",
+            "seq": 1,
+            "isReduceOnly": false,
+            "mmrSysUpdatedTime": "",
+            "leverageSysUpdatedTime": "",
+            "sessionAvgPrice": "",
+            "createdTime": "1767225600000",
+            "updatedTime": "1767225600400"
+          }
+        ]
+      },
+      "retExtInfo": {},
+      "time": 1767225600500
+    }
+  }
+}

@@ -1,6 +1,7 @@
 package okx
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -36,7 +37,7 @@ func (a *account) Submit(now time.Time, req *exchange.OrderRequest) (exchange.Ca
 	if err != nil {
 		return exchange.Call[*exchange.OrderResult]{}, err
 	}
-	httpReq, err := a.post(now, "/api/v5/trade/order", body, orderCost(1), true)
+	httpReq, err := a.postOrder(now, "/api/v5/trade/order", body, orderCost(1))
 	if err != nil {
 		return exchange.Call[*exchange.OrderResult]{}, err
 	}
@@ -48,7 +49,7 @@ func (a *account) Cancel(now time.Time, ref exchange.CancelRef) (exchange.Call[s
 	if err != nil {
 		return exchange.Call[struct{}]{}, err
 	}
-	httpReq, err := a.post(now, "/api/v5/trade/cancel-order", body, orderCost(1), true)
+	httpReq, err := a.postOrder(now, "/api/v5/trade/cancel-order", body, orderCost(1))
 	if err != nil {
 		return exchange.Call[struct{}]{}, err
 	}
@@ -70,15 +71,53 @@ func (a *account) CancelBatch(now time.Time, refs []exchange.CancelRef) (exchang
 		}
 		items = append(items, item)
 	}
-	httpReq, err := a.post(now, "/api/v5/trade/cancel-batch-orders", items, orderCost(len(items)), true)
+	httpReq, err := a.postOrder(now, "/api/v5/trade/cancel-batch-orders", items, orderCost(len(items)))
 	if err != nil {
 		return exchange.Call[[]error]{}, err
 	}
 	return exchange.Call[[]error]{Req: httpReq, Parse: parseBatch}, nil
 }
 
-// Snapshot reads the unified account: one orders-pending page, one positions page, one balance.
-// Each list follows after when the page is full.
+// QueryOrder is GET /api/v5/trade/order by instId and clOrdId (ordId when the ref has none), open
+// or recently ended. 51603 (order does not exist) is ErrNotFound.
+func (a *account) QueryOrder(now time.Time, ref exchange.CancelRef) (exchange.Call[*exchange.OrderUpdate], error) {
+	body, err := cancelBodyOf(ref)
+	if err != nil {
+		return exchange.Call[*exchange.OrderUpdate]{}, err
+	}
+	pairs := []pair{{"instId", body.InstID}, {"clOrdId", body.ClOrdID}}
+	if body.ClOrdID == "" {
+		pairs = append(pairs, pair{"ordId", body.OrdID})
+	}
+	req, err := a.get(now, "/api/v5/trade/order", pairs, readCost())
+	if err != nil {
+		return exchange.Call[*exchange.OrderUpdate]{}, err
+	}
+	return exchange.Call[*exchange.OrderUpdate]{Req: req, Parse: parseQueryOrder}, nil
+}
+
+func parseQueryOrder(resp *exchange.HTTPResponse) (*exchange.OrderUpdate, error) {
+	e, err := readEnv(resp)
+	var rej *exchange.Reject
+	if errors.As(err, &rej) && rej.Native == "51603" {
+		return nil, fmt.Errorf("okx: %s: %w", rej.Reason, exchange.ErrNotFound)
+	}
+	if err != nil {
+		return nil, err
+	}
+	var rows []orderRow
+	if err := decodeData(e.Data, &rows); err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, errors.New("okx: order lookup returned no order")
+	}
+	up := rows[0].update()
+	return &up, nil
+}
+
+// Snapshot reads the unified account: one orders-pending page, one positions page, one balance,
+// and the account config for the position mode. Each list follows after when the page is full.
 func (a *account) Snapshot(now time.Time) ([]exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
 	orders, err := a.openOrders(now, "")
 	if err != nil {
@@ -92,7 +131,36 @@ func (a *account) Snapshot(now time.Time) ([]exchange.Call[exchange.Page[exchang
 	if err != nil {
 		return nil, err
 	}
-	return []exchange.Call[exchange.Page[exchange.AccountSnapshot]]{orders, pos, bal}, nil
+	mode, err := a.get(now, "/api/v5/account/config", nil, readCost())
+	if err != nil {
+		return nil, err
+	}
+	return []exchange.Call[exchange.Page[exchange.AccountSnapshot]]{orders, pos, bal, {Req: mode, Parse: parsePosMode}}, nil
+}
+
+// parsePosMode reads posMode: long_short_mode is hedge mode, net_mode one-way (D607).
+func parsePosMode(resp *exchange.HTTPResponse) (exchange.Page[exchange.AccountSnapshot], error) {
+	e, err := readEnv(resp)
+	if err != nil {
+		return exchange.Page[exchange.AccountSnapshot]{}, err
+	}
+	var rows []struct {
+		PosMode string `json:"posMode"`
+	}
+	if err := decodeData(e.Data, &rows); err != nil {
+		return exchange.Page[exchange.AccountSnapshot]{}, err
+	}
+	if len(rows) == 0 {
+		return exchange.Page[exchange.AccountSnapshot]{}, errors.New("okx: account config is empty")
+	}
+	switch rows[0].PosMode {
+	case "long_short_mode":
+		return snapPage(exchange.AccountSnapshot{HedgeMode: true}), nil
+	case "net_mode":
+		return snapPage(exchange.AccountSnapshot{}), nil
+	default:
+		return exchange.Page[exchange.AccountSnapshot]{}, fmt.Errorf("okx: posMode %q", rows[0].PosMode)
+	}
 }
 
 // Leverage reads cross leverage. Spot has none. Long and short rows that disagree are an error;

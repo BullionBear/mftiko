@@ -19,6 +19,10 @@ var (
 	// client order id once the request's validity window has passed (D605), and never counts it as
 	// refused (D302).
 	ErrUnknownOutcome = errors.New("exchange: outcome unknown")
+	// ErrNotFound: the venue says it has no such order (Account.QueryOrder). Past the request's
+	// validity window it means the request never took effect (D605); before it, the request may
+	// still arrive.
+	ErrNotFound = errors.New("exchange: no such order")
 )
 
 // Reject is the venue refusing an order request. Code follows PROTOCOL §7.2: 200–299 for refusals

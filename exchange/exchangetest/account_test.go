@@ -701,3 +701,112 @@ func TestAccountKind(t *testing.T) {
 		t.Fatalf("limits %+v", a.Limits())
 	}
 }
+
+func query(t *testing.T, v *AccountVenue, a exchange.Account, ref exchange.CancelRef) (*exchange.OrderUpdate, error) {
+	t.Helper()
+	c, err := a.QueryOrder(testNow, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return exchange.Run(bgCtx, v, c)
+}
+
+func TestAccountQueryOrder(t *testing.T) {
+	v, a := newVenue(AccountOptions{})
+	if _, err := submit(t, v, a, limit("101", perpBTC, 0.5, 60000)); err != nil {
+		t.Fatal(err)
+	}
+	o, err := query(t, v, a, exchange.CancelRef{Instrument: perpBTC, ClientOrderID: "101"})
+	if err != nil || o.Status != exchange.OrderStatusAccepted || o.ClientOrderID != "101" || o.Qty != 0.5 {
+		t.Fatalf("open: %+v, %v", o, err)
+	}
+	if _, err := v.Fill("101", 0.5, 60000); err != nil {
+		t.Fatal(err)
+	}
+	// A filled order is off the book and still found, by client order id and by order id.
+	o, err = query(t, v, a, exchange.CancelRef{Instrument: perpBTC, ClientOrderID: "101"})
+	if err != nil || o.Status != exchange.OrderStatusFilled || o.FilledQty != 0.5 {
+		t.Fatalf("filled: %+v, %v", o, err)
+	}
+	if o2, err := query(t, v, a, exchange.CancelRef{Instrument: perpBTC, OrderID: o.OrderID}); err != nil || o2.ClientOrderID != "101" {
+		t.Fatalf("by order id: %+v, %v", o2, err)
+	}
+	if _, err := query(t, v, a, exchange.CancelRef{Instrument: perpBTC, ClientOrderID: "999"}); !errors.Is(err, exchange.ErrNotFound) {
+		t.Fatalf("missing: %v, want ErrNotFound", err)
+	}
+	if _, err := a.QueryOrder(testNow, exchange.CancelRef{Instrument: perpBTC}); err == nil {
+		t.Fatal("a query naming no order was built")
+	}
+}
+
+func TestAccountLateSubmit(t *testing.T) {
+	v, a := newVenue(AccountOptions{})
+	v.OnSubmit("101", Outcome{Late: true})
+	v.OnSubmit("102", Outcome{Late: true})
+	for _, cid := range []string{"101", "102"} {
+		if _, err := submit(t, v, a, limit(cid, perpBTC, 0.5, 60000)); !errors.Is(err, exchange.ErrUnknownOutcome) {
+			t.Fatalf("%s: %v, want ErrUnknownOutcome", cid, err)
+		}
+	}
+	if got := v.Held(); !slices.Equal(got, []string{"101", "102"}) {
+		t.Fatalf("held %v", got)
+	}
+	// Not arrived yet: the venue has never seen it.
+	if _, err := query(t, v, a, exchange.CancelRef{Instrument: perpBTC, ClientOrderID: "101"}); !errors.Is(err, exchange.ErrNotFound) {
+		t.Fatalf("before arrival: %v", err)
+	}
+	// Within the window (testNow + DefaultValidity, inclusive) it is placed.
+	if took, err := v.Arrive("101", testNow.Add(exchange.DefaultValidity)); err != nil || !took {
+		t.Fatalf("on time: %v, %v", took, err)
+	}
+	if o, err := query(t, v, a, exchange.CancelRef{Instrument: perpBTC, ClientOrderID: "101"}); err != nil || o.Status != exchange.OrderStatusAccepted {
+		t.Fatalf("after arrival: %+v, %v", o, err)
+	}
+	// Past it, refused: the order never exists.
+	if took, err := v.Arrive("102", testNow.Add(exchange.DefaultValidity+time.Millisecond)); err != nil || took {
+		t.Fatalf("late: %v, %v", took, err)
+	}
+	if _, err := query(t, v, a, exchange.CancelRef{Instrument: perpBTC, ClientOrderID: "102"}); !errors.Is(err, exchange.ErrNotFound) {
+		t.Fatalf("after a late arrival: %v", err)
+	}
+	if _, err := v.Arrive("102", testNow); err == nil {
+		t.Fatal("arrived twice")
+	}
+	if len(v.Held()) != 0 {
+		t.Fatalf("still held %v", v.Held())
+	}
+}
+
+func TestAccountLateCancel(t *testing.T) {
+	v := NewAccountVenue(AccountOptions{Key: "k", Now: stepTime})
+	cfg := testCfg
+	cfg.Validity = 2 * time.Second
+	a := v.Account(cfg)
+	for _, cid := range []string{"101", "102"} {
+		if _, err := submit(t, v, a, limit(cid, perpBTC, 0.5, 60000)); err != nil {
+			t.Fatal(err)
+		}
+		v.OnCancel(cid, Outcome{Late: true})
+		if err := cancel(t, v, a, cid); !errors.Is(err, exchange.ErrUnknownOutcome) {
+			t.Fatalf("%s: %v", cid, err)
+		}
+	}
+	if len(v.OpenOrders()) != 2 {
+		t.Fatalf("a held cancel took effect: %+v", v.OpenOrders())
+	}
+	// The window is the account's Validity, 2s here.
+	if took, _ := v.Arrive("101", testNow.Add(2*time.Second)); !took {
+		t.Fatal("an on-time cancel was refused")
+	}
+	if took, _ := v.Arrive("102", testNow.Add(2*time.Second+time.Millisecond)); took {
+		t.Fatal("a late cancel took effect")
+	}
+	o, err := query(t, v, a, exchange.CancelRef{Instrument: perpBTC, ClientOrderID: "101"})
+	if err != nil || o.Status != exchange.OrderStatusCancelled {
+		t.Fatalf("101: %+v, %v", o, err)
+	}
+	open := v.OpenOrders()
+	if len(open) != 1 || open[0].ClientOrderID != "102" {
+		t.Fatalf("open %+v", open)
+	}
+}

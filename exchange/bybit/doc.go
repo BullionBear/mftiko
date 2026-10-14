@@ -125,6 +125,16 @@
 // A non-empty nextPageCursor, different from the cursor just sent, is the next page.
 // Leverage is GET /v5/position/list for that symbol. Spot has none.
 //
+// v5 has no read of the position mode, and a position list by settleCoin leaves out empty
+// positions. HedgeMode is set by an open order or a position whose positionIdx is 1 or 2, which
+// exist only in hedge mode (D617). An account in hedge mode that holds nothing reads as one-way
+// and passes the worker's Start check (D616); an order sent there without positionIdx is refused
+// by the venue, so nothing is placed on a wrong assumption.
+//
+// QueryOrder is GET /v5/order/realtime by category, symbol and orderLinkId, or orderId when the
+// ref has none. With either id the venue ignores openOnly and also returns closed orders, the 500
+// most recent per category. An empty list is exchange.ErrNotFound (D605).
+//
 // # History
 //
 // GET /v5/execution/list for one category and one symbol. Rows arrive newest first
@@ -209,8 +219,10 @@
 //
 // # Signing
 //
-// HMAC-SHA256 hex over timestamp + api key + recv window (5000) + the query string (GET) or
+// HMAC-SHA256 hex over timestamp + api key + recv window + the query string (GET) or
 // the raw JSON body (POST). Headers are X-BAPI-API-KEY, X-BAPI-TIMESTAMP, X-BAPI-RECV-WINDOW
 // and X-BAPI-SIGN. REST defaults to https://api.bybit.com. AccountConfig.RESTEndpoint replaces
-// it; a host of api-testnet.bybit.com selects the testnet private socket.
+// it; a host of api-testnet.bybit.com selects the testnet private socket. The recv window is
+// AccountConfig.Validity in milliseconds, 5000 by default, on every REST request and in the
+// header of every trade-socket order frame: past it the venue refuses the request (D605).
 package bybit

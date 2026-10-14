@@ -177,3 +177,57 @@ func mustHist(t *testing.T) exchange.History {
 	}
 	return h
 }
+
+// TestValidity: AccountConfig.Validity is recvWindow on REST, on the trade socket's frames and on
+// its logon (D605). A window Binance does not take is refused when the account is built.
+func TestValidity(t *testing.T) {
+	cfg := exchange.AccountConfig{Credentials: conformance.TestCredentials(exchange.KeyEd25519, false), Validity: 2 * time.Second}
+	now := conformance.DefaultNow
+	for _, k := range []kind{kindUM, kindSpot} {
+		a, err := accountFactory(k)(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		inst := btcInst()
+		if k.name == kindSpot.name {
+			inst = spotInst()
+		}
+		sub, err := a.Submit(now, &exchange.OrderRequest{
+			Instrument: inst, Side: exchange.SideBuy, Type: exchange.OrderTypeLimit, TIF: exchange.TIFGTC,
+			Qty: 0.001, QuoteQty: decimal.Absent(), Price: 65000, ClientOrderID: cloidGTC,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		q, err := a.QueryOrder(now, exchange.CancelRef{Instrument: inst, ClientOrderID: cloidGTC})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range []exchange.HTTPRequest{sub.Req, q.Req} {
+			if !strings.Contains(string(r.Query), "recvWindow=2000&") {
+				t.Errorf("%s %s: %s", k.name, r.Path, r.Query)
+			}
+		}
+		ts, err := a.NewTradeStream()
+		if err != nil {
+			t.Fatal(err)
+		}
+		d, err := ts.Dial(now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, err := ts.Cancel(now, 1, exchange.CancelRef{Instrument: inst, ClientOrderID: cloidGTC})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range [][]byte{d.Frames[0], c} {
+			if !strings.Contains(string(f), `"recvWindow":2000`) {
+				t.Errorf("%s frame %s", k.name, f)
+			}
+		}
+	}
+	cfg.Validity = 61 * time.Second
+	if _, err := accountFactory(kindUM)(cfg); err == nil {
+		t.Error("a 61s window was taken")
+	}
+}

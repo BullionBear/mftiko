@@ -3,6 +3,7 @@ package binance
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -130,6 +131,37 @@ func (a *account) CancelBatch(now time.Time, refs []exchange.CancelRef) (exchang
 	return exchange.Call[[]error]{Req: httpReq, Parse: parseBatch}, nil
 }
 
+// QueryOrder is GET /fapi/v1/order or /api/v3/order by origClientOrderId, or orderId when the ref
+// has no client order id. -2013 (order does not exist) is ErrNotFound.
+func (a *account) QueryOrder(now time.Time, ref exchange.CancelRef) (exchange.Call[*exchange.OrderUpdate], error) {
+	venue, path, weight, err := orderRoute(a.k)
+	if err != nil {
+		return exchange.Call[*exchange.OrderUpdate]{}, err
+	}
+	p, err := cancelParamsOf(now, ref, venue, 0)
+	if err != nil {
+		return exchange.Call[*exchange.OrderUpdate]{}, err
+	}
+	q := codec.Query(nil).Add("symbol", p.Symbol)
+	if p.OrigClientOrderID != "" {
+		q = q.Add("origClientOrderId", p.OrigClientOrderID)
+	} else {
+		q = q.AddInt("orderId", p.OrderID)
+	}
+	req, err := a.signedCall(now, http.MethodGet, path, q, weightCost(weight), false)
+	if err != nil {
+		return exchange.Call[*exchange.OrderUpdate]{}, err
+	}
+	return exchange.Call[*exchange.OrderUpdate]{Req: req, Parse: func(resp *exchange.HTTPResponse) (*exchange.OrderUpdate, error) {
+		up, err := parseOrder(resp, venue)
+		var rej *exchange.Reject
+		if errors.As(err, &rej) && rej.Native == "-2013" {
+			return nil, fmt.Errorf("binance: %s: %w", rej.Reason, exchange.ErrNotFound)
+		}
+		return up, err
+	}}, nil
+}
+
 func (a *account) Snapshot(now time.Time) ([]exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
 	if a.k.name == kindSpot.name {
 		return a.spotSnapshot(now)
@@ -146,10 +178,15 @@ func (a *account) Snapshot(now time.Time) ([]exchange.Call[exchange.Page[exchang
 	if err != nil {
 		return nil, err
 	}
+	mode, err := a.signedCall(now, http.MethodGet, "/fapi/v1/positionSide/dual", nil, weightCost(30), false)
+	if err != nil {
+		return nil, err
+	}
 	return []exchange.Call[exchange.Page[exchange.AccountSnapshot]]{
 		{Req: orders, Parse: parseOpenOrders},
 		{Req: risk, Parse: parsePositions},
 		{Req: bal, Parse: parseBalances},
+		{Req: mode, Parse: parsePositionMode},
 	}, nil
 }
 
@@ -315,6 +352,24 @@ func parseBalances(resp *exchange.HTTPResponse) (exchange.Page[exchange.AccountS
 		bals = append(bals, b)
 	}
 	return snapPage(exchange.AccountSnapshot{Balances: bals}), nil
+}
+
+// parsePositionMode reads dualSidePosition: true is hedge mode (D607). The setting is the
+// account's, shared by USD-M and COIN-M.
+func parsePositionMode(resp *exchange.HTTPResponse) (exchange.Page[exchange.AccountSnapshot], error) {
+	if resp.Status >= 400 {
+		return exchange.Page[exchange.AccountSnapshot]{}, refuse(resp)
+	}
+	var body struct {
+		Dual *bool `json:"dualSidePosition"`
+	}
+	if err := codec.DecodeBody(resp.Body, &body); err != nil {
+		return exchange.Page[exchange.AccountSnapshot]{}, err
+	}
+	if body.Dual == nil {
+		return exchange.Page[exchange.AccountSnapshot]{}, fmt.Errorf("binance: position mode has no dualSidePosition")
+	}
+	return snapPage(exchange.AccountSnapshot{HedgeMode: *body.Dual}), nil
 }
 
 func snapPage(s exchange.AccountSnapshot) exchange.Page[exchange.AccountSnapshot] {

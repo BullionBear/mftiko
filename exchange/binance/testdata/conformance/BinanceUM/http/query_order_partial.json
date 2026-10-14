@@ -1,0 +1,33 @@
+{
+  "response": {
+    "status": 200,
+    "body": {
+      "avgPrice": "65000",
+      "clientOrderId": "1767225600000000001",
+      "cumQuote": "65",
+      "executedQty": "0.001",
+      "orderId": 1001,
+      "origQty": "0.002",
+      "origType": "LIMIT",
+      "price": "65000",
+      "reduceOnly": false,
+      "side": "BUY",
+      "positionSide": "BOTH",
+      "status": "PARTIALLY_FILLED",
+      "stopPrice": "0",
+      "closePosition": false,
+      "symbol": "BTCUSDT",
+      "time": 1767225600000,
+      "timeInForce": "GTC",
+      "type": "LIMIT",
+      "activatePrice": "",
+      "priceRate": "",
+      "updateTime": 1767225600100,
+      "workingType": "CONTRACT_PRICE",
+      "priceProtect": false,
+      "priceMatch": "NONE",
+      "selfTradePreventionMode": "EXPIRE_MAKER",
+      "goodTillDate": 0
+    }
+  }
+}

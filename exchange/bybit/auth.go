@@ -24,8 +24,6 @@ const (
 	prodTrade   = "wss://stream.bybit.com/v5/trade"
 	testTrade   = "wss://stream-testnet.bybit.com/v5/trade"
 
-	recvWindow = "5000"
-
 	// cloidMax is orderLinkId's limit. A D602 id is at most 19 digits and fits.
 	cloidMax = 36
 
@@ -113,6 +111,10 @@ func signCfg(s *signerState, cfg exchange.AccountConfig, now time.Time, method, 
 	if err != nil {
 		return exchange.HTTPRequest{}, err
 	}
+	recvWindow, err := windowOf(cfg)
+	if err != nil {
+		return exchange.HTTPRequest{}, err
+	}
 	ts := strconv.FormatInt(now.UnixMilli(), 10)
 	payload := make([]byte, 0, len(ts)+len(cfg.Credentials.Key)+len(recvWindow)+len(query)+len(body))
 	payload = append(payload, ts...)
@@ -140,6 +142,15 @@ func signCfg(s *signerState, cfg exchange.AccountConfig, now time.Time, method, 
 		Method: method, Base: base, Path: path,
 		Query: []byte(query), Header: header, Body: body, Cost: cost, Mutates: mutates,
 	}, nil
+}
+
+// windowOf is X-BAPI-RECV-WINDOW: AccountConfig.Validity in milliseconds (D605).
+func windowOf(cfg exchange.AccountConfig) (string, error) {
+	w, err := cfg.Window()
+	if err != nil {
+		return "", err
+	}
+	return strconv.FormatInt(w.Milliseconds(), 10), nil
 }
 
 func (a *account) get(now time.Time, path string, pairs []pair, cost []exchange.Cost) (exchange.HTTPRequest, error) {
