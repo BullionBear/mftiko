@@ -22,6 +22,7 @@ type Worker struct {
 	now    func() time.Time
 
 	retryAfter, retryMax, readyTimeout time.Duration
+	onOrders                           func(up bool)
 
 	book *book
 
@@ -44,7 +45,8 @@ func newWorker(cfg ServeConfig, log zerolog.Logger, acct exchange.Account, bk *b
 	w := &Worker{
 		cfg: cfg, log: log, acct: acct, report: report, now: cfg.Now, book: bk,
 		retryAfter: cfg.RetryAfter, retryMax: cfg.RetryMax, readyTimeout: cfg.ReadyTimeout,
-		events: make(chan linkEvent, 16), needRecon: true,
+		onOrders: cfg.onOrders,
+		events:   make(chan linkEvent, 16), needRecon: true,
 	}
 	if w.now == nil {
 		w.now = time.Now
@@ -196,6 +198,9 @@ func (w *Worker) linkEvent(e linkEvent, starting bool) error {
 		w.mu.Lock()
 		w.ordersUp = e.up
 		w.mu.Unlock()
+		if w.onOrders != nil {
+			w.onOrders(e.up)
+		}
 	}
 	if e.role != roleEvents {
 		return nil

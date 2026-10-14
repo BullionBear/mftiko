@@ -67,8 +67,11 @@ type ServeConfig struct {
 	// ReadyTimeout bounds a connection's dial and logon, until the codec reports Ready. Zero is
 	// 10s.
 	ReadyTimeout time.Duration
-	Log          *zerolog.Logger // nil discards
-	Release      string          // Hello.release
+	// onOrders is called on the account goroutine after it has recorded that the orders connection
+	// is up or down. Nil in production. Tests wait on it instead of the socket accept.
+	onOrders func(up bool)
+	Log      *zerolog.Logger // nil discards
+	Release  string          // Hello.release
 }
 
 // Env is the account's NATS and symbol table.

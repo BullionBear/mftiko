@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -597,12 +598,17 @@ func TestOrderFirstSubmitReportsBeforeSend(t *testing.T) {
 
 func TestOrderTradeStream(t *testing.T) {
 	tv := exchangetest.NewTradeVenue(apiKey, false)
-	h := start(t, setup{opts: exchangetest.AccountOptions{Trade: tv}})
+	// Connections() flips at Accept, before logon and before the worker records the stream up.
+	// onOrders fires only after that record, which is what tryWS reads.
+	var streamUp atomic.Bool
+	h := start(t, setup{opts: exchangetest.AccountOptions{Trade: tv}, cfg: func(c *ServeConfig) {
+		c.onOrders = func(up bool) { streamUp.Store(up) }
+	}})
 	srv := httptest.NewServer(tv.Handler())
 	t.Cleanup(srv.Close)
 	tv.SetURL("ws" + strings.TrimPrefix(srv.URL, "http"))
 	h.startReady()
-	waitFor(t, "no trade connection", func() bool { o, _ := tv.Connections(); return o == 1 })
+	waitFor(t, "the worker has not observed the trade stream up", streamUp.Load)
 	h.v.ResetRequests()
 	cid := mustCloid(t, 7, 21)
 	if r := h.submit(7, 7, cid, 0.01, 100); !r.GetAccepted() {
