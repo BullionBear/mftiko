@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-15 修訂 D610（E6-14，#174）：撤單沒有回答、過了界線查到單仍在簿上時，清掉 `cancel_sent_ns`，發 `CANCEL_REJECTED`、code 120，策略可以再撤。2026-10-15 定案兩把鑰匙：OMS 與交易所之間（事件、recon、查單）以 order_id 對單，沒有 client id 的單仍以 order_id 追蹤；系統裡面（策略、td.order、Cancel、BatchCancel、td.view、向外的 OrderUpdate）以 cloid 為鍵。Cancel 與 BatchCancel 只收 client_order_id，order_id 欄位保留，OMS 送出時換成那張單的 order_id。解不開成平台 cloid 的不屬於任何 algo。BatchCancel 不檢查歸屬。D602、D605、D615、D617、D623、D625、D626 改寫，不改編號。2026-10-15 修訂批次撤單（E6-09，#169）：BatchCancel 是明確的訂單清單，TD 一對一轉成一筆交易所請求，不挑單、不分批；CancelBatch 為 1 時本地拒絕；超過上限仍送出並原樣回報交易所的拒絕；一批算 OrderRate 的一筆；商品解不出來只影響那一筆。一次撤掉某 algo 的全部掛單改由 STS SDK 做。D602、D625–D628 改寫，不改編號。2026-10-14 定案下單與撤單（E6-08，#168）：記憶體 cloid 冪等、同 cloid 內容不同回 106、每筆 `recv_window_ms`、`OrderRate` 用到 90% 回 108、查單失敗逾 5 分鐘 `DEGRADED`、`UNKNOWN` 可撤、`TradeStream` 不可用改走 REST，D618–D624（修改 D605、D617）。2026-10-14 定案以 cloid 查單（`Account.QueryOrder`，不存在是 `ErrNotFound`）、請求有效期 `AccountConfig.Validity`，以及三家讀持倉模式；Bybit 以 `positionIdx` 判斷，D617。2026-10-13 定案 td-agent：兩個前綴、ack、spec、endpoint 經 Init；執行中不檢查持倉模式，拿掉 `UNAVAILABLE`；algo 由 STS agent 檢查，D616（修改 D602、D607、D612、D614）。2026-10-13 定案 `mdctl.proto`、`md.proto`、`read.proto`（E4-12，#152）：三份移出草案清單，PROTOCOL §1 改為定案，D460。2026-10-13 刪掉 `mdctl.proto`、`md.proto` 的 `reserved`，現有欄位號碼不重排；三份仍在草案清單，移出清單與 PROTOCOL §1 定案是 #204 合併後的後續，D460。2026-10-13 定案 account worker 的 OMS 與帳本：OMS 只放活著的單，`settled` 不再有作用；recon 期間事件先排著再重放；斷線期間消失的掛單記成 UNKNOWN；槓桿取自持倉，D615（修改 D605、D606）。同日定案 tape 的 worker 級 arena（#189）：64 KiB chunk、硬上限含 slot 與索引、回收全 worker 最舊的 chunk，D458–D459。2026-10-13 定案 P14（#181）：行情 subject `md.v1.f.{inst}.{topic}.{ticker}`、`md.v1.view.{inst}.{topic}.{ticker}`，`md.v1.fetch.{venue}`，`sym.v1.changed.{venue}.{category}`，D455–D457。實作在 #194。2026-10-12 定案 account worker 的連線角色與狀態：只有事件連線決定 DEGRADED，計畫性換線先接後斷；一期不做 BinancePM，D614。同日拿掉 top-N 與 FeedEnd（#180）：book topic 只剩 `orderbook_delta`，寫 `orderbook` 回 `invalid`，D453–D454。2026-10-12 定案 tape ring 與 `md.view`（E4-06）：一個 feed 一個 ring，讀取無鎖，以 `head` 接 live，D435–D452。同日定案帳號憑證以 TD instance 的 X25519 公鑰封裝：NaCl sealed box 加版本與指紋，`api_id`、`kind` 一起封、解開後比對，封裝工具 `mftiko-seal`，D613。同日定案持倉模式由 `AccountSnapshot.HedgeMode` 帶回，以及給 account worker 測試用的假帳號 `exchangetest.AccountVenue`，D612。2026-10-11 定案 TD 的契約與 NATS 身分（E6-02）：`td.order` 只回 ack 或本地拒絕，單的每一次變化都是 `OrderUpdate`，1xx 只列一期會碰到的；訂單狀態加 `ACCEPTED`（上簿），撤單在途改成旗標 `cancel_sent_ns`，拿掉 `PENDING_CANCEL`；account worker 每個帳號一份 NATS 憑證，由 TD agent 簽，D610–D611。同日修訂 D601：TD agent 不查 SYM，歷史補正的交易所讀取比照 md.fetch。同日修訂 D202、D401：MD agent 不查 SYM，conn worker 用活躍表推出 atom 並 diff 訂閱，並在 Report 以 FeedStatus 回報每一筆 feed。同日更新 D415、D426：MD instance 訂閱 `sym.changed.>`，conn worker 在 Init 載入該 venue 的活躍表。同日定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
+> 決策紀錄（2026-10-15 定案前刪掉 `td.proto` 的 `reserved`，欄位號碼不重排；`tdctl.proto` 沒有 `reserved`；兩份仍在草案清單，移出清單與 PROTOCOL §1 定案是這份合併後的後續，D629。同日保留歷史補正欄位（`AccountSettings` 的 interval 與手動觸發、`td.backfill` 相關欄位），D630。同日每一則 `td.view` 回覆帶 `cancel_batch`，給策略拆批，D631。2026-10-15 修訂 D610（E6-14，#174）：撤單沒有回答、過了界線查到單仍在簿上時，清掉 `cancel_sent_ns`，發 `CANCEL_REJECTED`、code 120，策略可以再撤。2026-10-15 定案兩把鑰匙：OMS 與交易所之間（事件、recon、查單）以 order_id 對單，沒有 client id 的單仍以 order_id 追蹤；系統裡面（策略、td.order、Cancel、BatchCancel、td.view、向外的 OrderUpdate）以 cloid 為鍵。Cancel 與 BatchCancel 只收 client_order_id，order_id 欄位保留，OMS 送出時換成那張單的 order_id。解不開成平台 cloid 的不屬於任何 algo。BatchCancel 不檢查歸屬。D602、D605、D615、D617、D623、D625、D626 改寫，不改編號。2026-10-15 修訂批次撤單（E6-09，#169）：BatchCancel 是明確的訂單清單，TD 一對一轉成一筆交易所請求，不挑單、不分批；CancelBatch 為 1 時本地拒絕；超過上限仍送出並原樣回報交易所的拒絕；一批算 OrderRate 的一筆；商品解不出來只影響那一筆。一次撤掉某 algo 的全部掛單改由 STS SDK 做。D602、D625–D628 改寫，不改編號。2026-10-14 定案下單與撤單（E6-08，#168）：記憶體 cloid 冪等、同 cloid 內容不同回 106、每筆 `recv_window_ms`、`OrderRate` 用到 90% 回 108、查單失敗逾 5 分鐘 `DEGRADED`、`UNKNOWN` 可撤、`TradeStream` 不可用改走 REST，D618–D624（修改 D605、D617）。2026-10-14 定案以 cloid 查單（`Account.QueryOrder`，不存在是 `ErrNotFound`）、請求有效期 `AccountConfig.Validity`，以及三家讀持倉模式；Bybit 以 `positionIdx` 判斷，D617。2026-10-13 定案 td-agent：兩個前綴、ack、spec、endpoint 經 Init；執行中不檢查持倉模式，拿掉 `UNAVAILABLE`；algo 由 STS agent 檢查，D616（修改 D602、D607、D612、D614）。2026-10-13 定案 `mdctl.proto`、`md.proto`、`read.proto`（E4-12，#152）：三份移出草案清單，PROTOCOL §1 改為定案，D460。2026-10-13 刪掉 `mdctl.proto`、`md.proto` 的 `reserved`，現有欄位號碼不重排；三份仍在草案清單，移出清單與 PROTOCOL §1 定案是 #204 合併後的後續，D460。2026-10-13 定案 account worker 的 OMS 與帳本：OMS 只放活著的單，`settled` 不再有作用；recon 期間事件先排著再重放；斷線期間消失的掛單記成 UNKNOWN；槓桿取自持倉，D615（修改 D605、D606）。同日定案 tape 的 worker 級 arena（#189）：64 KiB chunk、硬上限含 slot 與索引、回收全 worker 最舊的 chunk，D458–D459。2026-10-13 定案 P14（#181）：行情 subject `md.v1.f.{inst}.{topic}.{ticker}`、`md.v1.view.{inst}.{topic}.{ticker}`，`md.v1.fetch.{venue}`，`sym.v1.changed.{venue}.{category}`，D455–D457。實作在 #194。2026-10-12 定案 account worker 的連線角色與狀態：只有事件連線決定 DEGRADED，計畫性換線先接後斷；一期不做 BinancePM，D614。同日拿掉 top-N 與 FeedEnd（#180）：book topic 只剩 `orderbook_delta`，寫 `orderbook` 回 `invalid`，D453–D454。2026-10-12 定案 tape ring 與 `md.view`（E4-06）：一個 feed 一個 ring，讀取無鎖，以 `head` 接 live，D435–D452。同日定案帳號憑證以 TD instance 的 X25519 公鑰封裝：NaCl sealed box 加版本與指紋，`api_id`、`kind` 一起封、解開後比對，封裝工具 `mftiko-seal`，D613。同日定案持倉模式由 `AccountSnapshot.HedgeMode` 帶回，以及給 account worker 測試用的假帳號 `exchangetest.AccountVenue`，D612。2026-10-11 定案 TD 的契約與 NATS 身分（E6-02）：`td.order` 只回 ack 或本地拒絕，單的每一次變化都是 `OrderUpdate`，1xx 只列一期會碰到的；訂單狀態加 `ACCEPTED`（上簿），撤單在途改成旗標 `cancel_sent_ns`，拿掉 `PENDING_CANCEL`；account worker 每個帳號一份 NATS 憑證，由 TD agent 簽，D610–D611。同日修訂 D601：TD agent 不查 SYM，歷史補正的交易所讀取比照 md.fetch。同日修訂 D202、D401：MD agent 不查 SYM，conn worker 用活躍表推出 atom 並 diff 訂閱，並在 Report 以 FeedStatus 回報每一筆 feed。同日更新 D415、D426：MD instance 訂閱 `sym.changed.>`，conn worker 在 Init 載入該 venue 的活躍表。同日定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。
 >
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 >
@@ -408,7 +408,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
   - 落庫的歸屬（D601）就用這條規則。
 - **只能動自己的單。** SDK 只允許使用 spec 裡宣告給該帳號的 algo_id。TD 檢查 `Submit`、`Cancel` 帶的 algo_id 與 `client_order_id` 的 algo 欄位一致，不符就以 104 拒絕；`Cancel` 的 `client_order_id` 解不開是 106。`BatchCancel` 不帶 algo_id，也不檢查清單裡的單屬於哪個 algo（D625）。解不開成平台 cloid 的 `client_order_id`（空的、交易所自己編的）不屬於任何 algo：`td.view` 以 algo 過濾時看不到，OMS 仍以 `order_id` 追蹤沒有 client id 的單。這是防呆，不是防惡意。
 - **SDK 只提供能力，怎麼用是策略的事：**
-  - `ctx.batch_cancel(api_id, algo_id, …)`：SDK 從自己的活單挑出這個 algo，依 `Limits.CancelBatch` 拆成多筆 `BatchCancel`；交易所沒有批次撤單就改走單筆 `Cancel`。TD 不挑單、不拆批（D625）。SDK 這一段是後續，不在 E6-09。
+  - `ctx.batch_cancel(api_id, algo_id, …)`：SDK 從自己的活單挑出這個 algo，依 `td.view` 回覆的 `cancel_batch` 拆成多筆 `BatchCancel`；值是 1 就改走單筆 `Cancel`（D631）。TD 不挑單、不拆批（D625）。SDK 這一段是後續，不在 E6-09。
   - 以 algo 查自己的掛單（`td.view` 的 OMS 查詢）。
   - 策略重啟或新 session 接手時，在 `OnStart` 用它們清場或接手。
 - STS agent 不再需要 `td.order` 的權限。session 進入 terminal 時，controller 依 D901 的順序刪除 TD 需求項目。
@@ -673,7 +673,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 ### D623 撤 UNKNOWN 單（E6-08）
 
-- **D623 撤 UNKNOWN 單：** 狀態為 `UNKNOWN` 的單可以用 cloid 撤，不回 107。`Cancel` 只收 `client_order_id`，`order_id` 欄位保留。OMS 以 cloid 找到活單，送出時帶上那張單的 `order_id`；還沒有就用 `client_order_id`。
+- **D623 撤 UNKNOWN 單：** 狀態為 `UNKNOWN` 的單可以用 cloid 撤，不回 107。`Cancel` 只收 `client_order_id`（欄位 4 已刪，號碼不重排，D629）。OMS 以 cloid 找到活單，送出時帶上那張單的 `order_id`；還沒有就用 `client_order_id`。
 
 ### D624 WS 斷線（E6-08）
 
@@ -683,11 +683,11 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 ### D625 範圍（E6-09）
 
 - **D625 範圍：** E6-09 只做 `BatchCancel`。cancel-on-disconnect（Binance `countdownCancelAll`、OKX `cancel-all-after`、Bybit DCP）不做：`AccountSettings.cancel_on_disconnect_s` 與 adapter 的 `CancelOnDisconnect` 不接，完成標準第 3 條拿掉。
-- `BatchCancel` 帶明確的 `client_order_id` 清單（`order_id` 欄位保留），對應一筆交易所批次撤單。TD 以 client id 找到 OMS 裡的活單，送出時改用那張單的 `order_id`（還沒有才用 client id）。不依 `algo_id` 或 `uids` 挑單，也不檢查這些單屬於哪個 algo。解不開成平台 cloid 的 client id 不屬於任何 algo，但仍能指名那張單。TD 一對一轉發，不分批、不排隊、不重試。
+- `BatchCancel` 帶明確的 `client_order_id` 清單（`order_id` 欄位已刪，號碼不重排，D629），對應一筆交易所批次撤單。TD 以 client id 找到 OMS 裡的活單，送出時改用那張單的 `order_id`（還沒有才用 client id）。不依 `algo_id` 或 `uids` 挑單，也不檢查這些單屬於哪個 algo。解不開成平台 cloid 的 client id 不屬於任何 algo，但仍能指名那張單。TD 一對一轉發，不分批、不排隊、不重試。
 - 交易所沒有批次撤單（`Limits.CancelBatch` 為 1，例如 Binance 現貨）時，TD 本地拒絕：這個方法不能用，不改走單筆 `Cancel`。
 - 清單長過交易所的批次上限時仍送出，交易所的拒絕原樣回報。
 - 清單裡任何一張對不到活單，或商品解不出來，只拒絕這一筆，什麼都不送；別的 `BatchCancel` 不受影響。
-- 「一次撤掉這個 algo 的全部掛單」改由 STS SDK 做：SDK 知道自己的活單，讀 `Limits.CancelBatch` 自己拆批，沒有批次撤單就改走單筆 `Cancel`。這一期的 TD 不做。
+- 「一次撤掉這個 algo 的全部掛單」改由 STS SDK 做：SDK 知道自己的活單，讀 `td.view` 回覆的 `cancel_batch`（這個帳號的 `Limits.CancelBatch`，D631）自己拆批，沒有批次撤單就改走單筆 `Cancel`。這一期的 TD 不做。
 
 ### D626 批次結果不明（E6-09）
 
@@ -701,6 +701,37 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 
 - **D628 撤單限速：** `Cancel` 與 `BatchCancel` 不受 D621 的 90% 本地餘量限制，可用到 `OrderRate` 的 100%；交易所回 429/418 時仍依 `Retry-After` 停送（D420）。
 - 修改 D621：90% 只適用 `Submit`。`Cancel` 算一張。`BatchCancel` 算一筆，不問清單裡有幾張；不再因為張數放不進窗口而整筆回 108。放不進這一筆才回 108，什麼都不送、不排隊。
+
+### D629 定案前刪掉 `reserved`（E6-15，#175）
+
+- **系統尚未上線。** `td.proto` 裡已刪欄位留下的 `reserved` 直接刪除，不保留。現有欄位號碼不重新編號。`tdctl.proto` 沒有 `reserved`。
+- **刪掉的是：**
+  - `AccountState` 的 3 `ACCOUNT_STATE_UNAVAILABLE`（D616）
+  - `OrderRequest` 的 3 `cancel_session`（D602）
+  - `Cancel` 的 4 `order_id`
+  - `BatchCancel` 的 1 `algo_id`、2 `uids`、3 `timeout_ms`
+  - `BatchCancelOrder` 的 2 `order_id`
+  - `OmsViewRequest` 的 1 `session_id`（D602、D610）
+  - `OmsView` 的 2 `incarnation`、3 `as_of_ns`（D606）
+  - `LedgerView` 的 3 `incarnation`、4 `as_of_ns`（D606）
+  - `AccountEvent` 的 12 `order_reject`、13 `cancel_reject`（D610）、16 `account_reset`（D603）
+  - `Order` 的 12 `reject_reason`（D610）
+- **這兩份仍是草案。** 留在 `buf.yaml` 的 `breaking.ignore`。PROTOCOL §1 仍是草案。移出草案清單、把 §1 改成定案，是這份合併之後的後續。`buf breaking` 的 `RESERVED_MESSAGE_NO_DELETE` 與 `RESERVED_ENUM_NO_DELETE` 會擋先移出清單再刪 `reserved`，所以順序是先刪、合併、再移出。
+- **`OmsViewRequest.settled` 不在這次刪除裡。** 它不是 `reserved`，仍沒有作用（D615）。要不要拿掉，D629–D631 沒有定。
+- **修訂 D623、D625 裡「order_id 欄位保留」的說法。** 那兩個訊息上的 `order_id` 欄位已刪，號碼不重排。OMS 送出時仍帶那張單的 `order_id`，那是交易所那一側的身分，不是訊息上的欄位。
+
+### D630 歷史補正欄位保留（E6-15，#175）
+
+- **`AccountSettings` 的補正 interval 與手動觸發照現狀保留。** `backfill_interval_s`、`backfill_requested_at_ns` 屬暫緩的 E7（#9）。定案 `tdctl.proto`、`td.proto` 時不拿掉。它們在 `state.proto`，`state.proto` 仍是草案。
+- **`td.backfill` 相關欄位照現狀保留。** `tdctl.Report.first_submit_ns`（backfill 的範圍從下單決定，D601）留下。PROTOCOL 裡 `td.backfill.{venue}` 的契約留下。不另刪欄位。
+- 後續把這兩份 proto 移出草案清單時，這些欄位一起留下。
+
+### D631 `cancel_batch` 給策略（E6-15，#175）
+
+- **td proto 原本沒有把帳號的 `CancelBatch` 給策略。** `Limits.CancelBatch` 只在 account worker 裡。策略經 `td.order`、`td.view`、`td.evt` 看不到。
+- **每一則 `td.view` 回覆都帶 `ViewReply.cancel_batch`。** 值是這個帳號的 `Limits.CancelBatch`。1 表示交易所沒有批次撤單（D625）。問 OMS、帳本、槓桿，或請求是空的，回覆都帶。從連上 NATS 起就有，不必等 `Start`。
+- **SDK 照這個數拆批（#211）。** 修訂 D602、D625：SDK 讀的是 `cancel_batch`。值是 1 就改走單筆 `Cancel`。TD 仍不挑單、不拆批。
+- 欄位號碼 14，接在 `seq` 後面。不重用已刪的號碼。
 
 ### D905 linger；需求沒有 TTL
 

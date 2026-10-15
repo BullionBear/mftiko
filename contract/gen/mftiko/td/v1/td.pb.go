@@ -1083,8 +1083,11 @@ type ViewReply struct {
 	ReconciledAtNs int64             `protobuf:"varint,11,opt,name=reconciled_at_ns,json=reconciledAtNs,proto3" json:"reconciled_at_ns,omitempty"` // 最近一次 recon 完成的時間；0 = 這個 incarnation 還沒完成第一次 recon
 	Incarnation    uint32            `protobuf:"varint,12,opt,name=incarnation,proto3" json:"incarnation,omitempty"`
 	Seq            uint64            `protobuf:"varint,13,opt,name=seq,proto3" json:"seq,omitempty"` // 這份快照已經涵蓋到的 td.evt seq：之後只要套用 seq 更大、incarnation 相同的事件
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// 這個帳號的 Limits.CancelBatch（D631）。1 表示交易所沒有批次撤單，SDK 改走單筆 Cancel（D625）。
+	// 每一則回覆都帶，不論問的是 OMS、帳本或槓桿。策略照這個數把一個 algo 的掛單拆成多筆 BatchCancel。
+	CancelBatch   uint32 `protobuf:"varint,14,opt,name=cancel_batch,json=cancelBatch,proto3" json:"cancel_batch,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ViewReply) Reset() {
@@ -1184,6 +1187,13 @@ func (x *ViewReply) GetIncarnation() uint32 {
 func (x *ViewReply) GetSeq() uint64 {
 	if x != nil {
 		return x.Seq
+	}
+	return 0
+}
+
+func (x *ViewReply) GetCancelBatch() uint32 {
+	if x != nil {
+		return x.CancelBatch
 	}
 	return 0
 }
@@ -2191,12 +2201,12 @@ var File_mftiko_td_v1_td_proto protoreflect.FileDescriptor
 
 const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\n" +
-	"\x15mftiko/td/v1/td.proto\x12\fmftiko.td.v1\x1a\x1dmftiko/common/v1/common.proto\"\xcb\x01\n" +
+	"\x15mftiko/td/v1/td.proto\x12\fmftiko.td.v1\x1a\x1dmftiko/common/v1/common.proto\"\xb5\x01\n" +
 	"\fOrderRequest\x12.\n" +
 	"\x06submit\x18\x01 \x01(\v2\x14.mftiko.td.v1.SubmitH\x00R\x06submit\x12.\n" +
 	"\x06cancel\x18\x02 \x01(\v2\x14.mftiko.td.v1.CancelH\x00R\x06cancel\x12>\n" +
 	"\fbatch_cancel\x18\x04 \x01(\v2\x19.mftiko.td.v1.BatchCancelH\x00R\vbatchCancelB\x05\n" +
-	"\x03reqJ\x04\b\x03\x10\x04R\x0ecancel_session\"\xc3\x04\n" +
+	"\x03req\"\xc3\x04\n" +
 	"\x06Submit\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x10\n" +
@@ -2221,19 +2231,18 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\x04_qtyB\f\n" +
 	"\n" +
 	"_quote_qtyB\b\n" +
-	"\x06_price\"\xb0\x01\n" +
+	"\x06_price\"\xa0\x01\n" +
 	"\x06Cancel\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x10\n" +
 	"\x03uid\x18\x02 \x01(\rR\x03uid\x12&\n" +
 	"\x0fclient_order_id\x18\x03 \x01(\tR\rclientOrderId\x12\x17\n" +
 	"\aalgo_id\x18\x05 \x01(\rR\x06algoId\x12$\n" +
-	"\x0erecv_window_ms\x18\x06 \x01(\x03R\frecvWindowMsJ\x04\b\x04\x10\x05R\border_id\"r\n" +
+	"\x0erecv_window_ms\x18\x06 \x01(\x03R\frecvWindowMs\"E\n" +
 	"\vBatchCancel\x126\n" +
-	"\x06orders\x18\x04 \x03(\v2\x1e.mftiko.td.v1.BatchCancelOrderR\x06ordersJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\aalgo_idR\x04uidsR\n" +
-	"timeout_ms\"J\n" +
+	"\x06orders\x18\x04 \x03(\v2\x1e.mftiko.td.v1.BatchCancelOrderR\x06orders\":\n" +
 	"\x10BatchCancelOrder\x12&\n" +
-	"\x0fclient_order_id\x18\x01 \x01(\tR\rclientOrderIdJ\x04\b\x02\x10\x03R\border_id\"|\n" +
+	"\x0fclient_order_id\x18\x01 \x01(\tR\rclientOrderId\"|\n" +
 	"\n" +
 	"OrderReply\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x12\n" +
@@ -2244,15 +2253,14 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\x03oms\x18\x01 \x01(\v2\x1c.mftiko.td.v1.OmsViewRequestH\x00R\x03oms\x129\n" +
 	"\x06ledger\x18\x02 \x01(\v2\x1f.mftiko.td.v1.LedgerViewRequestH\x00R\x06ledger\x12;\n" +
 	"\bleverage\x18\x03 \x01(\v2\x1d.mftiko.td.v1.LeverageRequestH\x00R\bleverageB\x05\n" +
-	"\x03req\"U\n" +
+	"\x03req\"C\n" +
 	"\x0eOmsViewRequest\x12\x18\n" +
 	"\asettled\x18\x02 \x01(\bR\asettled\x12\x17\n" +
-	"\aalgo_id\x18\x03 \x01(\rR\x06algoIdJ\x04\b\x01\x10\x02R\n" +
-	"session_id\"'\n" +
+	"\aalgo_id\x18\x03 \x01(\rR\x06algoId\"'\n" +
 	"\x11LedgerViewRequest\x12\x12\n" +
 	"\x04uids\x18\x01 \x03(\rR\x04uids\"#\n" +
 	"\x0fLeverageRequest\x12\x10\n" +
-	"\x03uid\x18\x01 \x01(\rR\x03uid\"\xee\x02\n" +
+	"\x03uid\x18\x01 \x01(\rR\x03uid\"\x91\x03\n" +
 	"\tViewReply\x12)\n" +
 	"\x03oms\x18\x01 \x01(\v2\x15.mftiko.td.v1.OmsViewH\x00R\x03oms\x122\n" +
 	"\x06ledger\x18\x02 \x01(\v2\x18.mftiko.td.v1.LedgerViewH\x00R\x06ledger\x128\n" +
@@ -2262,18 +2270,19 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	" \x01(\x0e2\x1a.mftiko.td.v1.AccountStateR\x05state\x12(\n" +
 	"\x10reconciled_at_ns\x18\v \x01(\x03R\x0ereconciledAtNs\x12 \n" +
 	"\vincarnation\x18\f \x01(\rR\vincarnation\x12\x10\n" +
-	"\x03seq\x18\r \x01(\x04R\x03seqB\a\n" +
-	"\x05reply\"Y\n" +
+	"\x03seq\x18\r \x01(\x04R\x03seq\x12!\n" +
+	"\fcancel_batch\x18\x0e \x01(\rR\vcancelBatchB\a\n" +
+	"\x05reply\"6\n" +
 	"\aOmsView\x12+\n" +
-	"\x06orders\x18\x01 \x03(\v2\x13.mftiko.td.v1.OrderR\x06ordersJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\vincarnationR\bas_of_ns\"\x98\x01\n" +
+	"\x06orders\x18\x01 \x03(\v2\x13.mftiko.td.v1.OrderR\x06orders\"u\n" +
 	"\n" +
 	"LedgerView\x121\n" +
 	"\bbalances\x18\x01 \x03(\v2\x15.mftiko.td.v1.BalanceR\bbalances\x124\n" +
-	"\tpositions\x18\x02 \x03(\v2\x16.mftiko.td.v1.PositionR\tpositionsJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05R\vincarnationR\bas_of_ns\"N\n" +
+	"\tpositions\x18\x02 \x03(\v2\x16.mftiko.td.v1.PositionR\tpositions\"N\n" +
 	"\fLeverageInfo\x12\x10\n" +
 	"\x03uid\x18\x01 \x01(\rR\x03uid\x12\x1f\n" +
 	"\bleverage\x18\x02 \x01(\x01H\x00R\bleverage\x88\x01\x01B\v\n" +
-	"\t_leverage\"\xc2\x03\n" +
+	"\t_leverage\"\x84\x03\n" +
 	"\fAccountEvent\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\x04R\x03seq\x123\n" +
 	"\x06source\x18\x02 \x01(\v2\x1b.mftiko.common.v1.WorkerRefR\x06source\x12>\n" +
@@ -2283,12 +2292,12 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\x0ebalance_update\x18\x0e \x01(\v2\x1b.mftiko.td.v1.BalanceUpdateH\x00R\rbalanceUpdate\x12G\n" +
 	"\x0fposition_update\x18\x0f \x01(\v2\x1c.mftiko.td.v1.PositionUpdateH\x00R\x0epositionUpdate\x12+\n" +
 	"\x05recon\x18\x11 \x01(\v2\x13.mftiko.td.v1.ReconH\x00R\x05reconB\a\n" +
-	"\x05eventJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x10\x10\x11R\forder_rejectR\rcancel_rejectR\raccount_reset\"\x94\x01\n" +
+	"\x05event\"\x94\x01\n" +
 	"\vOrderUpdate\x12)\n" +
 	"\x05order\x18\x01 \x01(\v2\x13.mftiko.td.v1.OrderR\x05order\x12.\n" +
 	"\x05cause\x18\x02 \x01(\x0e2\x18.mftiko.td.v1.OrderCauseR\x05cause\x12\x12\n" +
 	"\x04code\x18\x03 \x01(\x05R\x04code\x12\x16\n" +
-	"\x06reason\x18\x04 \x01(\tR\x06reason\"\xa0\x04\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\"\x8b\x04\n" +
 	"\x05Order\x12\x10\n" +
 	"\x03uid\x18\x01 \x01(\rR\x03uid\x12\x19\n" +
 	"\border_id\x18\x02 \x01(\tR\aorderId\x12&\n" +
@@ -2312,7 +2321,7 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"_quote_qtyB\b\n" +
 	"\x06_priceB\f\n" +
 	"\n" +
-	"_avg_priceJ\x04\b\f\x10\rR\rreject_reason\"\xb3\x02\n" +
+	"_avg_price\"\xb3\x02\n" +
 	"\x04Fill\x12\x10\n" +
 	"\x03uid\x18\x01 \x01(\rR\x03uid\x12\x17\n" +
 	"\afill_id\x18\x02 \x01(\tR\x06fillId\x12\x19\n" +
@@ -2379,11 +2388,11 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\x19REJECT_CODE_INVALID_ORDER\x10j\x12\x1e\n" +
 	"\x1aREJECT_CODE_ORDER_NOT_OPEN\x10k\x12\x1c\n" +
 	"\x18REJECT_CODE_RATE_LIMITED\x10l\x12\x1a\n" +
-	"\x16REJECT_CODE_NOT_PLACED\x10x*\x83\x01\n" +
+	"\x16REJECT_CODE_NOT_PLACED\x10x*b\n" +
 	"\fAccountState\x12\x1d\n" +
 	"\x19ACCOUNT_STATE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13ACCOUNT_STATE_READY\x10\x01\x12\x1a\n" +
-	"\x16ACCOUNT_STATE_DEGRADED\x10\x02\"\x04\b\x03\x10\x03*\x19ACCOUNT_STATE_UNAVAILABLE*\xe2\x02\n" +
+	"\x16ACCOUNT_STATE_DEGRADED\x10\x02*\xe2\x02\n" +
 	"\n" +
 	"OrderCause\x12\x1b\n" +
 	"\x17ORDER_CAUSE_UNSPECIFIED\x10\x00\x12\x19\n" +

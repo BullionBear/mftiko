@@ -699,10 +699,31 @@ func TestViewMatchesVenue(t *testing.T) {
 	if reqs := h.v.Requests(); len(reqs) != 0 {
 		t.Fatalf("td.view sent the venue %v", reqs)
 	}
-	if v := h.oms(); v.GetState() != tdv1.AccountState_ACCOUNT_STATE_READY || v.GetIncarnation() != 3 || v.GetReconciledAtNs() == 0 {
+	if v := h.oms(); v.GetState() != tdv1.AccountState_ACCOUNT_STATE_READY || v.GetIncarnation() != 3 || v.GetReconciledAtNs() == 0 || v.GetCancelBatch() != 5 {
 		t.Fatalf("view header %v", v)
 	}
 	h.stop()
+}
+
+// CancelBatch is the venue's batch size, on every td.view reply, before Start (D631).
+// 1 means the venue has no batch cancel. The SDK reads this to split an algo's orders.
+func TestViewCancelBatch(t *testing.T) {
+	for _, n := range []int{1, 10} {
+		t.Run(strconv.Itoa(n), func(t *testing.T) {
+			h := start(t, setup{opts: exchangetest.AccountOptions{Limits: exchange.AccountLimits{CancelBatch: n}}})
+			h.initOK()
+			for _, req := range []*tdv1.ViewRequest{
+				{Req: &tdv1.ViewRequest_Oms{Oms: &tdv1.OmsViewRequest{}}},
+				{Req: &tdv1.ViewRequest_Ledger{Ledger: &tdv1.LedgerViewRequest{}}},
+				{Req: &tdv1.ViewRequest_Leverage{Leverage: &tdv1.LeverageRequest{Uid: 7}}},
+				{},
+			} {
+				if got := h.bus.view(t, req).GetCancelBatch(); got != uint32(n) {
+					t.Fatalf("cancel_batch %d, want %d", got, n)
+				}
+			}
+		})
+	}
 }
 
 // The acceptance: a reconnect publishes one Recon (RECONNECT), and the seq goes on across it.
