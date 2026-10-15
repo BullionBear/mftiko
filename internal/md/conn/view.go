@@ -16,6 +16,7 @@ import (
 // The handler closes over this value. Its ring and book pointers do not change.
 type viewFeed struct {
 	key, topic, ticker, channel string
+	uid                         uint32
 	ring                        *tapeRing
 	book                        *atomic.Pointer[bookSnap]
 }
@@ -76,7 +77,7 @@ func (c *Conn) syncViewsLocked() {
 }
 
 func (c *Conn) newViewLocked(key string, f feed, ch string) *viewFeed {
-	vf := &viewFeed{key: key, topic: f.topic, ticker: f.ticker, channel: ch}
+	vf := &viewFeed{key: key, topic: f.topic, ticker: f.ticker, channel: ch, uid: f.uid}
 	switch {
 	case tapeTopic(f.topic):
 		vf.ring = c.tape.newRing(c.tapeMax, key)
@@ -199,7 +200,7 @@ func (c *Conn) serveView(vf *viewFeed, reply string, req []byte) {
 	case vf.ring != nil:
 		payload = tapeReply(vf.ring, req)
 	case vf.book != nil:
-		payload = bookReply(vf.book)
+		payload = bookReply(vf.book, vf.uid)
 	default:
 		payload = viewError("unsupported")
 	}
@@ -227,7 +228,7 @@ func tapeReply(r *tapeRing, req []byte) []byte {
 	return r.page(in.GetBefore(), since, has, int(limit))
 }
 
-func bookReply(p *atomic.Pointer[bookSnap]) []byte {
+func bookReply(p *atomic.Pointer[bookSnap], uid uint32) []byte {
 	if p == nil {
 		return viewError("not_synced")
 	}
@@ -242,6 +243,7 @@ func bookReply(p *atomic.Pointer[bookSnap]) []byte {
 		ConnEpoch: snap.epoch,
 		Seq:       snap.seq,
 		MdTsNs:    snap.mdTs,
+		Uid:       uid,
 	}}})
 	if err != nil {
 		return viewError("invalid")

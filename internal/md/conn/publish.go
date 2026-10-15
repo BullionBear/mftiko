@@ -143,26 +143,23 @@ func (c *Conn) MarkPrice(ch string, e *exchange.MarkPrice) {
 // current desired set, or whose assigned feeds are a different topic, is dropped and does not
 // consume a sequence number. Acknowledgement is not required: desired is enough, so a trade that
 // arrives before the ack is still published.
+//
+// Each feed is marshaled on its own. The payload carries that feed's UID (D461), so two feeds
+// on one channel are not the same bytes when they name different instruments. The digest covers
+// those bytes.
 func (c *Conn) publishTopic(ch, topic string, ev *mdv1.FeedEvent) {
-	if c.live == nil {
+	if c.live == nil || ev == nil {
 		return
 	}
-	var (
-		payload []byte
-		built   bool
-	)
 	for _, f := range c.wanted[ch] {
 		if f.topic != topic {
 			continue
 		}
-		if !built {
-			var err error
-			payload, err = proto.Marshal(ev)
-			if err != nil {
-				c.log.Warn().Err(err).Msg("marshal")
-				return
-			}
-			built = true
+		ev.Uid = f.uid
+		payload, err := proto.Marshal(ev)
+		if err != nil {
+			c.log.Warn().Err(err).Msg("marshal")
+			return
 		}
 		c.send(f, payload, tapeTopic(topic))
 	}

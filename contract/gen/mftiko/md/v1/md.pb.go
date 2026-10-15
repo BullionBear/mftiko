@@ -71,6 +71,7 @@ func (x *Meta) GetExchTsNs() int64 {
 
 type FeedEvent struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
+	Uid   uint32                 `protobuf:"varint,13,opt,name=uid,proto3" json:"uid,omitempty"` // 商品（D203、D461）。每一則行情都帶；payload 裡沒有 ticker 字串
 	// Types that are valid to be assigned to Event:
 	//
 	//	*FeedEvent_BestQuote
@@ -117,6 +118,13 @@ func (x *FeedEvent) ProtoReflect() protoreflect.Message {
 // Deprecated: Use FeedEvent.ProtoReflect.Descriptor instead.
 func (*FeedEvent) Descriptor() ([]byte, []int) {
 	return file_mftiko_md_v1_md_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *FeedEvent) GetUid() uint32 {
+	if x != nil {
+		return x.Uid
+	}
+	return 0
 }
 
 func (x *FeedEvent) GetEvent() isFeedEvent_Event {
@@ -1274,8 +1282,9 @@ const file_mftiko_md_v1_md_proto_rawDesc = "" +
 	"\x15mftiko/md/v1/md.proto\x12\fmftiko.md.v1\x1a\x1dmftiko/common/v1/common.proto\"$\n" +
 	"\x04Meta\x12\x1c\n" +
 	"\n" +
-	"exch_ts_ns\x18\x03 \x01(\x03R\bexchTsNs\"\x85\x05\n" +
-	"\tFeedEvent\x128\n" +
+	"exch_ts_ns\x18\x03 \x01(\x03R\bexchTsNs\"\x97\x05\n" +
+	"\tFeedEvent\x12\x10\n" +
+	"\x03uid\x18\r \x01(\rR\x03uid\x128\n" +
 	"\n" +
 	"best_quote\x18\x01 \x01(\v2\x17.mftiko.md.v1.BestQuoteH\x00R\tbestQuote\x12+\n" +
 	"\x05trade\x18\x02 \x01(\v2\x13.mftiko.md.v1.TradeH\x00R\x05trade\x125\n" +
