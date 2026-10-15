@@ -586,13 +586,13 @@ func (x *Submit) GetRecvWindowMs() int64 {
 }
 
 // 目標單已經有撤單在途（cancel_sent_ns 不是 0）：回 accepted，不再送交易所（D610）。
+// 只收 client_order_id。OMS 以它找到活單，送出時帶上那張單的 order_id；還沒有 order_id 才用 client_order_id（D623）。
 type Cancel struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"` // 只給 log 與歸屬
 	Uid           uint32                 `protobuf:"varint,2,opt,name=uid,proto3" json:"uid,omitempty"`
 	ClientOrderId string                 `protobuf:"bytes,3,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
-	OrderId       string                 `protobuf:"bytes,4,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
-	AlgoId        uint32                 `protobuf:"varint,5,opt,name=algo_id,json=algoId,proto3" json:"algo_id,omitempty"` // 目標單的 client_order_id 的 algo 欄位必須等於它；沒有 client_order_id 的單一律以 104 拒絕（D602）
+	AlgoId        uint32                 `protobuf:"varint,5,opt,name=algo_id,json=algoId,proto3" json:"algo_id,omitempty"` // 目標單的 client_order_id 的 algo 欄位必須等於它；解不開的 client_order_id 以 106 拒絕（D602）
 	// 請求有效期，毫秒（D620）。0 = 這個 TD instance 的預設（部署設定，預設 5 秒）。
 	// 超過交易所上限（60 秒）時 TD 壓到上限。時鐘誤差是 instance 的設定，預設 1 秒，不在這則訊息裡。
 	RecvWindowMs  int64 `protobuf:"varint,6,opt,name=recv_window_ms,json=recvWindowMs,proto3" json:"recv_window_ms,omitempty"`
@@ -651,13 +651,6 @@ func (x *Cancel) GetClientOrderId() string {
 	return ""
 }
 
-func (x *Cancel) GetOrderId() string {
-	if x != nil {
-		return x.OrderId
-	}
-	return ""
-}
-
 func (x *Cancel) GetAlgoId() uint32 {
 	if x != nil {
 		return x.AlgoId
@@ -672,13 +665,13 @@ func (x *Cancel) GetRecvWindowMs() int64 {
 	return 0
 }
 
-// 一筆交易所的批次撤單（D625）。TD 把 orders 原樣轉成一筆 CancelBatch，不挑單、不分批、不排隊、不重試。
-// algo_id 不是 TD 的索引。每一筆是 client_order_id 或 order_id；兩個都給時必須是同一張活單。
-// 商品取自 OMS 裡那張活單的 UID。對不到活單，整筆 107；商品解不出來，整筆 106。兩種都什麼都不送，不影響別的 BatchCancel。
+// 一筆交易所的批次撤單（D625）。每一筆只帶 client_order_id。TD 以它找到 OMS 裡的活單，送出時帶上那張單的 order_id（還沒有才用 client_order_id）。
+// 不挑單、不分批、不排隊、不重試，也不檢查這些單屬於哪個 algo。解不開成平台 cloid 的 client_order_id 不屬於任何 algo，但仍能指名那張單。
+// 商品取自 OMS 裡那張活單的 UID。空的 client_order_id 整筆 106；對不到活單，整筆 107；商品解不出來，整筆 106。都什麼都不送，不影響別的 BatchCancel。
 // CancelBatch 為 1（交易所沒有批次撤單）是 106，不改走單筆 Cancel。長過交易所上限仍送出，交易所的拒絕原樣回報。
 // 這則訊息算 OrderRate 的一筆，與 Cancel 相同可用到 100%（D628）。沒有 recv_window_ms，有效期用 instance 預設。
 // 回覆只說收下了；每一張單撤成或撤不成，各自是一則 OrderUpdate（D610）。DEGRADED 照常，走 REST，不走 TradeStream（D627）。
-// 整筆結果不明時，批內每張以 cloid 查單，不重送（D626）。cancel-on-disconnect 不接。
+// 整筆結果不明時，批內每張查單（已有 order_id 用它，否則用 client_order_id），不重送（D626）。cancel-on-disconnect 不接。
 type BatchCancel struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Orders        []*BatchCancelOrder    `protobuf:"bytes,4,rep,name=orders,proto3" json:"orders,omitempty"`
@@ -723,11 +716,10 @@ func (x *BatchCancel) GetOrders() []*BatchCancelOrder {
 	return nil
 }
 
-// BatchCancel 清單裡的一張單。client_order_id 與 order_id 至少要有一個。
+// BatchCancel 清單裡的一張單。只收 client_order_id。
 type BatchCancelOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ClientOrderId string                 `protobuf:"bytes,1,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
-	OrderId       string                 `protobuf:"bytes,2,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -765,13 +757,6 @@ func (*BatchCancelOrder) Descriptor() ([]byte, []int) {
 func (x *BatchCancelOrder) GetClientOrderId() string {
 	if x != nil {
 		return x.ClientOrderId
-	}
-	return ""
-}
-
-func (x *BatchCancelOrder) GetOrderId() string {
-	if x != nil {
-		return x.OrderId
 	}
 	return ""
 }
@@ -2236,21 +2221,19 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\x04_qtyB\f\n" +
 	"\n" +
 	"_quote_qtyB\b\n" +
-	"\x06_price\"\xbb\x01\n" +
+	"\x06_price\"\xb0\x01\n" +
 	"\x06Cancel\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x10\n" +
 	"\x03uid\x18\x02 \x01(\rR\x03uid\x12&\n" +
-	"\x0fclient_order_id\x18\x03 \x01(\tR\rclientOrderId\x12\x19\n" +
-	"\border_id\x18\x04 \x01(\tR\aorderId\x12\x17\n" +
+	"\x0fclient_order_id\x18\x03 \x01(\tR\rclientOrderId\x12\x17\n" +
 	"\aalgo_id\x18\x05 \x01(\rR\x06algoId\x12$\n" +
-	"\x0erecv_window_ms\x18\x06 \x01(\x03R\frecvWindowMs\"r\n" +
+	"\x0erecv_window_ms\x18\x06 \x01(\x03R\frecvWindowMsJ\x04\b\x04\x10\x05R\border_id\"r\n" +
 	"\vBatchCancel\x126\n" +
 	"\x06orders\x18\x04 \x03(\v2\x1e.mftiko.td.v1.BatchCancelOrderR\x06ordersJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\aalgo_idR\x04uidsR\n" +
-	"timeout_ms\"U\n" +
+	"timeout_ms\"J\n" +
 	"\x10BatchCancelOrder\x12&\n" +
-	"\x0fclient_order_id\x18\x01 \x01(\tR\rclientOrderId\x12\x19\n" +
-	"\border_id\x18\x02 \x01(\tR\aorderId\"|\n" +
+	"\x0fclient_order_id\x18\x01 \x01(\tR\rclientOrderIdJ\x04\b\x02\x10\x03R\border_id\"|\n" +
 	"\n" +
 	"OrderReply\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x12\n" +

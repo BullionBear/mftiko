@@ -58,9 +58,9 @@ func (h *harness) submit(uid, algo uint32, cid string, qty, price float64) *tdv1
 	}}})
 }
 
-func (h *harness) cancel(algo uint32, cid, orderID string) *tdv1.OrderReply {
+func (h *harness) cancel(algo uint32, cid string) *tdv1.OrderReply {
 	return h.order(&tdv1.OrderRequest{Req: &tdv1.OrderRequest_Cancel{Cancel: &tdv1.Cancel{
-		AlgoId: algo, ClientOrderId: cid, OrderId: orderID,
+		AlgoId: algo, ClientOrderId: cid,
 	}}})
 }
 
@@ -334,7 +334,7 @@ func TestOrderDegraded(t *testing.T) {
 	if n := count(h.v.Requests(), "POST /order"); n != posts {
 		t.Fatalf("degraded submit was sent")
 	}
-	if r := h.cancel(7, cid, ""); !r.GetAccepted() {
+	if r := h.cancel(7, cid); !r.GetAccepted() {
 		t.Fatalf("degraded cancel %+v", r)
 	}
 	waitFor(t, "cancel was not sent", func() bool { return count(h.v.Requests(), "DELETE /order") == 1 })
@@ -347,18 +347,12 @@ func TestOrderCancel(t *testing.T) {
 	if r := h.submit(7, 7, cid, 0.01, 100); !r.GetAccepted() {
 		t.Fatalf("submit %+v", r)
 	}
-	u := h.waitStatus(cid, tdv1.OrderStatus_ORDER_STATUS_ACCEPTED)
-	if r := h.cancel(7, cid, "other"); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_ORDER_NOT_OPEN) {
-		t.Fatalf("mismatched id %+v", r)
-	}
-	if n := count(h.v.Requests(), "DELETE /order"); n != 0 {
-		t.Fatalf("mismatched cancel was sent")
-	}
-	if r := h.cancel(7, cid, u.GetOrder().GetOrderId()); !r.GetAccepted() {
+	h.waitStatus(cid, tdv1.OrderStatus_ORDER_STATUS_ACCEPTED)
+	if r := h.cancel(7, cid); !r.GetAccepted() {
 		t.Fatalf("cancel %+v", r)
 	}
 	h.waitStatus(cid, tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
-	if r := h.cancel(7, cid, ""); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_ORDER_NOT_OPEN) {
+	if r := h.cancel(7, cid); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_ORDER_NOT_OPEN) {
 		t.Fatalf("cancel of a finished order %+v", r)
 	}
 }
@@ -372,10 +366,10 @@ func TestOrderCancelInFlight(t *testing.T) {
 	}
 	h.waitStatus(cid, tdv1.OrderStatus_ORDER_STATUS_ACCEPTED)
 	h.v.OnCancel(cid, exchangetest.Outcome{NoAnswer: true})
-	if r := h.cancel(7, cid, ""); !r.GetAccepted() {
+	if r := h.cancel(7, cid); !r.GetAccepted() {
 		t.Fatalf("first %+v", r)
 	}
-	if r := h.cancel(7, cid, ""); !r.GetAccepted() {
+	if r := h.cancel(7, cid); !r.GetAccepted() {
 		t.Fatalf("second %+v", r)
 	}
 	waitFor(t, "cancel was not sent once", func() bool { return count(h.v.Requests(), "DELETE /order") == 1 })
@@ -400,7 +394,7 @@ func TestOrderUnknownCancel(t *testing.T) {
 	if n := count(h.v.Requests(), "GET /order"); n != 0 {
 		t.Fatalf("queried before the line: %d", n)
 	}
-	if r := h.cancel(7, cid, ""); !r.GetAccepted() {
+	if r := h.cancel(7, cid); !r.GetAccepted() {
 		t.Fatalf("cancel unknown %+v", r)
 	}
 	waitFor(t, "unknown order was not cancelled", func() bool { return count(h.v.Requests(), "DELETE /order") == 1 })
@@ -432,6 +426,10 @@ func TestOrderQueryAfterTheLine(t *testing.T) {
 	u := h.waitStatus(cid, tdv1.OrderStatus_ORDER_STATUS_REJECTED)
 	if u.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_NOT_PLACED) || u.GetCause() != tdv1.OrderCause_ORDER_CAUSE_REJECTED {
 		t.Fatalf("update %+v", u)
+	}
+	// The venue has not numbered this order, so the query names it by client id.
+	if got := h.v.Queries(); len(got) == 0 || got[0] != "cid="+cid {
+		t.Fatalf("query key %v", got)
 	}
 }
 
@@ -632,7 +630,7 @@ func TestOrderSeenExpires(t *testing.T) {
 		t.Fatal(r)
 	}
 	h.waitStatus(cid, tdv1.OrderStatus_ORDER_STATUS_ACCEPTED)
-	if r := h.cancel(7, cid, ""); !r.GetAccepted() {
+	if r := h.cancel(7, cid); !r.GetAccepted() {
 		t.Fatalf("cancel %+v", r)
 	}
 	h.waitStatus(cid, tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
@@ -817,24 +815,68 @@ func TestBatchCancelUnresolvable(t *testing.T) {
 	})
 }
 
-// An order id names the order on its own. A cloid paired with a different order id rejects the batch.
-func TestBatchCancelOrderID(t *testing.T) {
+// BatchCancel names orders by client id only. An empty id is 106. A client id that is not a
+// platform cloid still names the order, and the batch does not check which algo it belongs to.
+func TestBatchCancelCloidOnly(t *testing.T) {
 	h := start(t, setup{opts: exchangetest.AccountOptions{Limits: exchange.AccountLimits{CancelBatch: 5}}})
 	h.startReady()
-	a := h.place(7, 7, 64)
-	b := h.place(7, 7, 65)
-	if r := h.batchOrders(&tdv1.BatchCancelOrder{ClientOrderId: a, OrderId: h.omsOrder(b).GetOrderId()}); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_ORDER_NOT_OPEN) {
-		t.Fatalf("mismatched ids %+v", r)
+	if r := h.batchOrders(&tdv1.BatchCancelOrder{}); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER) || r.GetReason() != reasonInvalid {
+		t.Fatalf("empty id %+v", r)
+	}
+	unknown := mustCloid(t, 7, 64)
+	if r := h.batch(unknown); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_ORDER_NOT_OPEN) {
+		t.Fatalf("unknown %+v", r)
 	}
 	if len(h.v.Batches()) != 0 {
-		t.Fatal("mismatched ids were sent")
+		t.Fatal("a rejected batch was sent")
 	}
-	if r := h.batchOrders(&tdv1.BatchCancelOrder{OrderId: h.omsOrder(a).GetOrderId()}); !r.GetAccepted() {
+	h.v.PutOrder(exchange.OrderUpdate{
+		Exch: btc, ClientOrderID: "manual-1", Side: exchange.SideBuy, Type: exchange.OrderTypeLimit,
+		Status: exchange.OrderStatusAccepted, Qty: 0.01, Price: 100,
+		QuoteQty: decimal.Absent(), AvgPrice: decimal.Absent(),
+	})
+	waitFor(t, "the manual order did not arrive", func() bool { return h.omsOrder("manual-1") != nil })
+	if r := h.cancel(7, "manual-1"); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER) || r.GetReason() != reasonCloid {
+		t.Fatalf("single cancel of a non-platform id %+v", r)
+	}
+	if r := h.batch("manual-1"); !r.GetAccepted() {
+		t.Fatalf("batch of a non-platform id %+v", r)
+	}
+	h.waitStatus("manual-1", tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
+	other := h.place(7, 8, 65)
+	if r := h.batch(other); !r.GetAccepted() {
+		t.Fatalf("batch does not check ownership %+v", r)
+	}
+	h.waitStatus(other, tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
+}
+
+// A query for an order the venue has numbered goes out by order id, not by client id.
+func TestOrderQueryUsesOrderID(t *testing.T) {
+	clock := newFakeClock(time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
+	h := start(t, setup{cfg: func(c *ServeConfig) {
+		c.Now = clock.Now
+		c.After = clock.After
+	}})
+	h.startReady()
+	cid := mustCloid(t, 7, 66)
+	if r := h.submit(7, 7, cid, 0.01, 100); !r.GetAccepted() {
 		t.Fatal(r)
 	}
-	h.waitStatus(a, tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
-	if h.omsOrder(b) == nil {
-		t.Fatal("the other order was cancelled")
+	h.waitStatus(cid, tdv1.OrderStatus_ORDER_STATUS_ACCEPTED)
+	oid := h.omsOrder(cid).GetOrderId()
+	if oid == "" {
+		t.Fatal("accepted order has no order id")
+	}
+	h.v.OnCancel(cid, exchangetest.Outcome{NoAnswer: true})
+	if r := h.cancel(7, cid); !r.GetAccepted() {
+		t.Fatal(r)
+	}
+	waitFor(t, "cancel was not sent", func() bool { return count(h.v.Requests(), "DELETE /order") == 1 })
+	armed := waitArmed(t, clock)
+	clock.Advance(armed.Sub(clock.Now()))
+	waitFor(t, "the numbered order was not queried", func() bool { return count(h.v.Requests(), "GET /order") >= 1 })
+	if got := h.v.Queries(); len(got) == 0 || got[0] != "id="+oid {
+		t.Fatalf("query key %v, want id=%s", got, oid)
 	}
 }
 
@@ -845,7 +887,7 @@ func TestBatchCancelIncludesInFlight(t *testing.T) {
 	first := h.place(7, 7, 70)
 	second := h.place(7, 7, 71)
 	h.v.OnCancel(first, exchangetest.Outcome{NoAnswer: true})
-	if r := h.cancel(7, first, ""); !r.GetAccepted() {
+	if r := h.cancel(7, first); !r.GetAccepted() {
 		t.Fatal(r)
 	}
 	waitFor(t, "the single cancel was not sent", func() bool { return count(h.v.Requests(), "DELETE /order") == 1 })
@@ -959,7 +1001,7 @@ func TestCancelUsesFullRate(t *testing.T) {
 	if r := h.batch(ids[:8]...); !r.GetAccepted() {
 		t.Fatalf("batch in the last slot %+v", r)
 	}
-	if r := h.cancel(7, ids[8], ""); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_RATE_LIMITED) {
+	if r := h.cancel(7, ids[8]); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_RATE_LIMITED) {
 		t.Fatalf("cancel at 100%% %+v", r)
 	}
 	waitFor(t, "the batch was not sent", func() bool { return len(h.v.Batches()) == 1 })

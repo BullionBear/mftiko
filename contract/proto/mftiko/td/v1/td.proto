@@ -81,34 +81,37 @@ message Submit {
 }
 
 // 目標單已經有撤單在途（cancel_sent_ns 不是 0）：回 accepted，不再送交易所（D610）。
+// 只收 client_order_id。OMS 以它找到活單，送出時帶上那張單的 order_id；還沒有 order_id 才用 client_order_id（D623）。
 message Cancel {
   string session_id = 1; // 只給 log 與歸屬
   uint32 uid = 2;
   string client_order_id = 3;
-  string order_id = 4;
-  uint32 algo_id = 5; // 目標單的 client_order_id 的 algo 欄位必須等於它；沒有 client_order_id 的單一律以 104 拒絕（D602）
+  reserved 4;
+  reserved "order_id";
+  uint32 algo_id = 5; // 目標單的 client_order_id 的 algo 欄位必須等於它；解不開的 client_order_id 以 106 拒絕（D602）
   // 請求有效期，毫秒（D620）。0 = 這個 TD instance 的預設（部署設定，預設 5 秒）。
   // 超過交易所上限（60 秒）時 TD 壓到上限。時鐘誤差是 instance 的設定，預設 1 秒，不在這則訊息裡。
   int64 recv_window_ms = 6;
 }
 
-// 一筆交易所的批次撤單（D625）。TD 把 orders 原樣轉成一筆 CancelBatch，不挑單、不分批、不排隊、不重試。
-// algo_id 不是 TD 的索引。每一筆是 client_order_id 或 order_id；兩個都給時必須是同一張活單。
-// 商品取自 OMS 裡那張活單的 UID。對不到活單，整筆 107；商品解不出來，整筆 106。兩種都什麼都不送，不影響別的 BatchCancel。
+// 一筆交易所的批次撤單（D625）。每一筆只帶 client_order_id。TD 以它找到 OMS 裡的活單，送出時帶上那張單的 order_id（還沒有才用 client_order_id）。
+// 不挑單、不分批、不排隊、不重試，也不檢查這些單屬於哪個 algo。解不開成平台 cloid 的 client_order_id 不屬於任何 algo，但仍能指名那張單。
+// 商品取自 OMS 裡那張活單的 UID。空的 client_order_id 整筆 106；對不到活單，整筆 107；商品解不出來，整筆 106。都什麼都不送，不影響別的 BatchCancel。
 // CancelBatch 為 1（交易所沒有批次撤單）是 106，不改走單筆 Cancel。長過交易所上限仍送出，交易所的拒絕原樣回報。
 // 這則訊息算 OrderRate 的一筆，與 Cancel 相同可用到 100%（D628）。沒有 recv_window_ms，有效期用 instance 預設。
 // 回覆只說收下了；每一張單撤成或撤不成，各自是一則 OrderUpdate（D610）。DEGRADED 照常，走 REST，不走 TradeStream（D627）。
-// 整筆結果不明時，批內每張以 cloid 查單，不重送（D626）。cancel-on-disconnect 不接。
+// 整筆結果不明時，批內每張查單（已有 order_id 用它，否則用 client_order_id），不重送（D626）。cancel-on-disconnect 不接。
 message BatchCancel {
   reserved 1, 2, 3;
   reserved "algo_id", "uids", "timeout_ms";
   repeated BatchCancelOrder orders = 4;
 }
 
-// BatchCancel 清單裡的一張單。client_order_id 與 order_id 至少要有一個。
+// BatchCancel 清單裡的一張單。只收 client_order_id。
 message BatchCancelOrder {
   string client_order_id = 1;
-  string order_id = 2;
+  reserved 2;
+  reserved "order_id";
 }
 
 // td.order 的回覆（D610）。

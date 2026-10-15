@@ -267,8 +267,8 @@ func (b *book) decideCancel(c *tdv1.Cancel) admitOut {
 	if id.Algo != c.GetAlgoId() {
 		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_ALGO_MISMATCH), reasonAlgo, cid)}
 	}
-	_, o := b.find(&tdv1.Order{ClientOrderId: cid, OrderId: c.GetOrderId()})
-	if o == nil || terminal(o.GetStatus()) || o.GetClientOrderId() != cid || (c.GetOrderId() != "" && o.GetOrderId() != c.GetOrderId()) {
+	_, o := b.find(&tdv1.Order{ClientOrderId: cid})
+	if o == nil || terminal(o.GetStatus()) || o.GetClientOrderId() != cid {
 		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_ORDER_NOT_OPEN), reasonNotOpen, cid)}
 	}
 	if o.CancelSentNs != 0 {
@@ -297,9 +297,11 @@ func (b *book) decideCancel(c *tdv1.Cancel) admitOut {
 	return admitOut{reply: orderReply(true, 0, "", cid), jobs: []*sendJob{{cancel: true, cloid: cid, window: win, ref: ref, info: info}}}
 }
 
-// decideBatch forwards the named orders as one CancelBatch (D625). It does not choose orders, split
-// the list, queue, or retry. The reply only says the request was taken. Each order that is sent
-// gets its own CANCEL_REQUESTED; the venue answer is that order's later update (D610).
+// decideBatch forwards the named orders as one CancelBatch (D625). Each entry is a client order id.
+// The worker looks up the live order by that id and sends the order's order id (or the client id
+// when the venue has not numbered it yet). It does not choose orders, split the list, queue, retry,
+// or check which algo an order belongs to. The reply only says the request was taken. Each order
+// that is sent gets its own CANCEL_REQUESTED; the venue answer is that order's later update (D610).
 func (b *book) decideBatch(c *tdv1.BatchCancel) admitOut {
 	if c == nil || len(c.GetOrders()) == 0 {
 		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonInvalid, "")}
@@ -322,7 +324,7 @@ func (b *book) decideBatch(c *tdv1.BatchCancel) admitOut {
 			return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonInstrument, "")}
 		}
 		refs = append(refs, exchange.CancelRef{
-			Instrument: info, OrderID: item.GetOrderId(), ClientOrderID: item.GetClientOrderId(), Validity: win,
+			Instrument: info, OrderID: o.GetOrderId(), ClientOrderID: o.GetClientOrderId(), Validity: win,
 		})
 		orders = append(orders, o)
 	}
@@ -338,18 +340,15 @@ func (b *book) decideBatch(c *tdv1.BatchCancel) admitOut {
 	return admitOut{reply: orderReply(true, 0, "", ""), jobs: []*sendJob{{cancel: true, window: win, refs: refs}}}
 }
 
-// batchOrder is the live order one list entry names. An entry that names nothing, or names two
-// different orders, rejects the whole batch: TD forwards the list as given and does not drop items.
+// batchOrder is the live order one client order id names. An empty id, or one that names no live
+// order, rejects the whole batch: TD does not drop items, and it does not check algo ownership.
 func (b *book) batchOrder(item *tdv1.BatchCancelOrder) (*tdv1.Order, int32, string) {
-	if item == nil {
+	if item == nil || item.GetClientOrderId() == "" {
 		return nil, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonInvalid
 	}
-	cid, oid := item.GetClientOrderId(), item.GetOrderId()
-	if cid == "" && oid == "" {
-		return nil, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonInvalid
-	}
-	_, o := b.find(&tdv1.Order{ClientOrderId: cid, OrderId: oid})
-	if o == nil || terminal(o.GetStatus()) || (cid != "" && o.GetClientOrderId() != cid) || (oid != "" && o.GetOrderId() != oid) {
+	cid := item.GetClientOrderId()
+	_, o := b.find(&tdv1.Order{ClientOrderId: cid})
+	if o == nil || terminal(o.GetStatus()) || o.GetClientOrderId() != cid {
 		return nil, int32(tdv1.RejectCode_REJECT_CODE_ORDER_NOT_OPEN), reasonNotOpen
 	}
 	switch o.GetStatus() {
@@ -861,7 +860,11 @@ func (w *Worker) execQuery(ctx context.Context, q query) (*exchange.OrderUpdate,
 		}
 		return nil, nil, err
 	}
-	ref := exchange.CancelRef{Instrument: info, ClientOrderID: q.cloid, OrderID: q.orderID}
+	// The venue key is the order id. A client id is only for an order the venue has not numbered yet.
+	ref := exchange.CancelRef{Instrument: info, OrderID: q.orderID}
+	if q.orderID == "" {
+		ref.ClientOrderID = q.cloid
+	}
 	call, err := w.acct.QueryOrder(w.now(), ref)
 	if err != nil {
 		return nil, nil, err

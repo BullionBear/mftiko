@@ -57,6 +57,7 @@ type AccountVenue struct {
 	lev      map[symbol.ExchKey]float64
 	hedge    bool
 	requests []string
+	queries  []string   // GET /order keys, "id=…" when an order id was sent, otherwise "cid=…"
 	batches  [][]string // client order ids of each CancelBatch, in arrival order
 
 	submit      map[string]Outcome // by client order id, used once
@@ -409,6 +410,13 @@ func (v *AccountVenue) Requests() []string {
 	return slices.Clone(v.requests)
 }
 
+// Queries is every GET /order, as "id=…" when the request carried an order id and "cid=…" otherwise.
+func (v *AccountVenue) Queries() []string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return slices.Clone(v.queries)
+}
+
 // Batches is the client order ids of each CancelBatch, in arrival order.
 func (v *AccountVenue) Batches() [][]string {
 	v.mu.Lock()
@@ -423,7 +431,7 @@ func (v *AccountVenue) Batches() [][]string {
 // ResetRequests forgets the requests received so far.
 func (v *AccountVenue) ResetRequests() {
 	v.mu.Lock()
-	v.requests, v.batches = nil, nil
+	v.requests, v.queries, v.batches = nil, nil, nil
 	v.mu.Unlock()
 }
 
@@ -556,6 +564,11 @@ func (v *AccountVenue) Do(ctx context.Context, req *exchange.HTTPRequest) (*exch
 	case "DELETE /batch":
 		return v.doBatch(req.Body)
 	case "GET /order":
+		if id := q.Get("id"); id != "" {
+			v.queries = append(v.queries, "id="+id)
+		} else if cid := q.Get("cid"); cid != "" {
+			v.queries = append(v.queries, "cid="+cid)
+		}
 		if v.failQueries > 0 {
 			v.failQueries--
 			return v.respond(500, []byte("query failed")), nil
