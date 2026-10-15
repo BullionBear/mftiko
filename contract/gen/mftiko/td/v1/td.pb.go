@@ -930,7 +930,6 @@ func (*ViewRequest_Leverage) isViewRequest_Req() {}
 
 type OmsViewRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Settled       bool                   `protobuf:"varint,2,opt,name=settled,proto3" json:"settled,omitempty"`             // 不再有作用：OMS 只放活著的單，終結的單從 td.evt 與落庫的歷史拿（D615）。E6-15 定案時決定是否拿掉
 	AlgoId        uint32                 `protobuf:"varint,3,opt,name=algo_id,json=algoId,proto3" json:"algo_id,omitempty"` // 非 0 時以 algo 篩選，涵蓋上一個進程、上一個 session 留下的單（D602）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -964,13 +963,6 @@ func (x *OmsViewRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use OmsViewRequest.ProtoReflect.Descriptor instead.
 func (*OmsViewRequest) Descriptor() ([]byte, []int) {
 	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{7}
-}
-
-func (x *OmsViewRequest) GetSettled() bool {
-	if x != nil {
-		return x.Settled
-	}
-	return false
 }
 
 func (x *OmsViewRequest) GetAlgoId() uint32 {
@@ -2253,10 +2245,9 @@ const file_mftiko_td_v1_td_proto_rawDesc = "" +
 	"\x03oms\x18\x01 \x01(\v2\x1c.mftiko.td.v1.OmsViewRequestH\x00R\x03oms\x129\n" +
 	"\x06ledger\x18\x02 \x01(\v2\x1f.mftiko.td.v1.LedgerViewRequestH\x00R\x06ledger\x12;\n" +
 	"\bleverage\x18\x03 \x01(\v2\x1d.mftiko.td.v1.LeverageRequestH\x00R\bleverageB\x05\n" +
-	"\x03req\"C\n" +
-	"\x0eOmsViewRequest\x12\x18\n" +
-	"\asettled\x18\x02 \x01(\bR\asettled\x12\x17\n" +
-	"\aalgo_id\x18\x03 \x01(\rR\x06algoId\"'\n" +
+	"\x03req\"8\n" +
+	"\x0eOmsViewRequest\x12\x17\n" +
+	"\aalgo_id\x18\x03 \x01(\rR\x06algoIdJ\x04\b\x02\x10\x03R\asettled\"'\n" +
 	"\x11LedgerViewRequest\x12\x12\n" +
 	"\x04uids\x18\x01 \x03(\rR\x04uids\"#\n" +
 	"\x0fLeverageRequest\x12\x10\n" +

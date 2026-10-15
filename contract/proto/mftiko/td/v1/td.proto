@@ -124,7 +124,8 @@ message ViewRequest {
 }
 
 message OmsViewRequest {
-  bool settled = 2; // 不再有作用：OMS 只放活著的單，終結的單從 td.evt 與落庫的歷史拿（D615）。E6-15 定案時決定是否拿掉
+  reserved 2; // settled：沒有作用（D615），拿掉，號碼與名字不重用（D632）
+  reserved "settled";
   uint32 algo_id = 3; // 非 0 時以 algo 篩選，涵蓋上一個進程、上一個 session 留下的單（D602）
 }
 
