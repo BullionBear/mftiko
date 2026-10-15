@@ -11,7 +11,8 @@ breaking:
     - FILE
   # Drafts (DECISIONS D007, the table in PROTOCOL §1): free to change until the epic that finalizes them takes them off
   # this list, as part of its done criteria. sym.proto came off in E2-10. mdctl.proto and md.proto came off in
-  # E4-12. tdctl.proto came off in E6-15 and td.proto in E6-17 (D633). read.proto is back on until E8-01 (D461).
+  # E4-12. tdctl.proto came off in E6-15. td.proto stays on through #242 (D634); the follow-up
+  # after that merge takes it off. read.proto is back on until E8-01 (D461).
   # C3 and C4 come off when E1 ends.
   ignore:
     - contract/proto/mftiko/state/v1/state.proto # E: agent records in E1; demands, assignments, acks in E9
@@ -20,4 +21,5 @@ breaking:
     - contract/proto/mftiko/worker/v1/worker.proto # C4: E1
     - contract/proto/mftiko/common/v1/common.proto # C4: E1
     - contract/proto/mftiko/stsctl/v1/stsctl.proto # C5: E8, E9
+    - contract/proto/mftiko/td/v1/td.proto # C6: stays ignored through #242 (D634)
     - contract/proto/mftiko/md/v1/read.proto # C6: back to draft by D461 until E8-01 lands
