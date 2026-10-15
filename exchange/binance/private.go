@@ -17,8 +17,8 @@ const privateEvents = "ORDER_TRADE_UPDATE/ACCOUNT_UPDATE/listenKeyExpired"
 
 // privateStream is the listenKey connection. It has no logon frame: Prepare creates the key,
 // Dial puts it in the URL, and the first event is what makes the stream Ready. A quiet account
-// sends nothing until something happens; the worker that must trade before then treats the
-// completed dial as live, which this codec cannot see.
+// sends nothing until something happens, so Dial is Live: the worker treats the completed
+// handshake as live, which this codec cannot see.
 type privateStream struct {
 	rest  string
 	ws    string
@@ -38,7 +38,7 @@ func (p *privateStream) Dial(_ time.Time, token string) (*exchange.Dial, error) 
 		return nil, fmt.Errorf("binance: listenKey is empty")
 	}
 	u := p.ws + "?listenKey=" + url.QueryEscape(token) + "&events=" + privateEvents
-	return &exchange.Dial{URL: u}, nil
+	return &exchange.Dial{URL: u, Live: true}, nil
 }
 
 func (p *privateStream) Refresh(time.Time) (*exchange.Call[struct{}], error) {

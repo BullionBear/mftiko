@@ -231,3 +231,19 @@ func TestValidity(t *testing.T) {
 		t.Error("a 61s window was taken")
 	}
 }
+
+// The listenKey stream acknowledges nothing and a quiet account sends nothing on it: its dial is
+// Live, so the worker does not wait for a first event to call it up.
+func TestUMPrivateDialIsLive(t *testing.T) {
+	s, err := mustUM(t).NewStream()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Dial(time.Unix(0, 0), "lk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.Live || len(d.Frames) != 0 {
+		t.Fatalf("dial %v live=%v", d, d.Live)
+	}
+}
