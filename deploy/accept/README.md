@@ -214,3 +214,22 @@ $A stop-td-agent
 ```
 
 紀錄：`data/work/td-watch.log`、`td-watch.jsonl`（每一則 td.evt）、`td-agent-*.log`，以及上面各個指令的輸出。E6-12 的紀錄在它的 PR。
+
+## Binance 現貨（E6-13）
+
+SYM 要服務現貨的表，所以從 `up` 起換 venue；帳號的 kind 是 `Binance`：
+
+```sh
+ACCEPT_VENUE=Binance ACCEPT_SYM_FEEDS=Binance/Spot ACCEPT_TICKER=Binance_Spot_BTCUSDT $A up
+$A td-up
+docker compose -f deploy/accept/compose.yaml exec -T runner sh -c \
+  '/mftiko/mftiko-td-accept account -instance td1 -api-id 1 -kind Binance -seal-key /work/td-seal.key < /work/binance.creds.json'
+```
+
+和 UM 不同的地方：
+
+- 下單與私有事件在同一條交易連線（`ws-api.testnet.binance.vision`）。`td conns` 只有它和 REST host 的 socket，沒有 `stream.testnet.binance.vision`。
+- 第 2 條切的是交易連線：`cut -host ws-api.testnet.binance.vision`。斷線期間撤單改走 REST。
+- 現貨沒有批次撤單（`CancelBatch` 是 1），`batch` 在本地回 `106 batch cancel is not available`（D625），改用單筆 `cancel`。
+- `submit` 加 `-ticker Binance_Spot_BTCUSDT`；沒有 `-reduce-only`，買多少賣回多少。限價要在 `PERCENT_PRICE_BY_SIDE` 之內（買單不低於均價的 0.5 倍）。
+- 沒有持倉模式，不跑第 4 條。

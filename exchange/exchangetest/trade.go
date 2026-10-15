@@ -266,6 +266,8 @@ func (s *tradeStream) Decode(b []byte, sink exchange.TradeSink) error {
 		switch {
 		case f.Status == 401:
 			return fmt.Errorf("exchangetest: logon refused: %w", exchange.ErrAuth)
+		case f.Status != 200:
+			return classify(f)
 		case f.ID == "sub", !s.events:
 			sink.Ready()
 		}
