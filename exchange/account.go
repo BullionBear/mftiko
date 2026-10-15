@@ -262,6 +262,10 @@ type PrivateStream interface {
 type Dial struct {
 	URL    string
 	Frames [][]byte
+	// Live: the stream is live once the websocket handshake completes. It has no logon and
+	// acknowledges nothing, and a quiet account sends nothing on it (Binance's listenKey stream), so
+	// the codec calls Ready only on the first event; the worker does not wait for it.
+	Live bool
 }
 
 // String is the dial as it may be logged: the URL by MaskURL, and how many frames but not what they

@@ -137,8 +137,8 @@ func (l *link) run(ctx context.Context) {
 	}
 }
 
-// connect opens one connection and waits for the codec's Ready. The connection lives until ctx ends
-// or it is closed.
+// connect opens one connection and waits for the codec's Ready, or, for a Live dial, only for the
+// handshake. The connection lives until ctx ends or it is closed.
 func (l *link) connect(ctx context.Context) (*conn, error) {
 	w := l.w
 	cd, err := l.open()
@@ -180,6 +180,9 @@ func (l *link) connect(ctx context.Context) (*conn, error) {
 			<-c.done
 			return nil, fmt.Errorf("logon: %w", err)
 		}
+	}
+	if d.Live {
+		c.sink.Ready()
 	}
 	select {
 	case <-c.ready:

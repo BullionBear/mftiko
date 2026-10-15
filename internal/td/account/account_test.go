@@ -475,6 +475,21 @@ func TestListenKey(t *testing.T) {
 	h.stop()
 }
 
+// A stream that acknowledges nothing (Binance's listenKey stream) is live once the handshake
+// completes: a quiet account comes up READY with no event on it, and a drop is still DEGRADED.
+func TestQuietStream(t *testing.T) {
+	h := start(t, setup{opts: exchangetest.AccountOptions{Quiet: true, ListenKey: true}, cfg: func(c *ServeConfig) {
+		c.ReadyTimeout = 300 * time.Millisecond
+	}})
+	h.startReady()
+	// READY comes once the login is written, which can be before the venue has read it.
+	waitFor(t, "the venue has no stream", func() bool { o, _ := h.v.Connections(); return o == 1 })
+	h.v.Disconnect()
+	h.report(tdv1.AccountState_ACCOUNT_STATE_DEGRADED, ReasonStreamLost)
+	h.report(tdv1.AccountState_ACCOUNT_STATE_READY, "")
+	h.stop()
+}
+
 // A connection about to reach its MaxLifetime is replaced before it closes: no DEGRADED, no recon.
 func TestReplacedAheadOfLifetime(t *testing.T) {
 	h := start(t, setup{opts: exchangetest.AccountOptions{Stream: exchange.StreamLimits{MaxLifetime: 600 * time.Millisecond}}})

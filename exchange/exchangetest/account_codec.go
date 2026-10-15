@@ -332,7 +332,7 @@ func (s *privateStream) Dial(now time.Time, token string) (*exchange.Dial, error
 		u += "?listenKey=" + url.QueryEscape(token)
 	}
 	login := mustJSON(streamFrame{Op: "login", Key: s.a.key, Ts: now.UnixMilli()})
-	return &exchange.Dial{URL: u, Frames: [][]byte{login}}, nil
+	return &exchange.Dial{URL: u, Frames: [][]byte{login}, Live: s.a.v.opts.Quiet}, nil
 }
 
 func (s *privateStream) Refresh(now time.Time) (*exchange.Call[struct{}], error) {
@@ -359,7 +359,9 @@ func (s *privateStream) Decode(frame []byte, sink exchange.AccountSink) error {
 		if f.Status != 200 {
 			return fmt.Errorf("exchangetest: login refused: %w", exchange.ErrAuth)
 		}
-		sink.Ready()
+		if !s.a.v.opts.Quiet {
+			sink.Ready()
+		}
 	case f.Event == "expired":
 		sink.Expired(f.Reason)
 	case f.Event == "order" && f.Order != nil:

@@ -100,6 +100,9 @@ type AccountOptions struct {
 	ListenKey bool
 	// Stream is what the stream codec's Limits returns. A zero ReadLimit is 1 MiB.
 	Stream exchange.StreamLimits
+	// Quiet makes the stream acknowledge nothing, as Binance's listenKey stream: the codec does not
+	// call Ready on the login's answer, and Dial is Live instead.
+	Quiet bool
 	// Trade, when set, is the venue behind NewTradeStream. Without it NewTradeStream is
 	// ErrUnsupported and the worker sends orders over REST.
 	Trade *TradeVenue
