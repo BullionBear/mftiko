@@ -482,6 +482,8 @@ func TestQuietStream(t *testing.T) {
 		c.ReadyTimeout = 300 * time.Millisecond
 	}})
 	h.startReady()
+	// READY comes once the login is written, which can be before the venue has read it.
+	waitFor(t, "the venue has no stream", func() bool { o, _ := h.v.Connections(); return o == 1 })
 	h.v.Disconnect()
 	h.report(tdv1.AccountState_ACCOUNT_STATE_DEGRADED, ReasonStreamLost)
 	h.report(tdv1.AccountState_ACCOUNT_STATE_READY, "")
