@@ -257,7 +257,8 @@ func TestBookAlgoFilter(t *testing.T) {
 	c5, _ := cloid.Encode(5, cloid.EpochMs+1, 0)
 	c6, _ := cloid.Encode(6, cloid.EpochMs+1, 0)
 	r.recon(&exchange.AccountSnapshot{OpenOrders: []exchange.OrderUpdate{
-		ord("1", c5, exchange.OrderStatusAccepted, 0), ord("2", c6, exchange.OrderStatusAccepted, 0), ord("3", "by-hand", exchange.OrderStatusAccepted, 0),
+		ord("1", c5, exchange.OrderStatusAccepted, 0), ord("2", c6, exchange.OrderStatusAccepted, 0),
+		ord("3", "by-hand", exchange.OrderStatusAccepted, 0), ord("4", "", exchange.OrderStatusAccepted, 0),
 	}, AsOfNs: 1})
 	oms := func(algo uint32) []string {
 		var out []string
@@ -268,8 +269,43 @@ func TestBookAlgoFilter(t *testing.T) {
 	}
 	eq(t, oms(5), "1")
 	eq(t, oms(6), "2")
-	if got := oms(0); len(got) != 3 {
+	if got := oms(0); len(got) != 4 {
 		t.Fatalf("all: %v", got)
+	}
+}
+
+// An order with an empty client id is one order, joined by order id on a later event and on recon.
+func TestBookEmptyClientIDMatchesByOrderID(t *testing.T) {
+	r := newRig(t)
+	r.recon(&exchange.AccountSnapshot{OpenOrders: []exchange.OrderUpdate{
+		ord("9", "", exchange.OrderStatusAccepted, 0),
+	}, AsOfNs: 1})
+	e := ord("9", "", exchange.OrderStatusPartiallyFilled, 0.4)
+	r.b.order(r.ctx, &e)
+	got := r.sync().GetOms().GetOrders()
+	if len(got) != 1 || got[0].GetOrderId() != "9" || got[0].GetClientOrderId() != "" || got[0].GetStatus() != tdv1.OrderStatus_ORDER_STATUS_PARTIALLY_FILLED {
+		t.Fatalf("event did not join the empty client id: %v", got)
+	}
+	r.recon(&exchange.AccountSnapshot{OpenOrders: []exchange.OrderUpdate{
+		ord("9", "", exchange.OrderStatusPartiallyFilled, 0.4),
+	}, AsOfNs: 2})
+	got = r.sync().GetOms().GetOrders()
+	if len(got) != 1 || got[0].GetOrderId() != "9" || got[0].GetStatus() != tdv1.OrderStatus_ORDER_STATUS_PARTIALLY_FILLED {
+		t.Fatalf("recon duplicated the empty client id: %v", got)
+	}
+}
+
+// The first venue message that numbers an order joins the pending row by client id.
+func TestBookFirstVenueIDJoinsByClientID(t *testing.T) {
+	r := newRig(t)
+	r.recon(&exchange.AccountSnapshot{AsOfNs: 1})
+	p := ord("", "pend", exchange.OrderStatusPendingNew, 0)
+	r.b.order(r.ctx, &p)
+	a := ord("42", "pend", exchange.OrderStatusAccepted, 0)
+	r.b.order(r.ctx, &a)
+	got := r.sync().GetOms().GetOrders()
+	if len(got) != 1 || got[0].GetOrderId() != "42" || got[0].GetClientOrderId() != "pend" {
+		t.Fatalf("first order id did not join: %v", got)
 	}
 }
 

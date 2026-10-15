@@ -57,19 +57,21 @@ type AccountVenue struct {
 	lev      map[symbol.ExchKey]float64
 	hedge    bool
 	requests []string
+	queries  []string   // GET /order keys, "id=…" when an order id was sent, otherwise "cid=…"
+	batches  [][]string // client order ids of each CancelBatch, in arrival order
 
-	submit    map[string]Outcome // by client order id, used once
-	cancel    map[string]Outcome
-	late      map[string]lateReq // by client order id: held until Arrive
-	batch     []Outcome
-	throttle  int
-	retry     time.Duration
-	used      []exchange.Used
+	submit      map[string]Outcome // by client order id, used once
+	cancel      map[string]Outcome
+	late        map[string]lateReq // by client order id: held until Arrive
+	batch       []Outcome
+	throttle    int
+	retry       time.Duration
+	used        []exchange.Used
 	failSnap    map[snapKey]int
 	failQueries int // GET /order failures left, each a 500
-	arms      []Arm
-	listenKey string
-	keys      int
+	arms        []Arm
+	listenKey   string
+	keys        int
 
 	conns      map[*streamConn]struct{}
 	hold       bool
@@ -408,8 +410,30 @@ func (v *AccountVenue) Requests() []string {
 	return slices.Clone(v.requests)
 }
 
+// Queries is every GET /order, as "id=…" when the request carried an order id and "cid=…" otherwise.
+func (v *AccountVenue) Queries() []string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return slices.Clone(v.queries)
+}
+
+// Batches is the client order ids of each CancelBatch, in arrival order.
+func (v *AccountVenue) Batches() [][]string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	out := make([][]string, len(v.batches))
+	for i, b := range v.batches {
+		out[i] = slices.Clone(b)
+	}
+	return out
+}
+
 // ResetRequests forgets the requests received so far.
-func (v *AccountVenue) ResetRequests() { v.mu.Lock(); v.requests = nil; v.mu.Unlock() }
+func (v *AccountVenue) ResetRequests() {
+	v.mu.Lock()
+	v.requests, v.queries, v.batches = nil, nil, nil
+	v.mu.Unlock()
+}
 
 // Arms is every ArmCancelOnDisconnect the venue received, in order.
 func (v *AccountVenue) Arms() []Arm {
@@ -540,6 +564,11 @@ func (v *AccountVenue) Do(ctx context.Context, req *exchange.HTTPRequest) (*exch
 	case "DELETE /batch":
 		return v.doBatch(req.Body)
 	case "GET /order":
+		if id := q.Get("id"); id != "" {
+			v.queries = append(v.queries, "id="+id)
+		} else if cid := q.Get("cid"); cid != "" {
+			v.queries = append(v.queries, "cid="+cid)
+		}
 		if v.failQueries > 0 {
 			v.failQueries--
 			return v.respond(500, []byte("query failed")), nil
@@ -672,6 +701,11 @@ func (v *AccountVenue) doBatch(body []byte) (*exchange.HTTPResponse, error) {
 	if err := json.Unmarshal(body, &refs); err != nil {
 		return v.respond(400, nil), nil
 	}
+	ids := make([]string, len(refs))
+	for i, r := range refs {
+		ids[i] = r.Cid
+	}
+	v.batches = append(v.batches, ids)
 	var whole Outcome
 	if len(v.batch) > 0 {
 		whole, v.batch = v.batch[0], v.batch[1:]

@@ -6,9 +6,11 @@ import (
 	"github.com/BullionBear/mftiko/exchange"
 )
 
-// limiter is the account's order-rate gate (D621, D420). The book goroutine owns it.
-// A window is used up at 90% (used*10 >= limit*9). A 429 or 418 pauses every send,
-// including queries, until Retry-After, else the reported reset, else the configured hold.
+// limiter is the account's order-rate gate (D621, D628, D420). The book goroutine owns it.
+// A submit is refused once a window is at 90% (used*10 >= limit*9). A cancel may use the window
+// up to 100%. One BatchCancel is one request on that same gate, not one count per order. A 429
+// or 418 pauses every send, including queries, until Retry-After, else the reported reset, else
+// the configured hold.
 type limiter struct {
 	wins       []rateWin
 	pauseUntil time.Time
@@ -36,8 +38,21 @@ func newLimiter(rs []exchange.RateLimit) *limiter {
 	return l
 }
 
-// allow is false when any window is at 90% or a pause is in force.
+// allow is false when any window is at 90% or a pause is in force (D621). Submits use it.
 func (l *limiter) allow(now time.Time) bool {
+	return l.fits(now, false, 1)
+}
+
+// allowCancel is false when n more requests would pass 100% of any window, or a pause is in
+// force (D628). One Cancel and one BatchCancel are each n = 1.
+func (l *limiter) allowCancel(now time.Time, n int) bool {
+	if n < 1 {
+		n = 1
+	}
+	return l.fits(now, true, n)
+}
+
+func (l *limiter) fits(now time.Time, full bool, n int) bool {
 	if l == nil {
 		return true
 	}
@@ -45,7 +60,7 @@ func (l *limiter) allow(now time.Time) bool {
 		return false
 	}
 	for i := range l.wins {
-		if l.wins[i].over(now) {
+		if !l.wins[i].fits(now, full, n) {
 			return false
 		}
 	}
@@ -56,17 +71,22 @@ func (l *limiter) paused(now time.Time) bool {
 	return l != nil && !l.pauseUntil.IsZero() && now.Before(l.pauseUntil)
 }
 
-// consume counts one order request the worker is about to send.
-func (l *limiter) consume(now time.Time) {
-	if l == nil {
+// consume counts one order the worker is about to send.
+func (l *limiter) consume(now time.Time) { l.consumeN(now, 1) }
+
+// consumeN counts n requests.
+func (l *limiter) consumeN(now time.Time, n int) {
+	if l == nil || n <= 0 {
 		return
 	}
 	for i := range l.wins {
 		w := &l.wins[i]
 		w.prune(now)
-		w.sent = append(w.sent, now)
-		if w.reportedOK && (w.resetAt.IsZero() || now.Before(w.resetAt)) {
-			w.sentAfter++
+		for k := 0; k < n; k++ {
+			w.sent = append(w.sent, now)
+			if w.reportedOK && (w.resetAt.IsZero() || now.Before(w.resetAt)) {
+				w.sentAfter++
+			}
 		}
 	}
 }
@@ -113,8 +133,12 @@ func (l *limiter) pause(now time.Time, retryAfter, hold time.Duration, resetAt t
 	}
 }
 
-func (w *rateWin) over(now time.Time) bool {
-	return w.used(now)*10 >= w.limit*9
+func (w *rateWin) fits(now time.Time, full bool, n int) bool {
+	used := w.used(now)
+	if full {
+		return used+n <= w.limit
+	}
+	return used*10 < w.limit*9
 }
 
 func (w *rateWin) used(now time.Time) int {

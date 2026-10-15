@@ -21,10 +21,10 @@ var (
 	_ exchange.CancelOnDisconnect = (*account)(nil)
 )
 
-// Limits: orderLinkId is 36 characters. CancelBatch is 5 because an option batch is at most 5;
-// linear and inverse take 20 and spot takes 10, and one chunk has to be legal on every category.
-// The order budget is 10/s, the tighter of the category limits (spot's own create limit is 20/s).
-// A batch consumes one count per order.
+// Limits: orderLinkId is 36 characters. CancelBatch is 5, the smallest category cap (option 5,
+// spot 10, linear and inverse 20). The SDK splits to that; a longer list is still sent and the
+// venue rejects it (D625). The order budget is 10/s, the tighter of the category limits (spot's
+// own create limit is 20/s). A batch consumes one count per order on that budget.
 func (a *account) Limits() exchange.AccountLimits {
 	return exchange.AccountLimits{
 		ClientOrderIDMaxLen: cloidMax,
@@ -78,9 +78,6 @@ func (a *account) CancelBatch(now time.Time, refs []exchange.CancelRef) (exchang
 			return exchange.Call[[]error]{}, err
 		}
 		items = append(items, item)
-	}
-	if n := batchMax(cat); len(items) > n {
-		return exchange.Call[[]error]{}, fmt.Errorf("bybit: %s batch cancel takes at most %d orders, got %d", cat, n, len(items))
 	}
 	httpReq, err := a.post(now, "/v5/order/cancel-batch", batchBody{Category: cat, Request: items}, orderCost(len(items)), true)
 	if err != nil {
@@ -245,17 +242,6 @@ func (a *account) ArmCancelOnDisconnect(now time.Time, timeout time.Duration, _ 
 
 // hedgeIdx: positionIdx 1 (buy side) and 2 (sell side) exist only in hedge mode; 0 is one-way.
 func hedgeIdx(idx int) bool { return idx == 1 || idx == 2 }
-
-func batchMax(cat string) int {
-	switch cat {
-	case "option":
-		return 5
-	case "spot":
-		return 10
-	default:
-		return 20
-	}
-}
 
 type createBody struct {
 	Category    string `json:"category"`

@@ -21,5 +21,8 @@
 // D615). After Start it also answers td.order: local rejects stay on the reply, and every later
 // change is one OrderUpdate (D610, D618–D624).
 //
-// Not yet: batch cancel and cancel-on-disconnect (E6-09).
+// Batch cancel is one explicit client-order-id list, forwarded as one venue request (D625–D628).
+// The worker looks each live order up by that id and sends the order's order id. It does not choose
+// orders, split the list, or check which algo an order belongs to. Cancel-on-disconnect is not wired:
+// AccountSettings.cancel_on_disconnect_s and CancelOnDisconnect stay unused (D625).
 package account

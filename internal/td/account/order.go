@@ -42,10 +42,10 @@ const (
 	reasonInvalid    = "invalid order"
 	reasonNotOpen    = "order is not open"
 	reasonRate       = "rate limited"
+	reasonNoBatch    = "batch cancel is not available"
 	reasonDegraded   = "account is degraded"
 	reasonHedge      = "position side is not allowed"
 	reasonNotPlaced  = "order was not placed"
-	reasonBatch      = "batch cancel is not served yet"
 	reasonQuery      = "query_failed"
 )
 
@@ -116,12 +116,13 @@ const (
 	resultSubmit resultKind = iota + 1
 	resultCancel
 	resultQuery
+	resultBatch
 )
 
 type admitOut struct {
 	reply  *tdv1.OrderReply
 	report *tdctlv1.Report
-	job    *sendJob
+	jobs   []*sendJob
 }
 
 type sendJob struct {
@@ -130,6 +131,7 @@ type sendJob struct {
 	window time.Duration
 	req    *exchange.OrderRequest
 	ref    exchange.CancelRef
+	refs   []exchange.CancelRef // set on a BatchCancel: one CancelBatch, however long the list is
 	info   *symbol.Info
 }
 
@@ -145,8 +147,8 @@ func (w *Worker) handleOrder(ctx context.Context, raw []byte) []byte {
 		// A failed report does not stop the order (D601).
 		_ = w.report(out.report)
 	}
-	if out.job != nil {
-		go w.dispatch(ctx, out.job)
+	for _, job := range out.jobs {
+		go w.dispatch(ctx, job)
 	}
 	return marshalReply(out.reply)
 }
@@ -171,7 +173,7 @@ func (b *book) decide(req *tdv1.OrderRequest) admitOut {
 	case *tdv1.OrderRequest_Cancel:
 		return b.decideCancel(r.Cancel)
 	case *tdv1.OrderRequest_BatchCancel:
-		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonBatch, "")}
+		return b.decideBatch(r.BatchCancel)
 	default:
 		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonInvalid, "")}
 	}
@@ -247,7 +249,7 @@ func (b *book) decideSubmit(s *tdv1.Submit) admitOut {
 		Params: cloneParams(sent.GetParams()), Validity: win,
 		Qty: qtyOrAbsent(sent.Qty), QuoteQty: qtyOrAbsent(sent.QuoteQty), Price: qtyOrAbsent(sent.Price),
 	}
-	return admitOut{reply: rep, report: report, job: &sendJob{cloid: cid, window: win, req: req, info: info}}
+	return admitOut{reply: rep, report: report, jobs: []*sendJob{{cloid: cid, window: win, req: req, info: info}}}
 }
 
 func (b *book) decideCancel(c *tdv1.Cancel) admitOut {
@@ -265,8 +267,8 @@ func (b *book) decideCancel(c *tdv1.Cancel) admitOut {
 	if id.Algo != c.GetAlgoId() {
 		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_ALGO_MISMATCH), reasonAlgo, cid)}
 	}
-	_, o := b.find(&tdv1.Order{ClientOrderId: cid, OrderId: c.GetOrderId()})
-	if o == nil || terminal(o.GetStatus()) || o.GetClientOrderId() != cid || (c.GetOrderId() != "" && o.GetOrderId() != c.GetOrderId()) {
+	_, o := b.find(&tdv1.Order{ClientOrderId: cid})
+	if o == nil || terminal(o.GetStatus()) || o.GetClientOrderId() != cid {
 		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_ORDER_NOT_OPEN), reasonNotOpen, cid)}
 	}
 	if o.CancelSentNs != 0 {
@@ -280,7 +282,7 @@ func (b *book) decideCancel(c *tdv1.Cancel) admitOut {
 		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_ORDER_NOT_OPEN), reasonNotOpen, cid)}
 	}
 	now := b.now()
-	if !b.rate.allow(now) {
+	if !b.rate.allowCancel(now, 1) {
 		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_RATE_LIMITED), reasonRate, cid)}
 	}
 	info, ierr := b.ins.GetByUID(b.ctx, o.GetUid(), false)
@@ -292,7 +294,71 @@ func (b *book) decideCancel(c *tdv1.Cancel) admitOut {
 	b.publishOrder(o, tdv1.OrderCause_ORDER_CAUSE_CANCEL_REQUESTED, 0, "")
 	win := b.window(c.GetRecvWindowMs())
 	ref := exchange.CancelRef{Instrument: info, OrderID: o.GetOrderId(), ClientOrderID: cid, Validity: win}
-	return admitOut{reply: orderReply(true, 0, "", cid), job: &sendJob{cancel: true, cloid: cid, window: win, ref: ref, info: info}}
+	return admitOut{reply: orderReply(true, 0, "", cid), jobs: []*sendJob{{cancel: true, cloid: cid, window: win, ref: ref, info: info}}}
+}
+
+// decideBatch forwards the named orders as one CancelBatch (D625). Each entry is a client order id.
+// The worker looks up the live order by that id and sends the order's order id (or the client id
+// when the venue has not numbered it yet). It does not choose orders, split the list, queue, retry,
+// or check which algo an order belongs to. The reply only says the request was taken. Each order
+// that is sent gets its own CANCEL_REQUESTED; the venue answer is that order's later update (D610).
+func (b *book) decideBatch(c *tdv1.BatchCancel) admitOut {
+	if c == nil || len(c.GetOrders()) == 0 {
+		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonInvalid, "")}
+	}
+	if b.limits.CancelBatch == 1 {
+		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonNoBatch, "")}
+	}
+	// No recv_window_ms on this message; the instance default applies (D620).
+	win := b.window(0)
+	refs := make([]exchange.CancelRef, 0, len(c.GetOrders()))
+	orders := make([]*tdv1.Order, 0, len(c.GetOrders()))
+	for _, item := range c.GetOrders() {
+		o, code, reason := b.batchOrder(item)
+		if code != 0 {
+			return admitOut{reply: orderReply(false, code, reason, "")}
+		}
+		info, err := b.ins.GetByUID(b.ctx, o.GetUid(), false)
+		if err != nil || info == nil {
+			// One unresolvable instrument rejects this request and no other (D625).
+			return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonInstrument, "")}
+		}
+		refs = append(refs, exchange.CancelRef{
+			Instrument: info, OrderID: o.GetOrderId(), ClientOrderID: o.GetClientOrderId(), Validity: win,
+		})
+		orders = append(orders, o)
+	}
+	now := b.now()
+	if !b.rate.allowCancel(now, 1) {
+		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_RATE_LIMITED), reasonRate, "")}
+	}
+	b.rate.consume(now)
+	for _, o := range orders {
+		o.CancelSentNs = now.UnixNano()
+		b.publishOrder(o, tdv1.OrderCause_ORDER_CAUSE_CANCEL_REQUESTED, 0, "")
+	}
+	return admitOut{reply: orderReply(true, 0, "", ""), jobs: []*sendJob{{cancel: true, window: win, refs: refs}}}
+}
+
+// batchOrder is the live order one client order id names. An empty id, or one that names no live
+// order, rejects the whole batch: TD does not drop items, and it does not check algo ownership.
+func (b *book) batchOrder(item *tdv1.BatchCancelOrder) (*tdv1.Order, int32, string) {
+	if item == nil || item.GetClientOrderId() == "" {
+		return nil, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonInvalid
+	}
+	cid := item.GetClientOrderId()
+	_, o := b.find(&tdv1.Order{ClientOrderId: cid})
+	if o == nil || terminal(o.GetStatus()) || o.GetClientOrderId() != cid {
+		return nil, int32(tdv1.RejectCode_REJECT_CODE_ORDER_NOT_OPEN), reasonNotOpen
+	}
+	switch o.GetStatus() {
+	case tdv1.OrderStatus_ORDER_STATUS_PENDING_NEW, tdv1.OrderStatus_ORDER_STATUS_NEW,
+		tdv1.OrderStatus_ORDER_STATUS_ACCEPTED, tdv1.OrderStatus_ORDER_STATUS_PARTIALLY_FILLED,
+		tdv1.OrderStatus_ORDER_STATUS_UNKNOWN:
+		return o, 0, ""
+	default:
+		return nil, int32(tdv1.RejectCode_REJECT_CODE_ORDER_NOT_OPEN), reasonNotOpen
+	}
 }
 
 // rejectSubmit remembers the reply so a retry of the same cloid returns it and is not sent (D619).
@@ -348,6 +414,15 @@ func (b *book) copyFirst() map[uint32]int64 {
 func (w *Worker) dispatch(ctx context.Context, job *sendJob) {
 	now := w.now()
 	deadline := now.Add(job.window + w.book.clockSkew())
+	if len(job.refs) > 0 {
+		// One BatchCancel is one CancelBatch, and it stays on REST (D303, D625).
+		perrs, used, err := w.restBatch(ctx, job, now)
+		w.book.send(ctx, msgResult{
+			kind: resultBatch, refs: job.refs, perrs: perrs, err: err,
+			sent: now, window: job.window, deadline: deadline, used: used,
+		})
+		return
+	}
 	if err := w.tryWS(ctx, job, now, deadline); err == nil {
 		return // the stream's answer arrives on its own
 	} else if !errors.Is(err, errNotSent) {
@@ -398,6 +473,21 @@ func (w *Worker) rest(ctx context.Context, job *sendJob, now time.Time) (*exchan
 	return res, w.acct.Usage(resp, now), perr
 }
 
+func (w *Worker) restBatch(ctx context.Context, job *sendJob, now time.Time) ([]error, []exchange.Used, error) {
+	tctx, cancel := context.WithTimeout(ctx, job.window+w.book.clockSkew())
+	defer cancel()
+	call, err := w.acct.CancelBatch(now, job.refs)
+	if err != nil {
+		return nil, nil, errNotSent
+	}
+	resp, err := w.cfg.Doer.Do(tctx, &call.Req)
+	if err != nil {
+		return nil, nil, unknownOr(err)
+	}
+	perrs, perr := call.Parse(resp)
+	return perrs, w.acct.Usage(resp, now), perr
+}
+
 func unknownOr(err error) error {
 	if errors.Is(err, exchange.ErrUnknownOutcome) {
 		return err
@@ -410,25 +500,76 @@ func fmtError(err error) error {
 }
 
 func (b *book) applyResult(m msgResult) {
-	if len(m.used) > 0 {
-		reset := b.rate.note(b.now(), m.used)
-		var rl *exchange.RateLimited
-		if errors.As(m.err, &rl) {
-			wait := time.Duration(rl.RetryAfterMs) * time.Millisecond
-			b.rate.pause(b.now(), wait, b.rateHold(), reset)
-			b.wakeQueries()
-		}
-	}
+	b.noteLimit(m.used, limitErr(m))
 	if m.kind == resultQuery {
 		b.queryAnswer(m)
 		return
 	}
+	if m.kind == resultBatch {
+		b.applyBatch(m)
+		return
+	}
+	b.applyOne(m)
+}
+
+// noteLimit records venue usage and, on a 429 or 418, pauses every send (D420).
+func (b *book) noteLimit(used []exchange.Used, err error) {
+	var reset time.Time
+	if len(used) > 0 {
+		reset = b.rate.note(b.now(), used)
+	}
+	var rl *exchange.RateLimited
+	if !errors.As(err, &rl) {
+		return
+	}
+	if len(used) == 0 {
+		reset = time.Time{}
+	}
+	b.rate.pause(b.now(), time.Duration(rl.RetryAfterMs)*time.Millisecond, b.rateHold(), reset)
+	b.wakeQueries()
+}
+
+// limitErr is the rate-limit error on a result: the whole request, or one order of a batch.
+func limitErr(m msgResult) error {
 	var rl *exchange.RateLimited
 	if errors.As(m.err, &rl) {
-		if len(m.used) == 0 {
-			b.rate.pause(b.now(), time.Duration(rl.RetryAfterMs)*time.Millisecond, b.rateHold(), time.Time{})
-			b.wakeQueries()
+		return m.err
+	}
+	for _, e := range m.perrs {
+		if errors.As(e, &rl) {
+			return e
 		}
+	}
+	return nil
+}
+
+func (b *book) applyBatch(m msgResult) {
+	one := func(ref exchange.CancelRef, err error) {
+		b.applyOne(msgResult{
+			kind: resultCancel, cloid: ref.ClientOrderID, orderID: ref.OrderID, err: err,
+			sent: m.sent, window: m.window, deadline: m.deadline,
+		})
+	}
+	if m.err != nil || len(m.perrs) != len(m.refs) {
+		// A batch with no per-order answer is unknown for every order in it: query by cloid,
+		// do not resend (D626). A readable whole-request refusal applies to each order.
+		err := m.err
+		if err == nil {
+			err = exchange.ErrUnknownOutcome
+		}
+		for _, ref := range m.refs {
+			one(ref, err)
+		}
+		return
+	}
+	for i, ref := range m.refs {
+		one(ref, m.perrs[i])
+	}
+}
+
+func (b *book) applyOne(m msgResult) {
+	var rl *exchange.RateLimited
+	if errors.As(m.err, &rl) {
 		code := rl.Status
 		if code == 0 {
 			code = 429
@@ -719,7 +860,11 @@ func (w *Worker) execQuery(ctx context.Context, q query) (*exchange.OrderUpdate,
 		}
 		return nil, nil, err
 	}
-	ref := exchange.CancelRef{Instrument: info, ClientOrderID: q.cloid, OrderID: q.orderID}
+	// The venue key is the order id. A client id is only for an order the venue has not numbered yet.
+	ref := exchange.CancelRef{Instrument: info, OrderID: q.orderID}
+	if q.orderID == "" {
+		ref.ClientOrderID = q.cloid
+	}
 	call, err := w.acct.QueryOrder(w.now(), ref)
 	if err != nil {
 		return nil, nil, err

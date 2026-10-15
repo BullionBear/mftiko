@@ -142,8 +142,9 @@ func TestCreateRefuses(t *testing.T) {
 	for i := range refs {
 		refs[i] = exchange.CancelRef{Instrument: spotInst(), ClientOrderID: cloidGTC}
 	}
-	if _, err := a.CancelBatch(conformance.DefaultNow, refs); err == nil || !strings.Contains(err.Error(), "at most 20") {
-		t.Fatalf("batch %v", err)
+	call, err := a.CancelBatch(conformance.DefaultNow, refs)
+	if err != nil || !strings.Contains(call.Req.Path, "cancel-batch-orders") {
+		t.Fatalf("over-cap batch was not sent: %v", err)
 	}
 	if _, err := a.ArmCancelOnDisconnect(conformance.DefaultNow, 9*time.Second, nil); err == nil {
 		t.Fatal("9s window was accepted")

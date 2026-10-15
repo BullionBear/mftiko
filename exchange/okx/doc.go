@@ -105,8 +105,9 @@
 // order is IOC and carries no price. Spot market orders set tgtCcy to base_ccy or quote_ccy; a
 // quote amount is formatted at 1e-8. A contract's sz is the contract count: platform qty divided
 // by ContractSize (D203). Spot sz is the platform quantity. clOrdId is 1 to 32 letters or digits.
-// reduceOnly is the string "true"; spot has none. Cancel-batch is at most 20 orders and may mix
-// instruments. Each order costs one count on the 60-per-2s order budget. The three carry the
+// reduceOnly is the string "true"; spot has none. Cancel-batch's venue cap is 20 orders and it may
+// mix instruments; a longer list is still sent (D625). Each order costs one count on the 60-per-2s
+// order budget. The three carry the
 // expTime header: the signing time plus AccountConfig.Validity (5 seconds by default), Unix ms.
 // The venue refuses a request that arrives after it (D605). expTime is not part of the prehash.
 //

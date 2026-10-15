@@ -76,9 +76,10 @@ type AccountFactory func(cfg AccountConfig) (Account, error)
 // The worker has already checked AccountKind.CanTrade; a kind that trades several venues (BinancePM)
 // routes each request by inst.Ticker.Venue (D301).
 //
-// It knows nothing about algo_id (D602). The worker checks algo ownership, and translates
-// BatchCancel(algo_id) by filtering its OMS for open orders whose client_order_id carries that algo,
-// then running CancelBatch in chunks of Limits().CancelBatch.
+// It knows nothing about algo_id (D602). The worker checks algo ownership on Submit and Cancel.
+// BatchCancel is an explicit list the worker forwards as one CancelBatch; it does not choose orders
+// or split the list (D625). Binance's batch is one symbol and Bybit's is one category: a list that
+// cannot be one venue request fails when the adapter builds it.
 type Account interface {
 	Limits() AccountLimits
 
@@ -89,8 +90,10 @@ type Account interface {
 
 	Cancel(now time.Time, ref CancelRef) (Call[struct{}], error)
 
-	// CancelBatch cancels up to Limits().CancelBatch orders in one venue request. The result has one
-	// entry per ref, nil for success; Parse's error is for a failure of the whole request.
+	// CancelBatch is one venue batch-cancel for these refs, however many there are (D625). A list
+	// longer than Limits().CancelBatch is still sent; the venue's reject comes back as-is. An empty
+	// list is an error. The result has one entry per ref, nil for success; Parse's error is for a
+	// failure of the whole request. The worker does not call this when Limits().CancelBatch is 1.
 	CancelBatch(now time.Time, refs []CancelRef) (Call[[]error], error)
 
 	// QueryOrder reads one order from the venue by ref.ClientOrderID (or ref.OrderID), open or

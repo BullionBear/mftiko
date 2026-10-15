@@ -253,5 +253,5 @@ func (p *plane) Start(ctx context.Context, _ []byte) error {
 
 func (p *plane) Run(ctx context.Context) error { return p.w.Run(ctx) }
 
-// Live: TD has no live config yet; cancel_on_disconnect_s is in Init (E6-09).
+// Live: TD has no live config yet. cancel_on_disconnect_s is not acted on (D625).
 func (p *plane) Live([]byte) error { return nil }

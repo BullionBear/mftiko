@@ -77,8 +77,8 @@ func (a *account) CancelBatch(now time.Time, refs []exchange.CancelRef) (exchang
 			return []error{nil}, nil
 		}}, nil
 	}
-	if len(refs) == 0 || len(refs) > 10 {
-		return exchange.Call[[]error]{}, fmt.Errorf("binance: batch cancel takes 1 to 10 orders, got %d", len(refs))
+	if len(refs) == 0 {
+		return exchange.Call[[]error]{}, fmt.Errorf("binance: batch cancel is empty")
 	}
 	sym := ""
 	ids := make([]int64, 0, len(refs))

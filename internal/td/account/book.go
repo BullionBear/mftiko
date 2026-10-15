@@ -145,6 +145,8 @@ type (
 		res      *exchange.OrderResult
 		upd      *exchange.OrderUpdate
 		err      error
+		refs     []exchange.CancelRef // a CancelBatch, one entry per order
+		perrs    []error              // one per ref; nil is success. Set only for resultBatch
 		sent     time.Time
 		window   time.Duration
 		deadline time.Time
@@ -305,6 +307,9 @@ func (b *book) apply(m any) {
 
 // ---------- orders ----------
 
+// orderKey is the venue key. An order the venue has numbered is stored under that order id.
+// One it has not numbered yet is stored under its client id until the first message records the
+// order id. An empty client id is stored only under the order id.
 func orderKey(orderID, cid string) string {
 	if orderID != "" {
 		return "o:" + orderID
@@ -312,7 +317,9 @@ func orderKey(orderID, cid string) string {
 	return "c:" + cid
 }
 
-// find is the key of the live order o is about: by order id, else by client order id.
+// find joins a venue event onto a live order. The venue key is the order id. An order the venue
+// has not numbered yet is joined by client id, then stored under the order id. An empty client
+// id matches only by order id.
 func (b *book) find(o *tdv1.Order) (string, *tdv1.Order) {
 	if o.OrderId != "" {
 		if cur, ok := b.orders["o:"+o.OrderId]; ok {
@@ -587,6 +594,8 @@ func (b *book) recon(snap *exchange.AccountSnapshot) {
 	b.wakeQueries()
 }
 
+// findIn joins a recon row onto a previous live order, by order id, else by client id.
+// An empty client id joins only by order id, so the old row is not left UNKNOWN beside a copy.
 func findIn(orders map[string]*tdv1.Order, o *tdv1.Order) *tdv1.Order {
 	if o.OrderId != "" {
 		if cur, ok := orders["o:"+o.OrderId]; ok {
