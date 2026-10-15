@@ -201,7 +201,9 @@ func (p *privateStream) positions(frame []byte, sink exchange.AccountSink) error
 	}
 	var pos []exchange.Position
 	for i := range msg.Data {
-		if row, ok := msg.Data[i].position(); ok {
+		// A closed position comes with pos "0" and is passed on: it is how the worker learns of it.
+		if msg.Data[i].InstID != "" {
+			row, _ := msg.Data[i].position()
 			pos = append(pos, row)
 		}
 	}

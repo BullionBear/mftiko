@@ -1,4 +1,5 @@
 {
   "Binance": "https://testnet.binance.vision",
-  "BinanceUM": "https://testnet.binancefuture.com"
+  "BinanceUM": "https://testnet.binancefuture.com",
+  "Bybit": "https://api-testnet.bybit.com"
 }

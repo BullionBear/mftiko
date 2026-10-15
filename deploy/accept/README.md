@@ -233,3 +233,40 @@ docker compose -f deploy/accept/compose.yaml exec -T runner sh -c \
 - 現貨沒有批次撤單（`CancelBatch` 是 1），`batch` 在本地回 `106 batch cancel is not available`（D625），改用單筆 `cancel`。
 - `submit` 加 `-ticker Binance_Spot_BTCUSDT`；沒有 `-reduce-only`，買多少賣回多少。限價要在 `PERCENT_PRICE_BY_SIDE` 之內（買單不低於均價的 0.5 倍）。
 - 沒有持倉模式，不跑第 4 條。
+
+## Bybit 與 OKX（E6-14）
+
+兩家是統一帳戶，worker 載入 venue 的每個 category，所以 SYM 要服務兩家的每張表。Bybit 的 Inverse、Option 與 OKX 的 Option 沒有公開清單，`refresh` 會說那幾張失敗，不影響 worker。兩個帳號放在同一個 TD instance，api_id 分開：
+
+```sh
+F=Bybit/Spot,Bybit/Perp,Bybit/Inverse,Bybit/Future,Bybit/Option,Okx/Spot,Okx/Perp,Okx/Inverse,Okx/Future,Okx/Option
+ACCEPT_VENUE=Bybit ACCEPT_SYM_FEEDS=$F ACCEPT_TICKER=Bybit_Perp_BTCUSDT $A up
+$A refresh -venue Okx -ticker Okx_Perp_BTCUSDT
+$A td-up
+docker compose -f deploy/accept/compose.yaml exec -T runner sh -c \
+  '/mftiko/mftiko-td-accept account -instance td1 -api-id 1 -kind Bybit -seal-key /work/td-seal.key < /work/bybit.creds.json'
+docker compose -f deploy/accept/compose.yaml exec -T runner sh -c \
+  '/mftiko/mftiko-td-accept account -instance td1 -api-id 2 -kind Okx -seal-key /work/td-seal.key < /work/okx.creds.json'
+```
+
+一次跑一家：`td-bg td-watch watch -api-id N`、`td demand put s1 N`，指令都帶 `-api-id N` 與 `-ticker`。憑證都是 `key_type` `hmac`；OKX 另有 `passphrase`。
+
+- Bybit 由 `rest.json` 的 `api-testnet.bybit.com` 選 testnet。OKX 沒有 testnet host：`td-agent` 帶 `-simulated`，走 demo trading（header `x-simulated-trading: 1`、`wspap.okx.com:8443`）。
+- OKX 的 API key 若有 IP 白名單，要加上跑這套環境的出口 IP（否則 `50110`）。demo 帳號要是 `acctLv` 2 以上才能交易 SWAP（否則下單 `51010`）；這只能在 OKX 網站或 app 切換，`td mode -venue Okx` 讀得到 `acctLv`。
+- 數量都是平台單位。OKX SWAP 一張是 0.01 BTC：`-qty 0.01` 送出 `sz 1`，`Fill` 與 `PositionUpdate` 也是 BTC，不是張數。
+- 第 2 條：
+  - Bybit 的 `/v5/private` 與 `/v5/trade` 是同一個位址，`cut -host stream-testnet.bybit.com` 兩條都會斷。用 `td conns` 看 fd，`-fd` 一次切一條：只切交易連線不進 `DEGRADED`、沒有 recon（D614）；切私有連線才是第 2 條。
+  - OKX 下單撤單走 REST。`wspap.okx.com` 與 REST 的 keep-alive 可能是同一個位址，`cut` 會一起斷，斷線那一刻送出的撤單沒有回答。過了有效期（5 秒加 1 秒誤差）worker 查到單還在，發 `CANCEL_REJECTED` code 120，再撤一次即可（D610）。
+- 第 4 條：
+  - OKX：`td mode -venue Okx -creds /work/okx.creds.json -dual true`，`posMode` 是整個帳號的。
+  - Bybit：v5 讀不到持倉模式，worker 只從 `positionIdx` 1、2 的掛單或持倉看出雙向（D617），所以切換之外還要有一張單。範圍是整個帳號：在別的商品上也算。
+
+    ```sh
+    $A td mode -venue Bybit -creds /work/bybit.creds.json -dual true -symbol ETHUSDT
+    $A td mode -venue Bybit -creds /work/bybit.creds.json -symbol ETHUSDT -hedge-order 1700 -qty 0.01
+    # kill worker → REJECTED hedge_mode
+    $A td mode -venue Bybit -creds /work/bybit.creds.json -symbol ETHUSDT -cancel-all
+    $A td mode -venue Bybit -creds /work/bybit.creds.json -symbol ETHUSDT -dual false
+    ```
+
+    只切換、沒有任何單或持倉時，worker 照樣起得來；之後不帶 `positionIdx` 的單由交易所拒絕。

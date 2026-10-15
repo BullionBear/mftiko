@@ -46,6 +46,7 @@ const (
 	reasonDegraded   = "account is degraded"
 	reasonHedge      = "position side is not allowed"
 	reasonNotPlaced  = "order was not placed"
+	reasonNoCancel   = "cancel was not placed"
 	reasonQuery      = "query_failed"
 )
 
@@ -904,6 +905,9 @@ func (b *book) queryDone(q query, upd *exchange.OrderUpdate, used []exchange.Use
 	if err == nil && upd != nil {
 		delete(b.queries, q.cloid)
 		b.applyOrder(upd, tdv1.OrderCause_ORDER_CAUSE_RECONCILED, 0)
+		if cur.forCancel {
+			b.cancelNotPlaced(q.cloid)
+		}
 		b.maybeHeal()
 		b.wakeQueries()
 		return
@@ -936,6 +940,18 @@ func (b *book) queryDone(q query, upd *exchange.OrderUpdate, used []exchange.Use
 
 func (b *book) queryAnswer(m msgResult) {
 	b.queryDone(query{cloid: m.cloid}, m.upd, m.used, m.err, b.now())
+}
+
+// cancelNotPlaced: a cancel with no answer, queried after its window, found the order still open.
+// The cancel can no longer take effect, so cancel_sent_ns is cleared and the strategy may cancel
+// again (D605, D610). One cancel is in flight per order, so this flag is that cancel's.
+func (b *book) cancelNotPlaced(cloid string) {
+	_, o := b.find(&tdv1.Order{ClientOrderId: cloid})
+	if o == nil || o.GetCancelSentNs() == 0 {
+		return
+	}
+	o.CancelSentNs = 0
+	b.publishOrder(o, tdv1.OrderCause_ORDER_CAUSE_CANCEL_REJECTED, int32(tdv1.RejectCode_REJECT_CODE_NOT_PLACED), reasonNoCancel)
 }
 
 func (b *book) notPlaced(cloid string) {

@@ -249,8 +249,10 @@ func TestDecodePrivate(t *testing.T) {
 		t.Fatalf("pos %v %+v", err, sink.pos)
 	}
 	flat := []byte(`{"arg":{"channel":"positions"},"data":[{"instType":"SWAP","instId":"BTC-USDT-SWAP","posSide":"net","pos":"0"}]}`)
-	if err := s.Decode(flat, sink); err != nil || len(sink.pos) != 1 {
-		t.Fatalf("flat %v %d", err, len(sink.pos))
+	// A closed position is passed on with size 0: the worker forgets it.
+	sink.pos = nil
+	if err := s.Decode(flat, sink); err != nil || len(sink.pos) != 1 || sink.pos[0].Size != 0 || sink.pos[0].Exch.ExchTicker != "BTC-USDT-SWAP" {
+		t.Fatalf("flat %v %+v", err, sink.pos)
 	}
 	bal := []byte(`{"arg":{"channel":"account"},"data":[{"details":[{"ccy":"USDT","availBal":"5000","frozenBal":"1"},{"ccy":"BTC","availBal":"0","frozenBal":"0"}]}]}`)
 	if err := s.Decode(bal, sink); err != nil || len(sink.bals) != 1 || sink.bals[0].Asset != "USDT" || sink.bals[0].Locked != 1 {

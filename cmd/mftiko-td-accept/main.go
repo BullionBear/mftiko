@@ -15,7 +15,7 @@
 //	mftiko-td-accept watch   -api-id N [-out FILE]           follow td.evt.N, check seq per incarnation
 //	mftiko-td-accept conns                                   list account workers: pid, venue sockets
 //	mftiko-td-accept cut     -pid PID -host H                shut down the worker's sockets to host H (Linux)
-//	mftiko-td-accept mode    -creds F [-dual true|false]     read or set the BinanceUM position mode
+//	mftiko-td-accept mode    -venue V -creds F [-dual B]     read or set the position mode (BinanceUM, Bybit, Okx)
 //
 // Every subcommand exits 1 when its check fails, so a script can stop on it.
 package main

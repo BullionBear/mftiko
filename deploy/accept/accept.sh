@@ -90,11 +90,13 @@ td_agent() {
 	n=$((n + 1))
 	account=$(sed -n 's/.*"account": "\(A[A-Z0-9]*\)".*/\1/p' "$here/data/nats/manifest.json")
 	# -rest-endpoints is keyed by account kind; the venue names in rest.json are the kinds' too. The
-	# private stream and the trade websocket follow from the testnet REST host.
+	# private stream and the trade websocket follow from the testnet REST host. OKX has no testnet
+	# host: -simulated is its demo trading (the x-simulated-trading header and the demo private
+	# socket). The other venues ignore it.
 	run sh -c "mkdir -p /var/td && nohup /mftiko/mftiko-td-agent -instance $td_inst -topology /work/td-topology.json \
 		-work-dir /var/td -shim /mftiko/mftiko-shim -account /mftiko/mftiko-td-account \
 		-nats-account $account -nats-signing-key /nats/keys/mftiko-signing.nk -seal-key /work/td-seal.key \
-		-rest-endpoints /endpoints/rest.json >/work/td-agent-$n.log 2>&1 &"
+		-rest-endpoints /endpoints/rest.json -simulated >/work/td-agent-$n.log 2>&1 &"
 	echo "td-agent started, log data/work/td-agent-$n.log"
 }
 

@@ -497,6 +497,12 @@ func (b *book) applyPositions(e []exchange.Position) {
 		if !ok {
 			continue
 		}
+		// Bybit sends a flat row for a symbol whenever an order touches it. A flat row for a position
+		// not held changes nothing but the leverage cache, so it is not published.
+		if _, held := b.positions[x.Uid]; x.Size == 0 && !held {
+			b.setPosition(x)
+			continue
+		}
 		b.setPosition(x)
 		out = append(out, proto.Clone(x).(*tdv1.Position))
 	}
