@@ -52,7 +52,7 @@ func (h *harness) order(req *tdv1.OrderRequest) *tdv1.OrderReply {
 func (h *harness) submit(uid, algo uint32, cid string, qty, price float64) *tdv1.OrderReply {
 	q, p := qty, price
 	return h.order(&tdv1.OrderRequest{Req: &tdv1.OrderRequest_Submit{Submit: &tdv1.Submit{
-		Uid: uid, AlgoId: algo, ClientOrderId: cid,
+		Uid: uid, ClientOrderId: cid,
 		Side: commonv1.Side_SIDE_BUY, OrderType: commonv1.OrderType_ORDER_TYPE_LIMIT,
 		Tif: commonv1.TimeInForce_TIME_IN_FORCE_GTC, Qty: &q, Price: &p,
 	}}})
@@ -60,7 +60,7 @@ func (h *harness) submit(uid, algo uint32, cid string, qty, price float64) *tdv1
 
 func (h *harness) cancel(algo uint32, cid string) *tdv1.OrderReply {
 	return h.order(&tdv1.OrderRequest{Req: &tdv1.OrderRequest_Cancel{Cancel: &tdv1.Cancel{
-		AlgoId: algo, ClientOrderId: cid,
+		ClientOrderId: cid,
 	}}})
 }
 
@@ -108,46 +108,42 @@ func TestOrderLocalRejects(t *testing.T) {
 		req  *tdv1.OrderRequest
 		code int32
 	}{
-		{"algo", &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Submit{Submit: &tdv1.Submit{
-			Uid: 7, AlgoId: 8, ClientOrderId: cid(1), Side: commonv1.Side_SIDE_BUY,
-			OrderType: commonv1.OrderType_ORDER_TYPE_LIMIT, Qty: &q, Price: &p,
-		}}}, int32(tdv1.RejectCode_REJECT_CODE_ALGO_MISMATCH)},
-		{"cloid", &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Submit{Submit: &tdv1.Submit{
-			Uid: 7, AlgoId: 7, ClientOrderId: "nope", Side: commonv1.Side_SIDE_BUY,
+		{"empty cloid", &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Submit{Submit: &tdv1.Submit{
+			Uid: 7, ClientOrderId: "", Side: commonv1.Side_SIDE_BUY,
 			OrderType: commonv1.OrderType_ORDER_TYPE_LIMIT, Qty: &q, Price: &p,
 		}}}, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER)},
 		{"missing", &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Submit{Submit: &tdv1.Submit{
-			Uid: 999, AlgoId: 7, ClientOrderId: cid(2), Side: commonv1.Side_SIDE_BUY,
+			Uid: 999, ClientOrderId: cid(2), Side: commonv1.Side_SIDE_BUY,
 			OrderType: commonv1.OrderType_ORDER_TYPE_LIMIT, Qty: &q, Price: &p,
 		}}}, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER)},
 		{"halted", &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Submit{Submit: &tdv1.Submit{
-			Uid: 10, AlgoId: 7, ClientOrderId: cid(3), Side: commonv1.Side_SIDE_BUY,
+			Uid: 10, ClientOrderId: cid(3), Side: commonv1.Side_SIDE_BUY,
 			OrderType: commonv1.OrderType_ORDER_TYPE_LIMIT, Qty: &q, Price: &p,
 		}}}, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER)},
 		{"venue", &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Submit{Submit: &tdv1.Submit{
-			Uid: 11, AlgoId: 7, ClientOrderId: cid(4), Side: commonv1.Side_SIDE_BUY,
+			Uid: 11, ClientOrderId: cid(4), Side: commonv1.Side_SIDE_BUY,
 			OrderType: commonv1.OrderType_ORDER_TYPE_LIMIT, Qty: &q, Price: &p,
 		}}}, int32(tdv1.RejectCode_REJECT_CODE_VENUE_NOT_TRADABLE)},
 		{"qty", &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Submit{Submit: &tdv1.Submit{
-			Uid: 7, AlgoId: 7, ClientOrderId: cid(5), Side: commonv1.Side_SIDE_BUY,
+			Uid: 7, ClientOrderId: cid(5), Side: commonv1.Side_SIDE_BUY,
 			OrderType: commonv1.OrderType_ORDER_TYPE_LIMIT, Qty: &badQty, Price: &p,
 		}}}, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER)},
 		{"contracts", &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Submit{Submit: &tdv1.Submit{
-			Uid: 8, AlgoId: 7, ClientOrderId: cid(6), Side: commonv1.Side_SIDE_BUY,
+			Uid: 8, ClientOrderId: cid(6), Side: commonv1.Side_SIDE_BUY,
 			OrderType: commonv1.OrderType_ORDER_TYPE_LIMIT, Qty: &residual, Price: &p,
 		}}}, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER)},
 		{"side", &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Submit{Submit: &tdv1.Submit{
-			Uid: 7, AlgoId: 7, ClientOrderId: cid(7), OrderType: commonv1.OrderType_ORDER_TYPE_LIMIT, Qty: &q, Price: &p,
+			Uid: 7, ClientOrderId: cid(7), OrderType: commonv1.OrderType_ORDER_TYPE_LIMIT, Qty: &q, Price: &p,
 		}}}, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER)},
 		{"hedge", &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Submit{Submit: &tdv1.Submit{
-			Uid: 7, AlgoId: 7, ClientOrderId: cid(8), Side: commonv1.Side_SIDE_BUY,
+			Uid: 7, ClientOrderId: cid(8), Side: commonv1.Side_SIDE_BUY,
 			OrderType: commonv1.OrderType_ORDER_TYPE_LIMIT, Qty: &q, Price: &p,
 			Params: map[string]string{"positionSide": "LONG"},
 		}}}, int32(tdv1.RejectCode_REJECT_CODE_HEDGE_MODE)},
 		{"not open", &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Cancel{Cancel: &tdv1.Cancel{
-			AlgoId: 7, ClientOrderId: cid(9),
+			ClientOrderId: cid(9),
 		}}}, int32(tdv1.RejectCode_REJECT_CODE_ORDER_NOT_OPEN)},
-		{"cancel without cloid", &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Cancel{Cancel: &tdv1.Cancel{AlgoId: 7}}}, int32(tdv1.RejectCode_REJECT_CODE_ALGO_MISMATCH)},
+		{"cancel without cloid", &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Cancel{Cancel: &tdv1.Cancel{}}}, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER)},
 		{"empty", &tdv1.OrderRequest{}, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER)},
 	}
 	for _, c := range cases {
@@ -174,6 +170,29 @@ func TestOrderLocalRejects(t *testing.T) {
 	}
 }
 
+// A client_order_id is an opaque string: one that does not decode is still a key (D633).
+func TestOrderOpaqueClientID(t *testing.T) {
+	h := start(t, setup{opts: exchangetest.AccountOptions{Ack: exchange.OrderStatusAccepted}})
+	h.startReady()
+	cid := "not-a-platform-cloid"
+	r := h.submit(7, 0, cid, 0.01, 100)
+	if !r.GetAccepted() || r.GetClientOrderId() != cid {
+		t.Fatalf("reply %+v", r)
+	}
+	h.waitStatus(cid, tdv1.OrderStatus_ORDER_STATUS_ACCEPTED)
+	again := h.submit(7, 0, cid, 0.01, 100)
+	if !proto.Equal(r, again) {
+		t.Fatalf("replay %+v, want %+v", again, r)
+	}
+	if n := count(h.v.Requests(), "POST /order"); n != 1 {
+		t.Fatalf("%d submits", n)
+	}
+	if c := h.cancel(0, cid); !c.GetAccepted() {
+		t.Fatalf("cancel %+v", c)
+	}
+	h.waitStatus(cid, tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
+}
+
 func TestOrderSubmitAndIdempotent(t *testing.T) {
 	h := start(t, setup{opts: exchangetest.AccountOptions{Ack: exchange.OrderStatusAccepted}})
 	h.startReady()
@@ -196,7 +215,7 @@ func TestOrderSubmitAndIdempotent(t *testing.T) {
 	q := 0.02
 	p := 100.0
 	diff := h.order(&tdv1.OrderRequest{Req: &tdv1.OrderRequest_Submit{Submit: &tdv1.Submit{
-		Uid: 7, AlgoId: 7, ClientOrderId: cid, Side: commonv1.Side_SIDE_BUY,
+		Uid: 7, ClientOrderId: cid, Side: commonv1.Side_SIDE_BUY,
 		OrderType: commonv1.OrderType_ORDER_TYPE_LIMIT, Tif: commonv1.TimeInForce_TIME_IN_FORCE_GTC,
 		Qty: &q, Price: &p,
 	}}})
@@ -224,7 +243,7 @@ func TestOrderPriceSnaps(t *testing.T) {
 	sell := 100.01
 	q := 0.01
 	r := h.order(&tdv1.OrderRequest{Req: &tdv1.OrderRequest_Submit{Submit: &tdv1.Submit{
-		Uid: 7, AlgoId: 7, ClientOrderId: cid, Side: commonv1.Side_SIDE_SELL,
+		Uid: 7, ClientOrderId: cid, Side: commonv1.Side_SIDE_SELL,
 		OrderType: commonv1.OrderType_ORDER_TYPE_LIMIT, Tif: commonv1.TimeInForce_TIME_IN_FORCE_GTC,
 		Qty: &q, Price: &sell,
 	}}})
@@ -324,8 +343,14 @@ func TestOrderDegraded(t *testing.T) {
 		t.Fatalf("first submit report %+v", rep)
 	}
 	h.waitStatus(cid, tdv1.OrderStatus_ORDER_STATUS_ACCEPTED)
+	// Hold the stream down. A bare Disconnect is redialed at once, and the account is READY again
+	// before the next order is decided.
+	h.v.FailDials(1 << 30)
 	h.v.Disconnect()
 	h.report(tdv1.AccountState_ACCOUNT_STATE_DEGRADED, ReasonStreamLost)
+	waitFor(t, "account is not degraded", func() bool {
+		return h.oms().GetState() == tdv1.AccountState_ACCOUNT_STATE_DEGRADED
+	})
 	posts := count(h.v.Requests(), "POST /order")
 	next := mustCloid(t, 7, 10)
 	if r := h.submit(7, 7, next, 0.01, 100); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_ACCOUNT_DEGRADED) {
@@ -536,7 +561,7 @@ func TestOrderRecvWindow(t *testing.T) {
 		h.v.OnSubmit(cid, exchangetest.Outcome{Late: true})
 		sent := clock.Now()
 		r := h.order(&tdv1.OrderRequest{Req: &tdv1.OrderRequest_Submit{Submit: &tdv1.Submit{
-			Uid: 7, AlgoId: 7, ClientOrderId: cid, Side: commonv1.Side_SIDE_BUY,
+			Uid: 7, ClientOrderId: cid, Side: commonv1.Side_SIDE_BUY,
 			OrderType: commonv1.OrderType_ORDER_TYPE_LIMIT, Tif: commonv1.TimeInForce_TIME_IN_FORCE_GTC,
 			Qty: &q, Price: &p, RecvWindowMs: window,
 		}}})
@@ -815,8 +840,8 @@ func TestBatchCancelUnresolvable(t *testing.T) {
 	})
 }
 
-// BatchCancel names orders by client id only. An empty id is 106. A client id that is not a
-// platform cloid still names the order, and the batch does not check which algo it belongs to.
+// BatchCancel and Cancel name orders by client id only. An empty id is 106. A client id that is
+// not a platform cloid still names the order, and the batch does not check which algo it belongs to.
 func TestBatchCancelCloidOnly(t *testing.T) {
 	h := start(t, setup{opts: exchangetest.AccountOptions{Limits: exchange.AccountLimits{CancelBatch: 5}}})
 	h.startReady()
@@ -836,13 +861,20 @@ func TestBatchCancelCloidOnly(t *testing.T) {
 		QuoteQty: decimal.Absent(), AvgPrice: decimal.Absent(),
 	})
 	waitFor(t, "the manual order did not arrive", func() bool { return h.omsOrder("manual-1") != nil })
-	if r := h.cancel(7, "manual-1"); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER) || r.GetReason() != reasonCloid {
+	if r := h.cancel(7, "manual-1"); !r.GetAccepted() {
 		t.Fatalf("single cancel of a non-platform id %+v", r)
 	}
-	if r := h.batch("manual-1"); !r.GetAccepted() {
+	h.waitStatus("manual-1", tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
+	h.v.PutOrder(exchange.OrderUpdate{
+		Exch: btc, ClientOrderID: "manual-2", Side: exchange.SideBuy, Type: exchange.OrderTypeLimit,
+		Status: exchange.OrderStatusAccepted, Qty: 0.01, Price: 100,
+		QuoteQty: decimal.Absent(), AvgPrice: decimal.Absent(),
+	})
+	waitFor(t, "the second manual order did not arrive", func() bool { return h.omsOrder("manual-2") != nil })
+	if r := h.batch("manual-2"); !r.GetAccepted() {
 		t.Fatalf("batch of a non-platform id %+v", r)
 	}
-	h.waitStatus("manual-1", tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
+	h.waitStatus("manual-2", tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
 	other := h.place(7, 8, 65)
 	if r := h.batch(other); !r.GetAccepted() {
 		t.Fatalf("batch does not check ownership %+v", r)
@@ -1062,7 +1094,7 @@ func (h *harness) waitCause(cid string, c tdv1.OrderCause) *tdv1.OrderUpdate {
 }
 
 func (h *harness) omsOrder(cid string) *tdv1.Order {
-	for _, o := range h.oms().GetOms().GetOrders() {
+	for _, o := range h.oms().GetRecon().GetOpenOrders() {
 		if o.GetClientOrderId() == cid {
 			return o
 		}

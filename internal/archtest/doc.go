@@ -16,6 +16,8 @@
 //     link no etcd, NATS, state, natsx, shim, or the skeleton's I/O (agent/c3, fleet, runner, testplane): they
 //     hold the Planner, the Policy and the domain types, testable without a cluster. The wiring is in
 //     internal/{plane}/daemon (DECISIONS D110).
+//   - internal/td links no contract/wire/cloid. The account worker treats client_order_id as an opaque string;
+//     the SDK and conformance own the layout (DECISIONS D633).
 //
 // cmd, migrations and this package are free.
 package archtest
