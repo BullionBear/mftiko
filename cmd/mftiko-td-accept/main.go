@@ -11,7 +11,7 @@
 //	mftiko-td-accept submit  -api-id N -ticker T ...         one Submit on td.order; prints its client_order_id
 //	mftiko-td-accept cancel  -api-id N -cid C                one Cancel on td.order
 //	mftiko-td-accept batch   -api-id N -cid C1,C2,...        one BatchCancel on td.order
-//	mftiko-td-accept view    -api-id N oms|ledger            ask td.view
+//	mftiko-td-accept view    -api-id N recon                 ask td.view for one Recon
 //	mftiko-td-accept watch   -api-id N [-out FILE]           follow td.evt.N, check seq per incarnation
 //	mftiko-td-accept conns                                   list account workers: pid, venue sockets
 //	mftiko-td-accept cut     -pid PID -host H                shut down the worker's sockets to host H (Linux)

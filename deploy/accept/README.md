@@ -152,7 +152,7 @@ td-agent 用 `endpoints/rest.json` 的 BinanceUM testnet REST host；交易 webs
 
 ```sh
 $A td submit -api-id 1 -side buy -type limit -qty 0.002 -price <遠低於市價>   # 印出 cid
-$A td view -api-id 1 oms
+$A td view -api-id 1 recon
 $A td cancel -api-id 1 -cid <cid>
 $A td submit ... ; $A td submit ...                                           # 兩張
 $A td batch -api-id 1 -cid <cid2>,<cid3>
@@ -170,7 +170,7 @@ worker 約一秒內就重連，所以切斷、送新單、撤單要在同一個 
 docker compose -f deploy/accept/compose.yaml exec -T runner sh -c '
 T=/mftiko/mftiko-td-accept
 $T cut -instance td1 -host stream.binancefuture.com
-$T view -instance td1 -api-id 1 oms | head -1
+$T view -instance td1 -api-id 1 recon | head -1
 $T submit -instance td1 -api-id 1 -side buy -type limit -qty 0.002 -price <價>
 $T cancel -instance td1 -api-id 1 -cid <掛著的 cid>'
 ```

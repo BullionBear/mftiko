@@ -12,7 +12,6 @@ import (
 	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
 	tdctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/tdctl/v1"
 	"github.com/BullionBear/mftiko/contract/symbol"
-	"github.com/BullionBear/mftiko/contract/wire/cloid"
 	"github.com/BullionBear/mftiko/contract/wire/decimal"
 	"github.com/BullionBear/mftiko/exchange"
 )
@@ -33,9 +32,7 @@ var errNotSent = errors.New("account: order was not written")
 
 // Reasons on OrderReply and on Report. The code is what a program branches on.
 const (
-	reasonAlgo       = "algo_id does not match the client_order_id"
-	reasonNoCloid    = "cancel has no client_order_id"
-	reasonCloid      = "client_order_id does not decode"
+	reasonEmpty      = "client_order_id is empty"
 	reasonContent    = "client_order_id was already used for a different order"
 	reasonInstrument = "instrument is missing or not tradable"
 	reasonVenue      = "venue is not tradable for this account"
@@ -186,12 +183,9 @@ func (b *book) decideSubmit(s *tdv1.Submit) admitOut {
 	}
 	cid := s.GetClientOrderId()
 	now := b.now()
-	id, err := cloid.Decode(cid)
-	if err != nil {
-		return b.rejectSubmit(s, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonCloid, now)
-	}
-	if id.Algo != s.GetAlgoId() {
-		return b.rejectSubmit(s, int32(tdv1.RejectCode_REJECT_CODE_ALGO_MISMATCH), reasonAlgo, now)
+	// client_order_id is an opaque string. An empty one is 106; anything else is a key (D633).
+	if cid == "" {
+		return b.rejectSubmit(s, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonEmpty, now)
 	}
 	if rec, ok := b.seen.get(cid, now); ok {
 		if sameSubmit(rec.sub, s, rec.qtyStep, rec.pxStep) {
@@ -259,14 +253,7 @@ func (b *book) decideCancel(c *tdv1.Cancel) admitOut {
 	}
 	cid := c.GetClientOrderId()
 	if cid == "" {
-		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_ALGO_MISMATCH), reasonNoCloid, "")}
-	}
-	id, err := cloid.Decode(cid)
-	if err != nil {
-		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonCloid, cid)}
-	}
-	if id.Algo != c.GetAlgoId() {
-		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_ALGO_MISMATCH), reasonAlgo, cid)}
+		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonEmpty, "")}
 	}
 	_, o := b.find(&tdv1.Order{ClientOrderId: cid})
 	if o == nil || terminal(o.GetStatus()) || o.GetClientOrderId() != cid {
@@ -1120,7 +1107,7 @@ func stepsOf(info *symbol.Info) (qty, px float64) {
 
 func sameSubmit(a, b *tdv1.Submit, qtyStep, pxStep float64) bool {
 	if a.GetUid() != b.GetUid() || a.GetSide() != b.GetSide() || a.GetOrderType() != b.GetOrderType() ||
-		a.GetTif() != b.GetTif() || a.GetReduceOnly() != b.GetReduceOnly() || a.GetAlgoId() != b.GetAlgoId() ||
+		a.GetTif() != b.GetTif() || a.GetReduceOnly() != b.GetReduceOnly() ||
 		a.GetClientOrderId() != b.GetClientOrderId() {
 		return false
 	}

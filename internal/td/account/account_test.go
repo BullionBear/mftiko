@@ -599,17 +599,14 @@ func count(reqs []string, want string) int {
 // ---------- E6-07: td.view and td.evt against the venue ----------
 
 func (h *harness) oms() *tdv1.ViewReply {
-	return h.bus.view(h.t, &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Oms{Oms: &tdv1.OmsViewRequest{}}})
-}
-
-func (h *harness) ledgerView() *tdv1.ViewReply {
-	return h.bus.view(h.t, &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Ledger{Ledger: &tdv1.LedgerViewRequest{}}})
+	return h.bus.view(h.t, &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Recon{Recon: &tdv1.ReconRequest{}}})
 }
 
 // matches compares the worker's td.view with the venue's own state.
 func (h *harness) matches() string {
+	rec := h.oms().GetRecon()
 	got := map[string]string{}
-	for _, o := range h.oms().GetOms().GetOrders() {
+	for _, o := range rec.GetOpenOrders() {
 		got[o.GetOrderId()] = o.GetStatus().String() + "/" + strconv.FormatFloat(o.GetFilledQty(), 'f', -1, 64)
 	}
 	want := map[string]string{}
@@ -619,9 +616,8 @@ func (h *harness) matches() string {
 	if !maps.Equal(got, want) {
 		return "orders " + fmt.Sprint(got) + " vs " + fmt.Sprint(want)
 	}
-	l := h.ledgerView().GetLedger()
 	gp, wp := map[uint32]float64{}, map[uint32]float64{}
-	for _, p := range l.GetPositions() {
+	for _, p := range rec.GetPositions() {
 		gp[p.GetUid()] = p.GetSize()
 	}
 	for _, p := range h.v.Positions() {
@@ -631,7 +627,7 @@ func (h *harness) matches() string {
 		return "positions " + fmt.Sprint(gp) + " vs " + fmt.Sprint(wp)
 	}
 	gb, wb := map[string][2]float64{}, map[string][2]float64{}
-	for _, b := range l.GetBalances() {
+	for _, b := range rec.GetBalances() {
 		gb[b.GetAsset()] = [2]float64{b.GetFree(), b.GetLocked()}
 	}
 	for _, b := range h.v.Balances() {
@@ -693,7 +689,6 @@ func TestViewMatchesVenue(t *testing.T) {
 	h.v.ResetRequests()
 	for range 20 {
 		h.oms()
-		h.ledgerView()
 		h.bus.view(t, &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Leverage{Leverage: &tdv1.LeverageRequest{Uid: 7}}})
 	}
 	if reqs := h.v.Requests(); len(reqs) != 0 {
@@ -713,8 +708,7 @@ func TestViewCancelBatch(t *testing.T) {
 			h := start(t, setup{opts: exchangetest.AccountOptions{Limits: exchange.AccountLimits{CancelBatch: n}}})
 			h.initOK()
 			for _, req := range []*tdv1.ViewRequest{
-				{Req: &tdv1.ViewRequest_Oms{Oms: &tdv1.OmsViewRequest{}}},
-				{Req: &tdv1.ViewRequest_Ledger{Ledger: &tdv1.LedgerViewRequest{}}},
+				{Req: &tdv1.ViewRequest_Recon{Recon: &tdv1.ReconRequest{}}},
 				{Req: &tdv1.ViewRequest_Leverage{Leverage: &tdv1.LeverageRequest{Uid: 7}}},
 				{},
 			} {
@@ -797,11 +791,9 @@ func (r *replay) state() string {
 	return fmt.Sprint(o, r.positions, r.balances)
 }
 
-func viewState(oms, ledger *tdv1.ViewReply) *replay {
+func viewState(v *tdv1.ViewReply) *replay {
 	r := &replay{}
-	r.apply(&tdv1.AccountEvent{Event: &tdv1.AccountEvent_Recon{Recon: &tdv1.Recon{
-		OpenOrders: oms.GetOms().GetOrders(), Positions: ledger.GetLedger().GetPositions(), Balances: ledger.GetLedger().GetBalances(),
-	}}})
+	r.apply(&tdv1.AccountEvent{Event: &tdv1.AccountEvent_Recon{Recon: v.GetRecon()}})
 	return r
 }
 
@@ -815,13 +807,13 @@ func TestRebuildFromViewAndEvents(t *testing.T) {
 	h.v.PutOrder(limit("b", 1))
 	h.waitMatch()
 
-	// The session's snapshot: the OMS and the ledger at the same seq.
-	oms, ledger := h.oms(), h.ledgerView()
-	if oms.GetSeq() != ledger.GetSeq() {
-		t.Fatalf("seq %d and %d", oms.GetSeq(), ledger.GetSeq())
+	// The session's snapshot: one Recon, orders and balances on the same seq.
+	snap := h.oms()
+	if snap.GetRecon().GetReason() != tdv1.ReconReason_RECON_REASON_REQUESTED {
+		t.Fatalf("reason %v", snap.GetRecon().GetReason())
 	}
-	base := oms.GetSeq()
-	r := viewState(oms, ledger)
+	base := snap.GetSeq()
+	r := viewState(snap)
 
 	if _, err := h.v.Fill("a", 2, 10); err != nil {
 		t.Fatal(err)
@@ -837,7 +829,7 @@ func TestRebuildFromViewAndEvents(t *testing.T) {
 	h.v.SetBalance(exchange.Balance{Asset: "USDT", Free: 970, Locked: 10})
 	h.waitMatch()
 
-	final := viewState(h.oms(), h.ledgerView())
+	final := viewState(h.oms())
 	for _, e := range h.bus.all() {
 		if e.GetSeq() > base {
 			r.apply(e)
@@ -877,8 +869,8 @@ func TestOrderLostWithTheConnection(t *testing.T) {
 		}
 		return false
 	})
-	if len(h.oms().GetOms().GetOrders()) != 0 {
-		t.Fatalf("filled order still live: %v", h.oms().GetOms().GetOrders())
+	if len(h.oms().GetRecon().GetOpenOrders()) != 0 {
+		t.Fatalf("filled order still live: %v", h.oms().GetRecon().GetOpenOrders())
 	}
 	h.stop()
 }

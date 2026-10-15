@@ -15,7 +15,6 @@ import (
 	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
 	tdctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/tdctl/v1"
 	"github.com/BullionBear/mftiko/contract/symbol"
-	"github.com/BullionBear/mftiko/contract/wire/cloid"
 	"github.com/BullionBear/mftiko/contract/wire/decimal"
 	"github.com/BullionBear/mftiko/exchange"
 )
@@ -577,7 +576,7 @@ func (b *book) recon(snap *exchange.AccountSnapshot) {
 	b.recons++
 	b.publish(&tdv1.AccountEvent{Event: &tdv1.AccountEvent_Recon{Recon: &tdv1.Recon{
 		Incarnation: b.source.GetIncarnation(), Reason: reason,
-		OpenOrders: b.openOrders(0, false), Positions: b.positionList(nil), Balances: b.balanceList(),
+		OpenOrders: b.openOrders(), Positions: b.positionList(), Balances: b.balanceList(),
 		AsOfNs: snap.AsOfNs,
 	}}})
 
@@ -627,11 +626,16 @@ func (b *book) answer(req *tdv1.ViewRequest) *tdv1.ViewReply {
 		r.CancelBatch = uint32(n)
 	}
 	switch q := req.GetReq().(type) {
-	case *tdv1.ViewRequest_Oms:
+	case *tdv1.ViewRequest_Recon:
+		// One snapshot: live orders, every position, every balance, on this reply's seq (D633).
 		// Only live orders: a finished one is on td.evt and in the store, not here (D615).
-		r.Reply = &tdv1.ViewReply_Oms{Oms: &tdv1.OmsView{Orders: b.openOrders(q.Oms.GetAlgoId(), true)}}
-	case *tdv1.ViewRequest_Ledger:
-		r.Reply = &tdv1.ViewReply_Ledger{Ledger: &tdv1.LedgerView{Balances: b.balanceList(), Positions: b.positionList(q.Ledger.GetUids())}}
+		// as_of_ns is this answer, not the last venue recon: the lists include events since then.
+		// ViewReply.reconciled_at_ns stays that recon.
+		r.Reply = &tdv1.ViewReply_Recon{Recon: &tdv1.Recon{
+			Incarnation: b.source.GetIncarnation(), Reason: tdv1.ReconReason_RECON_REASON_REQUESTED,
+			OpenOrders: b.openOrders(), Positions: b.positionList(), Balances: b.balanceList(),
+			AsOfNs: b.now().UnixNano(),
+		}}
 	case *tdv1.ViewRequest_Leverage:
 		info := &tdv1.LeverageInfo{Uid: q.Leverage.GetUid()}
 		if v, ok := b.leverage[info.Uid]; ok {
@@ -644,16 +648,11 @@ func (b *book) answer(req *tdv1.ViewRequest) *tdv1.ViewReply {
 	return r
 }
 
-// openOrders are the live orders, copied, sorted by client order id then order id. With filter, only
-// those whose client order id carries algo: an order that is not the platform's carries none.
-func (b *book) openOrders(algo uint32, filter bool) []*tdv1.Order {
+// openOrders are the live orders, copied, sorted by client order id then order id.
+// Every live order: TD does not filter by algo (D633).
+func (b *book) openOrders() []*tdv1.Order {
 	out := make([]*tdv1.Order, 0, len(b.orders))
 	for _, o := range b.orders {
-		if filter && algo != 0 {
-			if a, ok := cloid.AlgoOf(o.ClientOrderId); !ok || a != algo {
-				continue
-			}
-		}
 		out = append(out, proto.Clone(o).(*tdv1.Order))
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -665,16 +664,9 @@ func (b *book) openOrders(algo uint32, filter bool) []*tdv1.Order {
 	return out
 }
 
-func (b *book) positionList(uids []uint32) []*tdv1.Position {
-	want := map[uint32]bool{}
-	for _, u := range uids {
-		want[u] = true
-	}
+func (b *book) positionList() []*tdv1.Position {
 	out := make([]*tdv1.Position, 0, len(b.positions))
-	for uid, p := range b.positions {
-		if len(want) > 0 && !want[uid] {
-			continue
-		}
+	for _, p := range b.positions {
 		out = append(out, proto.Clone(p).(*tdv1.Position))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Uid < out[j].Uid })

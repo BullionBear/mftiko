@@ -35,16 +35,16 @@ func newRig(t *testing.T) *bookRig {
 // sync waits until the book has handled everything sent so far: it answers in order.
 func (r *bookRig) sync() *tdv1.ViewReply {
 	r.t.Helper()
-	v := r.b.view(r.ctx, &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Oms{Oms: &tdv1.OmsViewRequest{}}})
+	v := r.b.view(r.ctx, &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Recon{Recon: &tdv1.ReconRequest{}}})
 	if v == nil {
 		r.t.Fatal("no answer")
 	}
 	return v
 }
 
-func (r *bookRig) ledger(uids ...uint32) *tdv1.LedgerView {
+func (r *bookRig) viewRecon() *tdv1.Recon {
 	r.t.Helper()
-	return r.b.view(r.ctx, &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Ledger{Ledger: &tdv1.LedgerViewRequest{Uids: uids}}}).GetLedger()
+	return r.sync().GetRecon()
 }
 
 func (r *bookRig) recon(s *exchange.AccountSnapshot) {
@@ -158,8 +158,8 @@ func TestBookVanishedOrders(t *testing.T) {
 	// The venue's later word on it is news.
 	f := ord("1", "a", exchange.OrderStatusCancelled, 0)
 	r.b.order(r.ctx, &f)
-	if v := r.sync(); len(v.GetOms().GetOrders()) != 1 {
-		t.Fatalf("oms %v", v.GetOms())
+	if v := r.sync(); len(v.GetRecon().GetOpenOrders()) != 1 {
+		t.Fatalf("open orders %v", v.GetRecon().GetOpenOrders())
 	}
 }
 
@@ -179,8 +179,8 @@ func TestBookFinishedOrdersLeave(t *testing.T) {
 		r.b.order(r.ctx, &e)
 	}
 	v := r.sync()
-	if len(v.GetOms().GetOrders()) != 0 {
-		t.Fatalf("oms %v", v.GetOms())
+	if len(v.GetRecon().GetOpenOrders()) != 0 {
+		t.Fatalf("open orders %v", v.GetRecon().GetOpenOrders())
 	}
 	evs := r.bus.all()
 	eq(t, kinds(evs[1:]), "order:1=ORDER_STATUS_ACCEPTED@0", "order:1=ORDER_STATUS_PARTIALLY_FILLED@1", "order:1=ORDER_STATUS_FILLED@1")
@@ -216,7 +216,7 @@ func TestBookFills(t *testing.T) {
 }
 
 // Positions and balances follow the events; a zero size closes a position; leverage stays cached
-// after it closes. td.view filters positions by uid and returns every balance.
+// after it closes. A Recon returns every position and every balance (D633).
 func TestBookLedger(t *testing.T) {
 	r := newRig(t)
 	r.recon(&exchange.AccountSnapshot{
@@ -228,16 +228,24 @@ func TestBookLedger(t *testing.T) {
 		{Exch: symbol.ExchKey{ExchTicker: "ETHUSDT"}, Size: -2, EntryPrice: decimal.Absent(), MarkPrice: decimal.Absent(), UnrealizedPnl: decimal.Absent(), Leverage: decimal.Absent()},
 	})
 	r.b.balanceEvent(r.ctx, []exchange.Balance{{Asset: "USDT", Free: 90, Locked: 10}, {Asset: "ETH", Free: 1}})
-	l := r.ledger()
-	if len(l.GetPositions()) != 2 || len(l.GetBalances()) != 2 || l.GetBalances()[1].GetFree() != 90 {
-		t.Fatalf("ledger %v", l)
+	l := r.viewRecon()
+	if l.GetReason() != tdv1.ReconReason_RECON_REASON_REQUESTED || len(l.GetPositions()) != 2 || len(l.GetBalances()) != 2 || l.GetBalances()[1].GetFree() != 90 {
+		t.Fatalf("recon %v", l)
 	}
-	if p := r.ledger(10).GetPositions(); len(p) != 1 || p[0].GetSize() != -2 || p[0].Leverage != nil || p[0].EntryPrice != nil {
-		t.Fatalf("filtered %v", p)
+	sizes := map[uint32]float64{}
+	for _, p := range l.GetPositions() {
+		sizes[p.GetUid()] = p.GetSize()
+		if p.GetUid() == 10 && (p.Leverage != nil || p.EntryPrice != nil) {
+			t.Fatalf("eth position %v", p)
+		}
+	}
+	if sizes[7] != 1 || sizes[10] != -2 {
+		t.Fatalf("positions %v", l.GetPositions())
 	}
 	r.b.positionEvent(r.ctx, []exchange.Position{{Exch: btc, Size: 0, EntryPrice: decimal.Absent(), MarkPrice: decimal.Absent(), UnrealizedPnl: decimal.Absent(), Leverage: decimal.Absent()}})
-	if p := r.ledger(7).GetPositions(); len(p) != 0 {
-		t.Fatalf("closed position %v", p)
+	left := r.viewRecon().GetPositions()
+	if len(left) != 1 || left[0].GetUid() != 10 {
+		t.Fatalf("closed position %v", left)
 	}
 	lev := func(uid uint32) *tdv1.LeverageInfo {
 		return r.b.view(r.ctx, &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Leverage{Leverage: &tdv1.LeverageRequest{Uid: uid}}}).GetLeverage()
@@ -268,14 +276,14 @@ func TestBookFlatRowNotHeld(t *testing.T) {
 	r.b.positionEvent(r.ctx, []exchange.Position{flat})
 	r.sync()
 	eq(t, kinds(r.bus.all()), "recon:RECON_REASON_INCARNATION", "position", "position")
-	if p := r.ledger().GetPositions(); len(p) != 0 {
+	if p := r.viewRecon().GetPositions(); len(p) != 0 {
 		t.Fatalf("closed position %v", p)
 	}
 }
 
-// td.view's OMS filters by the algo in the client order id; an order that is not the platform's
-// (placed by hand) belongs to no algo.
-func TestBookAlgoFilter(t *testing.T) {
+// A Recon returns every live order. TD does not filter by the algo in the client order id, and an
+// order placed by hand is in the same list (D633).
+func TestBookReconReturnsEveryOrder(t *testing.T) {
 	r := newRig(t)
 	c5, _ := cloid.Encode(5, cloid.EpochMs+1, 0)
 	c6, _ := cloid.Encode(6, cloid.EpochMs+1, 0)
@@ -283,17 +291,69 @@ func TestBookAlgoFilter(t *testing.T) {
 		ord("1", c5, exchange.OrderStatusAccepted, 0), ord("2", c6, exchange.OrderStatusAccepted, 0),
 		ord("3", "by-hand", exchange.OrderStatusAccepted, 0), ord("4", "", exchange.OrderStatusAccepted, 0),
 	}, AsOfNs: 1})
-	oms := func(algo uint32) []string {
-		var out []string
-		for _, o := range r.b.view(r.ctx, &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Oms{Oms: &tdv1.OmsViewRequest{AlgoId: algo}}}).GetOms().GetOrders() {
-			out = append(out, o.GetOrderId())
-		}
-		return out
+	var got []string
+	for _, o := range r.viewRecon().GetOpenOrders() {
+		got = append(got, o.GetOrderId())
 	}
-	eq(t, oms(5), "1")
-	eq(t, oms(6), "2")
-	if got := oms(0); len(got) != 4 {
-		t.Fatalf("all: %v", got)
+	eq(t, got, "4", "1", "2", "3")
+}
+
+// A ReconRequest's orders, positions and balances are the book at ViewReply.seq. Events before the
+// reply are in it; the next event is the next seq (D633).
+func TestBookReconSeqCutsBetweenEvents(t *testing.T) {
+	r := newRig(t)
+	r.recon(&exchange.AccountSnapshot{
+		OpenOrders: []exchange.OrderUpdate{ord("1", "a", exchange.OrderStatusAccepted, 0)},
+		Positions:  []exchange.Position{{Exch: btc, Size: 1, EntryPrice: 10, MarkPrice: decimal.Absent(), UnrealizedPnl: decimal.Absent(), Leverage: decimal.Absent()}},
+		Balances:   []exchange.Balance{{Asset: "USDT", Free: 100}},
+		AsOfNs:     1,
+	})
+	upd := ord("1", "a", exchange.OrderStatusPartiallyFilled, 0.4)
+	r.b.order(r.ctx, &upd)
+	r.b.positionEvent(r.ctx, []exchange.Position{
+		{Exch: symbol.ExchKey{ExchTicker: "ETHUSDT"}, Size: -2, EntryPrice: decimal.Absent(), MarkPrice: decimal.Absent(), UnrealizedPnl: decimal.Absent(), Leverage: decimal.Absent()},
+	})
+	r.b.balanceEvent(r.ctx, []exchange.Balance{{Asset: "USDT", Free: 90, Locked: 10}})
+	v := r.sync()
+	before := r.bus.all()
+	if v.GetSeq() != before[len(before)-1].GetSeq() || v.GetSeq() != 4 {
+		t.Fatalf("view seq %d, events %d", v.GetSeq(), len(before))
+	}
+	rec := v.GetRecon()
+	if rec.GetReason() != tdv1.ReconReason_RECON_REASON_REQUESTED || rec.GetIncarnation() != v.GetIncarnation() {
+		t.Fatalf("recon %v", rec)
+	}
+	if len(rec.GetOpenOrders()) != 1 || rec.GetOpenOrders()[0].GetOrderId() != "1" || rec.GetOpenOrders()[0].GetFilledQty() != 0.4 {
+		t.Fatalf("orders %v", rec.GetOpenOrders())
+	}
+	sizes := map[uint32]float64{}
+	for _, p := range rec.GetPositions() {
+		sizes[p.GetUid()] = p.GetSize()
+	}
+	if len(sizes) != 2 || sizes[7] != 1 || sizes[10] != -2 {
+		t.Fatalf("positions %v", rec.GetPositions())
+	}
+	if len(rec.GetBalances()) != 1 || rec.GetBalances()[0].GetFree() != 90 || rec.GetBalances()[0].GetLocked() != 10 {
+		t.Fatalf("balances %v", rec.GetBalances())
+	}
+	for _, e := range before {
+		if e.GetRecon().GetReason() == tdv1.ReconReason_RECON_REASON_REQUESTED {
+			t.Fatal("a requested recon was published on td.evt")
+		}
+	}
+	later := ord("2", "b", exchange.OrderStatusAccepted, 0)
+	r.b.order(r.ctx, &later)
+	after := r.sync()
+	evs := r.bus.all()
+	if evs[len(before)].GetSeq() != v.GetSeq()+1 || after.GetSeq() != v.GetSeq()+1 {
+		t.Fatalf("seq cut: view %d, next event %d, later view %d", v.GetSeq(), evs[len(before)].GetSeq(), after.GetSeq())
+	}
+	ids := map[string]bool{}
+	for _, o := range after.GetRecon().GetOpenOrders() {
+		ids[o.GetOrderId()] = true
+	}
+	if !ids["1"] || !ids["2"] || len(ids) != 2 {
+		t.Fatalf("later orders %v", after.GetRecon().GetOpenOrders())
 	}
 }
 
@@ -305,14 +365,14 @@ func TestBookEmptyClientIDMatchesByOrderID(t *testing.T) {
 	}, AsOfNs: 1})
 	e := ord("9", "", exchange.OrderStatusPartiallyFilled, 0.4)
 	r.b.order(r.ctx, &e)
-	got := r.sync().GetOms().GetOrders()
+	got := r.sync().GetRecon().GetOpenOrders()
 	if len(got) != 1 || got[0].GetOrderId() != "9" || got[0].GetClientOrderId() != "" || got[0].GetStatus() != tdv1.OrderStatus_ORDER_STATUS_PARTIALLY_FILLED {
 		t.Fatalf("event did not join the empty client id: %v", got)
 	}
 	r.recon(&exchange.AccountSnapshot{OpenOrders: []exchange.OrderUpdate{
 		ord("9", "", exchange.OrderStatusPartiallyFilled, 0.4),
 	}, AsOfNs: 2})
-	got = r.sync().GetOms().GetOrders()
+	got = r.sync().GetRecon().GetOpenOrders()
 	if len(got) != 1 || got[0].GetOrderId() != "9" || got[0].GetStatus() != tdv1.OrderStatus_ORDER_STATUS_PARTIALLY_FILLED {
 		t.Fatalf("recon duplicated the empty client id: %v", got)
 	}
@@ -326,7 +386,7 @@ func TestBookFirstVenueIDJoinsByClientID(t *testing.T) {
 	r.b.order(r.ctx, &p)
 	a := ord("42", "pend", exchange.OrderStatusAccepted, 0)
 	r.b.order(r.ctx, &a)
-	got := r.sync().GetOms().GetOrders()
+	got := r.sync().GetRecon().GetOpenOrders()
 	if len(got) != 1 || got[0].GetOrderId() != "42" || got[0].GetClientOrderId() != "pend" {
 		t.Fatalf("first order id did not join: %v", got)
 	}

@@ -76,7 +76,7 @@ type AccountFactory func(cfg AccountConfig) (Account, error)
 // The worker has already checked AccountKind.CanTrade; a kind that trades several venues (BinancePM)
 // routes each request by inst.Ticker.Venue (D301).
 //
-// It knows nothing about algo_id (D602). The worker checks algo ownership on Submit and Cancel.
+// It knows nothing about algo_id (D602). The worker does not decode client_order_id (D633).
 // BatchCancel is an explicit list the worker forwards as one CancelBatch; it does not choose orders
 // or split the list (D625). Binance's batch is one symbol and Bybit's is one category: a list that
 // cannot be one venue request fails when the adapter builds it.

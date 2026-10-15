@@ -438,7 +438,7 @@ func (e *env) tryOrder(req *tdv1.OrderRequest) (*tdv1.OrderReply, error) {
 
 func submitReq(cid string, qty, price float64) *tdv1.OrderRequest {
 	return &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Submit{Submit: &tdv1.Submit{
-		SessionId: session, Uid: uid, AlgoId: algo, ClientOrderId: cid,
+		SessionId: session, Uid: uid, ClientOrderId: cid,
 		Side: commonv1.Side_SIDE_BUY, OrderType: commonv1.OrderType_ORDER_TYPE_LIMIT,
 		Tif: commonv1.TimeInForce_TIME_IN_FORCE_GTC, Qty: &qty, Price: &price,
 	}}}
@@ -454,7 +454,7 @@ func (e *env) submit(cid string) {
 
 func cancelReq(cid string) *tdv1.OrderRequest {
 	return &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Cancel{Cancel: &tdv1.Cancel{
-		SessionId: session, Uid: uid, AlgoId: algo, ClientOrderId: cid,
+		SessionId: session, Uid: uid, ClientOrderId: cid,
 	}}}
 }
 
@@ -485,19 +485,15 @@ func (e *env) view(req *tdv1.ViewRequest) *tdv1.ViewReply {
 	return r
 }
 
-func omsReq() *tdv1.ViewRequest {
-	return &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Oms{Oms: &tdv1.OmsViewRequest{}}}
-}
-
-func ledgerReq() *tdv1.ViewRequest {
-	return &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Ledger{Ledger: &tdv1.LedgerViewRequest{}}}
+func reconReq() *tdv1.ViewRequest {
+	return &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Recon{Recon: &tdv1.ReconRequest{}}}
 }
 
 // waitState waits for td.view to say the account is in st.
 func (e *env) waitState(st tdv1.AccountState) {
 	e.t.Helper()
 	var last tdv1.AccountState
-	e.wait(st.String(), func() bool { last = e.view(omsReq()).GetState(); return last == st },
+	e.wait(st.String(), func() bool { last = e.view(reconReq()).GetState(); return last == st },
 		func() string { return last.String() })
 }
 
@@ -668,8 +664,8 @@ func TestSubmitCancelBatchCancel(t *testing.T) {
 	if got := venueCloids(e.venue); len(got) != 0 {
 		t.Fatalf("venue still holds %v", got)
 	}
-	if oms := e.view(omsReq()).GetOms(); len(oms.GetOrders()) != 0 {
-		t.Fatalf("td.view still holds %v", cloids(oms.GetOrders()))
+	if rec := e.view(reconReq()).GetRecon(); len(rec.GetOpenOrders()) != 0 {
+		t.Fatalf("td.view still holds %v", cloids(rec.GetOpenOrders()))
 	}
 }
 
@@ -838,23 +834,20 @@ func TestResumeFromView(t *testing.T) {
 	c4 := e.cid()
 	e.submit(c4)
 	e.wait("the worker to have the missed events", func() bool {
-		return slices.Equal(cloids(e.view(omsReq()).GetOms().GetOrders()), []string{c3, c4})
-	}, func() string { return strings.Join(cloids(e.view(omsReq()).GetOms().GetOrders()), ",") })
+		return slices.Equal(cloids(e.view(reconReq()).GetRecon().GetOpenOrders()), []string{c3, c4})
+	}, func() string { return strings.Join(cloids(e.view(reconReq()).GetRecon().GetOpenOrders()), ",") })
 
 	// Resume: subscribe first, then the snapshot; apply the events past its seq.
 	again := e.subscribe()
-	oms, ledger := e.view(omsReq()), e.view(ledgerReq())
-	if oms.GetIncarnation() != ledger.GetIncarnation() {
-		t.Fatalf("incarnations %d and %d", oms.GetIncarnation(), ledger.GetIncarnation())
+	snap := e.view(reconReq())
+	if snap.GetSeq() <= lastSeen {
+		t.Fatalf("the snapshot's seq %d is not past the last seen %d", snap.GetSeq(), lastSeen)
 	}
-	if oms.GetSeq() <= lastSeen {
-		t.Fatalf("the snapshot's seq %d is not past the last seen %d", oms.GetSeq(), lastSeen)
-	}
-	l := newLocal(oms.GetIncarnation(), min(oms.GetSeq(), ledger.GetSeq()))
-	for _, o := range oms.GetOms().GetOrders() {
+	l := newLocal(snap.GetIncarnation(), snap.GetSeq())
+	for _, o := range snap.GetRecon().GetOpenOrders() {
 		l.orders[o.GetClientOrderId()] = o
 	}
-	for _, p := range ledger.GetLedger().GetPositions() {
+	for _, p := range snap.GetRecon().GetPositions() {
 		l.positions[p.GetUid()] = p
 	}
 
@@ -875,14 +868,14 @@ func TestResumeFromView(t *testing.T) {
 		l.apply(ev)
 	}
 
-	final, finalLedger := e.view(omsReq()), e.view(ledgerReq())
+	final := e.view(reconReq())
 	if l.seq != final.GetSeq() {
 		t.Fatalf("applied up to seq %d, td.view is at %d", l.seq, final.GetSeq())
 	}
-	if want := final.GetOms().GetOrders(); len(want) != len(l.orders) {
+	if want := final.GetRecon().GetOpenOrders(); len(want) != len(l.orders) {
 		t.Fatalf("orders: local %v, td.view %v", slices.Sorted(maps.Keys(l.orders)), cloids(want))
 	}
-	for _, want := range final.GetOms().GetOrders() {
+	for _, want := range final.GetRecon().GetOpenOrders() {
 		got := l.orders[want.GetClientOrderId()]
 		if got.GetStatus() != want.GetStatus() || got.GetFilledQty() != want.GetFilledQty() {
 			t.Fatalf("order %s: local %v, td.view %v", want.GetClientOrderId(), got, want)
@@ -894,7 +887,7 @@ func TestResumeFromView(t *testing.T) {
 	if got := l.orders[c3]; got.GetStatus() != tdv1.OrderStatus_ORDER_STATUS_PARTIALLY_FILLED || got.GetFilledQty() != 0.5 {
 		t.Fatalf("c3 %v", got)
 	}
-	for _, want := range finalLedger.GetLedger().GetPositions() {
+	for _, want := range final.GetRecon().GetPositions() {
 		if got := l.positions[want.GetUid()]; got.GetSize() != want.GetSize() {
 			t.Fatalf("position %d: local %v, td.view %v", want.GetUid(), got, want)
 		}

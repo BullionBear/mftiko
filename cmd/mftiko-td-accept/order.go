@@ -103,7 +103,7 @@ func submit() error {
 			return err
 		}
 	}
-	s := &tdv1.Submit{SessionId: session, Uid: uid, AlgoId: uint32(*algo), ClientOrderId: *cid, Qty: qty, ReduceOnly: *reduce}
+	s := &tdv1.Submit{SessionId: session, Uid: uid, ClientOrderId: *cid, Qty: qty, ReduceOnly: *reduce}
 	switch *side {
 	case "buy":
 		s.Side = commonv1.Side_SIDE_BUY
@@ -135,13 +135,12 @@ func submit() error {
 func cancel() error {
 	cid := flag.String("cid", "", "client_order_id of the order")
 	flag.Parse()
-	id, err := cloid.Decode(*cid)
-	if err != nil {
-		return fmt.Errorf("-cid: %w", err)
+	if *cid == "" {
+		return errors.New("-cid is required")
 	}
 	fmt.Printf("%s cancel cid=%s\n", stamp(), *cid)
 	return order(&tdv1.OrderRequest{Req: &tdv1.OrderRequest_Cancel{Cancel: &tdv1.Cancel{
-		SessionId: session, ClientOrderId: *cid, AlgoId: id.Algo,
+		SessionId: session, ClientOrderId: *cid,
 	}}})
 }
 
@@ -159,19 +158,14 @@ func batch() error {
 	return order(&tdv1.OrderRequest{Req: &tdv1.OrderRequest_BatchCancel{BatchCancel: b}})
 }
 
-// view asks td.view for the OMS or the ledger and prints the reply, one line per order or
-// position, with the state, incarnation and seq it is as of.
+// view asks td.view for one Recon and prints it: every open order, position and balance, with
+// the state, incarnation and seq they share (D633).
 func view() error {
 	flag.Parse()
-	var req *tdv1.ViewRequest
-	switch flag.Arg(0) {
-	case "oms":
-		req = &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Oms{Oms: &tdv1.OmsViewRequest{}}}
-	case "ledger":
-		req = &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Ledger{Ledger: &tdv1.LedgerViewRequest{}}}
-	default:
-		return errors.New("view oms|ledger")
+	if flag.Arg(0) != "recon" {
+		return errors.New("view recon")
 	}
+	req := &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Recon{Recon: &tdv1.ReconRequest{}}}
 	nc, err := dial()
 	if err != nil {
 		return err
@@ -193,13 +187,17 @@ func view() error {
 	if r.GetError() != nil {
 		return fmt.Errorf("td.view: %s", oneLine(r.GetError()))
 	}
-	for _, o := range r.GetOms().GetOrders() {
+	rec := r.GetRecon()
+	if rec.GetReason() != tdv1.ReconReason_RECON_REASON_REQUESTED {
+		return fmt.Errorf("td.view recon reason %s", rec.GetReason())
+	}
+	for _, o := range rec.GetOpenOrders() {
 		fmt.Printf("%s order %s\n", stamp(), oneLine(o))
 	}
-	for _, p := range r.GetLedger().GetPositions() {
+	for _, p := range rec.GetPositions() {
 		fmt.Printf("%s position %s\n", stamp(), oneLine(p))
 	}
-	for _, bal := range r.GetLedger().GetBalances() {
+	for _, bal := range rec.GetBalances() {
 		if bal.GetFree() != 0 || bal.GetLocked() != 0 {
 			fmt.Printf("%s balance %s\n", stamp(), oneLine(bal))
 		}
