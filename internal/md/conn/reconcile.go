@@ -202,7 +202,7 @@ func (c *Conn) atomsFrom(feeds []string) (wanted map[string][]feed, exch map[str
 		}
 		ch := strings.Clone(ref.Channel)
 		status[raw] = feedState{state: mdctlv1.FeedState_FEED_STATE_PENDING, ch: ch}
-		addFeed(wanted, ch, feed{topic: strings.Clone(topic), ticker: strings.Clone(ticker)})
+		addFeed(wanted, ch, feed{topic: strings.Clone(topic), ticker: strings.Clone(ticker), uid: info.UID})
 		if info.ExchTicker != "" {
 			exch[ch] = strings.Clone(info.ExchTicker)
 		}

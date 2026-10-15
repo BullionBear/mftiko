@@ -7,7 +7,7 @@
 // Sources are registered in this process, not by init. exchange/all names each
 // exchange. REST reads go through exchange/transport/fasthttp (D302). The proxy
 // and the TLS roots are this process's flags; adapters never see them.
-// Tickers are resolved through SYM's NATS resolver, active table only (D422).
+// UIDs are resolved through SYM's NATS resolver, active table only (D422, D461).
 package main
 
 import (

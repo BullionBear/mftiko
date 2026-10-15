@@ -54,13 +54,17 @@ func late() error {
 		return errors.New("-feed is topic.UniversalTicker")
 	}
 	isBook := topic == "orderbook_delta"
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	info, err := symbolInfo(ctx, ticker)
+	cancel()
+	if err != nil {
+		return fmt.Errorf("SYM %s: %w", ticker, err)
+	}
+	wantUID := info.GetUid()
+	if wantUID == 0 {
+		return fmt.Errorf("%s has uid 0 in SYM", ticker)
+	}
 	if isBook && *tick == 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		info, err := symbolInfo(ctx, ticker)
-		cancel()
-		if err != nil {
-			return fmt.Errorf("price tick from SYM: %w", err)
-		}
 		*tick = info.GetFilters()[symbol.PriceTick].GetValue()
 		if *tick <= 0 {
 			return fmt.Errorf("%s has no price_tick in SYM", ticker)
@@ -88,7 +92,7 @@ func late() error {
 		return err
 	}
 	fmt.Printf("%s subscribed %s\n", stamp(), feedSubject)
-	v := viewer{nc: nc, subject: "md.v1.view." + strings.TrimPrefix(feedSubject, "md.v1.f.")}
+	v := viewer{nc: nc, subject: "md.v1.view." + strings.TrimPrefix(feedSubject, "md.v1.f."), uid: wantUID}
 
 	var join cursor
 	var ob *book.OrderBook
@@ -116,6 +120,9 @@ follow:
 	for {
 		select {
 		case m := <-live:
+			if err := checkUID(m.payload, wantUID); err != nil {
+				return err
+			}
 			if m.c.atOrBefore(join) {
 				dropped++
 				continue
@@ -130,7 +137,7 @@ follow:
 			last = m.c
 			applied++
 			if isBook {
-				if err := applyDelta(&ob, *tick, m.payload); err != nil {
+				if err := applyDelta(&ob, *tick, wantUID, m.payload); err != nil {
 					return err
 				}
 			}
@@ -153,6 +160,7 @@ follow:
 type viewer struct {
 	nc      *nats.Conn
 	subject string
+	uid     uint32
 }
 
 // ask sends one ViewRequest and retries not_synced (D441) for up to ten seconds.
@@ -188,10 +196,14 @@ func (v viewer) book() (*mdv1.BookSnapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	if rep.GetBook() == nil {
+	snap := rep.GetBook()
+	if snap == nil {
 		return nil, errors.New("view: no book in the reply")
 	}
-	return rep.GetBook(), nil
+	if snap.GetUid() != v.uid {
+		return nil, fmt.Errorf("book uid %d, SYM %d", snap.GetUid(), v.uid)
+	}
+	return snap, nil
 }
 
 // tape reads every page back to sinceNs, prints the gaps, checks that the newest event is not
@@ -224,6 +236,11 @@ func (v viewer) tape(sinceNs int64) (cursor, error) {
 				time.Unix(0, g.GetStartNs()).UTC().Format(time.RFC3339Nano), time.Unix(0, g.GetEndNs()).UTC().Format(time.RFC3339Nano),
 				cursor{g.GetLast().GetConnEpoch(), g.GetLast().GetSeq()}, cursor{g.GetFirst().GetConnEpoch(), g.GetFirst().GetSeq()})
 		}
+		for _, ev := range evs {
+			if ev.GetEvent().GetUid() != v.uid {
+				return cursor{}, fmt.Errorf("tape uid %d, SYM %d", ev.GetEvent().GetUid(), v.uid)
+			}
+		}
 		pages++
 		events += len(evs)
 		if !page.GetMore() {
@@ -255,11 +272,26 @@ func newBook(tick float64, snap *mdv1.BookSnapshot) *book.OrderBook {
 	return ob
 }
 
-// applyDelta folds one md.f orderbook_delta. A reset replaces the book.
-func applyDelta(ob **book.OrderBook, tick float64, payload []byte) error {
+// checkUID requires the payload's product to be the SYM uid of this feed (D461).
+func checkUID(payload []byte, want uint32) error {
 	ev := &mdv1.FeedEvent{}
 	if err := proto.Unmarshal(payload, ev); err != nil {
 		return err
+	}
+	if ev.GetUid() != want {
+		return fmt.Errorf("payload uid %d, SYM %d", ev.GetUid(), want)
+	}
+	return nil
+}
+
+// applyDelta folds one md.f orderbook_delta. A reset replaces the book.
+func applyDelta(ob **book.OrderBook, tick float64, want uint32, payload []byte) error {
+	ev := &mdv1.FeedEvent{}
+	if err := proto.Unmarshal(payload, ev); err != nil {
+		return err
+	}
+	if ev.GetUid() != want {
+		return fmt.Errorf("payload uid %d, SYM %d", ev.GetUid(), want)
 	}
 	d := ev.GetOrderBookDelta()
 	if d == nil {
@@ -313,10 +345,13 @@ func compareBook(v viewer, ob *book.OrderBook, tick float64, live <-chan liveMsg
 		for last.atOrBefore(at) && last != at {
 			select {
 			case m := <-live:
+				if err := checkUID(m.payload, v.uid); err != nil {
+					return err
+				}
 				if m.c.atOrBefore(last) {
 					continue
 				}
-				if err := applyDelta(&ob, tick, m.payload); err != nil {
+				if err := applyDelta(&ob, tick, v.uid, m.payload); err != nil {
 					return err
 				}
 				last = m.c

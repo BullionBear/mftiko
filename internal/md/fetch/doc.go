@@ -9,6 +9,6 @@
 // caller asks for more than one exchange page, at most MaxKlines. OpenInterest
 // is the query-only value venues do not push. Nothing is cached.
 //
-// The ticker is resolved through a symbol.Resolver loaded from the active
-// table (D422). cmd/mftiko-mdfetch wires that resolver to SYM over NATS.
+// The instrument is a UID, resolved through a symbol.Resolver loaded from the
+// active table (D422, D461). cmd/mftiko-mdfetch wires that resolver to SYM over NATS.
 package fetch

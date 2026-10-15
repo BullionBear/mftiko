@@ -459,6 +459,7 @@ type BookSnapshot struct {
 	ConnEpoch     uint64                 `protobuf:"varint,4,opt,name=conn_epoch,json=connEpoch,proto3" json:"conn_epoch,omitempty"`
 	Seq           uint64                 `protobuf:"varint,5,opt,name=seq,proto3" json:"seq,omitempty"`
 	MdTsNs        int64                  `protobuf:"varint,6,opt,name=md_ts_ns,json=mdTsNs,proto3" json:"md_ts_ns,omitempty"`
+	Uid           uint32                 `protobuf:"varint,7,opt,name=uid,proto3" json:"uid,omitempty"` // 商品（D461）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -531,6 +532,13 @@ func (x *BookSnapshot) GetSeq() uint64 {
 func (x *BookSnapshot) GetMdTsNs() int64 {
 	if x != nil {
 		return x.MdTsNs
+	}
+	return 0
+}
+
+func (x *BookSnapshot) GetUid() uint32 {
+	if x != nil {
+		return x.Uid
 	}
 	return 0
 }
@@ -619,9 +627,9 @@ func (*FetchRequest_OpenInterest) isFetchRequest_Req() {}
 
 type FetchKlines struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ticker        string                 `protobuf:"bytes,1,opt,name=ticker,proto3" json:"ticker,omitempty"`     // 今天是 UniversalTicker。改成 UID 是後續（D203）。subject 是 md.v1.fetch.{venue}，用人讀的名字（D456）
 	Interval      string                 `protobuf:"bytes,2,opt,name=interval,proto3" json:"interval,omitempty"` // 正規寫法：1m、4h、1mo
 	Limit         uint32                 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`      // 最近 N 根已收盤的，1 到 5000；超出是 invalid。超過交易所單頁時由服務分頁（D419）
+	Uid           uint32                 `protobuf:"varint,4,opt,name=uid,proto3" json:"uid,omitempty"`          // 商品（D461）。subject 是 md.v1.fetch.{venue}，用人讀的名字（D456）；UID 的 venue 必須是它
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -656,13 +664,6 @@ func (*FetchKlines) Descriptor() ([]byte, []int) {
 	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *FetchKlines) GetTicker() string {
-	if x != nil {
-		return x.Ticker
-	}
-	return ""
-}
-
 func (x *FetchKlines) GetInterval() string {
 	if x != nil {
 		return x.Interval
@@ -677,9 +678,16 @@ func (x *FetchKlines) GetLimit() uint32 {
 	return 0
 }
 
+func (x *FetchKlines) GetUid() uint32 {
+	if x != nil {
+		return x.Uid
+	}
+	return 0
+}
+
 type FetchOpenInterest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ticker        string                 `protobuf:"bytes,1,opt,name=ticker,proto3" json:"ticker,omitempty"`
+	Uid           uint32                 `protobuf:"varint,2,opt,name=uid,proto3" json:"uid,omitempty"` // 商品（D461）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -714,17 +722,18 @@ func (*FetchOpenInterest) Descriptor() ([]byte, []int) {
 	return file_mftiko_md_v1_read_proto_rawDescGZIP(), []int{9}
 }
 
-func (x *FetchOpenInterest) GetTicker() string {
+func (x *FetchOpenInterest) GetUid() uint32 {
 	if x != nil {
-		return x.Ticker
+		return x.Uid
 	}
-	return ""
+	return 0
 }
 
 type FetchReply struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Error  string                 `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"` // 空字串 = 成功；invalid | unsupported | rate_limited | venue_error
 	Reason string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	Uid    uint32                 `protobuf:"varint,3,opt,name=uid,proto3" json:"uid,omitempty"` // 請求的商品（D461）
 	// Types that are valid to be assigned to Result:
 	//
 	//	*FetchReply_Klines
@@ -776,6 +785,13 @@ func (x *FetchReply) GetReason() string {
 		return x.Reason
 	}
 	return ""
+}
+
+func (x *FetchReply) GetUid() uint32 {
+	if x != nil {
+		return x.Uid
+	}
+	return 0
 }
 
 func (x *FetchReply) GetResult() isFetchReply_Result {
@@ -902,7 +918,7 @@ const file_mftiko_md_v1_read_proto_rawDesc = "" +
 	"\bstart_ns\x18\x01 \x01(\x03R\astartNs\x12\x15\n" +
 	"\x06end_ns\x18\x02 \x01(\x03R\x05endNs\x12(\n" +
 	"\x04last\x18\x03 \x01(\v2\x14.mftiko.md.v1.CursorR\x04last\x12*\n" +
-	"\x05first\x18\x04 \x01(\v2\x14.mftiko.md.v1.CursorR\x05first\"\xd3\x01\n" +
+	"\x05first\x18\x04 \x01(\v2\x14.mftiko.md.v1.CursorR\x05first\"\xe5\x01\n" +
 	"\fBookSnapshot\x12&\n" +
 	"\x04meta\x18\x01 \x01(\v2\x12.mftiko.md.v1.MetaR\x04meta\x12'\n" +
 	"\x04bids\x18\x02 \x03(\v2\x13.mftiko.md.v1.LevelR\x04bids\x12'\n" +
@@ -910,21 +926,23 @@ const file_mftiko_md_v1_read_proto_rawDesc = "" +
 	"\n" +
 	"conn_epoch\x18\x04 \x01(\x04R\tconnEpoch\x12\x10\n" +
 	"\x03seq\x18\x05 \x01(\x04R\x03seq\x12\x18\n" +
-	"\bmd_ts_ns\x18\x06 \x01(\x03R\x06mdTsNs\"\x92\x01\n" +
+	"\bmd_ts_ns\x18\x06 \x01(\x03R\x06mdTsNs\x12\x10\n" +
+	"\x03uid\x18\a \x01(\rR\x03uid\"\x92\x01\n" +
 	"\fFetchRequest\x123\n" +
 	"\x06klines\x18\x01 \x01(\v2\x19.mftiko.md.v1.FetchKlinesH\x00R\x06klines\x12F\n" +
 	"\ropen_interest\x18\x02 \x01(\v2\x1f.mftiko.md.v1.FetchOpenInterestH\x00R\fopenInterestB\x05\n" +
-	"\x03req\"W\n" +
-	"\vFetchKlines\x12\x16\n" +
-	"\x06ticker\x18\x01 \x01(\tR\x06ticker\x12\x1a\n" +
+	"\x03req\"Q\n" +
+	"\vFetchKlines\x12\x1a\n" +
 	"\binterval\x18\x02 \x01(\tR\binterval\x12\x14\n" +
-	"\x05limit\x18\x03 \x01(\rR\x05limit\"+\n" +
-	"\x11FetchOpenInterest\x12\x16\n" +
-	"\x06ticker\x18\x01 \x01(\tR\x06ticker\"\xb7\x01\n" +
+	"\x05limit\x18\x03 \x01(\rR\x05limit\x12\x10\n" +
+	"\x03uid\x18\x04 \x01(\rR\x03uid\"%\n" +
+	"\x11FetchOpenInterest\x12\x10\n" +
+	"\x03uid\x18\x02 \x01(\rR\x03uid\"\xc9\x01\n" +
 	"\n" +
 	"FetchReply\x12\x14\n" +
 	"\x05error\x18\x01 \x01(\tR\x05error\x12\x16\n" +
-	"\x06reason\x18\x02 \x01(\tR\x06reason\x12.\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\x12\x10\n" +
+	"\x03uid\x18\x03 \x01(\rR\x03uid\x12.\n" +
 	"\x06klines\x18\n" +
 	" \x01(\v2\x14.mftiko.md.v1.KlinesH\x00R\x06klines\x12A\n" +
 	"\ropen_interest\x18\v \x01(\v2\x1a.mftiko.md.v1.OpenInterestH\x00R\fopenInterestB\b\n" +

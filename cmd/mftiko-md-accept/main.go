@@ -9,7 +9,7 @@
 //	mftiko-md-accept refresh -venue V [-ticker T]       ask SYM to refresh V; print T's uid and price_tick
 //	mftiko-md-accept demand  put|del SESSION FEED       write or delete one feed demand entry
 //	mftiko-md-accept acks                               print the instance's acks and placements
-//	mftiko-md-accept watch   [-out FILE]                follow md.v1.f.{inst}.>, check seq and conn_epoch
+//	mftiko-md-accept watch   [-out FILE]                follow md.v1.f.{inst}.>, check seq, conn_epoch and payload uid
 //	mftiko-md-accept late    -feed FEED                 join through md.v1.view, then follow md.v1.f
 //	mftiko-md-accept conns                              list conn workers: key, pid, venue sockets
 //	mftiko-md-accept cut     -conn KEY | -pid PID       shut down a conn worker's venue sockets (Linux)

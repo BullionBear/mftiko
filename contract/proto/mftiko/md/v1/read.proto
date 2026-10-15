@@ -68,6 +68,7 @@ message BookSnapshot {
   uint64 conn_epoch = 4;
   uint64 seq = 5;
   int64 md_ts_ns = 6;
+  uint32 uid = 7; // 商品（D461）
 }
 
 // ---------- md.v1.fetch.{venue} ----------
@@ -82,18 +83,19 @@ message FetchRequest {
 }
 
 message FetchKlines {
-  string ticker = 1;   // 今天是 UniversalTicker。改成 UID 是後續（D203）。subject 是 md.v1.fetch.{venue}，用人讀的名字（D456）
   string interval = 2; // 正規寫法：1m、4h、1mo
   uint32 limit = 3;    // 最近 N 根已收盤的，1 到 5000；超出是 invalid。超過交易所單頁時由服務分頁（D419）
+  uint32 uid = 4;      // 商品（D461）。subject 是 md.v1.fetch.{venue}，用人讀的名字（D456）；UID 的 venue 必須是它
 }
 
 message FetchOpenInterest {
-  string ticker = 1;
+  uint32 uid = 2; // 商品（D461）
 }
 
 message FetchReply {
   string error = 1; // 空字串 = 成功；invalid | unsupported | rate_limited | venue_error
   string reason = 2;
+  uint32 uid = 3; // 請求的商品（D461）
   oneof result {
     Klines klines = 10;
     OpenInterest open_interest = 11;

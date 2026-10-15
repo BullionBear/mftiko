@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -46,21 +47,22 @@ func TestFetch(t *testing.T) {
 		}
 		candles[0].QuoteVolume = 4.5
 		tape := newTape(t, candles, 2)
-		res := &memResolver{rows: map[string]*symbol.Info{
-			"BinanceUM_Perp_BTCUSDT": instrument("BinanceUM", symbol.Perp, "BTCUSDT"),
-		}}
+		res := btcResolver()
 		client := serveOne(t, plane, "BinanceUM", tape, res, 0)
 		var reply mdv1.FetchReply
 		err := client.Request(context.Background(), Subject("BinanceUM"), &mdv1.FetchRequest{
 			Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{
-				Ticker: "BinanceUM_Perp_BTCUSDT", Interval: "1m", Limit: 5,
+				Uid: btcUID, Interval: "1m", Limit: 5,
 			}},
 		}, &reply)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if reply.GetError() != "" {
-			t.Fatalf("error %s: %s", reply.GetError(), reply.GetReason())
+		if reply.GetError() != "" || reply.GetUid() != btcUID {
+			t.Fatalf("error %s uid %d: %s", reply.GetError(), reply.GetUid(), reply.GetReason())
+		}
+		if sym, _ := tape.seen.Load().(string); sym != "BTCUSDT" {
+			t.Fatalf("venue symbol %q", sym)
 		}
 		got := reply.GetKlines().GetKlines()
 		if len(got) != 5 {
@@ -92,14 +94,12 @@ func TestFetch(t *testing.T) {
 			}
 		}
 		tape := newTape(t, candles, MaxKlines)
-		res := &memResolver{rows: map[string]*symbol.Info{
-			"BinanceUM_Perp_BTCUSDT": instrument("BinanceUM", symbol.Perp, "BTCUSDT"),
-		}}
+		res := btcResolver()
 		client := serveOne(t, plane, "BinanceUM", tape, res, 0)
 		var reply mdv1.FetchReply
 		err := client.Request(context.Background(), Subject("BinanceUM"), &mdv1.FetchRequest{
 			Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{
-				Ticker: "BinanceUM_Perp_BTCUSDT", Interval: "1m", Limit: MaxKlines,
+				Uid: btcUID, Interval: "1m", Limit: MaxKlines,
 			}},
 		}, &reply)
 		if err != nil {
@@ -119,19 +119,17 @@ func TestFetch(t *testing.T) {
 	t.Run("open interest", func(t *testing.T) {
 		tape := newTape(t, nil, 10)
 		tape.oi = &exchange.OpenInterest{ExchTsNs: 42, OpenInterest: 1.5, OpenInterestValue: decimal.Absent()}
-		res := &memResolver{rows: map[string]*symbol.Info{
-			"BinanceUM_Perp_BTCUSDT": instrument("BinanceUM", symbol.Perp, "BTCUSDT"),
-		}}
+		res := btcResolver()
 		client := serveOne(t, plane, "BinanceUM", tape, res, 0)
 		var reply mdv1.FetchReply
 		err := client.Request(context.Background(), Subject("BinanceUM"), &mdv1.FetchRequest{
-			Req: &mdv1.FetchRequest_OpenInterest{OpenInterest: &mdv1.FetchOpenInterest{Ticker: "BinanceUM_Perp_BTCUSDT"}},
+			Req: &mdv1.FetchRequest_OpenInterest{OpenInterest: &mdv1.FetchOpenInterest{Uid: btcUID}},
 		}, &reply)
 		if err != nil {
 			t.Fatal(err)
 		}
 		oi := reply.GetOpenInterest()
-		if reply.GetError() != "" || oi.GetOpenInterest() != 1.5 || oi.GetMeta().GetExchTsNs() != 42 || oi.OpenInterestValue != nil {
+		if reply.GetError() != "" || reply.GetUid() != btcUID || oi.GetOpenInterest() != 1.5 || oi.GetMeta().GetExchTsNs() != 42 || oi.OpenInterestValue != nil {
 			t.Fatalf("%+v", &reply)
 		}
 		if tape.hits.Load() != 1 {
@@ -143,19 +141,17 @@ func TestFetch(t *testing.T) {
 		tape := newTape(t, nil, 10)
 		tape.klineErr = exchange.ErrUnsupported
 		tape.oiErr = exchange.ErrUnsupported
-		res := &memResolver{rows: map[string]*symbol.Info{
-			"BinanceUM_Perp_BTCUSDT": instrument("BinanceUM", symbol.Perp, "BTCUSDT"),
-		}}
+		res := btcResolver()
 		client := serveOne(t, plane, "BinanceUM", tape, res, 0)
 		for _, req := range []*mdv1.FetchRequest{
-			{Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{Ticker: "BinanceUM_Perp_BTCUSDT", Interval: "1s", Limit: 1}}},
-			{Req: &mdv1.FetchRequest_OpenInterest{OpenInterest: &mdv1.FetchOpenInterest{Ticker: "BinanceUM_Perp_BTCUSDT"}}},
+			{Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{Uid: btcUID, Interval: "1s", Limit: 1}}},
+			{Req: &mdv1.FetchRequest_OpenInterest{OpenInterest: &mdv1.FetchOpenInterest{Uid: btcUID}}},
 		} {
 			var reply mdv1.FetchReply
 			if err := client.Request(context.Background(), Subject("BinanceUM"), req, &reply); err != nil {
 				t.Fatal(err)
 			}
-			if reply.GetError() != CodeUnsupported || reply.GetResult() != nil {
+			if reply.GetError() != CodeUnsupported || reply.GetUid() != btcUID || reply.GetResult() != nil {
 				t.Fatalf("%+v", &reply)
 			}
 		}
@@ -170,20 +166,18 @@ func TestFetch(t *testing.T) {
 		}}, 10)
 		tape.used = 8
 		tape.oi = &exchange.OpenInterest{ExchTsNs: 1, OpenInterest: 1, OpenInterestValue: decimal.Absent()}
-		res := &memResolver{rows: map[string]*symbol.Info{
-			"BinanceUM_Perp_BTCUSDT": instrument("BinanceUM", symbol.Perp, "BTCUSDT"),
-		}}
+		res := btcResolver()
 		client := serveOne(t, plane, "BinanceUM", tape, res, 8)
 		var first mdv1.FetchReply
 		err := client.Request(context.Background(), Subject("BinanceUM"), &mdv1.FetchRequest{
-			Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{Ticker: "BinanceUM_Perp_BTCUSDT", Interval: "1m", Limit: 1}},
+			Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{Uid: btcUID, Interval: "1m", Limit: 1}},
 		}, &first)
 		if err != nil || first.GetError() != "" || len(first.GetKlines().GetKlines()) != 1 {
 			t.Fatalf("err %v reply %+v", err, &first)
 		}
 		var second mdv1.FetchReply
 		err = client.Request(context.Background(), Subject("BinanceUM"), &mdv1.FetchRequest{
-			Req: &mdv1.FetchRequest_OpenInterest{OpenInterest: &mdv1.FetchOpenInterest{Ticker: "BinanceUM_Perp_BTCUSDT"}},
+			Req: &mdv1.FetchRequest_OpenInterest{OpenInterest: &mdv1.FetchOpenInterest{Uid: btcUID}},
 		}, &second)
 		if err != nil {
 			t.Fatal(err)
@@ -199,13 +193,11 @@ func TestFetch(t *testing.T) {
 	t.Run("venue rate limit is not retried", func(t *testing.T) {
 		tape := newTape(t, nil, 10)
 		tape.status = http.StatusTooManyRequests
-		res := &memResolver{rows: map[string]*symbol.Info{
-			"BinanceUM_Perp_BTCUSDT": instrument("BinanceUM", symbol.Perp, "BTCUSDT"),
-		}}
+		res := btcResolver()
 		client := serveOne(t, plane, "BinanceUM", tape, res, 0)
 		var reply mdv1.FetchReply
 		err := client.Request(context.Background(), Subject("BinanceUM"), &mdv1.FetchRequest{
-			Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{Ticker: "BinanceUM_Perp_BTCUSDT", Interval: "1m", Limit: 1}},
+			Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{Uid: btcUID, Interval: "1m", Limit: 1}},
 		}, &reply)
 		if err != nil {
 			t.Fatal(err)
@@ -370,13 +362,11 @@ func TestFetch(t *testing.T) {
 	t.Run("venue error is not retried", func(t *testing.T) {
 		tape := newTape(t, nil, 10)
 		tape.status = http.StatusBadRequest
-		res := &memResolver{rows: map[string]*symbol.Info{
-			"BinanceUM_Perp_BTCUSDT": instrument("BinanceUM", symbol.Perp, "BTCUSDT"),
-		}}
+		res := btcResolver()
 		client := serveOne(t, plane, "BinanceUM", tape, res, 0)
 		var reply mdv1.FetchReply
 		err := client.Request(context.Background(), Subject("BinanceUM"), &mdv1.FetchRequest{
-			Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{Ticker: "BinanceUM_Perp_BTCUSDT", Interval: "1m", Limit: 1}},
+			Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{Uid: btcUID, Interval: "1m", Limit: 1}},
 		}, &reply)
 		if err != nil {
 			t.Fatal(err)
@@ -398,14 +388,12 @@ func TestFetch(t *testing.T) {
 			}
 		}
 		tape := newTape(t, candles, 1)
-		res := &memResolver{rows: map[string]*symbol.Info{
-			"BinanceUM_Perp_BTCUSDT": instrument("BinanceUM", symbol.Perp, "BTCUSDT"),
-		}}
+		res := btcResolver()
 		client := serveOne(t, plane, "BinanceUM", tape, res, 0)
 		var reply mdv1.FetchReply
 		err := client.Request(context.Background(), Subject("BinanceUM"), &mdv1.FetchRequest{
 			Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{
-				Ticker: "BinanceUM_Perp_BTCUSDT", Interval: "1m", Limit: 3,
+				Uid: btcUID, Interval: "1m", Limit: 3,
 			}},
 		}, &reply)
 		if err != nil {
@@ -427,27 +415,35 @@ func TestFetch(t *testing.T) {
 
 	t.Run("invalid", func(t *testing.T) {
 		tape := newTape(t, nil, 10)
-		res := &memResolver{rows: map[string]*symbol.Info{
-			"BinanceUM_Perp_BTCUSDT": instrument("BinanceUM", symbol.Perp, "BTCUSDT"),
+		okx := instrument("Okx", symbol.Spot, "BTCUSDT")
+		okx.UID = okxUID
+		res := &memResolver{rows: map[uint32]*symbol.Info{
+			btcUID: instrument("BinanceUM", symbol.Perp, "BTCUSDT"),
+			okxUID: okx,
 		}}
 		client := serveOne(t, plane, "BinanceUM", tape, res, 0)
 		cases := []struct {
-			name string
-			req  *mdv1.FetchRequest
+			name   string
+			req    *mdv1.FetchRequest
+			uid    uint32
+			reason string
 		}{
 			{"over 5000", &mdv1.FetchRequest{Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{
-				Ticker: "BinanceUM_Perp_BTCUSDT", Interval: "1m", Limit: MaxKlines + 1,
-			}}}},
+				Uid: btcUID, Interval: "1m", Limit: MaxKlines + 1,
+			}}}, btcUID, "limit"},
 			{"zero", &mdv1.FetchRequest{Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{
-				Ticker: "BinanceUM_Perp_BTCUSDT", Interval: "1m",
-			}}}},
+				Uid: btcUID, Interval: "1m",
+			}}}, btcUID, "limit"},
 			{"not active", &mdv1.FetchRequest{Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{
-				Ticker: "BinanceUM_Perp_ETHUSDT", Interval: "1m", Limit: 1,
-			}}}},
+				Uid: missingUID, Interval: "1m", Limit: 1,
+			}}}, missingUID, "not in the active table"},
 			{"venue mismatch", &mdv1.FetchRequest{Req: &mdv1.FetchRequest_OpenInterest{OpenInterest: &mdv1.FetchOpenInterest{
-				Ticker: "Okx_Spot_BTCUSDT",
-			}}}},
-			{"empty", &mdv1.FetchRequest{}},
+				Uid: okxUID,
+			}}}, okxUID, "does not match"},
+			{"uid 0", &mdv1.FetchRequest{Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{
+				Interval: "1m", Limit: 1,
+			}}}, 0, "not in the active table"},
+			{"empty", &mdv1.FetchRequest{}, 0, "empty"},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -455,12 +451,13 @@ func TestFetch(t *testing.T) {
 				if err := client.Request(context.Background(), Subject("BinanceUM"), tc.req, &reply); err != nil {
 					t.Fatal(err)
 				}
-				if reply.GetError() != CodeInvalid || reply.GetReason() == "" || reply.GetResult() != nil {
+				if reply.GetError() != CodeInvalid || reply.GetUid() != tc.uid || reply.GetResult() != nil || !strings.Contains(reply.GetReason(), tc.reason) {
 					t.Fatalf("%+v", &reply)
 				}
 			})
 		}
-		if tape.hits.Load() != 0 || res.gets != 1 {
+		// limit failures return before the lookup. not active, the other venue, and uid 0 do not.
+		if tape.hits.Load() != 0 || res.gets != 3 {
 			t.Fatalf("hits %d resolver gets %d", tape.hits.Load(), res.gets)
 		}
 	})
@@ -469,9 +466,7 @@ func TestFetch(t *testing.T) {
 		tape := newTape(t, []recorded{{
 			OpenTimeNs: int64(time.Minute), Open: 1, High: 1, Low: 1, Close: 1, Volume: 1, Closed: true,
 		}}, 10)
-		res := &memResolver{rows: map[string]*symbol.Info{
-			"BinanceUM_Perp_BTCUSDT": instrument("BinanceUM", symbol.Perp, "BTCUSDT"),
-		}}
+		res := btcResolver()
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		a := dialFetch(t, plane)
@@ -484,9 +479,9 @@ func TestFetch(t *testing.T) {
 		client := dialSession(t, plane)
 		var reply mdv1.FetchReply
 		err := client.Request(context.Background(), Subject("BinanceUM"), &mdv1.FetchRequest{
-			Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{Ticker: "BinanceUM_Perp_BTCUSDT", Interval: "1m", Limit: 1}},
+			Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{Uid: btcUID, Interval: "1m", Limit: 1}},
 		}, &reply)
-		if err != nil || reply.GetError() != "" || len(reply.GetKlines().GetKlines()) != 1 {
+		if err != nil || reply.GetError() != "" || reply.GetUid() != btcUID || len(reply.GetKlines().GetKlines()) != 1 {
 			t.Fatalf("err %v reply %+v", err, &reply)
 		}
 		if tape.hits.Load() != 1 {
@@ -496,13 +491,13 @@ func TestFetch(t *testing.T) {
 
 	t.Run("unsubscribed venue has no responder", func(t *testing.T) {
 		tape := newTape(t, nil, 10)
-		res := &memResolver{rows: map[string]*symbol.Info{}}
+		res := &memResolver{rows: map[uint32]*symbol.Info{}}
 		client := serveOne(t, plane, "BinanceUM", tape, res, 0)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 		var reply mdv1.FetchReply
 		err := client.Request(ctx, Subject("Okx"), &mdv1.FetchRequest{
-			Req: &mdv1.FetchRequest_OpenInterest{OpenInterest: &mdv1.FetchOpenInterest{Ticker: "Okx_Spot_BTCUSDT"}},
+			Req: &mdv1.FetchRequest_OpenInterest{OpenInterest: &mdv1.FetchOpenInterest{Uid: okxUID}},
 		}, &reply)
 		if !errors.Is(err, natsx.ErrNoResponders) {
 			t.Fatalf("err %v", err)
@@ -558,6 +553,7 @@ type tape struct {
 	retryAfter int
 	resetAt    time.Time
 	hits       atomic.Int32
+	seen       atomic.Value // string, the exch ticker the last call resolved
 }
 
 func newTape(t *testing.T, candles []recorded, page int) *tape {
@@ -629,6 +625,9 @@ func (tp *tape) Depth(*symbol.Info, int) (exchange.Call[*exchange.BookUpdate], e
 func (tp *tape) KlinePage() int { return tp.page }
 
 func (tp *tape) Klines(inst *symbol.Info, interval string, endNs int64, limit int) (exchange.Call[[]exchange.Kline], error) {
+	if inst != nil {
+		tp.seen.Store(inst.ExchTicker)
+	}
 	if tp.klineErr != nil {
 		return exchange.Call[[]exchange.Kline]{}, tp.klineErr
 	}
@@ -667,6 +666,9 @@ func (tp *tape) Klines(inst *symbol.Info, interval string, endNs int64, limit in
 }
 
 func (tp *tape) OpenInterest(inst *symbol.Info) (exchange.Call[*exchange.OpenInterest], error) {
+	if inst != nil {
+		tp.seen.Store(inst.ExchTicker)
+	}
 	if tp.oiErr != nil {
 		return exchange.Call[*exchange.OpenInterest]{}, tp.oiErr
 	}
@@ -731,26 +733,50 @@ func (tp *tape) Usage(resp *exchange.HTTPResponse, _ time.Time) []exchange.Used 
 	return []exchange.Used{u}
 }
 
+const (
+	btcUID     uint32 = 1
+	okxUID     uint32 = 2
+	missingUID uint32 = 99
+)
+
 type memResolver struct {
-	rows map[string]*symbol.Info
+	rows map[uint32]*symbol.Info
 	gets int
 }
 
 func (m *memResolver) Get(_ context.Context, t symbol.UniversalTicker, includeInactive bool) (*symbol.Info, error) {
+	if includeInactive {
+		return nil, errors.New("include_inactive was set")
+	}
+	if m == nil {
+		return nil, symbol.ErrNotFound
+	}
+	for _, info := range m.rows {
+		if info != nil && info.Ticker == t {
+			cp := *info
+			return &cp, nil
+		}
+	}
+	return nil, symbol.ErrNotFound
+}
+
+func (m *memResolver) GetByUID(_ context.Context, uid uint32, includeInactive bool) (*symbol.Info, error) {
+	if m == nil {
+		return nil, symbol.ErrNotFound
+	}
 	m.gets++
 	if includeInactive {
 		return nil, errors.New("include_inactive was set")
 	}
-	info, ok := m.rows[t.String()]
-	if !ok {
+	if !symbol.ValidUID(uid) {
+		return nil, symbol.ErrNotFound
+	}
+	info, ok := m.rows[uid]
+	if !ok || info == nil {
 		return nil, symbol.ErrNotFound
 	}
 	cp := *info
 	return &cp, nil
-}
-
-func (m *memResolver) GetByUID(context.Context, uint32, bool) (*symbol.Info, error) {
-	return nil, symbol.ErrNotFound
 }
 
 func (m *memResolver) Reverse(context.Context, symbol.ExchKey, bool) (*symbol.Info, error) {
@@ -765,7 +791,7 @@ func (m *memResolver) Invalidate(string) {}
 
 func instrument(venue string, cat symbol.Category, sym string) *symbol.Info {
 	return &symbol.Info{
-		UID:        1,
+		UID:        btcUID,
 		Ticker:     symbol.UniversalTicker{Venue: venue, Category: cat, Symbol: sym},
 		ExchTicker: sym,
 		Status:     symbol.Tradable,
@@ -864,8 +890,8 @@ func closedTape(t *testing.T) *tape {
 }
 
 func btcResolver() *memResolver {
-	return &memResolver{rows: map[string]*symbol.Info{
-		"BinanceUM_Perp_BTCUSDT": instrument("BinanceUM", symbol.Perp, "BTCUSDT"),
+	return &memResolver{rows: map[uint32]*symbol.Info{
+		btcUID: instrument("BinanceUM", symbol.Perp, "BTCUSDT"),
 	}}
 }
 
@@ -874,11 +900,14 @@ func askKline(t *testing.T, client *natsx.Conn, venue string) *mdv1.FetchReply {
 	var reply mdv1.FetchReply
 	err := client.Request(context.Background(), Subject(venue), &mdv1.FetchRequest{
 		Req: &mdv1.FetchRequest_Klines{Klines: &mdv1.FetchKlines{
-			Ticker: venue + "_Perp_BTCUSDT", Interval: "1m", Limit: 1,
+			Uid: btcUID, Interval: "1m", Limit: 1,
 		}},
 	}, &reply)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if reply.GetUid() != btcUID {
+		t.Fatalf("uid %d", reply.GetUid())
 	}
 	return &reply
 }

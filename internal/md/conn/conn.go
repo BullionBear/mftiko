@@ -170,8 +170,10 @@ type Conn struct {
 }
 
 // feed is one assigned publication: the subject is md.v1.f.{instance}.{topic}.{ticker} (D455).
+// uid is the active-table UID copied when the feed is created (D461). The subject keeps the ticker.
 type feed struct {
 	topic, ticker string
+	uid           uint32
 }
 
 // link is the connection that is up. Reconnect replaces it, which drops observed channels,

@@ -201,11 +201,16 @@ func (s *Service) klines(ctx context.Context, venue string, req *mdv1.FetchKline
 	if req == nil {
 		return reply(CodeInvalid, "request is empty"), nil
 	}
+	out, err := s.fetchKlines(ctx, venue, req)
+	return stamp(req.GetUid(), out), err
+}
+
+func (s *Service) fetchKlines(ctx context.Context, venue string, req *mdv1.FetchKlines) (*mdv1.FetchReply, error) {
 	limit := req.GetLimit()
 	if limit < 1 || limit > MaxKlines {
 		return reply(CodeInvalid, fmt.Sprintf("limit %d is not between 1 and %d", limit, MaxKlines)), nil
 	}
-	inst, bad, err := s.instrument(ctx, venue, req.GetTicker())
+	inst, bad, err := s.instrument(ctx, venue, req.GetUid())
 	if err != nil || bad != nil {
 		return bad, err
 	}
@@ -218,7 +223,7 @@ func (s *Service) klines(ctx context.Context, venue string, req *mdv1.FetchKline
 	for _, row := range rows {
 		msg.Klines = append(msg.Klines, klineMessage(row))
 	}
-	out := &mdv1.FetchReply{Result: &mdv1.FetchReply_Klines{Klines: msg}}
+	out := &mdv1.FetchReply{Uid: req.GetUid(), Result: &mdv1.FetchReply_Klines{Klines: msg}}
 	if n := proto.Size(out); n > maxReplyBytes {
 		return reply(CodeInvalid, fmt.Sprintf("reply is %d bytes, above %d", n, maxReplyBytes)), nil
 	}
@@ -229,7 +234,12 @@ func (s *Service) openInterest(ctx context.Context, venue string, req *mdv1.Fetc
 	if req == nil {
 		return reply(CodeInvalid, "request is empty"), nil
 	}
-	inst, bad, err := s.instrument(ctx, venue, req.GetTicker())
+	out, err := s.fetchOpenInterest(ctx, venue, req)
+	return stamp(req.GetUid(), out), err
+}
+
+func (s *Service) fetchOpenInterest(ctx context.Context, venue string, req *mdv1.FetchOpenInterest) (*mdv1.FetchReply, error) {
+	inst, bad, err := s.instrument(ctx, venue, req.GetUid())
 	if err != nil || bad != nil {
 		return bad, err
 	}
@@ -252,7 +262,7 @@ func (s *Service) openInterest(ctx context.Context, venue string, req *mdv1.Fetc
 		v := oi.OpenInterestValue
 		msg.OpenInterestValue = &v
 	}
-	out := &mdv1.FetchReply{Result: &mdv1.FetchReply_OpenInterest{OpenInterest: msg}}
+	out := &mdv1.FetchReply{Uid: req.GetUid(), Result: &mdv1.FetchReply_OpenInterest{OpenInterest: msg}}
 	if n := proto.Size(out); n > maxReplyBytes {
 		return reply(CodeInvalid, fmt.Sprintf("reply is %d bytes, above %d", n, maxReplyBytes)), nil
 	}
@@ -341,26 +351,25 @@ func pageKlines(ctx context.Context, s *Service, venue string, rest exchange.Pub
 	return got, nil
 }
 
-// instrument resolves ticker on the active table. A terminal listing is
-// ErrNotFound and is invalid, the same as a ticker the table has never held
-// (D422). A venue that does not match the subject is invalid before the lookup.
-func (s *Service) instrument(ctx context.Context, venue, ticker string) (*symbol.Info, *mdv1.FetchReply, error) {
-	t, err := symbol.Parse(ticker)
-	if err != nil {
-		return nil, reply(CodeInvalid, fmt.Sprintf("ticker %q is not a universal ticker", ticker)), nil
-	}
-	if t.Venue != venue {
-		return nil, reply(CodeInvalid, fmt.Sprintf("ticker %s venue %s does not match subject venue %s", t, t.Venue, venue)), nil
-	}
-	info, err := s.res.Get(ctx, t, false)
+// instrument resolves uid on the active table (D422, D461). A missing row,
+// including a terminal listing, is invalid, the same as a uid the table has
+// never held. A uid whose venue is not the subject venue is invalid. The
+// lookup is GetByUID; includeInactive stays false, so the terminal table is
+// not read. A resolver that is down is not one of the business codes: the
+// error is returned for natsx to answer.
+func (s *Service) instrument(ctx context.Context, venue string, uid uint32) (*symbol.Info, *mdv1.FetchReply, error) {
+	info, err := s.res.GetByUID(ctx, uid, false)
 	if errors.Is(err, symbol.ErrNotFound) {
-		return nil, reply(CodeInvalid, fmt.Sprintf("ticker %s is not in the active table", t)), nil
+		return nil, reply(CodeInvalid, fmt.Sprintf("uid %d is not in the active table", uid)), nil
 	}
 	if err != nil {
 		return nil, nil, err
 	}
 	if info == nil {
-		return nil, reply(CodeInvalid, fmt.Sprintf("ticker %s is not in the active table", t)), nil
+		return nil, reply(CodeInvalid, fmt.Sprintf("uid %d is not in the active table", uid)), nil
+	}
+	if info.Ticker.Venue != venue {
+		return nil, reply(CodeInvalid, fmt.Sprintf("uid %d venue %s does not match subject venue %s", uid, info.Ticker.Venue, venue)), nil
 	}
 	return info, nil, nil
 }
@@ -382,6 +391,16 @@ func (s *Service) fail(err error) *mdv1.FetchReply {
 
 func reply(code, reason string) *mdv1.FetchReply {
 	return &mdv1.FetchReply{Error: code, Reason: reason}
+}
+
+// stamp writes the requested instrument onto the reply (D461). A nil reply is
+// a transport error, not a FetchReply, and stays nil.
+func stamp(uid uint32, msg *mdv1.FetchReply) *mdv1.FetchReply {
+	if msg == nil {
+		return nil
+	}
+	msg.Uid = uid
+	return msg
 }
 
 func klineMessage(row exchange.Kline) *mdv1.Kline {
