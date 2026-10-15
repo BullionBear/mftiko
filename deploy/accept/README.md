@@ -115,3 +115,102 @@ make accept-down                             # 停掉並刪除 volume；data/wor
 ```
 
 紀錄：`data/work/watch.log`、`watch.jsonl`（每一則 md.v1.f 的 `(epoch, seq)`）、`agent-*.log`、`sym.log`，以及上面各個指令的輸出。新的一輪要乾淨的紀錄時，先清空 `data/work/`。E4-09 的紀錄在 #193，E4-10 在 #195，E4-11 則在這張票的 PR。
+
+# TD 交易路徑驗收
+
+E6 的驗收（#8；E6-12 BinanceUM，E6-13、E6-14 補 Bybit、OKX）。用同一組環境（先 `make accept-up`），需求項目與帳號手寫（E13、E10 之前），對 testnet 跑四條：
+
+1. 下單、撤單、`BatchCancel` 都通，`td.evt` 收到對應的 `OrderUpdate`、`Fill`。
+2. 拔掉私有連線：進 `DEGRADED`、新單 102、撤單照常；重連後收到 `Recon(RECONNECT)`。
+3. 換掉 td-agent 的行程，account worker 不停，私有連線不斷。
+4. 帳號切到雙向持倉，worker 以 `hedge_mode` 起不來（`REJECTED`，不重拉）。
+
+`accept.sh td ...` 在 runner 裡執行 `mftiko-td-accept`。每個子指令在檢查失敗時以 1 結束；`submit`、`cancel`、`batch` 在 TD 本地拒絕時也是 1，並印出 code。
+
+## 需要的東西
+
+- testnet 的 API key。憑證寫成 `mftiko-seal` 的 JSON（`{"key_type", "key", "secret"}`），放在 `data/work/`（gitignore），權限 0600。BinanceUM 的 adapter 只用 ed25519 簽名：`key_type` 是 `ed25519`，`secret` 是 PEM 私鑰的內容。
+- 帳號是單向持倉、沒有掛單與持倉。`td mode` 讀或切換持倉模式，只對 testnet 的 host。
+
+## 環境
+
+```sh
+A=deploy/accept/accept.sh
+$A td-up                                     # TD instance（td1）的 etcd 使用者與 topology、seal key
+docker compose -f deploy/accept/compose.yaml exec -T runner sh -c \
+  '/mftiko/mftiko-td-accept account -instance td1 -api-id 1 -kind BinanceUM -seal-key /work/td-seal.key < /work/binanceum.creds.json'
+$A td mode -creds /work/binanceum.creds.json # {"dualSidePosition":false}
+$A td-bg td-watch watch -api-id 1 -out /work/td-watch.jsonl
+$A td-agent                                  # log: data/work/td-agent-1.log
+$A td demand put s1 1
+$A td acks                                   # ENTRY_STATE_READY，worker account/1
+```
+
+td-agent 用 `endpoints/rest.json` 的 BinanceUM testnet REST host；交易 websocket（`testnet.binancefuture.com/ws-fapi`）與私有連線（`stream.binancefuture.com/private/ws`）由它推得。worker 的 log 在 runner 的 `/var/td/log/td/`。
+
+## 1. 下單、撤單、BatchCancel
+
+```sh
+$A td submit -api-id 1 -side buy -type limit -qty 0.002 -price <遠低於市價>   # 印出 cid
+$A td view -api-id 1 oms
+$A td cancel -api-id 1 -cid <cid>
+$A td submit ... ; $A td submit ...                                           # 兩張
+$A td batch -api-id 1 -cid <cid2>,<cid3>
+$A td submit -api-id 1 -side buy -type market -qty 0.002                      # Fill
+$A td submit -api-id 1 -side sell -type market -qty 0.002 -reduce-only        # 平倉
+```
+
+通過的條件：每張單在 `td-watch.log` 依序有 `PENDING_NEW SUBMITTED`、`ACCEPTED`、`CANCEL_REQUESTED`、`CANCELLED`；batch 的兩張各自 `CANCELLED`；市價單有 `Fill`、`PositionUpdate`，平倉後持倉是 0。
+
+## 2. 拔掉私有連線
+
+worker 約一秒內就重連，所以切斷、送新單、撤單要在同一個 shell 裡接著做：
+
+```sh
+docker compose -f deploy/accept/compose.yaml exec -T runner sh -c '
+T=/mftiko/mftiko-td-accept
+$T cut -instance td1 -host stream.binancefuture.com
+$T view -instance td1 -api-id 1 oms | head -1
+$T submit -instance td1 -api-id 1 -side buy -type limit -qty 0.002 -price <價>
+$T cancel -instance td1 -api-id 1 -cid <掛著的 cid>'
+```
+
+`cut` 從行程外面用 `pidfd_getfd` 關掉 worker 連到該 host 的 socket；REST 與交易 websocket 在別的位址，不受影響。
+
+通過的條件：`view` 是 `ACCOUNT_STATE_DEGRADED`；新單回 `102 account is degraded`；撤單 `accepted`、之後 `CANCELLED`；接著 `td-watch.log` 有 `Recon RECON_REASON_RECONNECT`，`view` 回到 `READY`；`td conns` 是同一個 pid、新的 stream socket。
+
+## 3. 換掉 td-agent
+
+```sh
+$A td conns                                  # pid 與 socket
+$A stop-td-agent
+$A ps                                        # shim 被 init 收養，mftiko-td-account 還在
+$A td submit ... ; $A td cancel ...          # 沒有 agent 時 td.order 照常
+$A td-agent                                  # log: data/work/td-agent-2.log
+grep "shims adopted" data/work/td-agent-2.log  # adopted=1 unreachable=0
+$A td acks; $A td conns                      # incarnation、pid、socket 都不變
+```
+
+通過的條件：沒有新的 spawn；`td-watch.log` 沒有新的 `Recon`。
+
+## 4. 雙向持倉
+
+worker 只在 Start 檢查持倉模式（D616），所以切換後讓它重拉：
+
+```sh
+$A td mode -creds /work/binanceum.creds.json -dual true
+docker compose -f deploy/accept/compose.yaml exec -T runner sh -c 'kill -9 $(pgrep -f "^/mftiko/mftiko-td-account")'
+$A td acks                                   # ENTRY_STATE_REJECTED reason:"hedge_mode"，下一個 incarnation
+$A ps                                        # 沒有 mftiko-td-account：不重拉（D608）
+```
+
+還原：`td mode ... -dual false`，`td demand del s1 1`，等過 linger（5 秒），再 `td demand put s1 1`，ack 回到 `READY`。
+
+## 收尾與紀錄
+
+```sh
+$A stop td-watch                             # SUMMARY；有 gap 或 dup 時以 1 結束
+$A stop-td-agent
+```
+
+紀錄：`data/work/td-watch.log`、`td-watch.jsonl`（每一則 td.evt）、`td-agent-*.log`，以及上面各個指令的輸出。E6-12 的紀錄在它的 PR。
