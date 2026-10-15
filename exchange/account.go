@@ -260,7 +260,11 @@ type PrivateStream interface {
 }
 
 type Dial struct {
-	URL    string
+	URL string
+	// Frames go out in order once the connection is up, each after the venue's next frame (the
+	// answer to the one before), never pipelined: Binance spot leaves the session unauthenticated
+	// when userDataStream.subscribe is written behind session.logon. The venue must send nothing
+	// else before it answers.
 	Frames [][]byte
 	// Live: the stream is live once the websocket handshake completes. It has no logon and
 	// acknowledges nothing, and a quiet account sends nothing on it (Binance's listenKey stream), so

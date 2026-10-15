@@ -89,6 +89,7 @@ type conn struct {
 	done    chan struct{}
 	err     error // why Run returned; read after done
 	ready   chan struct{}
+	heard   chan struct{} // a frame from the venue decoded; connect paces the dial frames on it
 	expired chan string
 
 	flight *safeFlight
@@ -165,16 +166,43 @@ func (l *link) connect(ctx context.Context) (*conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &conn{ws: wc, codec: cd, born: time.Now(), done: make(chan struct{}), ready: make(chan struct{}), expired: make(chan string, 1), flight: &safeFlight{}}
+	c := &conn{ws: wc, codec: cd, born: time.Now(), done: make(chan struct{}), ready: make(chan struct{}), heard: make(chan struct{}, 1), expired: make(chan string, 1), flight: &safeFlight{}}
 	if l.orders {
 		c.send = make(chan *wsJob, 32)
 	}
 	c.sink = &sink{ctx: ctx, w: w, c: c}
 	go func() {
-		c.err = wc.Run(ctx, func(frame []byte) error { return cd.decode(frame, c.sink) })
+		c.err = wc.Run(ctx, func(frame []byte) error {
+			if err := cd.decode(frame, c.sink); err != nil {
+				return err
+			}
+			select {
+			case c.heard <- struct{}{}:
+			default:
+			}
+			return nil
+		})
 		close(c.done)
 	}()
-	for _, f := range d.Frames {
+	// Each frame after the first goes out once the venue has answered the one before: Binance spot
+	// leaves the session unauthenticated when userDataStream.subscribe is written behind
+	// session.logon, before its answer. Nothing comes from these venues before the logon is answered,
+	// so the next frame heard is that answer.
+	for i, f := range d.Frames {
+		if i > 0 {
+			select {
+			case <-c.heard:
+			case <-c.done:
+				return nil, c.err
+			case <-dctx.Done():
+				wc.Close()
+				<-c.done
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
+				return nil, fmt.Errorf("dial frame %d not answered within %s", i, w.readyTimeout)
+			}
+		}
 		if err := wc.Write(dctx, f); err != nil {
 			wc.Close()
 			<-c.done
