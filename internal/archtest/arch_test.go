@@ -92,6 +92,13 @@ func forbiddenInExchange(importPath string) bool {
 	return under(importPath, "github.com/valyala/fasthttp", "github.com/coder/websocket", "github.com/bytedance/sonic")
 }
 
+// forbiddenInTD reports whether a package under internal/td must not link it. The account worker does not
+// decode client_order_id (DECISIONS D633).
+func forbiddenInTD(importPath string) bool {
+	r, own := rel(importPath)
+	return own && under(r, "contract/wire/cloid")
+}
+
 // check returns one line per broken rule. std holds the standard library's import paths.
 func check(pkgs []pkg, std map[string]bool) []string {
 	var out []string
@@ -171,6 +178,13 @@ func check(pkgs []pkg, std map[string]bool) []string {
 				}
 			}
 		}
+		if under(from, "internal/td") {
+			for _, d := range p.Deps {
+				if forbiddenInTD(d) {
+					out = append(out, fmt.Sprintf("%s links %s: TD does not decode client_order_id", from, d))
+				}
+			}
+		}
 	}
 	return out
 }
@@ -242,6 +256,7 @@ func TestCheckReportsViolations(t *testing.T) {
 		}},
 		{ImportPath: m("internal/md/conn"), Imports: []string{m("exchange/transport"), m("exchange/transport/ws")}}, // allowed
 		{ImportPath: m("internal/td/account"), Imports: []string{m("exchange/transport/fasthttp")}},                 // allowed
+		{ImportPath: m("internal/td/account"), Deps: []string{m("contract/wire/cloid")}},                            // D633
 		{ImportPath: m("internal/sym/refresh"), Imports: []string{m("exchange/transportx")}},                        // not exchange/transport
 		{ImportPath: m("internal/api"), Imports: []string{m("exchange"), m("contract/gen/mftiko/sym/v1"), m("contract/gen/mftiko/state/v1")}},
 		{ImportPath: m("internal/api/venue"), Imports: []string{m("exchange/transport/fasthttp")}},
@@ -285,6 +300,7 @@ func TestCheckReportsViolations(t *testing.T) {
 		"sdk links go.etcd.io/etcd/client/v3",
 		"sdk links " + m("exchange"),
 		"examples/strategies/x imports " + m("internal/md"),
+		"internal/td/account links " + m("contract/wire/cloid"),
 		"internal/td links " + m("internal/platform/agent/runner"),
 		"internal/td links github.com/nats-io/nats.go",
 		"internal/platform/agent links " + m("internal/platform/shim"),
