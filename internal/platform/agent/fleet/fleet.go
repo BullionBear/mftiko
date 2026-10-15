@@ -286,11 +286,14 @@ func (f *Fleet[S, L]) Spawn(ctx context.Context, key agent.WorkerKey, spec S, li
 // spawned is a worker just spawned, as its shim's Attached has it (D108): what the worker said before the attach
 // (its Hello, a Stage, a Beat) is in the snapshot, and the events of it are skipped as older than next_seq, so the
 // snapshot is the only place to read it from. Init has not been sent yet: the worker is initializing, and its live
-// config is the one Init carries.
+// config is the one Init carries. A worker that has exited already stays exited: its Exited event is skipped too,
+// and the Reconciler would otherwise wait out the Beat timeout on it.
 func spawned(at *shimv1.Attached, specHash, liveHash string, now time.Time) agent.Observed {
 	o := observedOf(at)
 	o.SpecHash, o.Pushed, o.PushedAt, o.StartedAt = specHash, liveHash, now, now
-	o.State = agent.StateInitializing
+	if o.State != agent.StateExited {
+		o.State = agent.StateInitializing
+	}
 	return o
 }
 
