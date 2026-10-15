@@ -66,3 +66,16 @@ func TestSpawnedFromSnapshot(t *testing.T) {
 		t.Fatalf("spawned %+v", o)
 	}
 }
+
+// A worker that exits before the Fleet attaches to its new shim is exited in the snapshot, and its Exited event is
+// skipped: the observation is exited, with the exit, not initializing.
+func TestSpawnedExitedBeforeAttach(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	exit := &commonv1.ExitInfo{Code: 20, Outcome: commonv1.Outcome_OUTCOME_CRASHED}
+	at := &shimv1.Attached{State: shimv1.WorkerState_WORKER_STATE_EXITED, Phase: shimv1.Phase_PHASE_NEW,
+		Worker: &commonv1.WorkerRef{Key: "td/1", Incarnation: 4}, SpecHash: "s", Exit: exit}
+	o := spawned(at, "s", "l", now)
+	if o.State != agent.StateExited || o.Exit.GetCode() != 20 || o.Incarnation != 4 {
+		t.Fatalf("spawned %+v", o)
+	}
+}
