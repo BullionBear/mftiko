@@ -41,11 +41,13 @@ func conns() error {
 // cut shuts down the worker's sockets to host from outside: pidfd_getfd, then shutdown(SHUT_RDWR)
 // on the copy. The worker is not signalled; it sees the connection end, as when the venue closes
 // it. With host the private stream's (stream.binancefuture.com on the BinanceUM testnet), only that
-// connection goes: REST and the trade websocket are on other addresses. Needs Linux 5.6 and ptrace
-// access to the worker (same user, or CAP_SYS_PTRACE).
+// connection goes: REST and the trade websocket are on other addresses. Where they share an address
+// (Bybit's /v5/private and /v5/trade), -fd picks one of the sockets conns lists. Needs Linux 5.6 and
+// ptrace access to the worker (same user, or CAP_SYS_PTRACE).
 func cut() error {
 	pid := flag.Int("pid", 0, "account worker pid; 0 when there is exactly one")
 	host := flag.String("host", "", "cut only the sockets to this host's addresses")
+	only := flag.Int("fd", -1, "cut only this one of the worker's sockets to host")
 	flag.Parse()
 	if *host == "" {
 		return errors.New("-host is required")
@@ -69,7 +71,7 @@ func cut() error {
 	var target []sock
 	for _, s := range sockets(*pid) {
 		ip, _, _ := net.SplitHostPort(s.remote)
-		if slices.Contains(addrs, ip) {
+		if slices.Contains(addrs, ip) && (*only < 0 || s.fd == *only) {
 			target = append(target, s)
 		}
 	}

@@ -305,9 +305,6 @@ func (p posRow) position() (exchange.Position, bool) {
 			size = -size
 		}
 	}
-	if size == 0 {
-		return exchange.Position{}, false
-	}
 	lev := decimal.Absent()
 	if p.Lever != "" {
 		if v, err := strconv.ParseFloat(p.Lever, 64); err == nil {
@@ -317,7 +314,7 @@ func (p posRow) position() (exchange.Position, bool) {
 	return exchange.Position{
 		Exch: exchKey(p.InstType, p.InstID), Size: size, EntryPrice: optNum(p.AvgPx),
 		MarkPrice: optNum(p.MarkPx), UnrealizedPnl: optNum(p.UPL), Leverage: lev,
-	}, true
+	}, size != 0
 }
 
 type balRow struct {

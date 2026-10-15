@@ -235,11 +235,10 @@ type posRow struct {
 	Updated  string        `json:"updatedTime"`
 }
 
+// position is the row as a Position, and whether it is open. A REST list leaves a flat row out; on
+// the private topic a size of 0 is the position closing, and the worker forgets it.
 func (p posRow) position(cat string) (exchange.Position, bool) {
 	size := qtyOf(p.Size)
-	if size == 0 {
-		return exchange.Position{}, false
-	}
 	if p.Side == "Sell" {
 		size = -size
 	}
@@ -261,7 +260,7 @@ func (p posRow) position(cat string) (exchange.Position, bool) {
 	return exchange.Position{
 		Exch: exchKey(cat, p.Symbol), Size: size, EntryPrice: entry,
 		MarkPrice: optNum(p.Mark), UnrealizedPnl: optNum(p.UPL), Leverage: lev,
-	}, true
+	}, size != 0
 }
 
 type coinRow struct {

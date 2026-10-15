@@ -921,7 +921,9 @@ func TestBatchCancelPerOrder(t *testing.T) {
 	}
 }
 
-// A batch whose answer never comes is queried per order and not sent again (D626).
+// A batch whose answer never comes is queried per order and not sent again (D626). The venue
+// still has both orders after the window, so the cancels did not happen: the flag clears with
+// CANCEL_REJECTED 120, and the orders may be cancelled again (D610).
 func TestBatchCancelUnknownOutcome(t *testing.T) {
 	clock := newFakeClock(time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
 	h := start(t, setup{
@@ -952,11 +954,18 @@ func TestBatchCancelUnknownOutcome(t *testing.T) {
 		t.Fatalf("resent %v", h.v.Batches())
 	}
 	for _, cid := range []string{a, b} {
-		o := h.omsOrder(cid)
-		if o.GetStatus() != tdv1.OrderStatus_ORDER_STATUS_ACCEPTED || o.GetCancelSentNs() == 0 {
+		waitFor(t, "the flag was not cleared", func() bool { return h.omsOrder(cid).GetCancelSentNs() == 0 })
+		if o := h.omsOrder(cid); o.GetStatus() != tdv1.OrderStatus_ORDER_STATUS_ACCEPTED {
 			t.Fatalf("%s after the query: %+v", cid, o)
 		}
+		if !h.hasCause(cid, tdv1.OrderCause_ORDER_CAUSE_CANCEL_REJECTED) {
+			t.Fatalf("%s: no CANCEL_REJECTED", cid)
+		}
 	}
+	if r := h.cancel(7, a); !r.GetAccepted() {
+		t.Fatal(r)
+	}
+	h.waitStatus(a, tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
 }
 
 // DEGRADED does not stop BatchCancel (D627). It still goes out over REST.

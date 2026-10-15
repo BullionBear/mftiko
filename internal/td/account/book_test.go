@@ -250,6 +250,29 @@ func TestBookLedger(t *testing.T) {
 	}
 }
 
+// A flat row for a position not held (Bybit sends one whenever an order touches a symbol) is not
+// published; its leverage is still cached. Closing a held position is published.
+func TestBookFlatRowNotHeld(t *testing.T) {
+	r := newRig(t)
+	r.recon(&exchange.AccountSnapshot{AsOfNs: 1})
+	flat := exchange.Position{Exch: btc, Size: 0, EntryPrice: decimal.Absent(), MarkPrice: decimal.Absent(), UnrealizedPnl: decimal.Absent(), Leverage: 10}
+	r.b.positionEvent(r.ctx, []exchange.Position{flat})
+	r.sync()
+	eq(t, kinds(r.bus.all()), "recon:RECON_REASON_INCARNATION")
+	if x := r.b.view(r.ctx, &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Leverage{Leverage: &tdv1.LeverageRequest{Uid: 7}}}).GetLeverage(); x.Leverage == nil || *x.Leverage != 10 {
+		t.Fatalf("leverage %v", x)
+	}
+	open := flat
+	open.Size = 0.001
+	r.b.positionEvent(r.ctx, []exchange.Position{open})
+	r.b.positionEvent(r.ctx, []exchange.Position{flat})
+	r.sync()
+	eq(t, kinds(r.bus.all()), "recon:RECON_REASON_INCARNATION", "position", "position")
+	if p := r.ledger().GetPositions(); len(p) != 0 {
+		t.Fatalf("closed position %v", p)
+	}
+}
+
 // td.view's OMS filters by the algo in the client order id; an order that is not the platform's
 // (placed by hand) belongs to no algo.
 func TestBookAlgoFilter(t *testing.T) {
