@@ -62,7 +62,7 @@ $A acks                                      # 兩筆 ENTRY_STATE_READY，各自
 tail data/work/watch.log
 ```
 
-通過的條件：兩個 subject 都出現 `first epoch=1 seq=1`；`orderbook_delta` 的第一則是 `reset=true`（快照）；`SUMMARY` 一直是 `gaps=0 dups=0`；book 的 `resets` 只有 1（沒有因為斷號而重抓）。
+通過的條件：兩個 subject 都出現 `first epoch=1 seq=1`；`orderbook_delta` 的第一則是 `reset=true`（快照）；`SUMMARY` 一直是 `gaps=0 dups=0`；book 的 `resets` 只有 1（沒有因為斷號而重抓）。每一則 payload 的 `uid` 必須是 SYM 活躍表上該 ticker 的 uid，0 或對不上就失敗（D461）。
 
 ## 2. 晚加入
 
@@ -76,7 +76,7 @@ $A late -feed aggtrade.BinanceUM_Perp_BTCUSDT -follow 10s
 - book：從 `BookSnapshot` 的 `(epoch, S)` 開始，丟掉 ≤ S 的 live，第一則套用的必須是 S+1。用 `sdk/book` 折（tick 從 SYM 取），跟完一段之後再問一次 `md.v1.view`，在同一個 cursor 上逐檔比對。
 - tape：往回分頁讀到 `-since`，印出 gap，從 `TapePage.head` 接上 live（D437）。
 
-通過的條件：`gaps=0`；book 的比對結果是 `differing within 1024 ticks of the best: 0`。離最佳價較遠的檔（窗的外半）若有差異，只印出、不算失敗。這是 D431 的結果：一檔在晚加入者的快照當下落在窗外，或曾經在窗外被丟掉，在它下一筆更新之前晚加入者都不會知道它；worker 的環則還留著那一格。
+通過的條件：`gaps=0`；book 的比對結果是 `differing within 1024 ticks of the best: 0`。離最佳價較遠的檔（窗的外半）若有差異，只印出、不算失敗。這是 D431 的結果：一檔在晚加入者的快照當下落在窗外，或曾經在窗外被丟掉，在它下一筆更新之前晚加入者都不會知道它；worker 的環則還留著那一格。book 快照、tape 的每一則、以及之後的 live `md.f`，`uid` 都必須是 SYM 上這個 feed 的 uid（D461）。
 
 ## 3. 斷線再接上
 

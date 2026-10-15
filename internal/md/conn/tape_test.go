@@ -25,6 +25,8 @@ import (
 const (
 	tapeTicker = "Binance_Spot_BTCUSDT"
 	tapeCh     = "btcusdt@depth"
+	// tapeUID is the active-table UID the tape fixtures carry (D461).
+	tapeUID uint32 = 424242
 )
 
 func TestTapeDefaults(t *testing.T) {
@@ -63,7 +65,7 @@ func TestTapeRecordsThroughSetFeeds(t *testing.T) {
 	if len(ev) != 2 || ev[0].GetSeq() != 2 || ev[1].GetSeq() != 1 || ev[0].GetConnEpoch() != 7 {
 		t.Fatalf("events %+v", ev)
 	}
-	if ev[0].GetEvent().GetTrade().GetTradeId() != "1/2" || ev[0].GetMdTsNs() != 200 {
+	if ev[0].GetEvent().GetTrade().GetTradeId() != "1/2" || ev[0].GetMdTsNs() != 200 || ev[0].GetEvent().GetUid() != tapeUID {
 		t.Fatalf("newest %+v", ev[0])
 	}
 	head := rep.GetTape().GetHead()
@@ -499,7 +501,7 @@ func TestBookViewSnapshotAndNotSynced(t *testing.T) {
 		t.Fatalf("delta %s", delta.GetError())
 	}
 	b := delta.GetBook()
-	if b.GetConnEpoch() != 4 || b.GetSeq() == 0 || b.GetMeta().GetExchTsNs() != 77 || len(b.GetBids()) != 1 || len(b.GetAsks()) != 1 {
+	if b.GetConnEpoch() != 4 || b.GetSeq() == 0 || b.GetMeta().GetExchTsNs() != 77 || b.GetUid() != tapeUID || len(b.GetBids()) != 1 || len(b.GetAsks()) != 1 {
 		t.Fatalf("book %+v", b)
 	}
 	if b.GetBids()[0].GetQty() != 1 || b.GetAsks()[0].GetQty() != 2 {
@@ -703,6 +705,7 @@ func newTapeBox(t *testing.T, opt tapeBoxOptions) *tapeBox {
 
 func tapeInfo(status symbol.Status) *symbol.Info {
 	return &symbol.Info{
+		UID:        tapeUID,
 		Ticker:     symbol.UniversalTicker{Venue: "Binance", Category: symbol.Spot, Symbol: "BTCUSDT"},
 		ExchTicker: "BTCUSDT", Status: status,
 		Filters: symbol.Filters{symbol.PriceTick: 0.1},

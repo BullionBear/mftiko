@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -28,6 +29,7 @@ type record struct {
 	Seq     uint64  `json:"seq"`
 	MDTsNs  int64   `json:"md_ts_ns"`
 	Kind    string  `json:"kind"`
+	UID     uint32  `json:"uid"`
 	Reset   bool    `json:"reset,omitempty"`
 	Levels  int     `json:"levels,omitempty"`
 	Price   float64 `json:"price,omitempty"`
@@ -49,6 +51,7 @@ const (
 	noteDup       = "DUP"
 	noteEpochBack = "EPOCH WENT BACK"
 	noteEpochSeq  = "NEW EPOCH NOT AT SEQ 1"
+	noteUID       = "UID"
 )
 
 // step is the seq and conn_epoch rule (D409, D425): +1 within one epoch, and a new, larger epoch
@@ -84,29 +87,49 @@ func (st *feedState) step(epoch, seq uint64) string {
 	return note
 }
 
-func describe(payload []byte) (kind string, reset bool, levels int, price float64, err error) {
+func describe(payload []byte) (kind string, reset bool, levels int, price float64, uid uint32, err error) {
 	ev := &mdv1.FeedEvent{}
 	if err := proto.Unmarshal(payload, ev); err != nil {
-		return "", false, 0, 0, err
+		return "", false, 0, 0, 0, err
 	}
+	uid = ev.GetUid()
 	switch e := ev.GetEvent().(type) {
 	case *mdv1.FeedEvent_OrderBookDelta:
 		d := e.OrderBookDelta
-		return "orderbook_delta", d.GetReset_(), len(d.GetBids()) + len(d.GetAsks()), 0, nil
+		return "orderbook_delta", d.GetReset_(), len(d.GetBids()) + len(d.GetAsks()), 0, uid, nil
 	case *mdv1.FeedEvent_AggTrade:
-		return "aggtrade", false, 0, e.AggTrade.GetPrice(), nil
+		return "aggtrade", false, 0, e.AggTrade.GetPrice(), uid, nil
 	case *mdv1.FeedEvent_Trade:
-		return "trade", false, 0, e.Trade.GetPrice(), nil
+		return "trade", false, 0, e.Trade.GetPrice(), uid, nil
 	case *mdv1.FeedEvent_Liquidation:
-		return "liquidation", false, 0, e.Liquidation.GetPrice(), nil
+		return "liquidation", false, 0, e.Liquidation.GetPrice(), uid, nil
 	default:
-		return fmt.Sprintf("%T", e), false, 0, 0, nil
+		return fmt.Sprintf("%T", e), false, 0, 0, uid, nil
 	}
+}
+
+// subjectTicker splits md.v1.f.{inst}.{topic}.{ticker}. inst and topic contain no dots;
+// the ticker is the remainder, so a dotted ticker still parses.
+func subjectTicker(subject, inst string) (topic, ticker string, ok bool) {
+	rest, found := strings.CutPrefix(subject, "md.v1.f."+inst+".")
+	if !found {
+		return "", "", false
+	}
+	topic, ticker, ok = strings.Cut(rest, ".")
+	return topic, ticker, ok && topic != "" && ticker != ""
+}
+
+// symUID is one SYM lookup, including a failure, so a watch does not ask again for the same ticker.
+type symUID struct {
+	uid uint32
+	err error
 }
 
 // watch follows md.v1.f.{inst}.> until SIGINT or -for, checks every subject with step, and writes
 // every message to -out. It prints the epoch changes and resets as they happen and a summary
-// per subject every -every. It fails when any subject had a gap, a duplicate or a bad message.
+// per subject every -every. The first message of a ticker asks SYM, with a deadline, and every
+// payload uid must be that active-table uid (D461). It fails when any subject had a gap, a
+// duplicate, a bad message, or a uid that is 0 or not SYM's.
 func watch() error {
 	out := flag.String("out", "watch.jsonl", "record file, appended")
 	every := flag.Duration("every", 10*time.Second, "summary interval")
@@ -126,22 +149,69 @@ func watch() error {
 
 	var mu sync.Mutex
 	feeds := map[string]*feedState{}
+	known := map[string]symUID{}
+	var knownMu sync.Mutex
 	bad := 0
+	// lookup asks SYM once per ticker. The deadline is the request's context, not a sleep.
+	// A failure is cached: later messages of that ticker still count as bad, without asking again.
+	lookup := func(ticker string) (uint32, error) {
+		knownMu.Lock()
+		if c, ok := known[ticker]; ok {
+			knownMu.Unlock()
+			return c.uid, c.err
+		}
+		knownMu.Unlock()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		info, err := symbolInfo(ctx, ticker)
+		cancel()
+		var uid uint32
+		if err == nil {
+			uid = info.GetUid()
+			if uid == 0 {
+				err = fmt.Errorf("%s uid is 0", ticker)
+			}
+		}
+		knownMu.Lock()
+		if c, ok := known[ticker]; ok {
+			knownMu.Unlock()
+			return c.uid, c.err
+		}
+		known[ticker] = symUID{uid: uid, err: err}
+		knownMu.Unlock()
+		return uid, err
+	}
 	sub, err := nc.Subscribe("md.v1.f."+*instance+".>", func(m *nats.Msg) {
 		now := time.Now()
 		ts, epoch, seq, _, payload, err := envelope.Parse(m.Data)
-		mu.Lock()
-		defer mu.Unlock()
 		if err != nil {
+			mu.Lock()
 			bad++
+			mu.Unlock()
 			fmt.Printf("%s %s BAD ENVELOPE %v\n", stamp(), m.Subject, err)
 			return
 		}
-		kind, reset, levels, price, err := describe(payload)
+		kind, reset, levels, price, uid, err := describe(payload)
 		if err != nil {
+			mu.Lock()
 			bad++
+			mu.Unlock()
 			fmt.Printf("%s %s BAD PAYLOAD %v\n", stamp(), m.Subject, err)
 			return
+		}
+		_, ticker, ok := subjectTicker(m.Subject, *instance)
+		var want uint32
+		var uidErr error
+		if !ok {
+			uidErr = fmt.Errorf("subject %s has no ticker", m.Subject)
+		} else {
+			want, uidErr = lookup(ticker)
+		}
+		uidBad := uidErr != nil || uid == 0 || uid != want
+		mu.Lock()
+		defer mu.Unlock()
+		if uidBad {
+			bad++
+			fmt.Printf("%s %s BAD UID payload=%d sym=%d err=%v\n", stamp(), m.Subject, uid, want, uidErr)
 		}
 		st := feeds[m.Subject]
 		if st == nil {
@@ -154,9 +224,12 @@ func watch() error {
 		if reset {
 			st.resets++
 		}
+		if note == "" && uidBad {
+			note = noteUID
+		}
 		switch {
 		case note == noteFirst:
-			fmt.Printf("%s %s first epoch=%d seq=%d kind=%s reset=%v\n", stamp(), m.Subject, epoch, seq, kind, reset)
+			fmt.Printf("%s %s first epoch=%d seq=%d kind=%s uid=%d reset=%v\n", stamp(), m.Subject, epoch, seq, kind, uid, reset)
 		case note != "":
 			fmt.Printf("%s %s %s: (%d,%d) -> (%d,%d) reset=%v\n", stamp(), m.Subject, note, prevEpoch, prevSeq, epoch, seq, reset)
 		case reset:
@@ -164,7 +237,7 @@ func watch() error {
 		}
 		enc.Encode(record{ //nolint:errcheck // a short record file shows in the summary counts
 			Wall: now.UTC().Format(time.RFC3339Nano), Subject: m.Subject, Epoch: epoch, Seq: seq, MDTsNs: ts,
-			Kind: kind, Reset: reset, Levels: levels, Price: price, Note: note,
+			Kind: kind, UID: uid, Reset: reset, Levels: levels, Price: price, Note: note,
 		})
 	})
 	if err != nil {

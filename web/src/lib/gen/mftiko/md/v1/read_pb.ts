@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mftiko/md/v1/read.proto.
  */
 export const file_mftiko_md_v1_read: GenFile = /*@__PURE__*/
-  fileDesc("ChdtZnRpa28vbWQvdjEvcmVhZC5wcm90bxIMbWZ0aWtvLm1kLnYxInYKC1ZpZXdSZXF1ZXN0Eg0KBWxpbWl0GAEgASgNEikKBmJlZm9yZRgCIAEoCzIULm1mdGlrby5tZC52MS5DdXJzb3JIAIgBARIVCghzaW5jZV9ucxgDIAEoA0gBiAEBQgkKB19iZWZvcmVCCwoJX3NpbmNlX25zIikKBkN1cnNvchISCgpjb25uX2Vwb2NoGAEgASgEEgsKA3NlcRgCIAEoBCJ4CglWaWV3UmVwbHkSDQoFZXJyb3IYASABKAkSJgoEdGFwZRgKIAEoCzIWLm1mdGlrby5tZC52MS5UYXBlUGFnZUgAEioKBGJvb2sYCyABKAsyGi5tZnRpa28ubWQudjEuQm9va1NuYXBzaG90SABCCAoGcmVzdWx0ImYKCVRhcGVFdmVudBISCgpjb25uX2Vwb2NoGAEgASgEEgsKA3NlcRgCIAEoBBIQCghtZF90c19ucxgDIAEoAxImCgVldmVudBgEIAEoCzIXLm1mdGlrby5tZC52MS5GZWVkRXZlbnQi1QEKCFRhcGVQYWdlEicKBmV2ZW50cxgBIAMoCzIXLm1mdGlrby5tZC52MS5UYXBlRXZlbnQSDAoEbW9yZRgCIAEoCBInCgRuZXh0GAMgASgLMhQubWZ0aWtvLm1kLnYxLkN1cnNvckgAiAEBEhsKE2NvbnRpbnVvdXNfc2luY2VfbnMYBCABKAMSHwoEZ2FwcxgFIAMoCzIRLm1mdGlrby5tZC52MS5HYXASIgoEaGVhZBgGIAEoCzIULm1mdGlrby5tZC52MS5DdXJzb3JCBwoFX25leHQicAoDR2FwEhAKCHN0YXJ0X25zGAEgASgDEg4KBmVuZF9ucxgCIAEoAxIiCgRsYXN0GAMgASgLMhQubWZ0aWtvLm1kLnYxLkN1cnNvchIjCgVmaXJzdBgEIAEoCzIULm1mdGlrby5tZC52MS5DdXJzb3IiqQEKDEJvb2tTbmFwc2hvdBIgCgRtZXRhGAEgASgLMhIubWZ0aWtvLm1kLnYxLk1ldGESIQoEYmlkcxgCIAMoCzITLm1mdGlrby5tZC52MS5MZXZlbBIhCgRhc2tzGAMgAygLMhMubWZ0aWtvLm1kLnYxLkxldmVsEhIKCmNvbm5fZXBvY2gYBCABKAQSCwoDc2VxGAUgASgEEhAKCG1kX3RzX25zGAYgASgDInwKDEZldGNoUmVxdWVzdBIrCgZrbGluZXMYASABKAsyGS5tZnRpa28ubWQudjEuRmV0Y2hLbGluZXNIABI4Cg1vcGVuX2ludGVyZXN0GAIgASgLMh8ubWZ0aWtvLm1kLnYxLkZldGNoT3BlbkludGVyZXN0SABCBQoDcmVxIj4KC0ZldGNoS2xpbmVzEg4KBnRpY2tlchgBIAEoCRIQCghpbnRlcnZhbBgCIAEoCRINCgVsaW1pdBgDIAEoDSIjChFGZXRjaE9wZW5JbnRlcmVzdBIOCgZ0aWNrZXIYASABKAkikgEKCkZldGNoUmVwbHkSDQoFZXJyb3IYASABKAkSDgoGcmVhc29uGAIgASgJEiYKBmtsaW5lcxgKIAEoCzIULm1mdGlrby5tZC52MS5LbGluZXNIABIzCg1vcGVuX2ludGVyZXN0GAsgASgLMhoubWZ0aWtvLm1kLnYxLk9wZW5JbnRlcmVzdEgAQggKBnJlc3VsdCItCgZLbGluZXMSIwoGa2xpbmVzGAEgAygLMhMubWZ0aWtvLm1kLnYxLktsaW5lQj5aPGdpdGh1Yi5jb20vQnVsbGlvbkJlYXIvbWZ0aWtvL2NvbnRyYWN0L2dlbi9tZnRpa28vbWQvdjE7bWR2MWIGcHJvdG8z", [file_mftiko_md_v1_md]);
+  fileDesc("ChdtZnRpa28vbWQvdjEvcmVhZC5wcm90bxIMbWZ0aWtvLm1kLnYxInYKC1ZpZXdSZXF1ZXN0Eg0KBWxpbWl0GAEgASgNEikKBmJlZm9yZRgCIAEoCzIULm1mdGlrby5tZC52MS5DdXJzb3JIAIgBARIVCghzaW5jZV9ucxgDIAEoA0gBiAEBQgkKB19iZWZvcmVCCwoJX3NpbmNlX25zIikKBkN1cnNvchISCgpjb25uX2Vwb2NoGAEgASgEEgsKA3NlcRgCIAEoBCJ4CglWaWV3UmVwbHkSDQoFZXJyb3IYASABKAkSJgoEdGFwZRgKIAEoCzIWLm1mdGlrby5tZC52MS5UYXBlUGFnZUgAEioKBGJvb2sYCyABKAsyGi5tZnRpa28ubWQudjEuQm9va1NuYXBzaG90SABCCAoGcmVzdWx0ImYKCVRhcGVFdmVudBISCgpjb25uX2Vwb2NoGAEgASgEEgsKA3NlcRgCIAEoBBIQCghtZF90c19ucxgDIAEoAxImCgVldmVudBgEIAEoCzIXLm1mdGlrby5tZC52MS5GZWVkRXZlbnQi1QEKCFRhcGVQYWdlEicKBmV2ZW50cxgBIAMoCzIXLm1mdGlrby5tZC52MS5UYXBlRXZlbnQSDAoEbW9yZRgCIAEoCBInCgRuZXh0GAMgASgLMhQubWZ0aWtvLm1kLnYxLkN1cnNvckgAiAEBEhsKE2NvbnRpbnVvdXNfc2luY2VfbnMYBCABKAMSHwoEZ2FwcxgFIAMoCzIRLm1mdGlrby5tZC52MS5HYXASIgoEaGVhZBgGIAEoCzIULm1mdGlrby5tZC52MS5DdXJzb3JCBwoFX25leHQicAoDR2FwEhAKCHN0YXJ0X25zGAEgASgDEg4KBmVuZF9ucxgCIAEoAxIiCgRsYXN0GAMgASgLMhQubWZ0aWtvLm1kLnYxLkN1cnNvchIjCgVmaXJzdBgEIAEoCzIULm1mdGlrby5tZC52MS5DdXJzb3IitgEKDEJvb2tTbmFwc2hvdBIgCgRtZXRhGAEgASgLMhIubWZ0aWtvLm1kLnYxLk1ldGESIQoEYmlkcxgCIAMoCzITLm1mdGlrby5tZC52MS5MZXZlbBIhCgRhc2tzGAMgAygLMhMubWZ0aWtvLm1kLnYxLkxldmVsEhIKCmNvbm5fZXBvY2gYBCABKAQSCwoDc2VxGAUgASgEEhAKCG1kX3RzX25zGAYgASgDEgsKA3VpZBgHIAEoDSJ8CgxGZXRjaFJlcXVlc3QSKwoGa2xpbmVzGAEgASgLMhkubWZ0aWtvLm1kLnYxLkZldGNoS2xpbmVzSAASOAoNb3Blbl9pbnRlcmVzdBgCIAEoCzIfLm1mdGlrby5tZC52MS5GZXRjaE9wZW5JbnRlcmVzdEgAQgUKA3JlcSI7CgtGZXRjaEtsaW5lcxIQCghpbnRlcnZhbBgCIAEoCRINCgVsaW1pdBgDIAEoDRILCgN1aWQYBCABKA0iIAoRRmV0Y2hPcGVuSW50ZXJlc3QSCwoDdWlkGAIgASgNIp8BCgpGZXRjaFJlcGx5Eg0KBWVycm9yGAEgASgJEg4KBnJlYXNvbhgCIAEoCRILCgN1aWQYAyABKA0SJgoGa2xpbmVzGAogASgLMhQubWZ0aWtvLm1kLnYxLktsaW5lc0gAEjMKDW9wZW5faW50ZXJlc3QYCyABKAsyGi5tZnRpa28ubWQudjEuT3BlbkludGVyZXN0SABCCAoGcmVzdWx0Ii0KBktsaW5lcxIjCgZrbGluZXMYASADKAsyEy5tZnRpa28ubWQudjEuS2xpbmVCPlo8Z2l0aHViLmNvbS9CdWxsaW9uQmVhci9tZnRpa28vY29udHJhY3QvZ2VuL21mdGlrby9tZC92MTttZHYxYgZwcm90bzM", [file_mftiko_md_v1_md]);
 
 /**
  * @generated from message mftiko.md.v1.ViewRequest
@@ -272,6 +272,13 @@ export type BookSnapshot = Message<"mftiko.md.v1.BookSnapshot"> & {
    * @generated from field: int64 md_ts_ns = 6;
    */
   mdTsNs: bigint;
+
+  /**
+   * 商品（D461）
+   *
+   * @generated from field: uint32 uid = 7;
+   */
+  uid: number;
 };
 
 /**
@@ -317,13 +324,6 @@ export const FetchRequestSchema: GenMessage<FetchRequest> = /*@__PURE__*/
  */
 export type FetchKlines = Message<"mftiko.md.v1.FetchKlines"> & {
   /**
-   * 今天是 UniversalTicker。改成 UID 是後續（D203）。subject 是 md.v1.fetch.{venue}，用人讀的名字（D456）
-   *
-   * @generated from field: string ticker = 1;
-   */
-  ticker: string;
-
-  /**
    * 正規寫法：1m、4h、1mo
    *
    * @generated from field: string interval = 2;
@@ -336,6 +336,13 @@ export type FetchKlines = Message<"mftiko.md.v1.FetchKlines"> & {
    * @generated from field: uint32 limit = 3;
    */
   limit: number;
+
+  /**
+   * 商品（D461）。subject 是 md.v1.fetch.{venue}，用人讀的名字（D456）；UID 的 venue 必須是它
+   *
+   * @generated from field: uint32 uid = 4;
+   */
+  uid: number;
 };
 
 /**
@@ -350,9 +357,11 @@ export const FetchKlinesSchema: GenMessage<FetchKlines> = /*@__PURE__*/
  */
 export type FetchOpenInterest = Message<"mftiko.md.v1.FetchOpenInterest"> & {
   /**
-   * @generated from field: string ticker = 1;
+   * 商品（D461）
+   *
+   * @generated from field: uint32 uid = 2;
    */
-  ticker: string;
+  uid: number;
 };
 
 /**
@@ -377,6 +386,13 @@ export type FetchReply = Message<"mftiko.md.v1.FetchReply"> & {
    * @generated from field: string reason = 2;
    */
   reason: string;
+
+  /**
+   * 請求的商品（D461）
+   *
+   * @generated from field: uint32 uid = 3;
+   */
+  uid: number;
 
   /**
    * @generated from oneof mftiko.md.v1.FetchReply.result

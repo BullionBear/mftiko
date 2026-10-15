@@ -13,6 +13,7 @@ message Meta {
 }
 
 message FeedEvent {
+  uint32 uid = 13; // 商品（D203、D461）。每一則行情都帶；payload 裡沒有 ticker 字串
   oneof event {
     BestQuote best_quote = 1;
     Trade trade = 2;

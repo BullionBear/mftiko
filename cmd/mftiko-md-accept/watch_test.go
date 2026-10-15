@@ -26,6 +26,23 @@ func TestStep(t *testing.T) {
 	}
 }
 
+func TestSubjectTicker(t *testing.T) {
+	topic, ticker, ok := subjectTicker("md.v1.f.dev.orderbook_delta.BinanceUM_Perp_BTCUSDT", "dev")
+	if !ok || topic != "orderbook_delta" || ticker != "BinanceUM_Perp_BTCUSDT" {
+		t.Fatalf("got %s %s %v", topic, ticker, ok)
+	}
+	topic, ticker, ok = subjectTicker("md.v1.f.dev.trade.With.Dots", "dev")
+	if !ok || topic != "trade" || ticker != "With.Dots" {
+		t.Fatalf("dotted ticker: %s %s %v", topic, ticker, ok)
+	}
+	if _, _, ok := subjectTicker("md.v1.f.other.trade.X", "dev"); ok {
+		t.Fatal("wrong instance parsed")
+	}
+	if _, _, ok := subjectTicker("md.v1.f.dev.trade", "dev"); ok {
+		t.Fatal("missing ticker parsed")
+	}
+}
+
 func TestCursorNext(t *testing.T) {
 	for _, c := range []struct {
 		a, b cursor

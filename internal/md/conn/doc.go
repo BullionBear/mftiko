@@ -12,7 +12,9 @@
 //
 // At Init the process loads this venue's active symbol table and follows sym.v1.changed.{venue}. A reconcile
 // loop turns the agent's topic.UniversalTicker list into atoms with that table and subscribes the
-// difference. A worker started without a table applies atom ids from the assignment instead.
+// difference. The UID on that row is copied onto the feed and written into every md.f payload and
+// every md.view book snapshot (D461). A worker started without a table applies atom ids from the
+// assignment instead.
 //
 // Depth updates are folded into a sdk/book ring on this connection (D424–D434, D453). The only
 // book feed is orderbook_delta. It forwards each normalized increment unchanged. A reset and the
