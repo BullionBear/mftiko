@@ -622,6 +622,10 @@ func findIn(orders map[string]*tdv1.Order, o *tdv1.Order) *tdv1.Order {
 
 func (b *book) answer(req *tdv1.ViewRequest) *tdv1.ViewReply {
 	r := &tdv1.ViewReply{State: b.state, ReconciledAtNs: b.reconciledAt, Incarnation: b.source.GetIncarnation(), Seq: b.seq}
+	// Every reply carries the venue batch size, including an invalid request (D631).
+	if n := b.limits.CancelBatch; n > 0 {
+		r.CancelBatch = uint32(n)
+	}
 	switch q := req.GetReq().(type) {
 	case *tdv1.ViewRequest_Oms:
 		// Only live orders: a finished one is on td.evt and in the store, not here (D615).

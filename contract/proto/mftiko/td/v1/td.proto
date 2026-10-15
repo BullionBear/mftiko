@@ -43,8 +43,6 @@ enum AccountState {
   ACCOUNT_STATE_UNSPECIFIED = 0;
   ACCOUNT_STATE_READY = 1;
   ACCOUNT_STATE_DEGRADED = 2; // 私有 websocket 斷線，或查單失敗超過 5 分鐘：新單以 102 拒絕，Cancel 與 BatchCancel 照常（D603、D622、D627）
-  reserved 3; // 原本的 UNAVAILABLE：執行中不檢查持倉模式（D616）
-  reserved "ACCOUNT_STATE_UNAVAILABLE";
 }
 
 // ---------- td.order.{api_id} ----------
@@ -57,8 +55,6 @@ message OrderRequest {
     Cancel cancel = 2;
     BatchCancel batch_cancel = 4;
   }
-  reserved 3; // 原本的 cancel_session：平台不替策略撤單（D602）
-  reserved "cancel_session";
 }
 
 message Submit {
@@ -86,8 +82,6 @@ message Cancel {
   string session_id = 1; // 只給 log 與歸屬
   uint32 uid = 2;
   string client_order_id = 3;
-  reserved 4;
-  reserved "order_id";
   uint32 algo_id = 5; // 目標單的 client_order_id 的 algo 欄位必須等於它；解不開的 client_order_id 以 106 拒絕（D602）
   // 請求有效期，毫秒（D620）。0 = 這個 TD instance 的預設（部署設定，預設 5 秒）。
   // 超過交易所上限（60 秒）時 TD 壓到上限。時鐘誤差是 instance 的設定，預設 1 秒，不在這則訊息裡。
@@ -102,16 +96,12 @@ message Cancel {
 // 回覆只說收下了；每一張單撤成或撤不成，各自是一則 OrderUpdate（D610）。DEGRADED 照常，走 REST，不走 TradeStream（D627）。
 // 整筆結果不明時，批內每張查單（已有 order_id 用它，否則用 client_order_id），不重送（D626）。cancel-on-disconnect 不接。
 message BatchCancel {
-  reserved 1, 2, 3;
-  reserved "algo_id", "uids", "timeout_ms";
   repeated BatchCancelOrder orders = 4;
 }
 
 // BatchCancel 清單裡的一張單。只收 client_order_id。
 message BatchCancelOrder {
   string client_order_id = 1;
-  reserved 2;
-  reserved "order_id";
 }
 
 // td.order 的回覆（D610）。
@@ -134,9 +124,8 @@ message ViewRequest {
 }
 
 message OmsViewRequest {
-  reserved 1; // 原本的 session_id：訂單只帶 algo，不帶 session（D602、D610）
-  reserved "session_id";
-  bool settled = 2; // 不再有作用：OMS 只放活著的單，終結的單從 td.evt 與落庫的歷史拿（D615）。E6-15 定案時決定是否拿掉
+  reserved 2; // settled：沒有作用（D615），拿掉，號碼與名字不重用（D632）
+  reserved "settled";
   uint32 algo_id = 3; // 非 0 時以 algo 篩選，涵蓋上一個進程、上一個 session 留下的單（D602）
 }
 
@@ -161,19 +150,18 @@ message ViewReply {
   int64 reconciled_at_ns = 11; // 最近一次 recon 完成的時間；0 = 這個 incarnation 還沒完成第一次 recon
   uint32 incarnation = 12;
   uint64 seq = 13; // 這份快照已經涵蓋到的 td.evt seq：之後只要套用 seq 更大、incarnation 相同的事件
+  // 這個帳號的 Limits.CancelBatch（D631）。1 表示交易所沒有批次撤單，SDK 改走單筆 Cancel（D625）。
+  // 每一則回覆都帶，不論問的是 OMS、帳本或槓桿。策略照這個數把一個 algo 的掛單拆成多筆 BatchCancel。
+  uint32 cancel_batch = 14;
 }
 
 message OmsView {
   repeated Order orders = 1;
-  reserved 2, 3; // incarnation、as_of_ns 移到 ViewReply（D606）
-  reserved "incarnation", "as_of_ns";
 }
 
 message LedgerView {
   repeated Balance balances = 1;
   repeated Position positions = 2;
-  reserved 3, 4; // incarnation、as_of_ns 移到 ViewReply（D606）
-  reserved "incarnation", "as_of_ns";
 }
 
 message LeverageInfo {
@@ -193,10 +181,6 @@ message AccountEvent {
     PositionUpdate position_update = 15;
     Recon recon = 17;
   }
-  reserved 12, 13; // 原本的 order_reject、cancel_reject：收進 OrderUpdate（D610）
-  reserved "order_reject", "cancel_reject";
-  reserved 16; // 原本的 account_reset：由 Recon 取代（D603）
-  reserved "account_reset";
 }
 
 // 一張單的一次變化（D610）。order 是變化之後的完整狀態，cause 說為什麼變。
@@ -239,8 +223,6 @@ message Order {
   optional double price = 9; // 同 Submit.price，單位是 price_ccy（D203）
   double filled_qty = 10; // 已成交數量，單位同 qty（contract_value_ccy，D203）
   optional double avg_price = 11; // 同 Submit.price，單位是 price_ccy（D203）
-  reserved 12; // 原本的 reject_reason：改在 OrderUpdate.code、reason（D610）
-  reserved "reject_reason";
   int64 exch_ts_ns = 13;
   int64 td_ts_ns = 14;
   // TD 送出撤單的時間；0 = 沒有撤單在途。撤單在途是旗標，不是 status（D610）。
