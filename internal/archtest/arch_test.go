@@ -268,7 +268,7 @@ func TestCheckReportsViolations(t *testing.T) {
 			Deps: []string{"github.com/valyala/fasthttp", m("exchange")}}, // the transport: free
 		{ImportPath: m("contract/symbol"), Imports: []string{"context", "google.golang.org/protobuf/proto", "github.com/rs/zerolog", m("exchange")}},
 		{ImportPath: m("sdk"), Imports: []string{m("contract/wire/frame"), m("internal/platform/natsx")},
-			Deps: []string{"fmt", m("contract/wire/frame"), "go.etcd.io/etcd/client/v3", m("exchange"), m("sdk/internal/c4")}},
+			Deps: []string{"fmt", m("contract/wire/frame"), "go.etcd.io/etcd/client/v3", m("exchange"), m("contract/wire/c4")}},
 		{ImportPath: m("examples/strategies/x"), Imports: []string{m("sdk"), m("internal/md")}},
 		{ImportPath: m("internal/td"), Imports: []string{m("internal/platform/agent")},
 			Deps: []string{m("internal/platform/agent"), m("internal/platform/agent/runner"), "github.com/nats-io/nats.go"}},
