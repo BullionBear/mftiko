@@ -108,9 +108,14 @@ func (r *runner) flowDupInit() (Check, error) {
 				}
 			}
 		}
-		// Exiting follows the second Done. Wait for the frame, not only for
-		// the process exit: the reader can observe the exit first.
-		return n >= 2
+		// A second Done(ok) is the violation and can be reported before exit.
+		// A refusal still has to reach Exiting and the process exit, which
+		// the reader can observe after the Done frame.
+		if secondOK {
+			return true
+		}
+		_, _, has := s.exiting()
+		return n >= 2 && s.exited && has
 	})
 	if secondOK {
 		return fail("duplicate Init: Done ok"), nil

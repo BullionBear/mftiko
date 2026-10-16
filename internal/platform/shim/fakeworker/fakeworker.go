@@ -119,7 +119,7 @@ func Env(s Script, journal string) ([]string, error) {
 //
 // EnvWorker runs the shim's scripted fake. -mftiko-conformance runs the conformance worker
 // (PROTOCOL §9.8). The testing harness invokes TestMain before flag.Parse, so conformanceMode
-// parses those flags when the command line is still unparsed.
+// parses the conformance flags itself when that switch is present.
 func MaybeMain() {
 	if os.Getenv(envSleeper) == "1" {
 		select {} // the grandchild: lives until killed

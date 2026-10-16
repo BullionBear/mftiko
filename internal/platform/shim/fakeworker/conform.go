@@ -53,12 +53,30 @@ var (
 
 // conformanceMode reports whether this process was started as the conformance worker.
 // Flags are registered from init. TestMain runs before the testing harness parses
-// flags, so parse here when nothing has parsed the command line yet.
+// flags, so when -mftiko-conformance is present this parses the command line itself.
+// A scripted fake (EnvWorker) is often started with arguments this package does not
+// define, such as "--mode fake"; those processes are left unparsed.
 func conformanceMode() bool {
+	if !conformArg(os.Args[1:]) {
+		return false
+	}
 	if !flag.Parsed() {
 		flag.Parse()
 	}
 	return *conformFlag
+}
+
+func conformArg(args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			return false
+		}
+		if a == "-mftiko-conformance" || a == "--mftiko-conformance" ||
+			strings.HasPrefix(a, "-mftiko-conformance=") || strings.HasPrefix(a, "--mftiko-conformance=") {
+			return true
+		}
+	}
+	return false
 }
 
 func knownViolate(id string) bool {
