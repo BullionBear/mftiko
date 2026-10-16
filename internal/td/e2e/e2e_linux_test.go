@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"net/http/httptest"
 	"os"
@@ -864,14 +865,18 @@ func TestResumeFromView(t *testing.T) {
 		ps := ev.GetPositionUpdate().GetPositions()
 		return len(ps) == 1 && ps[0].GetSize() == 1.5
 	})
-	for _, ev := range again.all() {
-		l.apply(ev)
-	}
 
-	final := e.view(reconReq())
-	if l.seq != final.GetSeq() {
-		t.Fatalf("applied up to seq %d, td.view is at %d", l.seq, final.GetSeq())
-	}
+	// The fill on c3 and the position come from two paths, so the position event can arrive before
+	// the fill's last events. The claim is that the session converges to td.view: keep applying what
+	// arrives until its seq reaches the snapshot's, then compare.
+	var final *tdv1.ViewReply
+	e.wait("the resumed session to reach td.view's seq", func() bool {
+		for _, ev := range again.all() {
+			l.apply(ev)
+		}
+		final = e.view(reconReq())
+		return l.seq == final.GetSeq()
+	}, func() string { return fmt.Sprintf("applied up to seq %d, td.view is at %d", l.seq, final.GetSeq()) })
 	if want := final.GetRecon().GetOpenOrders(); len(want) != len(l.orders) {
 		t.Fatalf("orders: local %v, td.view %v", slices.Sorted(maps.Keys(l.orders)), cloids(want))
 	}
