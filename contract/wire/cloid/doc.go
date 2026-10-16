@@ -4,7 +4,8 @@
 // The SDK encodes and filters with AlgoOf. TD does not decode: on the trade path client_order_id is
 // an opaque string (D633). Persistence still decodes, to attribute a stored order (D601, D602, E7).
 // Encode defines the layout; the session worker's generator, which keeps ts_ms monotonic and borrows
-// a millisecond when seq runs out, is the SDK's (PROTOCOL §9.4).
+// a millisecond when seq runs out, is sdk/internal/cloidgen (PROTOCOL §9.4, D811–D814). Borrowing can
+// put ts_ms ahead of the wall clock.
 //
 // Standard library only.
 package cloid
