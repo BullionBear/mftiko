@@ -76,6 +76,7 @@ jobs:
         run: make vet
       - name: build
         run: make build
+      # Includes the conformance fakeworker violation checks (D834, PROTOCOL §9.8).
       - name: go test -race
         env:
           MFTIKO_REQUIRE_ETCD: "1" # a missing etcd fails the etcd tests instead of skipping them

@@ -85,6 +85,8 @@ The tests of `migrations` and `internal/sym` run a real PostgreSQL (`pgtest`). T
 
 CI (`.github/workflows/ci.yml`) runs `make check` on every pull request and on `main`, with etcd downloaded from its release and checked against the release's `SHA256SUMS`, PostgreSQL installed from the runner image's packages, and `buf breaking` compared with the pull request's base.
 
+`internal/sts/conformance` is the SDK conformance harness (PROTOCOL §9.8, D828–D839). `go test -race` runs it against `fakeworker`: one compliant pass, and one deliberate failure for each check (D834). Those tests poll observable conditions. A full Go SDK pass waits until `sdk.Run` exists (E8-13). Try a worker locally with `mftiko-conformance -- <worker argv>`.
+
 ## Logging and build identity
 
 Every binary logs through `internal/platform/logger` (zerolog): JSON, one object per line, on stderr. Each line carries `component`, `version` and `commit`.
@@ -96,4 +98,4 @@ Every binary logs through `internal/platform/logger` (zerolog): JSON, one object
 
 ## Other languages
 
-The platform ships only the Go SDK. A strategy in another language works if its SDK follows PROTOCOL §9 and passes `mftiko-conformance` (DECISIONS D802).
+The platform ships only the Go SDK. A strategy in another language works if its SDK follows PROTOCOL §9 and passes `mftiko-conformance` (DECISIONS D802). The Go standard strategy is `examples/strategies/conform`. Claiming a contract in a manifest after the suite passes is a release rule; the STS agent does not read the report at spawn (D832).

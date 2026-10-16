@@ -114,11 +114,18 @@ func Env(s Script, journal string) ([]string, error) {
 	return []string{EnvWorker + "=1", EnvScript + "=" + string(b), EnvJournal + "=" + journal}, nil
 }
 
-// MaybeMain runs the fake and exits if this process was started as one (EnvWorker); otherwise it returns at once.
+// MaybeMain runs the fake and exits if this process was started as one; otherwise it returns at once.
 // Call it first thing in TestMain.
+//
+// EnvWorker runs the shim's scripted fake. -mftiko-conformance runs the conformance worker
+// (PROTOCOL §9.8). The testing harness invokes TestMain before flag.Parse, so conformanceMode
+// parses those flags when the command line is still unparsed.
 func MaybeMain() {
 	if os.Getenv(envSleeper) == "1" {
 		select {} // the grandchild: lives until killed
+	}
+	if conformanceMode() {
+		os.Exit(runConform())
 	}
 	if os.Getenv(EnvWorker) != "1" {
 		return
