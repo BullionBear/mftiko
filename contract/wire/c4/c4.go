@@ -253,6 +253,7 @@ type ctl struct {
 	inited      bool
 	queued      []*workerv1.Live
 	reason      string
+	stopping    bool          // set before cancel, so halted() is true when a hook wakes (D805)
 	hadStop     bool          // a Stop was read; its grace bounds OnStop (D808)
 	stopAt      time.Time     // when that Stop was read
 	grace       time.Duration // its grace_ms
@@ -333,7 +334,9 @@ func (s *ctl) init(ctx context.Context, m *workerv1.Init) (code int, ok bool) {
 		return s.failPhase(workerv1.Verb_VERB_INIT, errDeadline.Error(), false), false
 	}
 	if err != nil {
-		if s.halted() {
+		// cancel() runs before stopped is closed, so a Stop that woke Init may not be visible
+		// through halted() yet. The context ending is the same stop (D805).
+		if s.halted() || ctx.Err() != nil {
 			return s.finish(commonv1.Outcome_OUTCOME_DONE, s.reasonOr("signal"), false, ExitDone, false), false
 		}
 		return s.failPhase(workerv1.Verb_VERB_INIT, err.Error(), false), false
@@ -469,6 +472,9 @@ func (s *ctl) halt(reason string) {
 		if s.reason == "" {
 			s.reason = reason
 		}
+		// Visible to halted() before cancel returns. stopped is closed after cancel, and a hook
+		// blocked on ctx.Done() can run in between.
+		s.stopping = true
 		s.mu.Unlock()
 		s.cancel()
 		close(s.stopped)
@@ -476,6 +482,12 @@ func (s *ctl) halt(reason string) {
 }
 
 func (s *ctl) halted() bool {
+	s.mu.Lock()
+	stopping := s.stopping
+	s.mu.Unlock()
+	if stopping {
+		return true
+	}
 	select {
 	case <-s.stopped:
 		return true
