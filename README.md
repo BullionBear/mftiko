@@ -73,7 +73,7 @@ docs/                     DECISIONS.md, PROTOCOL.md
 | `make clean` | removes `bin/` and web build output |
 | `make help` | lists targets |
 
-Building and testing the Go code need only Go 1.26+: the generated code is committed. `make proto`, `make web` and `make check` also need Node 22+ and npm; Docker only for `make dev-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`; its etcd is at `http://127.0.0.1:2379`, one member with no auth. Its NATS is at `nats://127.0.0.1:4222`, one server, core NATS only, no TLS. `make dev-up` generates the operator, account and user credentials into `deploy/dev/data/nats`, which is gitignored. MD and md.fetch use those creds.
+Building and testing the Go code need only Go 1.26+: the generated code is committed. `make proto`, `make web` and `make check` also need Node 22+ and npm; Docker only for `make dev-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`; its etcd is at `http://127.0.0.1:2379`, one member with no auth. Its NATS is at `nats://127.0.0.1:4222`, one server, core NATS only, no TLS. The generated server config sets `max_control_line` to 262144 (D827): a session JWT lists each feed, and the server default of 4096 rejects that CONNECT line. `make dev-up` generates the operator, account and user credentials into `deploy/dev/data/nats`, which is gitignored. MD and md.fetch use those creds.
 
 ## Tests
 

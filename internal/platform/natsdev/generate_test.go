@@ -163,7 +163,10 @@ func TestGenerateMaterial(t *testing.T) {
 	}
 
 	conf := string(readFile(t, filepath.Join(dir, "nats-server.conf")))
-	for _, want := range []string{"type: full", "allow_delete: false", lay.Manifest.System, ContainerOperator, ContainerResolver, "port: 4222", "http_port: 8222"} {
+	if MaxControlLine != 262144 {
+		t.Fatalf("MaxControlLine = %d", MaxControlLine)
+	}
+	for _, want := range []string{"type: full", "allow_delete: false", lay.Manifest.System, ContainerOperator, ContainerResolver, "port: 4222", "http_port: 8222", "max_control_line: 262144"} {
 		if !strings.Contains(conf, want) {
 			t.Fatalf("config missing %q\n%s", want, conf)
 		}

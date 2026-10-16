@@ -51,7 +51,8 @@ services:
 
   # Core NATS only, one server, the same release the tests embed
   # (github.com/nats-io/nats-server/v2 v2.15.0). The data plane (D002, D004): no JetStream, no cluster,
-  # no TLS. Operator and account JWTs use a full resolver (D412). The image's own config is not used;
+  # no TLS. Operator and account JWTs use a full resolver (D412). max_control_line is 262144 (D827).
+  # The image's own config is not used;
   # it opens a cluster port with a fixed route password. `make dev-up` writes the three mounted files
   # first. keys/ and creds/ stay on the host and are not mounted. Clients use nats://127.0.0.1:4222
   # with the generated creds. The alpine image, not scratch, because the healthcheck needs wget, which
