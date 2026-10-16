@@ -10,7 +10,7 @@ import (
 //
 // SIGTERM belongs to Run, not to c4.Serve. Run takes it with signal.NotifyContext and passes that
 // context to Serve, as mftiko-md-conn and mftiko-td-account do. Cancelling it is a Stop. Serve does
-// not watch signals (DECISIONS D805).
+// not watch signals (DECISIONS D806).
 func Run(s Strategy) {
 	_ = s
 	fmt.Fprintln(os.Stderr, "mftiko sdk: not implemented")

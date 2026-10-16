@@ -609,7 +609,7 @@ func TestStopGraceZero(t *testing.T) {
 	}
 }
 
-// The worker ending itself is not given a deadline (D808). A Stopper error is Stopped(false);
+// The worker ending itself is not given a deadline (D809). A Stopper error is Stopped(false);
 // the exit code stays, because Exiting was already sent.
 func TestStopperSelfEndAndError(t *testing.T) {
 	t.Run("run", func(t *testing.T) {
@@ -666,7 +666,7 @@ func TestStopperNotCalled(t *testing.T) {
 	})
 }
 
-// A Start that fails after Init succeeded runs OnStop, with no deadline of its own (D807, D808).
+// A Start that fails after Init succeeded runs OnStop, with no deadline of its own (D808, D809).
 func TestStopperOnStartFailure(t *testing.T) {
 	f := &script{
 		fake: fake{startErr: errors.New("hedge_mode")},
@@ -814,7 +814,7 @@ func TestDeadline(t *testing.T) {
 	})
 }
 
-// SIGTERM is the caller's context, the way a worker main builds it (D805). Serve does not watch
+// SIGTERM is the caller's context, the way a worker main builds it (D806). Serve does not watch
 // the signal. With no Stop carrying a grace, OnStop is not given a deadline.
 func TestSIGTERM(t *testing.T) {
 	if runtime.GOOS == "windows" {

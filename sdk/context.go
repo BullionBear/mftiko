@@ -1,25 +1,79 @@
 package sdk
 
-import "time"
+import (
+	"errors"
+	"time"
 
-// Context is what a hook may do. Every method except Post must be called from a hook (D803).
+	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
+	mdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1"
+	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
+	"github.com/BullionBear/mftiko/contract/symbol"
+	"github.com/BullionBear/mftiko/sdk/book"
+)
+
+// Context is what a hook may do. Every method except Post must be called from a hook (D803). Nothing
+// here blocks except Resolve, which only OnInit and OnStart may call.
+//
+// Instruments are UIDs everywhere (DECISIONS D804): a strategy resolves the tickers of its own config
+// once, keeps the UIDs, and reads current fields with Info when it needs them.
 type Context interface {
 	SessionID() string
 	// Params are the strategy's own parameters from the session spec; the platform does not read them.
 	Params() []byte
 
-	// Submit places an order. AlgoID must be one declared for the account (D602).
+	// ---------- instruments ----------
+
+	// Resolve looks a UniversalTicker up in SYM. Only OnInit and OnStart may call it; it may block. A
+	// ticker SYM does not know is not one the platform supports.
+	Resolve(ticker string) (symbol.Info, error)
+	// Info is the instrument's current row. It reads memory, so any hook may call it; keep the UID, not
+	// the Info, since status and filters change.
+	Info(uid uint32) (symbol.Info, bool)
+
+	// ---------- orders ----------
+
+	// Submit places an order and returns its client_order_id. The order is in OpenOrders as PENDING_NEW
+	// before Submit returns; what happens to it comes as OrderEvents. An error means nothing was sent
+	// and is a mistake in the call: an algo not declared for the account, a UID the SDK does not know.
 	Submit(o Order) (clientOrderID string, err error)
+	// Cancel asks TD to cancel one of the strategy's orders. A local refusal comes as a RejectEvent.
 	Cancel(apiID int64, clientOrderID string) error
-	// BatchCancel cancels every open order on the account whose client_order_id carries algoID,
-	// whichever session or incarnation placed it (D602).
-	BatchCancel(apiID int64, algoID uint32, tickers ...string) error
+	// BatchCancel cancels every open order of algoID on the account (only those of uids, when given),
+	// whichever session or incarnation placed them. The SDK picks the orders from OpenOrders and splits
+	// them by the account's cancel_batch (DECISIONS D602, D631).
+	BatchCancel(apiID int64, algoID uint32, uids ...uint32) error
+	// RequestRecon asks td.view for a new snapshot of the account; it arrives as OnRecon.
+	RequestRecon(apiID int64) error
+
+	// ---------- local state (current as of the event being handled) ----------
+
+	Order(apiID int64, clientOrderID string) (*tdv1.Order, bool)
+	// OpenOrders are the account's live orders of algoID; 0 means every algo the session declared.
+	OpenOrders(apiID int64, algoID uint32) []*tdv1.Order
+	Position(apiID int64, uid uint32) (*tdv1.Position, bool)
+	Balance(apiID int64, asset string) (*tdv1.Balance, bool)
+	// Book is the local book of an instrument with an orderbook_delta feed. The view is valid only
+	// inside the hook (D803).
+	Book(uid uint32) (BookView, bool)
+
+	// ---------- reads (the answer runs fn on the dispatcher) ----------
+
+	// Tape pages through md.view's tape of a feed (DECISIONS D436, D437).
+	Tape(uid uint32, topic Topic, q TapeQuery, fn func(ctx Context, page *mdv1.TapePage, err error)) error
+	// BookSnapshot asks md.view for the windowed book. The local book needs no help from it; this is for
+	// strategies that want the conn worker's view.
+	BookSnapshot(uid uint32, fn func(ctx Context, snap *mdv1.BookSnapshot, err error)) error
+	// FetchKlines asks md.fetch for the latest limit closed klines (DECISIONS D419).
+	FetchKlines(uid uint32, interval string, limit uint32, fn func(ctx Context, k *mdv1.Klines, err error)) error
+	// FetchOpenInterest asks md.fetch for the open interest the exchange does not push.
+	FetchOpenInterest(uid uint32, fn func(ctx Context, oi *mdv1.OpenInterest, err error)) error
+
+	// ---------- control ----------
 
 	// After schedules fn on the dispatcher. Repeats of one timer coalesce (D803).
 	After(d time.Duration, fn func(Context))
 	// Post hands fn to the dispatcher from any goroutine. It is the only thread-safe entry.
 	Post(fn func(Context))
-
 	// Exit ends the session as DONE; Fail ends it as FAILED (PROTOCOL §5.3).
 	Exit()
 	Fail(reason string)
@@ -30,19 +84,73 @@ type Context interface {
 	InputDir(name string) string
 }
 
-// Order is a new order.
+// Order is a new order, in the units of td.Submit (DECISIONS D203).
 type Order struct {
-	APIID      int64
-	AlgoID     uint32
-	Ticker     string // UniversalTicker
-	Side       Side
-	Type       OrderType
-	Qty        float64 // contract_value_ccy (D203); snapped to the instrument's qty_step by TD (D008)
-	Price      float64 // price_ccy; decimal.Absent (NaN) for market orders
-	ReduceOnly bool
+	APIID  int64
+	AlgoID uint32 // one declared for the account (D602)
+	UID    uint32
+	Side   commonv1.Side
+	Type   commonv1.OrderType
+	TIF    commonv1.TimeInForce
+	// Qty is in contract_value_ccy and QuoteQty in quote; set one, and leave the other decimal.Absent().
+	Qty      float64
+	QuoteQty float64
+	Price    float64 // price_ccy; decimal.Absent() for a market order
+	// RecvWindowMs is how long the request stays valid at the exchange; 0 is the TD instance's default
+	// (D620).
+	RecvWindowMs int64
+	ReduceOnly   bool
+	// Params go to the exchange adapter as they are. Position-side keys are refused (D607).
+	Params map[string]string
 }
 
-type (
-	Side      int
-	OrderType int
+// BookView is the read side of a local book.
+type BookView interface {
+	TickSize() float64
+	Window() int
+	Price(tick int64) float64
+	BestBidTick() (tick int64, ok bool)
+	BestAskTick() (tick int64, ok bool)
+	Qty(bid bool, price float64) (float64, bool)
+	Bids(limit int) book.Iter
+	Asks(limit int) book.Iter
+}
+
+var _ BookView = (*book.OrderBook)(nil)
+
+// Topic is a market data topic (PROTOCOL §2).
+type Topic string
+
+const (
+	TopicBestQuote      Topic = "bestquote"
+	TopicTrade          Topic = "trade"
+	TopicAggTrade       Topic = "aggtrade"
+	TopicOrderBookDelta Topic = "orderbook_delta"
+	TopicTicker         Topic = "ticker"
+	TopicLiquidation    Topic = "liquidation"
+	TopicFundingRate    Topic = "funding_rate"
+	TopicOpenInterest   Topic = "open_interest"
+	TopicGreeks         Topic = "greeks"
+	TopicMarkPrice      Topic = "mark_price"
+)
+
+// KlineTopic is the topic of klines of one interval, such as "1m" or "4h".
+func KlineTopic(interval string) Topic { return Topic("kline_" + interval) }
+
+// TapeQuery is one page of md.view's tape (read.v1 ViewRequest).
+type TapeQuery struct {
+	Limit   uint32       // 0 is 1000; at most 5000
+	Before  *mdv1.Cursor // the previous page's next; nil for the newest page
+	SinceNs int64        // only events with md_ts_ns ≥ SinceNs; 0 for no bound
+}
+
+// Errors a Context method returns synchronously. They are mistakes in the call, not outcomes: TD's
+// answers come as events.
+var (
+	ErrNotInInit       = errors.New("sdk: only OnInit and OnStart may call this")
+	ErrUnknownUID      = errors.New("sdk: the instrument is not known to this session")
+	ErrUnknownAccount  = errors.New("sdk: the account is not bound to this session")
+	ErrAlgoNotDeclared = errors.New("sdk: the algo_id is not declared for this account")
+	ErrNoFeed          = errors.New("sdk: the session has no such feed")
+	ErrStopping        = errors.New("sdk: the session is stopping")
 )

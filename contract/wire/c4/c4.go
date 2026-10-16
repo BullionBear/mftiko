@@ -7,16 +7,16 @@
 //   - Live that arrives before Init has succeeded is held and applied before Done(INIT) (D111).
 //   - A Relay from the agent (a C5 Command) goes to the plane, when the plane takes them.
 //   - Init.deadline_ms and Start.deadline_ms, when not zero, bound that call. Past the deadline
-//     Serve does not wait: Done(verb, false), Exiting(INIT_FAILED), Stopped(false), exit 10 (D806).
+//     Serve does not wait: Done(verb, false), Exiting(INIT_FAILED), Stopped(false), exit 10 (D807).
 //   - The ending of §5.3: Exiting(outcome, reason), then OnStop when the plane is a Stopper and
-//     §5.3 runs it, then Stopped(on_stop_completed), then the exit code (D808). When Run returns,
+//     §5.3 runs it, then Stopped(on_stop_completed), then the exit code (D809). When Run returns,
 //     a plane that implements HookTimeout limits that OnStop; past the limit Serve does not wait
 //     and does not send Stopped (exit 21, D803).
 //
 // The plane is a Plane. Its Init, Start and Run take one context, which ends on Stop, on the shim's
 // EOF, or when the caller's context ends. That last one is how SIGTERM arrives. Worker mains pass a
 // signal.NotifyContext for SIGTERM — mftiko-md-conn, mftiko-td-account, and the SDK session worker —
-// and Serve does not watch signals itself (D805). Cancelling that context is a Stop.
+// and Serve does not watch signals itself (D806). Cancelling that context is a Stop.
 //
 // It is in contract so that every worker can use it: the MD conn worker, the TD account worker, and
 // the Go SDK's session worker, which depends only on contract (D802). Like the rest of contract it
@@ -72,13 +72,13 @@ type Relayer interface {
 	Relay(corrID, payload []byte)
 }
 
-// Stopper is a Plane that cleans up between Exiting and Stopped (PROTOCOL §5.2, D808). OnStop runs
+// Stopper is a Plane that cleans up between Exiting and Stopped (PROTOCOL §5.2, D809). OnStop runs
 // on Serve's goroutine, except when Run returned and HookTimeout limited it: that call is on its
 // own goroutine so a timeout can return without waiting. Worker mains exit with os.Exit, so the
 // leftover call does not keep the process up. A Plane that is not a Stopper is unchanged: nothing
 // is called, and Stopped.on_stop_completed stays what §5.3 already records.
 //
-// OnStop runs only where §5.3 runs OnStop, narrowed by D806 and D807. It does not run after HUNG,
+// OnStop runs only where §5.3 runs OnStop, narrowed by D807 and D808. It does not run after HUNG,
 // after Init failed, or after Start timed out. A Start that fails for any other reason does run
 // it: Init succeeded, and that work needs cleaning up.
 //
@@ -89,7 +89,7 @@ type Relayer interface {
 //     remains of the shim's grace. grace_ms 0 is already due. A later Stop does not move it; only
 //     the first Stop sets the shim's timer (PROTOCOL §4.3). Serve waits for OnStop. The shim is
 //     what ends the process when grace runs out.
-//   - The caller's context ended and no Stop was read (SIGTERM on its own, D805). There is no
+//   - The caller's context ended and no Stop was read (SIGTERM on its own, D806). There is no
 //     deadline. That signal carries no grace_ms, and c4 does not invent one.
 //   - Run returned, and no Stop was read. The deadline is the duration the plane handed over after
 //     Init, when it implements HookTimeout. Zero, or a plane that does not, does not limit OnStop:
@@ -105,7 +105,7 @@ type Stopper interface {
 	OnStop(ctx context.Context) error
 }
 
-// HookTimeout is a Plane that limits OnStop when Run returns (D808). Serve calls it once, after
+// HookTimeout is a Plane that limits OnStop when Run returns (D809). Serve calls it once, after
 // Init has returned success, and keeps that duration. The duration is the plane's own reading of
 // hook_timeout_s — for STS, stsctl.InitPayload.hook_timeout_s as a time.Duration. c4 does not parse
 // the C5 payload. A Plane that is not a HookTimeout, or that returns zero, does not limit that
@@ -120,10 +120,10 @@ type Plane interface {
 	// Init reads Init.payload, whose contract Serve has checked. An error fails Init: Done(INIT,
 	// false), Exiting(INIT_FAILED), Stopped(false), exit 10. Its text is the reason, so it must not
 	// carry secrets. Init.deadline_ms above zero that expires first is the same ending, and Init is
-	// not waited for (D806). OnStop does not run.
+	// not waited for (D807). OnStop does not run.
 	Init(ctx context.Context, s *Session, payload []byte) error
 	// Start runs before Done(START). An error fails Start: Done(START, false), Exiting(INIT_FAILED),
-	// Stopped(true), exit 10, and OnStop runs when the plane is a Stopper (D807). Start.deadline_ms
+	// Stopped(true), exit 10, and OnStop runs when the plane is a Stopper (D808). Start.deadline_ms
 	// above zero that expires first is the same frames with Stopped(false), and OnStop does not run;
 	// Start is not waited for. A Start that ends because ctx ended is a stop, not a failure.
 	Start(ctx context.Context, payload []byte) error
@@ -253,11 +253,11 @@ type ctl struct {
 	inited      bool
 	queued      []*workerv1.Live
 	reason      string
-	stopping    bool          // set before cancel, so halted() is true when a hook wakes (D805)
-	hadStop     bool          // a Stop was read; its grace bounds OnStop (D808)
+	stopping    bool          // set before cancel, so halted() is true when a hook wakes (D806)
+	hadStop     bool          // a Stop was read; its grace bounds OnStop (D809)
 	stopAt      time.Time     // when that Stop was read
 	grace       time.Duration // its grace_ms
-	hookTimeout time.Duration // OnStop budget when Run returns; 0 means none (D808)
+	hookTimeout time.Duration // OnStop budget when Run returns; 0 means none (D809)
 
 	liveMu sync.Mutex // one Live applied at a time
 }
@@ -335,7 +335,7 @@ func (s *ctl) init(ctx context.Context, m *workerv1.Init) (code int, ok bool) {
 	}
 	if err != nil {
 		// cancel() runs before stopped is closed, so a Stop that woke Init may not be visible
-		// through halted() yet. The context ending is the same stop (D805).
+		// through halted() yet. The context ending is the same stop (D806).
 		if s.halted() || ctx.Err() != nil {
 			return s.finish(commonv1.Outcome_OUTCOME_DONE, s.reasonOr("signal"), false, ExitDone, false), false
 		}
@@ -369,7 +369,7 @@ func (s *ctl) start(ctx context.Context, m *workerv1.Start) (code int, ok bool) 
 		return s.plane.Start(ctx, m.GetPayload())
 	})
 	if timedOut {
-		// The hook is not waited for, so it may still be inside Start. OnStop does not run (D807).
+		// The hook is not waited for, so it may still be inside Start. OnStop does not run (D808).
 		return s.failPhase(workerv1.Verb_VERB_START, errDeadline.Error(), false), false
 	}
 	if err != nil {
@@ -391,7 +391,7 @@ func (s *ctl) start(ctx context.Context, m *workerv1.Start) (code int, ok bool) 
 }
 
 // failPhase is an Init or a Start the worker will not run: Done, then the ending. onStop is false
-// for Init and for a deadline (D806, D807), and true for any other Start failure.
+// for Init and for a deadline (D807, D808), and true for any other Start failure.
 func (s *ctl) failPhase(verb workerv1.Verb, why string, onStop bool) int {
 	if verb == workerv1.Verb_VERB_INIT {
 		s.log("init failed", errors.New(why))
@@ -445,7 +445,7 @@ func (s *ctl) relay(m *workerv1.Relay) {
 }
 
 // exit ends the worker as Run asked. HUNG skips OnStop (§5.3). The others are Run returning, so
-// OnStop takes the plane's hook budget when one was handed over (D808). A Stop already read still
+// OnStop takes the plane's hook budget when one was handed over (D809). A Stop already read still
 // wins: its remaining grace is the deadline, and Serve waits.
 func (s *ctl) exit(x *Exit) int {
 	switch x.Outcome {
@@ -534,7 +534,7 @@ func (s *ctl) finish(outcome commonv1.Outcome, reason string, onStop bool, code 
 }
 
 // noteHookTimeout records the plane's self-end OnStop budget after Init has succeeded. c4 does not
-// read the payload that number came from (D808).
+// read the payload that number came from (D809).
 func (s *ctl) noteHookTimeout() {
 	h, ok := s.plane.(HookTimeout)
 	if !ok {
@@ -549,7 +549,7 @@ func (s *ctl) noteHookTimeout() {
 	s.mu.Unlock()
 }
 
-// noteStop records the first Stop. Its grace is the one OnStop is given the rest of (D808); a later
+// noteStop records the first Stop. Its grace is the one OnStop is given the rest of (D809); a later
 // Stop does not replace it, matching the shim, which lets only the first Stop set the timer.
 func (s *ctl) noteStop(m *workerv1.Stop) {
 	if m == nil {
@@ -614,7 +614,7 @@ func hookHung(ctx context.Context, err error) bool {
 	return err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) && errors.Is(err, context.DeadlineExceeded)
 }
 
-// runLimited runs fn. ms is Init.deadline_ms or Start.deadline_ms: zero means no limit (D806).
+// runLimited runs fn. ms is Init.deadline_ms or Start.deadline_ms: zero means no limit (D807).
 // timedOut is true when that deadline expired and this call is not keeping fn's result. A nil
 // result is success even if the deadline has also expired. The parent context ending is a stop,
 // not a deadline, and fn is waited for, as a Stop during Start is today. On timeout fn is left
@@ -645,7 +645,7 @@ func runLimited(ctx context.Context, ms uint32, fn func(context.Context) error) 
 
 // timeoutResult reports whether a finished fn failed because its own deadline elapsed. The parent
 // ending is a stop. A nil error finished in time. Any other error is that error, even if the
-// deadline has also elapsed: the hook returned, and a Start failure still cleans up (D807).
+// deadline has also elapsed: the hook returned, and a Start failure still cleans up (D808).
 func timeoutResult(parent, limited context.Context, err error) bool {
 	if err == nil || parent.Err() != nil {
 		return false
