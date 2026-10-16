@@ -83,16 +83,20 @@ func (BindingState) EnumDescriptor() ([]byte, []int) {
 }
 
 type InitPayload struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	Incarnation   uint32                 `protobuf:"varint,2,opt,name=incarnation,proto3" json:"incarnation,omitempty"`
-	StsInstance   string                 `protobuf:"bytes,3,opt,name=sts_instance,json=stsInstance,proto3" json:"sts_instance,omitempty"`
-	Name          string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
-	Strategy      *v1.StrategyRef        `protobuf:"bytes,5,opt,name=strategy,proto3" json:"strategy,omitempty"`
-	Params        []byte                 `protobuf:"bytes,6,opt,name=params,proto3" json:"params,omitempty"`
-	Feeds         []*v1.FeedDecl         `protobuf:"bytes,7,rep,name=feeds,proto3" json:"feeds,omitempty"`
-	Accounts      []*v1.AccountDecl      `protobuf:"bytes,8,rep,name=accounts,proto3" json:"accounts,omitempty"`
-	Nats          *NatsCredentials       `protobuf:"bytes,9,opt,name=nats,proto3" json:"nats,omitempty"` // 這個 session 專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D906）
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	SessionId   string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Incarnation uint32                 `protobuf:"varint,2,opt,name=incarnation,proto3" json:"incarnation,omitempty"`
+	StsInstance string                 `protobuf:"bytes,3,opt,name=sts_instance,json=stsInstance,proto3" json:"sts_instance,omitempty"`
+	Name        string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
+	Strategy    *v1.StrategyRef        `protobuf:"bytes,5,opt,name=strategy,proto3" json:"strategy,omitempty"`
+	Params      []byte                 `protobuf:"bytes,6,opt,name=params,proto3" json:"params,omitempty"`
+	Feeds       []*v1.FeedDecl         `protobuf:"bytes,7,rep,name=feeds,proto3" json:"feeds,omitempty"`
+	Accounts    []*v1.AccountDecl      `protobuf:"bytes,8,rep,name=accounts,proto3" json:"accounts,omitempty"`
+	Nats        *NatsCredentials       `protobuf:"bytes,9,opt,name=nats,proto3" json:"nats,omitempty"` // 這個 session 專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D906）
+	// 以下兩個是 STS agent 解析後的實值（DECISIONS D803）：spec 寫 0 表示用預設，agent 換成它的預設值再填，
+	// 所以這裡不會是 0。SDK 不知道預設值；收到 0 是 agent 的錯，以 INIT_FAILED 結束。
+	RecvWindowMs  uint32 `protobuf:"varint,10,opt,name=recv_window_ms,json=recvWindowMs,proto3" json:"recv_window_ms,omitempty"` // MD 事件的最長壽命，prehook 用（SessionSpec.recv_window_ms）
+	HookTimeoutS  uint32 `protobuf:"varint,11,opt,name=hook_timeout_s,json=hookTimeoutS,proto3" json:"hook_timeout_s,omitempty"` // 單一 hook 的硬上限，watchdog 用（SessionSpec.limits.hook_timeout_s）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -188,6 +192,20 @@ func (x *InitPayload) GetNats() *NatsCredentials {
 		return x.Nats
 	}
 	return nil
+}
+
+func (x *InitPayload) GetRecvWindowMs() uint32 {
+	if x != nil {
+		return x.RecvWindowMs
+	}
+	return 0
+}
+
+func (x *InitPayload) GetHookTimeoutS() uint32 {
+	if x != nil {
+		return x.HookTimeoutS
+	}
+	return 0
 }
 
 // STS agent 為這個 session 簽的 user JWT。權限見 PROTOCOL §7。
@@ -912,7 +930,7 @@ var File_mftiko_stsctl_v1_stsctl_proto protoreflect.FileDescriptor
 
 const file_mftiko_stsctl_v1_stsctl_proto_rawDesc = "" +
 	"\n" +
-	"\x1dmftiko/stsctl/v1/stsctl.proto\x12\x10mftiko.stsctl.v1\x1a\x1dmftiko/common/v1/common.proto\x1a\x1fmftiko/session/v1/session.proto\"\xff\x02\n" +
+	"\x1dmftiko/stsctl/v1/stsctl.proto\x12\x10mftiko.stsctl.v1\x1a\x1dmftiko/common/v1/common.proto\x1a\x1fmftiko/session/v1/session.proto\"\xcb\x03\n" +
 	"\vInitPayload\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12 \n" +
@@ -923,7 +941,10 @@ const file_mftiko_stsctl_v1_stsctl_proto_rawDesc = "" +
 	"\x06params\x18\x06 \x01(\fR\x06params\x121\n" +
 	"\x05feeds\x18\a \x03(\v2\x1b.mftiko.session.v1.FeedDeclR\x05feeds\x12:\n" +
 	"\baccounts\x18\b \x03(\v2\x1e.mftiko.session.v1.AccountDeclR\baccounts\x125\n" +
-	"\x04nats\x18\t \x01(\v2!.mftiko.stsctl.v1.NatsCredentialsR\x04nats\"c\n" +
+	"\x04nats\x18\t \x01(\v2!.mftiko.stsctl.v1.NatsCredentialsR\x04nats\x12$\n" +
+	"\x0erecv_window_ms\x18\n" +
+	" \x01(\rR\frecvWindowMs\x12$\n" +
+	"\x0ehook_timeout_s\x18\v \x01(\rR\fhookTimeoutS\"c\n" +
 	"\x0fNatsCredentials\x12\x19\n" +
 	"\buser_jwt\x18\x01 \x01(\tR\auserJwt\x12\x12\n" +
 	"\x04seed\x18\x02 \x01(\tR\x04seed\x12!\n" +

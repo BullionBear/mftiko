@@ -18,6 +18,10 @@ message InitPayload {
   repeated mftiko.session.v1.FeedDecl feeds = 7;
   repeated mftiko.session.v1.AccountDecl accounts = 8;
   NatsCredentials nats = 9; // 這個 session 專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D906）
+  // 以下兩個是 STS agent 解析後的實值（DECISIONS D803）：spec 寫 0 表示用預設，agent 換成它的預設值再填，
+  // 所以這裡不會是 0。SDK 不知道預設值；收到 0 是 agent 的錯，以 INIT_FAILED 結束。
+  uint32 recv_window_ms = 10; // MD 事件的最長壽命，prehook 用（SessionSpec.recv_window_ms）
+  uint32 hook_timeout_s = 11; // 單一 hook 的硬上限，watchdog 用（SessionSpec.limits.hook_timeout_s）
 }
 
 // STS agent 為這個 session 簽的 user JWT。權限見 PROTOCOL §7。
