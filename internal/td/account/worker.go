@@ -33,9 +33,13 @@ type Worker struct {
 	orderConn *conn
 
 	// Owned by the goroutine in Start, then Run.
-	ctx          context.Context
-	eventsUp     bool
-	needRecon    bool
+	ctx       context.Context
+	eventsUp  bool
+	needRecon bool
+	// swapWait is set when an events connection finishes a planned swap, and cleared when the recon
+	// that follows it starts. A swap that lands while a snapshot is already being read is not covered
+	// by that snapshot (D635).
+	swapWait     bool
 	state        tdv1.AccountState
 	reason       string
 	reconciledAt int64
@@ -136,17 +140,24 @@ func (w *Worker) loop(ctx context.Context, starting bool) error {
 	var retry <-chan time.Time
 	for {
 		if w.needRecon && w.eventsUp && retry == nil {
+			// This read starts now. A swap that already finished is covered by it; one that finishes
+			// while it runs sets swapWait again and needs its own (D635).
+			w.swapWait = false
 			w.book.beginRecon(ctx)
 			snap, err := w.recon(ctx)
 			switch {
 			case err == nil:
 				backoff = w.retryAfter
-				// The events connection may have dropped while the recon ran: then this snapshot is
-				// not followed by a live stream, and the next recon replaces it.
 				if err := w.drain(starting); err != nil {
 					return err
 				}
-				if !w.eventsUp {
+				// Dropped while this recon ran: the snapshot has no live stream after it, so the next
+				// recon replaces it. A planned swap that finished during the read is the same. This
+				// AsOf can predate that gap (D635).
+				if !w.eventsUp || w.swapWait {
+					if w.swapWait {
+						w.needRecon = true
+					}
 					continue
 				}
 				w.needRecon = false
@@ -193,6 +204,15 @@ func (w *Worker) loop(ctx context.Context, starting bool) error {
 func (w *Worker) linkEvent(e linkEvent, starting bool) error {
 	if e.err != nil {
 		return errors.New(ReasonAuth)
+	}
+	if e.swap {
+		// The new connection is already up. Only the events role recons, and it does not report
+		// DEGRADED: the role never went down (D635, D636).
+		if e.role == roleEvents {
+			w.needRecon = true
+			w.swapWait = true
+		}
+		return nil
 	}
 	if e.orders {
 		w.mu.Lock()

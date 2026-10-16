@@ -34,6 +34,7 @@ type TradeVenue struct {
 	url        string // what the codec dials; Handler serves it
 	conns      map[*streamConn]struct{}
 	connsTotal int
+	life       time.Duration // MaxLifetime the codec reports; tests set it, 0 is none
 }
 
 type answer struct {
@@ -213,8 +214,18 @@ func (s *tradeStream) Dial(now time.Time) (*exchange.Dial, error) {
 	return &exchange.Dial{URL: u, Frames: frames}, nil
 }
 
+// SetMaxLifetime is the MaxLifetime Stream reports. Zero is none. Set it before the worker dials.
+func (v *TradeVenue) SetMaxLifetime(d time.Duration) {
+	v.mu.Lock()
+	v.life = d
+	v.mu.Unlock()
+}
+
 func (s *tradeStream) Limits() exchange.TradeLimits {
-	return exchange.TradeLimits{Events: s.events, ReadLimit: 1 << 20}
+	s.v.mu.Lock()
+	d := s.v.life
+	s.v.mu.Unlock()
+	return exchange.TradeLimits{Events: s.events, ReadLimit: 1 << 20, MaxLifetime: d}
 }
 func (s *tradeStream) Ping() []byte { return nil }
 
