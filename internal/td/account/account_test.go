@@ -490,16 +490,167 @@ func TestQuietStream(t *testing.T) {
 	h.stop()
 }
 
-// A connection about to reach its MaxLifetime is replaced before it closes: no DEGRADED, no recon.
+// swapLife is short enough that one planned swap lands inside waitFor, and long enough that the
+// next one does not arrive before the test stops. Rotation starts two margins (each a tenth of the
+// lifetime) before the transport would close the connection.
+const swapLife = 2 * time.Second
+
+// swapRecon waits for the planned swap's one Recon(RECONNECT). The next worker frame has to be
+// Report(READY): a DEGRADED in between fails the wait (D635–D637).
+func (h *harness) swapRecon(first *tdctlv1.Report) []*tdv1.AccountEvent {
+	h.t.Helper()
+	waitFor(h.t, "no Recon(RECONNECT) after the swap", func() bool {
+		rs := h.bus.recons()
+		return len(rs) >= 2 && rs[1].GetReason() == tdv1.ReconReason_RECON_REASON_RECONNECT
+	})
+	evs := h.bus.all()
+	rs := h.bus.recons()
+	if len(rs) != 2 || rs[0].GetReason() != tdv1.ReconReason_RECON_REASON_INCARNATION ||
+		rs[1].GetReason() != tdv1.ReconReason_RECON_REASON_RECONNECT {
+		h.t.Fatalf("recons %s", kinds(evs))
+	}
+	seqsFrom1(h.t, evs)
+	again := h.report(tdv1.AccountState_ACCOUNT_STATE_READY, "")
+	if again.GetReconciledAtNs() <= first.GetReconciledAtNs() {
+		h.t.Fatal("swap recon did not move reconciled_at")
+	}
+	if got := h.oms().GetState(); got != tdv1.AccountState_ACCOUNT_STATE_READY {
+		h.t.Fatalf("state %v", got)
+	}
+	return h.bus.all()
+}
+
+func countCloid(evs []*tdv1.AccountEvent, cloid string) int {
+	n := 0
+	for _, e := range evs {
+		if e.GetOrderUpdate().GetOrder().GetClientOrderId() == cloid {
+			n++
+		}
+	}
+	return n
+}
+
+func reconHas(r *tdv1.Recon, cloid string) bool {
+	for _, o := range r.GetOpenOrders() {
+		if o.GetClientOrderId() == cloid {
+			return true
+		}
+	}
+	return false
+}
+
+func serveTrade(t *testing.T, tv *exchangetest.TradeVenue) {
+	t.Helper()
+	srv := httptest.NewServer(tv.Handler())
+	t.Cleanup(srv.Close)
+	tv.SetURL("ws" + strings.TrimPrefix(srv.URL, "http"))
+}
+
+// A connection about to reach its MaxLifetime is replaced before it closes. The events connection
+// then runs one recon, reason RECONNECT, seq continuous, and does not report DEGRADED (D635–D637).
 func TestReplacedAheadOfLifetime(t *testing.T) {
-	h := start(t, setup{opts: exchangetest.AccountOptions{Stream: exchange.StreamLimits{MaxLifetime: 600 * time.Millisecond}}})
-	h.startReady()
-	h.none(1500 * time.Millisecond)
-	if _, total := h.v.Connections(); total < 3 {
+	h := start(t, setup{opts: exchangetest.AccountOptions{Stream: exchange.StreamLimits{MaxLifetime: swapLife}}})
+	first := h.startReady()
+	evs := h.swapRecon(first)
+	seqsFrom1(t, evs)
+	if _, total := h.v.Connections(); total != 2 {
 		t.Fatalf("%d connections", total)
 	}
+	h.stop()
+}
+
+// The replacement dial does not watch the old link. An order the old link misses is in the book
+// after the swap's recon, and it was not delivered as a stream event (D635).
+func TestSwapReconRestoresWhatTheOldLinkLost(t *testing.T) {
+	h := start(t, setup{opts: exchangetest.AccountOptions{Stream: exchange.StreamLimits{MaxLifetime: swapLife}}})
+	first := h.startReady()
+	h.v.StallHandshakes(1)
+	waitFor(t, "replacement dial was not held", func() bool { return h.v.StalledHandshakes() >= 1 })
+	h.v.Disconnect()
+	waitFor(t, "old link still open", func() bool { o, _ := h.v.Connections(); return o == 0 })
+	h.v.PutOrder(limit("gap", 1))
+	h.v.ReleaseHandshakes()
+	evs := h.swapRecon(first)
+	if !reconHas(h.bus.recons()[1], "gap") {
+		t.Fatalf("gap order missing from recon: %s", kinds(evs))
+	}
+	for _, e := range evs {
+		if e.GetOrderUpdate() != nil || e.GetFill() != nil {
+			t.Fatalf("the lost event was delivered on the stream: %s", kinds(evs))
+		}
+	}
+	h.waitMatch()
+	h.stop()
+}
+
+// While the old and new links overlap, one order event is delivered once (D615, D635).
+func TestSwapOverlapEmitsOnce(t *testing.T) {
+	h := start(t, setup{opts: exchangetest.AccountOptions{Stream: exchange.StreamLimits{MaxLifetime: swapLife}}})
+	first := h.startReady()
+	h.v.StallLogins(1)
+	waitFor(t, "replacement login was not held", func() bool {
+		o, _ := h.v.Connections()
+		return h.v.StalledLogins() >= 1 && o == 2
+	})
+	h.v.PutOrder(limit("overlap", 1))
+	waitFor(t, "overlap event did not arrive", func() bool { return countCloid(h.bus.all(), "overlap") == 1 })
+	h.v.ReleaseLogins()
+	evs := h.swapRecon(first)
+	if n := countCloid(evs, "overlap"); n != 1 {
+		t.Fatalf("%d updates for the overlapped order\n%s", n, kinds(evs))
+	}
+	if !reconHas(h.bus.recons()[1], "overlap") {
+		t.Fatalf("overlap order missing from recon: %s", kinds(evs))
+	}
+	seqsFrom1(t, evs)
+	h.waitMatch()
+	h.stop()
+}
+
+// A trade stream that carries the events is the events connection: its planned swap recons (D635).
+func TestEventTradeLinkSwapRecons(t *testing.T) {
+	tv := exchangetest.NewTradeVenue(apiKey, true)
+	tv.SetMaxLifetime(swapLife)
+	h := start(t, setup{opts: exchangetest.AccountOptions{Trade: tv}})
+	serveTrade(t, tv)
+	first := h.startReady()
+	if n := h.dials.Load(); n != 0 {
+		t.Fatalf("%d private dials", n)
+	}
+	h.swapRecon(first)
+	if _, total := tv.Connections(); total != 2 {
+		t.Fatalf("%d trade connections", total)
+	}
+	h.stop()
+}
+
+// An orders connection's planned swap does not recon and does not change the account state (D635).
+func TestOrderLinkSwapDoesNotRecon(t *testing.T) {
+	tv := exchangetest.NewTradeVenue(apiKey, false)
+	tv.SetMaxLifetime(400 * time.Millisecond)
+	h := start(t, setup{opts: exchangetest.AccountOptions{Trade: tv}})
+	serveTrade(t, tv)
+	h.startReady()
+	waitFor(t, "the order connection was not replaced", func() bool {
+		if len(h.bus.recons()) != 1 {
+			return true
+		}
+		_, total := tv.Connections()
+		return total >= 5
+	})
 	if n := len(h.bus.recons()); n != 1 {
 		t.Fatalf("%d recons", n)
+	}
+	select {
+	case m := <-h.ups:
+		t.Fatalf("report during order swaps: %v", m)
+	default:
+	}
+	if got := h.oms().GetState(); got != tdv1.AccountState_ACCOUNT_STATE_READY {
+		t.Fatalf("state %v", got)
+	}
+	if _, total := h.v.Connections(); total != 1 {
+		t.Fatalf("%d private connections", total)
 	}
 	h.stop()
 }

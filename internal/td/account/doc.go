@@ -13,8 +13,9 @@
 // recon has run; an orders connection that drops leaves orders to REST (D614, D624). A query that
 // still has no result five minutes after its first failure is the same DEGRADED state, reason
 // query_failed, and it clears once those queries conclude and the events connection is up (D622). A
-// connection about to reach its MaxLifetime is replaced before it closes, so the replacement is not
-// a reconnect (D614).
+// connection about to reach its MaxLifetime is replaced before it closes, so the role never goes
+// down (D614). The events connection then runs one recon and stays READY; the orders connection
+// does not recon (D635, D636).
 //
 // The account's state is the book's (book.go): the OMS holds live orders only, the ledger positions,
 // balances and leverage. It publishes every change on td.evt and answers td.view from memory (D606,
