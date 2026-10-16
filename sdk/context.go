@@ -23,12 +23,16 @@ type Context interface {
 
 	// ---------- instruments ----------
 
-	// Resolve looks a UniversalTicker up in SYM. Only OnInit and OnStart may call it; it may block. A
-	// ticker SYM does not know is not one the platform supports.
+	// Resolve looks a UniversalTicker up in SYM (GetRequest). Only OnInit and OnStart may call it;
+	// any other hook returns ErrNotInInit without calling SYM. It may block. A ticker SYM does not
+	// know is not one the platform supports (the error wraps symbol.ErrNotFound). The strategy
+	// returning that error ends the session INIT_FAILED.
 	Resolve(ticker string) (symbol.Info, error)
-	// Info is the instrument's current row. It reads memory, so any hook may call it; keep the UID, not
-	// the Info, since status and filters change.
-	Info(uid uint32) (symbol.Info, bool)
+	// Info is the instrument's current row (D825). It reads memory, so any hook may call it; keep the
+	// UID, not the Info, since status and filters change. A UID this session has not resolved returns
+	// ErrUnknownUID and does not call SYM (D824). A resolved instrument that later delists is still
+	// returned, with its terminal status (D826). Info does not retry.
+	Info(uid uint32) (symbol.Info, error)
 
 	// ---------- orders ----------
 
