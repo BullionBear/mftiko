@@ -63,6 +63,10 @@ var (
 // grammar does not allow '.' (PROTOCOL §2: a fractional strike spells D), so
 // a canonical ticker passes that check. An api_id that is not greater than 0
 // is ErrAPIID.
+//
+// The signed JWT's size is not checked here. internal/sts/issuer.SignSession
+// measures the CONNECT argument nats-server compares to max_control_line and
+// rejects a spec with too many feeds (D827). This function does not sign.
 func SessionPermissions(sessionID string, spec *sessionv1.SessionSpec, feedInst func(feed string) string) (Permissions, error) {
 	if spec == nil {
 		return Permissions{}, ErrNilSpec

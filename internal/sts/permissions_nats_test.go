@@ -17,12 +17,13 @@ import (
 
 	"github.com/BullionBear/mftiko/internal/platform/natsdev"
 	"github.com/BullionBear/mftiko/internal/sts"
+	"github.com/BullionBear/mftiko/internal/sts/issuer"
 )
 
 const opTimeout = 2 * time.Second
 
 // devServer is one embedded nats-server with the dev operator layout (D412).
-// max_control_line is the server default: the generated config does not set it.
+// The generated config sets max_control_line to 262144 (D827).
 type devServer struct {
 	url string
 	lay natsdev.Layout
@@ -50,8 +51,9 @@ func startDevServer(t *testing.T) *devServer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(conf, "max_control_line") {
-		t.Fatalf("config sets max_control_line:\n%s", conf)
+	wantLine := fmt.Sprintf("max_control_line: %d\n", natsdev.MaxControlLine)
+	if !strings.Contains(conf, wantLine) {
+		t.Fatalf("config missing %q\n%s", wantLine, conf)
 	}
 	confPath := filepath.Join(t.TempDir(), "nats-server.conf")
 	if err := os.WriteFile(confPath, []byte(conf), 0o644); err != nil {
@@ -60,6 +62,12 @@ func startDevServer(t *testing.T) *devServer {
 	opts, err := server.ProcessConfigFile(confPath)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if opts.MaxControlLine != natsdev.MaxControlLine {
+		t.Fatalf("server max_control_line %d", opts.MaxControlLine)
+	}
+	if server.MAX_CONTROL_LINE_SIZE != 4096 {
+		t.Fatalf("nats-server default max control line is %d", server.MAX_CONTROL_LINE_SIZE)
 	}
 	opts.NoLog = true
 	opts.NoSigs = true
@@ -90,14 +98,6 @@ type signedUser struct {
 
 func signSession(t *testing.T, lay natsdev.Layout, sessionID string, perms sts.Permissions) signedUser {
 	t.Helper()
-	ukp, err := nkeys.CreateUser()
-	if err != nil {
-		t.Fatal(err)
-	}
-	pub, err := ukp.PublicKey()
-	if err != nil {
-		t.Fatal(err)
-	}
 	seed, err := os.ReadFile(filepath.Join(lay.Dir, filepath.FromSlash(lay.Manifest.SigningKeyFile)))
 	if err != nil {
 		t.Fatal(err)
@@ -106,12 +106,11 @@ func signSession(t *testing.T, lay natsdev.Layout, sessionID string, perms sts.P
 	if err != nil {
 		t.Fatal(err)
 	}
-	uc := jwt.NewUserClaims(pub)
-	uc.Name = "session-" + sessionID
-	uc.IssuerAccount = lay.Manifest.Account
-	uc.Pub.Allow.Add(perms.Pub...)
-	uc.Sub.Allow.Add(perms.Sub...)
-	token, err := uc.Encode(skp)
+	token, userSeed, err := issuer.SignSession(sessionID, perms, lay.Manifest.Account, skp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ukp, err := nkeys.FromSeed([]byte(userSeed))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,12 +121,22 @@ func signSession(t *testing.T, lay natsdev.Layout, sessionID string, perms sts.P
 	if len(claims.Pub.Deny) != 0 || len(claims.Sub.Deny) != 0 || claims.Resp != nil {
 		t.Fatalf("deny pub %v sub %v resp %v", claims.Pub.Deny, claims.Sub.Deny, claims.Resp)
 	}
+	if claims.Name != "session-"+sessionID || claims.IssuerAccount != lay.Manifest.Account {
+		t.Fatalf("name %s issuer account %s", claims.Name, claims.IssuerAccount)
+	}
 	return signedUser{jwt: token, kp: ukp, inbox: "_INBOX_" + sessionID}
 }
 
 func dialUser(t *testing.T, url string, u signedUser) (*nats.Conn, error) {
 	t.Helper()
-	return nats.Connect(url,
+	// The permission checks set a client name. The size check measures a
+	// connection with no name (D827); TestSessionJWTFiveHundredFeeds dials that way.
+	return dialSession(t, url, u, "sts-session")
+}
+
+func dialSession(t *testing.T, url string, u signedUser, name string) (*nats.Conn, error) {
+	t.Helper()
+	opts := []nats.Option{
 		nats.UserJWT(
 			func() (string, error) { return u.jwt, nil },
 			func(nonce []byte) ([]byte, error) { return u.kp.Sign(nonce) },
@@ -135,9 +144,12 @@ func dialUser(t *testing.T, url string, u signedUser) (*nats.Conn, error) {
 		nats.CustomInboxPrefix(u.inbox),
 		nats.NoReconnect(),
 		nats.Timeout(opTimeout),
-		nats.Name("sts-session"),
 		nats.ErrorHandler(func(*nats.Conn, *nats.Subscription, error) {}),
-	)
+	}
+	if name != "" {
+		opts = append(opts, nats.Name(name))
+	}
+	return nats.Connect(url, opts...)
 }
 
 func dialMust(t *testing.T, url string, u signedUser) *nats.Conn {
@@ -307,41 +319,19 @@ func TestSessionJWTAllowsExactFeeds(t *testing.T) {
 	expectDenied(t, nc, func(nc *nats.Conn) error { return nc.Publish("td.order.7", []byte("q")) })
 }
 
-// controlLineObs is what one shape did against the default 4096-byte control
-// line: the last feed count that connected, the first that was refused, and
-// the user JWT a 500-feed session would present. jwt500 is signed and not connected.
-type controlLineObs struct {
-	okN, okJWT, failN, failJWT, jwt500 int
-}
-
-// controlLineObserved is the measurement on nats-server v2.15.0 with no
-// max_control_line in the dev config (the 4096 default). It is not a cap this
-// package chose. A session id is 6 lowercase hex, one account is api_id 7,
-// and the instance is md-tw-1.
-var controlLineObserved = map[string]controlLineObs{
-	"perp":   {okN: 23, okJWT: 3706, failN: 24, failJWT: 3830, jwt500: 62854},
-	"option": {okN: 14, okJWT: 3710, failN: 15, failJWT: 3914, jwt500: 102854},
-}
-
-// controlLineShape is one realistic feed spelling used to measure the CONNECT
-// line. The ticker is unique per index and contains no D819 character.
-type controlLineShape struct {
-	name   string
-	topic  string
-	ticker func(i int) string
-}
-
-func (s controlLineShape) feeds(n int) []string {
-	out := make([]string, n)
-	for i := range out {
-		out[i] = s.topic + "." + s.ticker(i)
-	}
-	return out
-}
-
-func TestSessionJWTControlLine(t *testing.T) {
+// TestSessionJWTFiveHundredFeeds connects a session that lists 500 feeds on
+// the generated server (max_control_line 262144, D827). The client sets no
+// connection name, which is the CONNECT argument SignSession measures.
+// The MD user is the dev instance, so the feed instance is dev and one
+// message is delivered on the first and last feed.
+func TestSessionJWTFiveHundredFeeds(t *testing.T) {
 	srv := startDevServer(t)
-	shapes := []controlLineShape{
+	md := dialMD(t, srv.url, srv.lay)
+	shapes := []struct {
+		name   string
+		topic  string
+		ticker func(i int) string
+	}{
 		{
 			name:  "perp",
 			topic: "trade",
@@ -357,106 +347,76 @@ func TestSessionJWTControlLine(t *testing.T) {
 			},
 		},
 	}
+	const (
+		n       = 500
+		session = "500fed"
+	)
 	for _, shape := range shapes {
 		t.Run(shape.name, func(t *testing.T) {
-			if server.MAX_CONTROL_LINE_SIZE != 4096 {
-				t.Fatalf("nats-server default max control line is %d", server.MAX_CONTROL_LINE_SIZE)
+			feeds := make([]string, n)
+			for i := range feeds {
+				feeds[i] = shape.topic + "." + shape.ticker(i)
 			}
-			okN, okJWT, failN, failJWT, failErr := controlLineLimit(t, srv, shape, 512)
-			jwt500 := jwtLen(t, srv.lay, shape, 500)
-			t.Logf("%s: %d feeds connect (jwt %d bytes); %d feeds refused (jwt %d bytes): %v; 500 feeds would be jwt %d bytes",
-				shape.name, okN, okJWT, failN, failJWT, failErr, jwt500)
-			// The counts are the measurement against the server default.
-			// This test does not raise max_control_line.
-			want, ok := controlLineObserved[shape.name]
-			if !ok {
-				t.Fatalf("no observation for %s", shape.name)
+			// md-tw-1 is the instance the 4096 measurement used. This user
+			// cannot be published to by the dev MD credential; connecting
+			// is the check. The dev instance below also receives a message.
+			wide := signSession(t, srv.lay, session, perms(t, session, specOf([]int64{7}, feeds), inst("md-tw-1")))
+			t.Logf("%s: 500 feeds on md-tw-1, jwt %d bytes", shape.name, len(wide.jwt))
+			wideNC, err := dialSession(t, srv.url, wide, "")
+			if err != nil {
+				t.Fatalf("connect md-tw-1: %v", err)
 			}
-			if okN != want.okN || okJWT != want.okJWT || failN != want.failN || failJWT != want.failJWT || jwt500 != want.jwt500 {
-				t.Fatalf("got ok %d jwt %d, fail %d jwt %d, jwt500 %d; want %+v", okN, okJWT, failN, failJWT, jwt500, want)
+			wideNC.Close()
+
+			user := signSession(t, srv.lay, session, perms(t, session, specOf([]int64{7}, feeds), inst("dev")))
+			t.Logf("%s: 500 feeds, jwt %d bytes", shape.name, len(user.jwt))
+			sess, err := dialSession(t, srv.url, user, "")
+			if err != nil {
+				t.Fatalf("connect: %v", err)
 			}
-			if failErr == nil || !controlLineExceeded(failErr) {
-				t.Fatalf("refusal was not max_control_line: %v", failErr)
+			defer sess.Close()
+			ends := []string{feeds[0], feeds[n-1]}
+			subs := make([]*nats.Subscription, len(ends))
+			for i, feed := range ends {
+				sub, err := sess.SubscribeSync("md.v1.f.dev." + feed)
+				if err != nil {
+					t.Fatal(err)
+				}
+				subs[i] = sub
 			}
-			// The server is still up after the refusal.
-			again := signSession(t, srv.lay, "c3d4e5", perms(t, "c3d4e5", specOf(nil, shape.feeds(1)), inst("md-tw-1")))
-			nc, err := dialUser(t, srv.url, again)
+			if err := sess.FlushTimeout(opTimeout); err != nil {
+				t.Fatal(err)
+			}
+			if err := sess.LastError(); err != nil {
+				t.Fatal(err)
+			}
+			for i, feed := range ends {
+				payload := []byte(fmt.Sprintf("tape-%d", i))
+				subject := "md.v1.f.dev." + feed
+				if err := md.Publish(subject, payload); err != nil {
+					t.Fatal(err)
+				}
+				if err := md.FlushTimeout(opTimeout); err != nil {
+					t.Fatal(err)
+				}
+				msg, err := subs[i].NextMsg(opTimeout)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(msg.Data) != string(payload) {
+					t.Fatalf("payload %q", msg.Data)
+				}
+			}
+			// Five hundred exact subjects are not an instance wildcard.
+			other, err := dialSession(t, srv.url, user, "")
 			if err != nil {
 				t.Fatal(err)
 			}
-			nc.Close()
+			defer other.Close()
+			expectDenied(t, other, func(nc *nats.Conn) error {
+				_, err := nc.SubscribeSync("md.v1.f.dev.>")
+				return err
+			})
 		})
 	}
-}
-
-// controlLineLimit is the largest feed count at or below cap that connects,
-// and the next count, which does not. cap is inclusive.
-func controlLineLimit(t *testing.T, srv *devServer, shape controlLineShape, cap int) (okN, okJWT, failN, failJWT int, failErr error) {
-	t.Helper()
-	try := func(n int) (int, error) {
-		t.Helper()
-		session := fmt.Sprintf("%06x", n) // 6 lowercase hex, the session_id form (PROTOCOL §2)
-		p, err := sts.SessionPermissions(session, specOf([]int64{7}, shape.feeds(n)), inst("md-tw-1"))
-		if err != nil {
-			t.Fatalf("permissions for %d feeds: %v", n, err)
-		}
-		user := signSession(t, srv.lay, session, p)
-		nc, err := dialUser(t, srv.url, user)
-		if nc != nil {
-			nc.Close()
-		}
-		return len(user.jwt), err
-	}
-	// Exponential search, then the gap between the last success and the first failure.
-	lastOK, lastJWT := -1, 0
-	failAt := cap + 1
-	for n := 0; n <= cap; n = nextN(n) {
-		jwtLen, err := try(n)
-		if err != nil {
-			failAt = n
-			failJWT = jwtLen
-			failErr = err
-			break
-		}
-		lastOK, lastJWT = n, jwtLen
-	}
-	if failErr == nil {
-		return lastOK, lastJWT, cap, lastJWT, nil
-	}
-	lo, hi := lastOK, failAt
-	for lo+1 < hi {
-		mid := (lo + hi) / 2
-		jwtLen, err := try(mid)
-		if err != nil {
-			hi = mid
-			failJWT = jwtLen
-			failErr = err
-			continue
-		}
-		lo = mid
-		lastJWT = jwtLen
-	}
-	return lo, lastJWT, hi, failJWT, failErr
-}
-
-func jwtLen(t *testing.T, lay natsdev.Layout, shape controlLineShape, n int) int {
-	t.Helper()
-	session := fmt.Sprintf("%06x", n)
-	p, err := sts.SessionPermissions(session, specOf([]int64{7}, shape.feeds(n)), inst("md-tw-1"))
-	if err != nil {
-		t.Fatalf("permissions for %d feeds: %v", n, err)
-	}
-	return len(signSession(t, lay, session, p).jwt)
-}
-
-func nextN(n int) int {
-	if n == 0 {
-		return 1
-	}
-	return n * 2
-}
-
-func controlLineExceeded(err error) bool {
-	s := strings.ToLower(err.Error())
-	return strings.Contains(s, "maximum control line") || strings.Contains(s, "max control line") || strings.Contains(s, "control line exceeded")
 }

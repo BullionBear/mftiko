@@ -63,6 +63,12 @@ const (
 	// because D416 does not grant publish on _INBOX.>. They are not a separate decision.
 	responseMaxMsgs = 1
 	responseTTL     = 2 * time.Minute
+
+	// MaxControlLine is the max_control_line written into the generated server
+	// config (D827). 256 KiB. The nats-server default is 4096, which a session
+	// CONNECT that lists each feed (D818) exceeds at a few dozen feeds. STS
+	// rejects a larger session CONNECT argument when it signs the user JWT.
+	MaxControlLine = 262144
 )
 
 // instToken is one NATS subject token and one path segment.
@@ -362,7 +368,8 @@ func (m Manifest) Summary() string {
 }
 
 // FormatServerConfig renders the dev server config: a full resolver, one operator,
-// the system account, and no TLS, cluster, or JetStream. Port -1 asks the OS for a port.
+// the system account, max_control_line 262144 (D827), and no TLS, cluster, or
+// JetStream. Port -1 asks the OS for a port.
 func FormatServerConfig(c ServerConfig) (string, error) {
 	if c.OperatorFile == "" || c.SystemAccount == "" || c.ResolverDir == "" || c.Host == "" || c.ServerName == "" {
 		return "", errors.New("natsdev: incomplete server config")
@@ -392,6 +399,7 @@ func FormatServerConfig(c ServerConfig) (string, error) {
 		fmt.Fprintf(&b, "http_port: %d\n", c.HTTPPort)
 	}
 	fmt.Fprintf(&b, "server_name: %s\n", name)
+	fmt.Fprintf(&b, "max_control_line: %d\n", MaxControlLine)
 	fmt.Fprintf(&b, "operator: %s\n", op)
 	fmt.Fprintf(&b, "system_account: %s\n", c.SystemAccount)
 	fmt.Fprintf(&b, "resolver: {\n  type: full\n  dir: %s\n  allow_delete: false\n  interval: \"2m\"\n}\n", dir)
