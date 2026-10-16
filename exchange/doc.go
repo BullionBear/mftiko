@@ -26,7 +26,7 @@
 //	SYM                          PublicREST.Listing (ListingOver)    D201
 //	in-process Resolver (dev)    InProcessUIDSource.Listing          E2-05
 //	TD account worker            AccountKind.Account, PrivateStream  D602, D603, D301
-//	TD agent (backfill)          AccountKind.History                 D601, D301
+//	backfill read                AccountKind.History                 D601, D301
 //
 // Any of a venue's parts may be absent.
 //

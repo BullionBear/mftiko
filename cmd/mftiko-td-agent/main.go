@@ -1,6 +1,6 @@
 // Command mftiko-td-agent is the execution-plane agent: one account worker per api_id a session
 // needs, started by its owners and stopped linger after the last one leaves (DECISIONS D901, D905,
-// D608). The backfill scheduler and the history drain are E7.
+// D608). It does not connect to NATS and does not store fills (D638, D639).
 //
 // It unseals each account's credentials with this instance's key (-seal-key, D613), signs each
 // worker's NATS user with the MFTIKO account's signing key (-nats-account, -nats-signing-key, D611),

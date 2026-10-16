@@ -24,10 +24,11 @@ const (
 	// OperatorName is the dev operator's name.
 	OperatorName = "mftiko-dev"
 
-	// PlaneMD, PlaneFetch and PlaneTD are the platform inbox plane tokens (D416).
+	// PlaneMD and PlaneFetch are the platform inbox plane tokens (D416).
 	// md.fetch is not an etcd plane; "fetch" keeps its inbox off the MD prefix.
-	// Instances of one plane share that prefix. PlaneTD is the TD agent's; each account
-	// worker has its own prefix (TDAccountInbox, D611).
+	// Instances of one plane share that prefix.
+	// PlaneTD is the token in an account worker's inbox _INBOX_td_{api_id} (D611).
+	// The TD agent has no NATS user and no _INBOX_td grant (D639).
 	PlaneMD    = "md"
 	PlaneFetch = "fetch"
 	PlaneTD    = "td"
@@ -68,11 +69,10 @@ const (
 var instToken = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 // Options selects which instance tokens Generate issues. Nil lists mean DefaultInst.
-// An empty list is rejected.
+// An empty list is rejected. There is no TD agent user (D639).
 type Options struct {
 	MDInsts    []string
 	FetchInsts []string
-	TDInsts    []string
 }
 
 // User is one generated user. Paths are relative to the output directory and hold no seeds.
@@ -93,7 +93,8 @@ type Manifest struct {
 	SigningKeyFile string `json:"signing_key_file"`
 	MD             []User `json:"md"`
 	Fetch          []User `json:"fetch"`
-	TD             []User `json:"td"`
+	// TD is empty. A non-empty list is rejected: the TD agent has no NATS user (D639).
+	TD []User `json:"td,omitempty"`
 }
 
 // Layout is a generated directory plus its manifest.
@@ -126,8 +127,8 @@ func InboxPrefix(plane string) (string, error) {
 
 // TDAccountInbox is the reply prefix _INBOX_td_{api_id} of one TD account worker (D611).
 // Each account worker has its own credential, so it has its own prefix, as a session does
-// (D906). It does not overlap _INBOX_td, the TD agent's prefix, or a session's: a session
-// id is six hex digits. The result has no trailing dot.
+// (D906). It does not overlap a session's inbox: a session id is six hex digits. The TD
+// agent has no inbox (D639). The result has no trailing dot.
 func TDAccountInbox(apiID int64) (string, error) {
 	if apiID <= 0 {
 		return "", errors.New("natsdev: api_id must be positive")
@@ -148,10 +149,6 @@ func Generate(dir string, opt Options) error {
 		return err
 	}
 	fetchInsts, err := normalizeInsts(opt.FetchInsts)
-	if err != nil {
-		return err
-	}
-	tdInsts, err := normalizeInsts(opt.TDInsts)
 	if err != nil {
 		return err
 	}
@@ -217,14 +214,6 @@ func Generate(dir string, opt Options) error {
 		}
 		fetchUsers = append(fetchUsers, u)
 	}
-	tdUsers := make([]loadedUser, 0, len(tdInsts))
-	for _, inst := range tdInsts {
-		u, err := ensureServiceUser(dir, PlaneTD, inst)
-		if err != nil {
-			return err
-		}
-		tdUsers = append(tdUsers, u)
-	}
 
 	opPub, err := operatorKP.PublicKey()
 	if err != nil {
@@ -276,7 +265,6 @@ func Generate(dir string, opt Options) error {
 		SigningKeyFile: filepath.ToSlash(filepath.Join(dirKeys, keySigning)),
 		MD:             make([]User, 0, len(mdUsers)),
 		Fetch:          make([]User, 0, len(fetchUsers)),
-		TD:             make([]User, 0, len(tdUsers)),
 	}
 	keepCreds := map[string]bool{}
 	for _, plane := range []struct {
@@ -285,7 +273,6 @@ func Generate(dir string, opt Options) error {
 	}{
 		{mdUsers, &manifest.MD},
 		{fetchUsers, &manifest.Fetch},
-		{tdUsers, &manifest.TD},
 	} {
 		for _, u := range plane.users {
 			entry, err := writeServiceUser(dir, u, accountKP)
@@ -297,6 +284,11 @@ func Generate(dir string, opt Options) error {
 		}
 	}
 	if err := removeOther(filepath.Join(dir, dirCreds), keepCreds); err != nil {
+		return err
+	}
+	// A directory generated before D639 still has the TD agent's seed. Drop it so the
+	// next dev-up does not leave a user we no longer issue.
+	if err := removeTDAgentKeys(dir); err != nil {
 		return err
 	}
 
@@ -416,16 +408,16 @@ func (m Manifest) validate() error {
 	if err := safeRel(m.SigningKeyFile); err != nil {
 		return err
 	}
-	if len(m.MD) == 0 || len(m.Fetch) == 0 || len(m.TD) == 0 {
-		return errors.New("natsdev: manifest needs an MD user, an md.fetch user and a TD user; run make dev-up")
+	if len(m.MD) == 0 || len(m.Fetch) == 0 {
+		return errors.New("natsdev: manifest needs an MD user and an md.fetch user; run make dev-up")
+	}
+	if len(m.TD) != 0 {
+		return errors.New("natsdev: TD agent has no NATS user")
 	}
 	if err := validateUsers(PlaneMD, m.MD); err != nil {
 		return err
 	}
-	if err := validateUsers(PlaneFetch, m.Fetch); err != nil {
-		return err
-	}
-	return validateUsers(PlaneTD, m.TD)
+	return validateUsers(PlaneFetch, m.Fetch)
 }
 
 func validateUsers(plane string, users []User) error {
@@ -532,8 +524,9 @@ func credsRel(plane, inst string) string {
 	return filepath.ToSlash(filepath.Join(dirCreds, plane+"-"+inst+".creds"))
 }
 
-// servicePerms are the allow lists of one platform instance user (D415, D611), and whether
-// it answers requests.
+// servicePerms are the allow lists of one platform instance user (D415), and whether
+// it answers requests. The TD agent has no NATS user (D639). Account workers are
+// tdAccountPerms, signed in memory, not here.
 func servicePerms(plane, inst, inbox string) (pub, sub []string, resp bool, err error) {
 	switch plane {
 	case PlaneMD:
@@ -546,13 +539,26 @@ func servicePerms(plane, inst, inbox string) (pub, sub []string, resp bool, err 
 		// venues it can reach (D418, D456). The exact subject md.v1.fetch is not
 		// in this list. sym.v1.changed.> is the resolver (D422, D457).
 		return []string{"sym"}, []string{"md.v1.fetch.>", "sym.v1.changed.>", inbox + ".>"}, true, nil
-	case PlaneTD:
-		// td.evt.> is every account: the agent stores fills (D601), and accounts move between
-		// instances, so they are not listed. The agent answers no requests. Its account workers
-		// have their own users (tdAccountPerms).
-		return []string{"sym"}, []string{"td.evt.>", "sym.v1.changed.>", inbox + ".>"}, false, nil
 	}
 	return nil, nil, false, fmt.Errorf("natsdev: no permissions for plane %q", plane)
+}
+
+// removeTDAgentKeys deletes user-td-*.nk left by a generator that issued a TD agent user (D639).
+func removeTDAgentKeys(dir string) error {
+	entries, err := os.ReadDir(filepath.Join(dir, dirKeys))
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasPrefix(name, "user-td-") || !strings.HasSuffix(name, ".nk") {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, dirKeys, name)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // tdAccountPerms are the allow lists of the TD account worker for apiID (D611): it serves

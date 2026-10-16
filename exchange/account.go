@@ -10,7 +10,8 @@ import (
 	"github.com/BullionBear/mftiko/contract/symbol"
 )
 
-// AccountConfig is what the TD account worker (or the TD agent, for History) builds an adapter from.
+// AccountConfig is what the TD account worker, or the backfill read service for History, builds an
+// adapter from. The TD agent does not (D638, D639).
 type AccountConfig struct {
 	APIID       int64
 	Credentials Credentials

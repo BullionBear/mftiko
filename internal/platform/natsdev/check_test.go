@@ -16,7 +16,7 @@ func TestCheckEmbedded(t *testing.T) {
 			dir := t.TempDir()
 			opt := Options{}
 			if inst != "dev" {
-				opt = Options{MDInsts: []string{inst}, FetchInsts: []string{inst}, TDInsts: []string{inst}}
+				opt = Options{MDInsts: []string{inst}, FetchInsts: []string{inst}}
 			}
 			if err := Generate(dir, opt); err != nil {
 				t.Fatal(err)
