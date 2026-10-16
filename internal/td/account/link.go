@@ -20,12 +20,14 @@ const (
 )
 
 // linkEvent is a connection coming up or going down. err is set when the link gave up: the venue
-// refused the credentials. orders is set when this link carries order requests.
+// refused the credentials. orders is set when this link carries order requests. swap is a planned
+// replacement that finished with the new connection up (D635).
 type linkEvent struct {
 	role   role
 	orders bool
 	up     bool
 	err    error
+	swap   bool
 }
 
 // codec is a PrivateStream or a TradeStream, as the link drives them.
@@ -230,6 +232,7 @@ func (l *link) connect(ctx context.Context) (*conn, error) {
 // serve keeps c until it ends, and returns why. It refreshes the stream's credentials, closes the
 // connection when the venue says they expired, and replaces it with a new one ahead of its
 // MaxLifetime: the new connection is up before the old one closes, so the role never goes down.
+// An events connection then asks for one recon, and does not report DEGRADED (D635, D636).
 func (l *link) serve(ctx context.Context, c *conn) error {
 	w := l.w
 	var refresh *time.Ticker
@@ -340,6 +343,11 @@ func (l *link) serve(ctx context.Context, c *conn) error {
 				resetRotate()
 				armExpire()
 				w.log.Info().Str("conn", l.name).Msg("replaced ahead of its lifetime")
+				// The dial above does not watch the old connection. Whatever it did in that window,
+				// an events swap runs one recon; an orders swap changes nothing (D635, D636).
+				if l.role == roleEvents {
+					w.post(ctx, linkEvent{role: l.role, swap: true})
+				}
 			case errors.Is(err, exchange.ErrAuth):
 				c.ws.Close()
 				<-c.done

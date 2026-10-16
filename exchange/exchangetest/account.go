@@ -79,6 +79,14 @@ type AccountVenue struct {
 	refuse     int
 	failDials  int
 	connsTotal int
+
+	// Handshake stalls: the next stallHS upgrades wait on hsRelease. hsWaiting is how many are
+	// blocked now. Login stalls: the next stallLogin acks sit in stalled, already in conns.
+	stallHS    int
+	hsWaiting  int
+	hsRelease  chan struct{}
+	stallLogin int
+	stalled    []heldLogin
 }
 
 // AccountOptions configure an AccountVenue. The zero value is usable.

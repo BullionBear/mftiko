@@ -33,6 +33,10 @@ func (v *AccountVenue) Handler() http.Handler {
 			return
 		}
 		v.mu.Unlock()
+		// A test holds the upgrade here to drop the live link while this dial has not logged in (D635).
+		if !v.waitHandshake(r.Context()) {
+			return
+		}
 		ws, err := websocket.Accept(w, r, nil)
 		if err != nil {
 			return
@@ -102,9 +106,15 @@ func (v *AccountVenue) serve(ctx context.Context, ws *websocket.Conn) {
 		return
 	}
 	c := &streamConn{ws: ws, wake: make(chan struct{}, 1)}
-	c.send(mustJSON(streamFrame{Op: "login", Status: 200}))
+	ack := mustJSON(streamFrame{Op: "login", Status: 200})
 	v.conns[c] = struct{}{}
 	v.connsTotal++
+	if v.stallLogin > 0 {
+		v.stallLogin--
+		v.stalled = append(v.stalled, heldLogin{c: c, frame: ack})
+	} else {
+		c.send(ack)
+	}
 	v.mu.Unlock()
 	defer func() {
 		v.mu.Lock()
@@ -192,6 +202,98 @@ func (v *AccountVenue) ExpireListenKey() {
 	defer v.mu.Unlock()
 	v.listenKey = ""
 	v.broadcast(mustJSON(streamFrame{Event: "expired", Reason: "listenKeyExpired"}))
+}
+
+// heldLogin is a logged-in connection whose acknowledgement has not been written yet.
+type heldLogin struct {
+	c     *streamConn
+	frame []byte
+}
+
+// StallHandshakes holds the next n websocket upgrades until ReleaseHandshakes. The socket is not
+// logged in, so a broadcast does not reach it. A test uses the wait to drop the live link while the
+// replacement is still dialing (D635).
+func (v *AccountVenue) StallHandshakes(n int) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if n <= 0 {
+		return
+	}
+	v.stallHS += n
+	if v.hsRelease == nil {
+		v.hsRelease = make(chan struct{})
+	}
+}
+
+// ReleaseHandshakes lets every stalled upgrade proceed.
+func (v *AccountVenue) ReleaseHandshakes() {
+	v.mu.Lock()
+	ch := v.hsRelease
+	v.hsRelease = nil
+	v.stallHS = 0
+	v.mu.Unlock()
+	if ch != nil {
+		close(ch)
+	}
+}
+
+// StalledHandshakes is how many upgrades are waiting in StallHandshakes.
+func (v *AccountVenue) StalledHandshakes() int {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.hsWaiting
+}
+
+func (v *AccountVenue) waitHandshake(ctx context.Context) bool {
+	v.mu.Lock()
+	if v.stallHS == 0 {
+		v.mu.Unlock()
+		return true
+	}
+	v.stallHS--
+	v.hsWaiting++
+	ch := v.hsRelease
+	v.mu.Unlock()
+	select {
+	case <-ch:
+		v.mu.Lock()
+		v.hsWaiting--
+		v.mu.Unlock()
+		return true
+	case <-ctx.Done():
+		v.mu.Lock()
+		v.hsWaiting--
+		v.mu.Unlock()
+		return false
+	}
+}
+
+// StallLogins holds the next n login acknowledgements. The connection is already in the broadcast
+// set, so one event reaches the old link and the new one together; ReleaseLogins writes the acks.
+func (v *AccountVenue) StallLogins(n int) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if n > 0 {
+		v.stallLogin += n
+	}
+}
+
+// ReleaseLogins writes the login acknowledgements StallLogins held.
+func (v *AccountVenue) ReleaseLogins() {
+	v.mu.Lock()
+	held := v.stalled
+	v.stalled = nil
+	v.mu.Unlock()
+	for _, h := range held {
+		h.c.send(h.frame)
+	}
+}
+
+// StalledLogins is how many login acknowledgements are waiting.
+func (v *AccountVenue) StalledLogins() int {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return len(v.stalled)
 }
 
 // Connections is how many logged-in stream connections are open now, and how many there have been.
