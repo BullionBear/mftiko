@@ -1,5 +1,8 @@
 // Package sdk is the Go strategy SDK and the reference implementation of the session worker
 // contract (DECISIONS D802, PROTOCOL §9). A strategy is a Go program whose main calls Run.
 //
-// Shape only: not implemented yet.
+// A strategy implements Strategy and the optional hooks it needs (strategy.go), and acts through
+// Context (context.go). Instruments are UIDs throughout (DECISIONS D804).
+//
+// The API is defined; Run is not implemented yet.
 package sdk
