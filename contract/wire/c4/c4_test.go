@@ -165,6 +165,26 @@ func (p *peer) exit() int {
 	return 0
 }
 
+// closedWithoutStopped reads until the worker closes fd 3. A Stopped frame is a failure: a
+// hook-timeout overrun must not send one (D803).
+func (p *peer) closedWithoutStopped() {
+	p.t.Helper()
+	for {
+		select {
+		case m, ok := <-p.ups:
+			if !ok {
+				return
+			}
+			if m.GetStopped() != nil {
+				p.t.Fatal("Stopped was sent")
+			}
+			p.t.Fatalf("frame after the ending: %v", m)
+		case <-time.After(5 * time.Second):
+			p.t.Fatal("fd 3 did not close")
+		}
+	}
+}
+
 func hello(m *workerv1.WorkerUp) bool {
 	h := m.GetHello()
 	return h != nil && h.GetKind() == "test" && len(h.GetContracts()) == 1 && h.GetContracts()[0] == contract && h.GetPid() > 0
@@ -486,6 +506,7 @@ type script struct {
 	runFn   func(context.Context) error
 	stopFn  func(context.Context) error
 	stopN   int
+	hook    time.Duration // HookTimeout; 0 is no self-end limit
 }
 
 func (s *script) Init(ctx context.Context, sess *Session, payload []byte) error {
@@ -525,6 +546,8 @@ func (s *script) stops() int {
 	defer s.mu.Unlock()
 	return s.stopN
 }
+
+func (s *script) HookTimeout() time.Duration { return s.hook }
 
 // OnStop runs after Exiting has been sent and before Stopped. A Stop's grace is the deadline,
 // measured from when the Stop was read, and the context is not the one Serve already cancelled.
@@ -817,6 +840,160 @@ func TestSIGTERM(t *testing.T) {
 	if c := p.exit(); c != ExitDone {
 		t.Fatalf("exit %d", c)
 	}
+}
+
+// Run returning takes the plane's hook budget. The budget is read after Init returns. Past it,
+// Serve does not wait and does not send Stopped; the exit code is 21 and Exiting is unchanged.
+// Stop and SIGTERM keep the grace they already had. A plane that reports 0 is not limited.
+func TestOnStopHookTimeout(t *testing.T) {
+	t.Run("blocks", func(t *testing.T) {
+		entered := make(chan struct{})
+		hold := make(chan struct{})
+		returned := make(chan struct{})
+		var once sync.Once
+		t.Cleanup(func() { once.Do(func() { close(hold) }) })
+		f := &script{runFn: func(context.Context) error { return nil }}
+		f.initFn = func(ctx context.Context, sess *Session, payload []byte) error {
+			if err := f.fake.Init(ctx, sess, payload); err != nil {
+				return err
+			}
+			f.hook = 50 * time.Millisecond
+			return nil
+		}
+		f.stopFn = func(context.Context) error {
+			close(entered)
+			<-hold
+			close(returned)
+			return nil
+		}
+		p := run(t, t.Context(), Config{}, f)
+		reachRunning(t, p)
+		await(t, entered)
+		p.expect(exiting(commonv1.Outcome_OUTCOME_DONE, ""))
+		if c := p.exit(); c != ExitHung {
+			t.Fatalf("exit %d", c)
+		}
+		select {
+		case <-returned:
+			t.Fatal("OnStop was waited for")
+		default:
+		}
+		p.closedWithoutStopped()
+	})
+	t.Run("returns", func(t *testing.T) {
+		f := &script{
+			hook:  50 * time.Millisecond,
+			runFn: func(context.Context) error { return nil },
+			stopFn: func(ctx context.Context) error {
+				<-ctx.Done()
+				return ctx.Err()
+			},
+		}
+		p := run(t, t.Context(), Config{}, f)
+		reachRunning(t, p)
+		p.expect(exiting(commonv1.Outcome_OUTCOME_DONE, ""))
+		if c := p.exit(); c != ExitHung {
+			t.Fatalf("exit %d", c)
+		}
+		p.closedWithoutStopped()
+	})
+	t.Run("within budget", func(t *testing.T) {
+		f := &script{
+			hook:  5 * time.Second,
+			runFn: func(context.Context) error { return nil },
+		}
+		var deadline time.Time
+		var has bool
+		f.stopFn = func(ctx context.Context) error {
+			deadline, has = ctx.Deadline()
+			return nil
+		}
+		p := run(t, t.Context(), Config{}, f)
+		reachRunning(t, p)
+		p.expect(exiting(commonv1.Outcome_OUTCOME_DONE, ""), stopped(true))
+		if c := p.exit(); c != ExitDone {
+			t.Fatalf("exit %d", c)
+		}
+		if !has {
+			t.Fatal("OnStop had no deadline")
+		}
+		if remain := time.Until(deadline); remain < 3*time.Second || remain > 5*time.Second {
+			t.Fatalf("deadline in %s", remain)
+		}
+	})
+	t.Run("stop keeps grace", func(t *testing.T) {
+		f := &script{hook: 50 * time.Millisecond}
+		var deadline time.Time
+		var has bool
+		f.stopFn = func(ctx context.Context) error {
+			deadline, has = ctx.Deadline()
+			return nil
+		}
+		p := run(t, t.Context(), Config{}, f)
+		reachRunning(t, p)
+		p.send(stopGrace("bye", 5000))
+		p.expect(exiting(commonv1.Outcome_OUTCOME_DONE, "bye"), stopped(true))
+		if c := p.exit(); c != ExitDone {
+			t.Fatalf("exit %d", c)
+		}
+		if !has {
+			t.Fatal("OnStop had no deadline")
+		}
+		if remain := time.Until(deadline); remain < 3*time.Second {
+			t.Fatalf("Stop used the hook budget, deadline in %s", remain)
+		}
+	})
+	t.Run("start failure", func(t *testing.T) {
+		f := &script{
+			hook: time.Second,
+			startFn: func(context.Context, []byte) error {
+				return errors.New("no feed")
+			},
+			stopFn: func(ctx context.Context) error {
+				if _, ok := ctx.Deadline(); ok || ctx.Err() != nil {
+					return errors.New("start failure was limited")
+				}
+				return nil
+			},
+		}
+		p := run(t, t.Context(), Config{}, f)
+		p.expect(hello)
+		p.send(initMsg(contract))
+		p.expect(doneOf(workerv1.Verb_VERB_INIT, true))
+		p.send(startMsg())
+		p.expect(doneErr(workerv1.Verb_VERB_START, "no feed"), exiting(commonv1.Outcome_OUTCOME_INIT_FAILED, "no feed"), stopped(true))
+		if c := p.exit(); c != ExitInit {
+			t.Fatalf("exit %d", c)
+		}
+	})
+	t.Run("signal", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("SIGTERM")
+		}
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+		defer stop()
+		open := make(chan struct{})
+		f := &script{
+			hook: 50 * time.Millisecond,
+			stopFn: func(ctx context.Context) error {
+				if _, ok := ctx.Deadline(); ok || ctx.Err() != nil {
+					return errors.New("SIGTERM used the hook budget")
+				}
+				close(open)
+				return nil
+			},
+		}
+		p := run(t, ctx, Config{}, f)
+		reachRunning(t, p)
+		if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+			t.Fatal(err)
+		}
+		await(t, open)
+		p.expect(exiting(commonv1.Outcome_OUTCOME_DONE, "signal"), stopped(true))
+		if c := p.exit(); c != ExitDone {
+			t.Fatalf("exit %d", c)
+		}
+	})
 }
 
 func TestRunExit(t *testing.T) {
