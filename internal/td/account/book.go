@@ -42,7 +42,7 @@ func orderSubject(apiID int64) string { return "td.order." + strconv.FormatInt(a
 const inactiveWait = 2 * time.Second
 
 // maxBuffered bounds the events held while a recon runs. Past it they are dropped: the recon that
-// follows has the state, and fills reach the store through backfill (D601).
+// follows has the state. Persisting those fills is open and is not this process (D638).
 const maxBuffered = 100_000
 
 // fillMemory is how many fill ids, and finished orders, the book remembers to drop a repeat of

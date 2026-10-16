@@ -1,5 +1,5 @@
 // Package natsdev generates the dev NATS operator, accounts, and user credentials (D412–D417):
-// one user per MD, md.fetch and TD instance (D415, D611).
+// one user per MD and md.fetch instance (D415). The TD agent has no NATS user (D639).
 //
 // The output directory is gitignored. Nothing in this package is a production secret store:
 // STS still signs each session user in memory at spawn (D906), the TD agent signs each account

@@ -3,11 +3,13 @@ package natsdev
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/nats-io/jwt/v2"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nkeys"
 )
@@ -27,12 +29,17 @@ const (
 // and publish/subscribe outside the allow lists is denied. The legal caller is an
 // ephemeral session user signed in memory with the account signing key. The TD
 // account workers are signed the same way (D611). None of these credentials are written.
+// The TD agent has no NATS user (D639): a manifest entry, a td- creds file, a user-td-
+// seed, or a user that subscribes to td.evt.> fails the check before any dial.
 func Check(dir, url string) error {
 	if url == "" {
 		return errors.New("natsdev: empty url")
 	}
 	lay, err := Load(dir)
 	if err != nil {
+		return err
+	}
+	if err := checkNoTDAgent(lay); err != nil {
 		return err
 	}
 	if err := rejectAnonymous(url); err != nil {
@@ -48,12 +55,7 @@ func Check(dir, url string) error {
 			return err
 		}
 	}
-	for _, u := range lay.Manifest.TD {
-		if err := checkTD(url, lay, u); err != nil {
-			return err
-		}
-	}
-	return nil
+	return checkAccountWorker(url, lay)
 }
 
 func checkMD(url string, lay Layout, u User) error {
@@ -148,12 +150,74 @@ func checkFetch(url string, lay Layout, u User) error {
 	return roundTrip(url, caller, fetch, "md.v1.fetch.Binance", "md.v1.fetch.Binance")
 }
 
-// checkTD checks the TD agent's user and the account worker of checkAPIID (D611). The agent
-// reads every account's td.evt and serves nothing. The account worker serves td.order and
+// checkNoTDAgent fails when dir still has a TD agent NATS user (D639). Account-worker
+// users are signed in memory and are not files; tdAccountPerms is not involved.
+func checkNoTDAgent(lay Layout) error {
+	if len(lay.Manifest.TD) != 0 {
+		return errors.New("natsdev: TD agent has no NATS user")
+	}
+	keyEntries, err := os.ReadDir(filepath.Join(lay.Dir, dirKeys))
+	if err != nil {
+		return err
+	}
+	for _, e := range keyEntries {
+		name := e.Name()
+		if !e.IsDir() && strings.HasPrefix(name, "user-td-") && strings.HasSuffix(name, ".nk") {
+			return fmt.Errorf("natsdev: TD agent has no NATS user (%s)", name)
+		}
+	}
+	credsDir := filepath.Join(lay.Dir, dirCreds)
+	credEntries, err := os.ReadDir(credsDir)
+	if err != nil {
+		return err
+	}
+	for _, e := range credEntries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".creds") {
+			continue
+		}
+		if strings.HasPrefix(name, "td-") {
+			return fmt.Errorf("natsdev: TD agent has no NATS user (%s)", name)
+		}
+		body, err := os.ReadFile(filepath.Join(credsDir, name))
+		if err != nil {
+			return err
+		}
+		token, err := jwt.ParseDecoratedJWT(body)
+		if err != nil {
+			return fmt.Errorf("natsdev: %s: %w", name, err)
+		}
+		uc, err := jwt.DecodeUserClaims(token)
+		if err != nil {
+			return fmt.Errorf("natsdev: %s: %w", name, err)
+		}
+		if tdAgentUserName(uc.Name) || subscribesAllTDEvents([]string(uc.Sub.Allow)) {
+			return fmt.Errorf("natsdev: TD agent has no NATS user (%s)", uc.Name)
+		}
+	}
+	return nil
+}
+
+func tdAgentUserName(name string) bool {
+	// td-account-{api_id} is an account worker. Those users are not files either (D611).
+	return strings.HasPrefix(name, "td-")
+}
+
+func subscribesAllTDEvents(allow []string) bool {
+	for _, subject := range allow {
+		if subject == "td.evt.>" {
+			return true
+		}
+	}
+	return false
+}
+
+// checkAccountWorker checks the account worker of checkAPIID (D611). It serves td.order and
 // td.view of its own account, publishes only its own td.evt, and reaches nothing of another
-// account: another worker serving the same account would send each order twice.
-func checkTD(url string, lay Layout, u User) error {
-	caller, err := newCaller(lay, u.Inst)
+// account: another worker serving the same account would send each order twice. The TD agent
+// is not a subscriber (D638, D639).
+func checkAccountWorker(url string, lay Layout) error {
+	caller, err := newCaller(lay, lay.Manifest.MD[0].Inst)
 	if err != nil {
 		return err
 	}
@@ -161,32 +225,7 @@ func checkTD(url string, lay Layout, u User) error {
 	if err != nil {
 		return err
 	}
-	agent, err := dialCreds(url, filepath.Join(lay.Dir, filepath.FromSlash(u.Creds)), u.InboxPrefix)
-	if err != nil {
-		return fmt.Errorf("natsdev: td %s: %w", u.Inst, err)
-	}
-	defer agent.Close()
-	if err := allowSub(agent, u.InboxPrefix+".>"); err != nil {
-		return fmt.Errorf("natsdev: td %s own inbox: %w", u.Inst, err)
-	}
-	if err := allowSub(agent, "sym.v1.changed.>"); err != nil {
-		return fmt.Errorf("natsdev: td %s sym.v1.changed: %w", u.Inst, err)
-	}
-	if err := denyOutside(url, lay, u, PlaneTD); err != nil {
-		return err
-	}
 	own := strconv.Itoa(checkAPIID)
-	for _, d := range []denial{
-		{"publish td.evt", publishTo("td.evt." + own)},
-		{"publish td.order", publishTo("td.order." + own)},
-		{"subscribe td.order", subscribeTo("td.order." + own)},
-		{"subscribe td.view", subscribeTo("td.view." + own)},
-	} {
-		if err := denyOnce(url, lay, u, d.what, d.do); err != nil {
-			return err
-		}
-	}
-
 	w, err := dialCaller(url, worker)
 	if err != nil {
 		return fmt.Errorf("natsdev: account worker %s: %w", own, err)
@@ -203,8 +242,8 @@ func checkTD(url string, lay Layout, u User) error {
 		return err
 	}
 	defer sess.Close()
-	// The account's events reach the bound session and the agent, which stores fills (D601).
-	if err := deliver(w, "td.evt."+own, sess, agent); err != nil {
+	// The account's events reach the bound session. Nobody stores them (D638).
+	if err := deliver(w, "td.evt."+own, sess); err != nil {
 		return err
 	}
 	if err := denyWorker(url, worker); err != nil {

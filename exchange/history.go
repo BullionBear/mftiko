@@ -6,12 +6,13 @@ import (
 	"github.com/BullionBear/mftiko/contract/symbol"
 )
 
-// HistoryFactory builds a History for one api_id. The TD agent calls it for backfill without
-// starting an account worker (D601), so it takes the same AccountConfig.
+// HistoryFactory builds a History for one api_id. The backfill read is a stateless service,
+// like md.fetch (D601), and does not start an account worker. Who calls it is open and is not
+// the TD agent (D638, D639).
 type HistoryFactory func(cfg AccountConfig) (History, error)
 
-// History is a venue's private trade history over REST, sans-I/O (D302), read by the TD agent's
-// backfill jobs (D601). Safe for concurrent use. The job owns the cursor; History builds one page's
+// History is a venue's private trade history over REST, sans-I/O (D302), read by the backfill
+// service (D601). Safe for concurrent use. The caller owns the cursor; History builds one page's
 // request at a time.
 type History interface {
 	Traits() HistoryTraits
