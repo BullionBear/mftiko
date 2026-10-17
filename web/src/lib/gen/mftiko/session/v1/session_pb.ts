@@ -68,6 +68,8 @@ export type SessionSpec = Message<"mftiko.session.v1.SessionSpec"> & {
   restart?: RestartPolicy | undefined;
 
   /**
+   * 從 SessionDemand.issued_at_ns 起算。0 = 60 秒（D1302）
+   *
    * @generated from field: uint32 deps_timeout_s = 10;
    */
   depsTimeoutS: number;
