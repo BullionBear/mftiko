@@ -12,8 +12,11 @@ import (
 	"github.com/nats-io/nats.go"
 	"google.golang.org/protobuf/proto"
 
+	mdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1"
 	stsctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/stsctl/v1"
+	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/contract/wire/c4"
+	"github.com/BullionBear/mftiko/sdk/internal/bookpath"
 	"github.com/BullionBear/mftiko/sdk/internal/dispatch"
 	"github.com/BullionBear/mftiko/sdk/internal/mdpath"
 	"github.com/BullionBear/mftiko/sdk/internal/symclient"
@@ -69,6 +72,7 @@ type plane struct {
 	symPtr atomic.Pointer[symclient.Client]
 	td     *tdpath.Path
 	md     *mdpath.Path
+	books  *bookpath.Path
 	disp   *dispatch.Disp
 	tap    *mdpath.Tap
 
@@ -222,13 +226,34 @@ func (p *plane) Init(ctx context.Context, sess *c4.Session, payload []byte) erro
 		Tap:        p.tap,
 		Resolve:    p.resolveUID,
 		Hooks:      p.mdHooks(),
-		Log:        p.note,
+		Book: func(msg []byte) {
+			if p.books != nil {
+				p.books.OnMessage(msg)
+			}
+		},
+		Log: p.note,
 	})
 	if err != nil {
 		return err
 	}
 	if err := p.own(func() { p.md = md }); err != nil {
 		md.Close()
+		return err
+	}
+	bk, err := bookpath.Open(bookpath.Config{
+		Snapshot:   p.bookSnapshot,
+		Info:       p.bookInfo,
+		Hook:       p.bookHook(),
+		RecvWindow: p.recv,
+		Now:        p.host.now,
+		Schedule:   p.schedule,
+		Log:        p.note,
+	})
+	if err != nil {
+		return err
+	}
+	if err := p.own(func() { p.books = bk }); err != nil {
+		bk.Close()
 		return err
 	}
 	p.startLoops()
@@ -388,6 +413,44 @@ func (p *plane) handleCommand(b []byte) {
 	}
 }
 
+func (p *plane) bookSnapshot(uid uint32, fn func(*mdv1.BookSnapshot, error)) error {
+	if p.md == nil {
+		return mdpath.ErrStopping
+	}
+	return p.md.BookSnapshot(uid, fn)
+}
+
+func (p *plane) bookInfo(uid uint32) (symbol.Info, error) {
+	if p.sym == nil {
+		return symbol.Info{}, symclient.ErrUnknownUID
+	}
+	return p.sym.Info(uid)
+}
+
+// bookHook is OnBook. Nil when the strategy does not implement it; the book is
+// still maintained, and other hooks can read it (D805, D857).
+func (p *plane) bookHook() func(bookpath.Update) {
+	s, ok := p.strat.(BookHandler)
+	if !ok || s == nil {
+		return nil
+	}
+	return func(ev bookpath.Update) {
+		p.inHook("OnBook", func() {
+			s.OnBook(p.sc, BookUpdate{
+				MD:       MD{UID: ev.UID, MdTsNs: ev.MdTsNs, ConnEpoch: ev.ConnEpoch, Seq: ev.Seq},
+				ExchTsNs: ev.ExchTsNs,
+			})
+		})
+	}
+}
+
+func (p *plane) schedule(delay time.Duration, fn func()) {
+	if fn == nil || p.disp == nil {
+		return
+	}
+	p.disp.Timer(fn).After(delay)
+}
+
 func (p *plane) resolveUID(uid uint32) (string, string, error) {
 	if p.sym == nil {
 		return "", "", symclient.ErrUnknownUID
@@ -458,8 +521,12 @@ func (p *plane) shutdown() {
 	md := p.md
 	td := p.td
 	sym := p.sym
-	p.nc, p.md, p.td, p.sym = nil, nil, nil, nil
+	books := p.books
+	p.nc, p.md, p.td, p.sym, p.books = nil, nil, nil, nil, nil
 	p.mu.Unlock()
+	if books != nil {
+		books.Close()
+	}
 	if md != nil {
 		md.Close()
 	}

@@ -22,8 +22,8 @@
 // zero is dropped. The dispatcher counts it in QueueStat.dropped and logs it. The session
 // does not end (D849). A topic whose hook is nil is skipped before the payload is decoded
 // (D805). orderbook_delta is not one of those hooks: it is given to Config.Book as the raw
-// message, for the local book (E8-15). A payload that does not decode is logged and not
-// delivered; it is not an envelope drop.
+// message, and sdk/internal/bookpath applies it (D857–D861). A payload that does not decode
+// is logged and not delivered; it is not an envelope drop.
 //
 // The session worker's Run opens a Path, applies Start and Live snapshots, and
 // reads bindings_applied from Applied.

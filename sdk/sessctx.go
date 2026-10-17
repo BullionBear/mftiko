@@ -16,7 +16,7 @@ import (
 )
 
 // sessCtx is the Context handed to every hook. Methods other than Post are for
-// the hook goroutine. The local book is left to E8-15, so Book stays empty.
+// the hook goroutine.
 type sessCtx struct {
 	p *plane
 }
@@ -111,7 +111,16 @@ func (c *sessCtx) Balance(apiID int64, asset string) (*tdv1.Balance, bool) {
 	return c.p.td.Balance(apiID, asset)
 }
 
-func (c *sessCtx) Book(uint32) (BookView, bool) { return nil, false }
+func (c *sessCtx) Book(uid uint32) (BookView, bool) {
+	if c.p.books == nil {
+		return nil, false
+	}
+	ob, ok := c.p.books.View(uid)
+	if !ok || ob == nil {
+		return nil, false
+	}
+	return ob, true
+}
 
 func (c *sessCtx) Tape(uid uint32, topic Topic, q TapeQuery, fn func(Context, *mdv1.TapePage, error)) error {
 	if fn == nil {

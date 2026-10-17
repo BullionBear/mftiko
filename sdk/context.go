@@ -66,8 +66,9 @@ type Context interface {
 	// the SDK does not combine them. The pointer is a copy; the read does not block
 	// (DECISIONS D853, D856). An unknown account or asset returns false.
 	Balance(apiID int64, asset string) (*tdv1.Balance, bool)
-	// Book is the local book of an instrument with an orderbook_delta feed. The view is valid only
-	// inside the hook (D803).
+	// Book is the local book of an instrument once md.view's snapshot is in place (D857).
+	// The view is the sdk/book ring and is valid only inside the hook (D803). An instrument
+	// that is not synced returns (nil, false) (D860).
 	Book(uid uint32) (BookView, bool)
 
 	// ---------- reads (the answer runs fn on the dispatcher) ----------
