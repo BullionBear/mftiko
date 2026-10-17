@@ -372,29 +372,68 @@ func TestDispatcherDropsOldest(t *testing.T) {
 	}
 }
 
-func TestBadEnvelopeReachesFeed(t *testing.T) {
-	got := make(chan struct{})
+func TestBadEnvelopeDropped(t *testing.T) {
+	var logs []string
+	var mu sync.Mutex
+	seen := make(chan struct{})
+	var n atomic.Int32
+	good := make(chan struct{})
 	d := New(Config{
-		RecvWindow: time.Millisecond,
-		Log:        func(string) {},
-		Feed: func(msg []byte) {
-			if len(msg) != 1 || msg[0] != 0x7f {
-				t.Errorf("msg %x", msg)
+		RecvWindow: time.Second,
+		Log: func(s string) {
+			mu.Lock()
+			logs = append(logs, s)
+			mu.Unlock()
+			if n.Add(1) == 2 {
+				close(seen)
 			}
-			close(got)
 		},
+		Feed: func(msg []byte) {
+			if len(msg) < envelope.Size || string(msg[envelope.Size:]) != "ok" {
+				t.Errorf("feed %q", msg)
+				return
+			}
+			close(good)
+		},
+		Book: func([]byte) { t.Error("book hook ran") },
 	})
+	now := time.Now().UnixNano()
 	if err := d.PushMD([]byte{0x7f}); err != nil {
+		t.Fatal(err)
+	}
+	badVer := envelope.Append(nil, now, 1, 1, []byte("v"))
+	badVer[0] = 2
+	if err := d.PushBook(badVer); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	errc := make(chan error, 1)
 	go func() { errc <- d.Run(ctx) }()
-	wait(t, got)
+	wait(t, seen)
+	select {
+	case err := <-errc:
+		t.Fatalf("session ended on a bad envelope: %v", err)
+	default:
+	}
+	if err := d.PushMD(mdAt(now, "ok")); err != nil {
+		t.Fatal(err)
+	}
+	wait(t, good)
 	_, md, _, _ := d.Stats()
-	if md.Dropped != 0 {
+	if md.Dropped != 2 {
 		t.Fatalf("dropped %d", md.Dropped)
+	}
+	mu.Lock()
+	got := append([]string(nil), logs...)
+	mu.Unlock()
+	if len(got) != 2 {
+		t.Fatalf("logs %q", got)
+	}
+	for _, line := range got {
+		if !strings.Contains(line, "md envelope rejected") {
+			t.Fatalf("log %q", line)
+		}
 	}
 	cancel()
 	waitErr(t, errc)
