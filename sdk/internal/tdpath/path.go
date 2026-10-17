@@ -90,9 +90,14 @@ type Path struct {
 }
 
 type account struct {
-	decl        *sessionv1.AccountDecl
-	algos       map[uint32]bool
-	orders      map[string]*tdv1.Order
+	decl      *sessionv1.AccountDecl
+	algos     map[uint32]bool
+	orders    map[string]*tdv1.Order
+	submitGen map[string]uint64 // sentGen at the local Submit of that client id
+	// sentGen advances once per ReconRequest attempt, before that attempt is published (D854).
+	sentGen     uint64
+	positions   map[uint32]*tdv1.Position
+	balances    map[string]*tdv1.Balance
 	hold        []*tdv1.AccountEvent
 	holding     bool
 	pending     bool
@@ -137,10 +142,13 @@ func Open(cfg Config) (*Path, error) {
 			algos[a] = true
 		}
 		acc := &account{
-			decl:   d,
-			algos:  algos,
-			orders: map[string]*tdv1.Order{},
-			wake:   make(chan struct{}, 1),
+			decl:      d,
+			algos:     algos,
+			orders:    map[string]*tdv1.Order{},
+			submitGen: map[string]uint64{},
+			positions: map[uint32]*tdv1.Position{},
+			balances:  map[string]*tdv1.Balance{},
+			wake:      make(chan struct{}, 1),
 		}
 		by[id] = acc
 		accs = append(accs, acc)
@@ -457,6 +465,13 @@ func (p *Path) ask(acc *account) error {
 	if err != nil {
 		return err
 	}
+	// D854: this attempt's generation is visible to Submit before the request is
+	// published. A Submit that records a generation at least this large happened
+	// after the handoff, so a snapshot that does not list it is not proof it is gone.
+	p.mu.Lock()
+	acc.sentGen++
+	gen := acc.sentGen
+	p.mu.Unlock()
 	msg, err := p.nc.RequestWithContext(ctx, viewSubject(apiID), body)
 	if err != nil {
 		return err
@@ -470,7 +485,7 @@ func (p *Path) ask(acc *account) error {
 	}
 	done := make(chan struct{})
 	p.enqueue(func() {
-		p.beginReply(apiID, rep)
+		p.beginReply(apiID, rep, gen)
 		p.releaseStep(acc, done)
 	})
 	select {
@@ -481,19 +496,20 @@ func (p *Path) ask(acc *account) error {
 	}
 }
 
-func (p *Path) beginReply(apiID int64, rep *tdv1.ViewReply) {
+func (p *Path) beginReply(apiID int64, rep *tdv1.ViewReply, requestGen uint64) {
 	body := proto.Clone(rep.GetRecon()).(*tdv1.Recon)
 	body.Reason = tdv1.ReconReason_RECON_REASON_REQUESTED
 	td := TD{APIID: apiID, Incarnation: rep.GetIncarnation(), Seq: rep.GetSeq()}
-	p.deliverRecon(apiID, td, body, rep.GetCancelBatch(), true)
+	p.deliverRecon(apiID, td, body, rep.GetCancelBatch(), true, requestGen)
 }
 
-// deliverRecon replaces the account's own-algo orders and calls the Recon hook.
-// fromView is a td.view reply: its seq and incarnation become the watermark, and a
-// positive cancelBatch is remembered. A pushed td.evt Recon passes cancelBatch 0 and
-// fromView false, which leaves cancel_batch alone. The cursor of a pushed Recon was
-// already moved to the event's seq by the caller.
-func (p *Path) deliverRecon(apiID int64, td TD, body *tdv1.Recon, cancelBatch uint32, fromView bool) {
+// deliverRecon replaces the account's own-algo orders and its ledger, then calls the
+// Recon hook. fromView is a td.view reply: its seq and incarnation become the watermark,
+// a positive cancelBatch is remembered, and requestGen is that ReconRequest's generation
+// (D854). A pushed td.evt Recon passes cancelBatch 0, fromView false and requestGen 0,
+// which leaves cancel_batch alone and does not keep a local pending_new the snapshot
+// omits. The cursor of a pushed Recon was already moved to the event's seq by the caller.
+func (p *Path) deliverRecon(apiID int64, td TD, body *tdv1.Recon, cancelBatch uint32, fromView bool, requestGen uint64) {
 	filtered := p.ownOrders(apiID, body.GetOpenOrders())
 	p.mu.Lock()
 	acc := p.byAPI[apiID]
@@ -501,7 +517,8 @@ func (p *Path) deliverRecon(apiID int64, td TD, body *tdv1.Recon, cancelBatch ui
 		p.mu.Unlock()
 		return
 	}
-	acc.merge(filtered)
+	acc.merge(filtered, requestGen, fromView)
+	acc.replaceLedger(body.GetPositions(), body.GetBalances())
 	if fromView {
 		acc.have = true
 		acc.inc = td.Incarnation

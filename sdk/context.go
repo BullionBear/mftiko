@@ -51,12 +51,20 @@ type Context interface {
 
 	// ---------- local state (current as of the event being handled) ----------
 
+	// Order is one of the strategy's orders. The pointer is a copy; the read does not block
+	// (DECISIONS D856). Inside OnOrder it includes that event, and a terminal order is still
+	// visible there. After the hook returns, a terminal order is gone.
 	Order(apiID int64, clientOrderID string) (*tdv1.Order, bool)
 	// OpenOrders are the account's live orders of algoID; 0 means every algo the session declared.
+	// Each order is a copy. The read does not block (DECISIONS D856). Terminal orders are omitted.
 	OpenOrders(apiID int64, algoID uint32) []*tdv1.Order
-	// Position is not implemented until #238. It returns false.
+	// Position is the account's position for uid, as last written by PositionUpdate or Recon.
+	// A size of zero stays until a Recon omits it. The pointer is a copy; the read does not block
+	// (DECISIONS D853, D856). An unknown account or uid returns false.
 	Position(apiID int64, uid uint32) (*tdv1.Position, bool)
-	// Balance is not implemented until #238. It returns false.
+	// Balance is the account's balance of asset. free, locked and prelock are the values TD sent;
+	// the SDK does not combine them. The pointer is a copy; the read does not block
+	// (DECISIONS D853, D856). An unknown account or asset returns false.
 	Balance(apiID int64, asset string) (*tdv1.Balance, bool)
 	// Book is the local book of an instrument with an orderbook_delta feed. The view is valid only
 	// inside the hook (D803).

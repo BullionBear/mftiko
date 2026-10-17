@@ -6,8 +6,8 @@ import (
 )
 
 // tdHooks installs a callback only when the strategy implements that handler.
-// Positions, balances, and recon are not stored here: the ledger is #238 (D840).
-// tdpath still delivers PositionUpdate and BalanceUpdate to OnPosition and OnBalance.
+// tdpath updates the ledger before the callback, including when the strategy has
+// no OnPosition or OnBalance (D853, D855).
 func (p *plane) tdHooks() tdpath.Hooks {
 	var h tdpath.Hooks
 	if s, ok := p.strat.(PositionHandler); ok {

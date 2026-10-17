@@ -4,8 +4,8 @@ package sdk
 // single dispatcher, so a strategy needs no locks (D803).
 //
 // Before a hook runs, the SDK has applied its event to the local state: the book, the orders and the
-// ledger that Context reads already include it (DECISIONS D805). A strategy never sees the SDK sync or
-// resync that state.
+// ledger that Context reads already include it (DECISIONS D805, D853–D856). A strategy never sees the
+// SDK sync or resync that state.
 type Strategy interface {
 	// OnInit runs right after spawn, before market data or accounts are ready (D107). Parse params,
 	// resolve the instruments the strategy trades (Context.Resolve), read state from the volume or

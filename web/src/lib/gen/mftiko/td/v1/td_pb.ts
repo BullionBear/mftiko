@@ -699,6 +699,9 @@ export const FillSchema: GenMessage<Fill> = /*@__PURE__*/
   messageDesc(file_mftiko_td_v1_td, 14);
 
 /**
+ * 餘額。free、locked、prelock 互不重疊，加總是總額，三格都由 TD 填（D853）。
+ * SDK 不計算：BalanceUpdate 與 Recon 原樣覆蓋。
+ *
  * @generated from message mftiko.td.v1.Balance
  */
 export type Balance = Message<"mftiko.td.v1.Balance"> & {
@@ -708,16 +711,22 @@ export type Balance = Message<"mftiko.td.v1.Balance"> & {
   asset: string;
 
   /**
+   * 可用
+   *
    * @generated from field: double free = 2;
    */
   free: number;
 
   /**
+   * 掛單凍結
+   *
    * @generated from field: double locked = 3;
    */
   locked: number;
 
   /**
+   * 單已送出、交易所未確認的預扣；確認後轉入 locked。
+   *
    * @generated from field: double prelock = 4;
    */
   prelock: number;

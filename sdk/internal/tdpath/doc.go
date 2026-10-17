@@ -1,8 +1,19 @@
-// Package tdpath is the session's path to TD (DECISIONS D840–D845, PROTOCOL §9.4, §9.6).
+// Package tdpath is the session's path to TD (DECISIONS D840–D845, D853–D856, PROTOCOL §9.4, §9.6).
 //
-// It keeps the orders of this session's own algos: enough for Submit to record a local
-// pending_new, and for Cancel, BatchCancel, Order and OpenOrders. Positions, balances and the
-// full order state machine are a later change (#238).
+// Orders of this session's own algos live in the OMS, keyed by (api_id, client_order_id).
+// Submit records PENDING_NEW before it returns. An OrderUpdate replaces that order wholesale.
+// FILLED, CANCELLED, REJECTED and EXPIRED leave the OMS after OnOrder. A Recon replaces the
+// account's orders. A PENDING_NEW submitted after the ReconRequest this reply answers, and
+// absent from the snapshot, stays (D854). A td.evt Recon is not that reply, so an order the
+// snapshot omits is gone.
+//
+// The ledger is one set of positions (by UID) and balances (by asset) per account.
+// PositionUpdate and BalanceUpdate store those absolute values. Recon replaces both sets.
+// Fill does not change the ledger (D855). Balance free, locked and prelock are stored as TD
+// sent them (D853).
+//
+// OnOrder, OnFill, OnPosition, OnBalance and OnRecon run after that write. Order, OpenOrders,
+// Position and Balance return protobuf copies and do not block on the network (D856).
 //
 // Listen subscribes to td.evt before any ReconRequest. Until that reply has been given to
 // OnRecon, events stay held. The hold uses the TD buffer cap (65536); one more event ends the

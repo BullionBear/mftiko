@@ -351,7 +351,7 @@ func TestTerminalVisibleDuringHook(t *testing.T) {
 	}
 }
 
-func TestSubmitSurvivesEmptyRecon(t *testing.T) {
+func TestReconDropsPendingSubmittedBeforeRequest(t *testing.T) {
 	rec := &tape{}
 	f, p := sessionHooks(t, time.Second, rec.hooks(), decl(7, 1))
 	f.serve()
@@ -364,16 +364,28 @@ func TestSubmitSurvivesEmptyRecon(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	waitFor(t, 5*time.Second, func() bool { return p.settled.Load() >= 1 })
 	if len(p.OpenOrders(7, 1)) != 1 {
 		t.Fatal(p.OpenOrders(7, 1))
+	}
+	var during atomic.Bool
+	prev := p.hooks.Recon
+	p.hooks.Recon = func(ev ReconEvent) {
+		_, ok := p.Order(7, id)
+		during.Store(!ok)
+		if prev != nil {
+			prev(ev)
+		}
 	}
 	if err := p.Recon(); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, 5*time.Second, func() bool { return len(rec.recons()) == 1 })
-	o, ok := p.Order(7, id)
-	if !ok || o.GetStatus() != tdv1.OrderStatus_ORDER_STATUS_PENDING_NEW {
-		t.Fatalf("snapshot dropped the local order %+v %v", o, ok)
+	if !during.Load() {
+		t.Fatal("hook still saw the pre-request pending_new")
+	}
+	if _, ok := p.Order(7, id); ok {
+		t.Fatal("pre-request pending_new survived an empty snapshot")
 	}
 	if rec.recons()[0].Recon.GetReason() != tdv1.ReconReason_RECON_REASON_REQUESTED {
 		t.Fatalf("reason %v", rec.recons()[0].Recon.GetReason())
@@ -623,6 +635,17 @@ func TestAlgoFilter(t *testing.T) {
 	if rec.balances()[0].APIID != 7 || rec.balances()[0].Balances[0].GetAsset() != "USDT" {
 		t.Fatalf("bal %+v", rec.balances())
 	}
+	pos, ok := p.Position(7, 9)
+	if !ok || pos.GetSize() != 1.5 {
+		t.Fatalf("position %+v %v", pos, ok)
+	}
+	bal, ok := p.Balance(7, "USDT")
+	if !ok || bal.GetFree() != 3 || bal.GetLocked() != 0 || bal.GetPrelock() != 0 {
+		t.Fatalf("balance %+v %v", bal, ok)
+	}
+	if _, ok := p.Position(7, 1); ok {
+		t.Fatal("position for a uid the update did not mention")
+	}
 	if f.viewCount() != 1 {
 		t.Fatalf("filtered events started another recon: %d", f.viewCount())
 	}
@@ -654,6 +677,13 @@ func TestTwoAccounts(t *testing.T) {
 	waitFor(t, 5*time.Second, func() bool { return len(rec.orders()) == 1 && len(rec.positions()) == 1 })
 	if rec.orders()[0].APIID != 7 || rec.positions()[0].APIID != 8 {
 		t.Fatalf("order %d pos %d", rec.orders()[0].APIID, rec.positions()[0].APIID)
+	}
+	pos, ok := p.Position(8, 4)
+	if !ok || pos.GetSize() != 1 {
+		t.Fatalf("account 8 position %+v %v", pos, ok)
+	}
+	if _, ok := p.Position(7, 4); ok {
+		t.Fatal("account 7 saw account 8's position")
 	}
 	if len(p.OpenOrders(8, 2)) != 0 {
 		t.Fatal(p.OpenOrders(8, 2))
