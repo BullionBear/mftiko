@@ -290,10 +290,14 @@ func (b *bus) onOrder(m *nats.Msg) {
 
 // onView publishes the early recon events and then answers, on this same
 // connection, so they are queued before the worker's Request returns.
+// The snapshot is incarnation 3, seq 5. Seq 4 of that incarnation is at or
+// below the cursor. Seq 6 is the one event past it. Seq 6 of incarnation 1
+// is older than the reply and is dropped. A newer incarnation would ask
+// again (D844); this fixture must not publish one.
 func (b *bus) onView(m *nats.Msg) {
 	_ = b.publishAccount(4, 3, false)
 	_ = b.publishAccount(6, 3, false)
-	_ = b.publishAccount(6, 9, false)
+	_ = b.publishAccount(6, 1, false)
 	if m.Reply == "" {
 		return
 	}

@@ -7,8 +7,11 @@
 // Listen subscribes to td.evt before any ReconRequest. Until that reply has been given to
 // OnRecon, events stay held. The hold uses the TD buffer cap (65536); one more event ends the
 // session FAILED (D841, D815). After the reply, an event is delivered only when its
-// source.incarnation is the reply's and its seq is the next one. A later gap, or an event
-// whose incarnation changed, holds again and asks for a new Recon (D844).
+// source.incarnation is the reply's and its seq is the next one. A held event from an
+// older incarnation is dropped. A held event from a newer incarnation stays held and
+// asks again; an ask that does not move the watermark waits on the Recon backoff
+// (D844, D842). Once the baseline is live, a later gap or a different incarnation
+// holds again and asks for a new Recon (D844).
 //
 // One attempt waits InitPayload.recv_window_ms. A Submit that times out becomes UNKNOWN and
 // is not queried or sent again (D843, D605). A cancel that times out is left as it was, and

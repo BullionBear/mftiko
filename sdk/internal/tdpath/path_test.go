@@ -46,11 +46,13 @@ func TestClassify(t *testing.T) {
 		inc, want int
 		seq       uint64
 	}{
+		{inc: 1, seq: 6, want: classDrop},
 		{inc: 3, seq: 4, want: classDrop},
 		{inc: 3, seq: 5, want: classDrop},
 		{inc: 3, seq: 6, want: classDeliver},
 		{inc: 3, seq: 7, want: classGap},
-		{inc: 9, seq: 6, want: classDrop},
+		{inc: 9, seq: 1, want: classNewer},
+		{inc: 9, seq: 6, want: classNewer},
 	}
 	for _, c := range cases {
 		ev := &tdv1.AccountEvent{Seq: c.seq, Source: &commonv1.WorkerRef{Incarnation: uint32(c.inc)}}
@@ -493,7 +495,7 @@ func TestWatermark(t *testing.T) {
 	f.onView = func(int64, *tdv1.ViewRequest) *tdv1.ViewReply {
 		publish(t, f.nc, 7, orderEv(3, 4, own, tdv1.OrderStatus_ORDER_STATUS_ACCEPTED))
 		publish(t, f.nc, 7, orderEv(3, 6, own, tdv1.OrderStatus_ORDER_STATUS_ACCEPTED))
-		publish(t, f.nc, 7, orderEv(9, 6, own, tdv1.OrderStatus_ORDER_STATUS_ACCEPTED))
+		publish(t, f.nc, 7, orderEv(1, 6, own, tdv1.OrderStatus_ORDER_STATUS_ACCEPTED))
 		if !until(time.Second, func() bool { return held(p, 7) >= 3 }) {
 			t.Errorf("events were not held before the reply, hold %d", held(p, 7))
 		}
@@ -511,11 +513,67 @@ func TestWatermark(t *testing.T) {
 	for _, k := range rec.orderKeys() {
 		got[k] = true
 	}
-	if !got[key(3, 6)] || !got[key(3, 7)] || got[key(3, 5)] || got[key(9, 6)] {
+	if !got[key(3, 6)] || !got[key(3, 7)] || got[key(3, 5)] || got[key(1, 6)] {
 		t.Fatalf("%v", got)
 	}
 	if n := len(rec.recons()); n != 1 {
 		t.Fatalf("recons %d", n)
+	}
+}
+
+func TestHeldNewerIncarnationAsksAgain(t *testing.T) {
+	rec := &tape{}
+	f, p := sessionHooks(t, time.Second, rec.hooks(), decl(7, 1))
+	f.serve()
+	stale := mustCloid(1, 1)
+	fresh := mustCloid(1, 2)
+	f.onView = func(int64, *tdv1.ViewRequest) *tdv1.ViewReply {
+		if f.viewCount() == 1 {
+			publish(t, f.nc, 7, orderEv(9, 4, fresh, tdv1.OrderStatus_ORDER_STATUS_ACCEPTED))
+			if !until(time.Second, func() bool { return held(p, 7) >= 1 }) {
+				t.Errorf("newer incarnation was not held before the reply")
+			}
+			return snap(3, 5, 1, []*tdv1.Order{{
+				ClientOrderId: stale,
+				Status:        tdv1.OrderStatus_ORDER_STATUS_ACCEPTED,
+				Uid:           1001,
+			}})
+		}
+		return snap(9, 4, 1, []*tdv1.Order{{
+			ClientOrderId: fresh,
+			Status:        tdv1.OrderStatus_ORDER_STATUS_ACCEPTED,
+			Uid:           1001,
+		}})
+	}
+	if err := p.Listen(); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Recon(); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, 5*time.Second, func() bool {
+		open := p.OpenOrders(7, 1)
+		return f.viewCount() >= 2 && len(rec.recons()) >= 2 && len(open) == 1 && open[0].GetClientOrderId() == fresh && accountQuiet(p, 7)
+	})
+	if f.viewCount() != 2 {
+		t.Fatalf("views %d", f.viewCount())
+	}
+	rs := rec.recons()
+	if len(rs) != 2 || rs[0].Incarnation != 3 || rs[0].Seq != 5 || rs[1].Incarnation != 9 || rs[1].Seq != 4 {
+		t.Fatalf("recons %+v", rs)
+	}
+	if len(rs[0].Recon.GetOpenOrders()) != 1 || rs[0].Recon.GetOpenOrders()[0].GetClientOrderId() != stale {
+		t.Fatalf("first book %+v", rs[0].Recon.GetOpenOrders())
+	}
+	if len(rs[1].Recon.GetOpenOrders()) != 1 || rs[1].Recon.GetOpenOrders()[0].GetClientOrderId() != fresh {
+		t.Fatalf("second book %+v", rs[1].Recon.GetOpenOrders())
+	}
+	open := p.OpenOrders(7, 1)
+	if len(open) != 1 || open[0].GetClientOrderId() != fresh {
+		t.Fatalf("book %v", open)
+	}
+	if len(rec.orders()) != 0 {
+		t.Fatalf("held event was delivered %+v", rec.orders())
 	}
 }
 
@@ -1298,6 +1356,13 @@ func held(p *Path, api int64) int {
 		return 0
 	}
 	return len(acc.hold)
+}
+
+func accountQuiet(p *Path, api int64) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	acc := p.byAPI[api]
+	return acc != nil && acc.have && !acc.holding && !acc.pending && !acc.asking && len(acc.hold) == 0
 }
 
 func parseTD(subject string) (string, int64, bool) {

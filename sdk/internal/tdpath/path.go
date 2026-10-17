@@ -533,19 +533,23 @@ func (p *Path) ownOrders(apiID int64, orders []*tdv1.Order) []*tdv1.Order {
 const (
 	classDrop = iota
 	classGap
+	classNewer
 	classDeliver
 )
 
 // classify applies the §9.6 watermark to one held event. The same incarnation and the
 // next seq are delivered. The same incarnation at or below the cursor is dropped. A
 // higher seq of the same incarnation is a hole: the event stays held and another Recon
-// is asked (D844). A different incarnation is dropped. It does not start another Recon
-// from inside this release — the reply in hand is the snapshot, and the live stream is
-// what notices a later incarnation (D844). Treating a held newer incarnation as a new
-// ask would ask forever when a reply is preceded by an event from another incarnation.
+// is asked (D844). An older incarnation is dropped. A newer incarnation stays held and
+// asks again, the same as a live incarnation change after the baseline (D844). Repeated
+// asks that do not move the watermark wait on the D842 backoff.
 func classify(acc *account, ev *tdv1.AccountEvent) int {
-	if ev.GetSource().GetIncarnation() != acc.inc {
+	inc := ev.GetSource().GetIncarnation()
+	if inc < acc.inc {
 		return classDrop
+	}
+	if inc > acc.inc {
+		return classNewer
 	}
 	seq := ev.GetSeq()
 	if seq <= acc.seq {
@@ -559,7 +563,7 @@ func classify(acc *account, ev *tdv1.AccountEvent) int {
 
 // releaseStep runs on the dispatcher. Drops stay in this step. Each delivered event is
 // its own following step, so each one is its own hook. done closes when the hold has
-// been released or a hole has armed another ask.
+// been released, or a hole or a newer incarnation has armed another ask.
 func (p *Path) releaseStep(acc *account, done chan struct{}) {
 	for {
 		p.mu.Lock()
@@ -583,7 +587,7 @@ func (p *Path) releaseStep(acc *account, done chan struct{}) {
 			acc.hold = acc.hold[1:]
 			p.mu.Unlock()
 			continue
-		case classGap:
+		case classGap, classNewer:
 			acc.pending = true
 			acc.holding = true
 			p.mu.Unlock()
