@@ -3,7 +3,9 @@
 //
 // A strategy implements Strategy and the optional hooks it needs (strategy.go), and acts through
 // Context (context.go). Instruments are UIDs throughout (DECISIONS D804, D823–D826). Resolve and
-// Info are implemented by sdk/internal/symclient. Run does not wire that client yet.
+// Info are implemented by sdk/internal/symclient. The TD path (Submit, Cancel, BatchCancel, the
+// own-algo order book, and the first Recon) is sdk/internal/tdpath (DECISIONS D840–D845). Run does
+// not wire either client yet.
 //
 // The API is defined; Run is not implemented yet.
 package sdk
