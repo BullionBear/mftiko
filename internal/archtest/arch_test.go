@@ -25,7 +25,7 @@ type pkg struct {
 }
 
 // planes are the bounded contexts under internal/; one may not import another.
-var planes = []string{"internal/api", "internal/sts", "internal/md", "internal/td", "internal/sym"}
+var planes = []string{"internal/api", "internal/sts", "internal/md", "internal/td", "internal/sym", "internal/controller"}
 
 // rel is a path inside the module relative to its root, and whether it is inside the module.
 func rel(importPath string) (string, bool) {
@@ -58,10 +58,18 @@ func planeOf(path string) string {
 // domain types (DECISIONS D110). The wiring to etcd, NATS and the shims is in their daemon subpackage.
 var agentPlanes = []string{"internal/sts", "internal/md", "internal/td"}
 
-// pureAgent reports whether a package must link no I/O: an agent plane's root package, or the skeleton's decisions
-// (internal/platform/agent) that they build on.
+// pureAgent reports whether a package must link no I/O: an agent plane's root package, the controller's decisions
+// (internal/controller, DECISIONS D1301), or the skeleton's decisions (internal/platform/agent) that the agents
+// build on.
 func pureAgent(path string) bool {
-	return path == "internal/platform/agent" || slices.Contains(agentPlanes, path)
+	return path == "internal/platform/agent" || path == "internal/controller" || slices.Contains(agentPlanes, path)
+}
+
+// forbiddenInController reports whether the controller plane must not link the package: exchange, or SYM
+// (DECISIONS D1301, D907).
+func forbiddenInController(importPath string) bool {
+	r, own := rel(importPath)
+	return own && (under(r, "exchange") || under(r, "contract/gen/mftiko/sym"))
 }
 
 // forbiddenInPureAgent reports whether a pure agent package must not link the package: etcd, NATS, or the platform
@@ -152,6 +160,10 @@ func check(pkgs []pkg, std map[string]bool) []string {
 					bad(imp, "the API does not use exchange")
 				case plane == "internal/api" && under(to, "contract/gen/mftiko/sym"):
 					bad(imp, "the API does not query SYM")
+				case plane == "internal/controller" && under(to, "exchange"):
+					bad(imp, "the controller does not use exchange")
+				case plane == "internal/controller" && under(to, "contract/gen/mftiko/sym"):
+					bad(imp, "the controller does not query SYM")
 				case under(to, "exchange") && to != "exchange" && !under(to, "exchange/transport"):
 					bad(imp, "planes use exchange's interfaces and exchange/transport only; cmd registers the exchanges")
 				}
@@ -168,6 +180,13 @@ func check(pkgs []pkg, std map[string]bool) []string {
 			for _, d := range p.Deps {
 				if forbiddenInPureAgent(d) {
 					out = append(out, fmt.Sprintf("%s links %s: decisions do no I/O; the wiring is in a subpackage", from, d))
+				}
+			}
+		}
+		if under(from, "internal/controller") {
+			for _, d := range p.Deps {
+				if forbiddenInController(d) {
+					out = append(out, fmt.Sprintf("%s links %s: the controller does not use exchange or SYM", from, d))
 				}
 			}
 		}
@@ -235,7 +254,8 @@ func TestDependencyRules(t *testing.T) {
 	// The rules key on paths; if a block moved, they would pass by matching nothing.
 	for _, want := range []string{"contract/symbol", "contract/wire/frame", "exchange", "sdk", "internal/platform/state",
 		"internal/platform/agent", "internal/platform/agent/runner", "internal/platform/natsx", "internal/platform/shim",
-		"internal/md", "internal/td", "internal/sts", "internal/sym", "internal/api"} {
+		"internal/md", "internal/td", "internal/sts", "internal/sym", "internal/api",
+		"internal/controller", "internal/controller/daemon"} {
 		if !slices.Contains(own, want) {
 			t.Fatalf("package %s not found: update the rules in this file (DECISIONS D006) to the new layout", want)
 		}
@@ -275,6 +295,10 @@ func TestCheckReportsViolations(t *testing.T) {
 		{ImportPath: m("internal/td/daemon"), Imports: []string{m("internal/platform/agent/runner")}, // the wiring: free
 			Deps: []string{m("internal/platform/agent/runner"), m("internal/platform/state"), "go.etcd.io/etcd/client/v3"}},
 		{ImportPath: m("internal/platform/agent"), Deps: []string{m("internal/platform/shim")}},
+		{ImportPath: m("internal/controller"), Deps: []string{"go.etcd.io/etcd/client/v3", m("internal/platform/state")}},
+		{ImportPath: m("internal/controller/daemon"), Imports: []string{
+			m("exchange"), m("exchange/binance"), m("contract/gen/mftiko/sym/v1"), m("internal/md"),
+		}},
 		{ImportPath: m("cmd/mftiko-md-agent"), Imports: []string{m("exchange/all"), m("internal/md"), m("internal/td")}},
 		{ImportPath: "go.etcd.io/etcd/client/v3", Imports: []string{m("internal/md")}}, // outside the module: ignored
 	}
@@ -304,6 +328,12 @@ func TestCheckReportsViolations(t *testing.T) {
 		"internal/td links " + m("internal/platform/agent/runner"),
 		"internal/td links github.com/nats-io/nats.go",
 		"internal/platform/agent links " + m("internal/platform/shim"),
+		"internal/controller links go.etcd.io/etcd/client/v3",
+		"internal/controller links " + m("internal/platform/state"),
+		"internal/controller/daemon imports " + m("exchange"),
+		"internal/controller/daemon imports " + m("exchange/binance"),
+		"internal/controller/daemon imports " + m("contract/gen/mftiko/sym/v1"),
+		"internal/controller/daemon imports " + m("internal/md"),
 	}
 	if len(got) != len(want) {
 		t.Errorf("%d violations, want %d:\n%s", len(got), len(want), strings.Join(got, "\n"))

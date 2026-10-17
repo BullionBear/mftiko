@@ -304,11 +304,11 @@ func TestSessionLost(t *testing.T) {
 	}
 }
 
-// twoServers are two regions, two clusters: tw on the shared server, jp on one of the test's own.
+// twoServers are two regions, two clusters, one server each (etcdtest.StartRegions, D1316).
 func twoServers(t *testing.T) (tw, jp *etcdtest.Server, topo Topology) {
 	t.Helper()
-	tw, jp = shared.Take(t), etcdtest.Start(t)
-	return tw, jp, topologyOf(map[string]*etcdtest.Server{"tw": tw, "jp": jp}, twoRegions().Instances)
+	servers := etcdtest.StartRegions(t, "tw", "jp")
+	return servers["tw"], servers["jp"], topologyOf(servers, twoRegions().Instances)
 }
 
 func TestFenceTwoRegions(t *testing.T) {

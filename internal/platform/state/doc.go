@@ -17,8 +17,8 @@
 //     session is no longer renewed, and Close revokes it, so the record goes with the agent: readers tell a live
 //     agent from the last state a gone one left behind.
 //     Fencing is per cluster: a superseded term that has not yet noticed can still write to a cluster the new term
-//     has not fenced. A term therefore fences every cluster it will write before its first reconcile (the agent
-//     skeleton, E1-15), not on first use. Only the controller writes to more than one cluster.
+//     has not fenced. An agent has one region, and Campaign fences it before the first reconcile (E1-15). The
+//     controller writes every region and fences each on its first write, not before it starts (D1305).
 //
 //   - Fenced writes (write.go): Term.Put, Delete and Txn route by key, fence the target cluster on first use,
 //     and run as one txn conditioned on that cluster's writer key still having rev R (W2 step 4); a caller's
