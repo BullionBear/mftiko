@@ -91,10 +91,11 @@ message DemandEntry {
 message SessionDemand {
   mftiko.session.v1.DesiredState desired = 1; // RUNNING：spawn 並送 Init；ENDED：停掉 worker
   bool start = 2;           // 所有 MD、TD 需求都 READY，STS agent 可以送 Start（D107）
-  string end_reason = 3;    // desired 是 ENDED 時：ended_by_spec、deps_failed、deps_timeout
+  string end_reason = 3;    // desired 是 ENDED 時：ended_by_spec、deps_failed、deps_timeout、invalid_spec
   repeated Binding bindings = 4;
   int64 spec_revision = 5;  // 推導自哪一版 session spec；只供除錯
   int64 updated_at_ns = 6;
+  int64 issued_at_ns = 7;   // 第一次寫這個指派的時間，之後不改；deps_timeout_s 從這裡起算（D1302）
 }
 
 // 一個需求項目目前的 ack，由 controller 從 provider 的 EntryStatus 抄來。

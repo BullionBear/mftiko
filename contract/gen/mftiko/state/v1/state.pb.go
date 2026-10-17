@@ -685,10 +685,11 @@ type SessionDemand struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Desired       v11.DesiredState       `protobuf:"varint,1,opt,name=desired,proto3,enum=mftiko.session.v1.DesiredState" json:"desired,omitempty"` // RUNNING：spawn 並送 Init；ENDED：停掉 worker
 	Start         bool                   `protobuf:"varint,2,opt,name=start,proto3" json:"start,omitempty"`                                         // 所有 MD、TD 需求都 READY，STS agent 可以送 Start（D107）
-	EndReason     string                 `protobuf:"bytes,3,opt,name=end_reason,json=endReason,proto3" json:"end_reason,omitempty"`                 // desired 是 ENDED 時：ended_by_spec、deps_failed、deps_timeout
+	EndReason     string                 `protobuf:"bytes,3,opt,name=end_reason,json=endReason,proto3" json:"end_reason,omitempty"`                 // desired 是 ENDED 時：ended_by_spec、deps_failed、deps_timeout、invalid_spec
 	Bindings      []*Binding             `protobuf:"bytes,4,rep,name=bindings,proto3" json:"bindings,omitempty"`
 	SpecRevision  int64                  `protobuf:"varint,5,opt,name=spec_revision,json=specRevision,proto3" json:"spec_revision,omitempty"` // 推導自哪一版 session spec；只供除錯
 	UpdatedAtNs   int64                  `protobuf:"varint,6,opt,name=updated_at_ns,json=updatedAtNs,proto3" json:"updated_at_ns,omitempty"`
+	IssuedAtNs    int64                  `protobuf:"varint,7,opt,name=issued_at_ns,json=issuedAtNs,proto3" json:"issued_at_ns,omitempty"` // 第一次寫這個指派的時間，之後不改；deps_timeout_s 從這裡起算（D1302）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -761,6 +762,13 @@ func (x *SessionDemand) GetSpecRevision() int64 {
 func (x *SessionDemand) GetUpdatedAtNs() int64 {
 	if x != nil {
 		return x.UpdatedAtNs
+	}
+	return 0
+}
+
+func (x *SessionDemand) GetIssuedAtNs() int64 {
+	if x != nil {
+		return x.IssuedAtNs
 	}
 	return 0
 }
@@ -1402,7 +1410,7 @@ const file_mftiko_state_v1_state_proto_rawDesc = "" +
 	"\rspec_revision\x18\n" +
 	" \x01(\x03R\fspecRevision\x12\x19\n" +
 	"\balgo_ids\x18\v \x03(\rR\aalgoIdsB\b\n" +
-	"\x06target\"\xfe\x01\n" +
+	"\x06target\"\xa0\x02\n" +
 	"\rSessionDemand\x129\n" +
 	"\adesired\x18\x01 \x01(\x0e2\x1f.mftiko.session.v1.DesiredStateR\adesired\x12\x14\n" +
 	"\x05start\x18\x02 \x01(\bR\x05start\x12\x1d\n" +
@@ -1410,7 +1418,9 @@ const file_mftiko_state_v1_state_proto_rawDesc = "" +
 	"end_reason\x18\x03 \x01(\tR\tendReason\x124\n" +
 	"\bbindings\x18\x04 \x03(\v2\x18.mftiko.state.v1.BindingR\bbindings\x12#\n" +
 	"\rspec_revision\x18\x05 \x01(\x03R\fspecRevision\x12\"\n" +
-	"\rupdated_at_ns\x18\x06 \x01(\x03R\vupdatedAtNs\"\xb2\x01\n" +
+	"\rupdated_at_ns\x18\x06 \x01(\x03R\vupdatedAtNs\x12 \n" +
+	"\fissued_at_ns\x18\a \x01(\x03R\n" +
+	"issuedAtNs\"\xb2\x01\n" +
 	"\aBinding\x12\x14\n" +
 	"\x04feed\x18\x01 \x01(\tH\x00R\x04feed\x12\x1c\n" +
 	"\bselector\x18\x02 \x01(\tH\x00R\bselector\x12\x17\n" +

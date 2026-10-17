@@ -19,7 +19,7 @@ message SessionSpec {
   repeated SelectorDecl selectors = 7;
   repeated AccountDecl accounts = 8;
   RestartPolicy restart = 9; // 語意見 DECISIONS D803
-  uint32 deps_timeout_s = 10;
+  uint32 deps_timeout_s = 10; // 從 SessionDemand.issued_at_ns 起算。0 = 60 秒（D1302）
   uint32 start_timeout_s = 11;
   Limits limits = 12;
   repeated InputDecl inputs = 13; // 資料 artifact（DECISIONS D904）

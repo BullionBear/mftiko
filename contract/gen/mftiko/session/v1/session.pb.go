@@ -131,8 +131,8 @@ type SessionSpec struct {
 	Feeds         []*FeedDecl            `protobuf:"bytes,6,rep,name=feeds,proto3" json:"feeds,omitempty"`
 	Selectors     []*SelectorDecl        `protobuf:"bytes,7,rep,name=selectors,proto3" json:"selectors,omitempty"`
 	Accounts      []*AccountDecl         `protobuf:"bytes,8,rep,name=accounts,proto3" json:"accounts,omitempty"`
-	Restart       *RestartPolicy         `protobuf:"bytes,9,opt,name=restart,proto3" json:"restart,omitempty"` // 語意見 DECISIONS D803
-	DepsTimeoutS  uint32                 `protobuf:"varint,10,opt,name=deps_timeout_s,json=depsTimeoutS,proto3" json:"deps_timeout_s,omitempty"`
+	Restart       *RestartPolicy         `protobuf:"bytes,9,opt,name=restart,proto3" json:"restart,omitempty"`                                   // 語意見 DECISIONS D803
+	DepsTimeoutS  uint32                 `protobuf:"varint,10,opt,name=deps_timeout_s,json=depsTimeoutS,proto3" json:"deps_timeout_s,omitempty"` // 從 SessionDemand.issued_at_ns 起算。0 = 60 秒（D1302）
 	StartTimeoutS uint32                 `protobuf:"varint,11,opt,name=start_timeout_s,json=startTimeoutS,proto3" json:"start_timeout_s,omitempty"`
 	Limits        *Limits                `protobuf:"bytes,12,opt,name=limits,proto3" json:"limits,omitempty"`
 	Inputs        []*InputDecl           `protobuf:"bytes,13,rep,name=inputs,proto3" json:"inputs,omitempty"` // 資料 artifact（DECISIONS D904）
