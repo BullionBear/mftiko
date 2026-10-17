@@ -261,17 +261,17 @@ func client(t *testing.T, srv *etcdtest.Server) *clientv3.Client {
 	return c
 }
 
-func recordOf(t *testing.T, ctx context.Context, srv *etcdtest.Server) (statev1.AgentRecord, bool) {
+func recordOf(t *testing.T, ctx context.Context, srv *etcdtest.Server) (*statev1.AgentRecord, bool) {
 	t.Helper()
 	resp, err := client(t, srv).Get(ctx, state.AgentKey(state.PlaneCtl, state.ControllerInstance))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(resp.Kvs) == 0 {
-		return statev1.AgentRecord{}, false
+		return nil, false
 	}
-	var rec statev1.AgentRecord
-	if err := proto.Unmarshal(resp.Kvs[0].Value, &rec); err != nil {
+	rec := &statev1.AgentRecord{}
+	if err := proto.Unmarshal(resp.Kvs[0].Value, rec); err != nil {
 		t.Fatal(err)
 	}
 	return rec, true
@@ -308,7 +308,7 @@ func TestTwoProcessesOneLeader(t *testing.T) {
 	deploy := writeDeploy(t, topo)
 
 	a := startChild(t, deploy)
-	var first statev1.AgentRecord
+	var first *statev1.AgentRecord
 	until(t, 30*time.Second, "the first process writes its record", func() error {
 		rec, ok := recordOf(t, ctx, servers["tw"])
 		if !ok || rec.GetEpoch() < 1 {

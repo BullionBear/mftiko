@@ -249,17 +249,17 @@ func client(t *testing.T, srv *etcdtest.Server) *clientv3.Client {
 	return c
 }
 
-func recordOf(t *testing.T, ctx context.Context, srv *etcdtest.Server) (statev1.AgentRecord, int64, bool) {
+func recordOf(t *testing.T, ctx context.Context, srv *etcdtest.Server) (*statev1.AgentRecord, int64, bool) {
 	t.Helper()
 	resp, err := client(t, srv).Get(ctx, state.AgentKey(state.PlaneCtl, state.ControllerInstance))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(resp.Kvs) == 0 {
-		return statev1.AgentRecord{}, 0, false
+		return nil, 0, false
 	}
-	var rec statev1.AgentRecord
-	if err := proto.Unmarshal(resp.Kvs[0].Value, &rec); err != nil {
+	rec := &statev1.AgentRecord{}
+	if err := proto.Unmarshal(resp.Kvs[0].Value, rec); err != nil {
 		t.Fatal(err)
 	}
 	return rec, resp.Kvs[0].Lease, true
