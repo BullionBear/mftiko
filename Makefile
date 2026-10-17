@@ -36,7 +36,7 @@ BUF_AGAINST ?= .git\#branch=main
 # protoc-gen-go is installed into bin/tools.
 export PATH := $(TOOLS):$(NODE_BIN):$(PATH)
 
-.PHONY: all help tools proto proto-lint proto-breaking gen-check build examples test test-race vet fmt check \
+.PHONY: all help tools proto proto-lint proto-breaking gen-check build examples test test-race sdk-conformance vet fmt check \
         web-install web web-check web-dev dev-up dev-down dev-nats-smoke accept-up accept-down migrate-up migrate-down migrate-status \
         migrate-new clean
 
@@ -95,6 +95,11 @@ test: ## go test
 test-race: ## go test with the race detector, uncached
 	$(GO) test -race -count=1 ./...
 
+sdk-conformance: ## Full Go SDK conformance via examples/strategies/conform (D864)
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/mftiko-conformance ./cmd/mftiko-conformance
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/examples/conform ./examples/strategies/conform
+	$(BIN)/mftiko-conformance -- $(BIN)/examples/conform
+
 vet: ## go vet
 	$(GO) vet ./...
 
@@ -102,7 +107,7 @@ fmt: ## go fmt
 	$(GO) fmt ./...
 
 # CI runs these one step each (.github/workflows/ci.yml), in this order: keep the two lists the same.
-CHECKS := proto-lint proto-breaking gen-check vet build test-race web-check
+CHECKS := proto-lint proto-breaking gen-check vet build test-race sdk-conformance web-check
 
 check: $(CHECKS) ## Everything CI runs
 

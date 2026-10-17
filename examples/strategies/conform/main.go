@@ -1,10 +1,12 @@
 // Command conform is the Go standard conformance strategy (PROTOCOL §9.8, D829, D835).
 //
 // InitPayload.params selects the behavior. Buffer limits, the prehook, the
-// recon watermark, and deadline_ms aborts belong to the SDK. This process only
-// sleeps, submits, and reads Context. It calls sdk.Run, which does not host a
-// strategy yet; a full pass waits on E8-13 (D834). The SDK is what prints gate
-// once subscriptions are up.
+// recon watermark, and deadline_ms aborts belong to the SDK. This process
+// sleeps, submits, and reads Context. For the checks that have to see events
+// only after subscriptions are up, OnStart calls Resolve, and priority calls
+// RequestRecon first. The harness holds that Resolve. sdk.Run prints gate once
+// subscriptions are up. CI runs this process through mftiko-conformance on
+// every pull request (D864).
 package main
 
 import (
@@ -33,6 +35,10 @@ type params struct {
 	AlgoID        uint32 `json:"algo_id,omitempty"`
 	UID           uint32 `json:"uid,omitempty"`
 }
+
+// conformTicker is the fixture instrument (PROTOCOL §9.8). It is not a params
+// field. Resolve uses it so the harness can hold OnStart.
+const conformTicker = "Binance_Spot_BTCUSDT"
 
 type observation struct {
 	Hook        string `json:"hook,omitempty"`
@@ -64,6 +70,16 @@ func (c *conform) OnStart(ctx sdk.Context) error {
 		sleepMS(c.p.HookSleepMS)
 	} else {
 		sleepMS(c.p.StartSleepMS)
+	}
+	if c.p.Scenario == "priority" {
+		if err := ctx.RequestRecon(c.p.APIID); err != nil {
+			return err
+		}
+	}
+	if needsHold(c.p.Scenario) {
+		if _, err := ctx.Resolve(conformTicker); err != nil {
+			return err
+		}
 	}
 	for range c.p.OrderCount {
 		if _, err := ctx.Submit(sdk.Order{
@@ -100,6 +116,17 @@ func (c *conform) OnStart(ctx sdk.Context) error {
 }
 
 func (c *conform) OnStop(sdk.Context) { sleepMS(c.p.OnStopSleepMS) }
+
+// needsHold is the scenarios whose events must sit in the SDK buffers until
+// OnStart returns. The harness blocks Resolve for those, and only those.
+func needsHold(scenario string) bool {
+	switch scenario {
+	case "priority", "prehook", "ring", "overflow", "ctx":
+		return true
+	default:
+		return false
+	}
+}
 
 func (c *conform) OnTrade(_ sdk.Context, ev sdk.Trade) {
 	writeObs(observation{Hook: "OnTrade", Seq: ev.Seq})

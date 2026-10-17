@@ -1038,3 +1038,40 @@ func TestRunExit(t *testing.T) {
 		})
 	}
 }
+
+func TestStartBeforeInit(t *testing.T) {
+	f := &fake{}
+	p := run(t, t.Context(), Config{}, f)
+	p.expect(hello)
+	p.send(startMsg())
+	p.expect(
+		doneOf(workerv1.Verb_VERB_START, false),
+		exiting(commonv1.Outcome_OUTCOME_INIT_FAILED, errStartBeforeInit.Error()),
+		stopped(false),
+	)
+	if c := p.exit(); c != ExitInit {
+		t.Fatalf("exit %d", c)
+	}
+	f.mu.Lock()
+	started := f.started
+	f.mu.Unlock()
+	if started {
+		t.Fatal("Start ran")
+	}
+}
+
+func TestSecondInit(t *testing.T) {
+	p := run(t, t.Context(), Config{}, &fake{})
+	p.expect(hello)
+	p.send(initMsg(contract))
+	p.expect(doneOf(workerv1.Verb_VERB_INIT, true))
+	p.send(initMsg(contract))
+	p.expect(
+		doneOf(workerv1.Verb_VERB_INIT, false),
+		exiting(commonv1.Outcome_OUTCOME_INIT_FAILED, errInitAgain.Error()),
+		stopped(false),
+	)
+	if c := p.exit(); c != ExitInit {
+		t.Fatalf("exit %d", c)
+	}
+}

@@ -313,7 +313,15 @@ func (p *plane) Start(ctx context.Context, payload []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return p.td.Recon()
+	// A hold that filled during OnStart has already recorded FAILED (D841). Recon
+	// refuses once the path is stopping. Returning that error would end Start as
+	// INIT_FAILED and hide the failure Run is waiting to report.
+	if err := p.td.Recon(); errors.Is(err, tdpath.ErrStopping) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (p *plane) Run(ctx context.Context) error {

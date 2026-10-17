@@ -488,6 +488,14 @@ func (p *Path) ask(acc *account) error {
 		p.beginReply(apiID, rep, gen)
 		p.releaseStep(acc, done)
 	})
+	// The reply callback is on the dispatcher queue and has not run. Conformance
+	// waits for this line so delivery cannot start with the queue still empty.
+	p.mu.Lock()
+	failed := p.failed
+	p.mu.Unlock()
+	if !failed && p.logf != nil {
+		p.logf("td.view: queued")
+	}
 	select {
 	case <-done:
 		return nil
@@ -654,7 +662,15 @@ func (p *Path) enqueue(fn func()) {
 func (p *Path) stop(reason string) {
 	first := p.failOnce.CompareAndSwap(false, true)
 	p.markFailed()
-	if first && p.fail != nil {
+	if !first {
+		return
+	}
+	// The dispatcher logs the same words when its own buffer is the one that filled.
+	// The hold fills first while events are still waiting for Recon (D841).
+	if p.logf != nil && reason != "" {
+		p.logf(reason)
+	}
+	if p.fail != nil {
 		p.fail(reason)
 	}
 }
