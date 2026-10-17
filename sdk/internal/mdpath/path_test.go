@@ -24,19 +24,19 @@ import (
 )
 
 func TestNewerAndViewSubject(t *testing.T) {
-	if newer(commonv1.Version{}, nil) {
+	if newer(0, 0, nil) {
 		t.Fatal("zero is not newer than zero")
 	}
-	if !newer(commonv1.Version{}, &commonv1.Version{Seq: 1}) {
+	if !newer(0, 0, &commonv1.Version{Seq: 1}) {
 		t.Fatal("seq 1")
 	}
-	if newer(commonv1.Version{Epoch: 2, Seq: 9}, &commonv1.Version{Epoch: 2, Seq: 9}) {
+	if newer(2, 9, &commonv1.Version{Epoch: 2, Seq: 9}) {
 		t.Fatal("equal")
 	}
-	if newer(commonv1.Version{Epoch: 2, Seq: 1}, &commonv1.Version{Epoch: 1, Seq: 99}) {
+	if newer(2, 1, &commonv1.Version{Epoch: 1, Seq: 99}) {
 		t.Fatal("older epoch")
 	}
-	if !newer(commonv1.Version{Epoch: 1, Seq: 99}, &commonv1.Version{Epoch: 2}) {
+	if !newer(1, 99, &commonv1.Version{Epoch: 2}) {
 		t.Fatal("newer epoch")
 	}
 	got, ok := viewSubject("md.v1.f.custom.trade.NOT_THE_TICKER")
@@ -117,9 +117,9 @@ func TestVersionAndFeedDiff(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantSubjects(t, r, a, b)
-	ver, ok := r.p.Applied()
-	if !ok || ver.Epoch != 1 || ver.Seq != 1 {
-		t.Fatalf("applied %+v %v", ver, ok)
+	epoch, seq, ok := r.p.Applied()
+	if !ok || epoch != 1 || seq != 1 {
+		t.Fatalf("applied %d %d %v", epoch, seq, ok)
 	}
 	// Equal and older snapshots do not change the set.
 	if err := r.p.Apply(snap(1, 1, feedBind("trade", a), feedBind("bestquote", b), feedBind("ticker", c))); err != nil {
@@ -184,9 +184,9 @@ func TestSelectorAndBadFeedLeaveTheSet(t *testing.T) {
 		t.Fatal("two subjects applied")
 	}
 	wantSubjects(t, r, a)
-	ver, _ := r.p.Applied()
-	if ver.Epoch != 1 || ver.Seq != 1 {
-		t.Fatalf("version %+v", ver)
+	epoch, seq, _ := r.p.Applied()
+	if epoch != 1 || seq != 1 {
+		t.Fatalf("version %d %d", epoch, seq)
 	}
 	// Accounts are not part of the subject set.
 	ok := snap(1, 2, feedBind("bestquote", subj("bestquote")))
@@ -203,9 +203,9 @@ func TestFirstZeroVersionApplies(t *testing.T) {
 	if err := r.p.Apply(&stsctlv1.Bindings{Feeds: []*stsctlv1.FeedBinding{feedBind("trade", a)}}); err != nil {
 		t.Fatal(err)
 	}
-	ver, ok := r.p.Applied()
-	if !ok || ver.GetEpoch() != 0 || ver.GetSeq() != 0 {
-		t.Fatalf("%+v %v", ver, ok)
+	epoch, seq, ok := r.p.Applied()
+	if !ok || epoch != 0 || seq != 0 {
+		t.Fatalf("%d %d %v", epoch, seq, ok)
 	}
 	if err := r.p.Apply(&stsctlv1.Bindings{Feeds: []*stsctlv1.FeedBinding{feedBind("ticker", subj("ticker"))}}); err != nil {
 		t.Fatal(err)

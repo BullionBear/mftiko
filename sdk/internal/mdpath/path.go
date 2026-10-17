@@ -12,7 +12,6 @@ import (
 	"github.com/nats-io/nats.go"
 	"google.golang.org/protobuf/proto"
 
-	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	mdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1"
 	stsctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/stsctl/v1"
 	"github.com/BullionBear/mftiko/contract/wire/envelope"
@@ -102,7 +101,8 @@ type Path struct {
 	pushTD   func(func()) error
 	bySub    map[string]*feed
 	byKey    map[string]*feed
-	ver      commonv1.Version
+	epoch    int64
+	seq      uint64
 	have     bool
 	closed   bool
 	ctx      context.Context
@@ -206,7 +206,7 @@ func (p *Path) Apply(b *stsctlv1.Bindings) error {
 		p.mu.Unlock()
 		return ErrStopping
 	}
-	if p.have && !newer(p.ver, b.GetVersion()) {
+	if p.have && !newer(p.epoch, p.seq, b.GetVersion()) {
 		p.mu.Unlock()
 		return nil
 	}
@@ -235,7 +235,10 @@ func (p *Path) Apply(b *stsctlv1.Bindings) error {
 	}
 	p.bySub = merged
 	p.byKey = keysOf(merged)
-	p.ver = versionOf(b.GetVersion())
+	p.epoch, p.seq = 0, 0
+	if v := b.GetVersion(); v != nil {
+		p.epoch, p.seq = v.GetEpoch(), v.GetSeq()
+	}
 	p.have = true
 	p.mu.Unlock()
 
@@ -247,11 +250,11 @@ func (p *Path) Apply(b *stsctlv1.Bindings) error {
 	return nil
 }
 
-// Applied is the Version of the snapshot last installed. ok is false before the first Apply.
-func (p *Path) Applied() (commonv1.Version, bool) {
+// Applied is the epoch and seq of the snapshot last installed. ok is false before the first Apply.
+func (p *Path) Applied() (epoch int64, seq uint64, ok bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.ver, p.have
+	return p.epoch, p.seq, p.have
 }
 
 // subjects is the subscribed subject set, sorted. Tests use it to check an exact diff.

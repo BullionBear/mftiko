@@ -123,26 +123,19 @@ func keysOf(bySub map[string]*feed) map[string]*feed {
 	return out
 }
 
-// newer reports whether next is strictly after old. A nil version is zero.
+// newer reports whether next is strictly after the held (epoch, seq). A nil version is zero.
 // Epoch is compared first (the same rule as a conn worker's desired version).
-func newer(old commonv1.Version, next *commonv1.Version) bool {
+func newer(oldEpoch int64, oldSeq uint64, next *commonv1.Version) bool {
 	var epoch int64
 	var seq uint64
 	if next != nil {
 		epoch = next.GetEpoch()
 		seq = next.GetSeq()
 	}
-	if epoch != old.Epoch {
-		return epoch > old.Epoch
+	if epoch != oldEpoch {
+		return epoch > oldEpoch
 	}
-	return seq > old.Seq
-}
-
-func versionOf(v *commonv1.Version) commonv1.Version {
-	if v == nil {
-		return commonv1.Version{}
-	}
-	return commonv1.Version{Epoch: v.GetEpoch(), Seq: v.GetSeq()}
+	return seq > oldSeq
 }
 
 // wants reports whether topic has a hook. orderbook_delta is not a hook (D805).
