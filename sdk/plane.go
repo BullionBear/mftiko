@@ -80,8 +80,6 @@ type plane struct {
 	recv        time.Duration
 	hookCtx     context.Context
 
-	ledger *ledger
-
 	mu    sync.Mutex
 	dead  bool
 	shut  bool
@@ -118,7 +116,6 @@ func newPlane(s Strategy, h host) *plane {
 		strat:  s,
 		root:   ctx,
 		cancel: cancel,
-		ledger: newLedger(),
 	}
 	p.sc = &sessCtx{p: p}
 	p.cmdCond = sync.NewCond(&p.cmdMu)

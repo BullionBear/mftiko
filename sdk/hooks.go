@@ -5,42 +5,31 @@ import (
 	"github.com/BullionBear/mftiko/sdk/internal/tdpath"
 )
 
-// tdHooks always install position, balance, and recon so the ledger updates even
-// when the strategy does not implement those handlers (D805). A nil hook would
-// drop the event inside tdpath. Order, fill, and reject are installed only when
-// the strategy implements them.
+// tdHooks installs a callback only when the strategy implements that handler.
+// Positions, balances, and recon are not stored here: the ledger is #238 (D840).
+// tdpath still delivers PositionUpdate and BalanceUpdate to OnPosition and OnBalance.
 func (p *plane) tdHooks() tdpath.Hooks {
-	h := tdpath.Hooks{
-		Position: func(ev tdpath.PositionEvent) {
-			p.ledger.applyPositions(ev.APIID, ev.Positions)
-			s, ok := p.strat.(PositionHandler)
-			if !ok {
-				return
-			}
+	var h tdpath.Hooks
+	if s, ok := p.strat.(PositionHandler); ok {
+		h.Position = func(ev tdpath.PositionEvent) {
 			p.inHook("OnPosition", func() {
 				s.OnPosition(p.sc, PositionEvent{TD: tdOf(ev.TD), Positions: ev.Positions})
 			})
-		},
-		Balance: func(ev tdpath.BalanceEvent) {
-			p.ledger.applyBalances(ev.APIID, ev.Balances)
-			s, ok := p.strat.(BalanceHandler)
-			if !ok {
-				return
-			}
+		}
+	}
+	if s, ok := p.strat.(BalanceHandler); ok {
+		h.Balance = func(ev tdpath.BalanceEvent) {
 			p.inHook("OnBalance", func() {
 				s.OnBalance(p.sc, BalanceEvent{TD: tdOf(ev.TD), Balances: ev.Balances})
 			})
-		},
-		Recon: func(ev tdpath.ReconEvent) {
-			p.ledger.replace(ev.APIID, ev.Recon)
-			s, ok := p.strat.(ReconHandler)
-			if !ok {
-				return
-			}
+		}
+	}
+	if s, ok := p.strat.(ReconHandler); ok {
+		h.Recon = func(ev tdpath.ReconEvent) {
 			p.inHook("OnRecon", func() {
 				s.OnRecon(p.sc, ReconEvent{TD: tdOf(ev.TD), Recon: ev.Recon})
 			})
-		},
+		}
 	}
 	if s, ok := p.strat.(OrderHandler); ok {
 		h.Order = func(ev tdpath.OrderEvent) {
