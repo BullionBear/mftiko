@@ -97,11 +97,19 @@ func (c *sessCtx) OpenOrders(apiID int64, algoID uint32) []*tdv1.Order {
 	return c.p.td.OpenOrders(apiID, algoID)
 }
 
-// Position is not implemented until #238.
-func (c *sessCtx) Position(int64, uint32) (*tdv1.Position, bool) { return nil, false }
+func (c *sessCtx) Position(apiID int64, uid uint32) (*tdv1.Position, bool) {
+	if c.p.td == nil {
+		return nil, false
+	}
+	return c.p.td.Position(apiID, uid)
+}
 
-// Balance is not implemented until #238.
-func (c *sessCtx) Balance(int64, string) (*tdv1.Balance, bool) { return nil, false }
+func (c *sessCtx) Balance(apiID int64, asset string) (*tdv1.Balance, bool) {
+	if c.p.td == nil {
+		return nil, false
+	}
+	return c.p.td.Balance(apiID, asset)
+}
 
 func (c *sessCtx) Book(uint32) (BookView, bool) { return nil, false }
 

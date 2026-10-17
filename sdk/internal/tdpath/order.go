@@ -69,6 +69,7 @@ func (p *Path) Submit(o Order) (string, error) {
 		return "", ErrStopping
 	}
 	acc.orders[id] = row
+	acc.submitGen[id] = acc.sentGen
 	p.mu.Unlock()
 
 	req := &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Submit{Submit: &tdv1.Submit{
@@ -354,8 +355,13 @@ func (p *Path) ordersOf(apiID int64) map[string]*tdv1.Order {
 func (p *Path) dropTerminal(apiID int64, id string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if o := p.ordersOf(apiID)[id]; o != nil && terminal(o.GetStatus()) {
-		delete(p.ordersOf(apiID), id)
+	acc := p.byAPI[apiID]
+	if acc == nil {
+		return
+	}
+	if o := acc.orders[id]; o != nil && terminal(o.GetStatus()) {
+		delete(acc.orders, id)
+		delete(acc.submitGen, id)
 	}
 }
 
@@ -384,25 +390,54 @@ func liveIDs(orders map[string]*tdv1.Order, algo uint32, uids []uint32) []string
 	return ids
 }
 
-func (a *account) merge(filtered []*tdv1.Order) {
-	next := make(map[string]*tdv1.Order, len(filtered))
+// merge replaces this account's orders with the snapshot's live rows.
+// A client id the snapshot lists is decided by the snapshot, including a terminal
+// row, which is not stored. fromRequest is the reply of one ReconRequest: a local
+// PENDING_NEW that Submit recorded at or after requestGen, and that the snapshot
+// does not list, stays (D854). A pushed Recon is not that reply, so an omitted
+// order is gone.
+func (a *account) merge(filtered []*tdv1.Order, requestGen uint64, fromRequest bool) {
+	next := make(map[string]*tdv1.Order, len(filtered)+len(a.orders))
+	seen := make(map[string]bool, len(filtered))
 	for _, o := range filtered {
-		if o == nil || o.GetClientOrderId() == "" || terminal(o.GetStatus()) {
+		if o == nil {
 			continue
 		}
-		next[o.GetClientOrderId()] = cloneOrder(o)
+		id := o.GetClientOrderId()
+		if id == "" {
+			continue
+		}
+		seen[id] = true
+		if terminal(o.GetStatus()) {
+			continue
+		}
+		next[id] = cloneOrder(o)
 	}
-	// A submit that has not reached this snapshot is still only local. Dropping it
-	// here would erase the pending_new before its reply (D840). Anything the snapshot
-	// does not list, and that is no longer pending_new, is no longer an open order.
-	for id, o := range a.orders {
-		if o.GetStatus() == tdv1.OrderStatus_ORDER_STATUS_PENDING_NEW && next[id] == nil {
+	if fromRequest {
+		for id, o := range a.orders {
+			if seen[id] {
+				continue
+			}
+			gen, ok := a.submitGen[id]
+			if !ok || o.GetStatus() != tdv1.OrderStatus_ORDER_STATUS_PENDING_NEW || gen < requestGen {
+				continue
+			}
 			next[id] = o
 		}
 	}
+	nextGen := make(map[string]uint64, len(next))
+	for id := range next {
+		if gen, ok := a.submitGen[id]; ok {
+			nextGen[id] = gen
+		}
+	}
 	a.orders = next
+	a.submitGen = nextGen
 }
 
+// applyUpdate stores the event's order as the whole row. The hook then sees that
+// row. A terminal status is removed after the hook returns, so OnOrder can still
+// read it and OpenOrders already omits it.
 func (p *Path) applyUpdate(apiID int64, ev *tdv1.AccountEvent) {
 	upd := ev.GetOrderUpdate()
 	o := upd.GetOrder()
@@ -434,6 +469,8 @@ func (p *Path) applyUpdate(apiID int64, ev *tdv1.AccountEvent) {
 	p.dropTerminal(apiID, row.GetClientOrderId())
 }
 
+// applyFill delivers the fill. It does not change the order or the ledger (D855).
+// The order's new state arrives as its own OrderUpdate.
 func (p *Path) applyFill(apiID int64, ev *tdv1.AccountEvent) {
 	f := ev.GetFill()
 	if f == nil || !p.keeps(apiID, f.GetClientOrderId()) || p.hooks.Fill == nil {
@@ -442,28 +479,12 @@ func (p *Path) applyFill(apiID int64, ev *tdv1.AccountEvent) {
 	p.hooks.Fill(FillEvent{TD: eventTD(apiID, ev), Fill: proto.Clone(f).(*tdv1.Fill)})
 }
 
-func (p *Path) applyPosition(apiID int64, ev *tdv1.AccountEvent) {
-	u := ev.GetPositionUpdate()
-	if u == nil || p.hooks.Position == nil {
-		return
-	}
-	p.hooks.Position(PositionEvent{TD: eventTD(apiID, ev), Positions: clonePositions(u.GetPositions())})
-}
-
-func (p *Path) applyBalance(apiID int64, ev *tdv1.AccountEvent) {
-	u := ev.GetBalanceUpdate()
-	if u == nil || p.hooks.Balance == nil {
-		return
-	}
-	p.hooks.Balance(BalanceEvent{TD: eventTD(apiID, ev), Balances: cloneBalances(u.GetBalances())})
-}
-
 func (p *Path) applyPushedRecon(apiID int64, ev *tdv1.AccountEvent) {
 	body := ev.GetRecon()
 	if body == nil {
 		return
 	}
-	p.deliverRecon(apiID, eventTD(apiID, ev), body, 0, false)
+	p.deliverRecon(apiID, eventTD(apiID, ev), body, 0, false, 0)
 }
 
 func (p *Path) keeps(apiID int64, clientOrderID string) bool {

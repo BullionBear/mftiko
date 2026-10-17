@@ -225,10 +225,13 @@ message Fill {
   int64 exch_ts_ns = 11;
 }
 
+// 餘額。free、locked、prelock 互不重疊，加總是總額，三格都由 TD 填（D853）。
+// SDK 不計算：BalanceUpdate 與 Recon 原樣覆蓋。
 message Balance {
   string asset = 1;
-  double free = 2;
-  double locked = 3;
+  double free = 2; // 可用
+  double locked = 3; // 掛單凍結
+  // 單已送出、交易所未確認的預扣；確認後轉入 locked。
   double prelock = 4;
 }
 

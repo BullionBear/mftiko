@@ -1667,12 +1667,15 @@ func (x *Fill) GetExchTsNs() int64 {
 	return 0
 }
 
+// 餘額。free、locked、prelock 互不重疊，加總是總額，三格都由 TD 填（D853）。
+// SDK 不計算：BalanceUpdate 與 Recon 原樣覆蓋。
 type Balance struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Asset         string                 `protobuf:"bytes,1,opt,name=asset,proto3" json:"asset,omitempty"`
-	Free          float64                `protobuf:"fixed64,2,opt,name=free,proto3" json:"free,omitempty"`
-	Locked        float64                `protobuf:"fixed64,3,opt,name=locked,proto3" json:"locked,omitempty"`
-	Prelock       float64                `protobuf:"fixed64,4,opt,name=prelock,proto3" json:"prelock,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Asset  string                 `protobuf:"bytes,1,opt,name=asset,proto3" json:"asset,omitempty"`
+	Free   float64                `protobuf:"fixed64,2,opt,name=free,proto3" json:"free,omitempty"`     // 可用
+	Locked float64                `protobuf:"fixed64,3,opt,name=locked,proto3" json:"locked,omitempty"` // 掛單凍結
+	// 單已送出、交易所未確認的預扣；確認後轉入 locked。
+	Prelock       float64 `protobuf:"fixed64,4,opt,name=prelock,proto3" json:"prelock,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

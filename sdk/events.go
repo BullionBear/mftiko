@@ -98,9 +98,10 @@ type BalanceEvent struct {
 	Balances []*tdv1.Balance
 }
 
-// ReconEvent replaces the account's state (DECISIONS D603): Recon.open_orders holds only the
+// ReconEvent replaces the account's state (DECISIONS D603, D854): Recon.open_orders holds only the
 // strategy's own algos; positions and balances are the whole account's. By the time OnRecon runs, the
-// local orders and ledger have been replaced with it.
+// ledger and the OMS have been replaced with it. A td.view reply keeps a local pending_new that
+// Submit recorded after that ReconRequest and that the snapshot does not list. A pushed Recon does not.
 type ReconEvent struct {
 	TD
 	Recon *tdv1.Recon
