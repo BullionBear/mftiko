@@ -1,7 +1,9 @@
 // The conformance worker (PROTOCOL §9.8, D833, D839). It speaks the session
 // worker's C4 and C5 behavior: compliant unless -violate names one check.
 // Check id strings are repeated here because this package cannot import the
-// harness (internal/sts). sdk.Run is not used; a full SDK pass is E8-13.
+// harness (internal/sts). sdk.Run is not used. The full Go SDK pass is
+// examples/strategies/conform, run from CI (D864). This worker stays the
+// violation fixture.
 
 package fakeworker
 

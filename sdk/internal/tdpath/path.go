@@ -87,6 +87,27 @@ type Path struct {
 	wg          sync.WaitGroup
 	settled     atomic.Uint64
 	failOnce    atomic.Bool
+
+	// sendMu orders td.order publishes. sendTurn is closed by the previous
+	// request once its bytes are on the connection. The hook does not wait.
+	// The following request may publish as soon as this one has, and still
+	// waits for its own reply (PROTOCOL §9.4, §9.8).
+	sendMu   sync.Mutex
+	sendTurn chan struct{}
+}
+
+// reserveSend takes the next place in the td.order publish chain. wait is
+// nil for the first request. release lets the following request publish; it
+// is safe to call twice.
+func (p *Path) reserveSend() (wait <-chan struct{}, release func()) {
+	ch := make(chan struct{})
+	p.sendMu.Lock()
+	wait = p.sendTurn
+	p.sendTurn = ch
+	p.sendMu.Unlock()
+	var once sync.Once
+	release = func() { once.Do(func() { close(ch) }) }
+	return wait, release
 }
 
 type account struct {
@@ -488,6 +509,14 @@ func (p *Path) ask(acc *account) error {
 		p.beginReply(apiID, rep, gen)
 		p.releaseStep(acc, done)
 	})
+	// The reply callback is on the dispatcher queue and has not run. Conformance
+	// waits for this line so delivery cannot start with the queue still empty.
+	p.mu.Lock()
+	failed := p.failed
+	p.mu.Unlock()
+	if !failed && p.logf != nil {
+		p.logf("td.view: queued")
+	}
 	select {
 	case <-done:
 		return nil
@@ -654,7 +683,15 @@ func (p *Path) enqueue(fn func()) {
 func (p *Path) stop(reason string) {
 	first := p.failOnce.CompareAndSwap(false, true)
 	p.markFailed()
-	if first && p.fail != nil {
+	if !first {
+		return
+	}
+	// The dispatcher logs the same words when its own buffer is the one that filled.
+	// The hold fills first while events are still waiting for Recon (D841).
+	if p.logf != nil && reason != "" {
+		p.logf(reason)
+	}
+	if p.fail != nil {
 		p.fail(reason)
 	}
 }

@@ -82,5 +82,8 @@ jobs:
           MFTIKO_REQUIRE_ETCD: "1" # a missing etcd fails the etcd tests instead of skipping them
           MFTIKO_REQUIRE_PG: "1" # a missing postgres fails the symbol migration tests instead of skipping them
         run: make test-race
+      # Full Go SDK conformance. Separate from go test so the suite is not run twice (D864).
+      - name: Go SDK conformance
+        run: make sdk-conformance
       - name: svelte-check
         run: make web-check

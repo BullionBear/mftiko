@@ -86,7 +86,8 @@ func (p *Path) Submit(o Order) (string, error) {
 		Params:        maps.Clone(o.Params),
 		RecvWindowMs:  o.RecvWindowMs,
 	}}}
-	p.track(func() { p.roundOrder(o.APIID, id, nil, req, orderSubmit) })
+	wait, release := p.reserveSend()
+	p.track(func() { p.roundOrder(wait, release, o.APIID, id, nil, req, orderSubmit) })
 	return id, nil
 }
 
@@ -111,7 +112,8 @@ func (p *Path) Cancel(apiID int64, clientOrderID string) error {
 		Uid:           uid,
 		ClientOrderId: clientOrderID,
 	}}}
-	p.track(func() { p.roundOrder(apiID, clientOrderID, []string{clientOrderID}, req, orderCancel) })
+	wait, release := p.reserveSend()
+	p.track(func() { p.roundOrder(wait, release, apiID, clientOrderID, []string{clientOrderID}, req, orderCancel) })
 	return nil
 }
 
@@ -160,7 +162,8 @@ func (p *Path) sendBatches(apiID int64, batch uint32, ids []string) {
 			req := &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Cancel{Cancel: &tdv1.Cancel{
 				SessionId: p.sessionID, Uid: uid, ClientOrderId: id,
 			}}}
-			p.roundOrder(apiID, id, []string{id}, req, orderCancel)
+			wait, release := p.reserveSend()
+			p.roundOrder(wait, release, apiID, id, []string{id}, req, orderCancel)
 		}
 		return
 	}
@@ -173,7 +176,8 @@ func (p *Path) sendBatches(apiID int64, batch uint32, ids []string) {
 			orders[k] = &tdv1.BatchCancelOrder{ClientOrderId: id}
 		}
 		req := &tdv1.OrderRequest{Req: &tdv1.OrderRequest_BatchCancel{BatchCancel: &tdv1.BatchCancel{Orders: orders}}}
-		p.roundOrder(apiID, "", chunk, req, orderBatch)
+		wait, release := p.reserveSend()
+		p.roundOrder(wait, release, apiID, "", chunk, req, orderBatch)
 	}
 }
 
@@ -185,13 +189,16 @@ const (
 	orderBatch
 )
 
-func (p *Path) roundOrder(apiID int64, id string, ids []string, req *tdv1.OrderRequest, kind orderKind) {
+func (p *Path) roundOrder(wait <-chan struct{}, release func(), apiID int64, id string, ids []string, req *tdv1.OrderRequest, kind orderKind) {
+	if release != nil {
+		defer release()
+	}
 	ctx, cancel := context.WithTimeout(p.ctx, p.recv)
 	defer cancel()
 	body, err := proto.Marshal(req)
 	var msg *nats.Msg
 	if err == nil {
-		msg, err = p.nc.RequestWithContext(ctx, orderSubject(apiID), body)
+		msg, err = p.requestInOrder(ctx, wait, release, orderSubject(apiID), body)
 	}
 	if p.ctx.Err() != nil {
 		return
@@ -201,6 +208,37 @@ func (p *Path) roundOrder(apiID int64, id string, ids []string, req *tdv1.OrderR
 		err = proto.Unmarshal(msg.Data, reply)
 	}
 	p.enqueue(func() { p.finishOrder(apiID, id, ids, kind, reply, err) })
+}
+
+// requestInOrder publishes body after wait, then lets the next td.order
+// publish start, and only then reads the reply. The subscription is flushed
+// before the publish so the reply cannot arrive with nobody listening.
+func (p *Path) requestInOrder(ctx context.Context, wait <-chan struct{}, release func(), subject string, body []byte) (*nats.Msg, error) {
+	if wait != nil {
+		select {
+		case <-wait:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-p.ctx.Done():
+			return nil, p.ctx.Err()
+		}
+	}
+	inbox := p.nc.NewInbox()
+	sub, err := p.nc.SubscribeSync(inbox)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = sub.Unsubscribe() }()
+	if err := p.nc.FlushWithContext(ctx); err != nil {
+		return nil, err
+	}
+	if err := p.nc.PublishRequest(subject, inbox, body); err != nil {
+		return nil, err
+	}
+	if release != nil {
+		release()
+	}
+	return sub.NextMsgWithContext(ctx)
 }
 
 func (p *Path) finishOrder(apiID int64, id string, ids []string, kind orderKind, reply *tdv1.OrderReply, callErr error) {

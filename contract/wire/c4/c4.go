@@ -5,6 +5,8 @@
 //   - Hello first, then Beat once a second from a goroutine of its own.
 //   - A goroutine of its own reads fd 3, so Stop and Live are taken while Init, Start or Run block.
 //   - Live that arrives before Init has succeeded is held and applied before Done(INIT) (D111).
+//   - Start before the first Init, and a second Init, end INIT_FAILED without a hook (D837).
+//     Live before Init stays held, and Relay before Init stays dropped.
 //   - A Relay from the agent (a C5 Command) goes to the plane, when the plane takes them.
 //   - Init.deadline_ms and Start.deadline_ms, when not zero, bound that call. Past the deadline
 //     Serve does not wait: Done(verb, false), Exiting(INIT_FAILED), Stopped(false), exit 10 (D807).
@@ -21,8 +23,8 @@
 // It is in contract so that every worker can use it: the MD conn worker, the TD account worker, and
 // the Go SDK's session worker, which depends only on contract (D802). Like the rest of contract it
 // depends only on the standard library and protobuf, so logging is a function the worker supplies.
-// Relay up to the agent, Controller and Undeliverable are not here: stsctl has no worker-to-agent
-// request (D903).
+// Session.Relay echoes one downlink Relay, corr and payload unchanged (PROTOCOL §9.8).
+// Controller and Undeliverable are not here: stsctl has no worker-to-agent request (D903).
 package c4
 
 import (
@@ -171,6 +173,20 @@ func (s *Session) Report(m proto.Message) error {
 	}}})
 }
 
+// Relay sends one Relay up to the shim, with this session's contract. The session
+// worker brings a downlink Relay back the same way, corr and payload unchanged
+// (PROTOCOL §9.8). Safe for concurrent use.
+func (s *Session) Relay(corrID, payload []byte) error {
+	if s == nil {
+		return errors.New("c4: relay")
+	}
+	return s.send(&workerv1.WorkerUp{Msg: &workerv1.WorkerUp_Relay{Relay: &workerv1.Relay{
+		Contract: s.contract,
+		CorrId:   append([]byte(nil), corrID...),
+		Payload:  append([]byte(nil), payload...),
+	}}})
+}
+
 func (s *Session) send(m *workerv1.WorkerUp) error {
 	if err := s.out.Write(m); err != nil {
 		return fmt.Errorf("c4: %w", err)
@@ -215,14 +231,21 @@ func Serve(ctx context.Context, rw io.ReadWriteCloser, cfg Config, p Plane) int 
 	}
 	go s.beat(life)
 
-	initMsg, err := s.wait(life, func(m *workerv1.WorkerDown) bool { return m.GetInit() != nil })
+	initMsg, err := s.waitInit(life)
+	if errors.Is(err, errStartBeforeInit) {
+		// Init never ran, so OnStop does not (D837, D808).
+		return s.failPhase(workerv1.Verb_VERB_START, errStartBeforeInit.Error(), false)
+	}
 	if err != nil {
 		return s.finish(commonv1.Outcome_OUTCOME_DONE, s.reasonOr("signal"), false, ExitDone, false)
 	}
 	if code, ok := s.init(life, initMsg.GetInit()); !ok {
 		return code
 	}
-	startMsg, err := s.wait(life, func(m *workerv1.WorkerDown) bool { return m.GetStart() != nil })
+	startMsg, err := s.waitStart(life)
+	if errors.Is(err, errInitAgain) {
+		return s.failPhase(workerv1.Verb_VERB_INIT, errInitAgain.Error(), false)
+	}
 	if err != nil {
 		return s.finish(commonv1.Outcome_OUTCOME_DONE, s.reasonOr("signal"), false, ExitDone, false)
 	}
@@ -315,12 +338,38 @@ func (s *ctl) beat(ctx context.Context) {
 	}
 }
 
-func (s *ctl) wait(ctx context.Context, want func(*workerv1.WorkerDown) bool) (*workerv1.WorkerDown, error) {
+// waitInit blocks until the first Init. A Start in that gap is INIT_FAILED (D837).
+// Anything else that shares the incoming channel is not a Start or an Init; Live and
+// Relay do not use this channel.
+func (s *ctl) waitInit(ctx context.Context) (*workerv1.WorkerDown, error) {
 	for {
 		select {
 		case m := <-s.incoming:
-			if want(m) {
+			if m.GetInit() != nil {
 				return m, nil
+			}
+			if m.GetStart() != nil {
+				return nil, errStartBeforeInit
+			}
+		case <-s.stopped:
+			return nil, errHalted
+		case <-ctx.Done():
+			s.halt("signal")
+			return nil, ctx.Err()
+		}
+	}
+}
+
+// waitStart blocks until Start. A second Init is INIT_FAILED (D837).
+func (s *ctl) waitStart(ctx context.Context) (*workerv1.WorkerDown, error) {
+	for {
+		select {
+		case m := <-s.incoming:
+			if m.GetStart() != nil {
+				return m, nil
+			}
+			if m.GetInit() != nil {
+				return nil, errInitAgain
 			}
 		case <-s.stopped:
 			return nil, errHalted
@@ -666,6 +715,8 @@ func done(verb workerv1.Verb, ok bool, errText string) *workerv1.WorkerUp {
 }
 
 var (
-	errHalted   = errors.New("c4: control connection closed")
-	errDeadline = errors.New("deadline")
+	errHalted          = errors.New("c4: control connection closed")
+	errDeadline        = errors.New("deadline")
+	errStartBeforeInit = errors.New("c4: start before init")
+	errInitAgain       = errors.New("c4: init after init")
 )

@@ -201,8 +201,14 @@ func (r *runner) flowHappy() (Check, error) {
 	if !poll(opTimeout, func() bool { return p.snap().relay("ping") }) {
 		return fail("happy: Relay ping was not echoed"), nil
 	}
+	// Live carries a real snapshot, strictly newer than Start (D111, D846).
+	// An unparsable payload is not applied, so there is no Applied.
+	body, err := r.bus.liveBindings(2)
+	if err != nil {
+		return fail(err.Error()), nil
+	}
 	if err := p.write(&workerv1.WorkerDown{Msg: &workerv1.WorkerDown_Live{Live: &workerv1.Live{
-		Contract: contractSTS, Digest: "L2", Payload: []byte{1},
+		Contract: contractSTS, Digest: "L2", Payload: body,
 	}}}); err != nil {
 		return fail(err.Error()), nil
 	}
@@ -438,12 +444,19 @@ func (r *runner) shutdownSelf() (Check, error) {
 }
 
 func (r *runner) checkPriority() (Check, error) {
+	// The reply stays held until both events are published, and OnStart stays
+	// inside Resolve until the reply callback is on the dispatcher queue.
+	// Delivery still has to be OnOrder then OnTrade (D841, D844, D847).
+	r.bus.holdView()
+	defer r.bus.releaseView()
+	r.bus.holdSym()
+	defer r.bus.releaseSym()
 	p, err := r.spawn()
 	if err != nil {
 		return Check{}, err
 	}
 	defer p.stop()
-	if err := r.boot(p, baseParams("priority")); err != nil {
+	if err := r.bootIn(p, baseParams("priority"), holdDeadlineMS); err != nil {
 		return fail(err.Error()), nil
 	}
 	if !poll(opTimeout, func() bool { return p.snap().hook("gate") || p.snap().exited }) {
@@ -452,26 +465,42 @@ func (r *runner) checkPriority() (Check, error) {
 	if err := r.bus.publishTrade(1, time.Now(), 0); err != nil {
 		return fail(err.Error()), nil
 	}
-	if err := r.bus.publishAccount(1, 1, false); err != nil {
+	if err := r.bus.publishAccount(6, 3, false); err != nil {
 		return fail(err.Error()), nil
 	}
 	if err := r.bus.flush(); err != nil {
 		return fail(err.Error()), nil
 	}
+	r.bus.releaseView()
+	if !poll(opTimeout, func() bool {
+		s := p.snap()
+		if len(priorityHooks(s)) >= 2 || s.exited {
+			return true
+		}
+		return strings.Contains(s.stderr, "td.view: queued")
+	}) {
+		return fail("priority: view was not queued"), nil
+	}
+	r.bus.releaseSym()
 	var hooks []string
 	poll(opTimeout, func() bool {
-		hooks = hooks[:0]
-		for _, l := range p.snap().lines {
-			if l.Hook == "OnOrder" || l.Hook == "OnTrade" {
-				hooks = append(hooks, l.Hook)
-			}
-		}
+		hooks = priorityHooks(p.snap())
 		return len(hooks) >= 2 || p.snap().exited
 	})
 	if len(hooks) < 2 || hooks[0] != "OnOrder" || hooks[1] != "OnTrade" {
 		return fail(fmt.Sprintf("priority: order %v", hooks)), nil
 	}
 	return pass(), nil
+}
+
+func priorityHooks(s shot) []string {
+	var hooks []string
+	for _, l := range s.lines {
+		if l.Hook == "OnOrder" || l.Hook == "OnTrade" {
+			hooks = append(hooks, l.Hook)
+		}
+	}
+	return hooks
 }
 
 func (r *runner) checkPrehook() (Check, error) {
@@ -482,6 +511,13 @@ func (r *runner) checkPrehook() (Check, error) {
 }
 
 func (r *runner) prehookStale() (Check, error) {
+	// Resolve stays blocked until the trades are in the ring, then is released
+	// at once so seq 2 is still inside recv_window_ms when the dispatcher
+	// dequeues it. The pass waits for the delivery and for a report whose md
+	// dropped is at least 1. The first report, sent at Init, is before any drop
+	// (D847).
+	r.bus.holdSym()
+	defer r.bus.releaseSym()
 	p, err := r.spawn()
 	if err != nil {
 		return Check{}, err
@@ -489,7 +525,7 @@ func (r *runner) prehookStale() (Check, error) {
 	defer p.stop()
 	params := baseParams("prehook")
 	params.UntilSeq = 2
-	if err := r.boot(p, params); err != nil {
+	if err := r.bootIn(p, params, holdDeadlineMS); err != nil {
 		return fail(err.Error()), nil
 	}
 	if !poll(opTimeout, func() bool { return p.snap().hook("gate") || p.snap().exited }) {
@@ -504,19 +540,20 @@ func (r *runner) prehookStale() (Check, error) {
 	if err := r.bus.flush(); err != nil {
 		return fail(err.Error()), nil
 	}
+	r.bus.releaseSym()
 	// Stdout and fd 3 are not ordered against each other (PROTOCOL §9.8). Wait
-	// until both the delivery line and the md drop report are visible, unless
-	// the stale trade was delivered.
-	poll(opTimeout, func() bool {
+	// until both the fresh delivery and a report with a drop are visible,
+	// unless the stale trade was delivered.
+	poll(longWait, func() bool {
 		s := p.snap()
 		if containsSeq(s.seqs("OnTrade"), 1) || s.exited {
 			return true
 		}
-		if !s.hook("OnStart") {
+		if !containsSeq(s.seqs("OnTrade"), 2) {
 			return false
 		}
-		_, ok := s.mdDropped()
-		return ok
+		dropped, ok := s.mdDropped()
+		return ok && dropped >= 1
 	})
 	s := p.snap()
 	if containsSeq(s.seqs("OnTrade"), 1) {
@@ -533,6 +570,8 @@ func (r *runner) prehookStale() (Check, error) {
 }
 
 func (r *runner) prehookRing() (Check, error) {
+	r.bus.holdSym()
+	defer r.bus.releaseSym()
 	p, err := r.spawn()
 	if err != nil {
 		return Check{}, err
@@ -540,7 +579,7 @@ func (r *runner) prehookRing() (Check, error) {
 	defer p.stop()
 	params := baseParams("ring")
 	params.UntilSeq = sentinel
-	if err := r.boot(p, params); err != nil {
+	if err := r.bootIn(p, params, holdDeadlineMS); err != nil {
 		return fail(err.Error()), nil
 	}
 	if !poll(opTimeout, func() bool { return p.snap().hook("gate") || p.snap().exited }) {
@@ -558,16 +597,18 @@ func (r *runner) prehookRing() (Check, error) {
 	if err := r.bus.flush(); err != nil {
 		return fail(err.Error()), nil
 	}
+	r.bus.releaseSym()
 	poll(longWait, func() bool {
 		s := p.snap()
-		if s.exited {
+		got := s.seqs("OnTrade")
+		if containsSeq(got, 1) || s.exited {
 			return true
 		}
-		if !s.hook("OnStart") {
+		if !containsSeq(got, sentinel) {
 			return false
 		}
-		_, ok := s.mdDropped()
-		return ok
+		dropped, ok := s.mdDropped()
+		return ok && dropped >= 1
 	})
 	s := p.snap()
 	got := s.seqs("OnTrade")
@@ -582,12 +623,17 @@ func (r *runner) prehookRing() (Check, error) {
 }
 
 func (r *runner) checkOverflow() (Check, error) {
+	// OnStart stays in Resolve, so these events fill the hold (D841) instead of
+	// being dropped against a watermark. Incarnation 1 is older than the
+	// fixture snapshot, so anything released early is not delivered (D844).
+	r.bus.holdSym()
+	defer r.bus.releaseSym()
 	p, err := r.spawn()
 	if err != nil {
 		return Check{}, err
 	}
 	defer p.stop()
-	if err := r.boot(p, baseParams("overflow")); err != nil {
+	if err := r.bootIn(p, baseParams("overflow"), holdDeadlineMS); err != nil {
 		return fail(err.Error()), nil
 	}
 	if !poll(opTimeout, func() bool { return p.snap().hook("gate") || p.snap().exited }) {
@@ -606,6 +652,19 @@ func (r *runner) checkOverflow() (Check, error) {
 	if err := r.bus.flush(); err != nil {
 		return fail(err.Error()), nil
 	}
+	if !poll(longWait, func() bool {
+		s := p.snap()
+		if q, ok := s.queued(); ok && q >= tdFull {
+			return true
+		}
+		if s.exited {
+			return true
+		}
+		return strings.Contains(s.stderr, "td buffer full")
+	}) {
+		return fail("overflow: hold did not fill"), nil
+	}
+	r.bus.releaseSym()
 	bad := ""
 	poll(longWait, func() bool {
 		s := p.snap()
@@ -709,6 +768,12 @@ func (r *runner) checkSubject() (Check, error) {
 }
 
 func (r *runner) checkRecon() (Check, error) {
+	// The early event is released after OnRecon (§9.6, D854). Wait until (3, 6)
+	// has been delivered, which is after that hook for the SDK and before it
+	// for a worker that drains first. Injection is this check only, and it does
+	// not publish another incarnation (D844).
+	r.bus.setInject(true)
+	defer r.bus.setInject(false)
 	p, err := r.spawn()
 	if err != nil {
 		return Check{}, err
@@ -717,13 +782,12 @@ func (r *runner) checkRecon() (Check, error) {
 	if err := r.boot(p, baseParams("recon")); err != nil {
 		return fail(err.Error()), nil
 	}
-	// OnRecon is printed after the early deliveries and before Stage. Requiring
-	// both keeps the stdout lines in the same snapshot as the stage frame.
 	if !poll(opTimeout, func() bool {
 		s := p.snap()
-		return (s.stage("running") && s.hook("OnRecon")) || s.exited
+		set := reconSet(s)
+		return set[keyOf(3, 6)] || s.exited
 	}) {
-		return fail("recon: not running"), nil
+		return fail(fmt.Sprintf("recon early: %v", keysOf(reconSet(p.snap())))), nil
 	}
 	early := reconSet(p.snap())
 	if len(early) != 1 || !early[keyOf(3, 6)] {
@@ -775,26 +839,32 @@ func keysOf(m map[reconKey]bool) []reconKey {
 }
 
 func (r *runner) checkCtx() (Check, error) {
+	// The order is seq 6 and the position is seq 7 of incarnation 3, the same
+	// incarnation as the watermark and the next two seqs after it (D844).
+	// Resolve is held so both are in the hold before that reply.
+	r.bus.holdSym()
+	defer r.bus.releaseSym()
 	p, err := r.spawn()
 	if err != nil {
 		return Check{}, err
 	}
 	defer p.stop()
-	if err := r.boot(p, baseParams("ctx")); err != nil {
+	if err := r.bootIn(p, baseParams("ctx"), holdDeadlineMS); err != nil {
 		return fail(err.Error()), nil
 	}
 	if !poll(opTimeout, func() bool { return p.snap().hook("gate") || p.snap().exited }) {
 		return fail("ctx: no gate"), nil
 	}
-	if err := r.bus.publishAccount(1, 1, false); err != nil {
+	if err := r.bus.publishAccount(6, 3, false); err != nil {
 		return fail(err.Error()), nil
 	}
-	if err := r.bus.publishAccount(2, 1, true); err != nil {
+	if err := r.bus.publishAccount(7, 3, true); err != nil {
 		return fail(err.Error()), nil
 	}
 	if err := r.bus.flush(); err != nil {
 		return fail(err.Error()), nil
 	}
+	r.bus.releaseSym()
 	poll(opTimeout, func() bool {
 		s := p.snap()
 		return s.hook("OnOrder") && s.hook("OnPosition")
@@ -815,9 +885,14 @@ func ctxTrue(s shot, hook string) bool {
 	return false
 }
 
-// boot sends Init and waits until it succeeds. Start is the caller's when the
-// check publishes after gate, which the worker emits from OnStart.
+// boot sends Init and waits until it succeeds, then Start with no deadline.
 func (r *runner) boot(p *proc, params Params) error {
+	return r.bootIn(p, params, 0)
+}
+
+// bootIn is boot with Start.deadline_ms. The deadline is a ceiling for a hook
+// that blocks in Resolve; it is not a sleep.
+func (r *runner) bootIn(p *proc, params Params, deadline uint32) error {
 	if _, detail := waitHello(p); detail != "" {
 		return fmt.Errorf("%s", detail)
 	}
@@ -831,7 +906,7 @@ func (r *runner) boot(p *proc, params Params) error {
 		s := p.snap()
 		return fmt.Errorf("Init did not succeed (exit %d, %s)", s.code, s.stderr)
 	}
-	return r.writeStart(p, 0)
+	return r.writeStart(p, deadline)
 }
 
 func containsSeq(seqs []uint64, want uint64) bool {

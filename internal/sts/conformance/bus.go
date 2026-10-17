@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nats-io/jwt/v2"
 	"github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nkeys"
@@ -20,8 +21,10 @@ import (
 	mdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1"
 	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
 	stsctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/stsctl/v1"
+	symv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/sym/v1"
 	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
+	"github.com/BullionBear/mftiko/contract/wire/cloid"
 	"github.com/BullionBear/mftiko/contract/wire/envelope"
 	"github.com/BullionBear/mftiko/internal/platform/natsdev"
 	"github.com/BullionBear/mftiko/internal/sts"
@@ -47,6 +50,13 @@ const (
 
 	opTimeout = 3 * time.Second
 	longWait  = 60 * time.Second
+
+	// holdDeadlineMS is the Start deadline for a check that blocks OnStart inside
+	// Resolve. It is a ceiling: the hook returns when the harness releases Get.
+	// The SYM request uses that deadline instead of the 5s default.
+	holdDeadlineMS = 120000
+
+	symInbox = "_INBOX_sym"
 )
 
 // bus is the embedded server plus the fake MD, TD, and md.fetch peers (D830).
@@ -60,6 +70,7 @@ type bus struct {
 	md           *nats.Conn
 	td           *nats.Conn
 	fetch        *nats.Conn
+	sym          *nats.Conn
 	feedSubject  string
 	orderSubject string
 	evtSubject   string
@@ -67,6 +78,18 @@ type bus struct {
 
 	mu     sync.Mutex
 	cloids []string
+	cloidN uint64
+
+	// holdMu guards the SYM Get hold and the delayed td.view reply. holdCond
+	// waits with holdMu. A blocked Get callback is the only user of sym while
+	// the hold is on; Revisions and GetByUid are answered at once.
+	holdMu   sync.Mutex
+	holdCond *sync.Cond
+	holdGet  bool
+	viewHold bool
+	viewRel  chan struct{}
+	inject   bool
+	injected bool
 }
 
 func startBus() (*bus, error) {
@@ -75,6 +98,7 @@ func startBus() (*bus, error) {
 		return nil, err
 	}
 	b := &bus{dir: dir, logSubject: "log.sts." + sessionID}
+	b.holdCond = sync.NewCond(&b.holdMu)
 	if err := os.MkdirAll(filepath.Join(dir, "vol"), 0o755); err != nil {
 		b.close()
 		return nil, err
@@ -171,6 +195,11 @@ func startBus() (*bus, error) {
 		return nil, err
 	}
 	b.jwt, b.seed = token, userSeed
+	symJWT, symSeed, err := signResponder(lay.Manifest.Account, skp)
+	if err != nil {
+		b.close()
+		return nil, err
+	}
 
 	b.md, err = dialCreds(b.url, filepath.Join(lay.Dir, filepath.FromSlash(lay.Manifest.MD[0].Creds)))
 	if err != nil {
@@ -186,6 +215,11 @@ func startBus() (*bus, error) {
 	if err != nil {
 		b.close()
 		return nil, fmt.Errorf("conformance: fetch: %w", err)
+	}
+	b.sym, err = dialJWT(b.url, symJWT, symSeed, symInbox)
+	if err != nil {
+		b.close()
+		return nil, fmt.Errorf("conformance: sym: %w", err)
 	}
 	if err := b.servePeers(); err != nil {
 		b.close()
@@ -213,6 +247,37 @@ func dialCreds(url, path string) (*nats.Conn, error) {
 		nats.Timeout(opTimeout),
 		nats.ErrorHandler(func(*nats.Conn, *nats.Subscription, error) {}),
 	)
+}
+
+// signResponder is the harness SYM user. It subscribes to sym and answers
+// with the response permission. The inbox is its own, not the session's.
+func signResponder(account string, signer nkeys.KeyPair) (userJWT, seed string, err error) {
+	if signer == nil || account == "" {
+		return "", "", errors.New("conformance: sym signer")
+	}
+	kp, err := nkeys.CreateUser()
+	if err != nil {
+		return "", "", err
+	}
+	pub, err := kp.PublicKey()
+	if err != nil {
+		return "", "", err
+	}
+	uc := jwt.NewUserClaims(pub)
+	uc.Name = "conform-sym"
+	uc.IssuerAccount = account
+	uc.Pub.Allow.Add(symInbox + ".>")
+	uc.Sub.Allow.Add("sym", symInbox+".>")
+	uc.Resp = &jwt.ResponsePermission{MaxMsgs: 1, Expires: 2 * time.Minute}
+	token, err := uc.Encode(signer)
+	if err != nil {
+		return "", "", err
+	}
+	sd, err := kp.Seed()
+	if err != nil {
+		return "", "", err
+	}
+	return token, string(sd), nil
 }
 
 func dialJWT(url, userJWT, seed, inbox string) (*nats.Conn, error) {
@@ -260,7 +325,10 @@ func (b *bus) servePeers() error {
 	}); err != nil {
 		return err
 	}
-	for _, nc := range []*nats.Conn{b.td, b.md, b.fetch} {
+	if _, err := b.sym.Subscribe("sym", b.onSym); err != nil {
+		return err
+	}
+	for _, nc := range []*nats.Conn{b.td, b.md, b.fetch, b.sym} {
 		if err := nc.FlushTimeout(opTimeout); err != nil {
 			return err
 		}
@@ -288,16 +356,45 @@ func (b *bus) onOrder(m *nats.Msg) {
 	_ = m.Respond(raw)
 }
 
-// onView publishes the early recon events and then answers, on this same
-// connection, so they are queued before the worker's Request returns.
-// The snapshot is incarnation 3, seq 5. Seq 4 of that incarnation is at or
-// below the cursor. Seq 6 is the one event past it. Seq 6 of incarnation 1
-// is older than the reply and is dropped. A newer incarnation would ask
-// again (D844); this fixture must not publish one.
+// onView answers td.view. The snapshot is incarnation 3, seq 5. When inject is
+// set (the recon check only), the first reply publishes two account events on
+// this same connection before the bytes go out: seq 4 of incarnation 3 is at
+// or below the cursor, and seq 6 is the one event past it. A later reply does
+// not publish them again. An event from another incarnation is not published.
+// On the live path that asks again (D844), and this fixture's next reply is
+// the same watermark, so the cursor would move backwards and the following
+// seq would stay a gap. Other checks get the watermark and no injected orders.
+//
+// viewHold answers from another goroutine. The callback must return so this
+// connection can still Publish the events the check queues before the reply.
 func (b *bus) onView(m *nats.Msg) {
-	_ = b.publishAccount(4, 3, false)
-	_ = b.publishAccount(6, 3, false)
-	_ = b.publishAccount(6, 1, false)
+	b.holdMu.Lock()
+	hold := b.viewHold
+	rel := b.viewRel
+	b.holdMu.Unlock()
+	if !hold {
+		b.answerView(m)
+		return
+	}
+	go func() {
+		if rel != nil {
+			<-rel
+		}
+		b.answerView(m)
+	}()
+}
+
+func (b *bus) answerView(m *nats.Msg) {
+	b.holdMu.Lock()
+	inject := b.inject && !b.injected
+	if inject {
+		b.injected = true
+	}
+	b.holdMu.Unlock()
+	if inject {
+		_ = b.publishAccount(4, 3, false)
+		_ = b.publishAccount(6, 3, false)
+	}
 	if m.Reply == "" {
 		return
 	}
@@ -314,8 +411,116 @@ func (b *bus) onView(m *nats.Msg) {
 	_ = m.Respond(raw)
 }
 
+// onSym answers Get, GetByUid, and Revisions. Only Get waits while holdGet is
+// set, so a check can keep OnStart inside Resolve without stalling the
+// revision sync that follows the row.
+func (b *bus) onSym(m *nats.Msg) {
+	if m.Reply == "" {
+		return
+	}
+	var req symv1.Request
+	if err := proto.Unmarshal(m.Data, &req); err != nil {
+		b.replySym(m, &symv1.Reply{Error: "invalid"})
+		return
+	}
+	switch {
+	case req.GetGet() != nil:
+		b.waitGet()
+		if req.GetGet().GetUniversalTicker() == ticker {
+			b.replySym(m, symInfoReply())
+			return
+		}
+		b.replySym(m, &symv1.Reply{Error: "not_found"})
+	case req.GetGetByUid() != nil:
+		if req.GetGetByUid().GetUid() == uid {
+			b.replySym(m, symInfoReply())
+			return
+		}
+		b.replySym(m, &symv1.Reply{Error: "not_found"})
+	case req.GetRevisions() != nil:
+		b.replySym(m, &symv1.Reply{Result: &symv1.Reply_Revisions{Revisions: &symv1.RevisionList{
+			Tables: []*symv1.TableRevision{{
+				Venue:    venue,
+				Category: "Spot",
+				Revision: 1,
+			}},
+		}}})
+	default:
+		b.replySym(m, &symv1.Reply{Error: "not_found"})
+	}
+}
+
+func symInfoReply() *symv1.Reply {
+	return &symv1.Reply{Result: &symv1.Reply_Info{Info: &symv1.SymbolInfo{
+		UniversalTicker: ticker,
+		ExchTicker:      "BTCUSDT",
+		Base:            "BTC",
+		Quote:           "USDT",
+		Status:          symv1.SymbolStatus_SYMBOL_STATUS_TRADABLE,
+		Uid:             uid,
+	}}}
+}
+
+func (b *bus) replySym(m *nats.Msg, rep *symv1.Reply) {
+	raw, _ := proto.Marshal(rep)
+	_ = m.Respond(raw)
+}
+
+// holdSym makes the next Get wait. Release is idempotent.
+func (b *bus) holdSym() {
+	b.holdMu.Lock()
+	b.holdGet = true
+	b.holdMu.Unlock()
+}
+
+func (b *bus) releaseSym() {
+	b.holdMu.Lock()
+	b.holdGet = false
+	b.holdCond.Broadcast()
+	b.holdMu.Unlock()
+}
+
+func (b *bus) waitGet() {
+	b.holdMu.Lock()
+	for b.holdGet {
+		b.holdCond.Wait()
+	}
+	b.holdMu.Unlock()
+}
+
+// holdView delays the td.view reply until releaseView. A check publishes the
+// queued events before that reply, so they are in the hold when the watermark
+// is applied.
+func (b *bus) holdView() {
+	b.holdMu.Lock()
+	b.viewHold = true
+	if b.viewRel == nil {
+		b.viewRel = make(chan struct{})
+	}
+	b.holdMu.Unlock()
+}
+
+func (b *bus) releaseView() {
+	b.holdMu.Lock()
+	b.viewHold = false
+	if b.viewRel != nil {
+		close(b.viewRel)
+		b.viewRel = nil
+	}
+	b.holdMu.Unlock()
+}
+
+func (b *bus) setInject(on bool) {
+	b.holdMu.Lock()
+	b.inject = on
+	if !on {
+		b.injected = false
+	}
+	b.holdMu.Unlock()
+}
+
 func (b *bus) close() {
-	for _, nc := range []*nats.Conn{b.md, b.td, b.fetch} {
+	for _, nc := range []*nats.Conn{b.md, b.td, b.fetch, b.sym} {
 		if nc != nil {
 			nc.Close()
 		}
@@ -378,8 +583,26 @@ func (b *bus) initDown(p Params, deadline uint32, digest string) (*workerv1.Work
 }
 
 func (b *bus) startDown(deadline uint32) (*workerv1.WorkerDown, error) {
-	body, err := proto.Marshal(&stsctlv1.StartPayload{Bindings: &stsctlv1.Bindings{
-		Version: &commonv1.Version{Epoch: 1, Seq: 1},
+	body, err := proto.Marshal(&stsctlv1.StartPayload{Bindings: b.bindings(1, 1)})
+	if err != nil {
+		return nil, err
+	}
+	return &workerv1.WorkerDown{Msg: &workerv1.WorkerDown_Start{Start: &workerv1.Start{
+		Contract:   contractSTS,
+		Payload:    body,
+		DeadlineMs: deadline,
+	}}}, nil
+}
+
+// liveBindings is one stsctl.Bindings snapshot for a Live frame (D111, D846).
+// seq must be strictly newer than the Start snapshot, which is epoch 1 seq 1.
+func (b *bus) liveBindings(seq uint64) ([]byte, error) {
+	return proto.Marshal(b.bindings(1, seq))
+}
+
+func (b *bus) bindings(epoch int64, seq uint64) *stsctlv1.Bindings {
+	return &stsctlv1.Bindings{
+		Version: &commonv1.Version{Epoch: epoch, Seq: seq},
 		Feeds: []*stsctlv1.FeedBinding{{
 			Feed:       feedKey,
 			MdInstance: b.inst,
@@ -392,15 +615,7 @@ func (b *bus) startDown(deadline uint32) (*workerv1.WorkerDown, error) {
 			State:  stsctlv1.BindingState_BINDING_STATE_READY,
 			Worker: &commonv1.WorkerRef{Key: "td/7", Incarnation: 1},
 		}},
-	}})
-	if err != nil {
-		return nil, err
 	}
-	return &workerv1.WorkerDown{Msg: &workerv1.WorkerDown_Start{Start: &workerv1.Start{
-		Contract:   contractSTS,
-		Payload:    body,
-		DeadlineMs: deadline,
-	}}}, nil
 }
 
 func (b *bus) publishTrade(seq uint64, ts time.Time, size int) error {
@@ -430,11 +645,15 @@ func (b *bus) publishAccount(seq uint64, inc uint32, position bool) error {
 			Positions: []*tdv1.Position{{Uid: uid, Size: 2}},
 		}}
 	} else {
+		id, err := b.nextCloid()
+		if err != nil {
+			return err
+		}
 		ev.Event = &tdv1.AccountEvent_OrderUpdate{OrderUpdate: &tdv1.OrderUpdate{
 			Cause: tdv1.OrderCause_ORDER_CAUSE_ACCEPTED,
 			Order: &tdv1.Order{
 				Uid:           uid,
-				ClientOrderId: "c",
+				ClientOrderId: id,
 				Status:        tdv1.OrderStatus_ORDER_STATUS_ACCEPTED,
 				Qty:           1,
 				Side:          commonv1.Side_SIDE_BUY,
@@ -446,6 +665,17 @@ func (b *bus) publishAccount(seq uint64, inc uint32, position bool) error {
 		return err
 	}
 	return b.td.Publish(b.evtSubject, raw)
+}
+
+// nextCloid is a platform client_order_id for algo 1. Seq is 10 bits, so a
+// long run steps the timestamp every 1024 ids (D633).
+func (b *bus) nextCloid() (string, error) {
+	b.mu.Lock()
+	n := b.cloidN
+	b.cloidN++
+	b.mu.Unlock()
+	ts := time.Now().UnixMilli() + int64(n/1024)
+	return cloid.Encode(algoID, ts, uint32(n%1024))
 }
 
 func (b *bus) flush() error {
