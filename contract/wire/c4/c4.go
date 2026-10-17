@@ -140,7 +140,11 @@ type Plane interface {
 type Config struct {
 	Kind     string // Hello.kind
 	Contract string // the C5 contract; Init, Start and Live must name it
-	Release  string // Hello.release
+	// Contracts is Hello.contracts. Nil or empty means []string{Contract}, which is
+	// what a plane that speaks one C5 contract already sent. A session worker lists
+	// worker.v1, stsctl.v1, md.v1, and td.v1 (PROTOCOL §9.2).
+	Contracts []string
+	Release   string // Hello.release
 	// InitCarriesLive: Init.payload is the first live config, and Init.live_digest is its digest,
 	// sent as Applied before Done(INIT) (D111). False when live config only arrives as Live (MD).
 	InitCarriesLive bool
@@ -200,8 +204,12 @@ func Serve(ctx context.Context, rw io.ReadWriteCloser, cfg Config, p Plane) int 
 	}()
 	go s.read(rw)
 
+	contracts := cfg.Contracts
+	if len(contracts) == 0 {
+		contracts = []string{cfg.Contract}
+	}
 	if err := s.sess.send(&workerv1.WorkerUp{Msg: &workerv1.WorkerUp_Hello{Hello: &workerv1.Hello{
-		Kind: cfg.Kind, Release: cfg.Release, Contracts: []string{cfg.Contract}, Pid: int32(os.Getpid()),
+		Kind: cfg.Kind, Release: cfg.Release, Contracts: contracts, Pid: int32(os.Getpid()),
 	}}}); err != nil {
 		return ExitOther
 	}

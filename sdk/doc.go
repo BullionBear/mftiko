@@ -6,7 +6,6 @@
 // Info are implemented by sdk/internal/symclient. The TD path (Submit, Cancel, BatchCancel, the
 // own-algo order book, and the first Recon) is sdk/internal/tdpath (DECISIONS D840–D845). The MD
 // path (bindings, live delivery, Tape, BookSnapshot, and md.fetch) is sdk/internal/mdpath
-// (DECISIONS D846–D849). Run does not wire these clients yet.
-//
-// The API is defined; Run is not implemented yet.
+// (DECISIONS D846–D849). Run wires those clients, reports bindings_applied from the MD
+// path, and leaves volume reads to the strategy (DECISIONS D850–D852, D904).
 package sdk

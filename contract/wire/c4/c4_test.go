@@ -996,6 +996,21 @@ func TestOnStopHookTimeout(t *testing.T) {
 	})
 }
 
+func TestHelloListsContracts(t *testing.T) {
+	want := []string{"worker.v1", "stsctl.v1", "md.v1", "td.v1"}
+	p := run(t, t.Context(), Config{Contracts: append([]string(nil), want...)}, &fake{})
+	h := p.next().GetHello()
+	got := h.GetContracts()
+	if h == nil || h.GetKind() != "test" || len(got) != len(want) {
+		t.Fatalf("hello %v", h)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("contracts %v", got)
+		}
+	}
+}
+
 func TestRunExit(t *testing.T) {
 	for name, c := range map[string]struct {
 		x      *Exit

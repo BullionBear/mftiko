@@ -14,5 +14,5 @@
 //
 // Info of a UID this session has not resolved returns ErrUnknownUID. The client does not retry
 // that and does not end the session (D824). Run maps ErrUnknownUID and ErrNotInInit onto the
-// sdk sentinels of the same name when it wires Context; Run does not wire this package yet.
+// sdk sentinels of the same name.
 package symclient

@@ -25,5 +25,6 @@
 // message, for the local book (E8-15). A payload that does not decode is logged and not
 // delivered; it is not an envelope drop.
 //
-// Run does not wire this package yet.
+// The session worker's Run opens a Path, applies Start and Live snapshots, and
+// reads bindings_applied from Applied.
 package mdpath

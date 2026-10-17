@@ -18,5 +18,6 @@
 // the strategy is not told (D845). A Recon that times out, or finds no responder, is asked
 // again after 1s, then 2s, doubling up to 30s; events stay held (D842).
 //
-// Run does not wire this package yet.
+// The session worker's Run opens a Path, listens before OnStart, and asks for the
+// first Recon after OnStart returns.
 package tdpath
