@@ -701,7 +701,8 @@ func (r *runner) checkCloid() (Check, error) {
 	var ids []string
 	poll(opTimeout, func() bool {
 		ids = r.bus.since(mark)
-		return len(ids) >= 2 || (p.snap().hook("OnStart") && len(ids) > 0 && !cloidOK(ids)) || p.snap().exited
+		// Stop early only on a cloid that is already wrong: one valid cloid just means the second is still on its way.
+		return len(ids) >= 2 || (p.snap().hook("OnStart") && !cloidValid(ids)) || p.snap().exited
 	})
 	if !cloidOK(ids) {
 		return fail(fmt.Sprintf("cloid: %v", ids)), nil
@@ -709,10 +710,12 @@ func (r *runner) checkCloid() (Check, error) {
 	return pass(), nil
 }
 
-func cloidOK(ids []string) bool {
-	if len(ids) < 2 {
-		return false
-	}
+// cloidOK reports whether the check saw two or more cloids and all of them are valid.
+func cloidOK(ids []string) bool { return len(ids) >= 2 && cloidValid(ids) }
+
+// cloidValid reports whether every cloid seen so far decodes with this version and algo, in strictly increasing
+// (TsMs, Seq) order.
+func cloidValid(ids []string) bool {
 	var prev cloid.ID
 	for i, s := range ids {
 		id, err := cloid.Decode(s)
