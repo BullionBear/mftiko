@@ -70,7 +70,7 @@ func (p *plane) tdHooks() tdpath.Hooks {
 
 // mdHooks installs a callback only for a topic the strategy implements. A nil
 // callback makes mdpath skip that topic before decoding it (D805). orderbook_delta
-// has no hook here; the local book is E8-15, so the book callback stays nil.
+// is not one of these hooks: bookpath applies it and calls OnBook (D857).
 func (p *plane) mdHooks() mdpath.Hooks {
 	var h mdpath.Hooks
 	if s, ok := p.strat.(BestQuoteHandler); ok {
