@@ -8,7 +8,9 @@
 //
 // After each hook the TD buffer is taken first. An MD message is taken only when TD is empty. The
 // prehook then reads the envelope timestamp and drops a message older than recv_window_ms without
-// decoding it. orderbook_delta does not take that path (E8-15 applies it).
+// decoding it. A message that is not a v1 envelope (short, wrong version, or a non-zero reserved
+// byte) is also dropped, counted in QueueStat.dropped, and logged; the session does not end (D849).
+// orderbook_delta does not take the age path (E8-15 applies it); a bad envelope is still dropped.
 //
 // A hook longer than 100ms counts one hook_slow. hook_blocked_ms is how long the current hook has
 // been running. A hook longer than hook_timeout_s makes Run return *c4.Exit with outcome HUNG;

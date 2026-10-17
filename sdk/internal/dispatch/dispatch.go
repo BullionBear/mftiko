@@ -504,6 +504,15 @@ func (d *Disp) runMD() {
 		d.mu.Unlock()
 	}()
 
+	// A message that is not a v1 envelope is dropped here: counted, logged, and not delivered.
+	// The session keeps running (D849). Order of the check is length, version, reserved bytes.
+	if _, err := envelope.MDTsNs(msg); err != nil {
+		d.mu.Lock()
+		d.preDrop++
+		d.mu.Unlock()
+		d.log("md envelope rejected: " + err.Error())
+		return
+	}
 	var fn func([]byte)
 	if book {
 		fn = d.book
@@ -534,7 +543,8 @@ func (d *Disp) runMD() {
 }
 
 // stale reports whether msg is past the recv window. now is the clock at dequeue (D803).
-// ok is false when the envelope cannot be read; that message is not a prehook drop.
+// The caller has already rejected an unreadable envelope (D849). ok is false only if that
+// check is skipped; such a message is not a prehook drop.
 func stale(msg []byte, now time.Time, window time.Duration) (drop bool, age time.Duration, ok bool) {
 	ts, err := envelope.MDTsNs(msg)
 	if err != nil {

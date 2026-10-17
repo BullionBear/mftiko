@@ -61,8 +61,12 @@ type Context interface {
 	Book(uid uint32) (BookView, bool)
 
 	// ---------- reads (the answer runs fn on the dispatcher) ----------
+	// Each call waits InitPayload.recv_window_ms. A timeout or a missing responder is an
+	// error delivered to fn (DECISIONS D848).
 
-	// Tape pages through md.view's tape of a feed (DECISIONS D436, D437).
+	// Tape pages md.view (DECISIONS D436). The SDK does not fetch tape on its own and does not
+	// hold live events (D847). page.Head is the feed's high water; the strategy treats a live
+	// cursor at or below that head as already covered.
 	Tape(uid uint32, topic Topic, q TapeQuery, fn func(ctx Context, page *mdv1.TapePage, err error)) error
 	// BookSnapshot asks md.view for the windowed book. The local book needs no help from it; this is for
 	// strategies that want the conn worker's view.
