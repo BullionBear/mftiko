@@ -47,7 +47,7 @@ func TestViolate(t *testing.T) {
 	// before Hello is a false green and is rejected separately.
 	want := map[string]string{
 		conformance.CheckFlow:           "Done ok",
-		conformance.CheckBeat:           "no Beat within 1s",
+		conformance.CheckBeat:           "no Beat within 2s",
 		conformance.CheckDeadline:       "deadline: Done ok",
 		conformance.CheckShutdown:       "Stopped before Exiting",
 		conformance.CheckBufferPriority: "priority:",

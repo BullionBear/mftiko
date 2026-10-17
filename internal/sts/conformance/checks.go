@@ -267,10 +267,11 @@ func (r *runner) checkBeat() (Check, error) {
 	}) || !p.snap().hook("OnStart") {
 		return fail("beat: no OnStart line"), nil
 	}
-	// The contract is one second. A compliant beater increments within it;
-	// a worker that sends none must be watched for that whole bound.
-	if !poll(time.Second, func() bool { return p.snap().beats() > base }) {
-		return fail("no Beat within 1s"), nil
+	// The contract is one Beat a second. base may be read just after a Beat, so the next one is up to a period
+	// away plus timer and scheduling jitter: wait two periods. A worker whose Beat stops while the hook sleeps
+	// (5s) still sends none in that window.
+	if !poll(2*time.Second, func() bool { return p.snap().beats() > base }) {
+		return fail("no Beat within 2s"), nil
 	}
 	return pass(), nil
 }
