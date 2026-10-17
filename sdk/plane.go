@@ -349,7 +349,11 @@ func (p *plane) Live(payload []byte) error {
 
 // Relay enqueues one Command. It runs on the fd 3 reader, so it does not apply
 // the snapshot itself: Apply can flush for up to five seconds.
-func (p *plane) Relay(_, payload []byte) {
+func (p *plane) Relay(corrID, payload []byte) {
+	// The shim reads this echo. Applying the command stays asynchronous.
+	if p.sess != nil {
+		_ = p.sess.Relay(corrID, payload)
+	}
 	p.cmdMu.Lock()
 	p.cmds = append(p.cmds, append([]byte(nil), payload...))
 	p.cmdCond.Signal()

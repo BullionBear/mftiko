@@ -2592,7 +2592,7 @@ JSON 物件，工具產生。欄位：
 | `td_overflow` | `td.v1` | TD 佇列上限 65536。第 65537 則以 `FAILED` 結束，reason 是 `td buffer full`，跑 `OnStop`，exit 30 |
 | `cloid` | `td.v1` | 送出的 `client_order_id` 解得開、`ver` 是 1、algo 在該帳號的宣告裡、`(ts_ms, seq)` 嚴格遞增 |
 | `subject` | `stsctl.v1`、`md.v1`、`td.v1` | 同一份 session JWT 擋下未授權的 publish／subscribe；下單出現在 `td.order.{api_id}` |
-| `recon` | `td.v1` | 訂好 `td.evt` 再問 `td.view`。只交付 `source.incarnation` 等於 `ViewReply.incarnation`、且 `seq` 大於 `ViewReply.seq` 的事件。夾具的快照是 incarnation 3、seq 5 |
+| `recon` | `td.v1` | 訂好 `td.evt` 再問 `td.view`。只交付 `source.incarnation` 等於 `ViewReply.incarnation`、且 `seq` 大於 `ViewReply.seq` 的事件。夾具的快照是 incarnation 3、seq 5。第一份回覆前可送出同一 incarnation、seq 4 與 seq 6；水位套上之後不送別的 incarnation（D844：live 上的不同 incarnation 會重問，而下一份回覆仍是 seq 5，cursor 會退回） |
 | `ctx` | `md.v1`、`td.v1` | `OnOrder` 與 `OnPosition` 各一則，呼叫當下本地狀態已經含這則事件（`ctx` true） |
 
 `flow` 每段一個新行程：

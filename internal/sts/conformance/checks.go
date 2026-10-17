@@ -201,8 +201,14 @@ func (r *runner) flowHappy() (Check, error) {
 	if !poll(opTimeout, func() bool { return p.snap().relay("ping") }) {
 		return fail("happy: Relay ping was not echoed"), nil
 	}
+	// Live carries a real snapshot, strictly newer than Start (D111, D846).
+	// An unparsable payload is not applied, so there is no Applied.
+	body, err := r.bus.liveBindings(2)
+	if err != nil {
+		return fail(err.Error()), nil
+	}
 	if err := p.write(&workerv1.WorkerDown{Msg: &workerv1.WorkerDown_Live{Live: &workerv1.Live{
-		Contract: contractSTS, Digest: "L2", Payload: []byte{1},
+		Contract: contractSTS, Digest: "L2", Payload: body,
 	}}}); err != nil {
 		return fail(err.Error()), nil
 	}
@@ -764,7 +770,8 @@ func (r *runner) checkSubject() (Check, error) {
 func (r *runner) checkRecon() (Check, error) {
 	// The early event is released after OnRecon (§9.6, D854). Wait until (3, 6)
 	// has been delivered, which is after that hook for the SDK and before it
-	// for a worker that drains first. Injection is this check only.
+	// for a worker that drains first. Injection is this check only, and it does
+	// not publish another incarnation (D844).
 	r.bus.setInject(true)
 	defer r.bus.setInject(false)
 	p, err := r.spawn()

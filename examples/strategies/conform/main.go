@@ -115,7 +115,10 @@ func (c *conform) OnStart(ctx sdk.Context) error {
 	return nil
 }
 
-func (c *conform) OnStop(sdk.Context) { sleepMS(c.p.OnStopSleepMS) }
+func (c *conform) OnStop(sdk.Context) {
+	sleepMS(c.p.OnStopSleepMS)
+	writeObs(observation{Hook: "OnStop"})
+}
 
 // needsHold is the scenarios whose events must sit in the SDK buffers until
 // OnStart returns. The harness blocks Resolve for those, and only those.

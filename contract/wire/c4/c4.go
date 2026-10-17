@@ -23,8 +23,8 @@
 // It is in contract so that every worker can use it: the MD conn worker, the TD account worker, and
 // the Go SDK's session worker, which depends only on contract (D802). Like the rest of contract it
 // depends only on the standard library and protobuf, so logging is a function the worker supplies.
-// Relay up to the agent, Controller and Undeliverable are not here: stsctl has no worker-to-agent
-// request (D903).
+// Session.Relay echoes one downlink Relay, corr and payload unchanged (PROTOCOL §9.8).
+// Controller and Undeliverable are not here: stsctl has no worker-to-agent request (D903).
 package c4
 
 import (
@@ -170,6 +170,20 @@ func (s *Session) Report(m proto.Message) error {
 	}
 	return s.send(&workerv1.WorkerUp{Msg: &workerv1.WorkerUp_Report{Report: &workerv1.Report{
 		Contract: s.contract, Payload: payload,
+	}}})
+}
+
+// Relay sends one Relay up to the shim, with this session's contract. The session
+// worker brings a downlink Relay back the same way, corr and payload unchanged
+// (PROTOCOL §9.8). Safe for concurrent use.
+func (s *Session) Relay(corrID, payload []byte) error {
+	if s == nil {
+		return errors.New("c4: relay")
+	}
+	return s.send(&workerv1.WorkerUp{Msg: &workerv1.WorkerUp_Relay{Relay: &workerv1.Relay{
+		Contract: s.contract,
+		CorrId:   append([]byte(nil), corrID...),
+		Payload:  append([]byte(nil), payload...),
 	}}})
 }
 

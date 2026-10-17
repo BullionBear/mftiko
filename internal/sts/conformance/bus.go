@@ -89,6 +89,7 @@ type bus struct {
 	viewHold bool
 	viewRel  chan struct{}
 	inject   bool
+	injected bool
 }
 
 func startBus() (*bus, error) {
@@ -356,11 +357,13 @@ func (b *bus) onOrder(m *nats.Msg) {
 }
 
 // onView answers td.view. The snapshot is incarnation 3, seq 5. When inject is
-// set (the recon check only), three account events are published on this same
-// connection before the reply: seq 4 of incarnation 3 is at or below the
-// cursor, seq 6 is the one event past it, and seq 6 of incarnation 1 is older
-// and is dropped. A newer incarnation would ask again (D844); this fixture
-// must not publish one. Other checks get the watermark and no injected orders.
+// set (the recon check only), the first reply publishes two account events on
+// this same connection before the bytes go out: seq 4 of incarnation 3 is at
+// or below the cursor, and seq 6 is the one event past it. A later reply does
+// not publish them again. An event from another incarnation is not published.
+// On the live path that asks again (D844), and this fixture's next reply is
+// the same watermark, so the cursor would move backwards and the following
+// seq would stay a gap. Other checks get the watermark and no injected orders.
 //
 // viewHold answers from another goroutine. The callback must return so this
 // connection can still Publish the events the check queues before the reply.
@@ -383,12 +386,14 @@ func (b *bus) onView(m *nats.Msg) {
 
 func (b *bus) answerView(m *nats.Msg) {
 	b.holdMu.Lock()
-	inject := b.inject
+	inject := b.inject && !b.injected
+	if inject {
+		b.injected = true
+	}
 	b.holdMu.Unlock()
 	if inject {
 		_ = b.publishAccount(4, 3, false)
 		_ = b.publishAccount(6, 3, false)
-		_ = b.publishAccount(6, 1, false)
 	}
 	if m.Reply == "" {
 		return
@@ -508,6 +513,9 @@ func (b *bus) releaseView() {
 func (b *bus) setInject(on bool) {
 	b.holdMu.Lock()
 	b.inject = on
+	if !on {
+		b.injected = false
+	}
 	b.holdMu.Unlock()
 }
 
@@ -575,8 +583,26 @@ func (b *bus) initDown(p Params, deadline uint32, digest string) (*workerv1.Work
 }
 
 func (b *bus) startDown(deadline uint32) (*workerv1.WorkerDown, error) {
-	body, err := proto.Marshal(&stsctlv1.StartPayload{Bindings: &stsctlv1.Bindings{
-		Version: &commonv1.Version{Epoch: 1, Seq: 1},
+	body, err := proto.Marshal(&stsctlv1.StartPayload{Bindings: b.bindings(1, 1)})
+	if err != nil {
+		return nil, err
+	}
+	return &workerv1.WorkerDown{Msg: &workerv1.WorkerDown_Start{Start: &workerv1.Start{
+		Contract:   contractSTS,
+		Payload:    body,
+		DeadlineMs: deadline,
+	}}}, nil
+}
+
+// liveBindings is one stsctl.Bindings snapshot for a Live frame (D111, D846).
+// seq must be strictly newer than the Start snapshot, which is epoch 1 seq 1.
+func (b *bus) liveBindings(seq uint64) ([]byte, error) {
+	return proto.Marshal(b.bindings(1, seq))
+}
+
+func (b *bus) bindings(epoch int64, seq uint64) *stsctlv1.Bindings {
+	return &stsctlv1.Bindings{
+		Version: &commonv1.Version{Epoch: epoch, Seq: seq},
 		Feeds: []*stsctlv1.FeedBinding{{
 			Feed:       feedKey,
 			MdInstance: b.inst,
@@ -589,15 +615,7 @@ func (b *bus) startDown(deadline uint32) (*workerv1.WorkerDown, error) {
 			State:  stsctlv1.BindingState_BINDING_STATE_READY,
 			Worker: &commonv1.WorkerRef{Key: "td/7", Incarnation: 1},
 		}},
-	}})
-	if err != nil {
-		return nil, err
 	}
-	return &workerv1.WorkerDown{Msg: &workerv1.WorkerDown_Start{Start: &workerv1.Start{
-		Contract:   contractSTS,
-		Payload:    body,
-		DeadlineMs: deadline,
-	}}}, nil
 }
 
 func (b *bus) publishTrade(seq uint64, ts time.Time, size int) error {

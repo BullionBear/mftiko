@@ -87,6 +87,27 @@ type Path struct {
 	wg          sync.WaitGroup
 	settled     atomic.Uint64
 	failOnce    atomic.Bool
+
+	// sendMu orders td.order publishes. sendTurn is closed by the previous
+	// request once its bytes are on the connection. The hook does not wait.
+	// The following request may publish as soon as this one has, and still
+	// waits for its own reply (PROTOCOL §9.4, §9.8).
+	sendMu   sync.Mutex
+	sendTurn chan struct{}
+}
+
+// reserveSend takes the next place in the td.order publish chain. wait is
+// nil for the first request. release lets the following request publish; it
+// is safe to call twice.
+func (p *Path) reserveSend() (wait <-chan struct{}, release func()) {
+	ch := make(chan struct{})
+	p.sendMu.Lock()
+	wait = p.sendTurn
+	p.sendTurn = ch
+	p.sendMu.Unlock()
+	var once sync.Once
+	release = func() { once.Do(func() { close(ch) }) }
+	return wait, release
 }
 
 type account struct {
