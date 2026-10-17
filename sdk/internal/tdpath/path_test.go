@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -273,18 +274,16 @@ func TestAckVersusOrderUpdate(t *testing.T) {
 		rec := &tape{}
 		f, p := sessionHooks(t, time.Second, rec.hooks(), decl(7, 1))
 		f.serve()
-		var id string
 		f.onView = func(int64, *tdv1.ViewRequest) *tdv1.ViewReply { return snap(1, 0, 1, nil) }
-		f.onOrder = func(int64, *tdv1.OrderRequest) *tdv1.OrderReply {
-			publish(t, f.nc, 7, orderEv(1, 1, id, tdv1.OrderStatus_ORDER_STATUS_ACCEPTED))
+		f.onOrder = func(_ int64, req *tdv1.OrderRequest) *tdv1.OrderReply {
+			publish(t, f.nc, 7, orderEv(1, 1, req.GetSubmit().GetClientOrderId(), tdv1.OrderStatus_ORDER_STATUS_ACCEPTED))
 			if !until(time.Second, func() bool { return len(rec.orders()) == 1 }) {
 				t.Errorf("update was not applied before the ack")
 			}
 			return accept(0, nil)
 		}
 		listenRecon(t, f, p)
-		var err error
-		id, err = p.Submit(Order{APIID: 7, AlgoID: 1, UID: 1001, Qty: 1})
+		id, err := p.Submit(Order{APIID: 7, AlgoID: 1, UID: 1001, Qty: 1})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -326,11 +325,11 @@ func TestTerminalVisibleDuringHook(t *testing.T) {
 	rec := &tape{}
 	f, p := sessionHooks(t, time.Second, Hooks{}, decl(7, 1))
 	f.serve()
-	var during bool
+	var during atomic.Bool
 	p.hooks.Order = func(ev OrderEvent) {
-		rec.addOrder(ev)
 		o, ok := p.Order(7, ev.Order.GetClientOrderId())
-		during = ok && o.GetStatus() == tdv1.OrderStatus_ORDER_STATUS_CANCELLED && len(p.OpenOrders(7, 0)) == 0
+		during.Store(ok && o.GetStatus() == tdv1.OrderStatus_ORDER_STATUS_CANCELLED && len(p.OpenOrders(7, 0)) == 0)
+		rec.addOrder(ev)
 	}
 	f.onView = func(int64, *tdv1.ViewRequest) *tdv1.ViewReply { return snap(1, 0, 1, nil) }
 	f.onOrder = accept
@@ -342,7 +341,7 @@ func TestTerminalVisibleDuringHook(t *testing.T) {
 	waitFor(t, 5*time.Second, func() bool { return p.settled.Load() >= 1 })
 	publish(t, f.nc, 7, orderEv(1, 1, id, tdv1.OrderStatus_ORDER_STATUS_CANCELLED))
 	waitFor(t, 5*time.Second, func() bool { return len(rec.orders()) == 1 })
-	if !during {
+	if !during.Load() {
 		t.Fatal("hook did not see the cancelled order")
 	}
 	if _, ok := p.Order(7, id); ok {
