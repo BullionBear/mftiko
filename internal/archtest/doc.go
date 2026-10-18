@@ -9,13 +9,13 @@
 //   - sdk depends only on contract, and nothing it links may be etcd, a PostgreSQL driver, exchange or internal.
 //   - examples use only sdk and contract, as an outside author would.
 //   - internal/platform imports no plane and no exchange.
-//   - The planes (internal/api, sts, md, td, sym) do not import each other. They use exchange's interfaces and
-//     exchange/transport only; cmd registers the exchanges. The API imports no exchange at all and does not use
-//     sym.v1.
-//   - The agent planes' root packages (internal/sts, md, td) and the skeleton's decisions (internal/platform/agent)
-//     link no etcd, NATS, state, natsx, shim, or the skeleton's I/O (agent/c3, fleet, runner, testplane): they
-//     hold the Planner, the Policy and the domain types, testable without a cluster. The wiring is in
-//     internal/{plane}/daemon (DECISIONS D110).
+//   - The planes (internal/api, sts, md, td, sym, controller) do not import each other. They use exchange's
+//     interfaces and exchange/transport only; cmd registers the exchanges. The API and the controller import no
+//     exchange at all and do not use sym.v1 (DECISIONS D1301, D907).
+//   - The agent planes' root packages (internal/sts, md, td), the controller's decisions (internal/controller)
+//     and the skeleton's decisions (internal/platform/agent) link no etcd, NATS, state, natsx, shim, or the
+//     skeleton's I/O (agent/c3, fleet, runner, testplane): they hold the decisions, testable without a cluster.
+//     The wiring is in internal/{plane}/daemon (DECISIONS D110, D1301).
 //   - internal/td links no contract/wire/cloid. The account worker treats client_order_id as an opaque string;
 //     the SDK and conformance own the layout (DECISIONS D633).
 //

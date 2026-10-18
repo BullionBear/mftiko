@@ -18,6 +18,7 @@ internal/                 ① the planes, private
   md/                     market-data plane; conn/ (conn worker), fetch/ (md.fetch)
   td/                     execution plane; account/ (account worker), history/ (PostgreSQL)
   sym/                    symbol service
+  controller/             controller: pure decisions, daemon/ campaigns and writes
 sdk/                      ② Go strategy SDK, the reference implementation of PROTOCOL §9; depends on contract only
 contract/                 ③ what both ends compile against; source of truth is docs/PROTOCOL.md
   proto/mftiko/<pkg>/v1/  protobuf contracts
@@ -38,6 +39,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-sym              symbol service
   mftiko-migrate          applies the PostgreSQL migrations (a deploy step)
   mftiko-pack             builds a strategy artifact (OCI image + mftiko manifest)
+  mftiko-controller       controller: one leader, fences per region, writes its AgentRecord
   mftiko-etcd-roles       prints each region's etcd users and roles, derived from the instance list
   mftiko-nats-dev         generates dev NATS operator, accounts and user creds, and checks them
   mftiko-seal             makes a TD instance's key pair and seals account credentials to it
