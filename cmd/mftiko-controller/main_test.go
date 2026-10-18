@@ -60,19 +60,22 @@ func TestReadDeployment(t *testing.T) {
 	  "instances": {"controller": "tw", "md-tw-1": "tw", "md-jp-1": "jp"},
 	  "planes": {"md-tw-1": "md", "md-jp-1": "md"}
 	}`
-	topo, err := readDeployment("-", strings.NewReader(body))
+	topo, planes, err := readDeployment("-", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if topo.Instances[state.ControllerInstance] != "tw" || len(topo.Regions) != 2 {
 		t.Fatalf("%+v", topo)
 	}
+	if planes["md-tw-1"] != state.PlaneMD || planes["md-jp-1"] != state.PlaneMD {
+		t.Fatalf("planes %+v", planes)
+	}
 	for name, in := range map[string]string{
 		"unknown field": `{"regions":{"tw":{"endpoints":["http://127.0.0.1:1"]}},"instances":{"controller":"tw"},"extra":1}`,
 		"not json":      `{`,
 		"no endpoints":  `{"regions":{"tw":{"endpoints":[]}},"instances":{"controller":"tw"}}`,
 	} {
-		if _, err := readDeployment("-", strings.NewReader(in)); err == nil {
+		if _, _, err := readDeployment("-", strings.NewReader(in)); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
@@ -121,7 +124,14 @@ func applyAuth(t *testing.T, ctx context.Context, topo state.Topology, servers m
 
 func writeDeploy(t *testing.T, topo state.Topology) string {
 	t.Helper()
-	b, err := json.Marshal(topo)
+	planes := map[string]state.Plane{}
+	for inst := range topo.Instances {
+		if inst == state.ControllerInstance {
+			continue
+		}
+		planes[inst] = state.PlaneMD
+	}
+	b, err := json.Marshal(deployment{Topology: topo, Planes: planes})
 	if err != nil {
 		t.Fatal(err)
 	}

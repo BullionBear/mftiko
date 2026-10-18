@@ -1,6 +1,7 @@
 // Command mftiko-controller is the control-plane controller (DECISIONS D907, D1301).
 // It reads the deployment JSON mftiko-etcd-roles reads, campaigns as controller in
-// the home region, and writes its AgentRecord once. It does not derive demands yet.
+// the home region, writes its AgentRecord once, and keeps the global view (D1317).
+// It does not derive demands yet.
 //
 // SIGTERM revokes the term and exits 0. ErrSuperseded, or a lost election session,
 // exits non-zero so systemd restarts the process (D1315). A process that has not
@@ -44,8 +45,8 @@ func main() {
 	}
 }
 
-// deployment is the mftiko-etcd-roles input. Planes is accepted so the same file
-// decodes; the controller uses Topology only (D1312).
+// deployment is the mftiko-etcd-roles input. Planes names the plane of every
+// instance except the controller; intake watches those prefixes (D1312, D1317).
 type deployment struct {
 	state.Topology
 	Planes map[string]state.Plane `json:"planes"`
@@ -55,7 +56,7 @@ func run(ctx context.Context, in, password string, log zerolog.Logger) error {
 	if in == "" || password == "" {
 		return errors.New("-in and the etcd password are required")
 	}
-	topo, err := readDeployment(in, os.Stdin)
+	topo, planes, err := readDeployment(in, os.Stdin)
 	if err != nil {
 		return err
 	}
@@ -65,6 +66,7 @@ func run(ctx context.Context, in, password string, log zerolog.Logger) error {
 	}
 	return daemon.Run(ctx, daemon.Config{
 		Topology: topo,
+		Planes:   planes,
 		Dial:     state.AuthDial(state.ControllerInstance, password),
 		Term:     state.TermOptions{ID: fmt.Sprintf("%s:%d", host, os.Getpid())},
 		Release:  buildinfo.Version,
@@ -72,12 +74,12 @@ func run(ctx context.Context, in, password string, log zerolog.Logger) error {
 	})
 }
 
-func readDeployment(in string, stdin io.Reader) (state.Topology, error) {
+func readDeployment(in string, stdin io.Reader) (state.Topology, map[string]state.Plane, error) {
 	r := stdin
 	if in != "-" {
 		f, err := os.Open(in)
 		if err != nil {
-			return state.Topology{}, err
+			return state.Topology{}, nil, err
 		}
 		defer f.Close()
 		r = f
@@ -86,10 +88,10 @@ func readDeployment(in string, stdin io.Reader) (state.Topology, error) {
 	dec := json.NewDecoder(r)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&d); err != nil {
-		return state.Topology{}, fmt.Errorf("read deployment: %w", err)
+		return state.Topology{}, nil, fmt.Errorf("read deployment: %w", err)
 	}
 	if err := d.Validate(); err != nil {
-		return state.Topology{}, err
+		return state.Topology{}, nil, err
 	}
-	return d.Topology, nil
+	return d.Topology, d.Planes, nil
 }

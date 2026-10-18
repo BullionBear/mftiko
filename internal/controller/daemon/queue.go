@@ -10,14 +10,21 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
+// ErrUnsynced is a write to a region whose instance mirrors have not finished
+// their first list. The write is not attempted, and the region is not fenced
+// (D1318, D1302).
+var ErrUnsynced = errors.New("controller: region is not synced")
+
 // queues is the per-region write path (D1306, D1313). A write runs on its
 // region's goroutine, one at a time, in the order accepted. A region that is
 // stuck or unreachable holds none of the others. The first write to a region
 // fences it, inside Term.Put; regions with no write are not fenced (D1305).
+// A region that has not synced is not written at all (D1318).
 type queues struct {
-	term *state.Term
-	topo state.Topology
-	log  zerolog.Logger
+	term   *state.Term
+	topo   state.Topology
+	log    zerolog.Logger
+	synced func(region string) bool
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -39,10 +46,10 @@ type request struct {
 	result chan error
 }
 
-func newQueues(term *state.Term, topo state.Topology, log zerolog.Logger) *queues {
+func newQueues(term *state.Term, topo state.Topology, log zerolog.Logger, synced func(string) bool) *queues {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &queues{
-		term: term, topo: topo, log: log,
+		term: term, topo: topo, log: log, synced: synced,
 		ctx: ctx, cancel: cancel,
 		qs: map[string]*regionQueue{},
 	}
@@ -153,6 +160,9 @@ func (q *queues) exec(region string, req request) error {
 	}
 	if err := q.term.Err(); err != nil {
 		return err
+	}
+	if q.synced != nil && !q.synced(region) {
+		return ErrUnsynced
 	}
 	var err error
 	if req.del {
