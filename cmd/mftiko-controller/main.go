@@ -1,7 +1,7 @@
 // Command mftiko-controller is the control-plane controller (DECISIONS D907, D1301).
 // It reads the deployment JSON mftiko-etcd-roles reads, campaigns as controller in
-// the home region, writes its AgentRecord once, and keeps the global view (D1317).
-// It does not derive demands yet.
+// the home region, writes its AgentRecord once, keeps the global view (D1317),
+// and derives session demands onto that view (N1, D1322–D1327).
 //
 // SIGTERM revokes the term and exits 0. ErrSuperseded, or a lost election session,
 // exits non-zero so systemd restarts the process (D1315). A process that has not

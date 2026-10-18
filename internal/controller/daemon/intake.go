@@ -41,6 +41,10 @@ type intake struct {
 	log    zerolog.Logger
 	now    func() time.Time
 	opt    state.MirrorOptions
+	planes map[string]controller.Placement
+	// derive runs after each snapshot. Nil until Start wires it, which is
+	// before the loop starts.
+	derive func(controller.View)
 
 	staleAfter time.Duration
 	resync     time.Duration
@@ -56,6 +60,7 @@ type intake struct {
 	view       controller.View
 	stats      Stats
 	logged     map[string]int64 // undecodable key -> mod revision last warned
+	drifted    map[string]int64 // session ref -> spec revision last warned (D1322)
 	prevStale  map[string]bool
 	minBackoff time.Duration
 	maxBackoff time.Duration
@@ -87,7 +92,9 @@ func newIntake(parent context.Context, term *state.Term, cl *state.Clusters, cfg
 		byRegion:  map[string][]*watched{},
 		wake:      make(chan struct{}, 1),
 		logged:    map[string]int64{},
+		drifted:   map[string]int64{},
 		prevStale: map[string]bool{},
+		planes:    placements(cfg),
 		view: controller.View{
 			Regions: map[string]controller.Region{}, Sessions: map[string]controller.Session{},
 			Demands: map[string]controller.Demand{}, Acks: map[string]controller.Ack{},
@@ -118,6 +125,24 @@ func newIntake(parent context.Context, term *state.Term, cl *state.Clusters, cfg
 		w.prefix = instancePrefix(w.plane, name)
 		in.byRegion[w.region] = append(in.byRegion[w.region], w)
 	}
+	return in
+}
+
+// placements is the deployment's plane and region of every instance except
+// the controller (D1317, D1327).
+func placements(cfg Config) map[string]controller.Placement {
+	out := make(map[string]controller.Placement, len(cfg.Topology.Instances))
+	for name, region := range cfg.Topology.Instances {
+		if name == state.ControllerInstance {
+			continue
+		}
+		out[name] = controller.Placement{Plane: string(cfg.Planes[name]), Region: region}
+	}
+	return out
+}
+
+// start runs the mirrors and the reconcile loop. derive must already be set.
+func (in *intake) start() {
 	in.wg.Add(1)
 	go in.loop()
 	for _, ws := range in.byRegion {
@@ -126,7 +151,6 @@ func newIntake(parent context.Context, term *state.Term, cl *state.Clusters, cfg
 			go in.runMirror(w)
 		}
 	}
-	return in
 }
 
 // stop ends the mirrors and the reconcile loop and waits until they return.
@@ -231,6 +255,11 @@ func (in *intake) reconcile(full bool) {
 	}
 	v := controller.Assemble(in.now(), in.staleAfter, in.regions, snaps)
 	in.publish(v, full, fails)
+	// The snapshot is the relist. Derivation runs on this round's view, after
+	// it is published, so a new leader compares before it writes (N6, D1319).
+	if in.derive != nil {
+		in.derive(v)
+	}
 }
 
 func (w *watched) observe() (state.View, time.Time, bool) {
@@ -274,6 +303,31 @@ func (in *intake) noteFailures(fails []failure, n int) {
 	for k := range in.logged {
 		if _, ok := cur[k]; !ok {
 			delete(in.logged, k)
+		}
+	}
+}
+
+// noteDrifts logs each session once per spec revision while its assignment
+// stays on an older revision (D1322). A later revision logs again; a session
+// that stops drifting is forgotten, so a repeat of the same revision logs too.
+func (in *intake) noteDrifts(ds []controller.Drift) {
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	cur := make(map[string]int64, len(ds))
+	for _, d := range ds {
+		ref := controller.SessionRef(d.Instance, d.Session)
+		cur[ref] = d.SpecRev
+		if prev, ok := in.drifted[ref]; ok && prev == d.SpecRev {
+			continue
+		}
+		in.drifted[ref] = d.SpecRev
+		in.log.Warn().Str("instance", d.Instance).Str("session", d.Session).
+			Int64("spec_revision", d.SpecRev).Int64("assignment_revision", d.Have).
+			Msg("spec revision changed; demands left as stored")
+	}
+	for ref := range in.drifted {
+		if _, ok := cur[ref]; !ok {
+			delete(in.drifted, ref)
 		}
 	}
 }

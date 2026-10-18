@@ -39,7 +39,7 @@ type Config struct {
 }
 
 // Controller is a running term. Put and Delete are the test write entry
-// (D1313): production does not call them until derivation is connected.
+// (D1313). Derivation puts through the same queues.
 type Controller struct {
 	ctx    context.Context
 	term   *state.Term
@@ -102,11 +102,14 @@ func Start(ctx context.Context, cfg Config) (*Controller, error) {
 		cfg.Resync = DefaultResync
 	}
 	in := newIntake(ctx, term, cl, cfg, now, log)
-	return &Controller{
+	c := &Controller{
 		ctx: ctx, term: term, cl: cl, log: log,
 		writes: newQueues(term, cl.Topology(), log, in.writable),
 		intake: in,
-	}, nil
+	}
+	in.derive = c.apply
+	in.start()
+	return c, nil
 }
 
 func (cfg Config) validate() error {

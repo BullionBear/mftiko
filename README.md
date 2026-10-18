@@ -39,7 +39,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-sym              symbol service
   mftiko-migrate          applies the PostgreSQL migrations (a deploy step)
   mftiko-pack             builds a strategy artifact (OCI image + mftiko manifest)
-  mftiko-controller       controller: one leader, fences per region, writes its AgentRecord
+  mftiko-controller       controller: one leader, derives demands, fences per region
   mftiko-etcd-roles       prints each region's etcd users and roles, derived from the instance list
   mftiko-nats-dev         generates dev NATS operator, accounts and user creds, and checks them
   mftiko-seal             makes a TD instance's key pair and seals account credentials to it
