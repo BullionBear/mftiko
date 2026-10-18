@@ -68,6 +68,7 @@ type Plan struct {
 // now is the wall clock. The first assignment records it in issued_at_ns and
 // later writes copy that value (D1302). A put that differs also records it in
 // updated_at_ns; an equal value is not put, so the clock alone never writes.
+// An assignment already ENDED is left as stored (D1328).
 //
 // A region that is not synced, or is stale, is not written (D1306, D1318).
 // A session whose own region is in that state is skipped entirely, so a stale
@@ -110,6 +111,12 @@ func (b *builder) session(sess Session) {
 		return
 	}
 	if _, undecodable := b.bad[sessionDemandKey(sess.Instance, sess.ID)]; undecodable {
+		return
+	}
+	// Ending is irreversible. An assignment already ENDED is not derived
+	// back to RUNNING, so ack recovery and a spec that runs again do not
+	// revive it (D1328).
+	if sess.Demand.GetDesired() == sessionv1.DesiredState_DESIRED_STATE_ENDED {
 		return
 	}
 	// ENDED is not derived. No assignment yet means write nothing; an

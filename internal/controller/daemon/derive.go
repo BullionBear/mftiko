@@ -2,23 +2,28 @@ package daemon
 
 import (
 	"sync"
+	"time"
 
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
 	"github.com/BullionBear/mftiko/internal/controller"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
-// apply derives N1 from one view and puts the diff (D1308, D1325). Each
-// region's keys run on that region's queue, at the same time as the others,
+// apply derives N1, then fills bindings and ends sessions (N2, N3). It returns
+// the earliest deps deadline still ahead, or the zero time when none is (D1331).
+// Each region's keys run on that region's queue, at the same time as the others,
 // so a region that cannot be written does not hold the rest (D1306).
-func (c *Controller) apply(v controller.View) {
-	plan := controller.Derive(v, c.intake.planes, c.intake.now())
+func (c *Controller) apply(v controller.View) time.Time {
+	now := c.intake.now()
+	plan := controller.Derive(v, c.intake.planes, now)
 	// A round can run again before the mirror lists the assignment just
 	// written. Copy the issued_at_ns this term already chose, so the retry
-	// does not start deps_timeout over (D1302).
+	// does not start deps_timeout over (D1302). Gate then reads that value.
 	c.keepIssued(v, plan.Writes)
 	c.intake.noteDrifts(plan.Drifts)
-	c.putAll(plan.Writes)
+	gated, next := controller.Gate(v, plan, now)
+	c.putAll(gated.Writes)
+	return next
 }
 
 func (c *Controller) keepIssued(v controller.View, writes []controller.Write) {

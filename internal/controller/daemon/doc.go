@@ -3,7 +3,9 @@
 // later writes by region. Each region is fenced on its first write (D1305).
 // One mirror per instance feeds the global view; a region that has not
 // finished its first list is not written (D1317, D1318). Each reconcile
-// derives N1 and puts only the keys that differ (D1308, D1322–D1327).
+// derives N1, fills bindings and start, and ends a session whose dependencies
+// failed or timed out (N2, N3, D1328–D1332). A deps deadline wakes that loop
+// without waiting for the full resync (D1331).
 //
 // Put and Delete are the test write entry (D1313). The mftiko-controller
 // process does not call them.
