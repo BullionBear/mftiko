@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -81,16 +80,11 @@ func topology(servers map[string]*etcdtest.Server, home string) state.Topology {
 
 func applyAuth(t *testing.T, ctx context.Context, topo state.Topology, servers map[string]*etcdtest.Server) {
 	t.Helper()
-	planes := map[string]state.Plane{}
-	for inst := range topo.Instances {
-		switch {
-		case inst == state.ControllerInstance:
-		case strings.HasPrefix(inst, "md-"):
-			planes[inst] = state.PlaneMD
-		default:
-			t.Fatalf("no plane for %s", inst)
-		}
-	}
+	applyPlanes(t, ctx, topo, mdPlanes(topo), servers)
+}
+
+func applyPlanes(t *testing.T, ctx context.Context, topo state.Topology, planes map[string]state.Plane, servers map[string]*etcdtest.Server) {
+	t.Helper()
 	tables, err := state.AuthTables(topo, planes)
 	if err != nil {
 		t.Fatal(err)
@@ -102,14 +96,37 @@ func applyAuth(t *testing.T, ctx context.Context, topo state.Topology, servers m
 	}
 }
 
+func mdPlanes(topo state.Topology) map[string]state.Plane {
+	planes := map[string]state.Plane{}
+	for inst := range topo.Instances {
+		if inst == state.ControllerInstance {
+			continue
+		}
+		planes[inst] = state.PlaneMD
+	}
+	return planes
+}
+
 func config(topo state.Topology, id string, log zerolog.Logger) Config {
 	return Config{
 		Topology: topo,
+		Planes:   mdPlanes(topo),
 		Dial:     state.AuthDial(state.ControllerInstance, etcdtest.Password(state.ControllerInstance)),
 		Term:     state.TermOptions{ID: id},
 		Release:  "test",
 		Log:      log,
 	}
+}
+
+func waitFresh(t *testing.T, c *Controller, region string) {
+	t.Helper()
+	until(t, 30*time.Second, region+" view is fresh", func() error {
+		r, ok := c.View().Regions[region]
+		if !ok || !r.Synced || r.Stale || r.Rev == 0 {
+			return fmt.Errorf("%+v present %v", r, ok)
+		}
+		return nil
+	})
 }
 
 type result struct {
@@ -297,12 +314,26 @@ func TestStartRejects(t *testing.T) {
 	}
 	withCtl := bare
 	withCtl.Instances = map[string]string{state.ControllerInstance: "tw", "md-tw-1": "tw"}
+	planes := map[string]state.Plane{"md-tw-1": state.PlaneMD}
+	ready := Config{Topology: withCtl, Planes: planes, Dial: state.DefaultDial, Term: state.TermOptions{ID: "a"}}
+	noDial := ready
+	noDial.Dial = nil
+	noID := ready
+	noID.Term.ID = ""
+	negTTL := ready
+	negTTL.Term.SessionTTL = -time.Second
+	negStale := ready
+	negStale.StaleAfter = -time.Second
+	missingPlane := ready
+	missingPlane.Planes = nil
 	for name, cfg := range map[string]Config{
 		"empty":          {},
 		"no controller":  {Topology: bare, Dial: state.DefaultDial, Term: state.TermOptions{ID: "a"}},
-		"no dial":        {Topology: withCtl, Term: state.TermOptions{ID: "a"}},
-		"no id":          {Topology: withCtl, Dial: state.DefaultDial},
-		"negative ttl":   {Topology: withCtl, Dial: state.DefaultDial, Term: state.TermOptions{ID: "a", SessionTTL: -time.Second}},
+		"no dial":        noDial,
+		"no id":          noID,
+		"negative ttl":   negTTL,
+		"negative stale": negStale,
+		"missing plane":  missingPlane,
 		"empty topology": {Dial: state.DefaultDial, Term: state.TermOptions{ID: "a"}},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -343,6 +374,8 @@ func TestLeaderFencesOnFirstWrite(t *testing.T) {
 	}
 
 	twKey, jpKey := demand("tw"), demand("jp")
+	waitFresh(t, c, "tw")
+	waitFresh(t, c, "jp")
 	errc := make(chan error, 2)
 	go func() { errc <- c.Put(ctx, twKey, "tw") }()
 	go func() { errc <- c.Put(ctx, jpKey, "jp") }()
@@ -422,6 +455,7 @@ func TestOnlyLeaderWrites(t *testing.T) {
 		}
 		return nil
 	})
+	waitFresh(t, ac, "tw")
 	if err := ac.Put(ctx, key, "a"); err != nil {
 		t.Fatal(err)
 	}
@@ -441,6 +475,7 @@ func TestOnlyLeaderWrites(t *testing.T) {
 		}
 		return nil
 	})
+	waitFresh(t, bc, "tw")
 	if err := bc.Put(ctx, key, "b"); err != nil {
 		t.Fatal(err)
 	}
@@ -473,6 +508,10 @@ func TestInconsistentHomes(t *testing.T) {
 		t.Fatalf("jp record %+v present %v", &jpRec, ok)
 	}
 
+	waitFresh(t, ac, "tw")
+	waitFresh(t, ac, "jp")
+	waitFresh(t, bc, "tw")
+	waitFresh(t, bc, "jp")
 	twKey, jpKey := demand("tw"), demand("jp")
 	if err := ac.Put(ctx, twKey, "a"); err != nil {
 		t.Fatal(err)
@@ -527,6 +566,8 @@ func TestSupersededExits(t *testing.T) {
 	if !ok {
 		t.Fatal("no record")
 	}
+	waitFresh(t, c, "tw")
+	waitFresh(t, c, "jp")
 	twKey := demand("tw")
 	if err := c.Put(ctx, twKey, "orig"); err != nil {
 		t.Fatal(err)
@@ -614,6 +655,7 @@ func TestUnreachableRegion(t *testing.T) {
 		t.Fatal("jp fenced while unreachable")
 	}
 
+	waitFresh(t, c, "tw")
 	jpErr := make(chan error, 1)
 	go func() { jpErr <- c.Put(ctx, demand("jp"), "jp") }()
 	if err := c.Put(ctx, demand("tw"), "tw"); err != nil {
@@ -624,8 +666,8 @@ func TestUnreachableRegion(t *testing.T) {
 	}
 	select {
 	case err := <-jpErr:
-		if err == nil || errors.Is(err, state.ErrSuperseded) {
-			t.Fatalf("jp write: %v", err)
+		if !errors.Is(err, ErrUnsynced) {
+			t.Fatalf("jp write: %v, want ErrUnsynced", err)
 		}
 	case <-time.After(30 * time.Second):
 		t.Fatal("jp write did not return")

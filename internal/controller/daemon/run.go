@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sync"
 	"time"
 
@@ -19,11 +21,21 @@ const shutdownTimeout = 5 * time.Second
 // Config is one controller process.
 type Config struct {
 	Topology state.Topology
-	Dial     state.DialFunc // authenticated as the etcd user "controller"
-	Term     state.TermOptions
-	Release  string // AgentRecord.release
-	Log      zerolog.Logger
-	Now      func() time.Time // time.Now if nil
+	// Planes is the deployment's plane of every instance except the controller,
+	// the same map mftiko-etcd-roles reads (D1317).
+	Planes  map[string]state.Plane
+	Dial    state.DialFunc // authenticated as the etcd user "controller"
+	Term    state.TermOptions
+	Release string // AgentRecord.release
+	// StaleAfter is how old a region's LastContact may be before the view marks
+	// it stale. Zero selects DefaultStaleAfter (D1318).
+	StaleAfter time.Duration
+	// Resync is the full-resync interval. Zero selects DefaultResync (D1319).
+	Resync time.Duration
+	// Mirror tunes the instance mirrors. Zero selects the Mirror defaults.
+	Mirror state.MirrorOptions
+	Log    zerolog.Logger
+	Now    func() time.Time // time.Now if nil
 }
 
 // Controller is a running term. Put and Delete are the test write entry
@@ -33,6 +45,7 @@ type Controller struct {
 	term   *state.Term
 	cl     *state.Clusters
 	writes *queues
+	intake *intake
 	log    zerolog.Logger
 
 	once sync.Once
@@ -82,9 +95,17 @@ func Start(ctx context.Context, cfg Config) (*Controller, error) {
 		return nil, err
 	}
 	log.Info().Str("release", cfg.Release).Msg("controller record written")
+	if cfg.StaleAfter == 0 {
+		cfg.StaleAfter = DefaultStaleAfter
+	}
+	if cfg.Resync == 0 {
+		cfg.Resync = DefaultResync
+	}
+	in := newIntake(ctx, term, cl, cfg, now, log)
 	return &Controller{
 		ctx: ctx, term: term, cl: cl, log: log,
-		writes: newQueues(term, cl.Topology(), log),
+		writes: newQueues(term, cl.Topology(), log, in.writable),
+		intake: in,
 	}, nil
 }
 
@@ -95,6 +116,9 @@ func (cfg Config) validate() error {
 	if _, err := cfg.Topology.RegionOf(state.ControllerInstance); err != nil {
 		return fmt.Errorf("controller: %w", err)
 	}
+	if err := cfg.checkPlanes(); err != nil {
+		return err
+	}
 	switch {
 	case cfg.Dial == nil:
 		return errors.New("controller: dial is required")
@@ -102,13 +126,42 @@ func (cfg Config) validate() error {
 		return errors.New("controller: term ID is required")
 	case cfg.Term.SessionTTL < 0:
 		return fmt.Errorf("controller: negative session TTL %s", cfg.Term.SessionTTL)
+	case cfg.StaleAfter < 0:
+		return fmt.Errorf("controller: negative stale threshold %s", cfg.StaleAfter)
+	case cfg.Resync < 0:
+		return fmt.Errorf("controller: negative resync interval %s", cfg.Resync)
 	default:
 		return nil
 	}
 }
 
+// checkPlanes requires an agent plane for every instance except the controller.
+func (cfg Config) checkPlanes() error {
+	for _, inst := range slices.Sorted(maps.Keys(cfg.Topology.Instances)) {
+		if inst == state.ControllerInstance {
+			continue
+		}
+		p, ok := cfg.Planes[inst]
+		if !ok || !agentPlane(p) {
+			return fmt.Errorf("controller: instance %s has plane %q, want sts, md or td", inst, p)
+		}
+	}
+	for _, inst := range slices.Sorted(maps.Keys(cfg.Planes)) {
+		if _, ok := cfg.Topology.Instances[inst]; !ok {
+			return fmt.Errorf("controller: plane given for %s, which is not in the topology", inst)
+		}
+	}
+	return nil
+}
+
+func agentPlane(p state.Plane) bool {
+	return p == state.PlaneSTS || p == state.PlaneMD || p == state.PlaneTD
+}
+
 // Put writes key on its region's queue and returns that write's result.
-// Regions do not wait for each other. ErrSuperseded ends the whole term.
+// A region whose mirrors have not finished the first list is not written:
+// Put returns ErrUnsynced and does not fence it (D1318). Regions do not wait
+// for each other. ErrSuperseded ends the whole term.
 func (c *Controller) Put(ctx context.Context, key, val string) error {
 	return c.writes.submit(ctx, key, val, false)
 }
@@ -153,6 +206,9 @@ func (c *Controller) shutdown() {
 	defer cancel()
 	if err := c.term.Close(ctx); err != nil {
 		c.log.Warn().Err(err).Msg("revoke")
+	}
+	if c.intake != nil {
+		c.intake.stop()
 	}
 	c.writes.stop()
 	if err := c.cl.Close(); err != nil {
