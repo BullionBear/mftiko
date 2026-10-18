@@ -2,28 +2,34 @@ package daemon
 
 import (
 	"sync"
+	"time"
 
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
 	"github.com/BullionBear/mftiko/internal/controller"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
-// apply derives N1 and deletes what N4 and N5 remove. full is the election
-// round or a resync tick (D1310). Puts of a region finish before its deletes:
-// Derive does not put a terminal session, and Lifecycle does not remove a
-// session that is still running, so one round does not put a key it deletes.
-// A later gate has to keep that split. Each region's keys run on that
-// region's queue, at the same time as the others, so a region that cannot be
-// written does not hold the rest (D1306, D1325).
-func (c *Controller) apply(v controller.View, full bool) {
-	plan := controller.Derive(v, c.intake.planes, c.intake.now())
+// apply derives N1, fills bindings and ends sessions (N2, N3), then deletes
+// what N4 and N5 remove. full is the election round or a resync tick (D1310).
+// It returns the earliest deps deadline still ahead, or the zero time when
+// none is (D1331). Puts of a region finish before its deletes: Derive and
+// Gate skip a session whose status is already terminal, and Lifecycle does
+// not remove a session that is still running, so one round does not put a
+// key it deletes. Each region's keys run on that region's queue, at the same
+// time as the others, so a region that cannot be written does not hold the
+// rest (D1306, D1325).
+func (c *Controller) apply(v controller.View, full bool) time.Time {
+	now := c.intake.now()
+	plan := controller.Derive(v, c.intake.planes, now)
 	// A round can run again before the mirror lists the assignment just
 	// written. Copy the issued_at_ns this term already chose, so the retry
-	// does not start deps_timeout over (D1302).
+	// does not start deps_timeout over (D1302). Gate then reads that value.
 	c.keepIssued(v, plan.Writes)
 	c.intake.noteDrifts(plan.Drifts)
-	c.putAll(plan.Writes)
+	gated, next := controller.Gate(v, plan, now)
+	c.putAll(gated.Writes)
 	c.deleteAll(controller.Lifecycle(v, c.intake.planes, full))
+	return next
 }
 
 func (c *Controller) keepIssued(v controller.View, writes []controller.Write) {
