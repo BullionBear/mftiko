@@ -390,23 +390,31 @@ func TestDeriveUndecodable(t *testing.T) {
 	}
 }
 
-func TestDeriveTopologyRecovered(t *testing.T) {
-	v, sess := runningSession(sampleSpec())
-	sess.Demand = &statev1.SessionDemand{
-		Desired: sessionv1.DesiredState_DESIRED_STATE_ENDED, EndReason: "invalid_spec",
-		SpecRevision: specRev, IssuedAtNs: 42, UpdatedAtNs: 7,
-	}
-	v.Sessions[controller.SessionRef(stsInst, sessID)] = sess
-	plan := controller.Derive(v, places(), deriveNow)
-	got := byKey(t, plan)
-	sessKey := state.SessionDemandKey(stsInst, sessID)
-	wrote := asSession(t, got[sessKey])
-	if wrote.GetDesired() != sessionv1.DesiredState_DESIRED_STATE_RUNNING || wrote.GetEndReason() != "" ||
-		wrote.GetIssuedAtNs() != 42 || len(wrote.GetBindings()) != 3 {
-		t.Fatalf("%+v", wrote)
-	}
-	if len(got) != 4 {
-		t.Fatalf("keys %v", keysOf(got))
+func TestDeriveEndedStaysEnded(t *testing.T) {
+	for _, reason := range []string{"invalid_spec", "deps_failed", "deps_timeout", "ended_by_spec"} {
+		t.Run(reason, func(t *testing.T) {
+			spec := sampleSpec()
+			// The spec runs again and its revision still matches, which is
+			// what a recovered topology or a recovered ack looks like. Ending
+			// does not go back to RUNNING (D1328).
+			v, sess := runningSession(spec)
+			sess.Demand = &statev1.SessionDemand{
+				Desired: sessionv1.DesiredState_DESIRED_STATE_ENDED, EndReason: reason,
+				SpecRevision: specRev, IssuedAtNs: 42, UpdatedAtNs: 7,
+			}
+			v.Sessions[controller.SessionRef(stsInst, sessID)] = sess
+			plan := controller.Derive(v, places(), deriveNow)
+			if len(plan.Writes) != 0 || len(plan.Drifts) != 0 {
+				t.Fatalf("revived %+v", plan)
+			}
+
+			sess.Demand.SpecRevision = 1
+			v.Sessions[controller.SessionRef(stsInst, sessID)] = sess
+			plan = controller.Derive(v, places(), deriveNow)
+			if len(plan.Writes) != 0 || len(plan.Drifts) != 0 {
+				t.Fatalf("ended session drifted %+v", plan)
+			}
+		})
 	}
 }
 

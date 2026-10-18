@@ -42,9 +42,10 @@ type intake struct {
 	now    func() time.Time
 	opt    state.MirrorOptions
 	planes map[string]controller.Placement
-	// derive runs after each snapshot. Nil until Start wires it, which is
-	// before the loop starts.
-	derive func(controller.View)
+	// derive runs after each snapshot and returns the next deps deadline, or
+	// the zero time when nothing is waiting (D1331). Nil until Start wires it,
+	// which is before the loop starts.
+	derive func(controller.View) time.Time
 
 	staleAfter time.Duration
 	resync     time.Duration
@@ -197,6 +198,36 @@ func (in *intake) loop() {
 	defer in.wg.Done()
 	tick := time.NewTicker(in.resync)
 	defer tick.Stop()
+	// deps wakes a round at the earliest deps deadline. A nil channel is never
+	// selected, which is the state when nothing is waiting (D1331).
+	var deps *time.Timer
+	var depsC <-chan time.Time
+	stopDeps := func() {
+		if deps == nil {
+			return
+		}
+		if !deps.Stop() {
+			select {
+			case <-deps.C:
+			default:
+			}
+		}
+		deps = nil
+		depsC = nil
+	}
+	defer stopDeps()
+	armDeps := func(at time.Time) {
+		stopDeps()
+		if at.IsZero() {
+			return
+		}
+		d := at.Sub(in.now())
+		if d < 0 {
+			d = 0
+		}
+		deps = time.NewTimer(d)
+		depsC = deps.C
+	}
 	full := true // the election round is a full resync, before any derived write (D1310)
 	for {
 		if in.stopped() {
@@ -205,7 +236,7 @@ func (in *intake) loop() {
 		// Cleared before the read, so a notify during the round sets it again
 		// and the next round runs at once (D1319).
 		in.dirty.Store(false)
-		in.reconcile(full)
+		next := in.reconcile(full)
 		full = false
 		if in.dirty.Load() {
 			select {
@@ -215,6 +246,7 @@ func (in *intake) loop() {
 			}
 			continue
 		}
+		armDeps(next)
 		select {
 		case <-in.ctx.Done():
 			return
@@ -223,6 +255,7 @@ func (in *intake) loop() {
 		case <-in.wake:
 		case <-tick.C:
 			full = true
+		case <-depsC:
 		}
 	}
 }
@@ -238,7 +271,7 @@ func (in *intake) stopped() bool {
 	}
 }
 
-func (in *intake) reconcile(full bool) {
+func (in *intake) reconcile(full bool) time.Time {
 	var snaps []controller.Snapshot
 	var fails []failure
 	for _, name := range in.regions {
@@ -259,9 +292,10 @@ func (in *intake) reconcile(full bool) {
 	in.publish(v, full, fails)
 	// The snapshot is the relist. Derivation runs on this round's view, after
 	// it is published, so a new leader compares before it writes (N6, D1319).
-	if in.derive != nil {
-		in.derive(v)
+	if in.derive == nil {
+		return time.Time{}
 	}
+	return in.derive(v)
 }
 
 func (w *watched) observe() (state.View, time.Time, bool) {
