@@ -144,8 +144,14 @@ func TestRegionStaleClears(t *testing.T) {
 	proxy := etcdtest.NewProxy(t, servers["jp"])
 	topo := topology(servers, "tw")
 	topo.Regions["jp"] = state.Region{Endpoints: proxy.Endpoints()}
-	applyAuth(t, ctx, topo, servers)
+	// The demand below belongs to a session. A fast resync would otherwise
+	// reclaim it as an orphan (N5).
+	topo.Instances["sts-tw-1"] = "tw"
+	planes := mdPlanes(topo)
+	planes["sts-tw-1"] = state.PlaneSTS
+	applyPlanes(t, ctx, topo, planes, servers)
 	cfg := config(topo, t.Name(), testLog(t))
+	cfg.Planes = planes
 	cfg.StaleAfter = time.Second
 	cfg.Resync = 50 * time.Millisecond
 	cfg.Mirror = state.MirrorOptions{
@@ -155,7 +161,17 @@ func TestRegionStaleClears(t *testing.T) {
 	}
 	c := startAsync(t, ctx, cfg).ready(30 * time.Second)
 
-	key := state.MDDemandKey("md-jp-1", "abc123", "feed/x")
+	const sess = "abc123"
+	putProto(t, ctx, servers["tw"], state.SessionSpecKey("sts-tw-1", sess), &sessionv1.SessionSpec{
+		Name: "s", DesiredState: sessionv1.DesiredState_DESIRED_STATE_ENDED,
+	})
+	until(t, 20*time.Second, "the session is in the view", func() error {
+		if c.View().Sessions[controller.SessionRef("sts-tw-1", sess)].Spec.GetName() != "s" {
+			return errors.New("spec not in the view")
+		}
+		return nil
+	})
+	key := state.MDDemandKey("md-jp-1", sess, "feed/x")
 	putProto(t, ctx, servers["jp"], key, &statev1.DemandEntry{Target: &statev1.DemandEntry_Feed{Feed: "x"}})
 	waitStable(t, c, "jp", func(r controller.Region) bool {
 		return r.Synced && !r.Stale && r.Rev > 0

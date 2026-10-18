@@ -9,11 +9,16 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
-// apply derives N1, then fills bindings and ends sessions (N2, N3). It returns
-// the earliest deps deadline still ahead, or the zero time when none is (D1331).
-// Each region's keys run on that region's queue, at the same time as the others,
-// so a region that cannot be written does not hold the rest (D1306).
-func (c *Controller) apply(v controller.View) time.Time {
+// apply derives N1, fills bindings and ends sessions (N2, N3), then deletes
+// what N4 and N5 remove. full is the election round or a resync tick (D1310).
+// It returns the earliest deps deadline still ahead, or the zero time when
+// none is (D1331). Puts of a region finish before its deletes: Derive and
+// Gate skip a session whose status is already terminal, and Lifecycle does
+// not remove a session that is still running, so one round does not put a
+// key it deletes. Each region's keys run on that region's queue, at the same
+// time as the others, so a region that cannot be written does not hold the
+// rest (D1306, D1325).
+func (c *Controller) apply(v controller.View, full bool) time.Time {
 	now := c.intake.now()
 	plan := controller.Derive(v, c.intake.planes, now)
 	// A round can run again before the mirror lists the assignment just
@@ -23,6 +28,7 @@ func (c *Controller) apply(v controller.View) time.Time {
 	c.intake.noteDrifts(plan.Drifts)
 	gated, next := controller.Gate(v, plan, now)
 	c.putAll(gated.Writes)
+	c.deleteAll(controller.Lifecycle(v, c.intake.planes, full))
 	return next
 }
 
@@ -83,6 +89,43 @@ func (c *Controller) putAll(writes []controller.Write) {
 				// The queue logs a failed put. ErrUnsynced is a region that
 				// has not finished its first list; it is not fenced (D1318).
 				_ = c.writes.submit(c.ctx, w.Key, controller.Encode(w.Value), false)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// deleteAll removes keys the same way putAll writes them (D1306, D1335).
+func (c *Controller) deleteAll(keys []controller.Delete) {
+	if len(keys) == 0 {
+		return
+	}
+	topo := c.cl.Topology()
+	groups := map[string][]string{}
+	var order []string
+	for _, d := range keys {
+		region, err := topo.RegionOfKey(d.Key)
+		if err != nil {
+			c.log.Warn().Err(err).Str("key", d.Key).Msg("lifecycle")
+			continue
+		}
+		if _, ok := groups[region]; !ok {
+			order = append(order, region)
+		}
+		groups[region] = append(groups[region], d.Key)
+	}
+	var wg sync.WaitGroup
+	for _, region := range order {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for _, key := range groups[region] {
+				if c.ctx.Err() != nil || c.term.Err() != nil {
+					return
+				}
+				// The queue logs a failed delete. A region that has not
+				// finished its first list is not fenced (D1318).
+				_ = c.writes.submit(c.ctx, key, "", true)
 			}
 		}()
 	}

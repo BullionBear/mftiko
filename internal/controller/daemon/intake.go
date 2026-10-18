@@ -42,10 +42,11 @@ type intake struct {
 	now    func() time.Time
 	opt    state.MirrorOptions
 	planes map[string]controller.Placement
-	// derive runs after each snapshot and returns the next deps deadline, or
-	// the zero time when nothing is waiting (D1331). Nil until Start wires it,
-	// which is before the loop starts.
-	derive func(controller.View) time.Time
+	// derive runs after each snapshot. The bool is the election round or a
+	// resync tick (D1310): orphan removal runs only then. The time is the next
+	// deps deadline, or zero when nothing is waiting (D1331). Nil until Start
+	// wires it, which is before the loop starts.
+	derive func(controller.View, bool) time.Time
 
 	staleAfter time.Duration
 	resync     time.Duration
@@ -290,12 +291,13 @@ func (in *intake) reconcile(full bool) time.Time {
 	}
 	v := controller.Assemble(in.now(), in.staleAfter, in.regions, snaps)
 	in.publish(v, full, fails)
-	// The snapshot is the relist. Derivation runs on this round's view, after
-	// it is published, so a new leader compares before it writes (N6, D1319).
+	// The snapshot is the relist. Derivation, the gate and lifecycle run on
+	// this round's view, after it is published, so a new leader compares
+	// before it writes (N6, D1319). full selects the orphan scan (N5, D1310).
 	if in.derive == nil {
 		return time.Time{}
 	}
-	return in.derive(v)
+	return in.derive(v, full)
 }
 
 func (w *watched) observe() (state.View, time.Time, bool) {
