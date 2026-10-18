@@ -169,6 +169,19 @@ func TestDeriveAcrossRegions(t *testing.T) {
 	if got.GetSpecRevision() != specKV.mod {
 		t.Fatalf("spec_revision %d, spec mod %d", got.GetSpecRevision(), specKV.mod)
 	}
+	// Snapshot only once the view shows every key. A round that has not yet
+	// listed its own put treats the key as absent and puts it again (D1308).
+	afterRound(t, c, func() error {
+		v := c.View()
+		if v.Sessions[controller.SessionRef("sts-tw-1", deriveSess)].Demand.GetIssuedAtNs() != issued {
+			return errors.New("view has not caught the assignment")
+		}
+		if v.Demands[feedKey].Value.GetFeed() == "" || v.Demands[selKey].Value.GetSelector().GetName() != "near" ||
+			v.Demands[tdKey].Value.GetApiId() != 7 {
+			return errors.New("view has not caught every demand entry")
+		}
+		return nil
+	})
 	before := map[string]stored{}
 	for _, item := range []struct {
 		srv *etcdtest.Server
@@ -183,12 +196,7 @@ func TestDeriveAcrossRegions(t *testing.T) {
 		}
 		before[item.key] = st
 	}
-	afterRound(t, c, func() error {
-		if c.View().Sessions[controller.SessionRef("sts-tw-1", deriveSess)].Demand.GetIssuedAtNs() != issued {
-			return errors.New("view has not caught the assignment")
-		}
-		return nil
-	})
+	afterRound(t, c, func() error { return nil })
 	for _, item := range []struct {
 		srv *etcdtest.Server
 		key string
@@ -275,9 +283,15 @@ func TestDeriveSurvivesRestart(t *testing.T) {
 	next := startAsync(t, ctx, cfg)
 	c2 := next.ready(30 * time.Second)
 	afterRound(t, c2, func() error {
-		d := c2.View().Sessions[controller.SessionRef("sts-tw-1", deriveSess)].Demand
+		v := c2.View()
+		d := v.Sessions[controller.SessionRef("sts-tw-1", deriveSess)].Demand
 		if d.GetIssuedAtNs() != issued {
 			return fmt.Errorf("issued %d", d.GetIssuedAtNs())
+		}
+		if v.Demands[feedKey].Value.GetFeed() != "trade.BinanceUM_Perp_BTCUSDT" ||
+			v.Demands[selKey].Value.GetSelector().GetName() != "near" ||
+			v.Demands[tdKey].Value.GetApiId() != 7 {
+			return errors.New("view has not listed every demand")
 		}
 		return nil
 	})
@@ -449,6 +463,12 @@ func TestDeriveSpecChangeLogsOnce(t *testing.T) {
 		derived = d.GetSpecRevision()
 		return nil
 	})
+	until(t, 20*time.Second, "the view has the derived feed", func() error {
+		if c.View().Demands[feedKey].Value.GetFeed() != spec.GetFeeds()[0].GetFeed() {
+			return errors.New("feed not in the view")
+		}
+		return nil
+	})
 	before, ok := kvOf(t, ctx, servers["jp"], feedKey)
 	if !ok {
 		t.Fatal("feed missing")
@@ -499,5 +519,32 @@ func TestDeriveSpecChangeLogsOnce(t *testing.T) {
 	}
 	if st, ok := kvOf(t, ctx, servers["jp"], feedKey); !ok || st != before {
 		t.Fatalf("existing feed changed after the second edit %+v present %v", st, ok)
+	}
+}
+
+// A later round whose view has not listed the assignment yet must reuse the
+// issued_at_ns this term already wrote (D1302).
+func TestKeepIssuedWhileViewLags(t *testing.T) {
+	key := state.SessionDemandKey("sts-tw-1", deriveSess)
+	c := &Controller{intake: &intake{issued: map[string]int64{}}}
+	v := controller.View{Sessions: map[string]controller.Session{
+		controller.SessionRef("sts-tw-1", deriveSess): {ID: deriveSess, Instance: "sts-tw-1"},
+	}}
+	first := &statev1.SessionDemand{IssuedAtNs: 10, UpdatedAtNs: 10}
+	c.keepIssued(v, []controller.Write{{Key: key, Value: first}})
+	retry := &statev1.SessionDemand{IssuedAtNs: 99, UpdatedAtNs: 99}
+	c.keepIssued(v, []controller.Write{{Key: key, Value: retry}})
+	if retry.GetIssuedAtNs() != 10 {
+		t.Fatalf("issued %d", retry.GetIssuedAtNs())
+	}
+
+	v.Sessions[controller.SessionRef("sts-tw-1", deriveSess)] = controller.Session{
+		ID: deriveSess, Instance: "sts-tw-1",
+		Demand: &statev1.SessionDemand{IssuedAtNs: 42},
+	}
+	seen := &statev1.SessionDemand{IssuedAtNs: 42, UpdatedAtNs: 100}
+	c.keepIssued(v, []controller.Write{{Key: key, Value: seen}})
+	if seen.GetIssuedAtNs() != 42 || c.intake.issued[key] != 42 {
+		t.Fatalf("stored issued lost: value %d cache %d", seen.GetIssuedAtNs(), c.intake.issued[key])
 	}
 }

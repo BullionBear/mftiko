@@ -61,6 +61,7 @@ type intake struct {
 	stats      Stats
 	logged     map[string]int64 // undecodable key -> mod revision last warned
 	drifted    map[string]int64 // session ref -> spec revision last warned (D1322)
+	issued     map[string]int64 // session demand key -> issued_at_ns this term already wrote (D1302)
 	prevStale  map[string]bool
 	minBackoff time.Duration
 	maxBackoff time.Duration
@@ -93,6 +94,7 @@ func newIntake(parent context.Context, term *state.Term, cl *state.Clusters, cfg
 		wake:      make(chan struct{}, 1),
 		logged:    map[string]int64{},
 		drifted:   map[string]int64{},
+		issued:    map[string]int64{},
 		prevStale: map[string]bool{},
 		planes:    placements(cfg),
 		view: controller.View{
