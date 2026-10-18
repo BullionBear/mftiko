@@ -241,11 +241,16 @@ func TestDeriveSurvivesRestart(t *testing.T) {
 		{servers["tw"], sessKey}, {servers["tw"], selKey},
 		{servers["jp"], feedKey}, {servers["jp"], tdKey},
 	}
-	until(t, 20*time.Second, "the first leader has written every demand", func() error {
-		for _, item := range keys {
-			if _, ok := kvOf(t, ctx, item.srv, item.key); !ok {
-				return fmt.Errorf("missing %s", item.key)
-			}
+	// Snapshot only once the view shows every key. A round that has not yet
+	// listed its own put treats the key as absent and puts it again (D1308).
+	afterRound(t, c, func() error {
+		v := c.View()
+		if v.Sessions[controller.SessionRef("sts-tw-1", deriveSess)].Demand.GetIssuedAtNs() == 0 {
+			return errors.New("view has not caught the assignment")
+		}
+		if v.Demands[feedKey].Value.GetFeed() == "" || v.Demands[selKey].Value.GetSelector().GetName() != "near" ||
+			v.Demands[tdKey].Value.GetApiId() != 7 {
+			return errors.New("view has not caught every demand entry")
 		}
 		return nil
 	})
