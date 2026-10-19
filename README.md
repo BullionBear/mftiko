@@ -38,7 +38,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-mdfetch          stateless md.fetch service
   mftiko-sym              symbol service
   mftiko-migrate          applies the PostgreSQL migrations (a deploy step)
-  mftiko-pack             builds a strategy artifact (OCI image + mftiko manifest)
+  mftiko-pack             packs a strategy binary into an OCI artifact and pushes it
   mftiko-controller       controller: one leader, derives demands, fences per region
   mftiko-etcd-roles       prints each region's etcd users and roles, derived from the instance list
   mftiko-nats-dev         generates dev NATS operator, accounts and user creds, and checks them
@@ -47,7 +47,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-md-accept        drives the MD feed-path acceptance (deploy/accept)
 examples/strategies/      hello, tape-keeper; import only sdk and contract, as an outside author would
 migrations/               PostgreSQL schema: NNNN_name.up.sql / .down.sql, embedded into mftiko-migrate
-deploy/dev/               local development services (PostgreSQL, etcd, NATS)
+deploy/dev/               local development services (PostgreSQL, etcd, NATS, registry)
 deploy/accept/            MD feed-path acceptance against a venue's testnet: compose stack, accept.sh, runbook
 web/                      SvelteKit console (single-page app served by mftiko-api)
 docs/                     DECISIONS.md, PROTOCOL.md
@@ -67,7 +67,7 @@ docs/                     DECISIONS.md, PROTOCOL.md
 | `make test` / `make test-race` / `make vet` | Go tests / with the race detector, uncached / vet |
 | `make check` | everything CI runs: `proto-lint`, `proto-breaking`, `gen-check`, `vet`, `build`, `test-race`, `web-check` |
 | `make web` / `make web-dev` / `make web-check` | build, dev server, svelte-check |
-| `make dev-up` / `make dev-down` | generate dev NATS credentials, then start / stop a local PostgreSQL, etcd and NATS (Docker); `dev-up` waits until all are healthy |
+| `make dev-up` / `make dev-down` | generate dev NATS credentials, then start / stop a local PostgreSQL, etcd, NATS and registry (Docker); `dev-up` waits until all are healthy |
 | `make accept-up` / `make accept-down` | start / stop the MD acceptance stack; the checks themselves are in `deploy/accept/README.md` |
 | `make dev-nats-smoke` | run the dev NATS permission checks (`deploy/dev/nats-smoke.sh`) against the compose server |
 | `make migrate-up` / `make migrate-down` / `make migrate-status` | apply / roll back one / list migrations against `$DATABASE_URL` |
@@ -75,7 +75,19 @@ docs/                     DECISIONS.md, PROTOCOL.md
 | `make clean` | removes `bin/` and web build output |
 | `make help` | lists targets |
 
-Building and testing the Go code need only Go 1.26+: the generated code is committed. `make proto`, `make web` and `make check` also need Node 22+ and npm; Docker only for `make dev-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`; its etcd is at `http://127.0.0.1:2379`, one member with no auth. Its NATS is at `nats://127.0.0.1:4222`, one server, core NATS only, no TLS. The generated server config sets `max_control_line` to 262144 (D827): a session JWT lists each feed, and the server default of 4096 rejects that CONNECT line. `make dev-up` generates the operator, account and user credentials into `deploy/dev/data/nats`, which is gitignored. MD and md.fetch use those creds.
+Building and testing the Go code need only Go 1.26+: the generated code is committed. `make proto`, `make web` and `make check` also need Node 22+ and npm; Docker only for `make dev-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`; its etcd is at `http://127.0.0.1:2379`, one member with no auth. Its NATS is at `nats://127.0.0.1:4222`, one server, core NATS only, no TLS. The generated server config sets `max_control_line` to 262144 (D827): a session JWT lists each feed, and the server default of 4096 rejects that CONNECT line. `make dev-up` generates the operator, account and user credentials into `deploy/dev/data/nats`, which is gitignored. MD and md.fetch use those creds. The dev compose registry is `registry:2` at `127.0.0.1:5000`, with no authentication (D910).
+
+## Packing a strategy
+
+`mftiko-pack` packs a binary that is already built and pushes the image (D902, D936).
+
+```
+make examples
+make build
+bin/mftiko-pack -bin bin/examples/hello -name hello -repo 127.0.0.1:5000/hello -plain-http
+```
+
+`make dev-up` starts the registry. The line printed on success is the image manifest digest, which is `StrategyRef.code`. `-tag` is optional and only names the image for a person to look up; the same binary and parameters pack to the same digest either way (D938). A registry that asks for a login is read from `~/.docker/config.json` (D940). `-plain-http` is for the dev registry.
 
 ## Tests
 

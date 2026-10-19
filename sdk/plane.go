@@ -23,12 +23,6 @@ import (
 	"github.com/BullionBear/mftiko/sdk/internal/tdpath"
 )
 
-// helloContracts is what a session worker lists (PROTOCOL §9.2). The C5 contract
-// checked on Init, Start, and Live stays stsctl.v1.
-var helloContracts = []string{"worker.v1", "stsctl.v1", "md.v1", "td.v1"}
-
-const contractSTS = "stsctl.v1"
-
 // host is the process around one session. The zero value is production: the
 // NATS URL and the volume directories come from the environment, dials use
 // nats.Connect, and the report interval is five seconds. Tests replace the
