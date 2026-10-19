@@ -168,6 +168,10 @@ func check(pkgs []pkg, std map[string]bool) []string {
 					bad(imp, "planes use exchange's interfaces and exchange/transport only; cmd registers the exchanges")
 				}
 			}
+			if strings.HasPrefix(imp, "oras.land/oras-go") &&
+				from != "internal/platform/artifact" && from != "cmd/mftiko-pack" {
+				bad(imp, "oras-go is only imported by internal/platform/artifact and cmd/mftiko-pack (D909)")
+			}
 		}
 		if from == "exchange" {
 			for _, d := range p.Deps {
@@ -254,6 +258,7 @@ func TestDependencyRules(t *testing.T) {
 	// The rules key on paths; if a block moved, they would pass by matching nothing.
 	for _, want := range []string{"contract/symbol", "contract/wire/frame", "exchange", "sdk", "internal/platform/state",
 		"internal/platform/agent", "internal/platform/agent/runner", "internal/platform/natsx", "internal/platform/shim",
+		"internal/platform/artifact", "cmd/mftiko-pack",
 		"internal/md", "internal/td", "internal/sts", "internal/sym", "internal/api",
 		"internal/controller", "internal/controller/daemon"} {
 		if !slices.Contains(own, want) {
@@ -300,7 +305,10 @@ func TestCheckReportsViolations(t *testing.T) {
 			m("exchange"), m("exchange/binance"), m("contract/gen/mftiko/sym/v1"), m("internal/md"),
 		}},
 		{ImportPath: m("cmd/mftiko-md-agent"), Imports: []string{m("exchange/all"), m("internal/md"), m("internal/td")}},
-		{ImportPath: "go.etcd.io/etcd/client/v3", Imports: []string{m("internal/md")}}, // outside the module: ignored
+		{ImportPath: "go.etcd.io/etcd/client/v3", Imports: []string{m("internal/md")}},                // outside the module: ignored
+		{ImportPath: m("internal/platform/artifact"), Imports: []string{"oras.land/oras-go/v2"}},      // D909: allowed
+		{ImportPath: m("cmd/mftiko-pack"), Imports: []string{"oras.land/oras-go/v2/registry/remote"}}, // D909: allowed
+		{ImportPath: m("cmd/mftiko-sts-agent"), Imports: []string{"oras.land/oras-go/v2"}},            // D909
 	}
 	std := map[string]bool{"fmt": true, "context": true}
 	got := check(pkgs, std)
@@ -334,6 +342,7 @@ func TestCheckReportsViolations(t *testing.T) {
 		"internal/controller/daemon imports " + m("exchange/binance"),
 		"internal/controller/daemon imports " + m("contract/gen/mftiko/sym/v1"),
 		"internal/controller/daemon imports " + m("internal/md"),
+		"cmd/mftiko-sts-agent imports oras.land/oras-go/v2",
 	}
 	if len(got) != len(want) {
 		t.Errorf("%d violations, want %d:\n%s", len(got), len(want), strings.Join(got, "\n"))
