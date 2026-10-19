@@ -3,6 +3,8 @@ package daemon
 import (
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
 	"github.com/BullionBear/mftiko/internal/controller"
 	"github.com/BullionBear/mftiko/internal/platform/state"
@@ -49,6 +51,29 @@ func (c *Controller) keepIssued(v controller.View, writes []controller.Write) {
 	}
 }
 
+// keepUpdated copies updated_at_ns from the SessionDemand this term last
+// posted for the key when the two differ in nothing else. A round that runs
+// before the mirror lists that write derives it again with a new clock; with
+// the old value the bytes match and the queue drops the repeat (D1308, D1323,
+// D1337).
+func (c *Controller) keepUpdated(w controller.Write) {
+	d, ok := w.Value.(*statev1.SessionDemand)
+	if !ok {
+		return
+	}
+	if last := c.intake.posted[w.Key]; last != nil && sameButUpdated(d, last) {
+		d.UpdatedAtNs = last.GetUpdatedAtNs()
+	}
+	c.intake.posted[w.Key] = proto.Clone(d).(*statev1.SessionDemand)
+}
+
+func sameButUpdated(a, b *statev1.SessionDemand) bool {
+	a = proto.Clone(a).(*statev1.SessionDemand)
+	b = proto.Clone(b).(*statev1.SessionDemand)
+	a.UpdatedAtNs, b.UpdatedAtNs = 0, 0
+	return proto.Equal(a, b)
+}
+
 func storedIssued(v controller.View, key string) int64 {
 	for _, sess := range v.Sessions {
 		if state.SessionDemandKey(sess.Instance, sess.ID) != key || sess.Demand == nil {
@@ -66,6 +91,7 @@ func storedIssued(v controller.View, key string) int64 {
 // queue how far the round has read each region.
 func (c *Controller) putAll(v controller.View, writes []controller.Write) {
 	for _, w := range writes {
+		c.keepUpdated(w)
 		c.writes.post(c.ctx, w.Key, controller.Encode(w.Value), false, c.seen(v, w.Key))
 	}
 }

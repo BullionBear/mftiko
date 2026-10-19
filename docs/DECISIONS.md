@@ -1961,7 +1961,7 @@ E13-07 的測試找到：region 同步之後才斷線，在過舊判定（D1306�
 
 - 一輪 reconcile 把推導、gate、生命週期的寫入交給各 region 的佇列就繼續，不等結果。佇列仍依 region 分開、依序執行，同一 region 的 put 在 delete 之前（D1325 不變）。
 - 佇列裡同一個 key 只留最新的值；和正在執行的寫入相同的值不再排。卡住的 region 每個 key 最多一筆。
-- 這個 term 寫過、但 view 對該 region 讀到的 revision 還沒到那次寫入的值，再推導出相同的值時不寫（D1308 的延伸）。比較是位元組相等，只差 `updated_at_ns` 的重寫仍會發生，發生率和這張票之前相同。
+- 這個 term 寫過、但 view 對該 region 讀到的 revision 還沒到那次寫入的值，再推導出相同的值時不寫（D1308 的延伸）。比較是位元組相等，所以 `SessionDemand` 和本 term 上次排入的值只差 `updated_at_ns` 時，沿用上次的 `updated_at_ns`（與 D1302 沿用 `issued_at_ns` 同理），否則 view 落後的那一輪會多寫一次。
 - 寫入失敗只記 log。下一輪仍要這個值，就會再排。
 - `Controller.Put`、`Delete`（測試入口，D1313）仍等結果。
 - provider 的 region 尚未完成首次同步時，那裡的 ack 沒有讀過。`bindings` 保留 etcd 裡現有的 status，不清成空值，也不因此放行 `start`（D1318、N6）。新 leader 當選時 provider region 同步得比 STS region 慢，原本會把已放行 session 的 `bindings` 清空。
