@@ -1,11 +1,12 @@
 # Local development only: `make dev-up` starts every service and waits until they are healthy; then
 # `make migrate-up`. Ports are bound to 127.0.0.1, so nothing outside this machine can connect.
 # PostgreSQL trusts local connections, and etcd has no auth yet (E1-08 adds it). NATS uses operator and
-# account JWTs (D412). `make dev-up` generates them into deploy/dev/data/nats before compose starts;
-# that directory is gitignored and is not created here, because a missing bind-mount source makes
-# Docker create a directory in its place. Tests do not use these: state starts its own etcd (etcdtest),
-# natsx its own server (natsxtest), natsdev its own JWT server, and the symbol tests start their own
-# PostgreSQL (pgtest).
+# account JWTs (D412). The registry is registry:2 with no auth (D910). `make dev-up` generates the NATS
+# credentials into deploy/dev/data/nats before compose starts; that directory is gitignored and is not
+# created here, because a missing bind-mount source makes Docker create a directory in its place.
+# Tests do not use these: state starts its own etcd (etcdtest), natsx its own server (natsxtest),
+# natsdev its own JWT server, the symbol tests start their own PostgreSQL (pgtest), and artifact tests
+# speak to an in-process registry.
 services:
   postgres:
     image: postgres:17
@@ -75,6 +76,21 @@ services:
       timeout: 3s
       retries: 30
 
+  # No auth (D910). The image is Alpine, so the healthcheck can use wget. Tests do not use this
+  # service; they speak the distribution API in process.
+  registry:
+    image: registry:2
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - regdata:/var/lib/registry
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5000/v2/"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
 volumes:
   pgdata:
   etcddata:
+  regdata:

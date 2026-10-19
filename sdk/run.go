@@ -62,7 +62,7 @@ func serve(ctx context.Context, rw io.ReadWriteCloser, s Strategy, h host) int {
 	return c4.Serve(ctx, rw, c4.Config{
 		Kind:            "session",
 		Contract:        contractSTS,
-		Contracts:       helloContracts,
+		Contracts:       Contracts(),
 		Release:         release(),
 		InitCarriesLive: true,
 		Log:             logf,
