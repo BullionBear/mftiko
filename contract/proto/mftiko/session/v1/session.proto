@@ -28,6 +28,8 @@ message SessionSpec {
   uint32 recv_window_ms = 14;
   reserved 15; // 草案 v0.11 的 algo_id：改到 AccountDecl.algo_ids（D602）
   reserved "algo_id";
+  // Stop 的 grace（D918、D962）。0 = STS 部署設定的預設，10 秒。
+  uint32 grace_ms = 16;
 }
 
 // 唯讀注入的資料 artifact，解到 $MFTIKO_INPUT_DIR/<name>/（§8.4）。

@@ -14,9 +14,12 @@ import (
 
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
+	stsctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/stsctl/v1"
+	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
 	"github.com/BullionBear/mftiko/internal/platform/agent"
 	"github.com/BullionBear/mftiko/internal/platform/agent/fleet"
 	"github.com/BullionBear/mftiko/internal/platform/agent/runner"
+	"github.com/BullionBear/mftiko/internal/platform/artifact"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
@@ -30,18 +33,23 @@ type Config struct {
 	Dial     state.DialFunc
 	Term     state.TermOptions
 
-	WorkDir   string
-	Shim      string // mftiko-shim
-	Worker    string // the executable every new spawn runs (D943)
-	ShimEnv   []string
+	WorkDir string
+	Shim    string // mftiko-shim
+	DataDir string // ${DATA}: layers, rootfs, session volume and inputs
+	ShimEnv []string
+	// WorkerEnv is the platform environment every worker gets (MFTIKO_NATS_URL).
 	WorkerEnv []string
 	// ExtraEnv is appended to one worker's environment at launch. Tests use it.
 	ExtraEnv func(agent.WorkerKey) []string
+	// Sign issues the session user JWT (D924).
+	Sign SessionSigner
+	// Applied is told each bindings version a worker reports. Tests use it (D965).
+	Applied func(sessionID string, epoch int64, seq uint64)
 
 	// Registry, RegistryCreds, DataRepository, PlainHTTP, and MaxArtifactBytes
-	// are the deployment's registry settings (D910, D913, D948). This ticket
-	// parses them and does not pull. RegistryCreds is a filesystem path; the
-	// file is not read.
+	// are the deployment's registry settings (D910, D913, D948). RegistryCreds
+	// is a Docker config.json path. DataRepository is for state_out, which this
+	// ticket does not push.
 	Registry         string
 	RegistryCreds    string
 	DataRepository   string
@@ -65,9 +73,39 @@ type Config struct {
 	Now        func() time.Time
 }
 
+func (cfg *Config) applyDefaults() {
+	if cfg.RecvWindowMS <= 0 {
+		cfg.RecvWindowMS = DefaultRecvWindowMS
+	}
+	if cfg.HookTimeoutS <= 0 {
+		cfg.HookTimeoutS = DefaultHookTimeoutS
+	}
+	if cfg.StartTimeoutS <= 0 {
+		cfg.StartTimeoutS = DefaultStartTimeoutS
+	}
+	if cfg.VolumeMB <= 0 {
+		cfg.VolumeMB = DefaultVolumeMB
+	}
+	if cfg.Grace <= 0 {
+		cfg.Grace = DefaultGrace
+	}
+	if cfg.MaxRestarts <= 0 {
+		cfg.MaxRestarts = DefaultMaxRestarts
+	}
+	if cfg.RestartWindowS <= 0 {
+		cfg.RestartWindowS = DefaultRestartWindowS
+	}
+	if cfg.MaxArtifactBytes <= 0 {
+		cfg.MaxArtifactBytes = DefaultMaxArtifactBytes
+	}
+}
+
 func (cfg Config) validate() error {
-	if cfg.Instance == "" || cfg.WorkDir == "" || cfg.Shim == "" || cfg.Worker == "" {
+	if cfg.Instance == "" || cfg.WorkDir == "" || cfg.Shim == "" || cfg.DataDir == "" || cfg.Registry == "" || cfg.Sign == nil {
 		return errors.New("sts: agent config incomplete")
+	}
+	if cfg.MaxArtifactBytes < 0 {
+		return errors.New("sts: max artifact bytes")
 	}
 	return nil
 }
@@ -76,6 +114,7 @@ func (cfg Config) validate() error {
 // and reconcile until the term ends or ctx is done. Workers outlive the process
 // (D102).
 func Run(ctx context.Context, cfg Config) error {
+	cfg.applyDefaults()
 	if err := cfg.validate(); err != nil {
 		return err
 	}
@@ -139,7 +178,18 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return err
 	}
-	prog := &Program{Worker: cfg.Worker, Env: cfg.WorkerEnv, ExtraEnv: cfg.ExtraEnv}
+	art, err := artifact.Open(artifact.Registry{
+		Address: cfg.Registry, Credentials: cfg.RegistryCreds, PlainHTTP: cfg.PlainHTTP,
+	}, cfg.DataDir)
+	if err != nil {
+		return err
+	}
+	pulls := newPuller(ctx, art, cfg.MaxArtifactBytes, cfg.Log, cfg.Now)
+	prog := &Program{
+		Env: cfg.WorkerEnv, ExtraEnv: cfg.ExtraEnv, DataDir: cfg.DataDir, Instance: cfg.Instance,
+		Epoch: term.Epoch(), Sign: cfg.Sign,
+		RecvWindowMS: cfg.RecvWindowMS, HookTimeoutS: cfg.HookTimeoutS, StartTimeoutS: cfg.StartTimeoutS,
+	}
 	f := fleet.New(fleet.Config[Spec, Live]{
 		Plane: state.PlaneSTS, Instance: cfg.Instance, Epoch: term.Epoch(), Release: cfg.Release,
 		WorkDir: cfg.WorkDir, Shim: cfg.Shim, ShimEnv: cfg.ShimEnv, Numbers: numbers, Program: prog,
@@ -152,8 +202,9 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	p := &plane{
 		inst: cfg.Instance, spec: specM, demand: demandM, status: statusM,
-		w: term, log: cfg.Log, now: cfg.Now,
-		local: map[string]statusView{}, remembered: map[string]demandView{},
+		w: term, log: cfg.Log, now: cfg.Now, prog: prog, pulls: pulls, art: art, fleet: f,
+		onApplied: cfg.Applied,
+		local:     map[string]statusView{}, remembered: map[string]demandView{},
 		loggedSpec: map[string]bool{}, loggedDemand: map[string]bool{},
 	}
 	return runner.Run(ctx, runner.Config[Entry, Spec, Live]{
@@ -185,6 +236,12 @@ type plane struct {
 	mirrored     map[string]statusView
 	loggedSpec   map[string]bool
 	loggedDemand map[string]bool
+
+	prog      *Program
+	pulls     *puller
+	art       *artifact.Client
+	fleet     *fleet.Fleet[Spec, Live]
+	onApplied func(sessionID string, epoch int64, seq uint64)
 }
 
 // Plan returns the last commit. A stale step does not recompute it (D109).
@@ -234,6 +291,7 @@ func (p *plane) commit(_ context.Context, _ agent.Demand[Entry], observed map[ag
 	for _, id := range d.Changed {
 		p.log.Warn().Str("session", id).Msg("spec changed; replacing the incarnation")
 	}
+	p.stage(sessions, &d)
 	p.plans, p.intents, p.hashes = d.Plans, d.Intents, d.Hashes
 	p.remembered = remember(sessions, p.remembered)
 	p.mirrored = map[string]statusView{}
@@ -279,7 +337,117 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 		}
 		p.local[id] = statusView{Phase: phase, Reason: reason}
 	}
+	p.pushBindings(ctx, observed)
+	p.noteApplied(observed)
 	return nil
+}
+
+// stage drops sessions whose rootfs is not ready from the plan, records artifact
+// rejections, and garbage-collects (D958, D959). A worker already running this spec
+// stays in the plan so a restart does not stop it while the image is fetched again (D102).
+func (p *plane) stage(sessions map[string]*sess, d *decision) {
+	for _, id := range slices.Sorted(maps.Keys(sessions)) {
+		s := sessions[id]
+		if s.spec == nil || s.parsed == nil {
+			continue
+		}
+		var raw []*statev1.Binding
+		switch {
+		case s.demand != nil:
+			raw = s.demand.Bindings
+		case s.remembered != nil:
+			raw = s.remembered.Bindings
+		}
+		p.prog.note(id, s.spec.Hash(), s.parsed, toBindings(s.parsed, raw))
+	}
+	want := map[string]struct{}{}
+	for _, id := range slices.Sorted(maps.Keys(d.Intents)) {
+		in := d.Intents[id]
+		if in.Kind != kindPlan {
+			continue
+		}
+		s := sessions[id]
+		dig := s.parsed.GetStrategy().GetCode()
+		want[dig] = struct{}{}
+		snap := p.pulls.ensure(artifact.Request{
+			Repository: s.parsed.GetStrategy().GetRepository(), Digest: dig,
+		})
+		liveSame := s.observed != nil && !s.observed.State.Ended() && s.observed.SpecHash == in.SpecHash
+		switch {
+		case snap.ready:
+			if err := ensureSessionDirs(p.prog.DataDir, id); err != nil {
+				p.log.Warn().Str("session", id).Err(err).Msg("session directories")
+				if !liveSame {
+					delete(d.Plans, WorkerKey(id))
+				}
+				continue
+			}
+			p.prog.setImage(id, snap.rootfs, snap.manifest)
+		case snap.perm != "" && !liveSame:
+			delete(d.Plans, WorkerKey(id))
+			in.Kind = kindFailed
+			in.FailReason = snap.perm
+			d.Intents[id] = in
+		case liveSame:
+		default:
+			delete(d.Plans, WorkerKey(id))
+		}
+	}
+	p.pulls.retain(want)
+	keep := keepDigests(sessions, p.pulls.inflight())
+	if err := p.art.GC(keep); err != nil {
+		p.log.Warn().Err(err).Msg("artifact gc")
+	}
+}
+
+// pushBindings sends a Command when a started worker's bindings changed (D961).
+// A failure leaves the seq unpublished so the next round retries the same one.
+func (p *plane) pushBindings(ctx context.Context, observed map[agent.WorkerKey]agent.Observed) {
+	for _, id := range slices.Sorted(maps.Keys(p.intents)) {
+		in := p.intents[id]
+		if in.Kind != kindPlan {
+			continue
+		}
+		obs, ok := observed[WorkerKey(id)]
+		if !ok || obs.SpecHash != in.SpecHash {
+			continue
+		}
+		if obs.State != agent.StateStarting && obs.State != agent.StateRunning {
+			continue
+		}
+		raw, hash, seq, send := p.prog.command(id)
+		if !send {
+			continue
+		}
+		err := p.fleet.Relay(ctx, WorkerKey(id), &workerv1.Relay{Contract: workerContract, Payload: raw})
+		if err != nil {
+			p.log.Warn().Str("session", id).Err(err).Msg("bindings command")
+			continue
+		}
+		p.prog.markSent(id, hash, seq)
+	}
+}
+
+func (p *plane) noteApplied(observed map[agent.WorkerKey]agent.Observed) {
+	if p.onApplied == nil {
+		return
+	}
+	for key, obs := range observed {
+		rep := obs.Report
+		if rep == nil || rep.GetContract() != workerContract || len(rep.GetPayload()) == 0 {
+			continue
+		}
+		msg := &stsctlv1.Report{}
+		if err := proto.Unmarshal(rep.GetPayload(), msg); err != nil || msg.GetBindingsApplied() == nil {
+			continue
+		}
+		id, ok := idFrom("sts/", string(key))
+		if !ok {
+			continue
+		}
+		v := msg.GetBindingsApplied()
+		p.onApplied(id, v.GetEpoch(), v.GetSeq())
+	}
 }
 
 func (p *plane) same(id string, phase statev1.Phase, reason string) bool {

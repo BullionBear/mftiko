@@ -241,7 +241,16 @@ func TestPhase(t *testing.T) {
 		{"ended no worker", endedI, nil, statev1.Phase_PHASE_DONE, "ended_by_spec"},
 		{"ended prefers end reason", endedI, obs(agent.StateExited, "", "h", exitInfo(commonv1.Outcome_OUTCOME_DONE, "stop: not in demand")), statev1.Phase_PHASE_DONE, "ended_by_spec"},
 		{"ended empty reason keeps the exit reason", intent{Kind: kindEnded, SpecHash: "h"}, obs(agent.StateExited, "", "h", exitInfo(commonv1.Outcome_OUTCOME_DONE, "stop: not in demand")), statev1.Phase_PHASE_DONE, "stop: not in demand"},
+		{"ended crash keeps the worker reason", endedI, obs(agent.StateExited, "", "h", exitInfo(commonv1.Outcome_OUTCOME_CRASHED, "crash")), statev1.Phase_PHASE_FAILED, "crash"},
+		{"deps_failed with no worker", intent{Kind: kindEnded, EndReason: "deps_failed"}, nil, statev1.Phase_PHASE_FAILED, "deps_failed"},
+		{"deps_timeout with no worker", intent{Kind: kindEnded, EndReason: "deps_timeout"}, nil, statev1.Phase_PHASE_FAILED, "deps_timeout"},
+		{"invalid_spec with no worker", intent{Kind: kindEnded, EndReason: "invalid_spec"}, nil, statev1.Phase_PHASE_FAILED, "invalid_spec"},
+		{"deps_failed after a normal exit", intent{Kind: kindEnded, EndReason: "deps_failed", SpecHash: "h"}, obs(agent.StateExited, "", "h", exitInfo(commonv1.Outcome_OUTCOME_DONE, "stop")), statev1.Phase_PHASE_FAILED, "deps_failed"},
+		{"deps_failed while the worker runs", intent{Kind: kindEnded, EndReason: "deps_failed", SpecHash: "h"}, obs(agent.StateRunning, "running", "h", nil), statev1.Phase_PHASE_RUNNING, ""},
+		{"invalid_spec while stopping", intent{Kind: kindEnded, EndReason: "invalid_spec", SpecHash: "h"}, obs(agent.StateStopping, "running", "h", nil), statev1.Phase_PHASE_STOPPING, ""},
 		{"lost overrides end reason", endedI, obs(agent.StateLost, "", "h", nil), statev1.Phase_PHASE_FAILED, ReasonShimLost},
+		{"artifact rejection", intent{Kind: kindFailed, FailReason: "artifact_not_found"}, nil, statev1.Phase_PHASE_FAILED, "artifact_not_found"},
+		{"init failed exit", plan, obs(agent.StateExited, "", "h", exitInfo(commonv1.Outcome_OUTCOME_INIT_FAILED, "bad config")), statev1.Phase_PHASE_FAILED, "bad config"},
 		{"conflict ignores the worker", intent{Kind: kindConflict}, obs(agent.StateRunning, "running", "h", nil), statev1.Phase_PHASE_FAILED, ReasonAlgoConflict},
 	}
 	for _, c := range cases {

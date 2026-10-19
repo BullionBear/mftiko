@@ -21,13 +21,16 @@ import (
 
 	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
+	stsctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/stsctl/v1"
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
 	"github.com/BullionBear/mftiko/internal/platform/agent"
+	"github.com/BullionBear/mftiko/internal/platform/artifact"
 	"github.com/BullionBear/mftiko/internal/platform/logger"
 	"github.com/BullionBear/mftiko/internal/platform/shim"
 	"github.com/BullionBear/mftiko/internal/platform/shim/fakeworker"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 	"github.com/BullionBear/mftiko/internal/platform/state/etcdtest"
+	"github.com/BullionBear/mftiko/internal/sts"
 )
 
 const (
@@ -50,14 +53,16 @@ func TestMain(m *testing.M) {
 // agentArgs is what a second agent process needs. The password is passed in:
 // etcdtest derives it from a secret of each process.
 type agentArgs struct {
-	Topology state.Topology
-	Password string
-	Instance string
-	WorkDir  string
-	Shim     string
-	Worker   string
-	ShimEnv  []string
-	Resync   time.Duration
+	Topology  state.Topology
+	Password  string
+	Instance  string
+	WorkDir   string
+	DataDir   string
+	Shim      string
+	Registry  string
+	PlainHTTP bool
+	ShimEnv   []string
+	Resync    time.Duration
 }
 
 func runAgent(v string) int {
@@ -70,7 +75,8 @@ func runAgent(v string) int {
 	err := Run(context.Background(), Config{
 		Topology: a.Topology, Instance: a.Instance, Dial: state.AuthDial(a.Instance, a.Password),
 		Term:    state.TermOptions{ID: "sts-subprocess"},
-		WorkDir: a.WorkDir, Shim: a.Shim, Worker: a.Worker, ShimEnv: a.ShimEnv,
+		WorkDir: a.WorkDir, DataDir: a.DataDir, Shim: a.Shim, ShimEnv: a.ShimEnv,
+		Registry: a.Registry, PlainHTTP: a.PlainHTTP, Sign: testSigner,
 		Resync: a.Resync, Grace: DefaultGrace, Release: "test", Log: log,
 		Mirror: state.MirrorOptions{ProbeInterval: 50 * time.Millisecond, Log: &log},
 	})
@@ -118,9 +124,21 @@ func TestAssignmentLifecycle(t *testing.T) {
 	if st.GetIncarnation() == 0 {
 		t.Fatal("WAITING without an incarnation")
 	}
-	e.waitDown(waiting, func(m *workerv1.WorkerDown) bool { return m.GetInit() != nil })
-	if e.hasDown(waiting, func(m *workerv1.WorkerDown) bool { return m.GetStart() != nil }) {
-		t.Fatal("Start was sent while start was false")
+	e.waitDown(waiting, func(m *workerv1.WorkerDown) bool {
+		init := m.GetInit()
+		if init == nil || init.GetContract() != workerContract || init.GetDeadlineMs() != uint32(DefaultStartTimeoutS)*1000 {
+			return false
+		}
+		msg := &stsctlv1.InitPayload{}
+		if err := proto.Unmarshal(init.GetPayload(), msg); err != nil {
+			return false
+		}
+		return msg.GetSessionId() == waiting && msg.GetIncarnation() != 0 &&
+			msg.GetRecvWindowMs() == uint32(DefaultRecvWindowMS) && msg.GetHookTimeoutS() == uint32(DefaultHookTimeoutS) &&
+			msg.GetNats().GetUserJwt() != "" && msg.GetNats().GetInboxPrefix() == "_INBOX_"+waiting
+	})
+	if e.hasDown(waiting, func(m *workerv1.WorkerDown) bool { return m.GetStart() != nil || m.GetRelay() != nil }) {
+		t.Fatal("Start or a bindings command was sent while start was false")
 	}
 	ph.wait(hanging, statev1.Phase_PHASE_STARTING)
 
@@ -254,8 +272,8 @@ func TestOneWriter(t *testing.T) {
 	}
 	args, err := json.Marshal(agentArgs{
 		Topology: e.cfg.Topology, Password: etcdtest.Password(testInst), Instance: testInst,
-		WorkDir: e.cfg.WorkDir, Shim: e.cfg.Shim, Worker: e.cfg.Worker, ShimEnv: e.cfg.ShimEnv,
-		Resync: e.cfg.Resync,
+		WorkDir: e.cfg.WorkDir, DataDir: e.cfg.DataDir, Shim: e.cfg.Shim, ShimEnv: e.cfg.ShimEnv,
+		Registry: e.cfg.Registry, PlainHTTP: e.cfg.PlainHTTP, Resync: e.cfg.Resync,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -392,6 +410,119 @@ func TestShimLost(t *testing.T) {
 	}
 }
 
+// A missing digest is a permanent artifact error and ends the session without a worker.
+func TestArtifactNotFound(t *testing.T) {
+	e := setup(t)
+	const id = "a1b2c3"
+	spec := sessionSpec(1, 1)
+	spec.Strategy = &sessionv1.StrategyRef{Name: "gone", Code: "sha256:" + strings.Repeat("ab", 32), Repository: "hello"}
+	e.putSpec(id, spec)
+	e.putDemand(id, runningDemand(true, 1))
+	ph := e.collect(e.rev())
+	stop, done := e.start()
+	defer func() {
+		stop()
+		waitDone(t, done)
+	}()
+	st := ph.wait(id, statev1.Phase_PHASE_FAILED)
+	if st.GetReason() != artifact.ReasonNotFound {
+		t.Fatalf("reason %q", st.GetReason())
+	}
+	if n := e.starts(id); n != 0 {
+		t.Fatalf("spawned %d times", n)
+	}
+}
+
+// A temporary registry error keeps the session PENDING and then starts it.
+func TestPullRetries(t *testing.T) {
+	e := setup(t)
+	e.reg.failManifests.Store(1)
+	const id = "a1b2c3"
+	e.putSpec(id, sessionSpec(1, 1))
+	e.putDemand(id, runningDemand(false, 1))
+	ph := e.collect(e.rev())
+	stop, done := e.start()
+	defer func() {
+		stop()
+		waitDone(t, done)
+	}()
+	ph.wait(id, statev1.Phase_PHASE_PENDING, statev1.Phase_PHASE_WAITING)
+}
+
+// grace_ms is the Stop grace. 0 uses the deployment default of 10s (D962).
+func TestStopGraceFromSpec(t *testing.T) {
+	e := setup(t)
+	const custom, plain = "a1b2c3", "b2c3d4"
+	spec := sessionSpec(1, 1)
+	spec.GraceMs = 2500
+	e.putSpec(custom, spec)
+	e.putDemand(custom, runningDemand(true, 1))
+	e.putSpec(plain, sessionSpec(2, 1))
+	e.putDemand(plain, runningDemand(true, 2))
+	ph := e.collect(e.rev())
+	stop, done := e.start()
+	defer func() {
+		stop()
+		waitDone(t, done)
+	}()
+	ph.wait(custom, statev1.Phase_PHASE_RUNNING)
+	ph.wait(plain, statev1.Phase_PHASE_RUNNING)
+	e.putDemand(custom, endedDemand("ended_by_spec", 1))
+	e.putDemand(plain, endedDemand("ended_by_spec", 2))
+	ph.wait(custom, statev1.Phase_PHASE_DONE)
+	ph.wait(plain, statev1.Phase_PHASE_DONE)
+	if got := e.stopGrace(custom); got != 2500 {
+		t.Fatalf("custom grace %d", got)
+	}
+	if got := e.stopGrace(plain); got != 10000 {
+		t.Fatalf("default grace %d", got)
+	}
+}
+
+func (e *env) stopGrace(id string) uint32 {
+	e.t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		for _, en := range e.journalEntries(id) {
+			if en.Event != "down" {
+				continue
+			}
+			m, err := en.Down()
+			if err != nil || m.GetStop() == nil {
+				continue
+			}
+			return m.GetStop().GetGraceMs()
+		}
+		if time.Now().After(deadline) {
+			e.t.Fatalf("no Stop in %s\n%+v", id, e.journalEntries(id))
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+var (
+	packOnce sync.Once
+	packImg  artifact.Image
+	packErr  error
+)
+
+func packedStrategy() (artifact.Image, error) {
+	packOnce.Do(func() {
+		exe, err := os.Executable()
+		if err != nil {
+			packErr = err
+			return
+		}
+		bin, err := os.ReadFile(exe)
+		if err != nil {
+			packErr = err
+			return
+		}
+		packImg, packErr = artifact.PackStrategy(bin, "fake", nil)
+	})
+	return packImg, packErr
+}
+
 type syncBuf struct {
 	mu sync.Mutex
 	b  bytes.Buffer
@@ -415,10 +546,17 @@ type env struct {
 	cfg     Config
 	log     *syncBuf
 	journal string
+	reg     *memRegistry
+	digest  string
+	repo    string
 
 	mu      sync.Mutex
 	pids    []int
 	scripts map[string]fakeworker.Script
+}
+
+func testSigner(string, sts.Permissions) (string, string, error) {
+	return "test-jwt", "SUAG" + "test-seed", nil
 }
 
 func setup(t *testing.T) *env {
@@ -442,21 +580,38 @@ func setup(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("DOCKER_CONFIG", t.TempDir())
+	img, err := packedStrategy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := newMemRegistry()
+	t.Cleanup(reg.Close)
+	pushCtx, pushCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	err = artifact.Push(pushCtx, img, artifact.Destination{Repository: reg.repo(), PlainHTTP: true})
+	pushCancel()
+	if err != nil {
+		t.Fatal(err)
+	}
 	wd, err := os.MkdirTemp("/tmp", "sts-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(wd) })
+	data := t.TempDir()
 	buf := &syncBuf{}
 	log := zerolog.New(buf).Level(zerolog.InfoLevel)
-	e := &env{t: t, root: root, log: buf, journal: t.TempDir(), scripts: map[string]fakeworker.Script{}}
+	e := &env{t: t, root: root, log: buf, journal: t.TempDir(), scripts: map[string]fakeworker.Script{}, reg: reg, digest: img.Digest, repo: "hello"}
 	e.cfg = Config{
 		Topology: topo, Instance: testInst, Dial: state.AuthDial(testInst, etcdtest.Password(testInst)),
 		Term:       state.TermOptions{ID: t.Name()},
 		WorkDir:    wd,
+		DataDir:    data,
 		Shim:       self,
-		Worker:     self,
 		ShimEnv:    []string{envTestShim + "=1"},
+		Registry:   reg.addr(),
+		PlainHTTP:  true,
+		Sign:       testSigner,
 		Grace:      DefaultGrace,
 		Resync:     50 * time.Millisecond,
 		StaleAfter: 5 * time.Second,
@@ -550,6 +705,9 @@ func (e *env) putRaw(key string, b []byte) {
 
 func (e *env) putSpec(id string, spec *sessionv1.SessionSpec) int64 {
 	e.t.Helper()
+	if spec.GetStrategy() == nil {
+		spec.Strategy = &sessionv1.StrategyRef{Name: "fake", Code: e.digest, Repository: e.repo}
+	}
 	e.put(state.SessionSpecKey(testInst, id), spec)
 	return e.modRev(state.SessionSpecKey(testInst, id))
 }

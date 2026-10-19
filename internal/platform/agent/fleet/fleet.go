@@ -68,6 +68,35 @@ func carriesLive[S, L agent.Hashed](p Program[S, L]) bool {
 	return !ok || c.CarriesLive()
 }
 
+// stopGraceOf is the Stop grace for one worker. A Program may supply it (STS, from the session
+// spec, D962); 0, or a Program that does not implement it, uses the fleet's StopGrace. MD and TD
+// do not implement it.
+func stopGraceOf[S, L agent.Hashed](p Program[S, L], key agent.WorkerKey, fallback time.Duration) time.Duration {
+	g, ok := p.(interface {
+		StopGrace(agent.WorkerKey) time.Duration
+	})
+	if !ok {
+		return fallback
+	}
+	if d := g.StopGrace(key); d > 0 {
+		return d
+	}
+	return fallback
+}
+
+// stampIncarnation lets a Program write the incarnation into Init after it has been allocated.
+// The number is not known when Init is built (D962's neighbor: InitPayload.incarnation). A Program
+// that does not implement it is unchanged. MD and TD do not implement it.
+func stampIncarnation[S, L agent.Hashed](p Program[S, L], init *workerv1.Init, n uint32) error {
+	s, ok := p.(interface {
+		StampIncarnation(*workerv1.Init, uint32) error
+	})
+	if !ok {
+		return nil
+	}
+	return s.StampIncarnation(init, n)
+}
+
 // Numbers hands out incarnations: a *state.Incarnations (PROTOCOL §3.2 W6).
 type Numbers interface {
 	Next(ctx context.Context, workerKey string) (uint32, error)
@@ -235,6 +264,9 @@ func (f *Fleet[S, L]) Spawn(ctx context.Context, key agent.WorkerKey, spec S, li
 	init.LiveDigest = live.Hash()
 	n, err := f.cfg.Numbers.Next(ctx, string(key))
 	if err != nil {
+		return fmt.Errorf("fleet: spawn %s: incarnation: %w", key, err)
+	}
+	if err := stampIncarnation(f.cfg.Program, init, n); err != nil {
 		return fmt.Errorf("fleet: spawn %s: incarnation: %w", key, err)
 	}
 	l.Plane, l.AgentInstance, l.SpecHash, l.WorkDir = string(f.cfg.Plane), f.cfg.Instance, spec.Hash(), f.cfg.WorkDir
@@ -468,6 +500,22 @@ func (f *Fleet[S, L]) Start(ctx context.Context, key agent.WorkerKey, spec S) er
 	return nil
 }
 
+// Relay passes a C5 command to key's worker. It is not a reconciler action: a plane calls it from its
+// own loop when a command is not the live config (STS bindings after Start, D961).
+func (f *Fleet[S, L]) Relay(ctx context.Context, key agent.WorkerKey, msg *workerv1.Relay) error {
+	w, err := f.get(key)
+	if err != nil {
+		return err
+	}
+	if w.conn == nil {
+		return fmt.Errorf("fleet: relay %s: its shim is gone", key)
+	}
+	if err := w.conn.Relay(ctx, msg); err != nil {
+		return fmt.Errorf("fleet: relay %s: %w", key, err)
+	}
+	return nil
+}
+
 // Push hands live to key's worker. What it has stays what it says it applied (D111); the send is recorded, so
 // that the Reconciler waits for the Applied before it sends again.
 func (f *Fleet[S, L]) Push(ctx context.Context, key agent.WorkerKey, live L) error {
@@ -490,7 +538,9 @@ func (f *Fleet[S, L]) Push(ctx context.Context, key agent.WorkerKey, live L) err
 	return nil
 }
 
-// Stop stops key's worker, with the Config's grace and kill timers, which run in its shim (§4.3).
+// Stop stops key's worker. The grace is the Program's StopGrace when it implements that and returns
+// a positive duration, otherwise the Config's (D962). The kill timer is the Config's. Both run in
+// the shim (§4.3).
 func (f *Fleet[S, L]) Stop(ctx context.Context, key agent.WorkerKey, reason string) error {
 	w, err := f.get(key)
 	if err != nil {
@@ -499,7 +549,7 @@ func (f *Fleet[S, L]) Stop(ctx context.Context, key agent.WorkerKey, reason stri
 	if w.conn == nil {
 		return nil // gone with its shim: nothing to stop
 	}
-	err = w.conn.Stop(ctx, reason, f.cfg.StopGrace, f.cfg.StopKillAfter)
+	err = w.conn.Stop(ctx, reason, stopGraceOf(f.cfg.Program, key, f.cfg.StopGrace), f.cfg.StopKillAfter)
 	if err != nil && c3.CodeOf(err) != shim.CodeExited { // exited meanwhile: its Exited is on the way
 		return fmt.Errorf("fleet: stop %s: %w", key, err)
 	}

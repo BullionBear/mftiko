@@ -1,12 +1,13 @@
-// Package agent is the strategy-plane agent (D916, D942–D949). It runs the sessions
+// Package agent is the strategy-plane agent (D916, D942–D965). It runs the sessions
 // the controller assigns to this instance and writes each one's SessionStatus.
 //
-// Spawn is the worker executable named at deployment (D943). Pulling the strategy
-// artifact, the full InitPayload, and bindings are a later change; this package
-// sends Init with an empty payload and Start when the assignment's start is set.
-// A session that has left the plan is stopped by the agent skeleton.
+// Spawn pulls the strategy artifact and unpacks it outside reconcile, then launches
+// that rootfs (D958, D960). InitPayload carries the spec, the resolved limits, and
+// a session JWT (D918, D924). Start carries the first bindings; later changes are
+// Command snapshots (D961). Stop uses the spec's grace_ms (D962).
 //
 // A session with no usable spec is not started and gets no status (D944). A session
 // already DONE or FAILED is not started again (D945). Overlapping algo_ids on one
-// api_id end the later session with algo_conflict (D917).
+// api_id end the later session with algo_conflict (D917). A worker that ends itself
+// is not restarted (D964).
 package agent
