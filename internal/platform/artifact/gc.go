@@ -167,9 +167,9 @@ func (c *Client) removeLayer(name string) error {
 	return nil
 }
 
-// HoldLayers keeps these layer digests across GC until release is called (D973). The caller invokes
-// it after the manifest is known and before the layer download or unpack, and releases it once the
-// unpack has finished. release is safe to call more than once. A digest that is not sha256 holds
+// HoldLayers keeps these layer digests across GC until release is called (D973). A data pull holds
+// its layer before the download. A strategy pull holds Fetched.Layers after Pull returns and releases
+// when UnpackImage finishes. release is safe to call more than once. A digest that is not sha256 holds
 // nothing and returns ErrRequest.
 func (c *Client) HoldLayers(digests []string) (release func(), err error) {
 	for _, d := range digests {

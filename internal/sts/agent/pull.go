@@ -47,6 +47,10 @@ type puller struct {
 	mu     sync.Mutex
 	jobs   map[string]*pullJob
 	inputs map[string]*inputJob
+
+	// afterHold, when set, runs after a strategy Pull's layers are held and before
+	// UnpackImage. Tests GC in that window (D973). Production leaves it nil.
+	afterHold func(*artifact.Fetched)
 }
 
 type pullJob struct {
@@ -147,12 +151,31 @@ func (p *puller) run(req artifact.Request, ctx context.Context) {
 		p.finish(dig, "", artifact.Manifest{}, err)
 		return
 	}
+	// Hold the layers Pull just wrote. Until UnpackImage records them, GC has no
+	// rootfs reference and would delete them (D973). The download itself is not held.
+	release, err := p.client.HoldLayers(layerDigests(fetched.Layers))
+	if err != nil {
+		p.finish(dig, "", artifact.Manifest{}, err)
+		return
+	}
+	defer release()
+	if p.afterHold != nil {
+		p.afterHold(fetched)
+	}
 	root, err := p.client.UnpackImage(ctx, fetched.Digest, fetched.Layers, artifact.UnpackLimits{})
 	if err != nil {
 		p.finish(dig, "", artifact.Manifest{}, err)
 		return
 	}
 	p.finish(dig, root, fetched.Manifest, nil)
+}
+
+func layerDigests(layers []artifact.Layer) []string {
+	out := make([]string, len(layers))
+	for i, layer := range layers {
+		out[i] = layer.Digest
+	}
+	return out
 }
 
 func (p *puller) finish(dig, rootfs string, m artifact.Manifest, err error) {

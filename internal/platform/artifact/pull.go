@@ -82,7 +82,7 @@ type Client struct {
 	http   *auth.Client
 
 	mu   sync.Mutex
-	held map[string]int // layer digests a pull is downloading or unpacking (D973)
+	held map[string]int // layer digests held across GC (D973)
 }
 
 // Open checks the registry settings and drops temporary files left in ${DATA}/layers by a process that

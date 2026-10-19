@@ -8,6 +8,7 @@
 // Unpack extracts gzip-compressed tar layers into a directory (D951–D953, D957). UnpackImage installs
 // them at ${DATA}/artifacts/<digest>/rootfs and records the layer list used for GC (D950, D955).
 // GC deletes every other rootfs, then layers no remaining rootfs references (D956). An optional
-// second set keeps input layers that are still being pulled or unpacked (D973).
+// second set keeps input layers that are still being pulled or unpacked. HoldLayers keeps digests
+// a caller is still using, including strategy layers between Pull and UnpackImage (D973).
 // Resolving a tag to a digest is not done here (E10).
 package artifact
