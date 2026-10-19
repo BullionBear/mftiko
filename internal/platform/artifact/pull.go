@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -72,15 +73,17 @@ type Fetched struct {
 	Layers   []Layer
 }
 
-// Client pulls artifacts into one data directory.
+// Client pulls artifacts into one data directory and unpacks them there.
 type Client struct {
 	reg    Registry
+	data   string
 	layers string
 	http   *auth.Client
 }
 
 // Open checks the registry settings and drops temporary files left in ${DATA}/layers by a process that
-// exited mid-download (D930). dataDir is ${DATA}.
+// exited mid-download (D930), and temporary directories left under ${DATA}/artifacts by a process that
+// exited mid-unpack (D955). dataDir is ${DATA}.
 func Open(reg Registry, dataDir string) (*Client, error) {
 	if err := checkAddress(reg.Address); err != nil {
 		return nil, err
@@ -91,6 +94,9 @@ func Open(reg Registry, dataDir string) (*Client, error) {
 	dir := layersDir(dataDir)
 	if err := cleanTemps(dir); err != nil {
 		return nil, fmt.Errorf("artifact: layers: %w", err)
+	}
+	if err := cleanTemps(filepath.Join(dataDir, "artifacts")); err != nil {
+		return nil, fmt.Errorf("artifact: artifacts: %w", err)
 	}
 	ac := &auth.Client{
 		// A plain client: the retrying client would repeat 5xx, and this package does not retry (D928).
@@ -105,7 +111,7 @@ func Open(reg Registry, dataDir string) (*Client, error) {
 		}
 		ac.Credential = credentials.Credential(store)
 	}
-	return &Client{reg: reg, layers: dir, http: ac}, nil
+	return &Client{reg: reg, data: dataDir, layers: dir, http: ac}, nil
 }
 
 func checkAddress(address string) error {
