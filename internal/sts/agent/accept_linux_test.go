@@ -748,6 +748,8 @@ func setup(t *testing.T) *env {
 		e.mu.Unlock()
 	}
 	t.Cleanup(func() {
+		// Inputs are mode 0555 after unpack (D975). TempDir cannot remove them until they are writable.
+		_ = removeWritable(filepath.Join(e.cfg.DataDir, "sessions"))
 		e.mu.Lock()
 		pids := append([]int(nil), e.pids...)
 		e.mu.Unlock()

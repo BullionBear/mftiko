@@ -7,20 +7,30 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // GC deletes unpacked images whose digest is not in keep, then cached layers that no remaining
 // rootfs references (D956). keep is the image digests the caller still needs. GC does not decide
 // which digest is the newest; a digest that is being pulled or unpacked is included by the caller.
-// Temporary files and directories are left alone. A keep entry that is not a sha256 digest is a
-// caller mistake and deletes nothing.
-func (c *Client) GC(keep []string) error {
-	pinned := make(map[string]struct{}, len(keep))
-	for _, k := range keep {
-		if !digestOK(k) {
-			return badRequest("keep digest %q", k)
-		}
-		pinned[k] = struct{}{}
+//
+// layers, when passed, is one extra set of layer digests to retain even with no rootfs reference
+// (D973). STS passes input layers that are being pulled or unpacked. After unpack the caller stops
+// passing them. Omitting layers, or passing nil, is the D956 behavior. A keep or layer entry that
+// is not a sha256 digest is a caller mistake and deletes nothing. Temporary files and directories
+// are left alone.
+func (c *Client) GC(keep []string, layers ...[]string) error {
+	extra, err := oneLayerSet(layers)
+	if err != nil {
+		return err
+	}
+	pinned, err := pinDigests(keep)
+	if err != nil {
+		return err
+	}
+	held, err := pinDigests(extra)
+	if err != nil {
+		return err
 	}
 	if err := c.removeUnkept(pinned); err != nil {
 		return err
@@ -29,7 +39,30 @@ func (c *Client) GC(keep []string) error {
 	if err != nil {
 		return err
 	}
-	return c.removeUnreferencedLayers(refs)
+	return c.removeUnreferencedLayers(refs, held)
+}
+
+// oneLayerSet accepts the optional D973 argument. More than one set is a caller mistake.
+func oneLayerSet(layers [][]string) ([]string, error) {
+	switch len(layers) {
+	case 0:
+		return nil, nil
+	case 1:
+		return layers[0], nil
+	default:
+		return nil, badRequest("layer keep takes one set")
+	}
+}
+
+func pinDigests(list []string) (map[string]struct{}, error) {
+	out := make(map[string]struct{}, len(list))
+	for _, k := range list {
+		if !digestOK(k) {
+			return nil, badRequest("keep digest %q", k)
+		}
+		out[k] = struct{}{}
+	}
+	return out, nil
 }
 
 func (c *Client) removeUnkept(keep map[string]struct{}) error {
@@ -94,7 +127,7 @@ func (c *Client) referencedLayers() (map[string]struct{}, error) {
 	return refs, nil
 }
 
-func (c *Client) removeUnreferencedLayers(refs map[string]struct{}) error {
+func (c *Client) removeUnreferencedLayers(refs, extra map[string]struct{}) error {
 	entries, err := os.ReadDir(c.layers)
 	if os.IsNotExist(err) {
 		return nil
@@ -107,12 +140,65 @@ func (c *Client) removeUnreferencedLayers(refs map[string]struct{}) error {
 		if strings.HasPrefix(name, tempPrefix) || !e.Type().IsRegular() {
 			continue
 		}
-		if _, ok := refs[name]; ok || !digestOK(name) {
+		_, referenced := refs[name]
+		_, kept := extra[name]
+		if referenced || kept || !digestOK(name) {
 			continue
 		}
-		if err := os.Remove(filepath.Join(c.layers, name)); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("artifact: gc: %w", err)
+		if err := c.removeLayer(name); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// removeLayer deletes one cached layer unless a pull is holding it (D973). The hold check and the
+// delete share c.mu, and HoldLayers is taken before the layer file is created, so a layer that is
+// being downloaded or unpacked is not removed.
+func (c *Client) removeLayer(name string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.held[name] > 0 {
+		return nil
+	}
+	if err := os.Remove(filepath.Join(c.layers, name)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("artifact: gc: %w", err)
+	}
+	return nil
+}
+
+// HoldLayers keeps these layer digests across GC until release is called (D973). The caller invokes
+// it after the manifest is known and before the layer download or unpack, and releases it once the
+// unpack has finished. release is safe to call more than once. A digest that is not sha256 holds
+// nothing and returns ErrRequest.
+func (c *Client) HoldLayers(digests []string) (release func(), err error) {
+	for _, d := range digests {
+		if !digestOK(d) {
+			return nil, badRequest("keep digest %q", d)
+		}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.held == nil {
+		c.held = map[string]int{}
+	}
+	for _, d := range digests {
+		c.held[d]++
+	}
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			for _, d := range digests {
+				if c.held[d] == 0 {
+					continue
+				}
+				c.held[d]--
+				if c.held[d] == 0 {
+					delete(c.held, d)
+				}
+			}
+		})
+	}, nil
 }

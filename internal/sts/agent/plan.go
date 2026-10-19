@@ -76,7 +76,7 @@ const (
 	kindPlan
 	kindConflict
 	kindEnded
-	kindFailed // the artifact was rejected; the session ends FAILED (D958)
+	kindFailed // the session ends FAILED: artifact rejection, or volume_over_limit (D958, D974, D976)
 )
 
 // intent is a session whose status this round may publish.

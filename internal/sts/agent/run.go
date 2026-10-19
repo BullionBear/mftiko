@@ -58,9 +58,11 @@ type Config struct {
 	HookTimeoutS     int
 	StartTimeoutS    int
 	VolumeMB         int
-	Grace            time.Duration
-	MaxRestarts      int
-	RestartWindowS   int
+	// VolumeInterval is how often volumes are measured (D976). 0 takes DefaultVolumeInterval.
+	VolumeInterval time.Duration
+	Grace          time.Duration
+	MaxRestarts    int
+	RestartWindowS int
 	// BackoffMin and BackoffMax are the restart wait (D919, D971). 0 takes
 	// DefaultBackoffMin and DefaultBackoffMax. Tests set a millisecond pair.
 	BackoffMin time.Duration
@@ -88,6 +90,9 @@ func (cfg *Config) applyDefaults() {
 	}
 	if cfg.VolumeMB <= 0 {
 		cfg.VolumeMB = DefaultVolumeMB
+	}
+	if cfg.VolumeInterval == 0 {
+		cfg.VolumeInterval = DefaultVolumeInterval
 	}
 	if cfg.Grace <= 0 {
 		cfg.Grace = DefaultGrace
@@ -119,6 +124,9 @@ func (cfg Config) validate() error {
 	if cfg.MaxArtifactBytes < 0 {
 		return errors.New("sts: max artifact bytes")
 	}
+	if cfg.VolumeInterval < 0 {
+		return errors.New("sts: volume interval")
+	}
 	return nil
 }
 
@@ -140,6 +148,7 @@ func Run(ctx context.Context, cfg Config) error {
 		Int("hook_timeout_s", cfg.HookTimeoutS).
 		Int("start_timeout_s", cfg.StartTimeoutS).
 		Int("volume_mb", cfg.VolumeMB).
+		Dur("volume_interval", cfg.VolumeInterval).
 		Dur("grace", cfg.Grace).
 		Int("max_restarts", cfg.MaxRestarts).
 		Int("restart_window_s", cfg.RestartWindowS).
@@ -198,7 +207,12 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return err
 	}
-	pulls := newPuller(ctx, art, cfg.MaxArtifactBytes, cfg.Log, cfg.Now)
+	if err := cleanInputTemps(cfg.DataDir); err != nil {
+		return err
+	}
+	pulls := newPuller(ctx, art, cfg.DataDir, cfg.MaxArtifactBytes, cfg.Log, cfg.Now)
+	vols := newVolumer(cfg.DataDir, cfg.VolumeInterval, cfg.Log)
+	go vols.run(mctx)
 	pol := newPolicy(cfg)
 	prog := &Program{
 		Env: cfg.WorkerEnv, ExtraEnv: cfg.ExtraEnv, DataDir: cfg.DataDir, Instance: cfg.Instance,
@@ -227,8 +241,8 @@ func Run(ctx context.Context, cfg Config) error {
 	p := &plane{
 		inst: cfg.Instance, spec: specM, demand: demandM, status: statusM,
 		w: term, log: cfg.Log, now: cfg.Now, prog: prog, pol: pol, pulls: pulls, art: art, fleet: f,
-		onApplied: cfg.Applied,
-		local:     map[string]statusView{}, remembered: map[string]demandView{},
+		vols: vols, volumeMB: cfg.VolumeMB, onApplied: cfg.Applied,
+		local: map[string]statusView{}, remembered: map[string]demandView{},
 		loggedSpec: map[string]bool{}, loggedDemand: map[string]bool{},
 	}
 	return runner.Run(ctx, runner.Config[Entry, Spec, Live]{
@@ -266,6 +280,8 @@ type plane struct {
 	pulls     *puller
 	art       *artifact.Client
 	fleet     *fleet.Fleet[Spec, Live]
+	vols      *volumer
+	volumeMB  int
 	onApplied func(sessionID string, epoch int64, seq uint64)
 }
 
@@ -372,9 +388,11 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 	return nil
 }
 
-// stage drops sessions whose rootfs is not ready from the plan, records artifact
-// rejections, and garbage-collects (D958, D959). A worker already running this spec
-// stays in the plan so a restart does not stop it while the image is fetched again (D102).
+// stage drops sessions whose rootfs and inputs are not ready from the plan, records
+// artifact rejections, and garbage-collects (D958, D959, D973, D974). A worker already
+// running this spec stays in the plan so a restart does not stop it while the image is
+// fetched again (D102). A volume that is over the limit is the exception: it leaves the
+// plan and ends FAILED, so the reconciler's normal Stop runs (D976).
 func (p *plane) stage(sessions map[string]*sess, d *decision) {
 	for _, id := range slices.Sorted(maps.Keys(sessions)) {
 		s := sessions[id]
@@ -390,21 +408,45 @@ func (p *plane) stage(sessions map[string]*sess, d *decision) {
 		}
 		p.prog.note(id, s.spec.Hash(), s.parsed, toBindings(s.parsed, raw))
 	}
+	if p.vols != nil {
+		p.vols.setTargets(volumeTargets(sessions, p.volumeMB))
+	}
 	want := map[string]struct{}{}
+	wantInputs := map[string]struct{}{}
 	for _, id := range slices.Sorted(maps.Keys(d.Intents)) {
 		in := d.Intents[id]
 		if in.Kind != kindPlan {
 			continue
 		}
 		s := sessions[id]
+		if p.vols != nil && p.vols.exceeded(id) {
+			delete(d.Plans, WorkerKey(id))
+			in.Kind = kindFailed
+			in.FailReason = ReasonVolumeOverLimit
+			d.Intents[id] = in
+			p.log.Warn().Str("session", id).Msg("volume over limit")
+			continue
+		}
+		if err := validateInputs(s.parsed.GetInputs()); err != nil {
+			delete(d.Plans, WorkerKey(id))
+			in.Kind = kindFailed
+			in.FailReason = ReasonInvalidInput
+			d.Intents[id] = in
+			p.log.Warn().Str("session", id).Err(err).Msg("invalid input")
+			continue
+		}
 		dig := s.parsed.GetStrategy().GetCode()
 		want[dig] = struct{}{}
+		for _, decl := range s.parsed.GetInputs() {
+			wantInputs[inputKey(id, decl.GetName())] = struct{}{}
+		}
 		snap := p.pulls.ensure(artifact.Request{
 			Repository: s.parsed.GetStrategy().GetRepository(), Digest: dig,
 		})
+		inSnap := p.pulls.ensureInputs(id, s.parsed.GetInputs())
 		liveSame := s.observed != nil && !s.observed.State.Ended() && s.observed.SpecHash == in.SpecHash
 		switch {
-		case snap.ready:
+		case snap.ready && inSnap.ready:
 			if err := ensureSessionDirs(p.prog.DataDir, id); err != nil {
 				p.log.Warn().Str("session", id).Err(err).Msg("session directories")
 				if !liveSame {
@@ -413,10 +455,13 @@ func (p *plane) stage(sessions map[string]*sess, d *decision) {
 				continue
 			}
 			p.prog.setImage(id, snap.rootfs, snap.manifest)
-		case snap.perm != "" && !liveSame:
+		case (snap.perm != "" || inSnap.perm != "") && !liveSame:
 			delete(d.Plans, WorkerKey(id))
 			in.Kind = kindFailed
 			in.FailReason = snap.perm
+			if inSnap.perm != "" {
+				in.FailReason = inSnap.perm
+			}
 			d.Intents[id] = in
 		case liveSame:
 		default:
@@ -424,8 +469,9 @@ func (p *plane) stage(sessions map[string]*sess, d *decision) {
 		}
 	}
 	p.pulls.retain(want)
+	p.pulls.retainInputs(wantInputs)
 	keep := keepDigests(sessions, p.pulls.inflight())
-	if err := p.art.GC(keep); err != nil {
+	if err := p.art.GC(keep, p.pulls.inflightLayers()); err != nil {
 		p.log.Warn().Err(err).Msg("artifact gc")
 	}
 }

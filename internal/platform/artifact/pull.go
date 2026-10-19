@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -79,6 +80,9 @@ type Client struct {
 	data   string
 	layers string
 	http   *auth.Client
+
+	mu   sync.Mutex
+	held map[string]int // layer digests a pull is downloading or unpacking (D973)
 }
 
 // Open checks the registry settings and drops temporary files left in ${DATA}/layers by a process that

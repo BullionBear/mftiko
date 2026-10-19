@@ -250,6 +250,7 @@ func TestPhase(t *testing.T) {
 		{"invalid_spec while stopping", intent{Kind: kindEnded, EndReason: "invalid_spec", SpecHash: "h"}, obs(agent.StateStopping, "running", "h", nil), statev1.Phase_PHASE_STOPPING, ""},
 		{"lost overrides end reason", endedI, obs(agent.StateLost, "", "h", nil), statev1.Phase_PHASE_FAILED, ReasonShimLost},
 		{"artifact rejection", intent{Kind: kindFailed, FailReason: "artifact_not_found"}, nil, statev1.Phase_PHASE_FAILED, "artifact_not_found"},
+		{"volume over a running worker", intent{Kind: kindFailed, FailReason: ReasonVolumeOverLimit}, obs(agent.StateRunning, "running", "h", nil), statev1.Phase_PHASE_FAILED, ReasonVolumeOverLimit},
 		{"init failed exit", plan, obs(agent.StateExited, "", "h", exitInfo(commonv1.Outcome_OUTCOME_INIT_FAILED, "bad config")), statev1.Phase_PHASE_FAILED, "bad config"},
 		{"conflict ignores the worker", intent{Kind: kindConflict}, obs(agent.StateRunning, "running", "h", nil), statev1.Phase_PHASE_FAILED, ReasonAlgoConflict},
 	}

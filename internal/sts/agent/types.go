@@ -20,6 +20,9 @@ const (
 	DefaultMaxArtifactBytes = 1 << 30
 )
 
+// DefaultVolumeInterval is how often a session volume is measured (D976).
+const DefaultVolumeInterval = 10 * time.Second
+
 // DefaultGrace is the fleet Stop grace (D918). The skeleton's own default is the same.
 const DefaultGrace = 10 * time.Second
 
@@ -31,10 +34,12 @@ const (
 
 // Reasons written on SessionStatus.
 const (
-	ReasonAlgoConflict = "algo_conflict"
-	ReasonShimLost     = "shim_lost"
-	ReasonNoBeat       = "no_beat"
-	ReasonRestartLimit = "restart_limit"
+	ReasonAlgoConflict    = "algo_conflict"
+	ReasonShimLost        = "shim_lost"
+	ReasonNoBeat          = "no_beat"
+	ReasonRestartLimit    = "restart_limit"
+	ReasonVolumeOverLimit = "volume_over_limit"
+	ReasonInvalidInput    = "invalid_input"
 )
 
 // Spec is one session spec as etcd stored it. Hash is the whole encoding (D947),
