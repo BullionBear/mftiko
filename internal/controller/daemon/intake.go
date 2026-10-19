@@ -10,6 +10,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
 	"github.com/BullionBear/mftiko/internal/controller"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
@@ -61,9 +62,10 @@ type intake struct {
 	mu         sync.Mutex
 	view       controller.View
 	stats      Stats
-	logged     map[string]int64 // undecodable key -> mod revision last warned
-	drifted    map[string]int64 // session ref -> spec revision last warned (D1322)
-	issued     map[string]int64 // session demand key -> issued_at_ns this term already wrote (D1302)
+	logged     map[string]int64                  // undecodable key -> mod revision last warned
+	drifted    map[string]int64                  // session ref -> spec revision last warned (D1322)
+	issued     map[string]int64                  // session demand key -> issued_at_ns this term already wrote (D1302)
+	posted     map[string]*statev1.SessionDemand // session demand key -> last value this term posted (D1337)
 	prevStale  map[string]bool
 	minBackoff time.Duration
 	maxBackoff time.Duration
@@ -97,6 +99,7 @@ func newIntake(parent context.Context, term *state.Term, cl *state.Clusters, cfg
 		logged:    map[string]int64{},
 		drifted:   map[string]int64{},
 		issued:    map[string]int64{},
+		posted:    map[string]*statev1.SessionDemand{},
 		prevStale: map[string]bool{},
 		planes:    placements(cfg),
 		view: controller.View{

@@ -553,3 +553,25 @@ func TestKeepIssuedWhileViewLags(t *testing.T) {
 		t.Fatalf("stored issued lost: value %d cache %d", seen.GetIssuedAtNs(), c.intake.issued[key])
 	}
 }
+
+// A retry that differs from this term's last post only in updated_at_ns keeps
+// the old clock, so the queue sees the same bytes (D1337). A real change, and
+// a return to an earlier value, take the new clock.
+func TestKeepUpdatedWhileViewLags(t *testing.T) {
+	key := state.SessionDemandKey("sts-tw-1", deriveSess)
+	c := &Controller{intake: &intake{posted: map[string]*statev1.SessionDemand{}}}
+	put := func(d *statev1.SessionDemand) *statev1.SessionDemand {
+		c.keepUpdated(controller.Write{Key: key, Value: d})
+		return d
+	}
+	put(&statev1.SessionDemand{IssuedAtNs: 10, UpdatedAtNs: 10})
+	if got := put(&statev1.SessionDemand{IssuedAtNs: 10, UpdatedAtNs: 20}); got.GetUpdatedAtNs() != 10 {
+		t.Fatalf("retry updated %d want 10", got.GetUpdatedAtNs())
+	}
+	if got := put(&statev1.SessionDemand{IssuedAtNs: 10, UpdatedAtNs: 30, Start: true}); got.GetUpdatedAtNs() != 30 {
+		t.Fatalf("change updated %d want 30", got.GetUpdatedAtNs())
+	}
+	if got := put(&statev1.SessionDemand{IssuedAtNs: 10, UpdatedAtNs: 40}); got.GetUpdatedAtNs() != 40 {
+		t.Fatalf("return updated %d want 40", got.GetUpdatedAtNs())
+	}
+}

@@ -37,10 +37,13 @@ const defaultDepsTimeout = 60 * time.Second
 // (D1328, D1330). A session region that is not synced, or is stale, is not
 // written (D1306, D1318); its deadline is still reported while it is waiting.
 // An ack from a stale region is copied into bindings and does not release
-// start or end the session (D1332). Silence leaves the status unset. A missing
-// provider AgentRecord is not a nack: the ack's value is used as it stands.
-func Gate(v View, plan Plan, now time.Time) (Plan, time.Time) {
-	g := newGate(v, plan, now)
+// start or end the session (D1332). A provider region that has not finished
+// its first list has not been read, so its bindings keep the stored status
+// (D1318, D1337). Silence leaves the status unset. A missing provider
+// AgentRecord is not a nack: the ack's value is used as it stands. inst is
+// the deployment's placement of every instance, as Derive takes it.
+func Gate(v View, plan Plan, inst map[string]Placement, now time.Time) (Plan, time.Time) {
+	g := newGate(v, plan, inst, now)
 	for _, ref := range slices.Sorted(maps.Keys(v.Sessions)) {
 		g.session(v.Sessions[ref])
 	}
@@ -50,6 +53,7 @@ func Gate(v View, plan Plan, now time.Time) (Plan, time.Time) {
 
 type gate struct {
 	v        View
+	inst     map[string]Placement
 	now      time.Time
 	byDemand map[string]Ack
 	bad      map[string]struct{}
@@ -58,9 +62,9 @@ type gate struct {
 	next     time.Time
 }
 
-func newGate(v View, plan Plan, now time.Time) *gate {
+func newGate(v View, plan Plan, inst map[string]Placement, now time.Time) *gate {
 	g := &gate{
-		v: v, now: now,
+		v: v, inst: inst, now: now,
 		byDemand: indexAcks(v),
 		bad:      make(map[string]struct{}, len(v.Undecodable)),
 		planned:  map[string]*statev1.SessionDemand{},
@@ -151,11 +155,18 @@ func (g *gate) session(sess Session) {
 
 // fill copies each binding's ack. allReady is true when every binding has a
 // fresh READY, which includes a session with no bindings. nack is a fresh
-// REJECTED or DEAD. Stale acks are copied and count as neither (D1332).
+// REJECTED or DEAD. Stale acks are copied and count as neither (D1332). A
+// binding whose provider region has not synced keeps the stored status and
+// counts as neither too (D1318, D1337).
 func (g *gate) fill(sess Session, next *statev1.SessionDemand) (nack, allReady bool) {
 	allReady = true
 	for _, b := range next.GetBindings() {
 		if b == nil {
+			allReady = false
+			continue
+		}
+		if !g.synced(g.inst[b.GetInstance()].Region) {
+			b.Status = storedStatus(sess.Demand, b)
 			allReady = false
 			continue
 		}
@@ -216,6 +227,31 @@ func (g *gate) arm(sess Session, d *statev1.SessionDemand) {
 	if g.next.IsZero() || dl.Before(g.next) {
 		g.next = dl
 	}
+}
+
+// storedStatus is the status stored for the binding with b's target and
+// instance, or nil when the assignment has none.
+func storedStatus(stored *statev1.SessionDemand, b *statev1.Binding) *statev1.EntryStatus {
+	for _, have := range stored.GetBindings() {
+		if have.GetInstance() == b.GetInstance() && proto.Equal(withoutStatus(have), withoutStatus(b)) {
+			if have.GetStatus() == nil {
+				return nil
+			}
+			return proto.Clone(have.GetStatus()).(*statev1.EntryStatus)
+		}
+	}
+	return nil
+}
+
+func withoutStatus(b *statev1.Binding) *statev1.Binding {
+	c := proto.Clone(b).(*statev1.Binding)
+	c.Status = nil
+	return c
+}
+
+func (g *gate) synced(region string) bool {
+	r, ok := g.v.Regions[region]
+	return ok && r.Synced
 }
 
 func (g *gate) open(region string) bool {
