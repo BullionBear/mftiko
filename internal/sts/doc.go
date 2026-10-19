@@ -5,6 +5,7 @@
 // SessionPermissions is the allow list that issuer signs (D818–D822). It does
 // not dial etcd or NATS, and it does not check the JWT size. That check is at
 // the signing site, internal/sts/issuer.SignSession (D827): it measures the
-// CONNECT argument and rejects a spec with too many feeds. The planner, the
-// gate, and the issuer's process wiring are not here yet.
+// CONNECT argument and rejects a spec with too many feeds. The agent's wiring
+// is internal/sts/agent (E9-05). The dependency gate and the artifact host
+// are not here yet.
 package sts
