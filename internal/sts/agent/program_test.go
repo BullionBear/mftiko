@@ -9,6 +9,7 @@ import (
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
 	stsctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/stsctl/v1"
+	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
 	"github.com/BullionBear/mftiko/internal/sts"
 	"github.com/BullionBear/mftiko/sdk"
 )
@@ -79,6 +80,54 @@ func TestBindingsVersion(t *testing.T) {
 	b, _, got := next.versioned("s")
 	if got != 1 || b.GetVersion().GetEpoch() != 5 {
 		t.Fatalf("rotated version %+v seq %d", b.GetVersion(), got)
+	}
+}
+
+func TestBindingsSeqContinuesAcrossIncarnation(t *testing.T) {
+	p := &Program{Epoch: 4}
+	spec := &sessionv1.SessionSpec{Name: "n"}
+	raw, err := proto.Marshal(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.note("s", "h", spec, &stsctlv1.Bindings{})
+	rawInit, err := proto.Marshal(&stsctlv1.InitPayload{SessionId: "s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	init := &workerv1.Init{Payload: rawInit}
+	seqs := []uint64{}
+	for inc := uint32(1); inc <= 3; inc++ {
+		if err := p.StampIncarnation(init, inc); err != nil {
+			t.Fatal(err)
+		}
+		start, err := p.Start(WorkerKey("s"), Spec{Raw: raw})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var sp stsctlv1.StartPayload
+		if err := proto.Unmarshal(start.GetPayload(), &sp); err != nil {
+			t.Fatal(err)
+		}
+		seqs = append(seqs, sp.GetBindings().GetVersion().GetSeq())
+	}
+	if seqs[0] != 1 || seqs[1] != 2 || seqs[2] != 3 {
+		t.Fatalf("seqs %v", seqs)
+	}
+}
+
+func TestKillSilentRemembersTheIncarnation(t *testing.T) {
+	pol := newPolicy(Config{})
+	p := &Program{policy: pol}
+	if !p.KillSilent(WorkerKey("s"), 7) {
+		t.Fatal("KillSilent refused")
+	}
+	s := pol.sessions["s"]
+	if s == nil {
+		t.Fatal("no session")
+	}
+	if _, ok := s.killed[7]; !ok {
+		t.Fatalf("killed %+v", s.killed)
 	}
 }
 

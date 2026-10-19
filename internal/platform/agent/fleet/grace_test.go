@@ -66,3 +66,26 @@ func TestStopGraceOptional(t *testing.T) {
 		t.Fatalf("plain program grace %s", got)
 	}
 }
+
+// killProg is an STS-shaped program: a missing beat is SIGKILL, not Stop (D966).
+type killProg struct {
+	noGrace
+	kill bool
+}
+
+func (k killProg) KillSilent(agent.WorkerKey, uint32) bool { return k.kill }
+
+// KillSilent is optional. MD and TD do not implement it, so a missing beat
+// still goes through Stop. A program that implements it and returns false
+// does too.
+func TestKillSilentOptional(t *testing.T) {
+	if killSilentOf(noGrace{}, "k", 1) {
+		t.Fatal("a program without KillSilent was killed")
+	}
+	if killSilentOf(killProg{}, "k", 1) {
+		t.Fatal("KillSilent false was treated as a kill")
+	}
+	if !killSilentOf(killProg{kill: true}, "k", 3) {
+		t.Fatal("KillSilent true was ignored")
+	}
+}

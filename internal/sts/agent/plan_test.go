@@ -253,6 +253,30 @@ func TestPhase(t *testing.T) {
 		{"init failed exit", plan, obs(agent.StateExited, "", "h", exitInfo(commonv1.Outcome_OUTCOME_INIT_FAILED, "bad config")), statev1.Phase_PHASE_FAILED, "bad config"},
 		{"conflict ignores the worker", intent{Kind: kindConflict}, obs(agent.StateRunning, "running", "h", nil), statev1.Phase_PHASE_FAILED, ReasonAlgoConflict},
 	}
+	restarting := endView{restarting: true, reason: "crash"}
+	ph, reason, write := phaseOf(plan, obs(agent.StateExited, "", "h", exitInfo(commonv1.Outcome_OUTCOME_CRASHED, "crash")), restarting)
+	if !write || ph != statev1.Phase_PHASE_RESTARTING || reason != "crash" {
+		t.Fatalf("restarting %s %q write %v", ph, reason, write)
+	}
+	limited := endView{terminalReason: ReasonRestartLimit}
+	ph, reason, write = phaseOf(plan, obs(agent.StateExited, "", "h", exitInfo(commonv1.Outcome_OUTCOME_CRASHED, "crash")), limited)
+	if !write || ph != statev1.Phase_PHASE_FAILED || reason != ReasonRestartLimit {
+		t.Fatalf("limit %s %q", ph, reason)
+	}
+	quiet := endView{noBeat: true, overrideReason: ReasonNoBeat, reason: ReasonNoBeat}
+	ex := exitInfo(commonv1.Outcome_OUTCOME_UNSPECIFIED, "signal 9 (killed), no Exiting")
+	ex.Signal = 9
+	ph, reason, write = phaseOf(plan, obs(agent.StateExited, "", "h", ex), quiet)
+	if !write || ph != statev1.Phase_PHASE_FAILED || reason != ReasonNoBeat {
+		t.Fatalf("no_beat %s %q", ph, reason)
+	}
+	published := exitForStatus(ex, quiet)
+	if published.GetOutcome() != commonv1.Outcome_OUTCOME_HUNG || published.GetReason() != ReasonNoBeat || published.GetSignal() != 9 {
+		t.Fatalf("published exit %+v", published)
+	}
+	if ex.GetOutcome() != commonv1.Outcome_OUTCOME_UNSPECIFIED {
+		t.Fatal("the shim's exit was rewritten")
+	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			ph, reason, write := phaseOf(c.in, c.obs)

@@ -23,10 +23,18 @@ const (
 // DefaultGrace is the fleet Stop grace (D918). The skeleton's own default is the same.
 const DefaultGrace = 10 * time.Second
 
+// Restart backoff (D919, D971). Tests set a shorter pair on Config.
+const (
+	DefaultBackoffMin = time.Second
+	DefaultBackoffMax = 60 * time.Second
+)
+
 // Reasons written on SessionStatus.
 const (
 	ReasonAlgoConflict = "algo_conflict"
 	ReasonShimLost     = "shim_lost"
+	ReasonNoBeat       = "no_beat"
+	ReasonRestartLimit = "restart_limit"
 )
 
 // Spec is one session spec as etcd stored it. Hash is the whole encoding (D947),
