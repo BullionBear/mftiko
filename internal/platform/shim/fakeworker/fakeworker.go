@@ -14,6 +14,7 @@ package fakeworker
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -102,6 +104,14 @@ type Script struct {
 	Grandchild    bool   `json:"grandchild,omitempty"`     // start a process that outlives the worker
 	FloodBytes    int    `json:"flood_bytes,omitempty"`    // write this much to stdout and to stderr once running
 	FloodAt       string `json:"flood_at,omitempty"`       // AtRunning (default), or AtHello: right after Hello
+
+	// VolumeFile is a file under MFTIKO_VOLUME_DIR. After Stage(running) the fake
+	// reads it, journals the previous contents, then writes VolumeText or VolumeBytes
+	// bytes of 0x01 (D977). The read happens before the write so the next incarnation can
+	// show what the previous one left.
+	VolumeFile  string `json:"volume_file,omitempty"`
+	VolumeText  string `json:"volume_text,omitempty"`
+	VolumeBytes int    `json:"volume_bytes,omitempty"`
 }
 
 // Env is the environment that makes a re-executed test binary this fake: append it to the shim's spawn
@@ -365,7 +375,46 @@ func (w *worker) onStart() (code int, done bool) {
 	}
 	w.send(doneMsg(workerv1.Verb_VERB_START, true, ""))
 	w.send(&workerv1.WorkerUp{Msg: &workerv1.WorkerUp_Stage{Stage: &workerv1.Stage{Name: "running"}}})
+	w.touchVolume()
 	return 0, false
+}
+
+// touchVolume reads the volume file and then replaces it. It runs after Stage(running)
+// and before onStart returns, so a later Stop still finds a started worker and runs OnStop.
+func (w *worker) touchVolume() {
+	if w.s.VolumeFile == "" && w.s.VolumeText == "" && w.s.VolumeBytes == 0 {
+		return
+	}
+	dir := os.Getenv("MFTIKO_VOLUME_DIR")
+	name := w.s.VolumeFile
+	if name == "" {
+		name = "note"
+	}
+	if dir == "" || strings.Contains(name, "/") || strings.Contains(name, `\`) {
+		w.record(Entry{Event: "volume", Detail: "bad path"})
+		return
+	}
+	path := filepath.Join(dir, name)
+	prev, err := os.ReadFile(path)
+	detail := ""
+	if err == nil {
+		detail = string(prev)
+	} else if !os.IsNotExist(err) {
+		detail = err.Error()
+	}
+	w.record(Entry{Event: "volume", Detail: detail})
+	var body []byte
+	switch {
+	case w.s.VolumeBytes > 0:
+		body = bytes.Repeat([]byte{1}, w.s.VolumeBytes)
+	case w.s.VolumeText != "" || w.s.VolumeFile != "":
+		body = []byte(w.s.VolumeText)
+	}
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		w.record(Entry{Event: "volume-write", Detail: err.Error()})
+		return
+	}
+	w.record(Entry{Event: "volume-write", Detail: strconv.Itoa(len(body))})
 }
 
 // end is Script.Exit: the worker ends on its own.

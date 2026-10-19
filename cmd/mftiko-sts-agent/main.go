@@ -37,6 +37,7 @@ type options struct {
 	hookTimeoutS                         int
 	startTimeoutS                        int
 	volumeMB                             int
+	volumeInterval                       time.Duration
 	grace                                time.Duration
 	backoffMin, backoffMax               time.Duration
 	maxRestarts                          int
@@ -86,6 +87,7 @@ func parseArgs(args []string) (options, bool, error) {
 	fs.IntVar(&o.hookTimeoutS, "hook-timeout-s", agent.DefaultHookTimeoutS, "default hook_timeout_s")
 	fs.IntVar(&o.startTimeoutS, "start-timeout-s", agent.DefaultStartTimeoutS, "default start_timeout_s")
 	fs.IntVar(&o.volumeMB, "volume-mb", agent.DefaultVolumeMB, "default volume_mb")
+	fs.DurationVar(&o.volumeInterval, "volume-interval", agent.DefaultVolumeInterval, "how often to measure session volumes")
 	fs.DurationVar(&o.grace, "grace", agent.DefaultGrace, "Stop grace passed to the fleet")
 	fs.DurationVar(&o.backoffMin, "backoff-min", agent.DefaultBackoffMin, "restart backoff, first wait")
 	fs.DurationVar(&o.backoffMax, "backoff-max", agent.DefaultBackoffMax, "restart backoff, upper bound")
@@ -142,7 +144,7 @@ func run(ctx context.Context, o options, log zerolog.Logger) error {
 		Registry: o.registry, RegistryCreds: o.registryCreds, DataRepository: o.dataRepo,
 		PlainHTTP: o.plainHTTP, MaxArtifactBytes: o.maxArtifactBytes,
 		RecvWindowMS: o.recvWindowMS, HookTimeoutS: o.hookTimeoutS, StartTimeoutS: o.startTimeoutS,
-		VolumeMB: o.volumeMB, Grace: o.grace, MaxRestarts: o.maxRestarts, RestartWindowS: o.restartWindowS,
+		VolumeMB: o.volumeMB, VolumeInterval: o.volumeInterval, Grace: o.grace, MaxRestarts: o.maxRestarts, RestartWindowS: o.restartWindowS,
 		BackoffMin: o.backoffMin, BackoffMax: o.backoffMax,
 		Release: buildinfo.Version, Log: log,
 	})

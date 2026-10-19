@@ -18,7 +18,7 @@ import (
 	"github.com/BullionBear/mftiko/sdk"
 )
 
-// pullSlots is how many pulls and unpacks run at once (D958).
+// pullSlots is how many image and input pulls and unpacks run at once (D958, D974).
 const pullSlots = 4
 
 // pullBackoff is the wait after a temporary registry or unpack error (D958, D803).
@@ -32,17 +32,25 @@ type pullSnap struct {
 	perm     string
 }
 
-// puller fetches and unpacks strategy images outside reconcile (D958). One digest has one job.
+// puller fetches and unpacks strategy images and session inputs outside reconcile (D958, D974).
+// One image digest has one job. One session input has one job, keyed separately so retaining
+// image digests does not cancel an input pull.
 type puller struct {
 	client   *artifact.Client
+	dataDir  string
 	maxBytes int64
 	sem      chan struct{}
 	log      zerolog.Logger
 	now      func() time.Time
 	base     context.Context
 
-	mu   sync.Mutex
-	jobs map[string]*pullJob
+	mu     sync.Mutex
+	jobs   map[string]*pullJob
+	inputs map[string]*inputJob
+
+	// afterHold, when set, runs after a strategy Pull's layers are held and before
+	// UnpackImage. Tests GC in that window (D973). Production leaves it nil.
+	afterHold func(*artifact.Fetched)
 }
 
 type pullJob struct {
@@ -56,13 +64,13 @@ type pullJob struct {
 	cancel   context.CancelFunc
 }
 
-func newPuller(ctx context.Context, client *artifact.Client, maxBytes int64, log zerolog.Logger, now func() time.Time) *puller {
+func newPuller(ctx context.Context, client *artifact.Client, dataDir string, maxBytes int64, log zerolog.Logger, now func() time.Time) *puller {
 	if now == nil {
 		now = time.Now
 	}
 	return &puller{
-		client: client, maxBytes: maxBytes, sem: make(chan struct{}, pullSlots),
-		log: log, now: now, base: ctx, jobs: map[string]*pullJob{},
+		client: client, dataDir: dataDir, maxBytes: maxBytes, sem: make(chan struct{}, pullSlots),
+		log: log, now: now, base: ctx, jobs: map[string]*pullJob{}, inputs: map[string]*inputJob{},
 	}
 }
 
@@ -143,12 +151,31 @@ func (p *puller) run(req artifact.Request, ctx context.Context) {
 		p.finish(dig, "", artifact.Manifest{}, err)
 		return
 	}
+	// Hold the layers Pull just wrote. Until UnpackImage records them, GC has no
+	// rootfs reference and would delete them (D973). The download itself is not held.
+	release, err := p.client.HoldLayers(layerDigests(fetched.Layers))
+	if err != nil {
+		p.finish(dig, "", artifact.Manifest{}, err)
+		return
+	}
+	defer release()
+	if p.afterHold != nil {
+		p.afterHold(fetched)
+	}
 	root, err := p.client.UnpackImage(ctx, fetched.Digest, fetched.Layers, artifact.UnpackLimits{})
 	if err != nil {
 		p.finish(dig, "", artifact.Manifest{}, err)
 		return
 	}
 	p.finish(dig, root, fetched.Manifest, nil)
+}
+
+func layerDigests(layers []artifact.Layer) []string {
+	out := make([]string, len(layers))
+	for i, layer := range layers {
+		out[i] = layer.Digest
+	}
+	return out
 }
 
 func (p *puller) finish(dig, rootfs string, m artifact.Manifest, err error) {
@@ -213,6 +240,10 @@ func sessionDirs(dataDir, id string) (volume, inputs string) {
 func ensureSessionDirs(dataDir, id string) error {
 	volume, inputs := sessionDirs(dataDir, id)
 	if err := os.MkdirAll(volume, 0o700); err != nil {
+		return err
+	}
+	// MkdirAll leaves an existing directory's mode alone. The volume is 0700 (D977).
+	if err := os.Chmod(volume, 0o700); err != nil {
 		return err
 	}
 	return os.MkdirAll(inputs, 0o700)

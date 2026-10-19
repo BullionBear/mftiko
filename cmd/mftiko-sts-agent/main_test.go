@@ -41,6 +41,7 @@ func TestParseArgsDefaults(t *testing.T) {
 		o.hookTimeoutS != agent.DefaultHookTimeoutS ||
 		o.startTimeoutS != agent.DefaultStartTimeoutS ||
 		o.volumeMB != agent.DefaultVolumeMB ||
+		o.volumeInterval != agent.DefaultVolumeInterval ||
 		o.grace != agent.DefaultGrace ||
 		o.backoffMin != agent.DefaultBackoffMin ||
 		o.backoffMax != agent.DefaultBackoffMax ||
