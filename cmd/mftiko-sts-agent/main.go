@@ -1,9 +1,6 @@
-// Command mftiko-sts-agent is the strategy-plane agent (DECISIONS D916, D942–D949).
+// Command mftiko-sts-agent is the strategy-plane agent (DECISIONS D916, D942–D965).
 // It runs the sessions the controller assigns to this instance and writes SessionStatus.
-//
-// -worker is the executable every new spawn runs (D943). Registry flags and the
-// deployment defaults are parsed and not applied yet: pulling the artifact and
-// filling InitPayload is a later change.
+// Each session worker is the strategy artifact named by its spec (D960).
 package main
 
 import (
@@ -23,23 +20,27 @@ import (
 
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/logger"
+	"github.com/BullionBear/mftiko/internal/platform/natsdev"
 	"github.com/BullionBear/mftiko/internal/platform/state"
+	"github.com/BullionBear/mftiko/internal/sts"
 	"github.com/BullionBear/mftiko/internal/sts/agent"
+	"github.com/BullionBear/mftiko/internal/sts/issuer"
 )
 
 type options struct {
-	instance, topology, password      string
-	workDir, shim, worker             string
-	registry, registryCreds, dataRepo string
-	plainHTTP                         bool
-	maxArtifactBytes                  int64
-	recvWindowMS                      int
-	hookTimeoutS                      int
-	startTimeoutS                     int
-	volumeMB                          int
-	grace                             time.Duration
-	maxRestarts                       int
-	restartWindowS                    int
+	instance, topology, password         string
+	workDir, shim, dataDir               string
+	registry, registryCreds, dataRepo    string
+	plainHTTP                            bool
+	maxArtifactBytes                     int64
+	recvWindowMS                         int
+	hookTimeoutS                         int
+	startTimeoutS                        int
+	volumeMB                             int
+	grace                                time.Duration
+	maxRestarts                          int
+	restartWindowS                       int
+	natsURL, natsAccount, natsSigningKey string
 }
 
 func main() {
@@ -71,10 +72,13 @@ func parseArgs(args []string) (options, bool, error) {
 	fs.StringVar(&o.password, "etcd-password", os.Getenv("MFTIKO_ETCD_PASSWORD"), "etcd password (default $MFTIKO_ETCD_PASSWORD)")
 	fs.StringVar(&o.workDir, "work-dir", "", "sockets, exit files, and worker logs")
 	fs.StringVar(&o.shim, "shim", "", "mftiko-shim executable")
-	fs.StringVar(&o.worker, "worker", "", "session worker executable")
-	fs.StringVar(&o.registry, "registry", "", "OCI registry address (parsed, not used yet)")
-	fs.StringVar(&o.registryCreds, "registry-creds", "", "registry credentials file (parsed, not read)")
-	fs.StringVar(&o.dataRepo, "data-repository", "", "data artifact repository (parsed, not used yet)")
+	fs.StringVar(&o.dataDir, "data", "", "artifact cache and session directories (${DATA})")
+	fs.StringVar(&o.registry, "registry", "", "OCI registry address, host[:port]")
+	fs.StringVar(&o.registryCreds, "registry-creds", "", "Docker config.json for the registry")
+	fs.StringVar(&o.dataRepo, "data-repository", "", "data artifact repository")
+	fs.StringVar(&o.natsURL, "nats", envOr("NATS_URL", "nats://127.0.0.1:4222"), "NATS URL session workers connect to (default $NATS_URL or the dev server)")
+	fs.StringVar(&o.natsAccount, "nats-account", "", "the MFTIKO account's public key")
+	fs.StringVar(&o.natsSigningKey, "nats-signing-key", "", "seed file of the MFTIKO account's signing key")
 	fs.BoolVar(&o.plainHTTP, "plain-http", false, "talk to the registry over plain HTTP")
 	fs.Int64Var(&o.maxArtifactBytes, "max-artifact-bytes", agent.DefaultMaxArtifactBytes, "artifact size limit")
 	fs.IntVar(&o.recvWindowMS, "recv-window-ms", agent.DefaultRecvWindowMS, "default recv_window_ms")
@@ -90,10 +94,20 @@ func parseArgs(args []string) (options, bool, error) {
 	if *version {
 		return o, true, nil
 	}
-	if o.instance == "" || o.topology == "" || o.password == "" || o.workDir == "" || o.shim == "" || o.worker == "" {
-		return o, false, errors.New("instance, topology, etcd password, work dir, shim, and worker are required")
+	if o.instance == "" || o.topology == "" || o.password == "" || o.workDir == "" || o.shim == "" || o.dataDir == "" || o.registry == "" {
+		return o, false, errors.New("instance, topology, etcd password, work dir, shim, data dir, and registry are required")
+	}
+	if o.natsURL == "" || o.natsAccount == "" || o.natsSigningKey == "" {
+		return o, false, errors.New("nats URL, account, and signing key are required")
 	}
 	return o, false, nil
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 func run(ctx context.Context, o options, log zerolog.Logger) error {
@@ -101,10 +115,14 @@ func run(ctx context.Context, o options, log zerolog.Logger) error {
 	if err != nil {
 		return err
 	}
-	for _, p := range []*string{&o.workDir, &o.shim, &o.worker} {
+	for _, p := range []*string{&o.workDir, &o.shim, &o.dataDir} {
 		if *p, err = cleanAbs(*p); err != nil {
 			return err
 		}
+	}
+	signer, err := natsdev.LoadSigner(o.natsAccount, o.natsSigningKey)
+	if err != nil {
+		return err
 	}
 	host, err := os.Hostname()
 	if err != nil || host == "" {
@@ -113,7 +131,11 @@ func run(ctx context.Context, o options, log zerolog.Logger) error {
 	return agent.Run(ctx, agent.Config{
 		Topology: topo, Instance: o.instance, Dial: state.AuthDial(o.instance, o.password),
 		Term:    state.TermOptions{ID: fmt.Sprintf("%s:%d", host, os.Getpid())},
-		WorkDir: o.workDir, Shim: o.shim, Worker: o.worker,
+		WorkDir: o.workDir, Shim: o.shim, DataDir: o.dataDir,
+		WorkerEnv: []string{"MFTIKO_NATS_URL=" + o.natsURL},
+		Sign: func(id string, perms sts.Permissions) (string, string, error) {
+			return issuer.SignSession(id, perms, signer.AccountPublic(), signer.SigningKey())
+		},
 		Registry: o.registry, RegistryCreds: o.registryCreds, DataRepository: o.dataRepo,
 		PlainHTTP: o.plainHTTP, MaxArtifactBytes: o.maxArtifactBytes,
 		RecvWindowMS: o.recvWindowMS, HookTimeoutS: o.hookTimeoutS, StartTimeoutS: o.startTimeoutS,

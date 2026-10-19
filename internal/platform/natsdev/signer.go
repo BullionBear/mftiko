@@ -33,6 +33,12 @@ func LoadSigner(account, path string) (*Signer, error) {
 	return &Signer{account: account, key: kp}, nil
 }
 
+// AccountPublic is the MFTIKO account this signer issues for.
+func (s *Signer) AccountPublic() string { return s.account }
+
+// SigningKey is the account signing key. The STS agent signs session users with it (D924).
+func (s *Signer) SigningKey() nkeys.KeyPair { return s.key }
+
 // AccountWorker is a new user for the account worker of apiID: its JWT, its seed, and the inbox
 // prefix it must use (_INBOX_td_{api_id}).
 func (s *Signer) AccountWorker(apiID int64) (userJWT, seed, inbox string, err error) {

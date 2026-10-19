@@ -6,7 +6,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/agent"
 )
 
-// phaseOf is the SessionStatus phase for one session this round (D921, D946).
+// phaseOf is the SessionStatus phase for one session this round (D921, D946, D963, D964).
 // write is false when the session has nothing to publish.
 //
 // An exited worker whose spec hash is not the plan's is the incarnation the
@@ -14,10 +14,17 @@ import (
 // FAILED here would keep the session out of the next plan (D945), and the new
 // incarnation would never start. Stop has already been sent, so the phase stays
 // STOPPING until the new incarnation is the one observed.
+//
+// An ENDED assignment uses end_reason (D963). ended_by_spec and a normal exit,
+// or no worker yet, is DONE. deps_failed, deps_timeout, and invalid_spec are
+// FAILED with that reason, including when the worker has not been spawned.
+// A worker that is still running stays on its non-terminal phase until it exits.
 func phaseOf(in intent, obs *agent.Observed) (statev1.Phase, string, bool) {
 	switch in.Kind {
 	case kindConflict:
 		return statev1.Phase_PHASE_FAILED, ReasonAlgoConflict, true
+	case kindFailed:
+		return statev1.Phase_PHASE_FAILED, in.FailReason, true
 	case kindPlan:
 		if obs == nil {
 			return statev1.Phase_PHASE_PENDING, "", true
@@ -28,13 +35,47 @@ func phaseOf(in intent, obs *agent.Observed) (statev1.Phase, string, bool) {
 		ph, reason := phaseFromObs(obs, "")
 		return ph, reason, true
 	case kindEnded:
-		if obs == nil {
-			return statev1.Phase_PHASE_DONE, in.EndReason, true
-		}
-		ph, reason := phaseFromObs(obs, in.EndReason)
-		return ph, reason, true
+		return endedPhase(in, obs)
 	default:
 		return 0, "", false
+	}
+}
+
+// endedPhase is the phase of an assignment that is ENDED or gone (D963, D964).
+func endedPhase(in intent, obs *agent.Observed) (statev1.Phase, string, bool) {
+	if obs != nil && obs.State == agent.StateLost {
+		return statev1.Phase_PHASE_FAILED, ReasonShimLost, true
+	}
+	if failEnd(in.EndReason) {
+		if obs == nil || obs.State == agent.StateExited {
+			return statev1.Phase_PHASE_FAILED, in.EndReason, true
+		}
+		ph, _ := phaseFromObs(obs, "")
+		return ph, "", true
+	}
+	if obs == nil {
+		return statev1.Phase_PHASE_DONE, in.EndReason, true
+	}
+	if obs.State == agent.StateExited {
+		if obs.Exit.GetOutcome() == commonv1.Outcome_OUTCOME_DONE {
+			if in.EndReason != "" {
+				return statev1.Phase_PHASE_DONE, in.EndReason, true
+			}
+			return statev1.Phase_PHASE_DONE, obs.Exit.GetReason(), true
+		}
+		return statev1.Phase_PHASE_FAILED, obs.Exit.GetReason(), true
+	}
+	ph, _ := phaseFromObs(obs, "")
+	return ph, "", true
+}
+
+// failEnd reports the end reasons that terminate as FAILED (D963).
+func failEnd(reason string) bool {
+	switch reason {
+	case "deps_failed", "deps_timeout", "invalid_spec":
+		return true
+	default:
+		return false
 	}
 }
 

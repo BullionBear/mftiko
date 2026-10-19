@@ -8,8 +8,8 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/agent"
 )
 
-// Deployment defaults (D913, D918, D919). The flags carry them; this ticket parses
-// them and does not apply them to a worker.
+// Deployment defaults (D913, D918, D919). Spec values of 0 are replaced with these
+// before they are handed to a worker.
 const (
 	DefaultRecvWindowMS     = 1000
 	DefaultHookTimeoutS     = 10
@@ -42,7 +42,7 @@ func (s Spec) Hash() string {
 	return hex.EncodeToString(sum[:])
 }
 
-// Live is empty. This ticket pushes nothing (D942); #284 fills Init instead.
+// Live is empty. Bindings are not a live config: Start and Command carry them (D961).
 type Live struct{}
 
 // Hash is always "", which is also what a worker that applied nothing reports.

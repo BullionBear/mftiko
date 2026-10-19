@@ -16,6 +16,7 @@ type demandView struct {
 	Start     bool
 	EndReason string
 	IssuedAt  int64
+	Bindings  []*statev1.Binding
 }
 
 // statusView is the phase and reason already published, in memory or in etcd.
@@ -75,15 +76,17 @@ const (
 	kindPlan
 	kindConflict
 	kindEnded
+	kindFailed // the artifact was rejected; the session ends FAILED (D958)
 )
 
 // intent is a session whose status this round may publish.
 type intent struct {
-	Kind      kind
-	Start     bool
-	EndReason string
-	Rev       int64
-	SpecHash  string
+	Kind       kind
+	Start      bool
+	EndReason  string
+	FailReason string // kindFailed: an artifact reason (D928, D954)
+	Rev        int64
+	SpecHash   string
 }
 
 type specErr struct {
@@ -162,6 +165,7 @@ func buildViews(inst string, specV, demandV, statusV state.View, local map[strin
 				s.demand = &demandView{
 					Desired: msg.GetDesired(), Start: msg.GetStart(),
 					EndReason: msg.GetEndReason(), IssuedAt: msg.GetIssuedAtNs(),
+					Bindings: cloneDemandBindings(msg.GetBindings()),
 				}
 			}
 		}

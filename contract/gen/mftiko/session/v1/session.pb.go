@@ -138,7 +138,9 @@ type SessionSpec struct {
 	Inputs        []*InputDecl           `protobuf:"bytes,13,rep,name=inputs,proto3" json:"inputs,omitempty"` // 資料 artifact（DECISIONS D904）
 	// MD 事件在 buffer 裡的最長壽命，以 envelope 的 md_ts_ns 計（D803）。0 = STS 的預設值。
 	// 跨 region 的 session 要比 WAN 延遲大。
-	RecvWindowMs  uint32 `protobuf:"varint,14,opt,name=recv_window_ms,json=recvWindowMs,proto3" json:"recv_window_ms,omitempty"`
+	RecvWindowMs uint32 `protobuf:"varint,14,opt,name=recv_window_ms,json=recvWindowMs,proto3" json:"recv_window_ms,omitempty"`
+	// Stop 的 grace（D918、D962）。0 = STS 部署設定的預設，10 秒。
+	GraceMs       uint32 `protobuf:"varint,16,opt,name=grace_ms,json=graceMs,proto3" json:"grace_ms,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -267,6 +269,13 @@ func (x *SessionSpec) GetInputs() []*InputDecl {
 func (x *SessionSpec) GetRecvWindowMs() uint32 {
 	if x != nil {
 		return x.RecvWindowMs
+	}
+	return 0
+}
+
+func (x *SessionSpec) GetGraceMs() uint32 {
+	if x != nil {
+		return x.GraceMs
 	}
 	return 0
 }
@@ -914,7 +923,7 @@ var File_mftiko_session_v1_session_proto protoreflect.FileDescriptor
 
 const file_mftiko_session_v1_session_proto_rawDesc = "" +
 	"\n" +
-	"\x1fmftiko/session/v1/session.proto\x12\x11mftiko.session.v1\"\x90\x06\n" +
+	"\x1fmftiko/session/v1/session.proto\x12\x11mftiko.session.v1\"\xab\x06\n" +
 	"\vSessionSpec\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12B\n" +
 	"\x06labels\x18\x02 \x03(\v2*.mftiko.session.v1.SessionSpec.LabelsEntryR\x06labels\x12D\n" +
@@ -930,7 +939,8 @@ const file_mftiko_session_v1_session_proto_rawDesc = "" +
 	"\x0fstart_timeout_s\x18\v \x01(\rR\rstartTimeoutS\x121\n" +
 	"\x06limits\x18\f \x01(\v2\x19.mftiko.session.v1.LimitsR\x06limits\x124\n" +
 	"\x06inputs\x18\r \x03(\v2\x1c.mftiko.session.v1.InputDeclR\x06inputs\x12$\n" +
-	"\x0erecv_window_ms\x18\x0e \x01(\rR\frecvWindowMs\x1a9\n" +
+	"\x0erecv_window_ms\x18\x0e \x01(\rR\frecvWindowMs\x12\x19\n" +
+	"\bgrace_ms\x18\x10 \x01(\rR\agraceMs\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x0f\x10\x10R\aalgo_id\"W\n" +
