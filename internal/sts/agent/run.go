@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -46,9 +47,10 @@ type Config struct {
 	Applied func(sessionID string, epoch int64, seq uint64)
 
 	// Registry, RegistryCreds, DataRepository, PlainHTTP, and MaxArtifactBytes
-	// are the deployment's registry settings (D910, D913, D948). RegistryCreds
-	// is a Docker config.json path. DataRepository is for state_out, which this
-	// ticket does not push.
+	// are the deployment's registry settings (D910, D913, D933, D948, D979).
+	// RegistryCreds is a Docker config.json path. DataRepository is the data
+	// artifact name without the registry host. Empty leaves a non-empty volume
+	// retrying until a push can name a repository.
 	Registry         string
 	RegistryCreds    string
 	DataRepository   string
@@ -242,13 +244,21 @@ func Run(ctx context.Context, cfg Config) error {
 		inst: cfg.Instance, spec: specM, demand: demandM, status: statusM,
 		w: term, log: cfg.Log, now: cfg.Now, prog: prog, pol: pol, pulls: pulls, art: art, fleet: f,
 		vols: vols, volumeMB: cfg.VolumeMB, onApplied: cfg.Applied,
+		workDir: cfg.WorkDir, dataRepo: cfg.DataRepository, numbers: numbers,
 		local: map[string]statusView{}, remembered: map[string]demandView{},
 		loggedSpec: map[string]bool{}, loggedDemand: map[string]bool{},
+		saved: map[string]*statev1.SessionStatus{}, exits: map[string]exitNote{},
 	}
+	p.finish = newFinisher(mctx, p)
+	go p.finish.loop()
+	defer func() {
+		stop()
+		<-p.finish.done
+	}()
 	return runner.Run(ctx, runner.Config[Entry, Spec, Live]{
 		Term: term, Demand: src, Statuses: reader, Decode: decoder{inst: cfg.Instance}.Decode, Planner: p,
-		Policy: policy, Fleet: f, Commit: p.commit, Sync: p.sync, Release: cfg.Release,
-		Resync: cfg.Resync, StaleAfter: cfg.StaleAfter, Log: cfg.Log, Now: cfg.Now,
+		Policy: policy, Fleet: &releaseFleet{Fleet: f, release: p.release}, Commit: p.commit, Sync: p.sync,
+		Release: cfg.Release, Resync: cfg.Resync, StaleAfter: cfg.StaleAfter, Log: cfg.Log, Now: cfg.Now,
 	})
 }
 
@@ -283,6 +293,17 @@ type plane struct {
 	vols      *volumer
 	volumeMB  int
 	onApplied func(sessionID string, epoch int64, seq uint64)
+
+	// mu guards the status mirrors the finisher reads. The runner's commit and
+	// sync take it; Release holds it across the fleet call so a push cannot
+	// start before the exit note is stored (D978, D982).
+	mu       sync.Mutex
+	workDir  string
+	dataRepo string
+	numbers  *state.Incarnations
+	finish   *finisher
+	saved    map[string]*statev1.SessionStatus
+	exits    map[string]exitNote
 }
 
 // Plan returns the last commit. A stale step does not recompute it (D109).
@@ -303,6 +324,19 @@ func (p *plane) clock() time.Time {
 // commit plans from the mirrors. The runner's demand value is not the input:
 // Decode is not given the spec's mod_revision (D947).
 func (p *plane) commit(_ context.Context, _ agent.Demand[Entry], observed map[agent.WorkerKey]agent.Observed) error {
+	var wake []string
+	p.mu.Lock()
+	defer func() {
+		p.mu.Unlock()
+		if p.finish == nil {
+			return
+		}
+		// Adopt has already run: the first commit is the earliest a resumed push may look.
+		p.finish.adopted()
+		for _, id := range wake {
+			p.finish.ensure(id)
+		}
+	}()
 	sessions := buildViews(p.inst, p.spec.Snapshot(), p.demand.Snapshot(), p.status.Snapshot(), p.local, p.remembered, observed)
 	d := decide(sessions, p.hashes)
 	for _, id := range slices.Sorted(maps.Keys(sessions)) {
@@ -341,6 +375,12 @@ func (p *plane) commit(_ context.Context, _ agent.Demand[Entry], observed map[ag
 		if s.mirrored != nil {
 			p.mirrored[id] = *s.mirrored
 		}
+		if s.observed != nil && s.observed.State == agent.StateExited && s.observed.Exit != nil {
+			p.noteExitLocked(id, s.observed.Incarnation, s.observed.Exit)
+		}
+		if s.terminal() {
+			wake = append(wake, id)
+		}
 	}
 	return nil
 }
@@ -348,6 +388,17 @@ func (p *plane) commit(_ context.Context, _ agent.Demand[Entry], observed map[ag
 // sync writes SessionStatus where the phase or the reason changed (W7). Keys
 // are not deleted: the API server removes a terminal session's status (W5).
 func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[agent.WorkerKey]agent.Observed, _ func(agent.WorkerKey) bool) error {
+	var wake []string
+	p.mu.Lock()
+	defer func() {
+		p.mu.Unlock()
+		if p.finish == nil {
+			return
+		}
+		for _, id := range wake {
+			p.finish.ensure(id)
+		}
+	}()
 	ctx, cancel := context.WithTimeout(ctx, writeTimeout)
 	defer cancel()
 	now := p.clock()
@@ -374,6 +425,9 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 				msg.LastExit = exitForStatus(obs.Exit, ev)
 			}
 		}
+		if prev := p.saved[id]; prev.GetStateOut() != nil {
+			msg.StateOut = proto.Clone(prev.GetStateOut()).(*statev1.StateSnapshot)
+		}
 		b, err := proto.MarshalOptions{Deterministic: true}.Marshal(msg)
 		if err != nil {
 			return err
@@ -381,7 +435,11 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 		if err := p.w.Put(ctx, state.SessionStatusKey(p.inst, id), string(b)); err != nil {
 			return fmt.Errorf("sts: status %s: %w", id, err)
 		}
+		p.saved[id] = msg
 		p.local[id] = statusView{Phase: phase, Reason: reason}
+		if phase == statev1.Phase_PHASE_DONE || phase == statev1.Phase_PHASE_FAILED {
+			wake = append(wake, id)
+		}
 	}
 	p.pushBindings(ctx, observed)
 	p.noteApplied(observed)
