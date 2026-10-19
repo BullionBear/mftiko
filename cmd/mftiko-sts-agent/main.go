@@ -38,6 +38,7 @@ type options struct {
 	startTimeoutS                        int
 	volumeMB                             int
 	grace                                time.Duration
+	backoffMin, backoffMax               time.Duration
 	maxRestarts                          int
 	restartWindowS                       int
 	natsURL, natsAccount, natsSigningKey string
@@ -86,6 +87,8 @@ func parseArgs(args []string) (options, bool, error) {
 	fs.IntVar(&o.startTimeoutS, "start-timeout-s", agent.DefaultStartTimeoutS, "default start_timeout_s")
 	fs.IntVar(&o.volumeMB, "volume-mb", agent.DefaultVolumeMB, "default volume_mb")
 	fs.DurationVar(&o.grace, "grace", agent.DefaultGrace, "Stop grace passed to the fleet")
+	fs.DurationVar(&o.backoffMin, "backoff-min", agent.DefaultBackoffMin, "restart backoff, first wait")
+	fs.DurationVar(&o.backoffMax, "backoff-max", agent.DefaultBackoffMax, "restart backoff, upper bound")
 	fs.IntVar(&o.maxRestarts, "max-restarts", agent.DefaultMaxRestarts, "default max_restarts")
 	fs.IntVar(&o.restartWindowS, "restart-window", agent.DefaultRestartWindowS, "default restart window, in seconds")
 	if err := fs.Parse(args); err != nil {
@@ -140,6 +143,7 @@ func run(ctx context.Context, o options, log zerolog.Logger) error {
 		PlainHTTP: o.plainHTTP, MaxArtifactBytes: o.maxArtifactBytes,
 		RecvWindowMS: o.recvWindowMS, HookTimeoutS: o.hookTimeoutS, StartTimeoutS: o.startTimeoutS,
 		VolumeMB: o.volumeMB, Grace: o.grace, MaxRestarts: o.maxRestarts, RestartWindowS: o.restartWindowS,
+		BackoffMin: o.backoffMin, BackoffMax: o.backoffMax,
 		Release: buildinfo.Version, Log: log,
 	})
 }

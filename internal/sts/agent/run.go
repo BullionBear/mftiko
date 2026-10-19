@@ -12,7 +12,6 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/protobuf/proto"
 
-	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
 	stsctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/stsctl/v1"
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
@@ -62,6 +61,10 @@ type Config struct {
 	Grace            time.Duration
 	MaxRestarts      int
 	RestartWindowS   int
+	// BackoffMin and BackoffMax are the restart wait (D919, D971). 0 takes
+	// DefaultBackoffMin and DefaultBackoffMax. Tests set a millisecond pair.
+	BackoffMin time.Duration
+	BackoffMax time.Duration
 
 	Policy     agent.Policy
 	Resync     time.Duration
@@ -94,6 +97,15 @@ func (cfg *Config) applyDefaults() {
 	}
 	if cfg.RestartWindowS <= 0 {
 		cfg.RestartWindowS = DefaultRestartWindowS
+	}
+	if cfg.BackoffMin <= 0 {
+		cfg.BackoffMin = DefaultBackoffMin
+	}
+	if cfg.BackoffMax <= 0 {
+		cfg.BackoffMax = DefaultBackoffMax
+	}
+	if cfg.BackoffMax < cfg.BackoffMin {
+		cfg.BackoffMax = cfg.BackoffMin
 	}
 	if cfg.MaxArtifactBytes <= 0 {
 		cfg.MaxArtifactBytes = DefaultMaxArtifactBytes
@@ -131,6 +143,8 @@ func Run(ctx context.Context, cfg Config) error {
 		Dur("grace", cfg.Grace).
 		Int("max_restarts", cfg.MaxRestarts).
 		Int("restart_window_s", cfg.RestartWindowS).
+		Dur("backoff_min", cfg.BackoffMin).
+		Dur("backoff_max", cfg.BackoffMax).
 		Msg("deployment config")
 	cl, term, err := runner.Connect(ctx, cfg.Topology, state.PlaneSTS, cfg.Instance, cfg.Dial, cfg.Term)
 	if err != nil {
@@ -185,10 +199,12 @@ func Run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	pulls := newPuller(ctx, art, cfg.MaxArtifactBytes, cfg.Log, cfg.Now)
+	pol := newPolicy(cfg)
 	prog := &Program{
 		Env: cfg.WorkerEnv, ExtraEnv: cfg.ExtraEnv, DataDir: cfg.DataDir, Instance: cfg.Instance,
 		Epoch: term.Epoch(), Sign: cfg.Sign,
 		RecvWindowMS: cfg.RecvWindowMS, HookTimeoutS: cfg.HookTimeoutS, StartTimeoutS: cfg.StartTimeoutS,
+		policy: pol,
 	}
 	f := fleet.New(fleet.Config[Spec, Live]{
 		Plane: state.PlaneSTS, Instance: cfg.Instance, Epoch: term.Epoch(), Release: cfg.Release,
@@ -196,13 +212,21 @@ func Run(ctx context.Context, cfg Config) error {
 		StopGrace: cfg.Grace, Started: cfg.Started, Log: cfg.Log,
 	})
 	defer f.Close()
-	var policy agent.Policy = DefaultPolicy
+	pol.lookup = func(key agent.WorkerKey) (agent.Observed, bool) {
+		obs, ok := f.Observe()[key]
+		return obs, ok
+	}
+	var policy agent.Policy = pol
 	if cfg.Policy != nil {
+		// A test-supplied policy replaces restart decisions. It does not see
+		// no_beat marks, and phases stay on the exit itself.
 		policy = cfg.Policy
+		prog.policy = nil
+		pol = nil
 	}
 	p := &plane{
 		inst: cfg.Instance, spec: specM, demand: demandM, status: statusM,
-		w: term, log: cfg.Log, now: cfg.Now, prog: prog, pulls: pulls, art: art, fleet: f,
+		w: term, log: cfg.Log, now: cfg.Now, prog: prog, pol: pol, pulls: pulls, art: art, fleet: f,
 		onApplied: cfg.Applied,
 		local:     map[string]statusView{}, remembered: map[string]demandView{},
 		loggedSpec: map[string]bool{}, loggedDemand: map[string]bool{},
@@ -238,6 +262,7 @@ type plane struct {
 	loggedDemand map[string]bool
 
 	prog      *Program
+	pol       *Policy
 	pulls     *puller
 	art       *artifact.Client
 	fleet     *fleet.Fleet[Spec, Live]
@@ -293,6 +318,7 @@ func (p *plane) commit(_ context.Context, _ agent.Demand[Entry], observed map[ag
 	}
 	p.stage(sessions, &d)
 	p.plans, p.intents, p.hashes = d.Plans, d.Intents, d.Hashes
+	p.noteBeat(sessions)
 	p.remembered = remember(sessions, p.remembered)
 	p.mirrored = map[string]statusView{}
 	for id, s := range sessions {
@@ -315,7 +341,11 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 		if o, ok := observed[WorkerKey(id)]; ok {
 			obs = &o
 		}
-		phase, reason, write := phaseOf(in, obs)
+		var ev endView
+		if p.pol != nil {
+			ev = p.pol.statusEnd(id)
+		}
+		phase, reason, write := phaseOf(in, obs, ev)
 		if !write || p.same(id, phase, reason) {
 			continue
 		}
@@ -325,7 +355,7 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 		if obs != nil {
 			msg.Incarnation = obs.Incarnation
 			if obs.Exit != nil {
-				msg.LastExit = proto.Clone(obs.Exit).(*commonv1.ExitInfo)
+				msg.LastExit = exitForStatus(obs.Exit, ev)
 			}
 		}
 		b, err := proto.MarshalOptions{Deterministic: true}.Marshal(msg)
@@ -447,6 +477,20 @@ func (p *plane) noteApplied(observed map[agent.WorkerKey]agent.Observed) {
 		}
 		v := msg.GetBindingsApplied()
 		p.onApplied(id, v.GetEpoch(), v.GetSeq())
+	}
+}
+
+// noteBeat publishes each session's resolved limits to the policy before the
+// skeleton asks BeatTimeout (D968).
+func (p *plane) noteBeat(sessions map[string]*sess) {
+	if p.pol == nil {
+		return
+	}
+	for id, s := range sessions {
+		if s.parsed == nil {
+			continue
+		}
+		p.pol.note(id, s.parsed, s.observed)
 	}
 }
 

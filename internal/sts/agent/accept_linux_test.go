@@ -19,6 +19,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/protobuf/proto"
 
+	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
 	stsctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/stsctl/v1"
@@ -373,6 +374,117 @@ func TestSpecChangeReplacesIncarnation(t *testing.T) {
 				st.GetPhase(), st.GetObservedGeneration(), rev2, e.starts(id), e.log.String())
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// A crash restarts with backoff, the next Start keeps counting seq, and the
+// window ends the session at FAILED restart_limit.
+func TestRestartLimitContinuesSeq(t *testing.T) {
+	e := setup(t)
+	e.cfg.BackoffMin = 200 * time.Millisecond
+	e.cfg.BackoffMax = 200 * time.Millisecond
+	const id = "a1b2c3"
+	e.setScript(id, fakeworker.Script{Exit: fakeworker.ExitCrashed, ExitAfterMS: 30})
+	spec := sessionSpec(1, 1)
+	spec.Restart = &sessionv1.RestartPolicy{
+		Mode: sessionv1.RestartMode_RESTART_MODE_ON_FAILURE, MaxRestarts: 2, WindowS: 300,
+	}
+	e.putSpec(id, spec)
+	e.putDemand(id, runningDemand(true, 1))
+	ph := e.collect(e.rev())
+	stop, done := e.start()
+	defer func() {
+		stop()
+		waitDone(t, done)
+	}()
+	st := ph.wait(id, statev1.Phase_PHASE_RESTARTING, statev1.Phase_PHASE_FAILED)
+	if st.GetReason() != ReasonRestartLimit {
+		t.Fatalf("reason %q", st.GetReason())
+	}
+	if n := e.starts(id); n != 3 {
+		t.Fatalf("starts %d", n)
+	}
+	if seqs := e.startSeqs(id); len(seqs) != 3 || seqs[0] != 1 || seqs[1] != 2 || seqs[2] != 3 {
+		t.Fatalf("start seqs %v", seqs)
+	}
+}
+
+// A worker that stops beating is SIGKILLed with no Stop. The shim records the
+// signal; SessionStatus says HUNG / no_beat and does not restart.
+func TestNoBeatKillsWithoutStop(t *testing.T) {
+	e := setup(t)
+	const id = "a1b2c3"
+	e.setScript(id, fakeworker.Script{BeatMS: 50, Beats: 1})
+	spec := sessionSpec(1, 1)
+	spec.StartTimeoutS = 1
+	spec.Limits = &sessionv1.Limits{HookTimeoutS: 1}
+	spec.Restart = &sessionv1.RestartPolicy{Mode: sessionv1.RestartMode_RESTART_MODE_NEVER}
+	e.putSpec(id, spec)
+	e.putDemand(id, runningDemand(true, 1))
+	ph := e.collect(e.rev())
+	stop, done := e.start()
+	defer func() {
+		stop()
+		waitDone(t, done)
+	}()
+	ph.wait(id, statev1.Phase_PHASE_RUNNING)
+	st := ph.waitWithin(30*time.Second, id, statev1.Phase_PHASE_FAILED)
+	if st.GetReason() != ReasonNoBeat {
+		t.Fatalf("reason %q exit %+v", st.GetReason(), st.GetLastExit())
+	}
+	ex := st.GetLastExit()
+	if ex.GetOutcome() != commonv1.Outcome_OUTCOME_HUNG || ex.GetReason() != ReasonNoBeat || ex.GetSignal() != int32(syscall.SIGKILL) {
+		t.Fatalf("last exit %+v", ex)
+	}
+	if n := e.starts(id); n != 1 {
+		t.Fatalf("starts %d", n)
+	}
+	if e.hasDown(id, func(m *workerv1.WorkerDown) bool { return m.GetStop() != nil }) {
+		t.Fatal("Stop was sent for a missing beat")
+	}
+	for _, en := range e.journalEntries(id) {
+		if en.Event == "sigterm" {
+			t.Fatal("SIGTERM was delivered for a missing beat")
+		}
+	}
+}
+
+// DONE, FAILED, and INIT_FAILED are terminal. The worker is not spawned again.
+func TestOutcomesThatDoNotRestart(t *testing.T) {
+	e := setup(t)
+	e.cfg.BackoffMin = time.Millisecond
+	e.cfg.BackoffMax = time.Millisecond
+	const doneID, failedID, initID = "a1b2c3", "b2c3d4", "c3d4e5"
+	e.setScript(doneID, fakeworker.Script{Exit: fakeworker.ExitDone, ExitAfterMS: 20})
+	e.setScript(failedID, fakeworker.Script{Exit: fakeworker.ExitFailed, ExitAfterMS: 20})
+	e.setScript(initID, fakeworker.Script{FailInit: "bad config"})
+	on := &sessionv1.RestartPolicy{Mode: sessionv1.RestartMode_RESTART_MODE_ON_FAILURE, MaxRestarts: 5, WindowS: 300}
+	for i, id := range []string{doneID, failedID, initID} {
+		spec := sessionSpec(int64(i+1), 1)
+		spec.Restart = on
+		e.putSpec(id, spec)
+		e.putDemand(id, runningDemand(true, 1))
+	}
+	ph := e.collect(e.rev())
+	stop, done := e.start()
+	defer func() {
+		stop()
+		waitDone(t, done)
+	}()
+	st := ph.wait(doneID, statev1.Phase_PHASE_DONE)
+	if st.GetReason() != "exit" {
+		t.Fatalf("done reason %q", st.GetReason())
+	}
+	st = ph.wait(failedID, statev1.Phase_PHASE_FAILED)
+	if st.GetReason() != "fail" {
+		t.Fatalf("failed reason %q", st.GetReason())
+	}
+	st = ph.wait(initID, statev1.Phase_PHASE_FAILED)
+	if st.GetReason() != "bad config" {
+		t.Fatalf("init reason %q", st.GetReason())
+	}
+	if e.starts(doneID) != 1 || e.starts(failedID) != 1 || e.starts(initID) != 1 {
+		t.Fatalf("starts done %d failed %d init %d", e.starts(doneID), e.starts(failedID), e.starts(initID))
 	}
 }
 
@@ -861,6 +973,26 @@ func (e *env) starts(id string) int {
 	return n
 }
 
+func (e *env) startSeqs(id string) []uint64 {
+	e.t.Helper()
+	var out []uint64
+	for _, en := range e.journalEntries(id) {
+		if en.Event != "down" {
+			continue
+		}
+		m, err := en.Down()
+		if err != nil || m.GetStart() == nil {
+			continue
+		}
+		var sp stsctlv1.StartPayload
+		if err := proto.Unmarshal(m.GetStart().GetPayload(), &sp); err != nil {
+			e.t.Fatal(err)
+		}
+		out = append(out, sp.GetBindings().GetVersion().GetSeq())
+	}
+	return out
+}
+
 func (e *env) hasDown(id string, pred func(*workerv1.WorkerDown) bool) bool {
 	for _, en := range e.journalEntries(id) {
 		if en.Event != "down" {
@@ -1007,7 +1139,12 @@ func (f *feed) seen(id string) bool {
 // wait blocks until id's phases contain seq in order and the latest phase is seq's last.
 func (f *feed) wait(id string, seq ...statev1.Phase) *statev1.SessionStatus {
 	f.t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
+	return f.waitWithin(20*time.Second, id, seq...)
+}
+
+func (f *feed) waitWithin(limit time.Duration, id string, seq ...statev1.Phase) *statev1.SessionStatus {
+	f.t.Helper()
+	deadline := time.Now().Add(limit)
 	var hist []statev1.Phase
 	for {
 		f.mu.Lock()

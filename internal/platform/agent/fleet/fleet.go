@@ -68,6 +68,17 @@ func carriesLive[S, L agent.Hashed](p Program[S, L]) bool {
 	return !ok || c.CarriesLive()
 }
 
+// killSilentOf reports whether a missing beat stops the worker with SIGKILL and no
+// C4 Stop (D966). A Program that does not implement KillSilent, or whose method
+// returns false, is stopped with Stop, grace, SIGTERM, then SIGKILL. MD and TD
+// do not implement it.
+func killSilentOf[S, L agent.Hashed](p Program[S, L], key agent.WorkerKey, inc uint32) bool {
+	k, ok := p.(interface {
+		KillSilent(agent.WorkerKey, uint32) bool
+	})
+	return ok && k.KillSilent(key, inc)
+}
+
 // stopGraceOf is the Stop grace for one worker. A Program may supply it (STS, from the session
 // spec, D962); 0, or a Program that does not implement it, uses the fleet's StopGrace. MD and TD
 // do not implement it.
@@ -541,6 +552,9 @@ func (f *Fleet[S, L]) Push(ctx context.Context, key agent.WorkerKey, live L) err
 // Stop stops key's worker. The grace is the Program's StopGrace when it implements that and returns
 // a positive duration, otherwise the Config's (D962). The kill timer is the Config's. Both run in
 // the shim (§4.3).
+//
+// A missing beat is a SIGKILL with no C4 Stop when the Program's KillSilent returns true (D966).
+// MD and TD do not implement it, so their workers still get Stop.
 func (f *Fleet[S, L]) Stop(ctx context.Context, key agent.WorkerKey, reason string) error {
 	w, err := f.get(key)
 	if err != nil {
@@ -549,7 +563,14 @@ func (f *Fleet[S, L]) Stop(ctx context.Context, key agent.WorkerKey, reason stri
 	if w.conn == nil {
 		return nil // gone with its shim: nothing to stop
 	}
-	err = w.conn.Stop(ctx, reason, stopGraceOf(f.cfg.Program, key, f.cfg.StopGrace), f.cfg.StopKillAfter)
+	f.mu.Lock()
+	inc := w.obs.Incarnation
+	f.mu.Unlock()
+	if reason == agent.ReasonSilent && killSilentOf(f.cfg.Program, key, inc) {
+		err = w.conn.Signal(ctx, syscall.SIGKILL)
+	} else {
+		err = w.conn.Stop(ctx, reason, stopGraceOf(f.cfg.Program, key, f.cfg.StopGrace), f.cfg.StopKillAfter)
+	}
 	if err != nil && c3.CodeOf(err) != shim.CodeExited { // exited meanwhile: its Exited is on the way
 		return fmt.Errorf("fleet: stop %s: %w", key, err)
 	}

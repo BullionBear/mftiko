@@ -42,6 +42,8 @@ func TestParseArgsDefaults(t *testing.T) {
 		o.startTimeoutS != agent.DefaultStartTimeoutS ||
 		o.volumeMB != agent.DefaultVolumeMB ||
 		o.grace != agent.DefaultGrace ||
+		o.backoffMin != agent.DefaultBackoffMin ||
+		o.backoffMax != agent.DefaultBackoffMax ||
 		o.restartWindowS != agent.DefaultRestartWindowS ||
 		o.maxRestarts != 9 ||
 		o.plainHTTP {

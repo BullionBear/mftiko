@@ -42,6 +42,10 @@ type Program struct {
 
 	mem    map[string]sessionMem
 	tracks map[string]bindTrack
+	// pendingInc is the incarnation StampIncarnation last wrote for a session.
+	// Start uses it to keep seq moving across incarnations of one epoch (D971).
+	pendingInc map[string]uint32
+	policy     *Policy
 }
 
 // sessionMem is the spec, bindings, and unpacked image of one session this round.
@@ -60,6 +64,7 @@ type bindTrack struct {
 	sent bool
 	seq  uint64
 	hash string
+	inc  uint32 // incarnation this seq was published to; 0 before StampIncarnation
 }
 
 // CarriesLive is false: Init's payload is stsctl.InitPayload, not a live config, so the
@@ -171,7 +176,7 @@ func (p *Program) Init(key agent.WorkerKey, spec Spec, _ Live) (*workerv1.Init, 
 			UserJwt: userJWT, Seed: seed, InboxPrefix: "_INBOX_" + id,
 		},
 		RecvWindowMs: orU32(msg.GetRecvWindowMs(), p.RecvWindowMS),
-		HookTimeoutS: orU32(msg.GetLimits().GetHookTimeoutS(), p.HookTimeoutS),
+		HookTimeoutS: hookTimeoutS(msg, p.HookTimeoutS),
 	}
 	raw, err := proto.Marshal(payload)
 	if err != nil {
@@ -192,7 +197,22 @@ func (p *Program) StampIncarnation(init *workerv1.Init, n uint32) error {
 		return err
 	}
 	init.Payload = raw
+	if id := msg.GetSessionId(); id != "" && n != 0 {
+		if p.pendingInc == nil {
+			p.pendingInc = map[string]uint32{}
+		}
+		p.pendingInc[id] = n
+	}
 	return nil
+}
+
+// KillSilent tells the fleet to SIGKILL this worker without C4 Stop when a beat
+// times out (D966). inc is remembered so that exit is HUNG / no_beat (D967).
+func (p *Program) KillSilent(key agent.WorkerKey, inc uint32) bool {
+	if p.policy != nil {
+		p.policy.noteKill(key, inc)
+	}
+	return true
 }
 
 // Start carries the first bindings, or the current ones when a previous Start did not land,
@@ -241,6 +261,9 @@ func (p *Program) markSent(id, hash string, seq uint64) {
 	}
 	t := p.tracks[id]
 	t.sent, t.hash, t.seq = true, hash, seq
+	if inc := p.pendingInc[id]; inc != 0 {
+		t.inc = inc
+	}
 	p.tracks[id] = t
 }
 
@@ -257,13 +280,21 @@ func (p *Program) versioned(id string) (b *stsctlv1.Bindings, hash string, seq u
 	b.Version = nil
 	hash = contentHash(b)
 	t := p.tracks[id]
-	seq = 1
-	if t.sent {
-		if t.hash == hash {
-			seq = t.seq
-		} else if t.seq > 0 {
-			seq = t.seq + 1
-		}
+	inc := p.pendingInc[id]
+	switch {
+	case !t.sent:
+		seq = 1
+	case inc != 0 && t.inc != inc:
+		// A new incarnation in this epoch takes the next seq even when the
+		// bindings did not change (D971). A spec change clears the track first,
+		// so that replacement's Start is seq 1 again (D961).
+		seq = t.seq + 1
+	case t.hash == hash:
+		seq = t.seq
+	case t.seq > 0:
+		seq = t.seq + 1
+	default:
+		seq = 1
 	}
 	b.Version = &commonv1.Version{Epoch: p.Epoch, Seq: seq}
 	return b, hash, seq
@@ -288,14 +319,28 @@ func (p *Program) Push(agent.WorkerKey, Live) (*workerv1.Live, error) {
 }
 
 func (p *Program) deadline(spec *sessionv1.SessionSpec) uint32 {
+	return startTimeoutS(spec, p.StartTimeoutS) * 1000
+}
+
+// hookTimeoutS is the resolved hook limit in seconds (D918). 0 in the spec takes def.
+func hookTimeoutS(spec *sessionv1.SessionSpec, def int) uint32 {
+	return orU32(spec.GetLimits().GetHookTimeoutS(), def)
+}
+
+// startTimeoutS is the resolved start limit in seconds, also Init and Start's
+// deadline_ms once multiplied by 1000 (D918).
+func startTimeoutS(spec *sessionv1.SessionSpec, def int) uint32 {
 	s := spec.GetStartTimeoutS()
 	if s == 0 {
-		s = uint32(p.StartTimeoutS)
+		s = orU32(0, def)
+		if s == 0 {
+			s = DefaultStartTimeoutS
+		}
 	}
 	if s > math.MaxUint32/1000 {
 		s = math.MaxUint32 / 1000
 	}
-	return s * 1000
+	return s
 }
 
 func orU32(v uint32, def int) uint32 {
