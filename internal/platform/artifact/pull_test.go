@@ -91,7 +91,6 @@ func (s *fakeReg) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.gets[ref]++
 	s.auths = append(s.auths, r.Header.Get("Authorization"))
 	s.agents = append(s.agents, r.Header.Get("User-Agent"))
-	n := s.gets[ref]
 	s.mu.Unlock()
 
 	if s.status != 0 {
@@ -101,11 +100,13 @@ func (s *fakeReg) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !s.allow(w, r) {
 		return
 	}
+	// Every GET of the blocked digest waits. A cancelled leader's request ends on its own, and the
+	// waiter that downloads the layer again waits here too: the test hangs until release is closed.
 	if s.block != "" && ref == s.block {
 		if s.hits != nil {
 			s.hits <- struct{}{}
 		}
-		if n == 1 && s.release != nil {
+		if s.release != nil {
 			select {
 			case <-s.release:
 			case <-r.Context().Done():
@@ -1118,6 +1119,70 @@ func TestPullSingleFlight(t *testing.T) {
 	}
 	if s.count(layers[0].Digest.String()) != 1 {
 		t.Fatalf("layer gets %d", s.count(layers[0].Digest.String()))
+	}
+}
+
+func TestPullWaiterSurvivesLeaderCancel(t *testing.T) {
+	s := newFake(t)
+	body := []byte("shared-layer")
+	id, layers := s.image(t, testManifest(), body)
+	data := t.TempDir()
+	reg := Registry{Address: s.host(), PlainHTTP: true}
+	leader, _ := openAt(t, reg, data)
+	waiter, _ := openAt(t, reg, data)
+
+	s.block = layers[0].Digest.String()
+	s.release = make(chan struct{})
+	s.hits = make(chan struct{}, 4)
+	joined := make(chan struct{})
+	t.Cleanup(func() {
+		layerWait = nil
+		select {
+		case <-s.release:
+		default:
+			close(s.release)
+		}
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	leaderErr := make(chan error, 1)
+	go func() {
+		_, err := leader.Pull(ctx, baseReq(id))
+		leaderErr <- err
+	}()
+	select {
+	case <-s.hits:
+	case err := <-leaderErr:
+		t.Fatalf("leader: %v", err)
+	}
+
+	layerWait = func() { close(joined) }
+	waiterErr := make(chan error, 1)
+	go func() {
+		_, err := waiter.Pull(context.Background(), baseReq(id))
+		waiterErr <- err
+	}()
+	select {
+	case <-joined:
+	case <-s.hits:
+		t.Fatal("waiter downloaded the layer before the leader finished")
+	}
+
+	cancel()
+	if err := <-leaderErr; !errors.Is(err, context.Canceled) {
+		t.Fatalf("leader: %v", err)
+	}
+	// The waiter downloads the layer again, and that GET is held until release.
+	close(s.release)
+	if err := <-waiterErr; err != nil {
+		t.Fatal(err)
+	}
+	if s.count(layers[0].Digest.String()) != 2 {
+		t.Fatalf("layer gets %d, want the leader's cancelled GET and the waiter's", s.count(layers[0].Digest.String()))
+	}
+	if !bytes.Equal(mustRead(t, filepath.Join(data, "layers", layers[0].Digest.String())), body) {
+		t.Fatal("layer was not cached")
 	}
 }
 

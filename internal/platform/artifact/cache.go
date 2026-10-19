@@ -3,6 +3,7 @@ package artifact
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -70,47 +71,55 @@ func cached(dir string, desc ocispec.Descriptor) (string, bool) {
 }
 
 // ensureLayer returns the cache path of desc, downloading it once per process when it is missing (D930).
-// The download runs under the first caller's context: if that caller cancels, the waiters see the same error
-// and the caller decides whether to retry (D928).
+// The download runs under the leader's context. A waiter whose own context is still alive does not keep
+// the leader's cancellation or deadline: it takes the flight again and may download the layer itself.
+// Every other error is the waiter's result too (D928).
 func ensureLayer(ctx context.Context, repo *remote.Repository, dir string, desc ocispec.Descriptor) (string, error) {
-	if p, ok := cached(dir, desc); ok {
-		return p, nil
-	}
 	key := dir + "\x00" + desc.Digest.String()
-	flightsMu.Lock()
-	if p, ok := cached(dir, desc); ok {
-		flightsMu.Unlock()
-		return p, nil
-	}
-	if f, ok := flights[key]; ok {
-		flightsMu.Unlock()
-		if layerWait != nil {
-			layerWait()
+	for {
+		if p, ok := cached(dir, desc); ok {
+			return p, nil
 		}
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-f.done:
-			if f.err != nil {
-				return "", f.err
-			}
-			if p, ok := cached(dir, desc); ok {
-				return p, nil
-			}
-			return "", permanent(ReasonDigestMismatch, fmt.Errorf("%s: cached layer is %d bytes in the manifest and a different size on disk", desc.Digest, desc.Size))
+		flightsMu.Lock()
+		if p, ok := cached(dir, desc); ok {
+			flightsMu.Unlock()
+			return p, nil
 		}
-	}
-	f := &layerFlight{done: make(chan struct{})}
-	flights[key] = f
-	flightsMu.Unlock()
+		if f, ok := flights[key]; ok {
+			flightsMu.Unlock()
+			if layerWait != nil {
+				layerWait()
+			}
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-f.done:
+				if f.err != nil {
+					// The flight is already out of the map, so this loop can take it again.
+					if ctx.Err() == nil && (errors.Is(f.err, context.Canceled) || errors.Is(f.err, context.DeadlineExceeded)) {
+						continue
+					}
+					return "", f.err
+				}
+				if p, ok := cached(dir, desc); ok {
+					return p, nil
+				}
+				return "", permanent(ReasonDigestMismatch, fmt.Errorf("%s: cached layer is %d bytes in the manifest and a different size on disk", desc.Digest, desc.Size))
+			}
+		}
+		f := &layerFlight{done: make(chan struct{})}
+		flights[key] = f
+		flightsMu.Unlock()
 
-	path, err := downloadLayer(ctx, repo, dir, desc)
-	f.path, f.err = path, err
-	close(f.done)
-	flightsMu.Lock()
-	delete(flights, key)
-	flightsMu.Unlock()
-	return path, err
+		path, err := downloadLayer(ctx, repo, dir, desc)
+		f.path, f.err = path, err
+		// Drop the flight before waking waiters, so a waiter that retries cannot join this finished one.
+		flightsMu.Lock()
+		delete(flights, key)
+		flightsMu.Unlock()
+		close(f.done)
+		return path, err
+	}
 }
 
 // downloadLayer writes the blob to a temporary file, hashing as it reads, and renames it to the digest only
