@@ -24,6 +24,10 @@ const (
 	ReasonNotImage          = "artifact_not_image"
 	ReasonWrongMediaType    = "artifact_wrong_mediatype"
 	ReasonBadManifest       = "artifact_bad_manifest"
+	// ReasonUnsafeLayer is a layer that must not be extracted (D954): a rejected tar entry, a broken
+	// archive, or an unpack that would exceed the size or file-count limit (D953). The cached blob stays;
+	// its sha256 was already checked. The caller ends the session INIT_FAILED.
+	ReasonUnsafeLayer = "artifact_unsafe_layer"
 )
 
 // ErrRequest is a caller mistake (empty repository, missing kind, registry address that is not host[:port]).

@@ -39,8 +39,12 @@ var (
 // layersDir is ${DATA}/layers.
 func layersDir(dataDir string) string { return filepath.Join(dataDir, "layers") }
 
-// cleanTemps removes leftover download files from a previous process (D930). A name that is a
-// verified digest is left alone: those are written only after the hash matches.
+// tempPrefix is the name prefix of a download or unpack that is not finished (D930, D955). GC leaves
+// these alone (D956). A verified layer or a finished artifact directory never has this prefix.
+const tempPrefix = ".tmp-"
+
+// cleanTemps removes leftover temporary files and directories from a previous process (D930, D955).
+// A name that is a verified digest, or a finished artifact directory, is left alone.
 func cleanTemps(dir string) error {
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
@@ -50,8 +54,8 @@ func cleanTemps(dir string) error {
 		return err
 	}
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), ".tmp-") {
-			if err := os.Remove(filepath.Join(dir, e.Name())); err != nil && !os.IsNotExist(err) {
+		if strings.HasPrefix(e.Name(), tempPrefix) {
+			if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil && !os.IsNotExist(err) {
 				return err
 			}
 		}
@@ -134,7 +138,7 @@ func downloadLayer(ctx context.Context, repo *remote.Repository, dir string, des
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", temporary(ReasonUnavailable, err)
 	}
-	tmp, err := os.CreateTemp(dir, ".tmp-*")
+	tmp, err := os.CreateTemp(dir, tempPrefix+"*")
 	if err != nil {
 		return "", temporary(ReasonUnavailable, err)
 	}
