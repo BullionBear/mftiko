@@ -130,11 +130,11 @@ web-dev: web-install ## Dev server; proxies /api to mftiko-api on :8080
 
 # ---------- database ----------
 
-dev-up: ## Generate dev NATS credentials, then start PostgreSQL, etcd and NATS and wait until all are healthy
+dev-up: ## Generate dev NATS credentials, then start PostgreSQL, etcd, NATS and a registry and wait until all are healthy
 	$(GO) run ./cmd/mftiko-nats-dev -out $(DEV_NATS)
 	$(COMPOSE) up -d --wait
 
-dev-down: ## Stop local PostgreSQL, etcd and NATS. Keeps their data, including the gitignored NATS directory
+dev-down: ## Stop local PostgreSQL, etcd, NATS and the registry. Keeps their data, including the gitignored NATS directory
 	$(COMPOSE) down
 
 dev-nats-smoke: ## Run the dev NATS permission checks against the compose server
