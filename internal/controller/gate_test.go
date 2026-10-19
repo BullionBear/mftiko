@@ -14,7 +14,7 @@ import (
 )
 
 func gateAt(v controller.View, now time.Time) (controller.Plan, time.Time) {
-	return controller.Gate(v, controller.Derive(v, places(), now), now)
+	return controller.Gate(v, controller.Derive(v, places(), now), places(), now)
 }
 
 func installPlan(v *controller.View, plan controller.Plan) {
@@ -354,6 +354,47 @@ func TestGateStaleAck(t *testing.T) {
 	}
 }
 
+// A provider region that has not synced since this leader's election has not
+// been read. Its acks are not in the view, and the bindings keep what is
+// stored instead of being wiped (D1318, D1337, N6).
+func TestGateUnsyncedProviderKeepsStatus(t *testing.T) {
+	v, _ := runningSession(sampleSpec())
+	first, _ := gateAt(v, deriveNow)
+	installPlan(&v, first)
+	ackAll(&v, entryStatus(statev1.EntryState_ENTRY_STATE_READY, "up"), false)
+	started, _ := gateAt(v, deriveNow.Add(time.Second))
+	installPlan(&v, started)
+	if !sessionWrite(t, started).GetStart() {
+		t.Fatal("not started")
+	}
+
+	for k, a := range v.Acks {
+		if a.Region == "jp" {
+			delete(v.Acks, k)
+		}
+	}
+	for k, d := range v.Demands {
+		if d.Region == "jp" {
+			delete(v.Demands, k)
+		}
+	}
+	v.Regions["jp"] = controller.Region{Stale: true}
+	plan, _ := gateAt(v, deriveNow.Add(time.Hour))
+	if _, ok := byKey(t, plan)[state.SessionDemandKey(stsInst, sessID)]; ok {
+		t.Fatalf("assignment rewritten while jp is unsynced: %+v", sessionWrite(t, plan))
+	}
+
+	// The tw ack still moves; jp's stored statuses ride along unchanged.
+	putSelectAck(&v, "md-tw-1", "tw", sessID, "near", entryStatus(statev1.EntryState_ENTRY_STATE_PENDING, "again"), false)
+	wrote := sessionWrite(t, gateAtFirst(v, deriveNow.Add(time.Hour)))
+	b := wrote.GetBindings()
+	if !wrote.GetStart() || wrote.GetEndReason() != "" ||
+		b[0].GetStatus().GetReason() != "up" || b[2].GetStatus().GetReason() != "up" ||
+		b[1].GetStatus().GetReason() != "again" {
+		t.Fatalf("%+v", wrote)
+	}
+}
+
 func TestGateStaleReadyTimesOut(t *testing.T) {
 	spec := sampleSpec()
 	spec.DepsTimeoutS = 5
@@ -407,7 +448,7 @@ func TestGateDropsRevival(t *testing.T) {
 			IssuedAtNs: 42, Start: true,
 		},
 	}}}
-	out, next := controller.Gate(v, plan, deriveNow)
+	out, next := controller.Gate(v, plan, places(), deriveNow)
 	if len(out.Writes) != 0 || !next.IsZero() {
 		t.Fatalf("kept a revival %+v", out.Writes)
 	}
@@ -479,7 +520,7 @@ func TestGateDriftKeepsStoredBindings(t *testing.T) {
 	if len(plan.Drifts) != 1 || len(plan.Writes) != 0 {
 		t.Fatalf("derive %+v", plan)
 	}
-	out, next := controller.Gate(v, plan, deriveNow)
+	out, next := controller.Gate(v, plan, places(), deriveNow)
 	if len(out.Drifts) != 1 {
 		t.Fatalf("drifts %+v", out.Drifts)
 	}
@@ -529,7 +570,7 @@ func TestGateReadsAssembledAck(t *testing.T) {
 		Agent: &statev1.AgentRecord{Plane: "md", Instance: "md-tw-1"},
 	}}
 	v := controller.Assemble(deriveNow, time.Minute, []string{"tw"}, snaps)
-	plan, next := controller.Gate(v, controller.Plan{}, deriveNow)
+	plan, next := controller.Gate(v, controller.Plan{}, places(), deriveNow)
 	wrote := sessionWrite(t, plan)
 	if !wrote.GetStart() || wrote.GetBindings()[0].GetStatus().GetSubject() != "md.v1.f.md-tw-1.trade.X" ||
 		!next.IsZero() {
