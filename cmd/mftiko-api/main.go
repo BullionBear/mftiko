@@ -1,4 +1,6 @@
-// Command mftiko-api is the API server. It writes declarations (sessions, accounts) to etcd and serves the web console; it never calls an agent directly (DECISIONS D1001, D004).
+// Command mftiko-api is the API server. It writes declarations (sessions, accounts) to etcd and serves the web console;
+// it never calls an agent directly and never queries SYM (DECISIONS D1001, D004, D202). Several replicas may run
+// side by side; none of them takes part in an election (D1006).
 //
 // Shape only: not implemented yet.
 package main
