@@ -115,42 +115,6 @@ func TestDiskBytesDedupesHardLinks(t *testing.T) {
 	}
 }
 
-func TestChmodAndRemoveWritable(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "tree")
-	if err := os.MkdirAll(filepath.Join(root, "sub"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "sub", "f"), []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	outside := filepath.Join(t.TempDir(), "out")
-	if err := os.WriteFile(outside, []byte("keep"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(outside, filepath.Join(root, "link")); err != nil {
-		t.Fatal(err)
-	}
-	if err := chmodReadOnly(root); err != nil {
-		t.Fatal(err)
-	}
-	if err := chmodReadOnly(root); err != nil {
-		t.Fatal(err)
-	}
-	assertPerm(t, root, 0o555)
-	assertPerm(t, filepath.Join(root, "sub"), 0o555)
-	assertPerm(t, filepath.Join(root, "sub", "f"), 0o444)
-	assertPerm(t, outside, 0o644)
-	if err := removeWritable(root); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(root); !os.IsNotExist(err) {
-		t.Fatalf("removed: %v", err)
-	}
-	if string(mustReadFile(t, outside)) != "keep" {
-		t.Fatal("symlink target removed")
-	}
-}
-
 func TestCleanInputTemps(t *testing.T) {
 	data := t.TempDir()
 	temp := filepath.Join(data, "sessions", "s1", "inputs", inputTempPrefix+"wip")

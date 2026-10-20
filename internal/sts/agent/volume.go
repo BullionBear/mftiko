@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog"
 
 	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
+	"github.com/BullionBear/mftiko/internal/platform/artifact"
 )
 
 // inputTempPrefix is the artifact package's unfinished-unpack prefix. A crash
@@ -163,81 +164,6 @@ func fmtSys(path string) error {
 	return &os.PathError{Op: "stat", Path: path, Err: errors.ErrUnsupported}
 }
 
-// chmodReadOnly makes files 0444 and directories 0555. Symlinks are left alone
-// so the target outside this tree is not changed (D975). Calling it again is safe.
-func chmodReadOnly(root string) error {
-	var dirs []string
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.Type()&os.ModeSymlink != 0 {
-			return nil
-		}
-		if d.IsDir() {
-			dirs = append(dirs, path)
-			return nil
-		}
-		if !d.Type().IsRegular() {
-			return nil
-		}
-		return os.Chmod(path, 0o444)
-	})
-	if err != nil {
-		return err
-	}
-	for i := len(dirs) - 1; i >= 0; i-- {
-		if err := os.Chmod(dirs[i], 0o555); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// removeWritable makes a tree deletable and removes it (D975). Directories
-// become 0700 and files 0600 first, so a read-only unpack can still be removed.
-func removeWritable(root string) error {
-	st, err := os.Lstat(root)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if !st.IsDir() {
-		if err := os.Chmod(root, 0o600); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		return os.Remove(root)
-	}
-	var dirs []string
-	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.Type()&os.ModeSymlink != 0 {
-			return nil
-		}
-		if d.IsDir() {
-			dirs = append(dirs, path)
-			return nil
-		}
-		if !d.Type().IsRegular() {
-			return nil
-		}
-		return os.Chmod(path, 0o600)
-	})
-	if err != nil {
-		return err
-	}
-	for i := len(dirs) - 1; i >= 0; i-- {
-		if err := os.Chmod(dirs[i], 0o700); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-	}
-	return os.RemoveAll(root)
-}
-
 // cleanInputTemps removes unpack leftovers under every session's inputs directory.
 func cleanInputTemps(dataDir string) error {
 	sessions := filepath.Join(dataDir, "sessions")
@@ -264,7 +190,7 @@ func cleanInputTemps(dataDir string) error {
 			if !strings.HasPrefix(s.Name(), inputTempPrefix) {
 				continue
 			}
-			if err := removeWritable(filepath.Join(inputs, s.Name())); err != nil {
+			if err := artifact.RemoveWritable(filepath.Join(inputs, s.Name())); err != nil {
 				return err
 			}
 		}

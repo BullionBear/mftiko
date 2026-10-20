@@ -25,6 +25,10 @@ import (
 // A wanted worker the policy is bringing back is RESTARTING, with the reason of
 // the exit it is waiting out (D971). restart_limit and a no_beat kill the policy
 // will not restart are FAILED with those reasons (D967, D969).
+//
+// An exit the policy has not classified yet stays STOPPING (D995). Publishing the
+// exit itself would make a crash the policy is about to restart terminal, and a
+// terminal session does not come back (D945).
 func phaseOf(in intent, obs *agent.Observed, end ...endView) (statev1.Phase, string, bool) {
 	var ev endView
 	if len(end) > 0 {
@@ -43,6 +47,9 @@ func phaseOf(in intent, obs *agent.Observed, end ...endView) (statev1.Phase, str
 			return statev1.Phase_PHASE_STOPPING, "", true
 		}
 		if obs.State == agent.StateExited && obs.SpecHash == in.SpecHash {
+			if ev.undecided {
+				return statev1.Phase_PHASE_STOPPING, "", true
+			}
 			if ev.terminalReason != "" {
 				return statev1.Phase_PHASE_FAILED, ev.terminalReason, true
 			}
@@ -60,6 +67,15 @@ func phaseOf(in intent, obs *agent.Observed, end ...endView) (statev1.Phase, str
 	default:
 		return 0, "", false
 	}
+}
+
+// undecidedExit reports an exit the restart policy has not classified yet (D995).
+// The runner's Sync observes again after the step's actions, so it can see a
+// worker that ended after the Step that would have asked the policy about it.
+// The next Step asks. Without a policy (a test-supplied one) nothing is undecided.
+func undecidedExit(obs *agent.Observed, ev endView, havePolicy bool) bool {
+	return havePolicy && obs != nil && obs.State == agent.StateExited &&
+		obs.Incarnation != 0 && ev.decided != obs.Incarnation
 }
 
 // endedPhase is the phase of an assignment that is ENDED or gone (D963, D964).

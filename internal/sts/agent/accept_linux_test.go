@@ -409,6 +409,58 @@ func TestRestartLimitContinuesSeq(t *testing.T) {
 	}
 }
 
+// A worker that crashes while no agent runs is still restarted by the next one.
+// The first Sync after adoption sees the exit before any Step has asked the
+// restart policy about it; publishing the exit there made the crash terminal,
+// and a terminal session never comes back (D945, D995, #327). The same gap
+// exists inside a round, between the Step's observation and the Sync's.
+func TestCrashWhileAgentDownStillRestarts(t *testing.T) {
+	e := setup(t)
+	e.cfg.BackoffMin = 100 * time.Millisecond
+	e.cfg.BackoffMax = 100 * time.Millisecond
+	const id = "a1b2c3"
+	e.setScript(id, fakeworker.Script{Exit: fakeworker.ExitCrashed, ExitAfterMS: 2000})
+	spec := sessionSpec(1, 1)
+	spec.Restart = &sessionv1.RestartPolicy{
+		Mode: sessionv1.RestartMode_RESTART_MODE_ON_FAILURE, MaxRestarts: 5, WindowS: 300,
+	}
+	e.putSpec(id, spec)
+	e.putDemand(id, runningDemand(true, 1))
+	ph := e.collect(e.rev())
+	stop, done := e.start()
+	ph.wait(id, statev1.Phase_PHASE_RUNNING)
+	stop()
+	waitDone(t, done)
+	pollUntil(t, "the first incarnation to crash with no agent", func() bool {
+		for _, en := range e.journalEntries(id) {
+			if en.Event == "exit" {
+				return true
+			}
+		}
+		return false
+	})
+	if n := e.starts(id); n != 1 {
+		t.Fatalf("starts %d before the next agent", n)
+	}
+
+	e.cfg.Term.ID = t.Name() + "-next"
+	stop, done = e.start()
+	defer func() {
+		stop()
+		waitDone(t, done)
+	}()
+	pollUntil(t, "a restart after adoption", func() bool { return e.starts(id) >= 2 })
+	hist := ph.history(id)
+	if !containsInOrder(hist, []statev1.Phase{statev1.Phase_PHASE_RUNNING, statev1.Phase_PHASE_RESTARTING}) {
+		t.Fatalf("phases %v", hist)
+	}
+	for _, p := range hist {
+		if p == statev1.Phase_PHASE_FAILED || p == statev1.Phase_PHASE_DONE {
+			t.Fatalf("terminal before the restart: phases %v, status %s", hist, describeStatus(e.status(id)))
+		}
+	}
+}
+
 // A worker that stops beating is SIGKILLed with no Stop. The shim records the
 // signal; SessionStatus says HUNG / no_beat and does not restart.
 func TestNoBeatKillsWithoutStop(t *testing.T) {
@@ -750,7 +802,7 @@ func setup(t *testing.T) *env {
 	}
 	t.Cleanup(func() {
 		// Inputs are mode 0555 after unpack (D975). TempDir cannot remove them until they are writable.
-		_ = removeWritable(filepath.Join(e.cfg.DataDir, "sessions"))
+		_ = artifact.RemoveWritable(filepath.Join(e.cfg.DataDir, "sessions"))
 		e.mu.Lock()
 		pids := append([]int(nil), e.pids...)
 		e.mu.Unlock()
@@ -1162,13 +1214,23 @@ func (f *feed) waitWithin(limit time.Duration, id string, seq ...statev1.Phase) 
 			return last
 		}
 		if time.Now().After(deadline) {
-			f.t.Fatalf("%s phases %v, want %v", id, hist, seq)
+			f.t.Fatalf("%s phases %v, want %v; last status: %s", id, hist, seq, describeStatus(last))
 		}
 		select {
 		case <-f.ch:
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
+}
+
+// describeStatus is the part of a SessionStatus a failed wait needs to tell why
+// the session ended where it did.
+func describeStatus(st *statev1.SessionStatus) string {
+	if st == nil {
+		return "none"
+	}
+	return fmt.Sprintf("phase=%s reason=%q incarnation=%d restart_count=%d last_exit={%v}",
+		st.GetPhase(), st.GetReason(), st.GetIncarnation(), st.GetRestartCount(), st.GetLastExit())
 }
 
 func containsInOrder(got, want []statev1.Phase) bool {

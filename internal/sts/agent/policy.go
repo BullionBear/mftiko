@@ -40,6 +40,7 @@ type sessPol struct {
 	times  []time.Time         // when this process restarted it (D969)
 
 	haveEnd        bool
+	decided        uint32 // the incarnation whose exit Restart classified last
 	restarting     bool
 	noBeat         bool // this exit is the SIGKILL for a missing beat (D967)
 	reason         string
@@ -50,6 +51,10 @@ type sessPol struct {
 // endView is how the latest exit should be published. The zero value leaves the
 // exit's own outcome in place.
 type endView struct {
+	// decided is the incarnation the fields below are about. Sync marks an exit of
+	// another incarnation undecided: the policy has not seen it yet (D995).
+	decided        uint32
+	undecided      bool
 	restarting     bool
 	noBeat         bool
 	reason         string
@@ -171,6 +176,7 @@ func (p *Policy) statusEnd(id string) endView {
 		return endView{}
 	}
 	return endView{
+		decided:    s.decided,
 		restarting: s.restarting, noBeat: s.noBeat, reason: s.reason,
 		terminalReason: s.terminalReason, overrideReason: s.overrideReason,
 	}
@@ -186,6 +192,7 @@ func (p *Policy) Restart(key agent.WorkerKey, end agent.Ended) (bool, time.Durat
 	}
 	s := p.ensure(id)
 	s.haveEnd = true
+	s.decided = p.incarnation(key)
 	s.restarting = false
 	s.noBeat = false
 	s.terminalReason = ""

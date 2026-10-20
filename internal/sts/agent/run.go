@@ -412,6 +412,7 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 		if p.pol != nil {
 			ev = p.pol.statusEnd(id)
 		}
+		ev.undecided = undecidedExit(obs, ev, p.pol != nil)
 		phase, reason, write := phaseOf(in, obs, ev)
 		if !write || p.same(id, phase, reason) {
 			continue
