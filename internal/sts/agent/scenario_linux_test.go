@@ -54,13 +54,18 @@ func TestScenarioHelloByDigest(t *testing.T) {
 	}
 
 	spec.DesiredState = sessionv1.DesiredState_DESIRED_STATE_ENDED
-	e.putSpec(id, spec)
+	endRev := e.putSpec(id, spec)
 	st = ph.wait(id, statev1.Phase_PHASE_STOPPING, statev1.Phase_PHASE_DONE)
 	if st.GetReason() != "ended_by_spec" {
 		t.Fatalf("DONE reason %q", st.GetReason())
 	}
-	if d := e.demand(id); d.GetDesired() != sessionv1.DesiredState_DESIRED_STATE_ENDED || d.GetEndReason() != "ended_by_spec" {
-		t.Fatalf("controller end %+v", d)
+	// Read from history: once the session is DONE and its worker gone, the
+	// controller may already have removed the assignment (D1333, #327).
+	ended := e.demandSince(id, endRev, func(d *statev1.SessionDemand) bool {
+		return d.GetDesired() == sessionv1.DesiredState_DESIRED_STATE_ENDED
+	})
+	if ended.GetEndReason() != "ended_by_spec" {
+		t.Fatalf("controller end %+v", ended)
 	}
 }
 
@@ -257,6 +262,34 @@ func (e *env) demand(id string) *statev1.SessionDemand {
 		e.t.Fatal(err)
 	}
 	return d
+}
+
+// demandSince is the first value of id's assignment written at or after rev that
+// ok accepts, read from etcd's history, so it is found even after the controller
+// has removed the key.
+func (e *env) demandSince(id string, rev int64, ok func(*statev1.SessionDemand) bool) *statev1.SessionDemand {
+	e.t.Helper()
+	ctx, cancel := e.opCtx()
+	defer cancel()
+	for wr := range e.root.Watch(ctx, state.SessionDemandKey(testInst, id), clientv3.WithRev(rev)) {
+		if err := wr.Err(); err != nil {
+			e.t.Fatal(err)
+		}
+		for _, ev := range wr.Events {
+			if ev.Type != clientv3.EventTypePut {
+				continue
+			}
+			d := &statev1.SessionDemand{}
+			if err := proto.Unmarshal(ev.Kv.Value, d); err != nil {
+				e.t.Fatal(err)
+			}
+			if ok(d) {
+				return d
+			}
+		}
+	}
+	e.t.Fatalf("no matching assignment for %s since revision %d", id, rev)
+	return nil
 }
 
 func (e *env) hasDemand(id string) bool {
