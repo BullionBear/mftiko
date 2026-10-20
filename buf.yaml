@@ -13,14 +13,12 @@ breaking:
   # this list, as part of its done criteria. sym.proto came off in E2-10. mdctl.proto, md.proto and
   # read.proto came off in E4-12, went back on for D461, and came off again after #241 (D462).
   # tdctl.proto came off in E6-15. td.proto came off again after #242 (D634).
-  # C3 and C4 come off when E1 ends.
+  # state.proto, session.proto and stsctl.proto came off in E9-12 (D927); their selector.proto files stay
+  # on until E5 (D991). C3 and C4 come off in #302.
   ignore:
-    - contract/proto/mftiko/state/v1/state.proto # E: agent records in E1; demands, assignments, acks in E9
-    - contract/proto/mftiko/session/v1/session.proto # E and C5: E9
     - contract/proto/mftiko/shim/v1/shim.proto # C3: E1
     - contract/proto/mftiko/worker/v1/worker.proto # C4: E1
     - contract/proto/mftiko/common/v1/common.proto # C4: E1
-    - contract/proto/mftiko/stsctl/v1/stsctl.proto # C5: E8, E9
     - contract/proto/mftiko/session/v1/selector.proto # E5 (D991)
     - contract/proto/mftiko/state/v1/selector.proto # E5 (D991)
     - contract/proto/mftiko/stsctl/v1/selector.proto # E5 (D991)
