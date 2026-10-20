@@ -187,6 +187,121 @@ func TestPackRefuses(t *testing.T) {
 	}
 }
 
+func TestPackWorker(t *testing.T) {
+	bare := elfIdent(elf.ELFCLASS64, elf.ELFDATA2LSB, elf.ELFOSABI_NONE, uint16(elf.EM_X86_64))
+	bareImg, err := PackWorker(bare, KindMDConn, "mftiko-md-conn", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bareManifest Manifest
+	if err := json.Unmarshal(bareImg.Config, &bareManifest); err != nil {
+		t.Fatal(err)
+	}
+	if bareManifest.OS != "linux" || bareManifest.Arch != "amd64" || !slices.Equal(bareManifest.Contracts, []string{"worker.v1", "mdctl.v1"}) || bareManifest.SDK != (SDK{}) {
+		t.Fatalf("header-only ELF %+v", bareManifest)
+	}
+	if _, err := PackWorker(bare, "", "n", nil); err == nil {
+		t.Fatal("empty kind packed")
+	}
+	if _, err := PackWorker(bare, "session", "n", nil); err == nil {
+		t.Fatal("unknown kind packed")
+	}
+	if _, err := PackWorker(bare, KindMDConn, "", nil); err == nil {
+		t.Fatal("empty name packed")
+	}
+	if _, err := PackWorker([]byte("not elf"), KindMDConn, "n", nil); !errors.Is(err, ErrPlatform) {
+		t.Fatalf("non-ELF: %v", err)
+	}
+	if _, err := PackWorker(bare, KindTDAccount, "n", map[string]string{"MFTIKO_X": "1"}); !errors.Is(err, ErrBadManifest) {
+		t.Fatalf("platform env: %v", err)
+	}
+	if _, ok := WorkerContracts(KindStrategy); ok {
+		t.Fatal("strategy has a fixed worker contract list")
+	}
+
+	bin := hostBinary(t)
+	img, err := PackWorker(bin, KindMDConn, "mftiko-md-conn", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := PackWorker(bin, KindMDConn, "mftiko-md-conn", map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if img.Digest != again.Digest || !bytes.Equal(img.Manifest, again.Manifest) || !bytes.Equal(img.Layer, again.Layer) {
+		t.Fatal("two packs of one worker differ")
+	}
+	account, err := PackWorker(bin, KindTDAccount, "mftiko-td-account", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if account.Digest == img.Digest {
+		t.Fatal("md.conn and td.account packed to the same digest")
+	}
+	strategy, err := PackStrategy(bin, "mftiko-md-conn", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strategy.Digest == img.Digest {
+		t.Fatal("strategy and md.conn packed to the same digest")
+	}
+
+	for _, tc := range []struct {
+		img  Image
+		kind string
+		name string
+		want []string
+	}{
+		{img, KindMDConn, "mftiko-md-conn", []string{"worker.v1", "mdctl.v1"}},
+		{account, KindTDAccount, "mftiko-td-account", []string{"worker.v1", "tdctl.v1"}},
+	} {
+		var m Manifest
+		if err := json.Unmarshal(tc.img.Config, &m); err != nil {
+			t.Fatal(err)
+		}
+		listed, ok := WorkerContracts(tc.kind)
+		if !ok || !slices.Equal(listed, tc.want) || !slices.Equal(m.Contracts, tc.want) {
+			t.Fatalf("%s contracts manifest %v listed %v", tc.kind, m.Contracts, listed)
+		}
+		if m.Schema != Schema || m.Kind != tc.kind || m.Name != tc.name || m.Runtime != "go" ||
+			m.OS != "linux" || m.Arch != runtime.GOARCH || !slices.Equal(m.Entrypoint, []string{workerEntrypoint}) ||
+			m.SDK != (SDK{}) {
+			t.Fatalf("%s manifest %+v", tc.kind, m)
+		}
+		if !bytes.Contains(tc.img.Config, []byte(`"sdk":{"lang":"","version":""}`)) {
+			t.Fatalf("%s sdk JSON: %s", tc.kind, tc.img.Config)
+		}
+		if bytes.Contains(tc.img.Config, []byte("stsctl.v1")) || bytes.Contains(tc.img.Config, []byte(`"md.v1"`)) {
+			t.Fatalf("%s used the strategy contract list: %s", tc.kind, tc.img.Config)
+		}
+		if slices.Equal(m.Contracts, sdk.Contracts()) {
+			t.Fatalf("%s contracts are the SDK list", tc.kind)
+		}
+		zr, err := gzip.NewReader(bytes.NewReader(tc.img.Layer))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tr := tar.NewReader(zr)
+		hdr, err := tr.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if hdr.Name != workerEntrypoint || hdr.Mode != strategyMode || hdr.Uid != 0 || hdr.Gid != 0 || hdr.ModTime.Unix() != 0 {
+			t.Fatalf("tar header name %q mode %#o uid %d gid %d mtime %d", hdr.Name, hdr.Mode, hdr.Uid, hdr.Gid, hdr.ModTime.Unix())
+		}
+		got, err := io.ReadAll(tr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, bin) {
+			t.Fatal("layer payload is not the binary")
+		}
+		if _, err := tr.Next(); !errors.Is(err, io.EOF) {
+			t.Fatalf("extra tar member: %v", err)
+		}
+	}
+}
+
 // marker is the same text the SDK embeds. A second copy is one list, not a conflict.
 const marker = "mftiko.contracts=worker.v1,stsctl.v1,md.v1,td.v1\n"
 
@@ -248,6 +363,29 @@ func TestPushPull(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, ref := range []string{img.Digest, "v1"} {
+		manifest, config, layer := fetch(t, reg.repo(), ref)
+		if !bytes.Equal(manifest, img.Manifest) || !bytes.Equal(config, img.Config) || !bytes.Equal(layer, img.Layer) {
+			t.Fatalf("pull %s did not return the pushed bytes", ref)
+		}
+	}
+}
+
+func TestPackWorkerPush(t *testing.T) {
+	t.Setenv("DOCKER_CONFIG", t.TempDir())
+	bin := hostBinary(t)
+	img, err := PackWorker(bin, KindMDConn, "mftiko-md-conn", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := newMemRegistry()
+	defer reg.Close()
+	ctx := context.Background()
+	for _, tag := range []string{"ci", "latest"} {
+		if err := Push(ctx, img, Destination{Repository: reg.repo(), PlainHTTP: true, Tag: tag}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, ref := range []string{img.Digest, "ci", "latest"} {
 		manifest, config, layer := fetch(t, reg.repo(), ref)
 		if !bytes.Equal(manifest, img.Manifest) || !bytes.Equal(config, img.Config) || !bytes.Equal(layer, img.Layer) {
 			t.Fatalf("pull %s did not return the pushed bytes", ref)

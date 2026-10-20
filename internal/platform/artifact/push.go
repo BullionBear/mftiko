@@ -14,7 +14,7 @@ import (
 	"oras.land/oras-go/v2/registry/remote/credentials"
 )
 
-// Destination is where a strategy image is pushed (D936, D940).
+// Destination is where a worker artifact is pushed (D936, D940, D988).
 type Destination struct {
 	// Repository is registry/repository, for example 127.0.0.1:5000/hello.
 	Repository string
