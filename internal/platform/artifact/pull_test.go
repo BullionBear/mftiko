@@ -652,6 +652,31 @@ func TestPullChecksConfigAndManifest(t *testing.T) {
 			t.Fatal("layer was fetched")
 		}
 	})
+	// A field added within the same schema is ignored by a reader that does not know it (D993).
+	t.Run("unknown field", func(t *testing.T) {
+		s := newFake(t)
+		var fields map[string]any
+		if err := json.Unmarshal(workerConfig(t, good), &fields); err != nil {
+			t.Fatal(err)
+		}
+		fields["added_later"] = map[string]any{"x": 1}
+		raw, err := json.Marshal(fields)
+		if err != nil {
+			t.Fatal(err)
+		}
+		config := s.put(MediaTypeConfig, raw)
+		layer := s.put("application/vnd.mftiko.layer.v1.tar", layerBody)
+		id := s.publish(ocispec.Manifest{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ocispec.MediaTypeImageManifest,
+			Config:    config,
+			Layers:    []ocispec.Descriptor{layer},
+		})
+		c, _ := s.open(t, "")
+		if _, err := c.Pull(context.Background(), baseReq(id)); err != nil {
+			t.Fatal(err)
+		}
+	})
 	t.Run("config is not json", func(t *testing.T) {
 		s := newFake(t)
 		config := s.put(MediaTypeConfig, []byte("not-json"))
