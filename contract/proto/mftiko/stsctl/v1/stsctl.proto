@@ -6,6 +6,8 @@ package mftiko.stsctl.v1;
 import "mftiko/common/v1/common.proto";
 import "mftiko/session/v1/session.proto";
 
+import "mftiko/stsctl/v1/selector.proto";
+
 option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/stsctl/v1;stsctlv1";
 
 message InitPayload {
@@ -61,13 +63,6 @@ message FeedBinding {
   BindingState state = 4;
 }
 
-message SelectorBinding {
-  string name = 1;
-  string md_instance = 2;
-  Universe universe = 3;
-  string subject_prefix = 4; // 成員的 subject 是 {subject_prefix}.{topic}.{ticker}。前綴是 md.v1.f.{inst}（D455）。NATS topic 用人讀的名字，不用 UID
-}
-
 message AccountBinding {
   string name = 1;
   int64 api_id = 2;
@@ -99,12 +94,4 @@ enum BindingState {
   BINDING_STATE_READY = 2;
   BINDING_STATE_REJECTED = 3;
   BINDING_STATE_DEAD = 4;
-}
-
-// selector 目前的成員。欄位與 state.v1.Universe 相同。
-message Universe {
-  uint64 epoch = 1;
-  repeated string members = 2; // 成員是商品。今天是 UniversalTicker；改成商品 UID 是後續（D203）。selector 本身沒有 UID
-  string current = 3;          // 只有 rolling_future。這是 selector，尚未定，不在 D203 的範圍；selector 沒有 UID
-  repeated string topics = 4;
 }

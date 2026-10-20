@@ -10,13 +10,15 @@ import type { Version, WorkerRef } from "../../common/v1/common_pb";
 import { file_mftiko_common_v1_common } from "../../common/v1/common_pb";
 import type { AccountDecl, FeedDecl, StrategyRef } from "../../session/v1/session_pb";
 import { file_mftiko_session_v1_session } from "../../session/v1/session_pb";
+import type { SelectorBinding } from "./selector_pb";
+import { file_mftiko_stsctl_v1_selector } from "./selector_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file mftiko/stsctl/v1/stsctl.proto.
  */
 export const file_mftiko_stsctl_v1_stsctl: GenFile = /*@__PURE__*/
-  fileDesc("Ch1tZnRpa28vc3RzY3RsL3YxL3N0c2N0bC5wcm90bxIQbWZ0aWtvLnN0c2N0bC52MSLbAgoLSW5pdFBheWxvYWQSEgoKc2Vzc2lvbl9pZBgBIAEoCRITCgtpbmNhcm5hdGlvbhgCIAEoDRIUCgxzdHNfaW5zdGFuY2UYAyABKAkSDAoEbmFtZRgEIAEoCRIwCghzdHJhdGVneRgFIAEoCzIeLm1mdGlrby5zZXNzaW9uLnYxLlN0cmF0ZWd5UmVmEg4KBnBhcmFtcxgGIAEoDBIqCgVmZWVkcxgHIAMoCzIbLm1mdGlrby5zZXNzaW9uLnYxLkZlZWREZWNsEjAKCGFjY291bnRzGAggAygLMh4ubWZ0aWtvLnNlc3Npb24udjEuQWNjb3VudERlY2wSLwoEbmF0cxgJIAEoCzIhLm1mdGlrby5zdHNjdGwudjEuTmF0c0NyZWRlbnRpYWxzEhYKDnJlY3Zfd2luZG93X21zGAogASgNEhYKDmhvb2tfdGltZW91dF9zGAsgASgNIkcKD05hdHNDcmVkZW50aWFscxIQCgh1c2VyX2p3dBgBIAEoCRIMCgRzZWVkGAIgASgJEhQKDGluYm94X3ByZWZpeBgDIAEoCSI8CgxTdGFydFBheWxvYWQSLAoIYmluZGluZ3MYASABKAsyGi5tZnRpa28uc3RzY3RsLnYxLkJpbmRpbmdzImgKB0NvbW1hbmQSLgoIYmluZGluZ3MYASABKAsyGi5tZnRpa28uc3RzY3RsLnYxLkJpbmRpbmdzSAASJgoEZmFpbBgCIAEoCzIWLm1mdGlrby5zdHNjdGwudjEuRmFpbEgAQgUKA2NtZCIWCgRGYWlsEg4KBnJlYXNvbhgBIAEoCSLOAQoIQmluZGluZ3MSKgoHdmVyc2lvbhgBIAEoCzIZLm1mdGlrby5jb21tb24udjEuVmVyc2lvbhIsCgVmZWVkcxgCIAMoCzIdLm1mdGlrby5zdHNjdGwudjEuRmVlZEJpbmRpbmcSNAoJc2VsZWN0b3JzGAMgAygLMiEubWZ0aWtvLnN0c2N0bC52MS5TZWxlY3RvckJpbmRpbmcSMgoIYWNjb3VudHMYBCADKAsyIC5tZnRpa28uc3RzY3RsLnYxLkFjY291bnRCaW5kaW5nInAKC0ZlZWRCaW5kaW5nEgwKBGZlZWQYASABKAkSEwoLbWRfaW5zdGFuY2UYAiABKAkSDwoHc3ViamVjdBgDIAEoCRItCgVzdGF0ZRgEIAEoDjIeLm1mdGlrby5zdHNjdGwudjEuQmluZGluZ1N0YXRlInoKD1NlbGVjdG9yQmluZGluZxIMCgRuYW1lGAEgASgJEhMKC21kX2luc3RhbmNlGAIgASgJEiwKCHVuaXZlcnNlGAMgASgLMhoubWZ0aWtvLnN0c2N0bC52MS5Vbml2ZXJzZRIWCg5zdWJqZWN0X3ByZWZpeBgEIAEoCSKKAQoOQWNjb3VudEJpbmRpbmcSDAoEbmFtZRgBIAEoCRIOCgZhcGlfaWQYAiABKAMSLQoFc3RhdGUYAyABKA4yHi5tZnRpa28uc3RzY3RsLnYxLkJpbmRpbmdTdGF0ZRIrCgZ3b3JrZXIYBCABKAsyGy5tZnRpa28uY29tbW9uLnYxLldvcmtlclJlZiKkAQoGUmVwb3J0EjMKEGJpbmRpbmdzX2FwcGxpZWQYASABKAsyGS5tZnRpa28uY29tbW9uLnYxLlZlcnNpb24SDAoEaG9vaxgCIAEoCRIXCg9ob29rX2Jsb2NrZWRfbXMYAyABKAQSEQoJaG9va19zbG93GAQgASgEEisKBnF1ZXVlcxgFIAMoCzIbLm1mdGlrby5zdHNjdGwudjEuUXVldWVTdGF0Ik0KCVF1ZXVlU3RhdBIMCgRuYW1lGAEgASgJEg0KBWRlcHRoGAIgASgNEg8KB2Ryb3BwZWQYAyABKAQSEgoKbWF4X2FnZV9tcxgEIAEoDSJLCghVbml2ZXJzZRINCgVlcG9jaBgBIAEoBBIPCgdtZW1iZXJzGAIgAygJEg8KB2N1cnJlbnQYAyABKAkSDgoGdG9waWNzGAQgAygJKpUBCgxCaW5kaW5nU3RhdGUSHQoZQklORElOR19TVEFURV9VTlNQRUNJRklFRBAAEhkKFUJJTkRJTkdfU1RBVEVfUEVORElORxABEhcKE0JJTkRJTkdfU1RBVEVfUkVBRFkQAhIaChZCSU5ESU5HX1NUQVRFX1JFSkVDVEVEEAMSFgoSQklORElOR19TVEFURV9ERUFEEARCRlpEZ2l0aHViLmNvbS9CdWxsaW9uQmVhci9tZnRpa28vY29udHJhY3QvZ2VuL21mdGlrby9zdHNjdGwvdjE7c3RzY3RsdjFiBnByb3RvMw", [file_mftiko_common_v1_common, file_mftiko_session_v1_session]);
+  fileDesc("Ch1tZnRpa28vc3RzY3RsL3YxL3N0c2N0bC5wcm90bxIQbWZ0aWtvLnN0c2N0bC52MSLbAgoLSW5pdFBheWxvYWQSEgoKc2Vzc2lvbl9pZBgBIAEoCRITCgtpbmNhcm5hdGlvbhgCIAEoDRIUCgxzdHNfaW5zdGFuY2UYAyABKAkSDAoEbmFtZRgEIAEoCRIwCghzdHJhdGVneRgFIAEoCzIeLm1mdGlrby5zZXNzaW9uLnYxLlN0cmF0ZWd5UmVmEg4KBnBhcmFtcxgGIAEoDBIqCgVmZWVkcxgHIAMoCzIbLm1mdGlrby5zZXNzaW9uLnYxLkZlZWREZWNsEjAKCGFjY291bnRzGAggAygLMh4ubWZ0aWtvLnNlc3Npb24udjEuQWNjb3VudERlY2wSLwoEbmF0cxgJIAEoCzIhLm1mdGlrby5zdHNjdGwudjEuTmF0c0NyZWRlbnRpYWxzEhYKDnJlY3Zfd2luZG93X21zGAogASgNEhYKDmhvb2tfdGltZW91dF9zGAsgASgNIkcKD05hdHNDcmVkZW50aWFscxIQCgh1c2VyX2p3dBgBIAEoCRIMCgRzZWVkGAIgASgJEhQKDGluYm94X3ByZWZpeBgDIAEoCSI8CgxTdGFydFBheWxvYWQSLAoIYmluZGluZ3MYASABKAsyGi5tZnRpa28uc3RzY3RsLnYxLkJpbmRpbmdzImgKB0NvbW1hbmQSLgoIYmluZGluZ3MYASABKAsyGi5tZnRpa28uc3RzY3RsLnYxLkJpbmRpbmdzSAASJgoEZmFpbBgCIAEoCzIWLm1mdGlrby5zdHNjdGwudjEuRmFpbEgAQgUKA2NtZCIWCgRGYWlsEg4KBnJlYXNvbhgBIAEoCSLOAQoIQmluZGluZ3MSKgoHdmVyc2lvbhgBIAEoCzIZLm1mdGlrby5jb21tb24udjEuVmVyc2lvbhIsCgVmZWVkcxgCIAMoCzIdLm1mdGlrby5zdHNjdGwudjEuRmVlZEJpbmRpbmcSNAoJc2VsZWN0b3JzGAMgAygLMiEubWZ0aWtvLnN0c2N0bC52MS5TZWxlY3RvckJpbmRpbmcSMgoIYWNjb3VudHMYBCADKAsyIC5tZnRpa28uc3RzY3RsLnYxLkFjY291bnRCaW5kaW5nInAKC0ZlZWRCaW5kaW5nEgwKBGZlZWQYASABKAkSEwoLbWRfaW5zdGFuY2UYAiABKAkSDwoHc3ViamVjdBgDIAEoCRItCgVzdGF0ZRgEIAEoDjIeLm1mdGlrby5zdHNjdGwudjEuQmluZGluZ1N0YXRlIooBCg5BY2NvdW50QmluZGluZxIMCgRuYW1lGAEgASgJEg4KBmFwaV9pZBgCIAEoAxItCgVzdGF0ZRgDIAEoDjIeLm1mdGlrby5zdHNjdGwudjEuQmluZGluZ1N0YXRlEisKBndvcmtlchgEIAEoCzIbLm1mdGlrby5jb21tb24udjEuV29ya2VyUmVmIqQBCgZSZXBvcnQSMwoQYmluZGluZ3NfYXBwbGllZBgBIAEoCzIZLm1mdGlrby5jb21tb24udjEuVmVyc2lvbhIMCgRob29rGAIgASgJEhcKD2hvb2tfYmxvY2tlZF9tcxgDIAEoBBIRCglob29rX3Nsb3cYBCABKAQSKwoGcXVldWVzGAUgAygLMhsubWZ0aWtvLnN0c2N0bC52MS5RdWV1ZVN0YXQiTQoJUXVldWVTdGF0EgwKBG5hbWUYASABKAkSDQoFZGVwdGgYAiABKA0SDwoHZHJvcHBlZBgDIAEoBBISCgptYXhfYWdlX21zGAQgASgNKpUBCgxCaW5kaW5nU3RhdGUSHQoZQklORElOR19TVEFURV9VTlNQRUNJRklFRBAAEhkKFUJJTkRJTkdfU1RBVEVfUEVORElORxABEhcKE0JJTkRJTkdfU1RBVEVfUkVBRFkQAhIaChZCSU5ESU5HX1NUQVRFX1JFSkVDVEVEEAMSFgoSQklORElOR19TVEFURV9ERUFEEARCRlpEZ2l0aHViLmNvbS9CdWxsaW9uQmVhci9tZnRpa28vY29udHJhY3QvZ2VuL21mdGlrby9zdHNjdGwvdjE7c3RzY3RsdjFiBnByb3RvMw", [file_mftiko_common_v1_common, file_mftiko_session_v1_session, file_mftiko_stsctl_v1_selector]);
 
 /**
  * @generated from message mftiko.stsctl.v1.InitPayload
@@ -261,40 +263,6 @@ export const FeedBindingSchema: GenMessage<FeedBinding> = /*@__PURE__*/
   messageDesc(file_mftiko_stsctl_v1_stsctl, 6);
 
 /**
- * @generated from message mftiko.stsctl.v1.SelectorBinding
- */
-export type SelectorBinding = Message<"mftiko.stsctl.v1.SelectorBinding"> & {
-  /**
-   * @generated from field: string name = 1;
-   */
-  name: string;
-
-  /**
-   * @generated from field: string md_instance = 2;
-   */
-  mdInstance: string;
-
-  /**
-   * @generated from field: mftiko.stsctl.v1.Universe universe = 3;
-   */
-  universe?: Universe | undefined;
-
-  /**
-   * 成員的 subject 是 {subject_prefix}.{topic}.{ticker}。前綴是 md.v1.f.{inst}（D455）。NATS topic 用人讀的名字，不用 UID
-   *
-   * @generated from field: string subject_prefix = 4;
-   */
-  subjectPrefix: string;
-};
-
-/**
- * Describes the message mftiko.stsctl.v1.SelectorBinding.
- * Use `create(SelectorBindingSchema)` to create a new message.
- */
-export const SelectorBindingSchema: GenMessage<SelectorBinding> = /*@__PURE__*/
-  messageDesc(file_mftiko_stsctl_v1_stsctl, 7);
-
-/**
  * @generated from message mftiko.stsctl.v1.AccountBinding
  */
 export type AccountBinding = Message<"mftiko.stsctl.v1.AccountBinding"> & {
@@ -324,7 +292,7 @@ export type AccountBinding = Message<"mftiko.stsctl.v1.AccountBinding"> & {
  * Use `create(AccountBindingSchema)` to create a new message.
  */
 export const AccountBindingSchema: GenMessage<AccountBinding> = /*@__PURE__*/
-  messageDesc(file_mftiko_stsctl_v1_stsctl, 8);
+  messageDesc(file_mftiko_stsctl_v1_stsctl, 7);
 
 /**
  * @generated from message mftiko.stsctl.v1.Report
@@ -361,7 +329,7 @@ export type Report = Message<"mftiko.stsctl.v1.Report"> & {
  * Use `create(ReportSchema)` to create a new message.
  */
 export const ReportSchema: GenMessage<Report> = /*@__PURE__*/
-  messageDesc(file_mftiko_stsctl_v1_stsctl, 9);
+  messageDesc(file_mftiko_stsctl_v1_stsctl, 8);
 
 /**
  * name 是 td 或 md（D803）。
@@ -399,45 +367,7 @@ export type QueueStat = Message<"mftiko.stsctl.v1.QueueStat"> & {
  * Use `create(QueueStatSchema)` to create a new message.
  */
 export const QueueStatSchema: GenMessage<QueueStat> = /*@__PURE__*/
-  messageDesc(file_mftiko_stsctl_v1_stsctl, 10);
-
-/**
- * selector 目前的成員。欄位與 state.v1.Universe 相同。
- *
- * @generated from message mftiko.stsctl.v1.Universe
- */
-export type Universe = Message<"mftiko.stsctl.v1.Universe"> & {
-  /**
-   * @generated from field: uint64 epoch = 1;
-   */
-  epoch: bigint;
-
-  /**
-   * 成員是商品。今天是 UniversalTicker；改成商品 UID 是後續（D203）。selector 本身沒有 UID
-   *
-   * @generated from field: repeated string members = 2;
-   */
-  members: string[];
-
-  /**
-   * 只有 rolling_future。這是 selector，尚未定，不在 D203 的範圍；selector 沒有 UID
-   *
-   * @generated from field: string current = 3;
-   */
-  current: string;
-
-  /**
-   * @generated from field: repeated string topics = 4;
-   */
-  topics: string[];
-};
-
-/**
- * Describes the message mftiko.stsctl.v1.Universe.
- * Use `create(UniverseSchema)` to create a new message.
- */
-export const UniverseSchema: GenMessage<Universe> = /*@__PURE__*/
-  messageDesc(file_mftiko_stsctl_v1_stsctl, 11);
+  messageDesc(file_mftiko_stsctl_v1_stsctl, 9);
 
 /**
  * 綁定的狀態，對應 provider 的 ack（§3.5）。值與 state.v1.EntryState 相同；stsctl 自己定義，策略的契約才不綁在 etcd 的

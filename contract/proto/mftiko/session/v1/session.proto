@@ -3,6 +3,8 @@ syntax = "proto3";
 
 package mftiko.session.v1;
 
+import "mftiko/session/v1/selector.proto";
+
 option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1;sessionv1";
 
 // session 的宣告：使用者經 API server 寫進 etcd（§3.1）；controller 依它推導需求，STS agent 依它起 worker，策略在
@@ -26,8 +28,6 @@ message SessionSpec {
   // MD 事件在 buffer 裡的最長壽命，以 envelope 的 md_ts_ns 計（D803）。0 = STS 的預設值。
   // 跨 region 的 session 要比 WAN 延遲大。
   uint32 recv_window_ms = 14;
-  reserved 15; // 草案 v0.11 的 algo_id：改到 AccountDecl.algo_ids（D602）
-  reserved "algo_id";
   // Stop 的 grace（D918、D962）。0 = STS 部署設定的預設，10 秒。
   uint32 grace_ms = 16;
 }
@@ -56,35 +56,6 @@ message StrategyRef {
 message FeedDecl {
   string feed = 1;        // 正規 feed key（<topic>.<UniversalTicker>）。載入邊界才解成 UID
   string md_instance = 2; // API 解析後一律填
-  reserved 3;             // 原本的 delivery：背壓改由 recv_window_ms 處理（D803）
-  reserved "delivery";
-}
-
-message SelectorDecl {
-  string name = 1;
-  string md_instance = 2;
-  string venue = 3;
-  string underlying = 4;
-  repeated string topics = 5;
-  oneof kind {
-    OptionChain option_chain = 10;
-    RollingFuture rolling_future = 11;
-  }
-}
-
-message OptionChain {
-  string ref_feed = 1;
-  uint32 nearest_expiries = 2;
-  uint32 min_tte_s = 3;
-  uint32 atm_strikes = 4;
-  repeated string sides = 5; // "C"、"P"
-  uint32 recenter_strikes = 6;
-  uint32 recenter_min_dwell_s = 7;
-}
-
-message RollingFuture {
-  string tenor = 1; // weekly | monthly | quarterly
-  uint32 roll_before_s = 2;
 }
 
 message AccountDecl {

@@ -6,13 +6,15 @@
 
 import type { GenEnum, GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2";
 import { enumDesc, fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv2";
+import type { SelectorDecl } from "./selector_pb";
+import { file_mftiko_session_v1_selector } from "./selector_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file mftiko/session/v1/session.proto.
  */
 export const file_mftiko_session_v1_session: GenFile = /*@__PURE__*/
-  fileDesc("Ch9tZnRpa28vc2Vzc2lvbi92MS9zZXNzaW9uLnByb3RvEhFtZnRpa28uc2Vzc2lvbi52MSKIBQoLU2Vzc2lvblNwZWMSDAoEbmFtZRgBIAEoCRI6CgZsYWJlbHMYAiADKAsyKi5tZnRpa28uc2Vzc2lvbi52MS5TZXNzaW9uU3BlYy5MYWJlbHNFbnRyeRI2Cg1kZXNpcmVkX3N0YXRlGAMgASgOMh8ubWZ0aWtvLnNlc3Npb24udjEuRGVzaXJlZFN0YXRlEjAKCHN0cmF0ZWd5GAQgASgLMh4ubWZ0aWtvLnNlc3Npb24udjEuU3RyYXRlZ3lSZWYSDgoGcGFyYW1zGAUgASgMEioKBWZlZWRzGAYgAygLMhsubWZ0aWtvLnNlc3Npb24udjEuRmVlZERlY2wSMgoJc2VsZWN0b3JzGAcgAygLMh8ubWZ0aWtvLnNlc3Npb24udjEuU2VsZWN0b3JEZWNsEjAKCGFjY291bnRzGAggAygLMh4ubWZ0aWtvLnNlc3Npb24udjEuQWNjb3VudERlY2wSMQoHcmVzdGFydBgJIAEoCzIgLm1mdGlrby5zZXNzaW9uLnYxLlJlc3RhcnRQb2xpY3kSFgoOZGVwc190aW1lb3V0X3MYCiABKA0SFwoPc3RhcnRfdGltZW91dF9zGAsgASgNEikKBmxpbWl0cxgMIAEoCzIZLm1mdGlrby5zZXNzaW9uLnYxLkxpbWl0cxIsCgZpbnB1dHMYDSADKAsyHC5tZnRpa28uc2Vzc2lvbi52MS5JbnB1dERlY2wSFgoOcmVjdl93aW5kb3dfbXMYDiABKA0SEAoIZ3JhY2VfbXMYECABKA0aLQoLTGFiZWxzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4AUoECA8QEFIHYWxnb19pZCI9CglJbnB1dERlY2wSDAoEbmFtZRgBIAEoCRIOCgZkaWdlc3QYAiABKAkSEgoKcmVwb3NpdG9yeRgDIAEoCSI9CgtTdHJhdGVneVJlZhIMCgRuYW1lGAEgASgJEgwKBGNvZGUYAiABKAkSEgoKcmVwb3NpdG9yeRgDIAEoCSI9CghGZWVkRGVjbBIMCgRmZWVkGAEgASgJEhMKC21kX2luc3RhbmNlGAIgASgJSgQIAxAEUghkZWxpdmVyeSLgAQoMU2VsZWN0b3JEZWNsEgwKBG5hbWUYASABKAkSEwoLbWRfaW5zdGFuY2UYAiABKAkSDQoFdmVudWUYAyABKAkSEgoKdW5kZXJseWluZxgEIAEoCRIOCgZ0b3BpY3MYBSADKAkSNgoMb3B0aW9uX2NoYWluGAogASgLMh4ubWZ0aWtvLnNlc3Npb24udjEuT3B0aW9uQ2hhaW5IABI6Cg5yb2xsaW5nX2Z1dHVyZRgLIAEoCzIgLm1mdGlrby5zZXNzaW9uLnYxLlJvbGxpbmdGdXR1cmVIAEIGCgRraW5kIqgBCgtPcHRpb25DaGFpbhIQCghyZWZfZmVlZBgBIAEoCRIYChBuZWFyZXN0X2V4cGlyaWVzGAIgASgNEhEKCW1pbl90dGVfcxgDIAEoDRITCgthdG1fc3RyaWtlcxgEIAEoDRINCgVzaWRlcxgFIAMoCRIYChByZWNlbnRlcl9zdHJpa2VzGAYgASgNEhwKFHJlY2VudGVyX21pbl9kd2VsbF9zGAcgASgNIjUKDVJvbGxpbmdGdXR1cmUSDQoFdGVub3IYASABKAkSFQoNcm9sbF9iZWZvcmVfcxgCIAEoDSJSCgtBY2NvdW50RGVjbBIMCgRuYW1lGAEgASgJEg4KBmFwaV9pZBgCIAEoAxITCgt0ZF9pbnN0YW5jZRgDIAEoCRIQCghhbGdvX2lkcxgEIAMoDSJlCg1SZXN0YXJ0UG9saWN5EiwKBG1vZGUYASABKA4yHi5tZnRpa28uc2Vzc2lvbi52MS5SZXN0YXJ0TW9kZRIUCgxtYXhfcmVzdGFydHMYAiABKA0SEAoId2luZG93X3MYAyABKA0iWgoGTGltaXRzEhEKCW1lbW9yeV9tYhgBIAEoDRISCgpnb21heHByb2NzGAIgASgNEhEKCXZvbHVtZV9tYhgDIAEoDRIWCg5ob29rX3RpbWVvdXRfcxgEIAEoDSphCgxEZXNpcmVkU3RhdGUSHQoZREVTSVJFRF9TVEFURV9VTlNQRUNJRklFRBAAEhkKFURFU0lSRURfU1RBVEVfUlVOTklORxABEhcKE0RFU0lSRURfU1RBVEVfRU5ERUQQAipgCgtSZXN0YXJ0TW9kZRIcChhSRVNUQVJUX01PREVfVU5TUEVDSUZJRUQQABIWChJSRVNUQVJUX01PREVfTkVWRVIQARIbChdSRVNUQVJUX01PREVfT05fRkFJTFVSRRACQkhaRmdpdGh1Yi5jb20vQnVsbGlvbkJlYXIvbWZ0aWtvL2NvbnRyYWN0L2dlbi9tZnRpa28vc2Vzc2lvbi92MTtzZXNzaW9udjFiBnByb3RvMw");
+  fileDesc("Ch9tZnRpa28vc2Vzc2lvbi92MS9zZXNzaW9uLnByb3RvEhFtZnRpa28uc2Vzc2lvbi52MSL5BAoLU2Vzc2lvblNwZWMSDAoEbmFtZRgBIAEoCRI6CgZsYWJlbHMYAiADKAsyKi5tZnRpa28uc2Vzc2lvbi52MS5TZXNzaW9uU3BlYy5MYWJlbHNFbnRyeRI2Cg1kZXNpcmVkX3N0YXRlGAMgASgOMh8ubWZ0aWtvLnNlc3Npb24udjEuRGVzaXJlZFN0YXRlEjAKCHN0cmF0ZWd5GAQgASgLMh4ubWZ0aWtvLnNlc3Npb24udjEuU3RyYXRlZ3lSZWYSDgoGcGFyYW1zGAUgASgMEioKBWZlZWRzGAYgAygLMhsubWZ0aWtvLnNlc3Npb24udjEuRmVlZERlY2wSMgoJc2VsZWN0b3JzGAcgAygLMh8ubWZ0aWtvLnNlc3Npb24udjEuU2VsZWN0b3JEZWNsEjAKCGFjY291bnRzGAggAygLMh4ubWZ0aWtvLnNlc3Npb24udjEuQWNjb3VudERlY2wSMQoHcmVzdGFydBgJIAEoCzIgLm1mdGlrby5zZXNzaW9uLnYxLlJlc3RhcnRQb2xpY3kSFgoOZGVwc190aW1lb3V0X3MYCiABKA0SFwoPc3RhcnRfdGltZW91dF9zGAsgASgNEikKBmxpbWl0cxgMIAEoCzIZLm1mdGlrby5zZXNzaW9uLnYxLkxpbWl0cxIsCgZpbnB1dHMYDSADKAsyHC5tZnRpa28uc2Vzc2lvbi52MS5JbnB1dERlY2wSFgoOcmVjdl93aW5kb3dfbXMYDiABKA0SEAoIZ3JhY2VfbXMYECABKA0aLQoLTGFiZWxzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASI9CglJbnB1dERlY2wSDAoEbmFtZRgBIAEoCRIOCgZkaWdlc3QYAiABKAkSEgoKcmVwb3NpdG9yeRgDIAEoCSI9CgtTdHJhdGVneVJlZhIMCgRuYW1lGAEgASgJEgwKBGNvZGUYAiABKAkSEgoKcmVwb3NpdG9yeRgDIAEoCSItCghGZWVkRGVjbBIMCgRmZWVkGAEgASgJEhMKC21kX2luc3RhbmNlGAIgASgJIlIKC0FjY291bnREZWNsEgwKBG5hbWUYASABKAkSDgoGYXBpX2lkGAIgASgDEhMKC3RkX2luc3RhbmNlGAMgASgJEhAKCGFsZ29faWRzGAQgAygNImUKDVJlc3RhcnRQb2xpY3kSLAoEbW9kZRgBIAEoDjIeLm1mdGlrby5zZXNzaW9uLnYxLlJlc3RhcnRNb2RlEhQKDG1heF9yZXN0YXJ0cxgCIAEoDRIQCgh3aW5kb3dfcxgDIAEoDSJaCgZMaW1pdHMSEQoJbWVtb3J5X21iGAEgASgNEhIKCmdvbWF4cHJvY3MYAiABKA0SEQoJdm9sdW1lX21iGAMgASgNEhYKDmhvb2tfdGltZW91dF9zGAQgASgNKmEKDERlc2lyZWRTdGF0ZRIdChlERVNJUkVEX1NUQVRFX1VOU1BFQ0lGSUVEEAASGQoVREVTSVJFRF9TVEFURV9SVU5OSU5HEAESFwoTREVTSVJFRF9TVEFURV9FTkRFRBACKmAKC1Jlc3RhcnRNb2RlEhwKGFJFU1RBUlRfTU9ERV9VTlNQRUNJRklFRBAAEhYKElJFU1RBUlRfTU9ERV9ORVZFUhABEhsKF1JFU1RBUlRfTU9ERV9PTl9GQUlMVVJFEAJCSFpGZ2l0aHViLmNvbS9CdWxsaW9uQmVhci9tZnRpa28vY29udHJhY3QvZ2VuL21mdGlrby9zZXNzaW9uL3YxO3Nlc3Npb252MWIGcHJvdG8z", [file_mftiko_session_v1_selector]);
 
 /**
  * @generated from message mftiko.session.v1.SessionSpec
@@ -210,133 +212,6 @@ export const FeedDeclSchema: GenMessage<FeedDecl> = /*@__PURE__*/
   messageDesc(file_mftiko_session_v1_session, 3);
 
 /**
- * @generated from message mftiko.session.v1.SelectorDecl
- */
-export type SelectorDecl = Message<"mftiko.session.v1.SelectorDecl"> & {
-  /**
-   * @generated from field: string name = 1;
-   */
-  name: string;
-
-  /**
-   * @generated from field: string md_instance = 2;
-   */
-  mdInstance: string;
-
-  /**
-   * @generated from field: string venue = 3;
-   */
-  venue: string;
-
-  /**
-   * @generated from field: string underlying = 4;
-   */
-  underlying: string;
-
-  /**
-   * @generated from field: repeated string topics = 5;
-   */
-  topics: string[];
-
-  /**
-   * @generated from oneof mftiko.session.v1.SelectorDecl.kind
-   */
-  kind: {
-    /**
-     * @generated from field: mftiko.session.v1.OptionChain option_chain = 10;
-     */
-    value: OptionChain;
-    case: "optionChain";
-  } | {
-    /**
-     * @generated from field: mftiko.session.v1.RollingFuture rolling_future = 11;
-     */
-    value: RollingFuture;
-    case: "rollingFuture";
-  } | { case: undefined; value?: undefined };
-};
-
-/**
- * Describes the message mftiko.session.v1.SelectorDecl.
- * Use `create(SelectorDeclSchema)` to create a new message.
- */
-export const SelectorDeclSchema: GenMessage<SelectorDecl> = /*@__PURE__*/
-  messageDesc(file_mftiko_session_v1_session, 4);
-
-/**
- * @generated from message mftiko.session.v1.OptionChain
- */
-export type OptionChain = Message<"mftiko.session.v1.OptionChain"> & {
-  /**
-   * @generated from field: string ref_feed = 1;
-   */
-  refFeed: string;
-
-  /**
-   * @generated from field: uint32 nearest_expiries = 2;
-   */
-  nearestExpiries: number;
-
-  /**
-   * @generated from field: uint32 min_tte_s = 3;
-   */
-  minTteS: number;
-
-  /**
-   * @generated from field: uint32 atm_strikes = 4;
-   */
-  atmStrikes: number;
-
-  /**
-   * "C"、"P"
-   *
-   * @generated from field: repeated string sides = 5;
-   */
-  sides: string[];
-
-  /**
-   * @generated from field: uint32 recenter_strikes = 6;
-   */
-  recenterStrikes: number;
-
-  /**
-   * @generated from field: uint32 recenter_min_dwell_s = 7;
-   */
-  recenterMinDwellS: number;
-};
-
-/**
- * Describes the message mftiko.session.v1.OptionChain.
- * Use `create(OptionChainSchema)` to create a new message.
- */
-export const OptionChainSchema: GenMessage<OptionChain> = /*@__PURE__*/
-  messageDesc(file_mftiko_session_v1_session, 5);
-
-/**
- * @generated from message mftiko.session.v1.RollingFuture
- */
-export type RollingFuture = Message<"mftiko.session.v1.RollingFuture"> & {
-  /**
-   * weekly | monthly | quarterly
-   *
-   * @generated from field: string tenor = 1;
-   */
-  tenor: string;
-
-  /**
-   * @generated from field: uint32 roll_before_s = 2;
-   */
-  rollBeforeS: number;
-};
-
-/**
- * Describes the message mftiko.session.v1.RollingFuture.
- * Use `create(RollingFutureSchema)` to create a new message.
- */
-export const RollingFutureSchema: GenMessage<RollingFuture> = /*@__PURE__*/
-  messageDesc(file_mftiko_session_v1_session, 6);
-
-/**
  * @generated from message mftiko.session.v1.AccountDecl
  */
 export type AccountDecl = Message<"mftiko.session.v1.AccountDecl"> & {
@@ -369,7 +244,7 @@ export type AccountDecl = Message<"mftiko.session.v1.AccountDecl"> & {
  * Use `create(AccountDeclSchema)` to create a new message.
  */
 export const AccountDeclSchema: GenMessage<AccountDecl> = /*@__PURE__*/
-  messageDesc(file_mftiko_session_v1_session, 7);
+  messageDesc(file_mftiko_session_v1_session, 4);
 
 /**
  * @generated from message mftiko.session.v1.RestartPolicy
@@ -396,7 +271,7 @@ export type RestartPolicy = Message<"mftiko.session.v1.RestartPolicy"> & {
  * Use `create(RestartPolicySchema)` to create a new message.
  */
 export const RestartPolicySchema: GenMessage<RestartPolicy> = /*@__PURE__*/
-  messageDesc(file_mftiko_session_v1_session, 8);
+  messageDesc(file_mftiko_session_v1_session, 5);
 
 /**
  * @generated from message mftiko.session.v1.Limits
@@ -432,7 +307,7 @@ export type Limits = Message<"mftiko.session.v1.Limits"> & {
  * Use `create(LimitsSchema)` to create a new message.
  */
 export const LimitsSchema: GenMessage<Limits> = /*@__PURE__*/
-  messageDesc(file_mftiko_session_v1_session, 9);
+  messageDesc(file_mftiko_session_v1_session, 6);
 
 /**
  * @generated from enum mftiko.session.v1.DesiredState

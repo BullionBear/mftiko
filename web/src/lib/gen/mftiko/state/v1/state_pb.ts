@@ -8,15 +8,19 @@ import type { GenEnum, GenFile, GenMessage } from "@bufbuild/protobuf/codegenv2"
 import { enumDesc, fileDesc, messageDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Condition, ExitInfo, WorkerRef } from "../../common/v1/common_pb";
 import { file_mftiko_common_v1_common } from "../../common/v1/common_pb";
-import type { DesiredState, SelectorDecl } from "../../session/v1/session_pb";
+import type { SelectorDecl } from "../../session/v1/selector_pb";
+import { file_mftiko_session_v1_selector } from "../../session/v1/selector_pb";
+import type { DesiredState } from "../../session/v1/session_pb";
 import { file_mftiko_session_v1_session } from "../../session/v1/session_pb";
+import type { Universe } from "./selector_pb";
+import { file_mftiko_state_v1_selector } from "./selector_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file mftiko/state/v1/state.proto.
  */
 export const file_mftiko_state_v1_state: GenFile = /*@__PURE__*/
-  fileDesc("ChttZnRpa28vc3RhdGUvdjEvc3RhdGUucHJvdG8SD21mdGlrby5zdGF0ZS52MSKGAQoHQWNjb3VudBIMCgRuYW1lGAEgASgJEgwKBGtpbmQYAiABKAkSGgoSc2VhbGVkX2NyZWRlbnRpYWxzGAMgASgMEjIKCHNldHRpbmdzGAQgASgLMiAubWZ0aWtvLnN0YXRlLnYxLkFjY291bnRTZXR0aW5ncxIPCgdlbmFibGVkGAUgASgIInUKEkFjY291bnRDcmVkZW50aWFscxIOCgZhcGlfaWQYASABKAMSDAoEa2luZBgCIAEoCRIQCghrZXlfdHlwZRgDIAEoCRILCgNrZXkYBCABKAkSDgoGc2VjcmV0GAUgASgJEhIKCnBhc3NwaHJhc2UYBiABKAkicAoPQWNjb3VudFNldHRpbmdzEh4KFmNhbmNlbF9vbl9kaXNjb25uZWN0X3MYASABKA0SGwoTYmFja2ZpbGxfaW50ZXJ2YWxfcxgCIAEoDRIgChhiYWNrZmlsbF9yZXF1ZXN0ZWRfYXRfbnMYAyABKAMiuQIKDVNlc3Npb25TdGF0dXMSGwoTb2JzZXJ2ZWRfZ2VuZXJhdGlvbhgBIAEoAxIlCgVwaGFzZRgCIAEoDjIWLm1mdGlrby5zdGF0ZS52MS5QaGFzZRIvCgpjb25kaXRpb25zGAMgAygLMhsubWZ0aWtvLmNvbW1vbi52MS5Db25kaXRpb24SEwoLaW5jYXJuYXRpb24YBCABKA0SFQoNcmVzdGFydF9jb3VudBgFIAEoDRIOCgZyZWFzb24YBiABKAkSLQoJbGFzdF9leGl0GAcgASgLMhoubWZ0aWtvLmNvbW1vbi52MS5FeGl0SW5mbxIVCg11cGRhdGVkX2F0X25zGAggASgDEjEKCXN0YXRlX291dBgJIAEoCzIeLm1mdGlrby5zdGF0ZS52MS5TdGF0ZVNuYXBzaG90InoKDVN0YXRlU25hcHNob3QSDgoGZGlnZXN0GAEgASgJEhIKCnJlcG9zaXRvcnkYAiABKAkSDQoFY2xlYW4YAyABKAgSEwoLaW5jYXJuYXRpb24YBCABKA0SDQoFYXRfbnMYBSABKAMSEgoKc2l6ZV9ieXRlcxgGIAEoBCKXAQoLRGVtYW5kRW50cnkSDgoEZmVlZBgBIAEoCUgAEjMKCHNlbGVjdG9yGAIgASgLMh8ubWZ0aWtvLnNlc3Npb24udjEuU2VsZWN0b3JEZWNsSAASEAoGYXBpX2lkGAMgASgDSAASFQoNc3BlY19yZXZpc2lvbhgKIAEoAxIQCghhbGdvX2lkcxgLIAMoDUIICgZ0YXJnZXQi1AEKDVNlc3Npb25EZW1hbmQSMAoHZGVzaXJlZBgBIAEoDjIfLm1mdGlrby5zZXNzaW9uLnYxLkRlc2lyZWRTdGF0ZRINCgVzdGFydBgCIAEoCBISCgplbmRfcmVhc29uGAMgASgJEioKCGJpbmRpbmdzGAQgAygLMhgubWZ0aWtvLnN0YXRlLnYxLkJpbmRpbmcSFQoNc3BlY19yZXZpc2lvbhgFIAEoAxIVCg11cGRhdGVkX2F0X25zGAYgASgDEhQKDGlzc3VlZF9hdF9ucxgHIAEoAyKJAQoHQmluZGluZxIOCgRmZWVkGAEgASgJSAASEgoIc2VsZWN0b3IYAiABKAlIABIQCgZhcGlfaWQYAyABKANIABIQCghpbnN0YW5jZRgEIAEoCRIsCgZzdGF0dXMYBSABKAsyHC5tZnRpa28uc3RhdGUudjEuRW50cnlTdGF0dXNCCAoGdGFyZ2V0IssBCgtFbnRyeVN0YXR1cxIqCgVzdGF0ZRgBIAEoDjIbLm1mdGlrby5zdGF0ZS52MS5FbnRyeVN0YXRlEg4KBnJlYXNvbhgCIAEoCRIPCgdzdWJqZWN0GAMgASgJEisKBndvcmtlchgEIAEoCzIbLm1mdGlrby5jb21tb24udjEuV29ya2VyUmVmEisKCHVuaXZlcnNlGAUgASgLMhkubWZ0aWtvLnN0YXRlLnYxLlVuaXZlcnNlEhUKDXVwZGF0ZWRfYXRfbnMYBiABKAMiSwoIVW5pdmVyc2USDQoFZXBvY2gYASABKAQSDwoHbWVtYmVycxgCIAMoCRIPCgdjdXJyZW50GAMgASgJEg4KBnRvcGljcxgEIAMoCSJlCgtBZ2VudFJlY29yZBINCgVwbGFuZRgBIAEoCRIQCghpbnN0YW5jZRgCIAEoCRINCgVlcG9jaBgDIAEoAxIPCgdyZWxlYXNlGAQgASgJEhUKDXN0YXJ0ZWRfYXRfbnMYBSABKAMi6wEKDFdvcmtlclN0YXR1cxIrCgZ3b3JrZXIYASABKAsyGy5tZnRpa28uY29tbW9uLnYxLldvcmtlclJlZhINCgVwaGFzZRgCIAEoCRINCgVzdGFnZRgDIAEoCRIPCgdyZWxlYXNlGAQgASgJEhQKDHNoaW1fcmVsZWFzZRgFIAEoCRIQCghyZXN0YXJ0cxgGIAEoDRIRCglyc3NfYnl0ZXMYByABKAMSFQoNc3RhcnRlZF9hdF9ucxgIIAEoAxItCglsYXN0X2V4aXQYCSABKAsyGi5tZnRpa28uY29tbW9uLnYxLkV4aXRJbmZvIpUBCg1TZWxlY3RvclN0YXRlEi0KBHNwZWMYASABKAsyHy5tZnRpa28uc2Vzc2lvbi52MS5TZWxlY3RvckRlY2wSDQoFZXBvY2gYAiABKAQSDwoHbWVtYmVycxgDIAMoCRIPCgdjdXJyZW50GAQgASgJEg4KBmNlbnRlchgFIAEoCRIUCgxjZW50ZXJfYXRfbnMYBiABKAMiGQoJUGxhY2VtZW50EgwKBGNvbm4YASABKAkqtwEKBVBoYXNlEhUKEVBIQVNFX1VOU1BFQ0lGSUVEEAASEQoNUEhBU0VfUEVORElORxABEhEKDVBIQVNFX1dBSVRJTkcQAhISCg5QSEFTRV9TVEFSVElORxADEhEKDVBIQVNFX1JVTk5JTkcQBBISCg5QSEFTRV9TVE9QUElORxAFEhQKEFBIQVNFX1JFU1RBUlRJTkcQBhIOCgpQSEFTRV9ET05FEAcSEAoMUEhBU0VfRkFJTEVEEAgqiQEKCkVudHJ5U3RhdGUSGwoXRU5UUllfU1RBVEVfVU5TUEVDSUZJRUQQABIXChNFTlRSWV9TVEFURV9QRU5ESU5HEAESFQoRRU5UUllfU1RBVEVfUkVBRFkQAhIYChRFTlRSWV9TVEFURV9SRUpFQ1RFRBADEhQKEEVOVFJZX1NUQVRFX0RFQUQQBEJEWkJnaXRodWIuY29tL0J1bGxpb25CZWFyL21mdGlrby9jb250cmFjdC9nZW4vbWZ0aWtvL3N0YXRlL3YxO3N0YXRldjFiBnByb3RvMw", [file_mftiko_common_v1_common, file_mftiko_session_v1_session]);
+  fileDesc("ChttZnRpa28vc3RhdGUvdjEvc3RhdGUucHJvdG8SD21mdGlrby5zdGF0ZS52MSKGAQoHQWNjb3VudBIMCgRuYW1lGAEgASgJEgwKBGtpbmQYAiABKAkSGgoSc2VhbGVkX2NyZWRlbnRpYWxzGAMgASgMEjIKCHNldHRpbmdzGAQgASgLMiAubWZ0aWtvLnN0YXRlLnYxLkFjY291bnRTZXR0aW5ncxIPCgdlbmFibGVkGAUgASgIInUKEkFjY291bnRDcmVkZW50aWFscxIOCgZhcGlfaWQYASABKAMSDAoEa2luZBgCIAEoCRIQCghrZXlfdHlwZRgDIAEoCRILCgNrZXkYBCABKAkSDgoGc2VjcmV0GAUgASgJEhIKCnBhc3NwaHJhc2UYBiABKAkicAoPQWNjb3VudFNldHRpbmdzEh4KFmNhbmNlbF9vbl9kaXNjb25uZWN0X3MYASABKA0SGwoTYmFja2ZpbGxfaW50ZXJ2YWxfcxgCIAEoDRIgChhiYWNrZmlsbF9yZXF1ZXN0ZWRfYXRfbnMYAyABKAMiuQIKDVNlc3Npb25TdGF0dXMSGwoTb2JzZXJ2ZWRfZ2VuZXJhdGlvbhgBIAEoAxIlCgVwaGFzZRgCIAEoDjIWLm1mdGlrby5zdGF0ZS52MS5QaGFzZRIvCgpjb25kaXRpb25zGAMgAygLMhsubWZ0aWtvLmNvbW1vbi52MS5Db25kaXRpb24SEwoLaW5jYXJuYXRpb24YBCABKA0SFQoNcmVzdGFydF9jb3VudBgFIAEoDRIOCgZyZWFzb24YBiABKAkSLQoJbGFzdF9leGl0GAcgASgLMhoubWZ0aWtvLmNvbW1vbi52MS5FeGl0SW5mbxIVCg11cGRhdGVkX2F0X25zGAggASgDEjEKCXN0YXRlX291dBgJIAEoCzIeLm1mdGlrby5zdGF0ZS52MS5TdGF0ZVNuYXBzaG90InoKDVN0YXRlU25hcHNob3QSDgoGZGlnZXN0GAEgASgJEhIKCnJlcG9zaXRvcnkYAiABKAkSDQoFY2xlYW4YAyABKAgSEwoLaW5jYXJuYXRpb24YBCABKA0SDQoFYXRfbnMYBSABKAMSEgoKc2l6ZV9ieXRlcxgGIAEoBCKXAQoLRGVtYW5kRW50cnkSDgoEZmVlZBgBIAEoCUgAEjMKCHNlbGVjdG9yGAIgASgLMh8ubWZ0aWtvLnNlc3Npb24udjEuU2VsZWN0b3JEZWNsSAASEAoGYXBpX2lkGAMgASgDSAASFQoNc3BlY19yZXZpc2lvbhgKIAEoAxIQCghhbGdvX2lkcxgLIAMoDUIICgZ0YXJnZXQi1AEKDVNlc3Npb25EZW1hbmQSMAoHZGVzaXJlZBgBIAEoDjIfLm1mdGlrby5zZXNzaW9uLnYxLkRlc2lyZWRTdGF0ZRINCgVzdGFydBgCIAEoCBISCgplbmRfcmVhc29uGAMgASgJEioKCGJpbmRpbmdzGAQgAygLMhgubWZ0aWtvLnN0YXRlLnYxLkJpbmRpbmcSFQoNc3BlY19yZXZpc2lvbhgFIAEoAxIVCg11cGRhdGVkX2F0X25zGAYgASgDEhQKDGlzc3VlZF9hdF9ucxgHIAEoAyKJAQoHQmluZGluZxIOCgRmZWVkGAEgASgJSAASEgoIc2VsZWN0b3IYAiABKAlIABIQCgZhcGlfaWQYAyABKANIABIQCghpbnN0YW5jZRgEIAEoCRIsCgZzdGF0dXMYBSABKAsyHC5tZnRpa28uc3RhdGUudjEuRW50cnlTdGF0dXNCCAoGdGFyZ2V0IssBCgtFbnRyeVN0YXR1cxIqCgVzdGF0ZRgBIAEoDjIbLm1mdGlrby5zdGF0ZS52MS5FbnRyeVN0YXRlEg4KBnJlYXNvbhgCIAEoCRIPCgdzdWJqZWN0GAMgASgJEisKBndvcmtlchgEIAEoCzIbLm1mdGlrby5jb21tb24udjEuV29ya2VyUmVmEisKCHVuaXZlcnNlGAUgASgLMhkubWZ0aWtvLnN0YXRlLnYxLlVuaXZlcnNlEhUKDXVwZGF0ZWRfYXRfbnMYBiABKAMiZQoLQWdlbnRSZWNvcmQSDQoFcGxhbmUYASABKAkSEAoIaW5zdGFuY2UYAiABKAkSDQoFZXBvY2gYAyABKAMSDwoHcmVsZWFzZRgEIAEoCRIVCg1zdGFydGVkX2F0X25zGAUgASgDIusBCgxXb3JrZXJTdGF0dXMSKwoGd29ya2VyGAEgASgLMhsubWZ0aWtvLmNvbW1vbi52MS5Xb3JrZXJSZWYSDQoFcGhhc2UYAiABKAkSDQoFc3RhZ2UYAyABKAkSDwoHcmVsZWFzZRgEIAEoCRIUCgxzaGltX3JlbGVhc2UYBSABKAkSEAoIcmVzdGFydHMYBiABKA0SEQoJcnNzX2J5dGVzGAcgASgDEhUKDXN0YXJ0ZWRfYXRfbnMYCCABKAMSLQoJbGFzdF9leGl0GAkgASgLMhoubWZ0aWtvLmNvbW1vbi52MS5FeGl0SW5mbyIZCglQbGFjZW1lbnQSDAoEY29ubhgBIAEoCSq3AQoFUGhhc2USFQoRUEhBU0VfVU5TUEVDSUZJRUQQABIRCg1QSEFTRV9QRU5ESU5HEAESEQoNUEhBU0VfV0FJVElORxACEhIKDlBIQVNFX1NUQVJUSU5HEAMSEQoNUEhBU0VfUlVOTklORxAEEhIKDlBIQVNFX1NUT1BQSU5HEAUSFAoQUEhBU0VfUkVTVEFSVElORxAGEg4KClBIQVNFX0RPTkUQBxIQCgxQSEFTRV9GQUlMRUQQCCqJAQoKRW50cnlTdGF0ZRIbChdFTlRSWV9TVEFURV9VTlNQRUNJRklFRBAAEhcKE0VOVFJZX1NUQVRFX1BFTkRJTkcQARIVChFFTlRSWV9TVEFURV9SRUFEWRACEhgKFEVOVFJZX1NUQVRFX1JFSkVDVEVEEAMSFAoQRU5UUllfU1RBVEVfREVBRBAEQkRaQmdpdGh1Yi5jb20vQnVsbGlvbkJlYXIvbWZ0aWtvL2NvbnRyYWN0L2dlbi9tZnRpa28vc3RhdGUvdjE7c3RhdGV2MWIGcHJvdG8z", [file_mftiko_common_v1_common, file_mftiko_session_v1_selector, file_mftiko_session_v1_session, file_mftiko_state_v1_selector]);
 
 /**
  * @generated from message mftiko.state.v1.Account
@@ -125,14 +129,14 @@ export type AccountSettings = Message<"mftiko.state.v1.AccountSettings"> & {
   /**
    * 歷史補正（DECISIONS D601）。
    *
-   * 另加 jitter；0 = TD agent 的預設值。必須短於交易所成交歷史的保留期
+   * 另加 jitter；0 = 預設。必須短於交易所成交歷史的保留期。誰用見 §10 P18，不是 TD agent
    *
    * @generated from field: uint32 backfill_interval_s = 2;
    */
   backfillIntervalS: number;
 
   /**
-   * 手動觸發：比 TD agent 上次處理過的值新，就提前跑一輪。agent 重啟後可能多跑一次，無害。
+   * 手動觸發：比上次處理過的值新，就提前跑一輪。誰跑見 §10 P18，不是 TD agent。重啟後可能多跑一次，無害。
    *
    * @generated from field: int64 backfill_requested_at_ns = 3;
    */
@@ -468,42 +472,6 @@ export const EntryStatusSchema: GenMessage<EntryStatus> = /*@__PURE__*/
   messageDesc(file_mftiko_state_v1_state, 8);
 
 /**
- * @generated from message mftiko.state.v1.Universe
- */
-export type Universe = Message<"mftiko.state.v1.Universe"> & {
-  /**
-   * @generated from field: uint64 epoch = 1;
-   */
-  epoch: bigint;
-
-  /**
-   * 成員是商品。今天是 UniversalTicker；改成商品 UID 是後續（D203）。selector 本身沒有 UID
-   *
-   * @generated from field: repeated string members = 2;
-   */
-  members: string[];
-
-  /**
-   * 只有 rolling_future。這是 selector，尚未定，不在 D203 的範圍；selector 沒有 UID
-   *
-   * @generated from field: string current = 3;
-   */
-  current: string;
-
-  /**
-   * @generated from field: repeated string topics = 4;
-   */
-  topics: string[];
-};
-
-/**
- * Describes the message mftiko.state.v1.Universe.
- * Use `create(UniverseSchema)` to create a new message.
- */
-export const UniverseSchema: GenMessage<Universe> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 9);
-
-/**
  * 綁在選主 session 的 lease 上（§3.2 W7）：存在就表示這個 instance 有活著的 agent。
  *
  * @generated from message mftiko.state.v1.AgentRecord
@@ -540,7 +508,7 @@ export type AgentRecord = Message<"mftiko.state.v1.AgentRecord"> & {
  * Use `create(AgentRecordSchema)` to create a new message.
  */
 export const AgentRecordSchema: GenMessage<AgentRecord> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 10);
+  messageDesc(file_mftiko_state_v1_state, 9);
 
 /**
  * 不綁 lease（§3.2 W7），只在階段改變時寫；worker 確定不在之後由 agent 刪除。
@@ -605,55 +573,7 @@ export type WorkerStatus = Message<"mftiko.state.v1.WorkerStatus"> & {
  * Use `create(WorkerStatusSchema)` to create a new message.
  */
 export const WorkerStatusSchema: GenMessage<WorkerStatus> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 11);
-
-/**
- * @generated from message mftiko.state.v1.SelectorState
- */
-export type SelectorState = Message<"mftiko.state.v1.SelectorState"> & {
-  /**
-   * @generated from field: mftiko.session.v1.SelectorDecl spec = 1;
-   */
-  spec?: SelectorDecl | undefined;
-
-  /**
-   * @generated from field: uint64 epoch = 2;
-   */
-  epoch: bigint;
-
-  /**
-   * 同 Universe.members：商品。今天是 UniversalTicker
-   *
-   * @generated from field: repeated string members = 3;
-   */
-  members: string[];
-
-  /**
-   * 同 Universe.current：selector，尚未定，不在 D203；selector 沒有 UID
-   *
-   * @generated from field: string current = 4;
-   */
-  current: string;
-
-  /**
-   * 置中的 strike
-   *
-   * @generated from field: string center = 5;
-   */
-  center: string;
-
-  /**
-   * @generated from field: int64 center_at_ns = 6;
-   */
-  centerAtNs: bigint;
-};
-
-/**
- * Describes the message mftiko.state.v1.SelectorState.
- * Use `create(SelectorStateSchema)` to create a new message.
- */
-export const SelectorStateSchema: GenMessage<SelectorState> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 12);
+  messageDesc(file_mftiko_state_v1_state, 10);
 
 /**
  * @generated from message mftiko.state.v1.Placement
@@ -672,7 +592,7 @@ export type Placement = Message<"mftiko.state.v1.Placement"> & {
  * Use `create(PlacementSchema)` to create a new message.
  */
 export const PlacementSchema: GenMessage<Placement> = /*@__PURE__*/
-  messageDesc(file_mftiko_state_v1_state, 13);
+  messageDesc(file_mftiko_state_v1_state, 11);
 
 /**
  * @generated from enum mftiko.state.v1.Phase

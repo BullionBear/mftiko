@@ -21,3 +21,6 @@ breaking:
     - contract/proto/mftiko/worker/v1/worker.proto # C4: E1
     - contract/proto/mftiko/common/v1/common.proto # C4: E1
     - contract/proto/mftiko/stsctl/v1/stsctl.proto # C5: E8, E9
+    - contract/proto/mftiko/session/v1/selector.proto # E5 (D991)
+    - contract/proto/mftiko/state/v1/selector.proto # E5 (D991)
+    - contract/proto/mftiko/stsctl/v1/selector.proto # E5 (D991)
