@@ -1,6 +1,6 @@
 # DECISIONS
 
-> 決策紀錄（2026-10-20 D994：C3、C4 定案（#302）。2026-10-20 D993：artifact manifest 的相容規則；`state.proto`、`session.proto`、`stsctl.proto` 與 manifest 定案（E9-12，#290）。2026-10-20 D991：selector 的型別搬到各自 package 的 `selector.proto`，留在草案到 E5；D992：定案前刪掉 `session.proto` 的 `reserved`（E9-12，#290）。2026-10-20 D985–D990（E9-10，#288）：推 `v*` tag 與 `workflow_dispatch` 打包 conn、account worker，推 `ghcr.io/bullionbear/` 的 `mftiko-md-conn`、`mftiko-td-account`，tag 是 git tag 與 `latest`；workflow 只推、不設可見度，第一個 tag 前由 org owner 把 Package creation 設成 Public。PROTOCOL §8 為 v1.25。2026-10-19 D978–D984（E9-09，#287）：worker 進程確定結束後才打包、另寫資料推送（暫存檔再串流）、打包內容與空 volume、terminal.json、state_out 欄位與 1–60 秒退避、清理順序。PROTOCOL §8.4 為 v1.24。2026-10-19 D972–D977（E9-08，#286）：拉資料 artifact、GC 保留正在拉或正在解的 input 層，以及 Pull 回傳後到 UnpackImage 結束前的策略層、inputs 與 rootfs 一起在背景拉取、解開後唯讀、每 10 秒量 volume、volume 在第一次 spawn 前建立。PROTOCOL §3.3、§5.4、§8.3、§8.4 為 v1.23。2026-10-19 D966–D971（E9-07，#285）：沒心跳直接 SIGKILL、`HUNG`／`no_beat` 由 STS agent 記在 `SessionStatus`、分階段的 `BeatTimeout`、`window_s` 在記憶體計數、shim 掉了不重啟、退避中是 `RESTARTING` 且同一 epoch 的 seq 接下去加。PROTOCOL §3.3、§6、§9.7 為 v1.22。2026-10-19 D958–D965（E9-06，#284）：背景拉取與解開、每一輪 GC(keep)、拿掉 `-worker`（取代 D943）、Start 帶第一份 bindings 之後以 Command 推送、每個 session 的 grace_ms、ENDED 後的 terminal phase、worker 自己結束不重啟、測試沿用假 registry。PROTOCOL §3、§6、§8 為 v1.21。2026-10-19 D950–D957（E9-03，#281）：層直接解壓不 hardlink、記錄所用層；接受的 tar 項目與 `os.Root`；解壓大小與檔案數上限；永久 reason `artifact_unsafe_layer`；同一 digest 只解一次；`GC(keep)` 不判斷最新版；inputs 共用解開函式。PROTOCOL §8 為 v1.20。2026-10-19 D928–D934（E9-02，#280）：錯誤分永久與暫時、contracts 必須全含、下載不留半檔、快取只比大小、總大小先加總、帳密用 Docker config.json 與 plain_http、只接受單一 image manifest。PROTOCOL §8 為 v1.19。2026-10-19 D942–D949：E9-05 STS agent 骨架（#283）：與 #284 的分界、`-worker`、沒有 spec 不寫 status、terminal 不回頭、phase 對到骨架狀態、spec 編碼當 spawn hash、部署旗標、testplane 測試。2026-10-19 D935–D941（E9-04，#282）：contracts 由 sdk 嵌入 binary，pack 讀出填入、不比對 sdk 版本（D935 取代 D912）；CLI、os／arch 取自 ELF、可重現的層、`sdk.Contracts` 回傳複本、Docker `config.json` 憑證、推送前先驗證。PROTOCOL §8 為 v1.17。2026-10-19 D909–D927：E9 開工前的決定（E9-01，#279）：oras-go、一個共用的 registry、策略只依 digest 拉、pack 的 `contracts` 取自 buildinfo、大小上限、MD／TD 只做到 CI 打包、GC 在 reconcile 裡、只照指派 spawn、algo 重疊、預設值、`RestartPolicy`、no_beat、phase、`Bindings.Version`、清理、JWT 的位置、`state_out` 的 tag 與重試、定案範圍。2026-10-19 D1337–D1339（E13-07，#268）：reconcile 把寫入交給 region 佇列就繼續，不等結果；同一個 key 在佇列裡只留最新值，和本 term 寫過、view 還沒讀到的相同值不再寫；provider region 未完成首次同步時，`bindings` 保留現有的 status；home region 不一致時每個 cluster 只由 home 在那裡的 controller 寫入，一期視為設定錯誤；舊 leader 在新 leader 當選後仍可能寫入新 leader 還沒 fence 的 region，時間窗小於一個 TTL，由 #277 關掉。2026-10-18 D1333–D1335（E13-06，#267）：刪完 MD、TD 需求並在 view 確認不在才刪 `SessionDemand`，任一 provider region 過舊則指派跟著等；孤兒須所有 STS region 已同步且不過舊、沒有任何 instance 有這個 session；controller 只刪需求項目與 `SessionDemand`。2026-10-18 D1328–D1332、D1336（E13-05，#266）：結束不可逆，`end_reason` 留第一次的值；同一輪 `ended_by_spec` > `deps_failed` > `deps_timeout`；`ENDED` 之後不更新 `bindings`；逾時以最早到期設計時器，不等 60 秒全量；過舊 region 的 `READY` 不放行 `start`，`bindings` 照抄；#266 與 #267 平行，後合併者負責 rebase 解衝突。2026-10-18 D1322–D1327（E13-04，#265）：spec 的 revision 與指派的 `spec_revision` 不同時不重推、不新增不刪除、只記一次 log，不以 `invalid_spec` 結束；比較忽略 `updated_at_ns` 與 `DemandEntry.spec_revision`；`bindings` 寫目標、`status` 留空、`start` 固定 false；跨 region 不保證先後；一開始就 `ENDED` 且尚無指派則不寫；plane 標錯也是 `invalid_spec`。2026-10-18 D1317–D1321（E13-03，#264）：每個 instance 一個 Mirror，監看整個前綴再分類進 view；首次同步前的 region 視為過舊且不寫入；單一 reconcile 迴圈，dirty 立即再跑，60 秒全量走同一迴圈；view 帶每個 region 的 revision 與是否過舊；解不開的值不進 view、不寫不刪。過舊門檻預設 15 秒，放在 daemon 設定。2026-10-17 D1312–D1316（E13-02，#263）：controller 讀 mftiko-etcd-roles 同一份部署 JSON；骨架即有依 region 的寫入佇列，寫入入口先只供測試；AgentRecord 當選後寫一次，正常停下 revoke；ErrSuperseded 或選主斷線以非 0 結束，SIGTERM revoke 後以 0 結束；etcdtest 一次起多個 region。2026-10-17 D1301–D1311（E13-01，#262）：controller 分純邏輯與 daemon；`deps_timeout_s` 從 `SessionDemand.issued_at_ns` 起算，0 取 60 秒；spec 只有 `desired_state` 可改，刪掉當成 `ended_by_spec`；不合法的 spec 以 `invalid_spec` 結束；每個 region 第一次寫入前才 fence；和 region 斷線時保持現狀、寫入依 region 排隊；N4 看 `WorkerStatus`；全量 resync 60 秒；E13 拆成 E13-02–07。PROTOCOL §3 為 v1.10。2026-10-17 D862–D864（E8-13，#237）：`hello` 從 params 解析商品、讀 Book 與 Recon、遠離市價掛一張限價單，`OnOrder` 確認 `ORDER_STATUS_ACCEPTED` 後撤單；`tape-keeper` 不改。conformance 檢查改到符合後面的決定，不改 SDK。每個 PR 用 `examples/strategies/conform` 跑完整份 Go SDK conformance。PROTOCOL §9.8 為 v1.09。2026-10-17 D857–D861（E8-15，#239）：本地訂單簿由 SDK 向 MD 的 `md.view` 要快照再套 `orderbook_delta`，不向交易所要；斷號或 `conn_epoch` 改變就重同步；`not_synced` 與其他讀取失敗沿用 D424 的 1–30 秒退避；等快照的緩衝上限 10000 筆或 10 秒，到了就丟掉並重要，這些 delta 不是 hook；檔數用 `book.DefaultN`，與 MD conn worker 一致，不用快照窗口大小；tick 仍取自 SYM `Info` 的 `price_tick`；未同步時 `Book` 回 `(nil, false)`；`reset` 清掉本地本並重要快照。PROTOCOL §7、§9.4、§9.5 為 v1.08。Go 實作在 `sdk/internal/bookpath`。D857 改寫 D402 晚加入那一句，不改編號。2026-10-17 D853–D856（E8-14，#238）：餘額三格由 TD 填、SDK 原樣覆蓋；Recon 整份換 OMS，該次 ReconRequest 送出之後才 Submit 且快照沒有的 pending_new 保留；Fill 不動 Ledger；讀取回傳 protobuf 複製、不阻塞。PROTOCOL §7.2、§9.6 為 v1.07。Go 實作在 `sdk/internal/tdpath`。2026-10-17 D850–D852（E8-10，#234）：Init 連不上 NATS 時在 deadline_ms 內退避重試，到期 INIT_FAILED；讀取順序只是策略自己呼叫的函式，不在啟動時自動還原；volume 原子寫入是暫存檔、fsync、rename、目錄 fsync。PROTOCOL §9.1、§9.2、§9.3、§9.4 為 v1.06。Go 實作在 `sdk`。2026-10-17 D846–D849（E8-09，#233）：binding 只套用較新的完整快照，一期 selector 回 error、不解析成員，subject 用 binding 給的並依集合增刪訂閱；SDK 不自動要 tape、不扣住 live，策略用 `TapePage.head` 去重（改寫 D437 的 SDK 那一句）；`md.view` 與 `md.fetch` 等 `recv_window_ms`，逾時或無 responder 時 callback 收到 error，回覆走 TD buffer；壞 envelope 丟掉、計入 `QueueStat.dropped`、寫 log、不結束 session。PROTOCOL §7、§9.3、§9.4、§9.5 為 v1.05。Go 實作在 `sdk/internal/mdpath`。2026-10-17 D840–D845（E8-08，#232）：OMS 先做自己 algo 的單，Ledger 與完整狀態機留給 #238；第一份 Recon 扣住事件，上限 65536，滿了 FAILED；Recon 逾時或無 responder 以 1–30 秒退避重問；Submit 逾時用 recv_window_ms，標 UNKNOWN；新 incarnation 或 seq 斷號重走 Recon；第一份回覆時，扣住的較舊 incarnation 可丟、較新的再問一次；撤單逾時不標 UNKNOWN。PROTOCOL §9.4、§9.6 為 v1.04。Go 實作在 `sdk/internal/tdpath`。2026-10-16 D828–D839（E8-12，#236）：conformance 是命令列工具加假 shim、行程內 nats-server，與一次一種違規的 fakeworker；每個 PR 的 CI 跑這些違規檢查。標準策略的設定是 `InitPayload.params` 的 JSON，欄位與檢查 id、報告 JSON 寫進 PROTOCOL §9.8。這一期只收執行命令。`Init` 之前的亂序與 `Start` 之前的 `Stop` 見 D837。Go SDK 整套通過留到 E8-13。同日 D823–D826（E8-07，#231）：事件照常立即交付，SDK 不為沒見過的 UID 查 SYM、不扣住事件，只追蹤 Resolve 過的商品；`Info(uid)` 回 `(symbol.Info, error)`，查不到回 error，框架不重試；已解析商品下架時以 `GetByUidRequest` 加 `include_inactive` 重拿，保留最後一份並標為不活躍。D804 追蹤範圍那句改寫，不改編號。PROTOCOL §9.4 第 8 條為 v1.02。客戶端在 `sdk/internal/symclient`。2026-10-16 D827（E8-11，#235）：維持每個 feed 一條權限，natsdev 產生的 server 設定把 `max_control_line` 調到 262144，STS 在簽發 session JWT 時檢查 CONNECT 引數，超過就拒絕並寫明 feed 過多。同日 D818–D822（E8-11，#235）：session 的 md 權限精確到每個 feed（修改 D906），publish `md.v1.view.{inst}.{topic}.{ticker}`、subscribe `md.v1.f.{inst}.{topic}.{ticker}`，不再用 `{inst}.>`；`md.v1.fetch.>` 不變；td 每個 api_id 各一條；去重後排序，只列 allow；沒有帳號不給 td，沒有 feed 不給 md.v1.f／md.v1.view。token 含 `.`、`*`、`>` 或空白回 error，不轉義。`SessionPermissions` 不連 etcd、NATS。spec 含 selectors 回 error。UniversalTicker 文法不含 `.`（小數點是 `D`），D819 不需另議。同日 D815–D817（E8-05，#229）：TD buffer 上限是 SDK 常數 65536，不進契約，滿了以 FAILED 結束；MD ring 是一塊預先配好的 32 MiB `[]byte`，每則可變長，放不下就丟最舊的若干則直到放得下（跳過正在讀的），單則大於整個 ring 直接丟並計入 `dropped`；hook 執行超過 100ms 計一次 `hook_slow`，`hook_blocked_ms` 是目前這個 hook 已執行的時間。同日 D811–D814（E8-06，#230）：cloid 產生器一個進程一顆計數器，所有 algo、所有帳號共用；seq 用完往前借毫秒且不設上限，`ts_ms` 可能超前牆鐘；狀態不持久化，跨 incarnation 撞號由 TD 冪等回 106。產生器在 `sdk/internal/cloidgen`，以一個 uint64 的 CAS 更新。D602 的 seq 與跨 incarnation 兩句改寫，不改編號。同日 D806–D810（E8-03，#227）：c4 加 `Stopper`（`OnStop` 在 `Exiting` 與 `Stopped` 之間）；`Run` 返回時 `OnStop` 套 plane 在 Init 後交出的 `hook_timeout_s`，逾時 exit 21、不送 `Stopped`；`deadline_ms` 逾時不等 hook，exit 10，不呼叫 `Stopper`；Start 失敗（非逾時）才呼叫；SIGTERM 由 main 的 `NotifyContext` 傳入 `Serve`；刪除 `sdk/internal/c4`。同日 D805：策略的 hook 依 topic 拆開；SDK 先更新本地 book、OMS、Ledger 再呼叫 hook；`OnOrder` 是單的每一次變化，`OnReject` 只給撤單類請求的拒絕（E8-04，#228）。2026-10-16 D803：`recv_window_ms`、`hook_timeout_s` 由 STS agent 解析成實值，經 `stsctl.InitPayload` 交給 worker，不會是 0（E8-02，#226）。2026-10-16 D638：成交發在 `td.evt`，目前沒有人落庫，由誰落庫見 PROTOCOL §10，不會是 TD agent（修訂 D601）。同日 D639：TD agent 沒有 NATS user（修訂 D611）。同日定案事件連線的計畫性換線跑一次 recon、期間不報 DEGRADED、reason 仍是 RECONNECT，D635–D637（#200，修改 D614）。2026-10-16 定案 `td.proto`（D634 的後續）：從 `buf.yaml` 的 `breaking.ignore` 移出，PROTOCOL §1 改回定案。2026-10-16 定案 `read.proto`（D462 的後續）：從 `buf.yaml` 的 `breaking.ignore` 移出，PROTOCOL §1 改回定案。同日 D634：比照 E6-15 分兩個 PR。#242 刪項目、照 D633 不留 `reserved`，`td.proto` 仍留在 `breaking.ignore`；#242 合併後另開小 PR 移出清單、PROTOCOL §1 改回定案。同日 D462：比照 E6-15 分兩個 PR。#241 刪欄位、照 D461 不留 `reserved`，`read.proto` 仍留在 `buf.yaml` 的 `breaking.ignore`，PROTOCOL §1 維持草案；#241 合併後另開小 PR 移出清單並把 §1 改回定案。同日 D803：`orderbook_delta` 不進 prehook，一律套進本地 book，只有呼叫 `OnBook` 受 `recv_window_ms` 管；prehook 的 `now` 在 dispatcher 取出時取。同日 D803 補上結束的順序：收到 `Stop` 先送 `Exiting`，交付完 TD buffer 再跑 `OnStop`，`CRASHED` 不交付；`grace_ms` 管整個收尾；自己結束的路徑上 `OnStop` 套 `hook_timeout_s`。同日定案 P15：策略 API 以 UID 為商品身分，ticker 只在 `OnInit`、`OnStart` 的 `Resolve`；SDK 只追蹤看過的商品，不從 spec 推要載入的表，D804。2026-10-15 每一則行情的 payload 帶 UID，不帶 ticker 字串：`FeedEvent`、`BookSnapshot`、`FetchReply` 加 `uid`，`md.fetch` 的請求以 UID 指定商品，subject 不變；`read.proto` 回到草案，E8-01（#222）改完再定案，D461。同日 `td.view` 的 OMS 與帳本查詢換成一個 `ReconRequest`，回一份 `Recon`；拿掉 `Submit.algo_id`、`Cancel.algo_id` 與 104，TD 不解碼 `client_order_id`；`td.proto` 回到草案，E6-17（#220）改完再定案，D633。同日定案 `tdctl.proto`、`td.proto`（E6-15，#175）：兩份移出草案清單，PROTOCOL §1 改為定案，D629。同日拿掉 `OmsViewRequest.settled`（欄位 2），改成 `reserved 2` 與 `reserved "settled"`，`algo_id` 仍是 3，D632。同日定案前刪掉 `td.proto` 的 `reserved`，欄位號碼不重排；`tdctl.proto` 沒有 `reserved`；兩份仍在草案清單，移出清單與 PROTOCOL §1 定案是這份合併後的後續，D629。同日保留歷史補正欄位（`AccountSettings` 的 interval 與手動觸發、`td.backfill` 相關欄位），D630。同日每一則 `td.view` 回覆帶 `cancel_batch`，給策略拆批，D631。2026-10-15 修訂 D610（E6-14，#174）：撤單沒有回答、過了界線查到單仍在簿上時，清掉 `cancel_sent_ns`，發 `CANCEL_REJECTED`、code 120，策略可以再撤。2026-10-15 定案兩把鑰匙：OMS 與交易所之間（事件、recon、查單）以 order_id 對單，沒有 client id 的單仍以 order_id 追蹤；系統裡面（策略、td.order、Cancel、BatchCancel、td.view、向外的 OrderUpdate）以 cloid 為鍵。Cancel 與 BatchCancel 只收 client_order_id，order_id 欄位保留，OMS 送出時換成那張單的 order_id。解不開成平台 cloid 的不屬於任何 algo。BatchCancel 不檢查歸屬。D602、D605、D615、D617、D623、D625、D626 改寫，不改編號。2026-10-15 修訂批次撤單（E6-09，#169）：BatchCancel 是明確的訂單清單，TD 一對一轉成一筆交易所請求，不挑單、不分批；CancelBatch 為 1 時本地拒絕；超過上限仍送出並原樣回報交易所的拒絕；一批算 OrderRate 的一筆；商品解不出來只影響那一筆。一次撤掉某 algo 的全部掛單改由 STS SDK 做。D602、D625–D628 改寫，不改編號。2026-10-14 定案下單與撤單（E6-08，#168）：記憶體 cloid 冪等、同 cloid 內容不同回 106、每筆 `recv_window_ms`、`OrderRate` 用到 90% 回 108、查單失敗逾 5 分鐘 `DEGRADED`、`UNKNOWN` 可撤、`TradeStream` 不可用改走 REST，D618–D624（修改 D605、D617）。2026-10-14 定案以 cloid 查單（`Account.QueryOrder`，不存在是 `ErrNotFound`）、請求有效期 `AccountConfig.Validity`，以及三家讀持倉模式；Bybit 以 `positionIdx` 判斷，D617。2026-10-13 定案 td-agent：兩個前綴、ack、spec、endpoint 經 Init；執行中不檢查持倉模式，拿掉 `UNAVAILABLE`；algo 由 STS agent 檢查，D616（修改 D602、D607、D612、D614）。2026-10-13 定案 `mdctl.proto`、`md.proto`、`read.proto`（E4-12，#152）：三份移出草案清單，PROTOCOL §1 改為定案，D460。2026-10-13 刪掉 `mdctl.proto`、`md.proto` 的 `reserved`，現有欄位號碼不重排；三份仍在草案清單，移出清單與 PROTOCOL §1 定案是 #204 合併後的後續，D460。2026-10-13 定案 account worker 的 OMS 與帳本：OMS 只放活著的單，`settled` 不再有作用；recon 期間事件先排著再重放；斷線期間消失的掛單記成 UNKNOWN；槓桿取自持倉，D615（修改 D605、D606）。同日定案 tape 的 worker 級 arena（#189）：64 KiB chunk、硬上限含 slot 與索引、回收全 worker 最舊的 chunk，D458–D459。2026-10-13 定案 P14（#181）：行情 subject `md.v1.f.{inst}.{topic}.{ticker}`、`md.v1.view.{inst}.{topic}.{ticker}`，`md.v1.fetch.{venue}`，`sym.v1.changed.{venue}.{category}`，D455–D457。實作在 #194。2026-10-12 定案 account worker 的連線角色與狀態：只有事件連線決定 DEGRADED，計畫性換線先接後斷；一期不做 BinancePM，D614。同日拿掉 top-N 與 FeedEnd（#180）：book topic 只剩 `orderbook_delta`，寫 `orderbook` 回 `invalid`，D453–D454。2026-10-12 定案 tape ring 與 `md.view`（E4-06）：一個 feed 一個 ring，讀取無鎖，以 `head` 接 live，D435–D452。同日定案帳號憑證以 TD instance 的 X25519 公鑰封裝：NaCl sealed box 加版本與指紋，`api_id`、`kind` 一起封、解開後比對，封裝工具 `mftiko-seal`，D613。同日定案持倉模式由 `AccountSnapshot.HedgeMode` 帶回，以及給 account worker 測試用的假帳號 `exchangetest.AccountVenue`，D612。2026-10-11 定案 TD 的契約與 NATS 身分（E6-02）：`td.order` 只回 ack 或本地拒絕，單的每一次變化都是 `OrderUpdate`，1xx 只列一期會碰到的；訂單狀態加 `ACCEPTED`（上簿），撤單在途改成旗標 `cancel_sent_ns`，拿掉 `PENDING_CANCEL`；account worker 每個帳號一份 NATS 憑證，由 TD agent 簽，D610–D611。同日修訂 D601：TD agent 不查 SYM，歷史補正的交易所讀取比照 md.fetch。同日修訂 D202、D401：MD agent 不查 SYM，conn worker 用活躍表推出 atom 並 diff 訂閱，並在 Report 以 FeedStatus 回報每一筆 feed。同日更新 D415、D426：MD instance 訂閱 `sym.changed.>`，conn worker 在 Init 載入該 venue 的活躍表。同日定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。>
+> 決策紀錄（2026-10-20 D1002–D1018（E10-01，#306）：API 的契約用 OpenAPI 3.0.3，`api.v1` 不 import `session.v1`，編碼是 JSON、以 `oasdiff` 檢查相容；Go 以 oapi-codegen、TypeScript 以 openapi-typescript 產碼，前端不再產 proto；錯誤用 problem+json，列表用游標分頁；狀態串流用 SSE，event id 是各 region 的 revision，部署要求 HTTP/2；API 不參選，寫入以 create-only 與 CAS 為條件（P8，W10）；`session_id` 隨機配號，只保證存活與保留期內唯一；`api_id` 從 1 到 2⁵³−1 隨機配號；認證是每人一個靜態 token、單一角色，console 用 HMAC 簽章的 cookie；每個請求由中介層寫 Postgres 的 `audit`；帳號由 API 封裝、只寫不讀，一期不收交易多個 venue 的種類，仍被引用不能刪；algo_id 跨 session 做 best-effort 檢查；策略目錄以 registry 為準，最新版是 `latest` tag；讀取端每個 cluster 一個 Mirror，region 不可用時回部分結果，terminal 的 status 留下依賴失敗的原因，`AgentRecord` 加 `host`、`work_dir`；一期不接 `log.*`，運維上機器讀，log 檔 0640；STS 的 log 留到 spec 被刪才清；W5 保留期預設 7 天，registry 的資料 artifact 一期不刪；E10 結束時 OpenAPI 定案。2026-10-20 D994：C3、C4 定案（#302）。2026-10-20 D993：artifact manifest 的相容規則；`state.proto`、`session.proto`、`stsctl.proto` 與 manifest 定案（E9-12，#290）。2026-10-20 D991：selector 的型別搬到各自 package 的 `selector.proto`，留在草案到 E5；D992：定案前刪掉 `session.proto` 的 `reserved`（E9-12，#290）。2026-10-20 D985–D990（E9-10，#288）：推 `v*` tag 與 `workflow_dispatch` 打包 conn、account worker，推 `ghcr.io/bullionbear/` 的 `mftiko-md-conn`、`mftiko-td-account`，tag 是 git tag 與 `latest`；workflow 只推、不設可見度，第一個 tag 前由 org owner 把 Package creation 設成 Public。PROTOCOL §8 為 v1.25。2026-10-19 D978–D984（E9-09，#287）：worker 進程確定結束後才打包、另寫資料推送（暫存檔再串流）、打包內容與空 volume、terminal.json、state_out 欄位與 1–60 秒退避、清理順序。PROTOCOL §8.4 為 v1.24。2026-10-19 D972–D977（E9-08，#286）：拉資料 artifact、GC 保留正在拉或正在解的 input 層，以及 Pull 回傳後到 UnpackImage 結束前的策略層、inputs 與 rootfs 一起在背景拉取、解開後唯讀、每 10 秒量 volume、volume 在第一次 spawn 前建立。PROTOCOL §3.3、§5.4、§8.3、§8.4 為 v1.23。2026-10-19 D966–D971（E9-07，#285）：沒心跳直接 SIGKILL、`HUNG`／`no_beat` 由 STS agent 記在 `SessionStatus`、分階段的 `BeatTimeout`、`window_s` 在記憶體計數、shim 掉了不重啟、退避中是 `RESTARTING` 且同一 epoch 的 seq 接下去加。PROTOCOL §3.3、§6、§9.7 為 v1.22。2026-10-19 D958–D965（E9-06，#284）：背景拉取與解開、每一輪 GC(keep)、拿掉 `-worker`（取代 D943）、Start 帶第一份 bindings 之後以 Command 推送、每個 session 的 grace_ms、ENDED 後的 terminal phase、worker 自己結束不重啟、測試沿用假 registry。PROTOCOL §3、§6、§8 為 v1.21。2026-10-19 D950–D957（E9-03，#281）：層直接解壓不 hardlink、記錄所用層；接受的 tar 項目與 `os.Root`；解壓大小與檔案數上限；永久 reason `artifact_unsafe_layer`；同一 digest 只解一次；`GC(keep)` 不判斷最新版；inputs 共用解開函式。PROTOCOL §8 為 v1.20。2026-10-19 D928–D934（E9-02，#280）：錯誤分永久與暫時、contracts 必須全含、下載不留半檔、快取只比大小、總大小先加總、帳密用 Docker config.json 與 plain_http、只接受單一 image manifest。PROTOCOL §8 為 v1.19。2026-10-19 D942–D949：E9-05 STS agent 骨架（#283）：與 #284 的分界、`-worker`、沒有 spec 不寫 status、terminal 不回頭、phase 對到骨架狀態、spec 編碼當 spawn hash、部署旗標、testplane 測試。2026-10-19 D935–D941（E9-04，#282）：contracts 由 sdk 嵌入 binary，pack 讀出填入、不比對 sdk 版本（D935 取代 D912）；CLI、os／arch 取自 ELF、可重現的層、`sdk.Contracts` 回傳複本、Docker `config.json` 憑證、推送前先驗證。PROTOCOL §8 為 v1.17。2026-10-19 D909–D927：E9 開工前的決定（E9-01，#279）：oras-go、一個共用的 registry、策略只依 digest 拉、pack 的 `contracts` 取自 buildinfo、大小上限、MD／TD 只做到 CI 打包、GC 在 reconcile 裡、只照指派 spawn、algo 重疊、預設值、`RestartPolicy`、no_beat、phase、`Bindings.Version`、清理、JWT 的位置、`state_out` 的 tag 與重試、定案範圍。2026-10-19 D1337–D1339（E13-07，#268）：reconcile 把寫入交給 region 佇列就繼續，不等結果；同一個 key 在佇列裡只留最新值，和本 term 寫過、view 還沒讀到的相同值不再寫；provider region 未完成首次同步時，`bindings` 保留現有的 status；home region 不一致時每個 cluster 只由 home 在那裡的 controller 寫入，一期視為設定錯誤；舊 leader 在新 leader 當選後仍可能寫入新 leader 還沒 fence 的 region，時間窗小於一個 TTL，由 #277 關掉。2026-10-18 D1333–D1335（E13-06，#267）：刪完 MD、TD 需求並在 view 確認不在才刪 `SessionDemand`，任一 provider region 過舊則指派跟著等；孤兒須所有 STS region 已同步且不過舊、沒有任何 instance 有這個 session；controller 只刪需求項目與 `SessionDemand`。2026-10-18 D1328–D1332、D1336（E13-05，#266）：結束不可逆，`end_reason` 留第一次的值；同一輪 `ended_by_spec` > `deps_failed` > `deps_timeout`；`ENDED` 之後不更新 `bindings`；逾時以最早到期設計時器，不等 60 秒全量；過舊 region 的 `READY` 不放行 `start`，`bindings` 照抄；#266 與 #267 平行，後合併者負責 rebase 解衝突。2026-10-18 D1322–D1327（E13-04，#265）：spec 的 revision 與指派的 `spec_revision` 不同時不重推、不新增不刪除、只記一次 log，不以 `invalid_spec` 結束；比較忽略 `updated_at_ns` 與 `DemandEntry.spec_revision`；`bindings` 寫目標、`status` 留空、`start` 固定 false；跨 region 不保證先後；一開始就 `ENDED` 且尚無指派則不寫；plane 標錯也是 `invalid_spec`。2026-10-18 D1317–D1321（E13-03，#264）：每個 instance 一個 Mirror，監看整個前綴再分類進 view；首次同步前的 region 視為過舊且不寫入；單一 reconcile 迴圈，dirty 立即再跑，60 秒全量走同一迴圈；view 帶每個 region 的 revision 與是否過舊；解不開的值不進 view、不寫不刪。過舊門檻預設 15 秒，放在 daemon 設定。2026-10-17 D1312–D1316（E13-02，#263）：controller 讀 mftiko-etcd-roles 同一份部署 JSON；骨架即有依 region 的寫入佇列，寫入入口先只供測試；AgentRecord 當選後寫一次，正常停下 revoke；ErrSuperseded 或選主斷線以非 0 結束，SIGTERM revoke 後以 0 結束；etcdtest 一次起多個 region。2026-10-17 D1301–D1311（E13-01，#262）：controller 分純邏輯與 daemon；`deps_timeout_s` 從 `SessionDemand.issued_at_ns` 起算，0 取 60 秒；spec 只有 `desired_state` 可改，刪掉當成 `ended_by_spec`；不合法的 spec 以 `invalid_spec` 結束；每個 region 第一次寫入前才 fence；和 region 斷線時保持現狀、寫入依 region 排隊；N4 看 `WorkerStatus`；全量 resync 60 秒；E13 拆成 E13-02–07。PROTOCOL §3 為 v1.10。2026-10-17 D862–D864（E8-13，#237）：`hello` 從 params 解析商品、讀 Book 與 Recon、遠離市價掛一張限價單，`OnOrder` 確認 `ORDER_STATUS_ACCEPTED` 後撤單；`tape-keeper` 不改。conformance 檢查改到符合後面的決定，不改 SDK。每個 PR 用 `examples/strategies/conform` 跑完整份 Go SDK conformance。PROTOCOL §9.8 為 v1.09。2026-10-17 D857–D861（E8-15，#239）：本地訂單簿由 SDK 向 MD 的 `md.view` 要快照再套 `orderbook_delta`，不向交易所要；斷號或 `conn_epoch` 改變就重同步；`not_synced` 與其他讀取失敗沿用 D424 的 1–30 秒退避；等快照的緩衝上限 10000 筆或 10 秒，到了就丟掉並重要，這些 delta 不是 hook；檔數用 `book.DefaultN`，與 MD conn worker 一致，不用快照窗口大小；tick 仍取自 SYM `Info` 的 `price_tick`；未同步時 `Book` 回 `(nil, false)`；`reset` 清掉本地本並重要快照。PROTOCOL §7、§9.4、§9.5 為 v1.08。Go 實作在 `sdk/internal/bookpath`。D857 改寫 D402 晚加入那一句，不改編號。2026-10-17 D853–D856（E8-14，#238）：餘額三格由 TD 填、SDK 原樣覆蓋；Recon 整份換 OMS，該次 ReconRequest 送出之後才 Submit 且快照沒有的 pending_new 保留；Fill 不動 Ledger；讀取回傳 protobuf 複製、不阻塞。PROTOCOL §7.2、§9.6 為 v1.07。Go 實作在 `sdk/internal/tdpath`。2026-10-17 D850–D852（E8-10，#234）：Init 連不上 NATS 時在 deadline_ms 內退避重試，到期 INIT_FAILED；讀取順序只是策略自己呼叫的函式，不在啟動時自動還原；volume 原子寫入是暫存檔、fsync、rename、目錄 fsync。PROTOCOL §9.1、§9.2、§9.3、§9.4 為 v1.06。Go 實作在 `sdk`。2026-10-17 D846–D849（E8-09，#233）：binding 只套用較新的完整快照，一期 selector 回 error、不解析成員，subject 用 binding 給的並依集合增刪訂閱；SDK 不自動要 tape、不扣住 live，策略用 `TapePage.head` 去重（改寫 D437 的 SDK 那一句）；`md.view` 與 `md.fetch` 等 `recv_window_ms`，逾時或無 responder 時 callback 收到 error，回覆走 TD buffer；壞 envelope 丟掉、計入 `QueueStat.dropped`、寫 log、不結束 session。PROTOCOL §7、§9.3、§9.4、§9.5 為 v1.05。Go 實作在 `sdk/internal/mdpath`。2026-10-17 D840–D845（E8-08，#232）：OMS 先做自己 algo 的單，Ledger 與完整狀態機留給 #238；第一份 Recon 扣住事件，上限 65536，滿了 FAILED；Recon 逾時或無 responder 以 1–30 秒退避重問；Submit 逾時用 recv_window_ms，標 UNKNOWN；新 incarnation 或 seq 斷號重走 Recon；第一份回覆時，扣住的較舊 incarnation 可丟、較新的再問一次；撤單逾時不標 UNKNOWN。PROTOCOL §9.4、§9.6 為 v1.04。Go 實作在 `sdk/internal/tdpath`。2026-10-16 D828–D839（E8-12，#236）：conformance 是命令列工具加假 shim、行程內 nats-server，與一次一種違規的 fakeworker；每個 PR 的 CI 跑這些違規檢查。標準策略的設定是 `InitPayload.params` 的 JSON，欄位與檢查 id、報告 JSON 寫進 PROTOCOL §9.8。這一期只收執行命令。`Init` 之前的亂序與 `Start` 之前的 `Stop` 見 D837。Go SDK 整套通過留到 E8-13。同日 D823–D826（E8-07，#231）：事件照常立即交付，SDK 不為沒見過的 UID 查 SYM、不扣住事件，只追蹤 Resolve 過的商品；`Info(uid)` 回 `(symbol.Info, error)`，查不到回 error，框架不重試；已解析商品下架時以 `GetByUidRequest` 加 `include_inactive` 重拿，保留最後一份並標為不活躍。D804 追蹤範圍那句改寫，不改編號。PROTOCOL §9.4 第 8 條為 v1.02。客戶端在 `sdk/internal/symclient`。2026-10-16 D827（E8-11，#235）：維持每個 feed 一條權限，natsdev 產生的 server 設定把 `max_control_line` 調到 262144，STS 在簽發 session JWT 時檢查 CONNECT 引數，超過就拒絕並寫明 feed 過多。同日 D818–D822（E8-11，#235）：session 的 md 權限精確到每個 feed（修改 D906），publish `md.v1.view.{inst}.{topic}.{ticker}`、subscribe `md.v1.f.{inst}.{topic}.{ticker}`，不再用 `{inst}.>`；`md.v1.fetch.>` 不變；td 每個 api_id 各一條；去重後排序，只列 allow；沒有帳號不給 td，沒有 feed 不給 md.v1.f／md.v1.view。token 含 `.`、`*`、`>` 或空白回 error，不轉義。`SessionPermissions` 不連 etcd、NATS。spec 含 selectors 回 error。UniversalTicker 文法不含 `.`（小數點是 `D`），D819 不需另議。同日 D815–D817（E8-05，#229）：TD buffer 上限是 SDK 常數 65536，不進契約，滿了以 FAILED 結束；MD ring 是一塊預先配好的 32 MiB `[]byte`，每則可變長，放不下就丟最舊的若干則直到放得下（跳過正在讀的），單則大於整個 ring 直接丟並計入 `dropped`；hook 執行超過 100ms 計一次 `hook_slow`，`hook_blocked_ms` 是目前這個 hook 已執行的時間。同日 D811–D814（E8-06，#230）：cloid 產生器一個進程一顆計數器，所有 algo、所有帳號共用；seq 用完往前借毫秒且不設上限，`ts_ms` 可能超前牆鐘；狀態不持久化，跨 incarnation 撞號由 TD 冪等回 106。產生器在 `sdk/internal/cloidgen`，以一個 uint64 的 CAS 更新。D602 的 seq 與跨 incarnation 兩句改寫，不改編號。同日 D806–D810（E8-03，#227）：c4 加 `Stopper`（`OnStop` 在 `Exiting` 與 `Stopped` 之間）；`Run` 返回時 `OnStop` 套 plane 在 Init 後交出的 `hook_timeout_s`，逾時 exit 21、不送 `Stopped`；`deadline_ms` 逾時不等 hook，exit 10，不呼叫 `Stopper`；Start 失敗（非逾時）才呼叫；SIGTERM 由 main 的 `NotifyContext` 傳入 `Serve`；刪除 `sdk/internal/c4`。同日 D805：策略的 hook 依 topic 拆開；SDK 先更新本地 book、OMS、Ledger 再呼叫 hook；`OnOrder` 是單的每一次變化，`OnReject` 只給撤單類請求的拒絕（E8-04，#228）。2026-10-16 D803：`recv_window_ms`、`hook_timeout_s` 由 STS agent 解析成實值，經 `stsctl.InitPayload` 交給 worker，不會是 0（E8-02，#226）。2026-10-16 D638：成交發在 `td.evt`，目前沒有人落庫，由誰落庫見 PROTOCOL §10，不會是 TD agent（修訂 D601）。同日 D639：TD agent 沒有 NATS user（修訂 D611）。同日定案事件連線的計畫性換線跑一次 recon、期間不報 DEGRADED、reason 仍是 RECONNECT，D635–D637（#200，修改 D614）。2026-10-16 定案 `td.proto`（D634 的後續）：從 `buf.yaml` 的 `breaking.ignore` 移出，PROTOCOL §1 改回定案。2026-10-16 定案 `read.proto`（D462 的後續）：從 `buf.yaml` 的 `breaking.ignore` 移出，PROTOCOL §1 改回定案。同日 D634：比照 E6-15 分兩個 PR。#242 刪項目、照 D633 不留 `reserved`，`td.proto` 仍留在 `breaking.ignore`；#242 合併後另開小 PR 移出清單、PROTOCOL §1 改回定案。同日 D462：比照 E6-15 分兩個 PR。#241 刪欄位、照 D461 不留 `reserved`，`read.proto` 仍留在 `buf.yaml` 的 `breaking.ignore`，PROTOCOL §1 維持草案；#241 合併後另開小 PR 移出清單並把 §1 改回定案。同日 D803：`orderbook_delta` 不進 prehook，一律套進本地 book，只有呼叫 `OnBook` 受 `recv_window_ms` 管；prehook 的 `now` 在 dispatcher 取出時取。同日 D803 補上結束的順序：收到 `Stop` 先送 `Exiting`，交付完 TD buffer 再跑 `OnStop`，`CRASHED` 不交付；`grace_ms` 管整個收尾；自己結束的路徑上 `OnStop` 套 `hook_timeout_s`。同日定案 P15：策略 API 以 UID 為商品身分，ticker 只在 `OnInit`、`OnStart` 的 `Resolve`；SDK 只追蹤看過的商品，不從 spec 推要載入的表，D804。2026-10-15 每一則行情的 payload 帶 UID，不帶 ticker 字串：`FeedEvent`、`BookSnapshot`、`FetchReply` 加 `uid`，`md.fetch` 的請求以 UID 指定商品，subject 不變；`read.proto` 回到草案，E8-01（#222）改完再定案，D461。同日 `td.view` 的 OMS 與帳本查詢換成一個 `ReconRequest`，回一份 `Recon`；拿掉 `Submit.algo_id`、`Cancel.algo_id` 與 104，TD 不解碼 `client_order_id`；`td.proto` 回到草案，E6-17（#220）改完再定案，D633。同日定案 `tdctl.proto`、`td.proto`（E6-15，#175）：兩份移出草案清單，PROTOCOL §1 改為定案，D629。同日拿掉 `OmsViewRequest.settled`（欄位 2），改成 `reserved 2` 與 `reserved "settled"`，`algo_id` 仍是 3，D632。同日定案前刪掉 `td.proto` 的 `reserved`，欄位號碼不重排；`tdctl.proto` 沒有 `reserved`；兩份仍在草案清單，移出清單與 PROTOCOL §1 定案是這份合併後的後續，D629。同日保留歷史補正欄位（`AccountSettings` 的 interval 與手動觸發、`td.backfill` 相關欄位），D630。同日每一則 `td.view` 回覆帶 `cancel_batch`，給策略拆批，D631。2026-10-15 修訂 D610（E6-14，#174）：撤單沒有回答、過了界線查到單仍在簿上時，清掉 `cancel_sent_ns`，發 `CANCEL_REJECTED`、code 120，策略可以再撤。2026-10-15 定案兩把鑰匙：OMS 與交易所之間（事件、recon、查單）以 order_id 對單，沒有 client id 的單仍以 order_id 追蹤；系統裡面（策略、td.order、Cancel、BatchCancel、td.view、向外的 OrderUpdate）以 cloid 為鍵。Cancel 與 BatchCancel 只收 client_order_id，order_id 欄位保留，OMS 送出時換成那張單的 order_id。解不開成平台 cloid 的不屬於任何 algo。BatchCancel 不檢查歸屬。D602、D605、D615、D617、D623、D625、D626 改寫，不改編號。2026-10-15 修訂批次撤單（E6-09，#169）：BatchCancel 是明確的訂單清單，TD 一對一轉成一筆交易所請求，不挑單、不分批；CancelBatch 為 1 時本地拒絕；超過上限仍送出並原樣回報交易所的拒絕；一批算 OrderRate 的一筆；商品解不出來只影響那一筆。一次撤掉某 algo 的全部掛單改由 STS SDK 做。D602、D625–D628 改寫，不改編號。2026-10-14 定案下單與撤單（E6-08，#168）：記憶體 cloid 冪等、同 cloid 內容不同回 106、每筆 `recv_window_ms`、`OrderRate` 用到 90% 回 108、查單失敗逾 5 分鐘 `DEGRADED`、`UNKNOWN` 可撤、`TradeStream` 不可用改走 REST，D618–D624（修改 D605、D617）。2026-10-14 定案以 cloid 查單（`Account.QueryOrder`，不存在是 `ErrNotFound`）、請求有效期 `AccountConfig.Validity`，以及三家讀持倉模式；Bybit 以 `positionIdx` 判斷，D617。2026-10-13 定案 td-agent：兩個前綴、ack、spec、endpoint 經 Init；執行中不檢查持倉模式，拿掉 `UNAVAILABLE`；algo 由 STS agent 檢查，D616（修改 D602、D607、D612、D614）。2026-10-13 定案 `mdctl.proto`、`md.proto`、`read.proto`（E4-12，#152）：三份移出草案清單，PROTOCOL §1 改為定案，D460。2026-10-13 刪掉 `mdctl.proto`、`md.proto` 的 `reserved`，現有欄位號碼不重排；三份仍在草案清單，移出清單與 PROTOCOL §1 定案是 #204 合併後的後續，D460。2026-10-13 定案 account worker 的 OMS 與帳本：OMS 只放活著的單，`settled` 不再有作用；recon 期間事件先排著再重放；斷線期間消失的掛單記成 UNKNOWN；槓桿取自持倉，D615（修改 D605、D606）。同日定案 tape 的 worker 級 arena（#189）：64 KiB chunk、硬上限含 slot 與索引、回收全 worker 最舊的 chunk，D458–D459。2026-10-13 定案 P14（#181）：行情 subject `md.v1.f.{inst}.{topic}.{ticker}`、`md.v1.view.{inst}.{topic}.{ticker}`，`md.v1.fetch.{venue}`，`sym.v1.changed.{venue}.{category}`，D455–D457。實作在 #194。2026-10-12 定案 account worker 的連線角色與狀態：只有事件連線決定 DEGRADED，計畫性換線先接後斷；一期不做 BinancePM，D614。同日拿掉 top-N 與 FeedEnd（#180）：book topic 只剩 `orderbook_delta`，寫 `orderbook` 回 `invalid`，D453–D454。2026-10-12 定案 tape ring 與 `md.view`（E4-06）：一個 feed 一個 ring，讀取無鎖，以 `head` 接 live，D435–D452。同日定案帳號憑證以 TD instance 的 X25519 公鑰封裝：NaCl sealed box 加版本與指紋，`api_id`、`kind` 一起封、解開後比對，封裝工具 `mftiko-seal`，D613。同日定案持倉模式由 `AccountSnapshot.HedgeMode` 帶回，以及給 account worker 測試用的假帳號 `exchangetest.AccountVenue`，D612。2026-10-11 定案 TD 的契約與 NATS 身分（E6-02）：`td.order` 只回 ack 或本地拒絕，單的每一次變化都是 `OrderUpdate`，1xx 只列一期會碰到的；訂單狀態加 `ACCEPTED`（上簿），撤單在途改成旗標 `cancel_sent_ns`，拿掉 `PENDING_CANCEL`；account worker 每個帳號一份 NATS 憑證，由 TD agent 簽，D610–D611。同日修訂 D601：TD agent 不查 SYM，歷史補正的交易所讀取比照 md.fetch。同日修訂 D202、D401：MD agent 不查 SYM，conn worker 用活躍表推出 atom 並 diff 訂閱，並在 Report 以 FeedStatus 回報每一筆 feed。同日更新 D415、D426：MD instance 訂閱 `sym.changed.>`，conn worker 在 Init 載入該 venue 的活躍表。同日定案本地訂單簿：一張快照加增量、seq、top-N、序號權威與 fixture，D424–D429。同日再定本地簿為刻度環，D430–D433。同日再定 SnapshotStream 斷號或 checksum 失敗時只重訂該 channel，D434。同日修訂 D426：SnapshotREST 不設價格邊界、不因距離重抓。同日定案 TD 的幾件事（E6-01）：連線與重建是 TD 的事、STS 是最後一道防線；結果未知分兩層，STS 交出 UNKNOWN、TD 主動以 cloid 查單；`td.view` 只讀本地快照；一期只支援單向持倉；TD 的 Policy 與限速，D604–D609。同日更新 D420：`Used.ResetAt` 是計數器歸零的絕對時間，用量到點作廢；429 與 418 依 `Retry-After` 停送，沒有才等到 `ResetAt`。同日定案 md.fetch：subject 分 venue、K 線分頁、限速、不快取、活躍表解析、平台執行檔，D418–D423。同日定案 dev NATS：operator／account JWT、full resolver、MD 與 md.fetch 的權限與 inbox，D412–D417。同日更新：`md.f` 的 v1 envelope 固定 40 bytes，拿掉 `len`，加 `digest`（payload 的 xxHash64），見 D405–D411。2026-10-11 定案 P6 與 P9：`DEAD` 的時機，以及 worker 版本只在下次 spawn 取用，見 D106、D902 與 PROTOCOL §3.5、§8。2026-10-09 更新：幣與數量的單位、SYM listing 分活躍表與終結表，以及 symbol UID，D203。同日再定 UID 的分配：SYM 發隨機、唯一、永不重用的整數，不是單調序號；跟列持久化，重啟與重載不改。寬度與範圍已定：契約型別 `uint32`，`1..4294967295`（`1..2^32-1`），0 非法；Postgres 欄位是 `bigint`，`CHECK (uid BETWEEN 1 AND 4294967295)`，見 PROTOCOL §10 P13）。只收已經講定的事；還在討論的放在 [§待討論](#待討論)。協議與契約見 [PROTOCOL.md](PROTOCOL.md)。>
 > 不照抄 mftik `refactor/process-planes`，也不照抄 Strategon 的 agent。兩者都只當參考。
 >
 > **編號。** 決策屬於哪個 epic，號碼就落在那個 epic 的段。每個 epic 自己分配下一個號碼，不跟其他 epic 共用一條流水號：E1 是 D101、D102、…，E2 是 D201、…，E3 是 D301、…，以此類推。epic 編號是兩位數時，後面仍接兩位序號（E10 是 D1001、D1002、…），才不會和 E1 的 D101 撞號。不屬於單一 epic 的跨平面、架構層決策用 D0XX（D001、D002、…）。
@@ -1603,7 +1603,7 @@ spec 維持不可變，平台不解讀策略狀態，重啟仍是新進程從零
 - **#241 合併後的小 PR 定案。** `read.proto` 從 `breaking.ignore` 移出，`buf breaking` 開始檢查。PROTOCOL §1 改回定案。這個 PR 不改欄位。
 - 修訂 D461「E8-01 改完再移出」的時點：移出清單不是 #241 的完成標準，是 #241 合併之後的後續。
 
-### D906 session worker 的 NATS 憑證：每個 session 一份
+### D906 session worker 的 NATS 憑證：每個 session 一份（`log.sts` 由 D1015 拿掉）
 
 - **簽發：** STS agent 持有 NATS account 的簽章金鑰，spawn 時為每個 session 簽一份 user JWT（NKeys）。和其他憑證一樣經 `Init` 的 socketpair 送進去，不放環境變數、不落檔。簽發是本機的密碼學運算，不需要連 server。
 - **權限從 spec 推：**
@@ -1721,7 +1721,7 @@ Binance 一律以 ed25519 經 WS API 收發單（2026-10-10 定）。D302 的 `A
 - **controller 要 fencing，和 agent 一樣（PROTOCOL §3.2 W2）。** 在 home region 的 cluster 參選，當選後 epoch 加 1，在每一個要寫入的 cluster 放 writer key，之後每次寫入都以它為條件。被取代的舊 controller 寫不進去。home region 是部署設定。
   - instance 名稱固定是 `controller`。名稱可以設定的話，兩個名稱不同的 controller 各有各的 writer key，會同時寫同一批需求；名稱固定，兩個進程即使對 home region 的設定不一致，也會在每個 cluster 搶同一把 writer key。
 - **controller 不在交易的路徑上。** 它停機或輪換時，需求與指派原樣保留，跑著的 session 照跑，只有新的起停要等它回來。
-- API server 不參選。它的寫入怎麼滿足 W1（例如 spec 只用 create-only 的 txn、帳號以 `mod_revision` 做 CAS），在 E10 定（PROTOCOL §10）。
+- API server 不參選。它的寫入怎麼滿足 W1（例如 spec 只用 create-only 的 txn、帳號以 `mod_revision` 做 CAS），在 E10 定（PROTOCOL §10）。已定，見 D1006。
 
 ### D908 一期不做跨主機的故障轉移
 
@@ -1838,7 +1838,7 @@ Binance 一律以 ed25519 經 WS API 收發單（2026-10-10 定）。D302 的 `A
 - `Version(epoch, seq)`：`epoch` 是 STS agent 的 epoch，`seq` 是這個 session 在這個 epoch 裡的遞增號，從 1 起。
 - agent 輪換後 epoch 變大，新 agent 推的快照必然比舊的大；worker 只套用比手上大的（PROTOCOL §6.1），不會倒退。
 
-### D923 session 結束後的清理（E9-01，#279）
+### D923 session 結束後的清理（E9-01，#279；清理時機由 D1016 修改）
 
 - `state_out` 推成功之後（volume 是空的則立刻）刪：volume、inputs、shim 的 log 檔（`${WORK_DIR}/log/sts/{h}.*`，PROTOCOL §4.3），以及 incarnation key。STS 的 worker key 不會重用。
 - `WorkerStatus` 照 agent 骨架的規則，worker 消失就刪，controller 才能照 N4 往下走。清理不擋這一步。
@@ -1849,7 +1849,7 @@ Binance 一律以 ed25519 經 WS API 收發單（2026-10-10 定）。D302 的 `A
 - 維持 E8-11 的位置（`internal/sts/issuer`，含 D827 的長度檢查）。epic #11 原本寫的 `internal/platform/natsx` 改掉。
 - 簽章金鑰照 D414，與 TD agent 同一把。
 
-### D925 `state_out` 的 tag（E9-01，#279）
+### D925 `state_out` 的 tag（E9-01，#279；保留期由 D1017 修改）
 
 - 推送與引用都用 digest；`InputDecl` 只認 digest。
 - 另外打一個 tag `<session_id>`，給人查找。保留期由 API 管（PROTOCOL §8.4），STS 不刪。
@@ -2138,7 +2138,7 @@ Binance 一律以 ed25519 經 WS API 收發單（2026-10-10 定）。D302 的 `A
 
 - `size_bytes` 是推上去的層的壓縮後大小；`at_ns` 是推送成功的時間；`digest`、`repository`、`clean`、`incarnation` 照 §8.4。推送失敗照 D926 以 1–60 秒退避，一直重試到成功，volume 保留，不擋 terminal phase。
 
-### D984 清理順序與測試（E9-09，#287）
+### D984 清理順序與測試（E9-09，#287；由 D1016 修改）
 
 - 推送成功（或空 volume）且 worker 已結束後，依序刪 volume、inputs（先改回可寫，D975）、`terminal.json`、shim 的 log 檔（`${WORK_DIR}/log/sts/{h}.*`），最後以 `Incarnations.Forget` 刪 incarnation key，刪掉整個 `sessions/<id>/`。測試：下一個 session 以 `state_out` 當 `InputDecl` 讀到同樣的檔案；registry 停掉時 volume 保留、恢復後推上並補寫 `state_out`；agent 重啟後接著推；清理後主機上沒有該 session 的殘留。
 
@@ -2197,6 +2197,161 @@ Binance 一律以 ed25519 經 WS API 收發單（2026-10-10 定）。D302 的 `A
 - 三份沒有定案前的 `reserved`，所以不需要 D629、D460 的第一個 PR，一個 PR 移出清單。
 - 定案前檢查過：沒有標示暫定、留給其他 epic 的欄位。`Hello.pid` 由 `contract/wire/c4` 填入，平台目前不讀，留著供除錯，不刪。
 - `common.proto` 的 `Side`、`OrderType`、`TimeInForce`、`ExitInfo`、`Condition` 早已被定案的 `td.proto`、`md.proto`、`state.proto` 引用；從這裡起，改它們也受 `buf breaking` 檢查。
+
+### D1002 API 的契約：OpenAPI，`api.v1` 自成一體（E10-01，#306）
+
+- **console 與 CLI 只認 API 自己的契約。** `api.v1` 不 import `session.v1`、`state.v1`：API server 把自己的請求型別轉成 `SessionSpec`、`Account` 寫進 etcd，讀取時反向轉換，轉換配對照測試，逐欄位比對。內部的 proto 可以演進，對外不動。
+- **以 OpenAPI 3.0.3 寫在 `contract/openapi/api/v1.yaml`，先寫規格再實作。** 3.1 的 Go 產碼支援還不完整，所以用 3.0.3。
+- **編碼是 JSON，是 PROTOCOL §1「編碼一律是 protobuf」的例外。** 相容性改由 `oasdiff breaking` 對 main 檢查，規則比照 §1：路徑帶 major（`/api/v1`），同一個 major 內只做相容擴充，讀取端忽略不認得的欄位。lint 用 Redocly。
+- **不受 `selector.proto` 的草案狀態牽制（D991）。** 一期 API 不收 selectors（D822），E10 結束時定案（D1018）。
+- 不採用：proto 加 Connect。前端拿到的會是平台的 proto 型別，`api.v1` 也得 import `session.v1`，要等 E5 才能定案。
+- 不採用：import `session.v1`。少一層轉換，但內部的宣告一改，對外的 API 就跟著改。
+
+### D1003 產碼範圍（E10-01，#306）
+
+- **Go：** `oapi-codegen` 產 strict server 的介面與型別，以及 client，放在 `contract/gen/api/v1`。`internal/api` 實作 server 介面；client 給 E11 的 CLI（#13）與端到端測試。
+- **TypeScript：** `openapi-typescript` 產型別，`openapi-fetch` 當 client，放在 `web/src/lib/gen/api`。
+- **前端不再產 proto。** `buf.gen.yaml` 拿掉 `protoc-gen-es`，`web/package.json` 移除 `@bufbuild/buf`、`@bufbuild/protoc-gen-es`、`@bufbuild/protobuf`，刪掉 `web/src/lib/gen/mftiko/`。proto 只剩 Go 的平台內部契約，`buf` 照舊管。
+- `make` 一次產出 Go 與 TypeScript，產物提交；CI 檢查漏產與 `oasdiff breaking`。工具版本釘在 `bin/tools`。
+
+### D1004 錯誤模型與分頁（E10-01，#306）
+
+- **錯誤一律是 `application/problem+json`（RFC 9457）。** 欄位 `type`、`title`、`status`、`detail`；驗證錯誤另帶 `errors: [{path, reason}]`，`path` 是請求 JSON 的欄位路徑，console 據此標在對應的欄位上。
+- **狀態碼：** 400 驗證錯誤；401 未認證；404 不存在；409 並行衝突（create-only 或 CAS 不成立，D1006）以及狀態不允許（刪非 terminal 的 session、刪仍被引用的帳號）；503 該資源所在的 region 不可用（D1014）。
+- **列表以游標分頁：** 請求帶 `limit`（預設 100，上限 1000）與 `cursor`，回應帶 `next_cursor`，沒有下一頁就省略。游標對呼叫端不透明。
+
+### D1005 串流用 SSE（E10-01，#306）
+
+- **狀態的即時更新走 SSE（`text/event-stream`）。** 單向、低頻、要能續傳，SSE 是普通的 `GET`，寫得進 OpenAPI，走同一套認證與稽核中介層。
+- **event id 是 etcd revision。** 跨 region 的串流（例如列出所有 session）帶每個 region 各自的 revision，格式 `<region>=<rev>[;<region>=<rev>…]`。重連時瀏覽器帶 `Last-Event-ID`，API 從各 region 的 revision 接著送（W4 的規則），連到任何一個副本都接得上。某個 region 已經 compacted，就送一則 `reset`，client 重新 list。
+- 每 15 秒送一行註解當心跳。
+- **部署要求 HTTP/2。** HTTP/1.1 下每個網域最多 6 條連線，開幾個分頁就會卡住。
+- 認證用 cookie（D1009）：瀏覽器的 `EventSource` 不能帶 header。
+- 事件的 schema 寫在 OpenAPI 的 `components`，前端標註型別，測試確認一致。
+- 不採用：WebSocket。OpenAPI 只描述得了握手，連線後的訊息格式要另外定義；續傳、心跳要自己設計。之後 market 頁若要在同一條連線上切換訂閱，或推高頻資料，再另外決定。
+
+### D1006 API server 的寫入（P8）（E10-01，#306）
+
+- **API server 不參選，可以多個副本，全部用 etcd 使用者 `api`。** RBAC 只讓 `api` 寫 `spec/`、`account/`，並依 W5 刪 `status/`（PROTOCOL §3.2 W1），所以 W1 以角色為單位成立。副本之間的競態由 txn 的條件擋：
+  - **建立 spec、建立帳號：** create-only，`create_revision == 0`。
+  - **結束 session：** 讀出 spec，只改 `desired_state`（D1303），以 `mod_revision` CAS 寫回。
+  - **更新帳號：** 呼叫端帶讀取時拿到的 `revision`，以 `mod_revision` CAS 寫回。
+  - **刪除 session（W5）：** 一個 txn 刪 spec 與 status，條件是兩者的 `mod_revision` 仍等於讀到的值，而讀到的 status 是 terminal。terminal 是吸收態，所以條件成立就安全。
+  - **刪除帳號：** 以 `mod_revision` 為條件刪，前提見 D1011。
+- 條件不成立回 409（D1004），由呼叫端重新讀取。
+- 不採用：API server 也參選。API 的寫入都是使用者觸發的一次性動作，不像 controller 要持續推導，txn 的條件就夠了。
+- PROTOCOL §3.2 加上 W10，§10 的 P8 標為已定。修改 D907 最後一條。
+
+### D1007 `session_id` 隨機配號（E10-01，#306）
+
+- **API 以 `crypto/rand` 產生 6 個小寫 hex。** 寫入前先查 API 的副本（D1014），所有 STS instance 都沒有這個 id 的 spec；再以 create-only 寫入自己的 key。撞到就換一個，最多重試 5 次。
+  - 副本的檢查不是原子的。兩個請求同時抽到同一個 id、又寫進不同的 STS instance，才會漏掉；機率約 1/1,677 萬，接受。
+- **不再要求對所有歷史唯一，只保證存活與保留期內唯一。** W5 刪掉 spec 之後，舊 id 可能被新 session 抽到。依據：預期每年 10,000 個以內、同時存活 200 個以下；隨機配號第一年預期重用約 3 次。
+- **重用只影響歷史，不影響運作。** 刪 spec 之前 controller 已依 N4 刪完需求，STS 主機上的東西在 spec 刪除後清掉（D1016），所以新 session 對 controller、STS、MD、TD 都是全新的。仍以 `session_id` 為鍵的歷史有三處：
+  - registry 上 `state_out` 的 tag（D925）：重用會蓋掉舊 tag，舊資料只剩 digest 找得到。tag 要不要改成帶時間另議，D925 不變。
+  - algo 的持有紀錄（D602）：同一個 id 出現兩段，以時間區間區分。
+  - 稽核紀錄（D1010）：同上。
+- 不採用：etcd 計數器。歷史上永遠一對一，但計數器只能放在一座 cluster，多一個 key 和 CAS 迴圈；以上面的量，重用的代價不值得。
+- 不採用：tombstone。key 只增不減，建立時要跨 region 檢查。
+- PROTOCOL §2 的 `session_id` 一列改寫。
+
+### D1008 `api_id` 的配號（E10-01，#306）
+
+- **API 從 1 到 2⁵³−1 隨機抽一個整數。** 上限讓 JavaScript 的 number 表示得精確，console 不必把它當字串。寫入前先查副本，所有 TD instance 都沒有這個 `api_id` 的帳號；再以 create-only 寫入自己的 key。
+- 帳號數量是幾十到幾百，2⁵³ 的空間下，連刪除後重用都可以忽略。
+- 由 API 配發，使用者不能指定：`td.order.{api_id}` 等 subject 要全域唯一，人工指定容易撞。
+- 不採用：計數器。理由同 D1007。
+
+### D1009 認證：每人一個靜態 token，單一角色（E10-01，#306）
+
+- **每個使用者一個 token。** API 的部署設定列出 `name` 與 token 的 SHA-256，設定檔裡沒有明文 token。換 token 就改設定、重啟 API。
+- **只有一個角色：通過認證就能使用所有資源。** API 內部不再分唯讀、操作、管理。
+- **CLI 與自動化：** `Authorization: Bearer <token>`。
+- **console：** `POST /api/v1/auth/login` 帶 token，API 回一個 cookie：`HttpOnly`、`Secure`、`SameSite=Strict`，內容是 `{name, exp}` 以 HMAC-SHA256 簽章；金鑰在部署設定，所有副本共用，所以哪個副本簽的都能驗。預設 12 小時到期。`POST /api/v1/auth/logout` 清掉。SSE 用同一個 cookie（D1005）。
+- **CSRF：** console 由 API 同源服務。cookie 是 `SameSite=Strict`，寫入另要求 `Content-Type: application/json`，HTML 表單送不出這種請求。
+- 部署一律走 TLS；dev 例外。
+- 不採用：OIDC。之後要接公司的身分系統再換，中介層的介面不變。
+- 不採用：mTLS。瀏覽器的使用體驗差。
+- 不採用：角色分級。目前的使用者都需要完整權限。
+
+### D1010 稽核：中介層寫 Postgres 的 `audit` 表（E10-01，#306）
+
+- **每個請求在回覆時，由中介層寫一列到 Postgres 的 `audit` 表。** health 與 readiness 不記。
+- **欄位：** 時間、使用者（未通過認證時為空）、method、path、query、狀態碼、耗時、request id、來源位址、目標（`session_id` 或 `api_id`，有的話）、寫入請求的 body、錯誤的 `detail`。
+- **body 去掉憑證。** 帳號的憑證欄位在寫入 `audit` 之前移除，其他欄位照記（D613）。回應的 body 不記。
+- **SSE 在串流結束時記一列**，耗時就是連線時間。
+- **寫不進去不改變回應。** 動作已經做完，中介層記 error log 與計數器，照常回覆。
+- 用 SYM 同一個 Postgres，表由 `migrations/` 新增的 `0003_audit` 建立，`mftiko-migrate` 套用。API 的部署設定加 DSN。
+- 一期不刪 `audit` 的列。
+- `SessionSpec` 不加建立者欄位：誰建的從 `audit` 查，已定案的 proto 不動。
+
+### D1011 帳號（E10-01，#306）
+
+- **封裝改由 API 做（D613）。** 每個 TD instance 的公鑰寫在 API 的部署設定，格式與 `mftiko-seal pubkey` 的輸出相同。API 以 `internal/platform/sealbox` 封裝，`api_id` 與 `kind` 一起封進去；明文只在處理那個請求的記憶體裡。
+- **憑證只寫不讀。** 讀取帳號回傳 `api_id`、`kind`、TD instance、`AccountSettings` 與密文的指紋，不回傳憑證；回應、log、錯誤訊息都不含明文或密文。
+- **一期接受的帳號種類：** D301 的種類裡，只交易一個 venue 的那些。交易不只一個 venue 的（一期只有 BinancePM）回 400，與 account worker 的 `kind_unsupported` 同一條規則（D614）。
+- **刪除仍被引用的帳號回 409。** 依 API 的副本，任何非 terminal 的 spec 引用這個 `api_id` 就拒絕。檢查不是原子的：漏掉時，TD 對那個需求寫 `REJECTED`（帳號不存在），session 以 `deps_failed` 結束，接受。
+- 更新用 CAS（D1006）。換憑證就是重新封裝、整份寫回。
+
+### D1012 API 的驗證範圍（E10-01，#306）
+
+- 建立 session 時檢查：
+  - `algo_id` 在 1–1023，同一個 spec 內同一個帳號不重複。
+  - **跨 session 的 `algo_id` 重疊做 best-effort 檢查：** 依 API 的副本，同一個 `api_id` 上已有非 terminal 的 session 用了同一個 `algo_id`，回 409。檢查不是原子的，漏掉的仍照 D616 由使用者保證，同一個 STS instance 上的由 D917 擋。修改 D616。
+  - `md_instance`、`td_instance` 在 topology 裡，而且平面正確。API 讀 `mftiko-etcd-roles` 同一份部署 JSON，和 controller 一樣（D1307、D1312）。controller 的 D1304 照舊保留，因為 topology 可能在 spec 寫入之後才改。
+  - 含 selectors 回 400（D822）。
+  - 同一個 spec 重複的 feed、帳號回 400。
+  - 策略：tag 先解析成 digest（D934），digest 在 registry 存在而且 `kind` 是 `strategy`。`contracts` 的相容由 STS 在 spawn 前檢查（D929），API 不重複做。
+  - `inputs` 的 digest 在 registry 存在，而且是資料 artifact（PROTOCOL §8.4）。
+- **不查 SYM（D202）。** ticker 寫錯由 MD、TD 解析後以 `REJECTED` 回報，session 以 `deps_failed` 結束；console 顯示 ack 的原因（D1014）。
+
+### D1013 策略目錄（E10-01，#306）
+
+- **以 registry 為準，API 不另外存。** 修改 D902「API 的策略目錄記錄 `name → digest`」。
+- 策略的 repository 清單寫在 API 的部署設定：registry 不一定支援列出 repository（ghcr 不支援 `/v2/_catalog`）。版本是各 repository 的 tags list；manifest 與 config 照 PROTOCOL §8.2。
+- **「目錄裡的最新版」是 `latest` tag 指到的 digest，** 和 MD、TD 的 artifact 一致（D987）。
+- STS 的 GC 依此保留最新版（D956），不在 E10 的範圍，和 agent 以 `latest` 解析（D987）一起移到 E12。在那之前 STS 照舊只保留釘住的 digest。
+
+### D1014 讀取端（E10-01，#306）
+
+- **每個 cluster 一個 `Mirror`（W4），比照 controller 的 D1317–D1321。** 讀取一律從副本回答，不在請求裡直接讀 etcd。
+- **region 不可用：** 尚未完成首次同步，或和該 cluster 斷線超過 15 秒（同 D1318 的門檻，可設定）。列表回傳其他 region 的結果，並以 `unavailable_regions` 標明；只在該 region 的單一資源回 503。
+- **controller 不在：** `/ctl/controller/agent` 不存在時，回應帶 `controller_absent`，console 顯示「狀態可能過期」的橫幅。
+- **session 的檢視合併：** spec、`SessionStatus`、`SessionDemand` 的 `end_reason`，以及每個需求項目 ack 的狀態與 `REJECTED` 的原因。
+- **失敗的原因要留下來。** controller 依 N4 刪掉需求之後，ack 就不在了，`SessionStatus.reason` 只剩 `deps_failed`（D963）。所以 STS 寫 terminal 的 `SessionStatus` 時，把結束那一刻 `SessionDemand.bindings` 裡 `REJECTED`、`DEAD` 的項目各寫成一個 `Condition`：`type` 是 `dependency`，`status` 是 false，`reason` 是 ack 的 reason，`message` 是 feed key 或 `api_id` 加上 provider instance。打錯 ticker 的 session 在 spec 刪除之前都看得到原因。
+- **log 的位置：** STS instance、主機、`${WORK_DIR}/log/sts/{h}.stdout` 與 `.stderr`（`h = WorkerHash("sts/<session_id>")`）。`AgentRecord` 加兩個欄位 `host`（`os.Hostname()`）與 `work_dir`，由 agent 當選時寫入；API 從它算出路徑。`state.proto` 已定案，加欄位是相容擴充（PROTOCOL §1）。
+- **`td.evt`（訂單與成交）一期不給 console。** API 不連 NATS。
+
+### D1015 log：一期不接 `log.*`，運維上機器讀（E10-01，#306）
+
+- **一期沒有 log 的資料流。** worker 的 stdout、stderr 照 PROTOCOL §4.5 S4 由 shim 寫檔，運維到 console 顯示的主機與路徑讀（D1014）。
+- **拿掉 `log.*`。** session JWT 的 `log.sts.{session_id}` 從 publish 清單刪除（修改 D906、D818），PROTOCOL §7 刪掉 `log.{plane}.{id}` 一列。目前沒有發佈者：SDK 的 log 寫 stderr。之後要做即時 log 再加回來。實作在 E10-14。
+- **log 檔讓運維不必 sudo 就能讀：** shim 寫的 stdout、stderr 與 agent 建立的 `{h}.shim.log`（PROTOCOL §4.6）改成 0640，目錄 0750。group 由部署決定：`${WORK_DIR}/log` 設 setgid 並指定 group，新檔沿用。修改 PROTOCOL §4.5 S4 的 0600、0700。
+- **MD、TD 的 log 不變**，照 S4 依 worker key 累積、輪替。不再出現的 worker key 留下的檔案，以及不輪替的 `{h}.shim.log`，記為 E12 的磁碟風險。
+- 之後要接即時 log，候選是每台主機一個 shipper 讀 shim 的檔案、送到 JetStream：來源涵蓋所有平面、所有語言與 crash 輸出，stream 的序號也能當 SSE 的 event id。
+
+### D1016 STS 的 log 保留到 spec 被刪（E10-01，#306）
+
+- **清理拆成兩段，比照 `docker rm`。** 修改 D923、D984：
+  1. **terminal 之後：** 照舊推 `state_out`（D925、D926）。推成功（空 volume 則立刻）只刪 volume 與 inputs。
+  2. **spec 不在之後：** 第 1 段完成，而且 `/sts/{inst}/spec/{session_id}` 不存在，才刪 `terminal.json`、shim 的 log 檔（`${WORK_DIR}/log/sts/{h}.*`，含 `{h}.shim.log`）、incarnation key 與 `sessions/<session_id>/`。
+- **level-triggered。** 每輪 reconcile 判斷；agent 重啟後 list 一次，磁碟上有、etcd 裡沒有 spec 的 terminal session 照樣清得掉。只清本機確認過 terminal 的 session，和 D944（有指派、spec 還沒出現）區分開。
+- spec 在 terminal 之前被刪（N3 `ended_by_spec`，D1303）：照常結束、推完 `state_out` 再清。
+- **保留期只有一處：API 依 W5 刪 spec 的時機（D1017）。** STS 端一期不另設上限。
+- 實作在 E10-02。
+
+### D1017 W5 的保留期（E10-01，#306）
+
+- **預設 7 天，寫在 API 的部署設定。** 從 terminal 的 `SessionStatus.updated_at_ns` 起算。
+- 每個副本都會掃，用 D1006 的 txn 刪 spec 與 status，重複刪除無害。
+- **使用者也可以從 API 立即刪除一個 terminal 的 session。** 非 terminal 的回 409：要結束 session 就把 `desired_state` 改成 `ENDED`。
+- 刪除寫進 `audit`（D1010）。
+- **registry 上的資料 artifact 一期不刪。** 修改 D925 與 PROTOCOL §8.4「保留期由 API 管」。新 session 可以在保留期之後以 digest 引用舊的 `state_out` 接手，隨 spec 一起刪會讓接手失敗。registry 的容量由運維管理。
+
+### D1018 E10 結束時定案的範圍與拆票（E10-01，#306）
+
+- **定案：** `contract/openapi/api/v1.yaml`。E10-20 以 main 上的版本設為 `oasdiff` 的基準，之後同一個 major 只做相容擴充。在那之前是草案，CI 只跑 lint，不擋不相容的改動。
+- **拆票：** E10-02 到 E10-20，即 #307 到 #325，依賴已連好。E11（#13）只依賴 E10-04（#309）的 Go client。
 
 ### D1301 controller 的套件結構與依賴規則（E13-01，#262）
 
