@@ -112,6 +112,11 @@ type Script struct {
 	VolumeFile  string `json:"volume_file,omitempty"`
 	VolumeText  string `json:"volume_text,omitempty"`
 	VolumeBytes int    `json:"volume_bytes,omitempty"`
+
+	// InputFile is <input name>/<file> under MFTIKO_INPUT_DIR. After Stage(running)
+	// the fake journals its contents as an input entry, so a test sees what the
+	// worker itself read from an input (D975).
+	InputFile string `json:"input_file,omitempty"`
 }
 
 // Env is the environment that makes a re-executed test binary this fake: append it to the shim's spawn
@@ -376,6 +381,7 @@ func (w *worker) onStart() (code int, done bool) {
 	w.send(doneMsg(workerv1.Verb_VERB_START, true, ""))
 	w.send(&workerv1.WorkerUp{Msg: &workerv1.WorkerUp_Stage{Stage: &workerv1.Stage{Name: "running"}}})
 	w.touchVolume()
+	w.readInput()
 	return 0, false
 }
 
@@ -415,6 +421,25 @@ func (w *worker) touchVolume() {
 		return
 	}
 	w.record(Entry{Event: "volume-write", Detail: strconv.Itoa(len(body))})
+}
+
+// readInput journals the contents of Script.InputFile, or the error reading it.
+func (w *worker) readInput() {
+	if w.s.InputFile == "" {
+		return
+	}
+	dir := os.Getenv("MFTIKO_INPUT_DIR")
+	rel := filepath.FromSlash(w.s.InputFile)
+	if dir == "" || !filepath.IsLocal(rel) {
+		w.record(Entry{Event: "input", Detail: "bad path"})
+		return
+	}
+	b, err := os.ReadFile(filepath.Join(dir, rel))
+	detail := string(b)
+	if err != nil {
+		detail = err.Error()
+	}
+	w.record(Entry{Event: "input", Detail: detail})
 }
 
 // end is Script.Exit: the worker ends on its own.
