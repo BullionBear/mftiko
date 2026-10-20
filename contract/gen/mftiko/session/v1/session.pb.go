@@ -455,272 +455,6 @@ func (x *FeedDecl) GetMdInstance() string {
 	return ""
 }
 
-type SelectorDecl struct {
-	state      protoimpl.MessageState `protogen:"open.v1"`
-	Name       string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	MdInstance string                 `protobuf:"bytes,2,opt,name=md_instance,json=mdInstance,proto3" json:"md_instance,omitempty"`
-	Venue      string                 `protobuf:"bytes,3,opt,name=venue,proto3" json:"venue,omitempty"`
-	Underlying string                 `protobuf:"bytes,4,opt,name=underlying,proto3" json:"underlying,omitempty"`
-	Topics     []string               `protobuf:"bytes,5,rep,name=topics,proto3" json:"topics,omitempty"`
-	// Types that are valid to be assigned to Kind:
-	//
-	//	*SelectorDecl_OptionChain
-	//	*SelectorDecl_RollingFuture
-	Kind          isSelectorDecl_Kind `protobuf_oneof:"kind"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SelectorDecl) Reset() {
-	*x = SelectorDecl{}
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SelectorDecl) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SelectorDecl) ProtoMessage() {}
-
-func (x *SelectorDecl) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SelectorDecl.ProtoReflect.Descriptor instead.
-func (*SelectorDecl) Descriptor() ([]byte, []int) {
-	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *SelectorDecl) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *SelectorDecl) GetMdInstance() string {
-	if x != nil {
-		return x.MdInstance
-	}
-	return ""
-}
-
-func (x *SelectorDecl) GetVenue() string {
-	if x != nil {
-		return x.Venue
-	}
-	return ""
-}
-
-func (x *SelectorDecl) GetUnderlying() string {
-	if x != nil {
-		return x.Underlying
-	}
-	return ""
-}
-
-func (x *SelectorDecl) GetTopics() []string {
-	if x != nil {
-		return x.Topics
-	}
-	return nil
-}
-
-func (x *SelectorDecl) GetKind() isSelectorDecl_Kind {
-	if x != nil {
-		return x.Kind
-	}
-	return nil
-}
-
-func (x *SelectorDecl) GetOptionChain() *OptionChain {
-	if x != nil {
-		if x, ok := x.Kind.(*SelectorDecl_OptionChain); ok {
-			return x.OptionChain
-		}
-	}
-	return nil
-}
-
-func (x *SelectorDecl) GetRollingFuture() *RollingFuture {
-	if x != nil {
-		if x, ok := x.Kind.(*SelectorDecl_RollingFuture); ok {
-			return x.RollingFuture
-		}
-	}
-	return nil
-}
-
-type isSelectorDecl_Kind interface {
-	isSelectorDecl_Kind()
-}
-
-type SelectorDecl_OptionChain struct {
-	OptionChain *OptionChain `protobuf:"bytes,10,opt,name=option_chain,json=optionChain,proto3,oneof"`
-}
-
-type SelectorDecl_RollingFuture struct {
-	RollingFuture *RollingFuture `protobuf:"bytes,11,opt,name=rolling_future,json=rollingFuture,proto3,oneof"`
-}
-
-func (*SelectorDecl_OptionChain) isSelectorDecl_Kind() {}
-
-func (*SelectorDecl_RollingFuture) isSelectorDecl_Kind() {}
-
-type OptionChain struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	RefFeed           string                 `protobuf:"bytes,1,opt,name=ref_feed,json=refFeed,proto3" json:"ref_feed,omitempty"`
-	NearestExpiries   uint32                 `protobuf:"varint,2,opt,name=nearest_expiries,json=nearestExpiries,proto3" json:"nearest_expiries,omitempty"`
-	MinTteS           uint32                 `protobuf:"varint,3,opt,name=min_tte_s,json=minTteS,proto3" json:"min_tte_s,omitempty"`
-	AtmStrikes        uint32                 `protobuf:"varint,4,opt,name=atm_strikes,json=atmStrikes,proto3" json:"atm_strikes,omitempty"`
-	Sides             []string               `protobuf:"bytes,5,rep,name=sides,proto3" json:"sides,omitempty"` // "C"、"P"
-	RecenterStrikes   uint32                 `protobuf:"varint,6,opt,name=recenter_strikes,json=recenterStrikes,proto3" json:"recenter_strikes,omitempty"`
-	RecenterMinDwellS uint32                 `protobuf:"varint,7,opt,name=recenter_min_dwell_s,json=recenterMinDwellS,proto3" json:"recenter_min_dwell_s,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
-}
-
-func (x *OptionChain) Reset() {
-	*x = OptionChain{}
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *OptionChain) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*OptionChain) ProtoMessage() {}
-
-func (x *OptionChain) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use OptionChain.ProtoReflect.Descriptor instead.
-func (*OptionChain) Descriptor() ([]byte, []int) {
-	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *OptionChain) GetRefFeed() string {
-	if x != nil {
-		return x.RefFeed
-	}
-	return ""
-}
-
-func (x *OptionChain) GetNearestExpiries() uint32 {
-	if x != nil {
-		return x.NearestExpiries
-	}
-	return 0
-}
-
-func (x *OptionChain) GetMinTteS() uint32 {
-	if x != nil {
-		return x.MinTteS
-	}
-	return 0
-}
-
-func (x *OptionChain) GetAtmStrikes() uint32 {
-	if x != nil {
-		return x.AtmStrikes
-	}
-	return 0
-}
-
-func (x *OptionChain) GetSides() []string {
-	if x != nil {
-		return x.Sides
-	}
-	return nil
-}
-
-func (x *OptionChain) GetRecenterStrikes() uint32 {
-	if x != nil {
-		return x.RecenterStrikes
-	}
-	return 0
-}
-
-func (x *OptionChain) GetRecenterMinDwellS() uint32 {
-	if x != nil {
-		return x.RecenterMinDwellS
-	}
-	return 0
-}
-
-type RollingFuture struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Tenor         string                 `protobuf:"bytes,1,opt,name=tenor,proto3" json:"tenor,omitempty"` // weekly | monthly | quarterly
-	RollBeforeS   uint32                 `protobuf:"varint,2,opt,name=roll_before_s,json=rollBeforeS,proto3" json:"roll_before_s,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RollingFuture) Reset() {
-	*x = RollingFuture{}
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RollingFuture) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RollingFuture) ProtoMessage() {}
-
-func (x *RollingFuture) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RollingFuture.ProtoReflect.Descriptor instead.
-func (*RollingFuture) Descriptor() ([]byte, []int) {
-	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *RollingFuture) GetTenor() string {
-	if x != nil {
-		return x.Tenor
-	}
-	return ""
-}
-
-func (x *RollingFuture) GetRollBeforeS() uint32 {
-	if x != nil {
-		return x.RollBeforeS
-	}
-	return 0
-}
-
 type AccountDecl struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	Name       string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -735,7 +469,7 @@ type AccountDecl struct {
 
 func (x *AccountDecl) Reset() {
 	*x = AccountDecl{}
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[7]
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -747,7 +481,7 @@ func (x *AccountDecl) String() string {
 func (*AccountDecl) ProtoMessage() {}
 
 func (x *AccountDecl) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[7]
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -760,7 +494,7 @@ func (x *AccountDecl) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccountDecl.ProtoReflect.Descriptor instead.
 func (*AccountDecl) Descriptor() ([]byte, []int) {
-	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{7}
+	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *AccountDecl) GetName() string {
@@ -802,7 +536,7 @@ type RestartPolicy struct {
 
 func (x *RestartPolicy) Reset() {
 	*x = RestartPolicy{}
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[8]
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -814,7 +548,7 @@ func (x *RestartPolicy) String() string {
 func (*RestartPolicy) ProtoMessage() {}
 
 func (x *RestartPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[8]
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -827,7 +561,7 @@ func (x *RestartPolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartPolicy.ProtoReflect.Descriptor instead.
 func (*RestartPolicy) Descriptor() ([]byte, []int) {
-	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{8}
+	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *RestartPolicy) GetMode() RestartMode {
@@ -863,7 +597,7 @@ type Limits struct {
 
 func (x *Limits) Reset() {
 	*x = Limits{}
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[9]
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -875,7 +609,7 @@ func (x *Limits) String() string {
 func (*Limits) ProtoMessage() {}
 
 func (x *Limits) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[9]
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -888,7 +622,7 @@ func (x *Limits) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Limits.ProtoReflect.Descriptor instead.
 func (*Limits) Descriptor() ([]byte, []int) {
-	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{9}
+	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Limits) GetMemoryMb() uint32 {
@@ -923,7 +657,7 @@ var File_mftiko_session_v1_session_proto protoreflect.FileDescriptor
 
 const file_mftiko_session_v1_session_proto_rawDesc = "" +
 	"\n" +
-	"\x1fmftiko/session/v1/session.proto\x12\x11mftiko.session.v1\"\xab\x06\n" +
+	"\x1fmftiko/session/v1/session.proto\x12\x11mftiko.session.v1\x1a mftiko/session/v1/selector.proto\"\x9c\x06\n" +
 	"\vSessionSpec\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12B\n" +
 	"\x06labels\x18\x02 \x03(\v2*.mftiko.session.v1.SessionSpec.LabelsEntryR\x06labels\x12D\n" +
@@ -943,7 +677,7 @@ const file_mftiko_session_v1_session_proto_rawDesc = "" +
 	"\bgrace_ms\x18\x10 \x01(\rR\agraceMs\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x0f\x10\x10R\aalgo_id\"W\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"W\n" +
 	"\tInputDecl\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06digest\x18\x02 \x01(\tR\x06digest\x12\x1e\n" +
@@ -955,36 +689,11 @@ const file_mftiko_session_v1_session_proto_rawDesc = "" +
 	"\x04code\x18\x02 \x01(\tR\x04code\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x03 \x01(\tR\n" +
-	"repository\"O\n" +
+	"repository\"?\n" +
 	"\bFeedDecl\x12\x12\n" +
 	"\x04feed\x18\x01 \x01(\tR\x04feed\x12\x1f\n" +
 	"\vmd_instance\x18\x02 \x01(\tR\n" +
-	"mdInstanceJ\x04\b\x03\x10\x04R\bdelivery\"\xa9\x02\n" +
-	"\fSelectorDecl\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1f\n" +
-	"\vmd_instance\x18\x02 \x01(\tR\n" +
-	"mdInstance\x12\x14\n" +
-	"\x05venue\x18\x03 \x01(\tR\x05venue\x12\x1e\n" +
-	"\n" +
-	"underlying\x18\x04 \x01(\tR\n" +
-	"underlying\x12\x16\n" +
-	"\x06topics\x18\x05 \x03(\tR\x06topics\x12C\n" +
-	"\foption_chain\x18\n" +
-	" \x01(\v2\x1e.mftiko.session.v1.OptionChainH\x00R\voptionChain\x12I\n" +
-	"\x0erolling_future\x18\v \x01(\v2 .mftiko.session.v1.RollingFutureH\x00R\rrollingFutureB\x06\n" +
-	"\x04kind\"\x82\x02\n" +
-	"\vOptionChain\x12\x19\n" +
-	"\bref_feed\x18\x01 \x01(\tR\arefFeed\x12)\n" +
-	"\x10nearest_expiries\x18\x02 \x01(\rR\x0fnearestExpiries\x12\x1a\n" +
-	"\tmin_tte_s\x18\x03 \x01(\rR\aminTteS\x12\x1f\n" +
-	"\vatm_strikes\x18\x04 \x01(\rR\n" +
-	"atmStrikes\x12\x14\n" +
-	"\x05sides\x18\x05 \x03(\tR\x05sides\x12)\n" +
-	"\x10recenter_strikes\x18\x06 \x01(\rR\x0frecenterStrikes\x12/\n" +
-	"\x14recenter_min_dwell_s\x18\a \x01(\rR\x11recenterMinDwellS\"I\n" +
-	"\rRollingFuture\x12\x14\n" +
-	"\x05tenor\x18\x01 \x01(\tR\x05tenor\x12\"\n" +
-	"\rroll_before_s\x18\x02 \x01(\rR\vrollBeforeS\"t\n" +
+	"mdInstance\"t\n" +
 	"\vAccountDecl\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x15\n" +
 	"\x06api_id\x18\x02 \x01(\x03R\x05apiId\x12\x1f\n" +
@@ -1024,7 +733,7 @@ func file_mftiko_session_v1_session_proto_rawDescGZIP() []byte {
 }
 
 var file_mftiko_session_v1_session_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_mftiko_session_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_mftiko_session_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_mftiko_session_v1_session_proto_goTypes = []any{
 	(DesiredState)(0),     // 0: mftiko.session.v1.DesiredState
 	(RestartMode)(0),      // 1: mftiko.session.v1.RestartMode
@@ -1032,32 +741,28 @@ var file_mftiko_session_v1_session_proto_goTypes = []any{
 	(*InputDecl)(nil),     // 3: mftiko.session.v1.InputDecl
 	(*StrategyRef)(nil),   // 4: mftiko.session.v1.StrategyRef
 	(*FeedDecl)(nil),      // 5: mftiko.session.v1.FeedDecl
-	(*SelectorDecl)(nil),  // 6: mftiko.session.v1.SelectorDecl
-	(*OptionChain)(nil),   // 7: mftiko.session.v1.OptionChain
-	(*RollingFuture)(nil), // 8: mftiko.session.v1.RollingFuture
-	(*AccountDecl)(nil),   // 9: mftiko.session.v1.AccountDecl
-	(*RestartPolicy)(nil), // 10: mftiko.session.v1.RestartPolicy
-	(*Limits)(nil),        // 11: mftiko.session.v1.Limits
-	nil,                   // 12: mftiko.session.v1.SessionSpec.LabelsEntry
+	(*AccountDecl)(nil),   // 6: mftiko.session.v1.AccountDecl
+	(*RestartPolicy)(nil), // 7: mftiko.session.v1.RestartPolicy
+	(*Limits)(nil),        // 8: mftiko.session.v1.Limits
+	nil,                   // 9: mftiko.session.v1.SessionSpec.LabelsEntry
+	(*SelectorDecl)(nil),  // 10: mftiko.session.v1.SelectorDecl
 }
 var file_mftiko_session_v1_session_proto_depIdxs = []int32{
-	12, // 0: mftiko.session.v1.SessionSpec.labels:type_name -> mftiko.session.v1.SessionSpec.LabelsEntry
+	9,  // 0: mftiko.session.v1.SessionSpec.labels:type_name -> mftiko.session.v1.SessionSpec.LabelsEntry
 	0,  // 1: mftiko.session.v1.SessionSpec.desired_state:type_name -> mftiko.session.v1.DesiredState
 	4,  // 2: mftiko.session.v1.SessionSpec.strategy:type_name -> mftiko.session.v1.StrategyRef
 	5,  // 3: mftiko.session.v1.SessionSpec.feeds:type_name -> mftiko.session.v1.FeedDecl
-	6,  // 4: mftiko.session.v1.SessionSpec.selectors:type_name -> mftiko.session.v1.SelectorDecl
-	9,  // 5: mftiko.session.v1.SessionSpec.accounts:type_name -> mftiko.session.v1.AccountDecl
-	10, // 6: mftiko.session.v1.SessionSpec.restart:type_name -> mftiko.session.v1.RestartPolicy
-	11, // 7: mftiko.session.v1.SessionSpec.limits:type_name -> mftiko.session.v1.Limits
+	10, // 4: mftiko.session.v1.SessionSpec.selectors:type_name -> mftiko.session.v1.SelectorDecl
+	6,  // 5: mftiko.session.v1.SessionSpec.accounts:type_name -> mftiko.session.v1.AccountDecl
+	7,  // 6: mftiko.session.v1.SessionSpec.restart:type_name -> mftiko.session.v1.RestartPolicy
+	8,  // 7: mftiko.session.v1.SessionSpec.limits:type_name -> mftiko.session.v1.Limits
 	3,  // 8: mftiko.session.v1.SessionSpec.inputs:type_name -> mftiko.session.v1.InputDecl
-	7,  // 9: mftiko.session.v1.SelectorDecl.option_chain:type_name -> mftiko.session.v1.OptionChain
-	8,  // 10: mftiko.session.v1.SelectorDecl.rolling_future:type_name -> mftiko.session.v1.RollingFuture
-	1,  // 11: mftiko.session.v1.RestartPolicy.mode:type_name -> mftiko.session.v1.RestartMode
-	12, // [12:12] is the sub-list for method output_type
-	12, // [12:12] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	1,  // 9: mftiko.session.v1.RestartPolicy.mode:type_name -> mftiko.session.v1.RestartMode
+	10, // [10:10] is the sub-list for method output_type
+	10, // [10:10] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_mftiko_session_v1_session_proto_init() }
@@ -1065,17 +770,14 @@ func file_mftiko_session_v1_session_proto_init() {
 	if File_mftiko_session_v1_session_proto != nil {
 		return
 	}
-	file_mftiko_session_v1_session_proto_msgTypes[4].OneofWrappers = []any{
-		(*SelectorDecl_OptionChain)(nil),
-		(*SelectorDecl_RollingFuture)(nil),
-	}
+	file_mftiko_session_v1_selector_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mftiko_session_v1_session_proto_rawDesc), len(file_mftiko_session_v1_session_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   11,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

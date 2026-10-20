@@ -4,7 +4,9 @@ syntax = "proto3";
 package mftiko.state.v1;
 
 import "mftiko/common/v1/common.proto";
+import "mftiko/session/v1/selector.proto";
 import "mftiko/session/v1/session.proto";
+import "mftiko/state/v1/selector.proto";
 
 option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1;statev1";
 
@@ -34,8 +36,8 @@ message AccountCredentials {
 message AccountSettings {
   uint32 cancel_on_disconnect_s = 1; // 0 = 關閉
   // 歷史補正（DECISIONS D601）。
-  uint32 backfill_interval_s = 2; // 另加 jitter；0 = TD agent 的預設值。必須短於交易所成交歷史的保留期
-  // 手動觸發：比 TD agent 上次處理過的值新，就提前跑一輪。agent 重啟後可能多跑一次，無害。
+  uint32 backfill_interval_s = 2; // 另加 jitter；0 = 預設。必須短於交易所成交歷史的保留期。誰用見 §10 P18，不是 TD agent
+  // 手動觸發：比上次處理過的值新，就提前跑一輪。誰跑見 §10 P18，不是 TD agent。重啟後可能多跑一次，無害。
   int64 backfill_requested_at_ns = 3;
 }
 
@@ -131,13 +133,6 @@ message EntryStatus {
   int64 updated_at_ns = 6;
 }
 
-message Universe {
-  uint64 epoch = 1;
-  repeated string members = 2; // 成員是商品。今天是 UniversalTicker；改成商品 UID 是後續（D203）。selector 本身沒有 UID
-  string current = 3;          // 只有 rolling_future。這是 selector，尚未定，不在 D203 的範圍；selector 沒有 UID
-  repeated string topics = 4;
-}
-
 // ---------- agent 自己 ----------
 
 // 綁在選主 session 的 lease 上（§3.2 W7）：存在就表示這個 instance 有活著的 agent。
@@ -163,15 +158,6 @@ message WorkerStatus {
 }
 
 // ---------- MD agent 不能重新推導的狀態 ----------
-
-message SelectorState {
-  mftiko.session.v1.SelectorDecl spec = 1;
-  uint64 epoch = 2;
-  repeated string members = 3; // 同 Universe.members：商品。今天是 UniversalTicker
-  string current = 4;           // 同 Universe.current：selector，尚未定，不在 D203；selector 沒有 UID
-  string center = 5; // 置中的 strike
-  int64 center_at_ns = 6;
-}
 
 message Placement {
   string conn = 1; // atom 所在的 conn worker key
