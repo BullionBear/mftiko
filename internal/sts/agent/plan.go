@@ -20,9 +20,12 @@ type demandView struct {
 }
 
 // statusView is the phase and reason already published, in memory or in etcd.
+// Gen is SessionStatus.observed_generation, kept when a later write has no spec
+// revision of its own (D1016).
 type statusView struct {
 	Phase  statev1.Phase
 	Reason string
+	Gen    int64
 }
 
 // sess is one session as of this commit: the three mirrors, the status this
@@ -171,7 +174,7 @@ func buildViews(inst string, specV, demandV, statusV state.View, local map[strin
 		}
 		if e, ok := statusV.Entries[state.SessionStatusKey(inst, id)]; ok {
 			if msg, err := parseStatus(e.Value); err == nil {
-				s.mirrored = &statusView{Phase: msg.GetPhase(), Reason: msg.GetReason()}
+				s.mirrored = &statusView{Phase: msg.GetPhase(), Reason: msg.GetReason(), Gen: msg.GetObservedGeneration()}
 			}
 		}
 		if st, ok := local[id]; ok {
@@ -190,10 +193,13 @@ func buildViews(inst string, specV, demandV, statusV state.View, local map[strin
 
 // decide is the plan: which sessions spawn, which end, which are algo_conflict.
 // A terminal session is left alone (D945). A session with no usable spec is not
-// planned and gets no status (D944). Only a desired of RUNNING enters the plan,
-// and only when no earlier non-terminal session on this instance overlaps it
-// (D916, D917). An assignment that is ENDED or gone is not a conflict; it still
-// occupies its algos until it is terminal.
+// planned and gets no status (D944). A spec key that is already gone is the
+// exception: an ENDED assignment, or a gone assignment that still has a worker
+// or a status, still ends so state_out can be pushed (D1016). That session has
+// no parsed spec, so it does not occupy algos. Only a desired of RUNNING enters
+// the plan, and only when no earlier non-terminal session on this instance
+// overlaps it (D916, D917). An assignment that is ENDED or gone is not a
+// conflict; it still occupies its algos until it is terminal.
 func decide(sessions map[string]*sess, prevHash map[string]string) decision {
 	out := decision{
 		Plans:   map[agent.WorkerKey]agent.Plan[Spec, Live]{},
@@ -211,6 +217,14 @@ func decide(sessions map[string]*sess, prevHash map[string]string) decision {
 			continue
 		}
 		if s.spec == nil {
+			// The key is absent. A present key that does not decode stays on the
+			// D944 path below: it is not "spec deleted".
+			if !s.specPresent {
+				if reason, rev, ok := endWithoutSpec(s); ok {
+					out.Intents[id] = intent{Kind: kindEnded, EndReason: reason, Rev: rev}
+					continue
+				}
+			}
 			if !complainMissing(s) {
 				continue
 			}
@@ -271,6 +285,39 @@ func decide(sessions map[string]*sess, prevHash map[string]string) decision {
 		out.Hashes[c.id] = c.spec.Hash()
 	}
 	return out
+}
+
+// endWithoutSpec reports that a session whose spec key is gone should still
+// reach a terminal phase (D1016). A RUNNING assignment whose spec has not
+// appeared yet is left waiting (D944). current is false when the demand key is
+// gone and only a remembered assignment remains.
+func endWithoutSpec(s *sess) (reason string, rev int64, ok bool) {
+	d, current, has := s.demandNow()
+	if !has {
+		if s.observed != nil || s.status() != nil {
+			return "", statusGeneration(s), true
+		}
+		return "", 0, false
+	}
+	if current && d.Desired != sessionv1.DesiredState_DESIRED_STATE_ENDED {
+		return "", 0, false
+	}
+	if !current && s.observed == nil && s.status() == nil {
+		return "", 0, false
+	}
+	return d.EndReason, statusGeneration(s), true
+}
+
+// statusGeneration is the last observed_generation this process or the mirror
+// has for the session. The in-memory write wins when it has one.
+func statusGeneration(s *sess) int64 {
+	if s.local != nil && s.local.Gen != 0 {
+		return s.local.Gen
+	}
+	if s.mirrored != nil && s.mirrored.Gen != 0 {
+		return s.mirrored.Gen
+	}
+	return 0
 }
 
 // complainMissing reports whether a session that has no usable spec should be

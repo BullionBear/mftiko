@@ -83,11 +83,11 @@ func TestWorkerOutputFlood(t *testing.T) {
 		}
 	}
 	dir := LogDir(p.launch.GetWorkDir(), "td")
-	if fi, err := os.Stat(dir); err != nil || fi.Mode().Perm() != 0o700 {
-		t.Errorf("log dir %v (%v), want 0700", fi.Mode(), err)
+	if fi, err := os.Stat(dir); err != nil || fi.Mode().Perm() != 0o750 {
+		t.Errorf("log dir %v (%v), want 0750", fi.Mode(), err)
 	}
-	if fi, err := os.Stat(p.outputPath("stdout")); err != nil || fi.Mode().Perm() != 0o600 {
-		t.Errorf("stdout file %v (%v), want 0600", fi.Mode(), err)
+	if fi, err := os.Stat(p.outputPath("stdout")); err != nil || fi.Mode().Perm() != 0o640 {
+		t.Errorf("stdout file %v (%v), want 0640", fi.Mode(), err)
 	}
 }
 

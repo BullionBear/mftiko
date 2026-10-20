@@ -841,6 +841,15 @@ func (e *env) delDemand(id string) {
 	}
 }
 
+func (e *env) delSpec(id string) {
+	e.t.Helper()
+	ctx, cancel := e.opCtx()
+	defer cancel()
+	if _, err := e.root.Delete(ctx, state.SessionSpecKey(testInst, id)); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
 func (e *env) modRev(key string) int64 {
 	e.t.Helper()
 	ctx, cancel := e.opCtx()

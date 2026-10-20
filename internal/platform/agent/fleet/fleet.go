@@ -343,12 +343,11 @@ func spawned(at *shimv1.Attached, specHash, liveHash string, now time.Time) agen
 // startShim execs the shim in a session of its own (§4.6 step 1), its log appended to a file under the work dir,
 // writes the Launch on its stdin, and returns a channel closed once it has exited.
 func (f *Fleet[S, L]) startShim(l *shimv1.Launch) (<-chan struct{}, error) {
-	dir := filepath.Join(f.cfg.WorkDir, "log", string(f.cfg.Plane))
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := shim.EnsureLogDir(f.cfg.WorkDir, string(f.cfg.Plane)); err != nil {
 		return nil, err
 	}
-	logPath := filepath.Join(dir, state.WorkerHash(l.GetWorker().GetKey())+".shim.log")
-	logFile, err := os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	logPath := filepath.Join(shim.LogDir(f.cfg.WorkDir, string(f.cfg.Plane)), state.WorkerHash(l.GetWorker().GetKey())+".shim.log")
+	logFile, err := shim.OpenLogFile(logPath)
 	if err != nil {
 		return nil, err
 	}

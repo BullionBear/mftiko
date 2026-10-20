@@ -30,6 +30,56 @@ const (
 // LogDir is where a plane's shims write their workers' output: ${WORK_DIR}/log/{plane} (PROTOCOL §4.5 S4).
 func LogDir(workDir, plane string) string { return filepath.Join(workDir, "log", plane) }
 
+const (
+	// LogDirMode is ${WORK_DIR}/log/{plane} after chmod (D1015, D1021).
+	LogDirMode os.FileMode = 0o750
+	// LogFileMode is a newly created stdout, stderr, or shim log (D1015, D1021).
+	LogFileMode os.FileMode = 0o640
+)
+
+// EnsureLogDir creates ${WORK_DIR}/log/{plane} if needed and chmods it to 0750
+// (D1021, D1022). A setgid bit already on the directory is kept, so new files
+// inherit the group set on ${WORK_DIR}/log (D1015).
+func EnsureLogDir(workDir, plane string) error {
+	dir := LogDir(workDir, plane)
+	if err := os.MkdirAll(dir, LogDirMode); err != nil {
+		return err
+	}
+	return chmodLogDir(dir)
+}
+
+// chmodLogDir sets 0750 and keeps setgid when the directory already has it.
+// Chmod of 0750 alone would clear the bit the parent ${WORK_DIR}/log passed down.
+func chmodLogDir(dir string) error {
+	fi, err := os.Lstat(dir)
+	if err != nil {
+		return err
+	}
+	mode := LogDirMode
+	if fi.Mode()&os.ModeSetgid != 0 {
+		mode |= os.ModeSetgid
+	}
+	return os.Chmod(dir, mode)
+}
+
+// OpenLogFile appends to path. A new file is created at 0640, then chmodded so
+// the process umask does not apply (D1021). An existing file keeps its mode (D1022).
+func OpenLogFile(path string) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE|os.O_EXCL, LogFileMode)
+	if err == nil {
+		if cerr := f.Chmod(LogFileMode); cerr != nil {
+			f.Close()
+			os.Remove(path)
+			return nil, cerr
+		}
+		return f, nil
+	}
+	if !errors.Is(err, os.ErrExist) {
+		return nil, err
+	}
+	return os.OpenFile(path, os.O_WRONLY|os.O_APPEND, LogFileMode)
+}
+
 // OutputPath is the file of one stream of a worker, "stdout" or "stderr": ${WORK_DIR}/log/{plane}/{h}.{stream}. Its
 // rotated files add .1, .2 and so on, .1 the newest.
 func OutputPath(workDir, plane, workerKey, stream string) string {
@@ -81,7 +131,7 @@ func openRotator(path string, maxBytes int64, keep int) (*rotator, error) {
 }
 
 func (r *rotator) open() error {
-	f, err := os.OpenFile(r.path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
+	f, err := OpenLogFile(r.path)
 	if err != nil {
 		return err
 	}
@@ -255,7 +305,7 @@ type workerOutput struct {
 // openOutput creates ${WORK_DIR}/log/{plane} if missing, opens the worker's two files for appending, writes a header
 // for this incarnation in each, and starts copying a pipe into each. The worker's ends go to Spawn.
 func openOutput(log zerolog.Logger, l *shimv1.Launch, header string) (*workerOutput, error) {
-	if err := os.MkdirAll(LogDir(l.GetWorkDir(), l.GetPlane()), 0o700); err != nil {
+	if err := EnsureLogDir(l.GetWorkDir(), l.GetPlane()); err != nil {
 		return nil, fmt.Errorf("shim: log dir: %w", err)
 	}
 	maxBytes, keep := outputLimits(l)

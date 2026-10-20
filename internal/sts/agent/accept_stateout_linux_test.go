@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
@@ -15,8 +16,8 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
-// The next session reads the pushed volume through state_out, and the host keeps
-// nothing of the finished session (D984).
+// The next session reads the pushed volume through state_out. Logs, terminal.json,
+// and the incarnation key stay until the spec is deleted (D984, D1016).
 func TestStateOutRoundTrip(t *testing.T) {
 	e := setup(t)
 	const id, next = "a1b2c3", "b2c3d4"
@@ -56,6 +57,11 @@ func TestStateOutRoundTrip(t *testing.T) {
 		b, err := os.ReadFile(note)
 		return err == nil && string(b) == body
 	})
+	pollUntil(t, "logs kept while the spec exists", func() bool { return e.logsKept(id) })
+	if snap.GetDigest() != e.status(id).GetStateOut().GetDigest() {
+		t.Fatalf("state_out changed before the spec was deleted")
+	}
+	e.delSpec(id)
 	pollUntil(t, "no residue of "+id, func() bool { return e.sessionResidue(id) == "" })
 }
 
@@ -104,6 +110,7 @@ func TestStateOutRegistryDown(t *testing.T) {
 	if snap.GetDigest() == "" || snap.GetRepository() != "state" || !snap.GetClean() || snap.GetIncarnation() != meta.Incarnation {
 		t.Fatalf("state_out %+v after %d", snap, meta.Incarnation)
 	}
+	pollUntil(t, "volume released and terminal.json kept", func() bool { return e.logsKept(id) })
 }
 
 // terminal.json is enough for a new process to finish the push and the cleanup (D982, D984).
@@ -149,6 +156,12 @@ func TestStateOutResumeAfterRestart(t *testing.T) {
 	if got := e.manifestDigest("state", id); got != snap.GetDigest() {
 		t.Fatalf("tag digest %s, state_out %s", got, snap.GetDigest())
 	}
+	pollUntil(t, "logs kept while the spec exists", func() bool { return e.logsKept(id) })
+	stop()
+	waitDone(t, done)
+	e.delSpec(id)
+	e.cfg.Term.ID = t.Name() + "-reap"
+	stop, done = e.start()
 	pollUntil(t, "no residue of "+id, func() bool { return e.sessionResidue(id) == "" })
 }
 
@@ -184,6 +197,72 @@ func (e *env) manifestDigest(repo, ref string) string {
 		e.t.Fatalf("manifest %s: %s", ref, resp.Status)
 	}
 	return resp.Header.Get("Docker-Content-Digest")
+}
+
+// Spec deleted while the session is still running: it ends, state_out is pushed,
+// and only then do the logs go away. A running sibling and a directory that
+// never became terminal stay (D1016, D944).
+func TestLogsWaitForSpec(t *testing.T) {
+	e := setup(t)
+	const id, keep = "e5f6a7", "f6a7b8"
+	const body = "still-here"
+	e.primeSTSLogDir()
+	e.plantOldStdout(id)
+	e.setScript(id, fakeworker.Script{VolumeFile: "note", VolumeText: body})
+	rev := e.putSpec(id, sessionSpec(5, 1))
+	e.putDemand(id, runningDemand(true, 1))
+	e.putSpec(keep, sessionSpec(6, 2))
+	e.putDemand(keep, runningDemand(true, 1))
+	stray := filepath.Join(e.cfg.DataDir, "sessions", "never")
+	if err := os.MkdirAll(stray, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stray, "note"), []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ph := e.collect(e.rev())
+	stop, done := e.start()
+	defer func() {
+		stop()
+		waitDone(t, done)
+	}()
+	ph.wait(id, statev1.Phase_PHASE_RUNNING)
+	ph.wait(keep, statev1.Phase_PHASE_RUNNING)
+	waitVolumeFile(t, e, id, "note", body)
+	e.assertSessionLogModes(id)
+	e.reg.setDown(true)
+	e.delSpec(id)
+	e.putDemand(id, endedDemand("ended_by_spec", 2))
+	pollUntil(t, "terminal with volume and logs kept", func() bool {
+		st := e.status(id)
+		if st.GetPhase() != statev1.Phase_PHASE_DONE || st.GetReason() != "ended_by_spec" || st.GetStateOut() != nil {
+			return false
+		}
+		if st.GetObservedGeneration() != rev {
+			return false
+		}
+		vol, _ := sessionDirs(e.cfg.DataDir, id)
+		b, err := os.ReadFile(filepath.Join(vol, "note"))
+		if err != nil || string(b) != body {
+			return false
+		}
+		if _, err := os.Stat(terminalPath(e.cfg.DataDir, id)); err != nil {
+			return false
+		}
+		return e.sessionResidue(id) != ""
+	})
+	e.reg.setDown(false)
+	snap := e.waitStateOut(id)
+	if snap.GetDigest() == "" || snap.GetRepository() != "state" {
+		t.Fatalf("state_out %+v", snap)
+	}
+	pollUntil(t, "no residue of "+id, func() bool { return e.sessionResidue(id) == "" })
+	if e.status(keep).GetPhase() != statev1.Phase_PHASE_RUNNING {
+		t.Fatalf("sibling phase %s", e.status(keep).GetPhase())
+	}
+	if _, err := os.Stat(filepath.Join(stray, "note")); err != nil {
+		t.Fatalf("stray session dir: %v", err)
+	}
 }
 
 func (e *env) plantSessionLog(id string) {
@@ -237,4 +316,149 @@ func (e *env) sessionResidue(id string) string {
 		return "incarnation"
 	}
 	return ""
+}
+
+// logsKept reports phase 1 is done and phase 2 has not run: volume and inputs
+// are gone, and terminal.json, a shim log, and the incarnation key remain.
+func (e *env) logsKept(id string) bool {
+	vol, inputs := sessionDirs(e.cfg.DataDir, id)
+	if _, err := os.Lstat(vol); !os.IsNotExist(err) {
+		return false
+	}
+	if _, err := os.Lstat(inputs); !os.IsNotExist(err) {
+		return false
+	}
+	if _, err := os.Lstat(terminalPath(e.cfg.DataDir, id)); err != nil {
+		return false
+	}
+	if !e.hasShimLog(id) {
+		return false
+	}
+	h := state.WorkerHash(string(WorkerKey(id)))
+	ctx, cancel := e.opCtx()
+	defer cancel()
+	resp, err := e.root.Get(ctx, state.IncarnationKey(state.PlaneSTS, testInst, h))
+	return err == nil && len(resp.Kvs) != 0
+}
+
+func (e *env) hasShimLog(id string) bool {
+	h := state.WorkerHash(string(WorkerKey(id)))
+	dir := filepath.Join(e.cfg.WorkDir, "log", string(state.PlaneSTS))
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	prefix := h + "."
+	for _, ent := range entries {
+		name := ent.Name()
+		if name == h || strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// primeSTSLogDir creates ${WORK_DIR}/log/sts at 0700 with setgid, and the parent
+// log directory setgid, so a later chmod to 0750 has a bit to keep (D1015, D1022).
+func (e *env) primeSTSLogDir() {
+	e.t.Helper()
+	dir := filepath.Join(e.cfg.WorkDir, "log", string(state.PlaneSTS))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		e.t.Fatal(err)
+	}
+	if gid, ok := otherGroup(); ok {
+		if err := os.Chown(filepath.Dir(dir), os.Geteuid(), gid); err != nil {
+			e.t.Fatal(err)
+		}
+		if err := os.Chown(dir, os.Geteuid(), gid); err != nil {
+			e.t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(filepath.Dir(dir), 0o750|os.ModeSetgid); err != nil {
+		e.t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o700|os.ModeSetgid); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func (e *env) plantOldStdout(id string) {
+	e.t.Helper()
+	h := state.WorkerHash(string(WorkerKey(id)))
+	path := filepath.Join(e.cfg.WorkDir, "log", string(state.PlaneSTS), h+".stdout")
+	if err := os.WriteFile(path, []byte("old"), 0o644); err != nil {
+		e.t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func (e *env) assertSessionLogModes(id string) {
+	e.t.Helper()
+	h := state.WorkerHash(string(WorkerKey(id)))
+	dir := filepath.Join(e.cfg.WorkDir, "log", string(state.PlaneSTS))
+	stdout := filepath.Join(dir, h+".stdout")
+	stderr := filepath.Join(dir, h+".stderr")
+	shimLog := filepath.Join(dir, h+".shim.log")
+	pollUntil(e.t, "stderr and shim log", func() bool {
+		_, err1 := os.Stat(stderr)
+		_, err2 := os.Stat(shimLog)
+		return err1 == nil && err2 == nil
+	})
+	dirMode := mustMode(e.t, dir)
+	if dirMode.Perm() != 0o750 || dirMode&os.ModeSetgid == 0 {
+		e.t.Fatalf("log dir mode %v, want 0750 with setgid", dirMode)
+	}
+	if mode := mustMode(e.t, stdout); mode.Perm() != 0o600 {
+		e.t.Fatalf("old stdout mode %v, want 0600", mode)
+	}
+	if mode := mustMode(e.t, stderr); mode.Perm() != 0o640 {
+		e.t.Fatalf("stderr mode %v, want 0640", mode)
+	}
+	if mode := mustMode(e.t, shimLog); mode.Perm() != 0o640 {
+		e.t.Fatalf("shim log mode %v, want 0640", mode)
+	}
+	if got, want := fileGID(e.t, stderr), fileGID(e.t, dir); got != want {
+		e.t.Fatalf("stderr gid %d, dir gid %d", got, want)
+	}
+	if got, want := fileGID(e.t, shimLog), fileGID(e.t, dir); got != want {
+		e.t.Fatalf("shim log gid %d, dir gid %d", got, want)
+	}
+}
+
+func mustMode(t *testing.T, path string) os.FileMode {
+	t.Helper()
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fi.Mode()
+}
+
+func otherGroup() (int, bool) {
+	egid := os.Getegid()
+	groups, err := os.Getgroups()
+	if err != nil {
+		return 0, false
+	}
+	for _, g := range groups {
+		if g != egid && g != 0 {
+			return g, true
+		}
+	}
+	return 0, false
+}
+
+func fileGID(t *testing.T, path string) uint32 {
+	t.Helper()
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatalf("%s: stat %T", path, fi.Sys())
+	}
+	return st.Gid
 }
