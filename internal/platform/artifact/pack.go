@@ -21,6 +21,7 @@ const MediaTypeWorkerConfig = "application/vnd.mftiko.worker.config.v1+json"
 
 const (
 	strategyEntrypoint = "bin/strategy"
+	workerEntrypoint   = "bin/worker"
 	strategyMode       = 0o755
 	// layerCompression is fixed so two packs of one binary match (D938).
 	layerCompression = gzip.DefaultCompression
@@ -30,8 +31,8 @@ const (
 // ErrNoSDKVersion means the binary's buildinfo has no mftiko module version (D902).
 var ErrNoSDKVersion = errors.New("artifact: no sdk version in buildinfo")
 
-// Image is a packed strategy: the OCI image manifest and the two blobs it names.
-// Digest is the manifest digest, which is StrategyRef.code (PROTOCOL §8.1, D936).
+// Image is a packed worker artifact: the OCI image manifest and the two blobs it names.
+// Digest is the manifest digest. For a strategy that digest is StrategyRef.code (PROTOCOL §8.1, D936).
 type Image struct {
 	Digest   string
 	Manifest []byte
@@ -96,6 +97,74 @@ func PackStrategy(binary []byte, name string, env map[string]string) (Image, err
 	}, nil
 }
 
+// WorkerContracts is the fixed contract list pack writes for a non-strategy kind (D989).
+// strategy is not in the list: a strategy's contracts come from the binary (D935).
+func WorkerContracts(kind string) ([]string, bool) {
+	switch kind {
+	case KindMDConn:
+		return []string{"worker.v1", "mdctl.v1"}, true
+	case KindTDAccount:
+		return []string{"worker.v1", "tdctl.v1"}, true
+	default:
+		return nil, false
+	}
+}
+
+// PackWorker packs a conn or account worker into one reproducible OCI image (D988–D990).
+// kind is md.conn or td.account. Contracts are WorkerContracts(kind); the SDK marker and the
+// module version in the binary are ignored, and sdk is left empty. The layer is one member,
+// bin/worker. env may be nil. The manifest is checked with CheckLaunchFields before the image
+// is built (D941). It does not push.
+func PackWorker(binary []byte, kind, name string, env map[string]string) (Image, error) {
+	contracts, ok := WorkerContracts(kind)
+	if !ok {
+		return Image{}, fmt.Errorf("artifact: kind %q is not md.conn or td.account", kind)
+	}
+	if name == "" {
+		return Image{}, errors.New("artifact: name is empty")
+	}
+	osName, arch, err := elfPlatform(binary)
+	if err != nil {
+		return Image{}, err
+	}
+	if env == nil {
+		env = map[string]string{}
+	}
+	m := Manifest{
+		Schema:     Schema,
+		Kind:       kind,
+		Name:       name,
+		Runtime:    "go",
+		OS:         osName,
+		Arch:       arch,
+		Entrypoint: []string{workerEntrypoint},
+		Env:        env,
+		SDK:        SDK{},
+		Contracts:  append([]string(nil), contracts...),
+	}
+	if err := m.CheckLaunchFields(); err != nil {
+		return Image{}, err
+	}
+	config, err := marshalManifest(m)
+	if err != nil {
+		return Image{}, err
+	}
+	layer, err := fileLayer(workerEntrypoint, binary)
+	if err != nil {
+		return Image{}, err
+	}
+	manifest, err := imageManifest(config, layer)
+	if err != nil {
+		return Image{}, err
+	}
+	return Image{
+		Digest:   digest.FromBytes(manifest).String(),
+		Manifest: manifest,
+		Config:   config,
+		Layer:    layer,
+	}, nil
+}
+
 func marshalManifest(m Manifest) ([]byte, error) {
 	env := m.Env
 	if env == nil {
@@ -132,9 +201,14 @@ func imageManifest(config, layer []byte) ([]byte, error) {
 	return json.Marshal(manifest)
 }
 
-// strategyLayer is one tar+gzip member, bin/strategy. The gzip header has no name and no
-// time, the level is fixed, and the tar member is mode 0755, uid 0, gid 0, mtime 0 (D902, D938).
+// strategyLayer is one tar+gzip member, bin/strategy (D902, D938).
 func strategyLayer(binary []byte) ([]byte, error) {
+	return fileLayer(strategyEntrypoint, binary)
+}
+
+// fileLayer is one tar+gzip member at name. The gzip header has no name and no time, the level
+// is fixed, and the tar member is mode 0755, uid 0, gid 0, mtime 0 (D902, D938).
+func fileLayer(name string, binary []byte) ([]byte, error) {
 	var buf bytes.Buffer
 	zw, err := gzip.NewWriterLevel(&buf, layerCompression)
 	if err != nil {
@@ -145,7 +219,7 @@ func strategyLayer(binary []byte) ([]byte, error) {
 	zw.OS = 255
 	tw := tar.NewWriter(zw)
 	if err := tw.WriteHeader(&tar.Header{
-		Name:     strategyEntrypoint,
+		Name:     name,
 		Mode:     strategyMode,
 		Uid:      0,
 		Gid:      0,

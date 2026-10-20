@@ -1,0 +1,49 @@
+# Packs the MD and TD workers and pushes them to ghcr.io/bullionbear (D985–D990).
+# The workflow only pushes. It does not set package visibility. See docs/release.md.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Require a v* tag
+        run: |
+          case "${GITHUB_REF_TYPE}:${GITHUB_REF_NAME}" in
+            tag:v*) ;;
+            *)
+              echo "this workflow runs on a v* tag: a tag push, or workflow_dispatch of that tag" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Pack and push workers
+        env:
+          REGISTRY: ghcr.io/bullionbear
+          TAGS: ${{ github.ref_name }} latest
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: bash .github/scripts/pack-workers.sh

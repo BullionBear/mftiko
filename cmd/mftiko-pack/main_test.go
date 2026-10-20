@@ -89,6 +89,14 @@ func TestPackHello(t *testing.T) {
 			t.Fatalf("pull %s is not the manifest we packed", ref)
 		}
 	}
+	var explicit bytes.Buffer
+	withKind := []string{"-bin", bin, "-kind", "strategy", "-name", "hello", "-repo", reg.repo(), "-plain-http", "-env", "A=1", "-env", "B=2"}
+	if err := run(withKind, &explicit); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(explicit.String()) != d1 {
+		t.Fatalf("explicit strategy %q, default %q", explicit.String(), d1)
+	}
 }
 
 func TestPackRejectsBeforePush(t *testing.T) {

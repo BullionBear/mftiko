@@ -1,9 +1,10 @@
-// Command mftiko-pack packs a Go strategy binary into an OCI artifact and pushes it
-// (D902, D935–D941, PROTOCOL §8). It does not build the binary.
+// Command mftiko-pack packs a worker binary into an OCI artifact and pushes it
+// (D902, D935–D941, D985–D990, PROTOCOL §8). It does not build the binary.
 //
-//	mftiko-pack -bin FILE -name NAME -repo REGISTRY/REPOSITORY [-tag TAG] [-env K=V]... [-plain-http]
+//	mftiko-pack -bin FILE -name NAME -repo REGISTRY/REPOSITORY [-kind strategy|md.conn|td.account] [-tag TAG] [-env K=V]... [-plain-http]
 //
-// Success prints the image manifest digest on stdout. That digest is StrategyRef.code.
+// -kind defaults to strategy. Success prints the image manifest digest on stdout.
+// For a strategy that digest is StrategyRef.code.
 package main
 
 import (
@@ -19,7 +20,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 )
 
-const usage = "usage: mftiko-pack -bin FILE -name NAME -repo REGISTRY/REPOSITORY [-tag TAG] [-env K=V]... [-plain-http]"
+const usage = "usage: mftiko-pack -bin FILE -name NAME -repo REGISTRY/REPOSITORY [-kind strategy|md.conn|td.account] [-tag TAG] [-env K=V]... [-plain-http]"
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
@@ -32,7 +33,8 @@ func run(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("mftiko-pack", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	version := fs.Bool("version", false, "print the release and exit")
-	bin := fs.String("bin", "", "strategy binary")
+	bin := fs.String("bin", "", "worker binary")
+	kind := fs.String("kind", artifact.KindStrategy, "strategy, md.conn, or td.account")
 	name := fs.String("name", "", "manifest name")
 	repo := fs.String("repo", "", "registry/repository")
 	tag := fs.String("tag", "", "optional tag; the digest does not depend on it")
@@ -63,7 +65,7 @@ func run(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	img, err := artifact.PackStrategy(binary, *name, env)
+	img, err := pack(*kind, binary, *name, env)
 	if err != nil {
 		return err
 	}
@@ -76,6 +78,17 @@ func run(args []string, stdout io.Writer) error {
 	}
 	_, err = fmt.Fprintln(stdout, img.Digest)
 	return err
+}
+
+func pack(kind string, binary []byte, name string, env map[string]string) (artifact.Image, error) {
+	switch kind {
+	case artifact.KindStrategy:
+		return artifact.PackStrategy(binary, name, env)
+	case artifact.KindMDConn, artifact.KindTDAccount:
+		return artifact.PackWorker(binary, kind, name, env)
+	default:
+		return artifact.Image{}, fmt.Errorf("kind %q is not strategy, md.conn, or td.account", kind)
+	}
 }
 
 func parseEnv(args []string) (map[string]string, error) {
