@@ -1,4 +1,4 @@
-// Package agent is the strategy-plane agent (D916, D942–D977). It runs the sessions
+// Package agent is the strategy-plane agent (D916, D942–D984). It runs the sessions
 // the controller assigns to this instance and writes each one's SessionStatus.
 //
 // Spawn pulls the strategy artifact and its inputs and unpacks them outside
@@ -15,5 +15,8 @@
 // api_id end the later session with algo_conflict (D917). DONE, FAILED, and
 // INIT_FAILED are not restarted; CRASHED, HUNG, and an unrequested signal are,
 // until the restart window is used up (D919, D964, D969). A lost shim is not
-// restarted (D970).
+// restarted (D970). After the worker process has ended, a non-empty volume is
+// packed and pushed, then state_out is filled in; an empty volume is removed
+// without a push. Cleanup then drops the session directory, the shim logs, and
+// the incarnation key (D978–D984).
 package agent

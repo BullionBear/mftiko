@@ -24,6 +24,7 @@ type memRegistry struct {
 	manifests     map[string][]byte
 	user, pass    string
 	failManifests atomic.Int32 // GET of a manifest returns 503 this many times
+	down          atomic.Bool  // the registry accepts no connection
 }
 
 func newMemRegistry() *memRegistry {
@@ -36,6 +37,9 @@ func (r *memRegistry) Close() { r.srv.Close() }
 
 func (r *memRegistry) addr() string { return strings.TrimPrefix(r.srv.URL, "http://") }
 
+// setDown closes new connections when v is true, the way a stopped registry does.
+func (r *memRegistry) setDown(v bool) { r.down.Store(v) }
+
 func (r *memRegistry) repo() string { return r.addr() + "/hello" }
 
 func (r *memRegistry) basic() string {
@@ -43,6 +47,17 @@ func (r *memRegistry) basic() string {
 }
 
 func (r *memRegistry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if r.down.Load() {
+		if hj, ok := w.(http.Hijacker); ok {
+			conn, _, err := hj.Hijack()
+			if err == nil {
+				conn.Close()
+				return
+			}
+		}
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	if r.user != "" && req.Header.Get("Authorization") != r.basic() {
 		w.Header().Set("WWW-Authenticate", `Basic realm="registry"`)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
