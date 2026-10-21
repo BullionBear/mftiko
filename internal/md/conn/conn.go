@@ -74,9 +74,11 @@ type Config struct {
 	// BookNow is the clock for buffer age, snapshot backoff and rate holds. Nil means time.Now.
 	// It is not the md_ts_ns clock and not the dial clock.
 	BookNow func() time.Time
-	// BookAfter fires on the book clock. Nil means time.After. Tests pass a fake so the waits
-	// above do not sleep.
-	BookAfter func(time.Duration) <-chan time.Time
+	// BookUntil fires once the book clock reaches the given time, at once if it already has.
+	// Nil waits on time.After against BookNow. Tests pass a fake so the waits above do not
+	// sleep. A deadline, not a duration: the wait is read off the clock once, when planned,
+	// so a fake clock that moves on before the timer is armed still fires it (#330).
+	BookUntil func(time.Time) <-chan time.Time
 	// Symbols is this venue's active table. Nil uses exch_ticker and price_tick from the assignment,
 	// which is what tests do. A running worker passes the table loaded at Init.
 	Symbols Instruments
@@ -111,7 +113,7 @@ type Conn struct {
 	bufferAge          time.Duration
 	rateHold           time.Duration
 	bookNow            func() time.Time
-	bookAfter          func(time.Duration) <-chan time.Time
+	bookUntil          func(time.Time) <-chan time.Time
 	symbols            Instruments
 	// reconEvery is how often the feed reconcile loop re-reads the venue table. Zero is one second.
 	reconEvery time.Duration
@@ -253,7 +255,7 @@ func New(cfg Config) *Conn {
 		url: cfg.URL, market: cfg.Market, pub: cfg.Publish, now: now,
 		epoch: cfg.Epoch, report: cfg.Report, retryAfter: cfg.RetryAfter, retryMax: cfg.RetryMax,
 		rest: cfg.REST, doer: cfg.Doer,
-		bufferMax: bufN, bufferAge: bufAge, rateHold: hold, bookNow: bookNow, bookAfter: cfg.BookAfter,
+		bufferMax: bufN, bufferAge: bufAge, rateHold: hold, bookNow: bookNow, bookUntil: cfg.BookUntil,
 		symbols: cfg.Symbols, subscribe: cfg.Subscribe,
 		tapeWindow: window, tapeMax: maxEvents, tapeBudget: budget,
 		tape:  newTapeArena(budget),
