@@ -1279,6 +1279,16 @@ func TestMirrorQuietSharedStream(t *testing.T) {
 	leases := startMirror(t, r, TDAckPrefix("td-tw-1"), opt)
 	acks := startMirror(t, r, TDAckPrefix("td-tw-1"), opt)
 	mirrors := map[string]*Mirror{"leases": leases, "acks": acks}
+	// Synced closes after the first list; the watch opens on Run's next turn. Wait for
+	// both watches before asking that neither is reopened (#330).
+	until(t, 3*time.Second, "both quiet mirrors open their watch", func() error {
+		for name, m := range mirrors {
+			if st := m.Stats(); st.Watches == 0 {
+				return fmt.Errorf("%s stats %+v", name, st)
+			}
+		}
+		return nil
+	})
 
 	// A stall shows up as a reopened watch. The window stays the old 15 probes:
 	// under load a reopen can land late (#90). Freshness is read at the end,

@@ -101,7 +101,7 @@ func (c *Conn) syncBooks(ctx context.Context) {
 			return
 		}
 		c.refreshSymbols()
-		jobs, wait := c.planBook()
+		jobs, wait, planned := c.planBook()
 		if c.symbols != nil && wait > time.Second {
 			wait = time.Second
 		}
@@ -119,19 +119,19 @@ func (c *Conn) syncBooks(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-c.bookWake:
-		case <-c.after(wait):
+		case <-c.until(planned.Add(wait)):
 		}
 	}
 }
 
 // planBook adopts the desired books and starts at most one Depth per shelf. The wait is the
 // sooner of the rate-limit hold and the buffer-age cap. Called with no lock held; it takes c.mu.
-func (c *Conn) planBook() ([]depthJob, time.Duration) {
+func (c *Conn) planBook() ([]depthJob, time.Duration, time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	wait := time.Hour
 	if c.live == nil {
-		return nil, wait
+		return nil, wait, c.bookNow()
 	}
 	l := c.live
 	c.adopt()
@@ -170,7 +170,7 @@ func (c *Conn) planBook() ([]depthJob, time.Duration) {
 		sh.pending = sh.token
 		jobs = append(jobs, depthJob{ch: ch, token: sh.pending, exch: sh.exch, limit: sh.bs.Depth()})
 	}
-	return jobs, wait
+	return jobs, wait, now
 }
 
 // adopt opens a shelf for every wanted book channel and drops one that is no longer wanted.
@@ -695,11 +695,13 @@ func (c *Conn) wakeBook() {
 	}
 }
 
-func (c *Conn) after(d time.Duration) <-chan time.Time {
-	if c.bookAfter != nil {
-		return c.bookAfter(d)
+// until fires once the book clock reaches deadline. The deadline is planBook's reading plus
+// the wait, so time that passes before the timer is armed counts against the wait (#330).
+func (c *Conn) until(deadline time.Time) <-chan time.Time {
+	if c.bookUntil != nil {
+		return c.bookUntil(deadline)
 	}
-	return time.After(d)
+	return time.After(deadline.Sub(c.bookNow()))
 }
 
 // vetBooks rejects a book feed whose channel is not a book. SnapshotREST fetches

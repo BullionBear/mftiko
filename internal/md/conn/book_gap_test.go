@@ -31,7 +31,7 @@ func TestBookBybitGapRecovers(t *testing.T) {
 	clk := newFakeClock(time.Unix(1_000_000, 0).UTC())
 	e := startFixtureBook(t, bybit.Name, "linear", ch, "BTCUSDT", 0.1, v.Market, nil, nil, func(c *Conn) {
 		c.bookNow = clk.Now
-		c.bookAfter = clk.After
+		c.bookUntil = clk.Until
 	})
 	e.clk = clk
 	e.c.mu.Lock()

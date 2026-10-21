@@ -603,7 +603,7 @@ func newBookEnv(t *testing.T, bs exchange.BookSync, tune *bookTune, steps []doer
 		Venue: "V", Route: "r", Instance: "md", URL: "ws://127.0.0.1:9",
 		Market: &bookMarket{bs: bs}, Publish: rec.publish,
 		REST: scriptREST{}, Doer: doer,
-		BookNow: clk.Now, BookAfter: clk.After, RetryAfter: -1,
+		BookNow: clk.Now, BookUntil: clk.Until, RetryAfter: -1,
 		BufferMax: tune.max, BufferAge: tune.age,
 	})
 	c.mu.Lock()
@@ -1005,18 +1005,18 @@ func (f *fakeClock) Next() (time.Time, bool) {
 	return next, ok
 }
 
-func (f *fakeClock) After(d time.Duration) <-chan time.Time {
+// Until fires when Advance reaches t. The clock is read once, under its lock: a deadline the
+// clock has already reached fires at once, however late it is armed (#330).
+func (f *fakeClock) Until(t time.Time) <-chan time.Time {
 	ch := make(chan time.Time, 1)
 	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.gen++
-	now := f.t
-	if d <= 0 {
-		f.mu.Unlock()
-		ch <- now
+	if !t.After(f.t) {
+		ch <- f.t
 		return ch
 	}
-	f.waiters = append(f.waiters, fakeWait{until: now.Add(d), ch: ch})
-	f.mu.Unlock()
+	f.waiters = append(f.waiters, fakeWait{until: t, ch: ch})
 	return ch
 }
 
