@@ -318,7 +318,7 @@ func TestInputUnpackedAgainWhenMissing(t *testing.T) {
 	stop()
 	waitDone(t, done)
 	_, inputs := sessionDirs(e.cfg.DataDir, id)
-	if err := removeWritable(filepath.Join(inputs, "model")); err != nil {
+	if err := artifact.RemoveWritable(filepath.Join(inputs, "model")); err != nil {
 		t.Fatal(err)
 	}
 	before := e.starts(id)

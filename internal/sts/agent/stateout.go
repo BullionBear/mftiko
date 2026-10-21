@@ -620,10 +620,10 @@ func (p *plane) putStateOut(ctx context.Context, id string, snap *statev1.StateS
 // volume is empty, only the volume and the inputs are deleted (D1016).
 func (p *plane) releaseVolume(id string) error {
 	vol, inputs := sessionDirs(p.prog.DataDir, id)
-	if err := removeWritable(vol); err != nil {
+	if err := artifact.RemoveWritable(vol); err != nil {
 		return err
 	}
-	return removeWritable(inputs)
+	return artifact.RemoveWritable(inputs)
 }
 
 // reap is phase 2. It runs on every finisher pass, which commits wake, so a

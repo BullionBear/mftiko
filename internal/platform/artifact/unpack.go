@@ -43,6 +43,18 @@ type UnpackLimits struct {
 // beside dest and are renamed into place, so a failure leaves nothing at dest.
 // #286 calls this for sessions/<id>/inputs/<name>/; the rejection rules are the same.
 func Unpack(ctx context.Context, layers []string, dest string, limits UnpackLimits) error {
+	return unpack(ctx, layers, dest, limits, false)
+}
+
+// UnpackReadOnly is Unpack for a session input: the tree is made read-only (files 0444,
+// directories 0555, MakeReadOnly) before it is renamed into place, so dest never appears with
+// the permissions of the extraction (D975, D996). The temporary directory is a sibling of dest,
+// and renaming a directory within the same parent does not need write permission on it.
+func UnpackReadOnly(ctx context.Context, layers []string, dest string, limits UnpackLimits) error {
+	return unpack(ctx, layers, dest, limits, true)
+}
+
+func unpack(ctx context.Context, layers []string, dest string, limits UnpackLimits, readOnly bool) error {
 	limits, err := normalizeLimits(limits)
 	if err != nil {
 		return err
@@ -70,11 +82,17 @@ func Unpack(ctx context.Context, layers []string, dest string, limits UnpackLimi
 	keep := false
 	defer func() {
 		if !keep {
-			os.RemoveAll(tmp)
+			// RemoveWritable, not RemoveAll: a read-only tree cannot be emptied as it is.
+			RemoveWritable(tmp)
 		}
 	}()
 	if err := extractAll(ctx, tmp, layers, limits); err != nil {
 		return err
+	}
+	if readOnly {
+		if err := MakeReadOnly(tmp); err != nil {
+			return temporary(ReasonUnavailable, err)
+		}
 	}
 	if err := os.Rename(tmp, dest); err != nil {
 		return temporary(ReasonUnavailable, err)

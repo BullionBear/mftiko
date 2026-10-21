@@ -182,7 +182,7 @@ func (p *puller) runInput(id, name, repository, digest string, ctx context.Conte
 	}()
 	dest := inputPath(p.dataDir, id, name)
 	if st, err := os.Stat(dest); err == nil && st.IsDir() {
-		p.finishInput(key, chmodReadOnly(dest))
+		p.finishInput(key, artifact.MakeReadOnly(dest))
 		return
 	} else if err != nil && !os.IsNotExist(err) {
 		p.finishInput(key, err)
@@ -215,14 +215,15 @@ func (p *puller) runInput(id, name, repository, digest string, ctx context.Conte
 		return
 	}
 	if st, err := os.Stat(dest); err == nil && st.IsDir() {
-		p.finishInput(key, chmodReadOnly(dest))
+		p.finishInput(key, artifact.MakeReadOnly(dest))
 		return
 	}
-	if err := artifact.Unpack(ctx, []string{fetched.Layer.Path}, dest, artifact.UnpackLimits{}); err != nil {
+	// Read-only before the rename, so dest never shows the extraction's permissions (D975, D996).
+	if err := artifact.UnpackReadOnly(ctx, []string{fetched.Layer.Path}, dest, artifact.UnpackLimits{}); err != nil {
 		p.finishInput(key, err)
 		return
 	}
-	p.finishInput(key, chmodReadOnly(dest))
+	p.finishInput(key, nil)
 }
 
 func (p *puller) finishInput(key string, err error) {
