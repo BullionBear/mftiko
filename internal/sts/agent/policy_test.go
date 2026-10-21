@@ -185,3 +185,56 @@ func endedExit(outcome commonv1.Outcome, reason string, signal int32, restarts u
 		Restarts: restarts,
 	}
 }
+
+// The policy records which incarnation its decision is about, so Sync can tell
+// an exit it has not classified yet from one it has (D995, #327).
+func TestPolicyRecordsTheDecidedIncarnation(t *testing.T) {
+	p := newPolicy(Config{BackoffMin: time.Millisecond, BackoffMax: time.Millisecond})
+	key := WorkerKey("s")
+	p.note("s", &sessionv1.SessionSpec{}, nil)
+	inc := uint32(3)
+	p.lookup = func(agent.WorkerKey) (agent.Observed, bool) {
+		return agent.Observed{State: agent.StateExited, Incarnation: inc}, true
+	}
+	if view := p.statusEnd("s"); view.decided != 0 {
+		t.Fatalf("before any exit %+v", view)
+	}
+	p.Restart(key, endedExit(commonv1.Outcome_OUTCOME_CRASHED, "crash", 0, 0))
+	view := p.statusEnd("s")
+	if view.decided != 3 || !view.restarting {
+		t.Fatalf("decided view %+v", view)
+	}
+	if undecidedExit(&agent.Observed{State: agent.StateExited, Incarnation: 3}, view, true) {
+		t.Fatal("the classified exit is undecided")
+	}
+	if !undecidedExit(&agent.Observed{State: agent.StateExited, Incarnation: 4}, view, true) {
+		t.Fatal("the next incarnation's exit is decided")
+	}
+}
+
+func TestUndecidedExit(t *testing.T) {
+	exited := func(inc uint32) *agent.Observed { return &agent.Observed{State: agent.StateExited, Incarnation: inc} }
+	cases := []struct {
+		name   string
+		obs    *agent.Observed
+		ev     endView
+		policy bool
+		want   bool
+	}{
+		{"no worker", nil, endView{}, true, false},
+		{"running", &agent.Observed{State: agent.StateRunning, Incarnation: 1}, endView{}, true, false},
+		{"stopping", &agent.Observed{State: agent.StateStopping, Incarnation: 1}, endView{}, true, false},
+		{"first exit, no decision yet", exited(1), endView{}, true, true},
+		{"exit decided", exited(1), endView{decided: 1, restarting: true}, true, false},
+		{"previous incarnation decided", exited(2), endView{decided: 1, restarting: true}, true, true},
+		{"no incarnation", exited(0), endView{}, true, false},
+		{"test-supplied policy", exited(1), endView{}, false, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := undecidedExit(c.obs, c.ev, c.policy); got != c.want {
+				t.Fatalf("got %v", got)
+			}
+		})
+	}
+}

@@ -619,10 +619,10 @@ func (p *plane) cleanupSession(ctx context.Context, id string) error {
 		return err
 	}
 	vol, inputs := sessionDirs(p.prog.DataDir, id)
-	if err := removeWritable(vol); err != nil {
+	if err := artifact.RemoveWritable(vol); err != nil {
 		return err
 	}
-	if err := removeWritable(inputs); err != nil {
+	if err := artifact.RemoveWritable(inputs); err != nil {
 		return err
 	}
 	if err := os.Remove(terminalPath(p.prog.DataDir, id)); err != nil && !os.IsNotExist(err) {

@@ -271,6 +271,14 @@ func TestPhase(t *testing.T) {
 	if !write || ph != statev1.Phase_PHASE_FAILED || reason != ReasonNoBeat {
 		t.Fatalf("no_beat %s %q", ph, reason)
 	}
+	// An exit the policy has not classified yet stays STOPPING, even with the
+	// previous incarnation's decision still in the view (D995, #327).
+	for _, pending := range []endView{{undecided: true}, {undecided: true, decided: 1, terminalReason: ReasonRestartLimit}} {
+		ph, reason, write = phaseOf(plan, obs(agent.StateExited, "", "h", exitInfo(commonv1.Outcome_OUTCOME_CRASHED, "crash")), pending)
+		if !write || ph != statev1.Phase_PHASE_STOPPING || reason != "" {
+			t.Fatalf("undecided %+v: %s %q write %v", pending, ph, reason, write)
+		}
+	}
 	published := exitForStatus(ex, quiet)
 	if published.GetOutcome() != commonv1.Outcome_OUTCOME_HUNG || published.GetReason() != ReasonNoBeat || published.GetSignal() != 9 {
 		t.Fatalf("published exit %+v", published)
