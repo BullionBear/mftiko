@@ -162,7 +162,9 @@ func (p *plane) seal(id string, inc uint32, clean bool) {
 	p.mu.Unlock()
 }
 
-// finisher packs, pushes, and cleans up outside the reconcile loop (D983).
+// finisher packs and pushes state_out outside the reconcile loop, then deletes
+// the volume and the inputs. Shim logs and the session directory stay until the
+// spec is gone (D983, D1016).
 type finisher struct {
 	ctx   context.Context
 	plane *plane
@@ -314,6 +316,7 @@ func (f *finisher) pass() {
 		}
 		f.mu.Unlock()
 	}
+	f.reap()
 }
 
 func (f *finisher) due(now time.Time) []string {
@@ -406,10 +409,10 @@ func (f *finisher) step(ctx context.Context, id string) error {
 		if err := p.putStateOut(ctx, id, snap); err != nil {
 			return err
 		}
-		return p.cleanupSession(ctx, id)
+		return p.releaseVolume(id)
 	}
 	if p.existingStateOut(id) != nil {
-		return p.cleanupSession(ctx, id)
+		return p.releaseVolume(id)
 	}
 	vol, _ := sessionDirs(p.prog.DataDir, id)
 	empty, err := artifact.DataVolumeEmpty(vol)
@@ -417,7 +420,7 @@ func (f *finisher) step(ctx context.Context, id string) error {
 		return err
 	}
 	if empty {
-		return p.cleanupSession(ctx, id)
+		return p.releaseVolume(id)
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -452,7 +455,7 @@ func (f *finisher) step(ctx context.Context, id string) error {
 	if err := p.putStateOut(ctx, id, snap); err != nil {
 		return err
 	}
-	return p.cleanupSession(ctx, id)
+	return p.releaseVolume(id)
 }
 
 // terminalMeta reads the resume file or writes it from the confirmed exit.
@@ -608,34 +611,126 @@ func (p *plane) putStateOut(ctx context.Context, id string, snap *statev1.StateS
 	if p.local == nil {
 		p.local = map[string]statusView{}
 	}
-	p.local[id] = statusView{Phase: base.GetPhase(), Reason: base.GetReason()}
+	p.local[id] = statusView{Phase: base.GetPhase(), Reason: base.GetReason(), Gen: base.GetObservedGeneration()}
 	p.mu.Unlock()
 	return nil
 }
 
-// cleanupSession deletes one finished session in D984's order. The first error stops it.
-func (p *plane) cleanupSession(ctx context.Context, id string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
+// releaseVolume is phase 1: after state_out is pushed, or immediately when the
+// volume is empty, only the volume and the inputs are deleted (D1016).
+func (p *plane) releaseVolume(id string) error {
 	vol, inputs := sessionDirs(p.prog.DataDir, id)
 	if err := artifact.RemoveWritable(vol); err != nil {
 		return err
 	}
-	if err := artifact.RemoveWritable(inputs); err != nil {
+	return artifact.RemoveWritable(inputs)
+}
+
+// reap is phase 2. It runs on every finisher pass, which commits wake, so a
+// spec that disappears while the agent is up is collected without spinning on
+// "spec still held" (D1016). A pass before the first commit does not run: the
+// finisher is not ready.
+func (f *finisher) reap() {
+	p := f.plane
+	if p == nil || p.prog == nil || f.ctx.Err() != nil {
+		return
+	}
+	dir := filepath.Join(p.prog.DataDir, "sessions")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if f.ctx.Err() != nil {
+			return
+		}
+		if !e.IsDir() {
+			continue
+		}
+		id := e.Name()
+		if !p.hostLeftover(id) {
+			continue
+		}
+		if err := p.releaseHost(f.ctx, id); err != nil && f.ctx.Err() == nil {
+			p.log.Warn().Str("session", id).Err(err).Msg("session cleanup")
+		}
+	}
+}
+
+// hostLeftover reports that phase 1 has finished for a session the reconcile
+// view no longer has a spec for (D1016, D1019). terminal.json is the local
+// marker; a directory that never became terminal is left alone (D944).
+func (p *plane) hostLeftover(id string) bool {
+	if p.prog == nil || !p.hostStill(id) {
+		return false
+	}
+	if _, err := readTerminalFile(terminalPath(p.prog.DataDir, id), id); err != nil {
+		return false
+	}
+	vol, inputs := sessionDirs(p.prog.DataDir, id)
+	if _, err := os.Lstat(vol); !os.IsNotExist(err) {
+		return false
+	}
+	if _, err := os.Lstat(inputs); !os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
+// hostStill is the phase-2 gate: the first spec list has been seen, this
+// session's spec key is absent from that view, and no shim still has the
+// session open (D1019).
+func (p *plane) hostStill(id string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.specReady {
+		return false
+	}
+	if _, held := p.specs[id]; held {
+		return false
+	}
+	return !p.workerBusy(id)
+}
+
+// releaseHost deletes one finished session in D1020's order. The first error
+// stops it. Each step checks the spec view again so a spec that reappears
+// (D1007) is left in place for a later pass.
+func (p *plane) releaseHost(ctx context.Context, id string) error {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := os.Remove(terminalPath(p.prog.DataDir, id)); err != nil && !os.IsNotExist(err) {
-		return err
+	if !p.hostStill(id) {
+		return nil
 	}
 	if err := removeShimLogs(p.workDir, id); err != nil {
 		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !p.hostStill(id) {
+		return nil
 	}
 	if p.numbers == nil {
 		return errors.New("sts: incarnations not loaded")
 	}
 	if err := p.numbers.Forget(ctx, string(WorkerKey(id))); err != nil {
 		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !p.hostStill(id) {
+		return nil
+	}
+	if err := os.Remove(terminalPath(p.prog.DataDir, id)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !p.hostStill(id) {
+		return nil
 	}
 	return os.RemoveAll(filepath.Join(p.prog.DataDir, "sessions", id))
 }

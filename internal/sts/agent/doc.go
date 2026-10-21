@@ -17,6 +17,7 @@
 // until the restart window is used up (D919, D964, D969). A lost shim is not
 // restarted (D970). After the worker process has ended, a non-empty volume is
 // packed and pushed, then state_out is filled in; an empty volume is removed
-// without a push. Cleanup then drops the session directory, the shim logs, and
-// the incarnation key (D978–D984).
+// without a push. That step deletes the volume and the inputs. Shim logs,
+// terminal.json, and the incarnation key stay until the spec is gone
+// (D978–D984, D1016, D1020).
 package agent

@@ -304,6 +304,12 @@ type plane struct {
 	finish   *finisher
 	saved    map[string]*statev1.SessionStatus
 	exits    map[string]exitNote
+
+	// specReady is set on the first commit, which runs only after the first
+	// list of spec, demand, and status has synced. specs is the set of session
+	// ids whose spec key is in that commit's view (D1019).
+	specReady bool
+	specs     map[string]struct{}
 }
 
 // Plan returns the last commit. A stale step does not recompute it (D109).
@@ -332,7 +338,9 @@ func (p *plane) commit(_ context.Context, _ agent.Demand[Entry], observed map[ag
 			return
 		}
 		// Adopt has already run: the first commit is the earliest a resumed push may look.
+		// Every commit wakes phase 2; it is level-triggered (D1016, D1019).
 		p.finish.adopted()
+		p.finish.kick()
 		for _, id := range wake {
 			p.finish.ensure(id)
 		}
@@ -382,7 +390,22 @@ func (p *plane) commit(_ context.Context, _ agent.Demand[Entry], observed map[ag
 			wake = append(wake, id)
 		}
 	}
+	p.noteSpecsLocked(sessions)
 	return nil
+}
+
+// noteSpecsLocked records the spec keys of this reconcile. Phase 2 treats
+// absence from this set as the spec being gone, and only after specReady
+// (D1019). A key that is present but will not decode is still present.
+func (p *plane) noteSpecsLocked(sessions map[string]*sess) {
+	specs := make(map[string]struct{}, len(sessions))
+	for id, s := range sessions {
+		if s != nil && s.specPresent {
+			specs[id] = struct{}{}
+		}
+	}
+	p.specs = specs
+	p.specReady = true
 }
 
 // sync writes SessionStatus where the phase or the reason changed (W7). Keys
@@ -417,8 +440,12 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 		if !write || p.same(id, phase, reason) {
 			continue
 		}
+		rev := in.Rev
+		if rev == 0 {
+			rev = p.generationLocked(id)
+		}
 		msg := &statev1.SessionStatus{
-			ObservedGeneration: in.Rev, Phase: phase, Reason: reason, UpdatedAtNs: now.UnixNano(),
+			ObservedGeneration: rev, Phase: phase, Reason: reason, UpdatedAtNs: now.UnixNano(),
 		}
 		if obs != nil {
 			msg.Incarnation = obs.Incarnation
@@ -437,7 +464,7 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 			return fmt.Errorf("sts: status %s: %w", id, err)
 		}
 		p.saved[id] = msg
-		p.local[id] = statusView{Phase: phase, Reason: reason}
+		p.local[id] = statusView{Phase: phase, Reason: reason, Gen: rev}
 		if phase == statev1.Phase_PHASE_DONE || phase == statev1.Phase_PHASE_FAILED {
 			wake = append(wake, id)
 		}
@@ -597,6 +624,21 @@ func (p *plane) noteBeat(sessions map[string]*sess) {
 		}
 		p.pol.note(id, s.parsed, s.observed)
 	}
+}
+
+// generationLocked is the last observed_generation written or mirrored for id.
+// The caller holds p.mu.
+func (p *plane) generationLocked(id string) int64 {
+	if st, ok := p.local[id]; ok && st.Gen != 0 {
+		return st.Gen
+	}
+	if p.saved[id].GetObservedGeneration() != 0 {
+		return p.saved[id].GetObservedGeneration()
+	}
+	if st, ok := p.mirrored[id]; ok && st.Gen != 0 {
+		return st.Gen
+	}
+	return 0
 }
 
 func (p *plane) same(id string, phase statev1.Phase, reason string) bool {

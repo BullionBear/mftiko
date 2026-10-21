@@ -193,7 +193,12 @@ func TestScenarioStateOutHandoff(t *testing.T) {
 		}
 		return false
 	})
+	pollUntil(t, "logs kept while the spec exists", func() bool { return e.logsKept(id) })
+	e.delSpec(id)
 	pollUntil(t, "no residue of "+id, func() bool { return e.sessionResidue(id) == "" })
+	if e.status(next).GetPhase() != statev1.Phase_PHASE_RUNNING {
+		t.Fatalf("next session phase %s", e.status(next).GetPhase())
+	}
 }
 
 // scenarioSpec runs the fake with no feeds or accounts, so the controller

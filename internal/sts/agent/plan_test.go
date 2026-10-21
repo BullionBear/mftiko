@@ -142,6 +142,75 @@ func TestMissingAndTerminal(t *testing.T) {
 	wantConflict(t, d, "b2c3d4")
 }
 
+func TestEndedWithoutSpec(t *testing.T) {
+	id := "a1b2c3"
+	s := &sess{
+		demandPresent: true,
+		demand:        &demandView{Desired: sessionv1.DesiredState_DESIRED_STATE_ENDED, EndReason: "ended_by_spec", IssuedAt: 3},
+		mirrored:      &statusView{Phase: statev1.Phase_PHASE_RUNNING, Gen: 7},
+		observed:      obs(agent.StateRunning, "running", "h", nil),
+	}
+	d := decide(map[string]*sess{id: s}, nil)
+	wantEnded(t, d, id, "ended_by_spec")
+	if d.Intents[id].Rev != 7 {
+		t.Fatalf("rev %d, want 7", d.Intents[id].Rev)
+	}
+	if len(d.Missing) != 0 || len(d.Bad) != 0 {
+		t.Fatalf("missing or bad: %+v", d)
+	}
+
+	// The generation already published in this process wins over the mirror.
+	s.local = &statusView{Phase: statev1.Phase_PHASE_STOPPING, Gen: 9}
+	d = decide(map[string]*sess{id: s}, nil)
+	if d.Intents[id].Rev != 9 || d.Intents[id].Kind != kindEnded {
+		t.Fatalf("intent %+v", d.Intents[id])
+	}
+
+	// No parsed spec, so a later session is not blocked on algos.
+	later := running(t, "b2c3d4", 20, true, acc(7, 1))
+	d = decide(map[string]*sess{id: s, "b2c3d4": later}, nil)
+	wantEnded(t, d, id, "ended_by_spec")
+	wantPlan(t, d, "b2c3d4", true)
+
+	// RUNNING, and the spec key has not appeared: still D944.
+	waiting := &sess{
+		demandPresent: true,
+		demand:        dem(true, 1),
+		observed:      obs(agent.StateRunning, "running", "h", nil),
+	}
+	d = decide(map[string]*sess{id: waiting}, nil)
+	if len(d.Plans) != 0 || len(d.Intents) != 0 || !slices.Contains(d.Missing, id) {
+		t.Fatalf("running without spec: %+v", d)
+	}
+
+	// A remembered assignment with nothing local to finish stays unplanned.
+	idle := &sess{remembered: &demandView{Desired: sessionv1.DesiredState_DESIRED_STATE_RUNNING, IssuedAt: 1}}
+	d = decide(map[string]*sess{id: idle}, nil)
+	if len(d.Intents) != 0 || !slices.Contains(d.Missing, id) {
+		t.Fatalf("remembered without a worker: %+v", d)
+	}
+
+	// The demand key is gone and a status remains: end, keeping its generation.
+	gone := &sess{mirrored: &statusView{Phase: statev1.Phase_PHASE_RUNNING, Gen: 4}}
+	d = decide(map[string]*sess{id: gone}, nil)
+	wantEnded(t, d, id, "")
+	if d.Intents[id].Rev != 4 {
+		t.Fatalf("rev %d, want 4", d.Intents[id].Rev)
+	}
+
+	// A spec key that does not decode stays a bad spec when the assignment is ENDED.
+	bad := &sess{
+		specPresent:   true,
+		specErr:       errBadSpec,
+		demandPresent: true,
+		demand:        &demandView{Desired: sessionv1.DesiredState_DESIRED_STATE_ENDED, EndReason: "ended_by_spec", IssuedAt: 1},
+	}
+	d = decide(map[string]*sess{id: bad}, nil)
+	if len(d.Intents) != 0 || len(d.Bad) != 1 || d.Bad[0].ID != id {
+		t.Fatalf("bad spec: %+v", d)
+	}
+}
+
 func TestEndedAndGone(t *testing.T) {
 	id := "a1b2c3"
 	s := ended(t, id, 5, "deps_failed", acc(7, 1))
