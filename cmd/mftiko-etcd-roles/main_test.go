@@ -41,6 +41,11 @@ func TestEtcdctl(t *testing.T) {
 		"etcdctl role grant-permission 'controller' readwrite '/mftiko/v1/sts/sts-tw-1/demand/' '/mftiko/v1/sts/sts-tw-1/demand0'\n",
 		"etcdctl user add 'api'\n",
 		"etcdctl user grant-role 'sts-tw-1' 'sts-tw-1'\n",
+		// api reads the keyspace and writes spec, status (D1040) and account. The range end is the prefix's last byte plus one.
+		"etcdctl role grant-permission 'api' read '/mftiko/v1/' '/mftiko/v10'\n",
+		"etcdctl role grant-permission 'api' readwrite '/mftiko/v1/sts/sts-tw-1/spec/' '/mftiko/v1/sts/sts-tw-1/spec0'\n",
+		"etcdctl role grant-permission 'api' readwrite '/mftiko/v1/sts/sts-tw-1/status/' '/mftiko/v1/sts/sts-tw-1/status0'\n",
+		"etcdctl role grant-permission 'api' readwrite '/mftiko/v1/td/td-jp-1/account/' '/mftiko/v1/td/td-jp-1/account0'\n",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q", want)
@@ -48,6 +53,16 @@ func TestEtcdctl(t *testing.T) {
 	}
 	if strings.Index(out.String(), "# region jp") > strings.Index(out.String(), "# region tw") {
 		t.Error("regions out of order")
+	}
+	for _, forbidden := range []string{
+		"grant-permission 'api' readwrite '/mftiko/v1/sts/sts-tw-1/demand/",
+		"grant-permission 'api' readwrite '/mftiko/v1/md/",
+		"grant-permission 'api' readwrite '/mftiko/v1/td/td-jp-1/ack/",
+		"grant-permission 'api' readwrite '/mftiko/v1/td/td-jp-1/demand/",
+	} {
+		if strings.Contains(out.String(), forbidden) {
+			t.Errorf("api granted %s", forbidden)
+		}
 	}
 }
 
