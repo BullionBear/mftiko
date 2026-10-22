@@ -2,9 +2,11 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"maps"
 	"net"
@@ -33,6 +35,7 @@ type Server struct {
 	web      *os.Root
 	log      zerolog.Logger
 	now      func() time.Time
+	ids      func() io.Reader // the random source of one id allocation: crypto/rand; tests replace it
 
 	draining  atomic.Bool
 	drainOnce sync.Once
@@ -85,6 +88,7 @@ func start(cfg Config) (*Server, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Server{
 		cfg: cfg, cl: cl, byName: map[string]*cluster{}, log: cfg.Log, now: cfg.Now,
+		ids: defaultIDs,
 		ctx: ctx, cancel: cancel,
 	}
 	if s.now == nil {
@@ -132,6 +136,9 @@ func start(cfg Config) (*Server, error) {
 		Strs("regions", regionNames(s.clusters)).Msg("listen")
 	return s, nil
 }
+
+// defaultIDs is the id source of production: crypto/rand.
+func defaultIDs() io.Reader { return rand.Reader }
 
 func fmtWeb(err error) error {
 	return errors.New("-web: " + err.Error())

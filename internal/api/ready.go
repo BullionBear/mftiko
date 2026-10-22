@@ -14,6 +14,12 @@ type regionSnap struct {
 	rev     int64
 }
 
+// available is D1014's test: the first sync has finished, and the cluster was heard from no more than threshold ago
+// (strictly older is unavailable, as for the controller). Readiness and the id checks of writes (D1042) share it.
+func (s regionSnap) available(now time.Time, threshold time.Duration) bool {
+	return s.synced && !s.contact.IsZero() && now.Sub(s.contact) <= threshold
+}
+
 // regionStatus is one region in the /readyz body (D1026).
 type regionStatus struct {
 	Available bool  `json:"available"`
@@ -42,7 +48,7 @@ func readyStatus(names []string, snaps []regionSnap, now time.Time, threshold ti
 	}
 	for _, name := range names {
 		s := byName[name]
-		available := s.synced && !s.contact.IsZero() && now.Sub(s.contact) <= threshold
+		available := s.available(now, threshold)
 		rev := int64(0)
 		if s.synced {
 			rev = s.rev
