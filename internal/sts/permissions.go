@@ -43,7 +43,7 @@ var (
 )
 
 // SessionPermissions is the NATS allow list for sessionID, taken from spec
-// (D818–D822, amending D906).
+// (D818–D822, D1015, D1030, amending D906).
 //
 // feedInst maps a feed key, topic.UniversalTicker, to the MD instance that
 // holds it. The caller resolves that instance. This function does not read
@@ -53,8 +53,8 @@ var (
 // and one subscribe subject, md.v1.f.{inst}.{topic}.{ticker}. md.v1.fetch.> is
 // always published. Each account adds td.order.{api_id}, td.view.{api_id}, and
 // td.evt.{api_id}. No account means no td subject. No feed means no md.v1.f
-// and no md.v1.view. The fixed subjects are sym, log.sts.{session_id},
-// _INBOX_{session_id}.>, and sym.v1.changed.>.
+// and no md.v1.view. The fixed subjects are sym, _INBOX_{session_id}.>, and
+// sym.v1.changed.>. There is no log.sts.{session_id} (D1015, D1030).
 //
 // Pub and Sub are deduplicated and sorted, so the same input yields the same
 // lists. A spec with any selector is ErrSelector (D822). A session id, MD
@@ -81,7 +81,6 @@ func SessionPermissions(sessionID string, spec *sessionv1.SessionSpec, feedInst 
 	pub := []string{
 		"md.v1.fetch.>",
 		"sym",
-		"log.sts." + sessionID,
 	}
 	sub := []string{
 		"_INBOX_" + sessionID + ".>",

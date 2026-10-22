@@ -40,7 +40,6 @@ func perms(t *testing.T, sessionID string, spec *sessionv1.SessionSpec, feedInst
 func TestSessionPermissionsOneFeedOneAccount(t *testing.T) {
 	got := perms(t, "a1b2c3", specOf([]int64{7}, []string{"trade.Binance_Spot_BTCUSDT"}), inst("md-tw-1"))
 	wantPub := []string{
-		"log.sts.a1b2c3",
 		"md.v1.fetch.>",
 		"md.v1.view.md-tw-1.trade.Binance_Spot_BTCUSDT",
 		"sym",
@@ -220,7 +219,12 @@ func TestBadTokens(t *testing.T) {
 
 func TestHashIsNotASpecialCharacter(t *testing.T) {
 	got := perms(t, "abc#12", specOf(nil, nil), nil)
-	if !slices.Contains(got.Pub, "log.sts.abc#12") || !slices.Contains(got.Sub, "_INBOX_abc#12.>") {
+	for _, s := range got.Pub {
+		if strings.HasPrefix(s, "log.") {
+			t.Fatalf("log subject %s", s)
+		}
+	}
+	if !slices.Contains(got.Sub, "_INBOX_abc#12.>") {
 		t.Fatalf("pub %q sub %q", got.Pub, got.Sub)
 	}
 }
@@ -283,8 +287,9 @@ func TestManyFeedsStayExactAndStable(t *testing.T) {
 	if !slices.Equal(a.Pub, b.Pub) || !slices.Equal(a.Sub, b.Sub) {
 		t.Fatal("same input differed")
 	}
-	// Fixed publish subjects plus one view per feed: fetch, sym, log, two td, 500 views.
-	if len(a.Pub) != 5+n || len(a.Sub) != 3+n {
+	// Fixed publish subjects plus one view per feed: fetch, sym, two td, 500 views.
+	// There is no log.sts (D1030).
+	if len(a.Pub) != 4+n || len(a.Sub) != 3+n {
 		t.Fatalf("pub %d sub %d", len(a.Pub), len(a.Sub))
 	}
 	if slices.Contains(a.Sub, "md.v1.f.md-tw-1.>") || slices.Contains(a.Pub, "md.v1.view.md-tw-1.>") {

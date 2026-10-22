@@ -756,15 +756,25 @@ func (r *runner) checkSubject() (Check, error) {
 	var sinceOnStart time.Time
 	var saw bool
 	ok := poll(opTimeout, func() bool {
-		if p.snap().hook("OnStart") && !saw {
+		s := p.snap()
+		if s.hook("OnStart") && !saw {
 			sinceOnStart = time.Now()
 			saw = true
 		}
 		if len(r.bus.since(mark)) >= 1 {
 			return true
 		}
+		// Exit 2 is the worker bailing (a denied publish). That is not the
+		// subject violation: the order was not accepted onto another subject.
+		if s.exited && s.code == 2 {
+			return true
+		}
 		return saw && time.Since(sinceOnStart) >= time.Second
 	})
+	s := p.snap()
+	if s.exited && s.code == 2 && len(r.bus.since(mark)) < 1 {
+		return fail("subject: exited 2: " + strings.TrimSpace(s.stderr)), nil
+	}
 	if !ok || len(r.bus.since(mark)) < 1 {
 		return fail("order not on " + r.bus.orderSubject), nil
 	}
