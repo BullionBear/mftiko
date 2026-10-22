@@ -55,7 +55,7 @@ message StrategyRef {
 // ticker 解成 UID 發生在 spec 載入時（sym.GetRequest），不在這份宣告裡。
 message FeedDecl {
   string feed = 1;        // 正規 feed key（<topic>.<UniversalTicker>）。載入邊界才解成 UID
-  string md_instance = 2; // API 解析後一律填
+  string md_instance = 2; // API 驗證後填入
 }
 
 message AccountDecl {

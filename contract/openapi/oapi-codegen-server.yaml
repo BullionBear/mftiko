@@ -1,0 +1,6 @@
+# Strict server on the standard library's net/http (D1044). No other router.
+package: apiv1
+output: contract/gen/api/v1/server.gen.go
+generate:
+  std-http-server: true
+  strict-server: true

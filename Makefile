@@ -28,53 +28,110 @@ COMPOSE      := docker compose -f deploy/dev/compose.yaml
 DEV_NATS     := deploy/dev/data/nats
 
 PROTOC_GEN_GO_VERSION := v1.36.12
+# v1.72.0 is the newest buf that `go install`s with this module's Go 1.26.0.
+# v1.73.0 needs Go 1.26.7, and CI sets GOTOOLCHAIN=local (D1042).
+BUF_VERSION          := v1.72.0
+OAPI_CODEGEN_VERSION := v2.8.0
+OASDIFF_VERSION      := v1.34.1
 
 # What proto-breaking compares against: a buf input. CI points it at the pull request's base.
 BUF_AGAINST ?= .git\#branch=main
 
-# buf and protoc-gen-es come from web/node_modules (npm devDependencies);
-# protoc-gen-go is installed into bin/tools.
+# What openapi-breaking compares against: a git commit-ish. CI points it at the pull request's base.
+OAS_BASE ?= main
+
+# Empty until E10-20 (D1018, D1045). E10-20 sets this to ERR so breaking changes fail the build.
+OASDIFF_FAIL_ON ?=
+
+# buf, protoc-gen-go, oapi-codegen and oasdiff are installed into bin/tools (D1042, D1043).
+# Redocly CLI and openapi-typescript come from web/node_modules.
 export PATH := $(TOOLS):$(NODE_BIN):$(PATH)
 
-.PHONY: all help tools proto proto-lint proto-breaking gen-check build examples test test-race sdk-conformance vet fmt check \
+.PHONY: all help tools proto proto-lint proto-breaking openapi openapi-lint openapi-breaking gen-check build examples test test-race sdk-conformance vet fmt check \
         web-install web web-check web-dev dev-up dev-down dev-nats-smoke accept-up accept-down migrate-up migrate-down migrate-status \
         migrate-new clean
 
-all: proto build examples web ## Generate code, build every binary, the example strategies and the web console
+all: proto openapi build examples web ## Generate code, build every binary, the example strategies and the web console
 
 help: ## List targets
-	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n",$$1,$$2}'
+	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-20s %s\n",$$1,$$2}'
 
 # ---------- codegen ----------
 
-tools: $(TOOLS)/protoc-gen-go web-install ## Install codegen tools
+tools: $(TOOLS)/protoc-gen-go $(TOOLS)/buf $(TOOLS)/oapi-codegen $(TOOLS)/oasdiff ## Install Go codegen tools into bin/tools
 
 $(TOOLS)/protoc-gen-go:
+	mkdir -p $(TOOLS)
 	GOBIN=$(TOOLS) $(GO) install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION)
 
-proto: tools ## Regenerate contract/gen/ (Go) and web/src/lib/gen/ (TypeScript) from contract/proto/; commit the result
-	rm -rf $(GEN) $(WEB)/src/lib/gen
+$(TOOLS)/buf:
+	mkdir -p $(TOOLS)
+	GOBIN=$(TOOLS) $(GO) install github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION)
+
+$(TOOLS)/oapi-codegen:
+	mkdir -p $(TOOLS)
+	GOBIN=$(TOOLS) $(GO) install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION)
+
+$(TOOLS)/oasdiff:
+	mkdir -p $(TOOLS)
+	GOBIN=$(TOOLS) $(GO) install github.com/oasdiff/oasdiff@$(OASDIFF_VERSION)
+
+proto: tools ## Regenerate contract/gen/mftiko from contract/proto/; commit the result
+	rm -rf $(GEN)/mftiko
 	buf generate
 	$(GO) get google.golang.org/protobuf@$(PROTOC_GEN_GO_VERSION)
 	$(GO) mod tidy
 
-proto-lint: web-install ## buf lint (STANDARD)
+proto-lint: tools ## buf lint (STANDARD)
 	buf lint
 
-proto-breaking: web-install ## buf breaking against main (or BUF_AGAINST): compatible changes only within a major (PROTOCOL §1)
+proto-breaking: tools ## buf breaking against main (or BUF_AGAINST): compatible changes only within a major (PROTOCOL §1)
 	buf breaking --against '$(BUF_AGAINST)'
 
+openapi-lint: web-install ## Redocly lint for contract A (D1036, D1046)
+	redocly lint --config contract/openapi/redocly.yaml contract/openapi/api/v1.yaml
+
+openapi: tools web-install ## Lint contract A and regenerate Go and TypeScript; commit the result
+	$(MAKE) --no-print-directory openapi-lint
+	rm -rf $(GEN)/api $(WEB)/src/lib/gen
+	mkdir -p $(GEN)/api/v1 $(WEB)/src/lib/gen/api
+	oapi-codegen --config contract/openapi/oapi-codegen-types.yaml contract/openapi/api/v1.yaml
+	oapi-codegen --config contract/openapi/oapi-codegen-server.yaml contract/openapi/api/v1.yaml
+	oapi-codegen --config contract/openapi/oapi-codegen-client.yaml contract/openapi/api/v1.yaml
+	openapi-typescript contract/openapi/api/v1.yaml --output $(WEB)/src/lib/gen/api/v1.ts
+	$(GO) mod tidy
+
+# D1045: until E10-20 the report is printed and this target still succeeds.
+# A missing spec on the base is skipped. A base that is not a commit is an error.
+openapi-breaking: tools ## oasdiff breaking against OAS_BASE; report only until E10-20 (D1045)
+	@set -euo pipefail; \
+	base='$(OAS_BASE)'; \
+	spec=contract/openapi/api/v1.yaml; \
+	if ! git rev-parse --verify --quiet "$${base}^{commit}" >/dev/null 2>&1; then \
+	  echo "openapi-breaking: $$base is not a commit" >&2; \
+	  exit 1; \
+	fi; \
+	if ! git cat-file -e "$$base:$$spec" 2>/dev/null; then \
+	  echo "openapi-breaking: $$base has no $$spec; skipping oasdiff (D1045)"; \
+	  exit 0; \
+	fi; \
+	args=(breaking --color never "$$base:$$spec" "$$spec"); \
+	if [ -n '$(OASDIFF_FAIL_ON)' ]; then \
+	  args+=(--fail-on '$(OASDIFF_FAIL_ON)'); \
+	fi; \
+	oasdiff "$${args[@]}"
+
 # Regenerates, then compares with what was there before: fails if contract/gen/, web/src/lib/gen/, go.mod or go.sum
-# were not what make proto makes from contract/proto/. The fresh output stays in place, ready to commit.
-gen-check: tools ## Fail if the generated code (or go.mod) is stale
+# were not what make proto and make openapi produce. The fresh output stays in place, ready to commit.
+gen-check: tools web-install ## Fail if the generated code (or go.mod) is stale
 	@before=$$(mktemp -d) && trap 'rm -rf "$$before"' EXIT && \
 	cp -R $(GEN) "$$before/gen" && cp -R $(WEB)/src/lib/gen "$$before/webgen" && cp go.mod go.sum "$$before/" && \
-	$(MAKE) --no-print-directory proto >/dev/null && \
+	$(MAKE) --no-print-directory proto openapi >/dev/null && \
 	if diff -r "$$before/gen" $(GEN) >/dev/null && diff -r "$$before/webgen" $(WEB)/src/lib/gen >/dev/null && \
 	   cmp -s "$$before/go.mod" go.mod && cmp -s "$$before/go.sum" go.sum; then \
 	  echo "generated code is up to date"; \
 	else \
-	  echo "generated code is stale: run make proto and commit the result" >&2; \
+	  echo "generated code is stale: run make proto and make openapi, then commit the result" >&2; \
 	  diff -ru "$$before/gen" $(GEN) | head -60 >&2; \
 	  diff -ru "$$before/webgen" $(WEB)/src/lib/gen | head -60 >&2; \
 	  diff -u "$$before/go.mod" go.mod >&2; \
@@ -107,7 +164,7 @@ fmt: ## go fmt
 	$(GO) fmt ./...
 
 # CI runs these one step each (.github/workflows/ci.yml), in this order: keep the two lists the same.
-CHECKS := proto-lint proto-breaking gen-check vet build test-race sdk-conformance web-check
+CHECKS := proto-lint proto-breaking openapi-lint openapi-breaking gen-check vet build test-race sdk-conformance web-check
 
 check: $(CHECKS) ## Everything CI runs
 

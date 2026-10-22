@@ -406,7 +406,7 @@ func (x *StrategyRef) GetRepository() string {
 type FeedDecl struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Feed          string                 `protobuf:"bytes,1,opt,name=feed,proto3" json:"feed,omitempty"`                               // 正規 feed key（<topic>.<UniversalTicker>）。載入邊界才解成 UID
-	MdInstance    string                 `protobuf:"bytes,2,opt,name=md_instance,json=mdInstance,proto3" json:"md_instance,omitempty"` // API 解析後一律填
+	MdInstance    string                 `protobuf:"bytes,2,opt,name=md_instance,json=mdInstance,proto3" json:"md_instance,omitempty"` // API 驗證後填入
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
