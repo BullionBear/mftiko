@@ -615,8 +615,11 @@ func (c *conform) probeReads() {
 
 func (c *conform) sendOrders() {
 	subject := "td.order." + strconv.FormatInt(c.api(), 10)
+	// D1030: the session may publish td.view, but that is not the order subject,
+	// so the order never shows up on td.order. The check fails without a
+	// permission error.
 	if c.violate == "subject" {
-		subject = "log.sts." + c.sessionID
+		subject = "td.view." + strconv.FormatInt(c.api(), 10)
 	}
 	for i := 1; i <= c.params.OrderCount; i++ {
 		id := "bad"
@@ -650,6 +653,11 @@ func (c *conform) sendOrders() {
 	}
 	if err := c.nc.FlushTimeout(3 * time.Second); err != nil {
 		c.bail("conformance worker: order flush: " + err.Error())
+	}
+	// A permissions violation is async: Flush can return nil while LastError
+	// is set. Bail so a denied subject is not mistaken for the subject check.
+	if err := c.nc.LastError(); err != nil {
+		c.bail("conformance worker: order publish: " + err.Error())
 	}
 }
 

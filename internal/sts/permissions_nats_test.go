@@ -250,9 +250,6 @@ func TestSessionJWTAllowsExactFeeds(t *testing.T) {
 	if err := sess.Publish("sym", []byte("q")); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Publish("log.sts."+session, []byte("q")); err != nil {
-		t.Fatal(err)
-	}
 	if err := sess.FlushTimeout(opTimeout); err != nil {
 		t.Fatal(err)
 	}
@@ -290,6 +287,7 @@ func TestSessionJWTAllowsExactFeeds(t *testing.T) {
 		}},
 		{"view wildcard", func(nc *nats.Conn) error { return nc.Publish("md.v1.view.dev.>", []byte("q")) }},
 		{"other account order", func(nc *nats.Conn) error { return nc.Publish("td.order.8", []byte("q")) }},
+		{"log subject", func(nc *nats.Conn) error { return nc.Publish("log.sts."+session, []byte("q")) }},
 		{"other account events", func(nc *nats.Conn) error {
 			_, err := nc.SubscribeSync("td.evt.8")
 			return err
