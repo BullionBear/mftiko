@@ -1,0 +1,1633 @@
+# Source of truth for contract A (PROTOCOL §0, §1). Draft until E10-20 (D1018).
+# console 與 CLI 只認這份契約，不認平台的 proto（D1002）。
+openapi: 3.0.3
+info:
+  title: mftiko API
+  version: 1.0.0-draft
+  description: |
+    mftiko API server 的對外契約（DECISIONS D1001、D1002）。
+
+    **慣例（D1036）**
+    - 路徑都在 `/api/v1` 底下；同一個 major 內只做相容擴充，讀取端忽略不認得的欄位。
+    - 時間是 RFC 3339 字串（UTC，奈秒精度可省略）。
+    - enum 是 API 自己的小寫字串，不是 proto 的名稱。
+    - 錯誤一律是 `application/problem+json`（RFC 9457），另帶穩定的 `code`；驗證錯誤的 `errors[].path` 是 JSON Pointer（RFC 6901），指向請求 body 裡的欄位（D1004）。
+    - 列表以 `limit`、`cursor` 分頁，回應帶 `next_cursor`，沒有下一頁就省略（D1004）。
+    - 讀取來自每個 region 的副本（D1014）。列表回應帶 `freshness`；單一資源所在的 region 不可用時回 503。
+
+    **認證（D1009）**：`POST /auth/login` 以 token 換 cookie；其他端點接受 cookie 或 `Authorization: Bearer <token>`。只有一個角色，通過認證就能使用所有資源。寫入另要求 `Content-Type: application/json`。
+
+    **稽核（D1010）**：每個請求在回覆時寫一列到 Postgres 的 `audit`；帳號的憑證欄位不記。
+servers:
+  - url: /api/v1
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+tags:
+  - name: auth
+    description: 每人一個靜態 token，console 換成 cookie（D1009）。
+  - name: strategies
+    description: 策略目錄，以 registry 為準（D1013、D1035）。
+  - name: sessions
+    description: 存活中與保留期內的 session，來自 etcd（D004）。
+  - name: session-records
+    description: session 的歷史紀錄，來自 Postgres，包含 etcd 已刪除的（D1031）。
+  - name: accounts
+    description: 交易所帳號；憑證只寫不讀（D1011、D1034）。
+  - name: instances
+    description: 三個平面的 instance 與 controller（D1014）。
+  - name: events
+    description: 狀態的即時更新（D1005、D1038）。
+
+paths:
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: 以 token 換 cookie
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '204':
+          description: 已登入。cookie 是 `HttpOnly`、`Secure`、`SameSite=Strict`，預設 12 小時到期（D1009）。
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: 清掉 cookie
+      responses:
+        '204':
+          description: 已登出。
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /auth/me:
+    get:
+      tags: [auth]
+      operationId: getMe
+      summary: 目前的使用者
+      responses:
+        '200':
+          description: 目前的使用者。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /strategies:
+    get:
+      tags: [strategies]
+      operationId: listStrategies
+      summary: 列出策略
+      description: 部署設定裡每個 repository 一項（D1013）。`id` 是 repository 路徑的最後一段（D1035）。
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: 策略。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrategyList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /strategies/{strategy_id}/versions:
+    get:
+      tags: [strategies]
+      operationId: listStrategyVersions
+      summary: 列出策略的版本
+      description: registry 的 tag 清單，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
+      parameters:
+        - $ref: '#/components/parameters/StrategyID'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: 版本。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrategyTagList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /strategies/{strategy_id}/versions/{ref}:
+    get:
+      tags: [strategies]
+      operationId: getStrategyVersion
+      summary: 一個版本的 manifest
+      description: '`ref` 是 tag，或 digest（`sha256:…`）。tag 先解析成 digest（D934）。'
+      parameters:
+        - $ref: '#/components/parameters/StrategyID'
+        - name: ref
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '200':
+          description: manifest 摘要。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrategyVersion'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /sessions:
+    post:
+      tags: [sessions]
+      operationId: createSession
+      summary: 部署 session
+      description: |
+        驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
+        `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
+        Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionCreate'
+      responses:
+        '201':
+          description: 已建立。
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    get:
+      tags: [sessions]
+      operationId: listSessions
+      summary: 列出 session
+      description: 存活中與保留期內的 session，依 `id` 排序。
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: phase
+          in: query
+          description: 只列這些 phase。可重複。
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/Phase'
+          style: form
+          explode: true
+        - name: active
+          in: query
+          description: true 只列非 terminal 的，false 只列 terminal 的。
+          schema:
+            type: boolean
+        - name: sts_instance
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: session。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionList'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /sessions/{session_id}:
+    get:
+      tags: [sessions]
+      operationId: getSession
+      summary: 取得 session
+      parameters:
+        - $ref: '#/components/parameters/SessionID'
+      responses:
+        '200':
+          description: session。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionDetail'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    delete:
+      tags: [sessions]
+      operationId: deleteSession
+      summary: 刪除 terminal 的 session
+      description: |
+        相當於 `docker rm`（D1017）。先把最後的 status 寫進 `session_records` 並關閉那一列，再以 txn 刪 etcd 的 spec 與 status（D1031）。
+        之後 STS 清掉主機上的 log 與目錄（D1016）。非 terminal 的回 409（`not_terminal`）：要結束 session 用 `POST /sessions/{session_id}/end`。
+        保留期到了 API 也會自己刪。
+      parameters:
+        - $ref: '#/components/parameters/SessionID'
+      responses:
+        '204':
+          description: 已刪除。
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /sessions/{session_id}/end:
+    post:
+      tags: [sessions]
+      operationId: endSession
+      summary: 結束 session
+      description: |
+        把 spec 的 `desired_state` 改成 `ended`（D1303）。伺服器端以 `mod_revision` CAS 重試，用戶端不必帶 revision（D1037）。
+        冪等：已經是 `ended` 或 terminal 的照樣回 200。controller 以 `ended_by_spec` 結束 session（PROTOCOL §3.3 N3）。
+      parameters:
+        - $ref: '#/components/parameters/SessionID'
+      responses:
+        '200':
+          description: 結束之後的 session。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionDetail'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /session-records:
+    get:
+      tags: [session-records]
+      operationId: listSessionRecords
+      summary: 列出 session 的歷史紀錄
+      description: 來自 Postgres，包含 etcd 已刪除的 session（D1031）。依 `created_at` 由新到舊。
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: session_id
+          in: query
+          description: 同一個 `session_id` 可能對到多筆：W5 刪除之後可能重用（D1007）。
+          schema:
+            $ref: '#/components/schemas/SessionIDValue'
+        - name: strategy_id
+          in: query
+          schema:
+            type: string
+        - name: created_by
+          in: query
+          schema:
+            type: string
+        - name: created_after
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: created_before
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: 紀錄。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionRecordList'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /session-records/{record_id}:
+    get:
+      tags: [session-records]
+      operationId: getSessionRecord
+      summary: 取得一筆歷史紀錄
+      parameters:
+        - name: record_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 紀錄。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionRecord'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /account-kinds:
+    get:
+      tags: [accounts]
+      operationId: listAccountKinds
+      summary: 列出帳號種類
+      description: exchange registry 宣告的帳號種類（D301）。`supported` 是 false 的，建立帳號時回 400（D1011、D614）。
+      responses:
+        '200':
+          description: 帳號種類。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountKindList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /accounts:
+    post:
+      tags: [accounts]
+      operationId: createAccount
+      summary: 建立帳號
+      description: |
+        `api_id` 由 API 隨機配發（D1008）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），明文只在處理這個請求的記憶體裡。
+        `enabled` 不公開，API 一律寫 true（D1034）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountCreate'
+      responses:
+        '201':
+          description: 已建立。
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    get:
+      tags: [accounts]
+      operationId: listAccounts
+      summary: 列出帳號
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: td_instance
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 帳號。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountList'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /accounts/{api_id}:
+    get:
+      tags: [accounts]
+      operationId: getAccount
+      summary: 取得帳號
+      parameters:
+        - $ref: '#/components/parameters/APIID'
+      responses:
+        '200':
+          description: 帳號。不含憑證。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    put:
+      tags: [accounts]
+      operationId: updateAccount
+      summary: 更新帳號
+      description: |
+        以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文；有給就重新封裝。`kind`、`td_instance` 不能改。
+
+        **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
+        用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。
+      parameters:
+        - $ref: '#/components/parameters/APIID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountUpdate'
+      responses:
+        '200':
+          description: 更新之後的帳號。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    delete:
+      tags: [accounts]
+      operationId: deleteAccount
+      summary: 刪除帳號
+      description: 仍被非 terminal 的 session 引用時回 409（`referenced`，D1011）。`revision` 不符回 409（`conflict`）。
+      parameters:
+        - $ref: '#/components/parameters/APIID'
+        - name: revision
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Revision'
+      responses:
+        '204':
+          description: 已刪除。
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /instances:
+    get:
+      tags: [instances]
+      operationId: listInstances
+      summary: 列出 instance 與 controller
+      description: 部署 JSON 裡的每個 instance（topology 與 `planes`），加上各自的 `AgentRecord`。
+      parameters:
+        - name: plane
+          in: query
+          schema:
+            $ref: '#/components/schemas/Plane'
+      responses:
+        '200':
+          description: instance。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceList'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+  /instances/{name}:
+    get:
+      tags: [instances]
+      operationId: getInstance
+      summary: 取得 instance
+      description: worker，以及 MD、TD 的需求項目與 ack；STS 的 session。
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/InstanceName'
+      responses:
+        '200':
+          description: instance。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceDetail'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /events:
+    get:
+      tags: [events]
+      operationId: streamEvents
+      summary: 狀態的即時更新（SSE）
+      description: |
+        `text/event-stream`（D1005、D1038）。每則事件帶一個資源的完整最新狀態，用戶端整筆取代；不送差異。
+
+        | `event` | `data` 的 schema |
+        |---|---|
+        | `session` | `SessionDetail` |
+        | `session_removed` | `SessionRemovedEvent` |
+        | `instance` | `InstanceDetail` |
+        | `reset` | `ResetEvent`：重新 list 這些 topic |
+
+        - `id` 是各 region 的 etcd revision：`<region>=<rev>[;<region>=<rev>…]`。重連時帶 `Last-Event-ID`，從各 region 的 revision 接著送，連到任何一個副本都接得上。某個 region 已經 compacted，就送 `reset`。
+        - 連上時先送每個符合條件資源的目前狀態，再送後續的變化。
+        - 每 15 秒送一行註解（`: keepalive`）當心跳。
+        - 部署要求 HTTP/2。認證用 cookie：瀏覽器的 `EventSource` 不能帶 header。
+        - 結束時在 `audit` 記一列（D1010）。
+      x-mftiko-events:
+        session: SessionDetail
+        session_removed: SessionRemovedEvent
+        instance: InstanceDetail
+        reset: ResetEvent
+      parameters:
+        - name: topics
+          in: query
+          required: true
+          description: 可重複。
+          schema:
+            type: array
+            minItems: 1
+            items:
+              $ref: '#/components/schemas/EventTopic'
+          style: form
+          explode: true
+        - name: session_id
+          in: query
+          description: 只送這個 session 的事件。只在 `topics` 含 `sessions` 時有意義。
+          schema:
+            $ref: '#/components/schemas/SessionIDValue'
+        - name: Last-Event-ID
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 事件串流。
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: mftiko_session
+      description: '`POST /auth/login` 發的 cookie，`{name, exp}` 以 HMAC-SHA256 簽章（D1009）。'
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 部署設定裡的使用者 token（D1009）。給 CLI 與自動化。
+
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 100
+    Cursor:
+      name: cursor
+      in: query
+      description: 上一頁回應的 `next_cursor`，對呼叫端不透明。
+      schema:
+        type: string
+    SessionID:
+      name: session_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/SessionIDValue'
+    APIID:
+      name: api_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/APIIDValue'
+    StrategyID:
+      name: strategy_id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+
+  responses:
+    ValidationFailed:
+      description: 請求不合法。`code` 是 `validation_failed`，`errors` 指出欄位。
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthenticated:
+      description: 沒有認證，或 cookie 過期、簽章不符。`code` 是 `unauthenticated`。
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: 不存在。`code` 是 `not_found`。
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: 並行衝突（`conflict`），或狀態不允許（`not_terminal`、`referenced`、`algo_overlap`）（D1004）。
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unavailable:
+      description: 所需的 region（`region_unavailable`）、Postgres（`storage_unavailable`）或 registry（`registry_unavailable`）不可用。
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+  schemas:
+    # ---------- 共用 ----------
+    Problem:
+      type: object
+      description: RFC 9457。`code` 是給程式判斷的穩定值（D1036）。
+      required: [type, title, status, code]
+      properties:
+        type:
+          type: string
+          description: 一律是 `about:blank`；分類看 `code`。
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldError'
+    ErrorCode:
+      type: string
+      enum:
+        - validation_failed
+        - unauthenticated
+        - not_found
+        - conflict
+        - not_terminal
+        - referenced
+        - algo_overlap
+        - region_unavailable
+        - storage_unavailable
+        - registry_unavailable
+        - internal
+    FieldError:
+      type: object
+      required: [path, reason]
+      properties:
+        path:
+          type: string
+          description: JSON Pointer（RFC 6901），例如 `/feeds/2/feed`。
+        reason:
+          type: string
+    Freshness:
+      type: object
+      description: 讀取來自副本時的新鮮度（D1014）。
+      required: [unavailable_regions, controller_absent]
+      properties:
+        unavailable_regions:
+          type: array
+          description: 尚未完成首次同步，或斷線超過門檻的 region。這些 region 的資源不在這次的結果裡。
+          items:
+            type: string
+        controller_absent:
+          type: boolean
+          description: '`/ctl/controller/agent` 不存在：指派與依賴的狀態可能過期。'
+    Revision:
+      type: integer
+      format: int64
+      minimum: 1
+      description: etcd 的 `mod_revision`。只在同一個資源上比較有意義。
+    SessionIDValue:
+      type: string
+      pattern: '^[0-9a-f]{6}$'
+      description: 6 個小寫 hex，API 隨機配發（D1007）。
+    APIIDValue:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9007199254740991
+      description: API 隨機配發，1 到 2⁵³−1（D1008）。
+    InstanceName:
+      type: string
+      pattern: '^[a-z][a-z0-9-]{0,63}$'
+    Digest:
+      type: string
+      pattern: '^sha256:[0-9a-f]{64}$'
+    Plane:
+      type: string
+      enum: [md, td, sts]
+    Labels:
+      type: object
+      maxProperties: 32
+      additionalProperties:
+        type: string
+        maxLength: 256
+      description: 使用者自訂，平台不解讀。key 是 `^[A-Za-z0-9][A-Za-z0-9._/-]{0,62}$`（D1036）。
+
+    # ---------- 認證 ----------
+    LoginRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          minLength: 1
+          writeOnly: true
+    Me:
+      type: object
+      required: [name, expires_at]
+      properties:
+        name:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          description: cookie 的到期時間；以 bearer token 認證時不填。
+          nullable: true
+
+    # ---------- 策略 ----------
+    Strategy:
+      type: object
+      required: [id, repository]
+      properties:
+        id:
+          type: string
+          description: repository 路徑的最後一段（D1035）。
+        repository:
+          type: string
+          example: ghcr.io/bullionbear/strategy-chase
+        latest:
+          $ref: '#/components/schemas/StrategyTag'
+    StrategyList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Strategy'
+        next_cursor:
+          type: string
+    StrategyTag:
+      type: object
+      required: [tag, digest]
+      properties:
+        tag:
+          type: string
+        digest:
+          $ref: '#/components/schemas/Digest'
+    StrategyTagList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/StrategyTag'
+        next_cursor:
+          type: string
+    StrategyVersion:
+      type: object
+      description: manifest 的摘要（PROTOCOL §8.2）。
+      required: [strategy_id, repository, digest, tags, name, runtime, os, arch, contracts]
+      properties:
+        strategy_id:
+          type: string
+        repository:
+          type: string
+        digest:
+          $ref: '#/components/schemas/Digest'
+        tags:
+          type: array
+          items:
+            type: string
+        name:
+          type: string
+          description: manifest 裡的 `name`（`mftiko-pack -name`），只供顯示。
+        runtime:
+          type: string
+        os:
+          type: string
+        arch:
+          type: string
+        sdk:
+          type: string
+        contracts:
+          type: array
+          items:
+            type: string
+        size_bytes:
+          type: integer
+          format: int64
+
+    # ---------- session：宣告 ----------
+    SessionCreate:
+      type: object
+      description: |
+        API 自己的請求型別，轉成 `SessionSpec` 寫進 etcd（D1002）。沒有 `desired_state`：建立時一律是 running。
+        沒有 `selectors`（一期不收，D822）。
+      required: [name, sts_instance, strategy]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        labels:
+          $ref: '#/components/schemas/Labels'
+        sts_instance:
+          allOf:
+            - $ref: '#/components/schemas/InstanceName'
+          description: 必填，使用者指定（D1032）。必須在 topology 裡、平面是 sts。
+        strategy:
+          $ref: '#/components/schemas/StrategySelector'
+        params:
+          type: object
+          additionalProperties: true
+          description: 策略自己的參數，平台不解讀（D1033）。API 存成緊湊的 JSON bytes，交給策略的 `ctx.Params()`。
+          x-go-type: json.RawMessage
+        feeds:
+          type: array
+          items:
+            $ref: '#/components/schemas/FeedDeclInput'
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountDeclInput'
+        restart:
+          $ref: '#/components/schemas/RestartPolicy'
+        deps_timeout_s:
+          type: integer
+          minimum: 0
+          description: 0 = 60 秒（D1302）。
+        start_timeout_s:
+          type: integer
+          minimum: 0
+        recv_window_ms:
+          type: integer
+          minimum: 0
+          description: 0 = STS 的預設值（D803）。
+        grace_ms:
+          type: integer
+          minimum: 0
+          description: 0 = STS 部署設定的預設，10 秒（D918、D962）。
+        limits:
+          $ref: '#/components/schemas/Limits'
+        inputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/InputDecl'
+    StrategySelector:
+      type: object
+      required: [id, ref]
+      properties:
+        id:
+          type: string
+          description: '`GET /strategies` 的 `id`。'
+        ref:
+          type: string
+          description: tag 或 digest。tag 由 API 解析成 digest 再寫進 spec（D934）。
+    FeedDeclInput:
+      type: object
+      required: [feed, md_instance]
+      properties:
+        feed:
+          type: string
+          description: 正規 feed key（`<topic>.<UniversalTicker>`，D203）。API 不檢查商品是否存在（D202）。
+          example: orderbook_delta.Binance_Spot_BTCUSDT
+        md_instance:
+          allOf:
+            - $ref: '#/components/schemas/InstanceName'
+          description: 必填，使用者指定（D1032）。必須在 topology 裡、平面是 md。
+    AccountDeclInput:
+      type: object
+      required: [name, api_id, algo_ids]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        api_id:
+          $ref: '#/components/schemas/APIIDValue'
+        algo_ids:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: integer
+            minimum: 1
+            maximum: 1023
+          description: 與同一個帳號上非 terminal 的 session 重疊時回 409（`algo_overlap`，best-effort，D1012）。
+    RestartPolicy:
+      type: object
+      properties:
+        mode:
+          $ref: '#/components/schemas/RestartMode'
+        max_restarts:
+          type: integer
+          minimum: 0
+        window_s:
+          type: integer
+          minimum: 0
+    RestartMode:
+      type: string
+      enum: [on_failure, never]
+      description: 省略等於 `on_failure`（D919）。
+    Limits:
+      type: object
+      properties:
+        memory_mb:
+          type: integer
+          minimum: 0
+        gomaxprocs:
+          type: integer
+          minimum: 0
+        volume_mb:
+          type: integer
+          minimum: 0
+          description: 0 = STS 的預設值（D904）。
+        hook_timeout_s:
+          type: integer
+          minimum: 0
+          description: 0 = STS 的預設值（D803）。
+    InputDecl:
+      type: object
+      required: [name, digest, repository]
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9_-]{0,63}$'
+        digest:
+          $ref: '#/components/schemas/Digest'
+        repository:
+          type: string
+
+    # ---------- session：讀取 ----------
+    SessionSpecView:
+      type: object
+      description: etcd 裡的 spec，以 API 的型別呈現。策略已解析成 digest；帳號帶入了 `td_instance`。
+      required: [name, labels, desired_state, strategy, params, feeds, accounts, restart, deps_timeout_s, start_timeout_s, recv_window_ms, grace_ms, limits, inputs]
+      properties:
+        name:
+          type: string
+        labels:
+          $ref: '#/components/schemas/Labels'
+        desired_state:
+          $ref: '#/components/schemas/DesiredState'
+        strategy:
+          $ref: '#/components/schemas/StrategyRef'
+        params:
+          type: object
+          additionalProperties: true
+          x-go-type: json.RawMessage
+        feeds:
+          type: array
+          items:
+            $ref: '#/components/schemas/FeedDeclInput'
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountDecl'
+        restart:
+          $ref: '#/components/schemas/RestartPolicy'
+        deps_timeout_s:
+          type: integer
+        start_timeout_s:
+          type: integer
+        recv_window_ms:
+          type: integer
+        grace_ms:
+          type: integer
+        limits:
+          $ref: '#/components/schemas/Limits'
+        inputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/InputDecl'
+    DesiredState:
+      type: string
+      enum: [running, ended]
+    StrategyRef:
+      type: object
+      required: [name, digest, repository]
+      properties:
+        id:
+          type: string
+          description: repository 不在目前的部署設定裡時省略。
+        name:
+          type: string
+        digest:
+          $ref: '#/components/schemas/Digest'
+        repository:
+          type: string
+    AccountDecl:
+      type: object
+      required: [name, api_id, td_instance, algo_ids]
+      properties:
+        name:
+          type: string
+        api_id:
+          $ref: '#/components/schemas/APIIDValue'
+        td_instance:
+          $ref: '#/components/schemas/InstanceName'
+        algo_ids:
+          type: array
+          items:
+            type: integer
+    Session:
+      type: object
+      required: [id, revision, sts_instance, region, spec, dependencies]
+      properties:
+        id:
+          $ref: '#/components/schemas/SessionIDValue'
+        revision:
+          $ref: '#/components/schemas/Revision'
+        sts_instance:
+          $ref: '#/components/schemas/InstanceName'
+        region:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          description: 來自 `session_records`（D1031）。Postgres 不可用時省略。
+        created_by:
+          type: string
+          nullable: true
+          description: null 表示不是經由 API 建立的（reconcile 補的，D1031）。Postgres 不可用時省略。
+        spec:
+          $ref: '#/components/schemas/SessionSpecView'
+        status:
+          $ref: '#/components/schemas/SessionStatus'
+        assignment:
+          $ref: '#/components/schemas/Assignment'
+        dependencies:
+          type: array
+          description: 執行中取自指派的 `bindings`；terminal 之後取自 status 的 `dependency` condition（D1014）。
+          items:
+            $ref: '#/components/schemas/Dependency'
+        logs:
+          $ref: '#/components/schemas/LogLocation'
+    SessionDetail:
+      allOf:
+        - $ref: '#/components/schemas/Session'
+        - type: object
+          required: [freshness]
+          properties:
+            freshness:
+              $ref: '#/components/schemas/Freshness'
+    SessionList:
+      type: object
+      required: [items, freshness]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+        next_cursor:
+          type: string
+        freshness:
+          $ref: '#/components/schemas/Freshness'
+    Phase:
+      type: string
+      enum: [pending, waiting, starting, running, stopping, restarting, done, failed]
+      description: '`done`、`failed` 是 terminal（W5）。'
+    SessionStatus:
+      type: object
+      description: STS 寫的 `SessionStatus`。STS 還沒寫過時省略整個物件。
+      required: [phase, reason, incarnation, restart_count, updated_at, conditions]
+      properties:
+        phase:
+          $ref: '#/components/schemas/Phase'
+        reason:
+          type: string
+        incarnation:
+          type: integer
+        restart_count:
+          type: integer
+        last_exit:
+          $ref: '#/components/schemas/Exit'
+        updated_at:
+          type: string
+          format: date-time
+        state_out:
+          $ref: '#/components/schemas/StateSnapshot'
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Condition'
+    Exit:
+      type: object
+      required: [outcome, reason, code, signal, at, on_stop_completed]
+      properties:
+        outcome:
+          $ref: '#/components/schemas/Outcome'
+        reason:
+          type: string
+        code:
+          type: integer
+          description: 被 signal 結束時為 -1。
+        signal:
+          type: integer
+          description: 0 表示正常 exit。
+        at:
+          type: string
+          format: date-time
+        on_stop_completed:
+          type: boolean
+    Outcome:
+      type: string
+      enum: [unknown, done, init_failed, failed, crashed, hung]
+      description: '`unknown` 是沒有宣告結束方式：被殺，或在 Hello 之前就死了（PROTOCOL §5.3）。'
+    StateSnapshot:
+      type: object
+      required: [digest, repository, clean, incarnation, size_bytes, at]
+      properties:
+        digest:
+          $ref: '#/components/schemas/Digest'
+        repository:
+          type: string
+        clean:
+          type: boolean
+        incarnation:
+          type: integer
+        size_bytes:
+          type: integer
+          format: int64
+        at:
+          type: string
+          format: date-time
+    Condition:
+      type: object
+      required: [type, status, reason, message, at]
+      properties:
+        type:
+          type: string
+        status:
+          type: boolean
+        reason:
+          type: string
+        message:
+          type: string
+        at:
+          type: string
+          format: date-time
+    Assignment:
+      type: object
+      description: controller 寫的 `SessionDemand`。session 結束、需求刪除之後省略（D1333）。
+      required: [desired_state, start, issued_at]
+      properties:
+        desired_state:
+          $ref: '#/components/schemas/DesiredState'
+        start:
+          type: boolean
+        end_reason:
+          type: string
+          description: '`ended_by_spec`、`deps_failed`、`deps_timeout`、`invalid_spec`（PROTOCOL §3.3 N3）。'
+        issued_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Dependency:
+      type: object
+      required: [kind, provider_instance, state]
+      properties:
+        kind:
+          type: string
+          enum: [feed, account]
+        feed:
+          type: string
+        api_id:
+          $ref: '#/components/schemas/APIIDValue'
+        provider_instance:
+          $ref: '#/components/schemas/InstanceName'
+        state:
+          $ref: '#/components/schemas/EntryState'
+        reason:
+          type: string
+        subject:
+          type: string
+          description: provider 給的 NATS subject（PROTOCOL §7）。
+        updated_at:
+          type: string
+          format: date-time
+    EntryState:
+      type: string
+      enum: [silent, pending, ready, rejected, dead]
+      description: '`silent` 是 provider 還沒有 ack，或 provider 的 agent 不在（D901）。'
+    LogLocation:
+      type: object
+      description: 一期不接 `log.*`，運維上機器讀（D1015）。`AgentRecord` 沒有 `host` 時省略整個物件（D1014）。
+      required: [host, stdout, stderr]
+      properties:
+        host:
+          type: string
+        stdout:
+          type: string
+          example: /var/lib/mftiko/log/sts/3f9a0c1e.stdout
+        stderr:
+          type: string
+
+    # ---------- session 的歷史 ----------
+    SessionRecordState:
+      type: string
+      enum: [pending, created, abandoned, closed]
+      description: |
+        `pending`：已寫 Postgres、etcd 還沒確認。`created`：etcd 已有 spec。`abandoned`：etcd 從未寫成，reconcile 逾時標記。
+        `closed`：etcd 的 spec 已刪除，`final` 是最後的狀態（D1031）。
+    SessionRecord:
+      type: object
+      required: [record_id, session_id, sts_instance, state, created_at, spec]
+      properties:
+        record_id:
+          type: string
+          format: uuid
+        session_id:
+          $ref: '#/components/schemas/SessionIDValue'
+        sts_instance:
+          $ref: '#/components/schemas/InstanceName'
+        state:
+          $ref: '#/components/schemas/SessionRecordState'
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+          nullable: true
+        spec:
+          $ref: '#/components/schemas/SessionSpecView'
+        ended_requested_at:
+          type: string
+          format: date-time
+        final:
+          $ref: '#/components/schemas/SessionStatus'
+        closed_at:
+          type: string
+          format: date-time
+    SessionRecordList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionRecord'
+        next_cursor:
+          type: string
+
+    # ---------- 帳號 ----------
+    AccountKind:
+      type: object
+      required: [kind, label, trades, key_types, passphrase, supported]
+      properties:
+        kind:
+          type: string
+        label:
+          type: string
+        trades:
+          type: array
+          description: 可交易的 venue。
+          items:
+            type: string
+        key_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/KeyType'
+        passphrase:
+          type: boolean
+          description: 憑證要帶 passphrase（OKX）。
+        supported:
+          type: boolean
+          description: 一期只收交易一個 venue 的種類（D614、D1011）。
+    AccountKindList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountKind'
+    KeyType:
+      type: string
+      enum: [hmac, ed25519]
+    Credentials:
+      type: object
+      writeOnly: true
+      description: 只寫不讀（D1011）。回應、log、`audit` 都不含它。
+      required: [key_type, key, secret]
+      properties:
+        key_type:
+          $ref: '#/components/schemas/KeyType'
+        key:
+          type: string
+          minLength: 1
+        secret:
+          type: string
+          minLength: 1
+          description: HMAC secret，或 PEM 編碼的 ed25519 私鑰。
+        passphrase:
+          type: string
+    AccountSettings:
+      type: object
+      properties:
+        cancel_on_disconnect_s:
+          type: integer
+          minimum: 0
+          description: 0 = 關閉。
+    AccountCreate:
+      type: object
+      required: [name, kind, td_instance, credentials]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        kind:
+          type: string
+          description: '`GET /account-kinds` 裡 `supported` 的種類。'
+        td_instance:
+          allOf:
+            - $ref: '#/components/schemas/InstanceName'
+          description: 建立之後不能改：它在 etcd 的 key 路徑上。
+        credentials:
+          $ref: '#/components/schemas/Credentials'
+        settings:
+          $ref: '#/components/schemas/AccountSettings'
+    AccountUpdate:
+      type: object
+      required: [revision]
+      properties:
+        revision:
+          $ref: '#/components/schemas/Revision'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        credentials:
+          $ref: '#/components/schemas/Credentials'
+        settings:
+          $ref: '#/components/schemas/AccountSettings'
+    Account:
+      type: object
+      required: [api_id, name, kind, td_instance, region, settings, credentials_fingerprint, revision, referenced_by]
+      properties:
+        api_id:
+          $ref: '#/components/schemas/APIIDValue'
+        name:
+          type: string
+        kind:
+          type: string
+        td_instance:
+          $ref: '#/components/schemas/InstanceName'
+        region:
+          type: string
+        settings:
+          $ref: '#/components/schemas/AccountSettings'
+        credentials_fingerprint:
+          type: string
+          description: 密文的指紋，用來辨識換過憑證；不是憑證。
+        revision:
+          $ref: '#/components/schemas/Revision'
+        referenced_by:
+          type: array
+          description: 引用它的非 terminal session。不為空時刪除回 409。
+          items:
+            $ref: '#/components/schemas/SessionIDValue'
+    AccountList:
+      type: object
+      required: [items, freshness]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Account'
+        next_cursor:
+          type: string
+        freshness:
+          $ref: '#/components/schemas/Freshness'
+
+    # ---------- instance ----------
+    AgentStatus:
+      type: object
+      description: '`AgentRecord`。綁在選主 session 上，不存在表示這個 instance 沒有活著的 agent（PROTOCOL §3.2 W7）。'
+      required: [epoch, release, started_at]
+      properties:
+        epoch:
+          type: integer
+          format: int64
+        release:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        host:
+          type: string
+          description: E10-13 之前的 agent 沒有（D1014）。
+        work_dir:
+          type: string
+    Instance:
+      type: object
+      required: [name, plane, region, region_available]
+      properties:
+        name:
+          $ref: '#/components/schemas/InstanceName'
+        plane:
+          $ref: '#/components/schemas/Plane'
+        region:
+          type: string
+        region_available:
+          type: boolean
+        agent:
+          $ref: '#/components/schemas/AgentStatus'
+    InstanceList:
+      type: object
+      required: [items, controller, freshness]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Instance'
+        controller:
+          $ref: '#/components/schemas/ControllerStatus'
+        freshness:
+          $ref: '#/components/schemas/Freshness'
+    ControllerStatus:
+      type: object
+      required: [present, home_region]
+      properties:
+        present:
+          type: boolean
+        home_region:
+          type: string
+        agent:
+          $ref: '#/components/schemas/AgentStatus'
+    Worker:
+      type: object
+      description: '`WorkerStatus`。只在階段改變時寫（W7）。'
+      required: [key, incarnation, phase, restarts]
+      properties:
+        key:
+          type: string
+        incarnation:
+          type: integer
+        phase:
+          type: string
+          enum: [starting, running, stopping, backoff, exited, lost]
+        stage:
+          type: string
+        release:
+          type: string
+        shim_release:
+          type: string
+        restarts:
+          type: integer
+        rss_bytes:
+          type: integer
+          format: int64
+        started_at:
+          type: string
+          format: date-time
+        last_exit:
+          $ref: '#/components/schemas/Exit'
+    DemandStatus:
+      type: object
+      description: MD、TD 的一個需求項目與它的 ack。
+      required: [session_id, kind, state]
+      properties:
+        session_id:
+          $ref: '#/components/schemas/SessionIDValue'
+        kind:
+          type: string
+          enum: [feed, account]
+        feed:
+          type: string
+        api_id:
+          $ref: '#/components/schemas/APIIDValue'
+        state:
+          $ref: '#/components/schemas/EntryState'
+        reason:
+          type: string
+        subject:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    InstanceSession:
+      type: object
+      required: [session_id, name]
+      properties:
+        session_id:
+          $ref: '#/components/schemas/SessionIDValue'
+        name:
+          type: string
+        phase:
+          $ref: '#/components/schemas/Phase'
+    InstanceDetail:
+      allOf:
+        - $ref: '#/components/schemas/Instance'
+        - type: object
+          required: [workers, freshness]
+          properties:
+            workers:
+              type: array
+              items:
+                $ref: '#/components/schemas/Worker'
+            demands:
+              type: array
+              description: 只有 md、td。
+              items:
+                $ref: '#/components/schemas/DemandStatus'
+            sessions:
+              type: array
+              description: 只有 sts。
+              items:
+                $ref: '#/components/schemas/InstanceSession'
+            freshness:
+              $ref: '#/components/schemas/Freshness'
+
+    # ---------- 事件 ----------
+    EventTopic:
+      type: string
+      enum: [sessions, instances]
+    SessionRemovedEvent:
+      type: object
+      required: [session_id]
+      properties:
+        session_id:
+          $ref: '#/components/schemas/SessionIDValue'
+    ResetEvent:
+      type: object
+      required: [topics]
+      properties:
+        topics:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventTopic'

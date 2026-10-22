@@ -1,0 +1,9 @@
+# Redocly lint for contract A (D1002). E10-04 wires it into make and CI.
+extends:
+  - recommended
+rules:
+  # The SSE event schemas (SessionRemovedEvent, ResetEvent) are referenced from the
+  # x-mftiko-events extension of GET /events, which lint does not follow (D1038).
+  no-unused-components: off
+  # The repository has no license file; the spec does not invent one.
+  info-license: off
