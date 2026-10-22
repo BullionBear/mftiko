@@ -41,7 +41,7 @@ func TestEtcdctl(t *testing.T) {
 		"etcdctl role grant-permission 'controller' readwrite '/mftiko/v1/sts/sts-tw-1/demand/' '/mftiko/v1/sts/sts-tw-1/demand0'\n",
 		"etcdctl user add 'api'\n",
 		"etcdctl user grant-role 'sts-tw-1' 'sts-tw-1'\n",
-		// api reads the keyspace and writes spec, status (D1031) and account. The range end is the prefix's last byte plus one.
+		// api reads the keyspace and writes spec, status (D1040) and account. The range end is the prefix's last byte plus one.
 		"etcdctl role grant-permission 'api' read '/mftiko/v1/' '/mftiko/v10'\n",
 		"etcdctl role grant-permission 'api' readwrite '/mftiko/v1/sts/sts-tw-1/spec/' '/mftiko/v1/sts/sts-tw-1/spec0'\n",
 		"etcdctl role grant-permission 'api' readwrite '/mftiko/v1/sts/sts-tw-1/status/' '/mftiko/v1/sts/sts-tw-1/status0'\n",
