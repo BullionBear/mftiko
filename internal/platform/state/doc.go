@@ -42,7 +42,9 @@
 //   - Auth (clusters.go, rbac.go): AuthDial connects as the process's own user; the client authenticates again when
 //     its token expires or the cluster's users and roles change. AuthTables derives every region's users and roles
 //     from the instances, so that etcd enforces W1 as Term does: a write the write scope would refuse, etcd refuses
-//     too. Clusters dials a region on first use, on a goroutine of its own; callers wait no longer than their ctx.
+//     too. The api role is the exception on status/: that prefix's write is what lets W5 delete it, and etcd
+//     cannot refuse a put there (D1031). Clusters dials a region on first use, on a goroutine of its own; callers
+//     wait no longer than their ctx.
 //
 // Only the AgentRecord is bound to a lease; demands, acks and WorkerStatus are not (PROTOCOL §3.3, §3.2 W7).
 package state

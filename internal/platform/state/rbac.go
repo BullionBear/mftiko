@@ -57,9 +57,12 @@ func (a AuthTable) Users() []string {
 //   - The controller exists in every cluster. It reads everything and writes its own keys under
 //     /ctl/controller/ and the demands of every agent instance of that region (PROTOCOL §3.3).
 //   - The API server exists in every cluster. It reads everything and writes the session specs of the region's STS
-//     instances and the accounts of its TD instances. It may also delete session statuses: W5 lets it remove a
-//     terminal session's spec and status once their retention is over, the one exception to the STS agent being
-//     the status's only writer.
+//     instances and the accounts of its TD instances. It also has write on those STS instances' status prefixes.
+//     W5 deletes a terminal status, and etcd RBAC does not separate delete from write, so the grant is the whole
+//     prefix (D1031). etcd therefore cannot refuse an api put of status. W1's "only the STS agent writes status"
+//     is kept by the API program, not by etcd. That gap is deliberate: STS does not clear status, which would
+//     overturn D1017. The API writes no demand, ack, agent, worker or writer key, and nothing under another
+//     instance's prefix.
 //
 // Granting a lease needs no permission; revoking one needs write permission on every key attached to it, which
 // these tables give for the election session and the keys on it.
@@ -103,7 +106,7 @@ func AuthTables(topo Topology, planes map[string]Plane) (map[string]AuthTable, e
 			switch p {
 			case PlaneSTS:
 				api.Permissions = append(api.Permissions, prefixPerm(SessionSpecPrefix(inst), true),
-					prefixPerm(SessionStatusPrefix(inst), true)) // W5: delete after the retention
+					prefixPerm(SessionStatusPrefix(inst), true)) // D1031: write is the whole prefix; W5 deletes through it
 			case PlaneTD:
 				api.Permissions = append(api.Permissions, prefixPerm(AccountPrefix(inst), true))
 			}

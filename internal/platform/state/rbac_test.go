@@ -169,13 +169,27 @@ func TestAuthTables(t *testing.T) {
 		{"tw", "controller", SessionStatusKey("sts-tw-1", sid), false},
 		{"tw", "controller", SessionSpecKey("sts-tw-1", sid), false},
 		{"tw", "controller", WriterKey(PlaneMD, "md-tw-1"), false},
-		// The API server: specs and accounts only.
+		// The API server: spec, account, and the whole status prefix (D1031). Nothing else, and
+		// nothing under an instance this region's role was not given.
 		{"tw", "api", SessionSpecKey("sts-tw-1", sid), true},
 		{"tw", "api", AccountKey("td-tw-1", 42), true},
 		{"jp", "api", AccountKey("td-jp-1", 42), true},
-		{"tw", "api", SessionStatusKey("sts-tw-1", sid), true}, // W5: deletes it after the retention
+		{"tw", "api", SessionStatusKey("sts-tw-1", sid), true}, // D1031: write is the whole status/ prefix
 		{"tw", "api", SessionDemandKey("sts-tw-1", sid), false},
+		{"tw", "api", MDDemandKey("md-tw-1", sid, entry), false},
+		{"tw", "api", TDDemandKey("td-tw-1", sid, 42), false},
+		{"tw", "api", MDAckKey("md-tw-1", sid, entry), false},
+		{"tw", "api", TDAckKey("td-tw-1", sid, 42), false},
 		{"tw", "api", AgentKey(PlaneSTS, "sts-tw-1"), false},
+		{"tw", "api", AgentKey(PlaneCtl, ControllerInstance), false},
+		{"tw", "api", WorkerStatusKey(PlaneSTS, "sts-tw-1", h), false},
+		{"tw", "api", WriterKey(PlaneSTS, "sts-tw-1"), false},
+		{"tw", "api", WriterKey(PlaneCtl, ControllerInstance), false},
+		{"jp", "api", SessionSpecKey("sts-tw-1", sid), false},   // another region's instance
+		{"jp", "api", SessionStatusKey("sts-tw-1", sid), false}, // jp has no STS, so no status grant
+		{"tw", "api", AccountKey("td-jp-1", 42), false},         // td-jp-1's account is granted only in jp
+		{"tw", "api", SessionSpecKey("sts-jp-1", sid), false},   // an instance this cluster does not grant
+		{"tw", "api", SessionStatusKey("sts-jp-1", sid), false},
 	} {
 		if got := writes(c.region, c.user, c.key); got != c.write {
 			t.Errorf("%s in %s writes %s: %v, want %v", c.user, c.region, c.key, got, c.write)
@@ -188,6 +202,12 @@ func TestAuthTables(t *testing.T) {
 		{"tw", "md-tw-1", AgentKey(PlaneTD, "td-tw-1"), false}, // nothing of other instances
 		{"tw", "controller", MDAckKey("md-tw-1", sid, entry), true},
 		{"tw", "api", WorkerStatusKey(PlaneMD, "md-tw-1", h), true},
+		{"tw", "api", SessionDemandKey("sts-tw-1", sid), true},
+		{"tw", "api", MDAckKey("md-tw-1", sid, entry), true},
+		{"tw", "api", WriterKey(PlaneCtl, ControllerInstance), true},
+		{"tw", "api", AgentKey(PlaneTD, "td-tw-1"), true},
+		{"tw", "api", SessionSpecKey("sts-jp-1", sid), true}, // read covers another instance's prefix
+		{"jp", "api", AccountKey("td-tw-1", 42), true},
 	} {
 		if got := reads(c.region, c.user, c.key); got != c.write {
 			t.Errorf("%s in %s reads %s: %v, want %v", c.user, c.region, c.key, got, c.write)
@@ -254,9 +274,98 @@ func TestRBACEnforced(t *testing.T) {
 	allowed("controller writes a demand", put(ctl, MDDemandKey("md-tw-1", sid, entry)))
 	denied("controller writes an ack", put(ctl, MDAckKey("md-tw-1", sid, entry)))
 	denied("controller writes a spec", put(ctl, SessionSpecKey("sts-tw-1", sid)))
+	// api on a cluster with auth on (D1032). Positive: read the keyspace, write spec
+	// and account, delete a status the STS agent could have written, and write
+	// status. The status put is deliberate (D1031): etcd cannot tell it from the
+	// delete W5 needs. Negative: demand, ack, agent, worker, writer, and prefixes
+	// of instances this role was not given.
+	h := WorkerHash("w")
+	const otherSTS, otherTD = "sts-tw-2", "td-tw-2"
+	planted := []string{
+		SessionSpecKey("sts-tw-1", sid),
+		SessionStatusKey("sts-tw-1", sid),
+		SessionDemandKey("sts-tw-1", sid),
+		MDDemandKey("md-tw-1", sid, entry),
+		TDDemandKey("td-tw-1", sid, 42),
+		MDAckKey("md-tw-1", sid, entry),
+		MDAckKey("md-tw-2", sid, entry),
+		TDAckKey("td-tw-1", sid, 42),
+		AgentKey(PlaneSTS, "sts-tw-1"),
+		AgentKey(PlaneMD, "md-tw-1"),
+		AgentKey(PlaneMD, "md-tw-2"),
+		AgentKey(PlaneTD, "td-tw-1"),
+		AgentKey(PlaneCtl, ControllerInstance),
+		WorkerStatusKey(PlaneSTS, "sts-tw-1", h),
+		WorkerStatusKey(PlaneMD, "md-tw-2", h),
+		WorkerStatusKey(PlaneTD, "td-tw-1", h),
+		WriterKey(PlaneSTS, "sts-tw-1"),
+		WriterKey(PlaneMD, "md-tw-1"),
+		WriterKey(PlaneMD, "md-tw-2"),
+		WriterKey(PlaneTD, "td-tw-1"),
+		WriterKey(PlaneCtl, ControllerInstance),
+		AccountKey("td-tw-1", 42),
+		EpochKey(PlaneMD, "md-tw-2"),
+		SelectorKey("md-tw-1", "s"),
+		PlacementKey("md-tw-2", "a"),
+		IncarnationKey(PlaneSTS, "sts-tw-1", h),
+		SessionSpecKey(otherSTS, sid),
+		SessionStatusKey(otherSTS, sid),
+		AccountKey(otherTD, 42),
+	}
+	for _, key := range planted {
+		if _, err := raw.Put(ctx, key, "planted"); err != nil {
+			t.Fatalf("plant %s: %v", key, err)
+		}
+	}
+	read := map[string]string{}
+	resp, err := api.Get(ctx, Root+"/", clientv3.WithPrefix())
+	allowed("api reads the keyspace", err)
+	if err == nil {
+		for _, kv := range resp.Kvs {
+			read[string(kv.Key)] = string(kv.Value)
+		}
+	}
+	for _, key := range planted {
+		if read[key] != "planted" {
+			t.Errorf("api reads %s: %q", key, read[key])
+		}
+	}
 	allowed("api writes a spec", put(api, SessionSpecKey("sts-tw-1", sid)))
 	allowed("api writes an account", put(api, AccountKey("td-tw-1", 42)))
-	denied("api writes a demand", put(api, SessionDemandKey("sts-tw-1", sid)))
+	statusKey := SessionStatusKey("sts-tw-1", "d1031")
+	allowed("api writes a status", put(api, statusKey))
+	if val, _, ok := kvOf(t, ctx, raw, statusKey); !ok || val != "v" {
+		t.Errorf("api status write did not land: ok=%v val=%q", ok, val)
+	}
+	if _, err := api.Delete(ctx, SessionStatusKey("sts-tw-1", sid)); err != nil {
+		t.Errorf("api deletes a status: %v", err)
+	} else if _, _, ok := kvOf(t, ctx, raw, SessionStatusKey("sts-tw-1", sid)); ok {
+		t.Error("api deletes a status: key still present")
+	}
+	for _, c := range []struct{ what, key string }{
+		{"api writes an sts demand", SessionDemandKey("sts-tw-1", sid)},
+		{"api writes an md demand", MDDemandKey("md-tw-1", sid, entry)},
+		{"api writes a td demand", TDDemandKey("td-tw-1", sid, 42)},
+		{"api writes an md ack", MDAckKey("md-tw-1", sid, entry)},
+		{"api writes another instance's ack", MDAckKey("md-tw-2", sid, entry)},
+		{"api writes a td ack", TDAckKey("td-tw-1", sid, 42)},
+		{"api writes an agent record", AgentKey(PlaneSTS, "sts-tw-1")},
+		{"api writes another instance's agent", AgentKey(PlaneMD, "md-tw-2")},
+		{"api writes the controller's agent", AgentKey(PlaneCtl, ControllerInstance)},
+		{"api writes a worker status", WorkerStatusKey(PlaneSTS, "sts-tw-1", h)},
+		{"api writes another instance's worker", WorkerStatusKey(PlaneMD, "md-tw-2", h)},
+		{"api writes a writer key", WriterKey(PlaneSTS, "sts-tw-1")},
+		{"api writes another instance's writer", WriterKey(PlaneMD, "md-tw-2")},
+		{"api writes the controller's writer", WriterKey(PlaneCtl, ControllerInstance)},
+		{"api writes another instance's spec", SessionSpecKey(otherSTS, sid)},
+		{"api writes another instance's account", AccountKey(otherTD, 42)},
+		{"api writes another instance's status", SessionStatusKey(otherSTS, sid)},
+		{"api writes under another instance", EpochKey(PlaneMD, "md-tw-2")},
+	} {
+		denied(c.what, put(api, c.key))
+	}
+	_, err = api.Delete(ctx, instPrefix(PlaneMD, "md-tw-2"), clientv3.WithPrefix())
+	denied("api deletes another instance's prefix", err)
 
 	// A txn needs every key it names: one foreign compare is enough to refuse it.
 	_, err = md.Txn(ctx).If(clientv3.Compare(clientv3.Version(AgentKey(PlaneMD, "md-tw-2")), "=", 0)).
