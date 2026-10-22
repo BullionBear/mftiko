@@ -74,7 +74,6 @@ type bus struct {
 	feedSubject  string
 	orderSubject string
 	evtSubject   string
-	logSubject   string
 
 	mu     sync.Mutex
 	cloids []string
@@ -97,7 +96,7 @@ func startBus() (*bus, error) {
 	if err != nil {
 		return nil, err
 	}
-	b := &bus{dir: dir, logSubject: "log.sts." + sessionID}
+	b := &bus{dir: dir}
 	b.holdCond = sync.NewCond(&b.holdMu)
 	if err := os.MkdirAll(filepath.Join(dir, "vol"), 0o755); err != nil {
 		b.close()
