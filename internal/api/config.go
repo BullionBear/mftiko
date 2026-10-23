@@ -26,7 +26,8 @@ const (
 	EnvEtcdPassword = "MFTIKO_ETCD_PASSWORD"
 	// EnvCookieKey is the HMAC-SHA256 key every replica uses to sign the console cookie (D1009).
 	EnvCookieKey = "MFTIKO_COOKIE_KEY"
-	// EnvPostgresDSN is the Postgres connection string. This process checks it and does not connect (D1024).
+	// EnvPostgresDSN is the Postgres connection string. Run opens a pool and does not wait for it to
+	// connect. Readiness does not use it (D1048, modifies D1024).
 	EnvPostgresDSN = "MFTIKO_POSTGRES_DSN"
 )
 

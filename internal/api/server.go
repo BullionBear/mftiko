@@ -21,6 +21,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
@@ -33,6 +34,10 @@ type Server struct {
 	http     *http.Server
 	ln       net.Listener
 	web      *os.Root
+	api      http.Handler
+	apiOnce  sync.Once
+	audit    *auditor
+	apiWG    sync.WaitGroup
 	log      zerolog.Logger
 	now      func() time.Time
 	ids      func() io.Reader // the random source of one id allocation: crypto/rand; tests replace it
@@ -118,6 +123,12 @@ func start(cfg Config) (*Server, error) {
 		}
 		s.web = root
 	}
+	aud, err := openAudit(cfg.PostgresDSN, s.log)
+	if err != nil {
+		s.stop()
+		return nil, err
+	}
+	s.audit = aud
 	for _, c := range s.clusters {
 		s.wg.Add(1)
 		go s.runMirror(c)
@@ -179,25 +190,36 @@ func (s *Server) serve(ctx context.Context) error {
 }
 
 // drain is D1027: readiness goes 503 first, then the listener closes and in-flight requests have
-// ShutdownTimeout to finish. Past that, Close drops the connections and drain returns.
+// ShutdownTimeout to finish. The audit queue is written inside that same window (D1049). Past the
+// limit, Close drops the connections and whatever is still queued is abandoned.
 func (s *Server) drain() {
 	s.drainOnce.Do(func() {
 		s.draining.Store(true)
-		if s.http == nil {
-			return
-		}
 		ctx, cancel := context.WithTimeout(context.Background(), s.cfg.ShutdownTimeout)
 		defer cancel()
-		if err := s.http.Shutdown(ctx); err != nil {
-			s.log.Warn().Err(err).Msg("shutdown")
-			s.http.Close()
+		if s.http != nil {
+			if err := s.http.Shutdown(ctx); err != nil {
+				s.log.Warn().Err(err).Msg("shutdown")
+				s.http.Close()
+			}
+		}
+		s.waitAPI(ctx)
+		if s.audit != nil {
+			s.audit.shutdown(ctx)
 		}
 	})
 }
 
 func (s *Server) stop() {
 	s.stopOnce.Do(func() {
-		s.cancel()
+		if s.cancel != nil {
+			s.cancel()
+		}
+		if s.audit != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), s.cfg.ShutdownTimeout)
+			s.audit.shutdown(ctx)
+			cancel()
+		}
 		if s.cl != nil {
 			s.cl.Close()
 		}
@@ -211,9 +233,23 @@ func (s *Server) stop() {
 // routes is one handler on purpose. ServeMux rejects a GET wildcard registered over the
 // all-method /api/ pattern, so the split is done here: /healthz and /readyz are exact,
 // /api and /api/ are never files, and anything else is the console build (D1028).
-func (s *Server) routes() http.Handler { return http.HandlerFunc(s.serveHTTP) }
+func (s *Server) routes() http.Handler {
+	s.apiOnce.Do(func() {
+		s.api = apiv1.HandlerWithOptions(s, apiv1.StdHTTPServerOptions{
+			BaseURL:          "/api/v1",
+			ErrorHandlerFunc: s.openAPIError,
+		})
+	})
+	return http.HandlerFunc(s.serveHTTP)
+}
 
 func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
+	// Every response carries an id the server chose. A client-supplied X-Request-Id is ignored (D1053).
+	id := newRequestID()
+	w.Header().Set(headerRequestID, id)
+	st := &accessState{id: id, start: s.clock()}
+	r = r.WithContext(context.WithValue(r.Context(), accessKey{}, st))
+
 	switch path.Clean("/" + r.URL.Path) {
 	case "/healthz":
 		if !readMethod(r) {
@@ -230,7 +266,12 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		s.readyz(w, r)
 		return
 	}
-	if apiPath(r.URL.Path) || s.web == nil {
+	// Only /api is authenticated and audited. Health, readiness, and static files are not (D1010).
+	if apiPath(r.URL.Path) {
+		s.serveAudited(w, r, st)
+		return
+	}
+	if s.web == nil {
 		http.NotFound(w, r)
 		return
 	}

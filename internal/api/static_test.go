@@ -28,6 +28,20 @@ func testMux(t *testing.T, dir string) *Server {
 
 func timeNow() time.Time { return time.Time{} }
 
+func requestIDHeader(id string) bool {
+	if len(id) != 32 {
+		return false
+	}
+	for _, c := range id {
+		switch {
+		case c >= '0' && c <= '9', c >= 'a' && c <= 'f':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func do(h http.Handler, method, path string) (int, http.Header, []byte) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(method, path, nil)
@@ -80,13 +94,16 @@ func TestStaticFiles(t *testing.T) {
 		t.Fatalf("apiv1 %d %q", code, body)
 	}
 	for _, path := range []string{"/api", "/api/", "/api/v1"} {
-		code, _, body = do(h, http.MethodGet, path)
-		if code != http.StatusNotFound || bytes.Contains(body, []byte("INDEX-PAGE")) {
+		code, idHdr, body := do(h, http.MethodGet, path)
+		if code != http.StatusUnauthorized || bytes.Contains(body, []byte("INDEX-PAGE")) {
 			t.Fatalf("%s %d %q", path, code, body)
+		}
+		if !requestIDHeader(idHdr.Get("X-Request-Id")) {
+			t.Fatalf("%s request id %q", path, idHdr.Get("X-Request-Id"))
 		}
 	}
 	code, _, body = do(h, http.MethodPost, "/api/v1")
-	if code != http.StatusNotFound || bytes.Contains(body, []byte("INDEX-PAGE")) {
+	if code != http.StatusUnauthorized || bytes.Contains(body, []byte("INDEX-PAGE")) {
 		t.Fatalf("POST /api/v1 %d %q", code, body)
 	}
 	code, _, _ = do(h, http.MethodPost, "/")
