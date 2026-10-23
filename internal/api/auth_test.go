@@ -11,6 +11,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
@@ -281,10 +282,22 @@ func TestAuthHTTP(t *testing.T) {
 	}
 
 	code, _, body = (apiCall{method: http.MethodGet, path: "/api/v1/sessions", bearer: tokenAda}).do(t, client, base)
-	if code != http.StatusNotFound {
+	if code != http.StatusOK {
 		t.Fatalf("sessions %d %s", code, body)
 	}
-	mustProblem(t, body, http.StatusNotFound, "not_found")
+	var listed apiv1.SessionList
+	if err := json.Unmarshal(body, &listed); err != nil {
+		t.Fatalf("sessions %s: %v", body, err)
+	}
+	twDown := false
+	for _, region := range listed.Freshness.UnavailableRegions {
+		if region == "tw" {
+			twDown = true
+		}
+	}
+	if len(listed.Items) != 0 || listed.Freshness.ControllerAbsent || !twDown {
+		t.Fatalf("sessions %+v", listed)
+	}
 
 	code, hdr, body = (apiCall{
 		method: http.MethodPost, path: "/api/v1/auth/login",

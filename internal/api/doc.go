@@ -8,7 +8,9 @@
 // and delete statuses, never put them (D1042). A lost condition is 409 conflict; etcd not reached is 503
 // region_unavailable. session_id and api_id are drawn at random and checked against the mirrors of the available
 // regions, then created create-only; the region written to must be available (D1007, D1008, D1042). Reads are answered
-// from one Mirror per cluster (D1014). Every /api request is authenticated, except POST /api/v1/auth/login
+// from one Mirror per cluster (D1014). Session and instance reads, session records, and SSE are D1092–D1097.
+// Each SSE connection watches etcd from Last-Event-ID and does not read the mirror's history (D1094).
+// Every /api request is authenticated, except POST /api/v1/auth/login
 // (D1009, D1051). On reply the audit row is queued and written to Postgres; /healthz and /readyz are not
 // (D1010, D1049). The strategy catalog is served from the registry (D1056–D1061). Load checks the DSN and the
 // registry settings and does not dial. Run creates a Postgres pool and does not wait for it to connect;

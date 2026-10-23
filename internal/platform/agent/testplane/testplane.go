@@ -191,7 +191,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	return runner.Run(ctx, runner.Config[Entry, Spec, Live]{
 		Term: term, Demand: m, Statuses: reader, Decode: Decode, Planner: Planner{Plane: cfg.Plane},
-		Policy: policy, Fleet: f, Release: "testplane",
+		Policy: policy, Fleet: f, Release: "testplane", WorkDir: cfg.WorkDir,
 		Resync: cfg.Resync, StaleAfter: cfg.StaleAfter, LiveRetry: cfg.LiveRetry, Log: cfg.Log,
 	})
 }

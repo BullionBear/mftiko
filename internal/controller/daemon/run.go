@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"slices"
 	"sync"
 	"time"
@@ -90,6 +91,12 @@ func Start(ctx context.Context, cfg Config) (*Controller, error) {
 	log := cfg.Log.With().Str("plane", string(state.PlaneCtl)).Str("instance", state.ControllerInstance).
 		Int64("epoch", term.Epoch()).Logger()
 	rec := controller.Record(term.Epoch(), cfg.Release, now().UnixNano())
+	host, herr := os.Hostname()
+	if herr != nil || host == "" {
+		log.Warn().Err(herr).Msg("controller hostname")
+		host = ""
+	}
+	rec.Host = host // controller has no WORK_DIR; work_dir stays empty (D1092)
 	if err := term.PutRecord(ctx, controller.Encode(rec)); err != nil {
 		release(term, cl)
 		return nil, err

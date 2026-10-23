@@ -182,9 +182,10 @@ func TestAuditRows(t *testing.T) {
 	code, hdr, body = (apiCall{
 		method: http.MethodGet, path: "/api/v1/sessions/ab12cd", bearer: tokenAda, header: xff,
 	}).do(t, client, base)
-	if code != http.StatusNotFound {
+	if code != http.StatusServiceUnavailable {
 		t.Fatalf("session %d %s", code, body)
 	}
+	mustProblem(t, body, http.StatusServiceUnavailable, "region_unavailable")
 	if hdr.Get(headerRequestID) == "from-client" || !requestIDHeader(hdr.Get(headerRequestID)) {
 		t.Fatalf("request id %q", hdr.Get(headerRequestID))
 	}

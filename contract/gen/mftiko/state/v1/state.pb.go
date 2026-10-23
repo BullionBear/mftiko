@@ -983,6 +983,8 @@ type AgentRecord struct {
 	Epoch         int64                  `protobuf:"varint,3,opt,name=epoch,proto3" json:"epoch,omitempty"`
 	Release       string                 `protobuf:"bytes,4,opt,name=release,proto3" json:"release,omitempty"`
 	StartedAtNs   int64                  `protobuf:"varint,5,opt,name=started_at_ns,json=startedAtNs,proto3" json:"started_at_ns,omitempty"`
+	Host          string                 `protobuf:"bytes,6,opt,name=host,proto3" json:"host,omitempty"`                      // os.Hostname()，當選時寫入（D1092）。取不到則空字串。
+	WorkDir       string                 `protobuf:"bytes,7,opt,name=work_dir,json=workDir,proto3" json:"work_dir,omitempty"` // 該行程的 WORK_DIR（D1092）。controller 沒有 WORK_DIR，留空。
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1050,6 +1052,20 @@ func (x *AgentRecord) GetStartedAtNs() int64 {
 		return x.StartedAtNs
 	}
 	return 0
+}
+
+func (x *AgentRecord) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *AgentRecord) GetWorkDir() string {
+	if x != nil {
+		return x.WorkDir
+	}
+	return ""
 }
 
 // 不綁 lease（§3.2 W7），只在階段改變時寫；worker 確定不在之後由 agent 刪除。
@@ -1282,13 +1298,15 @@ const file_mftiko_state_v1_state_proto_rawDesc = "" +
 	"\asubject\x18\x03 \x01(\tR\asubject\x123\n" +
 	"\x06worker\x18\x04 \x01(\v2\x1b.mftiko.common.v1.WorkerRefR\x06worker\x125\n" +
 	"\buniverse\x18\x05 \x01(\v2\x19.mftiko.state.v1.UniverseR\buniverse\x12\"\n" +
-	"\rupdated_at_ns\x18\x06 \x01(\x03R\vupdatedAtNs\"\x93\x01\n" +
+	"\rupdated_at_ns\x18\x06 \x01(\x03R\vupdatedAtNs\"\xc2\x01\n" +
 	"\vAgentRecord\x12\x14\n" +
 	"\x05plane\x18\x01 \x01(\tR\x05plane\x12\x1a\n" +
 	"\binstance\x18\x02 \x01(\tR\binstance\x12\x14\n" +
 	"\x05epoch\x18\x03 \x01(\x03R\x05epoch\x12\x18\n" +
 	"\arelease\x18\x04 \x01(\tR\arelease\x12\"\n" +
-	"\rstarted_at_ns\x18\x05 \x01(\x03R\vstartedAtNs\"\xc2\x02\n" +
+	"\rstarted_at_ns\x18\x05 \x01(\x03R\vstartedAtNs\x12\x12\n" +
+	"\x04host\x18\x06 \x01(\tR\x04host\x12\x19\n" +
+	"\bwork_dir\x18\a \x01(\tR\aworkDir\"\xc2\x02\n" +
 	"\fWorkerStatus\x123\n" +
 	"\x06worker\x18\x01 \x01(\v2\x1b.mftiko.common.v1.WorkerRefR\x06worker\x12\x14\n" +
 	"\x05phase\x18\x02 \x01(\tR\x05phase\x12\x14\n" +

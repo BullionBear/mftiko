@@ -434,12 +434,18 @@ type AccountUpdate struct {
 	Settings *AccountSettings `json:"settings,omitempty"`
 }
 
-// AgentStatus `AgentRecord`。綁在選主 session 上，不存在表示這個 instance 沒有活著的 agent（PROTOCOL §3.2 W7）。
+// AgentStatus `AgentRecord`。綁在選主 session 上（PROTOCOL §3.2 W7）。
+// key 還在時是目前的值。key 不在、這個副本還記得上一份時，欄位是那一份且 `last_known` 為 true（D1096）。
+// 副本重啟後沒有這份記憶時，整個物件省略。
 type AgentStatus struct {
 	Epoch int64 `json:"epoch"`
 
 	// Host E10-13 之前的 agent 沒有（D1014）。
-	Host      *string   `json:"host,omitempty"`
+	Host *string `json:"host,omitempty"`
+
+	// LastKnown 這個副本記得的最後一份 `AgentRecord`，選主 key 已經不在（D1096）。
+	// 省略或 false 表示 key 還在。
+	LastKnown *bool     `json:"last_known,omitempty"`
 	Release   string    `json:"release"`
 	StartedAt time.Time `json:"started_at"`
 	WorkDir   *string   `json:"work_dir,omitempty"`
@@ -467,7 +473,9 @@ type Condition struct {
 
 // ControllerStatus defines model for ControllerStatus.
 type ControllerStatus struct {
-	// Agent `AgentRecord`。綁在選主 session 上，不存在表示這個 instance 沒有活著的 agent（PROTOCOL §3.2 W7）。
+	// Agent `AgentRecord`。綁在選主 session 上（PROTOCOL §3.2 W7）。
+	// key 還在時是目前的值。key 不在、這個副本還記得上一份時，欄位是那一份且 `last_known` 為 true（D1096）。
+	// 副本重啟後沒有這份記憶時，整個物件省略。
 	Agent      *AgentStatus `json:"agent,omitempty"`
 	HomeRegion string       `json:"home_region"`
 	Present    bool         `json:"present"`
@@ -590,7 +598,9 @@ type InputDecl struct {
 
 // Instance defines model for Instance.
 type Instance struct {
-	// Agent `AgentRecord`。綁在選主 session 上，不存在表示這個 instance 沒有活著的 agent（PROTOCOL §3.2 W7）。
+	// Agent `AgentRecord`。綁在選主 session 上（PROTOCOL §3.2 W7）。
+	// key 還在時是目前的值。key 不在、這個副本還記得上一份時，欄位是那一份且 `last_known` 為 true（D1096）。
+	// 副本重啟後沒有這份記憶時，整個物件省略。
 	Agent           *AgentStatus `json:"agent,omitempty"`
 	Name            InstanceName `json:"name"`
 	Plane           Plane        `json:"plane"`
@@ -600,7 +610,9 @@ type Instance struct {
 
 // InstanceDetail defines model for InstanceDetail.
 type InstanceDetail struct {
-	// Agent `AgentRecord`。綁在選主 session 上，不存在表示這個 instance 沒有活著的 agent（PROTOCOL §3.2 W7）。
+	// Agent `AgentRecord`。綁在選主 session 上（PROTOCOL §3.2 W7）。
+	// key 還在時是目前的值。key 不在、這個副本還記得上一份時，欄位是那一份且 `last_known` 為 true（D1096）。
+	// 副本重啟後沒有這份記憶時，整個物件省略。
 	Agent *AgentStatus `json:"agent,omitempty"`
 
 	// Demands 只有 md、td。

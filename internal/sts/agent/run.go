@@ -258,7 +258,7 @@ func Run(ctx context.Context, cfg Config) error {
 	return runner.Run(ctx, runner.Config[Entry, Spec, Live]{
 		Term: term, Demand: src, Statuses: reader, Decode: decoder{inst: cfg.Instance}.Decode, Planner: p,
 		Policy: policy, Fleet: &releaseFleet{Fleet: f, release: p.release}, Commit: p.commit, Sync: p.sync,
-		Release: cfg.Release, Resync: cfg.Resync, StaleAfter: cfg.StaleAfter, Log: cfg.Log, Now: cfg.Now,
+		Release: cfg.Release, WorkDir: cfg.WorkDir, Resync: cfg.Resync, StaleAfter: cfg.StaleAfter, Log: cfg.Log, Now: cfg.Now,
 	})
 }
 
@@ -455,6 +455,11 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 		}
 		if prev := p.saved[id]; prev.GetStateOut() != nil {
 			msg.StateOut = proto.Clone(prev.GetStateOut()).(*statev1.StateSnapshot)
+		}
+		if phase == statev1.Phase_PHASE_DONE || phase == statev1.Phase_PHASE_FAILED {
+			// The first terminal write is the only one same() does not skip. Conditions come from
+			// the demand that is still in etcd; a missing demand writes none (D1093).
+			msg.Conditions = dependencyConditions(p.liveDemand(id), msg.UpdatedAtNs)
 		}
 		b, err := proto.MarshalOptions{Deterministic: true}.Marshal(msg)
 		if err != nil {

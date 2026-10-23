@@ -130,7 +130,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	return runner.Run(ctx, runner.Config[Entry, Spec, Live]{
 		Term: term, Demand: src, Statuses: reader, Decode: decoder{inst: cfg.Instance}.Decode, Planner: p,
-		Policy: policy, Fleet: f, Commit: p.commit, Sync: p.sync, Release: cfg.Release,
+		Policy: policy, Fleet: f, Commit: p.commit, Sync: p.sync, Release: cfg.Release, WorkDir: cfg.WorkDir,
 		Resync: cfg.Resync, StaleAfter: cfg.StaleAfter, Log: cfg.Log, Now: cfg.Now,
 	})
 }

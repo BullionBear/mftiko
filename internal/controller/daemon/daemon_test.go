@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -362,6 +363,13 @@ func TestLeaderFencesOnFirstWrite(t *testing.T) {
 	if rec.GetPlane() != string(state.PlaneCtl) || rec.GetInstance() != state.ControllerInstance ||
 		rec.GetEpoch() < 1 || rec.GetRelease() != "test" || rec.GetStartedAtNs() == 0 {
 		t.Fatalf("record %+v", &rec)
+	}
+	host, herr := os.Hostname()
+	if herr != nil {
+		host = ""
+	}
+	if rec.GetHost() != host || rec.GetWorkDir() != "" {
+		t.Fatalf("host %q work_dir %q", rec.GetHost(), rec.GetWorkDir())
 	}
 	if _, _, ok := recordOf(t, ctx, servers["jp"]); ok {
 		t.Fatal("record also in jp")
