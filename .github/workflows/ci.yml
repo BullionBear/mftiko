@@ -99,6 +99,7 @@ jobs:
         env:
           MFTIKO_REQUIRE_ETCD: "1" # a missing etcd fails the etcd tests instead of skipping them
           MFTIKO_REQUIRE_PG: "1" # a missing postgres fails the symbol migration tests instead of skipping them
+          MFTIKO_REQUIRE_REGISTRY: "1" # a missing registry:2 fails the strategy catalog test instead of skipping it (D1061)
         run: make test-race
       # Full Go SDK conformance. Separate from go test so the suite is not run twice (D864).
       - name: Go SDK conformance

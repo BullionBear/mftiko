@@ -102,6 +102,16 @@ func Open(reg Registry, dataDir string) (*Client, error) {
 	if err := cleanTemps(filepath.Join(dataDir, "artifacts")); err != nil {
 		return nil, fmt.Errorf("artifact: artifacts: %w", err)
 	}
+	ac, err := newAuthClient(reg)
+	if err != nil {
+		return nil, err
+	}
+	return &Client{reg: reg, data: dataDir, layers: dir, http: ac}, nil
+}
+
+// newAuthClient is the registry HTTP client (D928, D933). It does not retry, and it does not dial:
+// a credentials file is only loaded. Catalog and Pull share it (D1056).
+func newAuthClient(reg Registry) (*auth.Client, error) {
 	ac := &auth.Client{
 		// A plain client: the retrying client would repeat 5xx, and this package does not retry (D928).
 		Client: &http.Client{},
@@ -115,7 +125,7 @@ func Open(reg Registry, dataDir string) (*Client, error) {
 		}
 		ac.Credential = credentials.Credential(store)
 	}
-	return &Client{reg: reg, data: dataDir, layers: dir, http: ac}, nil
+	return ac, nil
 }
 
 func checkAddress(address string) error {
@@ -217,12 +227,16 @@ func (c *Client) Pull(ctx context.Context, req Request) (*Fetched, error) {
 }
 
 func (c *Client) repository(name string) (*remote.Repository, error) {
-	repo, err := remote.NewRepository(c.reg.Address + "/" + name)
+	return openRepository(c.reg, c.http, name)
+}
+
+func openRepository(reg Registry, client remote.Client, name string) (*remote.Repository, error) {
+	repo, err := remote.NewRepository(reg.Address + "/" + name)
 	if err != nil {
 		return nil, badRequest("repository: %v", err)
 	}
-	repo.PlainHTTP = c.reg.PlainHTTP
-	repo.Client = c.http
+	repo.PlainHTTP = reg.PlainHTTP
+	repo.Client = client
 	return repo, nil
 }
 
@@ -247,6 +261,10 @@ func readVerified(r io.Reader, size int64, want digest.Digest) ([]byte, error) {
 }
 
 func (c *Client) fetchBlob(ctx context.Context, repo *remote.Repository, desc ocispec.Descriptor) ([]byte, error) {
+	return fetchVerifiedBlob(ctx, repo, desc)
+}
+
+func fetchVerifiedBlob(ctx context.Context, repo *remote.Repository, desc ocispec.Descriptor) ([]byte, error) {
 	rc, err := repo.Blobs().Fetch(ctx, desc)
 	if err != nil {
 		return nil, classify(err)
@@ -302,23 +320,32 @@ func firstNonEmpty(a, b string) string {
 }
 
 func checkDeclaredSize(manifest ocispec.Manifest, maxBytes int64) error {
-	if err := checkDescriptor(manifest.Config); err != nil {
+	total, err := declaredSize(manifest)
+	if err != nil {
 		return err
-	}
-	total := manifest.Config.Size
-	for _, layer := range manifest.Layers {
-		if err := checkDescriptor(layer); err != nil {
-			return err
-		}
-		if total > math.MaxInt64-layer.Size {
-			return permanent(ReasonTooLarge, errors.New("declared size overflows"))
-		}
-		total += layer.Size
 	}
 	if total > maxBytes {
 		return permanent(ReasonTooLarge, fmt.Errorf("config and layers are %d bytes, limit is %d", total, maxBytes))
 	}
 	return nil
+}
+
+// declaredSize is the config plus the layers, the same total Pull checks before downloading (D913).
+func declaredSize(manifest ocispec.Manifest) (int64, error) {
+	if err := checkDescriptor(manifest.Config); err != nil {
+		return 0, err
+	}
+	total := manifest.Config.Size
+	for _, layer := range manifest.Layers {
+		if err := checkDescriptor(layer); err != nil {
+			return 0, err
+		}
+		if total > math.MaxInt64-layer.Size {
+			return 0, permanent(ReasonTooLarge, errors.New("declared size overflows"))
+		}
+		total += layer.Size
+	}
+	return total, nil
 }
 
 func checkDescriptor(d ocispec.Descriptor) error {

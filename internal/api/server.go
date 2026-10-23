@@ -48,6 +48,10 @@ type Server struct {
 	minBackoff time.Duration
 	maxBackoff time.Duration
 
+	catalog    tagCatalog
+	apiOnce    sync.Once
+	apiHandler http.Handler
+
 	mu     sync.Mutex
 	logged string // last unavailable_regions logged, joined
 }
@@ -117,6 +121,10 @@ func start(cfg Config) (*Server, error) {
 			return nil, fmtWeb(err)
 		}
 		s.web = root
+	}
+	if err := s.useCatalog(); err != nil {
+		s.stop()
+		return nil, err
 	}
 	for _, c := range s.clusters {
 		s.wg.Add(1)
@@ -210,6 +218,7 @@ func (s *Server) stop() {
 
 // routes is one handler on purpose. ServeMux rejects a GET wildcard registered over the
 // all-method /api/ pattern, so the split is done here: /healthz and /readyz are exact,
+// the strategy catalog is the three GET routes under /api/v1/strategies (D1056),
 // /api and /api/ are never files, and anything else is the console build (D1028).
 func (s *Server) routes() http.Handler { return http.HandlerFunc(s.serveHTTP) }
 
@@ -228,6 +237,10 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.readyz(w, r)
+		return
+	}
+	if strategyPath(r.URL.Path) {
+		s.strategyRoutes().ServeHTTP(w, r)
 		return
 	}
 	if apiPath(r.URL.Path) || s.web == nil {

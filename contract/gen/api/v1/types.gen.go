@@ -96,6 +96,7 @@ const (
 	ErrorCodeAlgoOverlap         ErrorCode = "algo_overlap"
 	ErrorCodeConflict            ErrorCode = "conflict"
 	ErrorCodeInternal            ErrorCode = "internal"
+	ErrorCodeInvalidArtifact     ErrorCode = "invalid_artifact"
 	ErrorCodeNotFound            ErrorCode = "not_found"
 	ErrorCodeNotTerminal         ErrorCode = "not_terminal"
 	ErrorCodeReferenced          ErrorCode = "referenced"
@@ -114,6 +115,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeConflict:
 		return true
 	case ErrorCodeInternal:
+		return true
+	case ErrorCodeInvalidArtifact:
 		return true
 	case ErrorCodeNotFound:
 		return true
@@ -1011,6 +1014,9 @@ type StrategyID = string
 
 // Conflict RFC 9457。`code` 是給程式判斷的穩定值（D1036）。
 type Conflict = Problem
+
+// InvalidArtifact RFC 9457。`code` 是給程式判斷的穩定值（D1036）。
+type InvalidArtifact = Problem
 
 // NotFound RFC 9457。`code` 是給程式判斷的穩定值（D1036）。
 type NotFound = Problem
