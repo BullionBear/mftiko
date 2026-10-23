@@ -68,7 +68,7 @@ docs/                     DECISIONS.md, PROTOCOL.md
 | `make build` | every command into `bin/` |
 | `make examples` | example strategies into `bin/examples/` |
 | `make test` / `make test-race` / `make vet` | Go tests / with the race detector, uncached / vet |
-| `make check` | everything CI runs: `proto-lint`, `proto-breaking`, `openapi-lint`, `openapi-breaking`, `gen-check`, `vet`, `build`, `test-race`, `sdk-conformance`, `web-check` |
+| `make check` | everything CI runs: `proto-lint`, `proto-breaking`, `openapi-lint`, `openapi-breaking`, `gen-check`, `vet`, `build`, `test-race`, `sdk-conformance`, `web-check`, `web` |
 | `make web` / `make web-dev` / `make web-check` | build, dev server, svelte-check |
 | `make dev-up` / `make dev-down` | generate dev NATS credentials, then start / stop a local PostgreSQL, etcd, NATS and registry (Docker); `dev-up` waits until all are healthy |
 | `make accept-up` / `make accept-down` | start / stop the MD acceptance stack; the checks themselves are in `deploy/accept/README.md` |

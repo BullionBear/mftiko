@@ -1,0 +1,148 @@
+/* Global tokens for the console (D1074). Component rules stay in scoped style blocks. */
+
+:root {
+	color-scheme: light dark;
+	--bg: #f3f4f6;
+	--fg: #1b1e23;
+	--muted: #5c6570;
+	--surface: #ffffff;
+	--border: #d5d9e0;
+	--accent: #0c5c4c;
+	--accent-fg: #f4fffb;
+	--danger: #8d1d1d;
+	--danger-bg: #fdecec;
+	--warning-bg: #fff4d4;
+	--warning-fg: #5c4300;
+	--font: "Segoe UI", "Helvetica Neue", sans-serif;
+	--mono: ui-monospace, "Cascadia Code", "Source Code Pro", monospace;
+	--radius: 4px;
+	--space: 0.75rem;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #14171b;
+		--fg: #e7ebf0;
+		--muted: #a7b0bb;
+		--surface: #1d2127;
+		--border: #343b44;
+		--accent: #46c7aa;
+		--accent-fg: #04241c;
+		--danger: #ffb4b4;
+		--danger-bg: #3c1818;
+		--warning-bg: #3a3014;
+		--warning-fg: #f6e2a8;
+	}
+}
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--fg);
+	font-family: var(--font);
+	line-height: 1.45;
+}
+
+a {
+	color: var(--accent);
+}
+
+a:hover {
+	text-decoration: none;
+}
+
+:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+button {
+	font: inherit;
+	color: var(--fg);
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 0.35rem 0.7rem;
+	cursor: pointer;
+}
+
+button:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+
+button.primary {
+	background: var(--accent);
+	color: var(--accent-fg);
+	border-color: transparent;
+}
+
+h1,
+h2 {
+	font-weight: 600;
+	line-height: 1.2;
+}
+
+h1 {
+	margin: 0 0 0.75rem;
+	font-size: 1.4rem;
+}
+
+h2 {
+	margin: 1.25rem 0 0.5rem;
+	font-size: 1.05rem;
+}
+
+p {
+	margin: 0.4rem 0;
+}
+
+table.data {
+	width: 100%;
+	border-collapse: collapse;
+	background: var(--surface);
+}
+
+table.data th,
+table.data td {
+	padding: 0.45rem 0.6rem;
+	border-bottom: 1px solid var(--border);
+	text-align: left;
+	vertical-align: top;
+}
+
+table.data th {
+	color: var(--muted);
+	font-size: 0.75rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.mono {
+	font-family: var(--mono);
+	font-size: 0.85em;
+}
+
+.status {
+	color: var(--muted);
+}
+
+.status.error {
+	color: var(--danger);
+}
+
+dl.facts {
+	display: grid;
+	grid-template-columns: 9rem 1fr;
+	gap: 0.35rem 0.75rem;
+	margin: 0;
+}
+
+dl.facts dt {
+	color: var(--muted);
+}
+
+dl.facts dd {
+	margin: 0;
+}
