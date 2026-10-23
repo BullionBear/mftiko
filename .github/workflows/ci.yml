@@ -106,6 +106,9 @@ jobs:
         run: make sdk-conformance
       - name: svelte-check
         run: make web-check
+      # Console production build (D1079). svelte-check is the step above.
+      - name: web build
+        run: make web
       # Same script as .github/workflows/release.yml. These tags stay on the local registry.
       - name: Pack MD and TD workers into registry:2
         env:
