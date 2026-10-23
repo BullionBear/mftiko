@@ -92,6 +92,19 @@ bin/mftiko-pack -bin bin/examples/hello -name hello -repo 127.0.0.1:5000/hello -
 
 `make dev-up` starts the registry. The line printed on success is the image manifest digest, which is `StrategyRef.code`. `-tag` is optional and only names the image for a person to look up; the same binary and parameters pack to the same digest either way (D938). A registry that asks for a login is read from `~/.docker/config.json` (D940). `-plain-http` is for the dev registry.
 
+## API authentication
+
+Each person has one static token. The API JSON stores `users[].name` and `users[].token_sha256`, the hex SHA-256 of the token, and never the token itself (D1009, D1055). The API cannot check the length, so generate at least 32 random bytes and keep the token somewhere the config file does not:
+
+```sh
+token=$(openssl rand -base64 32 | tr -d '\n')
+printf '%s' "$token" | sha256sum
+```
+
+Put the hex digest in `users[].token_sha256`. Clients send the token string itself. The CLI and other automation send `Authorization: Bearer <token>`. The console posts it to `POST /api/v1/auth/login`, which sets an `HttpOnly`, `Secure`, `SameSite=Strict` cookie named `mftiko_session`. `Secure` is set on plaintext HTTP as well (D1050). `POST /api/v1/auth/logout` clears that cookie. There is no login rate limit in this phase (D1055).
+
+The cookie HMAC key (`MFTIKO_COOKIE_KEY` or `-cookie-key`) is shared by every replica. The Postgres DSN (`MFTIKO_POSTGRES_DSN` or `-postgres-dsn`) is the audit database. The process opens a pool at startup and does not wait for it to connect; `/readyz` still reports etcd only (D1048). Apply `migrations/0003_audit` before expecting audit rows. A failed audit write does not change the HTTP response.
+
 ## Tests
 
 The tests of `internal/platform/state` run a real etcd (v3.7.2). They find it through `MFTIKO_ETCD_BIN`, else `etcd` on `PATH`, and are skipped when there is neither. Set `MFTIKO_REQUIRE_ETCD=1` to make a missing etcd a failure instead; CI does, so a run that skipped them cannot pass.

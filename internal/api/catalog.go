@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"path"
@@ -72,7 +71,7 @@ func strategyPath(p string) bool {
 }
 
 func (s *Server) strategyRoutes() http.Handler {
-	s.apiOnce.Do(func() {
+	s.strategyOnce.Do(func() {
 		mux := http.NewServeMux()
 		wrapper := &apiv1.ServerInterfaceWrapper{
 			Handler:          s,
@@ -81,9 +80,9 @@ func (s *Server) strategyRoutes() http.Handler {
 		mux.HandleFunc("GET /api/v1/strategies", wrapper.ListStrategies)
 		mux.HandleFunc("GET /api/v1/strategies/{strategy_id}/versions", wrapper.ListStrategyVersions)
 		mux.HandleFunc("GET /api/v1/strategies/{strategy_id}/versions/{ref}", wrapper.GetStrategyVersion)
-		s.apiHandler = mux
+		s.strategyHandler = mux
 	})
-	return s.apiHandler
+	return s.strategyHandler
 }
 
 func (s *Server) strategyParamError(w http.ResponseWriter, _ *http.Request, err error) {
@@ -488,27 +487,4 @@ func formatSDK(sdk artifact.SDK) *string {
 	default:
 		return nil
 	}
-}
-
-func writeProblem(w http.ResponseWriter, status int, code apiv1.ErrorCode, title, detail string, fields []apiv1.FieldError) {
-	p := apiv1.Problem{
-		Type:   "about:blank",
-		Title:  title,
-		Status: status,
-		Code:   code,
-	}
-	if detail != "" {
-		p.Detail = &detail
-	}
-	if len(fields) > 0 {
-		p.Errors = &fields
-	}
-	b, err := json.Marshal(p)
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(status)
-	_, _ = w.Write(append(b, '\n'))
 }

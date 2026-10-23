@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
 	"debug/elf"
 	"encoding/binary"
 	"encoding/json"
@@ -249,6 +250,7 @@ func TestCatalogRegistry2(t *testing.T) {
 	s := &Server{
 		log: zerolog.Nop(),
 		cfg: Config{
+			Users:        []User{{Name: "ada", Token: sha256.Sum256([]byte(tokenAda))}},
 			Repositories: []string{helloRepo, connRepo},
 			Registry:     artifact.Registry{Address: addr, PlainHTTP: true},
 		},
@@ -258,7 +260,7 @@ func TestCatalogRegistry2(t *testing.T) {
 
 	check := func(ref string) apiv1.StrategyVersion {
 		t.Helper()
-		code, hdr, body := do(h, http.MethodGet, "/api/v1/strategies/cat"+suffix+"/versions/"+ref)
+		code, hdr, body := doAuth(h, http.MethodGet, "/api/v1/strategies/cat"+suffix+"/versions/"+ref)
 		if code != http.StatusOK || hdr.Get("Content-Type") != "application/json" {
 			t.Fatalf("%s: %d %s", ref, code, body)
 		}
@@ -279,7 +281,7 @@ func TestCatalogRegistry2(t *testing.T) {
 	check(img.Digest)
 
 	var listed apiv1.StrategyTagList
-	code, _, body := do(h, http.MethodGet, "/api/v1/strategies/cat"+suffix+"/versions")
+	code, _, body := doAuth(h, http.MethodGet, "/api/v1/strategies/cat"+suffix+"/versions")
 	if code != http.StatusOK {
 		t.Fatalf("list %d %s", code, body)
 	}
@@ -300,7 +302,7 @@ func TestCatalogRegistry2(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	code, _, body = do(h, http.MethodGet, "/api/v1/strategies/cat"+suffix+"/versions")
+	code, _, body = doAuth(h, http.MethodGet, "/api/v1/strategies/cat"+suffix+"/versions")
 	if code != http.StatusOK {
 		t.Fatalf("list again %d %s", code, body)
 	}

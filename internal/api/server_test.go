@@ -68,9 +68,10 @@ func (l *lockedBuf) String() string {
 }
 
 type running struct {
-	s    *Server
-	done chan struct{}
-	err  error
+	s      *Server
+	done   chan struct{}
+	err    error
+	cancel context.CancelFunc
 }
 
 func startRunning(t *testing.T, cfg Config, log *lockedBuf) *running {
@@ -80,7 +81,7 @@ func startRunning(t *testing.T, cfg Config, log *lockedBuf) *running {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	r := &running{s: s, done: make(chan struct{})}
+	r := &running{s: s, done: make(chan struct{}), cancel: cancel}
 	go func() {
 		r.err = s.serve(ctx)
 		close(r.done)

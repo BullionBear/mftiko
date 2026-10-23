@@ -5,7 +5,7 @@
 // Settings come in three kinds (D1023). -in is the deployment JSON that mftiko-etcd-roles reads (D1012, D1312);
 // "-" reads stdin. -config is the API JSON, a file, or "-" when -in is not stdin:
 //
-//	users[].name, users[].token_sha256   one static token per user, stored as SHA-256 (D1009)
+//	users[].name, users[].token_sha256   one static token per user, stored as SHA-256 (D1009, D1055)
 //	repositories                          strategy repositories, path without the registry host (D1013, D1060)
 //	registry, registry_creds, plain_http  registry host[:port], Docker config.json, http for dev (D933, D1060)
 //	td_keys                               TD instance name → public key, the mftiko-seal pubkey form (D1011)
@@ -18,9 +18,16 @@
 // overrides, as for the controller: the etcd user "api" password ($MFTIKO_ETCD_PASSWORD, -etcd-password), the
 // cookie HMAC key ($MFTIKO_COOKIE_KEY, -cookie-key) and the Postgres DSN ($MFTIKO_POSTGRES_DSN, -postgres-dsn).
 //
-// The process validates all of that. Load does not dial Postgres or a registry (D1024, D1060); a strategy catalog
-// request does. Authentication, audit, the other endpoints and W5 deletion are later tickets. Readiness watches
-// etcd only (D1024). One Mirror per cluster watches the whole /mftiko/v1/ keyspace (D1025).
+// Load validates all of that and does not dial Postgres or a registry (D1024, D1060). Run opens a Postgres pool
+// and does not wait for the connection; readiness watches etcd only, and Postgres being down only affects audit
+// (D1048, modifies D1024). A strategy catalog request dials the registry. W5 deletion is a later ticket. One
+// Mirror per cluster watches the whole /mftiko/v1/ keyspace (D1025). Authentication is one static token per user,
+// sent as a bearer token or exchanged for the console cookie (D1009). A token should be at least 32 random bytes;
+// the config stores only its SHA-256, so the API cannot check the length (D1055):
+//
+//	token=$(openssl rand -base64 32 | tr -d '\n'); printf '%s' "$token" | sha256sum
+//
+// Put the hex digest in users[].token_sha256. Clients send the token string itself.
 //
 // /healthz is 200 while the process is up. /readyz is 200 when any region is available; the body lists every
 // region and unavailable_regions. It is 503 only when every region is unavailable, and during shutdown
@@ -89,7 +96,7 @@ func parseArgs(args []string, getenv func(string) string) (options, bool, error)
 	fs.StringVar(&opt.key, "tls-key", "", "TLS private key; with -tls-cert, serve HTTPS and HTTP/2")
 	fs.StringVar(&opt.etcdPassword, "etcd-password", getenv(api.EnvEtcdPassword), "password of the etcd user \"api\" (default $"+api.EnvEtcdPassword+")")
 	fs.StringVar(&opt.cookieKey, "cookie-key", getenv(api.EnvCookieKey), "HMAC key of the console cookie (default $"+api.EnvCookieKey+")")
-	fs.StringVar(&opt.postgres, "postgres-dsn", getenv(api.EnvPostgresDSN), "Postgres DSN, checked and not connected (default $"+api.EnvPostgresDSN+")")
+	fs.StringVar(&opt.postgres, "postgres-dsn", getenv(api.EnvPostgresDSN), "Postgres DSN; a pool is opened at startup and not waited on (default $"+api.EnvPostgresDSN+")")
 	if err := fs.Parse(args); err != nil {
 		return options{}, false, err
 	}

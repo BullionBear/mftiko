@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -24,11 +25,22 @@ func catalogSrv(repos []string, addr string, cat tagCatalog) *Server {
 		log: zerolog.Nop(),
 		now: time.Now,
 		cfg: Config{
+			Users:        []User{{Name: "ada", Token: sha256.Sum256([]byte(tokenAda))}},
 			Repositories: append([]string(nil), repos...),
 			Registry:     artifact.Registry{Address: addr, PlainHTTP: true},
 		},
 		catalog: cat,
 	}
+}
+
+// doAuth sends the catalog requests as an authenticated caller. Every /api route, including the
+// strategy catalog, requires a bearer token or cookie (D1009).
+func doAuth(h http.Handler, method, path string) (int, http.Header, []byte) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(method, path, nil)
+	req.Header.Set("Authorization", "Bearer "+tokenAda)
+	h.ServeHTTP(rec, req)
+	return rec.Code, rec.Header(), rec.Body.Bytes()
 }
 
 func artErr(reason string, permanent bool) error {
@@ -153,7 +165,7 @@ func strategyManifest(digest, kind string, sdk artifact.SDK) artifact.ManifestIn
 
 func getProblem(t *testing.T, h http.Handler, path string) (int, apiv1.Problem) {
 	t.Helper()
-	code, hdr, body := do(h, http.MethodGet, path)
+	code, hdr, body := doAuth(h, http.MethodGet, path)
 	if hdr.Get("Content-Type") != "application/problem+json" {
 		t.Fatalf("%s content-type %q body %s", path, hdr.Get("Content-Type"), body)
 	}
@@ -175,7 +187,7 @@ func problemDetail(p apiv1.Problem) string {
 }
 
 func TestListStrategies(t *testing.T) {
-	code, hdr, body := do(catalogSrv(nil, "", nil).routes(), http.MethodGet, "/api/v1/strategies")
+	code, hdr, body := doAuth(catalogSrv(nil, "", nil).routes(), http.MethodGet, "/api/v1/strategies")
 	if code != http.StatusOK || hdr.Get("Content-Type") != "application/json" || string(body) != "{\"items\":[]}\n" {
 		t.Fatalf("empty: %d %s %s", code, hdr.Get("Content-Type"), body)
 	}
@@ -194,7 +206,7 @@ func TestListStrategies(t *testing.T) {
 	s := catalogSrv([]string{"team/zeta", "other/mid", "team/alpha"}, "reg.example", f)
 	h := s.routes()
 	var page apiv1.StrategyList
-	code, hdr, body = do(h, http.MethodGet, "/api/v1/strategies?limit=2")
+	code, hdr, body = doAuth(h, http.MethodGet, "/api/v1/strategies?limit=2")
 	if code != http.StatusOK {
 		t.Fatalf("page: %d %s", code, body)
 	}
@@ -218,7 +230,7 @@ func TestListStrategies(t *testing.T) {
 	if f.resolved() != 2 {
 		t.Fatalf("resolved %d, want the page only", f.resolved())
 	}
-	code, _, body = do(h, http.MethodGet, "/api/v1/strategies?limit=2&cursor="+*page.NextCursor)
+	code, _, body = doAuth(h, http.MethodGet, "/api/v1/strategies?limit=2&cursor="+*page.NextCursor)
 	if code != http.StatusOK {
 		t.Fatalf("next: %d %s", code, body)
 	}
@@ -233,7 +245,7 @@ func TestListStrategies(t *testing.T) {
 	// A cursor past the end is a page with no items. It does not ask the registry again.
 	before := f.resolved()
 	encoded := base64.RawURLEncoding.EncodeToString([]byte("zzz"))
-	code, _, body = do(h, http.MethodGet, "/api/v1/strategies?cursor="+encoded)
+	code, _, body = doAuth(h, http.MethodGet, "/api/v1/strategies?cursor="+encoded)
 	if code != http.StatusOK || string(body) != "{\"items\":[]}\n" {
 		t.Fatalf("past the end: %d %s", code, body)
 	}
@@ -284,7 +296,7 @@ func TestListStrategyVersions(t *testing.T) {
 	}
 	h := catalogSrv([]string{"team/hello"}, "reg.example", f).routes()
 	var page apiv1.StrategyTagList
-	code, _, body := do(h, http.MethodGet, "/api/v1/strategies/hello/versions?limit=2")
+	code, _, body := doAuth(h, http.MethodGet, "/api/v1/strategies/hello/versions?limit=2")
 	if code != http.StatusOK {
 		t.Fatalf("%d %s", code, body)
 	}
@@ -294,7 +306,7 @@ func TestListStrategyVersions(t *testing.T) {
 	if len(page.Items) != 2 || page.Items[0].Tag != "a" || page.Items[1].Tag != "latest" || page.NextCursor == nil {
 		t.Fatalf("page %+v", page)
 	}
-	code, _, body = do(h, http.MethodGet, "/api/v1/strategies/hello/versions?limit=2&cursor="+*page.NextCursor)
+	code, _, body = doAuth(h, http.MethodGet, "/api/v1/strategies/hello/versions?limit=2&cursor="+*page.NextCursor)
 	page = apiv1.StrategyTagList{}
 	if err := json.Unmarshal(body, &page); err != nil {
 		t.Fatal(err)
@@ -349,7 +361,7 @@ func TestGetStrategyVersion(t *testing.T) {
 	h := catalogSrv(repos, "reg.example", f).routes()
 
 	var got apiv1.StrategyVersion
-	code, hdr, body := do(h, http.MethodGet, "/api/v1/strategies/hello/versions/latest")
+	code, hdr, body := doAuth(h, http.MethodGet, "/api/v1/strategies/hello/versions/latest")
 	if code != http.StatusOK || hdr.Get("Content-Type") != "application/json" {
 		t.Fatalf("tag %d %s %s", code, hdr.Get("Content-Type"), body)
 	}
@@ -364,7 +376,7 @@ func TestGetStrategyVersion(t *testing.T) {
 	if strings.Join(got.Tags, ",") != "a,latest,v1" || strings.Join(got.Contracts, ",") != "worker.v1,stsctl.v1" {
 		t.Fatalf("tags %q contracts %q", got.Tags, got.Contracts)
 	}
-	code, _, body = do(h, http.MethodGet, "/api/v1/strategies/hello/versions/"+digA)
+	code, _, body = doAuth(h, http.MethodGet, "/api/v1/strategies/hello/versions/"+digA)
 	if code != http.StatusOK {
 		t.Fatalf("digest %d %s", code, body)
 	}
@@ -411,7 +423,7 @@ func TestGetStrategyVersion(t *testing.T) {
 
 	checkSDK := func(id, want string, present bool) {
 		t.Helper()
-		code, _, body := do(h, http.MethodGet, "/api/v1/strategies/"+id+"/versions/v")
+		code, _, body := doAuth(h, http.MethodGet, "/api/v1/strategies/"+id+"/versions/v")
 		if code != http.StatusOK {
 			t.Fatalf("%s %d %s", id, code, body)
 		}
@@ -433,13 +445,19 @@ func TestGetStrategyVersion(t *testing.T) {
 	checkSDK("ver", "9", true)
 	checkSDK("none", "", false)
 
-	code, _, body = do(h, http.MethodGet, "/api/v1")
+	code, _, body = doAuth(h, http.MethodGet, "/api/v1")
 	if code != http.StatusNotFound {
 		t.Fatalf("/api/v1 %d %s", code, body)
 	}
-	code, _, _ = do(h, http.MethodPost, "/api/v1/strategies")
-	if code != http.StatusMethodNotAllowed {
-		t.Fatalf("POST %d", code)
+	// A write without application/json is 400 before routing. This POST is JSON,
+	// so it reaches the catalog mux, which only registers GET.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/strategies", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenAda)
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST %d", rec.Code)
 	}
 }
 
@@ -488,6 +506,7 @@ func TestCatalogResolveParallel(t *testing.T) {
 	h := catalogSrv([]string{"team/hello"}, "reg.example", f).routes()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/strategies/hello/versions", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenAda)
 	done := make(chan struct{})
 	go func() {
 		h.ServeHTTP(rec, req)
@@ -529,6 +548,7 @@ func TestCatalogCancelWritesNothing(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/strategies/hello/versions", nil).WithContext(ctx)
+	req.Header.Set("Authorization", "Bearer "+tokenAda)
 	rec := &markWriter{ResponseWriter: httptest.NewRecorder()}
 	h.ServeHTTP(rec, req)
 	if rec.wrote {
@@ -551,6 +571,7 @@ func TestCatalogClosedPort(t *testing.T) {
 	defer cancel()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/strategies/hello/versions", nil).WithContext(ctx)
+	req.Header.Set("Authorization", "Bearer "+tokenAda)
 	s.routes().ServeHTTP(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("%d %s", rec.Code, rec.Body)

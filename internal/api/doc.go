@@ -8,16 +8,18 @@
 // and delete statuses, never put them (D1042). A lost condition is 409 conflict; etcd not reached is 503
 // region_unavailable. session_id and api_id are drawn at random and checked against the mirrors of the available
 // regions, then created create-only; the region written to must be available (D1007, D1008, D1042). Reads are answered
-// from one Mirror per cluster (D1014). Every request is
-// written to the Postgres audit table on reply (D1010). The strategy catalog is served from the registry (D1056–D1061).
-// Authentication, audit, the other endpoints and W5 deletion are later tickets (D1024): Load checks their settings
-// and does not dial Postgres or a registry. A catalog request dials the registry when one is configured.
+// from one Mirror per cluster (D1014). Every /api request is authenticated, except POST /api/v1/auth/login
+// (D1009, D1051). On reply the audit row is queued and written to Postgres; /healthz and /readyz are not
+// (D1010, D1049). The strategy catalog is served from the registry (D1056–D1061). Load checks the DSN and the
+// registry settings and does not dial. Run creates a Postgres pool and does not wait for it to connect;
+// readiness still watches etcd only, and a down Postgres only affects audit (D1048, modifies D1024). A catalog
+// request dials the registry when one is configured (D1057, D1060). W5 deletion is a later ticket.
 // Either of the command's file flags may be "-" to read that file from stdin; only one of them may.
 //
 // Settings are three kinds (D1023), the same split cmd/mftiko-api parses. The deployment JSON is the file
 // mftiko-etcd-roles reads (D1012, D1312). The API JSON is:
 //
-//	users[].name, users[].token_sha256   one static token per user, stored as SHA-256 (D1009)
+//	users[].name, users[].token_sha256   one static token per user, stored as SHA-256 (D1009, D1055)
 //	repositories                          strategy repositories, path without the registry host (D1013, D1060)
 //	registry                              registry host[:port]; empty leaves the catalog unconfigured (D1060)
 //	registry_creds                        Docker config.json path; empty is anonymous (D933, D1060)
@@ -34,7 +36,10 @@
 // it does for the controller.
 //
 // Load validates all of that, including the registry address and credentials file, and does not dial Postgres or a
-// registry (D1024, D1060). Readiness watches etcd only. Catalog requests are what dial the registry (D1057).
+// registry (D1024, D1060). Run opens a Postgres pool without waiting for a connection (D1048). Readiness watches
+// etcd only. Catalog requests are what dial the registry (D1057). A token should be at least 32 random bytes; the
+// file stores only the SHA-256, so a shorter value that was hashed in is still accepted (D1055). The README has
+// the generation command.
 // Run dials every region and keeps one Mirror per cluster on the whole /mftiko/v1/ keyspace, not one mirror per
 // prefix (D1025). /healthz is 200 while the process is up. /readyz is 200 when any region is available; the body
 // lists every region and unavailable_regions. It is 503 only when every region is unavailable, and during shutdown
