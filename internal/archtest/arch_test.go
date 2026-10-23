@@ -129,7 +129,7 @@ func check(pkgs []pkg, std map[string]bool) []string {
 					bad(imp, "contract depends on nothing else in the repository")
 				}
 				if external && !under(imp, "google.golang.org/protobuf") {
-					// OpenAPI codegen links the oapi-codegen runtime. The rest of contract does not (D1044, D006).
+					// OpenAPI codegen links the oapi-codegen runtime. The rest of contract does not (D1045, D006).
 					if under(from, "contract/gen/api") && under(imp, "github.com/oapi-codegen/runtime") {
 						break
 					}
@@ -314,7 +314,7 @@ func TestCheckReportsViolations(t *testing.T) {
 		{ImportPath: m("cmd/mftiko-pack"), Imports: []string{"oras.land/oras-go/v2/registry/remote"}}, // D909: allowed
 		{ImportPath: m("cmd/mftiko-sts-agent"), Imports: []string{"oras.land/oras-go/v2"}},            // D909
 		{ImportPath: m("contract/gen/api/v1"), Imports: []string{
-			"github.com/oapi-codegen/runtime", "github.com/oapi-codegen/runtime/types", // D1044: allowed
+			"github.com/oapi-codegen/runtime", "github.com/oapi-codegen/runtime/types", // D1045: allowed
 			"github.com/rs/zerolog", // not the runtime
 		}},
 		{ImportPath: m("contract/wire/frame"), Imports: []string{"github.com/oapi-codegen/runtime"}}, // not contract/gen/api

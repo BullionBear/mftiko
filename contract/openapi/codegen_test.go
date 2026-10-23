@@ -33,7 +33,7 @@ func TestParamsStayRawJSON(t *testing.T) {
 	}
 }
 
-// TestServerIsStdHTTP locks D1044: the strict server is a net/http ServeMux,
+// TestServerIsStdHTTP locks D1045: the strict server is a net/http ServeMux,
 // and the SSE event schemas survive generation.
 func TestServerIsStdHTTP(t *testing.T) {
 	var _ apiv1.SessionRemovedEvent

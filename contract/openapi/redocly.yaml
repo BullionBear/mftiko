@@ -1,4 +1,4 @@
-# Redocly lint for contract A (D1002). `make openapi-lint` and CI run it (D1046).
+# Redocly lint for contract A (D1002). `make openapi-lint` and CI run it (D1047).
 extends:
   - recommended
 rules:

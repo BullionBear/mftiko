@@ -29,7 +29,7 @@ DEV_NATS     := deploy/dev/data/nats
 
 PROTOC_GEN_GO_VERSION := v1.36.12
 # v1.72.0 is the newest buf that `go install`s with this module's Go 1.26.0.
-# v1.73.0 needs Go 1.26.7, and CI sets GOTOOLCHAIN=local (D1042).
+# v1.73.0 needs Go 1.26.7, and CI sets GOTOOLCHAIN=local (D1043).
 BUF_VERSION          := v1.72.0
 OAPI_CODEGEN_VERSION := v2.8.0
 OASDIFF_VERSION      := v1.34.1
@@ -40,10 +40,10 @@ BUF_AGAINST ?= .git\#branch=main
 # What openapi-breaking compares against: a git commit-ish. CI points it at the pull request's base.
 OAS_BASE ?= main
 
-# Empty until E10-20 (D1018, D1045). E10-20 sets this to ERR so breaking changes fail the build.
+# Empty until E10-20 (D1018, D1046). E10-20 sets this to ERR so breaking changes fail the build.
 OASDIFF_FAIL_ON ?=
 
-# buf, protoc-gen-go, oapi-codegen and oasdiff are installed into bin/tools (D1042, D1043).
+# buf, protoc-gen-go, oapi-codegen and oasdiff are installed into bin/tools (D1043, D1044).
 # Redocly CLI and openapi-typescript come from web/node_modules.
 export PATH := $(TOOLS):$(NODE_BIN):$(PATH)
 
@@ -88,7 +88,7 @@ proto-lint: tools ## buf lint (STANDARD)
 proto-breaking: tools ## buf breaking against main (or BUF_AGAINST): compatible changes only within a major (PROTOCOL §1)
 	buf breaking --against '$(BUF_AGAINST)'
 
-openapi-lint: web-install ## Redocly lint for contract A (D1036, D1046)
+openapi-lint: web-install ## Redocly lint for contract A (D1036, D1047)
 	redocly lint --config contract/openapi/redocly.yaml contract/openapi/api/v1.yaml
 
 openapi: tools web-install ## Lint contract A and regenerate Go and TypeScript; commit the result
@@ -101,9 +101,9 @@ openapi: tools web-install ## Lint contract A and regenerate Go and TypeScript; 
 	openapi-typescript contract/openapi/api/v1.yaml --output $(WEB)/src/lib/gen/api/v1.ts
 	$(GO) mod tidy
 
-# D1045: until E10-20 the report is printed and this target still succeeds.
+# D1046: until E10-20 the report is printed and this target still succeeds.
 # A missing spec on the base is skipped. A base that is not a commit is an error.
-openapi-breaking: tools ## oasdiff breaking against OAS_BASE; report only until E10-20 (D1045)
+openapi-breaking: tools ## oasdiff breaking against OAS_BASE; report only until E10-20 (D1046)
 	@set -euo pipefail; \
 	base='$(OAS_BASE)'; \
 	spec=contract/openapi/api/v1.yaml; \
@@ -112,7 +112,7 @@ openapi-breaking: tools ## oasdiff breaking against OAS_BASE; report only until 
 	  exit 1; \
 	fi; \
 	if ! git cat-file -e "$$base:$$spec" 2>/dev/null; then \
-	  echo "openapi-breaking: $$base has no $$spec; skipping oasdiff (D1045)"; \
+	  echo "openapi-breaking: $$base has no $$spec; skipping oasdiff (D1046)"; \
 	  exit 0; \
 	fi; \
 	args=(breaking --color never "$$base:$$spec" "$$spec"); \

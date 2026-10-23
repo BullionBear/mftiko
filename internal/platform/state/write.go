@@ -12,7 +12,8 @@ import (
 // Put, Delete and Txn route by key to the owning region (RegionOfKey), acquire that region's Fence if needed, and
 // make the write one txn conditioned on ModRevision(WriterKey) == R (PROTOCOL §3.2 W2 step 4). If the condition
 // fails, another agent has taken over: the term ends with ErrSuperseded and the write is not retried (the agent
-// exits and systemd restarts it). There is no other write path: Clusters hands out readers only.
+// exits and systemd restarts it). The only other write path is APIWriter, for the API server, which does not
+// campaign (W10, D1042): Clusters otherwise hands out readers only.
 //
 // They also enforce W1 (PROTOCOL §3.2, the writer column of §3.1): a term puts and deletes only keys its agent is
 // the writer of, so it can neither touch the keys fencing relies on nor another agent's or the API's keys. Of its
@@ -114,7 +115,7 @@ func buildOp(f func() clientv3.Op) (op clientv3.Op, err error) {
 }
 
 // routeTxn is the one region every key of a txn routes to; every put and delete must also lie in scope.
-func routeTxn(topo Topology, scope writeScope, cmps []clientv3.Cmp, then, els []clientv3.Op) (string, error) {
+func routeTxn(topo Topology, scope scope, cmps []clientv3.Cmp, then, els []clientv3.Op) (string, error) {
 	r := router{topo: topo, scope: scope}
 	if err := r.txn(cmps, then, els); err != nil {
 		return "", err
@@ -125,9 +126,15 @@ func routeTxn(topo Topology, scope writeScope, cmps []clientv3.Cmp, then, els []
 	return r.region, nil
 }
 
+// scope is what a writer may put and delete. del tells a delete from a put: the API may delete keys it may not put
+// (D1040, D1042).
+type scope interface {
+	check(key, end []byte, del bool) error
+}
+
 type router struct {
 	topo   Topology
-	scope  writeScope
+	scope  scope
 	region string
 	first  string // the key that fixed region, for the error message
 }
@@ -150,7 +157,7 @@ func (r *router) txn(cmps []clientv3.Cmp, then, els []clientv3.Op) error {
 				return err
 			}
 			if op.IsPut() || op.IsDelete() {
-				if err := r.scope.check(op.KeyBytes(), op.RangeBytes()); err != nil {
+				if err := r.scope.check(op.KeyBytes(), op.RangeBytes(), op.IsDelete()); err != nil {
 					return err
 				}
 			}
@@ -235,8 +242,8 @@ func (w writeScope) areas(p Plane, inst string) (prefixes, exact []string) {
 }
 
 // check is nil if the put or delete of key, or of the range [key, end), lies within one writable area. Exact
-// keys take no range.
-func (w writeScope) check(key, end []byte) error {
+// keys take no range. A term may put whatever it may delete, so del does not matter here.
+func (w writeScope) check(key, end []byte, _ bool) error {
 	k := string(key)
 	p, inst, err := Owner(k)
 	if err != nil {

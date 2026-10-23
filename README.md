@@ -59,11 +59,11 @@ docs/                     DECISIONS.md, PROTOCOL.md
 | target | does |
 |---|---|
 | `make` | `proto`, `openapi`, `build`, `examples`, `web` |
-| `make tools` | `go install`s protoc-gen-go, buf, oapi-codegen and oasdiff into `bin/tools`, versions pinned (D1042, D1043) |
+| `make tools` | `go install`s protoc-gen-go, buf, oapi-codegen and oasdiff into `bin/tools`, versions pinned (D1043, D1044) |
 | `make proto` | regenerates `contract/gen/mftiko` from `contract/proto/`; commit the result with the `.proto` change |
-| `make openapi` | Redocly lint, then regenerates `contract/gen/api/v1` and `web/src/lib/gen/api/v1.ts` (D1046) |
+| `make openapi` | Redocly lint, then regenerates `contract/gen/api/v1` and `web/src/lib/gen/api/v1.ts` (D1047) |
 | `make proto-lint` / `make proto-breaking` | buf lint / buf breaking against `main` (`BUF_AGAINST=` another buf input); drafts listed in `buf.yaml` are exempt (DECISIONS D007) |
-| `make openapi-lint` / `make openapi-breaking` | Redocly lint / `oasdiff breaking` against `main` (`OAS_BASE=` another commit). Until E10-20 the report does not fail the build (D1045) |
+| `make openapi-lint` / `make openapi-breaking` | Redocly lint / `oasdiff breaking` against `main` (`OAS_BASE=` another commit). Until E10-20 the report does not fail the build (D1046) |
 | `make gen-check` | fails if `contract/gen/`, `web/src/lib/gen/`, `go.mod` or `go.sum` are not what `make proto` and `make openapi` produce |
 | `make build` | every command into `bin/` |
 | `make examples` | example strategies into `bin/examples/` |
@@ -100,7 +100,7 @@ The tests of `internal/platform/natsx` start an embedded core NATS server (`nats
 
 The tests of `migrations` and `internal/sym` run a real PostgreSQL (`pgtest`). They find the server through `MFTIKO_PG_BIN` (the `postgres` binary; `initdb` is the one beside it), else `postgres` on `PATH`, and are skipped when there is neither. Set `MFTIKO_REQUIRE_PG=1` to make a missing binary a failure instead; CI does, so a run that skipped them cannot pass.
 
-CI (`.github/workflows/ci.yml`) runs `make check` on every pull request and on `main`, with etcd downloaded from its release and checked against the release's `SHA256SUMS`, PostgreSQL installed from the runner image's packages, and `buf breaking` and `oasdiff breaking` compared with the pull request's base. Until E10-20, `oasdiff` prints its report and does not fail the job (D1045).
+CI (`.github/workflows/ci.yml`) runs `make check` on every pull request and on `main`, with etcd downloaded from its release and checked against the release's `SHA256SUMS`, PostgreSQL installed from the runner image's packages, and `buf breaking` and `oasdiff breaking` compared with the pull request's base. Until E10-20, `oasdiff` prints its report and does not fail the job (D1046).
 
 `internal/sts/conformance` is the SDK conformance harness (PROTOCOL §9.8, D828–D839). `go test -race` runs it against `fakeworker`: one compliant pass, and one deliberate failure for each check (D834). Those tests poll observable conditions. Every pull request also runs the full Go SDK suite: `make sdk-conformance` builds `examples/strategies/conform` and runs it through `mftiko-conformance` (D864). Try a worker locally with `mftiko-conformance -- <worker argv>`.
 

@@ -2,7 +2,7 @@
 // code of its own: the rules run as a test, so `make check` and CI enforce them.
 //
 //   - contract depends on nothing else in the repository, and outside it only on protobuf and the standard library.
-//     contract/gen/api also imports github.com/oapi-codegen/runtime (D1044). contract/symbol depends only on the standard library.
+//     contract/gen/api also imports github.com/oapi-codegen/runtime (D1045). contract/symbol depends only on the standard library.
 //   - exchange depends only on contract. The exchange package itself, the adapter interfaces, links none of
 //     fasthttp, coder/websocket or sonic: they belong to the workers and exchange/transport, and sonic also to
 //     exchange/internal/codec (DECISIONS D302).
