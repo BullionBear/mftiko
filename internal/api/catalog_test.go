@@ -56,9 +56,11 @@ type fakeCatalog struct {
 	tags       map[string][]string
 	digest     map[string]string
 	manifest   map[string]artifact.ManifestInfo
+	data       map[string]artifact.DataInfo
 	resolveErr map[string]error
 	tagsErr    map[string]error
 	readErr    map[string]error
+	dataErr    map[string]error
 	hold       chan struct{}
 	inflight   int
 	max        int
@@ -130,6 +132,22 @@ func (f *fakeCatalog) ReadManifest(ctx context.Context, repository, digest strin
 	info, ok := f.manifest[catKey(repository, digest)]
 	if !ok {
 		return artifact.ManifestInfo{}, &artifact.Error{Reason: artifact.ReasonNotFound, Permanent: true, Err: errors.New("missing")}
+	}
+	return info, nil
+}
+
+func (f *fakeCatalog) ReadData(ctx context.Context, repository, digest string) (artifact.DataInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return artifact.DataInfo{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.dataErr[catKey(repository, digest)]; err != nil {
+		return artifact.DataInfo{}, err
+	}
+	info, ok := f.data[catKey(repository, digest)]
+	if !ok {
+		return artifact.DataInfo{}, &artifact.Error{Reason: artifact.ReasonNotFound, Permanent: true, Err: errors.New("missing")}
 	}
 	return info, nil
 }

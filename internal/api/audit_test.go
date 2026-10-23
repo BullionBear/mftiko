@@ -252,7 +252,7 @@ func TestAuditRows(t *testing.T) {
 		method: http.MethodPost, path: "/api/v1/sessions", bearer: tokenAda,
 		contentType: "application/json", body: huge,
 	}).do(t, client, base)
-	if code != http.StatusNotFound {
+	if code != http.StatusBadRequest {
 		t.Fatalf("huge %d", code)
 	}
 	hugeRow := waitAuditID(t, conn, hdr.Get(headerRequestID))

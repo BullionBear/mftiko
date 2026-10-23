@@ -139,6 +139,7 @@ export interface paths {
          * @description 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
          *     `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
          *     Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
+         *     可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（D1068）。
          */
         post: operations["createSession"];
         delete?: never;
@@ -580,7 +581,7 @@ export interface components {
              * @description 來自 `session_records`（D1031）。Postgres 不可用時省略。
              */
             created_at?: string;
-            /** @description null 表示不是經由 API 建立的（reconcile 補的，D1031）。Postgres 不可用時省略。 */
+            /** @description 建立這個 session 的使用者（D1031）。沒有對應的 `session_records` 列，或 Postgres 不可用時省略。D1072 修改 D1031：reconcile 不補列。 */
             created_by?: string | null;
             spec: components["schemas"]["SessionSpecView"];
             status?: components["schemas"]["SessionStatus"];
@@ -685,7 +686,7 @@ export interface components {
             stderr: string;
         };
         /**
-         * @description `pending`：已寫 Postgres、etcd 還沒確認。`created`：etcd 已有 spec。`abandoned`：etcd 從未寫成，reconcile 逾時標記。
+         * @description `pending`：已寫 Postgres、etcd 還沒確認。`created`：etcd 已有 spec。`abandoned`：超過 2 分鐘仍沒有對應 spec（D1069）。
          *     `closed`：etcd 的 spec 已刪除，`final` 是最後的狀態（D1031）。
          * @enum {string}
          */
@@ -1105,7 +1106,10 @@ export interface operations {
     createSession: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description 選填。同 key、同 body 在 24 小時內回同一個 session；同 key、不同 body 回 409（D1068）。 */
+                "Idempotency-Key"?: string;
+            };
             path?: never;
             cookie?: never;
         };

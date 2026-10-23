@@ -241,22 +241,24 @@ type ClientInterface interface {
 	// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
 	// `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
 	// Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
+	// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（D1068）。
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /sessions (the `CreateSession` operationId).
-	CreateSessionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	CreateSessionWithBody(ctx context.Context, params *CreateSessionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateSession 部署 session
 	//
 	// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
 	// `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
 	// Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
+	// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（D1068）。
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /sessions (the `CreateSession` operationId).
-	CreateSession(ctx context.Context, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	CreateSession(ctx context.Context, params *CreateSessionParams, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteSession 刪除 terminal 的 session
 	//
@@ -638,12 +640,13 @@ func (c *Client) ListSessions(ctx context.Context, params *ListSessionsParams, r
 // 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
 // `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
 // Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
+// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（D1068）。
 //
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /sessions (the `CreateSession` operationId).
-func (c *Client) CreateSessionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateSessionRequestWithBody(c.Server, contentType, body)
+func (c *Client) CreateSessionWithBody(ctx context.Context, params *CreateSessionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSessionRequestWithBody(c.Server, params, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -659,12 +662,13 @@ func (c *Client) CreateSessionWithBody(ctx context.Context, contentType string, 
 // 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
 // `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
 // Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
+// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（D1068）。
 //
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /sessions (the `CreateSession` operationId).
-func (c *Client) CreateSession(ctx context.Context, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateSessionRequest(c.Server, body)
+func (c *Client) CreateSession(ctx context.Context, params *CreateSessionParams, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSessionRequest(c.Server, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1593,18 +1597,18 @@ func NewListSessionsRequest(server string, params *ListSessionsParams) (*http.Re
 }
 
 // NewCreateSessionRequest calls the generic CreateSession builder with application/json body
-func NewCreateSessionRequest(server string, body CreateSessionJSONRequestBody) (*http.Request, error) {
+func NewCreateSessionRequest(server string, params *CreateSessionParams, body CreateSessionJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewCreateSessionRequestWithBody(server, "application/json", bodyReader)
+	return NewCreateSessionRequestWithBody(server, params, "application/json", bodyReader)
 }
 
 // NewCreateSessionRequestWithBody constructs an http.Request for the CreateSession method, with any body, and a specified content type
-func NewCreateSessionRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+func NewCreateSessionRequestWithBody(server string, params *CreateSessionParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -1628,6 +1632,21 @@ func NewCreateSessionRequestWithBody(server string, contentType string, body io.
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
+	}
 
 	return req, nil
 }
@@ -2132,22 +2151,24 @@ type ClientWithResponsesInterface interface {
 	// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
 	// `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
 	// Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
+	// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（D1068）。
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /sessions (the `CreateSession` operationId).
-	CreateSessionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error)
+	CreateSessionWithBodyWithResponse(ctx context.Context, params *CreateSessionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error)
 
 	// CreateSessionWithResponse 部署 session
 	//
 	// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
 	// `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
 	// Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
+	// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（D1068）。
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /sessions (the `CreateSession` operationId).
-	CreateSessionWithResponse(ctx context.Context, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error)
+	CreateSessionWithResponse(ctx context.Context, params *CreateSessionParams, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error)
 
 	// DeleteSessionWithResponse 刪除 terminal 的 session
 	//
@@ -3836,12 +3857,13 @@ func (c *ClientWithResponses) ListSessionsWithResponse(ctx context.Context, para
 // 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
 // `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
 // Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
+// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（D1068）。
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /sessions (the `CreateSession` operationId).
-func (c *ClientWithResponses) CreateSessionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error) {
-	rsp, err := c.CreateSessionWithBody(ctx, contentType, body, reqEditors...)
+func (c *ClientWithResponses) CreateSessionWithBodyWithResponse(ctx context.Context, params *CreateSessionParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error) {
+	rsp, err := c.CreateSessionWithBody(ctx, params, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -3853,12 +3875,13 @@ func (c *ClientWithResponses) CreateSessionWithBodyWithResponse(ctx context.Cont
 // 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
 // `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
 // Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
+// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（D1068）。
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /sessions (the `CreateSession` operationId).
-func (c *ClientWithResponses) CreateSessionWithResponse(ctx context.Context, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error) {
-	rsp, err := c.CreateSession(ctx, body, reqEditors...)
+func (c *ClientWithResponses) CreateSessionWithResponse(ctx context.Context, params *CreateSessionParams, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error) {
+	rsp, err := c.CreateSession(ctx, params, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}

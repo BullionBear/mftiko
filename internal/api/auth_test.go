@@ -365,9 +365,10 @@ func TestAuthHTTP(t *testing.T) {
 		method: http.MethodPost, path: "/api/v1/sessions", bearer: tokenAda,
 		contentType: "application/json; charset=utf-8", body: `{}`,
 	}).do(t, client, base)
-	if code != http.StatusNotFound {
+	if code != http.StatusBadRequest {
 		t.Fatalf("charset %d %s", code, body)
 	}
+	mustProblem(t, body, http.StatusBadRequest, "validation_failed")
 
 	code, _, body = (apiCall{method: http.MethodPost, path: "/api/v1/sessions", contentType: "text/plain", body: "x"}).do(t, client, base)
 	if code != http.StatusUnauthorized {

@@ -57,6 +57,15 @@ type Server struct {
 	strategyOnce    sync.Once
 	strategyHandler http.Handler
 
+	// hook is nil in production. Tests fail a create at "before-etcd" or "after-etcd".
+	hook func(step string) error
+	// missingRecord counts etcd specs with no session_records row (D1072).
+	missingRecord atomic.Int64
+	// hashMismatch counts specs whose immutable content does not match the row (D1071).
+	hashMismatch  atomic.Int64
+	reconcileKick chan struct{}
+	reconcileMu   sync.Mutex
+
 	mu     sync.Mutex
 	logged string // last unavailable_regions logged, joined
 }
@@ -141,6 +150,9 @@ func start(cfg Config) (*Server, error) {
 		s.wg.Add(1)
 		go s.runMirror(c)
 	}
+	s.reconcileKick = make(chan struct{}, 1)
+	s.wg.Add(1)
+	go s.runReconcile()
 	ln, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
 		s.stop()
@@ -389,7 +401,11 @@ func (s *Server) runMirror(c *cluster) {
 			return
 		}
 		c.mirror.Store(m)
+		watchCtx, watchCancel := context.WithCancel(s.ctx)
+		s.wg.Add(1)
+		go s.watchMirror(watchCtx, m)
 		err = m.Run(s.ctx)
+		watchCancel()
 		if s.stopped() {
 			return
 		}

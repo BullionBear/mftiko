@@ -12,7 +12,6 @@
 // GC deletes every other rootfs, then layers no remaining rootfs references (D956). An optional
 // second set keeps input layers that are still being pulled or unpacked. HoldLayers keeps digests
 // a caller is still using, including strategy layers between Pull and UnpackImage (D973).
-// Catalog lists tags and resolves a tag to a digest. It reuses this package's client and manifest
-// parser, does not download layers, and does not check os/arch (D1056). Pull is unchanged: STS
-// still fetches by digest only.
+// Catalog lists tags, resolves a tag to a digest, and reads a worker or data manifest without
+// downloading layers (D1056, D1012). Pull and PullData are unchanged: STS still fetches by digest.
 package artifact

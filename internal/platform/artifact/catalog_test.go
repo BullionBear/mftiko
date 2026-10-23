@@ -208,6 +208,60 @@ func TestOpenCatalogRejects(t *testing.T) {
 	}
 }
 
+// TestCatalogReadData checks the catalog read (D972, D1012). A strategy image is the wrong
+// media type. A data artifact returns its config and does not download the layer.
+func TestCatalogReadData(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DOCKER_CONFIG", dir)
+	if err := os.WriteFile(dir+"/config.json", []byte(`{"auths":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reg := newMemRegistry()
+	defer reg.Close()
+	img, err := PackStrategy(hostBinary(t), "hello", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := Push(ctx, img, Destination{Repository: reg.repo(), PlainHTTP: true}); err != nil {
+		t.Fatal(err)
+	}
+	cat, err := OpenCatalog(Registry{Address: reg.address(), PlainHTTP: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = cat.ReadData(ctx, "hello", img.Digest)
+	wantReason(t, err, ReasonWrongMediaType, true)
+
+	c, err := Open(Registry{Address: reg.address(), PlainHTTP: true}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.WriteFile(root+"/note", []byte("n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	layer, _, err := c.PackDataFile(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(layer)
+	pushed, err := c.PushData(ctx, DataPush{
+		Repository: "state", Tag: "a1b2c3", LayerPath: layer,
+		Source: DataSource{SessionID: "a1b2c3", Clean: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := cat.ReadData(ctx, "state", pushed.Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Digest != pushed.Digest || info.Config.Schema != DataSchema {
+		t.Fatalf("data %+v", info)
+	}
+}
+
 func sameStrings(got, want []string) bool {
 	if len(got) != len(want) {
 		return false

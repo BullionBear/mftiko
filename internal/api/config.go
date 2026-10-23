@@ -86,6 +86,9 @@ type Config struct {
 	Mirror           state.MirrorOptions
 	Log              zerolog.Logger
 	Now              func() time.Time
+	// ReconcileEvery is the full compare interval. Zero means 30 seconds (D1070).
+	// It is not a deployment setting and is not read from JSON. Tests set it.
+	ReconcileEvery time.Duration
 }
 
 // deployment is the mftiko-etcd-roles input (D1312). Planes names every instance except the controller.

@@ -732,7 +732,7 @@ type Session struct {
 	// CreatedAt 來自 `session_records`（D1031）。Postgres 不可用時省略。
 	CreatedAt *time.Time `json:"created_at,omitempty"`
 
-	// CreatedBy null 表示不是經由 API 建立的（reconcile 補的，D1031）。Postgres 不可用時省略。
+	// CreatedBy 建立這個 session 的使用者（D1031）。沒有對應的 `session_records` 列，或 Postgres 不可用時省略。D1072 修改 D1031：reconcile 不補列。
 	CreatedBy *string `json:"created_by,omitempty"`
 
 	// Dependencies 執行中取自指派的 `bindings`；terminal 之後取自 status 的 `dependency` condition（D1014）。
@@ -795,7 +795,7 @@ type SessionDetail struct {
 	// CreatedAt 來自 `session_records`（D1031）。Postgres 不可用時省略。
 	CreatedAt *time.Time `json:"created_at,omitempty"`
 
-	// CreatedBy null 表示不是經由 API 建立的（reconcile 補的，D1031）。Postgres 不可用時省略。
+	// CreatedBy 建立這個 session 的使用者（D1031）。沒有對應的 `session_records` 列，或 Postgres 不可用時省略。D1072 修改 D1031：reconcile 不補列。
 	CreatedBy *string `json:"created_by,omitempty"`
 
 	// Dependencies 執行中取自指派的 `bindings`；terminal 之後取自 status 的 `dependency` condition（D1014）。
@@ -850,7 +850,7 @@ type SessionRecord struct {
 	// Spec etcd 裡的 spec，以 API 的型別呈現。策略已解析成 digest；帳號帶入了 `td_instance`。
 	Spec SessionSpecView `json:"spec"`
 
-	// State `pending`：已寫 Postgres、etcd 還沒確認。`created`：etcd 已有 spec。`abandoned`：etcd 從未寫成，reconcile 逾時標記。
+	// State `pending`：已寫 Postgres、etcd 還沒確認。`created`：etcd 已有 spec。`abandoned`：超過 2 分鐘仍沒有對應 spec（D1069）。
 	// `closed`：etcd 的 spec 已刪除，`final` 是最後的狀態（D1031）。
 	State       SessionRecordState `json:"state"`
 	StsInstance InstanceName       `json:"sts_instance"`
@@ -862,7 +862,7 @@ type SessionRecordList struct {
 	NextCursor *string         `json:"next_cursor,omitempty"`
 }
 
-// SessionRecordState `pending`：已寫 Postgres、etcd 還沒確認。`created`：etcd 已有 spec。`abandoned`：etcd 從未寫成，reconcile 逾時標記。
+// SessionRecordState `pending`：已寫 Postgres、etcd 還沒確認。`created`：etcd 已有 spec。`abandoned`：超過 2 分鐘仍沒有對應 spec（D1069）。
 // `closed`：etcd 的 spec 已刪除，`final` 是最後的狀態（D1031）。
 type SessionRecordState string
 
@@ -1087,6 +1087,12 @@ type ListSessionsParams struct {
 	// Active true 只列非 terminal 的，false 只列 terminal 的。
 	Active      *bool   `form:"active,omitempty" json:"active,omitempty"`
 	StsInstance *string `form:"sts_instance,omitempty" json:"sts_instance,omitempty"`
+}
+
+// CreateSessionParams defines parameters for CreateSession.
+type CreateSessionParams struct {
+	// IdempotencyKey 選填。同 key、同 body 在 24 小時內回同一個 session；同 key、不同 body 回 409（D1068）。
+	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
 }
 
 // ListStrategiesParams defines parameters for ListStrategies.
