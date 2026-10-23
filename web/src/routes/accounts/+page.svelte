@@ -15,7 +15,10 @@
 	<title>Accounts · mftiko</title>
 </svelte:head>
 
-<h1>Accounts</h1>
+<div class="heading">
+	<h1>Accounts</h1>
+	<a href="/accounts/new">New account</a>
+</div>
 <FeedStatus loading={feed.loading} error={feed.error} empty={feed.items === null} onretry={() => feed.reload()} />
 
 {#if feed.items && feed.items.length === 0 && !feed.loading}
@@ -35,7 +38,7 @@
 		<tbody>
 			{#each feed.items as account (account.api_id)}
 				<tr>
-					<td class="mono">{account.api_id}</td>
+					<td class="mono"><a href="/accounts/{account.api_id}">{account.api_id}</a></td>
 					<td>{account.name}</td>
 					<td>{account.kind}</td>
 					<td>{account.td_instance}</td>
@@ -54,3 +57,13 @@
 		</tbody>
 	</table>
 {/if}
+
+<style>
+	.heading {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem 1.25rem;
+		align-items: baseline;
+		justify-content: space-between;
+	}
+</style>
