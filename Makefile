@@ -164,7 +164,7 @@ fmt: ## go fmt
 	$(GO) fmt ./...
 
 # CI runs these one step each (.github/workflows/ci.yml), in this order: keep the two lists the same.
-CHECKS := proto-lint proto-breaking openapi-lint openapi-breaking gen-check vet build test-race sdk-conformance web-check
+CHECKS := proto-lint proto-breaking openapi-lint openapi-breaking gen-check vet build test-race sdk-conformance web-check web
 
 check: $(CHECKS) ## Everything CI runs
 
