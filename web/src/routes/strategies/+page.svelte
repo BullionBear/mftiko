@@ -37,16 +37,20 @@
 				<th>Repository</th>
 				<th>Latest tag</th>
 				<th>Digest</th>
+				<th>Versions</th>
 			</tr>
 		</thead>
 		<tbody>
 			{#each feed.items as strategy (strategy.id)}
 				<tr>
-					<td>{strategy.id}</td>
+					<td><a href="/strategies/{encodeURIComponent(strategy.id)}">{strategy.id}</a></td>
 					<td class="mono">{strategy.repository}</td>
 					<td>{strategy.latest?.tag ?? '—'}</td>
 					<td class="mono" title={strategy.latest?.digest ?? ''}>
 						{strategy.latest ? shortDigest(strategy.latest.digest) : '—'}
+					</td>
+					<td>
+						<a href="/strategies/{encodeURIComponent(strategy.id)}">Manifest</a>
 					</td>
 				</tr>
 			{/each}

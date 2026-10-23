@@ -12,6 +12,8 @@ export type Instance = components['schemas']['Instance'];
 export type InstanceDetail = components['schemas']['InstanceDetail'];
 export type ControllerStatus = components['schemas']['ControllerStatus'];
 export type Strategy = components['schemas']['Strategy'];
+export type StrategyTag = components['schemas']['StrategyTag'];
+export type StrategyVersion = components['schemas']['StrategyVersion'];
 export type Account = components['schemas']['Account'];
 export type Plane = components['schemas']['Plane'];
 export type EventTopic = components['schemas']['EventTopic'];
@@ -42,6 +44,15 @@ const redirectOnUnauthorized: Middleware = {
 };
 
 api.use(redirectOnUnauthorized);
+
+/** POST /sessions with the body bytes unchanged (D1033, D1086) and one Idempotency-Key (D1089). */
+export function createSession(body: string, idempotencyKey: string) {
+	return api.POST('/sessions', {
+		body: { name: '', sts_instance: 'a', strategy: { id: '', ref: '' } },
+		bodySerializer: () => body,
+		params: { header: { 'Idempotency-Key': idempotencyKey } }
+	});
+}
 
 export function isProblem(value: unknown): value is Problem {
 	if (!value || typeof value !== 'object') return false;
