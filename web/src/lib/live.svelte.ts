@@ -1,9 +1,11 @@
 // Per-page lists. The shared store stays the three fields in console.svelte.ts (D1077).
+import { untrack } from 'svelte';
 import {
 	api,
 	collectPages,
 	failureOf,
 	type Account,
+	type AccountKind,
 	type ControllerStatus,
 	type Instance,
 	type InstanceDetail,
@@ -283,6 +285,95 @@ export class AccountFeed {
 		consoleState.applyFreshness(result.freshness);
 		this.items = result.items;
 		this.error = null;
+	}
+}
+
+export class AccountDetailFeed {
+	account = $state<Account | null>(null);
+	loading = $state(false);
+	error = $state<string | null>(null);
+	missing = $state(false);
+	private gen = 0;
+
+	cancel(): void {
+		this.gen += 1;
+	}
+
+	markMissing(): void {
+		this.gen += 1;
+		this.account = null;
+		this.missing = true;
+		this.loading = false;
+		this.error = null;
+	}
+
+	/** Returns the account, or null when a newer load superseded this one or the request failed. */
+	async load(apiId: number): Promise<Account | null> {
+		const mine = ++this.gen;
+		this.loading = true;
+		this.error = null;
+		this.missing = false;
+		// A caller may be an effect that must not subscribe to `account` (it would reload in a loop).
+		const current = untrack(() => this.account);
+		if (current && current.api_id !== apiId) this.account = null;
+		try {
+			const result = await api.GET('/accounts/{api_id}', {
+				params: { path: { api_id: apiId } }
+			});
+			if (mine !== this.gen) return null;
+			this.loading = false;
+			if (result.response.status === 401) return null;
+			if (result.response.status === 404) {
+				this.missing = true;
+				this.account = null;
+				return null;
+			}
+			const failure = failureOf(result.error, result.response);
+			if (failure || !result.data) {
+				this.error = failure?.message ?? 'Empty response';
+				return null;
+			}
+			this.account = result.data;
+			return result.data;
+		} catch {
+			if (mine !== this.gen) return null;
+			this.loading = false;
+			this.error = 'API unreachable';
+			return null;
+		}
+	}
+}
+
+export class AccountKindFeed {
+	items = $state<AccountKind[] | null>(null);
+	loading = $state(false);
+	error = $state<string | null>(null);
+	private gen = 0;
+
+	cancel(): void {
+		this.gen += 1;
+	}
+
+	async reload(): Promise<void> {
+		const mine = ++this.gen;
+		this.loading = true;
+		try {
+			const result = await api.GET('/account-kinds');
+			if (mine !== this.gen) return;
+			this.loading = false;
+			if (result.response.status === 401) return;
+			const failure = failureOf(result.error, result.response);
+			if (failure || !result.data) {
+				this.error = failure?.message ?? 'Empty response';
+				return;
+			}
+			this.items = result.data.items;
+			this.error = null;
+		} catch {
+			if (mine !== this.gen) return;
+			this.loading = false;
+			this.error = 'API unreachable';
+		}
 	}
 }
 
