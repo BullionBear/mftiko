@@ -148,11 +148,13 @@ func start(cfg Config) (*Server, error) {
 		s.stop()
 		return nil, err
 	}
+	// watchMirror calls kickReconcile as soon as a mirror notifies, and that reads this field.
+	// The channel has to exist before those goroutines start (D1070).
+	s.reconcileKick = make(chan struct{}, 1)
 	for _, c := range s.clusters {
 		s.wg.Add(1)
 		go s.runMirror(c)
 	}
-	s.reconcileKick = make(chan struct{}, 1)
 	s.wg.Add(1)
 	go s.runReconcile()
 	ln, err := net.Listen("tcp", cfg.Listen)
