@@ -53,6 +53,7 @@ type streamConn struct {
 	mu    sync.Mutex
 	queue [][]byte
 	wake  chan struct{}
+	gone  chan struct{} // closed once serve has removed the connection from v.conns
 }
 
 func (c *streamConn) send(frame []byte) {
@@ -105,7 +106,7 @@ func (v *AccountVenue) serve(ctx context.Context, ws *websocket.Conn) {
 		ws.Close(websocket.StatusPolicyViolation, "login refused")
 		return
 	}
-	c := &streamConn{ws: ws, wake: make(chan struct{}, 1)}
+	c := &streamConn{ws: ws, wake: make(chan struct{}, 1), gone: make(chan struct{})}
 	ack := mustJSON(streamFrame{Op: "login", Status: 200})
 	v.conns[c] = struct{}{}
 	v.connsTotal++
@@ -120,6 +121,7 @@ func (v *AccountVenue) serve(ctx context.Context, ws *websocket.Conn) {
 		v.mu.Lock()
 		delete(v.conns, c)
 		v.mu.Unlock()
+		close(c.gone)
 	}()
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -176,7 +178,8 @@ func (v *AccountVenue) EmitFill(f exchange.Fill) {
 }
 
 // Disconnect drops every stream connection at once, as a venue or the network would, without a
-// close handshake.
+// close handshake. It returns once the venue no longer counts them in Connections: closing a socket
+// does not wait for its serve goroutine, so the client can see the drop and reconnect first.
 func (v *AccountVenue) Disconnect() {
 	v.mu.Lock()
 	conns := make([]*streamConn, 0, len(v.conns))
@@ -186,6 +189,9 @@ func (v *AccountVenue) Disconnect() {
 	v.mu.Unlock()
 	for _, c := range conns {
 		c.ws.CloseNow()
+	}
+	for _, c := range conns {
+		<-c.gone
 	}
 }
 
