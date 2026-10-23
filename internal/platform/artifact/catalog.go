@@ -12,8 +12,8 @@ import (
 )
 
 // Catalog reads a registry without storing a catalog and without a data directory (D1056, D1013).
-// Tags, Resolve and ReadManifest are read-only. They do not download layers and do not check
-// os/arch: the catalog is not a spawn. Pull is a different operation and is unchanged.
+// Tags, Resolve, ReadManifest and ReadData are read-only. They do not download layers and do not
+// check os/arch: the catalog is not a spawn. Pull and PullData are unchanged.
 type Catalog struct {
 	reg  Registry
 	http *auth.Client
@@ -145,4 +145,52 @@ func (c *Catalog) ReadManifest(ctx context.Context, repository, digestStr string
 		return ManifestInfo{}, permanent(ReasonBadManifest, fmt.Errorf("schema %q", m.Schema))
 	}
 	return ManifestInfo{Digest: want.String(), Manifest: m, Size: size}, nil
+}
+
+// DataInfo is a data artifact's manifest digest and config (D972, D1012). The layer is not downloaded.
+type DataInfo struct {
+	Digest string
+	Config DataConfig
+}
+
+// ReadData fetches the image manifest and its config for digest and checks that they are a mftiko
+// data artifact (D972). It does not download the layer and does not apply PullData's size cap.
+// PullData is unchanged.
+func (c *Catalog) ReadData(ctx context.Context, repository, digestStr string) (DataInfo, error) {
+	want, err := digest.Parse(digestStr)
+	if err != nil || want.Algorithm() != digest.SHA256 {
+		return DataInfo{}, permanent(ReasonDigestMismatch, fmt.Errorf("digest %q is not sha256", digestStr))
+	}
+	repo, err := c.repository(repository)
+	if err != nil {
+		return DataInfo{}, err
+	}
+	desc, rc, err := repo.FetchReference(ctx, want.String())
+	if err != nil {
+		return DataInfo{}, classify(err)
+	}
+	raw, err := readVerified(rc, desc.Size, want)
+	rc.Close()
+	if err != nil {
+		return DataInfo{}, err
+	}
+	if desc.Digest != want {
+		return DataInfo{}, permanent(ReasonDigestMismatch, fmt.Errorf("registry returned %s for %s", desc.Digest, want))
+	}
+	manifest, err := dataManifest(raw, desc.MediaType)
+	if err != nil {
+		return DataInfo{}, err
+	}
+	cfg, err := fetchVerifiedBlob(ctx, repo, manifest.Config)
+	if err != nil {
+		return DataInfo{}, err
+	}
+	var parsed DataConfig
+	if err := json.Unmarshal(cfg, &parsed); err != nil {
+		return DataInfo{}, permanent(ReasonBadManifest, fmt.Errorf("config: %w", err))
+	}
+	if parsed.Schema != DataSchema {
+		return DataInfo{}, permanent(ReasonBadManifest, fmt.Errorf("schema %q", parsed.Schema))
+	}
+	return DataInfo{Digest: want.String(), Config: parsed}, nil
 }

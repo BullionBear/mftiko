@@ -12,7 +12,9 @@
 // (D1009, D1051). On reply the audit row is queued and written to Postgres; /healthz and /readyz are not
 // (D1010, D1049). The strategy catalog is served from the registry (D1056–D1061). Load checks the DSN and the
 // registry settings and does not dial. Run creates a Postgres pool and does not wait for it to connect;
-// readiness still watches etcd only, and a down Postgres only affects audit (D1048, modifies D1024). A catalog
+// readiness still watches etcd only (D1048, modifies D1024). A down Postgres makes session create return
+// 503 and skip etcd (D1031); audit writes fail the same way. Create and end of a session, the
+// session_records row, and reconcile are D1068–D1073. A catalog
 // request dials the registry when one is configured (D1057, D1060). W5 deletion is a later ticket.
 // Either of the command's file flags may be "-" to read that file from stdin; only one of them may.
 //
@@ -41,7 +43,7 @@
 //
 // Load validates all of that, including the registry address and credentials file, and does not dial Postgres or a
 // registry (D1024, D1060). Run opens a Postgres pool without waiting for a connection (D1048). Readiness watches
-// etcd only. Catalog requests are what dial the registry (D1057). A token should be at least 32 random bytes; the
+// etcd only. Session create returns 503 and does not write etcd when Postgres is down (D1031). Catalog requests are what dial the registry (D1057). A token should be at least 32 random bytes; the
 // file stores only the SHA-256, so a shorter value that was hashed in is still accepted (D1055). The README has
 // the generation command.
 // Run dials every region and keeps one Mirror per cluster on the whole /mftiko/v1/ keyspace, not one mirror per

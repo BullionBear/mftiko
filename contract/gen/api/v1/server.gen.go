@@ -67,7 +67,7 @@ type ServerInterface interface {
 	ListSessions(w http.ResponseWriter, r *http.Request, params ListSessionsParams)
 	// CreateSession 部署 session
 	// (POST /sessions)
-	CreateSession(w http.ResponseWriter, r *http.Request)
+	CreateSession(w http.ResponseWriter, r *http.Request, params CreateSessionParams)
 	// DeleteSession 刪除 terminal 的 session
 	// (DELETE /sessions/{session_id})
 	DeleteSession(w http.ResponseWriter, r *http.Request, sessionId SessionID)
@@ -671,8 +671,35 @@ func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.R
 // CreateSession operation middleware
 func (siw *ServerInterfaceWrapper) CreateSession(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateSessionParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateSession(w, r)
+		siw.Handler.CreateSession(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2029,7 +2056,8 @@ func (response ListSessions401ApplicationProblemPlusJSONResponse) VisitListSessi
 }
 
 type CreateSessionRequestObject struct {
-	Body *CreateSessionJSONRequestBody
+	Params CreateSessionParams
+	Body   *CreateSessionJSONRequestBody
 }
 
 type CreateSessionResponseObject interface {
@@ -3116,8 +3144,10 @@ func (sh *strictHandler) ListSessions(w http.ResponseWriter, r *http.Request, pa
 }
 
 // CreateSession operation middleware
-func (sh *strictHandler) CreateSession(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) CreateSession(w http.ResponseWriter, r *http.Request, params CreateSessionParams) {
 	var request CreateSessionRequestObject
+
+	request.Params = params
 
 	var body CreateSessionJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {

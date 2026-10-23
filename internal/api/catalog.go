@@ -30,6 +30,7 @@ type tagCatalog interface {
 	Tags(ctx context.Context, repository string) ([]string, error)
 	Resolve(ctx context.Context, repository, reference string) (string, error)
 	ReadManifest(ctx context.Context, repository, digest string) (artifact.ManifestInfo, error)
+	ReadData(ctx context.Context, repository, digest string) (artifact.DataInfo, error)
 }
 
 // sha256Ref is the contract's digest (sha256 and 64 lowercase hex digits).
