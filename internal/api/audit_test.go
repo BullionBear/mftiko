@@ -171,10 +171,11 @@ func TestAuditRows(t *testing.T) {
 	}
 	loginRow := waitAuditID(t, conn, hdr.Get(headerRequestID))
 	var loginBody map[string]any
+	// token is removed; the remaining field is kept (D1052).
 	if loginRow.User != "ada" || loginRow.Status != http.StatusNoContent || loginRow.Body == nil ||
-		json.Unmarshal([]byte(*loginRow.Body), &loginBody) != nil || len(loginBody) != 0 ||
-		strings.Contains(*loginRow.Body, tokenAda) {
-		t.Fatalf("login row %+v", loginRow)
+		json.Unmarshal([]byte(*loginRow.Body), &loginBody) != nil || loginBody["extra"] != float64(1) ||
+		loginBody["token"] != nil || strings.Contains(*loginRow.Body, tokenAda) {
+		t.Fatalf("login row %+v body %s", loginRow, stringOr(loginRow.Body))
 	}
 
 	xff := http.Header{"X-Forwarded-For": {xffSpoof}, "X-Request-Id": {"from-client"}}
