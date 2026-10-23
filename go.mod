@@ -10,6 +10,7 @@ require (
 	github.com/nats-io/nats-server/v2 v2.15.0
 	github.com/nats-io/nats.go v1.54.0
 	github.com/nats-io/nkeys v0.4.16
+	github.com/oapi-codegen/runtime v1.7.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/rs/zerolog v1.35.1
@@ -26,6 +27,7 @@ require (
 
 require (
 	github.com/antithesishq/antithesis-sdk-go v0.8.0-default-no-op // indirect
+	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic/loader v0.5.2 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
@@ -33,6 +35,7 @@ require (
 	github.com/coreos/go-systemd/v22 v22.7.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/go-tpm v0.9.8 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
@@ -48,7 +51,7 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.7.2 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
+	golang.org/x/arch v0.8.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/text v0.42.0 // indirect

@@ -1,14 +1,10 @@
-# `make proto` runs this with bin/tools on PATH (installed by `make tools`) and
-# web/node_modules present (installed by `make web-install`). No remote plugins.
+# `make proto` runs this with bin/tools on PATH (installed by `make tools`).
+# No remote plugins. Contract A's TypeScript is `make openapi`, not buf (D1043).
 version: v2
 plugins:
   # Go: contract/gen/mftiko/<pkg>/v1/*.pb.go, matching each file's go_package.
   - local: protoc-gen-go
     out: .
     opt: module=github.com/BullionBear/mftiko
-  # TypeScript for the web console (@bufbuild/protobuf runtime).
-  - local: web/node_modules/.bin/protoc-gen-es
-    out: web/src/lib/gen
-    opt: target=ts
 inputs:
   - directory: contract/proto

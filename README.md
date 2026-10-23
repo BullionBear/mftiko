@@ -22,7 +22,8 @@ internal/                 ① the planes, private
 sdk/                      ② Go strategy SDK, the reference implementation of PROTOCOL §9; depends on contract only
 contract/                 ③ what both ends compile against; source of truth is docs/PROTOCOL.md
   proto/mftiko/<pkg>/v1/  protobuf contracts
-  gen/                    generated Go (make proto; committed, do not edit)
+  gen/                    generated Go (make proto, make openapi; committed, do not edit)
+  openapi/api/v1.yaml     contract A, the API server's OpenAPI document (make openapi)
   wire/                   encodings protobuf cannot express: frame (C3, C4), envelope (md.f), cloid (client_order_id); c4, the worker side of C4
   symbol/                 UniversalTicker, venue registry, the Resolver interface
 exchange/                 exchange adapters: interfaces by plane, one package per exchange (binance, okx, bybit)
@@ -57,15 +58,17 @@ docs/                     DECISIONS.md, PROTOCOL.md
 
 | target | does |
 |---|---|
-| `make` | `proto`, `build`, `examples`, `web` |
-| `make tools` | installs protoc-gen-go into `bin/tools`; buf and protoc-gen-es come from `web/node_modules` |
-| `make proto` | regenerates `contract/gen/` and `web/src/lib/gen/` from `contract/proto/`; commit the result with the `.proto` change |
+| `make` | `proto`, `openapi`, `build`, `examples`, `web` |
+| `make tools` | `go install`s protoc-gen-go, buf, oapi-codegen and oasdiff into `bin/tools`, versions pinned (D1043, D1044) |
+| `make proto` | regenerates `contract/gen/mftiko` from `contract/proto/`; commit the result with the `.proto` change |
+| `make openapi` | Redocly lint, then regenerates `contract/gen/api/v1` and `web/src/lib/gen/api/v1.ts` (D1047) |
 | `make proto-lint` / `make proto-breaking` | buf lint / buf breaking against `main` (`BUF_AGAINST=` another buf input); drafts listed in `buf.yaml` are exempt (DECISIONS D007) |
-| `make gen-check` | fails if `contract/gen/`, `web/src/lib/gen/`, `go.mod` or `go.sum` are not what `make proto` produces |
+| `make openapi-lint` / `make openapi-breaking` | Redocly lint / `oasdiff breaking` against `main` (`OAS_BASE=` another commit). Until E10-20 the report does not fail the build (D1046) |
+| `make gen-check` | fails if `contract/gen/`, `web/src/lib/gen/`, `go.mod` or `go.sum` are not what `make proto` and `make openapi` produce |
 | `make build` | every command into `bin/` |
 | `make examples` | example strategies into `bin/examples/` |
 | `make test` / `make test-race` / `make vet` | Go tests / with the race detector, uncached / vet |
-| `make check` | everything CI runs: `proto-lint`, `proto-breaking`, `gen-check`, `vet`, `build`, `test-race`, `web-check` |
+| `make check` | everything CI runs: `proto-lint`, `proto-breaking`, `openapi-lint`, `openapi-breaking`, `gen-check`, `vet`, `build`, `test-race`, `sdk-conformance`, `web-check` |
 | `make web` / `make web-dev` / `make web-check` | build, dev server, svelte-check |
 | `make dev-up` / `make dev-down` | generate dev NATS credentials, then start / stop a local PostgreSQL, etcd, NATS and registry (Docker); `dev-up` waits until all are healthy |
 | `make accept-up` / `make accept-down` | start / stop the MD acceptance stack; the checks themselves are in `deploy/accept/README.md` |
@@ -75,7 +78,7 @@ docs/                     DECISIONS.md, PROTOCOL.md
 | `make clean` | removes `bin/` and web build output |
 | `make help` | lists targets |
 
-Building and testing the Go code need only Go 1.26+: the generated code is committed. `make proto`, `make web` and `make check` also need Node 22+ and npm; Docker only for `make dev-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`; its etcd is at `http://127.0.0.1:2379`, one member with no auth. Its NATS is at `nats://127.0.0.1:4222`, one server, core NATS only, no TLS. The generated server config sets `max_control_line` to 262144 (D827): a session JWT lists each feed, and the server default of 4096 rejects that CONNECT line. `make dev-up` generates the operator, account and user credentials into `deploy/dev/data/nats`, which is gitignored. MD and md.fetch use those creds. The dev compose registry is `registry:2` at `127.0.0.1:5000`, with no authentication (D910).
+Building and testing the Go code need only Go 1.26+: the generated code is committed. `make openapi`, `make web` and `make check` also need Node 22+ and npm; `make proto` needs only the Go tools from `make tools`. Docker only for `make dev-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`; its etcd is at `http://127.0.0.1:2379`, one member with no auth. Its NATS is at `nats://127.0.0.1:4222`, one server, core NATS only, no TLS. The generated server config sets `max_control_line` to 262144 (D827): a session JWT lists each feed, and the server default of 4096 rejects that CONNECT line. `make dev-up` generates the operator, account and user credentials into `deploy/dev/data/nats`, which is gitignored. MD and md.fetch use those creds. The dev compose registry is `registry:2` at `127.0.0.1:5000`, with no authentication (D910).
 
 ## Packing a strategy
 
@@ -97,7 +100,7 @@ The tests of `internal/platform/natsx` start an embedded core NATS server (`nats
 
 The tests of `migrations` and `internal/sym` run a real PostgreSQL (`pgtest`). They find the server through `MFTIKO_PG_BIN` (the `postgres` binary; `initdb` is the one beside it), else `postgres` on `PATH`, and are skipped when there is neither. Set `MFTIKO_REQUIRE_PG=1` to make a missing binary a failure instead; CI does, so a run that skipped them cannot pass.
 
-CI (`.github/workflows/ci.yml`) runs `make check` on every pull request and on `main`, with etcd downloaded from its release and checked against the release's `SHA256SUMS`, PostgreSQL installed from the runner image's packages, and `buf breaking` compared with the pull request's base.
+CI (`.github/workflows/ci.yml`) runs `make check` on every pull request and on `main`, with etcd downloaded from its release and checked against the release's `SHA256SUMS`, PostgreSQL installed from the runner image's packages, and `buf breaking` and `oasdiff breaking` compared with the pull request's base. Until E10-20, `oasdiff` prints its report and does not fail the job (D1046).
 
 `internal/sts/conformance` is the SDK conformance harness (PROTOCOL §9.8, D828–D839). `go test -race` runs it against `fakeworker`: one compliant pass, and one deliberate failure for each check (D834). Those tests poll observable conditions. Every pull request also runs the full Go SDK suite: `make sdk-conformance` builds `examples/strategies/conform` and runs it through `mftiko-conformance` (D864). Try a worker locally with `mftiko-conformance -- <worker argv>`.
 

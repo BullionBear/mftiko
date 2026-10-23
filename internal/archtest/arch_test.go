@@ -129,6 +129,10 @@ func check(pkgs []pkg, std map[string]bool) []string {
 					bad(imp, "contract depends on nothing else in the repository")
 				}
 				if external && !under(imp, "google.golang.org/protobuf") {
+					// OpenAPI codegen links the oapi-codegen runtime. The rest of contract does not (D1045, D006).
+					if under(from, "contract/gen/api") && under(imp, "github.com/oapi-codegen/runtime") {
+						break
+					}
 					bad(imp, "contract depends only on protobuf and the standard library")
 				}
 			case under(from, "exchange"):
@@ -309,6 +313,11 @@ func TestCheckReportsViolations(t *testing.T) {
 		{ImportPath: m("internal/platform/artifact"), Imports: []string{"oras.land/oras-go/v2"}},      // D909: allowed
 		{ImportPath: m("cmd/mftiko-pack"), Imports: []string{"oras.land/oras-go/v2/registry/remote"}}, // D909: allowed
 		{ImportPath: m("cmd/mftiko-sts-agent"), Imports: []string{"oras.land/oras-go/v2"}},            // D909
+		{ImportPath: m("contract/gen/api/v1"), Imports: []string{
+			"github.com/oapi-codegen/runtime", "github.com/oapi-codegen/runtime/types", // D1045: allowed
+			"github.com/rs/zerolog", // not the runtime
+		}},
+		{ImportPath: m("contract/wire/frame"), Imports: []string{"github.com/oapi-codegen/runtime"}}, // not contract/gen/api
 	}
 	std := map[string]bool{"fmt": true, "context": true}
 	got := check(pkgs, std)
@@ -343,6 +352,8 @@ func TestCheckReportsViolations(t *testing.T) {
 		"internal/controller/daemon imports " + m("contract/gen/mftiko/sym/v1"),
 		"internal/controller/daemon imports " + m("internal/md"),
 		"cmd/mftiko-sts-agent imports oras.land/oras-go/v2",
+		"contract/gen/api/v1 imports github.com/rs/zerolog",
+		"contract/wire/frame imports github.com/oapi-codegen/runtime",
 	}
 	if len(got) != len(want) {
 		t.Errorf("%d violations, want %d:\n%s", len(got), len(want), strings.Join(got, "\n"))

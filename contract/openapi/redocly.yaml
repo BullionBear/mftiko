@@ -1,4 +1,4 @@
-# Redocly lint for contract A (D1002). E10-04 wires it into make and CI.
+# Redocly lint for contract A (D1002). `make openapi-lint` and CI run it (D1047).
 extends:
   - recommended
 rules:

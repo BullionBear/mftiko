@@ -1,7 +1,7 @@
-// Client for mftiko-api. Request and response types come from src/lib/gen (`make proto`);
-// import them with the .js suffix, e.g. '#lib/gen/mftiko/state/v1/state_pb.js'.
-export async function get<T>(path: string): Promise<T> {
-	const res = await fetch(`/api${path}`);
-	if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-	return (await res.json()) as T;
-}
+// Client for mftiko-api. Types are generated from contract/openapi/api/v1.yaml
+// into src/lib/gen/api/v1.ts (`make openapi`). openapi-fetch is the client (D1044, D1047).
+import createClient from 'openapi-fetch';
+import type { paths } from './gen/api/v1';
+
+// Paths in the spec are relative to the server url `/api/v1`.
+export const api = createClient<paths>({ baseUrl: '/api/v1' });

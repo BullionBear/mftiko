@@ -72,8 +72,8 @@ jobs:
           "$bin" --version
           echo "MFTIKO_PG_BIN=$bin" >> "$GITHUB_ENV"
 
-      # The pull request's base, or the previous main for a push; buf reads it as a local branch.
-      - name: Base for buf breaking
+      # The pull request's base, or the previous main for a push. buf and oasdiff read it as a local branch.
+      - name: Base for breaking checks
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: git branch -f ci-base "$BASE_SHA"
@@ -84,6 +84,10 @@ jobs:
         run: make proto-lint
       - name: buf breaking
         run: make proto-breaking BUF_AGAINST='.git#branch=ci-base'
+      - name: openapi lint
+        run: make openapi-lint
+      - name: oasdiff breaking
+        run: make openapi-breaking OAS_BASE=ci-base
       - name: generated code is current
         run: make gen-check
       - name: go vet
