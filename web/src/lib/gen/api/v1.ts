@@ -260,7 +260,10 @@ export interface paths {
         put?: never;
         /**
          * 建立帳號
-         * @description `api_id` 由 API 隨機配發（D1008）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），明文只在處理這個請求的記憶體裡。
+         * @description `api_id` 由 API 隨機配發（D1008）。`credentials` 必填，缺少回 400（D1062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+         *     `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（D1064）。
+         *     `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（D1065）。
+         *     `name` 依副本 best-effort 不重複，同名回 409（D1066）。
          *     `enabled` 不公開，API 一律寫 true（D1034）。
          */
         post: operations["createAccount"];
@@ -281,7 +284,7 @@ export interface paths {
         get: operations["getAccount"];
         /**
          * 更新帳號
-         * @description 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文；有給就重新封裝。`kind`、`td_instance` 不能改。
+         * @description 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文（D1062）；有給就重新封裝，格式檢查與建立相同（D1064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（D1066）。
          *
          *     **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
          *     用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。
@@ -726,7 +729,7 @@ export interface components {
         };
         /** @enum {string} */
         KeyType: "hmac" | "ed25519";
-        /** @description 只寫不讀（D1011）。回應、log、`audit` 都不含它。 */
+        /** @description 只寫不讀（D1011、D1063）。回應、log、`audit` 都不含明文或密文。 */
         Credentials: {
             key_type: components["schemas"]["KeyType"];
             key: string;
@@ -753,6 +756,7 @@ export interface components {
             credentials?: components["schemas"]["Credentials"];
             settings?: components["schemas"]["AccountSettings"];
         };
+        /** @description 不含憑證、密文或指紋（D1063）。 */
         Account: {
             api_id: components["schemas"]["APIIDValue"];
             name: string;
@@ -760,8 +764,6 @@ export interface components {
             td_instance: components["schemas"]["InstanceName"];
             region: string;
             settings: components["schemas"]["AccountSettings"];
-            /** @description 密文的指紋，用來辨識換過憑證；不是憑證。 */
-            credentials_fingerprint: string;
             revision: components["schemas"]["Revision"];
             /** @description 引用它的非 terminal session。不為空時刪除回 409。 */
             referenced_by: components["schemas"]["SessionIDValue"][];
@@ -1290,6 +1292,7 @@ export interface operations {
                 limit?: components["parameters"]["Limit"];
                 /** @description 上一頁回應的 `next_cursor`，對呼叫端不透明。 */
                 cursor?: components["parameters"]["Cursor"];
+                /** @description 只列這個 TD instance。不是 instance 名稱、不在 topology，或不是 td，回 400。該 region 不可用時這頁是空的，並標在 `freshness`（D1014）。 */
                 td_instance?: string;
             };
             header?: never;
@@ -1351,7 +1354,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 帳號。不含憑證。 */
+            /** @description 帳號。不含憑證、密文或指紋（D1063）。 */
             200: {
                 headers: {
                     [name: string]: unknown;

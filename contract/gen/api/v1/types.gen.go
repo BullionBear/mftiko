@@ -337,15 +337,12 @@ func (e WorkerPhase) Valid() bool {
 // APIIDValue API 隨機配發，1 到 2⁵³−1（D1008）。
 type APIIDValue = int64
 
-// Account defines model for Account.
+// Account 不含憑證、密文或指紋（D1063）。
 type Account struct {
 	// ApiId API 隨機配發，1 到 2⁵³−1（D1008）。
 	ApiId APIIDValue `json:"api_id"`
-
-	// CredentialsFingerprint 密文的指紋，用來辨識換過憑證；不是憑證。
-	CredentialsFingerprint string `json:"credentials_fingerprint"`
-	Kind                   string `json:"kind"`
-	Name                   string `json:"name"`
+	Kind  string     `json:"kind"`
+	Name  string     `json:"name"`
 
 	// ReferencedBy 引用它的非 terminal session。不為空時刪除回 409。
 	ReferencedBy []SessionIDValue `json:"referenced_by"`
@@ -359,7 +356,7 @@ type Account struct {
 
 // AccountCreate defines model for AccountCreate.
 type AccountCreate struct {
-	// Credentials 只寫不讀（D1011）。回應、log、`audit` 都不含它。
+	// Credentials 只寫不讀（D1011、D1063）。回應、log、`audit` 都不含明文或密文。
 	Credentials *Credentials `json:"credentials,omitempty"`
 
 	// Kind `GET /account-kinds` 裡 `supported` 的種類。
@@ -428,7 +425,7 @@ type AccountSettings struct {
 
 // AccountUpdate defines model for AccountUpdate.
 type AccountUpdate struct {
-	// Credentials 只寫不讀（D1011）。回應、log、`audit` 都不含它。
+	// Credentials 只寫不讀（D1011、D1063）。回應、log、`audit` 都不含明文或密文。
 	Credentials *Credentials `json:"credentials,omitempty"`
 	Name        *string      `json:"name,omitempty"`
 
@@ -476,7 +473,7 @@ type ControllerStatus struct {
 	Present    bool         `json:"present"`
 }
 
-// Credentials 只寫不讀（D1011）。回應、log、`audit` 都不含它。
+// Credentials 只寫不讀（D1011、D1063）。回應、log、`audit` 都不含明文或密文。
 type Credentials struct {
 	Key        string  `json:"key"`
 	KeyType    KeyType `json:"key_type"`
@@ -1035,7 +1032,9 @@ type ListAccountsParams struct {
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor 上一頁回應的 `next_cursor`，對呼叫端不透明。
-	Cursor     *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// TdInstance 只列這個 TD instance。不是 instance 名稱、不在 topology，或不是 td，回 400。該 region 不可用時這頁是空的，並標在 `freshness`（D1014）。
 	TdInstance *string `form:"td_instance,omitempty" json:"td_instance,omitempty"`
 }
 

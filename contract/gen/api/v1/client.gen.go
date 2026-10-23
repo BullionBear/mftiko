@@ -105,7 +105,10 @@ type ClientInterface interface {
 
 	// CreateAccountWithBody 建立帳號
 	//
-	// `api_id` 由 API 隨機配發（D1008）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），明文只在處理這個請求的記憶體裡。
+	// `api_id` 由 API 隨機配發（D1008）。`credentials` 必填，缺少回 400（D1062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+	// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（D1064）。
+	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（D1065）。
+	// `name` 依副本 best-effort 不重複，同名回 409（D1066）。
 	// `enabled` 不公開，API 一律寫 true（D1034）。
 	//
 	// Takes any type of body and a specified content type.
@@ -115,7 +118,10 @@ type ClientInterface interface {
 
 	// CreateAccount 建立帳號
 	//
-	// `api_id` 由 API 隨機配發（D1008）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），明文只在處理這個請求的記憶體裡。
+	// `api_id` 由 API 隨機配發（D1008）。`credentials` 必填，缺少回 400（D1062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+	// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（D1064）。
+	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（D1065）。
+	// `name` 依副本 best-effort 不重複，同名回 409（D1066）。
 	// `enabled` 不公開，API 一律寫 true（D1034）。
 	//
 	// Takes a body of the `application/json` content type.
@@ -137,7 +143,7 @@ type ClientInterface interface {
 
 	// UpdateAccountWithBody 更新帳號
 	//
-	// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文；有給就重新封裝。`kind`、`td_instance` 不能改。
+	// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文（D1062）；有給就重新封裝，格式檢查與建立相同（D1064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（D1066）。
 	//
 	// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
 	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。
@@ -149,7 +155,7 @@ type ClientInterface interface {
 
 	// UpdateAccount 更新帳號
 	//
-	// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文；有給就重新封裝。`kind`、`td_instance` 不能改。
+	// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文（D1062）；有給就重新封裝，格式檢查與建立相同（D1064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（D1066）。
 	//
 	// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
 	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。
@@ -342,7 +348,10 @@ func (c *Client) ListAccounts(ctx context.Context, params *ListAccountsParams, r
 
 // CreateAccountWithBody 建立帳號
 //
-// `api_id` 由 API 隨機配發（D1008）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），明文只在處理這個請求的記憶體裡。
+// `api_id` 由 API 隨機配發（D1008）。`credentials` 必填，缺少回 400（D1062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（D1064）。
+// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（D1065）。
+// `name` 依副本 best-effort 不重複，同名回 409（D1066）。
 // `enabled` 不公開，API 一律寫 true（D1034）。
 //
 // Takes any type of body and a specified content type.
@@ -362,7 +371,10 @@ func (c *Client) CreateAccountWithBody(ctx context.Context, contentType string, 
 
 // CreateAccount 建立帳號
 //
-// `api_id` 由 API 隨機配發（D1008）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），明文只在處理這個請求的記憶體裡。
+// `api_id` 由 API 隨機配發（D1008）。`credentials` 必填，缺少回 400（D1062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（D1064）。
+// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（D1065）。
+// `name` 依副本 best-effort 不重複，同名回 409（D1066）。
 // `enabled` 不公開，API 一律寫 true（D1034）。
 //
 // Takes a body of the `application/json` content type.
@@ -414,7 +426,7 @@ func (c *Client) GetAccount(ctx context.Context, apiId APIID, reqEditors ...Requ
 
 // UpdateAccountWithBody 更新帳號
 //
-// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文；有給就重新封裝。`kind`、`td_instance` 不能改。
+// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文（D1062）；有給就重新封裝，格式檢查與建立相同（D1064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（D1066）。
 //
 // **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
 // 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。
@@ -436,7 +448,7 @@ func (c *Client) UpdateAccountWithBody(ctx context.Context, apiId APIID, content
 
 // UpdateAccount 更新帳號
 //
-// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文；有給就重新封裝。`kind`、`td_instance` 不能改。
+// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文（D1062）；有給就重新封裝，格式檢查與建立相同（D1064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（D1066）。
 //
 // **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
 // 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。
@@ -1976,7 +1988,10 @@ type ClientWithResponsesInterface interface {
 
 	// CreateAccountWithBodyWithResponse 建立帳號
 	//
-	// `api_id` 由 API 隨機配發（D1008）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），明文只在處理這個請求的記憶體裡。
+	// `api_id` 由 API 隨機配發（D1008）。`credentials` 必填，缺少回 400（D1062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+	// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（D1064）。
+	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（D1065）。
+	// `name` 依副本 best-effort 不重複，同名回 409（D1066）。
 	// `enabled` 不公開，API 一律寫 true（D1034）。
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -1986,7 +2001,10 @@ type ClientWithResponsesInterface interface {
 
 	// CreateAccountWithResponse 建立帳號
 	//
-	// `api_id` 由 API 隨機配發（D1008）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），明文只在處理這個請求的記憶體裡。
+	// `api_id` 由 API 隨機配發（D1008）。`credentials` 必填，缺少回 400（D1062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+	// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（D1064）。
+	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（D1065）。
+	// `name` 依副本 best-effort 不重複，同名回 409（D1066）。
 	// `enabled` 不公開，API 一律寫 true（D1034）。
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
@@ -2012,7 +2030,7 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateAccountWithBodyWithResponse 更新帳號
 	//
-	// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文；有給就重新封裝。`kind`、`td_instance` 不能改。
+	// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文（D1062）；有給就重新封裝，格式檢查與建立相同（D1064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（D1066）。
 	//
 	// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
 	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。
@@ -2024,7 +2042,7 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateAccountWithResponse 更新帳號
 	//
-	// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文；有給就重新封裝。`kind`、`td_instance` 不能改。
+	// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文（D1062）；有給就重新封裝，格式檢查與建立相同（D1064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（D1066）。
 	//
 	// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
 	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。
@@ -3584,7 +3602,10 @@ func (c *ClientWithResponses) ListAccountsWithResponse(ctx context.Context, para
 
 // CreateAccountWithBodyWithResponse 建立帳號
 //
-// `api_id` 由 API 隨機配發（D1008）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），明文只在處理這個請求的記憶體裡。
+// `api_id` 由 API 隨機配發（D1008）。`credentials` 必填，缺少回 400（D1062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（D1064）。
+// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（D1065）。
+// `name` 依副本 best-effort 不重複，同名回 409（D1066）。
 // `enabled` 不公開，API 一律寫 true（D1034）。
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
@@ -3600,7 +3621,10 @@ func (c *ClientWithResponses) CreateAccountWithBodyWithResponse(ctx context.Cont
 
 // CreateAccountWithResponse 建立帳號
 //
-// `api_id` 由 API 隨機配發（D1008）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），明文只在處理這個請求的記憶體裡。
+// `api_id` 由 API 隨機配發（D1008）。`credentials` 必填，缺少回 400（D1062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（D1064）。
+// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（D1065）。
+// `name` 依副本 best-effort 不重複，同名回 409（D1066）。
 // `enabled` 不公開，API 一律寫 true（D1034）。
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
@@ -3644,7 +3668,7 @@ func (c *ClientWithResponses) GetAccountWithResponse(ctx context.Context, apiId 
 
 // UpdateAccountWithBodyWithResponse 更新帳號
 //
-// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文；有給就重新封裝。`kind`、`td_instance` 不能改。
+// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文（D1062）；有給就重新封裝，格式檢查與建立相同（D1064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（D1066）。
 //
 // **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
 // 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。
@@ -3662,7 +3686,7 @@ func (c *ClientWithResponses) UpdateAccountWithBodyWithResponse(ctx context.Cont
 
 // UpdateAccountWithResponse 更新帳號
 //
-// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文；有給就重新封裝。`kind`、`td_instance` 不能改。
+// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文（D1062）；有給就重新封裝，格式檢查與建立相同（D1064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（D1066）。
 //
 // **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
 // 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。

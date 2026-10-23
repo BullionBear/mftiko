@@ -64,6 +64,19 @@ type Input struct {
 	Now          func() time.Time // nil: time.Now
 }
 
+// Kind is one account kind the API lists and checks (D301, D1034). cmd/mftiko-api fills it from the
+// exchange registry. This package does not import exchange.
+type Kind struct {
+	Name       string
+	Label      string
+	Trades     []string
+	KeyTypes   []string
+	Passphrase bool
+}
+
+// Supported is true when the kind trades exactly one venue (D614, D1011).
+func (k Kind) Supported() bool { return len(k.Trades) == 1 }
+
 // Config is the validated settings Run serves with. The secret fields are credentials; do not log a Config.
 type Config struct {
 	Topology         state.Topology
@@ -71,6 +84,7 @@ type Config struct {
 	Users            []User
 	Repositories     []string
 	TDKeys           map[string]sealbox.PublicKey
+	Kinds            []Kind // not in the JSON; the command sets it (D1034). Empty rejects every kind.
 	Retention        time.Duration
 	UnavailableAfter time.Duration
 	Listen           string

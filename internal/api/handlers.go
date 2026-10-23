@@ -12,28 +12,6 @@ import (
 // later tickets answer 404 not_found once the caller is authenticated, so a valid token is not a 401.
 var _ apiv1.ServerInterface = (*Server)(nil)
 
-func (s *Server) ListAccountKinds(w http.ResponseWriter, _ *http.Request) {
-	s.notFound(w)
-}
-
-func (s *Server) ListAccounts(w http.ResponseWriter, _ *http.Request, _ apiv1.ListAccountsParams) {
-	s.notFound(w)
-}
-
-func (s *Server) CreateAccount(w http.ResponseWriter, _ *http.Request) { s.notFound(w) }
-
-func (s *Server) DeleteAccount(w http.ResponseWriter, _ *http.Request, _ apiv1.APIID, _ apiv1.DeleteAccountParams) {
-	s.notFound(w)
-}
-
-func (s *Server) GetAccount(w http.ResponseWriter, _ *http.Request, _ apiv1.APIID) {
-	s.notFound(w)
-}
-
-func (s *Server) UpdateAccount(w http.ResponseWriter, _ *http.Request, _ apiv1.APIID) {
-	s.notFound(w)
-}
-
 // StreamEvents holds the response open until the client goes away. Event payloads, Last-Event-ID
 // resume, and the 15s heartbeat are E10-13 (#318). This exists so the audit row is written when
 // the stream ends, with the connection time as the duration (D1010).

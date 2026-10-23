@@ -30,10 +30,20 @@ import (
 // envChild makes the re-executed test binary run mftiko-api instead of the tests.
 const envChild = "MFTIKO_API_CHILD"
 
+// testMainExtra handles a re-exec of this test binary that is not the API process. The linux
+// account test sets it so the TD agent's shim and account worker can run in this binary. A nil
+// hook, or one that reports not handled, falls through to the tests.
+var testMainExtra func() (code int, handled bool)
+
 func TestMain(m *testing.M) {
 	if os.Getenv(envChild) == "1" {
 		main()
 		return
+	}
+	if testMainExtra != nil {
+		if code, ok := testMainExtra(); ok {
+			os.Exit(code)
+		}
 	}
 	os.Exit(m.Run())
 }

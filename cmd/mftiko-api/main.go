@@ -14,6 +14,9 @@
 //	listen                                listen address, default :8080 (D1029)
 //	shutdown_timeout                      drain limit after SIGTERM, Go duration, default 10s (D1027)
 //
+// Account kinds are not in the JSON. Run copies them from the exchange registry into the API
+// (D1034). The API package does not import exchange.
+//
 // A zero or omitted duration takes the default. Secrets are environment variables, and the matching flag
 // overrides, as for the controller: the etcd user "api" password ($MFTIKO_ETCD_PASSWORD, -etcd-password), the
 // cookie HMAC key ($MFTIKO_COOKIE_KEY, -cookie-key) and the Postgres DSN ($MFTIKO_POSTGRES_DSN, -postgres-dsn).
@@ -52,6 +55,8 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/BullionBear/mftiko/exchange"
+	"github.com/BullionBear/mftiko/exchange/all"
 	"github.com/BullionBear/mftiko/internal/api"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/logger"
@@ -132,7 +137,32 @@ func run(ctx context.Context, opt options, stdin io.Reader, log zerolog.Logger) 
 	if err != nil {
 		return err
 	}
+	// Kinds are not configuration. The registry is the list GET /account-kinds serves, and the
+	// check create and update apply (D1034). internal/api does not import exchange.
+	cfg.Kinds = accountKinds(all.Registry())
 	return api.Run(ctx, cfg)
+}
+
+// accountKinds copies the registry's account kinds into the API's view of them. Supported is derived
+// from how many venues the kind trades (D614).
+func accountKinds(r *exchange.Registry) []api.Kind {
+	names := r.AccountKinds()
+	out := make([]api.Kind, 0, len(names))
+	for _, name := range names {
+		k, ok := r.AccountKind(name)
+		if !ok {
+			continue
+		}
+		types := make([]string, len(k.KeyTypes))
+		for i, t := range k.KeyTypes {
+			types[i] = string(t)
+		}
+		out = append(out, api.Kind{
+			Name: k.Name, Label: k.Label,
+			Trades: append([]string(nil), k.Trades...), KeyTypes: types, Passphrase: k.Passphrase,
+		})
+	}
+	return out
 }
 
 func openArg(path string, stdin io.Reader) (io.ReadCloser, error) {
