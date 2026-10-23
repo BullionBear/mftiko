@@ -286,6 +286,7 @@ func TestAccounts(t *testing.T) {
 		t.Fatalf("freshness %+v", page.Freshness)
 	}
 	code, _, body = f.call(t, http.MethodGet, "/api/v1/accounts?limit=1&cursor="+*page.NextCursor, "")
+	page = apiv1.AccountList{}
 	if code != http.StatusOK || json.Unmarshal(body, &page) != nil || len(page.Items) != 1 || page.Items[0].ApiId != 10 || page.NextCursor != nil {
 		t.Fatalf("next page %d %s", code, body)
 	}
@@ -503,6 +504,9 @@ func TestAccountLeak(t *testing.T) {
 	opened, err := sealbox.OpenCredentials(f.keys["td-tw-1"], rec.GetSealedCredentials(), created.ApiId, "Okx")
 	if err != nil || opened.Key != key || opened.Secret != secret || opened.Passphrase != pass {
 		t.Fatalf("opened %+v %v", opened, err)
+	}
+	if got := f.waitAccount(t, created.ApiId); got.Name != "okx-desk" {
+		t.Fatalf("visible %+v", got)
 	}
 	code, _, gotBody := f.call(t, http.MethodGet, fmt.Sprintf("/api/v1/accounts/%d", created.ApiId), "")
 	if code != http.StatusOK {
