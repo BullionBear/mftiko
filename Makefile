@@ -187,11 +187,14 @@ web-dev: web-install ## Dev server; proxies /api to mftiko-api on :8080
 
 # ---------- database ----------
 
-dev-up: ## Generate dev NATS credentials, then start PostgreSQL, etcd, NATS and a registry and wait until all are healthy
+# The api service runs bin/linux/mftiko-api in a Linux container, for this machine's architecture.
+dev-up: web ## Dev NATS credentials and API config, a Linux mftiko-api and the console, then start PostgreSQL, etcd, NATS, a registry and the API (console on :8080)
 	$(GO) run ./cmd/mftiko-nats-dev -out $(DEV_NATS)
+	deploy/dev/api-init.sh
+	GOOS=linux GOARCH=$$($(GO) env GOARCH) CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/linux/ ./cmd/mftiko-api
 	$(COMPOSE) up -d --wait
 
-dev-down: ## Stop local PostgreSQL, etcd, NATS and the registry. Keeps their data, including the gitignored NATS directory
+dev-down: ## Stop local PostgreSQL, etcd, NATS, the registry and the API. Keeps their data, including the gitignored NATS and API directories
 	$(COMPOSE) down
 
 dev-nats-smoke: ## Run the dev NATS permission checks against the compose server

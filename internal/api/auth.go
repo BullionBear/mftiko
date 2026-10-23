@@ -59,6 +59,12 @@ func isWrite(method string) bool {
 	}
 }
 
+// bearerAuthed reports whether the request was authenticated with a bearer token. Login and cookie
+// requests are not (D1110).
+func bearerAuthed(st *accessState) bool {
+	return st.actor != nil && !st.actor.cookie
+}
+
 func jsonContentType(r *http.Request) bool {
 	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	return err == nil && media == "application/json"

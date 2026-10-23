@@ -138,7 +138,9 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request, st *accessStat
 		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, http.StatusText(http.StatusBadRequest), "request body is too large", nil)
 		return
 	}
-	if isWrite(r.Method) && !jsonContentType(r) {
+	// The Content-Type rule is CSRF defense for the cookie (D1009). A bearer token is not sent by the
+	// browser on its own, so bearer writes skip it, bodyless ones included (D1110).
+	if isWrite(r.Method) && !bearerAuthed(st) && !jsonContentType(r) {
 		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, http.StatusText(http.StatusBadRequest), "Content-Type must be application/json", nil)
 		return
 	}

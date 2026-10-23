@@ -50,7 +50,18 @@ const redirectOnUnauthorized: Middleware = {
 	}
 };
 
-api.use(redirectOnUnauthorized);
+// The API refuses a cookie write without Content-Type: application/json (CSRF, D1009, D1110).
+// openapi-fetch sets it only when there is a body, so end, delete and logout need this.
+const jsonWrites: Middleware = {
+	onRequest({ request }) {
+		if (request.method !== 'GET' && request.method !== 'HEAD' && !request.headers.has('Content-Type')) {
+			request.headers.set('Content-Type', 'application/json');
+		}
+		return request;
+	}
+};
+
+api.use(jsonWrites, redirectOnUnauthorized);
 
 /** POST /sessions with the body bytes unchanged (D1033, D1086) and one Idempotency-Key (D1089). */
 export function createSession(body: string, idempotencyKey: string) {
