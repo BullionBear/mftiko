@@ -349,7 +349,7 @@ func TestSessionCreateRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if stored.GetStrategy().GetRepository() != "mftiko/strategies" || len(stored.GetParams()) != 0 || stored.GetRestart() != nil {
-		t.Fatalf("stored %+v", stored)
+		t.Fatalf("stored %v", &stored)
 	}
 	rows := se.rows(t)
 	if len(rows) != 1 || rows[0].State != recCreated || rows[0].SessionID != minimal.Id || !bytes.Equal(rows[0].SHA, digestSpec(kv.Value)) {
@@ -399,7 +399,7 @@ func TestSessionCreateRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(stored.GetParams()) != `{"z":1,"a":"x"}` || stored.GetStrategy().GetCode() != stratDig || stored.GetAccounts()[0].GetTdInstance() != "td-tw-1" {
-		t.Fatalf("stored full %+v", stored)
+		t.Fatalf("stored full %v", &stored)
 	}
 
 	stRaw, err := proto.Marshal(&statev1.SessionStatus{

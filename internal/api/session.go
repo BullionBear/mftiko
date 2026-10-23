@@ -443,10 +443,8 @@ func getKV(ctx context.Context, w txner, key string) (*mvccpb.KeyValue, error) {
 	if kv == nil {
 		return nil, nil
 	}
-	out := *kv
-	out.Key = append([]byte(nil), kv.Key...)
-	out.Value = append([]byte(nil), kv.Value...)
-	return &out, nil
+	// The txn response owns these bytes. Clone keeps a copy the caller can use after it returns.
+	return proto.Clone(kv).(*mvccpb.KeyValue), nil
 }
 
 func (s *Server) writeSessionProblem(w http.ResponseWriter, err error) {
