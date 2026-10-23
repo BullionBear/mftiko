@@ -136,3 +136,40 @@ func TestWorkerHash(t *testing.T) {
 		t.Fatal("different worker keys, same hash")
 	}
 }
+
+func TestSessionOf(t *testing.T) {
+	const id = "a1b2c3"
+	for _, key := range []string{
+		SessionSpecKey("sts-tw-1", id),
+		SessionStatusKey("sts-tw-1", id),
+		SessionDemandKey("sts-tw-1", id),
+		MDDemandKey("md-jp-1", id, "feed/trade.Binance_Spot_BTCUSDT"),
+		MDDemandKey("md-jp-1", id, "select/top"),
+		MDAckKey("md-jp-1", id, "feed/trade.Binance_Spot_BTCUSDT"),
+		TDDemandKey("td-tw-1", id, 42),
+		TDAckKey("td-tw-1", id, 42),
+	} {
+		if got, ok := SessionOf(key); !ok || got != id {
+			t.Errorf("SessionOf(%q) = %q, %v", key, got, ok)
+		}
+	}
+	for _, key := range []string{
+		SessionSpecPrefix("sts-tw-1"),
+		SessionSpecKey("sts-tw-1", id) + "/x",
+		AccountKey("td-tw-1", 42),
+		DemandPrefix(PlaneMD, "md-jp-1") + id,
+		DemandPrefix(PlaneMD, "md-jp-1") + id + "/",
+		MDAckPrefix("md-jp-1"),
+		AgentKey(PlaneSTS, "sts-tw-1"),
+		WorkerStatusKey(PlaneTD, "td-tw-1", "0123456789abcdef"),
+		IncarnationKey(PlaneMD, "md-jp-1", "0123456789abcdef"),
+		SelectorKey("md-jp-1", "abc"),
+		PlacementKey("md-jp-1", "abc"),
+		DemandPrefix(PlaneCtl, ControllerInstance) + id + "/x",
+		"/elsewhere/sts/sts-tw-1/spec/" + id,
+	} {
+		if got, ok := SessionOf(key); ok {
+			t.Errorf("SessionOf(%q) = %q, want none", key, got)
+		}
+	}
+}

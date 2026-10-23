@@ -4,7 +4,11 @@
 // The contract is the OpenAPI document contract/openapi/api/v1.yaml (D1002), not the platform's protos: requests are
 // converted to session.v1 SessionSpec and state.v1 Account here, and nothing outside this package sees those types.
 // Writes go to etcd under the shared "api" user, guarded by create-only and mod_revision conditions instead of an
-// election (PROTOCOL §3.2 W10, D1006). Reads are answered from one Mirror per cluster (D1014). Every request is
+// election (PROTOCOL §3.2 W10, D1006). They go through state.APIWriter, whose scope lets the API put specs and accounts
+// and delete statuses, never put them (D1042). A lost condition is 409 conflict; etcd not reached is 503
+// region_unavailable. session_id and api_id are drawn at random and checked against the mirrors of the available
+// regions, then created create-only; the region written to must be available (D1007, D1008, D1042). Reads are answered
+// from one Mirror per cluster (D1014). Every request is
 // written to the Postgres audit table on reply (D1010). Endpoints, authentication, audit and W5 deletion are later
 // tickets (D1024): this process reads and checks the settings for them and does not connect to Postgres or a registry.
 // Either of the command's file flags may be "-" to read that file from stdin; only one of them may.

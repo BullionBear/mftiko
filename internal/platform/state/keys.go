@@ -142,6 +142,31 @@ func PlacementKey(mdInst, atomHash string) string { return PlacementPrefix(mdIns
 // PlacementPrefix lists every placement of an MD instance, read back on restart (PROTOCOL §3.4).
 func PlacementPrefix(mdInst string) string { return instPrefix(PlaneMD, mdInst) + "placement/" }
 
+// SessionOf is the session_id a key is scoped to: a session spec, status or demand of an STS instance, or a demand
+// entry or ack of an MD or TD instance. Every other key has none. A key of an absent session still names it: the API
+// treats such an id as taken (D1042).
+func SessionOf(key string) (string, bool) {
+	p, _, err := Owner(key)
+	if err != nil {
+		return "", false
+	}
+	seg := strings.SplitN(strings.TrimPrefix(key, Root+"/"), "/", 5) // plane, inst, kind, session_id, entry
+	if len(seg) < 4 || seg[3] == "" {
+		return "", false
+	}
+	switch kind := seg[2]; p {
+	case PlaneSTS:
+		if len(seg) == 4 && (kind == "spec" || kind == "status" || kind == "demand") {
+			return seg[3], true
+		}
+	case PlaneMD, PlaneTD:
+		if len(seg) == 5 && seg[4] != "" && (kind == "demand" || kind == "ack") {
+			return seg[3], true
+		}
+	}
+	return "", false
+}
+
 // Owner returns the plane and instance a key belongs to: the two path segments after Root. Every key in
 // PROTOCOL §3.1 is /{plane}/{inst}/..., and that instance is the one the routing rule (PROTOCOL §3, D005) names:
 // session spec, demand and status -> the STS instance, demand entry and ack -> the provider, everything else -> the

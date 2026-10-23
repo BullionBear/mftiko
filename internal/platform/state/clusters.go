@@ -72,7 +72,8 @@ func AgentRegions(t Topology, p Plane, inst string) ([]string, error) {
 }
 
 // Reader is the read side of one cluster. There is deliberately no exported way to get a raw client or KV:
-// writes go through Term (E1-05) so none can skip the writer condition.
+// writes go through Term (E1-05), or for the API server through APIWriter (D1042), so none can skip the writer
+// condition or the scope.
 type Reader interface {
 	Get(ctx context.Context, key string, opts ...clientv3.OpOption) (*clientv3.GetResponse, error)
 	Watch(ctx context.Context, key string, opts ...clientv3.OpOption) clientv3.WatchChan
