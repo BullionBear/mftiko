@@ -5,6 +5,11 @@
 
 	const feed = new SessionFeed();
 
+	function accountLabel(session: { spec: { accounts: { name: string; api_id: number }[] } }): string {
+		if (session.spec.accounts.length === 0) return '—';
+		return session.spec.accounts.map((account) => `${account.name} (${account.api_id})`).join(', ');
+	}
+
 	onMount(() => {
 		const stop = feed.watch();
 		void feed.reload();
@@ -15,11 +20,24 @@
 	});
 </script>
 
+<style>
+	.heading {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem 1.25rem;
+		align-items: baseline;
+		justify-content: space-between;
+	}
+</style>
+
 <svelte:head>
 	<title>Sessions · mftiko</title>
 </svelte:head>
 
-<h1>Sessions</h1>
+<div class="heading">
+	<h1>Sessions</h1>
+	<a href="/sessions/new">Deploy session</a>
+</div>
 <FeedStatus loading={feed.loading} error={feed.error} empty={feed.items === null} onretry={() => feed.reload()} />
 
 {#if feed.items && feed.items.length === 0 && !feed.loading}
@@ -28,25 +46,26 @@
 	<table class="data">
 		<thead>
 			<tr>
-				<th>Id</th>
-				<th>Name</th>
-				<th>Phase</th>
-				<th>Desired</th>
-				<th>STS</th>
-				<th>Region</th>
+				<th>Session</th>
+				<th>Status</th>
 				<th>Strategy</th>
+				<th>Account</th>
+				<th>Creator</th>
+				<th>Time</th>
 			</tr>
 		</thead>
 		<tbody>
 			{#each feed.items as session (session.id)}
 				<tr>
-					<td><a class="mono" href="/sessions/{session.id}">{session.id}</a></td>
-					<td>{session.spec.name}</td>
+					<td>
+						<a class="mono" href="/sessions/{session.id}">{session.id}</a>
+						<div>{session.spec.name}</div>
+					</td>
 					<td>{session.status?.phase ?? '—'}</td>
-					<td>{session.spec.desired_state}</td>
-					<td>{session.sts_instance}</td>
-					<td>{session.region}</td>
 					<td class="mono" title={session.spec.strategy.digest}>{session.spec.strategy.name}</td>
+					<td>{accountLabel(session)}</td>
+					<td>{session.created_by ?? '—'}</td>
+					<td>{session.created_at ?? '—'}</td>
 				</tr>
 			{/each}
 		</tbody>
