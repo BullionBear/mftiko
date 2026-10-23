@@ -393,7 +393,7 @@ func TestCreateSkipsTakenIDs(t *testing.T) {
 	}
 
 	s.ids = apiSeq(7, 8, 9)
-	api, _, err := s.createAccount(ctx, "td-tw-1", []byte("acct"))
+	api, _, err := s.createAccount(ctx, "td-tw-1", func(int64) ([]byte, error) { return []byte("acct"), nil })
 	if err != nil || api != 9 {
 		t.Fatalf("createAccount = %d, %v; want 9", api, err)
 	}
@@ -554,8 +554,12 @@ func TestRegionUnavailable(t *testing.T) {
 	if code, name := problemOf(err); code != http.StatusServiceUnavailable || name != "region_unavailable" {
 		t.Fatalf("create in jp is %d %s", code, name)
 	}
-	if _, _, err := s.createAccount(ctx, "td-jp-1", []byte("x")); !errors.Is(err, errRegionUnavailable) {
-		t.Fatalf("account in jp: %v", err)
+	built := false
+	if _, _, err := s.createAccount(ctx, "td-jp-1", func(int64) ([]byte, error) {
+		built = true
+		return []byte("x"), nil
+	}); !errors.Is(err, errRegionUnavailable) || built {
+		t.Fatalf("account in jp: %v, built %v", err, built)
 	}
 	if id, _, err := s.createSession(ctx, "sts-tw-1", []byte("x")); err != nil || id != "aaaaaa" {
 		t.Fatalf("create in tw while jp is cut: %q, %v", id, err)

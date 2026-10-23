@@ -101,7 +101,10 @@ func (s *Server) createSession(ctx context.Context, stsInst string, spec []byte)
 // createAccount allocates an api_id and creates the account of it under tdInst, create-only (W10, D1008, D1042). It
 // returns the id and the account's revision. The region rules are createSession's; an id is taken while an account
 // of any TD instance has it.
-func (s *Server) createAccount(ctx context.Context, tdInst string, account []byte) (int64, int64, error) {
+//
+// build runs after the id is drawn and before the create, so the sealed credentials can carry that id (D613). It is
+// not called when the region is unavailable. An error from build stops the allocation; it is not a conflict.
+func (s *Server) createAccount(ctx context.Context, tdInst string, build func(apiID int64) ([]byte, error)) (int64, int64, error) {
 	if p := s.cfg.Planes[tdInst]; p != state.PlaneTD {
 		return 0, 0, fmt.Errorf("api: %q is not a TD instance", tdInst)
 	}
@@ -117,7 +120,11 @@ func (s *Server) createAccount(ctx context.Context, tdInst string, account []byt
 		func() (int64, error) { return newAPIID(src) },
 		func(id int64) bool { _, ok := taken[id]; return ok },
 		func(id int64) (err error) {
-			rev, err = create(ctx, w, state.AccountKey(tdInst, id), account)
+			val, err := build(id)
+			if err != nil {
+				return err
+			}
+			rev, err = create(ctx, w, state.AccountKey(tdInst, id), val)
 			return err
 		})
 	if err != nil {

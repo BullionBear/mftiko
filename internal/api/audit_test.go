@@ -220,7 +220,7 @@ func TestAuditRows(t *testing.T) {
 		method: http.MethodPost, path: "/api/v1/accounts", bearer: tokenAda,
 		contentType: "application/json", body: small,
 	}).do(t, client, base)
-	if code != http.StatusNotFound {
+	if code != http.StatusBadRequest {
 		t.Fatalf("small write %d %s", code, body)
 	}
 	smallRow := waitAuditID(t, conn, hdr.Get(headerRequestID))
@@ -239,7 +239,7 @@ func TestAuditRows(t *testing.T) {
 		method: http.MethodPost, path: "/api/v1/accounts", bearer: tokenAda,
 		contentType: "application/json", body: rawSecret,
 	}).do(t, client, base)
-	if code != http.StatusNotFound {
+	if code != http.StatusBadRequest {
 		t.Fatalf("raw %d %s", code, body)
 	}
 	rawRow := waitAuditID(t, conn, hdr.Get(headerRequestID))

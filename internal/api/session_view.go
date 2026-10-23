@@ -1,7 +1,6 @@
 package api
 
 import (
-	"slices"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -65,32 +64,6 @@ func detailFrom(s apiv1.Session, fresh apiv1.Freshness) apiv1.SessionDetail {
 		Status:       s.Status,
 		StsInstance:  s.StsInstance,
 	}
-}
-
-// freshness is D1014. controller_absent is true unless the controller's home region is available
-// and /ctl/controller/agent is in that view.
-func (s *Server) freshness() apiv1.Freshness {
-	now := s.now()
-	down := []string{}
-	for _, c := range s.clusters {
-		_, contact, synced := c.observe()
-		if !(regionSnap{synced: synced, contact: contact}).available(now, s.cfg.UnavailableAfter) {
-			down = append(down, c.name)
-		}
-	}
-	slices.Sort(down)
-	absent := true
-	if home, err := s.cfg.Topology.RegionOf(state.ControllerInstance); err == nil {
-		if c := s.byName[home]; c != nil {
-			view, contact, synced := c.observe()
-			if (regionSnap{synced: synced, contact: contact}).available(now, s.cfg.UnavailableAfter) {
-				if _, ok := view.Entries[state.AgentKey(state.PlaneCtl, state.ControllerInstance)]; ok {
-					absent = false
-				}
-			}
-		}
-	}
-	return apiv1.Freshness{UnavailableRegions: down, ControllerAbsent: absent}
 }
 
 func (s *Server) specView(spec *sessionv1.SessionSpec) apiv1.SessionSpecView {

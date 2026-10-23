@@ -316,7 +316,8 @@ func (s *Server) EndSession(w http.ResponseWriter, r *http.Request, id apiv1.Ses
 		s.writeSessionProblem(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, detailFrom(sess, s.freshness()))
+	views, unavail := s.regionViews()
+	writeJSON(w, http.StatusOK, detailFrom(sess, s.freshness(views, unavail)))
 }
 
 func (s *Server) findSpec(id string) (string, error) {

@@ -32,6 +32,10 @@
 //	listen                                listen address, default :8080 (D1029)
 //	shutdown_timeout                      drain limit after SIGTERM, Go duration, default 10s (D1027)
 //
+// Account kinds are not in either JSON file. The command sets Config.Kinds from the exchange registry
+// (D1034). This package does not import exchange. Creating an account seals credentials to that TD
+// instance's public key (D613, D1062). Reads return no credential material (D1063).
+//
 // A zero or omitted duration takes the default. Secrets are not in either JSON file. They are the etcd user "api"
 // password (MFTIKO_ETCD_PASSWORD, flag -etcd-password), the cookie HMAC key (MFTIKO_COOKIE_KEY, flag -cookie-key)
 // and the Postgres DSN (MFTIKO_POSTGRES_DSN, flag -postgres-dsn). The flag overrides the environment variable, as

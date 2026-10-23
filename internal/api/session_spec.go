@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net/http"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -606,9 +605,4 @@ func sessionTerminal(st *statev1.SessionStatus) bool {
 		return false
 	}
 	return st.Phase == statev1.Phase_PHASE_DONE || st.Phase == statev1.Phase_PHASE_FAILED
-}
-
-// writeFields sends 400 validation_failed. path values are JSON Pointers (D1036).
-func writeFields(w http.ResponseWriter, fields []apiv1.FieldError) {
-	writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, "Bad Request", "request is not valid", fields)
 }
