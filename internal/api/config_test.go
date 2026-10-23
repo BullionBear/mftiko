@@ -346,3 +346,83 @@ func TestWebAndTLS(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestStrategyRepositoryIDs(t *testing.T) {
+	pub := mustPub(t)
+	deploy := goodDeploy()
+	cases := []struct {
+		name, repos, want string
+	}{
+		{"duplicate id", `["a/x","b/x"]`, `duplicate strategy id "x"`},
+		{"duplicate id of a bare name", `["x","y/x"]`, `duplicate strategy id "x"`},
+		{"dot segment", `["a/./b"]`, "invalid repository"},
+		{"dotdot segment", `["a/../b"]`, "invalid repository"},
+		{"empty segment", `["a//b"]`, "invalid repository"},
+		{"leading slash", `["/a"]`, "invalid repository"},
+		{"trailing slash", `["a/"]`, "invalid repository"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			conf := `{"repositories":` + tc.repos + `,"td_keys":{"td-tw-1":"` + pub + `"}}`
+			_, err := Load(strings.NewReader(deploy), strings.NewReader(conf), testInput(t))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error %v, want substring %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestRegistrySettings(t *testing.T) {
+	pub := mustPub(t)
+	deploy := goodDeploy()
+	keys := `,"td_keys":{"td-tw-1":"` + pub + `"}`
+	reject := func(conf, want string) {
+		t.Helper()
+		_, err := Load(strings.NewReader(deploy), strings.NewReader(conf), testInput(t))
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %v, want substring %q", err, want)
+		}
+	}
+	reject(`{"plain_http":true`+keys+`}`, "registry address is required")
+	reject(`{"registry_creds":"/no/such/config.json"`+keys+`}`, "registry address is required")
+	reject(`{"registry":"http://127.0.0.1:5000"`+keys+`}`, "host[:port]")
+	reject(`{"registry":"127.0.0.1:5000/repo"`+keys+`}`, "host[:port]")
+
+	bad := filepath.Join(t.TempDir(), "bad.json")
+	if err := os.WriteFile(bad, []byte(`{`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reject(`{"registry":"127.0.0.1:1","registry_creds":"`+bad+`"`+keys+`}`, "credentials")
+
+	missing := t.TempDir() + "/missing.json"
+	done := make(chan error, 1)
+	go func() {
+		conf := `{"registry":"127.0.0.1:1","registry_creds":"` + missing + `"` + keys + `}`
+		_, err := Load(strings.NewReader(deploy), strings.NewReader(conf), testInput(t))
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "credentials") {
+			t.Fatalf("missing credentials file: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Load blocked on a missing credentials file")
+	}
+
+	conf := `{"registry":"127.0.0.1:1","plain_http":true` + keys + `}`
+	cfg := loadWithin(t, deploy, conf, testInput(t))
+	if cfg.Catalog == nil || cfg.Registry.Address != "127.0.0.1:1" || !cfg.Registry.PlainHTTP || cfg.Registry.Credentials != "" {
+		t.Fatalf("registry %+v catalog nil=%v", cfg.Registry, cfg.Catalog == nil)
+	}
+
+	creds := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(creds, []byte(`{"auths":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	conf = `{"registry":"127.0.0.1:1","registry_creds":"` + creds + `"` + keys + `}`
+	cfg = loadWithin(t, deploy, conf, testInput(t))
+	if cfg.Catalog == nil || cfg.Registry.Credentials != creds {
+		t.Fatalf("creds %q catalog nil=%v", cfg.Registry.Credentials, cfg.Catalog == nil)
+	}
+}

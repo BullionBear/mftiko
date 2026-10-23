@@ -6,7 +6,8 @@
 // "-" reads stdin. -config is the API JSON, a file, or "-" when -in is not stdin:
 //
 //	users[].name, users[].token_sha256   one static token per user, stored as SHA-256 (D1009)
-//	repositories                          strategy repositories (D1013)
+//	repositories                          strategy repositories, path without the registry host (D1013, D1060)
+//	registry, registry_creds, plain_http  registry host[:port], Docker config.json, http for dev (D933, D1060)
 //	td_keys                               TD instance name → public key, the mftiko-seal pubkey form (D1011)
 //	retention                             W5 retention, Go duration, default 168h (D1017)
 //	unavailable_after                     region unavailable threshold, Go duration, default 15s (D1014)
@@ -17,9 +18,9 @@
 // overrides, as for the controller: the etcd user "api" password ($MFTIKO_ETCD_PASSWORD, -etcd-password), the
 // cookie HMAC key ($MFTIKO_COOKIE_KEY, -cookie-key) and the Postgres DSN ($MFTIKO_POSTGRES_DSN, -postgres-dsn).
 //
-// The process validates all of that. It does not connect to Postgres or a registry; endpoints, authentication,
-// audit and W5 deletion are later tickets. Readiness watches etcd only (D1024). One Mirror per cluster watches
-// the whole /mftiko/v1/ keyspace (D1025).
+// The process validates all of that. Load does not dial Postgres or a registry (D1024, D1060); a strategy catalog
+// request does. Authentication, audit, the other endpoints and W5 deletion are later tickets. Readiness watches
+// etcd only (D1024). One Mirror per cluster watches the whole /mftiko/v1/ keyspace (D1025).
 //
 // /healthz is 200 while the process is up. /readyz is 200 when any region is available; the body lists every
 // region and unavailable_regions. It is 503 only when every region is unavailable, and during shutdown
@@ -82,7 +83,7 @@ func parseArgs(args []string, getenv func(string) string) (options, bool, error)
 	fs.SetOutput(io.Discard)
 	version := fs.Bool("version", false, "print the release and exit")
 	fs.StringVar(&opt.in, "in", "", "deployment JSON, the same file as mftiko-etcd-roles; - for stdin")
-	fs.StringVar(&opt.config, "config", "", "API JSON (users, repositories, td keys, retention, thresholds); - for stdin")
+	fs.StringVar(&opt.config, "config", "", "API JSON (users, repositories, registry, td keys, retention, thresholds); - for stdin")
 	fs.StringVar(&opt.web, "web", "", "console build directory, served from disk; empty serves the API only")
 	fs.StringVar(&opt.cert, "tls-cert", "", "TLS certificate; with -tls-key, serve HTTPS and HTTP/2")
 	fs.StringVar(&opt.key, "tls-key", "", "TLS private key; with -tls-cert, serve HTTPS and HTTP/2")

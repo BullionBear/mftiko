@@ -282,14 +282,18 @@ type ClientInterface interface {
 
 	// ListStrategies 列出策略
 	//
-	// 部署設定裡每個 repository 一項（D1013）。`id` 是 repository 路徑的最後一段（D1035）。.
+	// 部署設定裡每個 repository 一項（D1013）。`id` 是 repository 路徑的最後一段（D1035）。
+	// 依 `id` 排序後以 `limit`、`cursor` 分頁。沒有快取：這一頁的 `latest` 每次向 registry 解析，同時最多 8 個請求（D1057）。
+	// `latest` 是普通的 tag（D1058、D1013）。連不上 registry 或 registry 5xx 回 503 `registry_unavailable`（D1059）。
 	//
 	// Corresponds with GET /strategies (the `ListStrategies` operationId).
 	ListStrategies(ctx context.Context, params *ListStrategiesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListStrategyVersions 列出策略的版本
 	//
-	// registry 的 tag 清單，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。.
+	// registry 的 tag 清單，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
+	// 一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序，`latest` 是普通的一項（D1058）。
+	// 解析同時最多 8 個請求，沒有快取（D1057）。連不上或 registry 5xx 回 503 `registry_unavailable`（D1059）。
 	//
 	// Corresponds with GET /strategies/{strategy_id}/versions (the `ListStrategyVersions` operationId).
 	ListStrategyVersions(ctx context.Context, strategyId StrategyID, params *ListStrategyVersionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -297,6 +301,8 @@ type ClientInterface interface {
 	// GetStrategyVersion 一個版本的 manifest
 	//
 	// `ref` 是 tag，或 digest（`sha256:…`）。tag 先解析成 digest（D934）。
+	// manifest 讀不出來，或不是策略 artifact，回 502 `invalid_artifact`（D1059）。
+	// 連不上 registry 或 registry 5xx 回 503 `registry_unavailable`。不存在回 404。
 	//
 	// Corresponds with GET /strategies/{strategy_id}/versions/{ref} (the `GetStrategyVersion` operationId).
 	GetStrategyVersion(ctx context.Context, strategyId StrategyID, ref string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -723,7 +729,9 @@ func (c *Client) EndSession(ctx context.Context, sessionId SessionID, reqEditors
 
 // ListStrategies 列出策略
 //
-// 部署設定裡每個 repository 一項（D1013）。`id` 是 repository 路徑的最後一段（D1035）。.
+// 部署設定裡每個 repository 一項（D1013）。`id` 是 repository 路徑的最後一段（D1035）。
+// 依 `id` 排序後以 `limit`、`cursor` 分頁。沒有快取：這一頁的 `latest` 每次向 registry 解析，同時最多 8 個請求（D1057）。
+// `latest` 是普通的 tag（D1058、D1013）。連不上 registry 或 registry 5xx 回 503 `registry_unavailable`（D1059）。
 //
 // Corresponds with GET /strategies (the `ListStrategies` operationId).
 func (c *Client) ListStrategies(ctx context.Context, params *ListStrategiesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -740,7 +748,9 @@ func (c *Client) ListStrategies(ctx context.Context, params *ListStrategiesParam
 
 // ListStrategyVersions 列出策略的版本
 //
-// registry 的 tag 清單，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。.
+// registry 的 tag 清單，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
+// 一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序，`latest` 是普通的一項（D1058）。
+// 解析同時最多 8 個請求，沒有快取（D1057）。連不上或 registry 5xx 回 503 `registry_unavailable`（D1059）。
 //
 // Corresponds with GET /strategies/{strategy_id}/versions (the `ListStrategyVersions` operationId).
 func (c *Client) ListStrategyVersions(ctx context.Context, strategyId StrategyID, params *ListStrategyVersionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -758,6 +768,8 @@ func (c *Client) ListStrategyVersions(ctx context.Context, strategyId StrategyID
 // GetStrategyVersion 一個版本的 manifest
 //
 // `ref` 是 tag，或 digest（`sha256:…`）。tag 先解析成 digest（D934）。
+// manifest 讀不出來，或不是策略 artifact，回 502 `invalid_artifact`（D1059）。
+// 連不上 registry 或 registry 5xx 回 503 `registry_unavailable`。不存在回 404。
 //
 // Corresponds with GET /strategies/{strategy_id}/versions/{ref} (the `GetStrategyVersion` operationId).
 func (c *Client) GetStrategyVersion(ctx context.Context, strategyId StrategyID, ref string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2167,7 +2179,9 @@ type ClientWithResponsesInterface interface {
 
 	// ListStrategiesWithResponse 列出策略
 	//
-	// 部署設定裡每個 repository 一項（D1013）。`id` 是 repository 路徑的最後一段（D1035）。.
+	// 部署設定裡每個 repository 一項（D1013）。`id` 是 repository 路徑的最後一段（D1035）。
+	// 依 `id` 排序後以 `limit`、`cursor` 分頁。沒有快取：這一頁的 `latest` 每次向 registry 解析，同時最多 8 個請求（D1057）。
+	// `latest` 是普通的 tag（D1058、D1013）。連不上 registry 或 registry 5xx 回 503 `registry_unavailable`（D1059）。
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -2176,7 +2190,9 @@ type ClientWithResponsesInterface interface {
 
 	// ListStrategyVersionsWithResponse 列出策略的版本
 	//
-	// registry 的 tag 清單，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。.
+	// registry 的 tag 清單，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
+	// 一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序，`latest` 是普通的一項（D1058）。
+	// 解析同時最多 8 個請求，沒有快取（D1057）。連不上或 registry 5xx 回 503 `registry_unavailable`（D1059）。
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -2186,6 +2202,8 @@ type ClientWithResponsesInterface interface {
 	// GetStrategyVersionWithResponse 一個版本的 manifest
 	//
 	// `ref` 是 tag，或 digest（`sha256:…`）。tag 先解析成 digest（D934）。
+	// manifest 讀不出來，或不是策略 artifact，回 502 `invalid_artifact`（D1059）。
+	// 連不上 registry 或 registry 5xx 回 503 `registry_unavailable`。不存在回 404。
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -3334,6 +3352,8 @@ type ListStrategiesResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *StrategyList
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *ValidationFailed
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthenticated
 	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
@@ -3343,6 +3363,11 @@ type ListStrategiesResponse struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r ListStrategiesResponse) GetJSON200() *StrategyList {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListStrategiesResponse) GetApplicationproblemJSON400() *ValidationFailed {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -3389,6 +3414,8 @@ type ListStrategyVersionsResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *StrategyTagList
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *ValidationFailed
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthenticated
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
@@ -3400,6 +3427,11 @@ type ListStrategyVersionsResponse struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r ListStrategyVersionsResponse) GetJSON200() *StrategyTagList {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListStrategyVersionsResponse) GetApplicationproblemJSON400() *ValidationFailed {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -3451,10 +3483,14 @@ type GetStrategyVersionResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *StrategyVersion
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *ValidationFailed
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthenticated
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
+	ApplicationproblemJSON502 *InvalidArtifact
 	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
 	ApplicationproblemJSON503 *Unavailable
 }
@@ -3462,6 +3498,11 @@ type GetStrategyVersionResponse struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r GetStrategyVersionResponse) GetJSON200() *StrategyVersion {
 	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetStrategyVersionResponse) GetApplicationproblemJSON400() *ValidationFailed {
+	return r.ApplicationproblemJSON400
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -3472,6 +3513,11 @@ func (r GetStrategyVersionResponse) GetApplicationproblemJSON401() *Unauthentica
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r GetStrategyVersionResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
+func (r GetStrategyVersionResponse) GetApplicationproblemJSON502() *InvalidArtifact {
+	return r.ApplicationproblemJSON502
 }
 
 // GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
@@ -3867,7 +3913,9 @@ func (c *ClientWithResponses) EndSessionWithResponse(ctx context.Context, sessio
 
 // ListStrategiesWithResponse 列出策略
 //
-// 部署設定裡每個 repository 一項（D1013）。`id` 是 repository 路徑的最後一段（D1035）。.
+// 部署設定裡每個 repository 一項（D1013）。`id` 是 repository 路徑的最後一段（D1035）。
+// 依 `id` 排序後以 `limit`、`cursor` 分頁。沒有快取：這一頁的 `latest` 每次向 registry 解析，同時最多 8 個請求（D1057）。
+// `latest` 是普通的 tag（D1058、D1013）。連不上 registry 或 registry 5xx 回 503 `registry_unavailable`（D1059）。
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3882,7 +3930,9 @@ func (c *ClientWithResponses) ListStrategiesWithResponse(ctx context.Context, pa
 
 // ListStrategyVersionsWithResponse 列出策略的版本
 //
-// registry 的 tag 清單，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。.
+// registry 的 tag 清單，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
+// 一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序，`latest` 是普通的一項（D1058）。
+// 解析同時最多 8 個請求，沒有快取（D1057）。連不上或 registry 5xx 回 503 `registry_unavailable`（D1059）。
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3898,6 +3948,8 @@ func (c *ClientWithResponses) ListStrategyVersionsWithResponse(ctx context.Conte
 // GetStrategyVersionWithResponse 一個版本的 manifest
 //
 // `ref` 是 tag，或 digest（`sha256:…`）。tag 先解析成 digest（D934）。
+// manifest 讀不出來，或不是策略 artifact，回 502 `invalid_artifact`（D1059）。
+// 連不上 registry 或 registry 5xx 回 503 `registry_unavailable`。不存在回 404。
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -4818,6 +4870,13 @@ func ParseListStrategiesResponse(rsp *http.Response) (*ListStrategiesResponse, e
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthenticated
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -4857,6 +4916,13 @@ func ParseListStrategyVersionsResponse(rsp *http.Response) (*ListStrategyVersion
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthenticated
@@ -4905,6 +4971,13 @@ func ParseGetStrategyVersionResponse(rsp *http.Response) (*GetStrategyVersionRes
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthenticated
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -4918,6 +4991,13 @@ func ParseGetStrategyVersionResponse(rsp *http.Response) (*GetStrategyVersionRes
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest InvalidArtifact
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
 		var dest Unavailable

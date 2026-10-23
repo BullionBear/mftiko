@@ -1044,6 +1044,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 type ConflictApplicationProblemPlusJSONResponse Problem
 
+type InvalidArtifactApplicationProblemPlusJSONResponse Problem
+
 type NotFoundApplicationProblemPlusJSONResponse Problem
 
 type UnauthenticatedApplicationProblemPlusJSONResponse Problem
@@ -2364,6 +2366,22 @@ func (response ListStrategies200JSONResponse) VisitListStrategiesResponse(w http
 	return err
 }
 
+type ListStrategies400ApplicationProblemPlusJSONResponse struct {
+	ValidationFailedApplicationProblemPlusJSONResponse
+}
+
+func (response ListStrategies400ApplicationProblemPlusJSONResponse) VisitListStrategiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListStrategies401ApplicationProblemPlusJSONResponse struct {
 	UnauthenticatedApplicationProblemPlusJSONResponse
 }
@@ -2415,6 +2433,22 @@ func (response ListStrategyVersions200JSONResponse) VisitListStrategyVersionsRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListStrategyVersions400ApplicationProblemPlusJSONResponse struct {
+	ValidationFailedApplicationProblemPlusJSONResponse
+}
+
+func (response ListStrategyVersions400ApplicationProblemPlusJSONResponse) VisitListStrategyVersionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2490,6 +2524,22 @@ func (response GetStrategyVersion200JSONResponse) VisitGetStrategyVersionRespons
 	return err
 }
 
+type GetStrategyVersion400ApplicationProblemPlusJSONResponse struct {
+	ValidationFailedApplicationProblemPlusJSONResponse
+}
+
+func (response GetStrategyVersion400ApplicationProblemPlusJSONResponse) VisitGetStrategyVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetStrategyVersion401ApplicationProblemPlusJSONResponse struct {
 	UnauthenticatedApplicationProblemPlusJSONResponse
 }
@@ -2518,6 +2568,22 @@ func (response GetStrategyVersion404ApplicationProblemPlusJSONResponse) VisitGet
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStrategyVersion502ApplicationProblemPlusJSONResponse struct {
+	InvalidArtifactApplicationProblemPlusJSONResponse
+}
+
+func (response GetStrategyVersion502ApplicationProblemPlusJSONResponse) VisitGetStrategyVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(502)
 	_, err := buf.WriteTo(w)
 	return err
 }

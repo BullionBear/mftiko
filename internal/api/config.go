@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog"
 
+	"github.com/BullionBear/mftiko/internal/platform/artifact"
 	"github.com/BullionBear/mftiko/internal/platform/sealbox"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
@@ -73,6 +74,8 @@ type Config struct {
 	UnavailableAfter time.Duration
 	Listen           string
 	ShutdownTimeout  time.Duration
+	Registry         artifact.Registry // zero address: catalog requests report registry_unavailable (D1060)
+	Catalog          *artifact.Catalog // set when Registry is configured; nil does not dial
 	EtcdPassword     string
 	CookieKey        string
 	PostgresDSN      string
@@ -99,6 +102,9 @@ type configFile struct {
 	UnavailableAfter string            `json:"unavailable_after"`
 	Listen           string            `json:"listen"`
 	ShutdownTimeout  string            `json:"shutdown_timeout"`
+	Registry         string            `json:"registry"`
+	RegistryCreds    string            `json:"registry_creds"`
+	PlainHTTP        bool              `json:"plain_http"`
 }
 
 type configUser struct {
@@ -193,10 +199,33 @@ func (f configFile) config(dep deployment) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	reg, cat, err := openRegistry(f.Registry, f.RegistryCreds, f.PlainHTTP)
+	if err != nil {
+		return Config{}, err
+	}
 	return Config{
 		Topology: dep.Topology, Planes: dep.Planes, Users: users, Repositories: append([]string(nil), f.Repositories...),
 		TDKeys: keys, Retention: retention, UnavailableAfter: unavailable, Listen: listen, ShutdownTimeout: shutdown,
+		Registry: reg, Catalog: cat,
 	}, nil
+}
+
+// openRegistry loads the catalog client when any registry field is set (D1060). An empty address with
+// no credentials and plain_http false leaves the client nil: existing configs keep loading. The client
+// is not dialled here (D1024).
+func openRegistry(address, creds string, plain bool) (artifact.Registry, *artifact.Catalog, error) {
+	reg := artifact.Registry{Address: address, Credentials: creds, PlainHTTP: plain}
+	if address == "" && creds == "" && !plain {
+		return reg, nil, nil
+	}
+	if address == "" {
+		return artifact.Registry{}, nil, errors.New("registry address is required")
+	}
+	cat, err := artifact.OpenCatalog(reg)
+	if err != nil {
+		return artifact.Registry{}, nil, err
+	}
+	return reg, cat, nil
 }
 
 func parseDuration(field, s string, def time.Duration) (time.Duration, error) {
@@ -261,16 +290,36 @@ func parseToken(s string) ([32]byte, error) {
 	return out, nil
 }
 
+// strategyID is the last path segment of a repository (D1035). Empty, "." and ".." segments are rejected.
+func strategyID(repository string) (string, error) {
+	if repository == "" || strings.ContainsAny(repository, " \t\r\n") {
+		return "", fmt.Errorf("invalid repository %q", repository)
+	}
+	parts := strings.Split(repository, "/")
+	for _, p := range parts {
+		if p == "" || p == "." || p == ".." {
+			return "", fmt.Errorf("invalid repository %q", repository)
+		}
+	}
+	return parts[len(parts)-1], nil
+}
+
 func validateRepos(repos []string) error {
 	seen := map[string]bool{}
+	ids := map[string]bool{}
 	for _, r := range repos {
-		if r == "" || strings.ContainsAny(r, " \t\r\n") {
-			return fmt.Errorf("invalid repository %q", r)
+		id, err := strategyID(r)
+		if err != nil {
+			return err
 		}
 		if seen[r] {
 			return fmt.Errorf("duplicate repository %q", r)
 		}
 		seen[r] = true
+		if ids[id] {
+			return fmt.Errorf("duplicate strategy id %q", id)
+		}
+		ids[id] = true
 	}
 	return nil
 }

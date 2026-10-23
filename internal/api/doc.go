@@ -9,15 +9,19 @@
 // region_unavailable. session_id and api_id are drawn at random and checked against the mirrors of the available
 // regions, then created create-only; the region written to must be available (D1007, D1008, D1042). Reads are answered
 // from one Mirror per cluster (D1014). Every request is
-// written to the Postgres audit table on reply (D1010). Endpoints, authentication, audit and W5 deletion are later
-// tickets (D1024): this process reads and checks the settings for them and does not connect to Postgres or a registry.
+// written to the Postgres audit table on reply (D1010). The strategy catalog is served from the registry (D1056–D1061).
+// Authentication, audit, the other endpoints and W5 deletion are later tickets (D1024): Load checks their settings
+// and does not dial Postgres or a registry. A catalog request dials the registry when one is configured.
 // Either of the command's file flags may be "-" to read that file from stdin; only one of them may.
 //
 // Settings are three kinds (D1023), the same split cmd/mftiko-api parses. The deployment JSON is the file
 // mftiko-etcd-roles reads (D1012, D1312). The API JSON is:
 //
 //	users[].name, users[].token_sha256   one static token per user, stored as SHA-256 (D1009)
-//	repositories                          strategy repositories (D1013)
+//	repositories                          strategy repositories, path without the registry host (D1013, D1060)
+//	registry                              registry host[:port]; empty leaves the catalog unconfigured (D1060)
+//	registry_creds                        Docker config.json path; empty is anonymous (D933, D1060)
+//	plain_http                            http for a dev registry:2 (D933, D1060)
 //	td_keys                               TD instance name → public key, the mftiko-seal pubkey form (D1011)
 //	retention                             W5 retention, Go duration, default 168h (D1017)
 //	unavailable_after                     region unavailable threshold, Go duration, default 15s (D1014)
@@ -29,7 +33,8 @@
 // and the Postgres DSN (MFTIKO_POSTGRES_DSN, flag -postgres-dsn). The flag overrides the environment variable, as
 // it does for the controller.
 //
-// Load validates all of that and does not connect to Postgres or a registry (D1024). Readiness watches etcd only.
+// Load validates all of that, including the registry address and credentials file, and does not dial Postgres or a
+// registry (D1024, D1060). Readiness watches etcd only. Catalog requests are what dial the registry (D1057).
 // Run dials every region and keeps one Mirror per cluster on the whole /mftiko/v1/ keyspace, not one mirror per
 // prefix (D1025). /healthz is 200 while the process is up. /readyz is 200 when any region is available; the body
 // lists every region and unavailable_regions. It is 503 only when every region is unavailable, and during shutdown
