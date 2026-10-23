@@ -40,8 +40,8 @@ BUF_AGAINST ?= .git\#branch=main
 # What openapi-breaking compares against: a git commit-ish. CI points it at the pull request's base.
 OAS_BASE ?= main
 
-# Empty until E10-20 (D1018, D1046). E10-20 sets this to ERR so breaking changes fail the build.
-OASDIFF_FAIL_ON ?=
+# api.v1 is final (D1018, D1116): a breaking change against OAS_BASE fails the build. Empty prints the report only.
+OASDIFF_FAIL_ON ?= ERR
 
 # buf, protoc-gen-go, oapi-codegen and oasdiff are installed into bin/tools (D1043, D1044).
 # Redocly CLI and openapi-typescript come from web/node_modules.
@@ -101,9 +101,9 @@ openapi: tools web-install ## Lint contract A and regenerate Go and TypeScript; 
 	openapi-typescript contract/openapi/api/v1.yaml --output $(WEB)/src/lib/gen/api/v1.ts
 	$(GO) mod tidy
 
-# D1046: until E10-20 the report is printed and this target still succeeds.
+# D1116: fails on an ERR-level breaking change (OASDIFF_FAIL_ON). Before E10-20 it only printed the report (D1046).
 # A missing spec on the base is skipped. A base that is not a commit is an error.
-openapi-breaking: tools ## oasdiff breaking against OAS_BASE; report only until E10-20 (D1046)
+openapi-breaking: tools ## oasdiff breaking against OAS_BASE; fails on a breaking change (D1116)
 	@set -euo pipefail; \
 	base='$(OAS_BASE)'; \
 	spec=contract/openapi/api/v1.yaml; \

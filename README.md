@@ -65,7 +65,7 @@ docs/                     DECISIONS.md, PROTOCOL.md, operations.md (logs and ret
 | `make proto` | regenerates `contract/gen/mftiko` from `contract/proto/`; commit the result with the `.proto` change |
 | `make openapi` | Redocly lint, then regenerates `contract/gen/api/v1` and `web/src/lib/gen/api/v1.ts` (D1047) |
 | `make proto-lint` / `make proto-breaking` | buf lint / buf breaking against `main` (`BUF_AGAINST=` another buf input); drafts listed in `buf.yaml` are exempt (DECISIONS D007) |
-| `make openapi-lint` / `make openapi-breaking` | Redocly lint / `oasdiff breaking` against `main` (`OAS_BASE=` another commit). Until E10-20 the report does not fail the build (D1046) |
+| `make openapi-lint` / `make openapi-breaking` | Redocly lint / `oasdiff breaking` against `main` (`OAS_BASE=` another commit); a breaking change fails the build (D1116) |
 | `make gen-check` | fails if `contract/gen/`, `web/src/lib/gen/`, `go.mod` or `go.sum` are not what `make proto` and `make openapi` produce |
 | `make build` | every command into `bin/` |
 | `make examples` | example strategies into `bin/examples/` |

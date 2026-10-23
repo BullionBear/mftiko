@@ -23,8 +23,9 @@
 //
 // Load validates all of that and does not dial Postgres or a registry (D1024, D1060). Run opens a Postgres pool
 // and does not wait for the connection; readiness watches etcd only, and Postgres being down only affects audit
-// (D1048, modifies D1024). A strategy catalog request dials the registry. W5 deletion is a later ticket. One
-// Mirror per cluster watches the whole /mftiko/v1/ keyspace (D1025). Authentication is one static token per user,
+// (D1048, modifies D1024). A strategy catalog request dials the registry. Every replica's reconcile deletes
+// terminal sessions past retention (W5, D1017, D1083). One Mirror per cluster watches the whole /mftiko/v1/
+// keyspace (D1025). Authentication is one static token per user,
 // sent as a bearer token or exchanged for the console cookie (D1009). A token should be at least 32 random bytes;
 // the config stores only its SHA-256, so the API cannot check the length (D1055):
 //
@@ -37,7 +38,8 @@
 // (D1026, D1027). SIGTERM and SIGINT mark readiness 503, stop accepting, wait for in-flight requests up to
 // shutdown_timeout, and exit 0.
 //
-// -web is the console build directory (web/build), read from disk on each request, not embedded. A path that is
+// -web is the console build directory (web/build), read from disk on each request, not embedded. The directory
+// itself is opened once at startup: replacing it (make web) needs a restart (D1114). A path that is
 // not under /api/ and does not name a file returns index.html. Without -web the process serves only the API
 // (D1028). -tls-cert and -tls-key together serve HTTPS with HTTP/2; without them the listener is plaintext HTTP
 // for development (D1029).
