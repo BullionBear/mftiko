@@ -449,9 +449,15 @@ func TestGetStrategyVersion(t *testing.T) {
 	if code != http.StatusNotFound {
 		t.Fatalf("/api/v1 %d %s", code, body)
 	}
-	code, _, _ = doAuth(h, http.MethodPost, "/api/v1/strategies")
-	if code != http.StatusMethodNotAllowed {
-		t.Fatalf("POST %d", code)
+	// A write without application/json is 400 before routing. This POST is JSON,
+	// so it reaches the catalog mux, which only registers GET.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/strategies", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenAda)
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST %d", rec.Code)
 	}
 }
 

@@ -338,10 +338,15 @@ func TestAuthHTTP(t *testing.T) {
 		t.Fatalf("non-bearer with cookie %d %s", code, body)
 	}
 
-	tampered := ck.Value[:len(ck.Value)-1] + "A"
-	if ck.Value[len(ck.Value)-1] == 'A' {
-		tampered = ck.Value[:len(ck.Value)-1] + "B"
+	// Flip the first signature character. The last base64 character of a
+	// 32-byte HMAC can hold unused bits, so changing only that character
+	// does not always change the decoded MAC.
+	sig := strings.LastIndex(ck.Value, ".") + 1
+	repl := byte('A')
+	if ck.Value[sig] == 'A' {
+		repl = 'B'
 	}
+	tampered := ck.Value[:sig] + string(repl) + ck.Value[sig+1:]
 	code, _, body = (apiCall{method: http.MethodGet, path: "/api/v1/auth/me", cookie: tampered}).do(t, client, base)
 	if code != http.StatusUnauthorized || strings.Contains(string(body), tampered) {
 		t.Fatalf("tampered %d %s", code, body)
