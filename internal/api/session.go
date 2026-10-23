@@ -458,6 +458,10 @@ func (s *Server) writeSessionProblem(w http.ResponseWriter, err error) {
 		writeProblem(w, http.StatusServiceUnavailable, apiv1.ErrorCodeRegionUnavailable, "Region Unavailable", "region is unavailable", nil)
 	case errors.Is(err, errNotFound):
 		writeProblem(w, http.StatusNotFound, apiv1.ErrorCodeNotFound, "Not Found", "not found", nil)
+	case errors.Is(err, errNotTerminal):
+		writeProblem(w, http.StatusConflict, apiv1.ErrorCodeNotTerminal, "Conflict", "session is not terminal", nil)
+	case errors.Is(err, errNoRecord):
+		writeProblem(w, http.StatusInternalServerError, apiv1.ErrorCodeInternal, "Internal Server Error", "internal error", nil)
 	case errors.Is(err, errAlgoOverlap):
 		writeProblem(w, http.StatusConflict, apiv1.ErrorCodeAlgoOverlap, "Conflict", "algo_id overlaps another session", nil)
 	case errors.Is(err, errIdempotencyConflict), errors.Is(err, errConflict):

@@ -274,13 +274,29 @@ func (s *Server) openSessionIDs(ctx context.Context) (map[string]struct{}, error
 }
 
 func (s *Server) recordsForSession(ctx context.Context, sessionID string) ([]sessionRecord, error) {
+	return s.recordsWhere(ctx, `session_id = $1 AND state IN ('pending', 'created', 'abandoned')`, sessionID)
+}
+
+// recordsForSessionAll is every generation of sessionID, closed rows included (D1007, D1084).
+func (s *Server) recordsForSessionAll(ctx context.Context, sessionID string) ([]sessionRecord, error) {
+	return s.recordsWhere(ctx, `session_id = $1`, sessionID)
+}
+
+// recordsBySessionIDs loads the rows retention may close or re-delete. An empty id list
+// does not touch Postgres.
+func (s *Server) recordsBySessionIDs(ctx context.Context, ids []string) ([]sessionRecord, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return s.recordsWhere(ctx, `session_id = ANY($1)`, ids)
+}
+
+func (s *Server) recordsWhere(ctx context.Context, where string, arg any) ([]sessionRecord, error) {
 	pool, err := s.db()
 	if err != nil {
 		return nil, err
 	}
-	rows, err := pool.Query(ctx, `SELECT `+recordCols+`
-FROM session_records
-WHERE session_id = $1 AND state IN ('pending', 'created', 'abandoned')`, sessionID)
+	rows, err := pool.Query(ctx, `SELECT `+recordCols+` FROM session_records WHERE `+where, arg)
 	if err != nil {
 		return nil, storageErr(err)
 	}
@@ -423,4 +439,56 @@ WHERE id = $1::uuid
   AND state IN ('pending', 'created', 'abandoned')`,
 		row.ID, desired, reason, ended)
 	return storageErr(err)
+}
+
+// closeRecord writes the last status and closes the row (D1031, D1082). Spec bytes stay as they
+// are. A row that is already closed is updated in place when a later status carries state_out.
+// createRev is the spec's create_revision, or nil when the spec is already gone.
+func (s *Server) closeRecord(ctx context.Context, row *sessionRecord, reason, digest string, ended time.Time, createRev *int64) error {
+	pool, err := s.db()
+	if err != nil {
+		return err
+	}
+	closed := s.now().UTC()
+	tag, err := pool.Exec(ctx, `
+UPDATE session_records SET
+    state = 'closed',
+    closed_at = COALESCE(closed_at, $2),
+    ended_at = COALESCE(ended_at, $3),
+    end_reason = COALESCE(end_reason, NULLIF($4, '')),
+    state_out_digest = COALESCE(NULLIF($5, ''), state_out_digest),
+    create_revision = COALESCE(create_revision, $6)
+WHERE id = $1::uuid
+  AND state IN ('pending', 'created', 'abandoned', 'closed')
+  AND ($6::bigint IS NULL OR create_revision IS NULL OR create_revision = $6)`,
+		row.ID, closed, ended.UTC(), reason, digest, createRev)
+	if err != nil {
+		return storageErr(err)
+	}
+	if tag.RowsAffected() == 0 {
+		return errors.New("session record was not closed")
+	}
+	row.State = recClosed
+	if row.ClosedAt == nil {
+		row.ClosedAt = &closed
+	}
+	if row.EndedAt == nil {
+		t := ended.UTC()
+		row.EndedAt = &t
+	}
+	if row.EndReason == nil && reason != "" {
+		r := reason
+		row.EndReason = &r
+	}
+	if digest != "" {
+		d := digest
+		if row.StateOut == nil {
+			row.StateOut = &d
+		}
+	}
+	if createRev != nil && row.CreateRevision == nil {
+		v := *createRev
+		row.CreateRevision = &v
+	}
+	return nil
 }

@@ -154,6 +154,9 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 			s.logDB(err, row.SessionID, row.STS, "abandon pending session")
 		}
 	}
+	// W5 runs in this same pass (D1083). A Postgres error above already returned,
+	// which skips the round and deletes nothing (D1080).
+	s.retain(ctx)
 }
 
 func (s *Server) liveSpecs() []liveSpec {

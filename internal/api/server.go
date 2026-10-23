@@ -59,7 +59,12 @@ type Server struct {
 
 	// hook is nil in production. Tests fail a create at "before-etcd" or "after-etcd".
 	hook func(step string) error
+	// haltBeforeDelete is a test switch. The retention pass closes the row and returns
+	// before deleteIf, so a later pass can finish the etcd delete (D1031). It is zero
+	// until a test sets it, and the reconcile goroutine only reads it with atomics.
+	haltBeforeDelete atomic.Bool
 	// missingRecord counts etcd specs with no session_records row (D1072).
+	// W5 also counts a terminal session that has no row and is therefore not deleted (D1081).
 	missingRecord atomic.Int64
 	// hashMismatch counts specs whose immutable content does not match the row (D1071).
 	hashMismatch  atomic.Int64
