@@ -452,8 +452,6 @@ func TestSessionCreateRoundTrip(t *testing.T) {
 	}{
 		{http.MethodGet, "/api/v1/sessions", ""},
 		{http.MethodGet, "/api/v1/sessions/" + got.Id, ""},
-		// DELETE is a write, so it needs the JSON content type before the stub 404 (D1031, #317).
-		{http.MethodDelete, "/api/v1/sessions/" + got.Id, "{}"},
 		{http.MethodGet, "/api/v1/session-records", ""},
 	} {
 		code, _, body = se.call(t, p.method, p.path, p.body, nil)
@@ -462,6 +460,12 @@ func TestSessionCreateRoundTrip(t *testing.T) {
 		}
 		mustProblem(t, body, http.StatusNotFound, "not_found")
 	}
+	// The session is still RUNNING, so immediate delete refuses it (D1084).
+	code, _, body = se.call(t, http.MethodDelete, "/api/v1/sessions/"+got.Id, "{}", nil)
+	if code != http.StatusConflict {
+		t.Fatalf("delete running %d %s", code, body)
+	}
+	mustProblem(t, body, http.StatusConflict, "not_terminal")
 	if se.spec(t, "sts-tw-1", got.Id) == nil {
 		t.Fatal("delete removed the spec")
 	}

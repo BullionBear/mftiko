@@ -29,6 +29,11 @@ var (
 	errAlgoOverlap         = errors.New("api: algo overlap")
 	errIdempotencyConflict = errors.New("api: idempotency key does not match")
 	errIdempotentReplay    = errors.New("api: idempotent replay")
+	// errNotTerminal is DELETE of a session that is not DONE or FAILED (D1017, D1084).
+	errNotTerminal = errors.New("api: session is not terminal")
+	// errNoRecord is a session etcd still has and session_records does not (D1081).
+	// It is not inserted and not deleted.
+	errNoRecord = errors.New("api: session has no record")
 )
 
 var (

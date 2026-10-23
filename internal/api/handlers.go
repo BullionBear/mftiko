@@ -52,10 +52,6 @@ func (s *Server) ListSessions(w http.ResponseWriter, _ *http.Request, _ apiv1.Li
 	s.notFound(w)
 }
 
-func (s *Server) DeleteSession(w http.ResponseWriter, _ *http.Request, _ apiv1.SessionID) {
-	s.notFound(w)
-}
-
 func (s *Server) GetSession(w http.ResponseWriter, _ *http.Request, _ apiv1.SessionID) {
 	s.notFound(w)
 }
