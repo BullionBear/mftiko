@@ -265,6 +265,48 @@ func (se *sessionEnv) putSpec(t *testing.T, sts, id string, spec *sessionv1.Sess
 	return raw
 }
 
+// afterMirror runs fn while the reconcile loop waits, then polls until the mirror kick finishes
+// one pass. An extra reconcileOnce would count the same spec again (D1070).
+func (se *sessionEnv) afterMirror(t *testing.T, fn func()) {
+	t.Helper()
+	pass := se.withReconcilePaused(t, fn)
+	until(t, 10*time.Second, "reconcile after mirror change", func() error {
+		if se.s.reconcilePasses.Load() <= pass {
+			return errors.New("waiting")
+		}
+		return nil
+	})
+}
+
+func (se *sessionEnv) withReconcilePaused(t *testing.T, fn func()) uint64 {
+	t.Helper()
+	se.s.reconcileMu.Lock()
+	defer se.s.reconcileMu.Unlock()
+	fn()
+	return se.s.reconcilePasses.Load()
+}
+
+func (se *sessionEnv) dropSpec(t *testing.T, sts, id string) {
+	t.Helper()
+	region := "tw"
+	if strings.Contains(sts, "jp") {
+		region = "jp"
+	}
+	key := state.SessionSpecKey(sts, id)
+	se.afterMirror(t, func() {
+		if _, err := se.e.servers[region].Client(t).Delete(t.Context(), key); err != nil {
+			t.Fatal(err)
+		}
+		until(t, 10*time.Second, "mirror dropped "+key, func() error {
+			view, _ := se.s.snapshot(region)
+			if _, ok := view.Entries[key]; ok {
+				return errors.New("still present")
+			}
+			return nil
+		})
+	})
+}
+
 func TestSessionCreateRoundTrip(t *testing.T) {
 	se := newSessionEnv(t, sessionOpt{})
 	code, hdr, body := se.post(t, minBody("sts-tw-1"), nil)
@@ -406,14 +448,15 @@ func TestSessionCreateRoundTrip(t *testing.T) {
 	}
 
 	for _, p := range []struct {
-		method, path string
+		method, path, body string
 	}{
-		{http.MethodGet, "/api/v1/sessions"},
-		{http.MethodGet, "/api/v1/sessions/" + got.Id},
-		{http.MethodDelete, "/api/v1/sessions/" + got.Id},
-		{http.MethodGet, "/api/v1/session-records"},
+		{http.MethodGet, "/api/v1/sessions", ""},
+		{http.MethodGet, "/api/v1/sessions/" + got.Id, ""},
+		// DELETE is a write, so it needs the JSON content type before the stub 404 (D1031, #317).
+		{http.MethodDelete, "/api/v1/sessions/" + got.Id, "{}"},
+		{http.MethodGet, "/api/v1/session-records", ""},
 	} {
-		code, _, body = se.call(t, p.method, p.path, "", nil)
+		code, _, body = se.call(t, p.method, p.path, p.body, nil)
 		if code != http.StatusNotFound {
 			t.Fatalf("%s %s: %d %s", p.method, p.path, code, body)
 		}
@@ -587,7 +630,14 @@ func TestSessionIdempotency(t *testing.T) {
 		t.Fatal("compact whitespace was a different body")
 	}
 
-	for _, bad := range []string{"", " ", strings.Repeat("a", 256), "ok\n"} {
+	// A newline cannot be a header value on the wire. The handler rejects it with the same check.
+	if validIdempotencyKey("") || validIdempotencyKey(" ") || validIdempotencyKey(strings.Repeat("a", 256)) || validIdempotencyKey("ok\n") {
+		t.Fatal("invalid idempotency key accepted")
+	}
+	if !validIdempotencyKey("a") || !validIdempotencyKey(strings.Repeat("a", 255)) {
+		t.Fatal("valid idempotency key rejected")
+	}
+	for _, bad := range []string{"", " ", strings.Repeat("a", 256)} {
 		code, _, raw = se.post(t, body, keyHeader(bad))
 		if code != http.StatusBadRequest {
 			t.Fatalf("key %q: %d %s", bad, code, raw)
@@ -881,15 +931,20 @@ func TestSessionEnd(t *testing.T) {
 	}
 
 	direct := &sessionv1.SessionSpec{Name: "direct", DesiredState: sessionv1.DesiredState_DESIRED_STATE_RUNNING}
+	// Hold reconcile so the mirror kick cannot warn before the end path does (D1072).
+	se.s.reconcileMu.Lock()
 	se.putSpec(t, "sts-tw-1", "ffffff", direct)
 	before := se.s.missingRecord.Load()
 	code, _, body = se.call(t, http.MethodPost, "/api/v1/sessions/ffffff/end", `{}`, nil)
 	if code != http.StatusOK {
+		se.s.reconcileMu.Unlock()
 		t.Fatalf("direct end %d %s", code, body)
 	}
 	if se.s.missingRecord.Load() != before+1 {
+		se.s.reconcileMu.Unlock()
 		t.Fatalf("missing counter %d", se.s.missingRecord.Load())
 	}
+	se.s.reconcileMu.Unlock()
 	if !strings.Contains(se.e.log.String(), "session spec has no session_records row") {
 		t.Fatalf("log %s", se.e.log.String())
 	}
@@ -941,10 +996,9 @@ func TestSessionReconcile(t *testing.T) {
 	se := newSessionEnv(t, sessionOpt{clock: clock, unavailable: 48 * time.Hour})
 
 	direct := &sessionv1.SessionSpec{Name: "only-etcd", DesiredState: sessionv1.DesiredState_DESIRED_STATE_RUNNING}
-	se.putSpec(t, "sts-tw-1", "eeeeee", direct)
 	before := se.s.missingRecord.Load()
-	se.s.reconcileOnce(t.Context())
-	if se.s.missingRecord.Load() != before+1 || !strings.Contains(se.e.log.String(), "session spec has no session_records row") {
+	se.afterMirror(t, func() { se.putSpec(t, "sts-tw-1", "eeeeee", direct) })
+	if se.s.missingRecord.Load() <= before || !strings.Contains(se.e.log.String(), "session spec has no session_records row") {
 		t.Fatalf("missing %d log %s", se.s.missingRecord.Load(), se.e.log.String())
 	}
 	for _, row := range se.rows(t) {
@@ -952,18 +1006,22 @@ func TestSessionReconcile(t *testing.T) {
 			t.Fatal("reconcile inserted a row")
 		}
 	}
+	// Every later pass re-counts a spec that is still missing, so drop it before the next delta.
+	se.dropSpec(t, "sts-tw-1", "eeeeee")
 
 	bad := []byte{0x0a, 0x05, 0x01}
 	if proto.Unmarshal(bad, &sessionv1.SessionSpec{}) == nil {
 		t.Fatal("fixture decodes")
 	}
-	putKey(t, t.Context(), se.e.servers["tw"], state.SessionSpecKey("sts-tw-1", "dddddd"), string(bad))
-	se.waitValue(t, "tw", state.SessionSpecKey("sts-tw-1", "dddddd"), bad)
 	miss := se.s.missingRecord.Load()
-	se.s.reconcileOnce(t.Context())
-	if se.s.missingRecord.Load() != miss+1 || !strings.Contains(se.e.log.String(), "session spec could not be decoded") {
+	se.afterMirror(t, func() {
+		putKey(t, t.Context(), se.e.servers["tw"], state.SessionSpecKey("sts-tw-1", "dddddd"), string(bad))
+		se.waitValue(t, "tw", state.SessionSpecKey("sts-tw-1", "dddddd"), bad)
+	})
+	if se.s.missingRecord.Load() <= miss || !strings.Contains(se.e.log.String(), "session spec could not be decoded") {
 		t.Fatalf("decode missing %d", se.s.missingRecord.Load())
 	}
+	se.dropSpec(t, "sts-tw-1", "dddddd")
 
 	code, hdr, body := se.post(t, minBody("sts-tw-1"), nil)
 	sess := mustSession(t, code, hdr, body)
@@ -978,11 +1036,12 @@ func TestSessionReconcile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	putKey(t, t.Context(), se.e.servers["tw"], state.SessionSpecKey("sts-tw-1", sess.Id), string(changed))
-	se.waitValue(t, "tw", state.SessionSpecKey("sts-tw-1", sess.Id), changed)
 	hash := se.s.hashMismatch.Load()
-	se.s.reconcileOnce(t.Context())
-	if se.s.hashMismatch.Load() != hash+1 || !strings.Contains(se.e.log.String(), "session spec hash does not match session_records") {
+	se.afterMirror(t, func() {
+		putKey(t, t.Context(), se.e.servers["tw"], state.SessionSpecKey("sts-tw-1", sess.Id), string(changed))
+		se.waitValue(t, "tw", state.SessionSpecKey("sts-tw-1", sess.Id), changed)
+	})
+	if se.s.hashMismatch.Load() <= hash || !strings.Contains(se.e.log.String(), "session spec hash does not match session_records") {
 		t.Fatalf("hash %d", se.s.hashMismatch.Load())
 	}
 	var row sessionRecord
@@ -1006,10 +1065,12 @@ func TestSessionReconcile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	putKey(t, t.Context(), se.e.servers["tw"], state.SessionSpecKey("sts-tw-1", only.Id), string(ended))
-	se.waitValue(t, "tw", state.SessionSpecKey("sts-tw-1", only.Id), ended)
+	se.dropSpec(t, "sts-tw-1", sess.Id)
 	hash = se.s.hashMismatch.Load()
-	se.s.reconcileOnce(t.Context())
+	se.afterMirror(t, func() {
+		putKey(t, t.Context(), se.e.servers["tw"], state.SessionSpecKey("sts-tw-1", only.Id), string(ended))
+		se.waitValue(t, "tw", state.SessionSpecKey("sts-tw-1", only.Id), ended)
+	})
 	if se.s.hashMismatch.Load() != hash {
 		t.Fatal("desired_state change counted as a hash mismatch")
 	}
@@ -1019,10 +1080,11 @@ func TestSessionReconcile(t *testing.T) {
 		}
 	}
 
-	putKey(t, t.Context(), se.e.servers["tw"], state.SessionSpecKey("sts-tw-1", sess.Id), string(bad))
-	se.waitValue(t, "tw", state.SessionSpecKey("sts-tw-1", sess.Id), bad)
 	miss = se.s.missingRecord.Load()
-	se.s.reconcileOnce(t.Context())
+	se.afterMirror(t, func() {
+		putKey(t, t.Context(), se.e.servers["tw"], state.SessionSpecKey("sts-tw-1", only.Id), string(bad))
+		se.waitValue(t, "tw", state.SessionSpecKey("sts-tw-1", only.Id), bad)
+	})
 	if se.s.missingRecord.Load() != miss {
 		t.Fatal("paired undecodable spec incremented the missing counter")
 	}
@@ -1069,8 +1131,8 @@ func TestSessionReconcile(t *testing.T) {
 	if err := proto.Unmarshal(abandoned.Spec, &revived); err != nil {
 		t.Fatal(err)
 	}
-	raw := se.putSpec(t, "sts-tw-1", "aaaaaa", &revived)
-	se.s.reconcileOnce(t.Context())
+	var raw []byte
+	se.afterMirror(t, func() { raw = se.putSpec(t, "sts-tw-1", "aaaaaa", &revived) })
 	kv := se.e.get(t, "tw", state.SessionSpecKey("sts-tw-1", "aaaaaa"))
 	for _, item := range se.rows(t) {
 		if item.ID == abandoned.ID {
@@ -1099,8 +1161,7 @@ func TestSessionReconcile(t *testing.T) {
 	if err := proto.Unmarshal(older.Spec, &revived); err != nil {
 		t.Fatal(err)
 	}
-	se.putSpec(t, "sts-tw-1", "bbbbbb", &revived)
-	se.s.reconcileOnce(t.Context())
+	se.afterMirror(t, func() { se.putSpec(t, "sts-tw-1", "bbbbbb", &revived) })
 	if !strings.Contains(se.e.log.String(), "session record revive collided") {
 		t.Fatalf("log %s", se.e.log.String())
 	}

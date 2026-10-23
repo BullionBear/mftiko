@@ -39,6 +39,11 @@ type txner interface {
 // txn runs one txn and sorts a failure into errRegionUnavailable or the error as is. A txn whose compares failed is not
 // an error here; the primitives decide what that means.
 func txn(ctx context.Context, w txner, cmps []clientv3.Cmp, then, els []clientv3.Op) (*clientv3.TxnResponse, error) {
+	// DialTimeout is how long a dial waits for etcd. A region whose connection is blackholed does not
+	// answer, so the txn uses that same bound. The caller's deadline, when shorter, still ends the call.
+	// Either deadline is region_unavailable (D1042).
+	ctx, cancel := context.WithTimeout(ctx, state.DialTimeout)
+	defer cancel()
 	resp, err := w.Txn(ctx, cmps, then, els)
 	if err != nil {
 		return nil, classify(err)

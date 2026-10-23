@@ -65,6 +65,8 @@ type Server struct {
 	hashMismatch  atomic.Int64
 	reconcileKick chan struct{}
 	reconcileMu   sync.Mutex
+	// reconcilePasses counts completed reconcileOnce calls so a test can wait for one pass.
+	reconcilePasses atomic.Uint64
 
 	mu     sync.Mutex
 	logged string // last unavailable_regions logged, joined

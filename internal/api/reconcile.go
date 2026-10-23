@@ -77,6 +77,7 @@ type liveSpec struct {
 func (s *Server) reconcileOnce(ctx context.Context) {
 	s.reconcileMu.Lock()
 	defer s.reconcileMu.Unlock()
+	defer s.reconcilePasses.Add(1)
 	if err := ctx.Err(); err != nil || s.stopped() {
 		return
 	}
