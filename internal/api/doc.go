@@ -14,8 +14,10 @@
 // registry settings and does not dial. Run creates a Postgres pool and does not wait for it to connect;
 // readiness still watches etcd only (D1048, modifies D1024). A down Postgres makes session create return
 // 503 and skip etcd (D1031); audit writes fail the same way. Create and end of a session, the
-// session_records row, and reconcile are D1068–D1073. A catalog
-// request dials the registry when one is configured (D1057, D1060). W5 deletion is a later ticket.
+// session_records row, and reconcile are D1068–D1073. W5 deletion runs in that same reconcile
+// and on DELETE /api/v1/sessions/{id} (D1080–D1085): Postgres is closed first, and a down
+// Postgres deletes nothing. A catalog
+// request dials the registry when one is configured (D1057, D1060).
 // Either of the command's file flags may be "-" to read that file from stdin; only one of them may.
 //
 // Settings are three kinds (D1023), the same split cmd/mftiko-api parses. The deployment JSON is the file
