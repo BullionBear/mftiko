@@ -15,7 +15,8 @@ export default defineConfig({
 		})
 	],
 	server: {
-		// `npm run dev` talks to a local mftiko-api.
+		// Dev proxy (D1078). The browser only talks to this origin, so the session
+		// cookie stays same-origin, matching production (D1009).
 		proxy: { '/api': 'http://localhost:8080' }
 	}
 });
