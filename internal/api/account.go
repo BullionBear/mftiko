@@ -537,6 +537,7 @@ func (s *Server) regionViews() (map[string]state.View, []string) {
 		}
 	}
 	slices.Sort(unavail)
+	s.rememberAgents(views)
 	return views, unavail
 }
 
@@ -544,11 +545,15 @@ func (s *Server) regionViews() (map[string]state.View, []string) {
 // and its agent record is missing. A down home region is listed in unavailable_regions instead, and
 // the flag stays false.
 func (s *Server) freshness(views map[string]state.View, unavail []string) apiv1.Freshness {
+	return freshnessOf(s.cfg.Topology, views, unavail)
+}
+
+func freshnessOf(topo state.Topology, views map[string]state.View, unavail []string) apiv1.Freshness {
 	if unavail == nil {
 		unavail = []string{}
 	}
 	absent := false
-	if home, err := s.cfg.Topology.RegionOf(state.ControllerInstance); err == nil {
+	if home, err := topo.RegionOf(state.ControllerInstance); err == nil {
 		if view, ok := views[home]; ok {
 			_, present := view.Entries[state.AgentKey(state.PlaneCtl, state.ControllerInstance)]
 			absent = !present

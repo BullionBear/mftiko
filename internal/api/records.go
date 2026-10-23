@@ -291,6 +291,83 @@ func (s *Server) recordsBySessionIDs(ctx context.Context, ids []string) ([]sessi
 	return s.recordsWhere(ctx, `session_id = ANY($1)`, ids)
 }
 
+// recordByID is one session_records row. A missing row is errNotFound.
+func (s *Server) recordByID(ctx context.Context, id string) (*sessionRecord, error) {
+	pool, err := s.db()
+	if err != nil {
+		return nil, err
+	}
+	row := pool.QueryRow(ctx, `SELECT `+recordCols+` FROM session_records WHERE id = $1::uuid`, id)
+	rec, err := scanRecord(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, errNotFound
+	}
+	if err != nil {
+		return nil, storageErr(err)
+	}
+	return &rec, nil
+}
+
+// recordPage is the /session-records query. keep drops rows the SQL cannot
+// express (the strategy id); the cursor is the last row the caller returns,
+// so skipped rows do not end the page early (D1097).
+type recordPage struct {
+	limit                int
+	sessionID, createdBy *string
+	after, before        *time.Time
+	cursorAt             *time.Time
+	cursorID             *string
+	keep                 func(sessionRecord) bool
+}
+
+func (s *Server) pageSessionRecords(ctx context.Context, q recordPage) ([]sessionRecord, bool, error) {
+	pool, err := s.db()
+	if err != nil {
+		return nil, false, err
+	}
+	rows, err := pool.Query(ctx, `
+SELECT `+recordCols+`
+FROM session_records
+WHERE ($1::text IS NULL OR session_id = $1)
+  AND ($2::text IS NULL OR created_by = $2)
+  AND ($3::timestamptz IS NULL OR created_at > $3)
+  AND ($4::timestamptz IS NULL OR created_at < $4)
+  AND (
+    $5::timestamptz IS NULL
+    OR created_at < $5
+    OR (created_at = $5 AND id < $6::uuid)
+  )
+ORDER BY created_at DESC, id DESC`,
+		q.sessionID, q.createdBy, q.after, q.before, q.cursorAt, q.cursorID)
+	if err != nil {
+		return nil, false, storageErr(err)
+	}
+	defer rows.Close()
+	var out []sessionRecord
+	more := false
+	for rows.Next() {
+		rec, err := scanRecord(rows)
+		if err != nil {
+			return nil, false, storageErr(err)
+		}
+		if q.keep != nil && !q.keep(rec) {
+			continue
+		}
+		if q.limit > 0 && len(out) == q.limit {
+			more = true
+			break
+		}
+		out = append(out, rec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, storageErr(err)
+	}
+	if out == nil {
+		out = []sessionRecord{}
+	}
+	return out, more, nil
+}
+
 func (s *Server) recordsWhere(ctx context.Context, where string, arg any) ([]sessionRecord, error) {
 	pool, err := s.db()
 	if err != nil {

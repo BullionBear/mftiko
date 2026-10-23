@@ -774,7 +774,11 @@ export interface components {
             next_cursor?: string;
             freshness: components["schemas"]["Freshness"];
         };
-        /** @description `AgentRecord`。綁在選主 session 上，不存在表示這個 instance 沒有活著的 agent（PROTOCOL §3.2 W7）。 */
+        /**
+         * @description `AgentRecord`。綁在選主 session 上（PROTOCOL §3.2 W7）。
+         *     key 還在時是目前的值。key 不在、這個副本還記得上一份時，欄位是那一份且 `last_known` 為 true（D1096）。
+         *     副本重啟後沒有這份記憶時，整個物件省略。
+         */
         AgentStatus: {
             /** Format: int64 */
             epoch: number;
@@ -784,6 +788,11 @@ export interface components {
             /** @description E10-13 之前的 agent 沒有（D1014）。 */
             host?: string;
             work_dir?: string;
+            /**
+             * @description 這個副本記得的最後一份 `AgentRecord`，選主 key 已經不在（D1096）。
+             *     省略或 false 表示 key 還在。
+             */
+            last_known?: boolean;
         };
         Instance: {
             name: components["schemas"]["InstanceName"];

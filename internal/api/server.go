@@ -75,6 +75,9 @@ type Server struct {
 
 	mu     sync.Mutex
 	logged string // last unavailable_regions logged, joined
+
+	// agents remembers the last AgentRecord seen while its region was available (D1096).
+	agents agentMemory
 }
 
 // cluster is one region's mirror of the whole keyspace.
@@ -430,6 +433,28 @@ func (s *Server) runMirror(c *cluster) {
 // follow this process's context; waiting for it on the way out would hold SIGTERM past
 // the drain limit (D1027). The dial keeps running until it finishes, and Clusters.Close
 // drops a client that arrives after shutdown.
+// dialRequest is dial that also returns when ctx is canceled, so a client disconnect
+// does not leave an SSE handler blocked in Clusters.Reader (D1027, D1094).
+func (s *Server) dialRequest(ctx context.Context, region string) (state.Reader, error) {
+	type result struct {
+		r   state.Reader
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		r, err := s.cl.Reader(region)
+		ch <- result{r, err}
+	}()
+	select {
+	case <-s.ctx.Done():
+		return nil, s.ctx.Err()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-ch:
+		return res.r, res.err
+	}
+}
+
 func (s *Server) dial(region string) (state.Reader, error) {
 	type result struct {
 		r   state.Reader

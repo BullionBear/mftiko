@@ -142,6 +142,8 @@ message AgentRecord {
   int64 epoch = 3;
   string release = 4;
   int64 started_at_ns = 5;
+  string host = 6;     // os.Hostname()，當選時寫入（D1092）。取不到則空字串。
+  string work_dir = 7; // 該行程的 WORK_DIR（D1092）。controller 沒有 WORK_DIR，留空。
 }
 
 // 不綁 lease（§3.2 W7），只在階段改變時寫；worker 確定不在之後由 agent 刪除。

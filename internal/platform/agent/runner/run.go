@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -96,7 +97,10 @@ type Config[I any, S, L agent.Hashed] struct {
 	// never true. Optional.
 	Sync func(ctx context.Context, d agent.Demand[I], observed map[agent.WorkerKey]agent.Observed, gaveUp func(agent.WorkerKey) bool) error
 
-	Release     string        // AgentRecord.release
+	Release string // AgentRecord.release
+	// WorkDir is this process's WORK_DIR, written on the AgentRecord when the term is elected (D1092).
+	// Empty leaves the field unset. The controller does not use this runner.
+	WorkDir     string
 	StaleAfter  time.Duration // DefaultStaleAfter if 0
 	Resync      time.Duration // DefaultResync if 0
 	StableAfter time.Duration // agent.DefaultStableAfter if 0
@@ -135,6 +139,7 @@ type run[I any, S, L agent.Hashed] struct {
 	cfg    Config[I, S, L]
 	log    zerolog.Logger
 	now    func() time.Time
+	host   string // os.Hostname at newRun, before Run starts its goroutine (D1092)
 	intake *Intake[I]
 	rec    *agent.Reconciler[S, L]
 	st     *statuses
@@ -152,9 +157,14 @@ func newRun[I any, S, L agent.Hashed](cfg Config[I, S, L]) *run[I, S, L] {
 	if now == nil {
 		now = time.Now
 	}
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		cfg.Log.Warn().Err(err).Msg("agent hostname")
+		host = ""
+	}
 	t := cfg.Term
 	return &run[I, S, L]{
-		cfg: cfg, now: now,
+		cfg: cfg, now: now, host: host,
 		log:    cfg.Log.With().Str("plane", string(t.Plane())).Str("instance", t.Instance()).Int64("epoch", t.Epoch()).Logger(),
 		intake: NewIntake(cfg.Demand, cfg.Decode),
 		rec: &agent.Reconciler[S, L]{Policy: cfg.Policy, StableAfter: cfg.StableAfter, Retry: cfg.Retry,
@@ -225,7 +235,7 @@ func (r *run[I, S, L]) start(ctx context.Context) error {
 	}
 	t := r.cfg.Term
 	rec := &statev1.AgentRecord{Plane: string(t.Plane()), Instance: t.Instance(), Epoch: t.Epoch(),
-		Release: r.cfg.Release, StartedAtNs: r.now().UnixNano()}
+		Release: r.cfg.Release, StartedAtNs: r.now().UnixNano(), Host: r.host, WorkDir: r.cfg.WorkDir}
 	if err := t.PutRecord(ctx, encode(rec)); err != nil {
 		return fmt.Errorf("agent: put record: %w", err)
 	}

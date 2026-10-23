@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -90,6 +91,7 @@ type fakeTerm struct {
 	mu   sync.Mutex
 	err  error
 	kv   map[string]string
+	rec  *statev1.AgentRecord
 }
 
 func newTerm(j *journal) *fakeTerm {
@@ -116,8 +118,16 @@ func (t *fakeTerm) PutRecord(_ context.Context, val string) error {
 	if err := proto.Unmarshal([]byte(val), rec); err != nil {
 		return err
 	}
+	t.mu.Lock()
+	t.rec = rec
+	t.mu.Unlock()
 	t.j.add("record epoch %d", rec.GetEpoch())
 	return nil
+}
+func (t *fakeTerm) record() *statev1.AgentRecord {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.rec
 }
 func (t *fakeTerm) Put(_ context.Context, key, val string, _ ...clientv3.OpOption) error {
 	st := &statev1.WorkerStatus{}
@@ -384,6 +394,8 @@ func TestRunStartup(t *testing.T) {
 		statusKey("md/want"): statusVal("md/want", 1, PhaseExited),   // wanted, not there: kept
 	}
 	hs := newHarness(t, initial)
+	dir := t.TempDir()
+	hs.cfg.WorkDir = dir
 	hs.fleet.adopt = map[agent.WorkerKey]agent.Observed{"md/a": adopted, "md/b": same}
 	hs.src.put("a", "s")
 	hs.src.put("b", "s")
@@ -397,6 +409,17 @@ func TestRunStartup(t *testing.T) {
 		"record epoch 7"}
 	if !slices.Equal(got[:len(want)], want) {
 		t.Fatalf("startup %q, want %q", got, want)
+	}
+	host, err := os.Hostname()
+	if err != nil {
+		host = ""
+	}
+	rec := hs.term.record()
+	if rec == nil {
+		t.Fatal("agent record was not stored")
+	}
+	if rec.GetHost() != host || rec.GetWorkDir() != dir {
+		t.Fatalf("agent record host %q work_dir %q", rec.GetHost(), rec.GetWorkDir())
 	}
 	hs.j.waitFor(t, "spawn md/want s") // then the loop
 }

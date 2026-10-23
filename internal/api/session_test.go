@@ -447,18 +447,55 @@ func TestSessionCreateRoundTrip(t *testing.T) {
 		t.Fatalf("freshness %+v", detail.Freshness)
 	}
 
-	for _, p := range []struct {
-		method, path, body string
-	}{
-		{http.MethodGet, "/api/v1/sessions", ""},
-		{http.MethodGet, "/api/v1/sessions/" + got.Id, ""},
-		{http.MethodGet, "/api/v1/session-records", ""},
-	} {
-		code, _, body = se.call(t, p.method, p.path, p.body, nil)
-		if code != http.StatusNotFound {
-			t.Fatalf("%s %s: %d %s", p.method, p.path, code, body)
+	code, _, body = se.call(t, http.MethodGet, "/api/v1/sessions", "", nil)
+	if code != http.StatusOK {
+		t.Fatalf("list %d %s", code, body)
+	}
+	var listed apiv1.SessionList
+	if err := json.Unmarshal(body, &listed); err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, item := range listed.Items {
+		if item.Id != got.Id {
+			continue
 		}
-		mustProblem(t, body, http.StatusNotFound, "not_found")
+		found = true
+		if item.Status == nil || item.Status.Phase != apiv1.PhaseRunning || item.CreatedBy == nil || *item.CreatedBy != "ada" {
+			t.Fatalf("listed %+v", item)
+		}
+	}
+	if !found {
+		t.Fatalf("list missing %s", got.Id)
+	}
+	code, _, body = se.call(t, http.MethodGet, "/api/v1/sessions/"+got.Id, "", nil)
+	if code != http.StatusOK {
+		t.Fatalf("get %d %s", code, body)
+	}
+	var one apiv1.SessionDetail
+	if err := json.Unmarshal(body, &one); err != nil {
+		t.Fatal(err)
+	}
+	if one.Id != got.Id || one.Status == nil || one.Status.Phase != apiv1.PhaseRunning {
+		t.Fatalf("get %+v", one)
+	}
+	code, _, body = se.call(t, http.MethodGet, "/api/v1/session-records", "", nil)
+	if code != http.StatusOK {
+		t.Fatalf("records %d %s", code, body)
+	}
+	var recs apiv1.SessionRecordList
+	if err := json.Unmarshal(body, &recs); err != nil {
+		t.Fatal(err)
+	}
+	var row *apiv1.SessionRecord
+	for i := range recs.Items {
+		if recs.Items[i].SessionId == got.Id {
+			row = &recs.Items[i]
+			break
+		}
+	}
+	if row == nil || row.State != apiv1.SessionRecordStateCreated || row.CreatedBy == nil || *row.CreatedBy != "ada" || row.Final != nil || row.EndedRequestedAt == nil {
+		t.Fatalf("record %+v", recs.Items)
 	}
 	// The session is still RUNNING, so immediate delete refuses it (D1084).
 	code, _, body = se.call(t, http.MethodDelete, "/api/v1/sessions/"+got.Id, "{}", nil)

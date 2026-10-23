@@ -1,6 +1,9 @@
 package api
 
 import (
+	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -9,10 +12,16 @@ import (
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
+	"github.com/BullionBear/mftiko/internal/platform/shim"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
 func (s *Server) sessionView(sts, id string, specBytes []byte, rev int64, rec *sessionRecord) (apiv1.Session, error) {
+	views, _ := s.regionViews()
+	return s.sessionIn(views, sts, id, specBytes, rev, rec)
+}
+
+func (s *Server) sessionIn(views map[string]state.View, sts, id string, specBytes []byte, rev int64, rec *sessionRecord) (apiv1.Session, error) {
 	var spec sessionv1.SessionSpec
 	if err := proto.Unmarshal(specBytes, &spec); err != nil {
 		return apiv1.Session{}, err
@@ -21,10 +30,7 @@ func (s *Server) sessionView(sts, id string, specBytes []byte, rev int64, rec *s
 	if err != nil {
 		return apiv1.Session{}, err
 	}
-	var view state.View
-	if c := s.byName[region]; c != nil {
-		view, _, _ = c.observe()
-	}
+	view := views[region]
 	st := statusOf(view, sts, id)
 	out := apiv1.Session{
 		Id:           id,
@@ -32,9 +38,10 @@ func (s *Server) sessionView(sts, id string, specBytes []byte, rev int64, rec *s
 		Region:       region,
 		Revision:     rev,
 		Spec:         s.specView(&spec),
-		Dependencies: dependenciesOf(view, sts, id, st),
+		Dependencies: s.dependencies(views, view, sts, id, st),
 		Status:       statusView(st),
 		Assignment:   assignmentOf(view, sts, id),
+		Logs:         s.logLocation(view, region, views, sts, id),
 	}
 	if rec != nil {
 		created := rec.CreatedAt.UTC()
@@ -183,11 +190,11 @@ func limitsView(p *sessionv1.Limits) apiv1.Limits {
 	return apiv1.Limits{MemoryMb: &mem, Gomaxprocs: &procs, VolumeMb: &vol, HookTimeoutS: &hook}
 }
 
-func dependenciesOf(view state.View, sts, id string, st *statev1.SessionStatus) []apiv1.Dependency {
-	out := []apiv1.Dependency{}
+func (s *Server) dependencies(views map[string]state.View, view state.View, sts, id string, st *statev1.SessionStatus) []apiv1.Dependency {
 	if sessionTerminal(st) {
-		return out
+		return conditionsToDeps(st)
 	}
+	out := []apiv1.Dependency{}
 	entry, ok := view.Entries[state.SessionDemandKey(sts, id)]
 	if !ok {
 		return out
@@ -197,11 +204,126 @@ func dependenciesOf(view state.View, sts, id string, st *statev1.SessionStatus) 
 		return out
 	}
 	for _, b := range demand.GetBindings() {
-		if dep, ok := bindingDep(b); ok {
-			out = append(out, dep)
+		dep, ok := bindingDep(b)
+		if !ok {
+			continue
 		}
+		out = append(out, s.withProviderSilence(views, dep))
 	}
 	return out
+}
+
+// conditionsToDeps restores feed and account dependencies from the terminal
+// status. Selector conditions stay on the status and are not dependencies.
+// The terminal path does not re-apply the live silent rule (D1014, D1093).
+func conditionsToDeps(st *statev1.SessionStatus) []apiv1.Dependency {
+	out := []apiv1.Dependency{}
+	if st == nil {
+		return out
+	}
+	for _, c := range st.GetConditions() {
+		dep, ok := depFromCondition(c)
+		if !ok {
+			continue
+		}
+		out = append(out, dep)
+	}
+	return out
+}
+
+func depFromCondition(c *commonv1.Condition) (apiv1.Dependency, bool) {
+	if c == nil || c.GetType() != "dependency" {
+		return apiv1.Dependency{}, false
+	}
+	kind, ident, inst, word, ok := splitConditionMessage(c.GetMessage())
+	if !ok {
+		return apiv1.Dependency{}, false
+	}
+	var state apiv1.EntryState
+	switch word {
+	case "rejected":
+		state = apiv1.EntryStateRejected
+	case "dead":
+		state = apiv1.EntryStateDead
+	default:
+		return apiv1.Dependency{}, false
+	}
+	dep := apiv1.Dependency{ProviderInstance: inst, State: state}
+	switch kind {
+	case "feed":
+		dep.Kind = apiv1.DependencyKindFeed
+		dep.Feed = &ident
+	case "account":
+		id, err := strconv.ParseInt(ident, 10, 64)
+		if err != nil {
+			return apiv1.Dependency{}, false
+		}
+		dep.Kind = apiv1.DependencyKindAccount
+		dep.ApiId = &id
+	default:
+		return apiv1.Dependency{}, false
+	}
+	if c.GetReason() != "" {
+		reason := c.GetReason()
+		dep.Reason = &reason
+	}
+	if c.GetAtNs() != 0 {
+		at := time.Unix(0, c.GetAtNs()).UTC()
+		dep.UpdatedAt = &at
+	}
+	return dep, true
+}
+
+// splitConditionMessage reads the four tokens written with the terminal
+// condition. ident may itself contain spaces; kind is the first token, the
+// state word the last, and the provider instance the one before that.
+func splitConditionMessage(msg string) (kind, ident, inst, word string, ok bool) {
+	parts := strings.Split(msg, " ")
+	if len(parts) < 4 || parts[0] == "" || parts[len(parts)-1] == "" || parts[len(parts)-2] == "" {
+		return "", "", "", "", false
+	}
+	kind = parts[0]
+	word = parts[len(parts)-1]
+	inst = parts[len(parts)-2]
+	ident = strings.Join(parts[1:len(parts)-2], " ")
+	if ident == "" {
+		return "", "", "", "", false
+	}
+	return kind, ident, inst, word, true
+}
+
+// withProviderSilence applies D1036: a provider whose region is available and
+// whose agent key is absent is silent. The ack's reason, subject, and time stay.
+// An unavailable provider region is not treated as an absent agent.
+func (s *Server) withProviderSilence(views map[string]state.View, dep apiv1.Dependency) apiv1.Dependency {
+	plane := state.PlaneMD
+	if dep.Kind == apiv1.DependencyKindAccount {
+		plane = state.PlaneTD
+	}
+	if s.agentMissing(views, plane, dep.ProviderInstance) {
+		dep.State = apiv1.EntryStateSilent
+	}
+	return dep
+}
+
+// logLocation is the on-host log paths for the session worker (D1014, D1015).
+// It is omitted when the STS region is down or the AgentRecord has no host or
+// no work_dir, including a last-known record that never had them.
+func (s *Server) logLocation(view state.View, region string, views map[string]state.View, sts, id string) *apiv1.LogLocation {
+	if _, ok := views[region]; !ok {
+		return nil
+	}
+	ag := s.agentOf(view, true, state.PlaneSTS, sts)
+	if ag == nil || ag.Host == nil || *ag.Host == "" || ag.WorkDir == nil || *ag.WorkDir == "" {
+		return nil
+	}
+	dir := shim.LogDir(*ag.WorkDir, string(state.PlaneSTS))
+	h := state.WorkerHash("sts/" + id)
+	return &apiv1.LogLocation{
+		Host:   *ag.Host,
+		Stdout: filepath.Join(dir, h+".stdout"),
+		Stderr: filepath.Join(dir, h+".stderr"),
+	}
 }
 
 func bindingDep(b *statev1.Binding) (apiv1.Dependency, bool) {
