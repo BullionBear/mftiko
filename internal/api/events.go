@@ -107,7 +107,20 @@ func (s *Server) StreamEvents(w http.ResponseWriter, r *http.Request, params api
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	hub := newSSEHub(w, qcap, cancel)
-	go hub.writeLoop(ctx, hb)
+	// net/http finishes the response on this goroutine when StreamEvents
+	// returns. writeLoop has to be done first, or its Flush races with that.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		hub.writeLoop(ctx, hb)
+	}()
+	defer func() {
+		cancel()
+		if hub.rc != nil {
+			_ = hub.rc.SetWriteDeadline(time.Now())
+		}
+		<-done
+	}()
 
 	conn := &sseConn{
 		s: s, hub: hub, ctx: ctx, topics: topics, sessionID: sessionID, world: newSSEWorld(s),

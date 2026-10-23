@@ -513,7 +513,7 @@ func TestSSEBufferDisconnects(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/events?topics=instances", nil)
 	req.Header.Set("Authorization", "Bearer "+tokenAda)
 	req = req.WithContext(ctx)
-	w := &gateWriter{h: make(http.Header), gate: make(chan struct{})}
+	w := &gateWriter{h: make(http.Header), gate: make(chan struct{}), stop: make(chan struct{})}
 	var once sync.Once
 	release := func() { once.Do(func() { close(w.gate) }) }
 	t.Cleanup(release)
@@ -532,14 +532,30 @@ func TestSSEBufferDisconnects(t *testing.T) {
 type gateWriter struct {
 	h    http.Header
 	gate chan struct{}
+	stop chan struct{}
+	once sync.Once
 }
 
 func (g *gateWriter) Header() http.Header { return g.h }
 func (g *gateWriter) WriteHeader(int)     {}
 func (g *gateWriter) Flush()              {}
+
+// SetWriteDeadline is what a full buffer uses to unblock a stuck write.
+func (g *gateWriter) SetWriteDeadline(deadline time.Time) error {
+	if deadline.IsZero() || deadline.After(time.Now()) {
+		return nil
+	}
+	g.once.Do(func() { close(g.stop) })
+	return nil
+}
+
 func (g *gateWriter) Write(p []byte) (int, error) {
-	<-g.gate
-	return len(p), nil
+	select {
+	case <-g.gate:
+		return len(p), nil
+	case <-g.stop:
+		return 0, errors.New("write deadline")
+	}
 }
 
 func (se *sessionEnv) sessions(t *testing.T, path string) apiv1.SessionList {
