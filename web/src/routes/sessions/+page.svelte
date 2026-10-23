@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { openPageStream } from '#lib/events.svelte.ts';
 	import FeedStatus from '#lib/FeedStatus.svelte';
 	import { SessionFeed } from '#lib/live.svelte.ts';
 	import { onMount } from 'svelte';
@@ -12,8 +13,10 @@
 
 	onMount(() => {
 		const stop = feed.watch();
+		const stopStream = openPageStream(['sessions']);
 		void feed.reload();
 		return () => {
+			stopStream();
 			stop();
 			feed.cancel();
 		};

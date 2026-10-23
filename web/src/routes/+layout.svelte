@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { consoleState } from '#lib/console.svelte.ts';
-	import { eventStream } from '#lib/events.svelte.ts';
+	import { pageStream } from '#lib/events.svelte.ts';
 	import { onMount } from 'svelte';
 	import type { LayoutProps } from './$types';
 
@@ -36,18 +36,12 @@
 		void goto(`/login?next=${encodeURIComponent(next)}`, { replaceState: true });
 	});
 
-	$effect(() => {
-		if (consoleState.auth !== 'in') return;
-		eventStream.start();
-		return () => eventStream.stop();
-	});
-
 	const liveLabel = $derived(
-		eventStream.phase === 'open'
+		pageStream.phase === 'open'
 			? 'Live'
-			: eventStream.phase === 'reconnecting'
+			: pageStream.phase === 'reconnecting'
 				? 'Reconnecting…'
-				: eventStream.phase === 'closed'
+				: pageStream.phase === 'closed'
 					? 'Disconnected'
 					: ''
 	);
@@ -72,7 +66,7 @@
 		</nav>
 		<div class="user">
 			{#if liveLabel}
-				<span class="live" data-phase={eventStream.phase}>{liveLabel}</span>
+				<span class="live" data-phase={pageStream.phase}>{liveLabel}</span>
 			{/if}
 			<span>{consoleState.user?.name}</span>
 			<button type="button" onclick={() => consoleState.logout()}>Log out</button>
