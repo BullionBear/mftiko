@@ -277,6 +277,7 @@ func TestAccounts(t *testing.T) {
 	if err := json.Unmarshal(body, &second); err != nil || second.ApiId != 10 {
 		t.Fatalf("second %+v %v", second, err)
 	}
+	f.waitAccount(t, second.ApiId)
 	var page apiv1.AccountList
 	code, _, body = f.call(t, http.MethodGet, "/api/v1/accounts?limit=1", "")
 	if code != http.StatusOK || json.Unmarshal(body, &page) != nil || len(page.Items) != 1 || page.Items[0].ApiId != 2 || page.NextCursor == nil {
