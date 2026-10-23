@@ -416,7 +416,7 @@ func checkSettings(in *apiv1.AccountSettings) []apiv1.FieldError {
 func mergeSettings(in *apiv1.AccountSettings, prev *statev1.AccountSettings) *statev1.AccountSettings {
 	out := &statev1.AccountSettings{}
 	if prev != nil {
-		*out = *prev
+		out = proto.Clone(prev).(*statev1.AccountSettings)
 	}
 	if in != nil && in.CancelOnDisconnectS != nil {
 		out.CancelOnDisconnectS = uint32(*in.CancelOnDisconnectS)
