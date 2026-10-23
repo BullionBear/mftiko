@@ -39,7 +39,7 @@ func (s *Server) UpdateAccount(w http.ResponseWriter, _ *http.Request, _ apiv1.A
 // the stream ends, with the connection time as the duration (D1010).
 func (s *Server) StreamEvents(w http.ResponseWriter, r *http.Request, params apiv1.StreamEventsParams) {
 	if len(params.Topics) == 0 {
-		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, "missing parameter", []apiv1.FieldError{{
+		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, http.StatusText(http.StatusBadRequest), "missing parameter", []apiv1.FieldError{{
 			Path:   "topics",
 			Reason: "required",
 		}})
@@ -85,17 +85,5 @@ func (s *Server) GetSession(w http.ResponseWriter, _ *http.Request, _ apiv1.Sess
 }
 
 func (s *Server) EndSession(w http.ResponseWriter, _ *http.Request, _ apiv1.SessionID) {
-	s.notFound(w)
-}
-
-func (s *Server) ListStrategies(w http.ResponseWriter, _ *http.Request, _ apiv1.ListStrategiesParams) {
-	s.notFound(w)
-}
-
-func (s *Server) ListStrategyVersions(w http.ResponseWriter, _ *http.Request, _ apiv1.StrategyID, _ apiv1.ListStrategyVersionsParams) {
-	s.notFound(w)
-}
-
-func (s *Server) GetStrategyVersion(w http.ResponseWriter, _ *http.Request, _ apiv1.StrategyID, _ string) {
 	s.notFound(w)
 }

@@ -122,7 +122,7 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request, st *accessStat
 	if isWrite(r.Method) {
 		body, tooBig, err := readBody(w, r)
 		if err != nil {
-			writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, "invalid request", nil)
+			writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, http.StatusText(http.StatusBadRequest), "invalid request", nil)
 			return
 		}
 		st.body = body
@@ -135,11 +135,15 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request, st *accessStat
 		}
 	}
 	if st.tooBig {
-		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, "request body is too large", nil)
+		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, http.StatusText(http.StatusBadRequest), "request body is too large", nil)
 		return
 	}
 	if isWrite(r.Method) && !jsonContentType(r) {
-		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, "Content-Type must be application/json", nil)
+		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, http.StatusText(http.StatusBadRequest), "Content-Type must be application/json", nil)
+		return
+	}
+	if strategyPath(requestPath(r)) {
+		s.strategyRoutes().ServeHTTP(w, r)
 		return
 	}
 	s.api.ServeHTTP(w, r)

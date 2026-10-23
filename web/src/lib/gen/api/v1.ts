@@ -65,6 +65,8 @@ export interface paths {
         /**
          * 列出策略
          * @description 部署設定裡每個 repository 一項（D1013）。`id` 是 repository 路徑的最後一段（D1035）。
+         *     依 `id` 排序後以 `limit`、`cursor` 分頁。沒有快取：這一頁的 `latest` 每次向 registry 解析，同時最多 8 個請求（D1057）。
+         *     `latest` 是普通的 tag（D1058、D1013）。連不上 registry 或 registry 5xx 回 503 `registry_unavailable`（D1059）。
          */
         get: operations["listStrategies"];
         put?: never;
@@ -85,6 +87,8 @@ export interface paths {
         /**
          * 列出策略的版本
          * @description registry 的 tag 清單，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
+         *     一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序，`latest` 是普通的一項（D1058）。
+         *     解析同時最多 8 個請求，沒有快取（D1057）。連不上或 registry 5xx 回 503 `registry_unavailable`（D1059）。
          */
         get: operations["listStrategyVersions"];
         put?: never;
@@ -105,6 +109,8 @@ export interface paths {
         /**
          * 一個版本的 manifest
          * @description `ref` 是 tag，或 digest（`sha256:…`）。tag 先解析成 digest（D934）。
+         *     manifest 讀不出來，或不是策略 artifact，回 502 `invalid_artifact`（D1059）。
+         *     連不上 registry 或 registry 5xx 回 503 `registry_unavailable`。不存在回 404。
          */
         get: operations["getStrategyVersion"];
         put?: never;
@@ -380,7 +386,7 @@ export interface components {
             errors?: components["schemas"]["FieldError"][];
         };
         /** @enum {string} */
-        ErrorCode: "validation_failed" | "unauthenticated" | "not_found" | "conflict" | "not_terminal" | "referenced" | "algo_overlap" | "region_unavailable" | "storage_unavailable" | "registry_unavailable" | "internal";
+        ErrorCode: "validation_failed" | "unauthenticated" | "not_found" | "conflict" | "not_terminal" | "referenced" | "algo_overlap" | "region_unavailable" | "storage_unavailable" | "registry_unavailable" | "invalid_artifact" | "internal";
         FieldError: {
             /** @description JSON Pointer（RFC 6901），例如 `/feeds/2/feed`。 */
             path: string;
@@ -890,6 +896,15 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description manifest 讀不出來，或不是策略 artifact。`code` 是 `invalid_artifact`（D1059）。 */
+        InvalidArtifact: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
     };
     parameters: {
         Limit: number;
@@ -993,6 +1008,7 @@ export interface operations {
                     "application/json": components["schemas"]["StrategyList"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
             401: components["responses"]["Unauthenticated"];
             503: components["responses"]["Unavailable"];
         };
@@ -1021,6 +1037,7 @@ export interface operations {
                     "application/json": components["schemas"]["StrategyTagList"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             503: components["responses"]["Unavailable"];
@@ -1047,8 +1064,10 @@ export interface operations {
                     "application/json": components["schemas"]["StrategyVersion"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            502: components["responses"]["InvalidArtifact"];
             503: components["responses"]["Unavailable"];
         };
     };

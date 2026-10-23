@@ -10,10 +10,10 @@ import (
 
 // writeProblem sends an RFC 9457 body (D1004). detail is a fixed sentence; it must not echo a
 // token, a cookie, or a credential.
-func writeProblem(w http.ResponseWriter, status int, code apiv1.ErrorCode, detail string, fields []apiv1.FieldError) {
+func writeProblem(w http.ResponseWriter, status int, code apiv1.ErrorCode, title, detail string, fields []apiv1.FieldError) {
 	p := apiv1.Problem{
 		Type:   "about:blank",
-		Title:  http.StatusText(status),
+		Title:  title,
 		Status: status,
 		Code:   code,
 	}
@@ -34,7 +34,7 @@ func writeProblem(w http.ResponseWriter, status int, code apiv1.ErrorCode, detai
 }
 
 func (s *Server) notFound(w http.ResponseWriter) {
-	writeProblem(w, http.StatusNotFound, apiv1.ErrorCodeNotFound, "not found", nil)
+	writeProblem(w, http.StatusNotFound, apiv1.ErrorCodeNotFound, http.StatusText(http.StatusNotFound), "not found", nil)
 }
 
 // openAPIError is the generated router's parameter-binding failure. The text of err can quote the
@@ -42,11 +42,11 @@ func (s *Server) notFound(w http.ResponseWriter) {
 func (s *Server) openAPIError(w http.ResponseWriter, _ *http.Request, err error) {
 	var missing *apiv1.RequiredParamError
 	if errors.As(err, &missing) {
-		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, "missing parameter", []apiv1.FieldError{{
+		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, http.StatusText(http.StatusBadRequest), "missing parameter", []apiv1.FieldError{{
 			Path:   missing.ParamName,
 			Reason: "required",
 		}})
 		return
 	}
-	writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, "invalid request", nil)
+	writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, http.StatusText(http.StatusBadRequest), "invalid request", nil)
 }

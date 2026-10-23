@@ -53,6 +53,10 @@ type Server struct {
 	minBackoff time.Duration
 	maxBackoff time.Duration
 
+	catalog         tagCatalog
+	strategyOnce    sync.Once
+	strategyHandler http.Handler
+
 	mu     sync.Mutex
 	logged string // last unavailable_regions logged, joined
 }
@@ -129,6 +133,10 @@ func start(cfg Config) (*Server, error) {
 		return nil, err
 	}
 	s.audit = aud
+	if err := s.useCatalog(); err != nil {
+		s.stop()
+		return nil, err
+	}
 	for _, c := range s.clusters {
 		s.wg.Add(1)
 		go s.runMirror(c)
@@ -232,7 +240,8 @@ func (s *Server) stop() {
 
 // routes is one handler on purpose. ServeMux rejects a GET wildcard registered over the
 // all-method /api/ pattern, so the split is done here: /healthz and /readyz are exact,
-// /api and /api/ are never files, and anything else is the console build (D1028).
+// /api (including the strategy catalog) is authenticated and audited, and anything else
+// is the console build (D1028, D1056).
 func (s *Server) routes() http.Handler {
 	s.apiOnce.Do(func() {
 		s.api = apiv1.HandlerWithOptions(s, apiv1.StdHTTPServerOptions{
@@ -267,6 +276,7 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Only /api is authenticated and audited. Health, readiness, and static files are not (D1010).
+	// Strategy routes are /api too; serveAPI sends them to the catalog mux after authentication.
 	if apiPath(r.URL.Path) {
 		s.serveAudited(w, r, st)
 		return

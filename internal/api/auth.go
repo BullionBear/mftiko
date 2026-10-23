@@ -185,7 +185,7 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, st *access
 	if token, ok := bearer(r); ok {
 		user, matched := s.userForToken(token)
 		if !matched {
-			writeProblem(w, http.StatusUnauthorized, apiv1.ErrorCodeUnauthenticated, "invalid bearer token", nil)
+			writeProblem(w, http.StatusUnauthorized, apiv1.ErrorCodeUnauthenticated, http.StatusText(http.StatusUnauthorized), "invalid bearer token", nil)
 			return false
 		}
 		st.actor = &identity{name: user.Name}
@@ -193,12 +193,12 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, st *access
 	}
 	c, err := r.Cookie(cookieName)
 	if err != nil || c.Value == "" {
-		writeProblem(w, http.StatusUnauthorized, apiv1.ErrorCodeUnauthenticated, "authentication required", nil)
+		writeProblem(w, http.StatusUnauthorized, apiv1.ErrorCodeUnauthenticated, http.StatusText(http.StatusUnauthorized), "authentication required", nil)
 		return false
 	}
 	name, exp, ok := s.verifyCookie(c.Value)
 	if !ok {
-		writeProblem(w, http.StatusUnauthorized, apiv1.ErrorCodeUnauthenticated, "invalid cookie", nil)
+		writeProblem(w, http.StatusUnauthorized, apiv1.ErrorCodeUnauthenticated, http.StatusText(http.StatusUnauthorized), "invalid cookie", nil)
 		return false
 	}
 	st.actor = &identity{name: name, expires: exp, cookie: true}
@@ -215,11 +215,11 @@ func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	var req apiv1.LoginRequest
 	if json.Unmarshal(raw, &req) != nil {
-		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, "request body is not JSON", nil)
+		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, http.StatusText(http.StatusBadRequest), "request body is not JSON", nil)
 		return
 	}
 	if req.Token == nil || *req.Token == "" {
-		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, "token is required", []apiv1.FieldError{{
+		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, http.StatusText(http.StatusBadRequest), "token is required", []apiv1.FieldError{{
 			Path:   "/token",
 			Reason: "required",
 		}})
@@ -227,14 +227,14 @@ func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	user, ok := s.userForToken(*req.Token)
 	if !ok {
-		writeProblem(w, http.StatusUnauthorized, apiv1.ErrorCodeUnauthenticated, "invalid token", nil)
+		writeProblem(w, http.StatusUnauthorized, apiv1.ErrorCodeUnauthenticated, http.StatusText(http.StatusUnauthorized), "invalid token", nil)
 		return
 	}
 	now := s.clock()
 	exp := now.Add(cookieTTL)
 	value, err := signCookie(s.cfg.CookieKey, user.Name, exp)
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, apiv1.ErrorCodeInternal, "internal error", nil)
+		writeProblem(w, http.StatusInternalServerError, apiv1.ErrorCodeInternal, http.StatusText(http.StatusInternalServerError), "internal error", nil)
 		return
 	}
 	setSessionCookie(w, value, exp, now)
@@ -256,7 +256,7 @@ func (s *Server) Logout(w http.ResponseWriter, _ *http.Request) {
 func (s *Server) GetMe(w http.ResponseWriter, r *http.Request) {
 	st := accessFrom(r.Context())
 	if st == nil || st.actor == nil {
-		writeProblem(w, http.StatusUnauthorized, apiv1.ErrorCodeUnauthenticated, "authentication required", nil)
+		writeProblem(w, http.StatusUnauthorized, apiv1.ErrorCodeUnauthenticated, http.StatusText(http.StatusUnauthorized), "authentication required", nil)
 		return
 	}
 	me := apiv1.Me{Name: st.actor.name}

@@ -6,7 +6,8 @@
 // "-" reads stdin. -config is the API JSON, a file, or "-" when -in is not stdin:
 //
 //	users[].name, users[].token_sha256   one static token per user, stored as SHA-256 (D1009, D1055)
-//	repositories                          strategy repositories (D1013)
+//	repositories                          strategy repositories, path without the registry host (D1013, D1060)
+//	registry, registry_creds, plain_http  registry host[:port], Docker config.json, http for dev (D933, D1060)
 //	td_keys                               TD instance name → public key, the mftiko-seal pubkey form (D1011)
 //	retention                             W5 retention, Go duration, default 168h (D1017)
 //	unavailable_after                     region unavailable threshold, Go duration, default 15s (D1014)
@@ -17,12 +18,12 @@
 // overrides, as for the controller: the etcd user "api" password ($MFTIKO_ETCD_PASSWORD, -etcd-password), the
 // cookie HMAC key ($MFTIKO_COOKIE_KEY, -cookie-key) and the Postgres DSN ($MFTIKO_POSTGRES_DSN, -postgres-dsn).
 //
-// The process validates all of that and does not connect to a registry. It opens a Postgres pool at startup
-// and does not wait for the connection; readiness watches etcd only, and Postgres being down only affects
-// audit (D1048, modifies D1024). W5 deletion is a later ticket. One Mirror per cluster watches the whole
-// /mftiko/v1/ keyspace (D1025). Authentication is one static token per user, sent as a bearer token or
-// exchanged for the console cookie (D1009). A token should be at least 32 random bytes; the config stores
-// only its SHA-256, so the API cannot check the length (D1055):
+// Load validates all of that and does not dial Postgres or a registry (D1024, D1060). Run opens a Postgres pool
+// and does not wait for the connection; readiness watches etcd only, and Postgres being down only affects audit
+// (D1048, modifies D1024). A strategy catalog request dials the registry. W5 deletion is a later ticket. One
+// Mirror per cluster watches the whole /mftiko/v1/ keyspace (D1025). Authentication is one static token per user,
+// sent as a bearer token or exchanged for the console cookie (D1009). A token should be at least 32 random bytes;
+// the config stores only its SHA-256, so the API cannot check the length (D1055):
 //
 //	token=$(openssl rand -base64 32 | tr -d '\n'); printf '%s' "$token" | sha256sum
 //
@@ -89,7 +90,7 @@ func parseArgs(args []string, getenv func(string) string) (options, bool, error)
 	fs.SetOutput(io.Discard)
 	version := fs.Bool("version", false, "print the release and exit")
 	fs.StringVar(&opt.in, "in", "", "deployment JSON, the same file as mftiko-etcd-roles; - for stdin")
-	fs.StringVar(&opt.config, "config", "", "API JSON (users, repositories, td keys, retention, thresholds); - for stdin")
+	fs.StringVar(&opt.config, "config", "", "API JSON (users, repositories, registry, td keys, retention, thresholds); - for stdin")
 	fs.StringVar(&opt.web, "web", "", "console build directory, served from disk; empty serves the API only")
 	fs.StringVar(&opt.cert, "tls-cert", "", "TLS certificate; with -tls-key, serve HTTPS and HTTP/2")
 	fs.StringVar(&opt.key, "tls-key", "", "TLS private key; with -tls-cert, serve HTTPS and HTTP/2")
