@@ -1,5 +1,6 @@
 # Local development only: `make dev-up` starts every service and waits until they are healthy; then
 # `make migrate-up`. Ports are bound to 127.0.0.1, so nothing outside this machine can connect.
+# mftiko-api serves the console on http://127.0.0.1:8080; `make dev-up` builds it and web/build first.
 # PostgreSQL trusts local connections, and etcd has no auth yet (E1-08 adds it). NATS uses operator and
 # account JWTs (D412). The registry is registry:2 with no auth (D910). `make dev-up` generates the NATS
 # credentials into deploy/dev/data/nats before compose starts; that directory is gitignored and is not
@@ -86,6 +87,37 @@ services:
       - regdata:/var/lib/registry
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5000/v2/"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # The API server and the console (E10-19). bin/linux/mftiko-api from `make dev-up`, the console from
+  # web/build (D1028), plain HTTP (D1029). deploy/dev/api-init.sh writes ./data/api: the deployment
+  # (one region, controller, md1, td1, sts1), the API JSON, the token to sign in with, the cookie key
+  # and td1's seal key. etcd has no auth here; the etcd client goes on without it, so the password is
+  # a placeholder. No agent runs in this stack: sessions stay pending (deploy/accept runs them).
+  # Audit and session records need `make migrate-up`; until then the API serves and logs the errors.
+  api:
+    image: alpine:3.22
+    command:
+      - sh
+      - -c
+      - MFTIKO_COOKIE_KEY=$$(cat /api/cookie-key) exec /mftiko/mftiko-api -in /api/deployment.json -config /api/api.json -web /web/build
+    environment:
+      MFTIKO_ETCD_PASSWORD: dev
+      MFTIKO_POSTGRES_DSN: postgres://mftiko@postgres:5432/mftiko?sslmode=disable
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ../../bin/linux:/mftiko:ro
+      - ./data/api:/api:ro
+      - ../../web:/web:ro # the console is /web/build; the API holds it open, so restart the API after make web
+    depends_on:
+      postgres: {condition: service_healthy}
+      etcd: {condition: service_healthy}
+      registry: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/readyz"]
       interval: 2s
       timeout: 3s
       retries: 30

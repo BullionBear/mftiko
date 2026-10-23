@@ -15,7 +15,7 @@ info:
     - 列表以 `limit`、`cursor` 分頁，回應帶 `next_cursor`，沒有下一頁就省略（D1004）。
     - 讀取來自每個 region 的副本（D1014）。列表回應帶 `freshness`；單一資源所在的 region 不可用時回 503。
 
-    **認證（D1009）**：`POST /auth/login` 以 token 換 cookie；其他端點接受 cookie 或 `Authorization: Bearer <token>`。只有一個角色，通過認證就能使用所有資源。寫入另要求 `Content-Type: application/json`。
+    **認證（D1009）**：`POST /auth/login` 以 token 換 cookie；其他端點接受 cookie 或 `Authorization: Bearer <token>`。只有一個角色，通過認證就能使用所有資源。以 cookie 認證的寫入（POST、PUT、PATCH、DELETE，沒有 body 的也算）與 `POST /auth/login` 另要求 `Content-Type: application/json`，防 CSRF；Bearer 不檢查（D1110）。
 
     **稽核（D1010）**：每個請求在回覆時寫一列到 Postgres 的 `audit`；帳號的憑證欄位不記。
 servers:
@@ -661,7 +661,7 @@ components:
       type: apiKey
       in: cookie
       name: mftiko_session
-      description: '`POST /auth/login` 發的 cookie，`{name, exp}` 以 HMAC-SHA256 簽章（D1009）。'
+      description: '`POST /auth/login` 發的 cookie，`{name, exp}` 以 HMAC-SHA256 簽章（D1009）。以它認證的寫入要帶 `Content-Type: application/json`（D1110）。'
     bearerAuth:
       type: http
       scheme: bearer

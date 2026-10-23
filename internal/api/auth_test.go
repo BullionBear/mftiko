@@ -365,23 +365,42 @@ func TestAuthHTTP(t *testing.T) {
 		t.Fatalf("tampered %d %s", code, body)
 	}
 
+	// The Content-Type rule is for the cookie (D1009, D1110).
 	code, _, body = (apiCall{
-		method: http.MethodPost, path: "/api/v1/sessions", bearer: tokenAda,
+		method: http.MethodPost, path: "/api/v1/sessions", cookie: ck.Value,
 		contentType: "text/plain", body: "x",
 	}).do(t, client, base)
-	if code != http.StatusBadRequest {
+	if code != http.StatusBadRequest || !strings.Contains(string(body), "Content-Type") {
 		t.Fatalf("content type %d %s", code, body)
 	}
 	mustProblem(t, body, http.StatusBadRequest, "validation_failed")
 
 	code, _, body = (apiCall{
-		method: http.MethodPost, path: "/api/v1/sessions", bearer: tokenAda,
+		method: http.MethodPost, path: "/api/v1/sessions", cookie: ck.Value,
 		contentType: "application/json; charset=utf-8", body: `{}`,
 	}).do(t, client, base)
 	if code != http.StatusBadRequest {
 		t.Fatalf("charset %d %s", code, body)
 	}
 	mustProblem(t, body, http.StatusBadRequest, "validation_failed")
+
+	code, _, body = (apiCall{method: http.MethodPost, path: "/api/v1/auth/logout", cookie: ck.Value}).do(t, client, base)
+	if code != http.StatusBadRequest || !strings.Contains(string(body), "Content-Type") {
+		t.Fatalf("cookie write without Content-Type %d %s", code, body)
+	}
+
+	// A bearer write needs no Content-Type, with a body or without one (D1110).
+	code, _, body = (apiCall{method: http.MethodPost, path: "/api/v1/auth/logout", bearer: tokenAda}).do(t, client, base)
+	if code == http.StatusBadRequest || code >= 500 {
+		t.Fatalf("bearer write without a body %d %s", code, body)
+	}
+	code, _, body = (apiCall{
+		method: http.MethodPost, path: "/api/v1/sessions", bearer: tokenAda,
+		contentType: "text/plain", body: "x",
+	}).do(t, client, base)
+	if code != http.StatusBadRequest || strings.Contains(string(body), "Content-Type") {
+		t.Fatalf("bearer write with text/plain reaches the handler: %d %s", code, body)
+	}
 
 	code, _, body = (apiCall{method: http.MethodPost, path: "/api/v1/sessions", contentType: "text/plain", body: "x"}).do(t, client, base)
 	if code != http.StatusUnauthorized {

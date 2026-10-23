@@ -46,12 +46,14 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-seal             makes a TD instance's key pair and seals account credentials to it
   mftiko-conformance      SDK conformance suite
   mftiko-md-accept        drives the MD feed-path acceptance (deploy/accept)
+  mftiko-td-accept        drives the TD trading-path acceptance (deploy/accept)
+  mftiko-api-accept       drives the end-to-end acceptance through mftiko-api (deploy/accept)
 examples/strategies/      hello, tape-keeper; import only sdk and contract, as an outside author would
 migrations/               PostgreSQL schema: NNNN_name.up.sql / .down.sql, embedded into mftiko-migrate
-deploy/dev/               local development services (PostgreSQL, etcd, NATS, registry)
-deploy/accept/            MD feed-path acceptance against a venue's testnet: compose stack, accept.sh, runbook
-web/                      SvelteKit console (single-page app served by mftiko-api)
-docs/                     DECISIONS.md, PROTOCOL.md
+deploy/dev/               local development services (PostgreSQL, etcd, NATS, registry) and mftiko-api serving the console
+deploy/accept/            MD, TD and end-to-end acceptance against a venue's testnet: compose stack, accept.sh, runbook
+web/                      SvelteKit console (single-page app served by mftiko-api); e2e/ is the Playwright smoke
+docs/                     DECISIONS.md, PROTOCOL.md, operations.md (logs and retention), release.md
 ```
 
 ## Make
@@ -70,15 +72,15 @@ docs/                     DECISIONS.md, PROTOCOL.md
 | `make test` / `make test-race` / `make vet` | Go tests / with the race detector, uncached / vet |
 | `make check` | everything CI runs: `proto-lint`, `proto-breaking`, `openapi-lint`, `openapi-breaking`, `gen-check`, `vet`, `build`, `test-race`, `sdk-conformance`, `web-check`, `web` |
 | `make web` / `make web-dev` / `make web-check` | build, dev server, svelte-check |
-| `make dev-up` / `make dev-down` | generate dev NATS credentials, then start / stop a local PostgreSQL, etcd, NATS and registry (Docker); `dev-up` waits until all are healthy |
-| `make accept-up` / `make accept-down` | start / stop the MD acceptance stack; the checks themselves are in `deploy/accept/README.md` |
+| `make dev-up` / `make dev-down` | generate dev NATS credentials and API config (`deploy/dev/data/api`, token in `token`), build a Linux `mftiko-api` and the console, then start / stop a local PostgreSQL, etcd, NATS, registry and the API with the console on `127.0.0.1:8080` (Docker); `dev-up` waits until all are healthy |
+| `make accept-up` / `make accept-down` | start / stop the acceptance stack; the checks themselves, including the end-to-end ones (`accept.sh e2e-up`, `e2e-all`, `console-smoke`), are in `deploy/accept/README.md` |
 | `make dev-nats-smoke` | run the dev NATS permission checks (`deploy/dev/nats-smoke.sh`) against the compose server |
 | `make migrate-up` / `make migrate-down` / `make migrate-status` | apply / roll back one / list migrations against `$DATABASE_URL` |
 | `make migrate-new NAME=...` | creates the next `NNNN_<name>.up.sql` / `.down.sql` pair |
 | `make clean` | removes `bin/` and web build output |
 | `make help` | lists targets |
 
-Building and testing the Go code need only Go 1.26+: the generated code is committed. `make openapi`, `make web` and `make check` also need Node 22+ and npm; `make proto` needs only the Go tools from `make tools`. Docker only for `make dev-up`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`; its etcd is at `http://127.0.0.1:2379`, one member with no auth. Its NATS is at `nats://127.0.0.1:4222`, one server, core NATS only, no TLS. The generated server config sets `max_control_line` to 262144 (D827): a session JWT lists each feed, and the server default of 4096 rejects that CONNECT line. `make dev-up` generates the operator, account and user credentials into `deploy/dev/data/nats`, which is gitignored. MD and md.fetch use those creds. The dev compose registry is `registry:2` at `127.0.0.1:5000`, with no authentication (D910).
+Building and testing the Go code need only Go 1.26+: the generated code is committed. `make openapi`, `make web`, `make check` and `make dev-up` also need Node 22+ and npm; `make proto` needs only the Go tools from `make tools`. Docker only for `make dev-up` and `deploy/accept`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`; its etcd is at `http://127.0.0.1:2379`, one member with no auth. Its NATS is at `nats://127.0.0.1:4222`, one server, core NATS only, no TLS. The generated server config sets `max_control_line` to 262144 (D827): a session JWT lists each feed, and the server default of 4096 rejects that CONNECT line. `make dev-up` generates the operator, account and user credentials into `deploy/dev/data/nats`, which is gitignored. MD and md.fetch use those creds. The dev compose registry is `registry:2` at `127.0.0.1:5000`, with no authentication (D910).
 
 ## Packing a strategy
 

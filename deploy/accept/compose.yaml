@@ -1,9 +1,10 @@
-# MD feed-path acceptance (E4-09..E4-11), driven by accept.sh; README.md is the runbook. A compose
-# project of its own, apart from deploy/dev, and with no published ports: nothing here collides with
-# a dev stack or anything else on the host. The shim needs Linux (setsid, PR_SET_CHILD_SUBREAPER,
-# /proc), so md-agent, the shims and the conn workers run in the runner container from bin/linux/,
-# which accept.sh builds. The agent's work dir stays inside the runner: its unix sockets do not work
-# on a bind mount from a macOS host.
+# MD, TD and end-to-end acceptance (E4-09..E4-11, E6-12..E6-14, E10-19), driven by accept.sh;
+# README.md is the runbook. A compose project of its own, apart from deploy/dev. The only published
+# port is the API on 127.0.0.1:18080 (ACCEPT_API_PORT), for a browser and the Playwright smoke; it is
+# not 8080, so it does not collide with a dev stack. The shim needs Linux (setsid,
+# PR_SET_CHILD_SUBREAPER, /proc), so the agents, the shims and their workers, the controller and the
+# API replicas run in the runner container from bin/linux/, which accept.sh builds. The agents' work
+# dirs stay inside the runner: their unix sockets do not work on a bind mount from a macOS host.
 name: mftiko-accept
 
 services:
@@ -46,6 +47,40 @@ services:
       timeout: 3s
       retries: 30
 
+  # The second region (E10-19): only sts2 lives here, so stopping it is "one region is down" while
+  # every agent keeps running. Same auth as etcd.
+  etcd2:
+    image: gcr.io/etcd-development/etcd:v3.7.2
+    command:
+      - /usr/local/bin/etcd
+      - --name=accept2
+      - --data-dir=/var/lib/etcd/data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd2:2379
+      - --listen-peer-urls=http://127.0.0.1:2380
+      - --initial-advertise-peer-urls=http://127.0.0.1:2380
+      - --initial-cluster=accept2=http://127.0.0.1:2380
+      - --initial-cluster-state=new
+      - --log-level=warn
+    volumes:
+      - etcd2data:/var/lib/etcd
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/etcdctl", "--endpoints=http://127.0.0.1:2379", "--user=root:accept", "endpoint", "health"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Strategy artifacts for the STS agent and the API's catalog (E10-19). No auth, plain HTTP (D910).
+  registry:
+    image: registry:2
+    volumes:
+      - regdata:/var/lib/registry
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5000/v2/"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   # The dev operator and accounts from mftiko-nats-dev, written to ./data/nats by accept.sh up.
   nats:
     image: nats:2.15.0-alpine
@@ -67,6 +102,8 @@ services:
     init: true
     command: [sleep, infinity]
     working_dir: /work
+    ports:
+      - "127.0.0.1:${ACCEPT_API_PORT:-18080}:8080" # API replica a, which also serves the console
     environment:
       MFTIKO_ETCD: http://etcd:2379
       MFTIKO_ETCD_PASSWORD: accept
@@ -78,11 +115,15 @@ services:
       - ./data/nats:/nats:ro
       - ./data/work:/work
       - ./endpoints:/endpoints:ro
+      - ../../web:/web:ro # the console is /web/build; the API holds it open, so restart the API after make web
     depends_on:
       postgres: {condition: service_healthy}
       etcd: {condition: service_healthy}
       nats: {condition: service_healthy}
+      registry: {condition: service_healthy}
 
 volumes:
   pgdata:
   etcddata:
+  etcd2data:
+  regdata:
