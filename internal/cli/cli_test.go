@@ -20,9 +20,9 @@ import (
 )
 
 const (
-	tokenA = "tok-7f3a9c2e1b84d056a7e91c3f80b2d4e6"
-	tokenB = "tok-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	tokenC = "tok-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	tokenA = "test-token-a"
+	tokenB = "test-token-b"
+	tokenC = "test-token-c"
 )
 
 func TestLoginAndWhoami(t *testing.T) {
