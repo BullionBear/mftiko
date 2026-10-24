@@ -42,6 +42,8 @@ type Call struct {
 	// Body is the request body. Tests use it to check credential bytes.
 	// Neither field is logged.
 	Body []byte
+	// IdempotencyKey is the Idempotency-Key header, empty when absent.
+	IdempotencyKey string
 }
 
 // Option is fixed before the server accepts a connection.
@@ -88,36 +90,58 @@ type Option struct {
 	// EchoCredential makes create return 400 whose detail is the secret.
 	// Redaction tests use it. The server does not log the value.
 	EchoCredential bool
+	// DropCreates closes the connection on the first N POST /sessions after
+	// the body is read, before the generated decoder runs.
+	DropCreates int
+	// CreateFields, when non-nil, makes POST /sessions return 400
+	// validation_failed with these errors and stores no session.
+	CreateFields []apiv1.FieldError
+	// StorageUnavailable makes POST /sessions return 503 storage_unavailable.
+	StorageUnavailable bool
+	// AlgoOverlap makes POST /sessions return 409 algo_overlap.
+	AlgoOverlap bool
 }
 
 // Server is a started httptest server.
 type Server struct {
-	mu         sync.Mutex
-	once       sync.Once
-	hs         *httptest.Server
-	stop       chan struct{}
-	token      string
-	name       string
-	expires    *time.Time
-	problem    *apiv1.Problem
-	reqID      string
-	block      bool
-	echo       bool
-	cat        *Catalog
-	hits       int
-	calls      []Call
-	lastAuth   string
-	lastBody   []byte
-	kinds      []apiv1.AccountKind
-	instances  map[string]apiv1.InstanceDetail
-	accounts   []accountRow
-	nextID     int64
-	pageSize   int
-	fresh      apiv1.Freshness
-	nextFresh  *apiv1.Freshness
-	listPages  int
-	conflict   bool
-	echoSecret bool
+	mu           sync.Mutex
+	once         sync.Once
+	hs           *httptest.Server
+	stop         chan struct{}
+	token        string
+	name         string
+	expires      *time.Time
+	problem      *apiv1.Problem
+	reqID        string
+	block        bool
+	echo         bool
+	cat          *Catalog
+	hits         int
+	calls        []Call
+	lastAuth     string
+	lastBody     []byte
+	kinds        []apiv1.AccountKind
+	instances    map[string]apiv1.InstanceDetail
+	accounts     []accountRow
+	nextID       int64
+	pageSize     int
+	fresh        apiv1.Freshness
+	nextFresh    *apiv1.Freshness
+	listPages    int
+	conflict     bool
+	echoSecret   bool
+	dropLeft     int
+	createFields []apiv1.FieldError
+	storageDown  bool
+	algoOverlap  bool
+	sessions     map[string]savedSession
+	sessionOrder []string
+	nextSession  int
+}
+
+type savedSession struct {
+	id   string
+	body []byte
 }
 
 // Start serves opt. Every field is set before the server goroutine runs.
@@ -231,6 +255,10 @@ func (s *Server) handler() http.Handler {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
+		if s.takeDrop(r, raw) {
+			hijackClose(w)
+			return
+		}
 		r = r.WithContext(context.WithValue(r.Context(), bodyKey, raw))
 		s.mu.Lock()
 		s.lastBody = nil
@@ -256,15 +284,16 @@ func readReqBody(r *http.Request) ([]byte, error) {
 func (s *Server) middleware(next apiv1.StrictHandlerFunc, operationID string) apiv1.StrictHandlerFunc {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error) {
 		call := Call{
-			Operation:     operationID,
-			Method:        r.Method,
-			Path:          r.URL.Path,
-			Authorization: r.Header.Get("Authorization"),
-			UserAgent:     r.Header.Get("User-Agent"),
-			ContentType:   r.Header.Get("Content-Type"),
-			Cookie:        r.Header.Get("Cookie"),
-			RawQuery:      r.URL.RawQuery,
-			Query:         r.URL.RawQuery,
+			Operation:      operationID,
+			Method:         r.Method,
+			Path:           r.URL.Path,
+			Authorization:  r.Header.Get("Authorization"),
+			UserAgent:      r.Header.Get("User-Agent"),
+			ContentType:    r.Header.Get("Content-Type"),
+			Cookie:         r.Header.Get("Cookie"),
+			RawQuery:       r.URL.RawQuery,
+			Query:          r.URL.RawQuery,
+			IdempotencyKey: r.Header.Get("Idempotency-Key"),
 		}
 		if raw, ok := ctx.Value(bodyKey).([]byte); ok {
 			call.Body = append([]byte(nil), raw...)
@@ -353,8 +382,8 @@ func (a *api) GetSessionRecord(context.Context, apiv1.GetSessionRecordRequestObj
 func (a *api) ListSessions(context.Context, apiv1.ListSessionsRequestObject) (apiv1.ListSessionsResponseObject, error) {
 	return nil, errUnused
 }
-func (a *api) CreateSession(context.Context, apiv1.CreateSessionRequestObject) (apiv1.CreateSessionResponseObject, error) {
-	return nil, errUnused
+func (a *api) CreateSession(ctx context.Context, req apiv1.CreateSessionRequestObject) (apiv1.CreateSessionResponseObject, error) {
+	return a.createSession(ctx, req)
 }
 func (a *api) DeleteSession(context.Context, apiv1.DeleteSessionRequestObject) (apiv1.DeleteSessionResponseObject, error) {
 	return nil, errUnused
