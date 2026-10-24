@@ -44,10 +44,10 @@ type termHooks struct {
 // got, and the writer key it holds in each cluster it writes to (PROTOCOL §3.2 W2). Every write goes through
 // a Term and is conditioned on that cluster's writer key.
 //
-// A term ends once, for the first of: the election session is lost (ErrSessionLost), a writer key shows a
-// newer epoch (ErrSuperseded), or Close (ErrClosed). From then on Done is closed and every write returns Err
-// without contacting etcd; in-flight calls are cancelled. An ended term never resumes: the agent exits and
-// systemd restarts it, and the new process campaigns for a new epoch.
+// A term ends once, for the first of: the keepalive deadline or the election session is lost (ErrSessionLost,
+// E01-D013, E01-D014), a writer key shows a newer epoch (ErrSuperseded), or Close (ErrClosed). From then on Done
+// is closed and every write returns Err without contacting etcd; in-flight calls are cancelled. An ended term
+// never resumes: the agent exits and systemd restarts it, and the new process campaigns for a new epoch.
 //
 // Safe for concurrent use.
 type Term struct {
@@ -120,6 +120,8 @@ func Campaign(ctx context.Context, cl *Clusters, p Plane, inst string, opt TermO
 	if err != nil {
 		return nil, fmt.Errorf("state: campaign %s/%s: grant: %w", p, inst, err)
 	}
+	// E01-D013: before the first keepalive response, the deadline starts at this Grant response.
+	grantAt := time.Now()
 	sess, err := concurrency.NewSession(cli, concurrency.WithLease(lease.ID), concurrency.WithTTL(int(secs)))
 	if err == nil && sess == nil {
 		err = errors.New("no session")
@@ -129,6 +131,20 @@ func Campaign(ctx context.Context, cl *Clusters, p Plane, inst string, opt TermO
 		cli.Revoke(rctx, lease.ID)
 		cancel()
 		return nil, fmt.Errorf("state: campaign %s/%s: session: %w", p, inst, err)
+	}
+	// E01-D012: a second KeepAlive on the same lease, only for response times. The client keeps one keepalive
+	// loop per lease, so this does not send its own renewals, and it stops when the session's context does
+	// (Orphan). The election stays on the session.
+	ka, err := cli.KeepAlive(sess.Ctx(), lease.ID)
+	if err == nil && ka == nil {
+		err = errors.New("no keepalive")
+	}
+	if err != nil {
+		sess.Orphan()
+		rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+		cli.Revoke(rctx, lease.ID)
+		cancel()
+		return nil, fmt.Errorf("state: campaign %s/%s: keepalive: %w", p, inst, err)
 	}
 
 	t := &Term{
@@ -140,7 +156,7 @@ func Campaign(ctx context.Context, cl *Clusters, p Plane, inst string, opt TermO
 		fences:   map[string]*fence{},
 	}
 	t.ctx, t.cancel = context.WithCancel(context.Background())
-	go t.watchSession()
+	go t.watchSession(ka, grantAt, lease.TTL)
 
 	if err := t.start(ctx, cli, opt.ID); err != nil {
 		t.end(err)
@@ -438,13 +454,70 @@ func (t *Term) bind(ctx context.Context) (context.Context, func()) {
 	return ctx, func() { stop(); cancel() }
 }
 
-// watchSession ends the term when the election session's keepalive stops: from then on this process may no
-// longer be the leader, so it stops writing at once (E1-04).
-func (t *Term) watchSession() {
+// watchSession ends the term when the election session's keepalive stops, or when the keepalive deadline passes
+// (E01-D013, E01-D014). From then on this process may no longer be the leader, so it stops writing at once
+// (E1-04). The deadline takes the same path as Session.Done: end with ErrSessionLost, which stops renewal and
+// does not revoke (Close still revokes).
+func (t *Term) watchSession(ka <-chan *clientv3.LeaseKeepAliveResponse, grantAt time.Time, grantTTL int64) {
+	timer := time.NewTimer(time.Until(keepaliveDeadline(grantAt, grantTTL)))
+	defer timer.Stop()
+	for {
+		select {
+		case <-t.session.Done():
+			t.end(ErrSessionLost)
+			return
+		case <-t.done:
+			return
+		case resp, ok := <-ka:
+			if !ok {
+				ka = nil
+				continue
+			}
+			if d, ok := keepaliveResponseDeadline(resp); ok {
+				timer.Reset(time.Until(d))
+			}
+		case <-timer.C:
+			// A response already queued is a renewal the timer must not ignore.
+			if d, ok := readKeepAliveDeadline(ka); ok {
+				timer.Reset(time.Until(d))
+				continue
+			}
+			t.end(fmt.Errorf("%w: keepalive deadline", ErrSessionLost))
+			return
+		}
+	}
+}
+
+// keepaliveDeadline is E01-D013: at + TTL − TTL/3, two thirds of the server TTL.
+// at is a time.Now reading, so the result keeps the monotonic clock. ttlSeconds is the TTL in the server
+// response, not a locally assumed value; the subtraction is on the duration, so a 2s TTL still ends early.
+func keepaliveDeadline(at time.Time, ttlSeconds int64) time.Time {
+	ttl := time.Duration(ttlSeconds) * time.Second
+	return at.Add(ttl - ttl/3)
+}
+
+// keepaliveResponseDeadline is the deadline implied by one keepalive response, observed at time.Now.
+func keepaliveResponseDeadline(resp *clientv3.LeaseKeepAliveResponse) (time.Time, bool) {
+	if resp == nil || resp.TTL <= 0 {
+		return time.Time{}, false
+	}
+	return keepaliveDeadline(time.Now(), resp.TTL), true
+}
+
+// readKeepAliveDeadline reports a queued keepalive response without blocking. A closed or empty channel is
+// not a renewal.
+func readKeepAliveDeadline(ka <-chan *clientv3.LeaseKeepAliveResponse) (time.Time, bool) {
+	if ka == nil {
+		return time.Time{}, false
+	}
 	select {
-	case <-t.session.Done():
-		t.end(ErrSessionLost)
-	case <-t.done:
+	case resp, ok := <-ka:
+		if !ok {
+			return time.Time{}, false
+		}
+		return keepaliveResponseDeadline(resp)
+	default:
+		return time.Time{}, false
 	}
 }
 

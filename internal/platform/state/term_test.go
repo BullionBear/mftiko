@@ -304,6 +304,42 @@ func TestSessionLost(t *testing.T) {
 	}
 }
 
+// E01-D013: the deadline is two thirds of the server TTL after the response, on the duration, so a 2s TTL
+// does not collapse to the full TTL the way integer seconds would (2/3 == 0).
+func TestKeepaliveDeadline(t *testing.T) {
+	at := time.Now()
+	for _, ttl := range []int64{2, 15} {
+		got := keepaliveDeadline(at, ttl)
+		d := time.Duration(ttl) * time.Second
+		want := at.Add(d - d/3)
+		if !got.Equal(want) {
+			t.Fatalf("ttl %ds: %s, want %s", ttl, got.Sub(at), want.Sub(at))
+		}
+		if got.Sub(at) >= d || got.Sub(at) <= d/2 {
+			t.Fatalf("ttl %ds: deadline %s is not inside (TTL/2, TTL)", ttl, got.Sub(at))
+		}
+	}
+}
+
+// E01-D016: several TTLs of ordinary renewal must not end the term. The window is the bound; it is polled.
+func TestKeepaliveRenewalDoesNotEndTerm(t *testing.T) {
+	ctx := testCtx(t)
+	s, topo := privateRegion(t, "md-tw-1")
+	raw := s.Client(t)
+	term := campaign(t, ctx, newClusters(t, topo, nil, as(t, topo, "md-tw-1")), PlaneMD, "md-tw-1", TermOptions{SessionTTL: testSessionTTL})
+	key := term.election.Key()
+	during(t, 3*testSessionTTL, "the term stays up while keepalive renews", func() error {
+		if !running(term) {
+			return fmt.Errorf("term ended: %v", term.Err())
+		}
+		kvs := mustGet(t, ctx, raw, key).Kvs
+		if len(kvs) != 1 || kvs[0].Lease != int64(term.session.Lease()) {
+			return fmt.Errorf("election key %v, want it on the session lease", kvs)
+		}
+		return nil
+	})
+}
+
 // twoServers are two regions, two clusters, one server each (etcdtest.StartRegions, E13-D016).
 func twoServers(t *testing.T) (tw, jp *etcdtest.Server, topo Topology) {
 	t.Helper()

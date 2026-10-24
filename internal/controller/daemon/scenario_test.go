@@ -422,12 +422,9 @@ func TestScenarioInconsistentHomes(t *testing.T) {
 }
 
 // The leader loses its home region but still reaches jp, and a follower takes
-// over. The old term ends after the new one is elected: the session's client
-// side counts its TTL from the last keepalive reply, the server from the
-// request. Until then jp, which the new leader has not written, would still
-// take the old leader's writes (E13-D005). E13-D039 records this window; #277 ends
-// the term before the server expires the lease, and this test then asserts
-// the order instead of the bound.
+// over. The term ends on the keepalive deadline, before the server deletes the
+// election key (E01-D013, E01-D014, E01-D016). Until #277 the old term outlived
+// that delete and could still write jp (E13-D005, E13-D039).
 func TestScenarioZombieWindow(t *testing.T) {
 	ctx := t.Context()
 	servers := etcdtest.StartRegions(t, "tw", "jp")
@@ -442,6 +439,32 @@ func TestScenarioZombieWindow(t *testing.T) {
 	cfg.Term.SessionTTL = ttl
 	old := startAsync(t, ctx, cfg).ready(30 * time.Second)
 
+	tw := client(t, servers["tw"])
+	prefix := state.ElectionPrefix(state.PlaneCtl, state.ControllerInstance) + "/"
+	got, err := tw.Get(ctx, prefix, clientv3.WithPrefix())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Kvs) != 1 {
+		t.Fatalf("%d election keys, want the leader's", len(got.Kvs))
+	}
+	leaderKey := string(got.Kvs[0].Key)
+	// Watch returns only after the server has created the watcher. The Created
+	// response stays inside the client unless WithCreatedNotify is set, so it
+	// never arrives on wch; a closed channel is how a failed watch shows up.
+	wch := tw.Watch(ctx, leaderKey)
+	select {
+	case resp, ok := <-wch:
+		if !ok {
+			t.Fatal("watch on the election key closed before it was established")
+		}
+		if err := resp.Err(); err != nil {
+			t.Fatalf("watch election key: %v", err)
+		}
+		t.Fatalf("watch event before the cut: %v", resp.Events)
+	default:
+	}
+
 	cfg = config(topo, "new", testLog(t))
 	cfg.Planes = planes
 	cfg.Term.SessionTTL = ttl
@@ -450,11 +473,6 @@ func TestScenarioZombieWindow(t *testing.T) {
 		t.Fatal("follower elected while the leader runs")
 	}
 	proxy.Cut()
-	elected := make(chan time.Time, 1)
-	go func() {
-		next.ready(30 * time.Second)
-		elected <- time.Now()
-	}()
 	var ended time.Time
 	select {
 	case <-old.term.Done():
@@ -462,18 +480,45 @@ func TestScenarioZombieWindow(t *testing.T) {
 	case <-time.After(30 * time.Second):
 		t.Fatal("old term did not end")
 	}
-	if !errors.Is(old.term.Err(), state.ErrSessionLost) {
-		t.Fatalf("old term: %v", old.term.Err())
+	if err := old.term.Err(); !errors.Is(err, state.ErrSessionLost) || !strings.Contains(err.Error(), "keepalive deadline") {
+		t.Fatalf("old term: %v, want ErrSessionLost from the keepalive deadline", err)
 	}
-	var took time.Time
-	select {
-	case took = <-elected:
-	case <-time.After(30 * time.Second):
-		t.Fatal("follower not elected")
+	still, err := tw.Get(ctx, leaderKey)
+	if err != nil {
+		t.Fatal(err)
 	}
-	window := ended.Sub(took)
-	t.Logf("old term ended %s after the new leader was elected", window.Round(time.Millisecond))
-	if window >= ttl {
-		t.Fatalf("old term outlived the new election by %s, a TTL or more", window)
+	if len(still.Kvs) == 0 {
+		t.Fatal("election key was already deleted when the term ended")
+	}
+	deleted := waitElectionDelete(t, wch, leaderKey)
+	t.Logf("election key deleted %s after the term ended", deleted.Sub(ended).Round(time.Millisecond))
+	if !deleted.After(ended) {
+		t.Fatalf("election key deleted at %s, term ended at %s", deleted, ended)
+	}
+	next.ready(30 * time.Second)
+}
+
+// waitElectionDelete blocks until the server deletes leaderKey, or fails the test.
+func waitElectionDelete(t *testing.T, wch clientv3.WatchChan, leaderKey string) time.Time {
+	t.Helper()
+	timer := time.NewTimer(30 * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case resp, ok := <-wch:
+			if !ok {
+				t.Fatal("watch closed before the election key was deleted")
+			}
+			if err := resp.Err(); err != nil {
+				t.Fatalf("watch: %v", err)
+			}
+			for _, ev := range resp.Events {
+				if ev.Type == mvccpb.DELETE && string(ev.Kv.Key) == leaderKey {
+					return time.Now()
+				}
+			}
+		case <-timer.C:
+			t.Fatal("server did not delete the election key after the term ended")
+		}
 	}
 }

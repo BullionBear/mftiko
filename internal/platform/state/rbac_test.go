@@ -414,12 +414,17 @@ func TestRBACEnforced(t *testing.T) {
 // Tokens expire and auth changes; a long-running process keeps working: its session stays alive with nothing but
 // keepalives, its watch keeps delivering, and its writes authenticate again.
 func TestTokenExpiry(t *testing.T) {
+	// E01-D013: the deadline is two thirds of the session TTL, and that has to
+	// clear one token reconnect. testTokenTTL drops the keepalive stream; the
+	// client waits 500ms, then renews, so the gap is about one interval (TTL/3)
+	// plus that wait. At 9s the deadline is 6s and the gap is about 3.5s.
+	const sessionTTL = 9 * time.Second
 	ctx := testCtx(t)
 	s := etcdtest.Start(t, etcdtest.TokenTTL(testTokenTTL))
 	raw := s.Client(t)
 	topo := topologyOf(map[string]*etcdtest.Server{"tw": s}, map[string]string{"md-tw-1": "tw"})
 	cl := newClusters(t, topo, nil, as(t, topo, "md-tw-1"))
-	term := campaign(t, ctx, cl, PlaneMD, "md-tw-1", TermOptions{SessionTTL: testSessionTTL})
+	term := campaign(t, ctx, cl, PlaneMD, "md-tw-1", TermOptions{SessionTTL: sessionTTL})
 	if err := term.PutRecord(ctx, "record"); err != nil {
 		t.Fatal(err)
 	}
@@ -459,9 +464,9 @@ func TestTokenExpiry(t *testing.T) {
 	}
 	// An unrenewed lease of the session TTL has to actually disappear before the
 	// record's survival means the keepalives held it. etcd sweeps expired leases
-	// on its own ticker and later under load. The bound stays wider than testSessionTTL.
+	// on its own ticker and later under load. The bound stays wider than sessionTTL.
 	canary := "/canary/session-ttl"
-	lease, err := raw.Grant(ctx, int64(testSessionTTL/time.Second))
+	lease, err := raw.Grant(ctx, int64(sessionTTL/time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
