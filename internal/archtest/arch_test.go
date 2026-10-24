@@ -212,8 +212,32 @@ func check(pkgs []pkg, std map[string]bool) []string {
 				}
 			}
 		}
+		if under(from, "internal/cli") || from == "cmd/mftiko" {
+			for _, d := range p.Deps {
+				if cliOutsideAPI(d) {
+					out = append(out, fmt.Sprintf("%s links %s: mftiko speaks only to the API (E11-D001)", from, d))
+				}
+			}
+		}
 	}
 	return out
+}
+
+// cliOutsideAPI reports a dependency the CLI must not link. mftiko talks only to
+// the API (E11-D001): the generated API client and the build identity, not etcd,
+// NATS, Postgres, exchange, or another plane.
+func cliOutsideAPI(importPath string) bool {
+	if under(importPath, "go.etcd.io", "github.com/nats-io", "github.com/jackc", "github.com/lib/pq", "oras.land") {
+		return true
+	}
+	r, own := rel(importPath)
+	if !own {
+		return false
+	}
+	if under(r, "internal/cli", "internal/platform/buildinfo", "contract/gen/api") {
+		return false
+	}
+	return under(r, "internal", "exchange", "contract", "sdk", "examples")
 }
 
 // goList runs go list over the whole module, with every dependency.
@@ -264,7 +288,8 @@ func TestDependencyRules(t *testing.T) {
 		"internal/platform/agent", "internal/platform/agent/runner", "internal/platform/natsx", "internal/platform/shim",
 		"internal/platform/artifact", "cmd/mftiko-pack",
 		"internal/md", "internal/td", "internal/sts", "internal/sym", "internal/api",
-		"internal/controller", "internal/controller/daemon"} {
+		"internal/controller", "internal/controller/daemon",
+		"internal/cli", "cmd/mftiko"} {
 		if !slices.Contains(own, want) {
 			t.Fatalf("package %s not found: update the rules in this file (DECISIONS E00-D006) to the new layout", want)
 		}
@@ -318,6 +343,8 @@ func TestCheckReportsViolations(t *testing.T) {
 			"github.com/rs/zerolog", // not the runtime
 		}},
 		{ImportPath: m("contract/wire/frame"), Imports: []string{"github.com/oapi-codegen/runtime"}}, // not contract/gen/api
+		{ImportPath: m("cmd/mftiko"), Deps: []string{m("internal/cli"), m("internal/md")}},
+		{ImportPath: m("internal/cli"), Deps: []string{m("contract/gen/api/v1"), m("internal/platform/buildinfo"), "go.etcd.io/etcd/client/v3"}},
 	}
 	std := map[string]bool{"fmt": true, "context": true}
 	got := check(pkgs, std)
@@ -354,6 +381,8 @@ func TestCheckReportsViolations(t *testing.T) {
 		"cmd/mftiko-sts-agent imports oras.land/oras-go/v2",
 		"contract/gen/api/v1 imports github.com/rs/zerolog",
 		"contract/wire/frame imports github.com/oapi-codegen/runtime",
+		"cmd/mftiko links " + m("internal/md"),
+		"internal/cli links go.etcd.io/etcd/client/v3",
 	}
 	if len(got) != len(want) {
 		t.Errorf("%d violations, want %d:\n%s", len(got), len(want), strings.Join(got, "\n"))
