@@ -168,11 +168,17 @@ func TestStrategyPaging(t *testing.T) {
 		t.Fatalf("cursor page %s calls %+v", got.out, srv.Calls())
 	}
 
+	// E11-D010 supplement: --limit together with --cursor is a usage error (exit 1).
 	both := &apitest.Catalog{Strategies: strategies, PageSize: 2}
 	srv, home = startCat(t, both)
-	got = runQuery(t, home, "strategy", "list", "--limit", "2", "--cursor", "2")
-	if got.code != ExitUsage || len(srv.Calls()) != 0 || !strings.Contains(got.err, "-limit and -cursor cannot both be set") {
-		t.Fatalf("both %+v calls %d", got, len(srv.Calls()))
+	for _, args := range [][]string{
+		{"strategy", "list", "--limit", "2", "--cursor", "2"},
+		{"strategy", "versions", "alpha", "--cursor", "2", "--limit", "2"},
+	} {
+		got = runQuery(t, home, args...)
+		if got.code != ExitUsage || got.out != "" || len(srv.Calls()) != 0 || !strings.Contains(got.err, "-limit and -cursor cannot both be set") {
+			t.Fatalf("both %v %+v calls %d", args, got, len(srv.Calls()))
+		}
 	}
 
 	detail := "registry is not configured"

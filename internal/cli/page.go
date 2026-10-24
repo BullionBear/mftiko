@@ -42,8 +42,7 @@ func (a *App) rejectPageFlags() int {
 }
 
 // paging resolves E11-D010. --limit caps the total row count. --cursor is one
-// page. The two modes are alternatives: setting both is a usage error, because
-// neither decision defines a combined result.
+// page. Passing both is a usage error, exit 1 (E11-D010 supplement).
 func (a *App) paging() (single bool, cursor string, total int, code int) {
 	if a.opt.limitSet && a.opt.cursorSet {
 		return false, "", 0, a.exit("-limit and -cursor cannot both be set")
