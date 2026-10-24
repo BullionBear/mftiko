@@ -24,6 +24,8 @@ make accept-up        # 等於 deploy/accept/accept.sh up
 
 `up` 會依序：建 Linux binary、`mftiko-nats-dev` 產生 NATS 憑證、起 etcd／NATS／PostgreSQL、套 migration（`mftiko-migrate` 還沒做，這裡用 psql 逐檔套用，套過的記在 `accept_migrations`；E4、E6 時建的資料庫沒有這張表，已經存在的檔案會補記）、`setup`（etcd 的角色與使用者，與部署相同的 RBAC，然後開 auth）、`creds`（觀察端用的、可收發所有 subject 的 NATS 使用者；SYM 也用它，因為 `mftiko-nats-dev` 不發 SYM 使用者）、啟動 `mftiko-sym`，最後要 SYM 立刻刷新並印出商品。可以重跑。
 
+`up` 也會用 `mftiko-pack` 把剛建好的 `mftiko-md-conn`、`mftiko-td-account` 推到 compose 裡的 registry，tag 是 `latest`（`registry:5000/bullionbear/mftiko-md-conn`、`…/mftiko-td-account`）。md-agent、td-agent 跟正式環境一樣以 `-registry` 從 `latest` 拉（E12-02），不用 `-conn`、`-account`；artifact 解在 `/var/md/data`、`/var/td/data` 底下，worker 的執行檔是 `…/artifacts/<digest>/rootfs/bin/worker`。`conns`、`td conns` 以 worker 環境裡的 `MFTIKO_PLANE` 找進程，不看執行檔名稱。改了 conn 或 account 的程式碼就重跑 `up`：新的 `latest` 只影響之後 spawn 的 worker，跑著的不換（P9）。
+
 ```
 ... refreshed map[BinanceUM/Future:4 BinanceUM/Perp:924] ... failed map[]
 ... BinanceUM_Perp_BTCUSDT uid=... exch=BTCUSDT status=SYMBOL_STATUS_TRADABLE price_tick=0.1
@@ -98,7 +100,7 @@ $A late -feed aggtrade.BinanceUM_Perp_BTCUSDT -follow 5s
 ```sh
 $A conns
 $A stop-agent                                # SIGTERM
-$A ps                                        # shim 被 init 收養，md-conn 還在
+$A ps                                        # shim 被 init 收養，conn worker（/var/md/data/…/rootfs/bin/worker）還在
 $A agent                                     # log: data/work/agent-2.log
 grep "shims adopted" data/work/agent-2.log   # adopted=2 unreachable=0
 $A conns                                     # pid 與 socket 都沒變
@@ -184,7 +186,7 @@ $T cancel -instance td1 -api-id 1 -cid <掛著的 cid>'
 ```sh
 $A td conns                                  # pid 與 socket
 $A stop-td-agent
-$A ps                                        # shim 被 init 收養，mftiko-td-account 還在
+$A ps                                        # shim 被 init 收養，account worker（/var/td/data/…/rootfs/bin/worker）還在
 $A td submit ... ; $A td cancel ...          # 沒有 agent 時 td.order 照常
 $A td-agent                                  # log: data/work/td-agent-2.log
 grep "shims adopted" data/work/td-agent-2.log  # adopted=1 unreachable=0
@@ -199,9 +201,9 @@ worker 只在 Start 檢查持倉模式（E06-D016），所以切換後讓它重�
 
 ```sh
 $A td mode -creds /work/binanceum.creds.json -dual true
-docker compose -f deploy/accept/compose.yaml exec -T runner sh -c 'kill -9 $(pgrep -f "^/mftiko/mftiko-td-account")'
+docker compose -f deploy/accept/compose.yaml exec -T runner sh -c 'kill -9 $(pgrep -f "^/var/td/data/artifacts/.*/rootfs/bin/worker")'
 $A td acks                                   # ENTRY_STATE_REJECTED reason:"hedge_mode"，下一個 incarnation
-$A ps                                        # 沒有 mftiko-td-account：不重拉（E06-D008）
+$A ps                                        # 沒有 /var/td/data 底下的 bin/worker：不重拉（E06-D008）
 ```
 
 還原：`td mode ... -dual false`，`td demand del s1 1`，等過 linger（5 秒），再 `td demand put s1 1`，ack 回到 `READY`。

@@ -16,6 +16,7 @@ import (
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
 	"github.com/BullionBear/mftiko/exchange"
 	"github.com/BullionBear/mftiko/internal/platform/agent"
+	"github.com/BullionBear/mftiko/internal/platform/agent/latest"
 	"github.com/BullionBear/mftiko/internal/platform/sealbox"
 	"github.com/BullionBear/mftiko/internal/td/account"
 )
@@ -257,7 +258,7 @@ func TestProgramInit(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &Program{
-		Account: "/bin/td-account", Instance: "td-1", Env: []string{"MFTIKO_NATS_URL=nats://x"},
+		Worker: latest.Local{Path: "/bin/td-account"}, Instance: "td-1", Env: []string{"MFTIKO_NATS_URL=nats://x"},
 		Unseal: func(s []byte, id int64, kind string) (sealbox.Credentials, error) {
 			return sealbox.OpenCredentials(k, s, id, kind)
 		},
@@ -284,5 +285,24 @@ func TestProgramInit(t *testing.T) {
 	}
 	if l, _ := p.Launch(WorkerKey(42), spec); l.GetPath() != "/bin/td-account" || len(l.GetEnv()) != 1 {
 		t.Fatalf("launch %v", l)
+	}
+}
+
+// An account worker never spawned shows why no artifact is ready instead of "starting" (E12-D009).
+func TestAckWaitingForArtifact(t *testing.T) {
+	o := outcome{Worker: WorkerKey(1)}
+	why := "artifact_wrong_kind"
+	p := &plane{pending: func() string { return why }}
+	pending := statev1.EntryState_ENTRY_STATE_PENDING
+	if got := p.waiting(o, pending, "starting", nil); got != why {
+		t.Fatalf("no artifact: %q", got)
+	}
+	running := map[agent.WorkerKey]agent.Observed{WorkerKey(1): {State: agent.StateInitialized}}
+	if got := p.waiting(o, pending, "starting", running); got != "starting" {
+		t.Fatalf("spawned worker: %q", got)
+	}
+	why = ""
+	if got := p.waiting(o, pending, "starting", nil); got != "starting" {
+		t.Fatalf("artifact ready: %q", got)
 	}
 }

@@ -21,7 +21,7 @@
 - 平台：`linux/amd64`。manifest 的 `-name` 與 repository 同名。
 - 權限：`GITHUB_TOKEN` 的 `packages: write`。workflow 只推送，不呼叫任何可見度 API。
 
-`latest` 給人查找。E12 的 agent 會把它解析成 digest；這一期 agent 仍執行這個 repo 建出的 binary（E09-D014）。
+md-agent、td-agent 以 `-registry ghcr.io` 每分鐘把 `latest` 解析成 digest，之後 spawn 的 worker 用新版，跑著的不換（E12-D008、E12-D010）。所以推了 `v*` tag，新的 conn 與 account worker 不必重啟 agent 就會生效。
 
 ### 第一個 tag 之前
 

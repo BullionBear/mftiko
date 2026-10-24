@@ -20,8 +20,6 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
-const connComm = "mftiko-md-conn"
-
 var ports = flag.String("ports", "443,8443,9443", "remote TCP ports that count as venue sockets")
 
 // worker is one running conn worker as seen from /proc.
@@ -114,8 +112,7 @@ func workers() ([]worker, error) {
 		if err != nil {
 			continue
 		}
-		comm, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid))
-		if err != nil || strings.TrimSpace(string(comm)) != connComm {
+		if workerPlane(pid) != "md" {
 			continue
 		}
 		w := worker{pid: pid, hash: shimHash(parent(pid))}
@@ -252,4 +249,19 @@ func portSet(s string) (map[int]bool, error) {
 		out[n] = true
 	}
 	return out, nil
+}
+
+// workerPlane is the MFTIKO_PLANE the fleet put in a worker's environment, or "" for any other process. The name of
+// the executable is no guide: a worker from an artifact runs rootfs/bin/worker (E12-02).
+func workerPlane(pid int) string {
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/environ", pid))
+	if err != nil {
+		return ""
+	}
+	for kv := range strings.SplitSeq(string(b), "\x00") {
+		if v, ok := strings.CutPrefix(kv, "MFTIKO_PLANE="); ok {
+			return v
+		}
+	}
+	return ""
 }

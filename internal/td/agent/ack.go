@@ -12,6 +12,21 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
+// waiting replaces "starting" on an account worker that has never been spawned with why it cannot be: no
+// worker artifact is ready yet (E12-D009). The entry stays PENDING; pushing a good latest fixes it.
+func (p *plane) waiting(o outcome, st statev1.EntryState, reason string, observed map[agent.WorkerKey]agent.Observed) string {
+	if st != statev1.EntryState_ENTRY_STATE_PENDING || p.pending == nil || o.Worker == "" {
+		return reason
+	}
+	if _, seen := observed[o.Worker]; seen {
+		return reason
+	}
+	if why := p.pending(); why != "" {
+		return why
+	}
+	return reason
+}
+
 // sync writes one ack per demand key (PROTOCOL §3.5), only when it changes. A demand that left
 // loses its ack at once: linger keeps the worker, not the ack.
 func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[agent.WorkerKey]agent.Observed, gaveUp func(agent.WorkerKey) bool) error {
@@ -22,6 +37,7 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 	for _, o := range p.outcomes {
 		ack := state.TDAckKey(p.inst, o.Session, o.APIID)
 		st, reason, write := decide(o, observed, gaveUp)
+		reason = p.waiting(o, st, reason, observed)
 		want[ack] = true
 		if !write {
 			continue

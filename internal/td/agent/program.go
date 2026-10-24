@@ -10,6 +10,7 @@ import (
 	tdctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/tdctl/v1"
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
 	"github.com/BullionBear/mftiko/internal/platform/agent"
+	"github.com/BullionBear/mftiko/internal/platform/agent/latest"
 	"github.com/BullionBear/mftiko/internal/platform/sealbox"
 	"github.com/BullionBear/mftiko/internal/td/account"
 )
@@ -22,9 +23,9 @@ type NATSUser func(apiID int64) (userJWT, seed, inbox string, err error)
 
 // Program builds the account worker's launch and its Init.
 type Program struct {
-	Account  string   // mftiko-td-account, the binary every new spawn runs (P9)
-	Instance string   // td_instance
-	Env      []string // MFTIKO_NATS_URL; the shim adds the control fd and the agent the identity
+	Worker   latest.Launcher // where every new spawn gets the account worker (P9, E12-D010)
+	Instance string          // td_instance
+	Env      []string        // MFTIKO_NATS_URL; the shim adds the control fd and the agent the identity
 	Unseal   Unsealer
 	User     NATSUser
 	// ExtraEnv is appended to one worker's environment. Tests use it.
@@ -34,13 +35,13 @@ type Program struct {
 // CarriesLive is false: TD has no live config, and Init has no live_digest to answer.
 func (*Program) CarriesLive() bool { return false }
 
-// Launch is the repo-built account binary.
+// Launch is the account worker the Worker has ready: the latest artifact, or a local binary in development.
 func (p *Program) Launch(key agent.WorkerKey, _ Spec) (*shimv1.Launch, error) {
 	env := append([]string(nil), p.Env...)
 	if p.ExtraEnv != nil {
 		env = append(env, p.ExtraEnv(key)...)
 	}
-	return &shimv1.Launch{Path: p.Account, Dir: "/", Env: env}, nil
+	return p.Worker.Launch(env)
 }
 
 // Init unseals the credentials and signs a NATS user for this spawn. The plaintext is in the

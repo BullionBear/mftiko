@@ -20,6 +20,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/md/conn"
 	"github.com/BullionBear/mftiko/internal/platform/agent"
 	"github.com/BullionBear/mftiko/internal/platform/agent/fleet"
+	"github.com/BullionBear/mftiko/internal/platform/agent/latest"
 )
 
 // envJournal is where a conn worker appends a test journal. Empty in production.
@@ -72,7 +73,7 @@ func (l Live) desired() *mdctlv1.Desired {
 
 // Program builds the conn worker's launch and its C5 messages.
 type Program struct {
-	Conn       string
+	Worker     latest.Launcher
 	Instance   string
 	Env        []string
 	JournalDir string
@@ -87,8 +88,9 @@ type Program struct {
 // would otherwise treat the spawn as a push and wait out LiveRetry before the first Desired.
 func (*Program) CarriesLive() bool { return false }
 
-// Launch is the repo-built conn binary. Env is the process environment the worker needs
-// (MFTIKO_NATS_URL, MFTIKO_NATS_CREDS); the shim adds the control fd.
+// Launch is the conn worker the Worker has ready: the latest artifact, or a local binary in development
+// (E12-D010). Env is the process environment the worker needs (MFTIKO_NATS_URL, MFTIKO_NATS_CREDS); the shim
+// adds the control fd.
 func (p *Program) Launch(key agent.WorkerKey, _ Spec) (*shimv1.Launch, error) {
 	env := append([]string(nil), p.Env...)
 	if p.JournalDir != "" {
@@ -97,7 +99,7 @@ func (p *Program) Launch(key agent.WorkerKey, _ Spec) (*shimv1.Launch, error) {
 	if p.ExtraEnv != nil {
 		env = append(env, p.ExtraEnv(key)...)
 	}
-	return &shimv1.Launch{Path: p.Conn, Dir: "/", Env: env}, nil
+	return p.Worker.Launch(env)
 }
 
 func journalFile(dir string, key agent.WorkerKey) string {

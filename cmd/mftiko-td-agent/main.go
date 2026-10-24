@@ -23,6 +23,8 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/BullionBear/mftiko/exchange/all"
+	"github.com/BullionBear/mftiko/internal/platform/agent/latest"
+	"github.com/BullionBear/mftiko/internal/platform/artifact"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/logger"
 	"github.com/BullionBear/mftiko/internal/platform/natsdev"
@@ -37,6 +39,7 @@ type options struct {
 	endpoints, restEndpoints                             string
 	simulated                                            bool
 	linger                                               time.Duration
+	artifact                                             latest.Flags
 }
 
 func main() {
@@ -47,7 +50,8 @@ func main() {
 	flag.StringVar(&o.password, "etcd-password", os.Getenv("MFTIKO_ETCD_PASSWORD"), "etcd password (default $MFTIKO_ETCD_PASSWORD)")
 	flag.StringVar(&o.workDir, "work-dir", "", "sockets, exit files, and worker logs")
 	flag.StringVar(&o.shim, "shim", "", "mftiko-shim executable")
-	flag.StringVar(&o.account, "account", "", "mftiko-td-account executable")
+	flag.StringVar(&o.account, "account", "", "mftiko-td-account executable, for development; production uses -registry")
+	o.artifact.Register(flag.CommandLine, latest.RepoTDAccount)
 	flag.StringVar(&o.natsURL, "nats", envOr("NATS_URL", "nats://127.0.0.1:4222"), "NATS URL the account workers connect to (default $NATS_URL or the dev server)")
 	flag.StringVar(&o.natsAccount, "nats-account", "", "the MFTIKO account's public key")
 	flag.StringVar(&o.natsSigningKey, "nats-signing-key", "", "seed file of the MFTIKO account's signing key, which signs each account worker's user")
@@ -79,8 +83,8 @@ func envOr(key, fallback string) string {
 
 func run(ctx context.Context, o options, log zerolog.Logger) error {
 	switch {
-	case o.instance == "" || o.topology == "" || o.password == "" || o.workDir == "" || o.shim == "" || o.account == "":
-		return errors.New("instance, topology, etcd password, work dir, shim, and account are required")
+	case o.instance == "" || o.topology == "" || o.password == "" || o.workDir == "" || o.shim == "":
+		return errors.New("instance, topology, etcd password, work dir, and shim are required")
 	case o.natsURL == "" || o.natsAccount == "" || o.natsSigningKey == "":
 		return errors.New("nats URL, account, and signing key are required")
 	case o.sealKey == "":
@@ -90,10 +94,14 @@ func run(ctx context.Context, o options, log zerolog.Logger) error {
 	if err != nil {
 		return err
 	}
-	for _, p := range []*string{&o.workDir, &o.shim, &o.account} {
+	for _, p := range []*string{&o.workDir, &o.shim} {
 		if *p, err = cleanAbs(*p); err != nil {
 			return err
 		}
+	}
+	worker, err := o.artifact.Launcher(artifact.KindTDAccount, "account", o.account, log)
+	if err != nil {
+		return err
 	}
 	key, err := sealbox.LoadKeyFile(o.sealKey)
 	if err != nil {
@@ -115,7 +123,7 @@ func run(ctx context.Context, o options, log zerolog.Logger) error {
 	return agent.Run(ctx, agent.Config{
 		Topology: topo, Instance: o.instance, Dial: state.AuthDial(o.instance, o.password),
 		Term:    state.TermOptions{ID: fmt.Sprintf("%s:%d", host, os.Getpid())},
-		WorkDir: o.workDir, Shim: o.shim, Account: o.account,
+		WorkDir: o.workDir, Shim: o.shim, Worker: worker,
 		WorkerEnv: []string{"MFTIKO_NATS_URL=" + o.natsURL},
 		Kinds:     reg, Endpoints: endpoints,
 		Open: func(sealed []byte, id int64, kind string) error {

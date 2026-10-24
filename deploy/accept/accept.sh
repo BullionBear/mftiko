@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Drives the MD, TD and end-to-end acceptance in deploy/accept (README.md is the runbook).
 #
-#   accept.sh up                 build bin/linux, NATS creds, start the stack, migrate, etcd auth, SYM
+#   accept.sh up                 build bin/linux, NATS creds, start the stack, migrate, push the conn and
+#                                account workers to the registry as latest, etcd auth, SYM
 #   accept.sh agent              start an md-agent (log /work/agent-<n>.log); refuses if one runs
 #   accept.sh stop-agent         SIGTERM the md-agent; its shims and conn workers stay
 #   accept.sh bg NAME ARGS...    run mftiko-md-accept ARGS in the background, log /work/NAME.log
@@ -80,6 +81,11 @@ up() {
 			fi
 			q -c "insert into accept_migrations values ('"'"'$n'"'"')"
 		done'
+	# The agents run the conn and account workers from the registry's latest, as in production (E12-02).
+	run sh -c '/mftiko/mftiko-pack -kind md.conn -bin /mftiko/mftiko-md-conn -name mftiko-md-conn \
+		-repo registry:5000/bullionbear/mftiko-md-conn -tag latest -plain-http &&
+		/mftiko/mftiko-pack -kind td.account -bin /mftiko/mftiko-td-account -name mftiko-td-account \
+		-repo registry:5000/bullionbear/mftiko-td-account -tag latest -plain-http'
 	tool setup -instance dev -topology /work/topology.json
 	tool creds -nats-dir /nats -out /work/observer.creds
 	if ! running /mftiko/mftiko-sym; then
@@ -98,7 +104,7 @@ agent() {
 	n=$(run sh -c 'ls /work/agent-*.log 2>/dev/null | wc -l')
 	n=$((n + 1))
 	run sh -c "mkdir -p /var/md && nohup /mftiko/mftiko-md-agent -instance dev -topology /work/topology.json \
-		-work-dir /var/md -shim /mftiko/mftiko-shim -conn /mftiko/mftiko-md-conn \
+		-work-dir /var/md -shim /mftiko/mftiko-shim -registry registry:5000 -plain-http -data /var/md/data \
 		-nats-creds /nats/creds/md-dev.creds -endpoints /endpoints/ws.json -rest-endpoints /endpoints/rest.json \
 		>/work/agent-$n.log 2>&1 &"
 	echo "md-agent started, log data/work/agent-$n.log"
@@ -123,7 +129,7 @@ td_agent() {
 	# host: -simulated is its demo trading (the x-simulated-trading header and the demo private
 	# socket). The other venues ignore it.
 	run sh -c "mkdir -p /var/td && nohup /mftiko/mftiko-td-agent -instance $td_inst -topology /work/td-topology.json \
-		-work-dir /var/td -shim /mftiko/mftiko-shim -account /mftiko/mftiko-td-account \
+		-work-dir /var/td -shim /mftiko/mftiko-shim -registry registry:5000 -plain-http -data /var/td/data \
 		-nats-account $account -nats-signing-key /nats/keys/mftiko-signing.nk -seal-key /work/td-seal.key \
 		-rest-endpoints /endpoints/rest.json -simulated >/work/td-agent-$n.log 2>&1 &"
 	echo "td-agent started, log data/work/td-agent-$n.log"
