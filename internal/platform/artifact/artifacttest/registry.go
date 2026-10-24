@@ -56,18 +56,21 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	case strings.Contains(rest, "/blobs/"):
 		r.get(w, req, r.blobs, rest[strings.Index(rest, "/blobs/")+len("/blobs/"):], "application/octet-stream")
 	case strings.Contains(rest, "/manifests/"):
-		leaf := rest[strings.Index(rest, "/manifests/")+len("/manifests/"):]
+		// Key by repository. A tag in one repository is not a tag in another.
+		i := strings.Index(rest, "/manifests/")
+		repo, leaf := rest[:i], rest[i+len("/manifests/"):]
 		if req.Method == http.MethodPut {
 			body, _ := io.ReadAll(req.Body)
 			sum := digest.FromBytes(body).String()
 			r.mu.Lock()
-			r.manifests[leaf], r.manifests[sum] = body, body
+			r.manifests[repo+"\x00"+leaf] = body
+			r.manifests[repo+"\x00"+sum] = body
 			r.mu.Unlock()
 			w.Header().Set("Docker-Content-Digest", sum)
 			w.WriteHeader(http.StatusCreated)
 			return
 		}
-		r.get(w, req, r.manifests, leaf, ocispec.MediaTypeImageManifest)
+		r.get(w, req, r.manifests, repo+"\x00"+leaf, ocispec.MediaTypeImageManifest)
 	default:
 		w.WriteHeader(http.StatusOK)
 	}

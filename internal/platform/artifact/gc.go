@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -63,6 +64,72 @@ func pinDigests(list []string) (map[string]struct{}, error) {
 		out[k] = struct{}{}
 	}
 	return out, nil
+}
+
+// RootfsRepos lists image digests that have a rootfs and a repository record, grouped by that
+// repository (E12-D011). A rootfs with no record is omitted: the caller keeps it only when it is
+// pinned. A directory name that is not a sha256 digest is omitted too.
+func (c *Client) RootfsRepos() (map[string][]string, error) {
+	dir := filepath.Join(c.data, "artifacts")
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return map[string][]string{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("artifact: repositories: %w", err)
+	}
+	out := map[string][]string{}
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, tempPrefix) || !e.IsDir() || !digestOK(name) {
+			continue
+		}
+		if !rootfsReady(filepath.Join(dir, name, "rootfs")) {
+			continue
+		}
+		repo, ok, err := readRepository(filepath.Join(dir, name, repositoryName))
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		out[repo] = append(out[repo], name)
+	}
+	for repo := range out {
+		slices.Sort(out[repo])
+	}
+	return out, nil
+}
+
+func readRepository(path string) (string, bool, error) {
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("artifact: repository: %w", err)
+	}
+	repo := strings.TrimSpace(string(raw))
+	if repo == "" || strings.ContainsAny(repo, "\r\n\x00") {
+		return "", false, nil
+	}
+	return repo, true, nil
+}
+
+// digestOfExe reports the image digest when exe is ${DATA}/artifacts/<digest>/rootfs/... (E12-D014).
+// Linux appends " (deleted)" when the file has been unlinked.
+func digestOfExe(dataDir, exe string) (string, bool) {
+	exe = strings.TrimSuffix(exe, " (deleted)")
+	rel, err := filepath.Rel(filepath.Clean(dataDir), filepath.Clean(exe))
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	parts := strings.Split(rel, string(filepath.Separator))
+	if len(parts) < 3 || parts[0] != "artifacts" || parts[2] != "rootfs" || !digestOK(parts[1]) {
+		return "", false
+	}
+	return parts[1], true
 }
 
 func (c *Client) removeUnkept(keep map[string]struct{}) error {

@@ -9,6 +9,8 @@
 // it still uploads a strategy image from memory with Docker config credentials.
 // Unpack extracts gzip-compressed tar layers into a directory (E09-D051–E09-D053, E09-D057). UnpackImage installs
 // them at ${DATA}/artifacts/<digest>/rootfs and records the layer list used for GC (E09-D050, E09-D055).
+// UnpackImageFrom also records the repository beside a rootfs it installs (E12-D011). A rootfs that is already
+// there is reused and its record is left as it is.
 // GC deletes every other rootfs, then layers no remaining rootfs references (E09-D056). An optional
 // second set keeps input layers that are still being pulled or unpacked. HoldLayers keeps digests
 // a caller is still using, including strategy layers between Pull and UnpackImage (E09-D073).

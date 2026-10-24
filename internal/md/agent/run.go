@@ -131,6 +131,9 @@ func Run(ctx context.Context, cfg Config) error {
 		inst: cfg.Instance, linger: cfg.Linger, markets: cfg.Markets,
 		overrides: cfg.Overrides, get: reader, w: term, log: cfg.Log, now: cfg.Now, pending: worker.Pending,
 	}
+	if g, ok := worker.(interface{ GC() error }); ok {
+		p.gc = g.GC
+	}
 	return runner.Run(ctx, runner.Config[Entry, Spec, Live]{
 		Term: term, Demand: m, Statuses: reader, Decode: Decode, Planner: p,
 		Policy: policy, Fleet: &reporting{Fleet: f, epochs: epochs},
@@ -187,6 +190,7 @@ type plane struct {
 	log       zerolog.Logger
 	now       func() time.Time
 	pending   func() string // why a new conn worker cannot start (E12-D009); "" when it can
+	gc        func() error  // disk GC once per reconcile when the worker comes from the registry (E12-D015)
 
 	loaded   bool
 	placed   map[string]string // feed hash -> conn, as etcd holds it
@@ -228,7 +232,19 @@ func (p *plane) commit(ctx context.Context, d agent.Demand[Entry], _ map[agent.W
 	p.snap = snapshot{Atoms: next.Atoms, Linger: next.Linger}
 	p.outcomes, p.plans = next.Outcomes, next.Plans
 	p.log.Debug().Int("feeds", len(next.Atoms)).Int("conns", len(next.Plans)).Msg("placement committed")
+	p.gcArtifacts()
 	return nil
+}
+
+// gcArtifacts collects unpacked worker images once per reconcile (E12-D014, E12-D015). It is local file
+// operations. A failure is a warning. A development binary has no GC.
+func (p *plane) gcArtifacts() {
+	if p.gc == nil {
+		return
+	}
+	if err := p.gc(); err != nil {
+		p.log.Warn().Err(err).Msg("artifact gc")
+	}
 }
 
 // feedsOf is the demand this commit places. A key Decode rejected is a reject, not a feed.

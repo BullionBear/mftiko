@@ -86,7 +86,7 @@ func TestSourceFollowsTag(t *testing.T) {
 	if s.Digest() != b {
 		t.Fatalf("digest %s, want %s", s.Digest(), b)
 	}
-	// The old rootfs stays: a worker started from it keeps running (P9). GC is E12-03.
+	// The old rootfs stays until GC (P9, E12-D014). This step does not collect.
 	if _, err := os.Stat(filepath.Join(rootA, "bin/worker")); err != nil {
 		t.Fatal(err)
 	}
