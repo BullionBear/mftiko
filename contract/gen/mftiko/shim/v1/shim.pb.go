@@ -1032,7 +1032,7 @@ type Attached struct {
 	Phase         Phase                  `protobuf:"varint,14,opt,name=phase,proto3,enum=mftiko.shim.v1.Phase" json:"phase,omitempty"`           // 生命週期的階段（§4.3）；worker 結束後是結束前的最後一個
 	Exiting       *v11.Exiting           `protobuf:"bytes,15,opt,name=exiting,proto3" json:"exiting,omitempty"`                                  // worker 送的第一則 Exiting；沒送過就沒有（§4.4）
 	Exit          *v1.ExitInfo           `protobuf:"bytes,16,opt,name=exit,proto3" json:"exit,omitempty"`                                        // state 是 EXITED 時的 ExitInfo，與結束檔相同（§4.5 S3）
-	AppliedDigest string                 `protobuf:"bytes,17,opt,name=applied_digest,json=appliedDigest,proto3" json:"applied_digest,omitempty"` // worker 最後一則 Applied 的 digest：它手上的 live config（D111）；沒送過是空的
+	AppliedDigest string                 `protobuf:"bytes,17,opt,name=applied_digest,json=appliedDigest,proto3" json:"applied_digest,omitempty"` // worker 最後一則 Applied 的 digest：它手上的 live config（E01-D011）；沒送過是空的
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

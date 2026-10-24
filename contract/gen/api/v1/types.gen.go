@@ -334,12 +334,12 @@ func (e WorkerPhase) Valid() bool {
 	}
 }
 
-// APIIDValue API 隨機配發，1 到 2⁵³−1（D1008）。
+// APIIDValue API 隨機配發，1 到 2⁵³−1（E10-D008）。
 type APIIDValue = int64
 
-// Account 不含憑證、密文或指紋（D1063）。
+// Account 不含憑證、密文或指紋（E10-D063）。
 type Account struct {
-	// ApiId API 隨機配發，1 到 2⁵³−1（D1008）。
+	// ApiId API 隨機配發，1 到 2⁵³−1（E10-D008）。
 	ApiId APIIDValue `json:"api_id"`
 	Kind  string     `json:"kind"`
 	Name  string     `json:"name"`
@@ -356,7 +356,7 @@ type Account struct {
 
 // AccountCreate defines model for AccountCreate.
 type AccountCreate struct {
-	// Credentials 只寫不讀（D1011、D1063）。回應、log、`audit` 都不含明文或密文。
+	// Credentials 只寫不讀（E10-D011、E10-D063）。回應、log、`audit` 都不含明文或密文。
 	Credentials *Credentials `json:"credentials,omitempty"`
 
 	// Kind `GET /account-kinds` 裡 `supported` 的種類。
@@ -372,7 +372,7 @@ type AccountCreate struct {
 type AccountDecl struct {
 	AlgoIds []int `json:"algo_ids"`
 
-	// ApiId API 隨機配發，1 到 2⁵³−1（D1008）。
+	// ApiId API 隨機配發，1 到 2⁵³−1（E10-D008）。
 	ApiId      APIIDValue   `json:"api_id"`
 	Name       string       `json:"name"`
 	TdInstance InstanceName `json:"td_instance"`
@@ -380,10 +380,10 @@ type AccountDecl struct {
 
 // AccountDeclInput defines model for AccountDeclInput.
 type AccountDeclInput struct {
-	// AlgoIds 與同一個帳號上非 terminal 的 session 重疊時回 409（`algo_overlap`，best-effort，D1012）。
+	// AlgoIds 與同一個帳號上非 terminal 的 session 重疊時回 409（`algo_overlap`，best-effort，E10-D012）。
 	AlgoIds []int `json:"algo_ids"`
 
-	// ApiId API 隨機配發，1 到 2⁵³−1（D1008）。
+	// ApiId API 隨機配發，1 到 2⁵³−1（E10-D008）。
 	ApiId APIIDValue `json:"api_id"`
 	Name  string     `json:"name"`
 }
@@ -397,7 +397,7 @@ type AccountKind struct {
 	// Passphrase 憑證要帶 passphrase（OKX）。
 	Passphrase bool `json:"passphrase"`
 
-	// Supported 一期只收交易一個 venue 的種類（D614、D1011）。
+	// Supported 一期只收交易一個 venue 的種類（E06-D014、E10-D011）。
 	Supported bool `json:"supported"`
 
 	// Trades 可交易的 venue。
@@ -411,7 +411,7 @@ type AccountKindList struct {
 
 // AccountList defines model for AccountList.
 type AccountList struct {
-	// Freshness 讀取來自副本時的新鮮度（D1014）。
+	// Freshness 讀取來自副本時的新鮮度（E10-D014）。
 	Freshness  Freshness `json:"freshness"`
 	Items      []Account `json:"items"`
 	NextCursor *string   `json:"next_cursor,omitempty"`
@@ -425,7 +425,7 @@ type AccountSettings struct {
 
 // AccountUpdate defines model for AccountUpdate.
 type AccountUpdate struct {
-	// Credentials 只寫不讀（D1011、D1063）。回應、log、`audit` 都不含明文或密文。
+	// Credentials 只寫不讀（E10-D011、E10-D063）。回應、log、`audit` 都不含明文或密文。
 	Credentials *Credentials `json:"credentials,omitempty"`
 	Name        *string      `json:"name,omitempty"`
 
@@ -435,15 +435,15 @@ type AccountUpdate struct {
 }
 
 // AgentStatus `AgentRecord`。綁在選主 session 上（PROTOCOL §3.2 W7）。
-// key 還在時是目前的值。key 不在、這個副本還記得上一份時，欄位是那一份且 `last_known` 為 true（D1096）。
+// key 還在時是目前的值。key 不在、這個副本還記得上一份時，欄位是那一份且 `last_known` 為 true（E10-D096）。
 // 副本重啟後沒有這份記憶時，整個物件省略。
 type AgentStatus struct {
 	Epoch int64 `json:"epoch"`
 
-	// Host E10-13 之前的 agent 沒有（D1014）。
+	// Host E10-13 之前的 agent 沒有（E10-D014）。
 	Host *string `json:"host,omitempty"`
 
-	// LastKnown 這個副本記得的最後一份 `AgentRecord`，選主 key 已經不在（D1096）。
+	// LastKnown 這個副本記得的最後一份 `AgentRecord`，選主 key 已經不在（E10-D096）。
 	// 省略或 false 表示 key 還在。
 	LastKnown *bool     `json:"last_known,omitempty"`
 	Release   string    `json:"release"`
@@ -451,7 +451,7 @@ type AgentStatus struct {
 	WorkDir   *string   `json:"work_dir,omitempty"`
 }
 
-// Assignment controller 寫的 `SessionDemand`。session 結束、需求刪除之後省略（D1333）。
+// Assignment controller 寫的 `SessionDemand`。session 結束、需求刪除之後省略（E13-D033）。
 type Assignment struct {
 	DesiredState DesiredState `json:"desired_state"`
 
@@ -474,14 +474,14 @@ type Condition struct {
 // ControllerStatus defines model for ControllerStatus.
 type ControllerStatus struct {
 	// Agent `AgentRecord`。綁在選主 session 上（PROTOCOL §3.2 W7）。
-	// key 還在時是目前的值。key 不在、這個副本還記得上一份時，欄位是那一份且 `last_known` 為 true（D1096）。
+	// key 還在時是目前的值。key 不在、這個副本還記得上一份時，欄位是那一份且 `last_known` 為 true（E10-D096）。
 	// 副本重啟後沒有這份記憶時，整個物件省略。
 	Agent      *AgentStatus `json:"agent,omitempty"`
 	HomeRegion string       `json:"home_region"`
 	Present    bool         `json:"present"`
 }
 
-// Credentials 只寫不讀（D1011、D1063）。回應、log、`audit` 都不含明文或密文。
+// Credentials 只寫不讀（E10-D011、E10-D063）。回應、log、`audit` 都不含明文或密文。
 type Credentials struct {
 	Key        string  `json:"key"`
 	KeyType    KeyType `json:"key_type"`
@@ -493,16 +493,16 @@ type Credentials struct {
 
 // DemandStatus MD、TD 的一個需求項目與它的 ack。
 type DemandStatus struct {
-	// ApiId API 隨機配發，1 到 2⁵³−1（D1008）。
+	// ApiId API 隨機配發，1 到 2⁵³−1（E10-D008）。
 	ApiId  *APIIDValue      `json:"api_id,omitempty"`
 	Feed   *string          `json:"feed,omitempty"`
 	Kind   DemandStatusKind `json:"kind"`
 	Reason *string          `json:"reason,omitempty"`
 
-	// SessionId 6 個小寫 hex，API 隨機配發（D1007）。
+	// SessionId 6 個小寫 hex，API 隨機配發（E10-D007）。
 	SessionId SessionIDValue `json:"session_id"`
 
-	// State `silent` 是 provider 還沒有 ack，或 provider 的 agent 不在（D901）。
+	// State `silent` 是 provider 還沒有 ack，或 provider 的 agent 不在（E09-D001）。
 	State     EntryState `json:"state"`
 	Subject   *string    `json:"subject,omitempty"`
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
@@ -513,14 +513,14 @@ type DemandStatusKind string
 
 // Dependency defines model for Dependency.
 type Dependency struct {
-	// ApiId API 隨機配發，1 到 2⁵³−1（D1008）。
+	// ApiId API 隨機配發，1 到 2⁵³−1（E10-D008）。
 	ApiId            *APIIDValue    `json:"api_id,omitempty"`
 	Feed             *string        `json:"feed,omitempty"`
 	Kind             DependencyKind `json:"kind"`
 	ProviderInstance InstanceName   `json:"provider_instance"`
 	Reason           *string        `json:"reason,omitempty"`
 
-	// State `silent` 是 provider 還沒有 ack，或 provider 的 agent 不在（D901）。
+	// State `silent` 是 provider 還沒有 ack，或 provider 的 agent 不在（E09-D001）。
 	State EntryState `json:"state"`
 
 	// Subject provider 給的 NATS subject（PROTOCOL §7）。
@@ -537,7 +537,7 @@ type DesiredState string
 // Digest defines model for Digest.
 type Digest = string
 
-// EntryState `silent` 是 provider 還沒有 ack，或 provider 的 agent 不在（D901）。
+// EntryState `silent` 是 provider 還沒有 ack，或 provider 的 agent 不在（E09-D001）。
 type EntryState string
 
 // ErrorCode defines model for ErrorCode.
@@ -564,12 +564,12 @@ type Exit struct {
 
 // FeedDeclInput defines model for FeedDeclInput.
 type FeedDeclInput struct {
-	// Feed 正規 feed key（`<topic>.<UniversalTicker>`，D203）。API 不檢查商品是否存在（D202）。
+	// Feed 正規 feed key（`<topic>.<UniversalTicker>`，E02-D003）。API 不檢查商品是否存在（E02-D002）。
 	//
 	// Example: orderbook_delta.Binance_Spot_BTCUSDT
 	Feed string `json:"feed"`
 
-	// MdInstance 必填，使用者指定（D1032）。必須在 topology 裡、平面是 md。
+	// MdInstance 必填，使用者指定（E10-D032）。必須在 topology 裡、平面是 md。
 	MdInstance InstanceName `json:"md_instance"`
 }
 
@@ -580,7 +580,7 @@ type FieldError struct {
 	Reason string `json:"reason"`
 }
 
-// Freshness 讀取來自副本時的新鮮度（D1014）。
+// Freshness 讀取來自副本時的新鮮度（E10-D014）。
 type Freshness struct {
 	// ControllerAbsent `/ctl/controller/agent` 不存在：指派與依賴的狀態可能過期。
 	ControllerAbsent bool `json:"controller_absent"`
@@ -599,7 +599,7 @@ type InputDecl struct {
 // Instance defines model for Instance.
 type Instance struct {
 	// Agent `AgentRecord`。綁在選主 session 上（PROTOCOL §3.2 W7）。
-	// key 還在時是目前的值。key 不在、這個副本還記得上一份時，欄位是那一份且 `last_known` 為 true（D1096）。
+	// key 還在時是目前的值。key 不在、這個副本還記得上一份時，欄位是那一份且 `last_known` 為 true（E10-D096）。
 	// 副本重啟後沒有這份記憶時，整個物件省略。
 	Agent           *AgentStatus `json:"agent,omitempty"`
 	Name            InstanceName `json:"name"`
@@ -611,14 +611,14 @@ type Instance struct {
 // InstanceDetail defines model for InstanceDetail.
 type InstanceDetail struct {
 	// Agent `AgentRecord`。綁在選主 session 上（PROTOCOL §3.2 W7）。
-	// key 還在時是目前的值。key 不在、這個副本還記得上一份時，欄位是那一份且 `last_known` 為 true（D1096）。
+	// key 還在時是目前的值。key 不在、這個副本還記得上一份時，欄位是那一份且 `last_known` 為 true（E10-D096）。
 	// 副本重啟後沒有這份記憶時，整個物件省略。
 	Agent *AgentStatus `json:"agent,omitempty"`
 
 	// Demands 只有 md、td。
 	Demands *[]DemandStatus `json:"demands,omitempty"`
 
-	// Freshness 讀取來自副本時的新鮮度（D1014）。
+	// Freshness 讀取來自副本時的新鮮度（E10-D014）。
 	Freshness       Freshness    `json:"freshness"`
 	Name            InstanceName `json:"name"`
 	Plane           Plane        `json:"plane"`
@@ -634,7 +634,7 @@ type InstanceDetail struct {
 type InstanceList struct {
 	Controller ControllerStatus `json:"controller"`
 
-	// Freshness 讀取來自副本時的新鮮度（D1014）。
+	// Freshness 讀取來自副本時的新鮮度（E10-D014）。
 	Freshness Freshness  `json:"freshness"`
 	Items     []Instance `json:"items"`
 }
@@ -649,29 +649,29 @@ type InstanceSession struct {
 	// Phase `done`、`failed` 是 terminal（W5）。
 	Phase *Phase `json:"phase,omitempty"`
 
-	// SessionId 6 個小寫 hex，API 隨機配發（D1007）。
+	// SessionId 6 個小寫 hex，API 隨機配發（E10-D007）。
 	SessionId SessionIDValue `json:"session_id"`
 }
 
 // KeyType defines model for KeyType.
 type KeyType string
 
-// Labels 使用者自訂，平台不解讀。key 是 `^[A-Za-z0-9][A-Za-z0-9._/-]{0,62}$`（D1036）。
+// Labels 使用者自訂，平台不解讀。key 是 `^[A-Za-z0-9][A-Za-z0-9._/-]{0,62}$`（E10-D036）。
 type Labels map[string]string
 
 // Limits defines model for Limits.
 type Limits struct {
 	Gomaxprocs *int `json:"gomaxprocs,omitempty"`
 
-	// HookTimeoutS 0 = STS 的預設值（D803）。
+	// HookTimeoutS 0 = STS 的預設值（E08-D003）。
 	HookTimeoutS *int `json:"hook_timeout_s,omitempty"`
 	MemoryMb     *int `json:"memory_mb,omitempty"`
 
-	// VolumeMb 0 = STS 的預設值（D904）。
+	// VolumeMb 0 = STS 的預設值（E09-D004）。
 	VolumeMb *int `json:"volume_mb,omitempty"`
 }
 
-// LogLocation 一期不接 `log.*`，運維上機器讀（D1015）。`AgentRecord` 沒有 `host` 時省略整個物件（D1014）。
+// LogLocation 一期不接 `log.*`，運維上機器讀（E10-D015）。`AgentRecord` 沒有 `host` 時省略整個物件（E10-D014）。
 type LogLocation struct {
 	Host   string `json:"host"`
 	Stderr string `json:"stderr"`
@@ -701,7 +701,7 @@ type Phase string
 // Plane defines model for Plane.
 type Plane string
 
-// Problem RFC 9457。`code` 是給程式判斷的穩定值（D1036）。
+// Problem RFC 9457。`code` 是給程式判斷的穩定值（E10-D036）。
 type Problem struct {
 	Code   ErrorCode     `json:"code"`
 	Detail *string       `json:"detail,omitempty"`
@@ -718,14 +718,14 @@ type ResetEvent struct {
 	Topics []EventTopic `json:"topics"`
 }
 
-// RestartMode 省略等於 `on_failure`（D919）。
+// RestartMode 省略等於 `on_failure`（E09-D019）。
 type RestartMode string
 
 // RestartPolicy defines model for RestartPolicy.
 type RestartPolicy struct {
 	MaxRestarts *int `json:"max_restarts,omitempty"`
 
-	// Mode 省略等於 `on_failure`（D919）。
+	// Mode 省略等於 `on_failure`（E09-D019）。
 	Mode    *RestartMode `json:"mode,omitempty"`
 	WindowS *int         `json:"window_s,omitempty"`
 }
@@ -735,22 +735,22 @@ type Revision = int64
 
 // Session defines model for Session.
 type Session struct {
-	// Assignment controller 寫的 `SessionDemand`。session 結束、需求刪除之後省略（D1333）。
+	// Assignment controller 寫的 `SessionDemand`。session 結束、需求刪除之後省略（E13-D033）。
 	Assignment *Assignment `json:"assignment,omitempty"`
 
-	// CreatedAt 來自 `session_records`（D1031）。Postgres 不可用時省略。
+	// CreatedAt 來自 `session_records`（E10-D031）。Postgres 不可用時省略。
 	CreatedAt *time.Time `json:"created_at,omitempty"`
 
-	// CreatedBy 建立這個 session 的使用者（D1031）。沒有對應的 `session_records` 列，或 Postgres 不可用時省略。D1072 修改 D1031：reconcile 不補列。
+	// CreatedBy 建立這個 session 的使用者（E10-D031）。沒有對應的 `session_records` 列，或 Postgres 不可用時省略。E10-D072 修改 E10-D031：reconcile 不補列。
 	CreatedBy *string `json:"created_by,omitempty"`
 
-	// Dependencies 執行中取自指派的 `bindings`；terminal 之後取自 status 的 `dependency` condition（D1014）。
+	// Dependencies 執行中取自指派的 `bindings`；terminal 之後取自 status 的 `dependency` condition（E10-D014）。
 	Dependencies []Dependency `json:"dependencies"`
 
-	// Id 6 個小寫 hex，API 隨機配發（D1007）。
+	// Id 6 個小寫 hex，API 隨機配發（E10-D007）。
 	Id SessionIDValue `json:"id"`
 
-	// Logs 一期不接 `log.*`，運維上機器讀（D1015）。`AgentRecord` 沒有 `host` 時省略整個物件（D1014）。
+	// Logs 一期不接 `log.*`，運維上機器讀（E10-D015）。`AgentRecord` 沒有 `host` 時省略整個物件（E10-D014）。
 	Logs   *LogLocation `json:"logs,omitempty"`
 	Region string       `json:"region"`
 
@@ -765,58 +765,58 @@ type Session struct {
 	StsInstance InstanceName   `json:"sts_instance"`
 }
 
-// SessionCreate API 自己的請求型別，轉成 `SessionSpec` 寫進 etcd（D1002）。沒有 `desired_state`：建立時一律是 running。
-// 沒有 `selectors`（一期不收，D822）。
+// SessionCreate API 自己的請求型別，轉成 `SessionSpec` 寫進 etcd（E10-D002）。沒有 `desired_state`：建立時一律是 running。
+// 沒有 `selectors`（一期不收，E08-D022）。
 type SessionCreate struct {
 	Accounts *[]AccountDeclInput `json:"accounts,omitempty"`
 
-	// DepsTimeoutS 0 = 60 秒（D1302）。
+	// DepsTimeoutS 0 = 60 秒（E13-D002）。
 	DepsTimeoutS *int             `json:"deps_timeout_s,omitempty"`
 	Feeds        *[]FeedDeclInput `json:"feeds,omitempty"`
 
-	// GraceMs 0 = STS 部署設定的預設，10 秒（D918、D962）。
+	// GraceMs 0 = STS 部署設定的預設，10 秒（E09-D018、E09-D062）。
 	GraceMs *int         `json:"grace_ms,omitempty"`
 	Inputs  *[]InputDecl `json:"inputs,omitempty"`
 
-	// Labels 使用者自訂，平台不解讀。key 是 `^[A-Za-z0-9][A-Za-z0-9._/-]{0,62}$`（D1036）。
+	// Labels 使用者自訂，平台不解讀。key 是 `^[A-Za-z0-9][A-Za-z0-9._/-]{0,62}$`（E10-D036）。
 	Labels *Labels `json:"labels,omitempty"`
 	Limits *Limits `json:"limits,omitempty"`
 	Name   string  `json:"name"`
 
-	// Params 策略自己的參數，平台不解讀（D1033）。API 存成緊湊的 JSON bytes，交給策略的 `ctx.Params()`。
+	// Params 策略自己的參數，平台不解讀（E10-D033）。API 存成緊湊的 JSON bytes，交給策略的 `ctx.Params()`。
 	Params *json.RawMessage `json:"params,omitempty"`
 
-	// RecvWindowMs 0 = STS 的預設值（D803）。
+	// RecvWindowMs 0 = STS 的預設值（E08-D003）。
 	RecvWindowMs  *int             `json:"recv_window_ms,omitempty"`
 	Restart       *RestartPolicy   `json:"restart,omitempty"`
 	StartTimeoutS *int             `json:"start_timeout_s,omitempty"`
 	Strategy      StrategySelector `json:"strategy"`
 
-	// StsInstance 必填，使用者指定（D1032）。必須在 topology 裡、平面是 sts。
+	// StsInstance 必填，使用者指定（E10-D032）。必須在 topology 裡、平面是 sts。
 	StsInstance InstanceName `json:"sts_instance"`
 }
 
 // SessionDetail defines model for SessionDetail.
 type SessionDetail struct {
-	// Assignment controller 寫的 `SessionDemand`。session 結束、需求刪除之後省略（D1333）。
+	// Assignment controller 寫的 `SessionDemand`。session 結束、需求刪除之後省略（E13-D033）。
 	Assignment *Assignment `json:"assignment,omitempty"`
 
-	// CreatedAt 來自 `session_records`（D1031）。Postgres 不可用時省略。
+	// CreatedAt 來自 `session_records`（E10-D031）。Postgres 不可用時省略。
 	CreatedAt *time.Time `json:"created_at,omitempty"`
 
-	// CreatedBy 建立這個 session 的使用者（D1031）。沒有對應的 `session_records` 列，或 Postgres 不可用時省略。D1072 修改 D1031：reconcile 不補列。
+	// CreatedBy 建立這個 session 的使用者（E10-D031）。沒有對應的 `session_records` 列，或 Postgres 不可用時省略。E10-D072 修改 E10-D031：reconcile 不補列。
 	CreatedBy *string `json:"created_by,omitempty"`
 
-	// Dependencies 執行中取自指派的 `bindings`；terminal 之後取自 status 的 `dependency` condition（D1014）。
+	// Dependencies 執行中取自指派的 `bindings`；terminal 之後取自 status 的 `dependency` condition（E10-D014）。
 	Dependencies []Dependency `json:"dependencies"`
 
-	// Freshness 讀取來自副本時的新鮮度（D1014）。
+	// Freshness 讀取來自副本時的新鮮度（E10-D014）。
 	Freshness Freshness `json:"freshness"`
 
-	// Id 6 個小寫 hex，API 隨機配發（D1007）。
+	// Id 6 個小寫 hex，API 隨機配發（E10-D007）。
 	Id SessionIDValue `json:"id"`
 
-	// Logs 一期不接 `log.*`，運維上機器讀（D1015）。`AgentRecord` 沒有 `host` 時省略整個物件（D1014）。
+	// Logs 一期不接 `log.*`，運維上機器讀（E10-D015）。`AgentRecord` 沒有 `host` 時省略整個物件（E10-D014）。
 	Logs   *LogLocation `json:"logs,omitempty"`
 	Region string       `json:"region"`
 
@@ -831,12 +831,12 @@ type SessionDetail struct {
 	StsInstance InstanceName   `json:"sts_instance"`
 }
 
-// SessionIDValue 6 個小寫 hex，API 隨機配發（D1007）。
+// SessionIDValue 6 個小寫 hex，API 隨機配發（E10-D007）。
 type SessionIDValue = string
 
 // SessionList defines model for SessionList.
 type SessionList struct {
-	// Freshness 讀取來自副本時的新鮮度（D1014）。
+	// Freshness 讀取來自副本時的新鮮度（E10-D014）。
 	Freshness  Freshness `json:"freshness"`
 	Items      []Session `json:"items"`
 	NextCursor *string   `json:"next_cursor,omitempty"`
@@ -853,14 +853,14 @@ type SessionRecord struct {
 	Final    *SessionStatus     `json:"final,omitempty"`
 	RecordId openapi_types.UUID `json:"record_id"`
 
-	// SessionId 6 個小寫 hex，API 隨機配發（D1007）。
+	// SessionId 6 個小寫 hex，API 隨機配發（E10-D007）。
 	SessionId SessionIDValue `json:"session_id"`
 
 	// Spec etcd 裡的 spec，以 API 的型別呈現。策略已解析成 digest；帳號帶入了 `td_instance`。
 	Spec SessionSpecView `json:"spec"`
 
-	// State `pending`：已寫 Postgres、etcd 還沒確認。`created`：etcd 已有 spec。`abandoned`：超過 2 分鐘仍沒有對應 spec（D1069）。
-	// `closed`：etcd 的 spec 已刪除，`final` 是最後的狀態（D1031）。
+	// State `pending`：已寫 Postgres、etcd 還沒確認。`created`：etcd 已有 spec。`abandoned`：超過 2 分鐘仍沒有對應 spec（E10-D069）。
+	// `closed`：etcd 的 spec 已刪除，`final` 是最後的狀態（E10-D031）。
 	State       SessionRecordState `json:"state"`
 	StsInstance InstanceName       `json:"sts_instance"`
 }
@@ -871,13 +871,13 @@ type SessionRecordList struct {
 	NextCursor *string         `json:"next_cursor,omitempty"`
 }
 
-// SessionRecordState `pending`：已寫 Postgres、etcd 還沒確認。`created`：etcd 已有 spec。`abandoned`：超過 2 分鐘仍沒有對應 spec（D1069）。
-// `closed`：etcd 的 spec 已刪除，`final` 是最後的狀態（D1031）。
+// SessionRecordState `pending`：已寫 Postgres、etcd 還沒確認。`created`：etcd 已有 spec。`abandoned`：超過 2 分鐘仍沒有對應 spec（E10-D069）。
+// `closed`：etcd 的 spec 已刪除，`final` 是最後的狀態（E10-D031）。
 type SessionRecordState string
 
 // SessionRemovedEvent defines model for SessionRemovedEvent.
 type SessionRemovedEvent struct {
-	// SessionId 6 個小寫 hex，API 隨機配發（D1007）。
+	// SessionId 6 個小寫 hex，API 隨機配發（E10-D007）。
 	SessionId SessionIDValue `json:"session_id"`
 }
 
@@ -890,7 +890,7 @@ type SessionSpecView struct {
 	GraceMs      int             `json:"grace_ms"`
 	Inputs       []InputDecl     `json:"inputs"`
 
-	// Labels 使用者自訂，平台不解讀。key 是 `^[A-Za-z0-9][A-Za-z0-9._/-]{0,62}$`（D1036）。
+	// Labels 使用者自訂，平台不解讀。key 是 `^[A-Za-z0-9][A-Za-z0-9._/-]{0,62}$`（E10-D036）。
 	Labels        Labels          `json:"labels"`
 	Limits        Limits          `json:"limits"`
 	Name          string          `json:"name"`
@@ -927,7 +927,7 @@ type StateSnapshot struct {
 
 // Strategy defines model for Strategy.
 type Strategy struct {
-	// Id repository 路徑的最後一段（D1035）。
+	// Id repository 路徑的最後一段（E10-D035）。
 	Id     string       `json:"id"`
 	Latest *StrategyTag `json:"latest,omitempty"`
 
@@ -956,7 +956,7 @@ type StrategySelector struct {
 	// Id `GET /strategies` 的 `id`。
 	Id string `json:"id"`
 
-	// Ref tag 或 digest。tag 由 API 解析成 digest 再寫進 spec（D934）。
+	// Ref tag 或 digest。tag 由 API 解析成 digest 再寫進 spec（E09-D034）。
 	Ref string `json:"ref"`
 }
 
@@ -1006,7 +1006,7 @@ type Worker struct {
 // WorkerPhase defines model for Worker.Phase.
 type WorkerPhase string
 
-// APIID API 隨機配發，1 到 2⁵³−1（D1008）。
+// APIID API 隨機配發，1 到 2⁵³−1（E10-D008）。
 type APIID = APIIDValue
 
 // Cursor defines model for Cursor.
@@ -1015,28 +1015,28 @@ type Cursor = string
 // Limit defines model for Limit.
 type Limit = int
 
-// SessionID 6 個小寫 hex，API 隨機配發（D1007）。
+// SessionID 6 個小寫 hex，API 隨機配發（E10-D007）。
 type SessionID = SessionIDValue
 
 // StrategyID defines model for StrategyID.
 type StrategyID = string
 
-// Conflict RFC 9457。`code` 是給程式判斷的穩定值（D1036）。
+// Conflict RFC 9457。`code` 是給程式判斷的穩定值（E10-D036）。
 type Conflict = Problem
 
-// InvalidArtifact RFC 9457。`code` 是給程式判斷的穩定值（D1036）。
+// InvalidArtifact RFC 9457。`code` 是給程式判斷的穩定值（E10-D036）。
 type InvalidArtifact = Problem
 
-// NotFound RFC 9457。`code` 是給程式判斷的穩定值（D1036）。
+// NotFound RFC 9457。`code` 是給程式判斷的穩定值（E10-D036）。
 type NotFound = Problem
 
-// Unauthenticated RFC 9457。`code` 是給程式判斷的穩定值（D1036）。
+// Unauthenticated RFC 9457。`code` 是給程式判斷的穩定值（E10-D036）。
 type Unauthenticated = Problem
 
-// Unavailable RFC 9457。`code` 是給程式判斷的穩定值（D1036）。
+// Unavailable RFC 9457。`code` 是給程式判斷的穩定值（E10-D036）。
 type Unavailable = Problem
 
-// ValidationFailed RFC 9457。`code` 是給程式判斷的穩定值（D1036）。
+// ValidationFailed RFC 9457。`code` 是給程式判斷的穩定值（E10-D036）。
 type ValidationFailed = Problem
 
 // ListAccountsParams defines parameters for ListAccounts.
@@ -1046,7 +1046,7 @@ type ListAccountsParams struct {
 	// Cursor 上一頁回應的 `next_cursor`，對呼叫端不透明。
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 
-	// TdInstance 只列這個 TD instance。不是 instance 名稱、不在 topology，或不是 td，回 400。該 region 不可用時這頁是空的，並標在 `freshness`（D1014）。
+	// TdInstance 只列這個 TD instance。不是 instance 名稱、不在 topology，或不是 td，回 400。該 region 不可用時這頁是空的，並標在 `freshness`（E10-D014）。
 	TdInstance *string `form:"td_instance,omitempty" json:"td_instance,omitempty"`
 }
 
@@ -1077,7 +1077,7 @@ type ListSessionRecordsParams struct {
 	// Cursor 上一頁回應的 `next_cursor`，對呼叫端不透明。
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 
-	// SessionId 同一個 `session_id` 可能對到多筆：W5 刪除之後可能重用（D1007）。
+	// SessionId 同一個 `session_id` 可能對到多筆：W5 刪除之後可能重用（E10-D007）。
 	SessionId     *SessionIDValue `form:"session_id,omitempty" json:"session_id,omitempty"`
 	StrategyId    *string         `form:"strategy_id,omitempty" json:"strategy_id,omitempty"`
 	CreatedBy     *string         `form:"created_by,omitempty" json:"created_by,omitempty"`
@@ -1102,7 +1102,7 @@ type ListSessionsParams struct {
 
 // CreateSessionParams defines parameters for CreateSession.
 type CreateSessionParams struct {
-	// IdempotencyKey 選填。同 key、同 body 在 24 小時內回同一個 session；同 key、不同 body 回 409（D1068）。
+	// IdempotencyKey 選填。同 key、同 body 在 24 小時內回同一個 session；同 key、不同 body 回 409（E10-D068）。
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
 }
 

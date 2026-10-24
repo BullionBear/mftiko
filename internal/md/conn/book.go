@@ -15,11 +15,11 @@ import (
 
 const (
 	// DefaultBufferMax and DefaultBufferAge bound the updates kept while a snapshot is outstanding.
-	// Either one drops the buffer and makes that snapshot stale (D424).
+	// Either one drops the buffer and makes that snapshot stale (E04-D024).
 	DefaultBufferMax = 10000
 	DefaultBufferAge = 10 * time.Second
 	// DefaultRateHold is how long a 429 or 418 with neither Retry-After nor ResetAt keeps depth
-	// quiet (D424). It is the same default as md.fetch's -rate-hold.
+	// quiet (E04-D024). It is the same default as md.fetch's -rate-hold.
 	DefaultRateHold = time.Minute
 )
 
@@ -41,7 +41,7 @@ func (g *depthGate) success() {
 	g.notBefore = time.Time{}
 }
 
-// backoff is D424's exponential wait after an HTTP failure: 1s, then double, cap 30s. The first
+// backoff is E04-D024's exponential wait after an HTTP failure: 1s, then double, cap 30s. The first
 // call after a success waits the base, because success clears wait. A gap or a checksum failure
 // does not wait; only the HTTP error that follows does.
 func (g *depthGate) backoff(now time.Time) {
@@ -73,7 +73,7 @@ type shelf struct {
 	book    *obook.OrderBook
 	seq     exchange.BookSeq
 	stalled bool // missing price tick, or SnapshotREST with no exch ticker
-	// SnapshotStream resubscribe (D434). holdResub is set from the gap until the replacement
+	// SnapshotStream resubscribe (E04-D034). holdResub is set from the gap until the replacement
 	// subscribe is acknowledged. resubWait is the last backoff; an installed snapshot zeroes it.
 	// resubAt is the earliest moment plan may cycle the channel.
 	holdResub bool
@@ -335,7 +335,7 @@ func (c *Conn) onStream(ch string, sh *shelf, u exchange.BookUpdate) {
 	sh.book = b
 	sh.seq = exchange.BookSeq{Last: u.Last, Valid: true}
 	// The venue already sent a full book. Drop a cycle that has not been sent yet, and start
-	// the next gap at 1s again (D434). A cycle already on the wire still finishes.
+	// the next gap at 1s again (E04-D034). A cycle already on the wire still finishes.
 	sh.holdResub = false
 	sh.resubWait = 0
 	sh.resubAt = time.Time{}
@@ -348,7 +348,7 @@ func (c *Conn) onStream(ch string, sh *shelf, u exchange.BookUpdate) {
 // onLive applies one update to a book that is already in sync. A gap or a checksum failure
 // discards the book without publishing that update. The gap update is kept so the next snapshot
 // can bridge it; a checksum failure is not applied again. A synced book is not fetched again
-// on its own (D426). The delta is the increment itself; the ring decides what it keeps (D432).
+// on its own (E04-D026). The delta is the increment itself; the ring decides what it keeps (E04-D032).
 func (c *Conn) onLive(ch string, sh *shelf, u exchange.BookUpdate) {
 	switch sh.bs.Check(sh.seq, &u) {
 	case exchange.BookSkip:
@@ -365,7 +365,7 @@ func (c *Conn) onLive(ch string, sh *shelf, u exchange.BookUpdate) {
 
 // beginResync drops the local book. keep is the update that did not apply; nil drops the buffer,
 // which is what a checksum failure does so that update is not replayed. SnapshotStream then
-// cycles that one channel after its own backoff (D434). SnapshotREST refetches Depth; it does
+// cycles that one channel after its own backoff (E04-D034). SnapshotREST refetches Depth; it does
 // not unsubscribe.
 func (c *Conn) beginResync(ch string, sh *shelf, keep *exchange.BookUpdate) {
 	sh.book = nil
@@ -385,7 +385,7 @@ func (c *Conn) beginResync(ch string, sh *shelf, keep *exchange.BookUpdate) {
 }
 
 // scheduleResub arms one unsubscribe-plus-subscribe for this book. The first attempt waits 1s,
-// then twice the previous wait, up to 30s, the same curve as a failed Depth (D424, D434).
+// then twice the previous wait, up to 30s, the same curve as a failed Depth (E04-D024, E04-D034).
 // A cycle already waiting or in flight is not restarted, so a stream of gaps cannot hot-loop.
 func (c *Conn) scheduleResub(ch string, sh *shelf) {
 	if sh.holdResub || sh.stalled {
@@ -421,7 +421,7 @@ func (c *Conn) abandon(j depthJob) {
 }
 
 // doDepth sends one Depth. Usage is taken from this response before Parse, including when Parse
-// fails, and only this response decides a rate-limit hold (D424). There is no shared counter with
+// fails, and only this response decides a rate-limit hold (E04-D024). There is no shared counter with
 // md.fetch and no pre-check against a weight threshold.
 func (c *Conn) doDepth(ctx context.Context, j depthJob) (*exchange.BookUpdate, error, []exchange.Used) {
 	if c.rest == nil || c.doer == nil {
@@ -492,7 +492,7 @@ func (c *Conn) finishDepth(j depthJob, snap *exchange.BookUpdate, err error, use
 // installREST folds the snapshot, replays the buffer through Check, and publishes one reset of
 // the window after that replay. A gap or a checksum failure in the buffer publishes nothing and
 // keeps the tail (the checksum failure itself is not kept). The shelf then has no book, so the
-// next plan fetches again. A kept book is not fetched again on its own (D426).
+// next plan fetches again. A kept book is not fetched again on its own (E04-D026).
 func (c *Conn) installREST(ch string, sh *shelf, snap exchange.BookUpdate) {
 	b, err := obook.New(obook.DefaultN, sh.tick)
 	if err != nil {
@@ -579,7 +579,7 @@ func (c *Conn) checksumOK(b *obook.OrderBook, bs exchange.BookSync, u *exchange.
 }
 
 // publishIncremental forwards the increment unchanged. The ring drops out-of-window levels while
-// applying; that filter is not applied to the delta (D432).
+// applying; that filter is not applied to the delta (E04-D032).
 func (c *Conn) publishIncremental(ch string, sh *shelf, ts int64, u exchange.BookUpdate) {
 	sh.book.Apply(bookLevels(u.Bids), bookLevels(u.Asks))
 	if !c.checksumOK(sh.book, sh.bs, &u) {
@@ -594,7 +594,7 @@ func (c *Conn) publishIncremental(ch string, sh *shelf, ts int64, u exchange.Boo
 	c.noteBook(ch, sh, ts)
 }
 
-// publishReset is the full in-window book as one orderbook_delta with reset set (D425, D430, D453).
+// publishReset is the full in-window book as one orderbook_delta with reset set (E04-D025, E04-D030, E04-D053).
 func (c *Conn) publishReset(ch string, sh *shelf, ts int64) {
 	if sh.book == nil {
 		return
@@ -604,7 +604,7 @@ func (c *Conn) publishReset(ch string, sh *shelf, ts int64) {
 	c.noteBook(ch, sh, ts)
 }
 
-// BookWindow is the in-window book. md.view reads a snapshot published beside it (D430, D441),
+// BookWindow is the in-window book. md.view reads a snapshot published beside it (E04-D030, E04-D041),
 // not this method: this method takes the connection lock. ok is false when this connection is
 // not holding the channel's book.
 func (c *Conn) BookWindow(ch string) (bids, asks []exchange.Level, ok bool) {
@@ -705,7 +705,7 @@ func (c *Conn) until(deadline time.Time) <-chan time.Time {
 }
 
 // vetBooks rejects a book feed whose channel is not a book. SnapshotREST fetches
-// BookSync.Depth(); there is no published top-N to compare with that limit (D453).
+// BookSync.Depth(); there is no published top-N to compare with that limit (E04-D053).
 func (c *Conn) vetBooks(wanted map[string][]feed) error {
 	if c.market == nil {
 		return nil

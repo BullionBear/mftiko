@@ -22,11 +22,11 @@ import (
 // workerContract is the C5 contract Init, Start, and Command name (stsctl.v1).
 const workerContract = "stsctl.v1"
 
-// SessionSigner signs one session user (D924). jwt and seed go into InitPayload.nats
+// SessionSigner signs one session user (E09-D024). jwt and seed go into InitPayload.nats
 // and are not written anywhere else.
 type SessionSigner func(sessionID string, perms sts.Permissions) (userJWT, seed string, err error)
 
-// Program builds Launch, Init, and Start from an unpacked strategy artifact (D960, D961).
+// Program builds Launch, Init, and Start from an unpacked strategy artifact (E09-D060, E09-D061).
 // Its methods run on the agent loop. The puller does not touch it.
 type Program struct {
 	Env      []string // the plane's variables; the shim adds the control fd and the agent the identity
@@ -43,7 +43,7 @@ type Program struct {
 	mem    map[string]sessionMem
 	tracks map[string]bindTrack
 	// pendingInc is the incarnation StampIncarnation last wrote for a session.
-	// Start uses it to keep seq moving across incarnations of one epoch (D971).
+	// Start uses it to keep seq moving across incarnations of one epoch (E09-D071).
 	pendingInc map[string]uint32
 	policy     *Policy
 }
@@ -57,7 +57,7 @@ type sessionMem struct {
 	haveImage bool
 }
 
-// bindTrack is the bindings version this process has published for one session (D961).
+// bindTrack is the bindings version this process has published for one session (E09-D061).
 // seq is memory only. A new process, including after a rotation, starts again at 1.
 type bindTrack struct {
 	spec string
@@ -68,11 +68,11 @@ type bindTrack struct {
 }
 
 // CarriesLive is false: Init's payload is stsctl.InitPayload, not a live config, so the
-// skeleton does not treat the spawn as a push. Later bindings go out as Command (D961).
+// skeleton does not treat the spawn as a push. Later bindings go out as Command (E09-D061).
 func (*Program) CarriesLive() bool { return false }
 
 // note records the spec and the bindings Start or Command will carry. A new spec encoding
-// resets the published version so the replacement incarnation's Start is seq 1 (D961).
+// resets the published version so the replacement incarnation's Start is seq 1 (E09-D061).
 func (p *Program) note(id, specHash string, spec *sessionv1.SessionSpec, binds *stsctlv1.Bindings) {
 	if p.mem == nil {
 		p.mem = map[string]sessionMem{}
@@ -106,7 +106,7 @@ func (p *Program) setImage(id, rootfs string, m artifact.Manifest) {
 	p.mem[id] = mem
 }
 
-// Launch is the artifact's Manifest.Launch (D960). Dir is the rootfs.
+// Launch is the artifact's Manifest.Launch (E09-D060). Dir is the rootfs.
 func (p *Program) Launch(key agent.WorkerKey, _ Spec) (*shimv1.Launch, error) {
 	id, err := sessionOf(key)
 	if err != nil {
@@ -138,7 +138,7 @@ func (p *Program) platformEnv(id string, spec *sessionv1.SessionSpec) []string {
 	return env
 }
 
-// Init fills InitPayload from the spec (D918, D924). incarnation is 0 here; StampIncarnation
+// Init fills InitPayload from the spec (E09-D018, E09-D024). incarnation is 0 here; StampIncarnation
 // writes it once the fleet has allocated the number.
 func (p *Program) Init(key agent.WorkerKey, spec Spec, _ Live) (*workerv1.Init, error) {
 	id, err := sessionOf(key)
@@ -207,7 +207,7 @@ func (p *Program) StampIncarnation(init *workerv1.Init, n uint32) error {
 }
 
 // KillSilent tells the fleet to SIGKILL this worker without C4 Stop when a beat
-// times out (D966). inc is remembered so that exit is HUNG / no_beat (D967).
+// times out (E09-D066). inc is remembered so that exit is HUNG / no_beat (E09-D067).
 func (p *Program) KillSilent(key agent.WorkerKey, inc uint32) bool {
 	if p.policy != nil {
 		p.policy.noteKill(key, inc)
@@ -216,7 +216,7 @@ func (p *Program) KillSilent(key agent.WorkerKey, inc uint32) bool {
 }
 
 // Start carries the first bindings, or the current ones when a previous Start did not land,
-// with the version D961 assigns. Marking it published keeps the same round from also sending
+// with the version E09-D061 assigns. Marking it published keeps the same round from also sending
 // a Command.
 func (p *Program) Start(key agent.WorkerKey, spec Spec) (*workerv1.Start, error) {
 	id, err := sessionOf(key)
@@ -267,7 +267,7 @@ func (p *Program) markSent(id, hash string, seq uint64) {
 	p.tracks[id] = t
 }
 
-// versioned is the bindings to publish now and the seq D961 gives them.
+// versioned is the bindings to publish now and the seq E09-D061 gives them.
 // Nothing published yet is seq 1, including a content change that only Start will carry.
 // After a publish, the same content keeps its seq and a new content takes the next one.
 func (p *Program) versioned(id string) (b *stsctlv1.Bindings, hash string, seq uint64) {
@@ -286,8 +286,8 @@ func (p *Program) versioned(id string) (b *stsctlv1.Bindings, hash string, seq u
 		seq = 1
 	case inc != 0 && t.inc != inc:
 		// A new incarnation in this epoch takes the next seq even when the
-		// bindings did not change (D971). A spec change clears the track first,
-		// so that replacement's Start is seq 1 again (D961).
+		// bindings did not change (E09-D071). A spec change clears the track first,
+		// so that replacement's Start is seq 1 again (E09-D061).
 		seq = t.seq + 1
 	case t.hash == hash:
 		seq = t.seq
@@ -300,7 +300,7 @@ func (p *Program) versioned(id string) (b *stsctlv1.Bindings, hash string, seq u
 	return b, hash, seq
 }
 
-// StopGrace is the spec's grace_ms. 0 asks the fleet to use its deployment default (D918, D962).
+// StopGrace is the spec's grace_ms. 0 asks the fleet to use its deployment default (E09-D018, E09-D062).
 func (p *Program) StopGrace(key agent.WorkerKey) time.Duration {
 	id, err := sessionOf(key)
 	if err != nil {
@@ -313,7 +313,7 @@ func (p *Program) StopGrace(key agent.WorkerKey) time.Duration {
 	return time.Duration(ms) * time.Millisecond
 }
 
-// Push is unused while Live's hash is always empty. Bindings are not a live config (D961).
+// Push is unused while Live's hash is always empty. Bindings are not a live config (E09-D061).
 func (p *Program) Push(agent.WorkerKey, Live) (*workerv1.Live, error) {
 	return &workerv1.Live{Contract: workerContract}, nil
 }
@@ -322,13 +322,13 @@ func (p *Program) deadline(spec *sessionv1.SessionSpec) uint32 {
 	return startTimeoutS(spec, p.StartTimeoutS) * 1000
 }
 
-// hookTimeoutS is the resolved hook limit in seconds (D918). 0 in the spec takes def.
+// hookTimeoutS is the resolved hook limit in seconds (E09-D018). 0 in the spec takes def.
 func hookTimeoutS(spec *sessionv1.SessionSpec, def int) uint32 {
 	return orU32(spec.GetLimits().GetHookTimeoutS(), def)
 }
 
 // startTimeoutS is the resolved start limit in seconds, also Init and Start's
-// deadline_ms once multiplied by 1000 (D918).
+// deadline_ms once multiplied by 1000 (E09-D018).
 func startTimeoutS(spec *sessionv1.SessionSpec, def int) uint32 {
 	s := spec.GetStartTimeoutS()
 	if s == 0 {

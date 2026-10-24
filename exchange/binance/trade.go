@@ -11,7 +11,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange/internal/codec"
 )
 
-// tradeStream is one ws-fapi connection (D303). It does not carry private events: UM sends those
+// tradeStream is one ws-fapi connection (E03-D003). It does not carry private events: UM sends those
 // on the listenKey socket. After session.logon the order frames are not signed; the testnet
 // rejects a signature on a logged-on session.
 type tradeStream struct {

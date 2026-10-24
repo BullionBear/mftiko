@@ -107,7 +107,7 @@ type Script struct {
 
 	// VolumeFile is a file under MFTIKO_VOLUME_DIR. After Stage(running) the fake
 	// reads it, journals the previous contents, then writes VolumeText or VolumeBytes
-	// bytes of 0x01 (D977). The read happens before the write so the next incarnation can
+	// bytes of 0x01 (E09-D077). The read happens before the write so the next incarnation can
 	// show what the previous one left.
 	VolumeFile  string `json:"volume_file,omitempty"`
 	VolumeText  string `json:"volume_text,omitempty"`
@@ -115,7 +115,7 @@ type Script struct {
 
 	// InputFile is <input name>/<file> under MFTIKO_INPUT_DIR. After Stage(running)
 	// the fake journals its contents as an input entry, so a test sees what the
-	// worker itself read from an input (D975).
+	// worker itself read from an input (E09-D075).
 	InputFile string `json:"input_file,omitempty"`
 }
 
@@ -344,7 +344,7 @@ func (w *worker) loop() int {
 	}
 }
 
-// applied tells the agent which live config the worker has (D111).
+// applied tells the agent which live config the worker has (E01-D011).
 func (w *worker) applied(digest string) {
 	w.send(&workerv1.WorkerUp{Msg: &workerv1.WorkerUp_Applied{Applied: &workerv1.Applied{Digest: digest}}})
 }

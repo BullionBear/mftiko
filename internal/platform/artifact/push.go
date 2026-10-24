@@ -14,19 +14,19 @@ import (
 	"oras.land/oras-go/v2/registry/remote/credentials"
 )
 
-// Destination is where a worker artifact is pushed (D936, D940, D988).
+// Destination is where a worker artifact is pushed (E09-D036, E09-D040, E09-D088).
 type Destination struct {
 	// Repository is registry/repository, for example 127.0.0.1:5000/hello.
 	Repository string
 	// Tag is optional. It is a name for people to look up; the manifest digest does not use it.
 	Tag string
-	// PlainHTTP speaks HTTP instead of HTTPS. The dev registry needs it (D910, D936).
+	// PlainHTTP speaks HTTP instead of HTTPS. The dev registry needs it (E09-D010, E09-D036).
 	PlainHTTP bool
 }
 
 // Push uploads img. The manifest is checked with CheckLaunchFields first, and a failure is not
-// uploaded (D941). Credentials come from Docker's config.json, ~/.docker/config.json by default
-// (D940). On success the caller prints img.Digest.
+// uploaded (E09-D041). Credentials come from Docker's config.json, ~/.docker/config.json by default
+// (E09-D040). On success the caller prints img.Digest.
 func Push(ctx context.Context, img Image, dst Destination) error {
 	var m Manifest
 	if err := json.Unmarshal(img.Config, &m); err != nil {

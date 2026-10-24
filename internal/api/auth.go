@@ -14,13 +14,13 @@ import (
 	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
 )
 
-// Cookie and bearer authentication (D1009, D1050, D1051).
+// Cookie and bearer authentication (E10-D009, E10-D050, E10-D051).
 const (
 	// cookieName is the console session cookie (OpenAPI cookieAuth).
 	cookieName = "mftiko_session"
-	// cookieTTL is the lifetime of a login cookie (D1009).
+	// cookieTTL is the lifetime of a login cookie (E10-D009).
 	cookieTTL = 12 * time.Hour
-	// headerRequestID is the response header carrying the server-generated id (D1053).
+	// headerRequestID is the response header carrying the server-generated id (E10-D053).
 	headerRequestID = "X-Request-Id"
 )
 
@@ -32,7 +32,7 @@ type sessionClaims struct {
 }
 
 // identity is who this request authenticated as. expires is set for a cookie and zero for a bearer
-// token, which has no expiry of its own (D1009).
+// token, which has no expiry of its own (E10-D009).
 type identity struct {
 	name    string
 	expires time.Time
@@ -60,7 +60,7 @@ func isWrite(method string) bool {
 }
 
 // bearerAuthed reports whether the request was authenticated with a bearer token. Login and cookie
-// requests are not (D1110).
+// requests are not (E10-D110).
 func bearerAuthed(st *accessState) bool {
 	return st.actor != nil && !st.actor.cookie
 }
@@ -70,7 +70,7 @@ func jsonContentType(r *http.Request) bool {
 	return err == nil && media == "application/json"
 }
 
-// bearer reports whether an Authorization Bearer credential is present (D1051). An empty token is
+// bearer reports whether an Authorization Bearer credential is present (E10-D051). An empty token is
 // still present: it is an invalid bearer, not an invitation to try the cookie. A value of "Bearer"
 // with no token is the same, including when the transport drops the trailing space.
 func bearer(r *http.Request) (string, bool) {
@@ -168,7 +168,7 @@ func setSessionCookie(w http.ResponseWriter, value string, exp, now time.Time) {
 		Expires:  exp.UTC(),
 		MaxAge:   maxAge,
 		HttpOnly: true,
-		Secure:   true, // always, including plaintext dev HTTP (D1050)
+		Secure:   true, // always, including plaintext dev HTTP (E10-D050)
 		SameSite: http.SameSiteStrictMode,
 	})
 }
@@ -185,7 +185,7 @@ func clearSessionCookie(w http.ResponseWriter) {
 	})
 }
 
-// authenticate accepts a bearer token or, when no bearer is present, the session cookie (D1051).
+// authenticate accepts a bearer token or, when no bearer is present, the session cookie (E10-D051).
 // A bearer that does not match a user is 401 even if the cookie would have.
 func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, st *accessState) bool {
 	if token, ok := bearer(r); ok {
@@ -211,7 +211,7 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, st *access
 	return true
 }
 
-// Login exchanges a token for the session cookie (D1009). The token is not logged and is removed
+// Login exchanges a token for the session cookie (E10-D009). The token is not logged and is removed
 // from the audit body before the row is queued.
 func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 	st := accessFrom(r.Context())
@@ -250,7 +250,7 @@ func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Logout clears the session cookie (D1009). The value is stateless, so clearing it is what the
+// Logout clears the session cookie (E10-D009). The value is stateless, so clearing it is what the
 // browser stores; a copy the client keeps remains valid until exp.
 func (s *Server) Logout(w http.ResponseWriter, _ *http.Request) {
 	clearSessionCookie(w)

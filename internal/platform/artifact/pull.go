@@ -29,25 +29,25 @@ import (
 // MediaTypeConfig is the config blob of every worker artifact (PROTOCOL §8.1).
 const MediaTypeConfig = "application/vnd.mftiko.worker.config.v1+json"
 
-// DefaultMaxBytes is the total of the config and the layers when the deployment sets no limit (D913).
+// DefaultMaxBytes is the total of the config and the layers when the deployment sets no limit (E09-D013).
 const DefaultMaxBytes int64 = 1 << 30
 
-// dockerMediaTypeManifestList is a multi-platform list, the same thing as an OCI index for this check (D934).
+// dockerMediaTypeManifestList is a multi-platform list, the same thing as an OCI index for this check (E09-D034).
 const dockerMediaTypeManifestList = "application/vnd.docker.distribution.manifest.list.v2+json"
 
-// Registry is how an agent reaches the one shared registry (D910, D933). Address is host[:port], with no
+// Registry is how an agent reaches the one shared registry (E09-D010, E09-D033). Address is host[:port], with no
 // scheme; PlainHTTP selects http for a dev registry:2. Credentials is a Docker config.json, read with
 // oras-go's credentials store, or empty for anonymous. The file stays on the host: it is not in etcd or
-// in a spec (D910).
+// in a spec (E09-D010).
 type Registry struct {
 	Address     string
 	Credentials string
 	PlainHTTP   bool
 }
 
-// Request is one worker artifact, addressed by the image manifest digest (D911). OS and Arch default to
-// the host. Contracts are the majors the caller needs; the manifest must contain every one of them (D929).
-// MaxBytes is the limit on the config plus the layers; zero means DefaultMaxBytes (D913).
+// Request is one worker artifact, addressed by the image manifest digest (E09-D011). OS and Arch default to
+// the host. Contracts are the majors the caller needs; the manifest must contain every one of them (E09-D029).
+// MaxBytes is the limit on the config plus the layers; zero means DefaultMaxBytes (E09-D013).
 type Request struct {
 	Repository string
 	Digest     string
@@ -82,12 +82,12 @@ type Client struct {
 	http   *auth.Client
 
 	mu   sync.Mutex
-	held map[string]int // layer digests held across GC (D973)
+	held map[string]int // layer digests held across GC (E09-D073)
 }
 
 // Open checks the registry settings and drops temporary files left in ${DATA}/layers by a process that
-// exited mid-download (D930), and temporary directories left under ${DATA}/artifacts by a process that
-// exited mid-unpack (D955). dataDir is ${DATA}.
+// exited mid-download (E09-D030), and temporary directories left under ${DATA}/artifacts by a process that
+// exited mid-unpack (E09-D055). dataDir is ${DATA}.
 func Open(reg Registry, dataDir string) (*Client, error) {
 	if err := checkAddress(reg.Address); err != nil {
 		return nil, err
@@ -109,11 +109,11 @@ func Open(reg Registry, dataDir string) (*Client, error) {
 	return &Client{reg: reg, data: dataDir, layers: dir, http: ac}, nil
 }
 
-// newAuthClient is the registry HTTP client (D928, D933). It does not retry, and it does not dial:
-// a credentials file is only loaded. Catalog and Pull share it (D1056).
+// newAuthClient is the registry HTTP client (E09-D028, E09-D033). It does not retry, and it does not dial:
+// a credentials file is only loaded. Catalog and Pull share it (E10-D056).
 func newAuthClient(reg Registry) (*auth.Client, error) {
 	ac := &auth.Client{
-		// A plain client: the retrying client would repeat 5xx, and this package does not retry (D928).
+		// A plain client: the retrying client would repeat 5xx, and this package does not retry (E09-D028).
 		Client: &http.Client{},
 		Header: http.Header{"User-Agent": []string{"mftiko-artifact"}},
 		Cache:  auth.NewCache(),
@@ -240,7 +240,7 @@ func openRepository(reg Registry, client remote.Client, name string) (*remote.Re
 	return repo, nil
 }
 
-// readVerified reads r, stopping one byte past the declared size, and checks the sha256 (D930, D932).
+// readVerified reads r, stopping one byte past the declared size, and checks the sha256 (E09-D030, E09-D032).
 // The deployment limit is the sum of the declared sizes, checked before any blob is fetched.
 func readVerified(r io.Reader, size int64, want digest.Digest) ([]byte, error) {
 	if size < 0 {
@@ -273,7 +273,7 @@ func fetchVerifiedBlob(ctx context.Context, repo *remote.Repository, desc ocispe
 	return readVerified(rc, desc.Size, desc.Digest)
 }
 
-// workerManifest accepts one OCI image manifest and nothing else (D934).
+// workerManifest accepts one OCI image manifest and nothing else (E09-D034).
 func workerManifest(raw []byte, mediaType string) (ocispec.Manifest, error) {
 	var shape struct {
 		MediaType string          `json:"mediaType"`
@@ -330,7 +330,7 @@ func checkDeclaredSize(manifest ocispec.Manifest, maxBytes int64) error {
 	return nil
 }
 
-// declaredSize is the config plus the layers, the same total Pull checks before downloading (D913).
+// declaredSize is the config plus the layers, the same total Pull checks before downloading (E09-D013).
 func declaredSize(manifest ocispec.Manifest) (int64, error) {
 	if err := checkDescriptor(manifest.Config); err != nil {
 		return 0, err
@@ -358,7 +358,7 @@ func checkDescriptor(d ocispec.Descriptor) error {
 	return nil
 }
 
-// covers reports whether have contains every element of need (D929).
+// covers reports whether have contains every element of need (E09-D029).
 func covers(have, need []string) bool {
 	if len(need) == 0 {
 		return true
@@ -375,7 +375,7 @@ func covers(have, need []string) bool {
 	return true
 }
 
-// classify turns a registry client error into an Error (D928). Caller cancellation is returned as itself.
+// classify turns a registry client error into an Error (E09-D028). Caller cancellation is returned as itself.
 func classify(err error) error {
 	if err == nil {
 		return nil

@@ -32,7 +32,7 @@ message Error {
   map<string, string> details = 4;
 }
 
-// worker 宣告的結束方式（D107）。
+// worker 宣告的結束方式（E01-D007）。
 enum Outcome {
   OUTCOME_UNSPECIFIED = 0; // 沒有宣告：被殺，或在 Hello 之前就死了
   OUTCOME_DONE = 1;        // 正常結束：Stop，或策略呼叫 Exit
@@ -51,8 +51,8 @@ message ExitInfo {
   bool on_stop_completed = 6;
 }
 
-// 交易共用的 enum：行情的成交與強平、TD 的訂單、SDK 都用這一份（DECISIONS D006）。
-// exchange 的 adaptor 另有同名型別，數值與這一份以及 td.v1 的 OrderStatus 相同，worker 以型別轉換映射（D302）。
+// 交易共用的 enum：行情的成交與強平、TD 的訂單、SDK 都用這一份（DECISIONS E00-D006）。
+// exchange 的 adaptor 另有同名型別，數值與這一份以及 td.v1 的 OrderStatus 相同，worker 以型別轉換映射（E03-D002）。
 enum Side {
   SIDE_UNSPECIFIED = 0;
   SIDE_BUY = 1;

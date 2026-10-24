@@ -4,10 +4,10 @@
 // # Exchange, venue, account kind
 //
 // An exchange package (binance, okx, bybit) is a unit of code. It declares two independent enums
-// (D301), whose names may coincide:
+// (E03-D001), whose names may coincide:
 //
-//   - Venues are markets, the <Venue> token of UniversalTicker (D201): one connection's worth of
-//     public data and one set of instruments (D403). Binance declares Binance, BinanceUM, BinanceCM
+//   - Venues are markets, the <Venue> token of UniversalTicker (E02-D001): one connection's worth of
+//     public data and one set of instruments (E04-D003). Binance declares Binance, BinanceUM, BinanceCM
 //     and BinanceEO.
 //   - Account kinds are what an api_id is: the credential it takes and the venues it can trade.
 //     Binance declares Binance, BinanceUM, BinanceCM, BinanceEO and BinancePM. The account kind
@@ -19,18 +19,18 @@
 // # Who calls what
 //
 //	caller                       interface                           decisions
-//	MD agent (planning, no I/O)  Market: Atom, Budget, Cost          D401, D403, D202
-//	MD conn worker               Market.NewSession, BookSync,        D402, D803
+//	MD agent (planning, no I/O)  Market: Atom, Budget, Cost          E04-D001, E04-D003, E02-D002
+//	MD conn worker               Market.NewSession, BookSync,        E04-D002, E08-D003
 //	                             PublicREST.Depth (in process)
-//	md.fetch                     PublicREST: Klines, OpenInterest    D402
-//	SYM                          PublicREST.Listing (ListingOver)    D201
+//	md.fetch                     PublicREST: Klines, OpenInterest    E04-D002
+//	SYM                          PublicREST.Listing (ListingOver)    E02-D001
 //	in-process Resolver (dev)    InProcessUIDSource.Listing          E2-05
-//	TD account worker            AccountKind.Account, PrivateStream  D602, D603, D301
-//	backfill read                AccountKind.History                 D601, D301
+//	TD account worker            AccountKind.Account, PrivateStream  E06-D002, E06-D003, E03-D001
+//	backfill read                AccountKind.History                 E06-D001, E03-D001
 //
 // Any of a venue's parts may be absent.
 //
-// # Sans-I/O (D302)
+// # Sans-I/O (E03-D002)
 //
 // An adapter is a codec. It turns intents into bytes (a subscribe frame, a signed HTTPRequest) and
 // bytes into events (Session.Decode, PrivateStream.Decode, Call.Parse), and does nothing else: it
@@ -43,12 +43,12 @@
 // interface here. JSON is github.com/bytedance/sonic, in the two frozen configurations every adapter
 // shares; package exchange/internal/codec holds them, with signing and query encoding.
 //
-// Buffers are the worker's and are lent (D302). A frame passed to Decode, and a response passed to
+// Buffers are the worker's and are lent (E03-D002). A frame passed to Decode, and a response passed to
 // Parse, are valid until the call returns; anything decoded from them may point into them (sonic does
 // not copy strings), so what a Sink or a caller keeps it copies. A REST Parse decodes with copied
 // strings, because the transport reuses the response.
 //
-// Orders over a websocket (D303) go through a TradeStream, the same kind of codec: the worker owns
+// Orders over a websocket (E03-D003) go through a TradeStream, the same kind of codec: the worker owns
 // the request ids and the deadlines (Inflight), and the codec writes into the venue's request id what
 // it needs to read the answer, so Decode keeps no memory of what was sent.
 //
@@ -58,7 +58,7 @@
 //
 // # Rules every adapter follows
 //
-//   - Numbers are float64 (DECISIONS D008), read with decimal.Parse and written to a venue with
+//   - Numbers are float64 (DECISIONS E00-D008), read with decimal.Parse and written to a venue with
 //     decimal.Append at the instrument's step: plain notation, the step's decimals, never an exponent. An
 //     optional number the venue does not send is decimal.Absent. Nothing compares numbers with ==.
 //   - A request body that is signed is marshalled once; the signature covers those bytes, and those bytes
@@ -67,13 +67,13 @@
 //     time (ExchTsNs); the worker stamps when it received a frame.
 //   - The enums (Side, OrderType, TimeInForce, OrderStatus) have the numbers of their common.v1 and
 //     td.v1 namesakes, so the worker converts them by a cast (enums_test.go holds them together).
-//   - Instruments go in resolved and come out venue-named (D202, D203). Specs write a UniversalTicker;
+//   - Instruments go in resolved and come out venue-named (E02-D002, E02-D003). Specs write a UniversalTicker;
 //     the caller resolves that to *symbol.Info at load (symbol.Resolver.Get) and hands the adapter
 //     the Info, so adapters never call SYM. Inside the system the instrument is Info.UID. What the
 //     venue sends back carries a symbol.ExchKey, which the caller turns into that UID with
 //     symbol.Resolver.Reverse.
 //   - Fill.FillID is the venue's trade id and must be identical on the private stream and in
-//     History (D601): the database deduplicates on (api_id, fill_id).
+//     History (E06-D001): the database deduplicates on (api_id, fill_id).
 //   - Event pointers passed to a Sink are valid only for the duration of the call.
 //   - Credentials never reach a log line (see Credentials).
 //   - An adapter does not retry, back off or reconnect on its own. The worker that owns the

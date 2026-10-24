@@ -72,7 +72,7 @@ message Stopped {
   bool on_stop_completed = 1;
 }
 
-// worker 已經套用的 live config（DECISIONS D111）：Init 成功之後回報 Init.live_digest，套用一則 Live 之後回報它的 digest。
+// worker 已經套用的 live config（DECISIONS E01-D011）：Init 成功之後回報 Init.live_digest，套用一則 Live 之後回報它的 digest。
 // 套用失敗就不送；agent 照它判斷 worker 手上是哪一份。
 message Applied {
   string digest = 1;
@@ -110,7 +110,7 @@ message Stop {
   uint32 grace_ms = 2;
 }
 
-// live config：完整的期望狀態，不是增量；worker 以 diff 套用，收到和手上相同的就什麼都不做（DECISIONS D111）。
+// live config：完整的期望狀態，不是增量；worker 以 diff 套用，收到和手上相同的就什麼都不做（DECISIONS E01-D011）。
 message Live {
   string contract = 1;
   bytes payload = 2; // 該平面 C5 的 live config

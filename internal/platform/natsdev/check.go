@@ -24,12 +24,12 @@ const (
 	otherAPIID = 8
 )
 
-// Check dials url with the credentials in dir and checks the three D417 cases:
+// Check dials url with the credentials in dir and checks the three E04-D017 cases:
 // an MD publish of md.v1.f is delivered, request/reply uses the caller's inbox prefix,
 // and publish/subscribe outside the allow lists is denied. The legal caller is an
 // ephemeral session user signed in memory with the account signing key. The TD
-// account workers are signed the same way (D611). None of these credentials are written.
-// The TD agent has no NATS user (D639): a manifest entry, a td- creds file, a user-td-
+// account workers are signed the same way (E06-D011). None of these credentials are written.
+// The TD agent has no NATS user (E06-D039): a manifest entry, a td- creds file, a user-td-
 // seed, or a user that subscribes to td.evt.> fails the check before any dial.
 func Check(dir, url string) error {
 	if url == "" {
@@ -135,7 +135,7 @@ func checkFetch(url string, lay Layout, u User) error {
 	if err := denyOutside(url, lay, u, PlaneFetch); err != nil {
 		return err
 	}
-	// The exact subject md.v1.fetch has no venue token, so the user may not subscribe to it (D418, D456).
+	// The exact subject md.v1.fetch has no venue token, so the user may not subscribe to it (E04-D018, E04-D056).
 	if err := denyOnce(url, lay, u, "subscribe md.v1.fetch", func(nc *nats.Conn) error {
 		_, err := nc.SubscribeSync("md.v1.fetch")
 		return err
@@ -150,7 +150,7 @@ func checkFetch(url string, lay Layout, u User) error {
 	return roundTrip(url, caller, fetch, "md.v1.fetch.Binance", "md.v1.fetch.Binance")
 }
 
-// checkNoTDAgent fails when dir still has a TD agent NATS user (D639). Account-worker
+// checkNoTDAgent fails when dir still has a TD agent NATS user (E06-D039). Account-worker
 // users are signed in memory and are not files; tdAccountPerms is not involved.
 func checkNoTDAgent(lay Layout) error {
 	if len(lay.Manifest.TD) != 0 {
@@ -199,7 +199,7 @@ func checkNoTDAgent(lay Layout) error {
 }
 
 func tdAgentUserName(name string) bool {
-	// td-account-{api_id} is an account worker. Those users are not files either (D611).
+	// td-account-{api_id} is an account worker. Those users are not files either (E06-D011).
 	return strings.HasPrefix(name, "td-")
 }
 
@@ -212,10 +212,10 @@ func subscribesAllTDEvents(allow []string) bool {
 	return false
 }
 
-// checkAccountWorker checks the account worker of checkAPIID (D611). It serves td.order and
+// checkAccountWorker checks the account worker of checkAPIID (E06-D011). It serves td.order and
 // td.view of its own account, publishes only its own td.evt, and reaches nothing of another
 // account: another worker serving the same account would send each order twice. The TD agent
-// is not a subscriber (D638, D639).
+// is not a subscriber (E06-D038, E06-D039).
 func checkAccountWorker(url string, lay Layout) error {
 	caller, err := newCaller(lay, lay.Manifest.MD[0].Inst)
 	if err != nil {
@@ -242,7 +242,7 @@ func checkAccountWorker(url string, lay Layout) error {
 		return err
 	}
 	defer sess.Close()
-	// The account's events reach the bound session. Nobody stores them (D638).
+	// The account's events reach the bound session. Nobody stores them (E06-D038).
 	if err := deliver(w, "td.evt."+own, sess); err != nil {
 		return err
 	}
@@ -514,8 +514,8 @@ func connectOpts() []nats.Option {
 	}
 }
 
-// memUser is a user signed in memory with the account signing key: the D906 session the checks
-// use as a legal client, or a D611 account worker. Its credentials are not written.
+// memUser is a user signed in memory with the account signing key: the E09-D006 session the checks
+// use as a legal client, or a E06-D011 account worker. Its credentials are not written.
 type memUser struct {
 	name  string
 	jwt   string
@@ -543,9 +543,9 @@ func newCaller(lay Layout, inst string) (*memUser, error) {
 	}, false)
 }
 
-// newAccountWorker signs the account worker of apiID as the TD agent does at spawn (D611).
+// newAccountWorker signs the account worker of apiID as the TD agent does at spawn (E06-D011).
 func newAccountWorker(lay Layout, apiID int64) (*memUser, error) {
-	// The same Signer the TD agent uses (D611).
+	// The same Signer the TD agent uses (E06-D011).
 	signer, err := LoadSigner(lay.Manifest.Account, filepath.Join(lay.Dir, filepath.FromSlash(lay.Manifest.SigningKeyFile)))
 	if err != nil {
 		return nil, err

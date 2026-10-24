@@ -8,7 +8,7 @@ import (
 
 // Layout of version 1. The eight-byte fields are aligned to 8. Bytes 1 through 7 are reserved: writers
 // store zero and readers reject anything else. The length is a property of the version, so v1 has no
-// length byte (D406, D411).
+// length byte (E04-D006, E04-D011).
 const (
 	V1   = 1  // value of the version byte
 	Size = 40 // v1 envelope length; the payload starts at this offset

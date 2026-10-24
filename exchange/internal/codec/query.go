@@ -27,7 +27,7 @@ func (q Query) AddInt(key string, v int64) Query {
 }
 
 // AddDecimal appends key=v snapped to step, with the step's decimals and never an exponent (decimal.Append,
-// D008). v must be present: decimal.Absent would write NaN.
+// E00-D008). v must be present: decimal.Absent would write NaN.
 func (q Query) AddDecimal(key string, v, step float64) Query {
 	q = q.key(key)
 	return decimal.Append(q, v, step)

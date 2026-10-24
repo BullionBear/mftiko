@@ -31,7 +31,7 @@ func TestSignSessionNilKey(t *testing.T) {
 	}
 }
 
-// TestConnectLimit is D827 against a real nats-server: the CONNECT argument
+// TestConnectLimit is E08-D027 against a real nats-server: the CONNECT argument
 // SignSession measures is the one the client sends, the generated config's
 // max_control_line is what the server enforces, and the first feed count
 // that SignSession rejects is the first the server refuses.

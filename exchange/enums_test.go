@@ -8,7 +8,7 @@ import (
 )
 
 // TestEnumsMatchTheContract holds the adapter's enums to the numbers of their common.v1 and td.v1
-// namesakes, so the workers convert by a cast (D302). A value added on one side only fails here.
+// namesakes, so the workers convert by a cast (E03-D002). A value added on one side only fails here.
 func TestEnumsMatchTheContract(t *testing.T) {
 	check := func(kind string, ours []uint8, theirs map[string]int32) {
 		t.Helper()

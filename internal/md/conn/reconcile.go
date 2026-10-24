@@ -117,7 +117,7 @@ func (c *Conn) project() {
 		c.exch = exch
 		c.tick = tick
 	}
-	// Same critical section as the wanted swap: tape follows the feed list (D448).
+	// Same critical section as the wanted swap: tape follows the feed list (E04-D048).
 	c.syncViewsLocked()
 	fatal := c.fatal
 	cancel := c.stop

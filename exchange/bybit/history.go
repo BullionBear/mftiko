@@ -22,7 +22,7 @@ const (
 )
 
 // history reads /v5/execution/list. Rows are newest first. execId is the fill id the
-// execution topic also reports (D601). Order looks up /v5/order/history by order id.
+// execution topic also reports (E06-D001). Order looks up /v5/order/history by order id.
 type history struct {
 	cfg exchange.AccountConfig
 	signerState

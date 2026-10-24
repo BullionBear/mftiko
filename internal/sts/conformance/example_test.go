@@ -13,7 +13,7 @@ import (
 
 // TestExampleLifecycles runs hello and tape-keeper through Init, Start, and
 // Stop on the fake shim. Empty params are {}. Neither strategy has to print a
-// hook line: tape-keeper prints nothing (D862).
+// hook line: tape-keeper prints nothing (E08-D062).
 func TestExampleLifecycles(t *testing.T) {
 	root := moduleRoot(t)
 	for _, name := range []string{"hello", "tape-keeper"} {

@@ -19,14 +19,14 @@ import (
 	"github.com/BullionBear/mftiko/exchange"
 )
 
-// Instruments is the venue's symbol table as the worker reads it (D203): the active table in memory,
+// Instruments is the venue's symbol table as the worker reads it (E02-D003): the active table in memory,
 // and, with includeInactive, a question to SYM. internal/sym's Remote is one.
 type Instruments interface {
 	Reverse(ctx context.Context, key symbol.ExchKey, includeInactive bool) (*symbol.Info, error)
 	GetByUID(ctx context.Context, uid uint32, includeInactive bool) (*symbol.Info, error)
 }
 
-// Bus is the account's NATS: it publishes td.evt and answers td.view (D611).
+// Bus is the account's NATS: it publishes td.evt and answers td.view (E06-D011).
 type Bus interface {
 	Publish(subject string, data []byte) error
 	// Respond answers requests on subject with h's reply, until stop.
@@ -42,7 +42,7 @@ func orderSubject(apiID int64) string { return "td.order." + strconv.FormatInt(a
 const inactiveWait = 2 * time.Second
 
 // maxBuffered bounds the events held while a recon runs. Past it they are dropped: the recon that
-// follows has the state. Persisting those fills is open and is not this process (D638).
+// follows has the state. Persisting those fills is open and is not this process (E06-D038).
 const maxBuffered = 100_000
 
 // fillMemory is how many fill ids, and finished orders, the book remembers to drop a repeat of
@@ -51,13 +51,13 @@ const fillMemory = 10_000
 
 // book is the account's state: the OMS (live orders only) and the ledger (positions, balances,
 // leverage). One goroutine owns it; everything else sends it messages. It publishes each change on
-// td.evt, numbered per incarnation from 1, and answers td.view from memory (D606).
+// td.evt, numbered per incarnation from 1, and answers td.view from memory (E06-D006).
 //
 // While a recon runs it holds the events it gets. The recon's snapshot replaces the state, a Recon
 // goes out, and the held events are replayed in the order they arrived: on one connection the venue
 // sends a change before the changes after it, so a held event older than the snapshot is followed
 // by the newer ones and the replay ends where the account is. An order's filled_qty never goes back
-// and a finished order does not come back (D615).
+// and a finished order does not come back (E06-D015).
 type book struct {
 	ins    Instruments
 	bus    Bus
@@ -183,7 +183,7 @@ func (b *book) send(ctx context.Context, m any) bool {
 	}
 }
 
-// The calls below copy what they are handed: it is lent (D302).
+// The calls below copy what they are handed: it is lent (E03-D002).
 
 func (b *book) order(ctx context.Context, e *exchange.OrderUpdate) {
 	c := *e
@@ -511,7 +511,7 @@ func (b *book) applyPositions(e []exchange.Position) {
 }
 
 // setPosition keeps a position, or forgets one whose size is zero. Its leverage goes to the cache,
-// which keeps it after the position closes: leverage is the instrument's setting (D606).
+// which keeps it after the position closes: leverage is the instrument's setting (E06-D006).
 func (b *book) setPosition(x *tdv1.Position) {
 	if x.Leverage != nil {
 		b.leverage[x.Uid] = *x.Leverage
@@ -543,7 +543,7 @@ func (b *book) recon(snap *exchange.AccountSnapshot) {
 		b.put("", o)
 	}
 	// A live order the snapshot does not have ended while the worker could not see it, or was
-	// never placed. Until the venue is asked (E6-08), it is UNKNOWN (D615). One the venue has not
+	// never placed. Until the venue is asked (E6-08), it is UNKNOWN (E06-D015). One the venue has not
 	// answered yet, or one already UNKNOWN, stays as it was.
 	for _, cur := range prev {
 		if seen[cur] {
@@ -590,7 +590,7 @@ func (b *book) recon(snap *exchange.AccountSnapshot) {
 		b.apply(m)
 	}
 	// A live order the snapshot did not have is UNKNOWN. Ask the venue, unless a send is still
-	// inside its validity window and already has a query waiting (D615, D605).
+	// inside its validity window and already has a query waiting (E06-D015, E06-D005).
 	for _, o := range b.orders {
 		if o.GetStatus() == tdv1.OrderStatus_ORDER_STATUS_UNKNOWN && o.GetClientOrderId() != "" {
 			b.ensureQuery(o, b.now())
@@ -621,14 +621,14 @@ func findIn(orders map[string]*tdv1.Order, o *tdv1.Order) *tdv1.Order {
 
 func (b *book) answer(req *tdv1.ViewRequest) *tdv1.ViewReply {
 	r := &tdv1.ViewReply{State: b.state, ReconciledAtNs: b.reconciledAt, Incarnation: b.source.GetIncarnation(), Seq: b.seq}
-	// Every reply carries the venue batch size, including an invalid request (D631).
+	// Every reply carries the venue batch size, including an invalid request (E06-D031).
 	if n := b.limits.CancelBatch; n > 0 {
 		r.CancelBatch = uint32(n)
 	}
 	switch q := req.GetReq().(type) {
 	case *tdv1.ViewRequest_Recon:
-		// One snapshot: live orders, every position, every balance, on this reply's seq (D633).
-		// Only live orders: a finished one is on td.evt and in the store, not here (D615).
+		// One snapshot: live orders, every position, every balance, on this reply's seq (E06-D033).
+		// Only live orders: a finished one is on td.evt and in the store, not here (E06-D015).
 		// as_of_ns is this answer, not the last venue recon: the lists include events since then.
 		// ViewReply.reconciled_at_ns stays that recon.
 		r.Reply = &tdv1.ViewReply_Recon{Recon: &tdv1.Recon{
@@ -649,7 +649,7 @@ func (b *book) answer(req *tdv1.ViewRequest) *tdv1.ViewReply {
 }
 
 // openOrders are the live orders, copied, sorted by client order id then order id.
-// Every live order: TD does not filter by algo (D633).
+// Every live order: TD does not filter by algo (E06-D033).
 func (b *book) openOrders() []*tdv1.Order {
 	out := make([]*tdv1.Order, 0, len(b.orders))
 	for _, o := range b.orders {
@@ -692,15 +692,15 @@ func (b *book) publish(ev *tdv1.AccountEvent) {
 		err = b.bus.Publish(b.subj, data)
 	}
 	if err != nil {
-		// Core NATS: a subscriber that missed it rebuilds from td.view and the seq (D606).
+		// Core NATS: a subscriber that missed it rebuilds from td.view and the seq (E06-D006).
 		b.log.Warn().Err(err).Uint64("seq", b.seq).Msg("td.evt")
 	}
 }
 
-// ---------- conversion (D203) ----------
+// ---------- conversion (E02-D003) ----------
 
 // resolve is the instrument a venue spelling names: the active table, else SYM's terminal table
-// for an instrument delisted since. One SYM has never seen is logged and dropped (D615).
+// for an instrument delisted since. One SYM has never seen is logged and dropped (E06-D015).
 func (b *book) resolve(k symbol.ExchKey) (*symbol.Info, bool) {
 	info, err := b.ins.Reverse(b.ctx, k, false)
 	if err == nil && info != nil {
@@ -717,7 +717,7 @@ func (b *book) resolve(k symbol.ExchKey) (*symbol.Info, bool) {
 	return nil, false
 }
 
-// scale turns a venue quantity into the platform's: contracts times ContractSize (D203). Spot and
+// scale turns a venue quantity into the platform's: contracts times ContractSize (E02-D003). Spot and
 // venues that already count in contract_value_ccy have ContractSize 0 or 1.
 func scale(info *symbol.Info, q float64) float64 {
 	if info.ContractSize > 0 && decimal.Has(q) {

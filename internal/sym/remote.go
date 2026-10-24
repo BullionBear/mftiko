@@ -39,13 +39,13 @@ type RemoteOptions struct {
 	CheckInterval time.Duration
 	Log           zerolog.Logger
 	// NotifySubject is the Changed subscription. Empty selects ChangedWildcard
-	// (sym.v1.changed.>), which md.fetch uses (D457). A conn worker sets
+	// (sym.v1.changed.>), which md.fetch uses (E04-D057). A conn worker sets
 	// ChangedVenueWildcard(venue).
 	NotifySubject string
 }
 
 // Remote is the symbol.Resolver that loads the active table from SYM over NATS
-// (E2-09, D203).
+// (E2-09, E02-D003).
 //
 // At startup it pages List for each configured table and swaps in one snapshot.
 // Indexes match the in-process resolver: UID to Info, ticker to UID, and
@@ -717,7 +717,7 @@ func infoFromProto(msg *symv1.SymbolInfo) (symbol.Info, error) {
 			if name == "" {
 				return symbol.Info{}, errors.New("filter name is empty")
 			}
-			// An unset Bound.value is a published restriction with no bound (D008).
+			// An unset Bound.value is a published restriction with no bound (E00-D008).
 			v := decimal.Absent()
 			if b != nil && b.Value != nil {
 				v = b.GetValue()

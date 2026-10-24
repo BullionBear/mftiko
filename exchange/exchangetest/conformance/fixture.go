@@ -29,7 +29,7 @@ const (
 	KindHTTP  = "http"   // a REST exchange during the session (a book snapshot)
 	SideMkt   = "market"
 	SidePriv  = "private"
-	SideTrade = "trade" // a TradeStream connection (D303)
+	SideTrade = "trade" // a TradeStream connection (E03-D003)
 	textCodec = "text"
 	b64Codec  = "base64"
 )

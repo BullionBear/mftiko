@@ -4,7 +4,7 @@ package exchange
 // the conn worker maps it to the atom and from there to the feeds it publishes (mdctl.AtomAssignment).
 //
 // Pointers are valid only during the call, and so are ch and the strings in what they point to
-// (D302): the decoder reuses its structs, and a string may point into the frame, which the conn
+// (E03-D002): the decoder reuses its structs, and a string may point into the frame, which the conn
 // worker reads the next message into once Decode returns. Copy what you keep (strings.Clone).
 type Sink interface {
 	// Ack answers a Request. err is nil when the venue accepted it.
@@ -23,7 +23,7 @@ type Sink interface {
 	MarkPrice(ch string, e *MarkPrice)
 }
 
-// The event types follow md.v1 field for field, except where noted. Numbers are float64 (D008); an
+// The event types follow md.v1 field for field, except where noted. Numbers are float64 (E00-D008); an
 // optional one the venue does not send is decimal.Absent (NaN), an unset field in md.v1.
 
 type BestQuote struct {
@@ -70,7 +70,7 @@ type Kline struct {
 	Closed                 bool
 }
 
-// Ticker is 24h statistics only (D401).
+// Ticker is 24h statistics only (E04-D001).
 type Ticker struct {
 	ExchTsNs                  int64
 	Last                      float64 // each optional

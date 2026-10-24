@@ -1,4 +1,4 @@
-// Package volume is how a strategy reads and writes its own files (DECISIONS D904, D851, D852).
+// Package volume is how a strategy reads and writes its own files (DECISIONS E09-D004, E08-D051, E08-D052).
 //
 // Write creates a temp file in the destination directory, syncs it, renames it onto the
 // name, and syncs the directory. A crash before the rename leaves the previous file, or

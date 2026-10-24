@@ -144,7 +144,7 @@ func (c *Conn) MarkPrice(ch string, e *exchange.MarkPrice) {
 // consume a sequence number. Acknowledgement is not required: desired is enough, so a trade that
 // arrives before the ack is still published.
 //
-// Each feed is marshaled on its own. The payload carries that feed's UID (D461), so two feeds
+// Each feed is marshaled on its own. The payload carries that feed's UID (E08-D065), so two feeds
 // on one channel are not the same bytes when they name different instruments. The digest covers
 // those bytes.
 func (c *Conn) publishTopic(ch, topic string, ev *mdv1.FeedEvent) {
@@ -167,7 +167,7 @@ func (c *Conn) publishTopic(ch, topic string, ev *mdv1.FeedEvent) {
 
 // send takes the next seq for the feed, records a tape topic, then publishes.
 // Recording finishes before the publish, in this same critical section, so a
-// tape page's newest event is never past head (D437). A publish error still
+// tape page's newest event is never past head (E04-D037). A publish error still
 // consumes the number: the subscriber sees a gap instead of a silent duplicate
 // once the publisher recovers.
 func (c *Conn) send(f feed, payload []byte, record bool) {
@@ -193,10 +193,10 @@ func (c *Conn) send(f feed, payload []byte, record bool) {
 }
 
 const (
-	// feedPrefix is the published subject root, md.v1.f. (D455).
+	// feedPrefix is the published subject root, md.v1.f. (E04-D055).
 	feedPrefix = "md.v1.f."
 	// viewPrefix is the read subject root, md.v1.view. A view subject is the
-	// feed subject with feedPrefix replaced by viewPrefix (D455).
+	// feed subject with feedPrefix replaced by viewPrefix (E04-D055).
 	viewPrefix = "md.v1.view."
 )
 

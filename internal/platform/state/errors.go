@@ -13,7 +13,7 @@ var (
 	ErrUnknownInstance = errors.New("state: unknown instance")
 	// ErrUnknownRegion: the region is not in the topology.
 	ErrUnknownRegion = errors.New("state: unknown region")
-	// ErrRegionNotAllowed: the region exists but this process may not connect to it (D005 rule 2).
+	// ErrRegionNotAllowed: the region exists but this process may not connect to it (E00-D005 rule 2).
 	ErrRegionNotAllowed = errors.New("state: region not allowed")
 	// ErrClustersClosed: Clusters.Close was called.
 	ErrClustersClosed = errors.New("state: clusters closed")
@@ -33,7 +33,7 @@ var (
 	ErrClosed = errors.New("state: term closed")
 
 	// ErrCrossCluster: one write touches keys of more than one cluster, or a range that leaves its instance.
-	// Fencing is per cluster (D005 rule 3), so such a write cannot be made atomic.
+	// Fencing is per cluster (E00-D005 rule 3), so such a write cannot be made atomic.
 	ErrCrossCluster = errors.New("state: write spans clusters")
 	// ErrBadOp: an option that a put or delete cannot take (clientv3 would panic on it).
 	ErrBadOp = errors.New("state: bad op")
@@ -50,7 +50,7 @@ var (
 	ErrIncarnationExhausted = errors.New("state: incarnations exhausted")
 	// ErrNotSTS: only the STS agent deletes incarnation keys (PROTOCOL §3.2 W6.5).
 	ErrNotSTS = errors.New("state: only STS forgets incarnations")
-	// ErrNotController: the controller campaigns only as ControllerInstance (D907).
+	// ErrNotController: the controller campaigns only as ControllerInstance (E09-D007).
 	ErrNotController = errors.New("state: the controller's instance is " + ControllerInstance)
 	// ErrNoWorkers: incarnations belong to the agent planes; the controller has no workers.
 	ErrNoWorkers = errors.New("state: plane has no workers")

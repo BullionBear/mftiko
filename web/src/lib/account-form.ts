@@ -1,6 +1,6 @@
-// Account create and update (D1098–D1103).
+// Account create and update (E10-D098–E10-D103).
 // Secret copies exist only long enough to build one request body. Callers clear page
-// state before awaiting, and do not keep the copy (D1101).
+// state before awaiting, and do not keep the copy (E10-D101).
 import type { AccountKind, KeyType, Problem } from './api';
 
 export type SecretDraft = {
@@ -10,7 +10,7 @@ export type SecretDraft = {
 	passphrase: string;
 };
 
-/** Bumped synchronously so a .pem read that finishes after submit is dropped (D1101). */
+/** Bumped synchronously so a .pem read that finishes after submit is dropped (E10-D101). */
 export type SecretGuard = { epoch: number };
 
 export function isKeyType(value: string): value is KeyType {
@@ -18,8 +18,8 @@ export function isKeyType(value: string): value is KeyType {
 }
 
 /**
- * Why a menu entry cannot be selected (D1098). `supported` is false only when the kind does not
- * trade exactly one venue (D614, D1011); the reason is that rule's `kind_unsupported`, plus `trades`.
+ * Why a menu entry cannot be selected (E10-D098). `supported` is false only when the kind does not
+ * trade exactly one venue (E06-D014, E10-D011); the reason is that rule's `kind_unsupported`, plus `trades`.
  */
 export function unsupportedReason(kind: AccountKind): string | undefined {
 	if (kind.supported) return undefined;
@@ -45,7 +45,7 @@ const KNOWN = new Set([
 
 export type MappedProblem = { fields: Record<string, string>; banner: string[] };
 
-/** Field errors follow the JSON Pointer. Anything else stays at the top (D1090). */
+/** Field errors follow the JSON Pointer. Anything else stays at the top (E10-D090). */
 export function applyAccountProblem(problem: Problem): MappedProblem {
 	const fields: Record<string, string> = {};
 	const banner: string[] = [];
@@ -68,7 +68,7 @@ export function applyAccountProblem(problem: Problem): MappedProblem {
 	return { fields, banner };
 }
 
-/** `api_id` is an integer from 1 to 2^53−1 (D1008). Anything else is not an account URL. */
+/** `api_id` is an integer from 1 to 2^53−1 (E10-D008). Anything else is not an account URL. */
 export function parseApiId(raw: string): number | undefined {
 	if (!/^[1-9]\d*$/.test(raw)) return undefined;
 	const n = Number(raw);
@@ -85,8 +85,8 @@ export type CredentialsBody = {
 
 /**
  * Credential object for one request. The secret is copied through unchanged, including newlines
- * (D1101). Passphrase is omitted when the kind does not use it, so the API does not see an empty
- * string it would reject (D1064).
+ * (E10-D101). Passphrase is omitted when the kind does not use it, so the API does not see an empty
+ * string it would reject (E10-D064).
  */
 export function credentialsFrom(kind: AccountKind, secrets: SecretDraft): CredentialsBody | undefined {
 	if (!isKeyType(secrets.keyType)) return undefined;

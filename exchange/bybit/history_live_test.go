@@ -16,7 +16,7 @@ import (
 )
 
 // TestBybitHistory places one linear fill on the testnet and checks that the execution list and
-// the order history describe the same trade the private stream reported (D601). It does not run
+// the order history describe the same trade the private stream reported (E06-D001). It does not run
 // in CI.
 //
 //	MFTIKO_BYBIT_HISTORY=1 go test ./exchange/bybit/ -run TestBybitHistory -v -count=1
@@ -179,7 +179,7 @@ func recordHistory(t *testing.T, h *live, creds exchange.Credentials, orderID st
 	defer f.Close()
 	w, err := conformance.NewWriter(f, conformance.Record{
 		Venue: Name, Side: conformance.SidePriv,
-		Note: "bybit testnet linear BTCUSDT fill. execId matches executions (D601).",
+		Note: "bybit testnet linear BTCUSDT fill. execId matches executions (E06-D001).",
 	}, time.Now, secrets...)
 	if err != nil {
 		t.Fatal(err)

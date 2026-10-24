@@ -124,7 +124,7 @@ func TestBookGapResetsWithoutNewEpoch(t *testing.T) {
 		t.Fatal("resync did not reset")
 	}
 	// The gap itself is not published. The snapshot bridges it, and the level past the
-	// original range is part of that reset (D426).
+	// original range is part of that reset (E04-D026).
 	saw77 := 0
 	for _, o := range all {
 		if !hasPrice(o, 77) {

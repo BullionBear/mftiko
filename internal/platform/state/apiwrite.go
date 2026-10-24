@@ -8,7 +8,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-// APIWriter is the API server's write path (PROTOCOL §3.2 W10, DECISIONS D1006, D1042). The API does not campaign:
+// APIWriter is the API server's write path (PROTOCOL §3.2 W10, DECISIONS E10-D006, E10-D042). The API does not campaign:
 // several replicas write at once, so there is no writer key and no fencing. What keeps two replicas from
 // overwriting each other is the caller's own compares in the same txn: create_revision == 0 to create, the
 // mod_revision it read to update or delete.
@@ -16,7 +16,7 @@ import (
 // W1 holds by scope, checked before any I/O as Term checks its own:
 //   - put: the session specs of STS instances and the accounts of TD instances (the API rows of §3.1);
 //   - delete: those, and the session statuses of STS instances (W5). etcd RBAC cannot keep the api user from
-//     putting a status, since one prefix grant covers both (D1040); this scope is what does.
+//     putting a status, since one prefix grant covers both (E10-D040); this scope is what does.
 //
 // Every key of a txn must route to one cluster (ErrCrossCluster): there are no cross-cluster writes.
 type APIWriter struct{ cl *Clusters }

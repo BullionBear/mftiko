@@ -27,12 +27,12 @@ const (
 type InitPayload struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	ApiId               int64                  `protobuf:"varint,1,opt,name=api_id,json=apiId,proto3" json:"api_id,omitempty"`
-	Kind                string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"` // 帳號種類（D301），同 state.v1.Account.kind
+	Kind                string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"` // 帳號種類（E03-D001），同 state.v1.Account.kind
 	TdInstance          string                 `protobuf:"bytes,3,opt,name=td_instance,json=tdInstance,proto3" json:"td_instance,omitempty"`
 	CancelOnDisconnectS uint32                 `protobuf:"varint,4,opt,name=cancel_on_disconnect_s,json=cancelOnDisconnectS,proto3" json:"cancel_on_disconnect_s,omitempty"`
 	Credentials         *Credentials           `protobuf:"bytes,5,opt,name=credentials,proto3" json:"credentials,omitempty"` // 交易所的憑證，只經 socketpair 送進去
-	Nats                *NatsCredentials       `protobuf:"bytes,6,opt,name=nats,proto3" json:"nats,omitempty"`               // 這個帳號專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D611）
-	// 交易所的 host，由 TD instance 依帳號種類設定（D616，比照 MD 的 url，D403）。空的是 adapter 的預設。
+	Nats                *NatsCredentials       `protobuf:"bytes,6,opt,name=nats,proto3" json:"nats,omitempty"`               // 這個帳號專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS E06-D011）
+	// 交易所的 host，由 TD instance 依帳號種類設定（E06-D016，比照 MD 的 url，E04-D003）。空的是 adapter 的預設。
 	RestUrl       string `protobuf:"bytes,7,opt,name=rest_url,json=restUrl,proto3" json:"rest_url,omitempty"`
 	StreamUrl     string `protobuf:"bytes,8,opt,name=stream_url,json=streamUrl,proto3" json:"stream_url,omitempty"` // 私有 websocket
 	Simulated     bool   `protobuf:"varint,9,opt,name=simulated,proto3" json:"simulated,omitempty"`                 // 交易所的模擬交易模式是旗標而不是另一個 host 時（OKX）
@@ -262,7 +262,7 @@ func (x *NatsCredentials) GetInboxPrefix() string {
 	return ""
 }
 
-// Start：建 HTTP 連線池、連私有 websocket、recon。全部完成才回 Done(START, ok)，之後才服務 td.order（D610）。
+// Start：建 HTTP 連線池、連私有 websocket、recon。全部完成才回 Done(START, ok)，之後才服務 td.order（E06-D010）。
 type StartPayload struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -365,7 +365,7 @@ type Command_Drain struct {
 
 func (*Command_Drain) isCommand_Cmd() {}
 
-// drain-replace 的第一步：不收新單，等在途 ack 收齊。一期沒有人送它，新單的拒單碼等 drain-replace 落地時再加（D610）。
+// drain-replace 的第一步：不收新單，等在途 ack 收齊。一期沒有人送它，新單的拒單碼等 drain-replace 落地時再加（E06-D010）。
 type Drain struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DeadlineMs    uint32                 `protobuf:"varint,1,opt,name=deadline_ms,json=deadlineMs,proto3" json:"deadline_ms,omitempty"`
@@ -412,13 +412,13 @@ func (x *Drain) GetDeadlineMs() uint32 {
 
 type Report struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	State          v1.AccountState        `protobuf:"varint,1,opt,name=state,proto3,enum=mftiko.td.v1.AccountState" json:"state,omitempty"` // 與 td.view 回覆的 state 相同（D606）
+	State          v1.AccountState        `protobuf:"varint,1,opt,name=state,proto3,enum=mftiko.td.v1.AccountState" json:"state,omitempty"` // 與 td.view 回覆的 state 相同（E06-D006）
 	Reason         string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
 	ReconciledAtNs int64                  `protobuf:"varint,3,opt,name=reconciled_at_ns,json=reconciledAtNs,proto3" json:"reconciled_at_ns,omitempty"`
 	OpenOrders     uint32                 `protobuf:"varint,4,opt,name=open_orders,json=openOrders,proto3" json:"open_orders,omitempty"`
 	Inflight       uint32                 `protobuf:"varint,5,opt,name=inflight,proto3" json:"inflight,omitempty"`
 	Draining       bool                   `protobuf:"varint,6,opt,name=draining,proto3" json:"draining,omitempty"`
-	// 這個 incarnation 下過單的商品（UID，D203）→ 第一次 Submit 的時間（DECISIONS D601）。TD agent 據此建 backfill 的 scope。
+	// 這個 incarnation 下過單的商品（UID，E02-D003）→ 第一次 Submit 的時間（DECISIONS E06-D001）。TD agent 據此建 backfill 的 scope。
 	// 新商品的第一筆單：worker 先送出含它的 Report，再送單。
 	FirstSubmitNs map[uint32]int64 `protobuf:"bytes,7,rep,name=first_submit_ns,json=firstSubmitNs,proto3" json:"first_submit_ns,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields

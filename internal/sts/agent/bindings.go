@@ -14,7 +14,7 @@ import (
 
 // toBindings converts the assignment's bindings into the snapshot Start and Command carry
 // (PROTOCOL §6.1). Order is the assignment's. A missing status is UNSPECIFIED. The version
-// is left unset: the agent fills epoch and seq (D961).
+// is left unset: the agent fills epoch and seq (E09-D061).
 func toBindings(spec *sessionv1.SessionSpec, in []*statev1.Binding) *stsctlv1.Bindings {
 	names := map[int64]string{}
 	for _, a := range spec.GetAccounts() {
@@ -73,7 +73,7 @@ func universeOf(u *statev1.Universe) *stsctlv1.Universe {
 	}
 }
 
-// contentHash identifies bindings apart from their version (D961).
+// contentHash identifies bindings apart from their version (E09-D061).
 func contentHash(b *stsctlv1.Bindings) string {
 	if b == nil {
 		b = &stsctlv1.Bindings{}

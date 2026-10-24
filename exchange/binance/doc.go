@@ -1,4 +1,4 @@
-// Package binance is the Binance adapter. It declares two enums (D301):
+// Package binance is the Binance adapter. It declares two enums (E03-D001):
 //
 //   - Venues (markets): Binance (spot), BinanceUM, BinanceCM, BinanceEO. One market codec serves all
 //     four (same combined-stream JSON).
@@ -17,17 +17,17 @@
 //     still accepted. A client may send 10 messages a second. The server pings every 3 minutes
 //     and drops a connection that sends no pong for 10. btcusdt@trade was acked and then silent
 //     for 20s, so aggTrade is the trade feed.
-//   - BinanceUM, Binance spot: 1024 streams per connection (D403), so cost 1 and budget 1024.
+//   - BinanceUM, Binance spot: 1024 streams per connection (E04-D003), so cost 1 and budget 1024.
 //   - BinanceCM: the CM-UM integration (rolled out 2026-06-24 to 06-30) kept dapi and
-//     dstream.binance.com, and the CM wallet stays separate, so CM stays its own venue (D301).
+//     dstream.binance.com, and the CM wallet stays separate, so CM stays its own venue (E03-D001).
 //     dstream has no path split: one route, "default". Streams per connection: TODO(verify).
 //   - Since that integration, st = 1 is UM and st = 2 is CM, on single-symbol events as well as
 //     the all-market arrays (!miniTicker@arr, !ticker@arr, !markPrice@arr). !bookTicker on
 //     /public/ws is one bookTicker per message, not an array. A row whose st is present and not 1
 //     is dropped, or a CM symbol would be stamped as a BinanceUM ticker. Some single-symbol
-//     streams can also be subscribed across hosts; the platform does not use that (D301: UM and
+//     streams can also be subscribed across hosts; the platform does not use that (E03-D001: UM and
 //     CM never share a connection).
-//   - Also since then, not modelled in the adapter contract (D301): UM and CM share the IP weight
+//   - Also since then, not modelled in the adapter contract (E03-D001): UM and CM share the IP weight
 //     budget (2400/min) and the order-count limits (1200/min, 300/10s), share dualSidePosition
 //     (setting it on either flips both), and CM follows UM's self-trade-prevention setting.
 //   - BinanceEO: the options system was rebuilt in 2026; index, kline, mark price and open
@@ -37,7 +37,7 @@
 //     then chain on U/u (spot) or pu (futures). A break means BookResync.
 //   - Connections live at most 24h; the server pings and expects a pong.
 //   - Private stream: UM orders go over the WebSocket API (ws-fapi, session.logon, ed25519 only).
-//     That socket does not carry private events (D303), so the account opens a second connection.
+//     That socket does not carry private events (E03-D003), so the account opens a second connection.
 //     POST /fapi/v1/listenKey, then wss://fstream.binance.com/private/ws?listenKey=&events=
 //     (testnet: wss://stream.binancefuture.com/private/ws). PUT the listenKey every 30 minutes;
 //     it dies at 60. The 2026-03 path split retired /ws/<listenKey>. A BinancePM stream carries
@@ -46,13 +46,13 @@
 //   - userTrades (GET /fapi/v1/userTrades) is the USD-M fill history. One request spans at most 7
 //     days (HistoryTraits.MaxWindow). fromId cannot be combined with startTime or endTime.
 //     The venue keeps three months (HistoryTraits.Retention). The trade id is the same
-//     value ORDER_TRADE_UPDATE reports as t (D601).
+//     value ORDER_TRADE_UPDATE reports as t (E06-D001).
 //   - Binance spot sends orders and private events on one WebSocket API connection
 //     (wss://ws-api.binance.com/ws-api/v3; testnet wss://ws-api.testnet.binance.vision/ws-api/v3).
 //     Dial is session.logon, then userDataStream.subscribe. There is no PrivateStream and no
 //     countdownCancelAll. CancelBatch is one order. Snapshot is open orders plus balances.
 //     myTrades (GET /api/v3/myTrades) is the fill history: fromId walks forward, a startTime
-//     and endTime window is at most 24 hours, and the trade id is executionReport.t (D601).
+//     and endTime window is at most 24 hours, and the trade id is executionReport.t (E06-D001).
 //     The published notes give no retention cutoff, so HistoryTraits.Retention stays 0.
 //
 // UM private wire, checked against the USD-M testnet on 2026-10-10. UM public wire, checked the
@@ -71,7 +71,7 @@
 //	baseAsset         base, and contract_value_ccy (qty is base)
 //	quoteAsset        quote, and price_ccy
 //	marginAsset       settle. Realized PnL is credited here. Neither base nor quote means quanto,
-//	                  and the row is not stored (D203)
+//	                  and the row is not stored (E02-D003)
 //	contractType      PERPETUAL and TRADIFI_PERPETUAL are Perp. CURRENT_QUARTER and NEXT_QUARTER
 //	                  are Future. Any other type is left out
 //	symbol suffix     a future's expiry code: the six digits after '_', not computed from deliveryDate
@@ -107,7 +107,7 @@
 //	forceOrder                 liquidation. S is the forced order; the position being closed is
 //	                           the other side. Price is ap, else p. Qty is q
 //
-// Open interest is not pushed (D401). GET /fapi/v1/openInterest, weight 1, has no quote value.
+// Open interest is not pushed (E04-D001). GET /fapi/v1/openInterest, weight 1, has no quote value.
 // Depth is GET /fapi/v1/depth. Limits 5, 10, 20 and 50 cost 2, 100 costs 5, 500 costs 10,
 // 1000 costs 20. The book snapshot asks for 1000. Usage reads X-MBX-USED-WEIGHT-1M.
 //
@@ -135,9 +135,9 @@
 //
 // Listing is GET /api/v3/exchangeInfo?permissions=SPOT&showPermissionSets=false, weight 20,
 // one page. showPermissionSets is false because the listing does not read that field.
-// contract_size is 0 and settle is empty (D203). contract_value_ccy is base and price_ccy is
+// contract_size is 0 and settle is empty (E02-D003). contract_value_ccy is base and price_ccy is
 // quote. A symbol whose asset code is not canonical, whose tick or step is missing, or whose
-// tick or step does not fit 15 significant digits (D008) is left out.
+// tick or step does not fit 15 significant digits (E00-D008) is left out.
 //
 //	status            TRADING TRADABLE, PRE_TRADING PRELISTING, HALT AUCTION_MATCH
 //	                  POST_TRADING END_OF_DAY all HALTED. BREAK and anything else is UNKNOWN.
@@ -164,7 +164,7 @@
 //
 // Anything else is OrderStatusUnknown. The synchronous answer (order.place result, REST order)
 // and ORDER_TRADE_UPDATE.o.X use this table. ORDER_TRADE_UPDATE.o.x is the execution type: a
-// fill is x=TRADE with a non-zero trade id t, which is the same id userTrades returns as id (D601).
+// fill is x=TRADE with a non-zero trade id t, which is the same id userTrades returns as id (E06-D001).
 //
 // # ORDER_TRADE_UPDATE
 //
@@ -213,13 +213,13 @@
 //
 // USD-M Snapshot is four calls: GET /fapi/v1/openOrders (weight 40), /fapi/v2/positionRisk,
 // /fapi/v2/account, and /fapi/v1/positionSide/dual (weight 30), whose dualSidePosition true is
-// AccountSnapshot.HedgeMode (D607). The position mode is the account's, shared by USD-M and
+// AccountSnapshot.HedgeMode (E06-D007). The position mode is the account's, shared by USD-M and
 // COIN-M. Spot has no positions and its Snapshot never sets HedgeMode.
 //
 // QueryOrder is GET /fapi/v1/order (spot: /api/v3/order) by symbol and origClientOrderId, or
 // orderId when the ref has no client order id. It finds open and ended orders; USD-M forgets a
 // cancelled or expired order with no fill three days after it was created, far longer than the
-// worker waits. -2013 (Order does not exist) is exchange.ErrNotFound (D605).
+// worker waits. -2013 (Order does not exist) is exchange.ErrNotFound (E06-D005).
 //
 // # Signing
 //
@@ -227,13 +227,13 @@
 // appended). REST sends that query with X-MBX-APIKEY. The WebSocket API signs session.logon
 // the same way, parameters sorted by name. After logon, order.place and order.cancel must
 // not carry a signature: the testnet answers -1106 if they do. The request id is "o"+n for
-// an order and "c"+n for a cancel, so Decode needs no memory of what was sent (D303).
+// an order and "c"+n for a cancel, so Decode needs no memory of what was sent (E03-D003).
 // The codec's own logon id is "logon", which cannot collide with those.
 //
 // Every signed request, and the socket's logon, order.place and order.cancel, carries recvWindow:
 // AccountConfig.Validity in milliseconds, 5000 by default, at most 60000. A request that reaches
 // the venue more than recvWindow after its timestamp is refused, which is what lets the worker read
-// "no such order" as "not placed" (D605).
+// "no such order" as "not placed" (E06-D005).
 //
 // Hosts: REST defaults to https://fapi.binance.com, the trade socket to
 // wss://ws-fapi.binance.com/ws-fapi/v1, the private socket to

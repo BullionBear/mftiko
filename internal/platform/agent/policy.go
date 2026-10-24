@@ -13,13 +13,13 @@ type Ended struct {
 	Ran      time.Duration      // from its start to its end; 0 if not known
 }
 
-// Policy is a plane's failure semantics: its restart rules (D101).
+// Policy is a plane's failure semantics: its restart rules (E01-D001).
 type Policy interface {
 	// Restart says whether a worker the plan still wants runs again after it ended, and how long to wait first.
 	// Asked once per incarnation that ended; a worker not restarted stays ended until the plan changes.
 	Restart(key WorkerKey, end Ended) (again bool, after time.Duration)
 	// KeepWhileStale says whether, while the demand is stale, the agent may still spawn and start this worker to
-	// keep the last demand it saw: run again one that ended, start one that was waiting (DECISIONS D109). Nothing
+	// keep the last demand it saw: run again one that ended, start one that was waiting (DECISIONS E01-D009). Nothing
 	// is ever stopped or pushed while the demand is stale.
 	KeepWhileStale(key WorkerKey) bool
 	// BeatTimeout is how long the worker may go without a Beat, counted from its last one or, before the first,

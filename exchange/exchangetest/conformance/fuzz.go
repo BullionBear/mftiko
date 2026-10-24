@@ -48,7 +48,7 @@ func FuzzDecodePrivate(f *testing.F, s Spec) {
 	})
 }
 
-// FuzzDecodeTrade is FuzzDecode for the TradeStream (D303).
+// FuzzDecodeTrade is FuzzDecode for the TradeStream (E03-D003).
 func FuzzDecodeTrade(f *testing.F, s Spec) {
 	r, err := newRunner(s)
 	if err != nil {

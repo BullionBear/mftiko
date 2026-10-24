@@ -11,23 +11,23 @@ var (
 	// ErrUnsupported: the venue does not offer this (a topic it does not push, a query it lacks).
 	ErrUnsupported = errors.New("exchange: unsupported on this venue")
 	// ErrAuth: the venue refused the credentials: a bad signature, a key without the permission, an
-	// address off the key's allow list, an expired key. Not retried; the worker raises it (D302).
+	// address off the key's allow list, an expired key. Not retried; the worker raises it (E03-D002).
 	ErrAuth = errors.New("exchange: authentication refused")
 	// ErrUnknownOutcome: a request that may have reached the venue got no answer the adapter could
 	// read: a timeout, a dropped connection, a 5xx. The transport wraps it; for a request that
 	// Mutates, the worker finds out from the private stream, a recon, or by querying the order by
-	// client order id once the request's validity window has passed (D605), and never counts it as
-	// refused (D302).
+	// client order id once the request's validity window has passed (E06-D005), and never counts it as
+	// refused (E03-D002).
 	ErrUnknownOutcome = errors.New("exchange: outcome unknown")
 	// ErrNotFound: the venue says it has no such order (Account.QueryOrder). Past the request's
-	// validity window it means the request never took effect (D605); before it, the request may
+	// validity window it means the request never took effect (E06-D005); before it, the request may
 	// still arrive.
 	ErrNotFound = errors.New("exchange: no such order")
 )
 
 // Reject is the venue refusing an order request. Code follows PROTOCOL §7.2: 200–299 for refusals
 // the adapter mapped to the platform table (copied from mftik), otherwise the venue's own code.
-// The account worker passes it on as a td.v1.OrderUpdate whose cause is REJECTED or CANCEL_REJECTED (D610).
+// The account worker passes it on as a td.v1.OrderUpdate whose cause is REJECTED or CANCEL_REJECTED (E06-D010).
 type Reject struct {
 	Code   int32
 	Native string // the venue's code as sent, kept even when Code is mapped

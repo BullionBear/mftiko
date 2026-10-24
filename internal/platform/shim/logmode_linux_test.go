@@ -13,7 +13,7 @@ const envLogMode = "MFTIKO_TEST_LOGMODE"
 
 // New log files are 0640 and the plane directory is 0750 even when the process
 // umask would hide the group bits. An existing file keeps its mode. setgid on
-// the directory is kept, so a new file takes the directory's group (D1021, D1022, D1015).
+// the directory is kept, so a new file takes the directory's group (E10-D021, E10-D022, E10-D015).
 func TestLogModeIgnoresUmask(t *testing.T) {
 	if os.Getenv(envLogMode) == "1" {
 		runLogModeChild()

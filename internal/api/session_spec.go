@@ -20,8 +20,8 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
-// errAlgoOverlap is a best-effort cross-session algo_id collision (D1012). It is 409 algo_overlap.
-// errIdempotencyConflict is the same Idempotency-Key with a different body (D1068). It is 409 conflict.
+// errAlgoOverlap is a best-effort cross-session algo_id collision (E10-D012). It is 409 algo_overlap.
+// errIdempotencyConflict is the same Idempotency-Key with a different body (E10-D068). It is 409 conflict.
 // errIdempotentReplay is internal: the key already names this spec, and the caller finishes that row.
 var (
 	errStorage             = errors.New("api: storage unavailable")
@@ -29,9 +29,9 @@ var (
 	errAlgoOverlap         = errors.New("api: algo overlap")
 	errIdempotencyConflict = errors.New("api: idempotency key does not match")
 	errIdempotentReplay    = errors.New("api: idempotent replay")
-	// errNotTerminal is DELETE of a session that is not DONE or FAILED (D1017, D1084).
+	// errNotTerminal is DELETE of a session that is not DONE or FAILED (E10-D017, E10-D084).
 	errNotTerminal = errors.New("api: session is not terminal")
-	// errNoRecord is a session etcd still has and session_records does not (D1081).
+	// errNoRecord is a session etcd still has and session_records does not (E10-D081).
 	// It is not inserted and not deleted.
 	errNoRecord = errors.New("api: session has no record")
 )
@@ -54,7 +54,7 @@ func (f *fieldList) add(path, reason string) {
 	*f = append(*f, apiv1.FieldError{Path: path, Reason: reason})
 }
 
-// validIdempotencyKey accepts 1 to 255 bytes of visible ASCII. D1068 names the header and the
+// validIdempotencyKey accepts 1 to 255 bytes of visible ASCII. E10-D068 names the header and the
 // 24 hour retention, not the character set. A space or a control byte is rejected so the key
 // cannot be blank by whitespace.
 func validIdempotencyKey(k string) bool {
@@ -103,8 +103,8 @@ func decodeCreate(body []byte) (apiv1.SessionCreate, fieldList) {
 }
 
 // specContentEqual reports whether two spec payloads are the same aside from desired_state.
-// D1303 makes that the only mutable field, so a hash of the raw bytes changes when a session
-// ends. D1071's mismatch is every other difference (D1031).
+// E13-D003 makes that the only mutable field, so a hash of the raw bytes changes when a session
+// ends. E10-D071's mismatch is every other difference (E10-D031).
 func specContentEqual(a, b []byte) bool {
 	if bytes.Equal(a, b) {
 		return true
@@ -539,7 +539,7 @@ func findAccount(views map[string]state.View, apiID int64) (string, bool) {
 	return found, found != ""
 }
 
-// algoOverlap is the best-effort check against the mirrors (D1012). except is a session being
+// algoOverlap is the best-effort check against the mirrors (E10-D012). except is a session being
 // replayed, so its own algos are not a conflict. A region that is down is skipped.
 func algoOverlap(views map[string]state.View, spec *sessionv1.SessionSpec, except string) error {
 	want := map[algoUse]struct{}{}

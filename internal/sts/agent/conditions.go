@@ -9,7 +9,7 @@ import (
 )
 
 // dependencyConditions is the terminal SessionStatus conditions for the demand
-// that is still present (D1093, D1014). A nil demand writes none. REJECTED and
+// that is still present (E10-D093, E10-D014). A nil demand writes none. REJECTED and
 // DEAD bindings each become one Condition, in binding order. The message is
 // four single-space tokens: kind, ident, provider instance, rejected|dead.
 func dependencyConditions(d *statev1.SessionDemand, atNs int64) []*commonv1.Condition {
@@ -72,7 +72,7 @@ func bindingTokens(b *statev1.Binding) (kind, ident string, ok bool) {
 
 // liveDemand is the SessionDemand currently in the demand mirror. A missing
 // mirror, a missing key, or a value that will not decode is nil. The remembered
-// assignment is not a substitute (D1093).
+// assignment is not a substitute (E10-D093).
 func (p *plane) liveDemand(id string) *statev1.SessionDemand {
 	if p == nil || p.demand == nil {
 		return nil

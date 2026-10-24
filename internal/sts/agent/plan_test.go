@@ -172,7 +172,7 @@ func TestEndedWithoutSpec(t *testing.T) {
 	wantEnded(t, d, id, "ended_by_spec")
 	wantPlan(t, d, "b2c3d4", true)
 
-	// RUNNING, and the spec key has not appeared: still D944.
+	// RUNNING, and the spec key has not appeared: still E09-D044.
 	waiting := &sess{
 		demandPresent: true,
 		demand:        dem(true, 1),
@@ -341,7 +341,7 @@ func TestPhase(t *testing.T) {
 		t.Fatalf("no_beat %s %q", ph, reason)
 	}
 	// An exit the policy has not classified yet stays STOPPING, even with the
-	// previous incarnation's decision still in the view (D995, #327).
+	// previous incarnation's decision still in the view (E09-D095, #327).
 	for _, pending := range []endView{{undecided: true}, {undecided: true, decided: 1, terminalReason: ReasonRestartLimit}} {
 		ph, reason, write = phaseOf(plan, obs(agent.StateExited, "", "h", exitInfo(commonv1.Outcome_OUTCOME_CRASHED, "crash")), pending)
 		if !write || ph != statev1.Phase_PHASE_STOPPING || reason != "" {

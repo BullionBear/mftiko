@@ -18,7 +18,7 @@ func historyFactory(k kind) exchange.HistoryFactory {
 }
 
 // history reads fills by fromId, ascending. USD-M uses userTrades; spot uses myTrades.
-// The trade id is the same id the private event reports (D601).
+// The trade id is the same id the private event reports (E06-D001).
 type history struct {
 	k   kind
 	cfg exchange.AccountConfig

@@ -1,4 +1,4 @@
-// Session create wizard (D1086–D1091). Params stay text (D1033): the request body
+// Session create wizard (E10-D086–E10-D091). Params stay text (E10-D033): the request body
 // splices the textarea in, and nothing here parses that text back into a value.
 import type { Problem } from './api';
 
@@ -110,7 +110,7 @@ function uint32Error(raw: string): string | undefined {
 	return undefined;
 }
 
-/** An algo_id the operator adds to the selected account (1–1023, D1012). */
+/** An algo_id the operator adds to the selected account (1–1023, E10-D012). */
 export function parseAlgo(raw: string): number | undefined {
 	const text = raw.trim();
 	if (!/^\d+$/.test(text)) return undefined;
@@ -187,7 +187,7 @@ function putUint(target: Record<string, unknown>, key: string, raw: string): voi
 	if (n !== undefined) target[key] = n;
 }
 
-/** JSON body. `paramsText` is inserted as typed, not re-serialized (D1033, D1086). */
+/** JSON body. `paramsText` is inserted as typed, not re-serialized (E10-D033, E10-D086). */
 export function sessionRequestBody(draft: Draft): string {
 	const body: Record<string, unknown> = {
 		name: draft.name,
@@ -236,7 +236,7 @@ function knownPath(path: string, draft: Draft): boolean {
 
 export type MappedProblem = { fields: Record<string, string>; banner: string[] };
 
-/** Field errors follow the JSON Pointer. Anything else stays at the top (D1090). */
+/** Field errors follow the JSON Pointer. Anything else stays at the top (E10-D090). */
 export function applyProblem(problem: Problem, draft: Draft): MappedProblem {
 	const fields: Record<string, string> = {};
 	const banner: string[] = [];

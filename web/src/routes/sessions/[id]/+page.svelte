@@ -25,7 +25,7 @@
 		}
 		void detail.load(sessionId);
 		const stopWatch = detail.watch(sessionId);
-		// sessions for this id, plus instances so a last-known STS agent is marked on the logs (D1105, D1107).
+		// sessions for this id, plus instances so a last-known STS agent is marked on the logs (E10-D105, E10-D107).
 		const stopStream = openPageStream(['sessions', 'instances'], sessionId);
 		return () => {
 			stopStream();

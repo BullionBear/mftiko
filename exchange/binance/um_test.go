@@ -53,7 +53,7 @@ func TestHMACRefused(t *testing.T) {
 func TestClientOrderID(t *testing.T) {
 	a := mustUM(t)
 	if lim := a.Limits().ClientOrderIDMaxLen; lim < 19 || len(cloidGTC) > lim {
-		t.Fatalf("ClientOrderIDMaxLen %d, D602 id length %d", lim, len(cloidGTC))
+		t.Fatalf("ClientOrderIDMaxLen %d, E06-D002 id length %d", lim, len(cloidGTC))
 	}
 	req := limitOrder(exchange.TIFGTC, strings.Repeat("a", 37))
 	if _, err := a.Submit(time.Unix(0, 0), req); err == nil {
@@ -179,7 +179,7 @@ func mustHist(t *testing.T) exchange.History {
 }
 
 // TestValidity: AccountConfig.Validity is recvWindow on REST, on the trade socket's frames and on
-// its logon (D605). A window Binance does not take is refused when the account is built.
+// its logon (E06-D005). A window Binance does not take is refused when the account is built.
 func TestValidity(t *testing.T) {
 	cfg := exchange.AccountConfig{Credentials: conformance.TestCredentials(exchange.KeyEd25519, false), Validity: 2 * time.Second}
 	now := conformance.DefaultNow

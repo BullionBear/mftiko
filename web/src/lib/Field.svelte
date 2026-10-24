@@ -1,5 +1,5 @@
 <script lang="ts">
-	// Marks a problem+json field error on the control (D1004). `error` is the reason for this field's pointer.
+	// Marks a problem+json field error on the control (E10-D004). `error` is the reason for this field's pointer.
 	let {
 		label,
 		name,

@@ -1,4 +1,4 @@
-// Package sealbox seals account credentials to a TD instance's public key (D613).
+// Package sealbox seals account credentials to a TD instance's public key (E06-D013).
 //
 // A TD instance has one X25519 key pair. The private key is a file on that instance's host, 0600,
 // whose path is deployment configuration; the public key goes to whoever seals: the mftiko-seal
@@ -56,7 +56,7 @@ var (
 )
 
 // Reason is the REJECTED reason the TD agent writes for an account whose credentials do not open
-// (D613), or "" for nil.
+// (E06-D013), or "" for nil.
 func Reason(err error) string {
 	switch {
 	case err == nil:

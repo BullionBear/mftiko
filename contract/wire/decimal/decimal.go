@@ -1,5 +1,5 @@
 // Package decimal is how the platform handles prices, quantities and every other base-10 number (DECISIONS
-// D008): they are float64 in Go and double on the wire, and these functions are the only way across the edges.
+// E00-D008): they are float64 in Go and double on the wire, and these functions are the only way across the edges.
 //
 //   - In: Parse a venue's text. NaN and ±Inf are refused; the sign is the caller's to check, field by field.
 //     For text of at most 15 significant digits, Parse then Format with the right step gives the text back.

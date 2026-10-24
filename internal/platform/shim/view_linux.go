@@ -81,7 +81,7 @@ type view struct {
 	mu         sync.Mutex
 	hello      *workerv1.Hello
 	stage      string
-	applied    string // the digest of the worker's last Applied: the live config it has (D111)
+	applied    string // the digest of the worker's last Applied: the live config it has (E01-D011)
 	lastBeatNs int64
 	phase      shimv1.Phase
 	exiting    bool // the worker sent Exiting: it is ending on its own, or on a Stop it already had
@@ -225,7 +225,7 @@ func (v *view) exited() bool {
 	}
 }
 
-// Attached reports the worker: everything an agent decides by (DECISIONS D108). Its state is EXITED once the exit is
+// Attached reports the worker: everything an agent decides by (DECISIONS E01-D008). Its state is EXITED once the exit is
 // recorded, with the ExitInfo; RUNNING once it said Hello; STARTING before.
 func (v *view) Attached() *shimv1.Attached {
 	a := &shimv1.Attached{Pid: int32(v.pid), Pgid: int32(v.pgid), StartTime: v.startTime}
@@ -290,7 +290,7 @@ func (v *view) Relay(m *workerv1.Relay) error {
 }
 
 // Live passes a live config to the worker, in any phase, as a Relay goes (PROTOCOL §4.3). The shim keeps nothing of
-// it: what the worker has is what it says in Applied (DECISIONS D111).
+// it: what the worker has is what it says in Applied (DECISIONS E01-D011).
 func (v *view) Live(m *workerv1.Live) error {
 	v.mu.Lock()
 	defer v.mu.Unlock()

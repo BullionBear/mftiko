@@ -20,7 +20,7 @@ const (
 )
 
 // history reads /api/v5/trade/fills-history. Rows are newest first. tradeId is the fill id the
-// orders channel also reports (D601). Order looks up /api/v5/trade/order by ordId.
+// orders channel also reports (E06-D001). Order looks up /api/v5/trade/order by ordId.
 type history struct {
 	cfg exchange.AccountConfig
 	signerState

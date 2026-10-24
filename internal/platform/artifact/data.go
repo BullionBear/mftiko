@@ -9,7 +9,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-// Media types of a data artifact (PROTOCOL §8.4, D972).
+// Media types of a data artifact (PROTOCOL §8.4, E09-D072).
 const (
 	MediaTypeDataArtifact = "application/vnd.mftiko.data.v1"
 	MediaTypeDataConfig   = "application/vnd.mftiko.data.config.v1+json"
@@ -19,10 +19,10 @@ const (
 // DataSchema is the config document's schema (PROTOCOL §8.4).
 const DataSchema = "mftiko.data.v1"
 
-// DataRequest is one data artifact, addressed by the manifest digest (D904, D972).
+// DataRequest is one data artifact, addressed by the manifest digest (E09-D004, E09-D072).
 // MaxBytes limits the config plus the layer the way a worker pull does; zero means DefaultMaxBytes.
 // OnLayers, when set, runs after the manifest and config have been checked and before the layer
-// download, so the caller can hold those digests across GC (D973).
+// download, so the caller can hold those digests across GC (E09-D073).
 type DataRequest struct {
 	Repository string
 	Digest     string
@@ -51,11 +51,11 @@ type DataFetched struct {
 	Layer  Layer
 }
 
-// PullData fetches one data artifact (D972). It checks artifactType, the config media type, and that
+// PullData fetches one data artifact (E09-D072). It checks artifactType, the config media type, and that
 // there is a single layer of the data media type. Download, verification, the layer cache, and
 // single-flight are the worker pull's. The download cap is MaxBytes, the same deployment limit as a
-// strategy pull (D913, default DefaultMaxBytes). D972's size and unpack limits are the strategy
-// unpack limits (D953: 4 GiB and 100,000 files); the caller passes a zero UnpackLimits.
+// strategy pull (E09-D013, default DefaultMaxBytes). E09-D072's size and unpack limits are the strategy
+// unpack limits (E09-D053: 4 GiB and 100,000 files); the caller passes a zero UnpackLimits.
 func (c *Client) PullData(ctx context.Context, req DataRequest) (*DataFetched, error) {
 	if req.Repository == "" {
 		return nil, badRequest("repository is required")
@@ -122,7 +122,7 @@ func (c *Client) PullData(ctx context.Context, req DataRequest) (*DataFetched, e
 	}, nil
 }
 
-// dataManifest accepts one OCI image manifest that is a mftiko data artifact (D972, D934).
+// dataManifest accepts one OCI image manifest that is a mftiko data artifact (E09-D072, E09-D034).
 func dataManifest(raw []byte, mediaType string) (ocispec.Manifest, error) {
 	manifest, err := workerManifest(raw, mediaType)
 	if err != nil {

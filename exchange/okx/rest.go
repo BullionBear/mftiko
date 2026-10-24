@@ -112,7 +112,7 @@ func (r *rest) Klines(inst *symbol.Info, interval string, endNs int64, limit int
 
 func (r *rest) KlinePage() int { return klineLimit }
 
-// OpenInterest: the open-interest channel pushes it (D401).
+// OpenInterest: the open-interest channel pushes it (E04-D001).
 func (r *rest) OpenInterest(*symbol.Info) (exchange.Call[*exchange.OpenInterest], error) {
 	return exchange.Call[*exchange.OpenInterest]{}, fmt.Errorf("okx: open interest is pushed on open-interest: %w", exchange.ErrUnsupported)
 }
@@ -349,7 +349,7 @@ func keepListing(item symbol.Listing) (symbol.Listing, bool) {
 	return item, true
 }
 
-// fitsSteps is the D008 check conformance runs on every stored listing.
+// fitsSteps is the E00-D008 check conformance runs on every stored listing.
 func fitsSteps(f symbol.Filters) bool {
 	for _, pair := range [][2]string{{symbol.PriceTick, symbol.MaxPrice}, {symbol.QtyStep, symbol.MaxQty}} {
 		step, ok := f[pair[0]]
@@ -479,7 +479,7 @@ func decPlaces(s string) int {
 	return 0
 }
 
-// putMax stores the largest bound that still fits float64 at step (D008). OKX's own max can
+// putMax stores the largest bound that still fits float64 at step (E00-D008). OKX's own max can
 // be too wide: spot lotSz 1e-8 with maxLmtSz 9999999999 needs 18 digits, and float64 holds 15.
 // When the venue publishes no max and ten million fits, the bound is left unset.
 func putMax(f symbol.Filters, maxKey string, step, published float64) bool {

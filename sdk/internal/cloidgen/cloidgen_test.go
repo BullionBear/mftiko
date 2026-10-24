@@ -106,7 +106,7 @@ func TestClock(t *testing.T) {
 func TestClockBeforeEpochOnAFreshCounter(t *testing.T) {
 	reset(t)
 	// Nothing has been issued. The counter's floor is the epoch, which is ahead of this
-	// clock, and a ts before the epoch cannot be encoded (D812).
+	// clock, and a ts before the epoch cannot be encoded (E08-D012).
 	id := mustNext(t, acct(4), 4, cloid.EpochMs-1)
 	if id.TsMs != cloid.EpochMs || id.Seq != 0 || id.Algo != 4 {
 		t.Fatalf("%+v", id)

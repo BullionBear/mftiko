@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pack linux/amd64 conn and account workers and push them (D985–D990, docs/release.md).
+# Pack linux/amd64 conn and account workers and push them (E09-D085–E09-D090, docs/release.md).
 #
 # REGISTRY is the prefix: 127.0.0.1:5000 or ghcr.io/bullionbear.
 # TAGS is a space-separated list. Every tag of one binary must return the same digest.

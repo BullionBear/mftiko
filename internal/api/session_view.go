@@ -215,7 +215,7 @@ func (s *Server) dependencies(views map[string]state.View, view state.View, sts,
 
 // conditionsToDeps restores feed and account dependencies from the terminal
 // status. Selector conditions stay on the status and are not dependencies.
-// The terminal path does not re-apply the live silent rule (D1014, D1093).
+// The terminal path does not re-apply the live silent rule (E10-D014, E10-D093).
 func conditionsToDeps(st *statev1.SessionStatus) []apiv1.Dependency {
 	out := []apiv1.Dependency{}
 	if st == nil {
@@ -292,7 +292,7 @@ func splitConditionMessage(msg string) (kind, ident, inst, word string, ok bool)
 	return kind, ident, inst, word, true
 }
 
-// withProviderSilence applies D1036: a provider whose region is available and
+// withProviderSilence applies E10-D036: a provider whose region is available and
 // whose agent key is absent is silent. The ack's reason, subject, and time stay.
 // An unavailable provider region is not treated as an absent agent.
 func (s *Server) withProviderSilence(views map[string]state.View, dep apiv1.Dependency) apiv1.Dependency {
@@ -306,7 +306,7 @@ func (s *Server) withProviderSilence(views map[string]state.View, dep apiv1.Depe
 	return dep
 }
 
-// logLocation is the on-host log paths for the session worker (D1014, D1015).
+// logLocation is the on-host log paths for the session worker (E10-D014, E10-D015).
 // It is omitted when the STS region is down or the AgentRecord has no host or
 // no work_dir, including a last-known record that never had them.
 func (s *Server) logLocation(view state.View, region string, views map[string]state.View, sts, id string) *apiv1.LogLocation {

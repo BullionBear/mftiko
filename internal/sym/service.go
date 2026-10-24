@@ -504,7 +504,7 @@ func optNumber(v float64) *float64 {
 	return &v
 }
 
-// bound carries one filter. An absent value (NaN, D008) is a published
+// bound carries one filter. An absent value (NaN, E00-D008) is a published
 // restriction with no bound, which is a present key and an unset Bound.value.
 func bound(v float64) *symv1.Bound {
 	b := &symv1.Bound{}

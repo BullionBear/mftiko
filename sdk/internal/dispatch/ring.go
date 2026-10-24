@@ -1,14 +1,14 @@
 package dispatch
 
-// ring is the MD buffer: one preallocated []byte holding variable-length messages (D816).
-// The bytes contain no pointers, so the garbage collector does not scan them (D803).
+// ring is the MD buffer: one preallocated []byte holding variable-length messages (E08-D016).
+// The bytes contain no pointers, so the garbage collector does not scan them (E08-D003).
 //
 // Live messages are packed at the front. The message a hook is reading is pinned at buf[:pinN]
 // until the hook returns; those bytes are not moved and not overwritten. A push that does not fit
 // drops the oldest messages that are not pinned, sliding the rest down, until it fits. If the
 // pinned message still leaves too little room, or the new message is larger than the whole ring,
 // the new message is dropped and counted. Dropping never blocks the caller: a hook must not stall
-// the receive path (D803).
+// the receive path (E08-D003).
 type ring struct {
 	buf  []byte
 	msgs []mdMsg // oldest at index 0; msgs[0] is the pinned message when pinned

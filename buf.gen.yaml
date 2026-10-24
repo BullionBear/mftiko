@@ -1,5 +1,5 @@
 # `make proto` runs this with bin/tools on PATH (installed by `make tools`).
-# No remote plugins. Contract A's TypeScript is `make openapi`, not buf (D1043).
+# No remote plugins. Contract A's TypeScript is `make openapi`, not buf (E10-D043).
 version: v2
 plugins:
   # Go: contract/gen/mftiko/<pkg>/v1/*.pb.go, matching each file's go_package.

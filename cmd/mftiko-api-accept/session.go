@@ -60,7 +60,7 @@ func (f *flow) end(c *apiv1.ClientWithResponses, id string) error {
 	return nil
 }
 
-// remove deletes a terminal session now, instead of waiting for W5 (D1017).
+// remove deletes a terminal session now, instead of waiting for W5 (E10-D017).
 func (f *flow) remove(c *apiv1.ClientWithResponses, id string) error {
 	resp, err := c.DeleteSessionWithResponse(f.ctx, id)
 	if err != nil {

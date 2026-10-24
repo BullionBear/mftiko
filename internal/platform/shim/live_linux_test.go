@@ -19,7 +19,7 @@ func isApplied(digest string) func(*shimv1.Event) bool {
 	return func(ev *shimv1.Event) bool { return ev.GetApplied() != nil && ev.GetApplied().GetDigest() == digest }
 }
 
-// The live config the worker has is what it says in Applied (DECISIONS D111): the shim passes Live on, keeps the
+// The live config the worker has is what it says in Applied (DECISIONS E01-D011): the shim passes Live on, keeps the
 // last Applied in Attached, and appends each to the events. A Live the worker does not apply changes nothing.
 func TestC3Live(t *testing.T) {
 	p := startShim(t, fakeworker.Script{}, "", "", nil)

@@ -170,7 +170,7 @@ func TestOrderLocalRejects(t *testing.T) {
 	}
 }
 
-// A client_order_id is an opaque string: one that does not decode is still a key (D633).
+// A client_order_id is an opaque string: one that does not decode is still a key (E06-D033).
 func TestOrderOpaqueClientID(t *testing.T) {
 	h := start(t, setup{opts: exchangetest.AccountOptions{Ack: exchange.OrderStatusAccepted}})
 	h.startReady()
@@ -953,9 +953,9 @@ func TestBatchCancelPerOrder(t *testing.T) {
 	}
 }
 
-// A batch whose answer never comes is queried per order and not sent again (D626). The venue
+// A batch whose answer never comes is queried per order and not sent again (E06-D026). The venue
 // still has both orders after the window, so the cancels did not happen: the flag clears with
-// CANCEL_REJECTED 120, and the orders may be cancelled again (D610).
+// CANCEL_REJECTED 120, and the orders may be cancelled again (E06-D010).
 func TestBatchCancelUnknownOutcome(t *testing.T) {
 	clock := newFakeClock(time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
 	h := start(t, setup{
@@ -1000,7 +1000,7 @@ func TestBatchCancelUnknownOutcome(t *testing.T) {
 	h.waitStatus(a, tdv1.OrderStatus_ORDER_STATUS_CANCELLED)
 }
 
-// DEGRADED does not stop BatchCancel (D627). It still goes out over REST.
+// DEGRADED does not stop BatchCancel (E06-D027). It still goes out over REST.
 func TestBatchCancelDegraded(t *testing.T) {
 	h := start(t, setup{})
 	h.startReady()
@@ -1017,7 +1017,7 @@ func TestBatchCancelDegraded(t *testing.T) {
 	waitFor(t, "degraded batch was not sent", func() bool { return len(h.v.Batches()) == 1 })
 }
 
-// Submit stops at 90%. One BatchCancel is one request and may use the rest of the window (D628).
+// Submit stops at 90%. One BatchCancel is one request and may use the rest of the window (E06-D028).
 func TestCancelUsesFullRate(t *testing.T) {
 	clock := newFakeClock(time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
 	h := start(t, setup{

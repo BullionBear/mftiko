@@ -1,4 +1,4 @@
-// Package envelope is the fixed binary prefix of every md.f message (D803, D405-D411, PROTOCOL §7.1).
+// Package envelope is the fixed binary prefix of every md.f message (E08-D003, E04-D005-E04-D011, PROTOCOL §7.1).
 //
 // Version 1 is 40 bytes, little-endian. The payload starts at byte 40. There is no length byte: the
 // version fixes the size, and the seven bytes after the version are reserved and must be zero. Append

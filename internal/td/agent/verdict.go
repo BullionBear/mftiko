@@ -14,7 +14,7 @@ import (
 // decide is the ack of one demand. LOST keeps the previous ack (P6). A worker that ended for a
 // reason no restart fixes is REJECTED with it; one the Policy gave up on otherwise is DEAD. READY
 // is a running worker whose report says READY or DEGRADED: a dropped private connection is not a
-// dead account (D603).
+// dead account (E06-D003).
 func decide(o outcome, observed map[agent.WorkerKey]agent.Observed, gaveUp func(agent.WorkerKey) bool) (statev1.EntryState, string, bool) {
 	if o.Reject != "" {
 		return statev1.EntryState_ENTRY_STATE_REJECTED, o.Reject, true

@@ -65,7 +65,7 @@ func parseFeed(fb *stsctlv1.FeedBinding) (*spec, error) {
 	return &spec{key: key, topic: topic, subject: subject, view: view}, nil
 }
 
-// viewSubject replaces a leading md.v1.f. with md.v1.view. (D455). The rest of the
+// viewSubject replaces a leading md.v1.f. with md.v1.view. (E04-D055). The rest of the
 // subject is copied as given. ok is false when the prefix is absent.
 func viewSubject(subject string) (string, bool) {
 	rest, ok := strings.CutPrefix(subject, feedPrefix)
@@ -82,7 +82,7 @@ func fetchSubject(venue string) (string, error) {
 	return fetchRoot + venue, nil
 }
 
-// token is one NATS subject token (D819): not empty, and no dot, star, greater-than, or space.
+// token is one NATS subject token (E08-D019): not empty, and no dot, star, greater-than, or space.
 func token(s string) bool {
 	if s == "" || strings.ContainsAny(s, ".*> \t\n\r") {
 		return false
@@ -90,7 +90,7 @@ func token(s string) bool {
 	return true
 }
 
-// classify diffs the held subjects against the snapshot (D846). A subject whose feed key
+// classify diffs the held subjects against the snapshot (E08-D046). A subject whose feed key
 // and topic are unchanged keeps its subscription. Anything else is a drop plus an add.
 func classify(cur map[string]*feed, next map[string]*spec) (add, drop []*feed, merged map[string]*feed) {
 	merged = make(map[string]*feed, len(next))
@@ -138,7 +138,7 @@ func newer(oldEpoch int64, oldSeq uint64, next *commonv1.Version) bool {
 	return seq > oldSeq
 }
 
-// wants reports whether topic has a hook. orderbook_delta is not a hook (D805).
+// wants reports whether topic has a hook. orderbook_delta is not a hook (E08-D005).
 func wants(h Hooks, topic string) bool {
 	switch topic {
 	case "bestquote":

@@ -24,7 +24,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// 一張單在交易所那一側的狀態（D610）。出現在 OrderUpdate 與快照的 Order 裡。
+// 一張單在交易所那一側的狀態（E06-D010）。出現在 OrderUpdate 與快照的 Order 裡。
 // 撤單在途不是狀態，是 Order.cancel_sent_ns。PENDING_NEW 是 TD 自己的標記，adapter 不產生它。
 type OrderStatus int32
 
@@ -38,7 +38,7 @@ const (
 	OrderStatus_ORDER_STATUS_CANCELLED        OrderStatus = 6
 	OrderStatus_ORDER_STATUS_REJECTED         OrderStatus = 7 // 交易所拒單（同步或非同步），或查單後確定沒下成（REJECT_CODE_NOT_PLACED）
 	OrderStatus_ORDER_STATUS_EXPIRED          OrderStatus = 8 // 交易所讓它過期，例如 IOC、FOK 沒成交的部分
-	OrderStatus_ORDER_STATUS_UNKNOWN          OrderStatus = 9 // 下單送出但交易所沒有回答，worker 查單之後收斂（D605）
+	OrderStatus_ORDER_STATUS_UNKNOWN          OrderStatus = 9 // 下單送出但交易所沒有回答，worker 查單之後收斂（E06-D005）
 )
 
 // Enum value maps for OrderStatus.
@@ -96,7 +96,7 @@ func (OrderStatus) EnumDescriptor() ([]byte, []int) {
 	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{0}
 }
 
-// 1xx 的名字（D610、PROTOCOL §7.2）。代碼欄位是 int32，因為它也帶 2xx 與交易所原生代碼；這個 enum 只替 1xx 取名。
+// 1xx 的名字（E06-D010、PROTOCOL §7.2）。代碼欄位是 int32，因為它也帶 2xx 與交易所原生代碼；這個 enum 只替 1xx 取名。
 // 101–119 是本地拒絕，什麼都沒送出，只出現在 td.order 的回覆；120 起是送出之後確定沒下成，只出現在 OrderUpdate。
 // 只列一期會碰到、有票驗收的；之後碰到新的情況再加。
 type RejectCode int32
@@ -104,13 +104,13 @@ type RejectCode int32
 const (
 	RejectCode_REJECT_CODE_UNSPECIFIED        RejectCode = 0
 	RejectCode_REJECT_CODE_ACCOUNT_OFFLINE    RejectCode = 101 // td.order 沒有 responder：account worker 不在，或還沒完成 Start。由 SDK 產生
-	RejectCode_REJECT_CODE_ACCOUNT_DEGRADED   RejectCode = 102 // 私有連線斷線中，暫停收新單；Cancel 與 BatchCancel 照常（D603、D627）
-	RejectCode_REJECT_CODE_HEDGE_MODE         RejectCode = 103 // params 帶了持倉方向鍵（D607）。雙向持倉的帳號在 Start 就起不來，執行中不檢查（D616）
-	RejectCode_REJECT_CODE_VENUE_NOT_TRADABLE RejectCode = 105 // 帳號種類不能交易這個商品的 venue（D301）
-	RejectCode_REJECT_CODE_INVALID_ORDER      RejectCode = 106 // 商品不存在或不是 TRADABLE；數量或價格不合商品規格（tick、step、上下限）；client_order_id 是空的；同一 cloid 內容不同（D619）；BatchCancel 在沒有批次撤單的交易所上不能用（D625）
-	RejectCode_REJECT_CODE_ORDER_NOT_OPEN     RejectCode = 107 // 撤單的目標不是掛單：TD 不認得這張單，或它已經終結。UNKNOWN 可以用 cloid 撤，不回 107（D623）。BatchCancel 的清單裡有一張對不到活單時，整筆是 107，什麼都不送（D625）
-	RejectCode_REJECT_CODE_RATE_LIMITED       RejectCode = 108 // Submit 用到 OrderRate 的 90%，Cancel 與 BatchCancel 用到 100%（BatchCancel 算一筆，不是一張），或交易所以 429、418 要求停送（D609、D420、D621、D628）。不排隊、不重試
-	RejectCode_REJECT_CODE_NOT_PLACED         RejectCode = 120 // 主動查單後確定交易所沒有這張單（D605）
+	RejectCode_REJECT_CODE_ACCOUNT_DEGRADED   RejectCode = 102 // 私有連線斷線中，暫停收新單；Cancel 與 BatchCancel 照常（E06-D003、E06-D027）
+	RejectCode_REJECT_CODE_HEDGE_MODE         RejectCode = 103 // params 帶了持倉方向鍵（E06-D007）。雙向持倉的帳號在 Start 就起不來，執行中不檢查（E06-D016）
+	RejectCode_REJECT_CODE_VENUE_NOT_TRADABLE RejectCode = 105 // 帳號種類不能交易這個商品的 venue（E03-D001）
+	RejectCode_REJECT_CODE_INVALID_ORDER      RejectCode = 106 // 商品不存在或不是 TRADABLE；數量或價格不合商品規格（tick、step、上下限）；client_order_id 是空的；同一 cloid 內容不同（E06-D019）；BatchCancel 在沒有批次撤單的交易所上不能用（E06-D025）
+	RejectCode_REJECT_CODE_ORDER_NOT_OPEN     RejectCode = 107 // 撤單的目標不是掛單：TD 不認得這張單，或它已經終結。UNKNOWN 可以用 cloid 撤，不回 107（E06-D023）。BatchCancel 的清單裡有一張對不到活單時，整筆是 107，什麼都不送（E06-D025）
+	RejectCode_REJECT_CODE_RATE_LIMITED       RejectCode = 108 // Submit 用到 OrderRate 的 90%，Cancel 與 BatchCancel 用到 100%（BatchCancel 算一筆，不是一張），或交易所以 429、418 要求停送（E06-D009、E04-D020、E06-D021、E06-D028）。不排隊、不重試
+	RejectCode_REJECT_CODE_NOT_PLACED         RejectCode = 120 // 主動查單後確定交易所沒有這張單（E06-D005）
 )
 
 // Enum value maps for RejectCode.
@@ -166,13 +166,13 @@ func (RejectCode) EnumDescriptor() ([]byte, []int) {
 	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{1}
 }
 
-// account worker 的狀態（D603、D606）。td.view 的回覆與 tdctl.Report 都帶它。
+// account worker 的狀態（E06-D003、E06-D006）。td.view 的回覆與 tdctl.Report 都帶它。
 type AccountState int32
 
 const (
 	AccountState_ACCOUNT_STATE_UNSPECIFIED AccountState = 0
 	AccountState_ACCOUNT_STATE_READY       AccountState = 1
-	AccountState_ACCOUNT_STATE_DEGRADED    AccountState = 2 // 私有 websocket 斷線，或查單失敗超過 5 分鐘：新單以 102 拒絕，Cancel 與 BatchCancel 照常（D603、D622、D627）
+	AccountState_ACCOUNT_STATE_DEGRADED    AccountState = 2 // 私有 websocket 斷線，或查單失敗超過 5 分鐘：新單以 102 拒絕，Cancel 與 BatchCancel 照常（E06-D003、E06-D022、E06-D027）
 )
 
 // Enum value maps for AccountState.
@@ -229,8 +229,8 @@ const (
 	OrderCause_ORDER_CAUSE_CANCEL_REJECTED  OrderCause = 7  // 撤單被拒：清掉 cancel_sent_ns，status 不變
 	OrderCause_ORDER_CAUSE_REJECTED         OrderCause = 8  // → REJECTED
 	OrderCause_ORDER_CAUSE_EXPIRED          OrderCause = 9  // → EXPIRED
-	OrderCause_ORDER_CAUSE_OUTCOME_UNKNOWN  OrderCause = 10 // 下單送出但交易所沒有回答 → UNKNOWN。撤單沒有回答時 cancel_sent_ns 保留，同樣由 worker 查單收斂（D605）
-	OrderCause_ORDER_CAUSE_RECONCILED       OrderCause = 11 // recon 或主動查單之後，交易所的狀態和 TD 原本記的不同（D605）
+	OrderCause_ORDER_CAUSE_OUTCOME_UNKNOWN  OrderCause = 10 // 下單送出但交易所沒有回答 → UNKNOWN。撤單沒有回答時 cancel_sent_ns 保留，同樣由 worker 查單收斂（E06-D005）
+	OrderCause_ORDER_CAUSE_RECONCILED       OrderCause = 11 // recon 或主動查單之後，交易所的狀態和 TD 原本記的不同（E06-D005）
 )
 
 // Enum value maps for OrderCause.
@@ -297,8 +297,8 @@ type ReconReason int32
 const (
 	ReconReason_RECON_REASON_UNSPECIFIED ReconReason = 0
 	ReconReason_RECON_REASON_RECONNECT   ReconReason = 1 // 私有 websocket 重連並 recon 之後
-	ReconReason_RECON_REASON_INCARNATION ReconReason = 2 // account worker 換了 incarnation：被重新拉起之後的第一次 recon（D604）
-	ReconReason_RECON_REASON_REQUESTED   ReconReason = 3 // td.view 的 ReconRequest 的回覆，不在 td.evt 上（D633）
+	ReconReason_RECON_REASON_INCARNATION ReconReason = 2 // account worker 換了 incarnation：被重新拉起之後的第一次 recon（E06-D004）
+	ReconReason_RECON_REASON_REQUESTED   ReconReason = 3 // td.view 的 ReconRequest 的回覆，不在 td.evt 上（E06-D033）
 )
 
 // Enum value maps for ReconReason.
@@ -445,18 +445,18 @@ func (*OrderRequest_BatchCancel) isOrderRequest_Req() {}
 type Submit struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"` // 只給 log 與歸屬
-	Uid           uint32                 `protobuf:"varint,2,opt,name=uid,proto3" json:"uid,omitempty"`                             // 商品（D203）
+	Uid           uint32                 `protobuf:"varint,2,opt,name=uid,proto3" json:"uid,omitempty"`                             // 商品（E02-D003）
 	Side          v1.Side                `protobuf:"varint,3,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"`
 	OrderType     v1.OrderType           `protobuf:"varint,4,opt,name=order_type,json=orderType,proto3,enum=mftiko.common.v1.OrderType" json:"order_type,omitempty"`
-	Qty           *float64               `protobuf:"fixed64,5,opt,name=qty,proto3,oneof" json:"qty,omitempty"`                           // 單位是 contract_value_ccy（D203）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數
-	QuoteQty      *float64               `protobuf:"fixed64,6,opt,name=quote_qty,json=quoteQty,proto3,oneof" json:"quote_qty,omitempty"` // quote 資產的金額，單位是 quote，不是 contract_value_ccy（D203）
-	Price         *float64               `protobuf:"fixed64,7,opt,name=price,proto3,oneof" json:"price,omitempty"`                       // 單位是 price_ccy（D203）：現貨與期貨（含 inverse）是 quote；幣本位期權的權利金是 base；U 本位期權的權利金是 quote（穩定幣）
+	Qty           *float64               `protobuf:"fixed64,5,opt,name=qty,proto3,oneof" json:"qty,omitempty"`                           // 單位是 contract_value_ccy（E02-D003）：qty = 張數 × contract_size。現貨、linear、期權是 base，inverse 是 quote，不是張數
+	QuoteQty      *float64               `protobuf:"fixed64,6,opt,name=quote_qty,json=quoteQty,proto3,oneof" json:"quote_qty,omitempty"` // quote 資產的金額，單位是 quote，不是 contract_value_ccy（E02-D003）
+	Price         *float64               `protobuf:"fixed64,7,opt,name=price,proto3,oneof" json:"price,omitempty"`                       // 單位是 price_ccy（E02-D003）：現貨與期貨（含 inverse）是 quote；幣本位期權的權利金是 base；U 本位期權的權利金是 quote（穩定幣）
 	Tif           v1.TimeInForce         `protobuf:"varint,8,opt,name=tif,proto3,enum=mftiko.common.v1.TimeInForce" json:"tif,omitempty"`
 	ReduceOnly    bool                   `protobuf:"varint,9,opt,name=reduce_only,json=reduceOnly,proto3" json:"reduce_only,omitempty"`
-	ClientOrderId string                 `protobuf:"bytes,10,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"` // 冪等與查單的 key。TD 當成不透明的字串，不解碼；空的是 106（D633）
-	// 交易所特有的參數，原樣交給 adapter。positionSide、posSide、positionIdx 一律以 103 拒絕（D607）
+	ClientOrderId string                 `protobuf:"bytes,10,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"` // 冪等與查單的 key。TD 當成不透明的字串，不解碼；空的是 106（E06-D033）
+	// 交易所特有的參數，原樣交給 adapter。positionSide、posSide、positionIdx 一律以 103 拒絕（E06-D007）
 	Params map[string]string `protobuf:"bytes,11,rep,name=params,proto3" json:"params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// 請求有效期，毫秒（D620）。0 = 這個 TD instance 的預設（部署設定，預設 5 秒）。
+	// 請求有效期，毫秒（E06-D020）。0 = 這個 TD instance 的預設（部署設定，預設 5 秒）。
 	// 超過交易所上限（60 秒）時 TD 壓到上限。時鐘誤差是 instance 的設定，預設 1 秒，不在這則訊息裡。
 	RecvWindowMs  int64 `protobuf:"varint,13,opt,name=recv_window_ms,json=recvWindowMs,proto3" json:"recv_window_ms,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -577,14 +577,14 @@ func (x *Submit) GetRecvWindowMs() int64 {
 	return 0
 }
 
-// 目標單已經有撤單在途（cancel_sent_ns 不是 0）：回 accepted，不再送交易所（D610）。
-// 只收 client_order_id。OMS 以它找到活單，送出時帶上那張單的 order_id；還沒有 order_id 才用 client_order_id（D623）。
+// 目標單已經有撤單在途（cancel_sent_ns 不是 0）：回 accepted，不再送交易所（E06-D010）。
+// 只收 client_order_id。OMS 以它找到活單，送出時帶上那張單的 order_id；還沒有 order_id 才用 client_order_id（E06-D023）。
 type Cancel struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"` // 只給 log 與歸屬
 	Uid           uint32                 `protobuf:"varint,2,opt,name=uid,proto3" json:"uid,omitempty"`
-	ClientOrderId string                 `protobuf:"bytes,3,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"` // 空的是 106（D633）
-	// 請求有效期，毫秒（D620）。0 = 這個 TD instance 的預設（部署設定，預設 5 秒）。
+	ClientOrderId string                 `protobuf:"bytes,3,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"` // 空的是 106（E06-D033）
+	// 請求有效期，毫秒（E06-D020）。0 = 這個 TD instance 的預設（部署設定，預設 5 秒）。
 	// 超過交易所上限（60 秒）時 TD 壓到上限。時鐘誤差是 instance 的設定，預設 1 秒，不在這則訊息裡。
 	RecvWindowMs  int64 `protobuf:"varint,6,opt,name=recv_window_ms,json=recvWindowMs,proto3" json:"recv_window_ms,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -649,13 +649,13 @@ func (x *Cancel) GetRecvWindowMs() int64 {
 	return 0
 }
 
-// 一筆交易所的批次撤單（D625）。每一筆只帶 client_order_id。TD 以它找到 OMS 裡的活單，送出時帶上那張單的 order_id（還沒有才用 client_order_id）。
-// 不挑單、不分批、不排隊、不重試，也不解碼 client_order_id（D633）。
+// 一筆交易所的批次撤單（E06-D025）。每一筆只帶 client_order_id。TD 以它找到 OMS 裡的活單，送出時帶上那張單的 order_id（還沒有才用 client_order_id）。
+// 不挑單、不分批、不排隊、不重試，也不解碼 client_order_id（E06-D033）。
 // 商品取自 OMS 裡那張活單的 UID。空的 client_order_id 整筆 106；對不到活單，整筆 107；商品解不出來，整筆 106。都什麼都不送，不影響別的 BatchCancel。
 // CancelBatch 為 1（交易所沒有批次撤單）是 106，不改走單筆 Cancel。長過交易所上限仍送出，交易所的拒絕原樣回報。
-// 這則訊息算 OrderRate 的一筆，與 Cancel 相同可用到 100%（D628）。沒有 recv_window_ms，有效期用 instance 預設。
-// 回覆只說收下了；每一張單撤成或撤不成，各自是一則 OrderUpdate（D610）。DEGRADED 照常，走 REST，不走 TradeStream（D627）。
-// 整筆結果不明時，批內每張查單（已有 order_id 用它，否則用 client_order_id），不重送（D626）。cancel-on-disconnect 不接。
+// 這則訊息算 OrderRate 的一筆，與 Cancel 相同可用到 100%（E06-D028）。沒有 recv_window_ms，有效期用 instance 預設。
+// 回覆只說收下了；每一張單撤成或撤不成，各自是一則 OrderUpdate（E06-D010）。DEGRADED 照常，走 REST，不走 TradeStream（E06-D027）。
+// 整筆結果不明時，批內每張查單（已有 order_id 用它，否則用 client_order_id），不重送（E06-D026）。cancel-on-disconnect 不接。
 type BatchCancel struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Orders        []*BatchCancelOrder    `protobuf:"bytes,4,rep,name=orders,proto3" json:"orders,omitempty"`
@@ -745,7 +745,7 @@ func (x *BatchCancelOrder) GetClientOrderId() string {
 	return ""
 }
 
-// td.order 的回覆（D610）。
+// td.order 的回覆（E06-D010）。
 type OrderReply struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Accepted      bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"` // 真：TD 收下了，接著送往交易所。假：本地拒絕，什麼都沒送出
@@ -896,7 +896,7 @@ func (*ViewRequest_Leverage) isViewRequest_Req() {}
 
 func (*ViewRequest_Recon) isViewRequest_Req() {}
 
-// 帳號的整份快照：所有活單、所有持倉、所有餘額，在同一個 ViewReply.seq 上（D603、D633）。
+// 帳號的整份快照：所有活單、所有持倉、所有餘額，在同一個 ViewReply.seq 上（E06-D003、E06-D033）。
 // 帳號由 subject 決定。不篩 algo：SDK 以 cloid 的 algo 欄位自己篩。
 type ReconRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -934,7 +934,7 @@ func (*ReconRequest) Descriptor() ([]byte, []int) {
 	return file_mftiko_td_v1_td_proto_rawDescGZIP(), []int{7}
 }
 
-// 本地的槓桿快取：取自持倉的 leverage（recon 與持倉事件），持倉平掉之後仍保留；沒看過的商品回未知（D606、D615）。
+// 本地的槓桿快取：取自持倉的 leverage（recon 與持倉事件），持倉平掉之後仍保留；沒看過的商品回未知（E06-D006、E06-D015）。
 type LeverageRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Uid           uint32                 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"`
@@ -979,7 +979,7 @@ func (x *LeverageRequest) GetUid() uint32 {
 	return 0
 }
 
-// 快照還沒好也照樣回，不擋、不等：呼叫端看 state、reconciled_at_ns 判斷新舊（D606）。
+// 快照還沒好也照樣回，不擋、不等：呼叫端看 state、reconciled_at_ns 判斷新舊（E06-D006）。
 type ViewReply struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Reply:
@@ -992,7 +992,7 @@ type ViewReply struct {
 	ReconciledAtNs int64             `protobuf:"varint,11,opt,name=reconciled_at_ns,json=reconciledAtNs,proto3" json:"reconciled_at_ns,omitempty"` // 最近一次 recon 完成的時間；0 = 這個 incarnation 還沒完成第一次 recon
 	Incarnation    uint32            `protobuf:"varint,12,opt,name=incarnation,proto3" json:"incarnation,omitempty"`
 	Seq            uint64            `protobuf:"varint,13,opt,name=seq,proto3" json:"seq,omitempty"` // 這份快照已經涵蓋到的 td.evt seq：之後只要套用 seq 更大、incarnation 相同的事件
-	// 這個帳號的 Limits.CancelBatch（D631）。1 表示交易所沒有批次撤單，SDK 改走單筆 Cancel（D625）。
+	// 這個帳號的 Limits.CancelBatch（E06-D031）。1 表示交易所沒有批次撤單，SDK 改走單筆 Cancel（E06-D025）。
 	// 每一則回覆都帶，不論問的是 Recon 或槓桿。策略照這個數把一個 algo 的掛單拆成多筆 BatchCancel。
 	CancelBatch   uint32 `protobuf:"varint,14,opt,name=cancel_batch,json=cancelBatch,proto3" json:"cancel_batch,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1111,7 +1111,7 @@ type ViewReply_Error struct {
 }
 
 type ViewReply_Recon struct {
-	Recon *Recon `protobuf:"bytes,5,opt,name=recon,proto3,oneof"` // reason 是 RECON_REASON_REQUESTED（D633）
+	Recon *Recon `protobuf:"bytes,5,opt,name=recon,proto3,oneof"` // reason 是 RECON_REASON_REQUESTED（E06-D033）
 }
 
 func (*ViewReply_Leverage) isViewReply_Reply() {}
@@ -1318,7 +1318,7 @@ func (*AccountEvent_PositionUpdate) isAccountEvent_Event() {}
 
 func (*AccountEvent_Recon) isAccountEvent_Event() {}
 
-// 一張單的一次變化（D610）。order 是變化之後的完整狀態，cause 說為什麼變。
+// 一張單的一次變化（E06-D010）。order 是變化之後的完整狀態，cause 說為什麼變。
 // 拒單（交易所拒單、查單後確定沒下成）也是一則 OrderUpdate，status 是 REJECTED。
 // 撤單只動 cancel_sent_ns：送出時設定（CANCEL_REQUESTED），被拒時清掉（CANCEL_REJECTED），status 都不變。
 // 本地拒絕只在 td.order 的回覆裡，不發到這裡。同一個 client_order_id 的同一次變化只發一則：交易所的回答與私有事件
@@ -1391,24 +1391,24 @@ func (x *OrderUpdate) GetReason() string {
 	return ""
 }
 
-// 一張單的狀態紀錄：OrderUpdate、Recon 共用。拒絕的原因在 OrderUpdate 上，不在這裡（D610）。
+// 一張單的狀態紀錄：OrderUpdate、Recon 共用。拒絕的原因在 OrderUpdate 上，不在這裡（E06-D010）。
 type Order struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Uid           uint32                 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"` // 商品（D203）
+	Uid           uint32                 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"` // 商品（E02-D003）
 	OrderId       string                 `protobuf:"bytes,2,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
 	ClientOrderId string                 `protobuf:"bytes,3,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
 	Side          v1.Side                `protobuf:"varint,4,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"`
 	OrderType     v1.OrderType           `protobuf:"varint,5,opt,name=order_type,json=orderType,proto3,enum=mftiko.common.v1.OrderType" json:"order_type,omitempty"`
 	Status        OrderStatus            `protobuf:"varint,6,opt,name=status,proto3,enum=mftiko.td.v1.OrderStatus" json:"status,omitempty"`
-	Qty           float64                `protobuf:"fixed64,7,opt,name=qty,proto3" json:"qty,omitempty"`                                  // 同 Submit.qty，單位是 contract_value_ccy（D203）
-	QuoteQty      *float64               `protobuf:"fixed64,8,opt,name=quote_qty,json=quoteQty,proto3,oneof" json:"quote_qty,omitempty"`  // 同 Submit.quote_qty（D203）
-	Price         *float64               `protobuf:"fixed64,9,opt,name=price,proto3,oneof" json:"price,omitempty"`                        // 同 Submit.price，單位是 price_ccy（D203）
-	FilledQty     float64                `protobuf:"fixed64,10,opt,name=filled_qty,json=filledQty,proto3" json:"filled_qty,omitempty"`    // 已成交數量，單位同 qty（contract_value_ccy，D203）
-	AvgPrice      *float64               `protobuf:"fixed64,11,opt,name=avg_price,json=avgPrice,proto3,oneof" json:"avg_price,omitempty"` // 同 Submit.price，單位是 price_ccy（D203）
+	Qty           float64                `protobuf:"fixed64,7,opt,name=qty,proto3" json:"qty,omitempty"`                                  // 同 Submit.qty，單位是 contract_value_ccy（E02-D003）
+	QuoteQty      *float64               `protobuf:"fixed64,8,opt,name=quote_qty,json=quoteQty,proto3,oneof" json:"quote_qty,omitempty"`  // 同 Submit.quote_qty（E02-D003）
+	Price         *float64               `protobuf:"fixed64,9,opt,name=price,proto3,oneof" json:"price,omitempty"`                        // 同 Submit.price，單位是 price_ccy（E02-D003）
+	FilledQty     float64                `protobuf:"fixed64,10,opt,name=filled_qty,json=filledQty,proto3" json:"filled_qty,omitempty"`    // 已成交數量，單位同 qty（contract_value_ccy，E02-D003）
+	AvgPrice      *float64               `protobuf:"fixed64,11,opt,name=avg_price,json=avgPrice,proto3,oneof" json:"avg_price,omitempty"` // 同 Submit.price，單位是 price_ccy（E02-D003）
 	ExchTsNs      int64                  `protobuf:"varint,13,opt,name=exch_ts_ns,json=exchTsNs,proto3" json:"exch_ts_ns,omitempty"`
 	TdTsNs        int64                  `protobuf:"varint,14,opt,name=td_ts_ns,json=tdTsNs,proto3" json:"td_ts_ns,omitempty"`
-	// TD 送出撤單的時間；0 = 沒有撤單在途。撤單在途是旗標，不是 status（D610）。
-	// 撤單被拒時清掉；撤單沒有回答時保留，由 worker 查單收斂（D605）；進終態時一律清掉，之後才到的撤單結果不再發 OrderUpdate。
+	// TD 送出撤單的時間；0 = 沒有撤單在途。撤單在途是旗標，不是 status（E06-D010）。
+	// 撤單被拒時清掉；撤單沒有回答時保留，由 worker 查單收斂（E06-D005）；進終態時一律清掉，之後才到的撤單結果不再發 OrderUpdate。
 	CancelSentNs  int64 `protobuf:"varint,15,opt,name=cancel_sent_ns,json=cancelSentNs,proto3" json:"cancel_sent_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1544,14 +1544,14 @@ func (x *Order) GetCancelSentNs() int64 {
 
 type Fill struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	Uid   uint32                 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"` // 商品（D203）
-	// 交易所的 trade id。WS 與 REST 必須給同一個值：落庫以 (api_id, fill_id) 去重（D601）。
+	Uid   uint32                 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"` // 商品（E02-D003）
+	// 交易所的 trade id。WS 與 REST 必須給同一個值：落庫以 (api_id, fill_id) 去重（E06-D001）。
 	FillId        string  `protobuf:"bytes,2,opt,name=fill_id,json=fillId,proto3" json:"fill_id,omitempty"`
 	OrderId       string  `protobuf:"bytes,3,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
 	ClientOrderId string  `protobuf:"bytes,4,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
 	Side          v1.Side `protobuf:"varint,5,opt,name=side,proto3,enum=mftiko.common.v1.Side" json:"side,omitempty"`
-	Price         float64 `protobuf:"fixed64,6,opt,name=price,proto3" json:"price,omitempty"` // 同 Submit.price，單位是 price_ccy（D203）
-	Qty           float64 `protobuf:"fixed64,7,opt,name=qty,proto3" json:"qty,omitempty"`     // 成交數量，單位同 Submit.qty（contract_value_ccy，D203）
+	Price         float64 `protobuf:"fixed64,6,opt,name=price,proto3" json:"price,omitempty"` // 同 Submit.price，單位是 price_ccy（E02-D003）
+	Qty           float64 `protobuf:"fixed64,7,opt,name=qty,proto3" json:"qty,omitempty"`     // 成交數量，單位同 Submit.qty（contract_value_ccy，E02-D003）
 	Fee           float64 `protobuf:"fixed64,8,opt,name=fee,proto3" json:"fee,omitempty"`
 	FeeAsset      string  `protobuf:"bytes,9,opt,name=fee_asset,json=feeAsset,proto3" json:"fee_asset,omitempty"`
 	Liquidity     string  `protobuf:"bytes,10,opt,name=liquidity,proto3" json:"liquidity,omitempty"`
@@ -1667,7 +1667,7 @@ func (x *Fill) GetExchTsNs() int64 {
 	return 0
 }
 
-// 餘額。free、locked、prelock 互不重疊，加總是總額，三格都由 TD 填（D853）。
+// 餘額。free、locked、prelock 互不重疊，加總是總額，三格都由 TD 填（E08-D053）。
 // SDK 不計算：BalanceUpdate 與 Recon 原樣覆蓋。
 type Balance struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
@@ -1738,14 +1738,14 @@ func (x *Balance) GetPrelock() float64 {
 	return 0
 }
 
-// 一期只支援單向持倉，size 帶號：負的是空（D607）。
+// 一期只支援單向持倉，size 帶號：負的是空（E06-D007）。
 type Position struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Uid           uint32                 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"`                                                 // 商品（D203）
-	Size          float64                `protobuf:"fixed64,2,opt,name=size,proto3" json:"size,omitempty"`                                              // 持倉數量，單位同 Submit.qty（contract_value_ccy，D203）
-	EntryPrice    *float64               `protobuf:"fixed64,3,opt,name=entry_price,json=entryPrice,proto3,oneof" json:"entry_price,omitempty"`          // 同 Submit.price，單位是 price_ccy（D203）
-	MarkPrice     *float64               `protobuf:"fixed64,4,opt,name=mark_price,json=markPrice,proto3,oneof" json:"mark_price,omitempty"`             // 同 Submit.price，單位是 price_ccy（D203）
-	UnrealizedPnl *float64               `protobuf:"fixed64,5,opt,name=unrealized_pnl,json=unrealizedPnl,proto3,oneof" json:"unrealized_pnl,omitempty"` // 損益結算幣 settlement_asset（欄位 settle），不是保證金幣（D203）
+	Uid           uint32                 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"`                                                 // 商品（E02-D003）
+	Size          float64                `protobuf:"fixed64,2,opt,name=size,proto3" json:"size,omitempty"`                                              // 持倉數量，單位同 Submit.qty（contract_value_ccy，E02-D003）
+	EntryPrice    *float64               `protobuf:"fixed64,3,opt,name=entry_price,json=entryPrice,proto3,oneof" json:"entry_price,omitempty"`          // 同 Submit.price，單位是 price_ccy（E02-D003）
+	MarkPrice     *float64               `protobuf:"fixed64,4,opt,name=mark_price,json=markPrice,proto3,oneof" json:"mark_price,omitempty"`             // 同 Submit.price，單位是 price_ccy（E02-D003）
+	UnrealizedPnl *float64               `protobuf:"fixed64,5,opt,name=unrealized_pnl,json=unrealizedPnl,proto3,oneof" json:"unrealized_pnl,omitempty"` // 損益結算幣 settlement_asset（欄位 settle），不是保證金幣（E02-D003）
 	Leverage      *float64               `protobuf:"fixed64,6,opt,name=leverage,proto3,oneof" json:"leverage,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1911,7 +1911,7 @@ func (x *PositionUpdate) GetPositions() []*Position {
 	return nil
 }
 
-// 帳號狀態的整份快照（DECISIONS D603、D604、D633）：td.evt 推的，或 td.view 的 ReconRequest 問到的。
+// 帳號狀態的整份快照（DECISIONS E06-D003、E06-D004、E06-D033）：td.evt 推的，或 td.view 的 ReconRequest 問到的。
 // SDK 把它交給策略的 OnRecon：open_orders 由 SDK 以 cloid 的 algo 欄位篩成自己宣告的 algo_id，positions、balances 原樣給。
 // 和其他事件共用 seq；策略整份換掉自己的狀態，之後的事件照常疊上去。
 type Recon struct {

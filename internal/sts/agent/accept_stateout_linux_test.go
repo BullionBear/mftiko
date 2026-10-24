@@ -17,7 +17,7 @@ import (
 )
 
 // The next session reads the pushed volume through state_out. Logs, terminal.json,
-// and the incarnation key stay until the spec is deleted (D984, D1016).
+// and the incarnation key stay until the spec is deleted (E09-D084, E10-D016).
 func TestStateOutRoundTrip(t *testing.T) {
 	e := setup(t)
 	const id, next = "a1b2c3", "b2c3d4"
@@ -66,7 +66,7 @@ func TestStateOutRoundTrip(t *testing.T) {
 }
 
 // A stopped registry leaves the volume in place. After it answers again the push
-// lands and state_out is filled in, without holding the terminal phase back (D983, D984).
+// lands and state_out is filled in, without holding the terminal phase back (E09-D083, E09-D084).
 func TestStateOutRegistryDown(t *testing.T) {
 	e := setup(t)
 	const id = "c3d4e5"
@@ -113,7 +113,7 @@ func TestStateOutRegistryDown(t *testing.T) {
 	pollUntil(t, "volume released and terminal.json kept", func() bool { return e.logsKept(id) })
 }
 
-// terminal.json is enough for a new process to finish the push and the cleanup (D982, D984).
+// terminal.json is enough for a new process to finish the push and the cleanup (E09-D082, E09-D084).
 func TestStateOutResumeAfterRestart(t *testing.T) {
 	e := setup(t)
 	const id = "d4e5f6"
@@ -201,7 +201,7 @@ func (e *env) manifestDigest(repo, ref string) string {
 
 // Spec deleted while the session is still running: it ends, state_out is pushed,
 // and only then do the logs go away. A running sibling and a directory that
-// never became terminal stay (D1016, D944).
+// never became terminal stay (E10-D016, E09-D044).
 func TestLogsWaitForSpec(t *testing.T) {
 	e := setup(t)
 	const id, keep = "e5f6a7", "f6a7b8"
@@ -359,7 +359,7 @@ func (e *env) hasShimLog(id string) bool {
 }
 
 // primeSTSLogDir creates ${WORK_DIR}/log/sts at 0700 with setgid, and the parent
-// log directory setgid, so a later chmod to 0750 has a bit to keep (D1015, D1022).
+// log directory setgid, so a later chmod to 0750 has a bit to keep (E10-D015, E10-D022).
 func (e *env) primeSTSLogDir() {
 	e.t.Helper()
 	dir := filepath.Join(e.cfg.WorkDir, "log", string(state.PlaneSTS))

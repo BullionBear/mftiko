@@ -34,7 +34,7 @@ var (
 	errUnreadable = errors.New("api: stored record is unreadable")
 )
 
-// accountRec is one account as a mirror holds it. rec's sealed bytes stay out of responses and logs (D1063).
+// accountRec is one account as a mirror holds it. rec's sealed bytes stay out of responses and logs (E10-D063).
 type accountRec struct {
 	key    string
 	inst   string
@@ -352,7 +352,7 @@ func writeFields(w http.ResponseWriter, fields []apiv1.FieldError) {
 }
 
 // decodeBody reads one JSON value. The error text can quote the body, so callers do not log it or
-// return it (D1064).
+// return it (E10-D064).
 func decodeBody(r *http.Request, out any) error {
 	return json.NewDecoder(r.Body).Decode(out)
 }
@@ -365,9 +365,9 @@ func checkName(name string) []apiv1.FieldError {
 	return nil
 }
 
-// checkCredentials reports format problems (D1064). kindOK false skips the checks that need the
+// checkCredentials reports format problems (E10-D064). kindOK false skips the checks that need the
 // kind, so an unknown kind is not also "key_type is not accepted". Values are never copied into the
-// reason. required is create (D1062); an update with no credentials object keeps the ciphertext.
+// reason. required is create (E10-D062); an update with no credentials object keeps the ciphertext.
 func checkCredentials(c *apiv1.Credentials, k Kind, required, kindOK bool) []apiv1.FieldError {
 	if c == nil {
 		if required {
@@ -411,7 +411,7 @@ func checkSettings(in *apiv1.AccountSettings) []apiv1.FieldError {
 	return nil
 }
 
-// mergeSettings keeps the backfill fields, which the API does not expose (D1034), and applies
+// mergeSettings keeps the backfill fields, which the API does not expose (E10-D034), and applies
 // cancel_on_disconnect_s when the request sets it. checkSettings has already accepted the value.
 func mergeSettings(in *apiv1.AccountSettings, prev *statev1.AccountSettings) *statev1.AccountSettings {
 	out := &statev1.AccountSettings{}
@@ -433,7 +433,7 @@ func (s *Server) kindByName(name string) (Kind, bool) {
 	return Kind{}, false
 }
 
-// classifyInstance is the topology half of D1065: a name, in the deployment, on the TD plane.
+// classifyInstance is the topology half of E10-D065: a name, in the deployment, on the TD plane.
 // The public-key half is checkTDInstance; a list filter does not need a key.
 func (s *Server) classifyInstance(name string) (region string, ok bool, fields []apiv1.FieldError) {
 	if !instanceNameRe.MatchString(name) {
@@ -484,8 +484,8 @@ func sealCreds(pub sealbox.PublicKey, apiID int64, kind string, cred *apiv1.Cred
 	})
 }
 
-// applyUpdate copies cur, sets enabled (D1034), and applies the fields the request sent. Omitted
-// credentials keep the sealed bytes (D1062). Sending credentials always reseals: the nonce is random,
+// applyUpdate copies cur, sets enabled (E10-D034), and applies the fields the request sent. Omitted
+// credentials keep the sealed bytes (E10-D062). Sending credentials always reseals: the nonce is random,
 // so the ciphertext changes and the worker restarts.
 func applyUpdate(cur *statev1.Account, body apiv1.AccountUpdate, pub sealbox.PublicKey, kind string, apiID int64) (*statev1.Account, error) {
 	next := proto.Clone(cur).(*statev1.Account)
@@ -510,7 +510,7 @@ func applyUpdate(cur *statev1.Account, body apiv1.AccountUpdate, pub sealbox.Pub
 }
 
 // accountEqual ignores a settings message that carries only zeros, so an explicit cancel of 0 does
-// not rewrite an account that left the field unset (D1034: an unchanged body does not restart the worker).
+// not rewrite an account that left the field unset (E10-D034: an unchanged body does not restart the worker).
 func accountEqual(a, b *statev1.Account) bool {
 	return proto.Equal(normalizeAccount(a), normalizeAccount(b))
 }
@@ -541,7 +541,7 @@ func (s *Server) regionViews() (map[string]state.View, []string) {
 	return views, unavail
 }
 
-// freshness is D1014. controller_absent is set only when the controller's home region is available
+// freshness is E10-D014. controller_absent is set only when the controller's home region is available
 // and its agent record is missing. A down home region is listed in unavailable_regions instead, and
 // the flag stays false.
 func (s *Server) freshness(views map[string]state.View, unavail []string) apiv1.Freshness {
@@ -593,7 +593,7 @@ func (s *Server) findAccount(apiID int64) (accountRec, error) {
 	return hits[0], nil
 }
 
-// nameTaken is D1066: every account the replica can see, on any TD instance. except is the account
+// nameTaken is E10-D066: every account the replica can see, on any TD instance. except is the account
 // being updated. An unreadable record is skipped, the same best-effort as a region that is down.
 func nameTaken(views map[string]state.View, name, except string) bool {
 	for _, view := range views {
@@ -616,7 +616,7 @@ func nameTaken(views map[string]state.View, name, except string) bool {
 	return false
 }
 
-// referencesOf is D1011: a non-terminal spec that names the api_id. A missing or unreadable status
+// referencesOf is E10-D011: a non-terminal spec that names the api_id. A missing or unreadable status
 // counts as non-terminal. An unreadable spec is skipped. Both are the replica's best effort.
 func referencesOf(views map[string]state.View) map[int64][]string {
 	out := map[int64][]string{}

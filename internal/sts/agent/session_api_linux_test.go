@@ -25,12 +25,12 @@ import (
 	"github.com/BullionBear/mftiko/migrations"
 )
 
-// sessionAPIToken is the bearer the test sends. The API stores only its SHA-256 (D1009).
+// sessionAPIToken is the bearer the test sends. The API stores only its SHA-256 (E10-D009).
 const sessionAPIToken = "tok-0123456789abcdef0123456789abcdef"
 
 // TestScenarioSessionCreateAndEnd is the E10-11 acceptance: after create, the controller
-// derives a demand and STS starts a worker; after end, the session is terminal (D1073, #316).
-// D1073 names a testplane end-to-end test. This file is that harness. testplane cannot decode
+// derives a demand and STS starts a worker; after end, the session is terminal (E10-D073, #316).
+// E10-D073 names a testplane end-to-end test. This file is that harness. testplane cannot decode
 // SessionDemand, and the API package cannot import the STS agent. The controller daemon, the
 // fake worker, and the in-process registry already live here.
 func TestScenarioSessionCreateAndEnd(t *testing.T) {

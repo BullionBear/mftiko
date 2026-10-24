@@ -328,7 +328,7 @@ func prepareListing(venue string, category symbol.Category, l symbol.Listing, at
 	if strings.TrimSpace(l.ExchTicker) == "" {
 		return prepared{}, errors.New("sym: exch ticker is empty")
 	}
-	// D203: uppercase and apply the alias table before quanto and the ticker.
+	// E02-D003: uppercase and apply the alias table before quanto and the ticker.
 	// Validate requires the canonical spelling, so this runs first. exch_ticker
 	// stays in the venue's own spelling.
 	if err := normalizeAssets(&l); err != nil {
@@ -356,7 +356,7 @@ func prepareListing(venue string, category symbol.Category, l symbol.Listing, at
 	valueCcy := l.ContractValueCcy
 	priceCcy := l.PriceCcy
 	// The columns are NOT NULL. Spot may leave them empty and still pass
-	// Validate; D203's spot row is base for qty and quote for price. Base and
+	// Validate; E02-D003's spot row is base for qty and quote for price. Base and
 	// quote are already canonical.
 	if category == symbol.Spot {
 		if valueCcy == "" {
@@ -404,7 +404,7 @@ func listingStatus(l symbol.Listing, atNs int64) Status {
 	return l.Status
 }
 
-// normalizeAssets uppercases asset codes and applies the alias table (D203).
+// normalizeAssets uppercases asset codes and applies the alias table (E02-D003).
 // Empty currency fields stay empty: spot may omit them. exch_ticker is not an
 // asset code and is left alone.
 func normalizeAssets(l *symbol.Listing) error {

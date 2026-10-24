@@ -23,7 +23,7 @@ var (
 
 // Limits: orderLinkId is 36 characters. CancelBatch is 5, the smallest category cap (option 5,
 // spot 10, linear and inverse 20). The SDK splits to that; a longer list is still sent and the
-// venue rejects it (D625). The order budget is 10/s, the tighter of the category limits (spot's
+// venue rejects it (E06-D025). The order budget is 10/s, the tighter of the category limits (spot's
 // own create limit is 20/s). A batch consumes one count per order on that budget.
 func (a *account) Limits() exchange.AccountLimits {
 	return exchange.AccountLimits{
@@ -129,7 +129,7 @@ func (a *account) QueryOrder(now time.Time, ref exchange.CancelRef) (exchange.Ca
 // API will list without a symbol: spot, linear USDT, linear USDC, inverse, option. Balances are
 // one wallet-balance call. Each page follows nextPageCursor. v5 has no read of the position mode:
 // an order or a position with positionIdx 1 or 2 is hedge mode, so the orders and positions pages
-// carry HedgeMode (D617).
+// carry HedgeMode (E06-D017).
 func (a *account) Snapshot(now time.Time) ([]exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
 	orders := []struct{ cat, settle string }{
 		{"spot", ""},

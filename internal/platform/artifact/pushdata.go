@@ -15,7 +15,7 @@ import (
 	"oras.land/oras-go/v2/registry/remote"
 )
 
-// DataPush is one data artifact upload (D979, D925, D933). Repository is the name
+// DataPush is one data artifact upload (E09-D079, E09-D025, E09-D033). Repository is the name
 // without the registry host. Tag is the session id. Source is written into the config.
 // LayerPath is the packed layer on disk; it is streamed, not loaded into memory.
 type DataPush struct {
@@ -32,8 +32,8 @@ type PushedData struct {
 	Size   int64
 }
 
-// PushData streams one data artifact (D979). Credentials and plain HTTP are the
-// client's registry settings, the same ones a pull uses (D933). The manifest is tagged
+// PushData streams one data artifact (E09-D079). Credentials and plain HTTP are the
+// client's registry settings, the same ones a pull uses (E09-D033). The manifest is tagged
 // with Tag and is also addressable by its digest.
 func (c *Client) PushData(ctx context.Context, req DataPush) (PushedData, error) {
 	if req.Repository == "" {

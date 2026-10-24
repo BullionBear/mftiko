@@ -1,4 +1,4 @@
-// Command conform is the Go standard conformance strategy (PROTOCOL §9.8, D829, D835).
+// Command conform is the Go standard conformance strategy (PROTOCOL §9.8, E08-D029, E08-D035).
 //
 // InitPayload.params selects the behavior. Buffer limits, the prehook, the
 // recon watermark, and deadline_ms aborts belong to the SDK. This process
@@ -6,7 +6,7 @@
 // only after subscriptions are up, OnStart calls Resolve, and priority calls
 // RequestRecon first. The harness holds that Resolve. sdk.Run prints gate once
 // subscriptions are up. CI runs this process through mftiko-conformance on
-// every pull request (D864).
+// every pull request (E08-D064).
 package main
 
 import (

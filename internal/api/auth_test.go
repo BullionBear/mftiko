@@ -365,7 +365,7 @@ func TestAuthHTTP(t *testing.T) {
 		t.Fatalf("tampered %d %s", code, body)
 	}
 
-	// The Content-Type rule is for the cookie (D1009, D1110).
+	// The Content-Type rule is for the cookie (E10-D009, E10-D110).
 	code, _, body = (apiCall{
 		method: http.MethodPost, path: "/api/v1/sessions", cookie: ck.Value,
 		contentType: "text/plain", body: "x",
@@ -389,7 +389,7 @@ func TestAuthHTTP(t *testing.T) {
 		t.Fatalf("cookie write without Content-Type %d %s", code, body)
 	}
 
-	// A bearer write needs no Content-Type, with a body or without one (D1110).
+	// A bearer write needs no Content-Type, with a body or without one (E10-D110).
 	code, _, body = (apiCall{method: http.MethodPost, path: "/api/v1/auth/logout", bearer: tokenAda}).do(t, client, base)
 	if code == http.StatusBadRequest || code >= 500 {
 		t.Fatalf("bearer write without a body %d %s", code, body)

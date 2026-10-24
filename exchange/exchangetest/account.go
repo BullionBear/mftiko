@@ -20,7 +20,7 @@ import (
 
 // AccountVenue is a fake venue for one account (api_id), for the TD account worker's tests (E6-05). It
 // holds the account side of a venue in memory: open orders, positions, balances, leverage, and whether
-// the account is in hedge mode (D607). It has three ends:
+// the account is in hedge mode (E06-D007). It has three ends:
 //
 //   - Account and Kind give the sans-I/O adapter (exchange.Account): REST Calls, and the private
 //     stream's codec from NewStream.
@@ -37,7 +37,7 @@ import (
 // QueryOrder finds an order open or ended, by client order id or order id; one the venue never took
 // is ErrNotFound. Every Submit and Cancel carries its deadline (AccountConfig.Validity after it was
 // signed): a request held back with Outcome.Late takes effect when it Arrives before the deadline,
-// and is refused after it, as on a real venue (D605).
+// and is refused after it, as on a real venue (E06-D005).
 //
 // The venue does not match orders: an accepted order rests until the test fills or cancels it. Its
 // wire format is its own JSON; it checks the API key but not signatures. Everything goes over
@@ -395,7 +395,7 @@ func (v *AccountVenue) ReportUsage(u ...exchange.Used) {
 }
 
 // FailQueries makes the next n GET /order reads fail with 500. A query the worker cannot read is
-// a failure it backs off, not ErrNotFound (D622).
+// a failure it backs off, not ErrNotFound (E06-D022).
 func (v *AccountVenue) FailQueries(n int) {
 	v.mu.Lock()
 	v.failQueries = n

@@ -652,7 +652,7 @@ func TestPullChecksConfigAndManifest(t *testing.T) {
 			t.Fatal("layer was fetched")
 		}
 	})
-	// A field added within the same schema is ignored by a reader that does not know it (D993).
+	// A field added within the same schema is ignored by a reader that does not know it (E09-D093).
 	t.Run("unknown field", func(t *testing.T) {
 		s := newFake(t)
 		var fields map[string]any

@@ -8,7 +8,7 @@ import (
 )
 
 // shared is the etcd the tests of this package take in turn: singleRegion and proxied. A test that restarts or
-// rebuilds etcd, runs at a non-default token or session TTL, or needs more than one region (twoServers, D1316)
+// rebuilds etcd, runs at a non-default token or session TTL, or needs more than one region (twoServers, E13-D016)
 // starts its own.
 var shared etcdtest.Shared
 

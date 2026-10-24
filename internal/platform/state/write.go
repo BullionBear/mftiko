@@ -13,7 +13,7 @@ import (
 // make the write one txn conditioned on ModRevision(WriterKey) == R (PROTOCOL §3.2 W2 step 4). If the condition
 // fails, another agent has taken over: the term ends with ErrSuperseded and the write is not retried (the agent
 // exits and systemd restarts it). The only other write path is APIWriter, for the API server, which does not
-// campaign (W10, D1042): Clusters otherwise hands out readers only.
+// campaign (W10, E10-D042): Clusters otherwise hands out readers only.
 //
 // They also enforce W1 (PROTOCOL §3.2, the writer column of §3.1): a term puts and deletes only keys its agent is
 // the writer of, so it can neither touch the keys fencing relies on nor another agent's or the API's keys. Of its
@@ -127,7 +127,7 @@ func routeTxn(topo Topology, scope scope, cmps []clientv3.Cmp, then, els []clien
 }
 
 // scope is what a writer may put and delete. del tells a delete from a put: the API may delete keys it may not put
-// (D1040, D1042).
+// (E10-D040, E10-D042).
 type scope interface {
 	check(key, end []byte, del bool) error
 }

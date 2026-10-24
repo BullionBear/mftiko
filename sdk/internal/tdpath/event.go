@@ -10,7 +10,7 @@ const (
 	FromTD Origin = iota + 1
 	// LocalReject is td.order's 1xx, or no responder (101).
 	LocalReject
-	// Timeout is a Submit whose wait ended with no answer (D843, D605).
+	// Timeout is a Submit whose wait ended with no answer (E08-D043, E06-D005).
 	Timeout
 )
 
@@ -51,7 +51,7 @@ type BalanceEvent struct {
 }
 
 // ReconEvent is an account snapshot. OpenOrders have been filtered to this session's
-// algos. Positions and balances are the whole account's, unchanged (D633).
+// algos. Positions and balances are the whole account's, unchanged (E06-D033).
 type ReconEvent struct {
 	TD
 	Recon *tdv1.Recon

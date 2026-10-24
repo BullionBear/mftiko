@@ -12,7 +12,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange/internal/codec"
 )
 
-// tradeStream is one /v5/trade connection (D303). Auth is the same frame as the private
+// tradeStream is one /v5/trade connection (E03-D003). Auth is the same frame as the private
 // socket. Orders are not signed again. The connection does not carry private events; those
 // stay on /v5/private. Cancel-batch stays on REST.
 type tradeStream struct {

@@ -27,7 +27,7 @@
 //	ws/<name>.golden.jsonl     every Sink or AccountSink call the codec made, one per line, copied
 //	                           during the call; "frame" is the record's index after the meta line
 //	ws/private_dial.golden.json  Prepare, Dial and Refresh of the private stream
-//	ws/trade_dial.golden.json    the TradeStream's Dial and the frames of the TradeSamples (D303)
+//	ws/trade_dial.golden.json    the TradeStream's Dial and the frames of the TradeSamples (E03-D003)
 //	http/<case>.json           a recorded REST response for the case of that name
 //	http/<case>.golden.json    the request the case builds, and what Parse made of the response
 //
@@ -44,31 +44,31 @@
 // # Checks
 //
 //   - cases: each case's request and parse match the golden file; the parse records the error kind
-//     (Kind), so recorded refusals pin the classification as *Reject, *RateLimited, ErrAuth (D302) or,
-//     for QueryOrder, ErrNotFound (D605).
-//   - listing: every listing passes Listing.Validate and Ticker after asset canonicalization (D203),
-//     and its tick and step fit float64 at the instrument's magnitude (D008).
+//     (Kind), so recorded refusals pin the classification as *Reject, *RateLimited, ErrAuth (E03-D002) or,
+//     for QueryOrder, ErrNotFound (E06-D005).
+//   - listing: every listing passes Listing.Validate and Ticker after asset canonicalization (E02-D003),
+//     and its tick and step fit float64 at the instrument's magnitude (E00-D008).
 //   - sessions: each session decodes to its golden events, and decodes the same when every frame goes
-//     through one buffer overwritten after each Decode (D302: the codec keeps nothing pointing into a
+//     through one buffer overwritten after each Decode (E03-D002: the codec keeps nothing pointing into a
 //     frame).
 //   - unknown_frames: Decode refuses a frame it does not know, with an error and no events.
-//   - capabilities: the events match Topics (D401). A topic emitted is listed; a field declared absent
+//   - capabilities: the events match Topics (E04-D001). A topic emitted is listed; a field declared absent
 //     is never filled; an optional field not declared absent is filled somewhere in the fixtures; a
 //     required field is never absent.
 //   - books: each book channel replays through its BookSync with no resync and ends equal to the
 //     closing snapshot; dropping an update is noticed; with BookChecksum, so is a corrupted book.
-//   - planning: Routes, Endpoint (and its override), Atom, Cost and Budget agree (D401, D403); a topic
+//   - planning: Routes, Endpoint (and its override), Atom, Cost and Budget agree (E04-D001, E04-D003); a topic
 //     Topics does not list is ErrUnsupported.
 //   - subscribe: Subscribe and Unsubscribe cover each channel once, within SessionLimits, with
 //     distinct request ids per connection.
 //   - private_dial: the private stream's Prepare, Dial and Refresh match their golden file.
 //     Skipped when NewStream returns ErrUnsupported, which is a trade stream that already
-//     carries the private events (D303).
+//     carries the private events (E03-D003).
 //   - trade_dial: the TradeStream's logon and the frames of Spec.TradeSamples match their golden
-//     file, signatures included (D303).
+//     file, signatures included (E03-D003).
 //   - trade_answers: in each trade session every request id is answered at most once, and never id 0.
 //   - fills: each fill of a private session, or of a trade session that carries events, is in the
-//     paired History case with the same fill_id, order, side, price and quantity (D601).
+//     paired History case with the same fill_id, order, side, price and quantity (E06-D001).
 //   - credentials: no secret part of the test credentials appears in anything the adapter produced.
 //
 // The instruments the planning and book checks use are Spec.Instruments plus every valid listing the

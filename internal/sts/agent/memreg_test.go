@@ -15,7 +15,7 @@ import (
 )
 
 // memRegistry is the distribution subset oras-go uses to push and pull one image.
-// It is the in-process registry from the artifact tests (D965); this package cannot
+// It is the in-process registry from the artifact tests (E09-D065); this package cannot
 // import that unexported type.
 type memRegistry struct {
 	srv           *httptest.Server

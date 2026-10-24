@@ -379,7 +379,7 @@ func TestRestartsAndHolds(t *testing.T) {
 	e.waitStatus("held", "RUNNING", phase(runner.PhaseRunning, 1))
 }
 
-// When the term ends the agent stops and returns ErrTermEnded; the worker goes on under its shim (D102).
+// When the term ends the agent stops and returns ErrTermEnded; the worker goes on under its shim (E01-D002).
 func TestTermEnds(t *testing.T) {
 	e := setup(t, nil)
 	done, ret := e.run()
@@ -461,7 +461,7 @@ func (e *env) shimPids() []int {
 }
 
 // At most one incarnation of a worker key lives at a time (E1-16): a worker that outlives its killed shim (it
-// ignores SIGTERM and EOF, which D104 forbids, so that the case can be made) holds its next incarnation back until
+// ignores SIGTERM and EOF, which E01-D004 forbids, so that the case can be made) holds its next incarnation back until
 // it is gone; then the next one starts.
 func TestOneIncarnationAtATime(t *testing.T) {
 	e := setup(t, nil)
@@ -609,7 +609,7 @@ func TestAdoptAfterKill9(t *testing.T) {
 		t.Fatalf("the end of c, which came while no agent was there: Policy got %+v, status %v", ends, st)
 	}
 	if n := e.countDowns("b", func(m *workerv1.WorkerDown) bool { return m.GetLive() != nil }); n != 0 {
-		t.Errorf("b got its live config %d times again: the new agent read what it has from Attached (D111)", n)
+		t.Errorf("b got its live config %d times again: the new agent read what it has from Attached (E01-D011)", n)
 	}
 	for _, name := range []string{"a", "b", "held", "c"} {
 		if n := e.count(name, "start"); n != 1 {
@@ -660,7 +660,7 @@ func (e *env) countDowns(name string, ok func(*workerv1.WorkerDown) bool) int {
 }
 
 // A live config the worker does not apply is sent again after LiveRetry; once the worker applies one, none is sent
-// (E1-22, D111).
+// (E1-22, E01-D011).
 func TestLiveApplied(t *testing.T) {
 	e := setup(t, nil)
 	e.cfg.LiveRetry = 300 * time.Millisecond

@@ -38,7 +38,7 @@ type host struct {
 	log         func(string)
 	c4log       func(msg string, err error)
 	// settled is closed when Init returns, including an Init that c4 has already
-	// stopped waiting for (D807). Tests wait on it. Nil in production.
+	// stopped waiting for (E08-D007). Tests wait on it. Nil in production.
 	settled chan struct{}
 }
 
@@ -307,7 +307,7 @@ func (p *plane) Start(ctx context.Context, payload []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	// A hold that filled during OnStart has already recorded FAILED (D841). Recon
+	// A hold that filled during OnStart has already recorded FAILED (E08-D041). Recon
 	// refuses once the path is stopping. Returning that error would end Start as
 	// INIT_FAILED and hide the failure Run is waiting to report.
 	if err := p.td.Recon(); errors.Is(err, tdpath.ErrStopping) {
@@ -330,7 +330,7 @@ func (p *plane) Run(ctx context.Context) error {
 	return p.disp.Run(ctx)
 }
 
-// Live applies one stsctl.Bindings snapshot (D111, D846). The same snapshot, or
+// Live applies one stsctl.Bindings snapshot (E01-D011, E08-D046). The same snapshot, or
 // an older one, is success, so c4 still sends Applied. A selector is an error
 // and c4 sends nothing.
 func (p *plane) Live(payload []byte) error {
@@ -434,7 +434,7 @@ func (p *plane) bookInfo(uid uint32) (symbol.Info, error) {
 }
 
 // bookHook is OnBook. Nil when the strategy does not implement it; the book is
-// still maintained, and other hooks can read it (D805, D857).
+// still maintained, and other hooks can read it (E08-D005, E08-D057).
 func (p *plane) bookHook() func(bookpath.Update) {
 	s, ok := p.strat.(BookHandler)
 	if !ok || s == nil {
@@ -550,7 +550,7 @@ func (p *plane) shutdown() {
 }
 
 // own records a client created during Init. A deadline can already be tearing
-// the plane down; the client is then left to the caller to close (D807).
+// the plane down; the client is then left to the caller to close (E08-D007).
 func (p *plane) own(set func()) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()

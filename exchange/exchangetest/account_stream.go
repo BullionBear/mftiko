@@ -33,7 +33,7 @@ func (v *AccountVenue) Handler() http.Handler {
 			return
 		}
 		v.mu.Unlock()
-		// A test holds the upgrade here to drop the live link while this dial has not logged in (D635).
+		// A test holds the upgrade here to drop the live link while this dial has not logged in (E06-D035).
 		if !v.waitHandshake(r.Context()) {
 			return
 		}
@@ -218,7 +218,7 @@ type heldLogin struct {
 
 // StallHandshakes holds the next n websocket upgrades until ReleaseHandshakes. The socket is not
 // logged in, so a broadcast does not reach it. A test uses the wait to drop the live link while the
-// replacement is still dialing (D635).
+// replacement is still dialing (E06-D035).
 func (v *AccountVenue) StallHandshakes(n int) {
 	v.mu.Lock()
 	defer v.mu.Unlock()

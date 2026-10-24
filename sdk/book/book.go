@@ -10,7 +10,7 @@ var (
 	errTick = errors.New("book: tick size must be positive")
 )
 
-// DefaultN is the in-window ring length used when a caller does not choose one (D430).
+// DefaultN is the in-window ring length used when a caller does not choose one (E04-D030).
 // It is not a venue snapshot depth.
 const DefaultN = 2048
 
@@ -25,7 +25,7 @@ type Level struct {
 }
 
 // Slot is one ring entry. There is no validity flag: a read is empty when Tick is not the
-// requested tick, and Size 0 is a delete (D430). Slots are never cleared.
+// requested tick, and Size 0 is a delete (E04-D030). Slots are never cleared.
 type Slot struct {
 	Tick int64
 	Size float64
@@ -110,7 +110,7 @@ func (b *OrderBook) Qty(bid bool, price float64) (float64, bool) {
 }
 
 // Apply writes one increment. Each side is applied from its own best price first, and each
-// level is kept or dropped against the best tick at that moment (D431, D432). The slice
+// level is kept or dropped against the best tick at that moment (E04-D031, E04-D032). The slice
 // order is left as the caller passed it.
 func (b *OrderBook) Apply(bids, asks []Level) {
 	if b == nil {
@@ -341,7 +341,7 @@ func better(bid bool, tick, best int64) bool {
 	return tick < best
 }
 
-// worse orders one update so the better price is applied first (D431).
+// worse orders one update so the better price is applied first (E04-D031).
 func worse(bid bool, a, b int64) bool {
 	return better(bid, b, a)
 }

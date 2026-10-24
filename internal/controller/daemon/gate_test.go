@@ -368,7 +368,7 @@ func TestGateSpecDeleted(t *testing.T) {
 	putProto(t, ctx, srv, specKey, gateSpec(86400))
 	demandKey, _ := gateFeedKey(id)
 	// Wait for the assignment too. The entry commits first; a spec deleted
-	// before SessionDemand lands leaves the entry an orphan (D1334).
+	// before SessionDemand lands leaves the entry an orphan (E13-D034).
 	until(t, 20*time.Second, "the feed demand and assignment exist", func() error {
 		if _, ok := kvOf(t, ctx, srv, demandKey); !ok {
 			return errors.New("missing")

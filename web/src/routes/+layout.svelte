@@ -28,7 +28,7 @@
 		void consoleState.loadMe();
 	});
 
-	// Any 401 marks the session signed out; send the operator back after login (D1076).
+	// Any 401 marks the session signed out; send the operator back after login (E10-D076).
 	$effect(() => {
 		if (consoleState.auth !== 'out') return;
 		if (page.url.pathname === '/login') return;

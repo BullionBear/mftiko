@@ -8,11 +8,11 @@ import (
 	"github.com/nats-io/nkeys"
 )
 
-// Signer signs the NATS user of a TD account worker with the MFTIKO account's signing key (D611,
-// D414). The TD agent holds one and signs a user at every spawn: a new user key each time, with
+// Signer signs the NATS user of a TD account worker with the MFTIKO account's signing key (E06-D011,
+// E04-D014). The TD agent holds one and signs a user at every spawn: a new user key each time, with
 // the account worker's allow lists (tdAccountPerms) and the response permission. The user's seed is
 // returned for tdctl.InitPayload.nats and is never written anywhere. The JWT does not expire
-// (D616): a worker that is spawned again gets a new one.
+// (E06-D016): a worker that is spawned again gets a new one.
 //
 // It is in natsdev because the allow lists are: the dev layout and the check sign the same user.
 type Signer struct {
@@ -36,7 +36,7 @@ func LoadSigner(account, path string) (*Signer, error) {
 // AccountPublic is the MFTIKO account this signer issues for.
 func (s *Signer) AccountPublic() string { return s.account }
 
-// SigningKey is the account signing key. The STS agent signs session users with it (D924).
+// SigningKey is the account signing key. The STS agent signs session users with it (E09-D024).
 func (s *Signer) SigningKey() nkeys.KeyPair { return s.key }
 
 // AccountWorker is a new user for the account worker of apiID: its JWT, its seed, and the inbox

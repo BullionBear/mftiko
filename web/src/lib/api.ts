@@ -1,5 +1,5 @@
 // Client for mftiko-api. Types are generated from contract/openapi/api/v1.yaml
-// into src/lib/gen/api/v1.ts (`make openapi`). openapi-fetch is the client (D1044, D1047).
+// into src/lib/gen/api/v1.ts (`make openapi`). openapi-fetch is the client (E10-D044, E10-D047).
 import createClient, { type Middleware } from 'openapi-fetch';
 import type { components, paths } from './gen/api/v1';
 
@@ -27,7 +27,7 @@ export type EventTopic = components['schemas']['EventTopic'];
 export type ResetEvent = components['schemas']['ResetEvent'];
 export type SessionRemovedEvent = components['schemas']['SessionRemovedEvent'];
 
-// Same-origin cookies (D1009). Dev reaches the API through the Vite proxy (D1078).
+// Same-origin cookies (E10-D009). Dev reaches the API through the Vite proxy (E10-D078).
 export const api = createClient<paths>({
 	baseUrl: '/api/v1',
 	credentials: 'same-origin'
@@ -35,7 +35,7 @@ export const api = createClient<paths>({
 
 let onUnauthorized: (() => void) | null = null;
 
-/** Called for any API 401 except POST /auth/login (D1076). */
+/** Called for any API 401 except POST /auth/login (E10-D076). */
 export function setUnauthorizedHandler(fn: () => void): void {
 	onUnauthorized = fn;
 }
@@ -50,7 +50,7 @@ const redirectOnUnauthorized: Middleware = {
 	}
 };
 
-// The API refuses a cookie write without Content-Type: application/json (CSRF, D1009, D1110).
+// The API refuses a cookie write without Content-Type: application/json (CSRF, E10-D009, E10-D110).
 // openapi-fetch sets it only when there is a body, so end, delete and logout need this.
 const jsonWrites: Middleware = {
 	onRequest({ request }) {
@@ -63,7 +63,7 @@ const jsonWrites: Middleware = {
 
 api.use(jsonWrites, redirectOnUnauthorized);
 
-/** POST /sessions with the body bytes unchanged (D1033, D1086) and one Idempotency-Key (D1089). */
+/** POST /sessions with the body bytes unchanged (E10-D033, E10-D086) and one Idempotency-Key (E10-D089). */
 export function createSession(body: string, idempotencyKey: string) {
 	return api.POST('/sessions', {
 		body: { name: '', sts_instance: 'a', strategy: { id: '', ref: '' } },
@@ -91,7 +91,7 @@ export function failureOf(error: unknown, response: Response): ApiFailure | unde
 	return { status: response.status, problem, message };
 }
 
-/** Reason for a JSON Pointer field (D1004). `pointer` is `/token` or `token`. */
+/** Reason for a JSON Pointer field (E10-D004). `pointer` is `/token` or `token`. */
 export function reasonFor(problem: Problem | null | undefined, pointer: string): string | undefined {
 	if (!problem?.errors?.length) return undefined;
 	const want = pointer.startsWith('/') ? pointer : `/${pointer}`;
@@ -116,7 +116,7 @@ type PageBody<T> = {
 
 const PAGE_CAP = 50;
 
-/** Follow `next_cursor` until the list ends (D1004). Stops if a cursor repeats. */
+/** Follow `next_cursor` until the list ends (E10-D004). Stops if a cursor repeats. */
 export async function collectPages<T>(
 	load: (cursor?: string) => Promise<{ data?: PageBody<T>; error?: unknown; response: Response }>
 ): Promise<{ items: T[]; freshness?: Freshness; failure?: ApiFailure }> {

@@ -25,7 +25,7 @@ const (
 )
 
 // market is the public codec. Spot, swap, futures and the coin-margined perp share the two
-// sockets; the instId is what differs. Candles are the business route (D403).
+// sockets; the instId is what differs. Candles are the business route (E04-D003).
 type market struct{}
 
 var _ exchange.Market = (*market)(nil)

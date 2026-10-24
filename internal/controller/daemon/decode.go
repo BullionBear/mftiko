@@ -14,7 +14,7 @@ import (
 )
 
 // failure is one key that did not decode, or whose shape is not the key it
-// sits under (D1321). mod is the entry's mod revision, so a rewrite is logged
+// sits under (E13-D021). mod is the entry's mod revision, so a rewrite is logged
 // again and an unchanged value is not.
 type failure struct {
 	key string
@@ -22,7 +22,7 @@ type failure struct {
 	err error
 }
 
-// instancePrefix is the mirror prefix of one instance (D1317): the whole
+// instancePrefix is the mirror prefix of one instance (E13-D017): the whole
 // /{plane}/{inst}/, not one subpath.
 func instancePrefix(p state.Plane, inst string) string {
 	return state.Root + "/" + string(p) + "/" + inst + "/"

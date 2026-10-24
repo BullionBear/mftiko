@@ -1,11 +1,11 @@
--- Session history (DECISIONS D1031, D1068, D1073). etcd stays the control plane. This table is the
+-- Session history (DECISIONS E10-D031, E10-D068, E10-D073). etcd stays the control plane. This table is the
 -- durable record: who created a session, the spec bytes, and how it ended. W5 deletion leaves the
 -- row (state closed); that write is #317. state_out_digest is created here and left null until then.
 --
 -- Idempotency-Key is optional. The partial unique index keeps one live key. Reconcile clears keys
--- older than 24 hours, which is how retention stays inside an index that cannot call now() (D1068).
+-- older than 24 hours, which is how retention stays inside an index that cannot call now() (E10-D068).
 -- A session_id is unique only while the row is pending or created, so a later session may draw it
--- again (D1007).
+-- again (E10-D007).
 
 CREATE TABLE session_records (
     id               UUID        PRIMARY KEY,

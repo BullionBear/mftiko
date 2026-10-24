@@ -199,7 +199,7 @@ func TestStepGiveUp(t *testing.T) {
 }
 
 // While the demand is stale nothing is stopped or pushed; a worker is spawned or started only if the Policy keeps
-// it (DECISIONS D109).
+// it (DECISIONS E01-D009).
 func TestStepStale(t *testing.T) {
 	pol := &policy{keep: map[WorkerKey]bool{"md/kept": true}}
 	r := &Reconciler[h, h]{Policy: pol}
@@ -320,7 +320,7 @@ func TestStepSilent(t *testing.T) {
 	}
 }
 
-// The live config a worker has is the one it says it applied (D111): one sent is given LiveRetry to be applied,
+// The live config a worker has is the one it says it applied (E01-D011): one sent is given LiveRetry to be applied,
 // then sent again; one the worker says it has is not sent at all.
 func TestStepLive(t *testing.T) {
 	r := &Reconciler[h, h]{Policy: &policy{}, LiveRetry: 5 * time.Second}

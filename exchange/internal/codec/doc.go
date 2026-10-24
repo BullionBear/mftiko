@@ -1,5 +1,5 @@
-// Package codec is what every exchange adapter reads and writes a venue's wire format with (DECISIONS D302,
-// D008): the two frozen sonic configurations, the number type, request signing and query encoding. An
+// Package codec is what every exchange adapter reads and writes a venue's wire format with (DECISIONS E03-D002,
+// E00-D008): the two frozen sonic configurations, the number type, request signing and query encoding. An
 // adapter uses these and does not configure sonic, sign or build a query on its own.
 //
 //   - JSON in: DecodeFrame for a websocket frame borrows, so a decoded string may point into the frame and is

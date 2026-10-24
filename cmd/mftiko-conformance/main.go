@@ -1,6 +1,6 @@
 // Command mftiko-conformance runs the SDK conformance suite against a worker
 // command: a fake shim on fd 3, an embedded nats-server, and fake MD and TD
-// peers (D828–D839, PROTOCOL §9.8).
+// peers (E08-D028–E08-D039, PROTOCOL §9.8).
 package main
 
 import (

@@ -158,7 +158,7 @@ func TestRealVenueRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bad != 0 {
-		t.Fatalf("%d spot rows disagree with D203", bad)
+		t.Fatalf("%d spot rows disagree with E02-D003", bad)
 	}
 	err = conn.QueryRow(ctx, `
 		SELECT count(*) FROM symbol_active
@@ -169,7 +169,7 @@ func TestRealVenueRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	if bad != 0 {
-		t.Fatalf("%d contract rows are not linear D203", bad)
+		t.Fatalf("%d contract rows are not linear E02-D003", bad)
 	}
 	err = conn.QueryRow(ctx, `
 		SELECT count(*) FROM symbol_active

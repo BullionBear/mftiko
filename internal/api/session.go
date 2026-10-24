@@ -16,11 +16,11 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
-// endAttempts is how many times one end re-reads and CAS-es the spec (D1037). D1037 says the server
+// endAttempts is how many times one end re-reads and CAS-es the spec (E10-D037). E10-D037 says the server
 // retries and does not name a count. This is the same bound as one id allocation, not a new limit.
 const endAttempts = idAttempts
 
-// CreateSession validates the body, writes session_records, then create-only writes the spec (D1031, D1068).
+// CreateSession validates the body, writes session_records, then create-only writes the spec (E10-D031, E10-D068).
 func (s *Server) CreateSession(w http.ResponseWriter, r *http.Request, params apiv1.CreateSessionParams) {
 	key := ""
 	if params.IdempotencyKey != nil {
@@ -65,7 +65,7 @@ func (s *Server) CreateSession(w http.ResponseWriter, r *http.Request, params ap
 				s.writeSessionProblem(w, errIdempotencyConflict)
 				return
 			}
-			// The replay is this session, so its own algos are not an overlap (D1012, D1068).
+			// The replay is this session, so its own algos are not an overlap (E10-D012, E10-D068).
 			rev, stored, err := s.finishReplay(r.Context(), row)
 			if err != nil {
 				s.writeSessionProblem(w, err)
@@ -110,7 +110,7 @@ func actorName(r *http.Request) string {
 	return st.actor.name
 }
 
-// allocateSession inserts the pending row before the etcd create (D1031). A lost etcd call leaves the row.
+// allocateSession inserts the pending row before the etcd create (E10-D031). A lost etcd call leaves the row.
 // A create that lands and then fails to mark the row still returns 201: the row exists, and reconcile promotes it.
 func (s *Server) allocateSession(ctx context.Context, sts string, spec []byte, actor, key string) (string, int64, []byte, *sessionRecord, error) {
 	views, err := s.availableViews(sts)
@@ -193,7 +193,7 @@ func (s *Server) allocateSession(ctx context.Context, sts string, spec []byte, a
 	return id, rev, stored, &rec, nil
 }
 
-// finishReplay completes the row an Idempotency-Key already names (D1068). A closed row, or a created
+// finishReplay completes the row an Idempotency-Key already names (E10-D068). A closed row, or a created
 // row whose spec is gone, is 409: create has no 404, and the key must not open a second session.
 func (s *Server) finishReplay(ctx context.Context, row *sessionRecord) (int64, []byte, error) {
 	if row.State == recClosed {
@@ -256,9 +256,9 @@ func (s *Server) fireHook(step string) error {
 	return s.hook(step)
 }
 
-// EndSession CAS-es desired_state to ended, then updates the row (D1031, D1303). The etcd write is the
+// EndSession CAS-es desired_state to ended, then updates the row (E10-D031, E13-D003). The etcd write is the
 // success: a later Postgres error is logged and the response is still 200. A spec with no row is the
-// same, and reconcile does not insert one (D1072).
+// same, and reconcile does not insert one (E10-D072).
 func (s *Server) EndSession(w http.ResponseWriter, r *http.Request, id apiv1.SessionID) {
 	ctx := r.Context()
 	sessionID := string(id)

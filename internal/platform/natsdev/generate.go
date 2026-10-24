@@ -17,18 +17,18 @@ import (
 )
 
 const (
-	// AccountName is the one data-plane account (D414).
+	// AccountName is the one data-plane account (E04-D014).
 	AccountName = "MFTIKO"
 	// SystemName is the system account used by the resolver and server monitoring.
 	SystemName = "SYS"
 	// OperatorName is the dev operator's name.
 	OperatorName = "mftiko-dev"
 
-	// PlaneMD and PlaneFetch are the platform inbox plane tokens (D416).
+	// PlaneMD and PlaneFetch are the platform inbox plane tokens (E04-D016).
 	// md.fetch is not an etcd plane; "fetch" keeps its inbox off the MD prefix.
 	// Instances of one plane share that prefix.
-	// PlaneTD is the token in an account worker's inbox _INBOX_td_{api_id} (D611).
-	// The TD agent has no NATS user and no _INBOX_td grant (D639).
+	// PlaneTD is the token in an account worker's inbox _INBOX_td_{api_id} (E06-D011).
+	// The TD agent has no NATS user and no _INBOX_td grant (E06-D039).
 	PlaneMD    = "md"
 	PlaneFetch = "fetch"
 	PlaneTD    = "td"
@@ -60,13 +60,13 @@ const (
 
 	// responseMaxMsgs and responseTTL are nats-server's allow_responses defaults
 	// (one reply, two minutes). MD, md.fetch and the TD account worker need them
-	// because D416 does not grant publish on _INBOX.>. They are not a separate decision.
+	// because E04-D016 does not grant publish on _INBOX.>. They are not a separate decision.
 	responseMaxMsgs = 1
 	responseTTL     = 2 * time.Minute
 
 	// MaxControlLine is the max_control_line written into the generated server
-	// config (D827). 256 KiB. The nats-server default is 4096, which a session
-	// CONNECT that lists each feed (D818) exceeds at a few dozen feeds. STS
+	// config (E08-D027). 256 KiB. The nats-server default is 4096, which a session
+	// CONNECT that lists each feed (E08-D018) exceeds at a few dozen feeds. STS
 	// rejects a larger session CONNECT argument when it signs the user JWT.
 	MaxControlLine = 262144
 )
@@ -75,7 +75,7 @@ const (
 var instToken = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 // Options selects which instance tokens Generate issues. Nil lists mean DefaultInst.
-// An empty list is rejected. There is no TD agent user (D639).
+// An empty list is rejected. There is no TD agent user (E06-D039).
 type Options struct {
 	MDInsts    []string
 	FetchInsts []string
@@ -99,7 +99,7 @@ type Manifest struct {
 	SigningKeyFile string `json:"signing_key_file"`
 	MD             []User `json:"md"`
 	Fetch          []User `json:"fetch"`
-	// TD is empty. A non-empty list is rejected: the TD agent has no NATS user (D639).
+	// TD is empty. A non-empty list is rejected: the TD agent has no NATS user (E06-D039).
 	TD []User `json:"td,omitempty"`
 }
 
@@ -121,7 +121,7 @@ type ServerConfig struct {
 	ServerName    string
 }
 
-// InboxPrefix is the platform reply prefix _INBOX_{plane} (D416).
+// InboxPrefix is the platform reply prefix _INBOX_{plane} (E04-D016).
 // plane is one token. The result has no trailing dot. Every instance of the
 // plane uses it, so one plane credential can subscribe to every same-plane reply.
 func InboxPrefix(plane string) (string, error) {
@@ -131,10 +131,10 @@ func InboxPrefix(plane string) (string, error) {
 	return "_INBOX_" + plane, nil
 }
 
-// TDAccountInbox is the reply prefix _INBOX_td_{api_id} of one TD account worker (D611).
+// TDAccountInbox is the reply prefix _INBOX_td_{api_id} of one TD account worker (E06-D011).
 // Each account worker has its own credential, so it has its own prefix, as a session does
-// (D906). It does not overlap a session's inbox: a session id is six hex digits. The TD
-// agent has no inbox (D639). The result has no trailing dot.
+// (E09-D006). It does not overlap a session's inbox: a session id is six hex digits. The TD
+// agent has no inbox (E06-D039). The result has no trailing dot.
 func TDAccountInbox(apiID int64) (string, error) {
 	if apiID <= 0 {
 		return "", errors.New("natsdev: api_id must be positive")
@@ -292,7 +292,7 @@ func Generate(dir string, opt Options) error {
 	if err := removeOther(filepath.Join(dir, dirCreds), keepCreds); err != nil {
 		return err
 	}
-	// A directory generated before D639 still has the TD agent's seed. Drop it so the
+	// A directory generated before E06-D039 still has the TD agent's seed. Drop it so the
 	// next dev-up does not leave a user we no longer issue.
 	if err := removeTDAgentKeys(dir); err != nil {
 		return err
@@ -368,7 +368,7 @@ func (m Manifest) Summary() string {
 }
 
 // FormatServerConfig renders the dev server config: a full resolver, one operator,
-// the system account, max_control_line 262144 (D827), and no TLS, cluster, or
+// the system account, max_control_line 262144 (E08-D027), and no TLS, cluster, or
 // JetStream. Port -1 asks the OS for a port.
 func FormatServerConfig(c ServerConfig) (string, error) {
 	if c.OperatorFile == "" || c.SystemAccount == "" || c.ResolverDir == "" || c.Host == "" || c.ServerName == "" {
@@ -532,26 +532,26 @@ func credsRel(plane, inst string) string {
 	return filepath.ToSlash(filepath.Join(dirCreds, plane+"-"+inst+".creds"))
 }
 
-// servicePerms are the allow lists of one platform instance user (D415), and whether
-// it answers requests. The TD agent has no NATS user (D639). Account workers are
+// servicePerms are the allow lists of one platform instance user (E04-D015), and whether
+// it answers requests. The TD agent has no NATS user (E06-D039). Account workers are
 // tdAccountPerms, signed in memory, not here.
 func servicePerms(plane, inst, inbox string) (pub, sub []string, resp bool, err error) {
 	switch plane {
 	case PlaneMD:
-		// md.v1.f.{inst}.> is the feed and md.v1.view.{inst}.> is the read (D455).
+		// md.v1.f.{inst}.> is the feed and md.v1.view.{inst}.> is the read (E04-D055).
 		// sym.v1.changed.> is the JWT. The conn worker subscribes only its own
-		// venue, sym.v1.changed.{venue}.> (D457). The MD agent does not subscribe.
+		// venue, sym.v1.changed.{venue}.> (E04-D057). The MD agent does not subscribe.
 		return []string{"md.v1.f." + inst + ".>", "sym"}, []string{"md.v1.view." + inst + ".>", "sym.v1.changed.>", inbox + ".>"}, true, nil
 	case PlaneFetch:
 		// md.v1.fetch.> is every venue subject. The process subscribes only to the
-		// venues it can reach (D418, D456). The exact subject md.v1.fetch is not
-		// in this list. sym.v1.changed.> is the resolver (D422, D457).
+		// venues it can reach (E04-D018, E04-D056). The exact subject md.v1.fetch is not
+		// in this list. sym.v1.changed.> is the resolver (E04-D022, E04-D057).
 		return []string{"sym"}, []string{"md.v1.fetch.>", "sym.v1.changed.>", inbox + ".>"}, true, nil
 	}
 	return nil, nil, false, fmt.Errorf("natsdev: no permissions for plane %q", plane)
 }
 
-// removeTDAgentKeys deletes user-td-*.nk left by a generator that issued a TD agent user (D639).
+// removeTDAgentKeys deletes user-td-*.nk left by a generator that issued a TD agent user (E06-D039).
 func removeTDAgentKeys(dir string) error {
 	entries, err := os.ReadDir(filepath.Join(dir, dirKeys))
 	if err != nil {
@@ -569,7 +569,7 @@ func removeTDAgentKeys(dir string) error {
 	return nil
 }
 
-// tdAccountPerms are the allow lists of the TD account worker for apiID (D611): it serves
+// tdAccountPerms are the allow lists of the TD account worker for apiID (E06-D011): it serves
 // td.order and td.view of its own account only and publishes that account's td.evt. The TD
 // agent signs a user with these lists at spawn, with the account signing key, and sends it
 // in tdctl.InitPayload.nats; nothing writes it to disk. It answers requests, so the user
@@ -593,7 +593,7 @@ func writeServiceUser(dir string, u loadedUser, accountKP nkeys.KeyPair) (User, 
 	if err != nil {
 		return User{}, err
 	}
-	// Signed by the account identity key, so IssuerAccount stays empty (D414).
+	// Signed by the account identity key, so IssuerAccount stays empty (E04-D014).
 	token, err := encodeUser(u.pub, u.name, pub, sub, resp, "", accountKP)
 	if err != nil {
 		return User{}, err

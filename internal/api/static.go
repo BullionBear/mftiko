@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// staticHandler serves the console build from disk (D1028). A path under /api/ is not a file. Anything else
+// staticHandler serves the console build from disk (E10-D028). A path under /api/ is not a file. Anything else
 // that is not a regular file inside the root — missing, a directory, or outside the root — is index.html,
 // so the client-side router can take the URL. The root is an os.Root, so a path cannot leave the directory.
 type staticHandler struct {

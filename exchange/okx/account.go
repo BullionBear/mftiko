@@ -22,7 +22,7 @@ var (
 )
 
 // Limits: clOrdId is 32 characters. CancelBatch is 20, which is cancel-batch-orders' cap. The SDK
-// splits to that; a longer list is still sent and the venue rejects it (D625). The order budget
+// splits to that; a longer list is still sent and the venue rejects it (E06-D025). The order budget
 // is 60 requests per 2 seconds. OKX applies that per instrument; enforcing it on the account keeps
 // every instrument inside its own budget. A batch consumes one count per order on that budget.
 func (a *account) Limits() exchange.AccountLimits {
@@ -136,7 +136,7 @@ func (a *account) Snapshot(now time.Time) ([]exchange.Call[exchange.Page[exchang
 	return []exchange.Call[exchange.Page[exchange.AccountSnapshot]]{orders, pos, bal, {Req: mode, Parse: parsePosMode}}, nil
 }
 
-// parsePosMode reads posMode: long_short_mode is hedge mode, net_mode one-way (D607).
+// parsePosMode reads posMode: long_short_mode is hedge mode, net_mode one-way (E06-D007).
 func parsePosMode(resp *exchange.HTTPResponse) (exchange.Page[exchange.AccountSnapshot], error) {
 	e, err := readEnv(resp)
 	if err != nil {
@@ -225,7 +225,7 @@ func (a *account) NewStream() (exchange.PrivateStream, error) {
 }
 
 // NewTradeStream: phase 1 trades over REST. The order channel of the private websocket is not
-// used to send orders (D303).
+// used to send orders (E03-D003).
 func (a *account) NewTradeStream() (exchange.TradeStream, error) {
 	return nil, exchange.ErrUnsupported
 }

@@ -99,7 +99,7 @@ func TestRegistry(t *testing.T) {
 		}
 	}
 
-	// A venue and an account kind may share a name: two enums (D301).
+	// A venue and an account kind may share a name: two enums (E03-D001).
 	r, err := NewRegistry(
 		Declaration{Exchange: "a", Venues: []Venue{venue("X"), venue("W")}, AccountKinds: []AccountKind{kind("X", "X"), kind("XPM", "X", "W")}},
 	)

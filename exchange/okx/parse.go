@@ -246,14 +246,14 @@ func (o orderRow) update() exchange.OrderUpdate {
 	}
 }
 
-// fill is the last trade on this order push. tradeId is the fill id (D601). An order push
+// fill is the last trade on this order push. tradeId is the fill id (E06-D001). An order push
 // with no tradeId, or a zero fillSz, is a state change and not a fill.
 func (o orderRow) fill() (exchange.Fill, bool) {
 	return makeFill(o.InstType, o.InstID, o.TradeID, o.OrdID, o.ClOrdID, o.Side, o.ExecType, o.FillTime, o.UTime, o.FillCcy, o.FillPx, o.FillSz, o.FillFee)
 }
 
 // makeFill is one trade, shared by the orders channel and fills-history so the two fill ids
-// describe the same price, quantity and fee (D601). fallback is uTime on a push and ts on a
+// describe the same price, quantity and fee (E06-D001). fallback is uTime on a push and ts on a
 // history row. A charge is negative, which is the sign OKX sends.
 func makeFill(instType, instID, tradeID, ordID, clOrdID, side, execType, fillTime, fallback, feeCcy string, px, sz, fee codec.Decimal) (exchange.Fill, bool) {
 	if tradeID == "" || num(sz) == 0 {

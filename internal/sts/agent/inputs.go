@@ -20,7 +20,7 @@ type inputSnap struct {
 	perm  string
 }
 
-// inputJob is one session input's pull and unpack (D974).
+// inputJob is one session input's pull and unpack (E09-D074).
 type inputJob struct {
 	ready   bool
 	perm    string
@@ -28,7 +28,7 @@ type inputJob struct {
 	next    time.Time
 	running bool
 	cancel  context.CancelFunc
-	layers  []string // layer digests held while this job is pulling or unpacking (D973)
+	layers  []string // layer digests held while this job is pulling or unpacking (E09-D073)
 }
 
 // inputKey separates input jobs from image jobs. A name cannot contain NUL.
@@ -80,7 +80,7 @@ func validateInputs(decls []*sessionv1.InputDecl) error {
 }
 
 // ensureInputs starts a pull for each input that is not ready. A directory that is
-// already there is reused; a missing directory is unpacked again (D974).
+// already there is reused; a missing directory is unpacked again (E09-D074).
 func (p *puller) ensureInputs(id string, decls []*sessionv1.InputDecl) inputSnap {
 	if len(decls) == 0 {
 		return inputSnap{ready: true}
@@ -124,7 +124,7 @@ func (p *puller) ensureInputs(id string, decls []*sessionv1.InputDecl) inputSnap
 	return inputSnap{ready: ready}
 }
 
-// retainInputs cancels input pulls no planned session still wants (D959, D974).
+// retainInputs cancels input pulls no planned session still wants (E09-D059, E09-D074).
 func (p *puller) retainInputs(want map[string]struct{}) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -137,7 +137,7 @@ func (p *puller) retainInputs(want map[string]struct{}) {
 	}
 }
 
-// inflightLayers is the input-layer digests a pull or unpack is still using (D973).
+// inflightLayers is the input-layer digests a pull or unpack is still using (E09-D073).
 func (p *puller) inflightLayers() []string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -218,7 +218,7 @@ func (p *puller) runInput(id, name, repository, digest string, ctx context.Conte
 		p.finishInput(key, artifact.MakeReadOnly(dest))
 		return
 	}
-	// Read-only before the rename, so dest never shows the extraction's permissions (D975, D996).
+	// Read-only before the rename, so dest never shows the extraction's permissions (E09-D075, E09-D096).
 	if err := artifact.UnpackReadOnly(ctx, []string{fetched.Layer.Path}, dest, artifact.UnpackLimits{}); err != nil {
 		p.finishInput(key, err)
 		return

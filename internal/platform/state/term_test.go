@@ -304,7 +304,7 @@ func TestSessionLost(t *testing.T) {
 	}
 }
 
-// twoServers are two regions, two clusters, one server each (etcdtest.StartRegions, D1316).
+// twoServers are two regions, two clusters, one server each (etcdtest.StartRegions, E13-D016).
 func twoServers(t *testing.T) (tw, jp *etcdtest.Server, topo Topology) {
 	t.Helper()
 	servers := etcdtest.StartRegions(t, "tw", "jp")
@@ -342,7 +342,7 @@ func TestFenceTwoRegions(t *testing.T) {
 		}
 	}
 
-	// An MD agent never reaches beyond its own region (D005 rule 2).
+	// An MD agent never reaches beyond its own region (E00-D005 rule 2).
 	allowed, _ := AgentRegions(topo, PlaneMD, "md-tw-1")
 	md := campaign(t, ctx, newClusters(t, topo, allowed, as(t, topo, "md-tw-1")), PlaneMD, "md-tw-1", TermOptions{})
 	if _, err := md.Fence(ctx, "jp"); !errors.Is(err, ErrRegionNotAllowed) {

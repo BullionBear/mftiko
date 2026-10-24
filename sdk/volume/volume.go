@@ -13,7 +13,7 @@ var beforeRename func()
 
 var errName = errors.New("volume: name must be a relative path inside the directory")
 
-// Write atomically replaces dir/name with data (D852). dir is the directory itself,
+// Write atomically replaces dir/name with data (E08-D052). dir is the directory itself,
 // not a parent the name is allowed to escape. name is a relative path with no ".."
 // element.
 func Write(dir, name string, data []byte) error {
@@ -22,7 +22,7 @@ func Write(dir, name string, data []byte) error {
 		return err
 	}
 	// The temp file lives in the destination's own directory, so rename stays in
-	// that directory and the fsync covers the directory entry (D852).
+	// that directory and the fsync covers the directory entry (E08-D052).
 	destDir := filepath.Dir(path)
 	f, err := os.CreateTemp(destDir, ".vol-*")
 	if err != nil {
@@ -65,7 +65,7 @@ func Write(dir, name string, data []byte) error {
 }
 
 // Read returns the file name from volumeDir when it is there, otherwise from
-// inputDir (D904, D851). ok is false when both are missing. A missing directory
+// inputDir (E09-D004, E08-D051). ok is false when both are missing. A missing directory
 // is a missing file. An empty directory is not the current directory.
 func Read(volumeDir, inputDir, name string) (data []byte, ok bool, err error) {
 	if err := checkName(name); err != nil {

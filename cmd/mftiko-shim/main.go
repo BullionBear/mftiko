@@ -1,4 +1,4 @@
-// Command mftiko-shim is the per-worker shim: the sole parent of one worker and the point where a new agent adopts it after a rotation (DECISIONS D102–D105, D002, PROTOCOL §4).
+// Command mftiko-shim is the per-worker shim: the sole parent of one worker and the point where a new agent adopts it after a rotation (DECISIONS E01-D002–E01-D005, E00-D002, PROTOCOL §4).
 //
 // The agent execs it and writes one Launch frame on its stdin (PROTOCOL §4.6).
 package main

@@ -1,5 +1,5 @@
 // Command mftiko-pack packs a worker binary into an OCI artifact and pushes it
-// (D902, D935–D941, D985–D990, PROTOCOL §8). It does not build the binary.
+// (E09-D002, E09-D035–E09-D041, E09-D085–E09-D090, PROTOCOL §8). It does not build the binary.
 //
 //	mftiko-pack -bin FILE -name NAME -repo REGISTRY/REPOSITORY [-kind strategy|md.conn|td.account] [-tag TAG] [-env K=V]... [-plain-http]
 //

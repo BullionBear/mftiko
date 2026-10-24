@@ -201,7 +201,7 @@ func (c *tradeCap) Canceled(id uint64, err error) {
 }
 
 // TestValidity: AccountConfig.Validity is X-BAPI-RECV-WINDOW on REST and on the trade socket's
-// order frames (D605). A window out of range is refused when the account is built.
+// order frames (E06-D005). A window out of range is refused when the account is built.
 func TestValidity(t *testing.T) {
 	kind := Declare().AccountKinds[0]
 	cfg := exchange.AccountConfig{Credentials: conformance.TestCredentials(exchange.KeyHMAC, false), Validity: 3 * time.Second}

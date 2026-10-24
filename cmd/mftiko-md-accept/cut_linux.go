@@ -53,7 +53,7 @@ func conns() error {
 
 // cut shuts down a conn worker's venue sockets from outside: pidfd_getfd, then
 // shutdown(SHUT_RDWR) on the copy. The worker is not signalled; it sees its connection end, as
-// when the venue closes it, and redials with the next conn_epoch (D409). Needs Linux 5.6 and
+// when the venue closes it, and redials with the next conn_epoch (E04-D009). Needs Linux 5.6 and
 // ptrace access to the worker (same user, or CAP_SYS_PTRACE).
 func cut() error {
 	key := flag.String("conn", "", "conn worker key, e.g. md/BinanceUM/public/0")

@@ -13,7 +13,7 @@ import (
 )
 
 // Event is one Sink or AccountSink call, copied while the call was in progress: what a well-behaved
-// downstream keeps (D302).
+// downstream keeps (E03-D002).
 type Event struct {
 	Frame int             `json:"frame"`        // index of the ws.in record it came from
 	Call  string          `json:"call"`         // the Sink method
@@ -123,7 +123,7 @@ func Encode(v any) json.RawMessage {
 	return b
 }
 
-// Kind classifies an error the way the platform acts on it (D302): reject <code> <native>,
+// Kind classifies an error the way the platform acts on it (E03-D002): reject <code> <native>,
 // rate_limited, auth, unknown_outcome, unsupported, not_implemented, or error.
 func Kind(err error) string {
 	var rej *exchange.Reject
@@ -193,7 +193,7 @@ func (s *marketSink) MarkPrice(ch string, e *exchange.MarkPrice) { s.add("MarkPr
 type accountSink struct {
 	frame  int
 	events []Event
-	fills  []exchange.Fill // typed copies, for the fill_id check (D601)
+	fills  []exchange.Fill // typed copies, for the fill_id check (E06-D001)
 }
 
 var _ exchange.AccountSink = (*accountSink)(nil)

@@ -526,7 +526,7 @@ func TestUnimplementedReads(t *testing.T) {
 }
 
 // TestRESTOverDoer: the sans-I/O face, run over the Source as its Doer, reads what Listing reads, at
-// every page size, and a failed page fails the whole read with no rows (D302).
+// every page size, and a failed page fails the whole read with no rows (E03-D002).
 func TestRESTOverDoer(t *testing.T) {
 	s := newSource(t)
 	mustAdd(t, s,

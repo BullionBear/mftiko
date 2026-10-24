@@ -22,8 +22,8 @@ const (
 	// flushTimeout matches the session NATS client's flush.
 	flushTimeout = 5 * time.Second
 
-	// backoffMin is the first Recon retry. It doubles until backoffMax (D842, the same
-	// schedule as D622). 16s doubled is 32s, which is past the cap, so the next wait is 30s.
+	// backoffMin is the first Recon retry. It doubles until backoffMax (E08-D042, the same
+	// schedule as E06-D022). 16s doubled is 32s, which is past the cap, so the next wait is 30s.
 	backoffMin = time.Second
 	backoffMax = 30 * time.Second
 )
@@ -115,7 +115,7 @@ type account struct {
 	algos     map[uint32]bool
 	orders    map[string]*tdv1.Order
 	submitGen map[string]uint64 // sentGen at the local Submit of that client id
-	// sentGen advances once per ReconRequest attempt, before that attempt is published (D854).
+	// sentGen advances once per ReconRequest attempt, before that attempt is published (E08-D054).
 	sentGen     uint64
 	positions   map[uint32]*tdv1.Position
 	balances    map[string]*tdv1.Balance
@@ -332,7 +332,7 @@ func (p *Path) subscribeAll() ([]*nats.Subscription, error) {
 			return nil, err
 		}
 		// The server can deliver faster than the default client buffer. The hold, not the
-		// client, is what ends the session at 65536 (D841).
+		// client, is what ends the session at 65536 (E08-D041).
 		if err := sub.SetPendingLimits(-1, -1); err != nil {
 			_ = sub.Unsubscribe()
 			for _, s := range subs {
@@ -376,7 +376,7 @@ func (p *Path) onEvent(apiID int64, ev *tdv1.AccountEvent) {
 	}
 	inc := ev.GetSource().GetIncarnation()
 	seq := ev.GetSeq()
-	// Live stream, after a baseline exists (D844). A different incarnation, or a hole in
+	// Live stream, after a baseline exists (E08-D044). A different incarnation, or a hole in
 	// this incarnation, holds this event and the ones after it and asks again. A seq at
 	// or below the cursor is already in the snapshot and is dropped.
 	if inc != acc.inc || seq > acc.seq+1 {
@@ -486,7 +486,7 @@ func (p *Path) ask(acc *account) error {
 	if err != nil {
 		return err
 	}
-	// D854: this attempt's generation is visible to Submit before the request is
+	// E08-D054: this attempt's generation is visible to Submit before the request is
 	// published. A Submit that records a generation at least this large happened
 	// after the handoff, so a snapshot that does not list it is not proof it is gone.
 	p.mu.Lock()
@@ -535,7 +535,7 @@ func (p *Path) beginReply(apiID int64, rep *tdv1.ViewReply, requestGen uint64) {
 // deliverRecon replaces the account's own-algo orders and its ledger, then calls the
 // Recon hook. fromView is a td.view reply: its seq and incarnation become the watermark,
 // a positive cancelBatch is remembered, and requestGen is that ReconRequest's generation
-// (D854). A pushed td.evt Recon passes cancelBatch 0, fromView false and requestGen 0,
+// (E08-D054). A pushed td.evt Recon passes cancelBatch 0, fromView false and requestGen 0,
 // which leaves cancel_batch alone and does not keep a local pending_new the snapshot
 // omits. The cursor of a pushed Recon was already moved to the event's seq by the caller.
 func (p *Path) deliverRecon(apiID int64, td TD, body *tdv1.Recon, cancelBatch uint32, fromView bool, requestGen uint64) {
@@ -586,9 +586,9 @@ const (
 // classify applies the §9.6 watermark to one held event. The same incarnation and the
 // next seq are delivered. The same incarnation at or below the cursor is dropped. A
 // higher seq of the same incarnation is a hole: the event stays held and another Recon
-// is asked (D844). An older incarnation is dropped. A newer incarnation stays held and
-// asks again, the same as a live incarnation change after the baseline (D844). Repeated
-// asks that do not move the watermark wait on the D842 backoff.
+// is asked (E08-D044). An older incarnation is dropped. A newer incarnation stays held and
+// asks again, the same as a live incarnation change after the baseline (E08-D044). Repeated
+// asks that do not move the watermark wait on the E08-D042 backoff.
 func classify(acc *account, ev *tdv1.AccountEvent) int {
 	inc := ev.GetSource().GetIncarnation()
 	if inc < acc.inc {
@@ -687,7 +687,7 @@ func (p *Path) stop(reason string) {
 		return
 	}
 	// The dispatcher logs the same words when its own buffer is the one that filled.
-	// The hold fills first while events are still waiting for Recon (D841).
+	// The hold fills first while events are still waiting for Recon (E08-D041).
 	if p.logf != nil && reason != "" {
 		p.logf(reason)
 	}

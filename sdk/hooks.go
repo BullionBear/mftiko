@@ -7,7 +7,7 @@ import (
 
 // tdHooks installs a callback only when the strategy implements that handler.
 // tdpath updates the ledger before the callback, including when the strategy has
-// no OnPosition or OnBalance (D853, D855).
+// no OnPosition or OnBalance (E08-D053, E08-D055).
 func (p *plane) tdHooks() tdpath.Hooks {
 	var h tdpath.Hooks
 	if s, ok := p.strat.(PositionHandler); ok {
@@ -69,8 +69,8 @@ func (p *plane) tdHooks() tdpath.Hooks {
 }
 
 // mdHooks installs a callback only for a topic the strategy implements. A nil
-// callback makes mdpath skip that topic before decoding it (D805). orderbook_delta
-// is not one of these hooks: bookpath applies it and calls OnBook (D857).
+// callback makes mdpath skip that topic before decoding it (E08-D005). orderbook_delta
+// is not one of these hooks: bookpath applies it and calls OnBook (E08-D057).
 func (p *plane) mdHooks() mdpath.Hooks {
 	var h mdpath.Hooks
 	if s, ok := p.strat.(BestQuoteHandler); ok {

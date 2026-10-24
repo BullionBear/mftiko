@@ -15,8 +15,8 @@ export default defineConfig({
 		})
 	],
 	server: {
-		// Dev proxy (D1078). The browser only talks to this origin, so the session
-		// cookie stays same-origin, matching production (D1009).
+		// Dev proxy (E10-D078). The browser only talks to this origin, so the session
+		// cookie stays same-origin, matching production (E10-D009).
 		proxy: { '/api': 'http://localhost:8080' }
 	}
 });

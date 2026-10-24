@@ -21,7 +21,7 @@ import (
 const flushTimeout = 5 * time.Second
 
 var (
-	// ErrSelector means the snapshot contains selectors. Phase 1 does not resolve them (D846, D822).
+	// ErrSelector means the snapshot contains selectors. Phase 1 does not resolve them (E08-D046, E08-D022).
 	ErrSelector = errors.New("mdpath: selectors are not supported")
 	// ErrNoFeed means this session has no subscribed feed for that instrument and topic.
 	ErrNoFeed = errors.New("mdpath: the session has no such feed")
@@ -51,7 +51,7 @@ func (t *Tap) Feed(msg []byte) {
 }
 
 // Book receives one orderbook_delta message. The bytes alias the ring and are valid only
-// until Book returns. The age prehook does not apply to this path (D803).
+// until Book returns. The age prehook does not apply to this path (E08-D003).
 func (t *Tap) Book(msg []byte) {
 	if t == nil {
 		return
@@ -64,10 +64,10 @@ func (t *Tap) Book(msg []byte) {
 // Config opens a Path. NC is not closed by the path. Disp is the session dispatcher:
 // live messages are pushed onto it, and read replies use its TD buffer. Tap must be the
 // inlet whose methods were passed to that dispatcher. RecvWindow is InitPayload.recv_window_ms
-// and must be positive (D848).
+// and must be positive (E08-D048).
 //
 // Resolve returns the ticker and venue of a UID this session has already resolved. It reads
-// memory; mdpath does not call SYM (D824). An unknown UID returns an error. Nil is allowed
+// memory; mdpath does not call SYM (E08-D024). An unknown UID returns an error. Nil is allowed
 // until Tape, BookSnapshot, or a fetch is called.
 //
 // Book receives orderbook_delta on the dispatcher. The bytes alias the ring and are valid
@@ -183,7 +183,7 @@ func (p *Path) Close() {
 	p.wg.Wait()
 }
 
-// Apply installs a bindings snapshot (D846). A snapshot with selectors returns ErrSelector
+// Apply installs a bindings snapshot (E08-D046). A snapshot with selectors returns ErrSelector
 // and changes nothing, whatever its Version. A snapshot without selectors is installed only
 // when its Version is strictly newer than the one already applied; the first one is installed
 // even if its Version is zero. The subscribed set is the subjects listed on that snapshot.
@@ -301,7 +301,7 @@ func (p *Path) onMsg(f *feed, data []byte) {
 		return
 	}
 	if _, err := envelope.MDTsNs(data); err != nil {
-		// The dispatcher drops it, counts QueueStat.dropped, and logs (D849).
+		// The dispatcher drops it, counts QueueStat.dropped, and logs (E08-D049).
 		_ = p.pushMD(data)
 		return
 	}

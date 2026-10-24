@@ -21,7 +21,7 @@ const (
 	prodPrivate = "wss://ws.okx.com:8443/ws/v5/private"
 	demoPrivate = "wss://wspap.okx.com:8443/ws/v5/private"
 
-	// cloidMax is clOrdId's limit. A D602 id is at most 19 digits and fits.
+	// cloidMax is clOrdId's limit. A E06-D002 id is at most 19 digits and fits.
 	cloidMax = 32
 
 	// quoteStep formats a spot market order's quote amount. The instrument has no quote
@@ -95,13 +95,13 @@ func (a *account) privateURL() string {
 }
 
 // sign builds one signed request. The prehash is timestamp + method + path + query + body.
-// timestamp is UTC with milliseconds. The body is the bytes that are sent (D008).
+// timestamp is UTC with milliseconds. The body is the bytes that are sent (E00-D008).
 func (a *account) sign(now time.Time, method, path, query string, body []byte, cost []exchange.Cost, mutates bool) (exchange.HTTPRequest, error) {
 	return signCfg(&a.signerState, a.cfg, now, method, path, query, body, cost, mutates)
 }
 
 // signCfg is the same signature account.sign builds. History signs with it too: the backfill
-// job does not start an account worker (D601).
+// job does not start an account worker (E06-D001).
 func signCfg(st *signerState, cfg exchange.AccountConfig, now time.Time, method, path, query string, body []byte, cost []exchange.Cost, mutates bool) (exchange.HTTPRequest, error) {
 	if cfg.Credentials.Passphrase == "" {
 		return exchange.HTTPRequest{}, errors.New("okx: passphrase is empty")
@@ -163,12 +163,12 @@ func (a *account) post(now time.Time, path string, body any, cost []exchange.Cos
 }
 
 // postOrder is post with the expTime header: now plus AccountConfig.Validity, Unix ms. The venue
-// refuses the request when it arrives after that (D605). The header is not part of the prehash.
+// refuses the request when it arrives after that (E06-D005). The header is not part of the prehash.
 func (a *account) postOrder(now time.Time, path string, body any, cost []exchange.Cost) (exchange.HTTPRequest, error) {
 	return a.postOrderSpan(now, path, body, cost, 0)
 }
 
-// postOrderSpan is postOrder with a per-request window. span 0 uses AccountConfig.Validity (D620).
+// postOrderSpan is postOrder with a per-request window. span 0 uses AccountConfig.Validity (E06-D020).
 func (a *account) postOrderSpan(now time.Time, path string, body any, cost []exchange.Cost, span time.Duration) (exchange.HTTPRequest, error) {
 	w, err := a.cfg.Window()
 	if err != nil {
@@ -428,7 +428,7 @@ func exchKey(instType, instID string) symbol.ExchKey {
 }
 
 // wireQty converts a platform quantity into OKX sz. Spot sz is the platform quantity.
-// A contract's sz is the contract count: platform qty divided by ContractSize (D203).
+// A contract's sz is the contract count: platform qty divided by ContractSize (E02-D003).
 func wireQty(inst *symbol.Info, qty float64) (string, error) {
 	step := inst.Filters[symbol.QtyStep]
 	if inst.Ticker.Category != symbol.Spot {

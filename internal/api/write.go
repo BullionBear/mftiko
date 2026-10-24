@@ -15,7 +15,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
-// The write primitives of PROTOCOL §3.2 W10 (D1006, D1042). Every one is a single txn in one cluster, guarded by its
+// The write primitives of PROTOCOL §3.2 W10 (E10-D006, E10-D042). Every one is a single txn in one cluster, guarded by its
 // own compares; none takes a lock or an election, so any number of replicas may run them at once. A failure is one of:
 //
 //   - errConflict: the compares did not hold. Nothing was written; the caller reads again (409 conflict).
@@ -26,7 +26,7 @@ var (
 	errConflict          = errors.New("api: conditions did not hold")
 	errRegionUnavailable = errors.New("api: region unavailable")
 	errNotFound          = errors.New("api: not found")
-	// errIDsExhausted is an allocation whose every candidate was taken (D1007, D1008). At the expected sizes it does
+	// errIDsExhausted is an allocation whose every candidate was taken (E10-D007, E10-D008). At the expected sizes it does
 	// not happen by chance; it means the id source or the keyspace is wrong.
 	errIDsExhausted = errors.New("api: no free id")
 )
@@ -41,7 +41,7 @@ type txner interface {
 func txn(ctx context.Context, w txner, cmps []clientv3.Cmp, then, els []clientv3.Op) (*clientv3.TxnResponse, error) {
 	// DialTimeout is how long a dial waits for etcd. A region whose connection is blackholed does not
 	// answer, so the txn uses that same bound. The caller's deadline, when shorter, still ends the call.
-	// Either deadline is region_unavailable (D1042).
+	// Either deadline is region_unavailable (E10-D042).
 	ctx, cancel := context.WithTimeout(ctx, state.DialTimeout)
 	defer cancel()
 	resp, err := w.Txn(ctx, cmps, then, els)
@@ -122,7 +122,7 @@ type cond struct {
 // deleteIf deletes every key of conds in one txn if each is still at its revision, and returns the revision of the
 // delete. errConflict if any changed or is gone; then none is deleted. W5 deletes a spec and its status this way: the
 // caller has read the status as terminal, and terminal is absorbing, so a status still at that revision is still
-// terminal (D1006).
+// terminal (E10-D006).
 func deleteIf(ctx context.Context, w txner, conds ...cond) (int64, error) {
 	if len(conds) == 0 {
 		return 0, errors.New("api: delete of nothing")
@@ -154,7 +154,7 @@ func keysOf(conds []cond) []string {
 	return out
 }
 
-// update is read, change, CAS, retried by the server (D1037: ending a session). It reads key from etcd, gives the
+// update is read, change, CAS, retried by the server (E10-D037: ending a session). It reads key from etcd, gives the
 // value to f, and writes what f returns with a mod_revision CAS. When another write got there first, the failed txn
 // reads the key back and f runs again on that, up to attempts times in all; past that it is errConflict.
 //
@@ -208,7 +208,7 @@ func firstKV(resp *clientv3.TxnResponse, i int) *mvccpb.KeyValue {
 	return kvs[0]
 }
 
-// problemOf is the HTTP status and the ErrorCode of the contract (D1036) for an error of the write path.
+// problemOf is the HTTP status and the ErrorCode of the contract (E10-D036) for an error of the write path.
 func problemOf(err error) (int, string) {
 	switch {
 	case errors.Is(err, errConflict):

@@ -13,7 +13,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange"
 )
 
-// TradeVenue is a fake venue for code that drives an exchange.TradeStream (D303): the account
+// TradeVenue is a fake venue for code that drives an exchange.TradeStream (E03-D003): the account
 // worker's request ids, deadlines and reconnects. It has two ends. Stream is the client's codec;
 // Handle is the venue receiving what the client sent, and Release hands back the answers in the order
 // the test chooses, with any it chose to Drop missing. Nothing goes over a network, unless the test
@@ -191,7 +191,7 @@ type tradeStream struct {
 }
 
 // wireID is what the codec puts on the wire for request id: the op and the worker's id, so that an
-// answer reads without memory of what was sent (D303).
+// answer reads without memory of what was sent (E03-D003).
 func wireID(s string) (op string, id uint64, err error) {
 	if len(s) < 2 || (s[0] != 'p' && s[0] != 'c') {
 		return "", 0, fmt.Errorf("exchangetest: request id %q", s)

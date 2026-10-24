@@ -64,9 +64,9 @@ export interface paths {
         };
         /**
          * 列出策略
-         * @description 部署設定裡每個 repository 一項（D1013）。`id` 是 repository 路徑的最後一段（D1035）。
-         *     依 `id` 排序後以 `limit`、`cursor` 分頁。沒有快取：這一頁的 `latest` 每次向 registry 解析，同時最多 8 個請求（D1057）。
-         *     `latest` 是普通的 tag（D1058、D1013）。連不上 registry 或 registry 5xx 回 503 `registry_unavailable`（D1059）。
+         * @description 部署設定裡每個 repository 一項（E10-D013）。`id` 是 repository 路徑的最後一段（E10-D035）。
+         *     依 `id` 排序後以 `limit`、`cursor` 分頁。沒有快取：這一頁的 `latest` 每次向 registry 解析，同時最多 8 個請求（E10-D057）。
+         *     `latest` 是普通的 tag（E10-D058、E10-D013）。連不上 registry 或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
          */
         get: operations["listStrategies"];
         put?: never;
@@ -87,8 +87,8 @@ export interface paths {
         /**
          * 列出策略的版本
          * @description registry 的 tag 清單，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
-         *     一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序，`latest` 是普通的一項（D1058）。
-         *     解析同時最多 8 個請求，沒有快取（D1057）。連不上或 registry 5xx 回 503 `registry_unavailable`（D1059）。
+         *     一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序，`latest` 是普通的一項（E10-D058）。
+         *     解析同時最多 8 個請求，沒有快取（E10-D057）。連不上或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
          */
         get: operations["listStrategyVersions"];
         put?: never;
@@ -108,8 +108,8 @@ export interface paths {
         };
         /**
          * 一個版本的 manifest
-         * @description `ref` 是 tag，或 digest（`sha256:…`）。tag 先解析成 digest（D934）。
-         *     manifest 讀不出來，或不是策略 artifact，回 502 `invalid_artifact`（D1059）。
+         * @description `ref` 是 tag，或 digest（`sha256:…`）。tag 先解析成 digest（E09-D034）。
+         *     manifest 讀不出來，或不是策略 artifact，回 502 `invalid_artifact`（E10-D059）。
          *     連不上 registry 或 registry 5xx 回 503 `registry_unavailable`。不存在回 404。
          */
         get: operations["getStrategyVersion"];
@@ -136,10 +136,10 @@ export interface paths {
         put?: never;
         /**
          * 部署 session
-         * @description 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
-         *     `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
+         * @description 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（E10-D031）。
+         *     `session_id` 由 API 隨機配發（E10-D007）。驗證範圍見 E10-D012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（E02-D002）。
          *     Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
-         *     可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（D1068）。
+         *     可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（E10-D068）。
          */
         post: operations["createSession"];
         delete?: never;
@@ -161,8 +161,8 @@ export interface paths {
         post?: never;
         /**
          * 刪除 terminal 的 session
-         * @description 相當於 `docker rm`（D1017）。先把最後的 status 寫進 `session_records` 並關閉那一列，再以 txn 刪 etcd 的 spec 與 status（D1031）。
-         *     之後 STS 清掉主機上的 log 與目錄（D1016）。非 terminal 的回 409（`not_terminal`）：要結束 session 用 `POST /sessions/{session_id}/end`。
+         * @description 相當於 `docker rm`（E10-D017）。先把最後的 status 寫進 `session_records` 並關閉那一列，再以 txn 刪 etcd 的 spec 與 status（E10-D031）。
+         *     之後 STS 清掉主機上的 log 與目錄（E10-D016）。非 terminal 的回 409（`not_terminal`）：要結束 session 用 `POST /sessions/{session_id}/end`。
          *     保留期到了 API 也會自己刪。
          */
         delete: operations["deleteSession"];
@@ -182,7 +182,7 @@ export interface paths {
         put?: never;
         /**
          * 結束 session
-         * @description 把 spec 的 `desired_state` 改成 `ended`（D1303）。伺服器端以 `mod_revision` CAS 重試，用戶端不必帶 revision（D1037）。
+         * @description 把 spec 的 `desired_state` 改成 `ended`（E13-D003）。伺服器端以 `mod_revision` CAS 重試，用戶端不必帶 revision（E10-D037）。
          *     冪等：已經是 `ended` 或 terminal 的照樣回 200。controller 以 `ended_by_spec` 結束 session（PROTOCOL §3.3 N3）。
          */
         post: operations["endSession"];
@@ -201,7 +201,7 @@ export interface paths {
         };
         /**
          * 列出 session 的歷史紀錄
-         * @description 來自 Postgres，包含 etcd 已刪除的 session（D1031）。依 `created_at` 由新到舊。
+         * @description 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。
          */
         get: operations["listSessionRecords"];
         put?: never;
@@ -238,7 +238,7 @@ export interface paths {
         };
         /**
          * 列出帳號種類
-         * @description exchange registry 宣告的帳號種類（D301）。`supported` 是 false 的，建立帳號時回 400（D1011、D614）。
+         * @description exchange registry 宣告的帳號種類（E03-D001）。`supported` 是 false 的，建立帳號時回 400（E10-D011、E06-D014）。
          */
         get: operations["listAccountKinds"];
         put?: never;
@@ -261,11 +261,11 @@ export interface paths {
         put?: never;
         /**
          * 建立帳號
-         * @description `api_id` 由 API 隨機配發（D1008）。`credentials` 必填，缺少回 400（D1062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
-         *     `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（D1064）。
-         *     `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（D1065）。
-         *     `name` 依副本 best-effort 不重複，同名回 409（D1066）。
-         *     `enabled` 不公開，API 一律寫 true（D1034）。
+         * @description `api_id` 由 API 隨機配發（E10-D008）。`credentials` 必填，缺少回 400（E10-D062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（E06-D013、E10-D011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+         *     `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
+         *     `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。
+         *     `name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+         *     `enabled` 不公開，API 一律寫 true（E10-D034）。
          */
         post: operations["createAccount"];
         delete?: never;
@@ -285,16 +285,16 @@ export interface paths {
         get: operations["getAccount"];
         /**
          * 更新帳號
-         * @description 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文（D1062）；有給就重新封裝，格式檢查與建立相同（D1064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（D1066）。
+         * @description 以 `revision` 做 CAS，不成立回 409（E10-D037）。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
          *
-         *     **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
-         *     用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。
+         *     **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
+         *     用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不寫 etcd，不會重啟。
          */
         put: operations["updateAccount"];
         post?: never;
         /**
          * 刪除帳號
-         * @description 仍被非 terminal 的 session 引用時回 409（`referenced`，D1011）。`revision` 不符回 409（`conflict`）。
+         * @description 仍被非 terminal 的 session 引用時回 409（`referenced`，E10-D011）。`revision` 不符回 409（`conflict`）。
          */
         delete: operations["deleteAccount"];
         options?: never;
@@ -351,7 +351,7 @@ export interface paths {
         };
         /**
          * 狀態的即時更新（SSE）
-         * @description `text/event-stream`（D1005、D1038）。每則事件帶一個資源的完整最新狀態，用戶端整筆取代；不送差異。
+         * @description `text/event-stream`（E10-D005、E10-D038）。每則事件帶一個資源的完整最新狀態，用戶端整筆取代；不送差異。
          *
          *     | `event` | `data` 的 schema |
          *     |---|---|
@@ -364,7 +364,7 @@ export interface paths {
          *     - 連上時先送每個符合條件資源的目前狀態，再送後續的變化。
          *     - 每 15 秒送一行註解（`: keepalive`）當心跳。
          *     - 部署要求 HTTP/2。認證用 cookie：瀏覽器的 `EventSource` 不能帶 header。
-         *     - 結束時在 `audit` 記一列（D1010）。
+         *     - 結束時在 `audit` 記一列（E10-D010）。
          */
         get: operations["streamEvents"];
         put?: never;
@@ -379,7 +379,7 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** @description RFC 9457。`code` 是給程式判斷的穩定值（D1036）。 */
+        /** @description RFC 9457。`code` 是給程式判斷的穩定值（E10-D036）。 */
         Problem: {
             /** @description 一律是 `about:blank`；分類看 `code`。 */
             type: string;
@@ -396,7 +396,7 @@ export interface components {
             path: string;
             reason: string;
         };
-        /** @description 讀取來自副本時的新鮮度（D1014）。 */
+        /** @description 讀取來自副本時的新鮮度（E10-D014）。 */
         Freshness: {
             /** @description 尚未完成首次同步，或斷線超過門檻的 region。這些 region 的資源不在這次的結果裡。 */
             unavailable_regions: string[];
@@ -408,18 +408,18 @@ export interface components {
          * @description etcd 的 `mod_revision`。只在同一個資源上比較有意義。
          */
         Revision: number;
-        /** @description 6 個小寫 hex，API 隨機配發（D1007）。 */
+        /** @description 6 個小寫 hex，API 隨機配發（E10-D007）。 */
         SessionIDValue: string;
         /**
          * Format: int64
-         * @description API 隨機配發，1 到 2⁵³−1（D1008）。
+         * @description API 隨機配發，1 到 2⁵³−1（E10-D008）。
          */
         APIIDValue: number;
         InstanceName: string;
         Digest: string;
         /** @enum {string} */
         Plane: "md" | "td" | "sts";
-        /** @description 使用者自訂，平台不解讀。key 是 `^[A-Za-z0-9][A-Za-z0-9._/-]{0,62}$`（D1036）。 */
+        /** @description 使用者自訂，平台不解讀。key 是 `^[A-Za-z0-9][A-Za-z0-9._/-]{0,62}$`（E10-D036）。 */
         Labels: {
             [key: string]: string;
         };
@@ -435,7 +435,7 @@ export interface components {
             expires_at: string | null;
         };
         Strategy: {
-            /** @description repository 路徑的最後一段（D1035）。 */
+            /** @description repository 路徑的最後一段（E10-D035）。 */
             id: string;
             /** @example ghcr.io/bullionbear/strategy-chase */
             repository: string;
@@ -470,28 +470,28 @@ export interface components {
             size_bytes?: number;
         };
         /**
-         * @description API 自己的請求型別，轉成 `SessionSpec` 寫進 etcd（D1002）。沒有 `desired_state`：建立時一律是 running。
-         *     沒有 `selectors`（一期不收，D822）。
+         * @description API 自己的請求型別，轉成 `SessionSpec` 寫進 etcd（E10-D002）。沒有 `desired_state`：建立時一律是 running。
+         *     沒有 `selectors`（一期不收，E08-D022）。
          */
         SessionCreate: {
             name: string;
             labels?: components["schemas"]["Labels"];
-            /** @description 必填，使用者指定（D1032）。必須在 topology 裡、平面是 sts。 */
+            /** @description 必填，使用者指定（E10-D032）。必須在 topology 裡、平面是 sts。 */
             sts_instance: components["schemas"]["InstanceName"];
             strategy: components["schemas"]["StrategySelector"];
-            /** @description 策略自己的參數，平台不解讀（D1033）。API 存成緊湊的 JSON bytes，交給策略的 `ctx.Params()`。 */
+            /** @description 策略自己的參數，平台不解讀（E10-D033）。API 存成緊湊的 JSON bytes，交給策略的 `ctx.Params()`。 */
             params?: {
                 [key: string]: unknown;
             };
             feeds?: components["schemas"]["FeedDeclInput"][];
             accounts?: components["schemas"]["AccountDeclInput"][];
             restart?: components["schemas"]["RestartPolicy"];
-            /** @description 0 = 60 秒（D1302）。 */
+            /** @description 0 = 60 秒（E13-D002）。 */
             deps_timeout_s?: number;
             start_timeout_s?: number;
-            /** @description 0 = STS 的預設值（D803）。 */
+            /** @description 0 = STS 的預設值（E08-D003）。 */
             recv_window_ms?: number;
-            /** @description 0 = STS 部署設定的預設，10 秒（D918、D962）。 */
+            /** @description 0 = STS 部署設定的預設，10 秒（E09-D018、E09-D062）。 */
             grace_ms?: number;
             limits?: components["schemas"]["Limits"];
             inputs?: components["schemas"]["InputDecl"][];
@@ -499,22 +499,22 @@ export interface components {
         StrategySelector: {
             /** @description `GET /strategies` 的 `id`。 */
             id: string;
-            /** @description tag 或 digest。tag 由 API 解析成 digest 再寫進 spec（D934）。 */
+            /** @description tag 或 digest。tag 由 API 解析成 digest 再寫進 spec（E09-D034）。 */
             ref: string;
         };
         FeedDeclInput: {
             /**
-             * @description 正規 feed key（`<topic>.<UniversalTicker>`，D203）。API 不檢查商品是否存在（D202）。
+             * @description 正規 feed key（`<topic>.<UniversalTicker>`，E02-D003）。API 不檢查商品是否存在（E02-D002）。
              * @example orderbook_delta.Binance_Spot_BTCUSDT
              */
             feed: string;
-            /** @description 必填，使用者指定（D1032）。必須在 topology 裡、平面是 md。 */
+            /** @description 必填，使用者指定（E10-D032）。必須在 topology 裡、平面是 md。 */
             md_instance: components["schemas"]["InstanceName"];
         };
         AccountDeclInput: {
             name: string;
             api_id: components["schemas"]["APIIDValue"];
-            /** @description 與同一個帳號上非 terminal 的 session 重疊時回 409（`algo_overlap`，best-effort，D1012）。 */
+            /** @description 與同一個帳號上非 terminal 的 session 重疊時回 409（`algo_overlap`，best-effort，E10-D012）。 */
             algo_ids: number[];
         };
         RestartPolicy: {
@@ -523,16 +523,16 @@ export interface components {
             window_s?: number;
         };
         /**
-         * @description 省略等於 `on_failure`（D919）。
+         * @description 省略等於 `on_failure`（E09-D019）。
          * @enum {string}
          */
         RestartMode: "on_failure" | "never";
         Limits: {
             memory_mb?: number;
             gomaxprocs?: number;
-            /** @description 0 = STS 的預設值（D904）。 */
+            /** @description 0 = STS 的預設值（E09-D004）。 */
             volume_mb?: number;
-            /** @description 0 = STS 的預設值（D803）。 */
+            /** @description 0 = STS 的預設值（E08-D003）。 */
             hook_timeout_s?: number;
         };
         InputDecl: {
@@ -581,15 +581,15 @@ export interface components {
             region: string;
             /**
              * Format: date-time
-             * @description 來自 `session_records`（D1031）。Postgres 不可用時省略。
+             * @description 來自 `session_records`（E10-D031）。Postgres 不可用時省略。
              */
             created_at?: string;
-            /** @description 建立這個 session 的使用者（D1031）。沒有對應的 `session_records` 列，或 Postgres 不可用時省略。D1072 修改 D1031：reconcile 不補列。 */
+            /** @description 建立這個 session 的使用者（E10-D031）。沒有對應的 `session_records` 列，或 Postgres 不可用時省略。E10-D072 修改 E10-D031：reconcile 不補列。 */
             created_by?: string | null;
             spec: components["schemas"]["SessionSpecView"];
             status?: components["schemas"]["SessionStatus"];
             assignment?: components["schemas"]["Assignment"];
-            /** @description 執行中取自指派的 `bindings`；terminal 之後取自 status 的 `dependency` condition（D1014）。 */
+            /** @description 執行中取自指派的 `bindings`；terminal 之後取自 status 的 `dependency` condition（E10-D014）。 */
             dependencies: components["schemas"]["Dependency"][];
             logs?: components["schemas"]["LogLocation"];
         };
@@ -652,7 +652,7 @@ export interface components {
             /** Format: date-time */
             at: string;
         };
-        /** @description controller 寫的 `SessionDemand`。session 結束、需求刪除之後省略（D1333）。 */
+        /** @description controller 寫的 `SessionDemand`。session 結束、需求刪除之後省略（E13-D033）。 */
         Assignment: {
             desired_state: components["schemas"]["DesiredState"];
             start: boolean;
@@ -677,11 +677,11 @@ export interface components {
             updated_at?: string;
         };
         /**
-         * @description `silent` 是 provider 還沒有 ack，或 provider 的 agent 不在（D901）。
+         * @description `silent` 是 provider 還沒有 ack，或 provider 的 agent 不在（E09-D001）。
          * @enum {string}
          */
         EntryState: "silent" | "pending" | "ready" | "rejected" | "dead";
-        /** @description 一期不接 `log.*`，運維上機器讀（D1015）。`AgentRecord` 沒有 `host` 時省略整個物件（D1014）。 */
+        /** @description 一期不接 `log.*`，運維上機器讀（E10-D015）。`AgentRecord` 沒有 `host` 時省略整個物件（E10-D014）。 */
         LogLocation: {
             host: string;
             /** @example /var/lib/mftiko/log/sts/3f9a0c1e.stdout */
@@ -689,8 +689,8 @@ export interface components {
             stderr: string;
         };
         /**
-         * @description `pending`：已寫 Postgres、etcd 還沒確認。`created`：etcd 已有 spec。`abandoned`：超過 2 分鐘仍沒有對應 spec（D1069）。
-         *     `closed`：etcd 的 spec 已刪除，`final` 是最後的狀態（D1031）。
+         * @description `pending`：已寫 Postgres、etcd 還沒確認。`created`：etcd 已有 spec。`abandoned`：超過 2 分鐘仍沒有對應 spec（E10-D069）。
+         *     `closed`：etcd 的 spec 已刪除，`final` 是最後的狀態（E10-D031）。
          * @enum {string}
          */
         SessionRecordState: "pending" | "created" | "abandoned" | "closed";
@@ -722,7 +722,7 @@ export interface components {
             key_types: components["schemas"]["KeyType"][];
             /** @description 憑證要帶 passphrase（OKX）。 */
             passphrase: boolean;
-            /** @description 一期只收交易一個 venue 的種類（D614、D1011）。 */
+            /** @description 一期只收交易一個 venue 的種類（E06-D014、E10-D011）。 */
             supported: boolean;
         };
         AccountKindList: {
@@ -730,7 +730,7 @@ export interface components {
         };
         /** @enum {string} */
         KeyType: "hmac" | "ed25519";
-        /** @description 只寫不讀（D1011、D1063）。回應、log、`audit` 都不含明文或密文。 */
+        /** @description 只寫不讀（E10-D011、E10-D063）。回應、log、`audit` 都不含明文或密文。 */
         Credentials: {
             key_type: components["schemas"]["KeyType"];
             key: string;
@@ -757,7 +757,7 @@ export interface components {
             credentials?: components["schemas"]["Credentials"];
             settings?: components["schemas"]["AccountSettings"];
         };
-        /** @description 不含憑證、密文或指紋（D1063）。 */
+        /** @description 不含憑證、密文或指紋（E10-D063）。 */
         Account: {
             api_id: components["schemas"]["APIIDValue"];
             name: string;
@@ -776,7 +776,7 @@ export interface components {
         };
         /**
          * @description `AgentRecord`。綁在選主 session 上（PROTOCOL §3.2 W7）。
-         *     key 還在時是目前的值。key 不在、這個副本還記得上一份時，欄位是那一份且 `last_known` 為 true（D1096）。
+         *     key 還在時是目前的值。key 不在、這個副本還記得上一份時，欄位是那一份且 `last_known` 為 true（E10-D096）。
          *     副本重啟後沒有這份記憶時，整個物件省略。
          */
         AgentStatus: {
@@ -785,11 +785,11 @@ export interface components {
             release: string;
             /** Format: date-time */
             started_at: string;
-            /** @description E10-13 之前的 agent 沒有（D1014）。 */
+            /** @description E10-13 之前的 agent 沒有（E10-D014）。 */
             host?: string;
             work_dir?: string;
             /**
-             * @description 這個副本記得的最後一份 `AgentRecord`，選主 key 已經不在（D1096）。
+             * @description 這個副本記得的最後一份 `AgentRecord`，選主 key 已經不在（E10-D096）。
              *     省略或 false 表示 key 還在。
              */
             last_known?: boolean;
@@ -890,7 +890,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
-        /** @description 並行衝突（`conflict`），或狀態不允許（`not_terminal`、`referenced`、`algo_overlap`）（D1004）。 */
+        /** @description 並行衝突（`conflict`），或狀態不允許（`not_terminal`、`referenced`、`algo_overlap`）（E10-D004）。 */
         Conflict: {
             headers: {
                 [name: string]: unknown;
@@ -908,7 +908,7 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
-        /** @description manifest 讀不出來，或不是策略 artifact。`code` 是 `invalid_artifact`（D1059）。 */
+        /** @description manifest 讀不出來，或不是策略 artifact。`code` 是 `invalid_artifact`（E10-D059）。 */
         InvalidArtifact: {
             headers: {
                 [name: string]: unknown;
@@ -945,7 +945,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 已登入。cookie 是 `HttpOnly`、`Secure`、`SameSite=Strict`，預設 12 小時到期（D1009）。 */
+            /** @description 已登入。cookie 是 `HttpOnly`、`Secure`、`SameSite=Strict`，預設 12 小時到期（E10-D009）。 */
             204: {
                 headers: {
                     "Set-Cookie"?: string;
@@ -1118,7 +1118,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description 選填。同 key、同 body 在 24 小時內回同一個 session；同 key、不同 body 回 409（D1068）。 */
+                /** @description 選填。同 key、同 body 在 24 小時內回同一個 session；同 key、不同 body 回 409（E10-D068）。 */
                 "Idempotency-Key"?: string;
             };
             path?: never;
@@ -1226,7 +1226,7 @@ export interface operations {
                 limit?: components["parameters"]["Limit"];
                 /** @description 上一頁回應的 `next_cursor`，對呼叫端不透明。 */
                 cursor?: components["parameters"]["Cursor"];
-                /** @description 同一個 `session_id` 可能對到多筆：W5 刪除之後可能重用（D1007）。 */
+                /** @description 同一個 `session_id` 可能對到多筆：W5 刪除之後可能重用（E10-D007）。 */
                 session_id?: components["schemas"]["SessionIDValue"];
                 strategy_id?: string;
                 created_by?: string;
@@ -1305,7 +1305,7 @@ export interface operations {
                 limit?: components["parameters"]["Limit"];
                 /** @description 上一頁回應的 `next_cursor`，對呼叫端不透明。 */
                 cursor?: components["parameters"]["Cursor"];
-                /** @description 只列這個 TD instance。不是 instance 名稱、不在 topology，或不是 td，回 400。該 region 不可用時這頁是空的，並標在 `freshness`（D1014）。 */
+                /** @description 只列這個 TD instance。不是 instance 名稱、不在 topology，或不是 td，回 400。該 region 不可用時這頁是空的，並標在 `freshness`（E10-D014）。 */
                 td_instance?: string;
             };
             header?: never;
@@ -1367,7 +1367,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 帳號。不含憑證、密文或指紋（D1063）。 */
+            /** @description 帳號。不含憑證、密文或指紋（E10-D063）。 */
             200: {
                 headers: {
                     [name: string]: unknown;

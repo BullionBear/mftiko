@@ -16,7 +16,7 @@ import (
 )
 
 // After a strategy Pull returns, and before UnpackImage runs, GC must not delete
-// the layers. An unheld orphan in the same GC is deleted, so the keep is the hold (D973).
+// the layers. An unheld orphan in the same GC is deleted, so the keep is the hold (E09-D073).
 func TestStrategyLayersHeldBeforeUnpack(t *testing.T) {
 	t.Setenv("DOCKER_CONFIG", t.TempDir())
 	img, err := packedStrategy()

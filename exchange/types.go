@@ -1,11 +1,11 @@
 package exchange
 
 // Topic is a platform market-data topic: the <topic> of a feed key <topic>.<UniversalTicker> and of
-// the md.f subject (D401). A topic cannot contain '.', it is one NATS subject token.
+// the md.f subject (E04-D001). A topic cannot contain '.', it is one NATS subject token.
 type Topic string
 
 // Platform topics (PROTOCOL §2), mftik's names plus orderbook_delta and mark_price.
-// orderbook, the old top-N name, is not a topic and not an alias (D453).
+// orderbook, the old top-N name, is not a topic and not an alias (E04-D053).
 const (
 	TopicBestQuote      Topic = "bestquote"
 	TopicTrade          Topic = "trade"
@@ -25,12 +25,12 @@ const KlinePrefix = "kline_"
 
 func KlineTopic(interval string) Topic { return Topic(KlinePrefix + interval) }
 
-// RetiredTopic reports a name the platform no longer accepts (D453).
+// RetiredTopic reports a name the platform no longer accepts (E04-D053).
 // "orderbook" was the top-N book. A config or subscription of that name is invalid.
 // It is not rewritten to orderbook_delta.
 func RetiredTopic(topic string) bool { return topic == "orderbook" }
 
-// TopicCaps is one row of a venue's capability table (D401): the topic is supported, and these
+// TopicCaps is one row of a venue's capability table (E04-D001): the topic is supported, and these
 // optional fields of its event are never filled on this venue.
 type TopicCaps struct {
 	Topic  Topic
@@ -63,7 +63,7 @@ const (
 	TIFPostOnly
 )
 
-// OrderStatus follows td.v1.OrderStatus: the order as the venue holds it (D610). A cancel in flight
+// OrderStatus follows td.v1.OrderStatus: the order as the venue holds it (E06-D010). A cancel in flight
 // is the account worker's flag, not a status, so there is no pending-cancel value.
 type OrderStatus uint8
 
@@ -86,7 +86,7 @@ const (
 )
 
 // OnBook is the status of an order resting on the book: Accepted, or PartiallyFilled once part of
-// it filled. A venue's own pending-cancel state maps here (D610).
+// it filled. A venue's own pending-cancel state maps here (E06-D010).
 func OnBook(filled float64) OrderStatus {
 	if filled > 0 {
 		return OrderStatusPartiallyFilled

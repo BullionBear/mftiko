@@ -24,7 +24,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
-// pushBackoff is the state_out retry (D983, D926). It is not a deployment setting.
+// pushBackoff is the state_out retry (E09-D083, E09-D026). It is not a deployment setting.
 var pushBackoff = agent.Backoff{Min: time.Second, Max: 60 * time.Second}
 
 // errBusy means the worker is still observed, or the session is not terminal yet.
@@ -32,12 +32,12 @@ var pushBackoff = agent.Backoff{Min: time.Second, Max: 60 * time.Second}
 var errBusy = errors.New("sts: volume still in use")
 
 // errTerminalFile means sessions/<id>/terminal.json cannot be trusted. It is left
-// in place; the fields are not invented (D982).
+// in place; the fields are not invented (E09-D082).
 var errTerminalFile = errors.New("sts: terminal.json")
 
 const terminalName = "terminal.json"
 
-// terminalMeta is sessions/<id>/terminal.json (D982).
+// terminalMeta is sessions/<id>/terminal.json (E09-D082).
 type terminalMeta struct {
 	SessionID   string `json:"session_id"`
 	Incarnation uint32 `json:"incarnation"`
@@ -45,7 +45,7 @@ type terminalMeta struct {
 }
 
 // exitNote is the last confirmed exit for a session. sealed is set once
-// terminal.json has been written, so a later note cannot change clean (D982).
+// terminal.json has been written, so a later note cannot change clean (E09-D082).
 type exitNote struct {
 	inc    uint32
 	clean  bool
@@ -70,7 +70,7 @@ func (r *releaseFleet) Release(ctx context.Context, key agent.WorkerKey) error {
 var _ runner.Fleet[Spec, Live] = (*releaseFleet)(nil)
 
 // release records the exit before the worker leaves Observe, and only then lets
-// a terminal session be packed (D978). StateExited keeps the shim's ExitInfo.
+// a terminal session be packed (E09-D078). StateExited keeps the shim's ExitInfo.
 // Any other successful release confirmed the process is gone without that record,
 // so clean is false.
 func (p *plane) release(ctx context.Context, key agent.WorkerKey) error {
@@ -114,7 +114,7 @@ func (p *plane) noteLostLocked(id string, inc uint32) {
 }
 
 // exitClean is the last incarnation's on_stop_completed, except a SIGKILL or a
-// missing Stopped, which are false (D982).
+// missing Stopped, which are false (E09-D082).
 func exitClean(ex *commonv1.ExitInfo) bool {
 	if ex == nil || ex.GetSignal() == int32(syscall.SIGKILL) {
 		return false
@@ -164,7 +164,7 @@ func (p *plane) seal(id string, inc uint32, clean bool) {
 
 // finisher packs and pushes state_out outside the reconcile loop, then deletes
 // the volume and the inputs. Shim logs and the session directory stay until the
-// spec is gone (D983, D1016).
+// spec is gone (E09-D083, E10-D016).
 type finisher struct {
 	ctx   context.Context
 	plane *plane
@@ -617,7 +617,7 @@ func (p *plane) putStateOut(ctx context.Context, id string, snap *statev1.StateS
 }
 
 // releaseVolume is phase 1: after state_out is pushed, or immediately when the
-// volume is empty, only the volume and the inputs are deleted (D1016).
+// volume is empty, only the volume and the inputs are deleted (E10-D016).
 func (p *plane) releaseVolume(id string) error {
 	vol, inputs := sessionDirs(p.prog.DataDir, id)
 	if err := artifact.RemoveWritable(vol); err != nil {
@@ -628,7 +628,7 @@ func (p *plane) releaseVolume(id string) error {
 
 // reap is phase 2. It runs on every finisher pass, which commits wake, so a
 // spec that disappears while the agent is up is collected without spinning on
-// "spec still held" (D1016). A pass before the first commit does not run: the
+// "spec still held" (E10-D016). A pass before the first commit does not run: the
 // finisher is not ready.
 func (f *finisher) reap() {
 	p := f.plane
@@ -658,8 +658,8 @@ func (f *finisher) reap() {
 }
 
 // hostLeftover reports that phase 1 has finished for a session the reconcile
-// view no longer has a spec for (D1016, D1019). terminal.json is the local
-// marker; a directory that never became terminal is left alone (D944).
+// view no longer has a spec for (E10-D016, E10-D019). terminal.json is the local
+// marker; a directory that never became terminal is left alone (E09-D044).
 func (p *plane) hostLeftover(id string) bool {
 	if p.prog == nil || !p.hostStill(id) {
 		return false
@@ -679,7 +679,7 @@ func (p *plane) hostLeftover(id string) bool {
 
 // hostStill is the phase-2 gate: the first spec list has been seen, this
 // session's spec key is absent from that view, and no shim still has the
-// session open (D1019).
+// session open (E10-D019).
 func (p *plane) hostStill(id string) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -692,9 +692,9 @@ func (p *plane) hostStill(id string) bool {
 	return !p.workerBusy(id)
 }
 
-// releaseHost deletes one finished session in D1020's order. The first error
+// releaseHost deletes one finished session in E10-D020's order. The first error
 // stops it. Each step checks the spec view again so a spec that reappears
-// (D1007) is left in place for a later pass.
+// (E10-D007) is left in place for a later pass.
 func (p *plane) releaseHost(ctx context.Context, id string) error {
 	if err := ctx.Err(); err != nil {
 		return err

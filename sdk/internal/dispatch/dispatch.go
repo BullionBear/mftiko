@@ -15,20 +15,20 @@ import (
 )
 
 const (
-	// TDCap is how many entries the TD buffer holds (D815). It is an SDK constant: it is not a
+	// TDCap is how many entries the TD buffer holds (E08-D015). It is an SDK constant: it is not a
 	// field of the session spec and not part of the contract. A full buffer ends the session FAILED.
 	TDCap = 65536
 
-	// MDBytes is the MD ring, one preallocated buffer (D816).
+	// MDBytes is the MD ring, one preallocated buffer (E08-D016).
 	MDBytes = 32 << 20
 
-	// SlowAfter is the soft hook limit (D817). A hook that runs longer counts one hook_slow.
+	// SlowAfter is the soft hook limit (E08-D017). A hook that runs longer counts one hook_slow.
 	// hook_blocked_ms is not this limit: it is how long the hook currently running has been running.
 	SlowAfter = 100 * time.Millisecond
 
-	// ReasonTDFull is the Exiting reason when the TD buffer cannot take another entry (D815).
+	// ReasonTDFull is the Exiting reason when the TD buffer cannot take another entry (E08-D015).
 	ReasonTDFull = "td buffer full"
-	// ReasonHung is the Exiting reason when a hook passes hook_timeout_s (D803).
+	// ReasonHung is the Exiting reason when a hook passes hook_timeout_s (E08-D003).
 	ReasonHung = "hook timeout"
 )
 
@@ -43,13 +43,13 @@ type QueueStat struct {
 
 // Config is the dispatcher's session inputs. Zero RingBytes selects MDBytes. Zero HookTimeout
 // does not arm the hard limit; the session worker rejects a payload whose hook_timeout_s is 0
-// before Run (D803). Now nil means time.Now.
+// before Run (E08-D003). Now nil means time.Now.
 type Config struct {
 	RecvWindow  time.Duration
 	HookTimeout time.Duration
 	Now         func() time.Time
 	// OnStop is the strategy callback. It runs on the dispatcher goroutine, after a DONE or FAILED
-	// ending has delivered the TD buffer (D803). Nil does nothing.
+	// ending has delivered the TD buffer (E08-D003). Nil does nothing.
 	OnStop func(context.Context) error
 	// UnsubscribeTD runs on the dispatcher goroutine before that delivery, for DONE and FAILED only.
 	// It is where the session drops td.evt. Nil does nothing.
@@ -57,7 +57,7 @@ type Config struct {
 	// Feed is called with a market-data message the prehook kept. The bytes alias the ring and are
 	// valid only until Feed returns. Feed decodes; the dispatcher does not. Nil skips the message.
 	Feed func([]byte)
-	// Book is orderbook_delta. It is not filtered by the prehook (D803); E8-15 applies it. The bytes
+	// Book is orderbook_delta. It is not filtered by the prehook (E08-D003); E8-15 applies it. The bytes
 	// alias the ring and are valid only until Book returns. Nil skips the message without counting a drop.
 	Book func([]byte)
 	// Log receives the soft-limit and overflow lines. Nil discards them.
@@ -146,7 +146,7 @@ func New(cfg Config) *Disp {
 // a HUNG hook is not waited for, and the goroutine leaves once that hook does.
 func (d *Disp) Exited() <-chan struct{} { return d.exited }
 
-// HookTimeout is the duration c4 applies to OnStop when Run returns on its own (D809).
+// HookTimeout is the duration c4 applies to OnStop when Run returns on its own (E08-D009).
 func (d *Disp) HookTimeout() time.Duration { return d.hookTimeout }
 
 // Exit ends the session DONE after the current hook. Fail ends it FAILED. The first call wins.
@@ -175,7 +175,7 @@ func (d *Disp) setStopLocked(err error) {
 }
 
 // PushTD queues fn on the TD buffer. errFull means the buffer is full and the session is ending
-// FAILED (D815); fn was not queued. errClosed means the session is no longer accepting entries.
+// FAILED (E08-D015); fn was not queued. errClosed means the session is no longer accepting entries.
 func (d *Disp) PushTD(fn func()) error {
 	if fn == nil {
 		return nil
@@ -218,7 +218,7 @@ func (d *Disp) pushMD(msg []byte, book bool) error {
 }
 
 // Timer returns a timer whose callback runs on the TD buffer. Fires that arrive while one run of
-// this timer is already queued run once (D803).
+// this timer is already queued run once (E08-D003).
 func (d *Disp) Timer(fn func()) *Timer {
 	t := &Timer{d: d, fn: fn}
 	d.mu.Lock()
@@ -294,7 +294,7 @@ func (t *Timer) stop() {
 }
 
 // Stats reports both buffers and the hook counters. It clears each buffer's max age, which is the
-// report interval (PROTOCOL §6.1). hook_blocked_ms is 0 when no hook is running (D817).
+// report interval (PROTOCOL §6.1). hook_blocked_ms is 0 when no hook is running (E08-D017).
 func (d *Disp) Stats() (td, md QueueStat, blockedMs, slow uint64) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -334,7 +334,7 @@ func (d *Disp) Run(ctx context.Context) error {
 
 // OnStop is the plane's Stopper. c4 calls it after Exiting and before Stopped. The TD delivery
 // and the strategy callback run on the dispatcher goroutine. The context is the one c4 built:
-// the remaining grace, or hook_timeout_s when Run returned on its own (D809).
+// the remaining grace, or hook_timeout_s when Run returned on its own (E08-D009).
 func (d *Disp) OnStop(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -399,7 +399,7 @@ func (d *Disp) phase1() {
 }
 
 // phase2 delivers the TD buffer for DONE and FAILED, then runs the strategy OnStop. CRASHED does
-// not deliver (D803). The whole of this runs on the dispatcher goroutine. c4's context is the
+// not deliver (E08-D003). The whole of this runs on the dispatcher goroutine. c4's context is the
 // time limit, shared by the delivery and OnStop; this method does not arm a second one.
 func (d *Disp) phase2(ctx context.Context, deliver bool) {
 	d.inStop = true
@@ -505,7 +505,7 @@ func (d *Disp) runMD() {
 	}()
 
 	// A message that is not a v1 envelope is dropped here: counted, logged, and not delivered.
-	// The session keeps running (D849). Order of the check is length, version, reserved bytes.
+	// The session keeps running (E08-D049). Order of the check is length, version, reserved bytes.
 	if _, err := envelope.MDTsNs(msg); err != nil {
 		d.mu.Lock()
 		d.preDrop++
@@ -542,8 +542,8 @@ func (d *Disp) runMD() {
 	d.runHook(func() { fn(msg) })
 }
 
-// stale reports whether msg is past the recv window. now is the clock at dequeue (D803).
-// The caller has already rejected an unreadable envelope (D849). ok is false only if that
+// stale reports whether msg is past the recv window. now is the clock at dequeue (E08-D003).
+// The caller has already rejected an unreadable envelope (E08-D049). ok is false only if that
 // check is skipped; such a message is not a prehook drop.
 func stale(msg []byte, now time.Time, window time.Duration) (drop bool, age time.Duration, ok bool) {
 	ts, err := envelope.MDTsNs(msg)
@@ -568,7 +568,7 @@ func (d *Disp) noteMD(age time.Duration) {
 
 // runHook runs fn on this goroutine. A panic becomes CRASHED, or a delivery error when OnStop is
 // already running. The hard limit is armed only before Exiting: past that, c4's OnStop context is
-// the shared budget (D803).
+// the shared budget (E08-D003).
 func (d *Disp) runHook(fn func()) {
 	if fn == nil {
 		return
@@ -680,7 +680,7 @@ func hungExit() error {
 	return &c4.Exit{Outcome: commonv1.Outcome_OUTCOME_HUNG, Reason: ReasonHung}
 }
 
-// delivers reports whether this ending hands the TD buffer to hooks before OnStop (D803).
+// delivers reports whether this ending hands the TD buffer to hooks before OnStop (E08-D003).
 // nil is DONE. A plain error is a panic: CRASHED does not deliver.
 func delivers(err error) bool {
 	if err == nil {
@@ -729,7 +729,7 @@ var (
 	errClosed = errors.New("dispatch: stopping")
 )
 
-// tdq is a fixed ring of TDCap entries (D815).
+// tdq is a fixed ring of TDCap entries (E08-D015).
 type tdq struct {
 	buf  []tdItem
 	head int

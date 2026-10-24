@@ -19,8 +19,8 @@ message InitPayload {
   bytes params = 6;
   repeated mftiko.session.v1.FeedDecl feeds = 7;
   repeated mftiko.session.v1.AccountDecl accounts = 8;
-  NatsCredentials nats = 9; // 這個 session 專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D906）
-  // 以下兩個是 STS agent 解析後的實值（DECISIONS D803）：spec 寫 0 表示用預設，agent 換成它的預設值再填，
+  NatsCredentials nats = 9; // 這個 session 專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS E09-D006）
+  // 以下兩個是 STS agent 解析後的實值（DECISIONS E08-D003）：spec 寫 0 表示用預設，agent 換成它的預設值再填，
   // 所以這裡不會是 0。SDK 不知道預設值；收到 0 是 agent 的錯，以 INIT_FAILED 結束。
   uint32 recv_window_ms = 10; // MD 事件的最長壽命，prehook 用（SessionSpec.recv_window_ms）
   uint32 hook_timeout_s = 11; // 單一 hook 的硬上限，watchdog 用（SessionSpec.limits.hook_timeout_s）
@@ -78,7 +78,7 @@ message Report {
   repeated QueueStat queues = 5;
 }
 
-// name 是 td 或 md（D803）。
+// name 是 td 或 md（E08-D003）。
 message QueueStat {
   string name = 1;
   uint32 depth = 2;
@@ -87,7 +87,7 @@ message QueueStat {
 }
 
 // 綁定的狀態，對應 provider 的 ack（§3.5）。值與 state.v1.EntryState 相同；stsctl 自己定義，策略的契約才不綁在 etcd 的
-// schema 上（DECISIONS D007）。
+// schema 上（DECISIONS E00-D007）。
 enum BindingState {
   BINDING_STATE_UNSPECIFIED = 0; // provider 沒有 ack（沉默）
   BINDING_STATE_PENDING = 1;

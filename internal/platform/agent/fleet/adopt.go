@@ -28,7 +28,7 @@ const (
 )
 
 // ErrUnreachable: a shim of this worker key answers on its socket but could not be attached. Its worker may well
-// be running: no new incarnation until the shim is attached or gone (D106).
+// be running: no new incarnation until the shim is attached or gone (E01-D006).
 var ErrUnreachable = errors.New("fleet: a shim of this worker key answers but could not be attached")
 
 // answers reports whether something listens on the socket: a shim, or one that is exiting.
@@ -41,11 +41,11 @@ func answers(path string) bool {
 	return true
 }
 
-// Adopt takes over the shims a previous term left (D102, PROTOCOL §4.2): every socket and exit file under
+// Adopt takes over the shims a previous term left (E01-D002, PROTOCOL §4.2): every socket and exit file under
 // run/{plane}, before the first reconcile (E1-17).
 //
 //   - A shim that answers is attached at this term's epoch, which preempts the old term if it is somehow still
-//     there; the worker is observed from Attached, which holds everything the agent decides on (D108).
+//     there; the worker is observed from Attached, which holds everything the agent decides on (E01-D008).
 //   - A shim that answers but cannot be attached (it does not reply in time) is held as unreachable: its
 //     WorkerStatus stays (W7.1), no new incarnation is spawned for it, and it is tried again every few seconds.
 //   - An exit file with no shim answering is a worker that ended while no agent was there: it is observed as
@@ -160,7 +160,7 @@ func (f *Fleet[S, L]) adoptConn(h, sock string, conn *c3.Conn) {
 		Stringer("state", w.obs.State).Msg("adopted")
 }
 
-// observedOf is a worker as its shim's Attached has it, the live config it has applied included (D111): nothing
+// observedOf is a worker as its shim's Attached has it, the live config it has applied included (E01-D011): nothing
 // is sent again that it already has.
 func observedOf(at *shimv1.Attached) agent.Observed {
 	o := agent.Observed{

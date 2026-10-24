@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Session history (D1031, D1068–D1073). The audit pool is the one pool (D1048): session queries are
+// Session history (E10-D031, E10-D068–E10-D073). The audit pool is the one pool (E10-D048): session queries are
 // single statements, and readiness still does not look at Postgres.
 const (
 	recPending   = "pending"
@@ -24,16 +24,16 @@ const (
 	desRunning = "running"
 	desEnded   = "ended"
 
-	// endReasonSpec is what the API records when it sets desired_state to ended (D1303, N3).
+	// endReasonSpec is what the API records when it sets desired_state to ended (E13-D003, N3).
 	endReasonSpec = "ended_by_spec"
 
-	// pendingTimeout is how long a pending row waits for its spec before it is abandoned (D1069).
+	// pendingTimeout is how long a pending row waits for its spec before it is abandoned (E10-D069).
 	pendingTimeout = 2 * time.Minute
-	// idempotencyTTL is how long an Idempotency-Key is retained (D1068). The partial unique index
+	// idempotencyTTL is how long an Idempotency-Key is retained (E10-D068). The partial unique index
 	// cannot express "newer than 24 hours", so reconcile nulls the column when the row is older.
 	idempotencyTTL = 24 * time.Hour
 
-	// reconcileEveryDefault is the full compare interval (D1070). Mirror changes also run a pass.
+	// reconcileEveryDefault is the full compare interval (E10-D070). Mirror changes also run a pass.
 	// Config.ReconcileEvery overrides it in tests; it is not a deployment setting.
 	reconcileEveryDefault = 30 * time.Second
 )
@@ -57,7 +57,7 @@ INSERT INTO session_records (
     'pending', 'running', $6, $7, $8
 )`
 
-// sessionRecord is one session_records row (D1073).
+// sessionRecord is one session_records row (E10-D073).
 type sessionRecord struct {
 	ID             string
 	SessionID      string
@@ -144,7 +144,7 @@ func (s *Server) recordByIdempotency(ctx context.Context, key string) (*sessionR
 }
 
 // idempotencyRow returns the live row for key. A key older than 24 hours is cleared and reported
-// as absent, so the next insert may use it (D1068).
+// as absent, so the next insert may use it (E10-D068).
 func (s *Server) idempotencyRow(ctx context.Context, key string) (*sessionRecord, error) {
 	rec, err := s.recordByIdempotency(ctx, key)
 	if err != nil || rec == nil {
@@ -182,7 +182,7 @@ WHERE idempotency_key IS NOT NULL AND created_at <= $1`, cutoff)
 	return storageErr(err)
 }
 
-// insertPending writes the row that must exist before the etcd create (D1031). A session_id that
+// insertPending writes the row that must exist before the etcd create (E10-D031). A session_id that
 // is already open is errConflict so the caller draws another. The same idempotency key is either
 // errIdempotentReplay (same spec) or errIdempotencyConflict (different spec).
 func (s *Server) insertPending(ctx context.Context, sessionID, sts string, spec, sha []byte, actor, key string) (sessionRecord, error) {
@@ -277,7 +277,7 @@ func (s *Server) recordsForSession(ctx context.Context, sessionID string) ([]ses
 	return s.recordsWhere(ctx, `session_id = $1 AND state IN ('pending', 'created', 'abandoned')`, sessionID)
 }
 
-// recordsForSessionAll is every generation of sessionID, closed rows included (D1007, D1084).
+// recordsForSessionAll is every generation of sessionID, closed rows included (E10-D007, E10-D084).
 func (s *Server) recordsForSessionAll(ctx context.Context, sessionID string) ([]sessionRecord, error) {
 	return s.recordsWhere(ctx, `session_id = $1`, sessionID)
 }
@@ -310,7 +310,7 @@ func (s *Server) recordByID(ctx context.Context, id string) (*sessionRecord, err
 
 // recordPage is the /session-records query. keep drops rows the SQL cannot
 // express (the strategy id); the cursor is the last row the caller returns,
-// so skipped rows do not end the page early (D1097).
+// so skipped rows do not end the page early (E10-D097).
 type recordPage struct {
 	limit                int
 	sessionID, createdBy *string
@@ -441,8 +441,8 @@ WHERE id = $1::uuid AND state = 'pending' AND create_revision IS NULL`, id)
 }
 
 // markCreated stores the spec's create_revision and, when the bytes changed only because
-// desired_state did, the etcd bytes (D1031, D1071). A unique violation is returned as-is so the
-// caller can leave the row and not open another one (D1069).
+// desired_state did, the etcd bytes (E10-D031, E10-D071). A unique violation is returned as-is so the
+// caller can leave the row and not open another one (E10-D069).
 func (s *Server) markCreated(ctx context.Context, row *sessionRecord, createRev int64, spec []byte) error {
 	pool, err := s.db()
 	if err != nil {
@@ -501,7 +501,7 @@ WHERE id = $1::uuid
 	return nil
 }
 
-// syncDesired updates desired_state and the terminal columns without replacing spec bytes (D1071).
+// syncDesired updates desired_state and the terminal columns without replacing spec bytes (E10-D071).
 func (s *Server) syncDesired(ctx context.Context, row sessionRecord, desired, reason string, ended *time.Time) error {
 	pool, err := s.db()
 	if err != nil {
@@ -518,7 +518,7 @@ WHERE id = $1::uuid
 	return storageErr(err)
 }
 
-// closeRecord writes the last status and closes the row (D1031, D1082). Spec bytes stay as they
+// closeRecord writes the last status and closes the row (E10-D031, E10-D082). Spec bytes stay as they
 // are. A row that is already closed is updated in place when a later status carries state_out.
 // createRev is the spec's create_revision, or nil when the spec is already gone.
 func (s *Server) closeRecord(ctx context.Context, row *sessionRecord, reason, digest string, ended time.Time, createRev *int64) error {

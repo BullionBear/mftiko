@@ -31,7 +31,7 @@ func canonicalDecimal(s string) (string, error) {
 	return formatDecimal(r), nil
 }
 
-// numberText is a listing number (a float64, D008) as the column's text: its shortest decimal form,
+// numberText is a listing number (a float64, E00-D008) as the column's text: its shortest decimal form,
 // canonical as canonicalDecimal has it, so that "0.1" from the venue, 0.1 here and NUMERIC 0.1 in
 // Postgres are one value. NaN (decimal.Absent) is "", stored as NULL; so is 0 when zeroAbsent is set,
 // as a contract size or strike of 0 is none.

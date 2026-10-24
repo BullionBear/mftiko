@@ -18,7 +18,7 @@ import (
 )
 
 // inputTempPrefix is the artifact package's unfinished-unpack prefix. A crash
-// leaves these under sessions/<id>/inputs; startup removes them (D955, D975).
+// leaves these under sessions/<id>/inputs; startup removes them (E09-D055, E09-D075).
 const inputTempPrefix = ".tmp-"
 
 // volTarget is one non-terminal session and the volume size that ends it.
@@ -27,7 +27,7 @@ type volTarget struct {
 	limit int64
 }
 
-// volumer measures session volumes on a ticker (D976). A session that has gone
+// volumer measures session volumes on a ticker (E09-D076). A session that has gone
 // over stays over for the life of this process.
 type volumer struct {
 	dataDir  string
@@ -104,7 +104,7 @@ func (v *volumer) measure() {
 	v.mu.Unlock()
 }
 
-// volumeLimit is spec volume_mb in bytes. 0 uses the deployment default (D918, D976).
+// volumeLimit is spec volume_mb in bytes. 0 uses the deployment default (E09-D018, E09-D076).
 func volumeLimit(spec *sessionv1.SessionSpec, defaultMB int) int64 {
 	mb := spec.GetLimits().GetVolumeMb()
 	if mb == 0 {
@@ -133,7 +133,7 @@ type inodeKey struct {
 }
 
 // diskBytes is the space root occupies, the same total du reports: st_blocks
-// of 512-byte units, each inode once, without following symlinks (D976).
+// of 512-byte units, each inode once, without following symlinks (E09-D076).
 func diskBytes(root string) (int64, error) {
 	var total int64
 	seen := map[inodeKey]struct{}{}

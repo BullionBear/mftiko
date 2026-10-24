@@ -24,8 +24,8 @@ const (
 var ErrClosed = errors.New("natsx: connection closed")
 
 // Options configures one connection. The zero value is an unauthenticated connection, which is
-// what natsxtest accepts. MD and md.fetch set CredsFile (D415). A session does not: its JWT
-// arrives in Init (D906).
+// what natsxtest accepts. MD and md.fetch set CredsFile (E04-D015). A session does not: its JWT
+// arrives in Init (E09-D006).
 type Options struct {
 	// Name is the connection name the server shows in monitoring. Empty leaves it unset.
 	Name string
@@ -42,18 +42,18 @@ type Options struct {
 	ConnectTimeout time.Duration
 
 	// InboxPrefix is the reply inbox prefix, passed to nats.CustomInboxPrefix.
-	// Empty keeps the client default _INBOX. Sessions set _INBOX_{session_id} (D906).
-	// Platform processes set _INBOX_{plane} (D416): _INBOX_md and _INBOX_fetch.
+	// Empty keeps the client default _INBOX. Sessions set _INBOX_{session_id} (E09-D006).
+	// Platform processes set _INBOX_{plane} (E04-D016): _INBOX_md and _INBOX_fetch.
 	InboxPrefix string
 
 	// CredsFile is a NATS user credentials file, a user JWT and its seed.
 	// Empty connects without one. An MD or md.fetch process sets it from
-	// MFTIKO_NATS_CREDS (D415). A session worker leaves it empty: its
-	// credentials arrive in Init and never touch this field (D906).
+	// MFTIKO_NATS_CREDS (E04-D015). A session worker leaves it empty: its
+	// credentials arrive in Init and never touch this field (E09-D006).
 	CredsFile string
 
 	// UserJWT and Seed are a user's credentials held in memory: a session or account worker's, which
-	// arrive in Init and are never written to a file (D906, D611). Set both or neither, and not with
+	// arrive in Init and are never written to a file (E09-D006, E06-D011). Set both or neither, and not with
 	// CredsFile.
 	UserJWT string
 	Seed    string

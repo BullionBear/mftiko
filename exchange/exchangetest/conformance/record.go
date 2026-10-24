@@ -393,7 +393,7 @@ func RecordPrivate(ctx context.Context, p PrivateRecording) error {
 	return w.Err()
 }
 
-// TradeRecording is one trade session to record (D303), with real (testnet) credentials, redacted
+// TradeRecording is one trade session to record (E03-D003), with real (testnet) credentials, redacted
 // from the fixture. Orders are sent once the first frame arrives (the logon's answer), under ids
 // 1, 2, ... in order; a TradeSample may be a Cancel of an order sent earlier in the session.
 type TradeRecording struct {

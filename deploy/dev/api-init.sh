@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Writes what the dev stack's mftiko-api reads into deploy/dev/data/api (gitignored), for `make dev-up`:
 #
-#   deployment.json   one region "dev" (the compose etcd) with controller, md1, td1 and sts1 (D1312)
-#   api.json          user "dev", the registry from compose, td1's public key, listen :8080 (D1023)
-#   token             the dev user's token (D1009); sign in to the console with it
+#   deployment.json   one region "dev" (the compose etcd) with controller, md1, td1 and sts1 (E13-D012)
+#   api.json          user "dev", the registry from compose, td1's public key, listen :8080 (E10-D023)
+#   token             the dev user's token (E10-D009); sign in to the console with it
 #   cookie-key        the console cookie's HMAC key, passed as $MFTIKO_COOKIE_KEY
 #   td1-seal.key      td1's private key (mftiko-seal); accounts created in dev are sealed to it
 #

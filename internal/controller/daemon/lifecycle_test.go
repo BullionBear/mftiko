@@ -31,7 +31,7 @@ func present(t *testing.T, ctx context.Context, srv *etcdtest.Server, key string
 // A terminal session keeps every demand until its worker key is gone. Demands
 // in a fresh region go first; a stale provider region holds its demands and
 // the assignment. Restoring it removes the rest, and the assignment last.
-// Spec, status and ack stay (D1333, D1335, D1309).
+// Spec, status and ack stay (E13-D033, E13-D035, E13-D009).
 func TestLifecycleOrder(t *testing.T) {
 	ctx := t.Context()
 	servers := etcdtest.StartRegions(t, "tw", "jp")
@@ -275,7 +275,7 @@ func twoSTS(servers map[string]*etcdtest.Server) (state.Topology, map[string]sta
 
 // While an STS region has not synced, demands of a session that lives there
 // are kept, including demands in a region that is fresh. So is an orphan: it
-// might belong to a session on the region we cannot see (D1334, D1306).
+// might belong to a session on the region we cannot see (E13-D034, E13-D006).
 func TestStaleSTSKeepsDemands(t *testing.T) {
 	ctx := t.Context()
 	servers := etcdtest.StartRegions(t, "tw", "jp")

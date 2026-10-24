@@ -1,8 +1,8 @@
 // Command mftiko-sym is the symbol service. It answers the sym subject and refreshes
-// the listings of the (venue, category) feeds it is configured with (DECISIONS D201, D006).
+// the listings of the (venue, category) feeds it is configured with (DECISIONS E02-D001, E00-D006).
 //
 // Sources are registered in this process, not by init. exchange/all names each exchange.
-// Listing reads go through exchange/transport/fasthttp (D302). The proxy and the TLS roots
+// Listing reads go through exchange/transport/fasthttp (E03-D002). The proxy and the TLS roots
 // are this process's flags; adapters never see them.
 package main
 
@@ -70,7 +70,7 @@ func run(database, natsURL, creds, feeds, proxy, roots string, timeout time.Dura
 	if natsURL == "" {
 		return errors.New("nats URL is empty")
 	}
-	// D006: the command names the exchanges. There is no init() registration.
+	// E00-D006: the command names the exchanges. There is no init() registration.
 	doer, err := venueDoer(proxy, roots, timeout)
 	if err != nil {
 		return err
@@ -106,7 +106,7 @@ func run(database, natsURL, creds, feeds, proxy, roots string, timeout time.Dura
 	return nil
 }
 
-// venueDoer is the REST transport SYM runs Listing over (D302). An empty roots
+// venueDoer is the REST transport SYM runs Listing over (E03-D002). An empty roots
 // path keeps the system certificate pool. A set path replaces it.
 func venueDoer(proxy, roots string, timeout time.Duration) (exchange.Doer, error) {
 	cfg := transport.Config{Proxy: proxy}

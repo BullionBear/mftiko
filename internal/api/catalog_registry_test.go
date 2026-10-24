@@ -26,7 +26,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/artifact"
 )
 
-// D1061: the catalog is checked against registry:2, the image CI already runs.
+// E10-D061: the catalog is checked against registry:2, the image CI already runs.
 // A registry given by MFTIKO_REGISTRY is used as-is. Otherwise an already
 // listening 127.0.0.1:5000 (the CI service) is used, and otherwise a container
 // is started when docker is available. MFTIKO_REQUIRE_REGISTRY turns a missing

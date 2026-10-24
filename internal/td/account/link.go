@@ -21,7 +21,7 @@ const (
 
 // linkEvent is a connection coming up or going down. err is set when the link gave up: the venue
 // refused the credentials. orders is set when this link carries order requests. swap is a planned
-// replacement that finished with the new connection up (D635).
+// replacement that finished with the new connection up (E06-D035).
 type linkEvent struct {
 	role   role
 	orders bool
@@ -232,7 +232,7 @@ func (l *link) connect(ctx context.Context) (*conn, error) {
 // serve keeps c until it ends, and returns why. It refreshes the stream's credentials, closes the
 // connection when the venue says they expired, and replaces it with a new one ahead of its
 // MaxLifetime: the new connection is up before the old one closes, so the role never goes down.
-// An events connection then asks for one recon, and does not report DEGRADED (D635, D636).
+// An events connection then asks for one recon, and does not report DEGRADED (E06-D035, E06-D036).
 func (l *link) serve(ctx context.Context, c *conn) error {
 	w := l.w
 	var refresh *time.Ticker
@@ -344,7 +344,7 @@ func (l *link) serve(ctx context.Context, c *conn) error {
 				armExpire()
 				w.log.Info().Str("conn", l.name).Msg("replaced ahead of its lifetime")
 				// The dial above does not watch the old connection. Whatever it did in that window,
-				// an events swap runs one recon; an orders swap changes nothing (D635, D636).
+				// an events swap runs one recon; an orders swap changes nothing (E06-D035, E06-D036).
 				if l.role == roleEvents {
 					w.post(ctx, linkEvent{role: l.role, swap: true})
 				}
@@ -380,7 +380,7 @@ func (s *sink) Expired(reason string) {
 	}
 }
 
-// The events go to the book, which copies them: they are lent (D302).
+// The events go to the book, which copies them: they are lent (E03-D002).
 func (s *sink) Order(e *exchange.OrderUpdate)   { s.w.book.order(s.ctx, e) }
 func (s *sink) Fill(e *exchange.Fill)           { s.w.book.fill(s.ctx, e) }
 func (s *sink) Balances(e []exchange.Balance)   { s.w.book.balanceEvent(s.ctx, e) }
@@ -429,7 +429,7 @@ func (l *link) attach(c *conn) {
 }
 
 // finishConn gives up on whatever serve left current: unanswered writes are an unknown outcome,
-// and anything still queued was not written (D624).
+// and anything still queued was not written (E06-D024).
 func (l *link) finishConn(*conn) {
 	if l.cur == nil {
 		return
@@ -552,7 +552,7 @@ type fmeta struct {
 }
 
 // safeFlight is exchange.Inflight plus the requests given up at their deadline. A late frame still
-// matches those (D303); a dropped connection forgets them.
+// matches those (E03-D003); a dropped connection forgets them.
 type safeFlight struct {
 	mu   sync.Mutex
 	in   exchange.Inflight[fmeta]
@@ -616,7 +616,7 @@ func (f *safeFlight) next() time.Time {
 }
 
 // tryWS writes the order on the trade stream. errNotSent means it was not written and REST may
-// send it (D624). Any other error means it may have been written.
+// send it (E06-D024). Any other error means it may have been written.
 func (w *Worker) tryWS(ctx context.Context, job *sendJob, now, deadline time.Time) error {
 	if job.cancel {
 		var degraded bool

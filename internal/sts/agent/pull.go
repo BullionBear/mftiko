@@ -18,10 +18,10 @@ import (
 	"github.com/BullionBear/mftiko/sdk"
 )
 
-// pullSlots is how many image and input pulls and unpacks run at once (D958, D974).
+// pullSlots is how many image and input pulls and unpacks run at once (E09-D058, E09-D074).
 const pullSlots = 4
 
-// pullBackoff is the wait after a temporary registry or unpack error (D958, D803).
+// pullBackoff is the wait after a temporary registry or unpack error (E09-D058, E08-D003).
 var pullBackoff = agent.Backoff{Min: time.Second, Max: 60 * time.Second}
 
 // pullSnap is what commit knows about one digest.
@@ -32,7 +32,7 @@ type pullSnap struct {
 	perm     string
 }
 
-// puller fetches and unpacks strategy images and session inputs outside reconcile (D958, D974).
+// puller fetches and unpacks strategy images and session inputs outside reconcile (E09-D058, E09-D074).
 // One image digest has one job. One session input has one job, keyed separately so retaining
 // image digests does not cancel an input pull.
 type puller struct {
@@ -49,7 +49,7 @@ type puller struct {
 	inputs map[string]*inputJob
 
 	// afterHold, when set, runs after a strategy Pull's layers are held and before
-	// UnpackImage. Tests GC in that window (D973). Production leaves it nil.
+	// UnpackImage. Tests GC in that window (E09-D073). Production leaves it nil.
 	afterHold func(*artifact.Fetched)
 }
 
@@ -103,7 +103,7 @@ func (p *puller) ensure(req artifact.Request) pullSnap {
 }
 
 // retain cancels pulls no planned session still wants. A job stays until its goroutine
-// finishes, so GC can keep the digest for that long (D959).
+// finishes, so GC can keep the digest for that long (E09-D059).
 func (p *puller) retain(want map[string]struct{}) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -152,7 +152,7 @@ func (p *puller) run(req artifact.Request, ctx context.Context) {
 		return
 	}
 	// Hold the layers Pull just wrote. Until UnpackImage records them, GC has no
-	// rootfs reference and would delete them (D973). The download itself is not held.
+	// rootfs reference and would delete them (E09-D073). The download itself is not held.
 	release, err := p.client.HoldLayers(layerDigests(fetched.Layers))
 	if err != nil {
 		p.finish(dig, "", artifact.Manifest{}, err)
@@ -211,7 +211,7 @@ func digestOK(s string) bool {
 }
 
 // keepDigests is what GC retains: every non-terminal session's strategy digest, plus
-// digests still being pulled or unpacked (D959, D956). A value that is not a sha256
+// digests still being pulled or unpacked (E09-D059, E09-D056). A value that is not a sha256
 // digest is left out; GC would otherwise delete nothing.
 func keepDigests(sessions map[string]*sess, inflight []string) []string {
 	set := map[string]struct{}{}
@@ -242,7 +242,7 @@ func ensureSessionDirs(dataDir, id string) error {
 	if err := os.MkdirAll(volume, 0o700); err != nil {
 		return err
 	}
-	// MkdirAll leaves an existing directory's mode alone. The volume is 0700 (D977).
+	// MkdirAll leaves an existing directory's mode alone. The volume is 0700 (E09-D077).
 	if err := os.Chmod(volume, 0o700); err != nil {
 		return err
 	}

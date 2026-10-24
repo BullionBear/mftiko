@@ -11,7 +11,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
-// agentMemory is the last AgentRecord this process saw for each agent key (D1096).
+// agentMemory is the last AgentRecord this process saw for each agent key (E10-D096).
 // Entries are never removed: after the election key disappears the response still
 // carries that copy and marks it last known. A process that never saw the key
 // reports the agent absent.
@@ -98,7 +98,7 @@ func (s *Server) agentOf(view state.View, available bool, plane state.Plane, ins
 
 // agentMissing reports that the provider's region is available and its agent
 // key is not. An unknown instance or an unavailable region is not "missing":
-// the caller keeps the ack it has (D1036).
+// the caller keeps the ack it has (E10-D036).
 func (s *Server) agentMissing(views map[string]state.View, plane state.Plane, inst string) bool {
 	region, err := s.cfg.Topology.RegionOf(inst)
 	if err != nil {

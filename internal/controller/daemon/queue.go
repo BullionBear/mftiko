@@ -13,23 +13,23 @@ import (
 
 // ErrUnsynced is a write to a region whose instance mirrors have not finished
 // their first list. The write is not attempted, and the region is not fenced
-// (D1318, D1302).
+// (E13-D018, E13-D002).
 var ErrUnsynced = errors.New("controller: region is not synced")
 
-// queues is the per-region write path (D1306, D1313). A write runs on its
+// queues is the per-region write path (E13-D006, E13-D013). A write runs on its
 // region's goroutine, one at a time, in the order accepted. A region that is
 // stuck or unreachable holds none of the others. The first write to a region
-// fences it, inside Term.Put; regions with no write are not fenced (D1305).
-// A region that has not synced is not written at all (D1318).
+// fences it, inside Term.Put; regions with no write are not fenced (E13-D005).
+// A region that has not synced is not written at all (E13-D018).
 //
 // submit waits for the write's result. post does not: the reconcile loop
 // posts what a round derived and goes on, so a region whose write hangs holds
-// neither the loop nor the other regions (D1337). A posted key that is still
+// neither the loop nor the other regions (E13-D037). A posted key that is still
 // queued is replaced by the newer value in place, and one equal to the write
 // in flight is dropped, so a stuck region queues at most one write per key.
 // One equal to what this term last wrote is dropped too until the view has
 // read the region up to that write's revision: before then the round is
-// deciding from a view that does not show it yet (D1308, D1337).
+// deciding from a view that does not show it yet (E13-D008, E13-D037).
 type queues struct {
 	term   *state.Term
 	topo   state.Topology
@@ -129,7 +129,7 @@ func (q *queues) submit(ctx context.Context, key, val string, del bool) error {
 // post queues a write on its region and returns without waiting for it. The
 // write's error is logged by the region's goroutine, not returned. Rounds
 // derive again from the view, so a failed write is posted again by a later
-// round that still wants it (D1337).
+// round that still wants it (E13-D037).
 //
 // seen is the revision the round's view has read the region up to.
 func (q *queues) post(ctx context.Context, key, val string, del bool, seen int64) {

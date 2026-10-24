@@ -6,7 +6,7 @@ import (
 	"unicode"
 )
 
-// assetAliases is the one native-to-canonical asset table (D203).
+// assetAliases is the one native-to-canonical asset table (E02-D003).
 // Keys are uppercase native codes. USD, USDC and USDT are absent on purpose:
 // they are three assets. Venue integrations add entries here. Targets are
 // themselves canonical and are not keys.
@@ -15,7 +15,7 @@ var assetAliases = map[string]string{
 }
 
 // AssetAliases returns a copy of the alias table. Adapters share this table
-// instead of keeping one each; SYM is what applies it (D203).
+// instead of keeping one each; SYM is what applies it (E02-D003).
 func AssetAliases() map[string]string {
 	out := make(map[string]string, len(assetAliases))
 	for k, v := range assetAliases {

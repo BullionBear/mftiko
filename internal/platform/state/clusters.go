@@ -55,7 +55,7 @@ func AuthDial(user, password string) DialFunc {
 	}
 }
 
-// AgentRegions is the set of regions a process of (p, inst) may connect to (D005 rule 2): an agent only its own;
+// AgentRegions is the set of regions a process of (p, inst) may connect to (E00-D005 rule 2): an agent only its own;
 // the controller every region in the topology (nil).
 func AgentRegions(t Topology, p Plane, inst string) ([]string, error) {
 	if !p.valid() {
@@ -72,7 +72,7 @@ func AgentRegions(t Topology, p Plane, inst string) ([]string, error) {
 }
 
 // Reader is the read side of one cluster. There is deliberately no exported way to get a raw client or KV:
-// writes go through Term (E1-05), or for the API server through APIWriter (D1042), so none can skip the writer
+// writes go through Term (E1-05), or for the API server through APIWriter (E10-D042), so none can skip the writer
 // condition or the scope.
 type Reader interface {
 	Get(ctx context.Context, key string, opts ...clientv3.OpOption) (*clientv3.GetResponse, error)
@@ -88,8 +88,8 @@ type Reader interface {
 	RequestProgress(ctx context.Context) error
 }
 
-// Clusters holds one client per regional cluster, dialled lazily on first use (PROTOCOL §3, D005). With a single
-// region it is a single cluster and nothing else changes (D005 rule 7). Safe for concurrent use.
+// Clusters holds one client per regional cluster, dialled lazily on first use (PROTOCOL §3, E00-D005). With a single
+// region it is a single cluster and nothing else changes (E00-D005 rule 7). Safe for concurrent use.
 type Clusters struct {
 	topo    Topology
 	allowed map[string]bool

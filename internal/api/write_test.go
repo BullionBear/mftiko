@@ -519,7 +519,7 @@ func TestConditionalWrites(t *testing.T) {
 		t.Fatalf("CAS on a deleted key: %v", err)
 	}
 
-	// etcd lets the api user put a status (D1040); the scope does not.
+	// etcd lets the api user put a status (E10-D040); the scope does not.
 	_, err = create(ctx, w, status, []byte("forged"))
 	if !errors.Is(err, state.ErrNotWriter) {
 		t.Fatalf("status put: %v", err)

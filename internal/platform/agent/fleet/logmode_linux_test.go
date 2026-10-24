@@ -21,7 +21,7 @@ const envFleetLogMode = "MFTIKO_TEST_FLEET_LOGMODE"
 
 // startShim leaves an existing shim log alone and creates a new one at 0640
 // under a umask that would otherwise clear the group bit. The plane log
-// directory becomes 0750 and keeps setgid (D1021, D1022).
+// directory becomes 0750 and keeps setgid (E10-D021, E10-D022).
 func TestStartShimLogMode(t *testing.T) {
 	if os.Getenv(envFleetLogMode) == "1" {
 		runStartShimLogModeChild()

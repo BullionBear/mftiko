@@ -1,33 +1,33 @@
 // Command mftiko-api is the API server. It writes declarations (sessions, accounts) to etcd and serves the web
-// console; it never calls an agent directly and never queries SYM (DECISIONS D1001, D004, D202). Several replicas
-// may run side by side; none of them takes part in an election (D1006).
+// console; it never calls an agent directly and never queries SYM (DECISIONS E10-D001, E00-D004, E02-D002). Several replicas
+// may run side by side; none of them takes part in an election (E10-D006).
 //
-// Settings come in three kinds (D1023). -in is the deployment JSON that mftiko-etcd-roles reads (D1012, D1312);
+// Settings come in three kinds (E10-D023). -in is the deployment JSON that mftiko-etcd-roles reads (E10-D012, E13-D012);
 // "-" reads stdin. -config is the API JSON, a file, or "-" when -in is not stdin:
 //
-//	users[].name, users[].token_sha256   one static token per user, stored as SHA-256 (D1009, D1055)
-//	repositories                          strategy repositories, path without the registry host (D1013, D1060)
-//	registry, registry_creds, plain_http  registry host[:port], Docker config.json, http for dev (D933, D1060)
-//	td_keys                               TD instance name → public key, the mftiko-seal pubkey form (D1011)
-//	retention                             W5 retention, Go duration, default 168h (D1017)
-//	unavailable_after                     region unavailable threshold, Go duration, default 15s (D1014)
-//	listen                                listen address, default :8080 (D1029)
-//	shutdown_timeout                      drain limit after SIGTERM, Go duration, default 10s (D1027)
+//	users[].name, users[].token_sha256   one static token per user, stored as SHA-256 (E10-D009, E10-D055)
+//	repositories                          strategy repositories, path without the registry host (E10-D013, E10-D060)
+//	registry, registry_creds, plain_http  registry host[:port], Docker config.json, http for dev (E09-D033, E10-D060)
+//	td_keys                               TD instance name → public key, the mftiko-seal pubkey form (E10-D011)
+//	retention                             W5 retention, Go duration, default 168h (E10-D017)
+//	unavailable_after                     region unavailable threshold, Go duration, default 15s (E10-D014)
+//	listen                                listen address, default :8080 (E10-D029)
+//	shutdown_timeout                      drain limit after SIGTERM, Go duration, default 10s (E10-D027)
 //
 // Account kinds are not in the JSON. Run copies them from the exchange registry into the API
-// (D1034). The API package does not import exchange.
+// (E10-D034). The API package does not import exchange.
 //
 // A zero or omitted duration takes the default. Secrets are environment variables, and the matching flag
 // overrides, as for the controller: the etcd user "api" password ($MFTIKO_ETCD_PASSWORD, -etcd-password), the
 // cookie HMAC key ($MFTIKO_COOKIE_KEY, -cookie-key) and the Postgres DSN ($MFTIKO_POSTGRES_DSN, -postgres-dsn).
 //
-// Load validates all of that and does not dial Postgres or a registry (D1024, D1060). Run opens a Postgres pool
+// Load validates all of that and does not dial Postgres or a registry (E10-D024, E10-D060). Run opens a Postgres pool
 // and does not wait for the connection; readiness watches etcd only, and Postgres being down only affects audit
-// (D1048, modifies D1024). A strategy catalog request dials the registry. Every replica's reconcile deletes
-// terminal sessions past retention (W5, D1017, D1083). One Mirror per cluster watches the whole /mftiko/v1/
-// keyspace (D1025). Authentication is one static token per user,
-// sent as a bearer token or exchanged for the console cookie (D1009). A token should be at least 32 random bytes;
-// the config stores only its SHA-256, so the API cannot check the length (D1055):
+// (E10-D048, modifies E10-D024). A strategy catalog request dials the registry. Every replica's reconcile deletes
+// terminal sessions past retention (W5, E10-D017, E10-D083). One Mirror per cluster watches the whole /mftiko/v1/
+// keyspace (E10-D025). Authentication is one static token per user,
+// sent as a bearer token or exchanged for the console cookie (E10-D009). A token should be at least 32 random bytes;
+// the config stores only its SHA-256, so the API cannot check the length (E10-D055):
 //
 //	token=$(openssl rand -base64 32 | tr -d '\n'); printf '%s' "$token" | sha256sum
 //
@@ -35,14 +35,14 @@
 //
 // /healthz is 200 while the process is up. /readyz is 200 when any region is available; the body lists every
 // region and unavailable_regions. It is 503 only when every region is unavailable, and during shutdown
-// (D1026, D1027). SIGTERM and SIGINT mark readiness 503, stop accepting, wait for in-flight requests up to
+// (E10-D026, E10-D027). SIGTERM and SIGINT mark readiness 503, stop accepting, wait for in-flight requests up to
 // shutdown_timeout, and exit 0.
 //
 // -web is the console build directory (web/build), read from disk on each request, not embedded. The directory
-// itself is opened once at startup: replacing it (make web) needs a restart (D1114). A path that is
+// itself is opened once at startup: replacing it (make web) needs a restart (E10-D114). A path that is
 // not under /api/ and does not name a file returns index.html. Without -web the process serves only the API
-// (D1028). -tls-cert and -tls-key together serve HTTPS with HTTP/2; without them the listener is plaintext HTTP
-// for development (D1029).
+// (E10-D028). -tls-cert and -tls-key together serve HTTPS with HTTP/2; without them the listener is plaintext HTTP
+// for development (E10-D029).
 package main
 
 import (
@@ -140,13 +140,13 @@ func run(ctx context.Context, opt options, stdin io.Reader, log zerolog.Logger) 
 		return err
 	}
 	// Kinds are not configuration. The registry is the list GET /account-kinds serves, and the
-	// check create and update apply (D1034). internal/api does not import exchange.
+	// check create and update apply (E10-D034). internal/api does not import exchange.
 	cfg.Kinds = accountKinds(all.Registry())
 	return api.Run(ctx, cfg)
 }
 
 // accountKinds copies the registry's account kinds into the API's view of them. Supported is derived
-// from how many venues the kind trades (D614).
+// from how many venues the kind trades (E06-D014).
 func accountKinds(r *exchange.Registry) []api.Kind {
 	names := r.AccountKinds()
 	out := make([]api.Kind, 0, len(names))

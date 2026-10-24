@@ -8,7 +8,7 @@ import (
 )
 
 // Connect is how an agent joins the control plane: clients for the clusters it may use, which is its own region's
-// only (D005, state.AgentRegions), and the term it wins there (E1-05). On error nothing is held. The caller closes
+// only (E00-D005, state.AgentRegions), and the term it wins there (E1-05). On error nothing is held. The caller closes
 // the term, then the clusters.
 func Connect(ctx context.Context, topo state.Topology, p state.Plane, inst string, dial state.DialFunc,
 	opt state.TermOptions) (*state.Clusters, *state.Term, error) {

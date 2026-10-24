@@ -16,7 +16,7 @@ import (
 	"oras.land/oras-go/v2/registry/remote"
 )
 
-// layerFlight is one in-progress download of a layer. Waiters share its result (D930).
+// layerFlight is one in-progress download of a layer. Waiters share its result (E09-D030).
 type layerFlight struct {
 	done chan struct{}
 	path string
@@ -39,11 +39,11 @@ var (
 // layersDir is ${DATA}/layers.
 func layersDir(dataDir string) string { return filepath.Join(dataDir, "layers") }
 
-// tempPrefix is the name prefix of a download or unpack that is not finished (D930, D955). GC leaves
-// these alone (D956). A verified layer or a finished artifact directory never has this prefix.
+// tempPrefix is the name prefix of a download or unpack that is not finished (E09-D030, E09-D055). GC leaves
+// these alone (E09-D056). A verified layer or a finished artifact directory never has this prefix.
 const tempPrefix = ".tmp-"
 
-// cleanTemps removes leftover temporary files and directories from a previous process (D930, D955).
+// cleanTemps removes leftover temporary files and directories from a previous process (E09-D030, E09-D055).
 // A name that is a verified digest, or a finished artifact directory, is left alone.
 func cleanTemps(dir string) error {
 	entries, err := os.ReadDir(dir)
@@ -64,7 +64,7 @@ func cleanTemps(dir string) error {
 }
 
 // cached reports a layer reused from disk. The file name exists only after verification, so the check is
-// the size (D931): the bytes are not hashed again.
+// the size (E09-D031): the bytes are not hashed again.
 func cached(dir string, desc ocispec.Descriptor) (string, bool) {
 	p := filepath.Join(dir, desc.Digest.String())
 	st, err := os.Stat(p)
@@ -74,10 +74,10 @@ func cached(dir string, desc ocispec.Descriptor) (string, bool) {
 	return p, true
 }
 
-// ensureLayer returns the cache path of desc, downloading it once per process when it is missing (D930).
+// ensureLayer returns the cache path of desc, downloading it once per process when it is missing (E09-D030).
 // The download runs under the leader's context. A waiter whose own context is still alive does not keep
 // the leader's cancellation or deadline: it takes the flight again and may download the layer itself.
-// Every other error is the waiter's result too (D928).
+// Every other error is the waiter's result too (E09-D028).
 func ensureLayer(ctx context.Context, repo *remote.Repository, dir string, desc ocispec.Descriptor) (string, error) {
 	key := dir + "\x00" + desc.Digest.String()
 	for {
@@ -127,7 +127,7 @@ func ensureLayer(ctx context.Context, repo *remote.Repository, dir string, desc 
 }
 
 // downloadLayer writes the blob to a temporary file, hashing as it reads, and renames it to the digest only
-// when the hash and the size both match (D930, D932). A failure deletes the temporary file.
+// when the hash and the size both match (E09-D030, E09-D032). A failure deletes the temporary file.
 func downloadLayer(ctx context.Context, repo *remote.Repository, dir string, desc ocispec.Descriptor) (string, error) {
 	rc, err := repo.Blobs().Fetch(ctx, desc)
 	if err != nil {
@@ -182,7 +182,7 @@ func downloadLayer(ctx context.Context, repo *remote.Repository, dir string, des
 }
 
 // hashReader copies r to w up to one byte past limit, hashing with sha256. n > limit means the caller must
-// stop: the blob is bigger than it was declared (D932).
+// stop: the blob is bigger than it was declared (E09-D032).
 func hashReader(w io.Writer, r io.Reader, limit int64) (digest.Digest, int64, error) {
 	h := sha256.New()
 	n, err := io.Copy(io.MultiWriter(w, h), io.LimitReader(r, limit+1))

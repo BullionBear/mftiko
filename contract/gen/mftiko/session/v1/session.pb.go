@@ -131,15 +131,15 @@ type SessionSpec struct {
 	Feeds         []*FeedDecl            `protobuf:"bytes,6,rep,name=feeds,proto3" json:"feeds,omitempty"`
 	Selectors     []*SelectorDecl        `protobuf:"bytes,7,rep,name=selectors,proto3" json:"selectors,omitempty"`
 	Accounts      []*AccountDecl         `protobuf:"bytes,8,rep,name=accounts,proto3" json:"accounts,omitempty"`
-	Restart       *RestartPolicy         `protobuf:"bytes,9,opt,name=restart,proto3" json:"restart,omitempty"`                                   // 語意見 DECISIONS D803
-	DepsTimeoutS  uint32                 `protobuf:"varint,10,opt,name=deps_timeout_s,json=depsTimeoutS,proto3" json:"deps_timeout_s,omitempty"` // 從 SessionDemand.issued_at_ns 起算。0 = 60 秒（D1302）
+	Restart       *RestartPolicy         `protobuf:"bytes,9,opt,name=restart,proto3" json:"restart,omitempty"`                                   // 語意見 DECISIONS E08-D003
+	DepsTimeoutS  uint32                 `protobuf:"varint,10,opt,name=deps_timeout_s,json=depsTimeoutS,proto3" json:"deps_timeout_s,omitempty"` // 從 SessionDemand.issued_at_ns 起算。0 = 60 秒（E13-D002）
 	StartTimeoutS uint32                 `protobuf:"varint,11,opt,name=start_timeout_s,json=startTimeoutS,proto3" json:"start_timeout_s,omitempty"`
 	Limits        *Limits                `protobuf:"bytes,12,opt,name=limits,proto3" json:"limits,omitempty"`
-	Inputs        []*InputDecl           `protobuf:"bytes,13,rep,name=inputs,proto3" json:"inputs,omitempty"` // 資料 artifact（DECISIONS D904）
-	// MD 事件在 buffer 裡的最長壽命，以 envelope 的 md_ts_ns 計（D803）。0 = STS 的預設值。
+	Inputs        []*InputDecl           `protobuf:"bytes,13,rep,name=inputs,proto3" json:"inputs,omitempty"` // 資料 artifact（DECISIONS E09-D004）
+	// MD 事件在 buffer 裡的最長壽命，以 envelope 的 md_ts_ns 計（E08-D003）。0 = STS 的預設值。
 	// 跨 region 的 session 要比 WAN 延遲大。
 	RecvWindowMs uint32 `protobuf:"varint,14,opt,name=recv_window_ms,json=recvWindowMs,proto3" json:"recv_window_ms,omitempty"`
-	// Stop 的 grace（D918、D962）。0 = STS 部署設定的預設，10 秒。
+	// Stop 的 grace（E09-D018、E09-D062）。0 = STS 部署設定的預設，10 秒。
 	GraceMs       uint32 `protobuf:"varint,16,opt,name=grace_ms,json=graceMs,proto3" json:"grace_ms,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -401,7 +401,7 @@ func (x *StrategyRef) GetRepository() string {
 	return ""
 }
 
-// 人寫的規格。feed key 裡是 UniversalTicker，不是 UID（D203）。
+// 人寫的規格。feed key 裡是 UniversalTicker，不是 UID（E02-D003）。
 // ticker 解成 UID 發生在 spec 載入時（sym.GetRequest），不在這份宣告裡。
 type FeedDecl struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -460,8 +460,8 @@ type AccountDecl struct {
 	Name       string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	ApiId      int64                  `protobuf:"varint,2,opt,name=api_id,json=apiId,proto3" json:"api_id,omitempty"`
 	TdInstance string                 `protobuf:"bytes,3,opt,name=td_instance,json=tdInstance,proto3" json:"td_instance,omitempty"`
-	// 這個 session 在這個帳號上可以使用的 algo_id，每個 1–1023（D602）。
-	// 同一個帳號上不可與其他非 terminal 的 session 重疊：STS agent 檢查它自己的 session，跨 instance 的由使用者保證（D616）。
+	// 這個 session 在這個帳號上可以使用的 algo_id，每個 1–1023（E06-D002）。
+	// 同一個帳號上不可與其他非 terminal 的 session 重疊：STS agent 檢查它自己的 session，跨 instance 的由使用者保證（E06-D016）。
 	AlgoIds       []uint32 `protobuf:"varint,4,rep,packed,name=algo_ids,json=algoIds,proto3" json:"algo_ids,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -589,8 +589,8 @@ type Limits struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MemoryMb      uint32                 `protobuf:"varint,1,opt,name=memory_mb,json=memoryMb,proto3" json:"memory_mb,omitempty"`
 	Gomaxprocs    uint32                 `protobuf:"varint,2,opt,name=gomaxprocs,proto3" json:"gomaxprocs,omitempty"`
-	VolumeMb      uint32                 `protobuf:"varint,3,opt,name=volume_mb,json=volumeMb,proto3" json:"volume_mb,omitempty"`               // session volume 的上限（D904）；0 = STS 的預設值。超過就以 FAILED 結束（volume_over_limit）
-	HookTimeoutS  uint32                 `protobuf:"varint,4,opt,name=hook_timeout_s,json=hookTimeoutS,proto3" json:"hook_timeout_s,omitempty"` // 單一 hook 的硬上限（D803）；0 = STS 的預設值。超過判定 HUNG
+	VolumeMb      uint32                 `protobuf:"varint,3,opt,name=volume_mb,json=volumeMb,proto3" json:"volume_mb,omitempty"`               // session volume 的上限（E09-D004）；0 = STS 的預設值。超過就以 FAILED 結束（volume_over_limit）
+	HookTimeoutS  uint32                 `protobuf:"varint,4,opt,name=hook_timeout_s,json=hookTimeoutS,proto3" json:"hook_timeout_s,omitempty"` // 單一 hook 的硬上限（E08-D003）；0 = STS 的預設值。超過判定 HUNG
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

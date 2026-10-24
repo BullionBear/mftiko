@@ -312,7 +312,7 @@ func (sc stored) info() (symbol.Info, error) {
 	return info, nil
 }
 
-// storedNumber reads a NUMERIC column's text as the float64 every plane uses (D008).
+// storedNumber reads a NUMERIC column's text as the float64 every plane uses (E00-D008).
 func storedNumber(column, text string) (float64, error) {
 	v, err := decimal.Parse(text)
 	if err != nil {

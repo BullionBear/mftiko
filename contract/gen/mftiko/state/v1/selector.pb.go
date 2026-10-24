@@ -27,8 +27,8 @@ const (
 type Universe struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Epoch         uint64                 `protobuf:"varint,1,opt,name=epoch,proto3" json:"epoch,omitempty"`
-	Members       []string               `protobuf:"bytes,2,rep,name=members,proto3" json:"members,omitempty"` // 成員是商品。今天是 UniversalTicker；改成商品 UID 是後續（D203）。selector 本身沒有 UID
-	Current       string                 `protobuf:"bytes,3,opt,name=current,proto3" json:"current,omitempty"` // 只有 rolling_future。這是 selector，尚未定，不在 D203 的範圍；selector 沒有 UID
+	Members       []string               `protobuf:"bytes,2,rep,name=members,proto3" json:"members,omitempty"` // 成員是商品。今天是 UniversalTicker；改成商品 UID 是後續（E02-D003）。selector 本身沒有 UID
+	Current       string                 `protobuf:"bytes,3,opt,name=current,proto3" json:"current,omitempty"` // 只有 rolling_future。這是 selector，尚未定，不在 E02-D003 的範圍；selector 沒有 UID
 	Topics        []string               `protobuf:"bytes,4,rep,name=topics,proto3" json:"topics,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -97,7 +97,7 @@ type SelectorState struct {
 	Spec          *v1.SelectorDecl       `protobuf:"bytes,1,opt,name=spec,proto3" json:"spec,omitempty"`
 	Epoch         uint64                 `protobuf:"varint,2,opt,name=epoch,proto3" json:"epoch,omitempty"`
 	Members       []string               `protobuf:"bytes,3,rep,name=members,proto3" json:"members,omitempty"` // 同 Universe.members：商品。今天是 UniversalTicker
-	Current       string                 `protobuf:"bytes,4,opt,name=current,proto3" json:"current,omitempty"` // 同 Universe.current：selector，尚未定，不在 D203；selector 沒有 UID
+	Current       string                 `protobuf:"bytes,4,opt,name=current,proto3" json:"current,omitempty"` // 同 Universe.current：selector，尚未定，不在 E02-D003；selector 沒有 UID
 	Center        string                 `protobuf:"bytes,5,opt,name=center,proto3" json:"center,omitempty"`   // 置中的 strike
 	CenterAtNs    int64                  `protobuf:"varint,6,opt,name=center_at_ns,json=centerAtNs,proto3" json:"center_at_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields

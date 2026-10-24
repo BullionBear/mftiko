@@ -76,7 +76,7 @@ func history(t *testing.T, ctx context.Context, srv *etcdtest.Server, rev int64)
 
 // A region cut after it synced, and before the view marks it stale, still
 // gets a write. That write cannot finish while the cut lasts. Sessions that
-// need only the other region are derived meanwhile (D1306, W9), and on
+// need only the other region are derived meanwhile (E13-D006, W9), and on
 // restore the cut region gets its demand (N6).
 func TestScenarioCutBeforeStale(t *testing.T) {
 	ctx := t.Context()
@@ -134,7 +134,7 @@ func TestScenarioCutBeforeStale(t *testing.T) {
 // the resync interval and a deps timeout, the world moves on: a spec is added,
 // one is ended, a provider's AgentRecord goes and its ack stays READY, and a
 // pending session runs past its deps timeout. The next leader relists and
-// changes only what differs (N6, W7, D1302). No demand or assignment is
+// changes only what differs (N6, W7, E13-D002). No demand or assignment is
 // deleted, and a started session's keys are not written at all.
 func TestScenarioLeaderDown(t *testing.T) {
 	ctx := t.Context()
@@ -303,7 +303,7 @@ func TestScenarioLeaderDown(t *testing.T) {
 	}
 }
 
-// supervise runs cfg as systemd would with Restart=on-failure (D1315): a term
+// supervise runs cfg as systemd would with Restart=on-failure (E13-D015): a term
 // that ends with an error is started again after a short pause. starts counts
 // elections. It returns when ctx is canceled.
 func supervise(t *testing.T, ctx context.Context, cfg Config, starts *atomic.Int32) {
@@ -331,7 +331,7 @@ func supervise(t *testing.T, ctx context.Context, cfg Config, starts *atomic.Int
 // it is: the other is superseded as soon as it writes there, exits, and is
 // restarted. Nothing livelocks: with no change to make, neither writes, and a
 // change spanning both regions costs each at most a restart before the
-// demands are complete (D1338, W2).
+// demands are complete (E13-D038, W2).
 func TestScenarioInconsistentHomes(t *testing.T) {
 	ctx := t.Context()
 	servers := etcdtest.StartRegions(t, "tw", "jp")
@@ -425,7 +425,7 @@ func TestScenarioInconsistentHomes(t *testing.T) {
 // over. The old term ends after the new one is elected: the session's client
 // side counts its TTL from the last keepalive reply, the server from the
 // request. Until then jp, which the new leader has not written, would still
-// take the old leader's writes (D1305). D1339 records this window; #277 ends
+// take the old leader's writes (E13-D005). E13-D039 records this window; #277 ends
 // the term before the server expires the lease, and this test then asserts
 // the order instead of the bound.
 func TestScenarioZombieWindow(t *testing.T) {

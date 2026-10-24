@@ -396,7 +396,7 @@ func TestStrategyDedupUsesHead(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("tape callback")
 	}
-	// The strategy keeps a live event only when its cursor is past head (D437, D847).
+	// The strategy keeps a live event only when its cursor is past head (E04-D037, E08-D047).
 	var kept []uint64
 	for _, ev := range r.trades.get() {
 		if afterHead(ev.ConnEpoch, ev.Seq, page.GetHead()) {

@@ -1,5 +1,5 @@
 # Runs make check (README: Make, Tests) on every pull request and on main.
-# D990: the check job also packs the MD and TD workers into a registry:2 service
+# E09-D090: the check job also packs the MD and TD workers into a registry:2 service
 # and pulls them back by digest. That step is not a Makefile target. The release
 # workflow pushes the same script to ghcr.io; see docs/release.md.
 name: ci
@@ -79,7 +79,7 @@ jobs:
         run: git branch -f ci-base "$BASE_SHA"
 
       # make check, one step per target so a failure names its check. Same list and order as CHECKS in the Makefile.
-      # The registry:2 step after them is D990. It needs this service and is not a Makefile target.
+      # The registry:2 step after them is E09-D090. It needs this service and is not a Makefile target.
       - name: buf lint
         run: make proto-lint
       - name: buf breaking
@@ -94,19 +94,19 @@ jobs:
         run: make vet
       - name: build
         run: make build
-      # Includes the conformance fakeworker violation checks (D834, PROTOCOL §9.8).
+      # Includes the conformance fakeworker violation checks (E08-D034, PROTOCOL §9.8).
       - name: go test -race
         env:
           MFTIKO_REQUIRE_ETCD: "1" # a missing etcd fails the etcd tests instead of skipping them
           MFTIKO_REQUIRE_PG: "1" # a missing postgres fails the symbol migration tests instead of skipping them
-          MFTIKO_REQUIRE_REGISTRY: "1" # a missing registry:2 fails the strategy catalog test instead of skipping it (D1061)
+          MFTIKO_REQUIRE_REGISTRY: "1" # a missing registry:2 fails the strategy catalog test instead of skipping it (E10-D061)
         run: make test-race
-      # Full Go SDK conformance. Separate from go test so the suite is not run twice (D864).
+      # Full Go SDK conformance. Separate from go test so the suite is not run twice (E08-D064).
       - name: Go SDK conformance
         run: make sdk-conformance
       - name: svelte-check
         run: make web-check
-      # Console production build (D1079). svelte-check is the step above.
+      # Console production build (E10-D079). svelte-check is the step above.
       - name: web build
         run: make web
       # Same script as .github/workflows/release.yml. These tags stay on the local registry.

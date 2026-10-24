@@ -131,22 +131,22 @@ func (FeedState) EnumDescriptor() ([]byte, []int) {
 type InitPayload struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	Venue      string                 `protobuf:"bytes,1,opt,name=venue,proto3" json:"venue,omitempty"`
-	Route      string                 `protobuf:"bytes,2,opt,name=route,proto3" json:"route,omitempty"` // 由 adapter 從解析後的商品推得（D403、D202）
+	Route      string                 `protobuf:"bytes,2,opt,name=route,proto3" json:"route,omitempty"` // 由 adapter 從解析後的商品推得（E04-D003、E02-D002）
 	N          uint32                 `protobuf:"varint,3,opt,name=n,proto3" json:"n,omitempty"`
 	MdInstance string                 `protobuf:"bytes,4,opt,name=md_instance,json=mdInstance,proto3" json:"md_instance,omitempty"`
-	// 實際連線的 URL。host 由 MD instance 的設定選：預設，或交易所提供的替代 endpoint（D403）。換 URL 要換 incarnation。
+	// 實際連線的 URL。host 由 MD instance 的設定選：預設，或交易所提供的替代 endpoint（E04-D003）。換 URL 要換 incarnation。
 	Url string `protobuf:"bytes,6,opt,name=url,proto3" json:"url,omitempty"`
-	// 上次上報的 conn_epoch。0 表示還沒有上報過，第一次撥號用 1（D409）。
+	// 上次上報的 conn_epoch。0 表示還沒有上報過，第一次撥號用 1（E04-D009）。
 	ConnEpoch uint64 `protobuf:"varint,7,opt,name=conn_epoch,json=connEpoch,proto3" json:"conn_epoch,omitempty"`
-	// 等快照時緩衝的筆數上限。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（D424）。
+	// 等快照時緩衝的筆數上限。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（E04-D024）。
 	BookBufferMax uint32 `protobuf:"varint,10,opt,name=book_buffer_max,json=bookBufferMax,proto3" json:"book_buffer_max,omitempty"`
-	// 等快照時緩衝的時間上限，毫秒。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（D424）。
+	// 等快照時緩衝的時間上限，毫秒。0 表示 10000。到了就丟掉緩衝，進行中的快照作廢（E04-D024）。
 	BookBufferMs uint32 `protobuf:"varint,11,opt,name=book_buffer_ms,json=bookBufferMs,proto3" json:"book_buffer_ms,omitempty"`
-	// 每個 feed 的 tape 時間窗，毫秒。0 表示 10 分鐘。先到這個窗或 tape_max_events 就從最舊的砍（D438、D449）。
+	// 每個 feed 的 tape 時間窗，毫秒。0 表示 10 分鐘。先到這個窗或 tape_max_events 就從最舊的砍（E04-D038、E04-D049）。
 	TapeWindowMs uint32 `protobuf:"varint,12,opt,name=tape_window_ms,json=tapeWindowMs,proto3" json:"tape_window_ms,omitempty"`
 	// 每個 feed 的 tape 筆數上限。0 表示 100000。
 	TapeMaxEvents uint32 `protobuf:"varint,13,opt,name=tape_max_events,json=tapeMaxEvents,proto3" json:"tape_max_events,omitempty"`
-	// 這個 worker 全部 tape 的位元組上限。0 表示 256 MiB。訊息、slot、索引與 chunk 都算。超過時回收最舊的 64 KiB chunk（D458）。
+	// 這個 worker 全部 tape 的位元組上限。0 表示 256 MiB。訊息、slot、索引與 chunk 都算。超過時回收最舊的 64 KiB chunk（E04-D058）。
 	TapeBudgetBytes uint64 `protobuf:"varint,14,opt,name=tape_budget_bytes,json=tapeBudgetBytes,proto3" json:"tape_budget_bytes,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
@@ -419,11 +419,11 @@ type AtomAssignment struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	AtomId string                 `protobuf:"bytes,1,opt,name=atom_id,json=atomId,proto3" json:"atom_id,omitempty"`
 	Feeds  []string               `protobuf:"bytes,2,rep,name=feeds,proto3" json:"feeds,omitempty"`    // 這個 atom 要發佈的 feed（atom → 事件 1:N）
-	Record bool                   `protobuf:"varint,3,opt,name=record,proto3" json:"record,omitempty"` // 忽略。錄不錄由 conn worker 依 topic 決定（D447）。定案時保留（D460）
-	// SYM 的 exchTicker。worker 從自己的活躍表讀。沒有這份表、而且 atom_id 已給時，用這裡的值。不從 channel 解析（D426、D202）。
+	Record bool                   `protobuf:"varint,3,opt,name=record,proto3" json:"record,omitempty"` // 忽略。錄不錄由 conn worker 依 topic 決定（E04-D047）。定案時保留（E04-D060）
+	// SYM 的 exchTicker。worker 從自己的活躍表讀。沒有這份表、而且 atom_id 已給時，用這裡的值。不從 channel 解析（E04-D026、E02-D002）。
 	ExchTicker string `protobuf:"bytes,4,opt,name=exch_ticker,json=exchTicker,proto3" json:"exch_ticker,omitempty"`
 	// SYM 的 price_tick。跟 exch_ticker 同一張表、同一時刻。
-	// 缺或小於等於 0 時這本訂單簿只記日誌、不維護（D433）。
+	// 缺或小於等於 0 時這本訂單簿只記日誌、不維護（E04-D033）。
 	PriceTick     float64 `protobuf:"fixed64,5,opt,name=price_tick,json=priceTick,proto3" json:"price_tick,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

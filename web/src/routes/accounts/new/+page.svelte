@@ -69,7 +69,7 @@
 		banner = [];
 	}
 
-	/** Copy the secrets for this request, then drop them from page state before any await (D1101). */
+	/** Copy the secrets for this request, then drop them from page state before any await (E10-D101). */
 	function takeSecrets() {
 		const sent = { keyType, key, secret, passphrase };
 		guard.epoch += 1;

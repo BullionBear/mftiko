@@ -12,7 +12,7 @@ const (
 	statusSkip = "skip"
 )
 
-// Check is one row of the report (D831, D838).
+// Check is one row of the report (E08-D031, E08-D038).
 type Check struct {
 	ID     string `json:"id"`
 	Status string `json:"status"`
@@ -24,7 +24,7 @@ type Report struct {
 	Checks []Check `json:"checks"`
 }
 
-// Failed is true when any check failed. Skip is not a failure (D838).
+// Failed is true when any check failed. Skip is not a failure (E08-D038).
 func (r Report) Failed() bool {
 	for _, c := range r.Checks {
 		if c.Status == statusFail {

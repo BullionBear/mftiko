@@ -22,7 +22,7 @@ func specOf(accounts []int64, feeds []string) *sessionv1.SessionSpec {
 		s.Accounts = append(s.Accounts, &sessionv1.AccountDecl{ApiId: id, Name: "a"})
 	}
 	for _, feed := range feeds {
-		// md_instance on the decl is ignored. The resolver is the source (D820).
+		// md_instance on the decl is ignored. The resolver is the source (E08-D020).
 		s.Feeds = append(s.Feeds, &sessionv1.FeedDecl{Feed: feed, MdInstance: "from-the-spec"})
 	}
 	return s
@@ -288,7 +288,7 @@ func TestManyFeedsStayExactAndStable(t *testing.T) {
 		t.Fatal("same input differed")
 	}
 	// Fixed publish subjects plus one view per feed: fetch, sym, two td, 500 views.
-	// There is no log.sts (D1030).
+	// There is no log.sts (E10-D030).
 	if len(a.Pub) != 4+n || len(a.Sub) != 3+n {
 		t.Fatalf("pub %d sub %d", len(a.Pub), len(a.Sub))
 	}

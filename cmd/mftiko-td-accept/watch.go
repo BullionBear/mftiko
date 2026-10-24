@@ -18,7 +18,7 @@ import (
 	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
 )
 
-// seqs follows td.evt's seq, which each incarnation numbers from 1 (D606).
+// seqs follows td.evt's seq, which each incarnation numbers from 1 (E06-D006).
 type seqs struct {
 	inc        uint32
 	seq        uint64

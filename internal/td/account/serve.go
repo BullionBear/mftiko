@@ -24,12 +24,12 @@ const Contract = "tdctl.v1"
 
 // Reasons the worker gives: in Report.reason, and as the reason of an INIT_FAILED or CRASHED
 // ending. The TD agent's Policy does not restart a worker that ended with ReasonAuth or
-// ReasonHedgeMode (D608).
+// ReasonHedgeMode (E06-D008).
 const (
 	ReasonAuth            = "auth"             // the venue refused the credentials
-	ReasonHedgeMode       = "hedge_mode"       // the account holds long and short apart, found at Start (D607, D616)
-	ReasonKindUnsupported = "kind_unsupported" // an account kind phase 1 does not run (D614)
-	ReasonStreamLost      = "stream_lost"      // the events connection dropped (DEGRADED, D603)
+	ReasonHedgeMode       = "hedge_mode"       // the account holds long and short apart, found at Start (E06-D007, E06-D016)
+	ReasonKindUnsupported = "kind_unsupported" // an account kind phase 1 does not run (E06-D014)
+	ReasonStreamLost      = "stream_lost"      // the events connection dropped (DEGRADED, E06-D003)
 )
 
 // ServeConfig is the process around one account worker. The binary fills it from its flags and
@@ -40,7 +40,7 @@ type ServeConfig struct {
 	// Doer sends the REST Calls. Net dials the websockets; nil connects directly.
 	Doer exchange.Doer
 	Net  *transport.Net
-	// Connect opens the account's NATS with the credentials Init carries (D611), and loads the
+	// Connect opens the account's NATS with the credentials Init carries (E06-D011), and loads the
 	// symbol table of the venue the account trades. Its error is the INIT_FAILED reason, so it must
 	// not quote the credentials. The Env is closed when the worker ends.
 	Connect func(ctx context.Context, creds *tdctlv1.NatsCredentials, venue string) (*Env, error)
@@ -52,13 +52,13 @@ type ServeConfig struct {
 	Now func() time.Time
 	// After waits for a query. Nil is time.After. Tests pass a fake clock.
 	After func(time.Duration) <-chan time.Time
-	// Validity is the default order window (D620). Zero is exchange.DefaultValidity. It must be
+	// Validity is the default order window (E06-D020). Zero is exchange.DefaultValidity. It must be
 	// whole milliseconds from 1ms to exchange.MaxValidity; AccountConfig.Window checks it.
 	Validity time.Duration
-	// ClockSkew is added to the query deadline. Zero is 1s (D620).
+	// ClockSkew is added to the query deadline. Zero is 1s (E06-D020).
 	ClockSkew time.Duration
 	// RateHold is how long to pause sends after a 429 or 418 that names neither Retry-After nor a
-	// reset time. Zero is 1 minute (D420).
+	// reset time. Zero is 1 minute (E04-D020).
 	RateHold time.Duration
 	// RetryAfter and RetryMax bound the waits between failed dials and failed recons: the first
 	// waits RetryAfter, each next one twice as long, up to RetryMax. Zero is 1s and 30s.
@@ -141,7 +141,7 @@ func (p *plane) Init(ctx context.Context, s *c4.Session, payload []byte) error {
 		return fmt.Errorf("unknown account kind %s", in.GetKind())
 	}
 	// A kind that trades several venues routes orders by venue, over one trade connection each;
-	// Account has one NewTradeStream. Phase 1 does not run them (BinancePM, D614).
+	// Account has one NewTradeStream. Phase 1 does not run them (BinancePM, E06-D014).
 	if len(kind.Trades) != 1 {
 		return errors.New(ReasonKindUnsupported)
 	}
@@ -157,7 +157,7 @@ func (p *plane) Init(ctx context.Context, s *c4.Session, payload []byte) error {
 	}
 	acct, err := kind.Account(exchange.AccountConfig{
 		APIID: in.GetApiId(), Credentials: creds,
-		// The hosts are the TD instance's, per account kind, carried in Init (D616).
+		// The hosts are the TD instance's, per account kind, carried in Init (E06-D016).
 		RESTEndpoint: in.GetRestUrl(), StreamEndpoint: in.GetStreamUrl(), Simulated: in.GetSimulated(),
 		Validity: p.cfg.Validity,
 	})
@@ -195,7 +195,7 @@ func (p *plane) Init(ctx context.Context, s *c4.Session, payload []byte) error {
 	})
 	go bk.run(ctx)
 	// td.view answers from here on, before the first recon: the reply says how far along the
-	// account is (D606).
+	// account is (E06-D006).
 	stop, err := env.Bus.Respond(viewSubject(in.GetApiId()), func(req []byte) []byte { return viewReply(ctx, bk, req) })
 	if err != nil {
 		return fmt.Errorf("td.view: %w", err)
@@ -242,7 +242,7 @@ func (p *plane) Start(ctx context.Context, _ []byte) error {
 	if err := p.w.Start(ctx); err != nil {
 		return err
 	}
-	// td.order is served only once the account is READY (D610).
+	// td.order is served only once the account is READY (E06-D010).
 	stop, err := p.env.Bus.Respond(orderSubject(p.apiID), func(req []byte) []byte { return p.w.handleOrder(ctx, req) })
 	if err != nil {
 		return fmt.Errorf("td.order: %w", err)
@@ -253,5 +253,5 @@ func (p *plane) Start(ctx context.Context, _ []byte) error {
 
 func (p *plane) Run(ctx context.Context) error { return p.w.Run(ctx) }
 
-// Live: TD has no live config yet. cancel_on_disconnect_s is not acted on (D625).
+// Live: TD has no live config yet. cancel_on_disconnect_s is not acted on (E06-D025).
 func (p *plane) Live([]byte) error { return nil }

@@ -11,8 +11,8 @@ import (
 
 const (
 	// connectBackoffMin is the first wait after a failed NATS dial. It doubles until
-	// connectBackoffMax. That is the platform schedule already used for Recon (D842).
-	// D850 says to back off inside deadline_ms; it does not pick a new schedule.
+	// connectBackoffMax. That is the platform schedule already used for Recon (E08-D042).
+	// E08-D050 says to back off inside deadline_ms; it does not pick a new schedule.
 	connectBackoffMin = time.Second
 	connectBackoffMax = 30 * time.Second
 
@@ -22,7 +22,7 @@ const (
 )
 
 // connectNATS dials until the connection is up, the Init context ends, or Stop
-// cancels it (D850, D807). A dial error is not returned: its text can quote the
+// cancels it (E08-D050, E08-D007). A dial error is not returned: its text can quote the
 // credentials. When the deadline expires the error is the context's, so c4 reports
 // the reason "deadline".
 func (p *plane) connectNATS(ctx context.Context, url string, creds *stsctlv1.NatsCredentials) (*nats.Conn, error) {

@@ -1,4 +1,4 @@
--- Symbol plane tables (DECISIONS D201, D202, D203). Written only by SYM; everything else reads
+-- Symbol plane tables (DECISIONS E02-D001, E02-D002, E02-D003). Written only by SYM; everything else reads
 -- through the sym subject.
 --
 -- Listings are split by whether the status can still change. The columns of the two tables match.
@@ -28,10 +28,10 @@
 -- unique on the active table only: Bybit spot and linear both list "BTCUSDT".
 --
 -- Strike is NUMERIC with trailing zeros stripped (trim_scale), the numeric half of spell_strike
--- (D203): 6400.0 and 6400 are one value. The ticker's spelling of a fractional strike (6.4 as 6D4)
+-- (E02-D003): 6400.0 and 6400 are one value. The ticker's spelling of a fractional strike (6.4 as 6D4)
 -- is applied when the ticker is built, not in this column.
 --
--- Settlement currency is settle, the contract field name (D203), not settlement_asset.
+-- Settlement currency is settle, the contract field name (E02-D003), not settlement_asset.
 -- contract_value_ccy is the unit of qty. price_ccy is the unit of price, price_tick and premium.
 --
 -- symbol_revision is the per-(venue, category) counter change notifications compare (PROTOCOL §7.3).

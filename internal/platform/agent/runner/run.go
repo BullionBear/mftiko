@@ -1,5 +1,5 @@
 // Package runner runs an agent's term: it waits for the demand, has the Fleet adopt the workers its shims kept,
-// brings WorkerStatus in line, writes the AgentRecord, then reconciles in one loop until the term ends (D101,
+// brings WorkerStatus in line, writes the AgentRecord, then reconciles in one loop until the term ends (E01-D001,
 // PROTOCOL §3.2 W7). The decisions are package agent's Reconciler; this package does the I/O around it.
 package runner
 
@@ -21,7 +21,7 @@ import (
 // Defaults of Config.
 const (
 	// DefaultStaleAfter is how old the demand may be before the agent stops changing anything by it (DECISIONS
-	// D109): 3 of the Mirror's probe intervals, which is how far LastContact lags while all is well.
+	// E01-D009): 3 of the Mirror's probe intervals, which is how far LastContact lags while all is well.
 	DefaultStaleAfter = 15 * time.Second
 	// DefaultResync is the longest the loop sleeps with nothing to wake it: staleness comes and goes with no
 	// notification, and the actions are recomputed from scratch each time, at the cost of a diff in memory.
@@ -35,7 +35,7 @@ const (
 // campaigns for a new epoch (E1-05).
 var ErrTermEnded = errors.New("agent: term ended")
 
-// Fleet is the set of shim-backed workers (D101). Its calls start an action and return: Observe reflects each one
+// Fleet is the set of shim-backed workers (E01-D001). Its calls start an action and return: Observe reflects each one
 // from the moment it returns (a spawned worker is initializing, a stopped one stopping), and the rest comes as
 // the shims report it, signalled on Changed. A call must not block for long: the agent has one loop.
 type Fleet[S, L agent.Hashed] interface {
@@ -45,7 +45,7 @@ type Fleet[S, L agent.Hashed] interface {
 	Observe() map[agent.WorkerKey]agent.Observed
 	Changed() <-chan struct{}
 	// Spawn starts a new incarnation of key with spec and live, and sends Init. A worker of key that ended is
-	// released first (delete-before-create, D106).
+	// released first (delete-before-create, E01-D006).
 	Spawn(ctx context.Context, key agent.WorkerKey, spec S, live L) error
 	// Start sends Start; spec is the plan's, which the worker was spawned with (the same Hash).
 	Start(ctx context.Context, key agent.WorkerKey, spec S) error
@@ -89,7 +89,7 @@ type Config[I any, S, L agent.Hashed] struct {
 	// MD and TD. Optional.
 	Prepare func(ctx context.Context, d agent.Demand[I], observed map[agent.WorkerKey]agent.Observed) error
 	// Commit runs before Plan: once at start, and in the loop while the demand is not stale. A plane writes
-	// the state Plan is about to read, so a crash cannot push a placement that etcd does not hold yet (D110).
+	// the state Plan is about to read, so a crash cannot push a placement that etcd does not hold yet (E01-D010).
 	// Optional. A failure at start ends the term. In the loop it is logged and Plan keeps the previous commit.
 	Commit func(ctx context.Context, d agent.Demand[I], observed map[agent.WorkerKey]agent.Observed) error
 	// Sync runs after WorkerStatus is written: at start, before the AgentRecord, and at the end of a step
@@ -98,7 +98,7 @@ type Config[I any, S, L agent.Hashed] struct {
 	Sync func(ctx context.Context, d agent.Demand[I], observed map[agent.WorkerKey]agent.Observed, gaveUp func(agent.WorkerKey) bool) error
 
 	Release string // AgentRecord.release
-	// WorkDir is this process's WORK_DIR, written on the AgentRecord when the term is elected (D1092).
+	// WorkDir is this process's WORK_DIR, written on the AgentRecord when the term is elected (E10-D092).
 	// Empty leaves the field unset. The controller does not use this runner.
 	WorkDir     string
 	StaleAfter  time.Duration // DefaultStaleAfter if 0
@@ -139,7 +139,7 @@ type run[I any, S, L agent.Hashed] struct {
 	cfg    Config[I, S, L]
 	log    zerolog.Logger
 	now    func() time.Time
-	host   string // os.Hostname at newRun, before Run starts its goroutine (D1092)
+	host   string // os.Hostname at newRun, before Run starts its goroutine (E10-D092)
 	intake *Intake[I]
 	rec    *agent.Reconciler[S, L]
 	st     *statuses

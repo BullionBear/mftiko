@@ -102,7 +102,7 @@ func newSessionEnv(t *testing.T, opt sessionOpt) *sessionEnv {
 	s := e.replica(t)
 	cat := testCatalog()
 	s.catalog = cat
-	// Address is set after start so useCatalog does not dial. The response prefixes it (D1060).
+	// Address is set after start so useCatalog does not dial. The response prefixes it (E10-D060).
 	s.cfg.Registry.Address = "registry.example"
 	se := &sessionEnv{e: e, s: s, pg: pg, clock: opt.clock, cat: cat}
 	if pg != nil {
@@ -266,7 +266,7 @@ func (se *sessionEnv) putSpec(t *testing.T, sts, id string, spec *sessionv1.Sess
 }
 
 // afterMirror runs fn while the reconcile loop waits, then polls until the mirror kick finishes
-// one pass. An extra reconcileOnce would count the same spec again (D1070).
+// one pass. An extra reconcileOnce would count the same spec again (E10-D070).
 func (se *sessionEnv) afterMirror(t *testing.T, fn func()) {
 	t.Helper()
 	pass := se.withReconcilePaused(t, fn)
@@ -497,7 +497,7 @@ func TestSessionCreateRoundTrip(t *testing.T) {
 	if row == nil || row.State != apiv1.SessionRecordStateCreated || row.CreatedBy == nil || *row.CreatedBy != "ada" || row.Final != nil || row.EndedRequestedAt == nil {
 		t.Fatalf("record %+v", recs.Items)
 	}
-	// The session is still RUNNING, so immediate delete refuses it (D1084).
+	// The session is still RUNNING, so immediate delete refuses it (E10-D084).
 	code, _, body = se.call(t, http.MethodDelete, "/api/v1/sessions/"+got.Id, "{}", nil)
 	if code != http.StatusConflict {
 		t.Fatalf("delete running %d %s", code, body)
@@ -972,7 +972,7 @@ func TestSessionEnd(t *testing.T) {
 	}
 
 	direct := &sessionv1.SessionSpec{Name: "direct", DesiredState: sessionv1.DesiredState_DESIRED_STATE_RUNNING}
-	// Hold reconcile so the mirror kick cannot warn before the end path does (D1072).
+	// Hold reconcile so the mirror kick cannot warn before the end path does (E10-D072).
 	se.s.reconcileMu.Lock()
 	se.putSpec(t, "sts-tw-1", "ffffff", direct)
 	before := se.s.missingRecord.Load()

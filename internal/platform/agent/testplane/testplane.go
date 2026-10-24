@@ -144,7 +144,7 @@ type Config struct {
 }
 
 // Run is the agent's main: connect to its own region and win the term, mirror its demand, and run the skeleton
-// until the term ends (runner.ErrTermEnded) or ctx is done. The shims and their workers outlive it (D102).
+// until the term ends (runner.ErrTermEnded) or ctx is done. The shims and their workers outlive it (E01-D002).
 func Run(ctx context.Context, cfg Config) error {
 	cl, term, err := runner.Connect(ctx, cfg.Topology, cfg.Plane, cfg.Instance, cfg.Dial, cfg.Term)
 	if err != nil {

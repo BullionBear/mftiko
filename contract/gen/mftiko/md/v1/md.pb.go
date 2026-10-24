@@ -71,7 +71,7 @@ func (x *Meta) GetExchTsNs() int64 {
 
 type FeedEvent struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	Uid   uint32                 `protobuf:"varint,13,opt,name=uid,proto3" json:"uid,omitempty"` // 商品（D203、D461）。每一則行情都帶；payload 裡沒有 ticker 字串
+	Uid   uint32                 `protobuf:"varint,13,opt,name=uid,proto3" json:"uid,omitempty"` // 商品（E02-D003、E08-D065）。每一則行情都帶；payload 裡沒有 ticker 字串
 	// Types that are valid to be assigned to Event:
 	//
 	//	*FeedEvent_BestQuote
@@ -607,7 +607,7 @@ func (x *Level) GetQty() float64 {
 	return 0
 }
 
-// orderbook_delta：本地全量 book 的增量（D402、D453）。qty 為 0 表示刪除該價位。
+// orderbook_delta：本地全量 book 的增量（E04-D002、E04-D053）。qty 為 0 表示刪除該價位。
 // reset 為 true 時，bids／asks 是完整的 book，取代本地狀態（conn worker 對交易所重新同步之後）。
 // 晚加入的接法見 read.proto 的 md.view。
 type OrderBookDelta struct {
@@ -794,7 +794,7 @@ func (x *Kline) GetClosed() bool {
 	return false
 }
 
-// 只有 24h 統計（D401）；venue 不推的欄位不填。
+// 只有 24h 統計（E04-D001）；venue 不推的欄位不填。
 type Ticker struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Meta            *Meta                  `protobuf:"bytes,1,opt,name=meta,proto3" json:"meta,omitempty"`

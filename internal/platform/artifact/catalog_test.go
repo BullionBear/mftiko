@@ -208,7 +208,7 @@ func TestOpenCatalogRejects(t *testing.T) {
 	}
 }
 
-// TestCatalogReadData checks the catalog read (D972, D1012). A strategy image is the wrong
+// TestCatalogReadData checks the catalog read (E09-D072, E10-D012). A strategy image is the wrong
 // media type. A data artifact returns its config and does not download the layer.
 func TestCatalogReadData(t *testing.T) {
 	dir := t.TempDir()

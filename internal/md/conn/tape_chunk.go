@@ -5,7 +5,7 @@ import (
 	"unsafe"
 )
 
-// Chunk geometry (D458). A chunk is one 64 KiB object: a scanned header plus
+// Chunk geometry (E04-D058). A chunk is one 64 KiB object: a scanned header plus
 // the bytes events and slots share. The size is not configurable. An event
 // larger than tapeEventMax is not stored; the ring records a gap instead.
 const (
@@ -44,7 +44,7 @@ type tapeChunkHead struct {
 }
 
 // tapeChunk is one fixed block. Readers copy out of buf with atomic loads and
-// then re-read gen. A mismatch means the block was reclaimed (D459).
+// then re-read gen. A mismatch means the block was reclaimed (E04-D059).
 type tapeChunk struct {
 	tapeChunkHead
 	buf [tapeChunkSize - tapeChunkHeader]byte
@@ -67,7 +67,7 @@ func newTapeArena(budget int64) *tapeArena {
 	return &tapeArena{budget: budget}
 }
 
-// chunkPointerLen is the fixed ring of chunk pointers (D458). One record
+// chunkPointerLen is the fixed ring of chunk pointers (E04-D058). One record
 // never spans a chunk, so the event cap is the longest the ring could need.
 // The budget cannot fund more chunks than budget/chunk, and that bound is
 // what keeps an idle ring near a chunk instead of a 100000-slot table.
@@ -191,7 +191,7 @@ func (a *tapeArena) popFree() *tapeChunk {
 // reclaimOldest returns the sealed chunk whose newest event is the oldest
 // to the free list. Only a ring's oldest chunk is dropped, so the log does
 // not grow a hole. The open chunk stays out of the heap: each ring keeps
-// one chunk (D458). False means nothing was freed.
+// one chunk (E04-D058). False means nothing was freed.
 func (a *tapeArena) reclaimOldest() bool {
 	for len(a.heap) > 0 {
 		ch := a.heap[0]
@@ -397,7 +397,7 @@ func (r *tapeRing) appendEvent(epoch, seq uint64, mdTs int64, raw []byte, window
 
 // appendOversize records a gap in place of an event the chunk will not hold.
 // The gap takes that event's cursor, so before/since stay aligned with md.f.
-// head moves with it: tape has accounted for the publish (D459).
+// head moves with it: tape has accounted for the publish (E04-D059).
 func (r *tapeRing) appendOversize(epoch, seq uint64, mdTs int64) {
 	rec := tapeRec{
 		kind: kindGap, epoch: epoch, seqNo: seq, mdTs: mdTs,
@@ -429,7 +429,7 @@ func (r *tapeRing) appendGap(start, end int64, epoch uint64, windowNs int64) {
 }
 
 // commit appends one record. advanceHead is set for a real event and for an
-// oversize gap, and clear for a reconnect gap (D440): a reconnect does not
+// oversize gap, and clear for a reconnect gap (E04-D040): a reconnect does not
 // move head until the next event.
 func (r *tapeRing) commit(rec tapeRec, raw []byte, advanceHead bool) bool {
 	if !r.ensure(len(raw)) || r.open == nil || !r.open.appendSlot(rec, raw) {
@@ -472,7 +472,7 @@ func (r *tapeRing) trim(cutoff int64) {
 			continue
 		}
 		// The record being appended still has to fit, so a full ring
-		// sheds one before it. Gaps do not count toward max (D449).
+		// sheds one before it. Gaps do not count toward max (E04-D049).
 		if r.events < r.max && rec.mdTs >= cutoff {
 			break
 		}
@@ -485,7 +485,7 @@ func (r *tapeRing) trim(cutoff int64) {
 	r.noteOldest()
 	r.noteEmpty(r.connEpoch)
 	if r.chunkExpired() {
-		// Publish the new tail before a chunk is reused (D450).
+		// Publish the new tail before a chunk is reused (E04-D050).
 		r.publish()
 		r.collectChunks()
 	}
@@ -752,7 +752,7 @@ func (r *tapeRing) compactFor(payload int) bool {
 	r.discardThrough(first)
 	r.noteOldest()
 	r.noteEmpty(r.connEpoch)
-	// Publish the trimmed tail before the bytes are rewritten (D450).
+	// Publish the trimmed tail before the bytes are rewritten (E04-D050).
 	r.publish()
 	g := ch.gen.Load()
 	if g&1 == 0 {

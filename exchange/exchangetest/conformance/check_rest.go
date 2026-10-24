@@ -113,8 +113,8 @@ func (r *runner) listings() map[string][]symbol.Listing {
 	return out
 }
 
-// checkListing: every listing the venue returns is one SYM stores (D203): canonical asset codes,
-// Validate, a ticker; and its tick and step survive float64 (D008).
+// checkListing: every listing the venue returns is one SYM stores (E02-D003): canonical asset codes,
+// Validate, a ticker; and its tick and step survive float64 (E00-D008).
 func (r *runner) checkListing() []Problem {
 	var out []Problem
 	for name, ls := range r.listings() {
@@ -152,7 +152,7 @@ func canonical(l symbol.Listing, venue string) symbol.Listing {
 	return l
 }
 
-// steps checks that prices and quantities on this instrument fit float64 (D008): a value of the
+// steps checks that prices and quantities on this instrument fit float64 (E00-D008): a value of the
 // filter's largest magnitude, written at the step's decimals, has at most 15 significant digits,
 // so it comes back from text unchanged.
 func steps(where string, f symbol.Filters) []Problem {
@@ -173,7 +173,7 @@ func steps(where string, f symbol.Filters) []Problem {
 		digits := len(strconv.FormatFloat(math.Floor(top), 'f', 0, 64)) + decimal.Places(step)
 		if digits > 15 {
 			out = append(out, Problem{"listing", where, fmt.Sprintf(
-				"%s %v up to %v needs %d significant digits; float64 holds 15 (D008)", pair[0], step, top, digits)})
+				"%s %v up to %v needs %d significant digits; float64 holds 15 (E00-D008)", pair[0], step, top, digits)})
 			continue
 		}
 		v := decimal.Snap(top, step)
@@ -216,7 +216,7 @@ func (r *runner) instruments() []*symbol.Info {
 }
 
 // checkFills: a fill on the private stream is in History with the same fill_id, order and amounts
-// (D601: the database deduplicates on the fill_id, so the two must agree).
+// (E06-D001: the database deduplicates on the fill_id, so the two must agree).
 func (r *runner) checkFills() []Problem {
 	var out []Problem
 	for _, p := range r.spec.FillPairs {

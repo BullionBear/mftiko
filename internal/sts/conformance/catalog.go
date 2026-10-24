@@ -1,6 +1,6 @@
 package conformance
 
-// Check ids. They are the cross-language contract in PROTOCOL §9.8 (D838).
+// Check ids. They are the cross-language contract in PROTOCOL §9.8 (E08-D038).
 // fakeworker repeats these strings; it cannot import this package.
 const (
 	CheckFlow           = "flow"
@@ -16,7 +16,7 @@ const (
 	CheckCtx            = "ctx"
 )
 
-// Contract majors a check reads from Hello.contracts (D838).
+// Contract majors a check reads from Hello.contracts (E08-D038).
 const (
 	contractWorker = "worker.v1"
 	contractSTS    = "stsctl.v1"

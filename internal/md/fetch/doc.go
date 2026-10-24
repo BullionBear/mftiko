@@ -1,4 +1,4 @@
-// Package fetch is the stateless md.fetch service (D402, D418–D423).
+// Package fetch is the stateless md.fetch service (E04-D002, E04-D018–E04-D023).
 //
 // One process per region joins the queue group of each venue it can reach,
 // md.v1.fetch.{venue}. Any replica answers. There is no agent, no lease, and no
@@ -10,5 +10,5 @@
 // is the query-only value venues do not push. Nothing is cached.
 //
 // The instrument is a UID, resolved through a symbol.Resolver loaded from the
-// active table (D422, D461). cmd/mftiko-mdfetch wires that resolver to SYM over NATS.
+// active table (E04-D022, E08-D065). cmd/mftiko-mdfetch wires that resolver to SYM over NATS.
 package fetch

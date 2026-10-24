@@ -266,7 +266,7 @@ func (d *dropPub) Changed(ctx context.Context, venue, category string, revision 
 func openRemote(t *testing.T, fx *symFixture, every time.Duration) *Remote {
 	t.Helper()
 	c := dialSym(t, fx.url)
-	// The conn worker subscribes only its venue (D457). These tables are both Bybit.
+	// The conn worker subscribes only its venue (E04-D057). These tables are both Bybit.
 	notify, err := ChangedVenueWildcard("Bybit")
 	if err != nil {
 		t.Fatal(err)

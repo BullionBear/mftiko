@@ -8,7 +8,7 @@ import (
 	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
 )
 
-// TestParamsStayRawJSON locks D1033: params are json.RawMessage, so a decimal
+// TestParamsStayRawJSON locks E10-D033: params are json.RawMessage, so a decimal
 // string is not parsed as a float and written back.
 func TestParamsStayRawJSON(t *testing.T) {
 	var created apiv1.SessionCreate
@@ -33,7 +33,7 @@ func TestParamsStayRawJSON(t *testing.T) {
 	}
 }
 
-// TestServerIsStdHTTP locks D1045: the strict server is a net/http ServeMux,
+// TestServerIsStdHTTP locks E10-D045: the strict server is a net/http ServeMux,
 // and the SSE event schemas survive generation.
 func TestServerIsStdHTTP(t *testing.T) {
 	var _ apiv1.SessionRemovedEvent

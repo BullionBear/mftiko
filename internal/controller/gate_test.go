@@ -356,7 +356,7 @@ func TestGateStaleAck(t *testing.T) {
 
 // A provider region that has not synced since this leader's election has not
 // been read. Its acks are not in the view, and the bindings keep what is
-// stored instead of being wiped (D1318, D1337, N6).
+// stored instead of being wiped (E13-D018, E13-D037, N6).
 func TestGateUnsyncedProviderKeepsStatus(t *testing.T) {
 	v, _ := runningSession(sampleSpec())
 	first, _ := gateAt(v, deriveNow)

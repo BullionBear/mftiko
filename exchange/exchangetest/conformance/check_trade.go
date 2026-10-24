@@ -38,7 +38,7 @@ func (r *runner) tradeStream() (exchange.TradeStream, error) {
 	return ts, err
 }
 
-// checkTradeDial: the TradeStream's logon and request frames match their golden file (D303), so
+// checkTradeDial: the TradeStream's logon and request frames match their golden file (E03-D003), so
 // what is signed, and how, is pinned byte for byte.
 func (r *runner) checkTradeDial() []Problem {
 	ts, err := r.tradeStream()
@@ -96,7 +96,7 @@ func (r *runner) checkTradeDial() []Problem {
 
 // checkTradeAnswers: in every trade session each request id is answered at most once, and every
 // answer names an id the worker could have sent (at least 1). A codec that answers twice, or under
-// an id of its own, would make the worker match an answer to the wrong order (D303).
+// an id of its own, would make the worker match an answer to the wrong order (E03-D003).
 func (r *runner) checkTradeAnswers() []Problem {
 	names, err := Sessions(r.fsys)
 	if err != nil {

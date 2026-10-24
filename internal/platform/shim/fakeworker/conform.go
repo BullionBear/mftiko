@@ -1,8 +1,8 @@
-// The conformance worker (PROTOCOL §9.8, D833, D839). It speaks the session
+// The conformance worker (PROTOCOL §9.8, E08-D033, E08-D039). It speaks the session
 // worker's C4 and C5 behavior: compliant unless -violate names one check.
 // Check id strings are repeated here because this package cannot import the
 // harness (internal/sts). sdk.Run is not used. The full Go SDK pass is
-// examples/strategies/conform, run from CI (D864). This worker stays the
+// examples/strategies/conform, run from CI (E08-D064). This worker stays the
 // violation fixture.
 
 package fakeworker
@@ -34,10 +34,10 @@ import (
 )
 
 const (
-	// tdCap is the TD queue cap (D815). It matches sdk/internal/dispatch.TDCap.
+	// tdCap is the TD queue cap (E08-D015). It matches sdk/internal/dispatch.TDCap.
 	// The 65537th event ends the session FAILED. This package does not import sdk.
 	tdCap = 65536
-	// mdCap is the MD ring, 32 MiB (D816). It matches sdk/internal/dispatch.MDBytes.
+	// mdCap is the MD ring, 32 MiB (E08-D016). It matches sdk/internal/dispatch.MDBytes.
 	mdCap = 32 << 20
 
 	fallbackAPI  int64  = 7
@@ -113,7 +113,7 @@ type observation struct {
 	Queued      *int   `json:"queued,omitempty"`
 }
 
-// conformParams is InitPayload.params (D835). The tags match PROTOCOL §9.8.
+// conformParams is InitPayload.params (E08-D035). The tags match PROTOCOL §9.8.
 type conformParams struct {
 	HookSleepMS   int    `json:"hook_sleep_ms,omitempty"`
 	OrderCount    int    `json:"order_count,omitempty"`
@@ -413,7 +413,7 @@ func (c *conform) onLive(m *workerv1.Live) {
 	c.applied(m.GetDigest())
 }
 
-// rejectBeforeInit answers a message that arrived before Init succeeded (D837).
+// rejectBeforeInit answers a message that arrived before Init succeeded (E08-D037).
 // A flow violation reports Done(ok) and keeps running. Anything else ends
 // INIT_FAILED. Start uses its own verb; every other message uses INIT.
 func (c *conform) rejectBeforeInit(verb workerv1.Verb) {
@@ -615,7 +615,7 @@ func (c *conform) probeReads() {
 
 func (c *conform) sendOrders() {
 	subject := "td.order." + strconv.FormatInt(c.api(), 10)
-	// D1030: the session may publish td.view, but that is not the order subject,
+	// E10-D030: the session may publish td.view, but that is not the order subject,
 	// so the order never shows up on td.order. The check fails without a
 	// permission error.
 	if c.violate == "subject" {

@@ -10,7 +10,7 @@ import (
 type Kind int
 
 const (
-	ActSpawn   Kind = iota + 1 // a new incarnation with the plan's spec and live config; one that ended is released first (D106)
+	ActSpawn   Kind = iota + 1 // a new incarnation with the plan's spec and live config; one that ended is released first (E01-D006)
 	ActStart                   // send Start to an initialized worker
 	ActPush                    // push the plan's live config to a worker that has another
 	ActStop                    // stop a worker: not in the plan, or spawned with another spec
@@ -61,7 +61,7 @@ const DefaultLiveRetry = 5 * time.Second
 // DefaultRetry is the wait after an action that failed, before the Reconciler asks for it again.
 var DefaultRetry = Backoff{Min: time.Second, Max: 30 * time.Second}
 
-// Reconciler diffs plans against observations and says what to do (D101). It does no I/O: the caller runs the
+// Reconciler diffs plans against observations and says what to do (E01-D001). It does no I/O: the caller runs the
 // actions, against a Fleet whose observations reflect each action once it returns, and steps again. It keeps what
 // the diff alone does not say: restarts and their backoff, which exits it has handled, and which workers it
 // stopped to replace. Not safe for concurrent use: the agent has one loop.
@@ -86,7 +86,7 @@ type book struct {
 	silentAt  time.Time
 }
 
-// Step is one pass. stale says the demand is stale (DECISIONS D109): nothing is stopped or pushed, and a worker is
+// Step is one pass. stale says the demand is stale (DECISIONS E01-D009): nothing is stopped or pushed, and a worker is
 // spawned or started only if Policy.KeepWhileStale. The actions are in key order. wake is the earliest time a
 // worker held back by a backoff becomes due, zero if none is.
 func (r *Reconciler[S, L]) Step(now time.Time, stale bool, plans map[WorkerKey]Plan[S, L],
@@ -158,7 +158,7 @@ func (r *Reconciler[S, L]) Step(now time.Time, stale bool, plans map[WorkerKey]P
 				held(deadline)
 			}
 			if want := p.Live.Hash(); o.LiveHash != want && !stale {
-				// What the worker has is what it says (D111). One sent and not yet applied gets LiveRetry to be.
+				// What the worker has is what it says (E01-D011). One sent and not yet applied gets LiveRetry to be.
 				retry := r.LiveRetry
 				if retry == 0 {
 					retry = DefaultLiveRetry

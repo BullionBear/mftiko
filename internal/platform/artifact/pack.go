@@ -23,16 +23,16 @@ const (
 	strategyEntrypoint = "bin/strategy"
 	workerEntrypoint   = "bin/worker"
 	strategyMode       = 0o755
-	// layerCompression is fixed so two packs of one binary match (D938).
+	// layerCompression is fixed so two packs of one binary match (E09-D038).
 	layerCompression = gzip.DefaultCompression
 	sdkModule        = "github.com/BullionBear/mftiko"
 )
 
-// ErrNoSDKVersion means the binary's buildinfo has no mftiko module version (D902).
+// ErrNoSDKVersion means the binary's buildinfo has no mftiko module version (E09-D002).
 var ErrNoSDKVersion = errors.New("artifact: no sdk version in buildinfo")
 
 // Image is a packed worker artifact: the OCI image manifest and the two blobs it names.
-// Digest is the manifest digest. For a strategy that digest is StrategyRef.code (PROTOCOL §8.1, D936).
+// Digest is the manifest digest. For a strategy that digest is StrategyRef.code (PROTOCOL §8.1, E09-D036).
 type Image struct {
 	Digest   string
 	Manifest []byte
@@ -40,9 +40,9 @@ type Image struct {
 	Layer    []byte
 }
 
-// PackStrategy packs a Go strategy binary into one reproducible OCI image (D902, D935–D938).
+// PackStrategy packs a Go strategy binary into one reproducible OCI image (E09-D002, E09-D035–E09-D038).
 // It does not push. env may be nil. The manifest is checked with CheckLaunchFields before the
-// image is built (D941).
+// image is built (E09-D041).
 func PackStrategy(binary []byte, name string, env map[string]string) (Image, error) {
 	if name == "" {
 		return Image{}, errors.New("artifact: name is empty")
@@ -97,8 +97,8 @@ func PackStrategy(binary []byte, name string, env map[string]string) (Image, err
 	}, nil
 }
 
-// WorkerContracts is the fixed contract list pack writes for a non-strategy kind (D989).
-// strategy is not in the list: a strategy's contracts come from the binary (D935).
+// WorkerContracts is the fixed contract list pack writes for a non-strategy kind (E09-D089).
+// strategy is not in the list: a strategy's contracts come from the binary (E09-D035).
 func WorkerContracts(kind string) ([]string, bool) {
 	switch kind {
 	case KindMDConn:
@@ -110,11 +110,11 @@ func WorkerContracts(kind string) ([]string, bool) {
 	}
 }
 
-// PackWorker packs a conn or account worker into one reproducible OCI image (D988–D990).
+// PackWorker packs a conn or account worker into one reproducible OCI image (E09-D088–E09-D090).
 // kind is md.conn or td.account. Contracts are WorkerContracts(kind); the SDK marker and the
 // module version in the binary are ignored, and sdk is left empty. The layer is one member,
 // bin/worker. env may be nil. The manifest is checked with CheckLaunchFields before the image
-// is built (D941). It does not push.
+// is built (E09-D041). It does not push.
 func PackWorker(binary []byte, kind, name string, env map[string]string) (Image, error) {
 	contracts, ok := WorkerContracts(kind)
 	if !ok {
@@ -189,7 +189,7 @@ func marshalManifest(m Manifest) ([]byte, error) {
 }
 
 func imageManifest(config, layer []byte) ([]byte, error) {
-	// No annotations. org.opencontainers.image.created in particular is absent (D938).
+	// No annotations. org.opencontainers.image.created in particular is absent (E09-D038).
 	manifest := ocispec.Manifest{
 		Versioned: specs.Versioned{SchemaVersion: 2},
 		MediaType: ocispec.MediaTypeImageManifest,
@@ -201,13 +201,13 @@ func imageManifest(config, layer []byte) ([]byte, error) {
 	return json.Marshal(manifest)
 }
 
-// strategyLayer is one tar+gzip member, bin/strategy (D902, D938).
+// strategyLayer is one tar+gzip member, bin/strategy (E09-D002, E09-D038).
 func strategyLayer(binary []byte) ([]byte, error) {
 	return fileLayer(strategyEntrypoint, binary)
 }
 
 // fileLayer is one tar+gzip member at name. The gzip header has no name and no time, the level
-// is fixed, and the tar member is mode 0755, uid 0, gid 0, mtime 0 (D902, D938).
+// is fixed, and the tar member is mode 0755, uid 0, gid 0, mtime 0 (E09-D002, E09-D038).
 func fileLayer(name string, binary []byte) ([]byte, error) {
 	var buf bytes.Buffer
 	zw, err := gzip.NewWriterLevel(&buf, layerCompression)

@@ -15,7 +15,7 @@ const (
 
 // Credentials are an api_id's unsealed API key. They reach the account worker only through the
 // socketpair in Init. A backfill request may carry them for one read; the service does not keep
-// them, and the TD agent does not build a History (D601, D638, D639). Never env, files or etcd.
+// them, and the TD agent does not build a History (E06-D001, E06-D038, E06-D039). Never env, files or etcd.
 //
 // Every formatting path redacts them, so a stray log field or %v cannot leak a secret.
 type Credentials struct {

@@ -1,11 +1,11 @@
 package symbol
 
-// Venue is one entry of the venue registry (D201, D403): a market, the first part of a
+// Venue is one entry of the venue registry (E02-D001, E04-D003): a market, the first part of a
 // UniversalTicker. Each exchange package declares its venues in code; adding one goes through
 // review, not runtime configuration.
 //
 // A venue is not an account. Who may trade a venue's instruments, and with what credential, is the
-// account kind (exchange AccountKind, D301): a separate enum whose names may coincide with
+// account kind (exchange AccountKind, E03-D001): a separate enum whose names may coincide with
 // venue names. Never look one up in the other's table.
 type Venue struct {
 	Name  string // CamelCase, the first part of a UniversalTicker: BinanceUM, Okx, Bybit

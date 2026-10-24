@@ -17,7 +17,7 @@ import (
 )
 
 // TestOkxHistory places one spot fill on demo trading and checks that fills-history and the
-// order lookup describe the same trade the orders channel reported (D601). It does not run in CI.
+// order lookup describe the same trade the orders channel reported (E06-D001). It does not run in CI.
 //
 //	MFTIKO_OKX_HISTORY=1 go test ./exchange/okx/ -run TestOkxHistory -v -count=1
 //
@@ -187,7 +187,7 @@ func recordHistory(t *testing.T, h *live, creds exchange.Credentials, orderID st
 	defer f.Close()
 	w, err := conformance.NewWriter(f, conformance.Record{
 		Venue: Name, Side: conformance.SidePriv,
-		Note: "okx demo spot BTC-USDT fill. tradeId matches fills-history (D601).",
+		Note: "okx demo spot BTC-USDT fill. tradeId matches fills-history (E06-D001).",
 	}, time.Now, secrets...)
 	if err != nil {
 		t.Fatal(err)

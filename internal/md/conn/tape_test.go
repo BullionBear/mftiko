@@ -25,7 +25,7 @@ import (
 const (
 	tapeTicker = "Binance_Spot_BTCUSDT"
 	tapeCh     = "btcusdt@depth"
-	// tapeUID is the active-table UID the tape fixtures carry (D461).
+	// tapeUID is the active-table UID the tape fixtures carry (E08-D065).
 	tapeUID uint32 = 424242
 )
 
@@ -471,7 +471,7 @@ func TestTapeTrimWindowCountAndBudget(t *testing.T) {
 		t.Fatalf("budget used %d events %d", used, events)
 	}
 
-	// A ring with no events left reports the current epoch and seq 0 (D437).
+	// A ring with no events left reports the current epoch and seq 0 (E04-D037).
 	gone := newTapeBox(t, tapeBoxOptions{max: 10, budget: 1})
 	gone.want("trade")
 	gone.up(3)

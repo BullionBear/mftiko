@@ -15,13 +15,13 @@ import (
 )
 
 const (
-	// bufferMax and bufferAge are the snapshot-wait limits (D424, D858). Reaching either
+	// bufferMax and bufferAge are the snapshot-wait limits (E04-D024, E08-D058). Reaching either
 	// one drops the buffer and discards the snapshot that is in flight.
 	bufferMax = 10000
 	bufferAge = 10 * time.Second
 
 	// backoffMin is the first wait after a snapshot read fails. It doubles until backoffMax
-	// (D424, D441). 16s doubled is 32s, which is past the cap, so the next wait is 30s.
+	// (E04-D024, E04-D041). 16s doubled is 32s, which is past the cap, so the next wait is 30s.
 	backoffMin = time.Second
 	backoffMax = 30 * time.Second
 )
@@ -42,7 +42,7 @@ type Update struct {
 //
 // Snapshot asks md.view for uid. The callback runs on the session dispatcher, which is
 // also where OnMessage and Schedule's fn run. Schedule must not call fn before it returns.
-// Info reads the instruments this session has resolved. It does not call SYM (D859, D823).
+// Info reads the instruments this session has resolved. It does not call SYM (E08-D059, E08-D023).
 // Hook nil still maintains the book. Now nil uses time.Now. Log nil discards lines.
 // RecvWindow is InitPayload.recv_window_ms and must be positive.
 type Config struct {
@@ -72,7 +72,7 @@ type Path struct {
 }
 
 // inst is one instrument. synced is false until a snapshot has been installed and the
-// buffer that followed it was continuous. ob is nil whenever synced is false (D860).
+// buffer that followed it was continuous. ob is nil whenever synced is false (E08-D060).
 type inst struct {
 	uid    uint32
 	ob     *book.OrderBook
@@ -109,7 +109,7 @@ type pending struct {
 }
 
 // Open checks the config and returns a path with no books yet. The first delta for an
-// instrument asks for the snapshot (D857).
+// instrument asks for the snapshot (E08-D057).
 func Open(cfg Config) (*Path, error) {
 	if cfg.Snapshot == nil {
 		return nil, errors.New("bookpath: nil snapshot")
@@ -151,7 +151,7 @@ func (p *Path) Close() {
 }
 
 // View is the instrument's book when it is synced. The pointer is the live ring and stays
-// valid only until the hook that called it returns (D803, D860).
+// valid only until the hook that called it returns (E08-D003, E08-D060).
 func (p *Path) View(uid uint32) (*book.OrderBook, bool) {
 	if p == nil || p.closed {
 		return nil, false
@@ -233,7 +233,7 @@ func (p *Path) onDelta(uid uint32, epoch, seq uint64, mdTs int64, d *mdv1.OrderB
 	p.emit(b, item)
 }
 
-// onReset clears the book and asks md.view again (D861). The levels on the reset are
+// onReset clears the book and asks md.view again (E08-D061). The levels on the reset are
 // not applied. A snapshot older than this cursor is not the reset's book.
 func (p *Path) onReset(b *inst, epoch, seq uint64) {
 	if b.synced && !newer(epoch, seq, b.epoch, b.seq) {
@@ -285,7 +285,7 @@ func (p *Path) emit(b *inst, item pending) {
 }
 
 // fresh reports whether mdTs is still inside the recv window. The comparison is `>`,
-// so an event exactly recv_window_ms old is delivered (D803). now is the dispatcher
+// so an event exactly recv_window_ms old is delivered (E08-D003). now is the dispatcher
 // clock at the moment the delta is applied.
 func (p *Path) fresh(mdTs int64) bool {
 	return p.now().Sub(time.Unix(0, mdTs)) <= p.recv
@@ -482,7 +482,7 @@ func (p *Path) raiseFloor(b *inst, epoch, seq uint64) {
 }
 
 // gate is the tick size from SYM Info. A UID this session has not resolved, or a tick
-// that cannot build a ring, stays unsynced and is logged once (D859, D433).
+// that cannot build a ring, stays unsynced and is logged once (E08-D059, E04-D033).
 func (p *Path) gate(b *inst) (float64, bool) {
 	info, err := p.info(b.uid)
 	if err != nil {

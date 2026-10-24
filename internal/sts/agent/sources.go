@@ -10,8 +10,8 @@ import (
 
 // sources is the spec, assignment, and status mirrors as one runner.Source.
 // The runner's staleness, Synced, and Notify follow all three: status is how a
-// restarted agent sees a terminal session (D945), and the spec's mod_revision
-// is observed_generation (D947). The prefixes do not overlap.
+// restarted agent sees a terminal session (E09-D045), and the spec's mod_revision
+// is observed_generation (E09-D047). The prefixes do not overlap.
 type sources struct {
 	spec, demand, status runner.Source
 

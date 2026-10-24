@@ -9,13 +9,13 @@ breaking:
   # Each contract evolves compatibly within a major (PROTOCOL §1). CI runs `make proto-breaking`.
   use:
     - FILE
-  # Drafts (DECISIONS D007, the table in PROTOCOL §1): free to change until the epic that finalizes them takes them off
+  # Drafts (DECISIONS E00-D007, the table in PROTOCOL §1): free to change until the epic that finalizes them takes them off
   # this list, as part of its done criteria. sym.proto came off in E2-10. mdctl.proto, md.proto and
-  # read.proto came off in E4-12, went back on for D461, and came off again after #241 (D462).
-  # tdctl.proto came off in E6-15. td.proto came off again after #242 (D634).
-  # state.proto, session.proto and stsctl.proto came off in E9-12 (D927); their selector.proto files stay
-  # on until E5 (D991). shim.proto, worker.proto and common.proto came off in #302 (D994).
+  # read.proto came off in E4-12, went back on for E08-D065, and came off again after #241 (E08-D066).
+  # tdctl.proto came off in E6-15. td.proto came off again after #242 (E06-D034).
+  # state.proto, session.proto and stsctl.proto came off in E9-12 (E09-D027); their selector.proto files stay
+  # on until E5 (E09-D091). shim.proto, worker.proto and common.proto came off in #302 (E09-D094).
   ignore:
-    - contract/proto/mftiko/session/v1/selector.proto # E5 (D991)
-    - contract/proto/mftiko/state/v1/selector.proto # E5 (D991)
-    - contract/proto/mftiko/stsctl/v1/selector.proto # E5 (D991)
+    - contract/proto/mftiko/session/v1/selector.proto # E5 (E09-D091)
+    - contract/proto/mftiko/state/v1/selector.proto # E5 (E09-D091)
+    - contract/proto/mftiko/stsctl/v1/selector.proto # E5 (E09-D091)

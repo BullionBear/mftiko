@@ -8,7 +8,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/td/account"
 )
 
-// Policy is TD's (D608): an account worker that ended is started again with a backoff, and while
+// Policy is TD's (E06-D008): an account worker that ended is started again with a backoff, and while
 // the demand is stale too, except one that ended for its credentials, its position mode or its
 // kind: it would end the same way. After GiveUpAfter restarts in a row the agent gives up, and the
 // ack is DEAD (P6). A worker silent past Beat is stopped and restarted.
@@ -18,7 +18,7 @@ type Policy struct {
 	GiveUpAfter uint32
 }
 
-// DefaultPolicy is D608's numbers.
+// DefaultPolicy is E06-D008's numbers.
 var DefaultPolicy = Policy{Backoff: agent.Backoff{Min: time.Second, Max: time.Minute}, Beat: 10 * time.Second, GiveUpAfter: 10}
 
 func (p Policy) Restart(_ agent.WorkerKey, end agent.Ended) (bool, time.Duration) {
@@ -37,7 +37,7 @@ func (p Policy) BeatTimeout(agent.WorkerKey) time.Duration { return p.Beat }
 
 func (Policy) Silent(agent.WorkerKey, time.Duration) bool { return true }
 
-// finalReason is the reason of an ending that no restart can fix (D608): the venue refused the
+// finalReason is the reason of an ending that no restart can fix (E06-D008): the venue refused the
 // credentials, the account is in hedge mode, the kind is not run. "" for any other ending.
 func finalReason(exit *commonv1.ExitInfo) string {
 	switch exit.GetOutcome() {

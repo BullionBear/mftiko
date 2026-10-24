@@ -63,13 +63,13 @@ func TestRetentionExpiresAndReplaysDelete(t *testing.T) {
 	if se.spec(t, "sts-tw-1", sess.Id) != nil || se.status(t, sess.Id) != nil {
 		t.Fatal("reconcile did not finish the etcd delete")
 	}
-	// The spec key is what E10-02 waits on: phase 2 runs only once the spec is absent (D1016, D1019).
+	// The spec key is what E10-02 waits on: phase 2 runs only once the spec is absent (E10-D016, E10-D019).
 	se.s.reconcileOnce(t.Context())
 	if se.row(t, sess.Id).State != recClosed {
 		t.Fatal("row did not stay closed")
 	}
 
-	// STS pushes state_out after the spec is gone (D1082). The closed row stays; the status goes.
+	// STS pushes state_out after the spec is gone (E10-D082). The closed row stays; the status goes.
 	// Hold deletes until the mirror has shown the key, or the pass removes it before seen returns.
 	se.s.haltBeforeDelete.Store(true)
 	se.putStatus(t, sess.Id, doneStatus(se.oldNS(), dataDig))
@@ -79,7 +79,7 @@ func TestRetentionExpiresAndReplaysDelete(t *testing.T) {
 		t.Fatal("status without a spec survived retention")
 	}
 
-	// A later spec that reuses the id is a different generation (D1042, D1007).
+	// A later spec that reuses the id is a different generation (E10-D042, E10-D007).
 	se.putSpec(t, "sts-tw-1", sess.Id, &sessionv1.SessionSpec{Name: "again"})
 	miss := se.s.missingRecord.Load()
 	se.s.haltBeforeDelete.Store(true)

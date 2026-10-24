@@ -15,13 +15,13 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
-// Defaults of Config. Zero selects them (D1318, D1310).
+// Defaults of Config. Zero selects them (E13-D018, E13-D010).
 const (
 	// DefaultStaleAfter is how old a region's LastContact may be before the
-	// view marks the region stale (D1306, W9). It matches the agent's default.
+	// view marks the region stale (E13-D006, W9). It matches the agent's default.
 	DefaultStaleAfter = 15 * time.Second
 	// DefaultResync is how often the reconcile loop runs with nothing else
-	// waking it (D1310). A mirror change does not wait for it (D1319).
+	// waking it (E13-D010). A mirror change does not wait for it (E13-D019).
 	DefaultResync = 60 * time.Second
 )
 
@@ -44,8 +44,8 @@ type intake struct {
 	opt    state.MirrorOptions
 	planes map[string]controller.Placement
 	// derive runs after each snapshot. The bool is the election round or a
-	// resync tick (D1310): orphan removal runs only then. The time is the next
-	// deps deadline, or zero when nothing is waiting (D1331). Nil until Start
+	// resync tick (E13-D010): orphan removal runs only then. The time is the next
+	// deps deadline, or zero when nothing is waiting (E13-D031). Nil until Start
 	// wires it, which is before the loop starts.
 	derive func(controller.View, bool) time.Time
 
@@ -63,9 +63,9 @@ type intake struct {
 	view       controller.View
 	stats      Stats
 	logged     map[string]int64                  // undecodable key -> mod revision last warned
-	drifted    map[string]int64                  // session ref -> spec revision last warned (D1322)
-	issued     map[string]int64                  // session demand key -> issued_at_ns this term already wrote (D1302)
-	posted     map[string]*statev1.SessionDemand // session demand key -> last value this term posted (D1337)
+	drifted    map[string]int64                  // session ref -> spec revision last warned (E13-D022)
+	issued     map[string]int64                  // session demand key -> issued_at_ns this term already wrote (E13-D002)
+	posted     map[string]*statev1.SessionDemand // session demand key -> last value this term posted (E13-D037)
 	prevStale  map[string]bool
 	minBackoff time.Duration
 	maxBackoff time.Duration
@@ -136,7 +136,7 @@ func newIntake(parent context.Context, term *state.Term, cl *state.Clusters, cfg
 }
 
 // placements is the deployment's plane and region of every instance except
-// the controller (D1317, D1327).
+// the controller (E13-D017, E13-D027).
 func placements(cfg Config) map[string]controller.Placement {
 	out := make(map[string]controller.Placement, len(cfg.Topology.Instances))
 	for name, region := range cfg.Topology.Instances {
@@ -168,7 +168,7 @@ func (in *intake) stop() {
 
 // writable reports whether a write to region may be attempted. A region with
 // no instances has nothing unread to protect. Any other region waits until
-// every instance mirror has finished its first list (D1318).
+// every instance mirror has finished its first list (E13-D018).
 func (in *intake) writable(region string) bool {
 	ws := in.byRegion[region]
 	if len(ws) == 0 {
@@ -203,7 +203,7 @@ func (in *intake) loop() {
 	tick := time.NewTicker(in.resync)
 	defer tick.Stop()
 	// deps wakes a round at the earliest deps deadline. A nil channel is never
-	// selected, which is the state when nothing is waiting (D1331).
+	// selected, which is the state when nothing is waiting (E13-D031).
 	var deps *time.Timer
 	var depsC <-chan time.Time
 	stopDeps := func() {
@@ -232,13 +232,13 @@ func (in *intake) loop() {
 		deps = time.NewTimer(d)
 		depsC = deps.C
 	}
-	full := true // the election round is a full resync, before any derived write (D1310)
+	full := true // the election round is a full resync, before any derived write (E13-D010)
 	for {
 		if in.stopped() {
 			return
 		}
 		// Cleared before the read, so a notify during the round sets it again
-		// and the next round runs at once (D1319).
+		// and the next round runs at once (E13-D019).
 		in.dirty.Store(false)
 		next := in.reconcile(full)
 		full = false
@@ -296,7 +296,7 @@ func (in *intake) reconcile(full bool) time.Time {
 	in.publish(v, full, fails)
 	// The snapshot is the relist. Derivation, the gate and lifecycle run on
 	// this round's view, after it is published, so a new leader compares
-	// before it writes (N6, D1319). full selects the orphan scan (N5, D1310).
+	// before it writes (N6, E13-D019). full selects the orphan scan (N5, E13-D010).
 	if in.derive == nil {
 		return time.Time{}
 	}
@@ -349,7 +349,7 @@ func (in *intake) noteFailures(fails []failure, n int) {
 }
 
 // noteDrifts logs each session once per spec revision while its assignment
-// stays on an older revision (D1322). A later revision logs again; a session
+// stays on an older revision (E13-D022). A later revision logs again; a session
 // that stops drifting is forgotten, so a repeat of the same revision logs too.
 func (in *intake) noteDrifts(ds []controller.Drift) {
 	in.mu.Lock()

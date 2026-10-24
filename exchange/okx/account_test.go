@@ -351,7 +351,7 @@ func (c *capture) Balances(e []exchange.Balance)   { c.bals = append([]exchange.
 func (c *capture) Positions(e []exchange.Position) { c.pos = append([]exchange.Position(nil), e...) }
 
 // TestExpTime: Submit, Cancel and CancelBatch carry expTime, now plus AccountConfig.Validity in Unix
-// ms (D605); reads do not. A window out of range is refused when the account is built.
+// ms (E06-D005); reads do not. A window out of range is refused when the account is built.
 func TestExpTime(t *testing.T) {
 	kind := Declare().AccountKinds[0]
 	cfg := exchange.AccountConfig{Credentials: conformance.TestCredentials(exchange.KeyHMAC, true), Validity: 3 * time.Second}

@@ -285,10 +285,10 @@ Fails when four readers never observe both parities of a 40-iteration reload: `s
 | --- | --- |
 | Local non-race full suite | 0.00s, `even=4 odd=0` |
 | Local race warm full suite | 0.00s, `even=5 odd=0` |
-| CI `37943902680` (D008 PR, `8a659ba`) | 0.01s, `even=178 odd=0` |
+| CI `37943902680` (E00-D008 PR, `8a659ba`) | 0.01s, `even=178 odd=0` |
 | Run alone here | exit 0, package 0.009s |
 
-Passed again when it was the only uncached package (3.7s). The failure is the sampling, not a decimal change: D008's CI hit the same `even`/`odd` check.
+Passed again when it was the only uncached package (3.7s). The failure is the sampling, not a decimal change: E00-D008's CI hit the same `even`/`odd` check.
 
 ### Other red runs in the window
 

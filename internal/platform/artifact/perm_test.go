@@ -58,7 +58,7 @@ func TestMakeReadOnlyAndRemoveWritable(t *testing.T) {
 }
 
 // UnpackReadOnly returns a tree that is already read-only: dest never shows the
-// extraction's permissions (D975, D996).
+// extraction's permissions (E09-D075, E09-D096).
 func TestUnpackReadOnly(t *testing.T) {
 	root := t.TempDir()
 	layer := filepath.Join(root, "layer.tar.gz")

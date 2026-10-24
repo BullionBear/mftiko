@@ -170,7 +170,7 @@ func TestDeriveAcrossRegions(t *testing.T) {
 		t.Fatalf("spec_revision %d, spec mod %d", got.GetSpecRevision(), specKV.mod)
 	}
 	// Snapshot only once the view shows every key. A round that has not yet
-	// listed its own put treats the key as absent and puts it again (D1308).
+	// listed its own put treats the key as absent and puts it again (E13-D008).
 	afterRound(t, c, func() error {
 		v := c.View()
 		if v.Sessions[controller.SessionRef("sts-tw-1", deriveSess)].Demand.GetIssuedAtNs() != issued {
@@ -242,7 +242,7 @@ func TestDeriveSurvivesRestart(t *testing.T) {
 		{servers["jp"], feedKey}, {servers["jp"], tdKey},
 	}
 	// Snapshot only once the view shows every key. A round that has not yet
-	// listed its own put treats the key as absent and puts it again (D1308).
+	// listed its own put treats the key as absent and puts it again (E13-D008).
 	afterRound(t, c, func() error {
 		v := c.View()
 		if v.Sessions[controller.SessionRef("sts-tw-1", deriveSess)].Demand.GetIssuedAtNs() == 0 {
@@ -528,7 +528,7 @@ func TestDeriveSpecChangeLogsOnce(t *testing.T) {
 }
 
 // A later round whose view has not listed the assignment yet must reuse the
-// issued_at_ns this term already wrote (D1302).
+// issued_at_ns this term already wrote (E13-D002).
 func TestKeepIssuedWhileViewLags(t *testing.T) {
 	key := state.SessionDemandKey("sts-tw-1", deriveSess)
 	c := &Controller{intake: &intake{issued: map[string]int64{}}}
@@ -555,7 +555,7 @@ func TestKeepIssuedWhileViewLags(t *testing.T) {
 }
 
 // A retry that differs from this term's last post only in updated_at_ns keeps
-// the old clock, so the queue sees the same bytes (D1337). A real change, and
+// the old clock, so the queue sees the same bytes (E13-D037). A real change, and
 // a return to an earlier value, take the new clock.
 func TestKeepUpdatedWhileViewLags(t *testing.T) {
 	key := state.SessionDemandKey("sts-tw-1", deriveSess)

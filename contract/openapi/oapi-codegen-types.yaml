@@ -1,6 +1,6 @@
-# Models for contract A (D1045). `make openapi` runs this.
+# Models for contract A (E10-D045). `make openapi` runs this.
 # skip-prune keeps the SSE event schemas. They are referenced only from
-# x-mftiko-events, which the pruner does not follow (D1036, D1038).
+# x-mftiko-events, which the pruner does not follow (E10-D036, E10-D038).
 package: apiv1
 output: contract/gen/api/v1/types.gen.go
 generate:

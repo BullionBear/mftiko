@@ -13,7 +13,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange"
 )
 
-// REST is the source as a venue's sans-I/O PublicREST (D302): Listing builds an HTTPRequest per page,
+// REST is the source as a venue's sans-I/O PublicREST (E03-D002): Listing builds an HTTPRequest per page,
 // and the Source itself is the exchange.Doer that answers it. Run the Calls with exchange.Collect or
 // exchange.ListingOver, the way SYM runs a real venue's. The other reads return
 // exchange.ErrNotImplemented.

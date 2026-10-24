@@ -7,28 +7,28 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// phaseOf is the SessionStatus phase for one session this round (D921, D946, D963, D964, D967–D971).
+// phaseOf is the SessionStatus phase for one session this round (E09-D021, E09-D046, E09-D063, E09-D064, E09-D067–E09-D071).
 // write is false when the session has nothing to publish. end is the policy's
 // classification of the latest exit; the zero value leaves the exit itself.
 //
 // An exited worker whose spec hash is not the plan's is the incarnation the
-// skeleton is replacing (D947). That exit is not the session ending: DONE or
-// FAILED here would keep the session out of the next plan (D945), and the new
+// skeleton is replacing (E09-D047). That exit is not the session ending: DONE or
+// FAILED here would keep the session out of the next plan (E09-D045), and the new
 // incarnation would never start. Stop has already been sent, so the phase stays
 // STOPPING until the new incarnation is the one observed.
 //
-// An ENDED assignment uses end_reason (D963). ended_by_spec and a normal exit,
+// An ENDED assignment uses end_reason (E09-D063). ended_by_spec and a normal exit,
 // or no worker yet, is DONE. deps_failed, deps_timeout, and invalid_spec are
 // FAILED with that reason, including when the worker has not been spawned.
 // A worker that is still running stays on its non-terminal phase until it exits.
 //
 // A wanted worker the policy is bringing back is RESTARTING, with the reason of
-// the exit it is waiting out (D971). restart_limit and a no_beat kill the policy
-// will not restart are FAILED with those reasons (D967, D969).
+// the exit it is waiting out (E09-D071). restart_limit and a no_beat kill the policy
+// will not restart are FAILED with those reasons (E09-D067, E09-D069).
 //
-// An exit the policy has not classified yet stays STOPPING (D995). Publishing the
+// An exit the policy has not classified yet stays STOPPING (E09-D095). Publishing the
 // exit itself would make a crash the policy is about to restart terminal, and a
-// terminal session does not come back (D945).
+// terminal session does not come back (E09-D045).
 func phaseOf(in intent, obs *agent.Observed, end ...endView) (statev1.Phase, string, bool) {
 	var ev endView
 	if len(end) > 0 {
@@ -69,7 +69,7 @@ func phaseOf(in intent, obs *agent.Observed, end ...endView) (statev1.Phase, str
 	}
 }
 
-// undecidedExit reports an exit the restart policy has not classified yet (D995).
+// undecidedExit reports an exit the restart policy has not classified yet (E09-D095).
 // The runner's Sync observes again after the step's actions, so it can see a
 // worker that ended after the Step that would have asked the policy about it.
 // The next Step asks. Without a policy (a test-supplied one) nothing is undecided.
@@ -78,7 +78,7 @@ func undecidedExit(obs *agent.Observed, ev endView, havePolicy bool) bool {
 		obs.Incarnation != 0 && ev.decided != obs.Incarnation
 }
 
-// endedPhase is the phase of an assignment that is ENDED or gone (D963, D964).
+// endedPhase is the phase of an assignment that is ENDED or gone (E09-D063, E09-D064).
 func endedPhase(in intent, obs *agent.Observed, end endView) (statev1.Phase, string, bool) {
 	if obs != nil && obs.State == agent.StateLost {
 		return statev1.Phase_PHASE_FAILED, ReasonShimLost, true
@@ -107,7 +107,7 @@ func endedPhase(in intent, obs *agent.Observed, end endView) (statev1.Phase, str
 }
 
 // exitReason is the shim's reason, except a no_beat kill, which the status
-// names no_beat even though the shim recorded signal 9 and no Exiting (D967).
+// names no_beat even though the shim recorded signal 9 and no Exiting (E09-D067).
 func exitReason(ex *commonv1.ExitInfo, end endView) string {
 	if end.reason == ReasonNoBeat || end.overrideReason == ReasonNoBeat {
 		return ReasonNoBeat
@@ -117,7 +117,7 @@ func exitReason(ex *commonv1.ExitInfo, end endView) string {
 
 // exitForStatus is the ExitInfo written on SessionStatus. The shim's record
 // stays as the process ended; a missing-beat SIGKILL is published as HUNG
-// with reason no_beat (D967).
+// with reason no_beat (E09-D067).
 func exitForStatus(ex *commonv1.ExitInfo, end endView) *commonv1.ExitInfo {
 	out := proto.Clone(ex).(*commonv1.ExitInfo)
 	if end.noBeat {
@@ -127,7 +127,7 @@ func exitForStatus(ex *commonv1.ExitInfo, end endView) *commonv1.ExitInfo {
 	return out
 }
 
-// failEnd reports the end reasons that terminate as FAILED (D963).
+// failEnd reports the end reasons that terminate as FAILED (E09-D063).
 func failEnd(reason string) bool {
 	switch reason {
 	case "deps_failed", "deps_timeout", "invalid_spec":
@@ -158,7 +158,7 @@ func phaseFromObs(obs *agent.Observed, endReason string) (statev1.Phase, string)
 		return statev1.Phase_PHASE_RUNNING, ""
 	case obs.State == agent.StateStarting || obs.State == agent.StateRunning:
 		// Done(START, ok) moves the skeleton to Running before Stage(running).
-		// RUNNING waits for the stage (D921, D946).
+		// RUNNING waits for the stage (E09-D021, E09-D046).
 		return statev1.Phase_PHASE_STARTING, ""
 	case obs.State == agent.StateInitializing || obs.State == agent.StateInitialized:
 		return statev1.Phase_PHASE_WAITING, ""

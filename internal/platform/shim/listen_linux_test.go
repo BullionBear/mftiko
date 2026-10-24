@@ -59,7 +59,7 @@ func TestListenStale(t *testing.T) {
 	c.Close()
 }
 
-// A shim still serving the worker key keeps its socket, and a second one does not start (§4.1, D106).
+// A shim still serving the worker key keeps its socket, and a second one does not start (§4.1, E01-D006).
 func TestListenBusy(t *testing.T) {
 	l := testLaunch(workDir(t))
 	first, err := listen(l)

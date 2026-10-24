@@ -21,7 +21,7 @@ var _ Source = (*state.Mirror)(nil)
 // field, a value that does not parse. The Planner never sees what Decode refused (PROTOCOL §3.3).
 type Decode[I any] func(key string, value []byte) (I, error)
 
-// Intake reads the demand the controller writes for this instance (D101, D907), decoded into the plane's type.
+// Intake reads the demand the controller writes for this instance (E01-D001, E09-D007), decoded into the plane's type.
 type Intake[I any] struct {
 	src    Source
 	decode Decode[I]

@@ -9,9 +9,9 @@ import (
 	mdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1"
 )
 
-// Tape asks md.view for one page of a feed's tape (D436, D847). The call returns when the
+// Tape asks md.view for one page of a feed's tape (E04-D036, E08-D047). The call returns when the
 // request has been started. fn runs on the TD buffer with the page, or with an error when
-// the wait times out, no responder is listening, or the reply reports an error (D848).
+// the wait times out, no responder is listening, or the reply reports an error (E08-D048).
 // The SDK does not apply the page to the live stream; fn owns that.
 func (p *Path) Tape(uid uint32, topic string, q TapeQuery, fn func(*mdv1.TapePage, error)) error {
 	if fn == nil {
@@ -60,8 +60,8 @@ func (p *Path) BookSnapshot(uid uint32, fn func(*mdv1.BookSnapshot, error)) erro
 	return nil
 }
 
-// FetchKlines asks md.fetch for the latest limit closed klines (D419, D456). fn runs on
-// the TD buffer. Timeout and a missing responder are errors there (D848).
+// FetchKlines asks md.fetch for the latest limit closed klines (E04-D019, E04-D056). fn runs on
+// the TD buffer. Timeout and a missing responder are errors there (E08-D048).
 func (p *Path) FetchKlines(uid uint32, interval string, limit uint32, fn func(*mdv1.Klines, error)) error {
 	if fn == nil {
 		return errors.New("mdpath: nil callback")

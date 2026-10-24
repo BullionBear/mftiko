@@ -24,9 +24,9 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
-// sseQueueCapDefault is the per-connection send buffer (D1095). The decision
+// sseQueueCapDefault is the per-connection send buffer (E10-D095). The decision
 // says the buffer has a limit and does not pick the number, same as the audit
-// queue (D1049). Tests set sseQueueCap before the handler starts.
+// queue (E10-D049). Tests set sseQueueCap before the handler starts.
 const sseQueueCapDefault = 256
 
 var sseQueueCap = sseQueueCapDefault
@@ -764,7 +764,7 @@ func (s *Server) listAt(ctx context.Context, region string, rev int64) (map[stri
 		if pinned == 0 {
 			// A historical read's header revision is the store's current revision, not the
 			// revision the keys were read at. Watching past that header would skip every
-			// event between the requested revision and now (D1094 starts at revision+1).
+			// event between the requested revision and now (E10-D094 starts at revision+1).
 			if rev > 0 {
 				pinned = rev
 			} else {

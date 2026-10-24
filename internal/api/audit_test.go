@@ -171,7 +171,7 @@ func TestAuditRows(t *testing.T) {
 	}
 	loginRow := waitAuditID(t, conn, hdr.Get(headerRequestID))
 	var loginBody map[string]any
-	// token is removed; the remaining field is kept (D1052).
+	// token is removed; the remaining field is kept (E10-D052).
 	if loginRow.User != "ada" || loginRow.Status != http.StatusNoContent || loginRow.Body == nil ||
 		json.Unmarshal([]byte(*loginRow.Body), &loginBody) != nil || loginBody["extra"] != float64(1) ||
 		loginBody["token"] != nil || strings.Contains(*loginRow.Body, tokenAda) {

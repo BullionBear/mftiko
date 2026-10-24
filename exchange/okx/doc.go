@@ -1,17 +1,17 @@
 // Package okx is the OKX adapter: one venue and one account kind, both named Okx (the CamelCase
-// token of D201; two enums, D301), a unified account (D403). Spot, swap, futures and options share it; the instId tells them apart (BTC-USDT,
+// token of E02-D001; two enums, E03-D001), a unified account (E04-D003). Spot, swap, futures and options share it; the instId tells them apart (BTC-USDT,
 // BTC-USDT-SWAP).
 //
 // Public market data covers spot, linear swaps (USDT and USDC), linear futures and coin-margined
 // perpetual swaps. Checked on production on 2026-10-10. Private REST and the private stream below
-// were checked on demo trading the same day. Submit and Cancel go over REST (D303); NewTradeStream
+// were checked on demo trading the same day. Submit and Cancel go over REST (E03-D003); NewTradeStream
 // is exchange.ErrUnsupported. History is fills-history (E3-16). Options are not listed.
 //
 // Facts the implementation must honor. Checked 2026-10-10 on production for the public socket and
 // the public REST calls, and the same day on demo trading for the private calls.
 //
 //   - Routes: "public" (wss://ws.okx.com:8443/ws/v5/public) and "business"
-//     (wss://ws.okx.com:8443/ws/v5/business, candles). The topic decides the route (D403). Private
+//     (wss://ws.okx.com:8443/ws/v5/business, candles). The topic decides the route (E04-D003). Private
 //     data is on /ws/v5/private, after login.
 //   - No published cap on channels per connection: Budget is 0 and Cost is 1. What is limited: 480
 //     subscribe, unsubscribe and login requests per connection per hour (SessionLimits.Rate), and
@@ -27,7 +27,7 @@
 //     passphrase (Credentials.Passphrase).
 //   - Dead-man switch: cancel-all-after, account-wide.
 //   - History: GET /api/v5/trade/fills-history, newest first. tradeId is the fill id on both REST
-//     and the orders channel (D601). GET /api/v5/trade/order looks one order up by ordId.
+//     and the orders channel (E06-D001). GET /api/v5/trade/order looks one order up by ordId.
 //   - Demo trading is AccountConfig.Simulated. It adds the header x-simulated-trading: 1 on REST
 //     and, unless StreamEndpoint is set, dials wss://wspap.okx.com:8443/ws/v5/private. The REST
 //     host stays https://www.okx.com. RESTEndpoint replaces that host and does not by itself turn
@@ -41,7 +41,7 @@
 // page (settle equal to the base). Future is the linear rows of FUTURES. A coin-margined dated
 // future is not listed: an Inverse ticker cannot carry an expiry, and the linear USD_UM future
 // already uses Okx_Future_<pair>-<date>. Option listing is exchange.ErrUnsupported. A row whose
-// settle is neither base nor quote is quanto and is left out (D203). A row that fails Validate,
+// settle is neither base nor quote is quanto and is left out (E02-D003). A row that fails Validate,
 // Ticker or the 15-digit check is left out.
 //
 // Spot base and quote are baseCcy and quoteCcy. A contract's pair is uly (else instFamily), split
@@ -51,18 +51,18 @@
 // and ExpiryNs is expTime in nanoseconds. Status: live is Tradable, suspend is Halted, preopen is
 // Prelisting, expired is Expired, and anything else, including test, is Unknown.
 //
-// qty_step, min_qty and max_qty are in contract_value_ccy (D203). Spot uses lotSz, minSz and
+// qty_step, min_qty and max_qty are in contract_value_ccy (E02-D003). Spot uses lotSz, minSz and
 // maxLmtSz as they are. A contract multiplies each by ctVal, so a swap with lotSz 0.01 and ctVal
 // 0.01 has qty_step 0.0001. price_tick is tickSz. max_notional is maxLmtAmt when OKX sends one.
 // Spot BTC-USDT publishes lotSz 1e-8 and maxLmtSz 9999999999, which is 18 significant digits.
-// float64 holds 15 (D008), so max_qty is stored as the largest value that still fits. When the
+// float64 holds 15 (E00-D008), so max_qty is stored as the largest value that still fits. When the
 // venue publishes no max and ten million fits at the step, max is left unset.
 //
 // GET /api/v5/market/candles. bar is the venue interval (1m, 1H, 1D, 1M for 1mo). The page is 300.
 // The venue returns the newest candle first, and confirm "0" is the one still forming. Those are
 // dropped; the rest come back oldest first. after, when endNs is set, asks for candles earlier than
 // that millisecond. GET /api/v5/market/books is a snapshot for a caller that wants one without the
-// stream. Open interest has no REST call: the open-interest channel pushes it (D401).
+// stream. Open interest has no REST call: the open-interest channel pushes it (E04-D001).
 //
 // The channel string is "<channel>:<instId>". A subscribe frame is
 // {"id","op":"subscribe","args":[{"channel","instId"}]} and the ack echoes id, once per arg.
@@ -70,7 +70,7 @@
 //	bbo-tbt         BestQuote. One bid and one ask.
 //	trades          one Trade per row. side is the taker. tradeId is the id. sz on a derivative is
 //	                the contract count. The frame has no ctVal, so this codec does not multiply by
-//	                ContractSize; the conn worker does that when it resolves the instrument (D203).
+//	                ContractSize; the conn worker does that when it resolves the instrument (E02-D003).
 //	                Spot sz is already base.
 //	books           orderbook_delta. A level is [price, sz, deprecated, numOrders];
 //	                sz "0" deletes the level. Derivative sz is the contract count, same as trades.
@@ -104,12 +104,12 @@
 // short. A limit order's ordType is limit, post_only, ioc or fok from the time in force. A market
 // order is IOC and carries no price. Spot market orders set tgtCcy to base_ccy or quote_ccy; a
 // quote amount is formatted at 1e-8. A contract's sz is the contract count: platform qty divided
-// by ContractSize (D203). Spot sz is the platform quantity. clOrdId is 1 to 32 letters or digits.
+// by ContractSize (E02-D003). Spot sz is the platform quantity. clOrdId is 1 to 32 letters or digits.
 // reduceOnly is the string "true"; spot has none. Cancel-batch's venue cap is 20 orders and it may
-// mix instruments; a longer list is still sent (D625). Each order costs one count on the 60-per-2s
+// mix instruments; a longer list is still sent (E06-D025). Each order costs one count on the 60-per-2s
 // order budget. The three carry the
 // expTime header: the signing time plus AccountConfig.Validity (5 seconds by default), Unix ms.
-// The venue refuses a request that arrives after it (D605). expTime is not part of the prehash.
+// The venue refuses a request that arrives after it (E06-D005). expTime is not part of the prehash.
 //
 // The create acknowledgement has an order id and no state, so sCode 0 is OrderStatusNew: the venue
 // has the request and did not refuse it, and the order is not on the book yet.
@@ -131,7 +131,7 @@
 // On the way back, sz, accFillSz and fillSz are the venue's sz. Spot sz is base, or quote when
 // tgtCcy is quote_ccy (then that amount is QuoteQty and Qty is the filled base). A contract's sz
 // is the contract count. The frame does not carry ctVal, so this codec does not multiply by
-// ContractSize; the account worker does that when it resolves the ExchKey (D203).
+// ContractSize; the account worker does that when it resolves the ExchKey (E02-D003).
 //
 // # Recon
 //
@@ -141,10 +141,10 @@
 // OKX sent. Balances are GET /api/v5/account/balance. Free is availBal and Locked is frozenBal. A
 // coin with neither is left out. A full page of 100, with a new cursor, is the next page: after
 // is the last ordId, or the last posId for positions. GET /api/v5/account/config gives posMode:
-// long_short_mode is AccountSnapshot.HedgeMode, net_mode is not (D607).
+// long_short_mode is AccountSnapshot.HedgeMode, net_mode is not (E06-D007).
 //
 // QueryOrder is GET /api/v5/trade/order by instId and clOrdId, or ordId when the ref has none.
-// It finds live and ended orders. 51603 (Order does not exist) is exchange.ErrNotFound (D605).
+// It finds live and ended orders. 51603 (Order does not exist) is exchange.ErrNotFound (E06-D005).
 //
 // Leverage is GET /api/v5/account/leverage-info for that instId and mgnMode cross. Spot has none.
 // A net row is the answer. Long and short rows that disagree are an error.
@@ -169,7 +169,7 @@
 //	             split is read off the instId when instType is absent. An instId of five parts
 //	             ending in C or P is an option. uTime, else cTime, in milliseconds. When the row
 //	             carries a tradeId and a non-zero fillSz, it is also a Fill. tradeId is the fill
-//	             id (D601), the same field fills-history returns. execType T is taker and M is
+//	             id (E06-D001), the same field fills-history returns. execType T is taker and M is
 //	             maker. fillFee is the fee and fillFeeCcy is the fee asset; OKX's sign is kept
 //	             (a charge is negative). fillTime, else uTime.
 //	positions    one Position per row with a non-zero pos, with the same sign rule as the REST
@@ -194,7 +194,7 @@
 // channel calls fillFee and fillFeeCcy; OKX's sign is kept. fillTime, else ts.
 //
 // GET /api/v5/trade/order looks up one order by instId and ordId. An empty list is an error, so a
-// fill whose order is not visible yet is asked again on the next round (D601).
+// fill whose order is not visible yet is asked again on the next round (E06-D001).
 //
 // Checked on demo trading on 2026-10-10: the tradeId on the orders channel is the tradeId in
 // fills-history, and the fee, price and quantity match.

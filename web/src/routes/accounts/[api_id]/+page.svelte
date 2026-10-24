@@ -68,7 +68,7 @@
 		return () => detail.cancel();
 	});
 
-	// A different account must not keep the previous form, including any secret (D1101).
+	// A different account must not keep the previous form, including any secret (E10-D101).
 	$effect(() => {
 		const id = apiId ?? null;
 		if (id === seenId) return;
