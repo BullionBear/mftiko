@@ -73,8 +73,14 @@ func runSessionShow(a *App) int {
 }
 
 func runSessionEnd(a *App) int {
-	if code := a.onlyFlags(); code != 0 {
+	if code := a.onlyFlags("wait", "wait-timeout"); code != 0 {
 		return code
+	}
+	if a.opt.waitTimeoutSet && !a.opt.wait.set {
+		return a.exit("-wait-timeout requires -wait")
+	}
+	if a.opt.wait.set && a.opt.wait.target != "" && a.opt.wait.target != waitTargetTerminal {
+		return a.exit("end --wait waits until terminal")
 	}
 	id, code := a.sessionArg("session end")
 	if code != 0 {
@@ -91,7 +97,13 @@ func runSessionEnd(a *App) int {
 	if code := a.checked(res, err); code != 0 {
 		return code
 	}
-	return a.writeSession(api, res)
+	code = a.writeSession(api, res)
+	if code != 0 || !a.opt.wait.set {
+		return code
+	}
+	var detail apiv1.SessionDetail
+	_ = json.Unmarshal(res.Body, &detail)
+	return a.follow(api, id, waitTargetTerminal, detail.Region, true)
 }
 
 func runSessionDelete(a *App) int {
@@ -702,14 +714,20 @@ var sessionRetryWait = func(ctx context.Context, d time.Duration) error {
 
 func runSessionCreate(a *App) int {
 	key := a.sessionKey()
-	if len(a.Args) != 0 {
-		return a.failSession(key, ExitUsage, "session create takes no arguments")
-	}
-	if msg := a.unexpectedFlags("f", flagPair("idempotency", "key"), "limit", "cursor"); msg != "" {
+	if msg := a.unexpectedFlags("f", flagPair("idempotency", "key"), "limit", "cursor", "wait", "wait-timeout"); msg != "" {
 		return a.failSession(key, ExitUsage, msg)
 	}
 	if a.opt.limitSet || a.opt.cursorSet {
 		return a.failSession(key, ExitUsage, "-limit and -cursor are only for strategy list and strategy versions, and account list")
+	}
+	if a.opt.waitTimeoutSet && !a.opt.wait.set {
+		return a.failSession(key, ExitUsage, "-wait-timeout requires -wait")
+	}
+	if a.opt.wait.set && a.opt.wait.target == "" {
+		return a.failSession(key, ExitUsage, "session create --wait needs a phase or terminal")
+	}
+	if len(a.Args) != 0 {
+		return a.failSession(key, ExitUsage, "session create takes no arguments")
 	}
 	if !a.opt.file.set || a.opt.file.v == "" {
 		return a.failSession(key, ExitUsage, "session create requires -f")
@@ -735,7 +753,19 @@ func runSessionCreate(a *App) int {
 	if res.Status < 200 || res.Status >= 300 {
 		return a.reportSession(res, name, locs, key)
 	}
-	return a.writeCreatedSession(res, key)
+	code = a.writeCreatedSession(res, key)
+	if code != 0 || !a.opt.wait.set {
+		return code
+	}
+	var created apiv1.Session
+	if err := json.Unmarshal(res.Body, &created); err != nil || created.Id == "" {
+		return a.failSession(key, ExitUsage, "response is not a session")
+	}
+	code = a.follow(api, created.Id, a.opt.wait.target, created.Region, true)
+	if code != 0 {
+		a.writeSessionKey(key)
+	}
+	return code
 }
 
 // sessionKey is the Idempotency-Key for this run (E11-D022). A flag value is

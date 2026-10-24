@@ -9,8 +9,9 @@
 //	mftiko instance show <name>
 //	mftiko account-kind list
 //	mftiko account list|show|create|update|delete
-//	mftiko session create -f <file>
-//	mftiko session list|show|end|delete
+//	mftiko session create -f <file> [--wait <phase|terminal>]
+//	mftiko session list|show|end|delete|watch
+//	mftiko session end <id> [--wait]
 //	mftiko record list|show
 //
 // It speaks only to the API. mftiko-pack and mftiko-seal are separate programs.

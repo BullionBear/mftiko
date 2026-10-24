@@ -178,6 +178,12 @@ func (a *api) GetSession(ctx context.Context, req apiv1.GetSessionRequestObject)
 	}
 	a.s.mu.Lock()
 	defer a.s.mu.Unlock()
+	if a.s.regionDown {
+		p := problem(http.StatusServiceUnavailable, apiv1.ErrorCodeRegionUnavailable, "Region Unavailable", "region is unavailable")
+		return apiv1.GetSession503ApplicationProblemPlusJSONResponse{
+			UnavailableApplicationProblemPlusJSONResponse: apiv1.UnavailableApplicationProblemPlusJSONResponse(p),
+		}, nil
+	}
 	d, ok := a.s.sessionByID(string(req.SessionId))
 	if !ok {
 		return apiv1.GetSession404ApplicationProblemPlusJSONResponse{
@@ -368,7 +374,11 @@ func (s *Server) takeDrop(r *http.Request, raw []byte) bool {
 		Query:          r.URL.RawQuery,
 		Body:           append([]byte(nil), raw...),
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),
+		LastEventID:    r.Header.Get("Last-Event-ID"),
 	})
+	if s.cond != nil {
+		s.cond.Broadcast()
+	}
 	return true
 }
 

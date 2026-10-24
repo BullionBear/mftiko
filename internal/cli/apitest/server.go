@@ -44,6 +44,8 @@ type Call struct {
 	Body []byte
 	// IdempotencyKey is the Idempotency-Key header, empty when absent.
 	IdempotencyKey string
+	// LastEventID is the Last-Event-ID header, empty when absent.
+	LastEventID string
 }
 
 // Option is fixed before the server accepts a connection.
@@ -107,6 +109,9 @@ type Option struct {
 	StorageUnavailable bool
 	// AlgoOverlap makes POST /sessions return 409 algo_overlap.
 	AlgoOverlap bool
+	// Events, when set, handles GET /api/v1/events. The function writes the
+	// response, including a stream. Nil leaves StreamEvents unused.
+	Events func(http.ResponseWriter, *http.Request)
 }
 
 // Server is a started httptest server.
@@ -145,6 +150,9 @@ type Server struct {
 	createFields []apiv1.FieldError
 	storageDown  bool
 	algoOverlap  bool
+	events       func(http.ResponseWriter, *http.Request)
+	regionDown   bool
+	cond         *sync.Cond
 	created      map[string]savedSession
 	createdOrder []string
 	nextSession  int
@@ -169,6 +177,8 @@ func Start(opt Option) *Server {
 		cat:     opt.Catalog,
 	}
 	s.install(opt)
+	s.events = opt.Events
+	s.cond = sync.NewCond(&s.mu)
 	h := s.handler()
 	if opt.TLS {
 		cert, err := leafCert()
@@ -237,6 +247,36 @@ func (s *Server) CertPEM() []byte {
 func (s *Server) Calls() []Call {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.copyCalls()
+}
+
+// LastBody is the body of the last response.
+func (s *Server) LastBody() []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]byte(nil), s.lastBody...)
+}
+
+// WaitCalls blocks until at least n requests have been recorded, then returns
+// a copy. It returns immediately when n are already recorded.
+func (s *Server) WaitCalls(n int) []Call {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for len(s.calls) < n {
+		s.cond.Wait()
+	}
+	return s.copyCalls()
+}
+
+// SetRegionUnavailable makes GET /sessions/{id} return 503 region_unavailable
+// while down is true.
+func (s *Server) SetRegionUnavailable(down bool) {
+	s.mu.Lock()
+	s.regionDown = down
+	s.mu.Unlock()
+}
+
+func (s *Server) copyCalls() []Call {
 	out := make([]Call, len(s.calls))
 	for i, c := range s.calls {
 		c.Body = append([]byte(nil), c.Body...)
@@ -245,11 +285,11 @@ func (s *Server) Calls() []Call {
 	return out
 }
 
-// LastBody is the body of the last response.
-func (s *Server) LastBody() []byte {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return append([]byte(nil), s.lastBody...)
+func (s *Server) addCall(call Call) {
+	s.calls = append(s.calls, call)
+	if s.cond != nil {
+		s.cond.Broadcast()
+	}
 }
 
 func (s *Server) handler() http.Handler {
@@ -264,6 +304,10 @@ func (s *Server) handler() http.Handler {
 		raw, err := readReqBody(r)
 		if err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if r.Method == http.MethodGet && r.URL.Path == "/api/v1/events" && s.events != nil {
+			s.serveEvents(w, r)
 			return
 		}
 		if s.takeDrop(r, raw) {
@@ -305,12 +349,13 @@ func (s *Server) middleware(next apiv1.StrictHandlerFunc, operationID string) ap
 			RawQuery:       r.URL.RawQuery,
 			Query:          r.URL.RawQuery,
 			IdempotencyKey: r.Header.Get("Idempotency-Key"),
+			LastEventID:    r.Header.Get("Last-Event-ID"),
 		}
 		if raw, ok := ctx.Value(bodyKey).([]byte); ok {
 			call.Body = append([]byte(nil), raw...)
 		}
 		s.mu.Lock()
-		s.calls = append(s.calls, call)
+		s.addCall(call)
 		s.lastAuth = call.Authorization
 		block := s.block
 		if s.reqID != "" {
@@ -328,6 +373,33 @@ func (s *Server) middleware(next apiv1.StrictHandlerFunc, operationID string) ap
 		ctx = context.WithValue(ctx, authKey, call.Authorization)
 		return next(ctx, w, r, request)
 	}
+}
+
+func (s *Server) serveEvents(w http.ResponseWriter, r *http.Request) {
+	call := Call{
+		Operation:     "StreamEvents",
+		Method:        r.Method,
+		Path:          r.URL.Path,
+		Authorization: r.Header.Get("Authorization"),
+		UserAgent:     r.Header.Get("User-Agent"),
+		ContentType:   r.Header.Get("Content-Type"),
+		Cookie:        r.Header.Get("Cookie"),
+		RawQuery:      r.URL.RawQuery,
+		Query:         r.URL.RawQuery,
+		LastEventID:   r.Header.Get("Last-Event-ID"),
+	}
+	s.mu.Lock()
+	token := s.token
+	s.addCall(call)
+	s.mu.Unlock()
+	if call.Authorization != "Bearer "+token {
+		p := problem(http.StatusUnauthorized, apiv1.ErrorCodeUnauthenticated, "Unauthorized", "bearer token was not accepted")
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(p)
+		return
+	}
+	s.events(w, r)
 }
 
 func (s *Server) onError(w http.ResponseWriter, _ *http.Request, err error) {
