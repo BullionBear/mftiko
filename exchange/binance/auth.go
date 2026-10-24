@@ -289,6 +289,10 @@ func binanceErr(status, code int, msg string) error {
 	if c, ok := platformCodes[code]; ok {
 		mapped = c
 	}
+	// Spot answers a LIMIT_MAKER that would take with -2010, the code it also uses for balance.
+	if code == -2010 && strings.Contains(msg, "would immediately match") {
+		mapped = 204
+	}
 	return &exchange.Reject{Code: mapped, Native: strconv.Itoa(code), Reason: msg}
 }
 

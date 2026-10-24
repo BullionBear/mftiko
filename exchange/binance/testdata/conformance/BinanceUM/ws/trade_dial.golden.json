@@ -8,27 +8,27 @@
     {
       "name": "limit GTC",
       "id": 1,
-      "frame": "{\"id\":\"o1\",\"method\":\"order.place\",\"params\":{\"newClientOrderId\":\"1767225600000000001\",\"newOrderRespType\":\"RESULT\",\"price\":\"65000.0\",\"quantity\":\"0.001\",\"recvWindow\":5000,\"side\":\"BUY\",\"symbol\":\"BTCUSDT\",\"timeInForce\":\"GTC\",\"timestamp\":1767225600000,\"type\":\"LIMIT\"}}"
+      "frame": "{\"id\":\"o1\",\"method\":\"order.place\",\"params\":{\"newClientOrderId\":\"1767225600000000001\",\"newOrderRespType\":\"ACK\",\"price\":\"65000.0\",\"quantity\":\"0.001\",\"recvWindow\":5000,\"side\":\"BUY\",\"symbol\":\"BTCUSDT\",\"timeInForce\":\"GTC\",\"timestamp\":1767225600000,\"type\":\"LIMIT\"}}"
     },
     {
       "name": "limit IOC",
       "id": 2,
-      "frame": "{\"id\":\"o2\",\"method\":\"order.place\",\"params\":{\"newClientOrderId\":\"1767225600000000002\",\"newOrderRespType\":\"RESULT\",\"price\":\"65000.0\",\"quantity\":\"0.001\",\"recvWindow\":5000,\"side\":\"BUY\",\"symbol\":\"BTCUSDT\",\"timeInForce\":\"IOC\",\"timestamp\":1767225600000,\"type\":\"LIMIT\"}}"
+      "frame": "{\"id\":\"o2\",\"method\":\"order.place\",\"params\":{\"newClientOrderId\":\"1767225600000000002\",\"newOrderRespType\":\"ACK\",\"price\":\"65000.0\",\"quantity\":\"0.001\",\"recvWindow\":5000,\"side\":\"BUY\",\"symbol\":\"BTCUSDT\",\"timeInForce\":\"IOC\",\"timestamp\":1767225600000,\"type\":\"LIMIT\"}}"
     },
     {
       "name": "limit FOK",
       "id": 3,
-      "frame": "{\"id\":\"o3\",\"method\":\"order.place\",\"params\":{\"newClientOrderId\":\"1767225600000000003\",\"newOrderRespType\":\"RESULT\",\"price\":\"65000.0\",\"quantity\":\"0.001\",\"recvWindow\":5000,\"side\":\"BUY\",\"symbol\":\"BTCUSDT\",\"timeInForce\":\"FOK\",\"timestamp\":1767225600000,\"type\":\"LIMIT\"}}"
+      "frame": "{\"id\":\"o3\",\"method\":\"order.place\",\"params\":{\"newClientOrderId\":\"1767225600000000003\",\"newOrderRespType\":\"ACK\",\"price\":\"65000.0\",\"quantity\":\"0.001\",\"recvWindow\":5000,\"side\":\"BUY\",\"symbol\":\"BTCUSDT\",\"timeInForce\":\"FOK\",\"timestamp\":1767225600000,\"type\":\"LIMIT\"}}"
     },
     {
       "name": "limit GTX",
       "id": 4,
-      "frame": "{\"id\":\"o4\",\"method\":\"order.place\",\"params\":{\"newClientOrderId\":\"1767225600000000004\",\"newOrderRespType\":\"RESULT\",\"price\":\"65000.0\",\"quantity\":\"0.001\",\"recvWindow\":5000,\"side\":\"BUY\",\"symbol\":\"BTCUSDT\",\"timeInForce\":\"GTX\",\"timestamp\":1767225600000,\"type\":\"LIMIT\"}}"
+      "frame": "{\"id\":\"o4\",\"method\":\"order.place\",\"params\":{\"newClientOrderId\":\"1767225600000000004\",\"newOrderRespType\":\"ACK\",\"price\":\"65000.0\",\"quantity\":\"0.001\",\"recvWindow\":5000,\"side\":\"BUY\",\"symbol\":\"BTCUSDT\",\"timeInForce\":\"GTX\",\"timestamp\":1767225600000,\"type\":\"LIMIT\"}}"
     },
     {
       "name": "market",
       "id": 5,
-      "frame": "{\"id\":\"o5\",\"method\":\"order.place\",\"params\":{\"newClientOrderId\":\"1767225600000000005\",\"newOrderRespType\":\"RESULT\",\"quantity\":\"0.001\",\"recvWindow\":5000,\"side\":\"BUY\",\"symbol\":\"BTCUSDT\",\"timestamp\":1767225600000,\"type\":\"MARKET\"}}"
+      "frame": "{\"id\":\"o5\",\"method\":\"order.place\",\"params\":{\"newClientOrderId\":\"1767225600000000005\",\"newOrderRespType\":\"ACK\",\"quantity\":\"0.001\",\"recvWindow\":5000,\"side\":\"BUY\",\"symbol\":\"BTCUSDT\",\"timestamp\":1767225600000,\"type\":\"MARKET\"}}"
     },
     {
       "name": "cancel by client id",

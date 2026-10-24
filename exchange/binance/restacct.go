@@ -288,7 +288,7 @@ func orderQuery(req *exchange.OrderRequest) (codec.Query, error) {
 	if req.ReduceOnly {
 		q = q.Add("reduceOnly", "true")
 	}
-	q = q.Add("newClientOrderId", req.ClientOrderID).Add("newOrderRespType", "RESULT")
+	q = q.Add("newClientOrderId", req.ClientOrderID).Add("newOrderRespType", "ACK")
 	if side := req.Params["positionSide"]; side != "" {
 		q = q.Add("positionSide", side)
 	}
