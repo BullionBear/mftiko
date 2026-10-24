@@ -23,8 +23,9 @@ var (
 	ErrBadOptions = errors.New("state: bad options")
 	// ErrBadEpoch: the stored epoch is not a 20-digit decimal, or cannot be incremented.
 	ErrBadEpoch = errors.New("state: bad epoch")
-	// ErrSessionLost: the election session's lease is gone; this process is no longer the leader. The term has
-	// ended: exit and let systemd restart the agent.
+	// ErrSessionLost: the election session's lease is gone, or the keepalive deadline passed before the server
+	// would drop it (E01-D014); this process is no longer the leader. The term has ended: exit and let systemd
+	// restart the agent.
 	ErrSessionLost = errors.New("state: election session lost")
 	// ErrSuperseded: a writer key holds a newer epoch, or changed since this term acquired it (PROTOCOL §3.2 W2).
 	// The term has ended: exit and let systemd restart the agent, no retry.
