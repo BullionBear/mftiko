@@ -690,6 +690,14 @@ func (a *App) onlyFlags(allow ...string) int {
 		{flagPair("key", "type"), a.opt.keyType.set},
 		{"limit", a.opt.limitSet},
 		{"cursor", a.opt.cursorSet},
+		{"phase", a.opt.phase.set},
+		{"active", a.opt.active.set},
+		{"sts-instance", a.opt.stsInstance.set},
+		{"session-id", a.opt.sessionID.set},
+		{"strategy-id", a.opt.strategyID.set},
+		{"created-by", a.opt.createdBy.set},
+		{"created-after", a.opt.createdAfter.set},
+		{"created-before", a.opt.createdBefore.set},
 	}
 	var bad []string
 	for _, f := range flags {

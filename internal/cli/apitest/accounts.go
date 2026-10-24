@@ -53,6 +53,7 @@ func (s *Server) install(opt Option) {
 	}
 	s.conflict = opt.ConflictCAS
 	s.echoSecret = opt.EchoCredential
+	s.installSessions(opt)
 }
 
 func copyFresh(f apiv1.Freshness) apiv1.Freshness {

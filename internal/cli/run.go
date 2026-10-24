@@ -100,6 +100,7 @@ type command struct {
 // commands is the dispatch table (E11-D002). login and whoami are single words,
 // as E11-D006 names them. The read-only queries are E11-D010–E11-D013.
 // account is mftiko account <action> (E11-D014).
+// session and record are E11-D024–E11-D028.
 var commands = []command{
 	{action: "login", run: runLogin},
 	{action: "whoami", run: runWhoami},
@@ -114,6 +115,12 @@ var commands = []command{
 	{resource: "account", action: "create", run: runAccountCreate},
 	{resource: "account", action: "update", run: runAccountUpdate},
 	{resource: "account", action: "delete", run: runAccountDelete},
+	{resource: "session", action: "list", run: runSessionList},
+	{resource: "session", action: "show", run: runSessionShow},
+	{resource: "session", action: "end", run: runSessionEnd},
+	{resource: "session", action: "delete", run: runSessionDelete},
+	{resource: "record", action: "list", run: runRecordList},
+	{resource: "record", action: "show", run: runRecordShow},
 }
 
 func lookup(pos []string) (command, []string, bool) {
@@ -199,6 +206,10 @@ func commandHelp(name string) (string, bool) {
 		return accountKindHelp, true
 	case "account":
 		return accountHelp, true
+	case "session":
+		return sessionHelp, true
+	case "record":
+		return recordHelp, true
 	case "help":
 		return generalHelp, true
 	default:

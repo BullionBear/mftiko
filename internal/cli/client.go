@@ -15,6 +15,7 @@ import (
 
 	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 const maxBody = 8 << 20
@@ -236,6 +237,50 @@ func (a *API) DeleteAccount(ctx context.Context, id apiv1.APIID, rev apiv1.Revis
 	params := &apiv1.DeleteAccountParams{Revision: rev}
 	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
 		return a.gen.DeleteAccount(ctx, id, params)
+	})
+}
+
+// ListSessions calls GET /sessions.
+func (a *API) ListSessions(ctx context.Context, params *apiv1.ListSessionsParams) (Result, error) {
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.ListSessions(ctx, params)
+	})
+}
+
+// GetSession calls GET /sessions/{id}.
+func (a *API) GetSession(ctx context.Context, id apiv1.SessionID) (Result, error) {
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.GetSession(ctx, id)
+	})
+}
+
+// EndSession calls POST /sessions/{id}/end. The generated client sends no body
+// and no Content-Type (E10-D110).
+func (a *API) EndSession(ctx context.Context, id apiv1.SessionID) (Result, error) {
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.EndSession(ctx, id)
+	})
+}
+
+// DeleteSession calls DELETE /sessions/{id}. The generated client sends no
+// Content-Type (E10-D110).
+func (a *API) DeleteSession(ctx context.Context, id apiv1.SessionID) (Result, error) {
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.DeleteSession(ctx, id)
+	})
+}
+
+// ListSessionRecords calls GET /session-records.
+func (a *API) ListSessionRecords(ctx context.Context, params *apiv1.ListSessionRecordsParams) (Result, error) {
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.ListSessionRecords(ctx, params)
+	})
+}
+
+// GetSessionRecord calls GET /session-records/{record_id}.
+func (a *API) GetSessionRecord(ctx context.Context, id openapi_types.UUID) (Result, error) {
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.GetSessionRecord(ctx, id)
 	})
 }
 

@@ -75,12 +75,12 @@ type Option struct {
 	Kinds     []apiv1.AccountKind
 	Instances []apiv1.Instance
 	Accounts  []apiv1.Account
-	// PageSize, when set, caps an account list page below the requested limit
-	// so a test can follow cursors. 0 means honor the request, up to 1000.
-	// Strategy pages use Catalog.PageSize.
+	// PageSize, when set, caps an account, session, or record list page below
+	// the requested limit so a test can follow cursors. 0 means honor the
+	// request, up to 1000. Strategy pages use Catalog.PageSize.
 	PageSize int
-	// Freshness is copied onto the first account list page. NextFreshness,
-	// when set, is copied onto every later page.
+	// Freshness is copied onto the first account or session list page.
+	// NextFreshness, when set, is copied onto every later page.
 	Freshness     apiv1.Freshness
 	NextFreshness *apiv1.Freshness
 	// ConflictCAS makes update and delete return 409 conflict on /revision.
@@ -88,36 +88,47 @@ type Option struct {
 	// EchoCredential makes create return 400 whose detail is the secret.
 	// Redaction tests use it. The server does not log the value.
 	EchoCredential bool
+	// Sessions, Records, and Agents are the session fixtures. They are copied
+	// before the server accepts a connection. A name in Agents is returned by
+	// GET /instances/{name} ahead of the catalog and account fixtures, so a
+	// test can set AgentRecord.last_known.
+	Sessions []apiv1.SessionDetail
+	Records  []apiv1.SessionRecord
+	Agents   map[string]apiv1.AgentStatus
 }
 
 // Server is a started httptest server.
 type Server struct {
-	mu         sync.Mutex
-	once       sync.Once
-	hs         *httptest.Server
-	stop       chan struct{}
-	token      string
-	name       string
-	expires    *time.Time
-	problem    *apiv1.Problem
-	reqID      string
-	block      bool
-	echo       bool
-	cat        *Catalog
-	hits       int
-	calls      []Call
-	lastAuth   string
-	lastBody   []byte
-	kinds      []apiv1.AccountKind
-	instances  map[string]apiv1.InstanceDetail
-	accounts   []accountRow
-	nextID     int64
-	pageSize   int
-	fresh      apiv1.Freshness
-	nextFresh  *apiv1.Freshness
-	listPages  int
-	conflict   bool
-	echoSecret bool
+	mu           sync.Mutex
+	once         sync.Once
+	hs           *httptest.Server
+	stop         chan struct{}
+	token        string
+	name         string
+	expires      *time.Time
+	problem      *apiv1.Problem
+	reqID        string
+	block        bool
+	echo         bool
+	cat          *Catalog
+	hits         int
+	calls        []Call
+	lastAuth     string
+	lastBody     []byte
+	kinds        []apiv1.AccountKind
+	instances    map[string]apiv1.InstanceDetail
+	accounts     []accountRow
+	nextID       int64
+	pageSize     int
+	fresh        apiv1.Freshness
+	nextFresh    *apiv1.Freshness
+	listPages    int
+	conflict     bool
+	echoSecret   bool
+	sessions     []apiv1.SessionDetail
+	records      []apiv1.SessionRecord
+	agents       map[string]apiv1.AgentStatus
+	sessionPages int
 }
 
 // Start serves opt. Every field is set before the server goroutine runs.
@@ -344,25 +355,7 @@ func (a *api) Login(context.Context, apiv1.LoginRequestObject) (apiv1.LoginRespo
 func (a *api) StreamEvents(context.Context, apiv1.StreamEventsRequestObject) (apiv1.StreamEventsResponseObject, error) {
 	return nil, errUnused
 }
-func (a *api) ListSessionRecords(context.Context, apiv1.ListSessionRecordsRequestObject) (apiv1.ListSessionRecordsResponseObject, error) {
-	return nil, errUnused
-}
-func (a *api) GetSessionRecord(context.Context, apiv1.GetSessionRecordRequestObject) (apiv1.GetSessionRecordResponseObject, error) {
-	return nil, errUnused
-}
-func (a *api) ListSessions(context.Context, apiv1.ListSessionsRequestObject) (apiv1.ListSessionsResponseObject, error) {
-	return nil, errUnused
-}
 func (a *api) CreateSession(context.Context, apiv1.CreateSessionRequestObject) (apiv1.CreateSessionResponseObject, error) {
-	return nil, errUnused
-}
-func (a *api) DeleteSession(context.Context, apiv1.DeleteSessionRequestObject) (apiv1.DeleteSessionResponseObject, error) {
-	return nil, errUnused
-}
-func (a *api) GetSession(context.Context, apiv1.GetSessionRequestObject) (apiv1.GetSessionResponseObject, error) {
-	return nil, errUnused
-}
-func (a *api) EndSession(context.Context, apiv1.EndSessionRequestObject) (apiv1.EndSessionResponseObject, error) {
 	return nil, errUnused
 }
 func unauth(p apiv1.Problem) apiv1.GetMe401ApplicationProblemPlusJSONResponse {
