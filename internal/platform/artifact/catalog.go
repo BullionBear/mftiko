@@ -88,6 +88,26 @@ func (c *Catalog) Resolve(ctx context.Context, repository, reference string) (st
 	if err != nil {
 		return "", err
 	}
+	return resolveReference(ctx, repo, reference)
+}
+
+// Resolve returns the sha256 digest reference names, using the pull client's registry settings (E12-D012).
+// The background latest poll calls it. Reconcile does not.
+func (c *Client) Resolve(ctx context.Context, repository, reference string) (string, error) {
+	if repository == "" {
+		return "", badRequest("repository is required")
+	}
+	repo, err := c.repository(repository)
+	if err != nil {
+		return "", err
+	}
+	return resolveReference(ctx, repo, reference)
+}
+
+func resolveReference(ctx context.Context, repo *remote.Repository, reference string) (string, error) {
+	if reference == "" {
+		return "", badRequest("reference is required")
+	}
 	desc, err := repo.Resolve(ctx, reference)
 	if err != nil {
 		return "", classify(err)

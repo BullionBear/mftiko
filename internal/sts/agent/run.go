@@ -69,6 +69,8 @@ type Config struct {
 	// DefaultBackoffMin and DefaultBackoffMax. Tests set a millisecond pair.
 	BackoffMin time.Duration
 	BackoffMax time.Duration
+	// ArtifactPoll is how often latest is resolved for repositories on disk (E12-D012). 0 takes one minute.
+	ArtifactPoll time.Duration
 
 	Policy     agent.Policy
 	Resync     time.Duration
@@ -117,6 +119,9 @@ func (cfg *Config) applyDefaults() {
 	if cfg.MaxArtifactBytes <= 0 {
 		cfg.MaxArtifactBytes = DefaultMaxArtifactBytes
 	}
+	if cfg.ArtifactPoll <= 0 {
+		cfg.ArtifactPoll = time.Minute
+	}
 }
 
 func (cfg Config) validate() error {
@@ -156,6 +161,7 @@ func Run(ctx context.Context, cfg Config) error {
 		Int("restart_window_s", cfg.RestartWindowS).
 		Dur("backoff_min", cfg.BackoffMin).
 		Dur("backoff_max", cfg.BackoffMax).
+		Dur("artifact_poll", cfg.ArtifactPoll).
 		Msg("deployment config")
 	cl, term, err := runner.Connect(ctx, cfg.Topology, state.PlaneSTS, cfg.Instance, cfg.Dial, cfg.Term)
 	if err != nil {
@@ -213,6 +219,8 @@ func Run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	pulls := newPuller(ctx, art, cfg.DataDir, cfg.MaxArtifactBytes, cfg.Log, cfg.Now)
+	tags := newLatestTags(art, cfg.ArtifactPoll, cfg.Log)
+	go tags.Run(mctx)
 	vols := newVolumer(cfg.DataDir, cfg.VolumeInterval, cfg.Log)
 	go vols.run(mctx)
 	pol := newPolicy(cfg)
@@ -242,7 +250,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	p := &plane{
 		inst: cfg.Instance, spec: specM, demand: demandM, status: statusM,
-		w: term, log: cfg.Log, now: cfg.Now, prog: prog, pol: pol, pulls: pulls, art: art, fleet: f,
+		w: term, log: cfg.Log, now: cfg.Now, prog: prog, pol: pol, pulls: pulls, art: art, tags: tags, fleet: f,
 		vols: vols, volumeMB: cfg.VolumeMB, onApplied: cfg.Applied,
 		workDir: cfg.WorkDir, dataRepo: cfg.DataRepository, numbers: numbers,
 		local: map[string]statusView{}, remembered: map[string]demandView{},
@@ -289,6 +297,7 @@ type plane struct {
 	pol       *Policy
 	pulls     *puller
 	art       *artifact.Client
+	tags      *latestTags
 	fleet     *fleet.Fleet[Spec, Live]
 	vols      *volumer
 	volumeMB  int
@@ -480,7 +489,7 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 }
 
 // stage drops sessions whose rootfs and inputs are not ready from the plan, records
-// artifact rejections, and garbage-collects (E09-D058, E09-D059, E09-D073, E09-D074). A worker already
+// artifact rejections, and garbage-collects (E09-D058, E09-D059, E09-D073, E09-D074, E12-D012). A worker already
 // running this spec stays in the plan so a restart does not stop it while the image is
 // fetched again (E01-D002). A volume that is over the limit is the exception: it leaves the
 // plan and ends FAILED, so the reconciler's normal Stop runs (E09-D076).
@@ -561,7 +570,22 @@ func (p *plane) stage(sessions map[string]*sess, d *decision) {
 	}
 	p.pulls.retain(want)
 	p.pulls.retainInputs(wantInputs)
+	p.collect(sessions)
+}
+
+// collect runs GC for this reconcile (E09-D059, E12-D012, E12-D015). It reads the latest cache and the
+// disk. It does not call the registry. A failure is a warning and deletes nothing further this round
+// when it happens before GC; GC's own failure is also only a warning.
+func (p *plane) collect(sessions map[string]*sess) {
 	keep := keepDigests(sessions, p.pulls.inflight())
+	if p.tags != nil {
+		extra, err := p.tags.protect()
+		if err != nil {
+			p.log.Warn().Err(err).Msg("artifact gc")
+			return
+		}
+		keep = append(keep, extra...)
+	}
 	if err := p.art.GC(keep, p.pulls.inflightLayers()); err != nil {
 		p.log.Warn().Err(err).Msg("artifact gc")
 	}

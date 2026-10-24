@@ -30,6 +30,11 @@ const whiteoutPrefix = ".wh."
 // GC treats those lines as the rootfs's references (E09-D056).
 const layersName = "layers"
 
+// repositoryName is the file next to rootfs naming the repository this rootfs was unpacked from (E12-D011).
+// The text is the repository without the registry host, one line. A rootfs unpacked before the record
+// existed has no file, and GC does not invent a repository for it.
+const repositoryName = "repository"
+
 // UnpackLimits is the deployment cap on one unpack (E09-D053). A zero field means the default.
 type UnpackLimits struct {
 	// MaxBytes is the total uncompressed size, the sum of every entry's declared size.
@@ -461,7 +466,22 @@ var (
 // The same digest is unpacked once per process. A rootfs directory that is already there is complete
 // and is reused without reading the layers again. The layer digests are recorded next to the rootfs
 // for GC. A rejection removes the temporary directory and does not delete the cached layers (E09-D054).
+// UnpackImage does not write a repository record; UnpackImageFrom does.
 func (c *Client) UnpackImage(ctx context.Context, image string, layers []Layer, limits UnpackLimits) (string, error) {
+	return c.unpackImageFrom(ctx, image, "", layers, limits)
+}
+
+// UnpackImageFrom is UnpackImage that records repository beside a rootfs this call installs (E12-D011).
+// repository is the path without the registry host. A rootfs that is already complete is reused and its
+// record, present or not, is left unchanged: a rootfs from before the record existed stays unrecorded.
+func (c *Client) UnpackImageFrom(ctx context.Context, image, repository string, layers []Layer, limits UnpackLimits) (string, error) {
+	if repository == "" || strings.TrimSpace(repository) != repository || strings.ContainsAny(repository, "\r\n\x00") {
+		return "", badRequest("repository %q", repository)
+	}
+	return c.unpackImageFrom(ctx, image, repository, layers, limits)
+}
+
+func (c *Client) unpackImageFrom(ctx context.Context, image, repository string, layers []Layer, limits UnpackLimits) (string, error) {
 	if !digestOK(image) {
 		return "", permanent(ReasonDigestMismatch, fmt.Errorf("digest %q is not sha256", image))
 	}
@@ -512,7 +532,7 @@ func (c *Client) UnpackImage(ctx context.Context, image string, layers []Layer, 
 		unpacks[key] = f
 		unpackMu.Unlock()
 
-		path, err := c.unpackImage(ctx, image, layers, limits)
+		path, err := c.unpackImage(ctx, image, repository, layers, limits)
 		f.rootfs, f.err = path, err
 		unpackMu.Lock()
 		delete(unpacks, key)
@@ -522,7 +542,7 @@ func (c *Client) UnpackImage(ctx context.Context, image string, layers []Layer, 
 	}
 }
 
-func (c *Client) unpackImage(ctx context.Context, image string, layers []Layer, limits UnpackLimits) (string, error) {
+func (c *Client) unpackImage(ctx context.Context, image, repository string, layers []Layer, limits UnpackLimits) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -563,6 +583,11 @@ func (c *Client) unpackImage(ctx context.Context, image string, layers []Layer, 
 	}
 	if err := os.WriteFile(filepath.Join(tmp, layersName), []byte(list.String()), 0o644); err != nil {
 		return "", temporary(ReasonUnavailable, err)
+	}
+	if repository != "" {
+		if err := os.WriteFile(filepath.Join(tmp, repositoryName), []byte(repository+"\n"), 0o644); err != nil {
+			return "", temporary(ReasonUnavailable, err)
+		}
 	}
 	// A digest directory without a rootfs is not complete (E09-D055). Replace it. A directory that gained
 	// a rootfs while this unpack ran is the one to use.

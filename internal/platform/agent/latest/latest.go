@@ -1,7 +1,8 @@
 // Package latest keeps the newest conn or account worker artifact ready on the host, for the MD and TD agents
 // (PROTOCOL §8.1, §8.3; DECISIONS E12-D008–E12-D010). One goroutine resolves the latest tag every poll interval,
 // outside reconcile, and pulls and unpacks a digest it has not seen. Launch uses the last digest that passed every
-// check. A worker that already runs keeps the binary it was started with (P9, E01-D003).
+// check. A worker that already runs keeps the binary it was started with (P9, E01-D003). GC keeps that running
+// digest, a digest being pulled or unpacked, and the last digest that passed verification (E12-D014).
 package latest
 
 import (
@@ -9,7 +10,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"maps"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -65,6 +68,7 @@ type Source struct {
 
 	mu       sync.Mutex
 	cur      *ready
+	inflight string            // digest being pulled or unpacked; empty when idle (E12-D014)
 	rejected map[string]string // digest -> what is wrong with its content; a digest's content never changes
 	reason   string            // why there is no newer digest ready: the last error, or "" when cur is the tag
 }
@@ -151,6 +155,16 @@ func (s *Source) step(ctx context.Context) error {
 		s.settle(why)
 		return nil
 	}
+	s.mu.Lock()
+	s.inflight = dig
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		if s.inflight == dig {
+			s.inflight = ""
+		}
+		s.mu.Unlock()
+	}()
 	fetched, err := s.client.Pull(ctx, artifact.Request{
 		Repository: s.cfg.Repository, Digest: dig, Kind: s.cfg.Kind, OS: s.cfg.OS, Arch: s.cfg.Arch,
 		Contracts: s.contracts, MaxBytes: s.cfg.MaxBytes,
@@ -161,7 +175,14 @@ func (s *Source) step(ctx context.Context) error {
 	if err := fetched.Manifest.CheckLaunchFields(); err != nil {
 		return s.fail(dig, &artifact.Error{Reason: artifact.ReasonBadManifest, Permanent: true, Err: err})
 	}
-	root, err := s.client.UnpackImage(ctx, fetched.Digest, fetched.Layers, artifact.UnpackLimits{})
+	// Hold the layers Pull just wrote. Until UnpackImage records them, GC has no rootfs reference
+	// and would delete them (E09-D073, E12-D014). The download itself is not held.
+	release, err := s.client.HoldLayers(layerDigests(fetched.Layers))
+	if err != nil {
+		return s.fail(dig, err)
+	}
+	defer release()
+	root, err := s.client.UnpackImageFrom(ctx, fetched.Digest, s.cfg.Repository, fetched.Layers, artifact.UnpackLimits{})
 	if err != nil {
 		return s.fail(dig, err)
 	}
@@ -199,6 +220,14 @@ func (s *Source) fail(dig string, err error) error {
 	return err
 }
 
+func layerDigests(layers []artifact.Layer) []string {
+	out := make([]string, len(layers))
+	for i, layer := range layers {
+		out[i] = layer.Digest
+	}
+	return out
+}
+
 func (s *Source) settle(reason string) {
 	s.mu.Lock()
 	s.reason = reason
@@ -214,6 +243,36 @@ func (s *Source) Pending() string {
 		return ""
 	}
 	return s.reason
+}
+
+// GC deletes unpacked images this source does not still need (E12-D014, E12-D015). It keeps the last
+// digest that passed verification, a digest being pulled or unpacked, and digests of processes running
+// from this data directory. It does not call the registry. The caller logs a failure.
+func (s *Source) GC() error {
+	running, err := artifact.RunningDigests(s.cfg.DataDir)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.client.GC(s.keepLocked(running))
+}
+
+func (s *Source) keepLocked(extra []string) []string {
+	set := map[string]struct{}{}
+	add := func(d string) {
+		if d != "" {
+			set[d] = struct{}{}
+		}
+	}
+	if s.cur != nil {
+		add(s.cur.digest)
+	}
+	add(s.inflight)
+	for _, d := range extra {
+		add(d)
+	}
+	return slices.Sorted(maps.Keys(set))
 }
 
 // Digest is the image digest new workers start from, or "" before the first pull.

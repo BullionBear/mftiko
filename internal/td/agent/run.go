@@ -139,6 +139,9 @@ func Run(ctx context.Context, cfg Config) error {
 		inst: cfg.Instance, linger: cfg.Linger, kinds: cfg.Kinds, open: cfg.Open, endpoints: cfg.Endpoints,
 		get: reader, w: term, log: cfg.Log, now: cfg.Now, pending: worker.Pending,
 	}
+	if g, ok := worker.(interface{ GC() error }); ok {
+		p.gc = g.GC
+	}
 	return runner.Run(ctx, runner.Config[Entry, Spec, Live]{
 		Term: term, Demand: src, Statuses: reader, Decode: decoder{inst: cfg.Instance}.Decode, Planner: p,
 		Policy: policy, Fleet: f, Commit: p.commit, Sync: p.sync, Release: cfg.Release, WorkDir: cfg.WorkDir,
@@ -167,6 +170,7 @@ type plane struct {
 	log       zerolog.Logger
 	now       func() time.Time
 	pending   func() string // why a new account worker cannot start (E12-D009); "" when it can
+	gc        func() error  // disk GC once per reconcile when the worker comes from the registry (E12-D015)
 
 	loaded    bool
 	acks      map[string]string
@@ -205,7 +209,19 @@ func (p *plane) commit(ctx context.Context, d agent.Demand[Entry], _ map[agent.W
 		demand: d, lingering: p.lingering, prev: p.specs,
 	})
 	p.lingering, p.specs, p.outcomes, p.plans = out.lingering, out.specs, out.outcomes, out.plans
+	p.gcArtifacts()
 	return nil
+}
+
+// gcArtifacts collects unpacked worker images once per reconcile (E12-D014, E12-D015). It is local file
+// operations. A failure is a warning. A development binary has no GC.
+func (p *plane) gcArtifacts() {
+	if p.gc == nil {
+		return
+	}
+	if err := p.gc(); err != nil {
+		p.log.Warn().Err(err).Msg("artifact gc")
+	}
 }
 
 // load reads the acks this instance wrote, so the first sync writes only what changed.

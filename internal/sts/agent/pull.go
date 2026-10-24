@@ -162,7 +162,7 @@ func (p *puller) run(req artifact.Request, ctx context.Context) {
 	if p.afterHold != nil {
 		p.afterHold(fetched)
 	}
-	root, err := p.client.UnpackImage(ctx, fetched.Digest, fetched.Layers, artifact.UnpackLimits{})
+	root, err := p.client.UnpackImageFrom(ctx, fetched.Digest, req.Repository, fetched.Layers, artifact.UnpackLimits{})
 	if err != nil {
 		p.finish(dig, "", artifact.Manifest{}, err)
 		return

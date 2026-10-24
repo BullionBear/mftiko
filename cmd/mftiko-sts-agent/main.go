@@ -42,6 +42,7 @@ type options struct {
 	backoffMin, backoffMax               time.Duration
 	maxRestarts                          int
 	restartWindowS                       int
+	artifactPoll                         time.Duration
 	natsURL, natsAccount, natsSigningKey string
 }
 
@@ -93,6 +94,7 @@ func parseArgs(args []string) (options, bool, error) {
 	fs.DurationVar(&o.backoffMax, "backoff-max", agent.DefaultBackoffMax, "restart backoff, upper bound")
 	fs.IntVar(&o.maxRestarts, "max-restarts", agent.DefaultMaxRestarts, "default max_restarts")
 	fs.IntVar(&o.restartWindowS, "restart-window", agent.DefaultRestartWindowS, "default restart window, in seconds")
+	fs.DurationVar(&o.artifactPoll, "artifact-poll", time.Minute, "how often to resolve the latest tag")
 	if err := fs.Parse(args); err != nil {
 		return options{}, false, err
 	}
@@ -145,7 +147,7 @@ func run(ctx context.Context, o options, log zerolog.Logger) error {
 		PlainHTTP: o.plainHTTP, MaxArtifactBytes: o.maxArtifactBytes,
 		RecvWindowMS: o.recvWindowMS, HookTimeoutS: o.hookTimeoutS, StartTimeoutS: o.startTimeoutS,
 		VolumeMB: o.volumeMB, VolumeInterval: o.volumeInterval, Grace: o.grace, MaxRestarts: o.maxRestarts, RestartWindowS: o.restartWindowS,
-		BackoffMin: o.backoffMin, BackoffMax: o.backoffMax,
+		BackoffMin: o.backoffMin, BackoffMax: o.backoffMax, ArtifactPoll: o.artifactPoll,
 		Release: buildinfo.Version, Log: log,
 	})
 }

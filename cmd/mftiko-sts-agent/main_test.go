@@ -36,7 +36,8 @@ func TestParseArgsDefaults(t *testing.T) {
 	if o.natsURL != "nats://127.0.0.1:4222" || o.natsAccount != "Aexample" {
 		t.Fatalf("nats %+v", o)
 	}
-	if o.maxArtifactBytes != agent.DefaultMaxArtifactBytes ||
+	if o.artifactPoll != time.Minute ||
+		o.maxArtifactBytes != agent.DefaultMaxArtifactBytes ||
 		o.recvWindowMS != agent.DefaultRecvWindowMS ||
 		o.hookTimeoutS != agent.DefaultHookTimeoutS ||
 		o.startTimeoutS != agent.DefaultStartTimeoutS ||
