@@ -162,7 +162,9 @@ delete
   mftiko session delete <id>
 
 show prints the spec summary, status, each demand ack, exit information, and
-the log location. A log path is <sts_instance> <host>:<path>. When the STS agent
+the log location. The strategy field shows id, name, and the first 7 characters
+of the digest with a leading sha256: removed. -o json keeps the full digest.
+A log path is <sts_instance> <host>:<path>. When the STS agent
 record is the last known value, the log section says 最後已知，agent 目前不在線.
 The command does not read the log file. end asks for confirmation; a session
 that has already ended still succeeds. delete asks for confirmation. A session

@@ -14,6 +14,21 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+func TestSessionDigest(t *testing.T) {
+	if got := sessionDigest(digA); got != "0000000" {
+		t.Fatalf("prefixed %q", got)
+	}
+	if got := sessionDigest("abcdef012345"); got != "abcdef0" {
+		t.Fatalf("bare %q", got)
+	}
+	if got := sessionDigest("sha256:abc"); got != "abc" {
+		t.Fatalf("short %q", got)
+	}
+	if got := sessionDigest(""); got != "" {
+		t.Fatalf("empty %q", got)
+	}
+}
+
 func TestParseWhen(t *testing.T) {
 	midnight := time.Date(2026, 10, 24, 0, 0, 0, 0, time.Local)
 	got, err := parseWhen("created-after", "2026-10-24")
@@ -191,8 +206,12 @@ func TestSessionShow(t *testing.T) {
 	if got.code != ExitOK {
 		t.Fatalf("%+v", got)
 	}
+	shortA := sessionDigest(digA)
+	if shortA != "0000000" {
+		t.Fatalf("short digest %q", shortA)
+	}
 	for _, want := range []string{
-		"alpha", "chase-man", digA, "sts-1", localStamp(created), "ada",
+		"alpha", "chase-man", shortA, "sts-1", localStamp(created), "ada",
 		"failed", "deps_failed", "2",
 		"rejected", "REJECTED", "unknown ticker",
 		"dead", "DEAD", "account dead", "7",
@@ -208,8 +227,13 @@ func TestSessionShow(t *testing.T) {
 			t.Fatalf("missing %q\n%s", want, got.out)
 		}
 	}
-	if strings.Contains(got.out, "hidden-marker") || strings.Contains(got.out, "\nTAG") || strings.Contains(got.out, "TAG  ") {
+	if strings.Contains(got.out, "hidden-marker") || strings.Contains(got.out, "\nTAG") || strings.Contains(got.out, "TAG  ") || strings.Contains(got.out, digA) || strings.Contains(got.out, "sha256:") || strings.Contains(got.out, "00000000") {
 		t.Fatalf("extra %s", got.out)
+	}
+	for _, c := range srv.Calls() {
+		if strings.Contains(c.Path, "/strategies") {
+			t.Fatalf("registry lookup %+v", c)
+		}
 	}
 	if len(srv.Calls()) != 2 || srv.Calls()[0].Operation != "GetSession" || srv.Calls()[1].Operation != "GetInstance" {
 		t.Fatalf("calls %+v", srv.Calls())
@@ -224,7 +248,7 @@ func TestSessionShow(t *testing.T) {
 	if got.code != ExitOK || !bytes.Equal([]byte(got.out), srv.LastBody()) || len(srv.Calls()) != before+1 || srv.Calls()[before].Operation != "GetSession" {
 		t.Fatalf("json calls %d %+v\n%s\n%s", len(srv.Calls())-before, got, got.out, srv.LastBody())
 	}
-	if strings.Contains(got.out, "最後已知") || strings.Count(got.err, "X-Request-Id:") != 1 {
+	if strings.Contains(got.out, "最後已知") || strings.Count(got.err, "X-Request-Id:") != 1 || !strings.Contains(got.out, digA) {
 		t.Fatalf("json note %s err %q", got.out, got.err)
 	}
 
@@ -239,7 +263,7 @@ func TestSessionShow(t *testing.T) {
 	if got.code != ExitOK || strings.Contains(got.out, "最後已知") || strings.Contains(got.out, "TAG") {
 		t.Fatalf("%+v", got)
 	}
-	if !strings.Contains(got.out, "no-tag") || !strings.Contains(got.out, digB) || !strings.Contains(got.out, "done") || !strings.Contains(got.out, "SIGNAL") {
+	if !strings.Contains(got.out, "no-tag") || strings.Contains(got.out, digB) || !strings.Contains(got.out, sessionDigest(digB)) || !strings.Contains(got.out, "done") || !strings.Contains(got.out, "SIGNAL") {
 		t.Fatalf("plain %s", got.out)
 	}
 	exit := got.out[strings.Index(got.out, "EXIT\n"):]
@@ -465,7 +489,7 @@ func TestSessionUsage(t *testing.T) {
 		t.Fatalf("help %+v", got)
 	}
 	got = runAt(context.Background(), t.TempDir(), nil, strings.NewReader(""), "help", "session")
-	if got.code != ExitOK || !strings.Contains(got.out, "最後已知，agent 目前不在線") || !strings.Contains(got.out, "-phase") {
+	if got.code != ExitOK || !strings.Contains(got.out, "最後已知，agent 目前不在線") || !strings.Contains(got.out, "-phase") || !strings.Contains(got.out, "first 7") {
 		t.Fatalf("session help %+v", got)
 	}
 	got = runAt(context.Background(), t.TempDir(), nil, strings.NewReader(""), "help", "record")

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
 	"github.com/google/uuid"
@@ -504,15 +505,13 @@ func (a *App) writeSession(api *API, res Result) int {
 func sessionText(d apiv1.SessionDetail, agent *apiv1.AgentStatus) (string, error) {
 	var b strings.Builder
 	b.WriteString("SPEC\n")
-	// E11-D024 names the strategy tag and the digest. StrategyRef has id,
-	// name, digest, and repository. Create resolves a tag to a digest
-	// (E09-D034) and does not keep the tag, so this table prints id when
-	// the response has one, the manifest name, and the full digest. It
-	// does not label any of those columns as the registry tag.
+	// E11-D024 revision: the session stores the digest only. The table shows
+	// id, name, and the first 7 characters after a leading "sha256:". It does
+	// not look up the registry. -o json writes the API body, digest included.
 	if err := WriteTable(&b, []string{"STRATEGY_ID", "STRATEGY_NAME", "DIGEST", "STS_INSTANCE", "CREATED_AT", "CREATED_BY"}, [][]string{{
 		deref(d.Spec.Strategy.Id),
 		d.Spec.Strategy.Name,
-		d.Spec.Strategy.Digest,
+		sessionDigest(d.Spec.Strategy.Digest),
 		d.StsInstance,
 		stampPtr(d.CreatedAt),
 		deref(d.CreatedBy),
@@ -590,6 +589,21 @@ func condRows(st *apiv1.SessionStatus) [][]string {
 		rows = append(rows, []string{c.Type, strconv.FormatBool(c.Status), c.Reason, c.Message})
 	}
 	return rows
+}
+
+// sessionDigest is the first 7 characters of a digest with a leading
+// "sha256:" removed (E11-D024 revision). Shorter values are kept whole.
+func sessionDigest(d string) string {
+	s := strings.TrimPrefix(d, "sha256:")
+	if utf8.RuneCountInString(s) <= 7 {
+		return s
+	}
+	i := 0
+	for n := 0; n < 7 && i < len(s); n++ {
+		_, size := utf8.DecodeRuneInString(s[i:])
+		i += size
+	}
+	return s[:i]
 }
 
 func stampPtr(t *time.Time) string {

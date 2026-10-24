@@ -3066,6 +3066,7 @@ Binance 一律以 ed25519 經 WS API 收發單（2026-10-10 定）。E03-D002 �
 ### E11-D024 `session show` 版面（E11-06，#358）
 
 - `session show` 版面：spec 摘要（策略 tag 與 digest、STS instance、`created_at`（本地時間，E11-D008）、`created_by`）、狀態（`phase`、`reason`、重啟次數）、需求項目（每項 ack 狀態，`REJECTED`／`DEAD` 標出並附原因）、結束資訊（`outcome`、exit code、signal），最後附 log 位置。`session list` 篩選旗標為 `--phase`、`--active`、`--sts-instance`。
+- **E11-D024 修訂（使用者確認，2026-10-24）：** session 只存 digest，不保留 tag（E09-D034），所以 `session show` 的策略欄改為顯示 id、名稱與 digest 前 7 碼（不含 `sha256:` 前綴），不反查 registry。`-o json` 保留完整 digest。
 
 ### E11-D025 log 位置（E11-06，#358）
 
