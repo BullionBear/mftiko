@@ -303,7 +303,7 @@ $A e2e-up
 $A e2e-all
 ```
 
-依序跑下面每一條，遇到失敗就停。controller 與 etcd2 的停止、啟動由 `e2e-all` 處理。
+依序跑下面每一條（含「CLI」一節），遇到失敗就停。controller 與 etcd2 的停止、啟動由 `e2e-all` 處理。
 
 ## 主流程
 
@@ -357,6 +357,47 @@ $A e2e region up
 ```
 
 `before`：`sts2` 上跑一個 session。`down`：兩個副本的 `/readyz` 仍是 200，`unavailable_regions` 是 `[accept2]`，session 列表也一樣；那個 session 回 503 `region_unavailable`，在 `sts2` 建立也是；在 `sts1` 建立照常、跑到 `running`、結束、刪除。`up`：`unavailable_regions` 清空，`sts2` 的 session 仍是 `running`，結束、刪除。斷線若久到 sts2 的選舉 session 過期，sts2 會退出（E13-D015），用 `$A sts-agent sts2` 再啟動（`e2e-all` 會做）。
+
+## CLI（E11-09）
+
+```sh
+$A e2e cli main
+$A e2e cli faults
+$A e2e cli region before   # 之後照「一個 region 斷線」停 etcd2
+$A e2e cli region down     # 再啟動 etcd2
+$A e2e cli region up
+```
+
+同樣的流程，唯一的 client 換成 `mftiko` CLI（E11-D038）。`mftiko-api-accept cli` 在 runner 裡開一個 reverse proxy 接到副本 a，CLI 的 context 指到 proxy。CLI 送出的每一個請求（分頁、SSE、重試）都由 proxy 記下 `X-Request-Id`，最後照樣和 `audit` 逐一比對。每次執行都用新的 `HOME`，先 `mftiko login`（token 從 stdin），之後不設 `MFTIKO_TOKEN`。token 或憑證出現在 CLI 的任何輸出裡就失敗。
+
+- `main`：`version`、`whoami`、`account-kind list`、`strategy list`／`versions hello`／`show hello accept`、`instance list`，然後：
+  1. `account create`：憑證寫成 0600 的 `-key-file`、`-secret-file`。
+  2. 從 YAML 檔 `session create --wait running`。
+  3. `session show`：兩個依賴都是 `ready`，provider 是 `dev` 與 `td1`；表格印出 log 路徑，主機上的檔案權限正確，stdout 有 hello 的 `OnRecon` 與 `ORDER_STATUS_CANCELLED`。
+  4. `session end --wait --yes`：exit 0，`done`、`ended_by_spec`。
+  5. `record list -session-id`、`record show`。
+  6. `session delete --yes`：之後 `session show` exit 12，record 變成 `closed`。
+  7. `account delete --yes`：之後 `account show` exit 12。
+- `faults`：每一項都比對 exit code 與 stderr 上的 `<名稱> (<號碼>)`（E11-D007）。
+
+  | 情境 | 結果 |
+  |---|---|
+  | `0755` | exit 1，指出檔案行號，不送請求 |
+  | 非 TTY 沒有 `--yes` | exit 1 |
+  | 錯的 `MFTIKO_TOKEN` | exit 11；audit 那列沒有使用者 |
+  | 不存在的 session | exit 12 |
+  | `algo_ids: [1024]` | exit 10，`file:9:15 /accounts/0/algo_ids` |
+  | 同帳號同 algo 的第二個 session | exit 16 |
+  | 刪除被引用的帳號 | exit 15 |
+  | 刪除未結束的 session | exit 14 |
+
+  最後清掉 session 與帳號。
+- `region`：
+  - `before`：在 `sts2` 以 `--wait running` 建一個 session。
+  - `down`：`session show` 與在 `sts2` 建立都是 exit 17；`session list` exit 0，stderr 警告 `accept2`。
+  - `up`：`end --wait`、`delete`。
+
+`e2e-all` 也會跑這三條。
 
 ## console smoke
 

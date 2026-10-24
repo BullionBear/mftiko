@@ -4,13 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 )
 
 // audited checks that every request the flow sent is an audit row with the same method, path,
-// status and user (E10-D010). Rows are written off the request path (E10-D049), so it waits a little.
+// status and user (E10-D010); a 401 has no user. Rows are written off the request path (E10-D049),
+// so it waits a little.
 func (f *flow) audited() error {
 	if *dbURL == "" {
 		return errors.New("-database is empty: the audit check needs Postgres")
@@ -60,9 +62,14 @@ func (f *flow) audited() error {
 				missing = append(missing, s)
 				continue
 			}
-			if r.user != userName || r.method != s.method || r.path != s.path || r.status != s.status {
-				return stop(fmt.Errorf("request %s: sent %s %s %d as %s, audit has %s %s %d as %q",
-					s.id, s.method, s.path, s.status, userName, r.method, r.path, r.status, r.user))
+			// A 401 was not authenticated, so its row names no user.
+			user := userName
+			if s.status == http.StatusUnauthorized {
+				user = ""
+			}
+			if r.user != user || r.method != s.method || r.path != s.path || r.status != s.status {
+				return stop(fmt.Errorf("request %s: sent %s %s %d as %q, audit has %s %s %d as %q",
+					s.id, s.method, s.path, s.status, user, r.method, r.path, r.status, r.user))
 			}
 		}
 		if len(missing) > 0 {

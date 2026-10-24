@@ -24,7 +24,8 @@
 #   accept.sh e2e-up             hello in the registry, etcd users for both regions, the controller,
 #                                sts1, sts2, the MD and TD agents, and API replicas a (:8080, published
 #                                on 127.0.0.1:18080) and b (:8081); web/build is the console
-#   accept.sh e2e ARGS...        run mftiko-api-accept ARGS in the runner (main, ticker, invalid, ...)
+#   accept.sh e2e ARGS...        run mftiko-api-accept ARGS in the runner (main, ticker, invalid, ...;
+#                                cli main|faults|region STEP drives the mftiko CLI instead, E11-09)
 #   accept.sh e2e-all            every flow, with the controller and etcd2 stopped and started around
 #                                absent and region
 #   accept.sh console-smoke      the Playwright smoke (web/e2e) against replica a, from this host
@@ -57,7 +58,7 @@ up() {
 	(cd "$repo" && GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -o bin/linux/ \
 		./cmd/mftiko-md-agent ./cmd/mftiko-md-conn ./cmd/mftiko-shim ./cmd/mftiko-sym ./cmd/mftiko-md-accept \
 		./cmd/mftiko-td-agent ./cmd/mftiko-td-account ./cmd/mftiko-td-accept ./cmd/mftiko-seal \
-		./cmd/mftiko-controller ./cmd/mftiko-sts-agent ./cmd/mftiko-api ./cmd/mftiko-api-accept ./cmd/mftiko-pack &&
+		./cmd/mftiko-controller ./cmd/mftiko-sts-agent ./cmd/mftiko-api ./cmd/mftiko-api-accept ./cmd/mftiko-pack ./cmd/mftiko &&
 		GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -o bin/linux/examples/ ./examples/strategies/hello)
 	mkdir -p "$here/data/work"
 	(cd "$repo" && go run ./cmd/mftiko-nats-dev -out "$here/data/nats" >/dev/null)
@@ -207,19 +208,24 @@ e2e_all() {
 	e2etool ticker
 	e2etool invalid
 	e2etool replicas
+	e2etool cli main
+	e2etool cli faults
 	run sh -c 'kill -TERM $(pgrep -f "^/mftiko/mftiko-controller")'
 	echo "SIGTERM sent to the controller"
 	e2etool absent create
 	controller
 	e2etool absent resume
 	e2etool region before
+	e2etool cli region before
 	"${compose[@]}" stop etcd2
 	e2etool region down
+	e2etool cli region down
 	"${compose[@]}" start etcd2
 	# If the outage outlasted sts2's election session, it has exited (E13-D015) and systemd would
 	# restart it; here, start it again.
 	running "/mftiko/mftiko-sts-agent -instance sts2 " || sts_agent sts2
 	e2etool region up
+	e2etool cli region up
 	echo "e2e: every flow passed"
 }
 
