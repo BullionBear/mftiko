@@ -471,7 +471,11 @@ restart:
 	}); err != nil {
 		return err
 	}
-	say("record %s closed at %s, still readable after the delete", rid, rec.ClosedAt.Format(time.RFC3339))
+	// The row keeps the status it was closed with (E10-D117).
+	if rec.Final == nil || rec.Final.Phase != apiv1.PhaseDone || rec.Final.Reason != "ended_by_spec" {
+		return fmt.Errorf("record %s final %+v, want done and ended_by_spec", rid, rec.Final)
+	}
+	say("record %s closed at %s, final %s %s, still readable after the delete", rid, rec.ClosedAt.Format(time.RFC3339), rec.Final.Phase, rec.Final.Reason)
 
 	var acc apiv1.Account
 	if err := c.okJSON(&acc, "account", "show", strconv.FormatInt(apiID, 10)); err != nil {

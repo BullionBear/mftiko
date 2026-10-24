@@ -69,7 +69,7 @@ func applySchema(t *testing.T, dsn string) {
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	for _, name := range []string{"0003_audit.up.sql", "0004_session_records.up.sql"} {
+	for _, name := range []string{"0003_audit.up.sql", "0004_session_records.up.sql", "0005_session_records_final.up.sql"} {
 		b, err := migrations.FS.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
