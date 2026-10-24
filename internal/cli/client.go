@@ -151,6 +151,57 @@ func (a *API) GetMe(ctx context.Context) (Result, error) {
 	})
 }
 
+// ListAccountKinds calls GET /account-kinds.
+func (a *API) ListAccountKinds(ctx context.Context) (Result, error) {
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.ListAccountKinds(ctx)
+	})
+}
+
+// ListAccounts calls GET /accounts.
+func (a *API) ListAccounts(ctx context.Context, params *apiv1.ListAccountsParams) (Result, error) {
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.ListAccounts(ctx, params)
+	})
+}
+
+// CreateAccount calls POST /accounts.
+func (a *API) CreateAccount(ctx context.Context, body apiv1.AccountCreate) (Result, error) {
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.CreateAccount(ctx, body)
+	})
+}
+
+// GetAccount calls GET /accounts/{api_id}.
+func (a *API) GetAccount(ctx context.Context, id apiv1.APIID) (Result, error) {
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.GetAccount(ctx, id)
+	})
+}
+
+// UpdateAccount calls PUT /accounts/{api_id}.
+func (a *API) UpdateAccount(ctx context.Context, id apiv1.APIID, body apiv1.AccountUpdate) (Result, error) {
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.UpdateAccount(ctx, id, body)
+	})
+}
+
+// DeleteAccount calls DELETE /accounts/{api_id}. The generated client sends no
+// Content-Type (E10-D110).
+func (a *API) DeleteAccount(ctx context.Context, id apiv1.APIID, rev apiv1.Revision) (Result, error) {
+	params := &apiv1.DeleteAccountParams{Revision: rev}
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.DeleteAccount(ctx, id, params)
+	})
+}
+
+// GetInstance calls GET /instances/{name}.
+func (a *API) GetInstance(ctx context.Context, name apiv1.InstanceName) (Result, error) {
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.GetInstance(ctx, name)
+	})
+}
+
 // logout calls POST /auth/logout, which has no body. Tests use it to check
 // that Content-Type stays unset.
 func (a *API) logout(ctx context.Context) (Result, error) {

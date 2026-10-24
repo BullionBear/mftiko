@@ -2,6 +2,7 @@
 //
 //	mftiko login
 //	mftiko whoami
+//	mftiko account list|show|create|update|delete
 //
 // It speaks only to the API. mftiko-pack and mftiko-seal are separate programs.
 package main

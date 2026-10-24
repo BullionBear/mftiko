@@ -71,6 +71,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	cmd, rest, ok := lookup(pos)
 	if !ok {
+		if pos[0] == "account" {
+			return writeErr(stderr, sec, "usage: mftiko account list|show|create|update|delete")
+		}
 		return writeErr(stderr, sec, fmt.Sprintf("unknown command %q\n%s", pos[0], usageLine))
 	}
 	app := &App{
@@ -97,11 +100,16 @@ type command struct {
 	run      func(*App) int
 }
 
-// commands is the dispatch table (E11-D002). A later ticket adds a resource
-// and an action. login and whoami are single words, as E11-D006 names them.
+// commands is the dispatch table (E11-D002). login and whoami are single words,
+// as E11-D006 names them. account is mftiko account <action> (E11-D014).
 var commands = []command{
 	{action: "login", run: runLogin},
 	{action: "whoami", run: runWhoami},
+	{resource: "account", action: "list", run: runAccountList},
+	{resource: "account", action: "show", run: runAccountShow},
+	{resource: "account", action: "create", run: runAccountCreate},
+	{resource: "account", action: "update", run: runAccountUpdate},
+	{resource: "account", action: "delete", run: runAccountDelete},
 }
 
 func lookup(pos []string) (command, []string, bool) {
@@ -169,6 +177,8 @@ func commandHelp(name string) (string, bool) {
 		return loginHelp, true
 	case "whoami":
 		return whoamiHelp, true
+	case "account":
+		return accountHelp, true
 	case "help":
 		return generalHelp, true
 	default:
@@ -179,6 +189,9 @@ func commandHelp(name string) (string, bool) {
 func runLogin(a *App) int {
 	if len(a.Args) != 0 {
 		return a.exit("login takes no arguments")
+	}
+	if code := a.onlyFlags(); code != 0 {
+		return code
 	}
 	if code := a.useContext(); code != 0 {
 		return code
@@ -218,6 +231,9 @@ func runLogin(a *App) int {
 func runWhoami(a *App) int {
 	if len(a.Args) != 0 {
 		return a.exit("whoami takes no arguments")
+	}
+	if code := a.onlyFlags(); code != 0 {
+		return code
 	}
 	if code := a.useContext(); code != 0 {
 		return code

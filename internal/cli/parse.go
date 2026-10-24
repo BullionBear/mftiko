@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,7 @@ const generalHelp = usageLine + `
 commands:
   login     read a token from stdin, verify it with GET /auth/me, and store it
   whoami    call GET /auth/me and print the user
+  account   list, show, create, update, and delete trading accounts
   help      show this help
 
 flags:
@@ -62,6 +64,36 @@ Call GET /auth/me and print the user. The default is a table with local times.
 -o json writes the API body unchanged.
 `
 
+const accountHelp = `usage: mftiko account list|show|create|update|delete
+
+list
+  mftiko account list [-td-instance name] [-limit N] [-cursor TOKEN]
+
+show
+  mftiko account show <api_id>
+
+create
+  mftiko account create -name NAME -kind KIND -td-instance NAME
+      [-key-type hmac|ed25519]
+      [-key-file PATH] [-secret-file PATH] [-passphrase-file PATH]
+
+update
+  mftiko account update <api_id>
+      [-key-type hmac|ed25519]
+      [-key-file PATH] [-secret-file PATH] [-passphrase-file PATH]
+
+delete
+  mftiko account delete <api_id>
+
+Credential values are read from files or, on a terminal, without echo. They are
+never flag values. "-" reads that one file from stdin, and at most one file may
+be "-". An ed25519 secret is sent unchanged, including newlines; on a terminal
+end it with EOF. HMAC key, secret, and passphrase values lose one trailing
+newline. A kind with one key type uses it. A kind with several requires
+-key-type. Giving any credential file on update replaces the whole set. With
+none, update keeps the stored ciphertext. delete asks for confirmation.
+`
+
 type options struct {
 	context    string
 	contextSet bool
@@ -70,6 +102,15 @@ type options struct {
 	verbose    bool
 	yes        bool
 	version    bool
+	name       stringOpt
+	kind       stringOpt
+	tdInstance stringOpt
+	keyFile    stringOpt
+	secretFile stringOpt
+	passFile   stringOpt
+	keyType    stringOpt
+	limit      intOpt
+	cursor     stringOpt
 }
 
 type stringOpt struct {
@@ -97,6 +138,28 @@ func (d *durationOpt) String() string {
 	return d.v.String()
 }
 
+type intOpt struct {
+	v   int
+	set bool
+}
+
+func (n *intOpt) String() string {
+	if !n.set {
+		return ""
+	}
+	return strconv.Itoa(n.v)
+}
+
+func (n *intOpt) Set(s string) error {
+	v, err := strconv.Atoi(s)
+	if err != nil || v < 1 {
+		return errors.New("must be a positive integer")
+	}
+	n.v = v
+	n.set = true
+	return nil
+}
+
 func (d *durationOpt) Set(s string) error {
 	v, err := time.ParseDuration(s)
 	if err != nil {
@@ -119,6 +182,9 @@ func parseArgs(args []string) (options, []string, error) {
 	var timeout durationOpt
 	var output stringOpt
 	var outputLong stringOpt
+	var name, kind, tdInstance stringOpt
+	var keyFile, secretFile, passFile, keyType, cursor stringOpt
+	var limit intOpt
 	fs := flag.NewFlagSet("mftiko", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	fs.Usage = func() {}
@@ -130,6 +196,15 @@ func parseArgs(args []string) (options, []string, error) {
 	verboseLong := fs.Bool("verbose", false, "print X-Request-Id on success")
 	yes := fs.Bool("yes", false, "confirm a destructive command off a terminal")
 	version := fs.Bool("version", false, "print the release and exit")
+	fs.Var(&name, "name", "account name")
+	fs.Var(&kind, "kind", "account kind")
+	fs.Var(&tdInstance, "td-instance", "TD instance")
+	fs.Var(&keyFile, "key-file", "file to read the credential key from")
+	fs.Var(&secretFile, "secret-file", "file to read the credential secret from")
+	fs.Var(&passFile, "passphrase-file", "file to read the credential passphrase from")
+	fs.Var(&keyType, "key-type", "hmac or ed25519")
+	fs.Var(&limit, "limit", "maximum number of list rows")
+	fs.Var(&cursor, "cursor", "list a single page")
 	if err := fs.Parse(append(flags, pos...)); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return options{}, nil, errHelp
@@ -143,6 +218,15 @@ func parseArgs(args []string) (options, []string, error) {
 		verbose:    *verbose || *verboseLong,
 		yes:        *yes,
 		version:    *version,
+		name:       name,
+		kind:       kind,
+		tdInstance: tdInstance,
+		keyFile:    keyFile,
+		secretFile: secretFile,
+		passFile:   passFile,
+		keyType:    keyType,
+		limit:      limit,
+		cursor:     cursor,
 	}
 	if timeout.set {
 		opt.timeout = timeout.v
@@ -166,8 +250,13 @@ func parseArgs(args []string) (options, []string, error) {
 }
 
 var (
-	valueFlags = map[string]bool{"context": true, "timeout": true, "o": true, "output": true}
-	boolFlags  = map[string]bool{"v": true, "verbose": true, "yes": true, "version": true, "h": true, "help": true}
+	valueFlags = map[string]bool{
+		"context": true, "timeout": true, "o": true, "output": true,
+		"name": true, "kind": true, "td-instance": true,
+		"key-file": true, "secret-file": true, "passphrase-file": true, "key-type": true,
+		"limit": true, "cursor": true,
+	}
+	boolFlags = map[string]bool{"v": true, "verbose": true, "yes": true, "version": true, "h": true, "help": true}
 )
 
 // splitArgs pulls flags in front of positionals so flag.FlagSet sees every
