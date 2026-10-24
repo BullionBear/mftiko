@@ -98,7 +98,7 @@ func fieldsProblem(status int, code apiv1.ErrorCode, title, detail string, field
 	return p
 }
 
-func (a *api) ListAccountKinds(ctx context.Context, _ apiv1.ListAccountKindsRequestObject) (apiv1.ListAccountKindsResponseObject, error) {
+func (a *api) listKindsAccount(ctx context.Context, _ apiv1.ListAccountKindsRequestObject) (apiv1.ListAccountKindsResponseObject, error) {
 	if !a.allowed(ctx) {
 		return apiv1.ListAccountKinds401ApplicationProblemPlusJSONResponse{
 			UnauthenticatedApplicationProblemPlusJSONResponse: apiv1.UnauthenticatedApplicationProblemPlusJSONResponse(unauthProblem()),
@@ -349,7 +349,7 @@ func (a *api) DeleteAccount(ctx context.Context, req apiv1.DeleteAccountRequestO
 	return apiv1.DeleteAccount204Response{}, nil
 }
 
-func (a *api) GetInstance(ctx context.Context, req apiv1.GetInstanceRequestObject) (apiv1.GetInstanceResponseObject, error) {
+func (a *api) getInstanceAccount(ctx context.Context, req apiv1.GetInstanceRequestObject) (apiv1.GetInstanceResponseObject, error) {
 	if !a.allowed(ctx) {
 		return apiv1.GetInstance401ApplicationProblemPlusJSONResponse{
 			UnauthenticatedApplicationProblemPlusJSONResponse: apiv1.UnauthenticatedApplicationProblemPlusJSONResponse(unauthProblem()),

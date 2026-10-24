@@ -34,13 +34,17 @@ func runAccountList(a *App) int {
 	if a.opt.tdInstance.set && a.opt.tdInstance.v == "" {
 		return a.exit("-td-instance needs a name")
 	}
+	// E11-D010 supplement: the two paging flags together are a usage error.
+	if a.opt.limitSet && a.opt.cursorSet {
+		return a.exit("-limit and -cursor cannot both be set")
+	}
 	api, code := a.client()
 	if code != 0 {
 		return code
 	}
 	var capN *int
-	if a.opt.limit.set {
-		n := a.opt.limit.v
+	if a.opt.limitSet {
+		n := a.opt.limit
 		capN = &n
 	}
 	var filter *string
@@ -48,7 +52,7 @@ func runAccountList(a *App) int {
 		v := a.opt.tdInstance.v
 		filter = &v
 	}
-	return a.listAccounts(api, filter, capN, a.opt.cursor.set, a.opt.cursor.v)
+	return a.listAccounts(api, filter, capN, a.opt.cursorSet, a.opt.cursor)
 }
 
 func runAccountShow(a *App) int {
@@ -208,7 +212,7 @@ func runAccountDelete(a *App) int {
 		a.printRefs(refs)
 	}
 	if code == 0 {
-		a.note(res)
+		a.noteResult(res)
 	}
 	return code
 }
@@ -380,7 +384,7 @@ func (a *App) printRefs(refs []apiv1.SessionIDValue) {
 	}
 }
 
-func (a *App) note(res Result) {
+func (a *App) noteResult(res Result) {
 	if a.Verbose && res.RequestID != "" {
 		fmt.Fprintf(a.Stderr, "X-Request-Id: %s\n", a.sec.redact(res.RequestID))
 	}
@@ -394,7 +398,7 @@ func (a *App) writeAccount(res Result) int {
 	} else if code := a.writeShowTable(res.Body); code != 0 {
 		return code
 	}
-	a.note(res)
+	a.noteResult(res)
 	return ExitOK
 }
 
@@ -460,7 +464,7 @@ func joinSessions(ids []apiv1.SessionIDValue) string {
 // set, is the total number of rows, not the size of each request.
 func (a *App) listAccounts(api *API, filter *string, capN *int, cursorSet bool, cursor string) int {
 	if cursorSet {
-		res, err := api.ListAccounts(a.ctx, accountParams(filter, pageLimit(capN, 0), cursor))
+		res, err := api.ListAccounts(a.ctx, accountParams(filter, accountRequestLimit(capN, 0), cursor))
 		if code := a.checked(res, err); code != 0 {
 			return code
 		}
@@ -476,7 +480,7 @@ func (a *App) listAccounts(api *API, filter *string, capN *int, cursorSet bool, 
 			return code
 		}
 		a.warnFreshness(fresh)
-		a.note(res)
+		a.noteResult(res)
 		return ExitOK
 	}
 
@@ -495,7 +499,7 @@ func (a *App) listAccounts(api *API, filter *string, capN *int, cursorSet bool, 
 			}
 			seen[cursor] = true
 		}
-		res, err := api.ListAccounts(a.ctx, accountParams(filter, pageLimit(capN, len(raws)), cursor))
+		res, err := api.ListAccounts(a.ctx, accountParams(filter, accountRequestLimit(capN, len(raws)), cursor))
 		if code := a.checked(res, err); code != 0 {
 			return code
 		}
@@ -549,11 +553,11 @@ func (a *App) listAccounts(api *API, filter *string, capN *int, cursorSet bool, 
 		}
 	}
 	a.warnFreshness(fresh)
-	a.note(last)
+	a.noteResult(last)
 	return ExitOK
 }
 
-func pageLimit(capN *int, have int) int {
+func accountRequestLimit(capN *int, have int) int {
 	n := accountPage
 	if capN != nil {
 		n = *capN - have
@@ -684,8 +688,8 @@ func (a *App) onlyFlags(allow ...string) int {
 		{flagFile("secret"), a.opt.secretFile.set},
 		{flagFile("pass" + "phrase"), a.opt.passFile.set},
 		{flagPair("key", "type"), a.opt.keyType.set},
-		{"limit", a.opt.limit.set},
-		{"cursor", a.opt.cursor.set},
+		{"limit", a.opt.limitSet},
+		{"cursor", a.opt.cursorSet},
 	}
 	var bad []string
 	for _, f := range flags {

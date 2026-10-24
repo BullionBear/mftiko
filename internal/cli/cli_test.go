@@ -236,8 +236,11 @@ func TestProblemExitCodes(t *testing.T) {
 				t.Fatalf("exit %d, want %d, stderr %q", got.code, tc.exit, got.err)
 			}
 			noLeak(t, tokenA, got.out+got.err)
-			want := "mftiko: " + string(tc.code) + " (" + strconv.Itoa(tc.exit) + "): " + tc.title + "\n" +
-				detail + "\n/feeds/0/feed: unknown\n/name: required\nX-Request-Id: req-9c1e\n"
+			want := "mftiko: " + string(tc.code) + " (" + strconv.Itoa(tc.exit) + "): " + tc.title + "\n"
+			if tc.code == apiv1.ErrorCodeRegistryUnavailable {
+				want += "registry connection problem\n"
+			}
+			want += detail + "\n/feeds/0/feed: unknown\n/name: required\nX-Request-Id: req-9c1e\n"
 			if got.err != want {
 				t.Fatalf("stderr\n%s\nwant\n%s", got.err, want)
 			}

@@ -71,10 +71,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	cmd, rest, ok := lookup(pos)
 	if !ok {
-		if pos[0] == "account" {
-			return writeErr(stderr, sec, "usage: mftiko account list|show|create|update|delete")
-		}
-		return writeErr(stderr, sec, fmt.Sprintf("unknown command %q\n%s", pos[0], usageLine))
+		return unknown(stderr, sec, pos)
 	}
 	app := &App{
 		ctx:     ctx,
@@ -101,10 +98,17 @@ type command struct {
 }
 
 // commands is the dispatch table (E11-D002). login and whoami are single words,
-// as E11-D006 names them. account is mftiko account <action> (E11-D014).
+// as E11-D006 names them. The read-only queries are E11-D010–E11-D013.
+// account is mftiko account <action> (E11-D014).
 var commands = []command{
 	{action: "login", run: runLogin},
 	{action: "whoami", run: runWhoami},
+	{resource: "strategy", action: "list", run: runStrategyList},
+	{resource: "strategy", action: "versions", run: runStrategyVersions},
+	{resource: "strategy", action: "show", run: runStrategyShow},
+	{resource: "instance", action: "list", run: runInstanceList},
+	{resource: "instance", action: "show", run: runInstanceShow},
+	{resource: "account-kind", action: "list", run: runAccountKindList},
 	{resource: "account", action: "list", run: runAccountList},
 	{resource: "account", action: "show", run: runAccountShow},
 	{resource: "account", action: "create", run: runAccountCreate},
@@ -154,6 +158,16 @@ func resolveContext(opt options, env func(string) string) (string, error) {
 	}
 }
 
+func unknown(stderr io.Writer, sec secrets, pos []string) int {
+	if text, ok := commandHelp(pos[0]); ok && pos[0] != "login" && pos[0] != "whoami" && pos[0] != "help" {
+		if len(pos) == 1 {
+			return writeErr(stderr, sec, text)
+		}
+		return writeErr(stderr, sec, fmt.Sprintf("unknown command %q\n%s", pos[0]+" "+pos[1], text))
+	}
+	return writeErr(stderr, sec, fmt.Sprintf("unknown command %q\n%s", pos[0], usageLine))
+}
+
 func help(stdout, stderr io.Writer, sec secrets, args []string) int {
 	switch len(args) {
 	case 0:
@@ -177,6 +191,12 @@ func commandHelp(name string) (string, bool) {
 		return loginHelp, true
 	case "whoami":
 		return whoamiHelp, true
+	case "strategy":
+		return strategyHelp, true
+	case "instance":
+		return instanceHelp, true
+	case "account-kind":
+		return accountKindHelp, true
 	case "account":
 		return accountHelp, true
 	case "help":
@@ -189,6 +209,9 @@ func commandHelp(name string) (string, bool) {
 func runLogin(a *App) int {
 	if len(a.Args) != 0 {
 		return a.exit("login takes no arguments")
+	}
+	if code := a.rejectPageFlags(); code != 0 {
+		return code
 	}
 	if code := a.onlyFlags(); code != 0 {
 		return code
@@ -232,26 +255,13 @@ func runWhoami(a *App) int {
 	if len(a.Args) != 0 {
 		return a.exit("whoami takes no arguments")
 	}
+	if code := a.rejectPageFlags(); code != 0 {
+		return code
+	}
 	if code := a.onlyFlags(); code != 0 {
 		return code
 	}
-	if code := a.useContext(); code != 0 {
-		return code
-	}
-	_, _, c, code := a.load()
-	if code != 0 {
-		return code
-	}
-	token := strings.TrimSpace(a.env("MFTIKO_TOKEN"))
-	if token == "" {
-		token = c.Token
-	}
-	a.sec.add(c.Token)
-	a.sec.add(token)
-	if token == "" {
-		return a.exit("no token; set MFTIKO_TOKEN or run mftiko login")
-	}
-	api, code := a.dial(c, token)
+	api, code := a.api()
 	if code != 0 {
 		return code
 	}
@@ -260,6 +270,27 @@ func runWhoami(a *App) int {
 		return code
 	}
 	return a.writeMe(res)
+}
+
+// api loads the selected context and dials with MFTIKO_TOKEN or the stored token.
+func (a *App) api() (*API, int) {
+	if code := a.useContext(); code != 0 {
+		return nil, code
+	}
+	_, _, c, code := a.load()
+	if code != 0 {
+		return nil, code
+	}
+	token := strings.TrimSpace(a.env("MFTIKO_TOKEN"))
+	if token == "" {
+		token = c.Token
+	}
+	a.sec.add(c.Token)
+	a.sec.add(token)
+	if token == "" {
+		return nil, a.exit("no token; set MFTIKO_TOKEN or run mftiko login")
+	}
+	return a.dial(c, token)
 }
 
 func (a *App) load() (string, *File, Context, int) {

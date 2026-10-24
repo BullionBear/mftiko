@@ -81,6 +81,11 @@ func reportProblem(w io.Writer, raw []byte, requestID string, sec secrets) int {
 		fmt.Fprintf(&b, "mftiko: %s: %s\n", p.Code, p.Title)
 		code = ExitUsage
 	}
+	// E11-D012: the registry code says it is a registry connection problem,
+	// in addition to the API title and detail.
+	if p.Code == apiv1.ErrorCodeRegistryUnavailable {
+		fmt.Fprintln(&b, "registry connection problem")
+	}
 	if p.Detail != nil && *p.Detail != "" {
 		fmt.Fprintln(&b, *p.Detail)
 	}

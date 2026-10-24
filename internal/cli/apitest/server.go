@@ -36,10 +36,12 @@ type Call struct {
 	UserAgent     string
 	ContentType   string
 	Cookie        string
-	// Query is the raw query string. Body is the request body, which tests use
-	// to check credential bytes. Neither is logged.
+	RawQuery      string
+	// Query is the same string as RawQuery. Account tests read it.
 	Query string
-	Body  []byte
+	// Body is the request body. Tests use it to check credential bytes.
+	// Neither field is logged.
+	Body []byte
 }
 
 // Option is fixed before the server accepts a connection.
@@ -64,16 +66,21 @@ type Option struct {
 	EchoAuthorization bool
 	// TLS serves HTTPS. CertPEM returns the certificate the client should trust.
 	TLS bool
+	// Catalog, when set, serves the read-only lists. Nil keeps those routes
+	// on the account fixtures below. Set it before Start; the handler does
+	// not mutate it.
+	Catalog *Catalog
 	// Kinds, Instances, and Accounts are the account fixtures. They are copied
-	// before the server accepts a connection.
+	// before the server accepts a connection. They apply when Catalog is nil.
 	Kinds     []apiv1.AccountKind
 	Instances []apiv1.Instance
 	Accounts  []apiv1.Account
-	// PageSize, when set, caps a list page below the requested limit so a test
-	// can follow cursors. 0 means honor the request, up to 1000.
+	// PageSize, when set, caps an account list page below the requested limit
+	// so a test can follow cursors. 0 means honor the request, up to 1000.
+	// Strategy pages use Catalog.PageSize.
 	PageSize int
-	// Freshness is copied onto the first list page. NextFreshness, when set,
-	// is copied onto every later page.
+	// Freshness is copied onto the first account list page. NextFreshness,
+	// when set, is copied onto every later page.
 	Freshness     apiv1.Freshness
 	NextFreshness *apiv1.Freshness
 	// ConflictCAS makes update and delete return 409 conflict on /revision.
@@ -96,6 +103,8 @@ type Server struct {
 	reqID      string
 	block      bool
 	echo       bool
+	cat        *Catalog
+	hits       int
 	calls      []Call
 	lastAuth   string
 	lastBody   []byte
@@ -122,6 +131,7 @@ func Start(opt Option) *Server {
 		reqID:   opt.RequestID,
 		block:   opt.Block,
 		echo:    opt.EchoAuthorization,
+		cat:     opt.Catalog,
 	}
 	s.install(opt)
 	h := s.handler()
@@ -253,6 +263,7 @@ func (s *Server) middleware(next apiv1.StrictHandlerFunc, operationID string) ap
 			UserAgent:     r.Header.Get("User-Agent"),
 			ContentType:   r.Header.Get("Content-Type"),
 			Cookie:        r.Header.Get("Cookie"),
+			RawQuery:      r.URL.RawQuery,
 			Query:         r.URL.RawQuery,
 		}
 		if raw, ok := ctx.Value(bodyKey).([]byte); ok {
@@ -333,9 +344,6 @@ func (a *api) Login(context.Context, apiv1.LoginRequestObject) (apiv1.LoginRespo
 func (a *api) StreamEvents(context.Context, apiv1.StreamEventsRequestObject) (apiv1.StreamEventsResponseObject, error) {
 	return nil, errUnused
 }
-func (a *api) ListInstances(context.Context, apiv1.ListInstancesRequestObject) (apiv1.ListInstancesResponseObject, error) {
-	return nil, errUnused
-}
 func (a *api) ListSessionRecords(context.Context, apiv1.ListSessionRecordsRequestObject) (apiv1.ListSessionRecordsResponseObject, error) {
 	return nil, errUnused
 }
@@ -357,16 +365,6 @@ func (a *api) GetSession(context.Context, apiv1.GetSessionRequestObject) (apiv1.
 func (a *api) EndSession(context.Context, apiv1.EndSessionRequestObject) (apiv1.EndSessionResponseObject, error) {
 	return nil, errUnused
 }
-func (a *api) ListStrategies(context.Context, apiv1.ListStrategiesRequestObject) (apiv1.ListStrategiesResponseObject, error) {
-	return nil, errUnused
-}
-func (a *api) ListStrategyVersions(context.Context, apiv1.ListStrategyVersionsRequestObject) (apiv1.ListStrategyVersionsResponseObject, error) {
-	return nil, errUnused
-}
-func (a *api) GetStrategyVersion(context.Context, apiv1.GetStrategyVersionRequestObject) (apiv1.GetStrategyVersionResponseObject, error) {
-	return nil, errUnused
-}
-
 func unauth(p apiv1.Problem) apiv1.GetMe401ApplicationProblemPlusJSONResponse {
 	return apiv1.GetMe401ApplicationProblemPlusJSONResponse{
 		UnauthenticatedApplicationProblemPlusJSONResponse: apiv1.UnauthenticatedApplicationProblemPlusJSONResponse(p),

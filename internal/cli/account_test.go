@@ -658,6 +658,12 @@ func TestAccountListAndShow(t *testing.T) {
 	if badCursor.code != ExitValidationFailed || !strings.Contains(badCursor.err, "/cursor:") {
 		t.Fatalf("%+v", badCursor)
 	}
+	before = len(srv.Calls())
+	both := runAt(context.Background(), home, nil, strings.NewReader(""),
+		"--context", "dev", "account", "list", "--limit", "2", "--cursor", "x")
+	if both.code != ExitUsage || both.out != "" || len(srv.Calls()) != before || !strings.Contains(both.err, "-limit and -cursor cannot both be set") {
+		t.Fatalf("%+v calls %d", both, len(srv.Calls())-before)
+	}
 }
 
 func TestAccountUsage(t *testing.T) {

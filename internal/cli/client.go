@@ -151,6 +151,50 @@ func (a *API) GetMe(ctx context.Context) (Result, error) {
 	})
 }
 
+// ListStrategies calls GET /strategies. limit is the page size sent to the API
+// (E11-D010). An empty cursor omits the query parameter.
+func (a *API) ListStrategies(ctx context.Context, limit int, cursor string) (Result, error) {
+	params := apiv1.ListStrategiesParams{Limit: &limit}
+	if cursor != "" {
+		params.Cursor = &cursor
+	}
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.ListStrategies(ctx, &params)
+	})
+}
+
+// ListStrategyVersions calls GET /strategies/{id}/versions.
+func (a *API) ListStrategyVersions(ctx context.Context, id string, limit int, cursor string) (Result, error) {
+	params := apiv1.ListStrategyVersionsParams{Limit: &limit}
+	if cursor != "" {
+		params.Cursor = &cursor
+	}
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.ListStrategyVersions(ctx, id, &params)
+	})
+}
+
+// GetStrategyVersion calls GET /strategies/{id}/versions/{ref}.
+func (a *API) GetStrategyVersion(ctx context.Context, id, ref string) (Result, error) {
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.GetStrategyVersion(ctx, id, ref)
+	})
+}
+
+// ListInstances calls GET /instances. There is no plane filter and no page.
+func (a *API) ListInstances(ctx context.Context) (Result, error) {
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.ListInstances(ctx, nil)
+	})
+}
+
+// GetInstance calls GET /instances/{name}.
+func (a *API) GetInstance(ctx context.Context, name string) (Result, error) {
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.GetInstance(ctx, name)
+	})
+}
+
 // ListAccountKinds calls GET /account-kinds.
 func (a *API) ListAccountKinds(ctx context.Context) (Result, error) {
 	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
@@ -192,13 +236,6 @@ func (a *API) DeleteAccount(ctx context.Context, id apiv1.APIID, rev apiv1.Revis
 	params := &apiv1.DeleteAccountParams{Revision: rev}
 	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
 		return a.gen.DeleteAccount(ctx, id, params)
-	})
-}
-
-// GetInstance calls GET /instances/{name}.
-func (a *API) GetInstance(ctx context.Context, name apiv1.InstanceName) (Result, error) {
-	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
-		return a.gen.GetInstance(ctx, name)
 	})
 }
 
