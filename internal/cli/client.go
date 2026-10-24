@@ -1,0 +1,191 @@
+package cli
+
+import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"errors"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+	"time"
+	"unicode"
+
+	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
+	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
+)
+
+const maxBody = 8 << 20
+
+// Endpoint is one configured API. URL is the generated client's server and
+// includes /api/v1. Timeout must be positive.
+type Endpoint struct {
+	URL          string
+	Token        string
+	CAFile       string
+	InsecureHTTP bool
+	Timeout      time.Duration
+}
+
+// Result is one HTTP response. Body is limited to maxBody.
+type Result struct {
+	Status    int
+	Body      []byte
+	RequestID string
+}
+
+type usageError struct{ msg string }
+
+func (e *usageError) Error() string { return e.msg }
+
+func usage(msg string) error { return &usageError{msg: msg} }
+
+func isUsage(err error) bool {
+	var u *usageError
+	return errors.As(err, &u)
+}
+
+// UserAgent is the value sent on every request (E11-D008).
+func UserAgent() string {
+	return "mftiko-cli/" + buildinfo.Version
+}
+
+// API is the HTTP client. It sends Authorization: Bearer and User-Agent, and
+// does not add Content-Type (E10-D110, E11-D008). It does not store cookies.
+type API struct {
+	token string
+	ua    string
+	hc    *http.Client
+	gen   *apiv1.Client
+}
+
+// Dial builds a client. Plain HTTP is refused unless InsecureHTTP is set
+// (E11-D005). When CAFile is set, that PEM is the only trust root; the system
+// pool is not added, and the host name is still checked. Verification is never
+// skipped. The generated client joins paths against the server URL, so the
+// server passed to it ends in /api/v1/.
+func Dial(e Endpoint) (*API, error) {
+	raw, tr, err := prepare(e)
+	if err != nil {
+		return nil, err
+	}
+	if tokenInvalid(e.Token) {
+		return nil, usage("token must be one line")
+	}
+	a := &API{token: e.Token, ua: UserAgent()}
+	a.hc = &http.Client{
+		Timeout:       e.Timeout,
+		Transport:     tr,
+		CheckRedirect: refuseRedirect,
+	}
+	gen, err := apiv1.NewClient(raw, apiv1.WithHTTPClient(a.hc), apiv1.WithRequestEditorFn(a.edit))
+	if err != nil {
+		return nil, usage("context url is not usable")
+	}
+	a.gen = gen
+	return a, nil
+}
+
+// prepare checks everything except the token. login calls it before reading
+// stdin. The returned URL ends in /api/v1/ so the generated client requests
+// /api/v1/<operation> rather than /api/<operation>.
+func prepare(e Endpoint) (string, *http.Transport, error) {
+	if e.Timeout <= 0 {
+		return "", nil, usage("timeout must be positive")
+	}
+	u, err := url.Parse(strings.TrimSpace(e.URL))
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return "", nil, usage("context url must be an http or https URL with a host")
+	}
+	if u.User != nil {
+		return "", nil, usage("context url must not include userinfo")
+	}
+	if u.RawQuery != "" || u.Fragment != "" {
+		return "", nil, usage("context url must not include a query or fragment")
+	}
+	if strings.TrimSuffix(u.Path, "/") != "/api/v1" {
+		return "", nil, usage("context url path must be /api/v1")
+	}
+	if u.Scheme == "http" && !e.InsecureHTTP {
+		return "", nil, usage("context url is http; set insecure_http: true to allow plaintext")
+	}
+	base, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return "", nil, usage("HTTP transport is not available")
+	}
+	tr := base.Clone()
+	if u.Scheme == "https" && e.CAFile != "" {
+		pemBytes, err := os.ReadFile(e.CAFile)
+		if err != nil {
+			return "", nil, usage("cannot read ca_file")
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pemBytes) {
+			return "", nil, usage("ca_file has no PEM certificate")
+		}
+		tr.TLSClientConfig = &tls.Config{RootCAs: pool}
+	}
+	u.Path = "/api/v1/"
+	u.RawPath = ""
+	return u.String(), tr, nil
+}
+
+func refuseRedirect(*http.Request, []*http.Request) error {
+	return http.ErrUseLastResponse
+}
+
+// edit sets the bearer token and the user agent. It does not set Content-Type:
+// a request without a body must not gain one (E10-D110, E11-D008).
+func (a *API) edit(_ context.Context, req *http.Request) error {
+	req.Header.Set("Authorization", "Bearer "+a.token)
+	req.Header.Set("User-Agent", a.ua)
+	return nil
+}
+
+// GetMe calls GET /auth/me.
+func (a *API) GetMe(ctx context.Context) (Result, error) {
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.GetMe(ctx)
+	})
+}
+
+// logout calls POST /auth/logout, which has no body. Tests use it to check
+// that Content-Type stays unset.
+func (a *API) logout(ctx context.Context) (Result, error) {
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.Logout(ctx)
+	})
+}
+
+func (a *API) roundTrip(ctx context.Context, fn func(context.Context) (*http.Response, error)) (Result, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	resp, err := fn(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
+	if err != nil {
+		return Result{}, err
+	}
+	if len(body) > maxBody {
+		return Result{}, errors.New("response is too large")
+	}
+	return Result{Status: resp.StatusCode, Body: body, RequestID: resp.Header.Get("X-Request-Id")}, nil
+}
+
+func tokenInvalid(s string) bool {
+	if s == "" {
+		return true
+	}
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f || unicode.Is(unicode.Cc, r) {
+			return true
+		}
+	}
+	return false
+}
