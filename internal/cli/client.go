@@ -15,7 +15,6 @@ import (
 	"unicode"
 
 	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
-	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -51,7 +50,7 @@ func isUsage(err error) bool {
 
 // UserAgent is the value sent on every request (E11-D008).
 func UserAgent() string {
-	return "mftiko-cli/" + buildinfo.Version
+	return "mftiko-cli/" + cliBuild().Version
 }
 
 // API is the HTTP client. It sends Authorization: Bearer and User-Agent, and

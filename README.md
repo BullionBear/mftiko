@@ -53,7 +53,7 @@ migrations/               PostgreSQL schema: NNNN_name.up.sql / .down.sql, embed
 deploy/dev/               local development services (PostgreSQL, etcd, NATS, registry) and mftiko-api serving the console
 deploy/accept/            MD, TD and end-to-end acceptance against a venue's testnet: compose stack, accept.sh, runbook
 web/                      SvelteKit console (single-page app served by mftiko-api); e2e/ is the Playwright smoke
-docs/                     DECISIONS.md, PROTOCOL.md, operations.md (logs and retention), release.md
+docs/                     DECISIONS.md, PROTOCOL.md, operations.md (logs and retention), release.md, cli.md
 ```
 
 ## Make
@@ -81,6 +81,10 @@ docs/                     DECISIONS.md, PROTOCOL.md, operations.md (logs and ret
 | `make help` | lists targets |
 
 Building and testing the Go code need only Go 1.26+: the generated code is committed. `make openapi`, `make web`, `make check` and `make dev-up` also need Node 22+ and npm; `make proto` needs only the Go tools from `make tools`. Docker only for `make dev-up` and `deploy/accept`. No other tools need to be installed by hand. `DATABASE_URL` defaults to the local PostgreSQL from `deploy/dev/compose.yaml`; its etcd is at `http://127.0.0.1:2379`, one member with no auth. Its NATS is at `nats://127.0.0.1:4222`, one server, core NATS only, no TLS. The generated server config sets `max_control_line` to 262144 (E08-D027): a session JWT lists each feed, and the server default of 4096 rejects that CONNECT line. `make dev-up` generates the operator, account and user credentials into `deploy/dev/data/nats`, which is gitignored. MD and md.fetch use those creds. The dev compose registry is `registry:2` at `127.0.0.1:5000`, with no authentication (E09-D010).
+
+## CLI
+
+`mftiko` is the command-line client for the API. Each `v*` tag's GitHub Release has binaries for darwin/arm64, darwin/amd64, linux/amd64 and linux/arm64. You can also run `go install github.com/BullionBear/mftiko/cmd/mftiko@<tag>`, or `make build`. [docs/cli.md](docs/cli.md) covers installation, the config file and tokens, a first session with `hello`, and the exit codes. `mftiko version` prints the CLI release and the `api.v1` version it was built against.
 
 ## Packing a strategy
 

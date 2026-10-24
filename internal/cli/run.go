@@ -60,7 +60,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return writeErr(stderr, sec, err.Error())
 	}
 	if opt.version {
-		fmt.Fprintln(stdout, versionLine())
+		fmt.Fprint(stdout, versionText(cliBuild()))
 		return ExitOK
 	}
 	if len(pos) == 0 {
@@ -103,9 +103,11 @@ type command struct {
 // session create is E11-D019–E11-D023.
 // session and record are E11-D024–E11-D028.
 // session watch and --wait are E11-D029–E11-D034.
+// version is E11-D036.
 var commands = []command{
 	{action: "login", run: runLogin},
 	{action: "whoami", run: runWhoami},
+	{action: "version", run: runVersion},
 	{resource: "strategy", action: "list", run: runStrategyList},
 	{resource: "strategy", action: "versions", run: runStrategyVersions},
 	{resource: "strategy", action: "show", run: runStrategyShow},
@@ -170,7 +172,7 @@ func resolveContext(opt options, env func(string) string) (string, error) {
 }
 
 func unknown(stderr io.Writer, sec secrets, pos []string) int {
-	if text, ok := commandHelp(pos[0]); ok && pos[0] != "login" && pos[0] != "whoami" && pos[0] != "help" {
+	if text, ok := commandHelp(pos[0]); ok && pos[0] != "login" && pos[0] != "whoami" && pos[0] != "version" && pos[0] != "help" {
 		if len(pos) == 1 {
 			return writeErr(stderr, sec, text)
 		}
@@ -202,6 +204,8 @@ func commandHelp(name string) (string, bool) {
 		return loginHelp, true
 	case "whoami":
 		return whoamiHelp, true
+	case "version":
+		return versionHelp, true
 	case "strategy":
 		return strategyHelp, true
 	case "instance":

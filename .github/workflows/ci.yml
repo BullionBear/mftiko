@@ -94,6 +94,9 @@ jobs:
         run: make vet
       - name: build
         run: make build
+      # The CLI release tarballs, by the release workflow's script (E11-D035).
+      - name: CLI release build
+        run: make cli-dist
       # Includes the conformance fakeworker violation checks (E08-D034, PROTOCOL §9.8).
       - name: go test -race
         env:

@@ -47,7 +47,7 @@ OASDIFF_FAIL_ON ?= ERR
 # Redocly CLI and openapi-typescript come from web/node_modules.
 export PATH := $(TOOLS):$(NODE_BIN):$(PATH)
 
-.PHONY: all help tools proto proto-lint proto-breaking openapi openapi-lint openapi-breaking gen-check build examples test test-race sdk-conformance vet fmt check \
+.PHONY: all help tools proto proto-lint proto-breaking openapi openapi-lint openapi-breaking gen-check build cli-dist examples test test-race sdk-conformance vet fmt check \
         web-install web web-check web-dev dev-up dev-down dev-nats-smoke accept-up accept-down migrate-up migrate-down migrate-status \
         migrate-new clean
 
@@ -143,6 +143,9 @@ gen-check: tools web-install ## Fail if the generated code (or go.mod) is stale
 build: ## Build every command into bin/
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/ ./cmd/...
 
+cli-dist: ## The mftiko CLI release tarballs and SHA256SUMS in bin/dist/ (E11-D035, docs/cli.md)
+	bash .github/scripts/build-cli.sh
+
 examples: ## Build the example strategies into bin/examples/
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/examples/ ./examples/strategies/...
 
@@ -164,7 +167,7 @@ fmt: ## go fmt
 	$(GO) fmt ./...
 
 # CI runs these one step each (.github/workflows/ci.yml), in this order: keep the two lists the same.
-CHECKS := proto-lint proto-breaking openapi-lint openapi-breaking gen-check vet build test-race sdk-conformance web-check web
+CHECKS := proto-lint proto-breaking openapi-lint openapi-breaking gen-check vet build cli-dist test-race sdk-conformance web-check web
 
 check: $(CHECKS) ## Everything CI runs
 
