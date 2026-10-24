@@ -217,6 +217,7 @@ func TestProblemExitCodes(t *testing.T) {
 		{apiv1.ErrorCodeStorageUnavailable, 503, "Storage Unavailable", ExitStorageUnavailable},
 		{apiv1.ErrorCodeRegistryUnavailable, 503, "Registry Unavailable", ExitRegistryUnavailable},
 		{apiv1.ErrorCodeInternal, 500, "Internal", ExitInternal},
+		{apiv1.ErrorCodeInvalidArtifact, 502, "Bad Gateway", ExitInvalidArtifact},
 	}
 	for _, tc := range cases {
 		t.Run(string(tc.code), func(t *testing.T) {
@@ -263,35 +264,6 @@ func TestExitCodeFollowsBodyNotHTTPStatus(t *testing.T) {
 	}
 	if !strings.Contains(got.err, "validation_failed (10):") {
 		t.Fatalf("stderr %q", got.err)
-	}
-}
-
-func TestInvalidArtifactHasNoAssignedExit(t *testing.T) {
-	detail := "manifest"
-	p := &apiv1.Problem{
-		Type: "about:blank", Title: "Bad Gateway", Status: 502,
-		Code: apiv1.ErrorCodeInvalidArtifact, Detail: &detail,
-	}
-	srv := apitest.Start(apitest.Option{Problem: p, RequestID: "req-art"})
-	defer srv.Close()
-	home := t.TempDir()
-	writeConfig(t, home, configYAML(srv.URL(), true, tokenA))
-	got := runAt(context.Background(), home, nil, strings.NewReader(""), "whoami", "--context", "dev")
-	if got.code != ExitUsage {
-		t.Fatalf("exit %d stderr %q", got.code, got.err)
-	}
-	if strings.Contains(got.err, "invalid_artifact (") {
-		t.Fatalf("assigned a number:\n%s", got.err)
-	}
-	if !strings.Contains(got.err, "mftiko: invalid_artifact: Bad Gateway\n") {
-		t.Fatalf("stderr %q", got.err)
-	}
-	if !strings.Contains(got.err, "has no exit code in E11-D007") {
-		t.Fatalf("stderr %q", got.err)
-	}
-	n, ok := ExitCode(apiv1.ErrorCodeInvalidArtifact)
-	if ok || n != 0 {
-		t.Fatalf("ExitCode(%d, %v), want unassigned", n, ok)
 	}
 }
 

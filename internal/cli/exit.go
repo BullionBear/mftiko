@@ -26,11 +26,11 @@ const (
 	ExitStorageUnavailable  = 18
 	ExitRegistryUnavailable = 19
 	ExitInternal            = 20
+	ExitInvalidArtifact     = 21
 )
 
 // ExitCode maps an API problem code to a process exit code (E11-D007).
-// ok is false for a code the table does not name. invalid_artifact is one of
-// those: the decision does not assign it, and this function does not invent a number.
+// ok is false for a code the table does not name.
 func ExitCode(code apiv1.ErrorCode) (int, bool) {
 	switch code {
 	case apiv1.ErrorCodeValidationFailed:
@@ -55,6 +55,8 @@ func ExitCode(code apiv1.ErrorCode) (int, bool) {
 		return ExitRegistryUnavailable, true
 	case apiv1.ErrorCodeInternal:
 		return ExitInternal, true
+	case apiv1.ErrorCodeInvalidArtifact:
+		return ExitInvalidArtifact, true
 	default:
 		return 0, false
 	}
@@ -77,6 +79,7 @@ func reportProblem(w io.Writer, raw []byte, requestID string, sec secrets) int {
 		fmt.Fprintf(&b, "mftiko: %s (%d): %s\n", p.Code, code, p.Title)
 	} else {
 		fmt.Fprintf(&b, "mftiko: %s: %s\n", p.Code, p.Title)
+		code = ExitUsage
 	}
 	if p.Detail != nil && *p.Detail != "" {
 		fmt.Fprintln(&b, *p.Detail)
@@ -92,12 +95,6 @@ func reportProblem(w io.Writer, raw []byte, requestID string, sec secrets) int {
 	}
 	if requestID != "" {
 		fmt.Fprintf(&b, "X-Request-Id: %s\n", requestID)
-	}
-	if !ok {
-		// Not an assignment. The line names the gap so a later decision can
-		// number the code without this package having picked one.
-		fmt.Fprintf(&b, "mftiko: API code %s has no exit code in E11-D007\n", p.Code)
-		code = ExitUsage
 	}
 	fmt.Fprint(w, sec.redact(b.String()))
 	return code
