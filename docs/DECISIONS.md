@@ -3030,6 +3030,7 @@ Binance 一律以 ed25519 經 WS API 收發單（2026-10-10 定）。E03-D002 �
 - `strategy versions` 在 digest 等於 latest 的那一行標 `latest`。
 - `strategy show` 印完整 digest。
 - PROTOCOL 為 v1.56。
+- **E11-D013 修訂（使用者確認，2026-10-24）：** 短 digest 統一為前 7 碼（不含 `sha256:` 前綴），`strategy list` 由 12 碼改為 7 碼，與 E11-D024 一致；併入 #367。
 
 ### E11-D014 憑證輸入（E11-04，#356）
 

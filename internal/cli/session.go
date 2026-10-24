@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
 	"github.com/google/uuid"
@@ -506,12 +505,12 @@ func sessionText(d apiv1.SessionDetail, agent *apiv1.AgentStatus) (string, error
 	var b strings.Builder
 	b.WriteString("SPEC\n")
 	// E11-D024 revision: the session stores the digest only. The table shows
-	// id, name, and the first 7 characters after a leading "sha256:". It does
-	// not look up the registry. -o json writes the API body, digest included.
+	// id, name, and shortDigest. It does not look up the registry. -o json
+	// writes the API body, digest included.
 	if err := WriteTable(&b, []string{"STRATEGY_ID", "STRATEGY_NAME", "DIGEST", "STS_INSTANCE", "CREATED_AT", "CREATED_BY"}, [][]string{{
 		deref(d.Spec.Strategy.Id),
 		d.Spec.Strategy.Name,
-		sessionDigest(d.Spec.Strategy.Digest),
+		shortDigest(d.Spec.Strategy.Digest),
 		d.StsInstance,
 		stampPtr(d.CreatedAt),
 		deref(d.CreatedBy),
@@ -589,21 +588,6 @@ func condRows(st *apiv1.SessionStatus) [][]string {
 		rows = append(rows, []string{c.Type, strconv.FormatBool(c.Status), c.Reason, c.Message})
 	}
 	return rows
-}
-
-// sessionDigest is the first 7 characters of a digest with a leading
-// "sha256:" removed (E11-D024 revision). Shorter values are kept whole.
-func sessionDigest(d string) string {
-	s := strings.TrimPrefix(d, "sha256:")
-	if utf8.RuneCountInString(s) <= 7 {
-		return s
-	}
-	i := 0
-	for n := 0; n < 7 && i < len(s); n++ {
-		_, size := utf8.DecodeRuneInString(s[i:])
-		i += size
-	}
-	return s[:i]
 }
 
 func stampPtr(t *time.Time) string {

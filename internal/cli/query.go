@@ -349,18 +349,20 @@ func agentCells(agent *apiv1.AgentStatus) (present, lastKnown string) {
 	return "yes", "false"
 }
 
-// shortDigest is the first 12 characters of the digest string (E11-D013).
-// The table uses it. JSON keeps the digest the API sent.
+// shortDigest is the first 7 characters of a digest with a leading "sha256:"
+// removed (E11-D013 revision). strategy list and session show share it.
+// JSON keeps the digest the API sent. Shorter values are kept whole.
 func shortDigest(d string) string {
-	if utf8.RuneCountInString(d) <= 12 {
-		return d
+	s := strings.TrimPrefix(d, "sha256:")
+	if utf8.RuneCountInString(s) <= 7 {
+		return s
 	}
 	i := 0
-	for n := 0; n < 12 && i < len(d); n++ {
-		_, size := utf8.DecodeRuneInString(d[i:])
+	for n := 0; n < 7 && i < len(s); n++ {
+		_, size := utf8.DecodeRuneInString(s[i:])
 		i += size
 	}
-	return d[:i]
+	return s[:i]
 }
 
 func localStamp(t time.Time) string {

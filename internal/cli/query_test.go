@@ -32,11 +32,14 @@ func TestStrategyList(t *testing.T) {
 	if got.err != "" {
 		t.Fatalf("stderr %q", got.err)
 	}
-	if !strings.Contains(got.out, "alpha") || !strings.Contains(got.out, "latest") || !strings.Contains(got.out, digA[:12]) {
+	if shortDigest(digA) != "0000000" {
+		t.Fatalf("short digest %q", shortDigest(digA))
+	}
+	if !strings.Contains(got.out, "alpha") || !strings.Contains(got.out, "latest") || !strings.Contains(got.out, shortDigest(digA)) {
 		t.Fatalf("table %q", got.out)
 	}
-	if strings.Contains(got.out, digA[12:]) {
-		t.Fatalf("table shows more than 12 digest characters: %q", got.out)
+	if strings.Contains(got.out, digA) || strings.Contains(got.out, "sha256:") || strings.Contains(got.out, "00000000") {
+		t.Fatalf("table shows more than 7 digest characters: %q", got.out)
 	}
 	if !strings.Contains(got.out, "beta") || !strings.Contains(got.out, "example.invalid/beta") {
 		t.Fatalf("missing strategy: %q", got.out)

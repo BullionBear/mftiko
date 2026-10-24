@@ -14,17 +14,17 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-func TestSessionDigest(t *testing.T) {
-	if got := sessionDigest(digA); got != "0000000" {
+func TestShortDigest(t *testing.T) {
+	if got := shortDigest(digA); got != "0000000" {
 		t.Fatalf("prefixed %q", got)
 	}
-	if got := sessionDigest("abcdef012345"); got != "abcdef0" {
+	if got := shortDigest("abcdef012345"); got != "abcdef0" {
 		t.Fatalf("bare %q", got)
 	}
-	if got := sessionDigest("sha256:abc"); got != "abc" {
+	if got := shortDigest("sha256:abc"); got != "abc" {
 		t.Fatalf("short %q", got)
 	}
-	if got := sessionDigest(""); got != "" {
+	if got := shortDigest(""); got != "" {
 		t.Fatalf("empty %q", got)
 	}
 }
@@ -206,7 +206,7 @@ func TestSessionShow(t *testing.T) {
 	if got.code != ExitOK {
 		t.Fatalf("%+v", got)
 	}
-	shortA := sessionDigest(digA)
+	shortA := shortDigest(digA)
 	if shortA != "0000000" {
 		t.Fatalf("short digest %q", shortA)
 	}
@@ -263,7 +263,7 @@ func TestSessionShow(t *testing.T) {
 	if got.code != ExitOK || strings.Contains(got.out, "最後已知") || strings.Contains(got.out, "TAG") {
 		t.Fatalf("%+v", got)
 	}
-	if !strings.Contains(got.out, "no-tag") || strings.Contains(got.out, digB) || !strings.Contains(got.out, sessionDigest(digB)) || !strings.Contains(got.out, "done") || !strings.Contains(got.out, "SIGNAL") {
+	if !strings.Contains(got.out, "no-tag") || strings.Contains(got.out, digB) || !strings.Contains(got.out, shortDigest(digB)) || !strings.Contains(got.out, "done") || !strings.Contains(got.out, "SIGNAL") {
 		t.Fatalf("plain %s", got.out)
 	}
 	exit := got.out[strings.Index(got.out, "EXIT\n"):]

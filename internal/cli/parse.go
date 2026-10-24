@@ -70,7 +70,8 @@ const strategyHelp = `usage: mftiko strategy list
 list calls GET /strategies. versions calls GET /strategies/{id}/versions.
 show calls GET /strategies/{id}/versions/{ref}. ref is a tag or a digest.
 
-list shows the latest tag and the first 12 characters of its digest.
+list shows the latest tag and the first 7 characters of its digest,
+with a leading sha256: removed.
 versions marks each row whose digest equals the latest tag in the rows
 that were fetched. show prints the full digest.
 
