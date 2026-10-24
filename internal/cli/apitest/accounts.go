@@ -53,6 +53,13 @@ func (s *Server) install(opt Option) {
 	}
 	s.conflict = opt.ConflictCAS
 	s.echoSecret = opt.EchoCredential
+	s.dropLeft = opt.DropCreates
+	if opt.CreateFields != nil {
+		s.createFields = append([]apiv1.FieldError(nil), opt.CreateFields...)
+	}
+	s.storageDown = opt.StorageUnavailable
+	s.algoOverlap = opt.AlgoOverlap
+	s.sessions = map[string]savedSession{}
 }
 
 func copyFresh(f apiv1.Freshness) apiv1.Freshness {

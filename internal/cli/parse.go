@@ -30,6 +30,7 @@ commands:
   instance      list instances and show one
   account-kind  list account kinds
   account       list, show, create, update, and delete trading accounts
+  session       create a session from one YAML or JSON file
   help          show this help
 
 flags:
@@ -139,6 +140,25 @@ newline. A kind with one key type uses it. A kind with several requires
 none, update keeps the stored ciphertext. delete asks for confirmation.
 `
 
+const sessionHelp = `usage: mftiko session create -f FILE
+
+create reads one YAML or JSON session file and calls POST /sessions.
+-f - reads stdin. YAML and JSON use the same parser. Numbers are sent as
+written. A repeated key is an error. A number that is not legal JSON, such
+as 0755, 0x1F, 0o17, .inf, or .nan, is an error and names its line; quote it.
+true and false are booleans. no, on, yes, and off are strings.
+
+Each run sends a new UUID as Idempotency-Key. -idempotency-key sets that
+value. A connection failure or a timeout is retried at most 3 times, after
+1s, 2s, and 4s, with the same key and body. Every error prints the key.
+The same key with a different body is a conflict and prints
+此 key 已用於不同內容 and the key.
+
+Success prints the session id and the strategy digest the API resolved.
+-o json writes the API body unchanged. The client does not repeat the API's
+validation.
+`
+
 type options struct {
 	context    string
 	contextSet bool
@@ -158,6 +178,8 @@ type options struct {
 	secretFile stringOpt
 	passFile   stringOpt
 	keyType    stringOpt
+	file       stringOpt
+	idemKey    stringOpt
 }
 
 type stringOpt struct {
@@ -231,6 +253,7 @@ func parseArgs(args []string) (options, []string, error) {
 	var outputLong stringOpt
 	var name, kind, tdInstance stringOpt
 	var keyFile, secretFile, passFile, keyType, cursor stringOpt
+	var file, idemKey stringOpt
 	var limit intOpt
 	fs := flag.NewFlagSet("mftiko", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -252,6 +275,8 @@ func parseArgs(args []string) (options, []string, error) {
 	fs.Var(&secretFile, "secret-file", "file to read the credential secret from")
 	fs.Var(&passFile, "passphrase-file", "file to read the credential passphrase from")
 	fs.Var(&keyType, "key-type", "hmac or ed25519")
+	fs.Var(&file, "f", "session file, or - for stdin")
+	fs.Var(&idemKey, flagPair("idempotency", "key"), "Idempotency-Key for this run")
 	if err := fs.Parse(append(flags, pos...)); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return options{}, nil, errHelp
@@ -276,6 +301,8 @@ func parseArgs(args []string) (options, []string, error) {
 		secretFile: secretFile,
 		passFile:   passFile,
 		keyType:    keyType,
+		file:       file,
+		idemKey:    idemKey,
 	}
 	if timeout.set {
 		opt.timeout = timeout.v
@@ -304,6 +331,7 @@ var (
 		"name": true, "kind": true, "td-instance": true,
 		"key-file": true, "secret-file": true, "passphrase-file": true, "key-type": true,
 		"limit": true, "cursor": true,
+		"f": true, "idempotency-key": true,
 	}
 	boolFlags = map[string]bool{"v": true, "verbose": true, "yes": true, "version": true, "h": true, "help": true}
 )
