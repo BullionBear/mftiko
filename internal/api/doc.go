@@ -11,7 +11,7 @@
 // from one Mirror per cluster (D1014). Session and instance reads, session records, and SSE are D1092–D1097.
 // Each SSE connection watches etcd from Last-Event-ID and does not read the mirror's history (D1094).
 // Every /api request is authenticated, except POST /api/v1/auth/login
-// (D1009, D1051). On reply the audit row is queued and written to Postgres; /healthz and /readyz are not
+// (D1009, D1051). Cookie writes and login need Content-Type: application/json; bearer writes do not (D1110). On reply the audit row is queued and written to Postgres; /healthz and /readyz are not
 // (D1010, D1049). The strategy catalog is served from the registry (D1056–D1061). Load checks the DSN and the
 // registry settings and does not dial. Run creates a Postgres pool and does not wait for it to connect;
 // readiness still watches etcd only (D1048, modifies D1024). A down Postgres makes session create return
@@ -56,7 +56,8 @@
 // (D1026, D1027). SIGTERM marks readiness 503, stops accepting, waits for in-flight requests up to
 // shutdown_timeout and returns nil so the process exits 0. SIGINT takes that same path.
 //
-// The console files are read from disk when a web directory is set (web/build), not embedded. A path that is not
+// The console files are read from disk when a web directory is set (web/build), not embedded. The directory is
+// opened once (os.Root), so replacing it needs a restart (D1114). A path that is not
 // under /api/ and does not name a file returns index.html. With no web directory the server has only the API
 // routes (D1028). A certificate and key together serve HTTPS with HTTP/2; without them the listener is plaintext
 // HTTP for development (D1029).

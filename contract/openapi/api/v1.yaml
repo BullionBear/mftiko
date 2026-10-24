@@ -1,9 +1,10 @@
-# Source of truth for contract A (PROTOCOL §0, §1). Draft until E10-20 (D1018).
+# Source of truth for contract A (PROTOCOL §0, §1). Final since E10-20 (D1018, D1116): within v1, compatible
+# additions only; CI runs oasdiff breaking against the base and fails on a breaking change.
 # console 與 CLI 只認這份契約，不認平台的 proto（D1002）。
 openapi: 3.0.3
 info:
   title: mftiko API
-  version: 1.0.0-draft
+  version: 1.0.0
   description: |
     mftiko API server 的對外契約（DECISIONS D1001、D1002）。
 
