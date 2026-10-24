@@ -1,6 +1,6 @@
 # 發布
 
-`v*` tag 發布兩類產物：MD 的 conn worker 與 TD 的 account worker（下一節），以及 `mftiko` CLI（「CLI」一節）。`mftiko-api` 與 console 沒有發布的產物：部署時從同一個 tag 建 `mftiko-api` 與 `make web`，部署方式在 E12 定。API 的契約怎麼演進見最後一節。
+`v*` tag 發布兩類產物：MD 的 conn worker 與 TD 的 account worker（下一節），以及 `mftiko` CLI（「CLI」一節）。主機上執行的 binary 與 console 打包成一個 server tarball（「主機」一節，E12-04 實作）。API 的契約怎麼演進見最後一節。
 
 ## conn 與 account worker
 
@@ -46,6 +46,16 @@ GitHub → BullionBear → Organization Settings → Packages → Package creati
 - 腳本會執行本機平台的那一個 binary，確認 `mftiko version` 印的就是注入的版本。
 - PR 驗證：`ci.yml` 的 `make cli-dist` 跑同一支腳本，不上傳。
 - binary 沒有 macOS 簽章與公證，也沒有 Homebrew tap。
+
+## 主機
+
+依 [DECISIONS.md](DECISIONS.md) E12-D002、E12-D003（E12-01，#374）。打包腳本、安裝與換版的指令在 E12-04（#377）。
+
+- **產物：** `mftiko-server_<tag>_linux_amd64.tar.gz`，跟 CLI 傳到同一個 Release；`SHA256SUMS` 只有一份，涵蓋兩種 tarball，所以兩者在同一個 job 裡建。
+- **內容：** `bin/`（三種 agent、`mftiko-shim`、`mftiko-controller`、`mftiko-api`、`mftiko-sym`、`mftiko-mdfetch`、`mftiko-migrate`、`mftiko-etcd-roles`、`mftiko-seal`）、`web/`（`make web` 的結果，給 `mftiko-api -web`）、`systemd/`（unit 檔，E12-05）。conn 與 account worker 不在裡面，agent 從 registry 拉（E12-02）。
+- **目錄：** 解開到 `/opt/mftiko/releases/<tag>/`，`/opt/mftiko/current` 是指到其中一版的 symlink，unit 執行 `/opt/mftiko/current/bin/…`。
+- **換版：** 解開新版，原子地換掉 `current`（暫時的 symlink 再 rename），重啟 unit。舊檔不覆寫，跑著的 shim 與 worker 繼續用舊版（E01-D003）。回退就是把 `current` 指回去。
+- **清理：** 保留最近 3 版與 `current`；還有進程的 `/proc/<pid>/exe` 指在裡面的版本不刪。
 
 ## API 契約（`api.v1`）
 
