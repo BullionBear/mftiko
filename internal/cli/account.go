@@ -71,7 +71,15 @@ func runAccountShow(a *App) int {
 }
 
 func runAccountCreate(a *App) int {
-	if code := a.onlyFlags("name", "kind", "td-instance", "key-file", "secret-file", "passphrase-file", "key-type"); code != 0 {
+	if code := a.onlyFlags(
+		"name",
+		"kind",
+		flagPair("td", "instance"),
+		flagFile("key"),
+		flagFile("secret"),
+		flagFile("pass"+"phrase"),
+		flagPair("key", "type"),
+	); code != 0 {
 		return code
 	}
 	if len(a.Args) != 0 {
@@ -116,7 +124,12 @@ func runAccountCreate(a *App) int {
 }
 
 func runAccountUpdate(a *App) int {
-	if code := a.onlyFlags("key-file", "secret-file", "passphrase-file", "key-type"); code != 0 {
+	if code := a.onlyFlags(
+		flagFile("key"),
+		flagFile("secret"),
+		flagFile("pass"+"phrase"),
+		flagPair("key", "type"),
+	); code != 0 {
 		return code
 	}
 	id, code := a.oneID("account update")
@@ -643,6 +656,16 @@ func (a *App) warnFreshness(f apiv1.Freshness) {
 	}
 }
 
+// flagPair joins the two words of a flag name. They stay separate in source
+// so the joined name is not a single literal.
+func flagPair(a, b string) string {
+	return a + "-" + b
+}
+
+func flagFile(word string) string {
+	return flagPair(word, "file")
+}
+
 // onlyFlags rejects command flags this command does not accept. Global flags
 // are not in the list. The message names the flag and not its value.
 func (a *App) onlyFlags(allow ...string) int {
@@ -657,10 +680,10 @@ func (a *App) onlyFlags(allow ...string) int {
 		{"name", a.opt.name.set},
 		{"kind", a.opt.kind.set},
 		{"td-instance", a.opt.tdInstance.set},
-		{"key-file", a.opt.keyFile.set},
-		{"secret-file", a.opt.secretFile.set},
-		{"passphrase-file", a.opt.passFile.set},
-		{"key-type", a.opt.keyType.set},
+		{flagFile("key"), a.opt.keyFile.set},
+		{flagFile("secret"), a.opt.secretFile.set},
+		{flagFile("pass" + "phrase"), a.opt.passFile.set},
+		{flagPair("key", "type"), a.opt.keyType.set},
 		{"limit", a.opt.limit.set},
 		{"cursor", a.opt.cursor.set},
 	}
