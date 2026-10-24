@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,17 +24,22 @@ const usageLine = "usage: mftiko [flags] <command> [arguments]\n       mftiko [f
 const generalHelp = usageLine + `
 
 commands:
-  login     read a token from stdin, verify it with GET /auth/me, and store it
-  whoami    call GET /auth/me and print the user
-  help      show this help
+  login         read a token from stdin, verify it with GET /auth/me, and store it
+  whoami        call GET /auth/me and print the user
+  strategy      list strategies, their versions, and one manifest
+  instance      list instances and show one
+  account-kind  list account kinds
+  help          show this help
 
 flags:
-  -context name    context in the config file, or set MFTIKO_CONTEXT (they must match if both are set)
-  -timeout 30s     HTTP client timeout, a Go duration greater than 0
-  -o json          write the API body unchanged; the default is a table
-  -v               print X-Request-Id on success
-  -yes             allow a destructive command when stdin is not a terminal
-  -version         print the release and exit
+  -context name   context in the config file, or set MFTIKO_CONTEXT (they must match if both are set)
+  -timeout 30s    HTTP client timeout, a Go duration greater than 0
+  -o json         write the API body unchanged; the default is a table
+  -limit N        cap the total number of rows for strategy list and strategy versions
+  -cursor value   fetch one page for strategy list and strategy versions
+  -v              print X-Request-Id on success
+  -yes            allow a destructive command when stdin is not a terminal
+  -version        print the release and exit
 
 The config file is ~/.config/mftiko/config.yaml and its mode must not be wider
 than 0600. It holds named contexts:
@@ -47,6 +53,43 @@ url is the API client's server and includes /api/v1. The token comes from
 MFTIKO_TOKEN or the context, and the environment variable wins. login is the
 exception: its token is only the line on stdin. There is no token flag.
 Plain HTTP is refused unless the context sets insecure_http: true.
+
+strategy list and strategy versions follow next_cursor until the list ends.
+Each request uses limit=1000. -limit N caps the total number of rows.
+-cursor fetches only that page, and -o json writes that page unchanged.
+-limit and -cursor cannot both be set.
+`
+
+const strategyHelp = `usage: mftiko strategy list
+       mftiko strategy versions <id>
+       mftiko strategy show <id> <ref>
+
+list calls GET /strategies. versions calls GET /strategies/{id}/versions.
+show calls GET /strategies/{id}/versions/{ref}. ref is a tag or a digest.
+
+list shows the latest tag and the first 12 characters of its digest.
+versions marks each row whose digest equals the latest tag in the rows
+that were fetched. show prints the full digest.
+
+list and versions read every page. Each request uses limit=1000.
+-limit N caps the total number of rows. -cursor fetches one page, and
+-o json writes that page unchanged. The two flags cannot both be set.
+`
+
+const instanceHelp = `usage: mftiko instance list
+       mftiko instance show <name>
+
+list calls GET /instances. show calls GET /instances/{name}.
+The table includes the plane, whether the agent is present, and last_known.
+A missing agent, or last_known true, is not present.
+If the response has unavailable_regions or controller_absent, one warning
+is printed to stderr and the exit code stays 0. A 503 for one instance is
+region_unavailable.
+`
+
+const accountKindHelp = `usage: mftiko account-kind list
+
+Call GET /account-kinds. The table shows trades, key_types, passphrase, and supported.
 `
 
 const loginHelp = `usage: mftiko login
@@ -67,6 +110,10 @@ type options struct {
 	contextSet bool
 	timeout    time.Duration
 	output     string
+	limit      int
+	limitSet   bool
+	cursor     string
+	cursorSet  bool
 	verbose    bool
 	yes        bool
 	version    bool
@@ -110,6 +157,28 @@ func (d *durationOpt) Set(s string) error {
 	return nil
 }
 
+type intOpt struct {
+	v   int
+	set bool
+}
+
+func (n *intOpt) String() string {
+	if !n.set {
+		return ""
+	}
+	return strconv.Itoa(n.v)
+}
+
+func (n *intOpt) Set(s string) error {
+	v, err := strconv.Atoi(s)
+	if err != nil || v < 1 {
+		return errors.New("must be a positive integer")
+	}
+	n.v = v
+	n.set = true
+	return nil
+}
+
 func parseArgs(args []string) (options, []string, error) {
 	flags, pos, err := splitArgs(args)
 	if err != nil {
@@ -119,6 +188,8 @@ func parseArgs(args []string) (options, []string, error) {
 	var timeout durationOpt
 	var output stringOpt
 	var outputLong stringOpt
+	var limit intOpt
+	var cursor stringOpt
 	fs := flag.NewFlagSet("mftiko", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	fs.Usage = func() {}
@@ -126,6 +197,8 @@ func parseArgs(args []string) (options, []string, error) {
 	fs.Var(&timeout, "timeout", "HTTP timeout")
 	fs.Var(&output, "o", "json or the default table")
 	fs.Var(&outputLong, "output", "json or the default table")
+	fs.Var(&limit, "limit", "cap the total number of rows")
+	fs.Var(&cursor, "cursor", "fetch one page")
 	verbose := fs.Bool("v", false, "print X-Request-Id on success")
 	verboseLong := fs.Bool("verbose", false, "print X-Request-Id on success")
 	yes := fs.Bool("yes", false, "confirm a destructive command off a terminal")
@@ -140,6 +213,10 @@ func parseArgs(args []string) (options, []string, error) {
 		context:    context.v,
 		contextSet: context.set,
 		timeout:    30 * time.Second,
+		limit:      limit.v,
+		limitSet:   limit.set,
+		cursor:     cursor.v,
+		cursorSet:  cursor.set,
 		verbose:    *verbose || *verboseLong,
 		yes:        *yes,
 		version:    *version,
@@ -166,8 +243,11 @@ func parseArgs(args []string) (options, []string, error) {
 }
 
 var (
-	valueFlags = map[string]bool{"context": true, "timeout": true, "o": true, "output": true}
-	boolFlags  = map[string]bool{"v": true, "verbose": true, "yes": true, "version": true, "h": true, "help": true}
+	valueFlags = map[string]bool{
+		"context": true, "timeout": true, "o": true, "output": true,
+		"limit": true, "cursor": true,
+	}
+	boolFlags = map[string]bool{"v": true, "verbose": true, "yes": true, "version": true, "h": true, "help": true}
 )
 
 // splitArgs pulls flags in front of positionals so flag.FlagSet sees every

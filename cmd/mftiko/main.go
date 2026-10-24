@@ -2,6 +2,12 @@
 //
 //	mftiko login
 //	mftiko whoami
+//	mftiko strategy list
+//	mftiko strategy versions <id>
+//	mftiko strategy show <id> <ref>
+//	mftiko instance list
+//	mftiko instance show <name>
+//	mftiko account-kind list
 //
 // It speaks only to the API. mftiko-pack and mftiko-seal are separate programs.
 package main

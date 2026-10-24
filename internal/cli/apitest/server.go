@@ -34,6 +34,7 @@ type Call struct {
 	UserAgent     string
 	ContentType   string
 	Cookie        string
+	RawQuery      string
 }
 
 // Option is fixed before the server accepts a connection.
@@ -58,6 +59,9 @@ type Option struct {
 	EchoAuthorization bool
 	// TLS serves HTTPS. CertPEM returns the certificate the client should trust.
 	TLS bool
+	// Catalog, when set, serves the read-only lists. Nil keeps those routes
+	// unused. Set it before Start; the handler does not mutate it.
+	Catalog *Catalog
 }
 
 // Server is a started httptest server.
@@ -73,6 +77,8 @@ type Server struct {
 	reqID    string
 	block    bool
 	echo     bool
+	cat      *Catalog
+	hits     int
 	calls    []Call
 	lastAuth string
 	lastBody []byte
@@ -89,6 +95,7 @@ func Start(opt Option) *Server {
 		reqID:   opt.RequestID,
 		block:   opt.Block,
 		echo:    opt.EchoAuthorization,
+		cat:     opt.Catalog,
 	}
 	h := s.handler()
 	if opt.TLS {
@@ -197,6 +204,7 @@ func (s *Server) middleware(next apiv1.StrictHandlerFunc, operationID string) ap
 			UserAgent:     r.Header.Get("User-Agent"),
 			ContentType:   r.Header.Get("Content-Type"),
 			Cookie:        r.Header.Get("Cookie"),
+			RawQuery:      r.URL.RawQuery,
 		}
 		s.mu.Lock()
 		s.calls = append(s.calls, call)
@@ -269,9 +277,6 @@ func (a *api) Login(context.Context, apiv1.LoginRequestObject) (apiv1.LoginRespo
 	return nil, errUnused
 }
 
-func (a *api) ListAccountKinds(context.Context, apiv1.ListAccountKindsRequestObject) (apiv1.ListAccountKindsResponseObject, error) {
-	return nil, errUnused
-}
 func (a *api) ListAccounts(context.Context, apiv1.ListAccountsRequestObject) (apiv1.ListAccountsResponseObject, error) {
 	return nil, errUnused
 }
@@ -288,12 +293,6 @@ func (a *api) UpdateAccount(context.Context, apiv1.UpdateAccountRequestObject) (
 	return nil, errUnused
 }
 func (a *api) StreamEvents(context.Context, apiv1.StreamEventsRequestObject) (apiv1.StreamEventsResponseObject, error) {
-	return nil, errUnused
-}
-func (a *api) ListInstances(context.Context, apiv1.ListInstancesRequestObject) (apiv1.ListInstancesResponseObject, error) {
-	return nil, errUnused
-}
-func (a *api) GetInstance(context.Context, apiv1.GetInstanceRequestObject) (apiv1.GetInstanceResponseObject, error) {
 	return nil, errUnused
 }
 func (a *api) ListSessionRecords(context.Context, apiv1.ListSessionRecordsRequestObject) (apiv1.ListSessionRecordsResponseObject, error) {
@@ -317,16 +316,6 @@ func (a *api) GetSession(context.Context, apiv1.GetSessionRequestObject) (apiv1.
 func (a *api) EndSession(context.Context, apiv1.EndSessionRequestObject) (apiv1.EndSessionResponseObject, error) {
 	return nil, errUnused
 }
-func (a *api) ListStrategies(context.Context, apiv1.ListStrategiesRequestObject) (apiv1.ListStrategiesResponseObject, error) {
-	return nil, errUnused
-}
-func (a *api) ListStrategyVersions(context.Context, apiv1.ListStrategyVersionsRequestObject) (apiv1.ListStrategyVersionsResponseObject, error) {
-	return nil, errUnused
-}
-func (a *api) GetStrategyVersion(context.Context, apiv1.GetStrategyVersionRequestObject) (apiv1.GetStrategyVersionResponseObject, error) {
-	return nil, errUnused
-}
-
 func unauth(p apiv1.Problem) apiv1.GetMe401ApplicationProblemPlusJSONResponse {
 	return apiv1.GetMe401ApplicationProblemPlusJSONResponse{
 		UnauthenticatedApplicationProblemPlusJSONResponse: apiv1.UnauthenticatedApplicationProblemPlusJSONResponse(p),
