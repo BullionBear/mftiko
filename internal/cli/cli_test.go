@@ -16,7 +16,6 @@ import (
 
 	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
 	"github.com/BullionBear/mftiko/internal/cli/apitest"
-	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 )
 
 const (
@@ -503,7 +502,7 @@ func TestUsage(t *testing.T) {
 		t.Fatalf("-h %+v", got)
 	}
 	got = runAt(context.Background(), home, nil, strings.NewReader(""), "--version")
-	if got.code != ExitOK || strings.TrimSpace(got.out) != buildinfo.String() {
+	if got.code != ExitOK || got.out != versionText(cliBuild()) {
 		t.Fatalf("version %q", got.out)
 	}
 	got = runAt(context.Background(), home, nil, strings.NewReader(""), "nope")
@@ -598,7 +597,7 @@ func TestHeaders(t *testing.T) {
 	if call.Authorization != "Bearer "+tokenA {
 		t.Fatal("authorization")
 	}
-	if call.UserAgent != "mftiko-cli/"+buildinfo.Version {
+	if call.UserAgent != "mftiko-cli/"+cliBuild().Version {
 		t.Fatalf("user agent %q", call.UserAgent)
 	}
 	if call.ContentType != "" || call.Cookie != "" {
@@ -747,7 +746,7 @@ func assertMeCall(t *testing.T, calls []apitest.Call, token string) {
 	if c.Authorization != "Bearer "+token || c.ContentType != "" || c.Cookie != "" {
 		t.Fatalf("headers %+v", c)
 	}
-	if c.UserAgent != "mftiko-cli/"+buildinfo.Version {
+	if c.UserAgent != "mftiko-cli/"+cliBuild().Version {
 		t.Fatalf("ua %q", c.UserAgent)
 	}
 }

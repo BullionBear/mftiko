@@ -11,7 +11,6 @@ import (
 
 	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
 	"github.com/BullionBear/mftiko/internal/cli/apitest"
-	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 )
 
 const (
@@ -57,7 +56,7 @@ func TestStrategyList(t *testing.T) {
 	if call.Authorization != "Bearer "+tokenA || call.ContentType != "" || call.Cookie != "" {
 		t.Fatalf("headers %+v", call)
 	}
-	if call.UserAgent != "mftiko-cli/"+buildinfo.Version {
+	if call.UserAgent != "mftiko-cli/"+cliBuild().Version {
 		t.Fatalf("user agent %q", call.UserAgent)
 	}
 

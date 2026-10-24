@@ -1,5 +1,6 @@
 # Packs the MD and TD workers and pushes them to ghcr.io/bullionbear (E09-D085–E09-D090).
 # The workflow only pushes. It does not set package visibility. See docs/release.md.
+# The cli job attaches the mftiko CLI tarballs to the tag's GitHub Release (E11-D035).
 name: release
 
 on:
@@ -47,3 +48,44 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
         run: bash .github/scripts/pack-workers.sh
+
+  cli:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write # create the GitHub Release and upload its assets
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # git describe reads the tag
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Require a v* tag
+        run: |
+          case "${GITHUB_REF_TYPE}:${GITHUB_REF_NAME}" in
+            tag:v*) ;;
+            *)
+              echo "this workflow runs on a v* tag: a tag push, or workflow_dispatch of that tag" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Build the CLI
+        env:
+          OUT: dist
+        run: bash .github/scripts/build-cli.sh
+
+      # The release is created once. A workflow_dispatch of the same tag replaces the assets.
+      - name: Upload to the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes "mftiko CLI $TAG. Install: docs/cli.md."
+          fi
+          gh release upload "$TAG" dist/mftiko_*.tar.gz dist/SHA256SUMS --clobber

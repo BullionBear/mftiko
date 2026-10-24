@@ -11,7 +11,6 @@ import (
 	"time"
 
 	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
-	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 )
 
 var errHelp = errors.New("help")
@@ -33,6 +32,7 @@ commands:
   account       list, show, create, update, and delete trading accounts
   session       create a session from one file, and list, show, end, delete, and watch sessions
   record        list session records and show one
+  version       print the CLI release and the api.v1 version it was built against
   help          show this help
 
 flags:
@@ -45,7 +45,7 @@ flags:
   -yes            allow a destructive command when stdin is not a terminal
   -wait target    session create: wait for a phase or terminal; session end: wait for terminal
   -wait-timeout   how long --wait may run (default 10m)
-  -version        print the release and exit
+  -version        print the release and exit, the same as mftiko version
 
 The config file is ~/.config/mftiko/config.yaml and its mode must not be wider
 than 0600. It holds named contexts:
@@ -104,6 +104,13 @@ const loginHelp = `usage: mftiko login
 Read one token from stdin, call GET /auth/me with Authorization: Bearer, and
 write the token into the selected context only when that call succeeds.
 The token is not a flag. The context's url must already be in the config file.
+`
+
+const versionHelp = `usage: mftiko version
+
+Print the CLI release (version, commit, build time) and the api.v1 version it
+was built against. -o json writes {"version","commit","built","api_version"}.
+It reads no config and calls no API.
 `
 
 const whoamiHelp = `usage: mftiko whoami
@@ -564,5 +571,3 @@ func splitArgs(args []string) (flags, pos []string, err error) {
 	}
 	return flags, pos, nil
 }
-
-func versionLine() string { return buildinfo.String() }
