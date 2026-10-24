@@ -58,6 +58,18 @@ func exe(t *testing.T, pid int) string {
 
 func hexOf(dig string) string { return strings.TrimPrefix(dig, "sha256:") }
 
+// slowWait is env.wait with room for a pull of the test binary and one spawn retry.
+func slowWait(t *testing.T, ok func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(90 * time.Second)
+	for !ok() {
+		if time.Now().After(deadline) {
+			t.Fatal("timed out")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 // The conn worker comes from the latest artifact (E12-02). A new latest does not restart the running worker; the
 // next spawn uses it (P9).
 func TestConnFromRegistry(t *testing.T) {
@@ -67,6 +79,7 @@ func TestConnFromRegistry(t *testing.T) {
 	src := registrySource(t, e, reg)
 	e.cfg.Conn, e.cfg.Worker = "", src
 	stop, done, ret := e.start()
+	slowWait(t, func() bool { return src.Digest() == a })
 
 	e.put("s1", "mark_price")
 	path := e.waitJournal()
@@ -78,7 +91,7 @@ func TestConnFromRegistry(t *testing.T) {
 	}
 
 	b := reg.Push(t, latest.RepoMDConn, latest.Tag, artifact.KindMDConn, selfImage(t, "b"), nil)
-	e.wait(func() bool { return src.Digest() == b })
+	slowWait(t, func() bool { return src.Digest() == b })
 	time.Sleep(300 * time.Millisecond)
 	if !alive(pid) || countEvent(t, path, "start") != 1 {
 		t.Fatalf("a new latest restarted the worker: alive %v, starts %d", alive(pid), countEvent(t, path, "start"))
@@ -118,6 +131,13 @@ func TestPendingWithoutArtifact(t *testing.T) {
 
 	reg.SetDown(false)
 	reg.Push(t, latest.RepoMDConn, latest.Tag, artifact.KindMDConn, selfImage(t, "a"), nil)
+	// Pulling and unpacking the test binary is slow under -race, and the failed spawn waits out its retry backoff
+	// (up to 30s) before it tries again.
+	slowWait(t, func() bool { return src.Digest() != "" })
+	slowWait(t, func() bool {
+		_, err := os.Stat(journalFile(e.cfg.JournalDir, "md/Binance/public/0"))
+		return err == nil
+	})
 	path := e.waitJournal()
 	e.waitLive(path, 1)
 	e.waitRunning("md/Binance/public/0", 1)
