@@ -78,7 +78,7 @@ func (t *tradeStream) Submit(now time.Time, id uint64, req *exchange.OrderReques
 	}
 	p := orderParams{
 		NewClientOrderID: req.ClientOrderID,
-		NewOrderRespType: "RESULT",
+		NewOrderRespType: "ACK",
 		Quantity:         qty,
 		RecvWindow:       windowMS(t.window, req.Validity),
 		Side:             side,
@@ -233,8 +233,11 @@ func orderResult(raw []byte) (*exchange.OrderResult, error) {
 	if ts == 0 {
 		ts = o.TransactTime
 	}
+	// newOrderRespType=ACK: the answer only says the venue has the order. UM still writes status NEW
+	// in it, even for a market order that has already filled; spot leaves status out. The private
+	// stream carries every state after this one.
 	return &exchange.OrderResult{
-		OrderID: strconv.FormatInt(o.OrderID, 10), Status: statusOf(o.Status), ExchTsNs: ms(ts),
+		OrderID: strconv.FormatInt(o.OrderID, 10), Status: exchange.OrderStatusNew, ExchTsNs: ms(ts),
 	}, nil
 }
 

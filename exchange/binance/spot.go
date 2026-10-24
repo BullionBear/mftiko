@@ -317,7 +317,7 @@ func spotOrderParamsOf(now time.Time, req *exchange.OrderRequest) (spotOrderWire
 	}
 	p := spotOrderWire{
 		NewClientOrderID: req.ClientOrderID,
-		NewOrderRespType: "RESULT",
+		NewOrderRespType: "ACK",
 		Side:             side,
 		Symbol:           req.Instrument.ExchTicker,
 		Timestamp:        now.UnixMilli(),

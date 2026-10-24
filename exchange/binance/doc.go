@@ -162,8 +162,12 @@
 //	EXPIRED            OrderStatusExpired
 //	EXPIRED_IN_MATCH   OrderStatusExpired   (an IOC that did not fill)
 //
-// Anything else is OrderStatusUnknown. The synchronous answer (order.place result, REST order)
-// and ORDER_TRADE_UPDATE.o.X use this table. ORDER_TRADE_UPDATE.o.x is the execution type: a
+// Anything else is OrderStatusUnknown. ORDER_TRADE_UPDATE.o.X and the order queries use this table.
+// Orders are placed with newOrderRespType=ACK, so the synchronous answer (order.place result, REST
+// order) is always OrderStatusNew with the order id: UM writes status NEW in it even for a market
+// order that has already filled, and spot leaves status out. Every later state, fills included,
+// comes from the private stream, so one change is one OrderUpdate (E06-D010). Checked on both
+// testnets on 2026-10-24 (E06-D040). ORDER_TRADE_UPDATE.o.x is the execution type: a
 // fill is x=TRADE with a non-zero trade id t, which is the same id userTrades returns as id (E06-D001).
 //
 // # ORDER_TRADE_UPDATE
@@ -192,7 +196,7 @@
 //	201  insufficient balance     -2010 -2018 -2019
 //	202  quantity or notional     -1013 -1100 -4003 -4004 -4005 -4164
 //	203  price or precision       -1111 -4001 -4002 -4014 -4131
-//	204  post-only or would take  -2021 -5022
+//	204  post-only or would take  -2021 -5022, and spot's -2010 "Order would immediately match and take."
 //	205  reduce-only or position  -2022 -2024 -4118
 //	206  position side            -4061
 //	207  too many orders          -1015 -2025 -2027
