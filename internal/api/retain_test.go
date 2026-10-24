@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -58,6 +59,7 @@ func TestRetentionExpiresAndReplaysDelete(t *testing.T) {
 	if !bytes.Equal(row.Spec, before) {
 		t.Fatal("closing the row replaced the spec")
 	}
+	mustFinal(t, row, dataDig)
 	se.s.haltBeforeDelete.Store(false)
 	se.s.reconcileOnce(t.Context())
 	if se.spec(t, "sts-tw-1", sess.Id) != nil || se.status(t, sess.Id) != nil {
@@ -78,6 +80,7 @@ func TestRetentionExpiresAndReplaysDelete(t *testing.T) {
 	if se.status(t, sess.Id) != nil || se.spec(t, "sts-tw-1", sess.Id) != nil {
 		t.Fatal("status without a spec survived retention")
 	}
+	mustFinal(t, se.row(t, sess.Id), dataDig)
 
 	// A later spec that reuses the id is a different generation (E10-D042, E10-D007).
 	se.putSpec(t, "sts-tw-1", sess.Id, &sessionv1.SessionSpec{Name: "again"})
@@ -113,6 +116,7 @@ func TestRetentionStatusOnlyClosesTheRow(t *testing.T) {
 	if row.State != recClosed || row.StateOut == nil || *row.StateOut != dataDig {
 		t.Fatalf("status-only close %+v", row)
 	}
+	mustFinal(t, row, dataDig)
 }
 
 func TestRetentionMissingRow(t *testing.T) {
@@ -245,10 +249,67 @@ func TestDeleteSession(t *testing.T) {
 	if row.State != recClosed || row.StateOut == nil || *row.StateOut != dataDig || row.ClosedAt == nil {
 		t.Fatalf("deleted row %+v", row)
 	}
+	mustFinal(t, row, dataDig)
+	code, _, body = se.call(t, http.MethodGet, "/api/v1/session-records/"+row.ID, "", nil)
+	if code != http.StatusOK {
+		t.Fatalf("record %d %s", code, body)
+	}
+	var rec apiv1.SessionRecord
+	if err := json.Unmarshal(body, &rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.State != apiv1.SessionRecordStateClosed || rec.Final == nil || rec.Final.Phase != apiv1.PhaseDone ||
+		rec.Final.Reason != "ended_by_spec" || rec.Final.StateOut == nil || rec.Final.StateOut.Digest != dataDig {
+		t.Fatalf("record final %+v", rec.Final)
+	}
 	se.waitAudit(t, term.Id)
 	code, _, body = se.call(t, http.MethodDelete, "/api/v1/sessions/"+term.Id, "{}", nil)
 	if code != http.StatusNoContent {
 		t.Fatalf("repeat %d %s", code, body)
+	}
+}
+
+// TestRecordFinalUndecodable: bytes that are not a status leave final out and keep the record readable.
+func TestRecordFinalUndecodable(t *testing.T) {
+	se := newRetentionEnv(t)
+	sess := se.mustCreate(t)
+	se.putStatus(t, sess.Id, doneStatus(se.clock.Now().UnixNano(), ""))
+	if code, _, body := se.call(t, http.MethodDelete, "/api/v1/sessions/"+sess.Id, "{}", nil); code != http.StatusNoContent {
+		t.Fatalf("delete %d %s", code, body)
+	}
+	row := se.row(t, sess.Id)
+	pool, err := se.s.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(t.Context(), `UPDATE session_records SET final_status = '\xff' WHERE id = $1::uuid`, row.ID); err != nil {
+		t.Fatal(err)
+	}
+	code, _, body := se.call(t, http.MethodGet, "/api/v1/session-records/"+row.ID, "", nil)
+	if code != http.StatusOK {
+		t.Fatalf("record %d %s", code, body)
+	}
+	var rec apiv1.SessionRecord
+	if err := json.Unmarshal(body, &rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Final != nil || rec.State != apiv1.SessionRecordStateClosed {
+		t.Fatalf("record %+v", rec)
+	}
+	if !strings.Contains(se.e.log.String(), "session record final status decode failed") {
+		t.Fatalf("log %s", se.e.log.String())
+	}
+}
+
+// mustFinal: the closed row keeps the done status it was closed with (E10-D117).
+func mustFinal(t *testing.T, row sessionRecord, digest string) {
+	t.Helper()
+	st := &statev1.SessionStatus{}
+	if len(row.Final) == 0 || proto.Unmarshal(row.Final, st) != nil {
+		t.Fatalf("final_status %x", row.Final)
+	}
+	if st.GetPhase() != statev1.Phase_PHASE_DONE || st.GetReason() != "ended_by_spec" || st.GetStateOut().GetDigest() != digest {
+		t.Fatalf("final %v", st)
 	}
 }
 

@@ -80,6 +80,7 @@ type retainItem struct {
 	reason     string
 	digest     string
 	updated    int64
+	final      []byte // the status proto bytes, for the closed row (E10-D117)
 }
 
 func (s *Server) retentionItems() []retainItem {
@@ -130,6 +131,7 @@ func (s *Server) retentionItems() []retainItem {
 			out[i].reason = st.GetReason()
 			out[i].digest = st.GetStateOut().GetDigest()
 			out[i].updated = st.GetUpdatedAtNs()
+			out[i].final = copied.Value
 		}
 	}
 	return out
@@ -236,7 +238,7 @@ func (s *Server) finishClose(ctx context.Context, row *sessionRecord, item *reta
 	if item.updated > 0 {
 		ended = time.Unix(0, item.updated).UTC()
 	}
-	return s.closeRecord(ctx, row, item.reason, digest, ended, createRev)
+	return s.closeRecord(ctx, row, item.reason, digest, ended, createRev, item.final)
 }
 
 func (s *Server) noteMissing(id, sts string) {
@@ -365,6 +367,9 @@ func (s *Server) deleteOnSTS(ctx context.Context, id, sts string, rows []session
 	item := &retainItem{
 		sts: sts, id: id, terminal: true, phaseKnown: true,
 		reason: st.GetReason(), digest: st.GetStateOut().GetDigest(), updated: st.GetUpdatedAtNs(),
+	}
+	if statusKV != nil {
+		item.final = statusKV.Value
 	}
 	var row *sessionRecord
 	var rev *int64

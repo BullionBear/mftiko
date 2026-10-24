@@ -91,3 +91,52 @@ func TestSessionRecordsMigration(t *testing.T) {
 		t.Fatalf("second up left %d rows", n)
 	}
 }
+
+// TestSessionRecordsFinalMigration is E10-D117: 0005 adds final_status on top of 0004, a row closed
+// before it reads null, and down drops only the column.
+func TestSessionRecordsFinalMigration(t *testing.T) {
+	srv := pgtest.Start(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	conn, err := pgx.Connect(ctx, srv.DSN())
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close(context.Background()) })
+
+	apply(t, ctx, conn, "0004_session_records.up.sql")
+	mustExec(t, ctx, conn, `
+		INSERT INTO session_records (
+		    id, session_id, sts_instance, spec_bytes, spec_sha256, state, desired_state, created_at, closed_at
+		) VALUES (
+		    '11111111-1111-4111-8111-111111111111', 'aaaaaa', 'sts-tw-1', '\x01', decode(repeat('ab', 32), 'hex'),
+		    'closed', 'ended', now(), now())`)
+	apply(t, ctx, conn, "0005_session_records_final.up.sql")
+	var final []byte
+	if err := conn.QueryRow(ctx, `SELECT final_status FROM session_records`).Scan(&final); err != nil {
+		t.Fatal(err)
+	}
+	if final != nil {
+		t.Fatalf("an old row has final_status %x", final)
+	}
+	mustExec(t, ctx, conn, `UPDATE session_records SET final_status = '\x0801'`)
+	if err := conn.QueryRow(ctx, `SELECT final_status FROM session_records`).Scan(&final); err != nil {
+		t.Fatal(err)
+	}
+	if string(final) != "\x08\x01" {
+		t.Fatalf("final_status %x", final)
+	}
+
+	apply(t, ctx, conn, "0005_session_records_final.down.sql")
+	var n int
+	if err := conn.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_name = 'session_records' AND column_name = 'final_status'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 || !regclass(t, ctx, conn, "session_records") {
+		t.Fatalf("down: final_status columns %d, table present %v", n, regclass(t, ctx, conn, "session_records"))
+	}
+	if err := conn.QueryRow(ctx, `SELECT count(*) FROM session_records`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("down lost rows: %d %v", n, err)
+	}
+	apply(t, ctx, conn, "0005_session_records_final.up.sql")
+}
