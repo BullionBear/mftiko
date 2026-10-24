@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -281,6 +282,17 @@ func (a *API) ListSessionRecords(ctx context.Context, params *apiv1.ListSessionR
 func (a *API) GetSessionRecord(ctx context.Context, id openapi_types.UUID) (Result, error) {
 	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
 		return a.gen.GetSessionRecord(ctx, id)
+	})
+}
+
+// CreateSession calls POST /sessions with the JSON bytes unchanged and always
+// sends Idempotency-Key (E11-D019, E11-D022). The generated typed body would
+// re-encode numbers, so this uses the raw reader.
+func (a *API) CreateSession(ctx context.Context, key string, body []byte) (Result, error) {
+	idem := key
+	params := &apiv1.CreateSessionParams{IdempotencyKey: &idem}
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.CreateSessionWithBody(ctx, params, "application/json", bytes.NewReader(body))
 	})
 }
 

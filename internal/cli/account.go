@@ -673,6 +673,15 @@ func flagFile(word string) string {
 // onlyFlags rejects command flags this command does not accept. Global flags
 // are not in the list. The message names the flag and not its value.
 func (a *App) onlyFlags(allow ...string) int {
+	if msg := a.unexpectedFlags(allow...); msg != "" {
+		return a.exit(msg)
+	}
+	return 0
+}
+
+// unexpectedFlags is the onlyFlags message, or empty when every set flag is
+// allowed. session create prints it and then the Idempotency-Key.
+func (a *App) unexpectedFlags(allow ...string) string {
 	ok := map[string]bool{}
 	for _, n := range allow {
 		ok[n] = true
@@ -698,6 +707,8 @@ func (a *App) onlyFlags(allow ...string) int {
 		{"created-by", a.opt.createdBy.set},
 		{"created-after", a.opt.createdAfter.set},
 		{"created-before", a.opt.createdBefore.set},
+		{"f", a.opt.file.set},
+		{flagPair("idempotency", "key"), a.opt.idemKey.set},
 	}
 	var bad []string
 	for _, f := range flags {
@@ -706,7 +717,7 @@ func (a *App) onlyFlags(allow ...string) int {
 		}
 	}
 	if len(bad) == 0 {
-		return 0
+		return ""
 	}
-	return a.exit("flag not accepted: " + strings.Join(bad, " "))
+	return "flag not accepted: " + strings.Join(bad, " ")
 }

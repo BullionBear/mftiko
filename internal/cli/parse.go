@@ -30,7 +30,7 @@ commands:
   instance      list instances and show one
   account-kind  list account kinds
   account       list, show, create, update, and delete trading accounts
-  session       list, show, end, and delete sessions
+  session       create a session from one file, and list, show, end, and delete sessions
   record        list session records and show one
   help          show this help
 
@@ -142,7 +142,24 @@ newline. A kind with one key type uses it. A kind with several requires
 none, update keeps the stored ciphertext. delete asks for confirmation.
 `
 
-const sessionHelp = `usage: mftiko session list|show|end|delete
+const sessionHelp = `usage: mftiko session create -f FILE
+       mftiko session list|show|end|delete
+
+create reads one YAML or JSON session file and calls POST /sessions.
+-f - reads stdin. YAML and JSON use the same parser. Numbers are sent as
+written. A repeated key is an error. A number that is not legal JSON, such
+as 0755, 0x1F, 0o17, .inf, or .nan, is an error and names its line; quote it.
+true and false are booleans. no, on, yes, and off are strings.
+
+Each run sends a new UUID as Idempotency-Key. -idempotency-key sets that
+value. A connection failure or a timeout is retried at most 3 times, after
+1s, 2s, and 4s, with the same key and body. Every error prints the key.
+The same key with a different body is a conflict and prints
+此 key 已用於不同內容 and the key.
+
+Success prints the session id and the strategy digest the API resolved.
+-o json writes the API body unchanged. The client does not repeat the API's
+validation.
 
 list
   mftiko session list [-phase PHASE] [-active true|false] [-sts-instance NAME]
@@ -210,6 +227,8 @@ type options struct {
 	secretFile    stringOpt
 	passFile      stringOpt
 	keyType       stringOpt
+	file          stringOpt
+	idemKey       stringOpt
 	phase         stringList
 	active        boolOpt
 	stsInstance   stringOpt
@@ -333,6 +352,7 @@ func parseArgs(args []string) (options, []string, error) {
 	var stsInstance, sessionID, strategyID, createdBy, createdAfter, createdBefore stringOpt
 	var phase stringList
 	var active boolOpt
+	var file, idemKey stringOpt
 	var limit intOpt
 	fs := flag.NewFlagSet("mftiko", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -362,6 +382,8 @@ func parseArgs(args []string) (options, []string, error) {
 	fs.Var(&createdBy, "created-by", "user who created the record")
 	fs.Var(&createdAfter, "created-after", "RFC 3339 or YYYY-MM-DD")
 	fs.Var(&createdBefore, "created-before", "RFC 3339 or YYYY-MM-DD")
+	fs.Var(&file, "f", "session file, or - for stdin")
+	fs.Var(&idemKey, flagPair("idempotency", "key"), "Idempotency-Key for this run")
 	if err := fs.Parse(append(flags, pos...)); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return options{}, nil, errHelp
@@ -386,6 +408,8 @@ func parseArgs(args []string) (options, []string, error) {
 		secretFile:    secretFile,
 		passFile:      passFile,
 		keyType:       keyType,
+		file:          file,
+		idemKey:       idemKey,
 		phase:         phase,
 		active:        active,
 		stsInstance:   stsInstance,
@@ -425,6 +449,7 @@ var (
 		"phase": true, "active": true, "sts-instance": true,
 		"session-id": true, "strategy-id": true, "created-by": true,
 		"created-after": true, "created-before": true,
+		"f": true, "idempotency-key": true,
 	}
 	boolFlags = map[string]bool{"v": true, "verbose": true, "yes": true, "version": true, "h": true, "help": true}
 )
