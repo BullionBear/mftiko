@@ -148,6 +148,9 @@ func (a *api) ListInstances(context.Context, apiv1.ListInstancesRequestObject) (
 }
 
 func (a *api) GetInstance(ctx context.Context, req apiv1.GetInstanceRequestObject) (apiv1.GetInstanceResponseObject, error) {
+	if resp, ok := a.agentInstance(ctx, req.Name); ok {
+		return resp, nil
+	}
 	if a.s.cat == nil {
 		return a.getInstanceAccount(ctx, req)
 	}

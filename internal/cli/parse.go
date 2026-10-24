@@ -30,15 +30,16 @@ commands:
   instance      list instances and show one
   account-kind  list account kinds
   account       list, show, create, update, and delete trading accounts
-  session       create a session from one YAML or JSON file
+  session       create a session from one file, and list, show, end, and delete sessions
+  record        list session records and show one
   help          show this help
 
 flags:
   -context name   context in the config file, or set MFTIKO_CONTEXT (they must match if both are set)
   -timeout 30s    HTTP client timeout, a Go duration greater than 0
   -o json         write the API body unchanged; the default is a table
-  -limit N        cap the total number of rows for strategy list, strategy versions, and account list
-  -cursor value   fetch one page for strategy list, strategy versions, and account list
+  -limit N        cap the total number of rows for strategy list, strategy versions, account list, session list, and record list
+  -cursor value   fetch one page for strategy list, strategy versions, account list, session list, and record list
   -v              print X-Request-Id on success
   -yes            allow a destructive command when stdin is not a terminal
   -version        print the release and exit
@@ -59,7 +60,7 @@ Plain HTTP is refused unless the context sets insecure_http: true.
 strategy list and strategy versions follow next_cursor until the list ends.
 Each request uses limit=1000. -limit N caps the total number of rows.
 -cursor fetches only that page, and -o json writes that page unchanged.
--limit and -cursor cannot both be set. account list uses the same two flags.
+-limit and -cursor cannot both be set. account list, session list, and record list use the same two flags.
 `
 
 const strategyHelp = `usage: mftiko strategy list
@@ -69,7 +70,8 @@ const strategyHelp = `usage: mftiko strategy list
 list calls GET /strategies. versions calls GET /strategies/{id}/versions.
 show calls GET /strategies/{id}/versions/{ref}. ref is a tag or a digest.
 
-list shows the latest tag and the first 12 characters of its digest.
+list shows the latest tag and the first 7 characters of its digest,
+with a leading sha256: removed.
 versions marks each row whose digest equals the latest tag in the rows
 that were fetched. show prints the full digest.
 
@@ -141,6 +143,7 @@ none, update keeps the stored ciphertext. delete asks for confirmation.
 `
 
 const sessionHelp = `usage: mftiko session create -f FILE
+       mftiko session list|show|end|delete
 
 create reads one YAML or JSON session file and calls POST /sessions.
 -f - reads stdin. YAML and JSON use the same parser. Numbers are sent as
@@ -157,29 +160,83 @@ The same key with a different body is a conflict and prints
 Success prints the session id and the strategy digest the API resolved.
 -o json writes the API body unchanged. The client does not repeat the API's
 validation.
+
+list
+  mftiko session list [-phase PHASE] [-active true|false] [-sts-instance NAME]
+  mftiko session list [-limit N]
+  mftiko session list [-cursor TOKEN]
+
+-phase may be repeated. -active is true or false. -limit and -cursor cannot
+both be set. Each request uses limit=1000 and follows next_cursor. -limit N
+caps the total number of rows. -cursor fetches one page.
+
+show
+  mftiko session show <id>
+
+end
+  mftiko session end <id>
+
+delete
+  mftiko session delete <id>
+
+show prints the spec summary, status, each demand ack, exit information, and
+the log location. The strategy field shows id, name, and the first 7 characters
+of the digest with a leading sha256: removed. -o json keeps the full digest.
+A log path is <sts_instance> <host>:<path>. When the STS agent
+record is the last known value, the log section says 最後已知，agent 目前不在線.
+The command does not read the log file. end asks for confirmation; a session
+that has already ended still succeeds. delete asks for confirmation. A session
+that is not terminal exits 14 and says to run session end first.
+`
+
+const recordHelp = `usage: mftiko record list|show
+
+list
+  mftiko record list [-session-id ID] [-strategy-id ID] [-created-by NAME]
+      [-created-after TIME] [-created-before TIME]
+  mftiko record list [-limit N]
+  mftiko record list [-cursor TOKEN]
+
+TIME is RFC 3339, or YYYY-MM-DD at local midnight. Relative times are
+rejected. -limit and -cursor cannot both be set. Each request uses
+limit=1000 and follows next_cursor. -limit N caps the total number of rows.
+-cursor fetches one page.
+
+show
+  mftiko record show <record_id>
+
+A record stays readable after the session spec is deleted.
 `
 
 type options struct {
-	context    string
-	contextSet bool
-	timeout    time.Duration
-	output     string
-	limit      int
-	limitSet   bool
-	cursor     string
-	cursorSet  bool
-	verbose    bool
-	yes        bool
-	version    bool
-	name       stringOpt
-	kind       stringOpt
-	tdInstance stringOpt
-	keyFile    stringOpt
-	secretFile stringOpt
-	passFile   stringOpt
-	keyType    stringOpt
-	file       stringOpt
-	idemKey    stringOpt
+	context       string
+	contextSet    bool
+	timeout       time.Duration
+	output        string
+	limit         int
+	limitSet      bool
+	cursor        string
+	cursorSet     bool
+	verbose       bool
+	yes           bool
+	version       bool
+	name          stringOpt
+	kind          stringOpt
+	tdInstance    stringOpt
+	keyFile       stringOpt
+	secretFile    stringOpt
+	passFile      stringOpt
+	keyType       stringOpt
+	file          stringOpt
+	idemKey       stringOpt
+	phase         stringList
+	active        boolOpt
+	stsInstance   stringOpt
+	sessionID     stringOpt
+	strategyID    stringOpt
+	createdBy     stringOpt
+	createdAfter  stringOpt
+	createdBefore stringOpt
 }
 
 type stringOpt struct {
@@ -229,6 +286,45 @@ func (n *intOpt) Set(s string) error {
 	return nil
 }
 
+type boolOpt struct {
+	v   bool
+	set bool
+}
+
+func (b *boolOpt) String() string {
+	if !b.set {
+		return ""
+	}
+	return strconv.FormatBool(b.v)
+}
+
+func (b *boolOpt) Set(s string) error {
+	switch s {
+	case "true":
+		b.v = true
+	case "false":
+		b.v = false
+	default:
+		return errors.New("must be true or false")
+	}
+	b.set = true
+	return nil
+}
+
+// stringList collects repeated values of one flag, such as -phase.
+type stringList struct {
+	v   []string
+	set bool
+}
+
+func (s *stringList) String() string { return strings.Join(s.v, ",") }
+
+func (s *stringList) Set(v string) error {
+	s.v = append(s.v, v)
+	s.set = true
+	return nil
+}
+
 func (d *durationOpt) Set(s string) error {
 	v, err := time.ParseDuration(s)
 	if err != nil {
@@ -253,6 +349,9 @@ func parseArgs(args []string) (options, []string, error) {
 	var outputLong stringOpt
 	var name, kind, tdInstance stringOpt
 	var keyFile, secretFile, passFile, keyType, cursor stringOpt
+	var stsInstance, sessionID, strategyID, createdBy, createdAfter, createdBefore stringOpt
+	var phase stringList
+	var active boolOpt
 	var file, idemKey stringOpt
 	var limit intOpt
 	fs := flag.NewFlagSet("mftiko", flag.ContinueOnError)
@@ -275,6 +374,14 @@ func parseArgs(args []string) (options, []string, error) {
 	fs.Var(&secretFile, "secret-file", "file to read the credential secret from")
 	fs.Var(&passFile, "passphrase-file", "file to read the credential passphrase from")
 	fs.Var(&keyType, "key-type", "hmac or ed25519")
+	fs.Var(&phase, "phase", "session phase; may be repeated")
+	fs.Var(&active, "active", "true or false")
+	fs.Var(&stsInstance, "sts-instance", "STS instance")
+	fs.Var(&sessionID, "session-id", "session id")
+	fs.Var(&strategyID, "strategy-id", "strategy id")
+	fs.Var(&createdBy, "created-by", "user who created the record")
+	fs.Var(&createdAfter, "created-after", "RFC 3339 or YYYY-MM-DD")
+	fs.Var(&createdBefore, "created-before", "RFC 3339 or YYYY-MM-DD")
 	fs.Var(&file, "f", "session file, or - for stdin")
 	fs.Var(&idemKey, flagPair("idempotency", "key"), "Idempotency-Key for this run")
 	if err := fs.Parse(append(flags, pos...)); err != nil {
@@ -284,25 +391,33 @@ func parseArgs(args []string) (options, []string, error) {
 		return options{}, nil, errors.New(flagValue.ReplaceAllString(err.Error(), "invalid value for flag"))
 	}
 	opt := options{
-		context:    context.v,
-		contextSet: context.set,
-		timeout:    30 * time.Second,
-		limit:      limit.v,
-		limitSet:   limit.set,
-		cursor:     cursor.v,
-		cursorSet:  cursor.set,
-		verbose:    *verbose || *verboseLong,
-		yes:        *yes,
-		version:    *version,
-		name:       name,
-		kind:       kind,
-		tdInstance: tdInstance,
-		keyFile:    keyFile,
-		secretFile: secretFile,
-		passFile:   passFile,
-		keyType:    keyType,
-		file:       file,
-		idemKey:    idemKey,
+		context:       context.v,
+		contextSet:    context.set,
+		timeout:       30 * time.Second,
+		limit:         limit.v,
+		limitSet:      limit.set,
+		cursor:        cursor.v,
+		cursorSet:     cursor.set,
+		verbose:       *verbose || *verboseLong,
+		yes:           *yes,
+		version:       *version,
+		name:          name,
+		kind:          kind,
+		tdInstance:    tdInstance,
+		keyFile:       keyFile,
+		secretFile:    secretFile,
+		passFile:      passFile,
+		keyType:       keyType,
+		file:          file,
+		idemKey:       idemKey,
+		phase:         phase,
+		active:        active,
+		stsInstance:   stsInstance,
+		sessionID:     sessionID,
+		strategyID:    strategyID,
+		createdBy:     createdBy,
+		createdAfter:  createdAfter,
+		createdBefore: createdBefore,
 	}
 	if timeout.set {
 		opt.timeout = timeout.v
@@ -331,6 +446,9 @@ var (
 		"name": true, "kind": true, "td-instance": true,
 		"key-file": true, "secret-file": true, "passphrase-file": true, "key-type": true,
 		"limit": true, "cursor": true,
+		"phase": true, "active": true, "sts-instance": true,
+		"session-id": true, "strategy-id": true, "created-by": true,
+		"created-after": true, "created-before": true,
 		"f": true, "idempotency-key": true,
 	}
 	boolFlags = map[string]bool{"v": true, "verbose": true, "yes": true, "version": true, "h": true, "help": true}

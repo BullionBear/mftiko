@@ -36,7 +36,7 @@ type fetched struct {
 // rejectPageFlags refuses paging flags on commands that do not page.
 func (a *App) rejectPageFlags() int {
 	if a.opt.limitSet || a.opt.cursorSet {
-		return a.exit("-limit and -cursor are only for strategy list and strategy versions, and account list")
+		return a.exit("-limit and -cursor are only for strategy list and strategy versions, and account list, session list, and record list")
 	}
 	return 0
 }
