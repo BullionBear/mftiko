@@ -3,7 +3,7 @@
     "method": "POST",
     "base": "https://api.binance.com",
     "path": "/api/v3/order",
-    "query": "symbol=BTCUSDT&side=BUY&type=MARKET&quantity=0.00100&newClientOrderId=1767225600000000005&newOrderRespType=RESULT&recvWindow=5000&timestamp=1767225600000&signature=WTXO3kwhI0lV7YFD%2BXsXX2zBq9Mpii6RbJNcIjIKYIf2Lh0wmJ0jUp6f2JBDxatjOEBuyhGipfElh2fc2aH0AQ%3D%3D",
+    "query": "symbol=BTCUSDT&side=BUY&type=MARKET&quantity=0.00100&newClientOrderId=1767225600000000005&newOrderRespType=ACK&recvWindow=5000&timestamp=1767225600000&signature=VFxXi5jufcMlmhDZbZJMiS%2FyE00xm3ei9ZOohc1MT49BcJz85f%2ByF%2BscLq3BaYMZBvjOQcl5Rnps6c99cPbQBQ%3D%3D",
     "header": [
       {
         "name": "X-MBX-APIKEY",

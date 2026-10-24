@@ -97,6 +97,31 @@ func TestPlatformCodes(t *testing.T) {
 	if err := binanceErr(400, -9999, "no such code"); !errors.As(err, &rej) || rej.Code != -9999 || rej.Native != "-9999" {
 		t.Fatalf("got %v", err)
 	}
+	// Post-only that would take: UM -5022, spot LIMIT_MAKER -2010 (spot testnet, 2026-10-24).
+	if err := binanceErr(400, -5022, "Due to the order could not be executed as maker, the Post Only order will be rejected. The order will not be recorded in the order history"); !errors.As(err, &rej) || rej.Code != 204 || rej.Native != "-5022" {
+		t.Fatalf("got %v", err)
+	}
+	if err := binanceErr(400, -2010, "Order would immediately match and take."); !errors.As(err, &rej) || rej.Code != 204 || rej.Native != "-2010" {
+		t.Fatalf("got %v", err)
+	}
+}
+
+// TestOrderResultAck: an ACK answer is OrderStatusNew whatever its status field says. The bodies are
+// the testnets' answers to a market buy on 2026-10-24: UM says NEW though the order has filled,
+// spot has no status.
+func TestOrderResultAck(t *testing.T) {
+	for name, body := range map[string]string{
+		"um":   `{"orderId":28648979544,"symbol":"BTCUSDT","status":"NEW","clientOrderId":"probe-m1","price":"0.00","origQty":"0.0020","executedQty":"0.0000","cumQty":"0.0000","type":"MARKET","side":"BUY","updateTime":1792806820960}`,
+		"spot": `{"symbol":"BTCUSDT","orderId":6352183,"orderListId":-1,"clientOrderId":"probe-m1","transactTime":1792806829063}`,
+	} {
+		res, err := orderResult([]byte(body))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if res.Status != exchange.OrderStatusNew || res.OrderID == "" || res.ExchTsNs == 0 {
+			t.Fatalf("%s: got %+v", name, res)
+		}
+	}
 }
 
 func TestBatchAndWindow(t *testing.T) {
