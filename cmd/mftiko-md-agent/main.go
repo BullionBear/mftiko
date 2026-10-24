@@ -1,7 +1,7 @@
-// Command mftiko-md-agent places feed demand on conn workers (D901, D403).
+// Command mftiko-md-agent places feed demand on conn workers (E09-D001, E04-D003).
 //
 // It reads the worker from the feed's UniversalTicker, writes the placement before the conn
-// worker is pushed (D110), and sends topic.UniversalTicker. The worker derives the subscription.
+// worker is pushed (E01-D010), and sends topic.UniversalTicker. The worker derives the subscription.
 // A running worker keeps the binary it was spawned with (P9). The agent does not talk to SYM.
 package main
 

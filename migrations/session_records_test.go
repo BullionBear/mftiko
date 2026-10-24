@@ -10,7 +10,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/pgtest"
 )
 
-// TestSessionRecordsMigration is the E10-11 table (D1073, D1031, D1068): up, the open-session
+// TestSessionRecordsMigration is the E10-11 table (E10-D073, E10-D031, E10-D068): up, the open-session
 // and idempotency indexes, reuse after abandon, then down and up again.
 func TestSessionRecordsMigration(t *testing.T) {
 	srv := pgtest.Start(t)

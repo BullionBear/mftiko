@@ -55,18 +55,18 @@ func planeOf(path string) string {
 }
 
 // agentPlanes are the planes whose root package holds the agent's decisions: the Planner, the Policy and the
-// domain types (DECISIONS D110). The wiring to etcd, NATS and the shims is in their daemon subpackage.
+// domain types (DECISIONS E01-D010). The wiring to etcd, NATS and the shims is in their daemon subpackage.
 var agentPlanes = []string{"internal/sts", "internal/md", "internal/td"}
 
 // pureAgent reports whether a package must link no I/O: an agent plane's root package, the controller's decisions
-// (internal/controller, DECISIONS D1301), or the skeleton's decisions (internal/platform/agent) that the agents
+// (internal/controller, DECISIONS E13-D001), or the skeleton's decisions (internal/platform/agent) that the agents
 // build on.
 func pureAgent(path string) bool {
 	return path == "internal/platform/agent" || path == "internal/controller" || slices.Contains(agentPlanes, path)
 }
 
 // forbiddenInController reports whether the controller plane must not link the package: exchange, or SYM
-// (DECISIONS D1301, D907).
+// (DECISIONS E13-D001, E09-D007).
 func forbiddenInController(importPath string) bool {
 	r, own := rel(importPath)
 	return own && (under(r, "exchange") || under(r, "contract/gen/mftiko/sym"))
@@ -95,13 +95,13 @@ func forbiddenInStrategy(importPath string) bool {
 
 // forbiddenInExchange reports whether the exchange package, which holds the adapter interfaces, must not
 // link the package: the transport and JSON libraries are the workers' and exchange/transport's, and sonic is also
-// exchange/internal/codec's (DECISIONS D302).
+// exchange/internal/codec's (DECISIONS E03-D002).
 func forbiddenInExchange(importPath string) bool {
 	return under(importPath, "github.com/valyala/fasthttp", "github.com/coder/websocket", "github.com/bytedance/sonic")
 }
 
 // forbiddenInTD reports whether a package under internal/td must not link it. The account worker does not
-// decode client_order_id (DECISIONS D633).
+// decode client_order_id (DECISIONS E06-D033).
 func forbiddenInTD(importPath string) bool {
 	r, own := rel(importPath)
 	return own && under(r, "contract/wire/cloid")
@@ -129,7 +129,7 @@ func check(pkgs []pkg, std map[string]bool) []string {
 					bad(imp, "contract depends on nothing else in the repository")
 				}
 				if external && !under(imp, "google.golang.org/protobuf") {
-					// OpenAPI codegen links the oapi-codegen runtime. The rest of contract does not (D1045, D006).
+					// OpenAPI codegen links the oapi-codegen runtime. The rest of contract does not (E10-D045, E00-D006).
 					if under(from, "contract/gen/api") && under(imp, "github.com/oapi-codegen/runtime") {
 						break
 					}
@@ -174,7 +174,7 @@ func check(pkgs []pkg, std map[string]bool) []string {
 			}
 			if strings.HasPrefix(imp, "oras.land/oras-go") &&
 				from != "internal/platform/artifact" && from != "cmd/mftiko-pack" {
-				bad(imp, "oras-go is only imported by internal/platform/artifact and cmd/mftiko-pack (D909)")
+				bad(imp, "oras-go is only imported by internal/platform/artifact and cmd/mftiko-pack (E09-D009)")
 			}
 		}
 		if from == "exchange" {
@@ -266,7 +266,7 @@ func TestDependencyRules(t *testing.T) {
 		"internal/md", "internal/td", "internal/sts", "internal/sym", "internal/api",
 		"internal/controller", "internal/controller/daemon"} {
 		if !slices.Contains(own, want) {
-			t.Fatalf("package %s not found: update the rules in this file (DECISIONS D006) to the new layout", want)
+			t.Fatalf("package %s not found: update the rules in this file (DECISIONS E00-D006) to the new layout", want)
 		}
 	}
 	for _, v := range check(pkgs, std) {
@@ -285,7 +285,7 @@ func TestCheckReportsViolations(t *testing.T) {
 		}},
 		{ImportPath: m("internal/md/conn"), Imports: []string{m("exchange/transport"), m("exchange/transport/ws")}}, // allowed
 		{ImportPath: m("internal/td/account"), Imports: []string{m("exchange/transport/fasthttp")}},                 // allowed
-		{ImportPath: m("internal/td/account"), Deps: []string{m("contract/wire/cloid")}},                            // D633
+		{ImportPath: m("internal/td/account"), Deps: []string{m("contract/wire/cloid")}},                            // E06-D033
 		{ImportPath: m("internal/sym/refresh"), Imports: []string{m("exchange/transportx")}},                        // not exchange/transport
 		{ImportPath: m("internal/api"), Imports: []string{m("exchange"), m("contract/gen/mftiko/sym/v1"), m("contract/gen/mftiko/state/v1")}},
 		{ImportPath: m("internal/api/venue"), Imports: []string{m("exchange/transport/fasthttp")}},
@@ -310,11 +310,11 @@ func TestCheckReportsViolations(t *testing.T) {
 		}},
 		{ImportPath: m("cmd/mftiko-md-agent"), Imports: []string{m("exchange/all"), m("internal/md"), m("internal/td")}},
 		{ImportPath: "go.etcd.io/etcd/client/v3", Imports: []string{m("internal/md")}},                // outside the module: ignored
-		{ImportPath: m("internal/platform/artifact"), Imports: []string{"oras.land/oras-go/v2"}},      // D909: allowed
-		{ImportPath: m("cmd/mftiko-pack"), Imports: []string{"oras.land/oras-go/v2/registry/remote"}}, // D909: allowed
-		{ImportPath: m("cmd/mftiko-sts-agent"), Imports: []string{"oras.land/oras-go/v2"}},            // D909
+		{ImportPath: m("internal/platform/artifact"), Imports: []string{"oras.land/oras-go/v2"}},      // E09-D009: allowed
+		{ImportPath: m("cmd/mftiko-pack"), Imports: []string{"oras.land/oras-go/v2/registry/remote"}}, // E09-D009: allowed
+		{ImportPath: m("cmd/mftiko-sts-agent"), Imports: []string{"oras.land/oras-go/v2"}},            // E09-D009
 		{ImportPath: m("contract/gen/api/v1"), Imports: []string{
-			"github.com/oapi-codegen/runtime", "github.com/oapi-codegen/runtime/types", // D1045: allowed
+			"github.com/oapi-codegen/runtime", "github.com/oapi-codegen/runtime/types", // E10-D045: allowed
 			"github.com/rs/zerolog", // not the runtime
 		}},
 		{ImportPath: m("contract/wire/frame"), Imports: []string{"github.com/oapi-codegen/runtime"}}, // not contract/gen/api

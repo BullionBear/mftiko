@@ -343,7 +343,7 @@ func pubTicker(ch, inst string, frame []byte, sink exchange.Sink) error {
 		}
 		if contractStat(row.InstType, inst) {
 			// vol24h is contracts. volCcy24h is the coin amount, which is platform qty on a
-			// linear contract (D203). Quote volume is not on the row.
+			// linear contract (E02-D003). Quote volume is not on the row.
 			ev.Volume24h = numOrAbsent(row.VolCcy)
 			ev.QuoteVolume24h = decimal.Absent()
 		} else {

@@ -1,4 +1,4 @@
-// Global console state (D1077): signed-in user, region availability, controller_absent.
+// Global console state (E10-D077): signed-in user, region availability, controller_absent.
 import { api, failureOf, setUnauthorizedHandler, type Freshness, type Me } from './api';
 
 class ConsoleState {

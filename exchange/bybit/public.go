@@ -134,7 +134,7 @@ func pubOp(op string, reqID text, ok *bool, msg string, sink exchange.Sink) erro
 
 func pubTopic(topic, typ string, ts int64, frame []byte, sink exchange.Sink) error {
 	// The sink keeps ch. DecodeFrame borrows it from the frame, which the conn worker reuses
-	// once Decode returns (D302).
+	// once Decode returns (E03-D002).
 	topic = strings.Clone(topic)
 	switch {
 	case strings.HasPrefix(topic, "orderbook.1."):

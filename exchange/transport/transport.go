@@ -1,5 +1,5 @@
 // Package transport is the network setup that the REST transport (exchange/transport/fasthttp) and
-// the websocket transport (exchange/transport/ws) share (DECISIONS D302): one Config gives both the
+// the websocket transport (exchange/transport/ws) share (DECISIONS E03-D002): one Config gives both the
 // same proxy, TLS and DNS. Both dial through Net, so a websocket handshake (net/http, under
 // github.com/coder/websocket) and a REST request (github.com/valyala/fasthttp) leave the same way.
 //
@@ -33,7 +33,7 @@ type Config struct {
 	Proxy string
 	// TLS is the base client configuration: roots, client certificates, minimum version. nil uses
 	// the system roots. Each connection sets ServerName to its host when it is empty, and drops
-	// NextProtos: both transports speak HTTP/1.1 (D302).
+	// NextProtos: both transports speak HTTP/1.1 (E03-D002).
 	TLS *tls.Config
 	// Resolver looks up venue host names on direct connections; nil is net.DefaultResolver.
 	Resolver *net.Resolver

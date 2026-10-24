@@ -1,6 +1,6 @@
 package symbol
 
-// margin is how an instrument is grouped for display (D203). The trading path
+// margin is how an instrument is grouped for display (E02-D003). The trading path
 // does not read it; it reads the three currency fields. This is the only
 // definition of the grouping, so a change stays here.
 //

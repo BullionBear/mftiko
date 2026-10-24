@@ -13,7 +13,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
-// runReconcile compares etcd and session_records on a timer and when a mirror changes (D1070).
+// runReconcile compares etcd and session_records on a timer and when a mirror changes (E10-D070).
 // Every replica runs it. Writes are conditional. There is no leader.
 func (s *Server) runReconcile() {
 	defer s.wg.Done()
@@ -72,8 +72,8 @@ type liveSpec struct {
 	view state.View
 }
 
-// reconcileOnce is one full compare (D1068–D1072). A direct etcd spec with no row is logged and
-// counted, not inserted (D1072). Tests call it; the loop calls it too, so the mutex keeps one pass.
+// reconcileOnce is one full compare (E10-D068–E10-D072). A direct etcd spec with no row is logged and
+// counted, not inserted (E10-D072). Tests call it; the loop calls it too, so the mutex keeps one pass.
 func (s *Server) reconcileOnce(ctx context.Context) {
 	s.reconcileMu.Lock()
 	defer s.reconcileMu.Unlock()
@@ -143,7 +143,7 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 		if err != nil || !s.regionAvailable(home) {
 			continue
 		}
-		// Exactly pendingTimeout old is not yet past the limit (D1069: 超過).
+		// Exactly pendingTimeout old is not yet past the limit (E10-D069: 超過).
 		if !row.CreatedAt.Before(abandonBefore) {
 			continue
 		}
@@ -154,8 +154,8 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 			s.logDB(err, row.SessionID, row.STS, "abandon pending session")
 		}
 	}
-	// W5 runs in this same pass (D1083). A Postgres error above already returned,
-	// which skips the round and deletes nothing (D1080).
+	// W5 runs in this same pass (E10-D083). A Postgres error above already returned,
+	// which skips the round and deletes nothing (E10-D080).
 	s.retain(ctx)
 }
 
@@ -246,7 +246,7 @@ func adoptBetter(a, b *sessionRecord) bool {
 	return a.CreatedAt.After(b.CreatedAt)
 }
 
-// outcomeOf is the terminal columns reconcile may fill when the immutable spec does not match (D1071).
+// outcomeOf is the terminal columns reconcile may fill when the immutable spec does not match (E10-D071).
 // The first stored reason stays; callers pass this through COALESCE.
 func (s *Server) outcomeOf(hit liveSpec) (string, *time.Time) {
 	desired := desiredOfSpec(hit.raw)

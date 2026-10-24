@@ -196,7 +196,7 @@ type execRow struct {
 	ExecTime  string        `json:"execTime"`
 }
 
-// fillExec is a trade the history endpoint will also report under the same execId (D601).
+// fillExec is a trade the history endpoint will also report under the same execId (E06-D001).
 func fillExec(t string) bool {
 	switch t {
 	case "Trade", "AdlTrade", "BustTrade", "BlockTrade":
@@ -272,7 +272,7 @@ type coinRow struct {
 
 // balance reports the venue's own locks. Free is the wallet minus the spot-order lock and the
 // order initial margin. Position margin stays in the wallet: it is the position, not an order
-// lock. The account worker adds prelock on top (D603).
+// lock. The account worker adds prelock on top (E06-D003).
 func (c coinRow) balance() (exchange.Balance, bool) {
 	if c.Coin == "" {
 		return exchange.Balance{}, false

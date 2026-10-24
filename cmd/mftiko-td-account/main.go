@@ -1,9 +1,9 @@
 // Command mftiko-td-account is the TD account worker for one api_id: its private connections, HTTP
-// pool, recon, OMS and ledger, td.evt and td.view (DECISIONS D603, D606). It speaks C4 on fd 3
+// pool, recon, OMS and ledger, td.evt and td.view (DECISIONS E06-D003, E06-D006). It speaks C4 on fd 3
 // (PROTOCOL §5); Init carries the api_id, its account kind, its unsealed credentials and its own NATS
-// credentials (D611). NATS is at MFTIKO_NATS_URL.
+// credentials (E06-D011). NATS is at MFTIKO_NATS_URL.
 //
-// The venue's hosts are the TD instance's, per account kind, and come in Init (D616).
+// The venue's hosts are the TD instance's, per account kind, and come in Init (E06-D016).
 package main
 
 import (

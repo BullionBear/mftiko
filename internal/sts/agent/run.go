@@ -41,13 +41,13 @@ type Config struct {
 	WorkerEnv []string
 	// ExtraEnv is appended to one worker's environment at launch. Tests use it.
 	ExtraEnv func(agent.WorkerKey) []string
-	// Sign issues the session user JWT (D924).
+	// Sign issues the session user JWT (E09-D024).
 	Sign SessionSigner
-	// Applied is told each bindings version a worker reports. Tests use it (D965).
+	// Applied is told each bindings version a worker reports. Tests use it (E09-D065).
 	Applied func(sessionID string, epoch int64, seq uint64)
 
 	// Registry, RegistryCreds, DataRepository, PlainHTTP, and MaxArtifactBytes
-	// are the deployment's registry settings (D910, D913, D933, D948, D979).
+	// are the deployment's registry settings (E09-D010, E09-D013, E09-D033, E09-D048, E09-D079).
 	// RegistryCreds is a Docker config.json path. DataRepository is the data
 	// artifact name without the registry host. Empty leaves a non-empty volume
 	// retrying until a push can name a repository.
@@ -60,12 +60,12 @@ type Config struct {
 	HookTimeoutS     int
 	StartTimeoutS    int
 	VolumeMB         int
-	// VolumeInterval is how often volumes are measured (D976). 0 takes DefaultVolumeInterval.
+	// VolumeInterval is how often volumes are measured (E09-D076). 0 takes DefaultVolumeInterval.
 	VolumeInterval time.Duration
 	Grace          time.Duration
 	MaxRestarts    int
 	RestartWindowS int
-	// BackoffMin and BackoffMax are the restart wait (D919, D971). 0 takes
+	// BackoffMin and BackoffMax are the restart wait (E09-D019, E09-D071). 0 takes
 	// DefaultBackoffMin and DefaultBackoffMax. Tests set a millisecond pair.
 	BackoffMin time.Duration
 	BackoffMax time.Duration
@@ -134,7 +134,7 @@ func (cfg Config) validate() error {
 
 // Run is the agent's main: win the term, mirror spec, assignment, and status,
 // and reconcile until the term ends or ctx is done. Workers outlive the process
-// (D102).
+// (E01-D002).
 func Run(ctx context.Context, cfg Config) error {
 	cfg.applyDefaults()
 	if err := cfg.validate(); err != nil {
@@ -296,7 +296,7 @@ type plane struct {
 
 	// mu guards the status mirrors the finisher reads. The runner's commit and
 	// sync take it; Release holds it across the fleet call so a push cannot
-	// start before the exit note is stored (D978, D982).
+	// start before the exit note is stored (E09-D078, E09-D082).
 	mu       sync.Mutex
 	workDir  string
 	dataRepo string
@@ -307,12 +307,12 @@ type plane struct {
 
 	// specReady is set on the first commit, which runs only after the first
 	// list of spec, demand, and status has synced. specs is the set of session
-	// ids whose spec key is in that commit's view (D1019).
+	// ids whose spec key is in that commit's view (E10-D019).
 	specReady bool
 	specs     map[string]struct{}
 }
 
-// Plan returns the last commit. A stale step does not recompute it (D109).
+// Plan returns the last commit. A stale step does not recompute it (E01-D009).
 func (p *plane) Plan(agent.Demand[Entry]) map[agent.WorkerKey]agent.Plan[Spec, Live] {
 	if p.plans == nil {
 		return map[agent.WorkerKey]agent.Plan[Spec, Live]{}
@@ -328,7 +328,7 @@ func (p *plane) clock() time.Time {
 }
 
 // commit plans from the mirrors. The runner's demand value is not the input:
-// Decode is not given the spec's mod_revision (D947).
+// Decode is not given the spec's mod_revision (E09-D047).
 func (p *plane) commit(_ context.Context, _ agent.Demand[Entry], observed map[agent.WorkerKey]agent.Observed) error {
 	var wake []string
 	p.mu.Lock()
@@ -338,7 +338,7 @@ func (p *plane) commit(_ context.Context, _ agent.Demand[Entry], observed map[ag
 			return
 		}
 		// Adopt has already run: the first commit is the earliest a resumed push may look.
-		// Every commit wakes phase 2; it is level-triggered (D1016, D1019).
+		// Every commit wakes phase 2; it is level-triggered (E10-D016, E10-D019).
 		p.finish.adopted()
 		p.finish.kick()
 		for _, id := range wake {
@@ -396,7 +396,7 @@ func (p *plane) commit(_ context.Context, _ agent.Demand[Entry], observed map[ag
 
 // noteSpecsLocked records the spec keys of this reconcile. Phase 2 treats
 // absence from this set as the spec being gone, and only after specReady
-// (D1019). A key that is present but will not decode is still present.
+// (E10-D019). A key that is present but will not decode is still present.
 func (p *plane) noteSpecsLocked(sessions map[string]*sess) {
 	specs := make(map[string]struct{}, len(sessions))
 	for id, s := range sessions {
@@ -458,7 +458,7 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 		}
 		if phase == statev1.Phase_PHASE_DONE || phase == statev1.Phase_PHASE_FAILED {
 			// The first terminal write is the only one same() does not skip. Conditions come from
-			// the demand that is still in etcd; a missing demand writes none (D1093).
+			// the demand that is still in etcd; a missing demand writes none (E10-D093).
 			msg.Conditions = dependencyConditions(p.liveDemand(id), msg.UpdatedAtNs)
 		}
 		b, err := proto.MarshalOptions{Deterministic: true}.Marshal(msg)
@@ -480,10 +480,10 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 }
 
 // stage drops sessions whose rootfs and inputs are not ready from the plan, records
-// artifact rejections, and garbage-collects (D958, D959, D973, D974). A worker already
+// artifact rejections, and garbage-collects (E09-D058, E09-D059, E09-D073, E09-D074). A worker already
 // running this spec stays in the plan so a restart does not stop it while the image is
-// fetched again (D102). A volume that is over the limit is the exception: it leaves the
-// plan and ends FAILED, so the reconciler's normal Stop runs (D976).
+// fetched again (E01-D002). A volume that is over the limit is the exception: it leaves the
+// plan and ends FAILED, so the reconciler's normal Stop runs (E09-D076).
 func (p *plane) stage(sessions map[string]*sess, d *decision) {
 	for _, id := range slices.Sorted(maps.Keys(sessions)) {
 		s := sessions[id]
@@ -567,7 +567,7 @@ func (p *plane) stage(sessions map[string]*sess, d *decision) {
 	}
 }
 
-// pushBindings sends a Command when a started worker's bindings changed (D961).
+// pushBindings sends a Command when a started worker's bindings changed (E09-D061).
 // A failure leaves the seq unpublished so the next round retries the same one.
 func (p *plane) pushBindings(ctx context.Context, observed map[agent.WorkerKey]agent.Observed) {
 	for _, id := range slices.Sorted(maps.Keys(p.intents)) {
@@ -618,7 +618,7 @@ func (p *plane) noteApplied(observed map[agent.WorkerKey]agent.Observed) {
 }
 
 // noteBeat publishes each session's resolved limits to the policy before the
-// skeleton asks BeatTimeout (D968).
+// skeleton asks BeatTimeout (E09-D068).
 func (p *plane) noteBeat(sessions map[string]*sess) {
 	if p.pol == nil {
 		return

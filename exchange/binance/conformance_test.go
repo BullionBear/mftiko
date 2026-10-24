@@ -161,7 +161,7 @@ func spec() conformance.Spec {
 	}
 }
 
-// D602 ids are decimal and at most 19 digits. These are 19.
+// E06-D002 ids are decimal and at most 19 digits. These are 19.
 const (
 	cloidGTC = "1767225600000000001"
 	cloidIOC = "1767225600000000002"

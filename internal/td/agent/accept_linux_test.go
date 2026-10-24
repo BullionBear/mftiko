@@ -468,7 +468,7 @@ func TestDeadAfterGivingUp(t *testing.T) {
 	waitDone(t, done, ret)
 }
 
-// A worker that cannot run in hedge mode is REJECTED and not restarted (D608).
+// A worker that cannot run in hedge mode is REJECTED and not restarted (E06-D008).
 func TestHedgeModeRejectedOnce(t *testing.T) {
 	e := setup(t)
 	e.cfg.ExtraEnv = func(agent.WorkerKey) []string { return []string{envHedge + "=1"} }

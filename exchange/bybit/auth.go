@@ -24,7 +24,7 @@ const (
 	prodTrade   = "wss://stream.bybit.com/v5/trade"
 	testTrade   = "wss://stream-testnet.bybit.com/v5/trade"
 
-	// cloidMax is orderLinkId's limit. A D602 id is at most 19 digits and fits.
+	// cloidMax is orderLinkId's limit. A E06-D002 id is at most 19 digits and fits.
 	cloidMax = 36
 
 	// authLead is how far ahead Dial's expires sits. The venue rejects an expires that is
@@ -101,7 +101,7 @@ func (a *account) tradeURL() string {
 }
 
 // sign builds one signed request. GET signs the query string; POST signs body, which is sent
-// unchanged (D008). The timestamp and the recv window travel in headers, not in the query.
+// unchanged (E00-D008). The timestamp and the recv window travel in headers, not in the query.
 func (a *account) sign(now time.Time, method, path, query string, body []byte, cost []exchange.Cost, mutates bool) (exchange.HTTPRequest, error) {
 	return a.signSpan(now, method, path, query, body, cost, mutates, 0)
 }
@@ -155,8 +155,8 @@ func signCfgSpan(s *signerState, cfg exchange.AccountConfig, now time.Time, meth
 	}, nil
 }
 
-// windowOf is X-BAPI-RECV-WINDOW: AccountConfig.Validity in milliseconds (D605).
-// recvWindow is X-BAPI-RECV-WINDOW. span 0 keeps the account window string (D620).
+// windowOf is X-BAPI-RECV-WINDOW: AccountConfig.Validity in milliseconds (E06-D005).
+// recvWindow is X-BAPI-RECV-WINDOW. span 0 keeps the account window string (E06-D020).
 func recvWindow(account string, span time.Duration) string {
 	if span > 0 {
 		return strconv.FormatInt(span.Milliseconds(), 10)
@@ -432,7 +432,7 @@ func statusOf(s string) exchange.OrderStatus {
 }
 
 // orderStatus is statusOf for an order report, which carries the filled quantity. PendingCancel is
-// an order still on the book: a cancel in flight is the account worker's flag, not a status (D610).
+// an order still on the book: a cancel in flight is the account worker's flag, not a status (E06-D010).
 func orderStatus(s string, filled float64) exchange.OrderStatus {
 	if s == "PendingCancel" {
 		return exchange.OnBook(filled)

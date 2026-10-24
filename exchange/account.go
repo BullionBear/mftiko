@@ -11,12 +11,12 @@ import (
 )
 
 // AccountConfig is what the TD account worker, or the backfill read service for History, builds an
-// adapter from. The TD agent does not (D638, D639).
+// adapter from. The TD agent does not (E06-D038, E06-D039).
 type AccountConfig struct {
 	APIID       int64
 	Credentials Credentials
 	// RESTEndpoint and StreamEndpoint override the venue's default hosts, the way
-	// mdctl.InitPayload.url does for market data (D403). Empty means the default.
+	// mdctl.InitPayload.url does for market data (E04-D003). Empty means the default.
 	RESTEndpoint   string
 	StreamEndpoint string
 	// Simulated selects a venue's demo trading mode when that mode is a flag rather than
@@ -26,15 +26,15 @@ type AccountConfig struct {
 	// Validity is how long after it is signed a Submit or Cancel may still take effect: Binance's
 	// and Bybit's recvWindow, OKX's expTime (now plus Validity). Past it the venue refuses the
 	// request even when it arrives, so a QueryOrder after the request's window plus clock skew
-	// that finds nothing means the order was not placed (D605). Zero is DefaultValidity; it is at
+	// that finds nothing means the order was not placed (E06-D005). Zero is DefaultValidity; it is at
 	// most MaxValidity. This is the account's default. A Submit or Cancel may carry its own
-	// (OrderRequest.Validity, CancelRef.Validity); zero there means this value (D620, modifies the
-	// "one value per account" line of D617).
+	// (OrderRequest.Validity, CancelRef.Validity); zero there means this value (E06-D020, modifies the
+	// "one value per account" line of E06-D017).
 	Validity time.Duration
 }
 
 const (
-	// DefaultValidity is AccountConfig.Validity when it is zero (D605).
+	// DefaultValidity is AccountConfig.Validity when it is zero (E06-D005).
 	DefaultValidity = 5 * time.Second
 	// MaxValidity is the longest window every venue takes: Binance caps recvWindow at 60000 ms.
 	MaxValidity = 60 * time.Second
@@ -55,7 +55,7 @@ func (c AccountConfig) Window() (time.Duration, error) {
 
 // RequestWindow is the validity one Submit or Cancel carries. override is the request's own
 // (OrderRequest.Validity, CancelRef.Validity): zero uses the account window; a positive override
-// is that request's window, already clamped by the account worker (D620).
+// is that request's window, already clamped by the account worker (E06-D020).
 func RequestWindow(account, override time.Duration) time.Duration {
 	if override > 0 {
 		return override
@@ -66,20 +66,20 @@ func RequestWindow(account, override time.Duration) time.Duration {
 // AccountFactory builds an Account for one api_id of one AccountKind.
 type AccountFactory func(cfg AccountConfig) (Account, error)
 
-// Account is a venue's private trading interface for one api_id, sans-I/O (D302): each method builds a
+// Account is a venue's private trading interface for one api_id, sans-I/O (E03-D002): each method builds a
 // signed Call at now, and the TD account worker sends it over its HTTP pool. Safe for concurrent use.
-// Where the adapter has a TradeStream (D303), orders and cancels go over it, and Submit and Cancel
+// Where the adapter has a TradeStream (E03-D003), orders and cancels go over it, and Submit and Cancel
 // here are the REST fallback the venue may still offer.
 //
 // Instruments go in resolved (*symbol.Info, cached by the worker) and come out as the venue names
 // them (symbol.ExchKey); the worker maps them back with symbol.Resolver.Reverse and keeps Info.UID
-// (D202, D203). td.order still carries a UniversalTicker; switching that field to UID is later work.
+// (E02-D002, E02-D003). td.order still carries a UniversalTicker; switching that field to UID is later work.
 // The worker has already checked AccountKind.CanTrade; a kind that trades several venues (BinancePM)
-// routes each request by inst.Ticker.Venue (D301).
+// routes each request by inst.Ticker.Venue (E03-D001).
 //
-// It knows nothing about algo_id (D602). The worker does not decode client_order_id (D633).
+// It knows nothing about algo_id (E06-D002). The worker does not decode client_order_id (E06-D033).
 // BatchCancel is an explicit list the worker forwards as one CancelBatch; it does not choose orders
-// or split the list (D625). Binance's batch is one symbol and Bybit's is one category: a list that
+// or split the list (E06-D025). Binance's batch is one symbol and Bybit's is one category: a list that
 // cannot be one venue request fails when the adapter builds it.
 type Account interface {
 	Limits() AccountLimits
@@ -91,47 +91,47 @@ type Account interface {
 
 	Cancel(now time.Time, ref CancelRef) (Call[struct{}], error)
 
-	// CancelBatch is one venue batch-cancel for these refs, however many there are (D625). A list
+	// CancelBatch is one venue batch-cancel for these refs, however many there are (E06-D025). A list
 	// longer than Limits().CancelBatch is still sent; the venue's reject comes back as-is. An empty
 	// list is an error. The result has one entry per ref, nil for success; Parse's error is for a
 	// failure of the whole request. The worker does not call this when Limits().CancelBatch is 1.
 	CancelBatch(now time.Time, refs []CancelRef) (Call[[]error], error)
 
 	// QueryOrder reads one order from the venue by ref.ClientOrderID (or ref.OrderID), open or
-	// recently ended, over REST (D605). Parse returns ErrNotFound when the venue says it has no
+	// recently ended, over REST (E06-D005). Parse returns ErrNotFound when the venue says it has no
 	// such order, never a plain error or a *Reject. The account worker calls it for an order whose
 	// Submit or Cancel had an unknown outcome, once the request's own window (RequestWindow) plus
 	// the worker's clock skew has passed.
 	QueryOrder(now time.Time, ref CancelRef) (Call[*OrderUpdate], error)
 
-	// Snapshot is the recon read (D603): open orders, positions, balances. A venue answers them in
+	// Snapshot is the recon read (E06-D003): open orders, positions, balances. A venue answers them in
 	// several requests (BinancePM: one per product), each of them paginated or not: the worker runs
 	// every Call to its last page and merges what the pages carry. It stamps AsOfNs itself, before the
 	// first request goes out.
 	Snapshot(now time.Time) ([]Call[Page[AccountSnapshot]], error)
 
 	// Leverage fills the account worker's leverage cache at recon. td.view's Leverage answers from
-	// that cache and never calls this (D606).
+	// that cache and never calls this (E06-D006).
 	Leverage(now time.Time, inst *symbol.Info) (Call[float64], error)
 
 	// NewStream returns the private websocket codec for one connection. Not needed, and not opened,
 	// when the trade stream carries the private events (TradeLimits.Events).
 	NewStream() (PrivateStream, error)
 
-	// NewTradeStream returns the codec of one trade connection (D303). ErrUnsupported when the venue
+	// NewTradeStream returns the codec of one trade connection (E03-D003). ErrUnsupported when the venue
 	// takes orders over REST only, or this adapter does not use its websocket orders: the worker then
 	// sends Submit and Cancel as REST Calls.
 	NewTradeStream() (TradeStream, error)
 
 	// Usage reads the rate-limit usage the venue reports in a response; nil when it reports none.
-	// now is when the response arrived. The adapter does not read a clock (D302). Each Used.ResetAt
-	// is when that counter returns to zero; the zero time means the venue did not say (D420).
+	// now is when the response arrived. The adapter does not read a clock (E03-D002). Each Used.ResetAt
+	// is when that counter returns to zero; the zero time means the venue did not say (E04-D020).
 	Usage(resp *HTTPResponse, now time.Time) []Used
 }
 
 // AccountLimits are the venue's rules for one api_id.
 type AccountLimits struct {
-	ClientOrderIDMaxLen int         // the D602 client_order_id is at most 19 decimal digits
+	ClientOrderIDMaxLen int         // the E06-D002 client_order_id is at most 19 decimal digits
 	CancelBatch         int         // orders per CancelBatch; 1 = the venue has no batch cancel
 	OrderRate           []RateLimit // order requests, all must hold
 }
@@ -154,9 +154,9 @@ type OrderRequest struct {
 	QuoteQty      float64 // decimal.Absent unless used
 	Price         float64 // decimal.Absent for market orders
 	ReduceOnly    bool
-	ClientOrderID string            // contract/wire/cloid, decimal (D602)
+	ClientOrderID string            // contract/wire/cloid, decimal (E06-D002)
 	Params        map[string]string // td.v1.Submit.params, venue-specific, passed through
-	// Validity is this request's window (D620). Zero means AccountConfig.Validity: adapters call
+	// Validity is this request's window (E06-D020). Zero means AccountConfig.Validity: adapters call
 	// RequestWindow and put that on recvWindow or expTime. The account worker sets it to the
 	// resolved value, so the wire window and the query deadline are the same.
 	Validity time.Duration
@@ -170,12 +170,12 @@ type OrderResult struct {
 }
 
 // CancelRef names an order. Either id is enough; the platform always has ClientOrderID for its own
-// orders (D602).
+// orders (E06-D002).
 type CancelRef struct {
 	Instrument    *symbol.Info
 	OrderID       string
 	ClientOrderID string
-	// Validity is this request's window (D620). Zero means AccountConfig.Validity.
+	// Validity is this request's window (E06-D020). Zero means AccountConfig.Validity.
 	Validity time.Duration
 }
 
@@ -188,12 +188,12 @@ type AccountSnapshot struct {
 	AsOfNs     int64
 	// HedgeMode: the account holds long and short positions apart (Binance dualSidePosition, OKX
 	// long_short_mode, Bybit positionIdx 1 and 2 on an open order or a position) somewhere. Phase 1
-	// trades one-way only, so the worker fails Start when any page says so (D607, D612, D616, D617).
+	// trades one-way only, so the worker fails Start when any page says so (E06-D007, E06-D012, E06-D016, E06-D017).
 	HedgeMode bool
 }
 
 // OrderUpdate follows td.v1.Order, with the instrument as the venue names it. RejectReason goes to
-// td.v1.OrderUpdate.reason, not to the Order record (D610).
+// td.v1.OrderUpdate.reason, not to the Order record (E06-D010).
 type OrderUpdate struct {
 	Exch          symbol.ExchKey
 	OrderID       string
@@ -210,7 +210,7 @@ type OrderUpdate struct {
 	ExchTsNs      int64
 }
 
-// Fill follows td.v1.Fill. FillID must be the same value here and in History (D601).
+// Fill follows td.v1.Fill. FillID must be the same value here and in History (E06-D001).
 type Fill struct {
 	Exch          symbol.ExchKey
 	FillID        string
@@ -290,10 +290,10 @@ type StreamLimits struct {
 }
 
 // AccountSink receives what PrivateStream.Decode finds. Pointers, and the strings in what they point
-// to, are valid only during the call (D302): the frame they came from is the worker's to reuse.
+// to, are valid only during the call (E03-D002): the frame they came from is the worker's to reuse.
 type AccountSink interface {
 	// Ready: login and subscriptions acknowledged, the stream is live. The account worker recons
-	// next and only then accepts new orders again (D603).
+	// next and only then accepts new orders again (E06-D003).
 	Ready()
 	// Expired: the venue ended the stream on purpose (listenKey expired). Reconnect.
 	Expired(reason string)

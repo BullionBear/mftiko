@@ -37,7 +37,7 @@ const reasonOffline = "account offline"
 // Submit records a local pending_new, then sends td.order. The id is in OpenOrders
 // before Submit returns. An accepted reply does not change the order. A 1xx, including
 // no responder (101), marks it rejected. A timeout marks it UNKNOWN and does not query
-// or send it again (D843, D605).
+// or send it again (E08-D043, E06-D005).
 func (p *Path) Submit(o Order) (string, error) {
 	if err := p.ready(o.APIID); err != nil {
 		return "", err
@@ -93,7 +93,7 @@ func (p *Path) Submit(o Order) (string, error) {
 
 // Cancel asks TD to cancel one order of this session. A 1xx, including no responder,
 // is a RejectEvent and does not change the order. A timeout changes nothing and is
-// not reported (D845).
+// not reported (E08-D045).
 func (p *Path) Cancel(apiID int64, clientOrderID string) error {
 	if err := p.ready(apiID); err != nil {
 		return err
@@ -119,7 +119,7 @@ func (p *Path) Cancel(apiID int64, clientOrderID string) error {
 
 // BatchCancel cancels the live orders of algoID on the account, limited to uids when
 // any are given. The list comes from OpenOrders and is split by the account's
-// cancel_batch. A value of 1 sends one Cancel per order (D631).
+// cancel_batch. A value of 1 sends one Cancel per order (E06-D031).
 func (p *Path) BatchCancel(apiID int64, algoID uint32, uids ...uint32) error {
 	if err := p.ready(apiID); err != nil {
 		return err
@@ -253,7 +253,7 @@ func (p *Path) finishOrder(apiID int64, id string, ids []string, kind orderKind,
 		p.refuse(apiID, id, ids, kind, int32(tdv1.RejectCode_REJECT_CODE_ACCOUNT_OFFLINE), reasonOffline)
 	default:
 		// A timeout, or a reply that is not an OrderReply. Cancel keeps its state
-		// and is not reported (D845). Submit becomes UNKNOWN (D843).
+		// and is not reported (E08-D045). Submit becomes UNKNOWN (E08-D043).
 		if kind != orderSubmit {
 			return
 		}
@@ -432,7 +432,7 @@ func liveIDs(orders map[string]*tdv1.Order, algo uint32, uids []uint32) []string
 // A client id the snapshot lists is decided by the snapshot, including a terminal
 // row, which is not stored. fromRequest is the reply of one ReconRequest: a local
 // PENDING_NEW that Submit recorded at or after requestGen, and that the snapshot
-// does not list, stays (D854). A pushed Recon is not that reply, so an omitted
+// does not list, stays (E08-D054). A pushed Recon is not that reply, so an omitted
 // order is gone.
 func (a *account) merge(filtered []*tdv1.Order, requestGen uint64, fromRequest bool) {
 	next := make(map[string]*tdv1.Order, len(filtered)+len(a.orders))
@@ -507,7 +507,7 @@ func (p *Path) applyUpdate(apiID int64, ev *tdv1.AccountEvent) {
 	p.dropTerminal(apiID, row.GetClientOrderId())
 }
 
-// applyFill delivers the fill. It does not change the order or the ledger (D855).
+// applyFill delivers the fill. It does not change the order or the ledger (E08-D055).
 // The order's new state arrives as its own OrderUpdate.
 func (p *Path) applyFill(apiID int64, ev *tdv1.AccountEvent) {
 	f := ev.GetFill()

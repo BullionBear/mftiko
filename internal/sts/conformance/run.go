@@ -16,7 +16,7 @@ type Config struct {
 	Only    []string
 }
 
-// Run starts one embedded server and runs the selected checks (D828–D839).
+// Run starts one embedded server and runs the selected checks (E08-D028–E08-D039).
 // A non-nil error means the tool itself could not run (exit 2). Check
 // failures are reported inside Report; they are not an error.
 func Run(ctx context.Context, cfg Config) (Report, error) {
@@ -137,7 +137,7 @@ func (r *runner) spawn() (*proc, error) {
 	return startProc(r.args, r.bus.workerEnv())
 }
 
-// probeContracts reads Hello.contracts from one short-lived process (D838).
+// probeContracts reads Hello.contracts from one short-lived process (E08-D038).
 func (r *runner) probeContracts() ([]string, string) {
 	p, err := r.spawn()
 	if err != nil {

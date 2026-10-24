@@ -62,16 +62,16 @@ func TestDecodeFixtures(t *testing.T) {
 }
 
 // sonic falls back to encoding/json on a Go or CPU it does not support, and the fallback ignores both
-// configurations: it matches names case-insensitively and copies every string. D302: before each Go upgrade,
+// configurations: it matches names case-insensitively and copies every string. E03-D002: before each Go upgrade,
 // sonic must support it.
 func TestSonicIsNative(t *testing.T) {
 	if sonic.APIKind != sonic.UseSonicJSON {
-		t.Fatalf("sonic runs as encoding/json on %s/%s %s: upgrade sonic or hold Go back (D302)",
+		t.Fatalf("sonic runs as encoding/json on %s/%s %s: upgrade sonic or hold Go back (E03-D002)",
 			runtime.GOOS, runtime.GOARCH, runtime.Version())
 	}
 }
 
-// A frame decoded into the connection's scratch value allocates nothing (D302). The race detector makes
+// A frame decoded into the connection's scratch value allocates nothing (E03-D002). The race detector makes
 // sync.Pool drop a quarter of what it is given; AllocsPerRun's average is integral, so that rounds to 0.
 func TestDecodeFrameAllocatesNothing(t *testing.T) {
 	for _, f := range fixtures {
@@ -110,7 +110,7 @@ func TestFieldNamesAreCaseSensitive(t *testing.T) {
 }
 
 // The borrowing configuration leaves strings pointing into the frame: zero copies, valid until the buffer is
-// reused (D302). The copying one survives the reuse, map keys and strings inside an any included.
+// reused (E03-D002). The copying one survives the reuse, map keys and strings inside an any included.
 func TestFrameBorrowsBodyCopies(t *testing.T) {
 	const src = `{"s":"BTCUSDT","m":{"key":"val"},"l":["x","y"],"i":{"k":["v"]},"p":"1.5"}`
 	type doc struct {

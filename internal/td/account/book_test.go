@@ -135,7 +135,7 @@ func TestBookHoldsEventsDuringRecon(t *testing.T) {
 		"fill:f1")
 }
 
-// A live order the snapshot does not have is UNKNOWN until the venue is asked (D615); one the venue
+// A live order the snapshot does not have is UNKNOWN until the venue is asked (E06-D015); one the venue
 // has not answered yet stays PENDING_NEW.
 func TestBookVanishedOrders(t *testing.T) {
 	r := newRig(t)
@@ -163,7 +163,7 @@ func TestBookVanishedOrders(t *testing.T) {
 	}
 }
 
-// A finished order leaves the OMS at once (D615). Its repeats, and a duplicate of any change, are
+// A finished order leaves the OMS at once (E06-D015). Its repeats, and a duplicate of any change, are
 // not published again.
 func TestBookFinishedOrdersLeave(t *testing.T) {
 	r := newRig(t)
@@ -216,7 +216,7 @@ func TestBookFills(t *testing.T) {
 }
 
 // Positions and balances follow the events; a zero size closes a position; leverage stays cached
-// after it closes. A Recon returns every position and every balance (D633).
+// after it closes. A Recon returns every position and every balance (E06-D033).
 func TestBookLedger(t *testing.T) {
 	r := newRig(t)
 	r.recon(&exchange.AccountSnapshot{
@@ -282,7 +282,7 @@ func TestBookFlatRowNotHeld(t *testing.T) {
 }
 
 // A Recon returns every live order. TD does not filter by the algo in the client order id, and an
-// order placed by hand is in the same list (D633).
+// order placed by hand is in the same list (E06-D033).
 func TestBookReconReturnsEveryOrder(t *testing.T) {
 	r := newRig(t)
 	c5, _ := cloid.Encode(5, cloid.EpochMs+1, 0)
@@ -299,7 +299,7 @@ func TestBookReconReturnsEveryOrder(t *testing.T) {
 }
 
 // A ReconRequest's orders, positions and balances are the book at ViewReply.seq. Events before the
-// reply are in it; the next event is the next seq (D633).
+// reply are in it; the next event is the next seq (E06-D033).
 func TestBookReconSeqCutsBetweenEvents(t *testing.T) {
 	r := newRig(t)
 	r.recon(&exchange.AccountSnapshot{

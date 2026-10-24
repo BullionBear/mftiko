@@ -25,9 +25,9 @@ const (
 
 type ViewRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Limit         uint32                 `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`                          // 只用於 tape。0 是 1000，上限 5000，超過是 invalid，不截短（D439）
-	Before        *Cursor                `protobuf:"bytes,2,opt,name=before,proto3,oneof" json:"before,omitempty"`                   // 只用於 tape：不含本身。第一頁不填（D436）
-	SinceNs       *int64                 `protobuf:"varint,3,opt,name=since_ns,json=sinceNs,proto3,oneof" json:"since_ns,omitempty"` // 只用於 tape：只回 md_ts_ns ≥ since_ns 的事件（D436）
+	Limit         uint32                 `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`                          // 只用於 tape。0 是 1000，上限 5000，超過是 invalid，不截短（E04-D039）
+	Before        *Cursor                `protobuf:"bytes,2,opt,name=before,proto3,oneof" json:"before,omitempty"`                   // 只用於 tape：不含本身。第一頁不填（E04-D036）
+	SinceNs       *int64                 `protobuf:"varint,3,opt,name=since_ns,json=sinceNs,proto3,oneof" json:"since_ns,omitempty"` // 只用於 tape：只回 md_ts_ns ≥ since_ns 的事件（E04-D036）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -226,7 +226,7 @@ func (*ViewReply_Tape) isViewReply_Result() {}
 
 func (*ViewReply_Book) isViewReply_Result() {}
 
-// 一則 tape 事件。不帶 envelope，也不帶 digest（D435）。
+// 一則 tape 事件。不帶 envelope，也不帶 digest（E04-D035）。
 // event 的位元組就是 ring 裡 md.f 訊息 offset 40 之後的 payload，原樣寫入，不重新編碼。
 type TapeEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -298,13 +298,13 @@ func (x *TapeEvent) GetEvent() *FeedEvent {
 
 type TapePage struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 由新到舊（D436）。
+	// 由新到舊（E04-D036）。
 	Events            []*TapeEvent `protobuf:"bytes,1,rep,name=events,proto3" json:"events,omitempty"`
 	More              bool         `protobuf:"varint,2,opt,name=more,proto3" json:"more,omitempty"`
 	Next              *Cursor      `protobuf:"bytes,3,opt,name=next,proto3,oneof" json:"next,omitempty"`                                                 // 下一頁的 before。more 為假時不填
-	ContinuousSinceNs int64        `protobuf:"varint,4,opt,name=continuous_since_ns,json=continuousSinceNs,proto3" json:"continuous_since_ns,omitempty"` // 從這個時間起，留下的 tape 沒有 gap（D440）
+	ContinuousSinceNs int64        `protobuf:"varint,4,opt,name=continuous_since_ns,json=continuousSinceNs,proto3" json:"continuous_since_ns,omitempty"` // 從這個時間起，留下的 tape 沒有 gap（E04-D040）
 	Gaps              []*Gap       `protobuf:"bytes,5,rep,name=gaps,proto3" json:"gaps,omitempty"`                                                       // 這一頁涵蓋範圍內的 gap
-	Head              *Cursor      `protobuf:"bytes,6,opt,name=head,proto3" json:"head,omitempty"`                                                       // 回覆當下這個 feed 已發佈到 md.f 的最新游標（D437）
+	Head              *Cursor      `protobuf:"bytes,6,opt,name=head,proto3" json:"head,omitempty"`                                                       // 回覆當下這個 feed 已發佈到 md.f 的最新游標（E04-D037）
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -385,8 +385,8 @@ type Gap struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	StartNs       int64                  `protobuf:"varint,1,opt,name=start_ns,json=startNs,proto3" json:"start_ns,omitempty"` // 斷線的時間，md 主機時鐘
 	EndNs         int64                  `protobuf:"varint,2,opt,name=end_ns,json=endNs,proto3" json:"end_ns,omitempty"`       // 重連完成的時間，md 主機時鐘
-	Last          *Cursor                `protobuf:"bytes,3,opt,name=last,proto3" json:"last,omitempty"`                       // 斷線前最後一則。沒有發佈過則不填（D440）
-	First         *Cursor                `protobuf:"bytes,4,opt,name=first,proto3" json:"first,omitempty"`                     // 重連後第一則。那則還沒進 ring 則不填（D440）
+	Last          *Cursor                `protobuf:"bytes,3,opt,name=last,proto3" json:"last,omitempty"`                       // 斷線前最後一則。沒有發佈過則不填（E04-D040）
+	First         *Cursor                `protobuf:"bytes,4,opt,name=first,proto3" json:"first,omitempty"`                     // 重連後第一則。那則還沒進 ring 則不填（E04-D040）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -449,7 +449,7 @@ func (x *Gap) GetFirst() *Cursor {
 	return nil
 }
 
-// 這個 feed 最後套用的 (conn_epoch, seq) 的窗內 book（D430、D441）。窗外的檔不在這裡。
+// 這個 feed 最後套用的 (conn_epoch, seq) 的窗內 book（E04-D030、E04-D041）。窗外的檔不在這裡。
 // 不支援指定歷史 seq。簿還沒同步好時 ViewReply.error 是 not_synced，不帶 book。
 type BookSnapshot struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -459,7 +459,7 @@ type BookSnapshot struct {
 	ConnEpoch     uint64                 `protobuf:"varint,4,opt,name=conn_epoch,json=connEpoch,proto3" json:"conn_epoch,omitempty"`
 	Seq           uint64                 `protobuf:"varint,5,opt,name=seq,proto3" json:"seq,omitempty"`
 	MdTsNs        int64                  `protobuf:"varint,6,opt,name=md_ts_ns,json=mdTsNs,proto3" json:"md_ts_ns,omitempty"`
-	Uid           uint32                 `protobuf:"varint,7,opt,name=uid,proto3" json:"uid,omitempty"` // 商品（D461）
+	Uid           uint32                 `protobuf:"varint,7,opt,name=uid,proto3" json:"uid,omitempty"` // 商品（E08-D065）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -618,7 +618,7 @@ type FetchRequest_Klines struct {
 }
 
 type FetchRequest_OpenInterest struct {
-	OpenInterest *FetchOpenInterest `protobuf:"bytes,2,opt,name=open_interest,json=openInterest,proto3,oneof"` // 交易所不推送、只能查詢的值（D401）
+	OpenInterest *FetchOpenInterest `protobuf:"bytes,2,opt,name=open_interest,json=openInterest,proto3,oneof"` // 交易所不推送、只能查詢的值（E04-D001）
 }
 
 func (*FetchRequest_Klines) isFetchRequest_Req() {}
@@ -628,8 +628,8 @@ func (*FetchRequest_OpenInterest) isFetchRequest_Req() {}
 type FetchKlines struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Interval      string                 `protobuf:"bytes,2,opt,name=interval,proto3" json:"interval,omitempty"` // 正規寫法：1m、4h、1mo
-	Limit         uint32                 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`      // 最近 N 根已收盤的，1 到 5000；超出是 invalid。超過交易所單頁時由服務分頁（D419）
-	Uid           uint32                 `protobuf:"varint,4,opt,name=uid,proto3" json:"uid,omitempty"`          // 商品（D461）。subject 是 md.v1.fetch.{venue}，用人讀的名字（D456）；UID 的 venue 必須是它
+	Limit         uint32                 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`      // 最近 N 根已收盤的，1 到 5000；超出是 invalid。超過交易所單頁時由服務分頁（E04-D019）
+	Uid           uint32                 `protobuf:"varint,4,opt,name=uid,proto3" json:"uid,omitempty"`          // 商品（E08-D065）。subject 是 md.v1.fetch.{venue}，用人讀的名字（E04-D056）；UID 的 venue 必須是它
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -687,7 +687,7 @@ func (x *FetchKlines) GetUid() uint32 {
 
 type FetchOpenInterest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Uid           uint32                 `protobuf:"varint,2,opt,name=uid,proto3" json:"uid,omitempty"` // 商品（D461）
+	Uid           uint32                 `protobuf:"varint,2,opt,name=uid,proto3" json:"uid,omitempty"` // 商品（E08-D065）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -733,7 +733,7 @@ type FetchReply struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Error  string                 `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"` // 空字串 = 成功；invalid | unsupported | rate_limited | venue_error
 	Reason string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
-	Uid    uint32                 `protobuf:"varint,3,opt,name=uid,proto3" json:"uid,omitempty"` // 請求的商品（D461）
+	Uid    uint32                 `protobuf:"varint,3,opt,name=uid,proto3" json:"uid,omitempty"` // 請求的商品（E08-D065）
 	// Types that are valid to be assigned to Result:
 	//
 	//	*FetchReply_Klines

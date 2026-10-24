@@ -23,7 +23,7 @@ import (
 // tickers and a checksummed book; HMAC-signed REST; a private stream with a login frame. Its
 // faults are switches, so the tests can show that each check catches the fault it is for.
 type faults struct {
-	keepFrame   bool // the codec keeps a string pointing into the last frame (D302)
+	keepFrame   bool // the codec keeps a string pointing into the last frame (E03-D002)
 	dropUnknown bool // Decode ignores frames it does not know
 	leakSecret  bool // the order request carries the secret in a header
 	bigChannel  bool // Cost exceeds Budget
@@ -402,7 +402,7 @@ func (rest) Usage(resp *exchange.HTTPResponse, _ time.Time) []exchange.Used {
 	return nil
 }
 
-// status classifies an error answer (D302).
+// status classifies an error answer (E03-D002).
 func status(resp *exchange.HTTPResponse, f faults) error {
 	switch {
 	case resp.Status == 200:
@@ -597,7 +597,7 @@ func (h history) Order(time.Time, *symbol.Info, string) (exchange.Call[*exchange
 }
 func (h history) Usage(*exchange.HTTPResponse, time.Time) []exchange.Used { return nil }
 
-// --- trade stream (D303): a WebSocket API that also carries the account's events ---
+// --- trade stream (E03-D003): a WebSocket API that also carries the account's events ---
 
 type trade struct {
 	c exchange.Credentials
@@ -614,7 +614,7 @@ func (t *trade) Dial(now time.Time) (*exchange.Dial, error) {
 func (t *trade) Limits() exchange.TradeLimits { return exchange.TradeLimits{Events: true} }
 func (t *trade) Ping() []byte                 { return nil }
 
-// The wire id carries the op, so an answer reads with no memory of what was sent (D303).
+// The wire id carries the op, so an answer reads with no memory of what was sent (E03-D003).
 func (t *trade) Submit(now time.Time, id uint64, req *exchange.OrderRequest) ([]byte, error) {
 	params := fmt.Sprintf(`"sym":%q,"side":%q,"px":%q,"qty":%q,"cid":%q,"ts":%d`, req.Instrument.ExchTicker,
 		map[exchange.Side]string{exchange.SideBuy: "buy", exchange.SideSell: "sell"}[req.Side],

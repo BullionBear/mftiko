@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-// MakeReadOnly makes files 0444 and directories 0555 (D975). Symlinks are left alone
+// MakeReadOnly makes files 0444 and directories 0555 (E09-D075). Symlinks are left alone
 // so a target outside this tree is not changed. Calling it again is safe.
 func MakeReadOnly(root string) error {
 	var dirs []string
@@ -37,7 +37,7 @@ func MakeReadOnly(root string) error {
 	return nil
 }
 
-// RemoveWritable makes a tree deletable and removes it (D975). Directories become
+// RemoveWritable makes a tree deletable and removes it (E09-D075). Directories become
 // 0700 and files 0600 first, so a read-only tree can still be removed. A missing
 // root is not an error.
 func RemoveWritable(root string) error {

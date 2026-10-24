@@ -1,6 +1,6 @@
 package conformance
 
-// Params is the JSON object written into InitPayload.params (D835, PROTOCOL §9.8).
+// Params is the JSON object written into InitPayload.params (E08-D035, PROTOCOL §9.8).
 // The tool fills it. Strategies in every language read the same fields.
 type Params struct {
 	HookSleepMS   int    `json:"hook_sleep_ms,omitempty"`

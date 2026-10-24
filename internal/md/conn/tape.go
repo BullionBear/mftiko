@@ -12,7 +12,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange"
 )
 
-// Tape limits (D438, D439, D449, D458). Zero in InitPayload selects these.
+// Tape limits (E04-D038, E04-D039, E04-D049, E04-D058). Zero in InitPayload selects these.
 const (
 	defaultTapeWindow    = int64(10 * time.Minute)
 	defaultTapeMaxEvents = 100_000
@@ -31,7 +31,7 @@ const (
 // tapeRec is one ring entry, copied out of a chunk. raw is the md.f message
 // while the wire size is measured, and again when a test loads the record.
 // A reconnect gap orders as (epoch, 0). An oversize gap orders as the event's
-// own cursor (D459). mdTs is the event time, or a gap's end_ns, so the time
+// own cursor (E04-D059). mdTs is the event time, or a gap's end_ns, so the time
 // index follows append order.
 type tapeRec struct {
 	kind               uint8
@@ -43,7 +43,7 @@ type tapeRec struct {
 	raw                []byte
 	// wire is the encoded size of this event as one TapePage.events field:
 	// the FeedEvent length plus the protobuf tags around it. The writer fills
-	// it once; the page walk only adds the integer (D439).
+	// it once; the page walk only adds the integer (E04-D039).
 	wire int
 }
 
@@ -64,7 +64,7 @@ const tapeRingPad = 128
 const tapeRingAlign = 128
 
 // tapeRing is one feed's append-only log. The conn worker is the only writer.
-// page reads the atomics below and takes no lock (D450, D459).
+// page reads the atomics below and takes no lock (E04-D050, E04-D059).
 //
 // slots is the header every load touches: a fixed ring of chunk pointers.
 // pub and the writer index move on every append. 128 bytes between them, and
@@ -152,7 +152,7 @@ func (r *tapeRing) markDown() {
 	r.savedEpoch, r.savedSeq = r.headEpoch, r.headSeq
 }
 
-// noteEmpty sets head to (epoch, 0) when no event is retained (D437).
+// noteEmpty sets head to (epoch, 0) when no event is retained (E04-D037).
 func (r *tapeRing) noteEmpty(epoch uint64) {
 	if r.events > 0 || epoch == 0 {
 		return
@@ -176,7 +176,7 @@ func cursorLess(epoch, seq, otherEpoch, otherSeq uint64) bool {
 }
 
 // page builds one tape reply. It takes no locks. before and since_ns locate the
-// range by binary search; the walk then reads at most limit events (D451).
+// range by binary search; the walk then reads at most limit events (E04-D051).
 func (r *tapeRing) page(before *mdv1.Cursor, since int64, hasSince bool, limit int) []byte {
 	if limit <= 0 {
 		limit = defaultTapeLimit
@@ -304,7 +304,7 @@ func (r *tapeRing) finishPage(snap *tapeSnap, cut pageCut, shrink bool) ([]byte,
 
 // findBefore is the rightmost entry strictly older than before, or the newest
 // entry when before is unset. ok is false when a chunk generation moved.
-// The search is chunks first, then the slot inside that chunk (D459).
+// The search is chunks first, then the slot inside that chunk (E04-D059).
 func (r *tapeRing) findBefore(snap *tapeSnap, before *mdv1.Cursor) (idx uint64, found, ok bool) {
 	if snap == nil || snap.tail >= snap.written {
 		return 0, false, true
@@ -368,7 +368,7 @@ func (r *tapeRing) findBefore(snap *tapeSnap, before *mdv1.Cursor) (idx uint64, 
 }
 
 // findSince is the leftmost entry whose time is >= since. The writer clock does
-// not go backwards, so time follows the index (D451). Chunks first, then slots.
+// not go backwards, so time follows the index (E04-D051). Chunks first, then slots.
 func (r *tapeRing) findSince(snap *tapeSnap, since int64, has bool) (uint64, bool) {
 	if snap == nil {
 		return 0, false

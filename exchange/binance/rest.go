@@ -292,7 +292,7 @@ func parseSpotListing(resp *exchange.HTTPResponse) (exchange.Page[symbol.Listing
 }
 
 // oneSpot keeps a spot symbol SYM can store. A row with no positive tick or step, an asset
-// code that is not canonical, or a tick or step that does not fit 15 significant digits (D008)
+// code that is not canonical, or a tick or step that does not fit 15 significant digits (E00-D008)
 // is left out. Spot has no contract size and no settlement asset.
 func oneSpot(s infoSymbol) (symbol.Listing, bool) {
 	base, err := symbol.CanonicalAsset(s.Base)
@@ -333,7 +333,7 @@ func spotStatus(s string) symbol.Status {
 	}
 }
 
-// fitsFloat is the D008 bound conformance checks: the largest price and quantity, written at
+// fitsFloat is the E00-D008 bound conformance checks: the largest price and quantity, written at
 // the step's decimals, have at most 15 significant digits and survive a text round trip.
 func fitsFloat(f symbol.Filters) bool {
 	for _, pair := range [][2]string{{symbol.PriceTick, symbol.MaxPrice}, {symbol.QtyStep, symbol.MaxQty}} {
@@ -364,7 +364,7 @@ func oneListing(s infoSymbol) (symbol.Listing, bool, error) {
 		return symbol.Listing{}, false, nil
 	}
 	// PnL is credited in the margin asset. When that is neither base nor quote it is quanto
-	// and is not stored (D203).
+	// and is not stored (E02-D003).
 	if s.Margin != s.Base && s.Margin != s.Quote {
 		return symbol.Listing{}, false, nil
 	}

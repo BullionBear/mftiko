@@ -14,10 +14,10 @@ import (
 	"github.com/BullionBear/mftiko/internal/td/account"
 )
 
-// Unsealer opens an account's credentials with this instance's key (D613).
+// Unsealer opens an account's credentials with this instance's key (E06-D013).
 type Unsealer func(sealed []byte, apiID int64, kind string) (sealbox.Credentials, error)
 
-// NATSUser signs a NATS user for the account worker of apiID (D611): its JWT, seed and inbox prefix.
+// NATSUser signs a NATS user for the account worker of apiID (E06-D011): its JWT, seed and inbox prefix.
 type NATSUser func(apiID int64) (userJWT, seed, inbox string, err error)
 
 // Program builds the account worker's launch and its Init.

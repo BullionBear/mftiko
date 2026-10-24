@@ -76,7 +76,7 @@ func (m *market) Topics() []exchange.TopicCaps {
 }
 
 // Atom: the route is spot or linear. The channel is the venue arg, and the same string is a
-// different atom on each route (D202): publicTrade.BTCUSDT is both.
+// different atom on each route (E02-D002): publicTrade.BTCUSDT is both.
 // orderbook_delta subscribes orderbook.50. On linear, ticker, funding_rate,
 // open_interest and mark_price share tickers.<symbol>. Liquidation, funding, open interest
 // and mark price are linear only.

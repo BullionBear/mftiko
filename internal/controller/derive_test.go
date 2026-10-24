@@ -161,7 +161,7 @@ func TestDeriveSkipsEqualValues(t *testing.T) {
 		}
 	}
 	// A later clock, a touched updated_at_ns, and a touched entry spec_revision
-	// are not differences (D1308, D1323). issued_at_ns stays the first one.
+	// are not differences (E13-D008, E13-D023). issued_at_ns stays the first one.
 	sess.Demand.UpdatedAtNs = 1
 	for k, d := range v.Demands {
 		d.Value.SpecRevision = 99
@@ -396,7 +396,7 @@ func TestDeriveEndedStaysEnded(t *testing.T) {
 			spec := sampleSpec()
 			// The spec runs again and its revision still matches, which is
 			// what a recovered topology or a recovered ack looks like. Ending
-			// does not go back to RUNNING (D1328).
+			// does not go back to RUNNING (E13-D028).
 			v, sess := runningSession(spec)
 			sess.Demand = &statev1.SessionDemand{
 				Desired: sessionv1.DesiredState_DESIRED_STATE_ENDED, EndReason: reason,

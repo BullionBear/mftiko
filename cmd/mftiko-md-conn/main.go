@@ -1,6 +1,6 @@
 // Command mftiko-md-conn is one MD conn worker: a single public websocket for a (venue, route, n).
 // It speaks C4 on fd 3 (PROTOCOL §5). Init carries the last reported conn_epoch; the dial uses
-// the next one, and that number is written as a Report before the dial (D409).
+// the next one, and that number is written as a Report before the dial (E04-D009).
 package main
 
 import (
@@ -119,7 +119,7 @@ func run() int {
 			for _, c := range v.Categories {
 				tables = append(tables, sym.Table{Venue: venue, Category: c})
 			}
-			// One venue per conn worker. The instance JWT allows every venue (D457).
+			// One venue per conn worker. The instance JWT allows every venue (E04-D057).
 			notify, err := sym.ChangedVenueWildcard(venue)
 			if err != nil {
 				return nil, err

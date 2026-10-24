@@ -1,4 +1,4 @@
-// Command mftiko-seal makes a TD instance's key pair and seals account credentials to it (D613).
+// Command mftiko-seal makes a TD instance's key pair and seals account credentials to it (E06-D013).
 //
 //	mftiko-seal keygen -key PATH                        write a new private key (0600), print the public key
 //	mftiko-seal pubkey -key PATH                        print the public key of a private key file

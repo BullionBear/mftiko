@@ -11,10 +11,10 @@ import (
 	"github.com/BullionBear/mftiko/sdk/book"
 )
 
-// Context is what a hook may do. Every method except Post must be called from a hook (D803). Nothing
+// Context is what a hook may do. Every method except Post must be called from a hook (E08-D003). Nothing
 // here blocks except Resolve, which only OnInit and OnStart may call.
 //
-// Instruments are UIDs everywhere (DECISIONS D804): a strategy resolves the tickers of its own config
+// Instruments are UIDs everywhere (DECISIONS E08-D004): a strategy resolves the tickers of its own config
 // once, keeps the UIDs, and reads current fields with Info when it needs them.
 type Context interface {
 	SessionID() string
@@ -28,10 +28,10 @@ type Context interface {
 	// know is not one the platform supports (the error wraps symbol.ErrNotFound). The strategy
 	// returning that error ends the session INIT_FAILED.
 	Resolve(ticker string) (symbol.Info, error)
-	// Info is the instrument's current row (D825). It reads memory, so any hook may call it; keep the
+	// Info is the instrument's current row (E08-D025). It reads memory, so any hook may call it; keep the
 	// UID, not the Info, since status and filters change. A UID this session has not resolved returns
-	// ErrUnknownUID and does not call SYM (D824). A resolved instrument that later delists is still
-	// returned, with its terminal status (D826). Info does not retry.
+	// ErrUnknownUID and does not call SYM (E08-D024). A resolved instrument that later delists is still
+	// returned, with its terminal status (E08-D026). Info does not retry.
 	Info(uid uint32) (symbol.Info, error)
 
 	// ---------- orders ----------
@@ -44,7 +44,7 @@ type Context interface {
 	Cancel(apiID int64, clientOrderID string) error
 	// BatchCancel cancels every open order of algoID on the account (only those of uids, when given),
 	// whichever session or incarnation placed them. The SDK picks the orders from OpenOrders and splits
-	// them by the account's cancel_batch (DECISIONS D602, D631).
+	// them by the account's cancel_batch (DECISIONS E06-D002, E06-D031).
 	BatchCancel(apiID int64, algoID uint32, uids ...uint32) error
 	// RequestRecon asks td.view for a new snapshot of the account; it arrives as OnRecon.
 	RequestRecon(apiID int64) error
@@ -52,44 +52,44 @@ type Context interface {
 	// ---------- local state (current as of the event being handled) ----------
 
 	// Order is one of the strategy's orders. The pointer is a copy; the read does not block
-	// (DECISIONS D856). Inside OnOrder it includes that event, and a terminal order is still
+	// (DECISIONS E08-D056). Inside OnOrder it includes that event, and a terminal order is still
 	// visible there. After the hook returns, a terminal order is gone.
 	Order(apiID int64, clientOrderID string) (*tdv1.Order, bool)
 	// OpenOrders are the account's live orders of algoID; 0 means every algo the session declared.
-	// Each order is a copy. The read does not block (DECISIONS D856). Terminal orders are omitted.
+	// Each order is a copy. The read does not block (DECISIONS E08-D056). Terminal orders are omitted.
 	OpenOrders(apiID int64, algoID uint32) []*tdv1.Order
 	// Position is the account's position for uid, as last written by PositionUpdate or Recon.
 	// A size of zero stays until a Recon omits it. The pointer is a copy; the read does not block
-	// (DECISIONS D853, D856). An unknown account or uid returns false.
+	// (DECISIONS E08-D053, E08-D056). An unknown account or uid returns false.
 	Position(apiID int64, uid uint32) (*tdv1.Position, bool)
 	// Balance is the account's balance of asset. free, locked and prelock are the values TD sent;
 	// the SDK does not combine them. The pointer is a copy; the read does not block
-	// (DECISIONS D853, D856). An unknown account or asset returns false.
+	// (DECISIONS E08-D053, E08-D056). An unknown account or asset returns false.
 	Balance(apiID int64, asset string) (*tdv1.Balance, bool)
-	// Book is the local book of an instrument once md.view's snapshot is in place (D857).
-	// The view is the sdk/book ring and is valid only inside the hook (D803). An instrument
-	// that is not synced returns (nil, false) (D860).
+	// Book is the local book of an instrument once md.view's snapshot is in place (E08-D057).
+	// The view is the sdk/book ring and is valid only inside the hook (E08-D003). An instrument
+	// that is not synced returns (nil, false) (E08-D060).
 	Book(uid uint32) (BookView, bool)
 
 	// ---------- reads (the answer runs fn on the dispatcher) ----------
 	// Each call waits InitPayload.recv_window_ms. A timeout or a missing responder is an
-	// error delivered to fn (DECISIONS D848).
+	// error delivered to fn (DECISIONS E08-D048).
 
-	// Tape pages md.view (DECISIONS D436). The SDK does not fetch tape on its own and does not
-	// hold live events (D847). page.Head is the feed's high water; the strategy treats a live
+	// Tape pages md.view (DECISIONS E04-D036). The SDK does not fetch tape on its own and does not
+	// hold live events (E08-D047). page.Head is the feed's high water; the strategy treats a live
 	// cursor at or below that head as already covered.
 	Tape(uid uint32, topic Topic, q TapeQuery, fn func(ctx Context, page *mdv1.TapePage, err error)) error
 	// BookSnapshot asks md.view for the windowed book. The local book needs no help from it; this is for
 	// strategies that want the conn worker's view.
 	BookSnapshot(uid uint32, fn func(ctx Context, snap *mdv1.BookSnapshot, err error)) error
-	// FetchKlines asks md.fetch for the latest limit closed klines (DECISIONS D419).
+	// FetchKlines asks md.fetch for the latest limit closed klines (DECISIONS E04-D019).
 	FetchKlines(uid uint32, interval string, limit uint32, fn func(ctx Context, k *mdv1.Klines, err error)) error
 	// FetchOpenInterest asks md.fetch for the open interest the exchange does not push.
 	FetchOpenInterest(uid uint32, fn func(ctx Context, oi *mdv1.OpenInterest, err error)) error
 
 	// ---------- control ----------
 
-	// After schedules fn on the dispatcher. Repeats of one timer coalesce (D803).
+	// After schedules fn on the dispatcher. Repeats of one timer coalesce (E08-D003).
 	After(d time.Duration, fn func(Context))
 	// Post hands fn to the dispatcher from any goroutine. It is the only thread-safe entry.
 	Post(fn func(Context))
@@ -97,16 +97,16 @@ type Context interface {
 	Exit()
 	Fail(reason string)
 
-	// VolumeDir is the session's writable directory, kept across incarnations (D904).
+	// VolumeDir is the session's writable directory, kept across incarnations (E09-D004).
 	VolumeDir() string
-	// InputDir is where the named input from the spec was unpacked, read-only (D904).
+	// InputDir is where the named input from the spec was unpacked, read-only (E09-D004).
 	InputDir(name string) string
 }
 
-// Order is a new order, in the units of td.Submit (DECISIONS D203).
+// Order is a new order, in the units of td.Submit (DECISIONS E02-D003).
 type Order struct {
 	APIID  int64
-	AlgoID uint32 // one declared for the account (D602)
+	AlgoID uint32 // one declared for the account (E06-D002)
 	UID    uint32
 	Side   commonv1.Side
 	Type   commonv1.OrderType
@@ -116,10 +116,10 @@ type Order struct {
 	QuoteQty float64
 	Price    float64 // price_ccy; decimal.Absent() for a market order
 	// RecvWindowMs is how long the request stays valid at the exchange; 0 is the TD instance's default
-	// (D620).
+	// (E06-D020).
 	RecvWindowMs int64
 	ReduceOnly   bool
-	// Params go to the exchange adapter as they are. Position-side keys are refused (D607).
+	// Params go to the exchange adapter as they are. Position-side keys are refused (E06-D007).
 	Params map[string]string
 }
 

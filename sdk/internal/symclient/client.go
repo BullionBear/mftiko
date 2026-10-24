@@ -33,11 +33,11 @@ const (
 	notifyCap = 64
 )
 
-// ErrNotInInit is Resolve called from a hook other than OnInit or OnStart (D804).
+// ErrNotInInit is Resolve called from a hook other than OnInit or OnStart (E08-D004).
 // Nothing was sent to SYM.
 var ErrNotInInit = errors.New("symclient: only OnInit and OnStart may call Resolve")
 
-// ErrUnknownUID is Info of a UID this session has not resolved (D824, D825).
+// ErrUnknownUID is Info of a UID this session has not resolved (E08-D024, E08-D025).
 // Info does not ask SYM and does not retry.
 var ErrUnknownUID = errors.New("symclient: the instrument is not known to this session")
 
@@ -159,7 +159,7 @@ func (c *Client) Close() {
 // Exited is closed when the revision loop has returned.
 func (c *Client) Exited() <-chan struct{} { return c.done }
 
-// AllowResolve is true while OnInit or OnStart is the hook running (D804).
+// AllowResolve is true while OnInit or OnStart is the hook running (E08-D004).
 // The session sets it false around every other hook. Resolve then returns
 // ErrNotInInit without calling SYM.
 func (c *Client) AllowResolve(on bool) {
@@ -223,9 +223,9 @@ func (c *Client) Resolve(ctx context.Context, ticker string) (symbol.Info, error
 	return c.copied(info.UID, info), nil
 }
 
-// Info is the current row of a resolved instrument. It reads memory (D825).
-// A UID that was not resolved returns ErrUnknownUID and does not call SYM (D823, D824).
-// A resolved instrument that has since been delisted is still returned (D826).
+// Info is the current row of a resolved instrument. It reads memory (E08-D025).
+// A UID that was not resolved returns ErrUnknownUID and does not call SYM (E08-D023, E08-D024).
+// A resolved instrument that has since been delisted is still returned (E08-D026).
 func (c *Client) Info(uid uint32) (symbol.Info, error) {
 	c.mu.Lock()
 	info, ok := c.rows[uid]
@@ -418,7 +418,7 @@ func (c *Client) refreshOnce(ctx context.Context, key tableKey) error {
 
 // refreshOne refetches one resolved UID. Active not_found means the row moved
 // to the terminal table: GetByUid with include_inactive keeps that last copy
-// (D826). Any other failure leaves the previous copy and does not advance the
+// (E08-D026). Any other failure leaves the previous copy and does not advance the
 // table revision, so the next check tries again.
 func (c *Client) refreshOne(ctx context.Context, key tableKey, uid uint32) error {
 	info, err := c.rpcByUID(ctx, uid, false)

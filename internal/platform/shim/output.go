@@ -31,15 +31,15 @@ const (
 func LogDir(workDir, plane string) string { return filepath.Join(workDir, "log", plane) }
 
 const (
-	// LogDirMode is ${WORK_DIR}/log/{plane} after chmod (D1015, D1021).
+	// LogDirMode is ${WORK_DIR}/log/{plane} after chmod (E10-D015, E10-D021).
 	LogDirMode os.FileMode = 0o750
-	// LogFileMode is a newly created stdout, stderr, or shim log (D1015, D1021).
+	// LogFileMode is a newly created stdout, stderr, or shim log (E10-D015, E10-D021).
 	LogFileMode os.FileMode = 0o640
 )
 
 // EnsureLogDir creates ${WORK_DIR}/log/{plane} if needed and chmods it to 0750
-// (D1021, D1022). A setgid bit already on the directory is kept, so new files
-// inherit the group set on ${WORK_DIR}/log (D1015).
+// (E10-D021, E10-D022). A setgid bit already on the directory is kept, so new files
+// inherit the group set on ${WORK_DIR}/log (E10-D015).
 func EnsureLogDir(workDir, plane string) error {
 	dir := LogDir(workDir, plane)
 	if err := os.MkdirAll(dir, LogDirMode); err != nil {
@@ -63,7 +63,7 @@ func chmodLogDir(dir string) error {
 }
 
 // OpenLogFile appends to path. A new file is created at 0640, then chmodded so
-// the process umask does not apply (D1021). An existing file keeps its mode (D1022).
+// the process umask does not apply (E10-D021). An existing file keeps its mode (E10-D022).
 func OpenLogFile(path string) (*os.File, error) {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE|os.O_EXCL, LogFileMode)
 	if err == nil {

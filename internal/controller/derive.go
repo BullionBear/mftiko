@@ -13,14 +13,14 @@ import (
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
 )
 
-// Plane labels in the deployment JSON (D1317, D1327). They match state.Plane.
-// This package does not import state (D1301).
+// Plane labels in the deployment JSON (E13-D017, E13-D027). They match state.Plane.
+// This package does not import state (E13-D001).
 const (
 	planeMD = "md"
 	planeTD = "td"
 )
 
-// endInvalid is SessionDemand.end_reason for a spec N1 will not run (D1304).
+// endInvalid is SessionDemand.end_reason for a spec N1 will not run (E13-D004).
 const endInvalid = "invalid_spec"
 
 // keyRoot is state.Root. Key helpers below match state.SessionDemandKey,
@@ -28,7 +28,7 @@ const endInvalid = "invalid_spec"
 const keyRoot = "/mftiko/v1"
 
 // Placement is one instance in the deployment: the plane label and the region
-// the instance's keys live in (D1307, D1317).
+// the instance's keys live in (E13-D007, E13-D017).
 type Placement struct {
 	Plane  string
 	Region string
@@ -41,7 +41,7 @@ type Write struct {
 }
 
 // Drift is a session whose spec revision has left the revision the assignment
-// was derived from (D1322). The stored demands are kept.
+// was derived from (E13-D022). The stored demands are kept.
 type Drift struct {
 	Instance string
 	Session  string
@@ -55,25 +55,25 @@ type Plan struct {
 	Drifts []Drift
 }
 
-// Derive plans the puts that bring etcd into line with N1 (D901, D1302–D1304,
-// D1308, D1322–D1327).
+// Derive plans the puts that bring etcd into line with N1 (E09-D001, E13-D002–E13-D004,
+// E13-D008, E13-D022–E13-D027).
 //
 // A non-terminal RUNNING spec yields one SessionDemand plus one demand entry
 // per feed, selector and account. start is false and binding statuses are
-// empty (D1324); the gate fills those. An already-ENDED spec writes nothing
-// (D1326). A spec whose revision differs from the assignment's spec_revision
-// is left as stored (D1322). Comparison ignores SessionDemand.updated_at_ns
-// and DemandEntry.spec_revision (D1323).
+// empty (E13-D024); the gate fills those. An already-ENDED spec writes nothing
+// (E13-D026). A spec whose revision differs from the assignment's spec_revision
+// is left as stored (E13-D022). Comparison ignores SessionDemand.updated_at_ns
+// and DemandEntry.spec_revision (E13-D023).
 //
 // now is the wall clock. The first assignment records it in issued_at_ns and
-// later writes copy that value (D1302). A put that differs also records it in
+// later writes copy that value (E13-D002). A put that differs also records it in
 // updated_at_ns; an equal value is not put, so the clock alone never writes.
-// An assignment already ENDED is left as stored (D1328).
+// An assignment already ENDED is left as stored (E13-D028).
 //
-// A region that is not synced, or is stale, is not written (D1306, D1318).
+// A region that is not synced, or is stale, is not written (E13-D006, E13-D018).
 // A session whose own region is in that state is skipped entirely, so a stale
 // spec is not pushed into a region that is still fresh. An undecodable
-// assignment is not rewritten and its session is not extended (D1321).
+// assignment is not rewritten and its session is not extended (E13-D021).
 func Derive(v View, inst map[string]Placement, now time.Time) Plan {
 	if len(v.Sessions) == 0 {
 		return Plan{}
@@ -115,12 +115,12 @@ func (b *builder) session(sess Session) {
 	}
 	// Ending is irreversible. An assignment already ENDED is not derived
 	// back to RUNNING, so ack recovery and a spec that runs again do not
-	// revive it (D1328).
+	// revive it (E13-D028).
 	if sess.Demand.GetDesired() == sessionv1.DesiredState_DESIRED_STATE_ENDED {
 		return
 	}
 	// ENDED is not derived. No assignment yet means write nothing; an
-	// assignment that exists is ended by the gate, not here (D1326).
+	// assignment that exists is ended by the gate, not here (E13-D026).
 	if sess.Spec.GetDesiredState() == sessionv1.DesiredState_DESIRED_STATE_ENDED {
 		return
 	}
@@ -128,7 +128,7 @@ func (b *builder) session(sess Session) {
 		return
 	}
 	// The revision moved, so this is not a desired_state-only edit. Keep the
-	// stored demands and do not end the session as invalid_spec (D1322).
+	// stored demands and do not end the session as invalid_spec (E13-D022).
 	if sess.Demand != nil && sess.Demand.GetSpecRevision() != sess.SpecRev {
 		b.plan.Drifts = append(b.plan.Drifts, Drift{
 			Instance: sess.Instance, Session: sess.ID,
@@ -189,7 +189,7 @@ func (b *builder) running(sess Session) {
 }
 
 // putSession copies issued_at_ns off an assignment that already has one, and
-// skips the put when the value already matches (D1302, D1308).
+// skips the put when the value already matches (E13-D002, E13-D008).
 func (b *builder) putSession(sess Session, derived *statev1.SessionDemand) {
 	have := sess.Demand
 	if have != nil && have.GetIssuedAtNs() != 0 {
@@ -230,7 +230,7 @@ func terminal(st *statev1.SessionStatus) bool {
 	return st.GetPhase() == statev1.Phase_PHASE_DONE || st.GetPhase() == statev1.Phase_PHASE_FAILED
 }
 
-// specInvalid reports a spec N1 refuses (D1304, D1327). A duplicate feed is the
+// specInvalid reports a spec N1 refuses (E13-D004, E13-D027). A duplicate feed is the
 // same feed key, a duplicate selector is the same name, and a duplicate
 // account is the same api_id. An instance is usable when its plane label is
 // md for a market-data decl and td for an account.

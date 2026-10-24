@@ -15,7 +15,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/td/account"
 )
 
-// DefaultLinger is how long an account with no owners keeps its worker (D905).
+// DefaultLinger is how long an account with no owners keeps its worker (E09-D005).
 const DefaultLinger = 5 * time.Second
 
 // Reasons of a REJECTED ack the plan decides. The worker's own (auth, hedge_mode,
@@ -27,7 +27,7 @@ const (
 	ReasonKindUnsupported = account.ReasonKindUnsupported
 )
 
-// Endpoint is the venue hosts this instance uses for one account kind (D616, as MD's url, D403).
+// Endpoint is the venue hosts this instance uses for one account kind (E06-D016, as MD's url, E04-D003).
 // Empty is the adapter's default.
 type Endpoint struct {
 	REST      string `json:"rest,omitempty"`
@@ -61,7 +61,7 @@ func (s Spec) Hash() string {
 	return hex.EncodeToString(h.Sum(nil)[:8])
 }
 
-// Live is empty: TD has no live config; Init carries everything (D111).
+// Live is empty: TD has no live config; Init carries everything (E01-D011).
 type Live struct{}
 
 // Hash is "" for every Live, which is also what a worker that applied nothing reports: nothing is
@@ -79,7 +79,7 @@ type Kinds interface {
 }
 
 // Opener checks that an account's sealed credentials open with this instance's key and were sealed
-// for it (D613). It returns sealbox's error and keeps nothing.
+// for it (E06-D013). It returns sealbox's error and keeps nothing.
 type Opener func(sealed []byte, apiID int64, kind string) error
 
 // outcome is what the plan decided for one demand key: the worker it is served by, or why not.
@@ -153,7 +153,7 @@ func plan(in planIn) planOut {
 		}
 	}
 
-	// An account whose last owner left keeps its worker for linger (D905), with the spec it ran,
+	// An account whose last owner left keeps its worker for linger (E09-D005), with the spec it ran,
 	// unless its declaration now rejects it: that stops at once.
 	for _, id := range slices.Sorted(maps.Keys(in.prev)) {
 		if _, owned := owners[id]; owned {
@@ -193,7 +193,7 @@ func (in planIn) specOf(id int64, a *Account) (Spec, string) {
 		return Spec{}, ReasonUnknownKind
 	}
 	// One trade connection per api_id: a kind that trades several venues (BinancePM) is not run in
-	// phase 1 (D614).
+	// phase 1 (E06-D014).
 	if len(kind.Trades) != 1 {
 		return Spec{}, ReasonKindUnsupported
 	}

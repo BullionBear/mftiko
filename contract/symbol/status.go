@@ -1,6 +1,6 @@
 package symbol
 
-// Status is a listing's trading state (D203). The set is still provisional.
+// Status is a listing's trading state (E02-D003). The set is still provisional.
 // The spellings are the TEXT values the symbol tables check.
 //
 // The zero value, Unspecified, matches the proto zero SYMBOL_STATUS_UNSPECIFIED.

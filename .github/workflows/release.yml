@@ -1,4 +1,4 @@
-# Packs the MD and TD workers and pushes them to ghcr.io/bullionbear (D985–D990).
+# Packs the MD and TD workers and pushes them to ghcr.io/bullionbear (E09-D085–E09-D090).
 # The workflow only pushes. It does not set package visibility. See docs/release.md.
 name: release
 

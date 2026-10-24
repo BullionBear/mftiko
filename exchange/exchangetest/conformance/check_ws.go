@@ -40,7 +40,7 @@ func (r *runner) decode(name string) (*decoded, error) {
 }
 
 // replay feeds every ws.in record of s to a new codec. With scribble set, every frame goes through
-// one buffer that is overwritten as soon as Decode returns, as the conn worker's is (D302).
+// one buffer that is overwritten as soon as Decode returns, as the conn worker's is (E03-D002).
 func (r *runner) replay(s *Session, scribble bool) (*decoded, error) {
 	d := &decoded{sess: s}
 	var decode func([]byte) error
@@ -120,7 +120,7 @@ func (r *runner) replay(s *Session, scribble bool) (*decoded, error) {
 }
 
 // checkSessions: each session decodes to its golden events, and decodes the same when its frames
-// share one buffer that is overwritten after every Decode (D302: what the codec keeps across frames
+// share one buffer that is overwritten after every Decode (E03-D002: what the codec keeps across frames
 // must not point into a frame).
 func (r *runner) checkSessions() []Problem {
 	names, err := Sessions(r.fsys)
@@ -142,7 +142,7 @@ func (r *runner) checkSessions() []Problem {
 		}
 		if i := firstEventDiff(d.events, s2.events); i >= 0 {
 			out = append(out, Problem{"sessions", name, fmt.Sprintf(
-				"decoding changes when the frame buffer is reused: event %d (frame %d) differs; the codec keeps a reference into a frame after Decode returns (D302)",
+				"decoding changes when the frame buffer is reused: event %d (frame %d) differs; the codec keeps a reference into a frame after Decode returns (E03-D002)",
 				i, frameOf(d.events, s2.events, i))})
 		}
 	}
@@ -204,7 +204,7 @@ func (r *runner) checkUnknown() []Problem {
 	if a := r.env.Account; a != nil {
 		c, err := a.NewStream()
 		if errors.Is(err, exchange.ErrUnsupported) {
-			// The trade stream carries the private events (D303). Spot is this shape.
+			// The trade stream carries the private events (E03-D003). Spot is this shape.
 		} else if err != nil {
 			out = append(out, Problem{"unknown_frames", "private", err.Error()})
 		} else {
@@ -230,7 +230,7 @@ func (r *runner) checkUnknown() []Problem {
 }
 
 // optional are the fields of each event that md.v1 makes optional: the ones a venue may leave
-// absent and must then declare in TopicCaps.Absent (D401). A field that is not optional is never
+// absent and must then declare in TopicCaps.Absent (E04-D001). A field that is not optional is never
 // absent.
 var optional = map[string][]string{
 	"Kline":        {"QuoteVolume"},
@@ -256,7 +256,7 @@ var eventTypes = map[string]reflect.Type{
 	"Greeks": reflect.TypeFor[exchange.Greeks](), "MarkPrice": reflect.TypeFor[exchange.MarkPrice](),
 }
 
-// checkCaps: the capability table matches what the venue sends (D401). A topic it emits is listed;
+// checkCaps: the capability table matches what the venue sends (E04-D001). A topic it emits is listed;
 // a field it declares absent is never filled; an optional field it does not declare absent is
 // filled at least once in the fixtures; a required field is never absent.
 func (r *runner) checkCaps() []Problem {

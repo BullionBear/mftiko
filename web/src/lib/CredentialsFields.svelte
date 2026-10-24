@@ -1,5 +1,5 @@
 <script lang="ts">
-	// Credential inputs (D1101). ed25519 secret is a textarea so PEM newlines survive;
+	// Credential inputs (E10-D101). ed25519 secret is a textarea so PEM newlines survive;
 	// HMAC key, secret and passphrase stay type=password. Nothing here writes storage.
 	import type { AccountKind, KeyType } from './api';
 	import { fieldDomId, type SecretGuard } from './account-form';
@@ -44,7 +44,7 @@
 	}
 
 	// Parent bumps clearGen when it drops secrets. Clear the file control too so the
-	// chosen file does not stay selected (D1101).
+	// chosen file does not stay selected (E10-D101).
 	$effect(() => {
 		void clearGen;
 		readError = '';
@@ -74,7 +74,7 @@
 			dropFile();
 			return;
 		}
-		// Submit (or a key-type change) won the race: do not put the text back (D1101).
+		// Submit (or a key-type change) won the race: do not put the text back (E10-D101).
 		if (gen !== guard.epoch) {
 			dropFile();
 			return;

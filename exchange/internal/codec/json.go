@@ -12,7 +12,7 @@ import (
 	"github.com/BullionBear/mftiko/contract/wire/decimal"
 )
 
-// config is one of the two frozen configurations (D302): sonic decoder options, fixed here. Its decoders come
+// config is one of the two frozen configurations (E03-D002): sonic decoder options, fixed here. Its decoders come
 // from a pool, so a decode allocates nothing of its own; sonic.API would allocate a decoder per call, and its
 // Unmarshal copies the whole input first.
 type config struct {
@@ -31,7 +31,7 @@ var (
 )
 
 // DecodeFrame decodes a websocket frame into v without copying it. Strings in v may point into frame and are
-// valid only as long as frame is: until Decode returns (D302). Whatever outlives that, the caller copies.
+// valid only as long as frame is: until Decode returns (E03-D002). Whatever outlives that, the caller copies.
 func DecodeFrame(frame []byte, v any) error { return borrowed.decode(frame, v) }
 
 // DecodeBody decodes a REST response body into v. Every string in v is a copy, so v stays valid after the
@@ -55,7 +55,7 @@ func (c *config) decode(in []byte, v any) error {
 }
 
 // Marshal encodes v. A request body is marshalled once: those bytes are signed and those bytes are sent
-// (D008). NaN and ±Inf are refused; a number goes to a venue as text from decimal.Append.
+// (E00-D008). NaN and ±Inf are refused; a number goes to a venue as text from decimal.Append.
 func Marshal(v any) ([]byte, error) { return encoder.Encode(v, 0) }
 
 // detach fixes err's message now. sonic's syntax errors quote the input, and the caller is about to reuse
@@ -68,7 +68,7 @@ func detach(err error) error {
 }
 
 // Decimal is a number as a venue sends it, quoted ("0.0010") or bare (0.001), read with decimal.ParseBytes
-// straight from the input: no string in between (D008). "" and null are decimal.Absent. A field the venue
+// straight from the input: no string in between (E00-D008). "" and null are decimal.Absent. A field the venue
 // leaves out keeps the value it had, so preset Absent where its absence means something.
 //
 // It is only for reading. Numbers go to a venue with decimal.Append at the instrument's step.

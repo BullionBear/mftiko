@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	// seenMax and seenAge bound the in-memory cloid record (D618). Whichever is reached first drops
+	// seenMax and seenAge bound the in-memory cloid record (E06-D018). Whichever is reached first drops
 	// the oldest entry. It is not persisted.
 	seenMax = 100_000
 	seenAge = 24 * time.Hour
@@ -27,7 +27,7 @@ const (
 	queryFor = 5 * time.Minute
 )
 
-// errNotSent: the request never left the process, so the caller may try the other path (D624).
+// errNotSent: the request never left the process, so the caller may try the other path (E06-D024).
 var errNotSent = errors.New("account: order was not written")
 
 // Reasons on OrderReply and on Report. The code is what a program branches on.
@@ -49,7 +49,7 @@ const (
 
 var hedgeParam = map[string]bool{"positionSide": true, "posSide": true, "positionIdx": true}
 
-// orderEnv is what Init knows about orders (D618–D624).
+// orderEnv is what Init knows about orders (E06-D018–E06-D024).
 type orderEnv struct {
 	trades   []string
 	limits   exchange.AccountLimits
@@ -90,7 +90,7 @@ func (b *book) rateHold() time.Duration {
 }
 
 // window resolves recv_window_ms: 0 is the instance default, and anything past the venue maximum
-// is clamped to it (D620).
+// is clamped to it (E06-D020).
 func (b *book) window(ms int64) time.Duration {
 	w := b.validity
 	if w <= 0 {
@@ -142,7 +142,7 @@ func (w *Worker) handleOrder(ctx context.Context, raw []byte) []byte {
 	}
 	out := w.book.admit(ctx, req)
 	if out.report != nil && w.report != nil {
-		// A failed report does not stop the order (D601).
+		// A failed report does not stop the order (E06-D001).
 		_ = w.report(out.report)
 	}
 	for _, job := range out.jobs {
@@ -183,7 +183,7 @@ func (b *book) decideSubmit(s *tdv1.Submit) admitOut {
 	}
 	cid := s.GetClientOrderId()
 	now := b.now()
-	// client_order_id is an opaque string. An empty one is 106; anything else is a key (D633).
+	// client_order_id is an opaque string. An empty one is 106; anything else is a key (E06-D033).
 	if cid == "" {
 		return b.rejectSubmit(s, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonEmpty, now)
 	}
@@ -201,7 +201,7 @@ func (b *book) decideSubmit(s *tdv1.Submit) admitOut {
 			b.seen.add(seenRec(cid, now, s, rep, qtyStep, pxStep))
 			return admitOut{reply: rep}
 		}
-		// A mismatched attempt must not be remembered: it would hide the live order (D619).
+		// A mismatched attempt must not be remembered: it would hide the live order (E06-D019).
 		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonContent, cid)}
 	}
 	if ierr != nil || info == nil || !info.IsTradable() {
@@ -285,11 +285,11 @@ func (b *book) decideCancel(c *tdv1.Cancel) admitOut {
 	return admitOut{reply: orderReply(true, 0, "", cid), jobs: []*sendJob{{cancel: true, cloid: cid, window: win, ref: ref, info: info}}}
 }
 
-// decideBatch forwards the named orders as one CancelBatch (D625). Each entry is a client order id.
+// decideBatch forwards the named orders as one CancelBatch (E06-D025). Each entry is a client order id.
 // The worker looks up the live order by that id and sends the order's order id (or the client id
 // when the venue has not numbered it yet). It does not choose orders, split the list, queue, retry,
 // or check which algo an order belongs to. The reply only says the request was taken. Each order
-// that is sent gets its own CANCEL_REQUESTED; the venue answer is that order's later update (D610).
+// that is sent gets its own CANCEL_REQUESTED; the venue answer is that order's later update (E06-D010).
 func (b *book) decideBatch(c *tdv1.BatchCancel) admitOut {
 	if c == nil || len(c.GetOrders()) == 0 {
 		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonInvalid, "")}
@@ -297,7 +297,7 @@ func (b *book) decideBatch(c *tdv1.BatchCancel) admitOut {
 	if b.limits.CancelBatch == 1 {
 		return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonNoBatch, "")}
 	}
-	// No recv_window_ms on this message; the instance default applies (D620).
+	// No recv_window_ms on this message; the instance default applies (E06-D020).
 	win := b.window(0)
 	refs := make([]exchange.CancelRef, 0, len(c.GetOrders()))
 	orders := make([]*tdv1.Order, 0, len(c.GetOrders()))
@@ -308,7 +308,7 @@ func (b *book) decideBatch(c *tdv1.BatchCancel) admitOut {
 		}
 		info, err := b.ins.GetByUID(b.ctx, o.GetUid(), false)
 		if err != nil || info == nil {
-			// One unresolvable instrument rejects this request and no other (D625).
+			// One unresolvable instrument rejects this request and no other (E06-D025).
 			return admitOut{reply: orderReply(false, int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), reasonInstrument, "")}
 		}
 		refs = append(refs, exchange.CancelRef{
@@ -349,7 +349,7 @@ func (b *book) batchOrder(item *tdv1.BatchCancelOrder) (*tdv1.Order, int32, stri
 	}
 }
 
-// rejectSubmit remembers the reply so a retry of the same cloid returns it and is not sent (D619).
+// rejectSubmit remembers the reply so a retry of the same cloid returns it and is not sent (E06-D019).
 func (b *book) rejectSubmit(s *tdv1.Submit, code int32, reason string, now time.Time) admitOut {
 	cid := s.GetClientOrderId()
 	rep := orderReply(false, code, reason, cid)
@@ -403,7 +403,7 @@ func (w *Worker) dispatch(ctx context.Context, job *sendJob) {
 	now := w.now()
 	deadline := now.Add(job.window + w.book.clockSkew())
 	if len(job.refs) > 0 {
-		// One BatchCancel is one CancelBatch, and it stays on REST (D303, D625).
+		// One BatchCancel is one CancelBatch, and it stays on REST (E03-D003, E06-D025).
 		perrs, used, err := w.restBatch(ctx, job, now)
 		w.book.send(ctx, msgResult{
 			kind: resultBatch, refs: job.refs, perrs: perrs, err: err,
@@ -500,7 +500,7 @@ func (b *book) applyResult(m msgResult) {
 	b.applyOne(m)
 }
 
-// noteLimit records venue usage and, on a 429 or 418, pauses every send (D420).
+// noteLimit records venue usage and, on a 429 or 418, pauses every send (E04-D020).
 func (b *book) noteLimit(used []exchange.Used, err error) {
 	var reset time.Time
 	if len(used) > 0 {
@@ -540,7 +540,7 @@ func (b *book) applyBatch(m msgResult) {
 	}
 	if m.err != nil || len(m.perrs) != len(m.refs) {
 		// A batch with no per-order answer is unknown for every order in it: query by cloid,
-		// do not resend (D626). A readable whole-request refusal applies to each order.
+		// do not resend (E06-D026). A readable whole-request refusal applies to each order.
 		err := m.err
 		if err == nil {
 			err = exchange.ErrUnknownOutcome
@@ -588,7 +588,7 @@ func (b *book) applyOne(m msgResult) {
 	}
 }
 
-// venueRefuse is a readable refusal. A submit becomes REJECTED; a cancel clears cancel_sent_ns (D610).
+// venueRefuse is a readable refusal. A submit becomes REJECTED; a cancel clears cancel_sent_ns (E06-D010).
 func (b *book) venueRefuse(m msgResult, code int32, reason string) {
 	b.clearQuery(m.cloid)
 	_, o := b.find(&tdv1.Order{ClientOrderId: m.cloid, OrderId: m.orderID})
@@ -669,7 +669,7 @@ func (b *book) markUnknown(m msgResult) {
 		o.Status = tdv1.OrderStatus_ORDER_STATUS_UNKNOWN
 		b.publishOrder(o, tdv1.OrderCause_ORDER_CAUSE_OUTCOME_UNKNOWN, 0, "")
 	}
-	// A cancel with no answer keeps its status and cancel_sent_ns (D610).
+	// A cancel with no answer keeps its status and cancel_sent_ns (E06-D010).
 	b.armQuery(o, m.deadline, m.kind == resultCancel)
 }
 
@@ -877,7 +877,7 @@ func (b *book) queryDone(q query, upd *exchange.OrderUpdate, used []exchange.Use
 	}
 	cur.inflight = false
 	if rl := (*exchange.RateLimited)(nil); errors.As(err, &rl) {
-		// A pause is not a failed query (D420). The send already paused when the response carried
+		// A pause is not a failed query (E04-D020). The send already paused when the response carried
 		// usage; otherwise pause from Retry-After here.
 		if b.rate == nil || !b.rate.paused(now) {
 			b.rate.pause(now, time.Duration(rl.RetryAfterMs)*time.Millisecond, b.rateHold(), time.Time{})
@@ -931,7 +931,7 @@ func (b *book) queryAnswer(m msgResult) {
 
 // cancelNotPlaced: a cancel with no answer, queried after its window, found the order still open.
 // The cancel can no longer take effect, so cancel_sent_ns is cleared and the strategy may cancel
-// again (D605, D610). One cancel is in flight per order, so this flag is that cancel's.
+// again (E06-D005, E06-D010). One cancel is in flight per order, so this flag is that cancel's.
 func (b *book) cancelNotPlaced(cloid string) {
 	_, o := b.find(&tdv1.Order{ClientOrderId: cloid})
 	if o == nil || o.GetCancelSentNs() == 0 {

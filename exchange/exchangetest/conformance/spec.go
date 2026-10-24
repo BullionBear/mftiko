@@ -51,11 +51,11 @@ type Spec struct {
 	Cases []Case
 
 	// FillPairs tie a private session, or a trade session that carries events, to a History case
-	// that covers the same fills (D601).
+	// that covers the same fills (E06-D001).
 	FillPairs []FillPair
 
 	// TradeSamples are the requests whose TradeStream frames are pinned in ws/trade_dial.golden.json
-	// (D303), encoded at Now with ids 1, 2, ... in order.
+	// (E03-D003), encoded at Now with ids 1, 2, ... in order.
 	TradeSamples []TradeSample
 }
 

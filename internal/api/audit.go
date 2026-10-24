@@ -19,7 +19,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Audit queue (D1049). The bound is a code constant: the decision says the queue has a limit and
+// Audit queue (E10-D049). The bound is a code constant: the decision says the queue has a limit and
 // does not pick the number. Tests set auditQueueCap before the server starts.
 const (
 	auditQueueCapDefault = 256
@@ -57,8 +57,8 @@ type auditRow struct {
 	detail    string
 }
 
-// auditor writes rows off the request path (D1049). A full queue or a failed insert is an error
-// log and a counter; the HTTP response has already been sent (D1010).
+// auditor writes rows off the request path (E10-D049). A full queue or a failed insert is an error
+// log and a counter; the HTTP response has already been sent (E10-D010).
 type auditor struct {
 	pool *pgxpool.Pool
 	log  zerolog.Logger
@@ -83,7 +83,7 @@ type auditor struct {
 }
 
 // openAudit builds the pool and starts the writer. pgxpool does not dial when MinConns is 0, so
-// this returns while Postgres is down (D1048). ConnectTimeout is bounded so a later dial cannot
+// this returns while Postgres is down (E10-D048). ConnectTimeout is bounded so a later dial cannot
 // outlive the shutdown window.
 func openAudit(dsn string, log zerolog.Logger) (*auditor, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
@@ -129,7 +129,7 @@ func (a *auditor) enqueue(row auditRow) {
 
 // shutdown closes the queue and waits until the writer finishes what is already queued, or until
 // ctx ends. The caller passes the same context as http.Server.Shutdown, so the drain stays inside
-// D1027's window. Rows still queued when the window ends are dropped.
+// E10-D027's window. Rows still queued when the window ends are dropped.
 func (a *auditor) shutdown(ctx context.Context) {
 	if a == nil {
 		return
@@ -279,7 +279,7 @@ func strPtr(s string) *string {
 	return &s
 }
 
-// redactedBody applies D1052. Credential and token fields are removed before the size is measured.
+// redactedBody applies E10-D052. Credential and token fields are removed before the size is measured.
 // A non-JSON body, an empty body, or a body over the read limit stores no content.
 func redactedBody(raw []byte, tooBig, write bool) (stored []byte, n *int64, truncated bool, parsed any) {
 	if !write {
@@ -309,7 +309,7 @@ func redactedBody(raw []byte, tooBig, write bool) (stored []byte, n *int64, trun
 	return stored, n, truncated, v
 }
 
-// redactValue removes account credentials and token fields at every object (D1010, D1052).
+// redactValue removes account credentials and token fields at every object (E10-D010, E10-D052).
 func redactValue(v any) {
 	switch x := v.(type) {
 	case map[string]any:

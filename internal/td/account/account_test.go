@@ -431,14 +431,14 @@ func TestReconRetried(t *testing.T) {
 	h.stop()
 }
 
-// Hedge mode at Start is INIT_FAILED (D607).
+// Hedge mode at Start is INIT_FAILED (E06-D007).
 func TestHedgeModeAtStart(t *testing.T) {
 	h := start(t, setup{})
 	h.v.SetHedgeMode(true)
 	h.startFails(ReasonHedgeMode)
 }
 
-// The position mode is checked at Start only (D616): a later recon does not look at it.
+// The position mode is checked at Start only (E06-D016): a later recon does not look at it.
 func TestHedgeModeOnlyAtStart(t *testing.T) {
 	h := start(t, setup{})
 	h.startReady()
@@ -450,7 +450,7 @@ func TestHedgeModeOnlyAtStart(t *testing.T) {
 }
 
 // Credentials revoked while running: the reconnect is refused, and the worker ends CRASHED with
-// reason auth, which the TD agent's Policy does not restart (D608).
+// reason auth, which the TD agent's Policy does not restart (E06-D008).
 func TestCredentialsRevoked(t *testing.T) {
 	h := start(t, setup{})
 	h.startReady()
@@ -496,7 +496,7 @@ func TestQuietStream(t *testing.T) {
 const swapLife = 2 * time.Second
 
 // swapRecon waits for the planned swap's one Recon(RECONNECT). The next worker frame has to be
-// Report(READY): a DEGRADED in between fails the wait (D635–D637).
+// Report(READY): a DEGRADED in between fails the wait (E06-D035–E06-D037).
 func (h *harness) swapRecon(first *tdctlv1.Report) []*tdv1.AccountEvent {
 	h.t.Helper()
 	waitFor(h.t, "no Recon(RECONNECT) after the swap", func() bool {
@@ -547,7 +547,7 @@ func serveTrade(t *testing.T, tv *exchangetest.TradeVenue) {
 }
 
 // A connection about to reach its MaxLifetime is replaced before it closes. The events connection
-// then runs one recon, reason RECONNECT, seq continuous, and does not report DEGRADED (D635–D637).
+// then runs one recon, reason RECONNECT, seq continuous, and does not report DEGRADED (E06-D035–E06-D037).
 func TestReplacedAheadOfLifetime(t *testing.T) {
 	h := start(t, setup{opts: exchangetest.AccountOptions{Stream: exchange.StreamLimits{MaxLifetime: swapLife}}})
 	first := h.startReady()
@@ -560,7 +560,7 @@ func TestReplacedAheadOfLifetime(t *testing.T) {
 }
 
 // The replacement dial does not watch the old link. An order the old link misses is in the book
-// after the swap's recon, and it was not delivered as a stream event (D635).
+// after the swap's recon, and it was not delivered as a stream event (E06-D035).
 func TestSwapReconRestoresWhatTheOldLinkLost(t *testing.T) {
 	h := start(t, setup{opts: exchangetest.AccountOptions{Stream: exchange.StreamLimits{MaxLifetime: swapLife}}})
 	first := h.startReady()
@@ -583,7 +583,7 @@ func TestSwapReconRestoresWhatTheOldLinkLost(t *testing.T) {
 	h.stop()
 }
 
-// While the old and new links overlap, one order event is delivered once (D615, D635).
+// While the old and new links overlap, one order event is delivered once (E06-D015, E06-D035).
 func TestSwapOverlapEmitsOnce(t *testing.T) {
 	h := start(t, setup{opts: exchangetest.AccountOptions{Stream: exchange.StreamLimits{MaxLifetime: swapLife}}})
 	first := h.startReady()
@@ -607,7 +607,7 @@ func TestSwapOverlapEmitsOnce(t *testing.T) {
 	h.stop()
 }
 
-// A trade stream that carries the events is the events connection: its planned swap recons (D635).
+// A trade stream that carries the events is the events connection: its planned swap recons (E06-D035).
 func TestEventTradeLinkSwapRecons(t *testing.T) {
 	tv := exchangetest.NewTradeVenue(apiKey, true)
 	tv.SetMaxLifetime(swapLife)
@@ -624,7 +624,7 @@ func TestEventTradeLinkSwapRecons(t *testing.T) {
 	h.stop()
 }
 
-// An orders connection's planned swap does not recon and does not change the account state (D635).
+// An orders connection's planned swap does not recon and does not change the account state (E06-D035).
 func TestOrderLinkSwapDoesNotRecon(t *testing.T) {
 	tv := exchangetest.NewTradeVenue(apiKey, false)
 	tv.SetMaxLifetime(400 * time.Millisecond)
@@ -678,7 +678,7 @@ func TestTradeStreamWithEvents(t *testing.T) {
 }
 
 // A trade stream without events (OKX, Bybit, Binance UM) is opened next to the private stream; its
-// drop does not degrade the account (D614).
+// drop does not degrade the account (E06-D014).
 func TestTradeStreamWithoutEvents(t *testing.T) {
 	tv := exchangetest.NewTradeVenue(apiKey, false)
 	h := start(t, setup{opts: exchangetest.AccountOptions{Trade: tv}})
@@ -851,7 +851,7 @@ func TestViewMatchesVenue(t *testing.T) {
 	h.stop()
 }
 
-// CancelBatch is the venue's batch size, on every td.view reply, before Start (D631).
+// CancelBatch is the venue's batch size, on every td.view reply, before Start (E06-D031).
 // 1 means the venue has no batch cancel. The SDK reads this to split an algo's orders.
 func TestViewCancelBatch(t *testing.T) {
 	for _, n := range []int{1, 10} {
@@ -892,7 +892,7 @@ func TestReconAfterReconnect(t *testing.T) {
 }
 
 // replay rebuilds an account from a td.view snapshot and the td.evt events after its seq: what a
-// session does after it missed events (D606).
+// session does after it missed events (E06-D006).
 type replay struct {
 	orders    map[string]*tdv1.Order
 	positions map[uint32]float64
@@ -993,7 +993,7 @@ func TestRebuildFromViewAndEvents(t *testing.T) {
 }
 
 // An order that finished while its event was lost with the connection is UNKNOWN in that recon
-// (D615). The worker then asks the venue by client order id and the fill comes back (D605).
+// (E06-D015). The worker then asks the venue by client order id and the fill comes back (E06-D005).
 func TestOrderLostWithTheConnection(t *testing.T) {
 	h := start(t, setup{})
 	h.v.PutOrder(limit("a", 1))

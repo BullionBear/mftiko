@@ -59,16 +59,16 @@ type Config struct {
 	RetryAfter time.Duration
 	RetryMax   time.Duration
 	// REST and Doer run SnapshotREST depth in this process. Nil is left alone until a book asks
-	// for a snapshot. The call does not go through md.fetch (D402). Depth asks for BookSync.Depth()
-	// (D453).
+	// for a snapshot. The call does not go through md.fetch (E04-D002). Depth asks for BookSync.Depth()
+	// (E04-D053).
 	REST exchange.PublicREST
 	Doer exchange.Doer
-	// BufferMax and BufferAge cap the updates kept while a snapshot is outstanding (D424). Zero
+	// BufferMax and BufferAge cap the updates kept while a snapshot is outstanding (E04-D024). Zero
 	// means DefaultBufferMax and DefaultBufferAge. Hitting either drops the buffer and makes the
 	// in-flight snapshot stale.
 	BufferMax int
 	BufferAge time.Duration
-	// RateHold is the wait after a 429 or 418 that has neither Retry-After nor ResetAt (D424).
+	// RateHold is the wait after a 429 or 418 that has neither Retry-After nor ResetAt (E04-D024).
 	// Zero means DefaultRateHold. Negative is rejected by Serve. It is not an Init field.
 	RateHold time.Duration
 	// BookNow is the clock for buffer age, snapshot backoff and rate holds. Nil means time.Now.
@@ -83,7 +83,7 @@ type Config struct {
 	// which is what tests do. A running worker passes the table loaded at Init.
 	Symbols Instruments
 	// TapeWindow, TapeMaxEvents and TapeBudget bound each feed's ring and the worker's tape
-	// memory (D458). Zero means 10 minutes, 100000 events and 256 MiB. The budget counts
+	// memory (E04-D058). Zero means 10 minutes, 100000 events and 256 MiB. The budget counts
 	// chunks, slots and the chunk-pointer index, not only message bytes.
 	TapeWindow    time.Duration
 	TapeMaxEvents int
@@ -139,10 +139,10 @@ type Conn struct {
 	wantFeeds []string
 	// wanted is the current desired set for this venue and route, keyed by channel.
 	wanted map[string][]feed
-	// exch is the venue spelling for that channel, from the venue table (D426). An assignment
+	// exch is the venue spelling for that channel, from the venue table (E04-D026). An assignment
 	// supplies it only when this worker has no table.
 	exch map[string]string
-	// tick is the price tick for that channel, from the same place as exch (D433).
+	// tick is the price tick for that channel, from the same place as exch (E04-D033).
 	tick map[string]float64
 	live *link
 	kick chan struct{}
@@ -171,8 +171,8 @@ type Conn struct {
 	downNs  int64
 }
 
-// feed is one assigned publication: the subject is md.v1.f.{instance}.{topic}.{ticker} (D455).
-// uid is the active-table UID copied when the feed is created (D461). The subject keeps the ticker.
+// feed is one assigned publication: the subject is md.v1.f.{instance}.{topic}.{ticker} (E04-D055).
+// uid is the active-table UID copied when the feed is created (E08-D065). The subject keeps the ticker.
 type feed struct {
 	topic, ticker string
 	uid           uint32
@@ -189,7 +189,7 @@ type link struct {
 	subPending    map[string]struct{}
 	unsubPending  map[string]struct{}
 	// resub is a SnapshotStream channel whose backoff has elapsed. plan unsubscribes it
-	// before subscribing it again (D434). The session rate limit still paces those frames.
+	// before subscribing it again (E04-D034). The session rate limit still paces those frames.
 	resub map[string]struct{}
 	seq   map[string]uint64 // feed key topic.ticker, last seq handed out
 	mdTs  map[string]int64  // md_ts_ns of that publish

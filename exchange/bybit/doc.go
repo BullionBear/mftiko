@@ -1,16 +1,16 @@
 // Package bybit is the Bybit adapter: one venue and one account kind, both named Bybit (two enums,
-// D301), a unified account (D403). The category
+// E03-D001), a unified account (E04-D003). The category
 // (spot, linear, inverse, option) is part of every request and of every public websocket path.
 //
 // Public spot and linear were checked on the mainnet on 2026-10-10 (api.bybit.com,
 // stream.bybit.com/v5/public/spot and /linear). Private REST and the private stream were checked
 // on the testnet the same day. Inverse and option have public paths this adapter does not open.
-// Submit and Cancel go over the trade websocket (D303). Cancel-batch, the snapshot, leverage
+// Submit and Cancel go over the trade websocket (E03-D003). Cancel-batch, the snapshot, leverage
 // and the dead-man switch stay on REST. History is the execution list (E3-13).
 //
 //   - The same channel string exists on both routes: "publicTrade.BTCUSDT" is a spot atom and a
 //     linear atom. The route comes from the instrument's category and is part of the atom id
-//     <venue>:<route>:<channel> (D202).
+//     <venue>:<route>:<channel> (E02-D002).
 //   - Capacity is characters: the args of one public connection may total at most 21,000
 //     characters. Cost is len(channel), Budget is 21000. Spot takes at most 10 args per subscribe
 //     request. The client sends {"op":"ping"} every 20s.
@@ -19,7 +19,7 @@
 //   - Auth signs "GET/realtime" + expires with HMAC-SHA256.
 //   - Dead-man switch: Disconnected Cancel Protection (DCP), account-wide.
 //   - History: GET /v5/execution/list, newest first, cursor paginated. execId is the fill id
-//     on both REST and the execution stream (D601). One request spans at most 7 days; the
+//     on both REST and the execution stream (E06-D001). One request spans at most 7 days; the
 //     venue keeps 2 years. GET /v5/order/history looks an order up by id.
 //
 // # Public market data
@@ -29,7 +29,7 @@
 // different from the cursor just sent, is the next page. A row is left out when it has no positive
 // tick and step, an asset that is not canonical, a settlement coin that is neither base nor quote,
 // a future suffix that is not DDMMMYY, or a tick or step that does not fit 15 significant digits
-// (D008). Spot has no contract size and no settlement asset. A linear contract's size is 1 and its
+// (E00-D008). Spot has no contract size and no settlement asset. A linear contract's size is 1 and its
 // settlement coin is settleCoin. ExpiryCode is the symbol's DDMMMYY suffix rewritten as YYMMDD
 // (BTCUSDT-16OCT26 → 261016); ExpiryNs is deliveryTime, a millisecond string.
 //
@@ -46,7 +46,7 @@
 // A request with no end drops the first row, the candle that is still forming, and returns the
 // rest oldest first. turnover is QuoteVolume. The page is 1000. GET /v5/market/orderbook is a
 // snapshot whose u is Last; the conn worker does not call it. Open interest is on the linear
-// ticker, so the REST method is exchange.ErrUnsupported (D401).
+// ticker, so the REST method is exchange.ErrUnsupported (E04-D001).
 //
 // Subscribe is {"req_id","op":"subscribe","args"}. req_id starts at 1 and is not reused on the
 // connection. An ack with success false is the request's error. A topic this codec does not read
@@ -127,13 +127,13 @@
 //
 // v5 has no read of the position mode, and a position list by settleCoin leaves out empty
 // positions. HedgeMode is set by an open order or a position whose positionIdx is 1 or 2, which
-// exist only in hedge mode (D617). An account in hedge mode that holds nothing reads as one-way
-// and passes the worker's Start check (D616); an order sent there without positionIdx is refused
+// exist only in hedge mode (E06-D017). An account in hedge mode that holds nothing reads as one-way
+// and passes the worker's Start check (E06-D016); an order sent there without positionIdx is refused
 // by the venue, so nothing is placed on a wrong assumption.
 //
 // QueryOrder is GET /v5/order/realtime by category, symbol and orderLinkId, or orderId when the
 // ref has none. With either id the venue ignores openOnly and also returns closed orders, the 500
-// most recent per category. An empty list is exchange.ErrNotFound (D605).
+// most recent per category. An empty list is exchange.ErrNotFound (E06-D005).
 //
 // # History
 //
@@ -149,7 +149,7 @@
 // the execId in this list.
 //
 // GET /v5/order/history looks up one order by orderId. An empty list is an error, so a
-// fill whose order has not landed in history yet is asked again on the next round (D601).
+// fill whose order has not landed in history yet is asked again on the next round (E06-D001).
 // The last 7 days return closed orders other than Cancelled, Rejected and Deactivated;
 // those three stay for 24 hours. Past 7 days the venue returns orders that have fills:
 // fully filled, and partial fills that were then cancelled.
@@ -171,7 +171,7 @@
 //	             cumExecQty is FilledQty, avgPrice is AvgPrice. updatedTime, else
 //	             createdTime, else the frame's creationTime, in milliseconds.
 //	execution    a Fill when execType is Trade, AdlTrade, BustTrade or BlockTrade, execId is
-//	             set and execQty is not 0. execId is the fill id (D601). isMaker chooses
+//	             set and execQty is not 0. execId is the fill id (E06-D001). isMaker chooses
 //	             maker or taker. feeCurrency is the fee asset. Funding, Settle and Delivery
 //	             are not fills.
 //	position     one Position per row with a non-zero size. The entry is avgPrice on the
@@ -224,5 +224,5 @@
 // and X-BAPI-SIGN. REST defaults to https://api.bybit.com. AccountConfig.RESTEndpoint replaces
 // it; a host of api-testnet.bybit.com selects the testnet private socket. The recv window is
 // AccountConfig.Validity in milliseconds, 5000 by default, on every REST request and in the
-// header of every trade-socket order frame: past it the venue refuses the request (D605).
+// header of every trade-socket order frame: past it the venue refuses the request (E06-D005).
 package bybit

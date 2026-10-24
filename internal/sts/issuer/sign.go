@@ -17,7 +17,7 @@ import (
 )
 
 // ErrTooManyFeeds is a session spec whose CONNECT argument is longer than
-// max_control_line. The server would refuse the connection (D827).
+// max_control_line. The server would refuse the connection (E08-D027).
 var ErrTooManyFeeds = errors.New("sts: too many feeds")
 
 // clientProtoInfo is nats.go's unexported protocol value (the second iota,
@@ -76,7 +76,7 @@ func nonceSignatureLen() (int, error) {
 // connectArg is the CONNECT JSON argument nats.go sends for a session
 // connection: user JWT, a nonce signature of the measured length, no client
 // name, headers and no_responders on. That is the natsx session path when
-// Options.Name is empty (D906, D827). Inbox prefix, reconnect, and handlers
+// Options.Name is empty (E09-D006, E08-D027). Inbox prefix, reconnect, and handlers
 // are not part of this JSON.
 //
 // The placeholder signature is only as long as a real one. Its bytes are
@@ -103,7 +103,7 @@ func connectArg(userJWT string) ([]byte, error) {
 // SignSession signs the session user for perms and returns the user JWT and
 // the user seed. The allow lists are perms.Pub and perms.Sub. There is no
 // deny list and no response permission: a session calls, it does not answer
-// (D821). The JWT does not expire (D906). The seed is for the worker's
+// (E08-D021). The JWT does not expire (E09-D006). The seed is for the worker's
 // Init payload; this function does not write it.
 //
 // The size check is here, not in SessionPermissions. After signing, the

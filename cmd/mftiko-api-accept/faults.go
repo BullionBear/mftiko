@@ -41,9 +41,9 @@ func flowFromFlags() (*flow, context.CancelFunc, error) {
 	return f, cancel, nil
 }
 
-// tickerFlow: the API takes a feed whose ticker does not exist (D202). MD rejects it, the
+// tickerFlow: the API takes a feed whose ticker does not exist (E02-D002). MD rejects it, the
 // controller ends the session deps_failed, and the reason stays on the terminal status as a
-// dependency condition until the spec is deleted (D1014, D1093).
+// dependency condition until the spec is deleted (E10-D014, E10-D093).
 func tickerFlow() error {
 	ticker := flag.String("ticker", "BinanceUM_Perp_NOSUCHUSDT", "a ticker SYM does not have")
 	topic := flag.String("topic", "orderbook_delta", "the feed's topic")
@@ -57,7 +57,7 @@ func tickerFlow() error {
 	body.Feeds = &[]apiv1.FeedDeclInput{{Feed: feed, MdInstance: mdInst}}
 	s, err := f.create(f.a, body, "")
 	if err != nil {
-		return fmt.Errorf("create: %w (the API must not check tickers, D202)", err)
+		return fmt.Errorf("create: %w (the API must not check tickers, E02-D002)", err)
 	}
 	id := s.Id
 	say("session %s with %s", id, feed)
@@ -215,7 +215,7 @@ func (f *flow) bothIDs() ([]string, error) {
 }
 
 // absentFlow is run around a stopped controller. create: both replicas report controller_absent
-// (D1014); the API still writes a spec, and no assignment appears. resume: after the controller
+// (E10-D014); the API still writes a spec, and no assignment appears. resume: after the controller
 // is back, the same session is assigned, runs, and is ended and deleted.
 func absentFlow() error {
 	step := popStep()
@@ -388,7 +388,7 @@ func (f *flow) waitUnavailable(want []string) error {
 	})
 }
 
-// readyz is not under /api and is not audited (D1010).
+// readyz is not under /api and is not audited (E10-D010).
 func readyz(ctx context.Context, base string) ([]string, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+"/readyz", nil)
 	if err != nil {
@@ -419,7 +419,7 @@ func sameSet(a, b []string) bool {
 	return slices.Equal(a, b)
 }
 
-// replicasFlow sends the same writes to both replicas at once (D1006, D1068). One Idempotency-Key
+// replicasFlow sends the same writes to both replicas at once (E10-D006, E10-D068). One Idempotency-Key
 // sent n times to each gives one session; n different keys give n sessions with distinct ids; both
 // replicas list them all; ending on one is seen on the other.
 func replicasFlow() error {

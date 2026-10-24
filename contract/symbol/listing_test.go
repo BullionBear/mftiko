@@ -115,9 +115,9 @@ func TestListingTickerRejects(t *testing.T) {
 	}
 }
 
-// D203's comparison table. Every row is a Validate case, and the stored rows
+// E02-D003's comparison table. Every row is a Validate case, and the stored rows
 // also derive linear / inverse / quanto and 幣本位 / U 本位.
-func TestValidateD203(t *testing.T) {
+func TestValidateE02D003(t *testing.T) {
 	contract := func(l symbol.Listing) symbol.Listing {
 		if l.ContractSize == 0 {
 			l.ContractSize = 1

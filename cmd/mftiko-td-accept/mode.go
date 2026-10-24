@@ -26,7 +26,7 @@ import (
 )
 
 // mode reads the venue account's position mode, or sets it with -dual: true is hedge mode, which
-// the account worker refuses to start on (D607, D616). The venues only switch it with no open
+// the account worker refuses to start on (E06-D007, E06-D016). The venues only switch it with no open
 // orders and no positions (Bybit: none on the symbols switched). It talks to the venue directly,
 // with the credentials JSON of mftiko-seal, and only to a testnet or demo trading.
 //
@@ -36,7 +36,7 @@ import (
 //     and a new demo account is 1 (spot only).
 //   - Bybit: POST /v5/position/switch-mode for linear -coin, or one -symbol. v5 has no read of
 //     the mode, and the worker sees it only through an order or position with positionIdx 1 or 2
-//     (D617): -hedge-order PRICE places a resting buy on -symbol with positionIdx 1, -cancel-all
+//     (E06-D017): -hedge-order PRICE places a resting buy on -symbol with positionIdx 1, -cancel-all
 //     cancels the linear orders on -symbol. Without -dual it lists the linear orders and positions
 //     of -coin with their positionIdx.
 func mode() error {

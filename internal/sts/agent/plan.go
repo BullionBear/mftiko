@@ -21,7 +21,7 @@ type demandView struct {
 
 // statusView is the phase and reason already published, in memory or in etcd.
 // Gen is SessionStatus.observed_generation, kept when a later write has no spec
-// revision of its own (D1016).
+// revision of its own (E10-D016).
 type statusView struct {
 	Phase  statev1.Phase
 	Reason string
@@ -79,7 +79,7 @@ const (
 	kindPlan
 	kindConflict
 	kindEnded
-	kindFailed // the session ends FAILED: artifact rejection, or volume_over_limit (D958, D974, D976)
+	kindFailed // the session ends FAILED: artifact rejection, or volume_over_limit (E09-D058, E09-D074, E09-D076)
 )
 
 // intent is a session whose status this round may publish.
@@ -87,7 +87,7 @@ type intent struct {
 	Kind       kind
 	Start      bool
 	EndReason  string
-	FailReason string // kindFailed: an artifact reason (D928, D954)
+	FailReason string // kindFailed: an artifact reason (E09-D028, E09-D054)
 	Rev        int64
 	SpecHash   string
 }
@@ -122,7 +122,7 @@ type candidate struct {
 }
 
 // buildViews joins the three prefixes. local overrides the mirrored status so a
-// terminal write counts before the mirror has it (D945). remembered is the last
+// terminal write counts before the mirror has it (E09-D045). remembered is the last
 // assignment this process saw, used once the key is gone. Spec bytes are copied;
 // the mirror's buffer is not modified.
 func buildViews(inst string, specV, demandV, statusV state.View, local map[string]statusView, remembered map[string]demandView, observed map[agent.WorkerKey]agent.Observed) map[string]*sess {
@@ -192,13 +192,13 @@ func buildViews(inst string, specV, demandV, statusV state.View, local map[strin
 }
 
 // decide is the plan: which sessions spawn, which end, which are algo_conflict.
-// A terminal session is left alone (D945). A session with no usable spec is not
-// planned and gets no status (D944). A spec key that is already gone is the
+// A terminal session is left alone (E09-D045). A session with no usable spec is not
+// planned and gets no status (E09-D044). A spec key that is already gone is the
 // exception: an ENDED assignment, or a gone assignment that still has a worker
-// or a status, still ends so state_out can be pushed (D1016). That session has
+// or a status, still ends so state_out can be pushed (E10-D016). That session has
 // no parsed spec, so it does not occupy algos. Only a desired of RUNNING enters
 // the plan, and only when no earlier non-terminal session on this instance
-// overlaps it (D916, D917). An assignment that is ENDED or gone is not a
+// overlaps it (E09-D016, E09-D017). An assignment that is ENDED or gone is not a
 // conflict; it still occupies its algos until it is terminal.
 func decide(sessions map[string]*sess, prevHash map[string]string) decision {
 	out := decision{
@@ -218,7 +218,7 @@ func decide(sessions map[string]*sess, prevHash map[string]string) decision {
 		}
 		if s.spec == nil {
 			// The key is absent. A present key that does not decode stays on the
-			// D944 path below: it is not "spec deleted".
+			// E09-D044 path below: it is not "spec deleted".
 			if !s.specPresent {
 				if reason, rev, ok := endWithoutSpec(s); ok {
 					out.Intents[id] = intent{Kind: kindEnded, EndReason: reason, Rev: rev}
@@ -235,7 +235,7 @@ func decide(sessions map[string]*sess, prevHash map[string]string) decision {
 			}
 			continue
 		}
-		// The key is present but will not decode: no plan and no status (D944's
+		// The key is present but will not decode: no plan and no status (E09-D044's
 		// sibling for the assignment). The remembered value is not a stand-in.
 		if s.demandPresent && s.demand == nil {
 			continue
@@ -288,8 +288,8 @@ func decide(sessions map[string]*sess, prevHash map[string]string) decision {
 }
 
 // endWithoutSpec reports that a session whose spec key is gone should still
-// reach a terminal phase (D1016). A RUNNING assignment whose spec has not
-// appeared yet is left waiting (D944). current is false when the demand key is
+// reach a terminal phase (E10-D016). A RUNNING assignment whose spec has not
+// appeared yet is left waiting (E09-D044). current is false when the demand key is
 // gone and only a remembered assignment remains.
 func endWithoutSpec(s *sess) (reason string, rev int64, ok bool) {
 	d, current, has := s.demandNow()
@@ -322,7 +322,7 @@ func statusGeneration(s *sess) int64 {
 
 // complainMissing reports whether a session that has no usable spec should be
 // logged. A spec with no assignment, no status, and no worker is left untouched
-// (D916). Anything else was assigned, or still has a worker, and is waiting.
+// (E09-D016). Anything else was assigned, or still has a worker, and is waiting.
 func complainMissing(s *sess) bool {
 	if s.demandPresent || s.remembered != nil || s.observed != nil {
 		return true
@@ -343,7 +343,7 @@ func blocked(c candidate, anchors []anchor) bool {
 }
 
 // earlier reports whether a was assigned before b. Equal issued_at_ns breaks
-// toward the smaller session id (D917).
+// toward the smaller session id (E09-D017).
 func earlier(idA string, atA int64, idB string, atB int64) bool {
 	if atA != atB {
 		return atA < atB

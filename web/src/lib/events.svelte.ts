@@ -1,4 +1,4 @@
-// One EventSource per page, for the topics that page needs (D1107, D1075).
+// One EventSource per page, for the topics that page needs (E10-D107, E10-D075).
 // The browser sends the cookie and, on reconnect, Last-Event-ID. This module does not.
 import { api, type EventTopic, type InstanceDetail, type ResetEvent, type SessionDetail, type SessionRemovedEvent } from './api';
 import { consoleState } from './console.svelte';

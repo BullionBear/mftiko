@@ -13,7 +13,7 @@ import (
 // and it is stored under its own name.
 //
 // PriceTick is in price_ccy. QtyStep, MinQty and MaxQty are in contract_value_ccy, the same unit
-// as platform qty (D203).
+// as platform qty (E02-D003).
 const (
 	PriceTick   = "price_tick"
 	QtyStep     = "qty_step"
@@ -36,29 +36,29 @@ type Listing struct {
 	// ExpiryCode is YYMMDD taken from the venue's own dated ticker, not computed from ExpiryNs.
 	ExpiryCode string
 	ExpiryNs   int64 // 0 = does not expire
-	// Strike is the venue's strike (D008: a float64, like every number). The ticker spells it
-	// with StrikeSpelling (D203): 6400.0 and 6400 are one value and one ticker. 0 unless an option.
+	// Strike is the venue's strike (E00-D008: a float64, like every number). The ticker spells it
+	// with StrikeSpelling (E02-D003): 6400.0 and 6400 are one value and one ticker. 0 unless an option.
 	Strike     float64
 	OptionType string // C | P; "" unless an option
-	// ContractSize is one contract's face value (D203). Platform qty is the contract
+	// ContractSize is one contract's face value (E02-D003). Platform qty is the contract
 	// count times this value, in contract_value_ccy: base on linear and options, quote
 	// on inverse. Inverse qty is that quote amount, not a contract count.
 	// 0 on spot, which has no contract count. Required, and positive, on a contract.
 	ContractSize float64
-	// ContractValueCcy is the unit of qty (D203). Adapters fill it from the venue's
+	// ContractValueCcy is the unit of qty (E02-D003). Adapters fill it from the venue's
 	// native field; nothing here derives it. Empty is allowed on spot. A contract
 	// must set it: base on linear and options, quote on inverse.
 	ContractValueCcy string
-	// PriceCcy is the unit of price, price_tick and option premium (D203).
+	// PriceCcy is the unit of price, price_tick and option premium (E02-D003).
 	// Adapters fill it. Empty is allowed on spot. A contract must set it.
 	PriceCcy string
-	// Settle is the PnL settlement asset (settlement_asset, D203), not the margin asset.
+	// Settle is the PnL settlement asset (settlement_asset, E02-D003), not the margin asset.
 	// Empty on spot. Adapters fill it from the venue's native field; nothing downstream
 	// derives it. Quanto (neither Base nor Quote) is not stored in phase 1.
 	// Coin-margined versus U-margined is display only: Settle equal to Base means
 	// coin-margined. The trading path does not use that label.
 	Settle string
-	// Status is the trading state (D203). The set is still provisional. Only Tradable
+	// Status is the trading state (E02-D003). The set is still provisional. Only Tradable
 	// may trade. Unspecified is invalid. A native state that does not map is Unknown
 	// and is not tradable. Adding a value later does not make a non-tradable instrument
 	// tradable. Prelisting, Tradable, Halted, Settling and Unknown stay on the active
@@ -139,7 +139,7 @@ func (f *Filters) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// StrikeSpelling is how the ticker writes strike v (D203, D008): its shortest decimal form, folded
+// StrikeSpelling is how the ticker writes strike v (E02-D003, E00-D008): its shortest decimal form, folded
 // by SpellStrike, so 6400 is "6400" and 6.4 is "6D4". v must be positive and finite.
 func StrikeSpelling(v float64) (string, error) {
 	if !(v > 0) || math.IsInf(v, 0) {
@@ -151,7 +151,7 @@ func StrikeSpelling(v float64) (string, error) {
 // Ticker derives the instrument's identity from the venue's own fields, never by splitting
 // ExchTicker. The symbol is the canonical base plus the canonical quote (uppercase, alias
 // table), then -ExpiryCode for a dated contract, then -Strike-OptionType for an option.
-// The strike goes through StrikeSpelling first (D203): 6400.0 and 6400 are one ticker, and a
+// The strike goes through StrikeSpelling first (E02-D003): 6400.0 and 6400 are one ticker, and a
 // fractional strike uses StrikeDecimal. The result is always a string Parse accepts.
 func (l *Listing) Ticker() (UniversalTicker, error) {
 	if l == nil {

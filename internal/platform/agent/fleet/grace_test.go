@@ -44,7 +44,7 @@ func (noGrace) Start(agent.WorkerKey, hashed) (*workerv1.Start, error) {
 func (noGrace) Push(agent.WorkerKey, hashed) (*workerv1.Live, error) { return &workerv1.Live{}, nil }
 
 // StopGrace is optional. A positive value replaces the fleet default; 0 and a
-// program that does not implement it keep the fleet value (D962). MD and TD
+// program that does not implement it keep the fleet value (E09-D062). MD and TD
 // programs do not implement it.
 func TestStopGraceOptional(t *testing.T) {
 	fallback := 10 * time.Second
@@ -67,7 +67,7 @@ func TestStopGraceOptional(t *testing.T) {
 	}
 }
 
-// killProg is an STS-shaped program: a missing beat is SIGKILL, not Stop (D966).
+// killProg is an STS-shaped program: a missing beat is SIGKILL, not Stop (E09-D066).
 type killProg struct {
 	noGrace
 	kill bool

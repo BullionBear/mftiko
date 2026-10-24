@@ -14,17 +14,17 @@
 // stored, and must not be sent to another process or plane. A real adapter does not
 // implement the marker.
 //
-// TradeVenue is a fake venue for code that drives an exchange.TradeStream (D303): the test chooses
+// TradeVenue is a fake venue for code that drives an exchange.TradeStream (E03-D003): the test chooses
 // the order of the answers, drops some, refuses some, or refuses the logon.
 //
-// AccountVenue is a fake account, for the TD account worker (D612): its state (open orders,
+// AccountVenue is a fake account, for the TD account worker (E06-D012): its state (open orders,
 // positions, balances, leverage, hedge mode) in memory, an exchange.Account whose REST Calls the venue
 // answers as an exchange.Doer, and a private websocket served by Handler that the worker dials with
 // exchange/transport/ws. The test scripts refusals, unanswered requests, 429s, failed snapshot pages,
 // refused logins, failed handshakes and dropped connections, and changes the state, which pushes the
 // events a venue would send. QueryOrder finds orders open or ended; a Submit or Cancel held back with
 // Outcome.Late takes effect when it Arrives within its validity window and is refused after it
-// (D605, D617).
+// (E06-D005, E06-D017).
 //
 // A fixture is a JSON array of symbol.Listing values. Object keys are that struct's exported field
 // names (encoding/json also accepts a different case of the same name), and the loader decodes into

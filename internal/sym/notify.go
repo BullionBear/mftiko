@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	// ChangedWildcard is sym.v1.changed.> (D457). Session, account worker,
+	// ChangedWildcard is sym.v1.changed.> (E04-D057). Session, account worker,
 	// md.fetch and the historical backfill subscribe this. An MD instance's
 	// JWT allows it too; the conn worker itself subscribes only its venue.
 	ChangedWildcard = "sym.v1.changed.>"
@@ -25,7 +25,7 @@ type ChangedPublisher interface {
 	Changed(ctx context.Context, venue, category string, revision int64)
 }
 
-// ChangedSubject is sym.v1.changed.{venue}.{category} (D457). Venue and
+// ChangedSubject is sym.v1.changed.{venue}.{category} (E04-D057). Venue and
 // category are the human-readable names. A token that cannot be one NATS
 // subject token is rejected. The request subject stays exactly "sym".
 func ChangedSubject(venue, category string) (string, error) {
@@ -38,7 +38,7 @@ func ChangedSubject(venue, category string) (string, error) {
 	return "sym.v1.changed." + venue + "." + category, nil
 }
 
-// ChangedVenueWildcard is sym.v1.changed.{venue}.> (D457). A conn worker
+// ChangedVenueWildcard is sym.v1.changed.{venue}.> (E04-D057). A conn worker
 // subscribes this and no other venue. The MD instance JWT stays
 // ChangedWildcard, because one instance can hold more than one venue.
 func ChangedVenueWildcard(venue string) (string, error) {

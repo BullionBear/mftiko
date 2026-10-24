@@ -34,7 +34,7 @@ type ServeConfig struct {
 	RetryAfter time.Duration
 	RetryMax   time.Duration
 	// REST is the venue's public REST, used for SnapshotREST depth. Nil leaves depth without a
-	// reader. Doer sends it. RateHold is the 429/418 fallback (D424): zero means one minute,
+	// reader. Doer sends it. RateHold is the 429/418 fallback (E04-D024): zero means one minute,
 	// negative fails init. It is a process flag, not an Init field.
 	REST     func(venue string) (exchange.PublicREST, bool)
 	Doer     exchange.Doer

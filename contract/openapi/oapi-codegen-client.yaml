@@ -1,4 +1,4 @@
-# Go client for the CLI and end-to-end tests (D1003, D1045).
+# Go client for the CLI and end-to-end tests (E10-D003, E10-D045).
 package: apiv1
 output: contract/gen/api/v1/client.gen.go
 generate:

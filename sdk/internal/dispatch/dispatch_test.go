@@ -624,7 +624,7 @@ func testEnding(t *testing.T, kind endKind) {
 	case endHung:
 		arrived()
 		// A hook that passes hook_timeout_s is HUNG: OnStop does not run, and c4 still sends
-		// Stopped(false). Omitting Stopped is only the OnStop overrun (D803).
+		// Stopped(false). Omitting Stopped is only the OnStop overrun (E08-D003).
 		sh.expect(exiting(commonv1.Outcome_OUTCOME_HUNG, ReasonHung), stopped(false))
 		if c := sh.exitCode(); c != c4.ExitHung {
 			t.Fatalf("exit %d", c)

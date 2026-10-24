@@ -2,7 +2,7 @@
 # `make migrate-up`. Ports are bound to 127.0.0.1, so nothing outside this machine can connect.
 # mftiko-api serves the console on http://127.0.0.1:8080; `make dev-up` builds it and web/build first.
 # PostgreSQL trusts local connections, and etcd has no auth yet (E1-08 adds it). NATS uses operator and
-# account JWTs (D412). The registry is registry:2 with no auth (D910). `make dev-up` generates the NATS
+# account JWTs (E04-D012). The registry is registry:2 with no auth (E09-D010). `make dev-up` generates the NATS
 # credentials into deploy/dev/data/nats before compose starts; that directory is gitignored and is not
 # created here, because a missing bind-mount source makes Docker create a directory in its place.
 # Tests do not use these: state starts its own etcd (etcdtest), natsx its own server (natsxtest),
@@ -26,7 +26,7 @@ services:
       retries: 30
 
   # One member, the same version the tests and CI use. A region's control plane in production is a cluster of its
-  # own (D005); locally there is one region and so one etcd, at http://127.0.0.1:2379.
+  # own (E00-D005); locally there is one region and so one etcd, at http://127.0.0.1:2379.
   etcd:
     image: gcr.io/etcd-development/etcd:v3.7.2
     command:
@@ -52,8 +52,8 @@ services:
       retries: 30
 
   # Core NATS only, one server, the same release the tests embed
-  # (github.com/nats-io/nats-server/v2 v2.15.0). The data plane (D002, D004): no JetStream, no cluster,
-  # no TLS. Operator and account JWTs use a full resolver (D412). max_control_line is 262144 (D827).
+  # (github.com/nats-io/nats-server/v2 v2.15.0). The data plane (E00-D002, E00-D004): no JetStream, no cluster,
+  # no TLS. Operator and account JWTs use a full resolver (E04-D012). max_control_line is 262144 (E08-D027).
   # The image's own config is not used;
   # it opens a cluster port with a fixed route password. `make dev-up` writes the three mounted files
   # first. keys/ and creds/ stay on the host and are not mounted. Clients use nats://127.0.0.1:4222
@@ -77,7 +77,7 @@ services:
       timeout: 3s
       retries: 30
 
-  # No auth (D910). The image is Alpine, so the healthcheck can use wget. Tests do not use this
+  # No auth (E09-D010). The image is Alpine, so the healthcheck can use wget. Tests do not use this
   # service; they speak the distribution API in process.
   registry:
     image: registry:2
@@ -92,7 +92,7 @@ services:
       retries: 30
 
   # The API server and the console (E10-19). bin/linux/mftiko-api from `make dev-up`, the console from
-  # web/build (D1028), plain HTTP (D1029). deploy/dev/api-init.sh writes ./data/api: the deployment
+  # web/build (E10-D028), plain HTTP (E10-D029). deploy/dev/api-init.sh writes ./data/api: the deployment
   # (one region, controller, md1, td1, sts1), the API JSON, the token to sign in with, the cookie key
   # and td1's seal key. etcd has no auth here; the etcd client goes on without it, so the password is
   # a placeholder. No agent runs in this stack: sessions stay pending (deploy/accept runs them).

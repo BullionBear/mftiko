@@ -1,4 +1,4 @@
-// Per-page lists. The shared store stays the three fields in console.svelte.ts (D1077).
+// Per-page lists. The shared store stays the three fields in console.svelte.ts (E10-D077).
 import { untrack } from 'svelte';
 import {
 	api,
@@ -51,7 +51,7 @@ function preferInstance(current: InstanceRow | undefined, next: InstanceRow): In
 	if (!current) return next;
 	const currentEpoch = current.agent?.epoch;
 	const nextEpoch = next.agent?.epoch;
-	// A detail snapshot that omits the agent is absence, including no last-known record (D1096).
+	// A detail snapshot that omits the agent is absence, including no last-known record (E10-D096).
 	if (nextEpoch === undefined && next.workers !== undefined && currentEpoch !== undefined) return next;
 	if (currentEpoch === undefined) return withCarriedDetail(next, current);
 	if (nextEpoch === undefined) return withCarriedDetail(current, next);
@@ -144,7 +144,7 @@ export class SessionFeed {
 
 export class SessionDetailFeed {
 	session = $state<SessionDetail | null>(null);
-	/** STS instance agent, so log paths can be marked last known (D1105, D1096). */
+	/** STS instance agent, so log paths can be marked last known (E10-D105, E10-D096). */
 	stsAgent = $state<AgentStatus | null>(null);
 	loading = $state(false);
 	error = $state<string | null>(null);
@@ -261,7 +261,7 @@ export class SessionDetailFeed {
 		}
 	}
 
-	/** POST /sessions/{id}/end. Already-ended and terminal sessions still return 200 (D1104). */
+	/** POST /sessions/{id}/end. Already-ended and terminal sessions still return 200 (E10-D104). */
 	async end(id: string): Promise<string | null> {
 		try {
 			const result = await api.POST('/sessions/{session_id}/end', {

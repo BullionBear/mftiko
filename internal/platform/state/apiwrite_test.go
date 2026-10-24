@@ -7,7 +7,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-// The API's scope (W10, D1042): specs and accounts to put, statuses only to delete (D1040), nothing of an agent's
+// The API's scope (W10, E10-D042): specs and accounts to put, statuses only to delete (E10-D040), nothing of an agent's
 // or the controller's. Checked before any I/O.
 func TestAPIScope(t *testing.T) {
 	topo := twoRegions()
@@ -64,7 +64,7 @@ func TestAPIScope(t *testing.T) {
 }
 
 // Against etcd as the api user: a create-only txn creates once and refuses the second, and a status put is refused
-// by the scope even though etcd would take it (D1040).
+// by the scope even though etcd would take it (E10-D040).
 func TestAPIWriterTxn(t *testing.T) {
 	ctx := testCtx(t)
 	_, topo := singleRegion(t, "sts-tw-1", "td-tw-1")

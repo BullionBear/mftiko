@@ -1,5 +1,5 @@
 // Package ws is the websocket transport: one connection of an MD conn worker or a TD account worker,
-// over github.com/coder/websocket (DECISIONS D302).
+// over github.com/coder/websocket (DECISIONS E03-D002).
 //
 // Run reads every message into the connection's own buffer and lends it to the handler, which is
 // where Session.Decode or PrivateStream.Decode runs: no allocation per message once the buffer has
@@ -163,7 +163,7 @@ func (e *redacted) Unwrap() error { return e.err }
 // handle's error, the error of a Close, or the read error when the venue closed or dropped it.
 //
 // handle gets each text or binary message. frame is lent: it is valid until handle returns, and the
-// next message is read into it (D302). handle runs on the read path, so it returns promptly; an
+// next message is read into it (E03-D002). handle runs on the read path, so it returns promptly; an
 // error from it ends the connection.
 func (c *Conn) Run(ctx context.Context, handle func(frame []byte) error) error {
 	if !c.running.CompareAndSwap(false, true) {

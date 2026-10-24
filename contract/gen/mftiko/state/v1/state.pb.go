@@ -150,10 +150,10 @@ func (EntryState) EnumDescriptor() ([]byte, []int) {
 type Account struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// 帳號種類（DECISIONS D301），不是 venue：BinancePM 可以交易 Binance、BinanceUM、BinanceCM 的商品。
+	// 帳號種類（DECISIONS E03-D001），不是 venue：BinancePM 可以交易 Binance、BinanceUM、BinanceCM 的商品。
 	// 兩個 enum 的名稱可能相同（帳號種類 BinanceUM 交易 venue BinanceUM），不可互查。
 	Kind              string           `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
-	SealedCredentials []byte           `protobuf:"bytes,3,opt,name=sealed_credentials,json=sealedCredentials,proto3" json:"sealed_credentials,omitempty"` // AccountCredentials 以 TD instance 的公鑰封裝（D613、§3.6）；etcd 裡不放明文
+	SealedCredentials []byte           `protobuf:"bytes,3,opt,name=sealed_credentials,json=sealedCredentials,proto3" json:"sealed_credentials,omitempty"` // AccountCredentials 以 TD instance 的公鑰封裝（E06-D013、§3.6）；etcd 裡不放明文
 	Settings          *AccountSettings `protobuf:"bytes,4,opt,name=settings,proto3" json:"settings,omitempty"`
 	Enabled           bool             `protobuf:"varint,5,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	unknownFields     protoimpl.UnknownFields
@@ -225,7 +225,7 @@ func (x *Account) GetEnabled() bool {
 	return false
 }
 
-// sealed_credentials 封裝前的明文（D613）。只在封裝工具、API server 與 TD agent 的記憶體裡；不進 etcd、不進 log。
+// sealed_credentials 封裝前的明文（E06-D013）。只在封裝工具、API server 與 TD agent 的記憶體裡；不進 etcd、不進 log。
 // api_id 與 kind 一起封進去，解開之後與帳號的 key、宣告比對：一個帳號的密文搬到另一個帳號底下就解不出來用。
 type AccountCredentials struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -314,7 +314,7 @@ func (x *AccountCredentials) GetPassphrase() string {
 type AccountSettings struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	CancelOnDisconnectS uint32                 `protobuf:"varint,1,opt,name=cancel_on_disconnect_s,json=cancelOnDisconnectS,proto3" json:"cancel_on_disconnect_s,omitempty"` // 0 = 關閉
-	// 歷史補正（DECISIONS D601）。
+	// 歷史補正（DECISIONS E06-D001）。
 	BackfillIntervalS uint32 `protobuf:"varint,2,opt,name=backfill_interval_s,json=backfillIntervalS,proto3" json:"backfill_interval_s,omitempty"` // 另加 jitter；0 = 預設。必須短於交易所成交歷史的保留期。誰用見 §10 P18，不是 TD agent
 	// 手動觸發：比上次處理過的值新，就提前跑一輪。誰跑見 §10 P18，不是 TD agent。重啟後可能多跑一次，無害。
 	BackfillRequestedAtNs int64 `protobuf:"varint,3,opt,name=backfill_requested_at_ns,json=backfillRequestedAtNs,proto3" json:"backfill_requested_at_ns,omitempty"`
@@ -383,7 +383,7 @@ type SessionStatus struct {
 	Reason             string                 `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"`
 	LastExit           *v1.ExitInfo           `protobuf:"bytes,7,opt,name=last_exit,json=lastExit,proto3" json:"last_exit,omitempty"`
 	UpdatedAtNs        int64                  `protobuf:"varint,8,opt,name=updated_at_ns,json=updatedAtNs,proto3" json:"updated_at_ns,omitempty"`
-	StateOut           *StateSnapshot         `protobuf:"bytes,9,opt,name=state_out,json=stateOut,proto3" json:"state_out,omitempty"` // session terminal 之後 volume 的快照（D904）；推送完成前不填
+	StateOut           *StateSnapshot         `protobuf:"bytes,9,opt,name=state_out,json=stateOut,proto3" json:"state_out,omitempty"` // session terminal 之後 volume 的快照（E09-D004）；推送完成前不填
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -575,7 +575,7 @@ type DemandEntry struct {
 	//	*DemandEntry_ApiId
 	Target        isDemandEntry_Target `protobuf_oneof:"target"`
 	SpecRevision  int64                `protobuf:"varint,10,opt,name=spec_revision,json=specRevision,proto3" json:"spec_revision,omitempty"` // 推導自哪一版 session spec；只供除錯，可能來自另一個 cluster，不做比較
-	AlgoIds       []uint32             `protobuf:"varint,11,rep,packed,name=algo_ids,json=algoIds,proto3" json:"algo_ids,omitempty"`         // 只有帳號項目：同 AccountDecl.algo_ids。TD agent 不讀它（D616）
+	AlgoIds       []uint32             `protobuf:"varint,11,rep,packed,name=algo_ids,json=algoIds,proto3" json:"algo_ids,omitempty"`         // 只有帳號項目：同 AccountDecl.algo_ids。TD agent 不讀它（E06-D016）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -684,12 +684,12 @@ func (*DemandEntry_ApiId) isDemandEntry_Target() {}
 type SessionDemand struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Desired       v11.DesiredState       `protobuf:"varint,1,opt,name=desired,proto3,enum=mftiko.session.v1.DesiredState" json:"desired,omitempty"` // RUNNING：spawn 並送 Init；ENDED：停掉 worker
-	Start         bool                   `protobuf:"varint,2,opt,name=start,proto3" json:"start,omitempty"`                                         // 所有 MD、TD 需求都 READY，STS agent 可以送 Start（D107）
+	Start         bool                   `protobuf:"varint,2,opt,name=start,proto3" json:"start,omitempty"`                                         // 所有 MD、TD 需求都 READY，STS agent 可以送 Start（E01-D007）
 	EndReason     string                 `protobuf:"bytes,3,opt,name=end_reason,json=endReason,proto3" json:"end_reason,omitempty"`                 // desired 是 ENDED 時：ended_by_spec、deps_failed、deps_timeout、invalid_spec
 	Bindings      []*Binding             `protobuf:"bytes,4,rep,name=bindings,proto3" json:"bindings,omitempty"`
 	SpecRevision  int64                  `protobuf:"varint,5,opt,name=spec_revision,json=specRevision,proto3" json:"spec_revision,omitempty"` // 推導自哪一版 session spec；只供除錯
 	UpdatedAtNs   int64                  `protobuf:"varint,6,opt,name=updated_at_ns,json=updatedAtNs,proto3" json:"updated_at_ns,omitempty"`
-	IssuedAtNs    int64                  `protobuf:"varint,7,opt,name=issued_at_ns,json=issuedAtNs,proto3" json:"issued_at_ns,omitempty"` // 第一次寫這個指派的時間，之後不改；deps_timeout_s 從這裡起算（D1302）
+	IssuedAtNs    int64                  `protobuf:"varint,7,opt,name=issued_at_ns,json=issuedAtNs,proto3" json:"issued_at_ns,omitempty"` // 第一次寫這個指派的時間，之後不改；deps_timeout_s 從這裡起算（E13-D002）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -871,7 +871,7 @@ type isBinding_Target interface {
 }
 
 type Binding_Feed struct {
-	Feed string `protobuf:"bytes,1,opt,name=feed,proto3,oneof"` // feed key。spec 載入時才把其中的 ticker 解成 UID（D203）；這個欄位今天仍是字串
+	Feed string `protobuf:"bytes,1,opt,name=feed,proto3,oneof"` // feed key。spec 載入時才把其中的 ticker 解成 UID（E02-D003）；這個欄位今天仍是字串
 }
 
 type Binding_Selector struct {
@@ -893,8 +893,8 @@ type EntryStatus struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	State  EntryState             `protobuf:"varint,1,opt,name=state,proto3,enum=mftiko.state.v1.EntryState" json:"state,omitempty"`
 	Reason string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
-	// feed：完整的 subject（md.v1.f.{inst}.{topic}.{ticker}，D455）。NATS topic 用人讀的名字，不用 UID。selector：成員 subject 的前綴（md.v1.f.{inst}）；
-	// 帳號：td.order.{api_id}。由 provider 決定，訂閱端不自己組（PROTOCOL §7、DECISIONS D106）。
+	// feed：完整的 subject（md.v1.f.{inst}.{topic}.{ticker}，E04-D055）。NATS topic 用人讀的名字，不用 UID。selector：成員 subject 的前綴（md.v1.f.{inst}）；
+	// 帳號：td.order.{api_id}。由 provider 決定，訂閱端不自己組（PROTOCOL §7、DECISIONS E01-D006）。
 	Subject       string        `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
 	Worker        *v1.WorkerRef `protobuf:"bytes,4,opt,name=worker,proto3" json:"worker,omitempty"`
 	Universe      *Universe     `protobuf:"bytes,5,opt,name=universe,proto3" json:"universe,omitempty"` // 只有 selector
@@ -983,8 +983,8 @@ type AgentRecord struct {
 	Epoch         int64                  `protobuf:"varint,3,opt,name=epoch,proto3" json:"epoch,omitempty"`
 	Release       string                 `protobuf:"bytes,4,opt,name=release,proto3" json:"release,omitempty"`
 	StartedAtNs   int64                  `protobuf:"varint,5,opt,name=started_at_ns,json=startedAtNs,proto3" json:"started_at_ns,omitempty"`
-	Host          string                 `protobuf:"bytes,6,opt,name=host,proto3" json:"host,omitempty"`                      // os.Hostname()，當選時寫入（D1092）。取不到則空字串。
-	WorkDir       string                 `protobuf:"bytes,7,opt,name=work_dir,json=workDir,proto3" json:"work_dir,omitempty"` // 該行程的 WORK_DIR（D1092）。controller 沒有 WORK_DIR，留空。
+	Host          string                 `protobuf:"bytes,6,opt,name=host,proto3" json:"host,omitempty"`                      // os.Hostname()，當選時寫入（E10-D092）。取不到則空字串。
+	WorkDir       string                 `protobuf:"bytes,7,opt,name=work_dir,json=workDir,proto3" json:"work_dir,omitempty"` // 該行程的 WORK_DIR（E10-D092）。controller 沒有 WORK_DIR，留空。
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

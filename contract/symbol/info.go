@@ -1,6 +1,6 @@
 package symbol
 
-// MinUID and MaxUID are the inclusive bounds of a symbol UID (D203, PROTOCOL §10 P13).
+// MinUID and MaxUID are the inclusive bounds of a symbol UID (E02-D003, PROTOCOL §10 P13).
 // Zero is invalid. The proto field is uint32, so the upper bound is 2^32-1.
 // Postgres stores the column as bigint with CHECK (uid BETWEEN 1 AND 4294967295).
 const (
@@ -10,7 +10,7 @@ const (
 
 // Info is one instrument as SYM serves it: the golden record every plane reads.
 type Info struct {
-	// UID is the primary key of both SYM tables, unique across them (D203). SYM allocates
+	// UID is the primary key of both SYM tables, unique across them (E02-D003). SYM allocates
 	// a random integer, never reuses it, and stores it on the row, so a restart or reload
 	// does not change it. A delist followed by a relist gets a new one. The contract type
 	// is uint32, range MinUID..MaxUID (1..4294967295). Zero is invalid (PROTOCOL §10 P13).
@@ -20,7 +20,7 @@ type Info struct {
 	ExchTicker string
 	Base       string
 	Quote      string
-	// ContractSize, ContractValueCcy, PriceCcy and Settle use the D203 units.
+	// ContractSize, ContractValueCcy, PriceCcy and Settle use the E02-D003 units.
 	// See Listing. Settle is the PnL settlement asset, not the margin asset.
 	// Quanto is not stored in phase 1.
 	ContractSize     float64 // 0 on spot
@@ -28,9 +28,9 @@ type Info struct {
 	PriceCcy         string
 	Settle           string
 	ExpiryNs         int64
-	Strike           float64 // 0 unless an option; the ticker spells it with StrikeSpelling (D203)
+	Strike           float64 // 0 unless an option; the ticker spells it with StrikeSpelling (E02-D003)
 	OptionType       string
-	// Status is the trading state (D203). The set is still provisional. Only
+	// Status is the trading state (E02-D003). The set is still provisional. Only
 	// Tradable may trade. Non-terminal statuses stay on the active table the
 	// Resolver reads; Expired and Delisted move to the terminal table without
 	// changing the ticker or the UID. The tables are already split
@@ -50,16 +50,16 @@ func ValidUID(uid uint32) bool {
 }
 
 // Linear, Inverse and Quanto group an instrument for display from the three
-// currency fields (D203). They do not read Category. See classify.
+// currency fields (E02-D003). They do not read Category. See classify.
 func (i Info) Linear() bool  { return i.margin().linear }
 func (i Info) Inverse() bool { return i.margin().inverse }
 func (i Info) Quanto() bool  { return i.margin().quanto }
 
-// CoinMargined is 幣本位: settlement equals base (D203). Display and grouping
+// CoinMargined is 幣本位: settlement equals base (E02-D003). Display and grouping
 // only. Spot, which has no settlement, is false.
 func (i Info) CoinMargined() bool { return i.margin().coin }
 
-// UMargined is U 本位: a stored instrument whose settlement is not base (D203).
+// UMargined is U 本位: a stored instrument whose settlement is not base (E02-D003).
 // Quanto is not stored and is not U-margined. Spot is false.
 func (i Info) UMargined() bool { return i.margin().u }
 
@@ -73,10 +73,10 @@ func (i *Info) Exch() ExchKey {
 }
 
 // ExchKey names an instrument the way a venue's messages do. Adapters emit it on the way out
-// (fills, orders, positions); the caller turns it into a UID with Resolver.Reverse (D203).
+// (fills, orders, positions); the caller turns it into a UID with Resolver.Reverse (E02-D003).
 //
 //   - Venue is part of it because one account kind can trade several venues: a BinancePM private
-//     stream carries UM, CM and spot-margin events (D301).
+//     stream carries UM, CM and spot-margin events (E03-D001).
 //   - Category is part of it because on a unified-account venue the spelling alone is ambiguous:
 //     Bybit's spot and linear books both list "BTCUSDT".
 type ExchKey struct {

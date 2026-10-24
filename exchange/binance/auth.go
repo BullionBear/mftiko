@@ -29,7 +29,7 @@ const (
 	spotTestHost  = "testnet.binance.vision"
 	spotTestTrade = "wss://ws-api.testnet.binance.vision/ws-api/v3"
 
-	// cloidMax is newClientOrderId's limit. A D602 id is at most 19 digits and fits.
+	// cloidMax is newClientOrderId's limit. A E06-D002 id is at most 19 digits and fits.
 	cloidMax = 36
 
 	weight1m  = "weight_1m"
@@ -101,13 +101,13 @@ func (a *account) signedCall(now time.Time, method, path string, q codec.Query, 
 	return a.signedCallSpan(now, method, path, q, cost, mutates, 0)
 }
 
-// signedCallSpan is signedCall with a per-request window. span 0 uses AccountConfig.Validity (D620).
+// signedCallSpan is signedCall with a per-request window. span 0 uses AccountConfig.Validity (E06-D020).
 func (a *account) signedCallSpan(now time.Time, method, path string, q codec.Query, cost []exchange.Cost, mutates bool, span time.Duration) (exchange.HTTPRequest, error) {
 	return signedCallSpan(&a.signerState, a.k, a.cfg, now, method, path, q, cost, mutates, span)
 }
 
 // windowMS is recvWindow in milliseconds: the stream's account window, or span when the request
-// carries its own (D620).
+// carries its own (E06-D020).
 func windowMS(accountMs int64, span time.Duration) int64 {
 	return exchange.RequestWindow(time.Duration(accountMs)*time.Millisecond, span).Milliseconds()
 }
@@ -484,7 +484,7 @@ func statusOf(s string) exchange.OrderStatus {
 
 // orderStatus is statusOf for an order report, which carries the filled quantity. PENDING_CANCEL
 // (unused by the venue today) is an order still on the book: a cancel in flight is the account
-// worker's flag, not a status (D610).
+// worker's flag, not a status (E06-D010).
 func orderStatus(s string, filled float64) exchange.OrderStatus {
 	if s == "PENDING_CANCEL" {
 		return exchange.OnBook(filled)

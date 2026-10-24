@@ -29,12 +29,12 @@ type Config struct {
 	Shim      string // mftiko-shim
 	Account   string // mftiko-td-account, the binary every new spawn runs (P9)
 	ShimEnv   []string
-	WorkerEnv []string // MFTIKO_NATS_URL: the worker's NATS credentials come in Init (D611)
+	WorkerEnv []string // MFTIKO_NATS_URL: the worker's NATS credentials come in Init (E06-D011)
 	// ExtraEnv is appended to one worker's environment at launch. Tests use it.
 	ExtraEnv func(agent.WorkerKey) []string
 
 	Kinds     Kinds
-	Endpoints map[string]Endpoint // by account kind (D616)
+	Endpoints map[string]Endpoint // by account kind (E06-D016)
 	Open      Opener              // checks sealed credentials, at plan time
 	Unseal    Unsealer            // opens them, at spawn
 	User      NATSUser            // signs the worker's NATS user, at spawn
@@ -61,7 +61,7 @@ func (cfg Config) validate() error {
 }
 
 // Run is the agent's main: connect, win the term, mirror demand and accounts, and reconcile until
-// the term ends or ctx is done. Account workers outlive the process (D102).
+// the term ends or ctx is done. Account workers outlive the process (E01-D002).
 func Run(ctx context.Context, cfg Config) error {
 	if err := cfg.validate(); err != nil {
 		return err
@@ -164,7 +164,7 @@ type plane struct {
 	plans     map[agent.WorkerKey]agent.Plan[Spec, Live]
 }
 
-// Plan returns the last commit. A stale step does not recompute it (D109).
+// Plan returns the last commit. A stale step does not recompute it (E01-D009).
 func (p *plane) Plan(agent.Demand[Entry]) map[agent.WorkerKey]agent.Plan[Spec, Live] {
 	if p.plans == nil {
 		return map[agent.WorkerKey]agent.Plan[Spec, Live]{}

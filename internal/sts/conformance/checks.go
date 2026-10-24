@@ -201,7 +201,7 @@ func (r *runner) flowHappy() (Check, error) {
 	if !poll(opTimeout, func() bool { return p.snap().relay("ping") }) {
 		return fail("happy: Relay ping was not echoed"), nil
 	}
-	// Live carries a real snapshot, strictly newer than Start (D111, D846).
+	// Live carries a real snapshot, strictly newer than Start (E01-D011, E08-D046).
 	// An unparsable payload is not applied, so there is no Applied.
 	body, err := r.bus.liveBindings(2)
 	if err != nil {
@@ -447,7 +447,7 @@ func (r *runner) shutdownSelf() (Check, error) {
 func (r *runner) checkPriority() (Check, error) {
 	// The reply stays held until both events are published, and OnStart stays
 	// inside Resolve until the reply callback is on the dispatcher queue.
-	// Delivery still has to be OnOrder then OnTrade (D841, D844, D847).
+	// Delivery still has to be OnOrder then OnTrade (E08-D041, E08-D044, E08-D047).
 	r.bus.holdView()
 	defer r.bus.releaseView()
 	r.bus.holdSym()
@@ -516,7 +516,7 @@ func (r *runner) prehookStale() (Check, error) {
 	// at once so seq 2 is still inside recv_window_ms when the dispatcher
 	// dequeues it. The pass waits for the delivery and for a report whose md
 	// dropped is at least 1. The first report, sent at Init, is before any drop
-	// (D847).
+	// (E08-D047).
 	r.bus.holdSym()
 	defer r.bus.releaseSym()
 	p, err := r.spawn()
@@ -624,9 +624,9 @@ func (r *runner) prehookRing() (Check, error) {
 }
 
 func (r *runner) checkOverflow() (Check, error) {
-	// OnStart stays in Resolve, so these events fill the hold (D841) instead of
+	// OnStart stays in Resolve, so these events fill the hold (E08-D041) instead of
 	// being dropped against a watermark. Incarnation 1 is older than the
-	// fixture snapshot, so anything released early is not delivered (D844).
+	// fixture snapshot, so anything released early is not delivered (E08-D044).
 	r.bus.holdSym()
 	defer r.bus.releaseSym()
 	p, err := r.spawn()
@@ -782,10 +782,10 @@ func (r *runner) checkSubject() (Check, error) {
 }
 
 func (r *runner) checkRecon() (Check, error) {
-	// The early event is released after OnRecon (§9.6, D854). Wait until (3, 6)
+	// The early event is released after OnRecon (§9.6, E08-D054). Wait until (3, 6)
 	// has been delivered, which is after that hook for the SDK and before it
 	// for a worker that drains first. Injection is this check only, and it does
-	// not publish another incarnation (D844).
+	// not publish another incarnation (E08-D044).
 	r.bus.setInject(true)
 	defer r.bus.setInject(false)
 	p, err := r.spawn()
@@ -854,7 +854,7 @@ func keysOf(m map[reconKey]bool) []reconKey {
 
 func (r *runner) checkCtx() (Check, error) {
 	// The order is seq 6 and the position is seq 7 of incarnation 3, the same
-	// incarnation as the watermark and the next two seqs after it (D844).
+	// incarnation as the watermark and the next two seqs after it (E08-D044).
 	// Resolve is held so both are in the hold before that reply.
 	r.bus.holdSym()
 	defer r.bus.releaseSym()

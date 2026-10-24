@@ -26,7 +26,7 @@ const (
 )
 
 // 綁定的狀態，對應 provider 的 ack（§3.5）。值與 state.v1.EntryState 相同；stsctl 自己定義，策略的契約才不綁在 etcd 的
-// schema 上（DECISIONS D007）。
+// schema 上（DECISIONS E00-D007）。
 type BindingState int32
 
 const (
@@ -92,8 +92,8 @@ type InitPayload struct {
 	Params      []byte                 `protobuf:"bytes,6,opt,name=params,proto3" json:"params,omitempty"`
 	Feeds       []*v1.FeedDecl         `protobuf:"bytes,7,rep,name=feeds,proto3" json:"feeds,omitempty"`
 	Accounts    []*v1.AccountDecl      `protobuf:"bytes,8,rep,name=accounts,proto3" json:"accounts,omitempty"`
-	Nats        *NatsCredentials       `protobuf:"bytes,9,opt,name=nats,proto3" json:"nats,omitempty"` // 這個 session 專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS D906）
-	// 以下兩個是 STS agent 解析後的實值（DECISIONS D803）：spec 寫 0 表示用預設，agent 換成它的預設值再填，
+	Nats        *NatsCredentials       `protobuf:"bytes,9,opt,name=nats,proto3" json:"nats,omitempty"` // 這個 session 專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS E09-D006）
+	// 以下兩個是 STS agent 解析後的實值（DECISIONS E08-D003）：spec 寫 0 表示用預設，agent 換成它的預設值再填，
 	// 所以這裡不會是 0。SDK 不知道預設值；收到 0 是 agent 的錯，以 INIT_FAILED 結束。
 	RecvWindowMs  uint32 `protobuf:"varint,10,opt,name=recv_window_ms,json=recvWindowMs,proto3" json:"recv_window_ms,omitempty"` // MD 事件的最長壽命，prehook 用（SessionSpec.recv_window_ms）
 	HookTimeoutS  uint32 `protobuf:"varint,11,opt,name=hook_timeout_s,json=hookTimeoutS,proto3" json:"hook_timeout_s,omitempty"` // 單一 hook 的硬上限，watchdog 用（SessionSpec.limits.hook_timeout_s）
@@ -720,7 +720,7 @@ func (x *Report) GetQueues() []*QueueStat {
 	return nil
 }
 
-// name 是 td 或 md（D803）。
+// name 是 td 或 md（E08-D003）。
 type QueueStat struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`

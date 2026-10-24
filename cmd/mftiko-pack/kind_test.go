@@ -19,14 +19,14 @@ import (
 	"github.com/BullionBear/mftiko/internal/td/account"
 )
 
-// D989 names the contracts the workers actually speak. conn.Contract and account.Contract are
+// E09-D089 names the contracts the workers actually speak. conn.Contract and account.Contract are
 // those C5 majors; a change there has to be decided before pack's fixed list moves.
 func TestWorkerContractsMatchImplemented(t *testing.T) {
 	if conn.Contract != "mdctl.v1" {
-		t.Fatalf("conn.Contract = %q; D989 lists mdctl.v1", conn.Contract)
+		t.Fatalf("conn.Contract = %q; E09-D089 lists mdctl.v1", conn.Contract)
 	}
 	if account.Contract != "tdctl.v1" {
-		t.Fatalf("account.Contract = %q; D989 lists tdctl.v1", account.Contract)
+		t.Fatalf("account.Contract = %q; E09-D089 lists tdctl.v1", account.Contract)
 	}
 	md, ok := artifact.WorkerContracts(artifact.KindMDConn)
 	if !ok || !slices.Equal(md, []string{"worker.v1", "mdctl.v1"}) || md[1] != conn.Contract {

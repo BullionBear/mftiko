@@ -16,7 +16,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/artifact"
 )
 
-// tagResolveParallel is the most tag resolutions one catalog request runs at once (D1057).
+// tagResolveParallel is the most tag resolutions one catalog request runs at once (E10-D057).
 const tagResolveParallel = 8
 
 const (
@@ -24,8 +24,8 @@ const (
 	pageMax     = 1000
 )
 
-// tagCatalog is the read-only registry surface (D1056). *artifact.Catalog implements it.
-// Tests substitute a fake. There is no cache in front of it (D1057).
+// tagCatalog is the read-only registry surface (E10-D056). *artifact.Catalog implements it.
+// Tests substitute a fake. There is no cache in front of it (E10-D057).
 type tagCatalog interface {
 	Tags(ctx context.Context, repository string) ([]string, error)
 	Resolve(ctx context.Context, repository, reference string) (string, error)
@@ -41,7 +41,7 @@ var errStrategyNotFound = errors.New("strategy not found")
 type strategyRepo struct {
 	id         string
 	path       string
-	repository string // address/path, the value the response shows (D1060)
+	repository string // address/path, the value the response shows (E10-D060)
 }
 
 type resolveJob struct {
@@ -111,8 +111,8 @@ func paramPointer(err error) string {
 	return "/" + name
 }
 
-// ListStrategies lists the configured repositories (D1013). latest is the digest of the tag named
-// latest, resolved only for this page (D1057, D1058). A missing latest tag omits the field.
+// ListStrategies lists the configured repositories (E10-D013). latest is the digest of the tag named
+// latest, resolved only for this page (E10-D057, E10-D058). A missing latest tag omits the field.
 func (s *Server) ListStrategies(w http.ResponseWriter, r *http.Request, params apiv1.ListStrategiesParams) {
 	limit, after, fields := bindPage(params.Limit, params.Cursor)
 	if len(fields) > 0 {
@@ -158,7 +158,7 @@ func (s *Server) ListStrategies(w http.ResponseWriter, r *http.Request, params a
 	writeJSON(w, http.StatusOK, apiv1.StrategyList{Items: items, NextCursor: next})
 }
 
-// ListStrategyVersions lists every tag, sorted by name, each resolved to a digest (D1057, D1058).
+// ListStrategyVersions lists every tag, sorted by name, each resolved to a digest (E10-D057, E10-D058).
 func (s *Server) ListStrategyVersions(w http.ResponseWriter, r *http.Request, strategyID apiv1.StrategyID, params apiv1.ListStrategyVersionsParams) {
 	limit, after, fields := bindPage(params.Limit, params.Cursor)
 	if len(fields) > 0 {
@@ -207,7 +207,7 @@ func (s *Server) ListStrategyVersions(w http.ResponseWriter, r *http.Request, st
 	writeJSON(w, http.StatusOK, apiv1.StrategyTagList{Items: items, NextCursor: next})
 }
 
-// GetStrategyVersion returns one manifest. A tag is resolved to a digest first (D934).
+// GetStrategyVersion returns one manifest. A tag is resolved to a digest first (E09-D034).
 func (s *Server) GetStrategyVersion(w http.ResponseWriter, r *http.Request, strategyID apiv1.StrategyID, ref string) {
 	repo, err := s.strategyByID(strategyID)
 	if errors.Is(err, errStrategyNotFound) {
@@ -328,9 +328,9 @@ func (s *Server) strategyByID(id string) (strategyRepo, error) {
 	return strategyRepo{}, errStrategyNotFound
 }
 
-// resolveAll resolves every job. At most tagResolveParallel requests are in flight (D1057).
+// resolveAll resolves every job. At most tagResolveParallel requests are in flight (E10-D057).
 // A missing tag is omitted. The first other error cancels the rest and is returned.
-// Cancellation of ctx is returned as itself, so a shutdown is not reported as registry_unavailable (D1059).
+// Cancellation of ctx is returned as itself, so a shutdown is not reported as registry_unavailable (E10-D059).
 func (s *Server) resolveAll(ctx context.Context, jobs []resolveJob) (map[string]string, error) {
 	out := make(map[string]string, len(jobs))
 	if len(jobs) == 0 {
@@ -402,8 +402,8 @@ func (s *Server) writeRegistry(w http.ResponseWriter, r *http.Request, err error
 	writeProblem(w, status, code, title, detail, nil)
 }
 
-// registryProblem maps a registry error onto the contract (D1059). 401 and 403 stay on the existing
-// internal code: D1059 does not name a code for them.
+// registryProblem maps a registry error onto the contract (E10-D059). 401 and 403 stay on the existing
+// internal code: E10-D059 does not name a code for them.
 func registryProblem(err error, missing string) (int, apiv1.ErrorCode, string, string) {
 	if missing == "" {
 		missing = "version not found"
@@ -473,7 +473,7 @@ func uniqueSorted(tags []string) []string {
 }
 
 // formatSDK is how the catalog shows the manifest's sdk object. Both fields set is "lang version".
-// One field set is that field. Both empty (md.conn and td.account, D989) omits sdk.
+// One field set is that field. Both empty (md.conn and td.account, E09-D089) omits sdk.
 func formatSDK(sdk artifact.SDK) *string {
 	switch {
 	case sdk.Lang != "" && sdk.Version != "":

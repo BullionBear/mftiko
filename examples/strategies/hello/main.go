@@ -1,4 +1,4 @@
-// Command hello is the reference strategy (D862).
+// Command hello is the reference strategy (E08-D062).
 //
 // Params are the strategy's own JSON. The platform does not interpret them.
 //

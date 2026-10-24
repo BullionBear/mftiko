@@ -7,7 +7,7 @@ import (
 )
 
 // Position is the account's position for uid. The pointer is a copy of the ledger
-// row. The read takes the book lock only; it does not wait on NATS (D856).
+// row. The read takes the book lock only; it does not wait on NATS (E08-D056).
 func (p *Path) Position(apiID int64, uid uint32) (*tdv1.Position, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -23,7 +23,7 @@ func (p *Path) Position(apiID int64, uid uint32) (*tdv1.Position, bool) {
 }
 
 // Balance is the account's balance of asset, as TD last sent it. The pointer is a
-// copy. The read takes the book lock only; it does not wait on NATS (D853, D856).
+// copy. The read takes the book lock only; it does not wait on NATS (E08-D053, E08-D056).
 func (p *Path) Balance(apiID int64, asset string) (*tdv1.Balance, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -66,7 +66,7 @@ func (p *Path) applyPosition(apiID int64, ev *tdv1.AccountEvent) {
 }
 
 // applyBalance overwrites each listed asset with that absolute balance, then calls
-// the hook. free, locked and prelock are stored unchanged (D853). The write happens
+// the hook. free, locked and prelock are stored unchanged (E08-D053). The write happens
 // even when no hook is set.
 func (p *Path) applyBalance(apiID int64, ev *tdv1.AccountEvent) {
 	u := ev.GetBalanceUpdate()

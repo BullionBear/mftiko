@@ -29,7 +29,7 @@ DEV_NATS     := deploy/dev/data/nats
 
 PROTOC_GEN_GO_VERSION := v1.36.12
 # v1.72.0 is the newest buf that `go install`s with this module's Go 1.26.0.
-# v1.73.0 needs Go 1.26.7, and CI sets GOTOOLCHAIN=local (D1043).
+# v1.73.0 needs Go 1.26.7, and CI sets GOTOOLCHAIN=local (E10-D043).
 BUF_VERSION          := v1.72.0
 OAPI_CODEGEN_VERSION := v2.8.0
 OASDIFF_VERSION      := v1.34.1
@@ -40,10 +40,10 @@ BUF_AGAINST ?= .git\#branch=main
 # What openapi-breaking compares against: a git commit-ish. CI points it at the pull request's base.
 OAS_BASE ?= main
 
-# api.v1 is final (D1018, D1116): a breaking change against OAS_BASE fails the build. Empty prints the report only.
+# api.v1 is final (E10-D018, E10-D116): a breaking change against OAS_BASE fails the build. Empty prints the report only.
 OASDIFF_FAIL_ON ?= ERR
 
-# buf, protoc-gen-go, oapi-codegen and oasdiff are installed into bin/tools (D1043, D1044).
+# buf, protoc-gen-go, oapi-codegen and oasdiff are installed into bin/tools (E10-D043, E10-D044).
 # Redocly CLI and openapi-typescript come from web/node_modules.
 export PATH := $(TOOLS):$(NODE_BIN):$(PATH)
 
@@ -88,7 +88,7 @@ proto-lint: tools ## buf lint (STANDARD)
 proto-breaking: tools ## buf breaking against main (or BUF_AGAINST): compatible changes only within a major (PROTOCOL §1)
 	buf breaking --against '$(BUF_AGAINST)'
 
-openapi-lint: web-install ## Redocly lint for contract A (D1036, D1047)
+openapi-lint: web-install ## Redocly lint for contract A (E10-D036, E10-D047)
 	redocly lint --config contract/openapi/redocly.yaml contract/openapi/api/v1.yaml
 
 openapi: tools web-install ## Lint contract A and regenerate Go and TypeScript; commit the result
@@ -101,9 +101,9 @@ openapi: tools web-install ## Lint contract A and regenerate Go and TypeScript; 
 	openapi-typescript contract/openapi/api/v1.yaml --output $(WEB)/src/lib/gen/api/v1.ts
 	$(GO) mod tidy
 
-# D1116: fails on an ERR-level breaking change (OASDIFF_FAIL_ON). Before E10-20 it only printed the report (D1046).
+# E10-D116: fails on an ERR-level breaking change (OASDIFF_FAIL_ON). Before E10-20 it only printed the report (E10-D046).
 # A missing spec on the base is skipped. A base that is not a commit is an error.
-openapi-breaking: tools ## oasdiff breaking against OAS_BASE; fails on a breaking change (D1116)
+openapi-breaking: tools ## oasdiff breaking against OAS_BASE; fails on a breaking change (E10-D116)
 	@set -euo pipefail; \
 	base='$(OAS_BASE)'; \
 	spec=contract/openapi/api/v1.yaml; \
@@ -112,7 +112,7 @@ openapi-breaking: tools ## oasdiff breaking against OAS_BASE; fails on a breakin
 	  exit 1; \
 	fi; \
 	if ! git cat-file -e "$$base:$$spec" 2>/dev/null; then \
-	  echo "openapi-breaking: $$base has no $$spec; skipping oasdiff (D1046)"; \
+	  echo "openapi-breaking: $$base has no $$spec; skipping oasdiff (E10-D046)"; \
 	  exit 0; \
 	fi; \
 	args=(breaking --color never "$$base:$$spec" "$$spec"); \
@@ -152,7 +152,7 @@ test: ## go test
 test-race: ## go test with the race detector, uncached
 	$(GO) test -race -count=1 ./...
 
-sdk-conformance: ## Full Go SDK conformance via examples/strategies/conform (D864)
+sdk-conformance: ## Full Go SDK conformance via examples/strategies/conform (E08-D064)
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/mftiko-conformance ./cmd/mftiko-conformance
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/examples/conform ./examples/strategies/conform
 	$(BIN)/mftiko-conformance -- $(BIN)/examples/conform

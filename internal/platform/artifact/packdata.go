@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// Skipped is one volume entry PackData left out of the layer (D980). The push still proceeds.
+// Skipped is one volume entry PackData left out of the layer (E09-D080). The push still proceeds.
 type Skipped struct {
 	Path   string
 	Reason string
@@ -28,7 +28,7 @@ type packEntry struct {
 	size int64
 }
 
-// DataVolumeEmpty reports whether root has no regular file and no symlink (D981).
+// DataVolumeEmpty reports whether root has no regular file and no symlink (E09-D081).
 // A missing directory is empty. Directories, sockets, devices and fifos are not content.
 // A regular file is content even when unpack would reject its name.
 func DataVolumeEmpty(root string) (bool, error) {
@@ -63,7 +63,7 @@ func DataVolumeEmpty(root string) (bool, error) {
 	return empty, nil
 }
 
-// PackData writes a reproducible data layer for the tree at root (D980, D951).
+// PackData writes a reproducible data layer for the tree at root (E09-D080, E09-D051).
 // Paths are sorted. Members are mtime 0, uid 0, gid 0. Files keep only the execute
 // bit (0644 or 0755); directories are 0755. Symlinks that unpack would accept are
 // stored as the original relative text. Anything else is skipped, not a failure.
@@ -156,7 +156,7 @@ func skipKind(mode fs.FileMode) string {
 	}
 }
 
-// PackDataFile packs root into a new file under ${DATA}/layers (D979). The name uses
+// PackDataFile packs root into a new file under ${DATA}/layers (E09-D079). The name uses
 // the unfinished-download prefix, so GC and the next Open ignore it. The caller removes it.
 func (c *Client) PackDataFile(root string) (string, []Skipped, error) {
 	if err := os.MkdirAll(c.layers, 0o755); err != nil {

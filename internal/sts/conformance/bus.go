@@ -40,7 +40,7 @@ const (
 	venue           = "Binance"
 	ticker          = "Binance_Spot_BTCUSDT"
 
-	// tdFull is one past the TD buffer cap (PROTOCOL §9.5, D815). The constant
+	// tdFull is one past the TD buffer cap (PROTOCOL §9.5, E08-D015). The constant
 	// lives in the SDK; the harness only publishes this many events.
 	tdFull = 65536 + 1
 
@@ -59,7 +59,7 @@ const (
 	symInbox = "_INBOX_sym"
 )
 
-// bus is the embedded server plus the fake MD, TD, and md.fetch peers (D830).
+// bus is the embedded server plus the fake MD, TD, and md.fetch peers (E08-D030).
 type bus struct {
 	dir          string
 	url          string
@@ -360,7 +360,7 @@ func (b *bus) onOrder(m *nats.Msg) {
 // this same connection before the bytes go out: seq 4 of incarnation 3 is at
 // or below the cursor, and seq 6 is the one event past it. A later reply does
 // not publish them again. An event from another incarnation is not published.
-// On the live path that asks again (D844), and this fixture's next reply is
+// On the live path that asks again (E08-D044), and this fixture's next reply is
 // the same watermark, so the cursor would move backwards and the following
 // seq would stay a gap. Other checks get the watermark and no injected orders.
 //
@@ -593,7 +593,7 @@ func (b *bus) startDown(deadline uint32) (*workerv1.WorkerDown, error) {
 	}}}, nil
 }
 
-// liveBindings is one stsctl.Bindings snapshot for a Live frame (D111, D846).
+// liveBindings is one stsctl.Bindings snapshot for a Live frame (E01-D011, E08-D046).
 // seq must be strictly newer than the Start snapshot, which is epoch 1 seq 1.
 func (b *bus) liveBindings(seq uint64) ([]byte, error) {
 	return proto.Marshal(b.bindings(1, seq))
@@ -667,7 +667,7 @@ func (b *bus) publishAccount(seq uint64, inc uint32, position bool) error {
 }
 
 // nextCloid is a platform client_order_id for algo 1. Seq is 10 bits, so a
-// long run steps the timestamp every 1024 ids (D633).
+// long run steps the timestamp every 1024 ids (E06-D033).
 func (b *bus) nextCloid() (string, error) {
 	b.mu.Lock()
 	n := b.cloidN

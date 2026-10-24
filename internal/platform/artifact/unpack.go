@@ -17,20 +17,20 @@ import (
 	"github.com/opencontainers/go-digest"
 )
 
-// DefaultMaxUnpackedBytes is the uncompressed size of one unpack when the deployment sets no limit (D953).
+// DefaultMaxUnpackedBytes is the uncompressed size of one unpack when the deployment sets no limit (E09-D053).
 const DefaultMaxUnpackedBytes int64 = 4 << 30
 
-// DefaultMaxFiles is the number of tar entries in one unpack when the deployment sets no limit (D953).
+// DefaultMaxFiles is the number of tar entries in one unpack when the deployment sets no limit (E09-D053).
 const DefaultMaxFiles = 100_000
 
-// whiteoutPrefix is the OCI whiteout marker. A path component with this prefix is rejected (D951).
+// whiteoutPrefix is the OCI whiteout marker. A path component with this prefix is rejected (E09-D051).
 const whiteoutPrefix = ".wh."
 
-// layersName is the file next to rootfs listing the layer digests that unpack used, one per line (D950).
-// GC treats those lines as the rootfs's references (D956).
+// layersName is the file next to rootfs listing the layer digests that unpack used, one per line (E09-D050).
+// GC treats those lines as the rootfs's references (E09-D056).
 const layersName = "layers"
 
-// UnpackLimits is the deployment cap on one unpack (D953). A zero field means the default.
+// UnpackLimits is the deployment cap on one unpack (E09-D053). A zero field means the default.
 type UnpackLimits struct {
 	// MaxBytes is the total uncompressed size, the sum of every entry's declared size.
 	MaxBytes int64
@@ -38,7 +38,7 @@ type UnpackLimits struct {
 	MaxFiles int
 }
 
-// Unpack extracts gzip-compressed tar layers, in order, into dest (D951–D953, D957).
+// Unpack extracts gzip-compressed tar layers, in order, into dest (E09-D051–E09-D053, E09-D057).
 // dest's parent must already exist and dest must not. Bytes land in a temporary directory
 // beside dest and are renamed into place, so a failure leaves nothing at dest.
 // #286 calls this for sessions/<id>/inputs/<name>/; the rejection rules are the same.
@@ -48,7 +48,7 @@ func Unpack(ctx context.Context, layers []string, dest string, limits UnpackLimi
 
 // UnpackReadOnly is Unpack for a session input: the tree is made read-only (files 0444,
 // directories 0555, MakeReadOnly) before it is renamed into place, so dest never appears with
-// the permissions of the extraction (D975, D996). The temporary directory is a sibling of dest,
+// the permissions of the extraction (E09-D075, E09-D096). The temporary directory is a sibling of dest,
 // and renaming a directory within the same parent does not need write permission on it.
 func UnpackReadOnly(ctx context.Context, layers []string, dest string, limits UnpackLimits) error {
 	return unpack(ctx, layers, dest, limits, true)
@@ -175,7 +175,7 @@ func extractLayer(ctx context.Context, root *os.Root, layer string, b *budget) (
 	}
 }
 
-// budget counts entries and declared sizes across every layer of one unpack (D953).
+// budget counts entries and declared sizes across every layer of one unpack (E09-D053).
 type budget struct {
 	files    int
 	bytes    int64
@@ -248,7 +248,7 @@ func applyHeader(ctx context.Context, root *os.Root, hdr *tar.Header, r io.Reade
 		if err := removeExisting(root, name); err != nil {
 			return err
 		}
-		// The target string is stored as it was checked. os.Root does not interpret it (D952).
+		// The target string is stored as it was checked. os.Root does not interpret it (E09-D052).
 		return mapRootErr(root.Symlink(hdr.Linkname, name))
 	case tar.TypeLink:
 		return writeHardlink(root, name, hdr.Linkname)
@@ -262,7 +262,7 @@ func writeFile(ctx context.Context, root *os.Root, name string, hdr *tar.Header,
 		return err
 	}
 	// A symlink at the final component would be followed by OpenFile. Drop it, and drop a directory
-	// occupying the name, so the new file is created here (D952). Parents stay as they are: os.Root
+	// occupying the name, so the new file is created here (E09-D052). Parents stay as they are: os.Root
 	// refuses a parent symlink that leaves the root.
 	fi, err := root.Lstat(name)
 	if err == nil && !fi.Mode().IsRegular() {
@@ -344,7 +344,7 @@ func modePerm(hdr *tar.Header, fallback os.FileMode) os.FileMode {
 }
 
 // safeRel is the entry's path inside the rootfs. Absolute paths, "..", and OCI whiteouts are rejected
-// (D951). os.Root is what stops a write from leaving the directory (D952); this check is the rejection
+// (E09-D051). os.Root is what stops a write from leaving the directory (E09-D052); this check is the rejection
 // itself, so the entry fails the unpack instead of being skipped.
 func safeRel(name string) (string, error) {
 	if name == "" || strings.IndexByte(name, 0) >= 0 {
@@ -372,7 +372,7 @@ func safeRel(name string) (string, error) {
 
 // symlinkTarget accepts a relative link text that cannot leave the rootfs. ".." is rejected even when
 // the cleaned path would stay inside. An absolute target is rejected even when it points at a file in
-// the rootfs (D951). The text is not rewritten.
+// the rootfs (E09-D051). The text is not rewritten.
 func symlinkTarget(target string) (string, error) {
 	if target == "" || strings.IndexByte(target, 0) >= 0 {
 		return "", errBadPath
@@ -437,7 +437,7 @@ func (c ctxReader) Read(p []byte) (int, error) {
 	return c.r.Read(p)
 }
 
-// unpackFlight is one in-progress unpack of an image digest. Waiters share its result (D955, D930).
+// unpackFlight is one in-progress unpack of an image digest. Waiters share its result (E09-D055, E09-D030).
 type unpackFlight struct {
 	done   chan struct{}
 	rootfs string
@@ -457,10 +457,10 @@ var (
 	unpackEnter func()
 )
 
-// UnpackImage extracts layers into ${DATA}/artifacts/<digest>/rootfs (D950, D955).
+// UnpackImage extracts layers into ${DATA}/artifacts/<digest>/rootfs (E09-D050, E09-D055).
 // The same digest is unpacked once per process. A rootfs directory that is already there is complete
 // and is reused without reading the layers again. The layer digests are recorded next to the rootfs
-// for GC. A rejection removes the temporary directory and does not delete the cached layers (D954).
+// for GC. A rejection removes the temporary directory and does not delete the cached layers (E09-D054).
 func (c *Client) UnpackImage(ctx context.Context, image string, layers []Layer, limits UnpackLimits) (string, error) {
 	if !digestOK(image) {
 		return "", permanent(ReasonDigestMismatch, fmt.Errorf("digest %q is not sha256", image))
@@ -564,7 +564,7 @@ func (c *Client) unpackImage(ctx context.Context, image string, layers []Layer, 
 	if err := os.WriteFile(filepath.Join(tmp, layersName), []byte(list.String()), 0o644); err != nil {
 		return "", temporary(ReasonUnavailable, err)
 	}
-	// A digest directory without a rootfs is not complete (D955). Replace it. A directory that gained
+	// A digest directory without a rootfs is not complete (E09-D055). Replace it. A directory that gained
 	// a rootfs while this unpack ran is the one to use.
 	if rootfsReady(rootfs) {
 		return rootfs, nil

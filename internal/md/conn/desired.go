@@ -18,8 +18,8 @@ import (
 // The first call applies even when its version is 0, or absent: "have a version" is tracked on
 // its own, so a real 0 is not mistaken for "nothing yet". An older or equal version is ignored,
 // which is what makes a stale read from the agent harmless. Atoms for another venue or route are
-// dropped. Record is ignored (D447). Tape follows the feed list on the setFeeds path:
-// trade, aggtrade and liquidation are recorded when project applies that list (D452).
+// dropped. Record is ignored (E04-D047). Tape follows the feed list on the setFeeds path:
+// trade, aggtrade and liquidation are recorded when project applies that list (E04-D052).
 //
 // Safe to call while Run is in progress. A change is picked up by the write loop, which diffs
 // against what the venue has already acknowledged.
@@ -364,7 +364,7 @@ func (c *Conn) plan() [][]byte {
 	for ch := range l.observed {
 		_, want := c.wanted[ch]
 		_, resub := l.resub[ch]
-		// A channel still in desired stays, unless this book is cycling it (D434).
+		// A channel still in desired stays, unless this book is cycling it (E04-D034).
 		if want && !resub {
 			continue
 		}

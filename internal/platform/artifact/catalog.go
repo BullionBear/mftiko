@@ -11,7 +11,7 @@ import (
 	"oras.land/oras-go/v2/registry/remote/auth"
 )
 
-// Catalog reads a registry without storing a catalog and without a data directory (D1056, D1013).
+// Catalog reads a registry without storing a catalog and without a data directory (E10-D056, E10-D013).
 // Tags, Resolve, ReadManifest and ReadData are read-only. They do not download layers and do not
 // check os/arch: the catalog is not a spawn. Pull and PullData are unchanged.
 type Catalog struct {
@@ -20,21 +20,21 @@ type Catalog struct {
 }
 
 // ManifestInfo is one image manifest and the worker manifest in its config blob.
-// Size is the declared sum of the config and the layers (D913). Layers are not downloaded.
+// Size is the declared sum of the config and the layers (E09-D013). Layers are not downloaded.
 type ManifestInfo struct {
 	Digest   string
 	Manifest Manifest
 	Size     int64
 }
 
-// OpenCatalog checks the registry address and, when set, loads the Docker config.json (D933, D1060).
+// OpenCatalog checks the registry address and, when set, loads the Docker config.json (E09-D033, E10-D060).
 // It does not dial the registry and does not create a data directory.
 func OpenCatalog(reg Registry) (*Catalog, error) {
 	if err := checkAddress(reg.Address); err != nil {
 		return nil, err
 	}
 	// A set path has to name a file. NewStore treats a missing file as anonymous, which would
-	// hide a wrong path; the catalog checks it here. Open (the pull client) is unchanged (D1056, D1060).
+	// hide a wrong path; the catalog checks it here. Open (the pull client) is unchanged (E10-D056, E10-D060).
 	if reg.Credentials != "" {
 		info, err := os.Stat(reg.Credentials)
 		if err != nil {
@@ -58,7 +58,7 @@ func (c *Catalog) repository(name string) (*remote.Repository, error) {
 	return openRepository(c.reg, c.http, name)
 }
 
-// Tags returns every tag in repository. The client follows the registry's pages (D1058).
+// Tags returns every tag in repository. The client follows the registry's pages (E10-D058).
 // The order is the registry's order. An empty repository is an empty slice.
 func (c *Catalog) Tags(ctx context.Context, repository string) ([]string, error) {
 	repo, err := c.repository(repository)
@@ -79,7 +79,7 @@ func (c *Catalog) Tags(ctx context.Context, repository string) ([]string, error)
 	return tags, nil
 }
 
-// Resolve returns the sha256 digest reference names. reference is a tag or a digest (D934).
+// Resolve returns the sha256 digest reference names. reference is a tag or a digest (E09-D034).
 func (c *Catalog) Resolve(ctx context.Context, repository, reference string) (string, error) {
 	if reference == "" {
 		return "", badRequest("reference is required")
@@ -99,8 +99,8 @@ func (c *Catalog) Resolve(ctx context.Context, repository, reference string) (st
 }
 
 // ReadManifest fetches the image manifest and its config blob for digest. It accepts one OCI image
-// manifest, the same check Pull makes (D934), and parses the worker manifest with the same parser.
-// It does not download layers, and it does not check kind, os/arch or contracts (D1056).
+// manifest, the same check Pull makes (E09-D034), and parses the worker manifest with the same parser.
+// It does not download layers, and it does not check kind, os/arch or contracts (E10-D056).
 func (c *Catalog) ReadManifest(ctx context.Context, repository, digestStr string) (ManifestInfo, error) {
 	want, err := digest.Parse(digestStr)
 	if err != nil || want.Algorithm() != digest.SHA256 {
@@ -147,14 +147,14 @@ func (c *Catalog) ReadManifest(ctx context.Context, repository, digestStr string
 	return ManifestInfo{Digest: want.String(), Manifest: m, Size: size}, nil
 }
 
-// DataInfo is a data artifact's manifest digest and config (D972, D1012). The layer is not downloaded.
+// DataInfo is a data artifact's manifest digest and config (E09-D072, E10-D012). The layer is not downloaded.
 type DataInfo struct {
 	Digest string
 	Config DataConfig
 }
 
 // ReadData fetches the image manifest and its config for digest and checks that they are a mftiko
-// data artifact (D972). It does not download the layer and does not apply PullData's size cap.
+// data artifact (E09-D072). It does not download the layer and does not apply PullData's size cap.
 // PullData is unchanged.
 func (c *Catalog) ReadData(ctx context.Context, repository, digestStr string) (DataInfo, error) {
 	want, err := digest.Parse(digestStr)

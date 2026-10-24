@@ -15,7 +15,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange"
 )
 
-// TestRedundantWorkersShareUIDAndDigest is the D461 acceptance for the conn
+// TestRedundantWorkersShareUIDAndDigest is the E08-D065 acceptance for the conn
 // worker. Two workers with the same active table publish one instrument: the
 // payloads carry that UID, the digests match, and tape and the book snapshot
 // carry the same UID. Subjects stay on the ticker.

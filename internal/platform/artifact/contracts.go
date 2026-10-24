@@ -8,13 +8,13 @@ import (
 
 const contractsMarkerPrefix = "mftiko.contracts="
 
-// ErrNoContracts means the binary has no embedded contracts list (D935).
+// ErrNoContracts means the binary has no embedded contracts list (E09-D035).
 var ErrNoContracts = errors.New("artifact: no embedded contracts list")
 
 // ErrContractsConflict means the binary embeds two different contracts lists.
 var ErrContractsConflict = errors.New("artifact: embedded contracts lists disagree")
 
-// embeddedContracts reads the list sdk writes into a Go strategy binary (D935).
+// embeddedContracts reads the list sdk writes into a Go strategy binary (E09-D035).
 // The marker is contractsMarkerPrefix, the comma-separated majors, and a newline.
 // Identical copies are one list. Copies that disagree are an error.
 func embeddedContracts(binary []byte) ([]string, error) {

@@ -6,7 +6,7 @@ import (
 	"unicode"
 )
 
-// canonicalVenue is the venue half of a ticker: CamelCase ASCII, no separator (D201).
+// canonicalVenue is the venue half of a ticker: CamelCase ASCII, no separator (E02-D001).
 // OKX matches this and is still not the registry spelling Okx; Parse does not consult
 // the registry, Resolve does.
 func canonicalVenue(name string) bool {

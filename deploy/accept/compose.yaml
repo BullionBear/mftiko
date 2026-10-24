@@ -70,7 +70,7 @@ services:
       timeout: 3s
       retries: 30
 
-  # Strategy artifacts for the STS agent and the API's catalog (E10-19). No auth, plain HTTP (D910).
+  # Strategy artifacts for the STS agent and the API's catalog (E10-19). No auth, plain HTTP (E09-D010).
   registry:
     image: registry:2
     volumes:

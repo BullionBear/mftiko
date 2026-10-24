@@ -7,10 +7,10 @@ import (
 	"fmt"
 )
 
-// ErrPlatform means the ELF header does not name a Go os/arch (D937).
+// ErrPlatform means the ELF header does not name a Go os/arch (E09-D037).
 var ErrPlatform = errors.New("artifact: unsupported ELF os/arch")
 
-// elfArch is one row of Go's ELF machine, class and endianness (D937).
+// elfArch is one row of Go's ELF machine, class and endianness (E09-D037).
 type elfArch struct {
 	machine elf.Machine
 	class   elf.Class

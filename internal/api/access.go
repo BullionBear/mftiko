@@ -16,8 +16,8 @@ import (
 	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
 )
 
-// How much of a request the audit row keeps. These are code constants, not decisions: D1049 leaves
-// the queue bound to the implementation, and the body rules are D1052.
+// How much of a request the audit row keeps. These are code constants, not decisions: E10-D049 leaves
+// the queue bound to the implementation, and the body rules are E10-D052.
 const (
 	maxRequestBody = 1 << 20
 	detailLimit    = 8 << 10
@@ -51,7 +51,7 @@ func requestPath(r *http.Request) string {
 	return p
 }
 
-// newRequestID is the server's id for this response (D1053). It is 32 hex characters.
+// newRequestID is the server's id for this response (E10-D053). It is 32 hex characters.
 func newRequestID() string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -62,7 +62,7 @@ func newRequestID() string {
 }
 
 // capture records the status and, for an error, enough of the body to read the problem detail.
-// The audit row does not store the response body (D1010).
+// The audit row does not store the response body (E10-D010).
 type capture struct {
 	http.ResponseWriter
 	status int
@@ -103,7 +103,7 @@ func (c *capture) Unwrap() http.ResponseWriter { return c.ResponseWriter }
 
 // serveAudited is the /api path: authenticate, handle, then queue one audit row when the handler
 // returns. A streaming handler (SSE) returns when the stream ends, so that is when its row is
-// queued (D1010). The response is already committed by then; a full queue does not change it.
+// queued (E10-D010). The response is already committed by then; a full queue does not change it.
 func (s *Server) serveAudited(w http.ResponseWriter, r *http.Request, st *accessState) {
 	s.apiWG.Add(1)
 	defer s.apiWG.Done()
@@ -117,7 +117,7 @@ func (s *Server) serveAudited(w http.ResponseWriter, r *http.Request, st *access
 }
 
 // serveAPI authenticates before it looks at Content-Type, so an anonymous client gets 401 rather
-// than 400. POST /api/v1/auth/login is the only route that skips authentication (D1009).
+// than 400. POST /api/v1/auth/login is the only route that skips authentication (E10-D009).
 func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request, st *accessState) {
 	if isWrite(r.Method) {
 		body, tooBig, err := readBody(w, r)
@@ -138,8 +138,8 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request, st *accessStat
 		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, http.StatusText(http.StatusBadRequest), "request body is too large", nil)
 		return
 	}
-	// The Content-Type rule is CSRF defense for the cookie (D1009). A bearer token is not sent by the
-	// browser on its own, so bearer writes skip it, bodyless ones included (D1110).
+	// The Content-Type rule is CSRF defense for the cookie (E10-D009). A bearer token is not sent by the
+	// browser on its own, so bearer writes skip it, bodyless ones included (E10-D110).
 	if isWrite(r.Method) && !bearerAuthed(st) && !jsonContentType(r) {
 		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, http.StatusText(http.StatusBadRequest), "Content-Type must be application/json", nil)
 		return

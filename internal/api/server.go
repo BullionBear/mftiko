@@ -25,7 +25,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
-// Server is one API process: a mirror per regional cluster and the HTTP listener (D1024–D1029).
+// Server is one API process: a mirror per regional cluster and the HTTP listener (E10-D024–E10-D029).
 type Server struct {
 	cfg      Config
 	cl       *state.Clusters
@@ -60,13 +60,13 @@ type Server struct {
 	// hook is nil in production. Tests fail a create at "before-etcd" or "after-etcd".
 	hook func(step string) error
 	// haltBeforeDelete is a test switch. The retention pass closes the row and returns
-	// before deleteIf, so a later pass can finish the etcd delete (D1031). It is zero
+	// before deleteIf, so a later pass can finish the etcd delete (E10-D031). It is zero
 	// until a test sets it, and the reconcile goroutine only reads it with atomics.
 	haltBeforeDelete atomic.Bool
-	// missingRecord counts etcd specs with no session_records row (D1072).
-	// W5 also counts a terminal session that has no row and is therefore not deleted (D1081).
+	// missingRecord counts etcd specs with no session_records row (E10-D072).
+	// W5 also counts a terminal session that has no row and is therefore not deleted (E10-D081).
 	missingRecord atomic.Int64
-	// hashMismatch counts specs whose immutable content does not match the row (D1071).
+	// hashMismatch counts specs whose immutable content does not match the row (E10-D071).
 	hashMismatch  atomic.Int64
 	reconcileKick chan struct{}
 	reconcileMu   sync.Mutex
@@ -76,7 +76,7 @@ type Server struct {
 	mu     sync.Mutex
 	logged string // last unavailable_regions logged, joined
 
-	// agents remembers the last AgentRecord seen while its region was available (D1096).
+	// agents remembers the last AgentRecord seen while its region was available (E10-D096).
 	agents agentMemory
 }
 
@@ -88,7 +88,7 @@ type cluster struct {
 
 // Run validates cfg, dials every region and serves until ctx is cancelled. Cancellation is the shutdown path:
 // readiness turns 503, the listener stops accepting, in-flight requests get shutdown_timeout, and Run returns
-// nil so the process can exit 0 (D1027). A failure before the process is serving returns an error.
+// nil so the process can exit 0 (E10-D027). A failure before the process is serving returns an error.
 func Run(ctx context.Context, cfg Config) error {
 	s, err := start(cfg)
 	if err != nil {
@@ -157,7 +157,7 @@ func start(cfg Config) (*Server, error) {
 		return nil, err
 	}
 	// watchMirror calls kickReconcile as soon as a mirror notifies, and that reads this field.
-	// The channel has to exist before those goroutines start (D1070).
+	// The channel has to exist before those goroutines start (E10-D070).
 	s.reconcileKick = make(chan struct{}, 1)
 	for _, c := range s.clusters {
 		s.wg.Add(1)
@@ -221,8 +221,8 @@ func (s *Server) serve(ctx context.Context) error {
 	}
 }
 
-// drain is D1027: readiness goes 503 first, then the listener closes and in-flight requests have
-// ShutdownTimeout to finish. The audit queue is written inside that same window (D1049). Past the
+// drain is E10-D027: readiness goes 503 first, then the listener closes and in-flight requests have
+// ShutdownTimeout to finish. The audit queue is written inside that same window (E10-D049). Past the
 // limit, Close drops the connections and whatever is still queued is abandoned.
 func (s *Server) drain() {
 	s.drainOnce.Do(func() {
@@ -265,7 +265,7 @@ func (s *Server) stop() {
 // routes is one handler on purpose. ServeMux rejects a GET wildcard registered over the
 // all-method /api/ pattern, so the split is done here: /healthz and /readyz are exact,
 // /api (including the strategy catalog) is authenticated and audited, and anything else
-// is the console build (D1028, D1056).
+// is the console build (E10-D028, E10-D056).
 func (s *Server) routes() http.Handler {
 	s.apiOnce.Do(func() {
 		s.api = apiv1.HandlerWithOptions(s, apiv1.StdHTTPServerOptions{
@@ -277,7 +277,7 @@ func (s *Server) routes() http.Handler {
 }
 
 func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
-	// Every response carries an id the server chose. A client-supplied X-Request-Id is ignored (D1053).
+	// Every response carries an id the server chose. A client-supplied X-Request-Id is ignored (E10-D053).
 	id := newRequestID()
 	w.Header().Set(headerRequestID, id)
 	st := &accessState{id: id, start: s.clock()}
@@ -299,7 +299,7 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		s.readyz(w, r)
 		return
 	}
-	// Only /api is authenticated and audited. Health, readiness, and static files are not (D1010).
+	// Only /api is authenticated and audited. Health, readiness, and static files are not (E10-D010).
 	// Strategy routes are /api too; serveAPI sends them to the catalog mux after authentication.
 	if apiPath(r.URL.Path) {
 		s.serveAudited(w, r, st)
@@ -431,10 +431,10 @@ func (s *Server) runMirror(c *cluster) {
 
 // dial waits for the region's client, or for shutdown. Reader's own timeout does not
 // follow this process's context; waiting for it on the way out would hold SIGTERM past
-// the drain limit (D1027). The dial keeps running until it finishes, and Clusters.Close
+// the drain limit (E10-D027). The dial keeps running until it finishes, and Clusters.Close
 // drops a client that arrives after shutdown.
 // dialRequest is dial that also returns when ctx is canceled, so a client disconnect
-// does not leave an SSE handler blocked in Clusters.Reader (D1027, D1094).
+// does not leave an SSE handler blocked in Clusters.Reader (E10-D027, E10-D094).
 func (s *Server) dialRequest(ctx context.Context, region string) (state.Reader, error) {
 	type result struct {
 		r   state.Reader

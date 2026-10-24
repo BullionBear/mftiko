@@ -412,7 +412,7 @@ func TestRestartLimitContinuesSeq(t *testing.T) {
 // A worker that crashes while no agent runs is still restarted by the next one.
 // The first Sync after adoption sees the exit before any Step has asked the
 // restart policy about it; publishing the exit there made the crash terminal,
-// and a terminal session never comes back (D945, D995, #327). The same gap
+// and a terminal session never comes back (E09-D045, E09-D095, #327). The same gap
 // exists inside a round, between the Step's observation and the Sync's.
 func TestCrashWhileAgentDownStillRestarts(t *testing.T) {
 	e := setup(t)
@@ -613,7 +613,7 @@ func TestPullRetries(t *testing.T) {
 	ph.wait(id, statev1.Phase_PHASE_PENDING, statev1.Phase_PHASE_WAITING)
 }
 
-// grace_ms is the Stop grace. 0 uses the deployment default of 10s (D962).
+// grace_ms is the Stop grace. 0 uses the deployment default of 10s (E09-D062).
 func TestStopGraceFromSpec(t *testing.T) {
 	e := setup(t)
 	const custom, plain = "a1b2c3", "b2c3d4"
@@ -801,7 +801,7 @@ func setup(t *testing.T) *env {
 		e.mu.Unlock()
 	}
 	t.Cleanup(func() {
-		// Inputs are mode 0555 after unpack (D975). TempDir cannot remove them until they are writable.
+		// Inputs are mode 0555 after unpack (E09-D075). TempDir cannot remove them until they are writable.
 		_ = artifact.RemoveWritable(filepath.Join(e.cfg.DataDir, "sessions"))
 		e.mu.Lock()
 		pids := append([]int(nil), e.pids...)

@@ -98,7 +98,7 @@ func TestLifecycleStaleProviderHoldsAssignment(t *testing.T) {
 	wantKeys(t, controller.Lifecycle(v, places(), true), twKey)
 
 	// Nothing left in the fresh region. The stale region may still be hiding
-	// a demand, so the assignment waits (D1333).
+	// a demand, so the assignment waits (E13-D033).
 	delete(v.Demands, twKey)
 	if got := controller.Lifecycle(v, places(), true); len(got) != 0 {
 		t.Fatalf("assignment deleted while jp is stale: %v", got)
@@ -165,7 +165,7 @@ func TestLifecycleOrphanOnFullResync(t *testing.T) {
 	addDemand(&v, twKey, "tw", "md-tw-1", "md", id)
 
 	// STS lives in tw. While that region is stale the session might be there
-	// and not yet visible (D1334).
+	// and not yet visible (E13-D034).
 	v.Regions["tw"] = controller.Region{Rev: 1, Synced: true, Stale: true}
 	if got := controller.Lifecycle(v, places(), true); len(got) != 0 {
 		t.Fatalf("orphan deleted while an STS region is stale: %v", got)

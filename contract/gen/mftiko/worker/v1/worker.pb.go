@@ -707,7 +707,7 @@ func (x *Stopped) GetOnStopCompleted() bool {
 	return false
 }
 
-// worker 已經套用的 live config（DECISIONS D111）：Init 成功之後回報 Init.live_digest，套用一則 Live 之後回報它的 digest。
+// worker 已經套用的 live config（DECISIONS E01-D011）：Init 成功之後回報 Init.live_digest，套用一則 Live 之後回報它的 digest。
 // 套用失敗就不送；agent 照它判斷 worker 手上是哪一份。
 type Applied struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1095,7 +1095,7 @@ func (x *Stop) GetGraceMs() uint32 {
 	return 0
 }
 
-// live config：完整的期望狀態，不是增量；worker 以 diff 套用，收到和手上相同的就什麼都不做（DECISIONS D111）。
+// live config：完整的期望狀態，不是增量；worker 以 diff 套用，收到和手上相同的就什麼都不做（DECISIONS E01-D011）。
 type Live struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Contract      string                 `protobuf:"bytes,1,opt,name=contract,proto3" json:"contract,omitempty"`

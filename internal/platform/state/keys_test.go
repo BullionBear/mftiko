@@ -35,7 +35,7 @@ func TestKeys(t *testing.T) {
 		{AccountKey("td-jp-1", 42), r + "/td/td-jp-1/account/42", PlaneTD, "td-jp-1", "jp"},
 		{SessionDemandKey("sts-tw-1", "a1b2c3"), r + "/sts/sts-tw-1/demand/a1b2c3", PlaneSTS, "sts-tw-1", "tw"},
 		// A TW session asking for JP market data: the controller writes the demand into JP's cluster; JP's MD
-		// acks there (D005 rule 1).
+		// acks there (E00-D005 rule 1).
 		{
 			MDDemandKey("md-jp-1", "a1b2c3", "feed/trade.BinanceUM_Perp_BTCUSDT"),
 			r + "/md/md-jp-1/demand/a1b2c3/feed/trade.BinanceUM_Perp_BTCUSDT", PlaneMD, "md-jp-1", "jp",
@@ -56,7 +56,7 @@ func TestKeys(t *testing.T) {
 			TDAckKey("td-jp-1", "a1b2c3", 42),
 			r + "/td/td-jp-1/ack/a1b2c3/42", PlaneTD, "td-jp-1", "jp",
 		},
-		// The controller's own keys, in its home region (D907).
+		// The controller's own keys, in its home region (E09-D007).
 		{ElectionPrefix(PlaneCtl, ControllerInstance), r + "/ctl/controller/election", PlaneCtl, ControllerInstance, "tw"},
 		{EpochKey(PlaneCtl, ControllerInstance), r + "/ctl/controller/epoch", PlaneCtl, ControllerInstance, "tw"},
 		{WriterKey(PlaneCtl, ControllerInstance), r + "/ctl/controller/writer", PlaneCtl, ControllerInstance, "tw"},

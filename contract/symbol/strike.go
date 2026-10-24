@@ -12,7 +12,7 @@ import (
 // It is a guard, not a product limit on strikes.
 const spellDigits = 10000
 
-// SpellStrike writes a strike in platform form (D203).
+// SpellStrike writes a strike in platform form (E02-D003).
 //
 // 6400.0 and 6400 are one spelling. A fractional strike uses StrikeDecimal,
 // so 6.4, 6d4 and 6D4 are 6D4. 7E4 and 10_000 fold to 70000 and 10000; a

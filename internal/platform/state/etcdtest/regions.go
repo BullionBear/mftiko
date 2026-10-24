@@ -12,7 +12,7 @@ import (
 // instance lives where.
 //
 // This package does not return state.Topology. The state tests import etcdtest,
-// so etcdtest importing state would cycle (D1316).
+// so etcdtest importing state would cycle (E13-D016).
 //
 // Names are non-empty and unique. A missing etcd binary skips t, as Start does.
 func StartRegions(t testing.TB, regions ...string) map[string]*Server {

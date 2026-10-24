@@ -18,12 +18,12 @@ import (
 )
 
 const (
-	// SubjectPrefix is md.v1.fetch.{venue} (D456). Venue is the human-readable
-	// name, the same token sym.v1.changed uses (D418, D457). The exact subject
+	// SubjectPrefix is md.v1.fetch.{venue} (E04-D056). Venue is the human-readable
+	// name, the same token sym.v1.changed uses (E04-D018, E04-D057). The exact subject
 	// md.v1.fetch is not a subscription.
 	SubjectPrefix = "md.v1.fetch."
 
-	// MaxKlines is the most closed candles one reply carries (D419).
+	// MaxKlines is the most closed candles one reply carries (E04-D019).
 	MaxKlines = 5000
 
 	// CodeInvalid, CodeUnsupported, CodeRateLimited and CodeVenueError are the
@@ -35,19 +35,19 @@ const (
 	CodeVenueError  = "venue_error"
 
 	// maxReplyBytes is one byte under NATS's default 1 MiB payload, so a
-	// published reply is accepted (D419). A larger reply is invalid rather
+	// published reply is accepted (E04-D019). A larger reply is invalid rather
 	// than sent.
 	maxReplyBytes = 1<<20 - 1
 
 	// DefaultRateHold is how long a venue stays closed after a 429 or 418 that
-	// carries neither Retry-After nor a bucket ResetAt (D420).
+	// carries neither Retry-After nor a bucket ResetAt (E04-D020).
 	DefaultRateHold = time.Minute
 )
 
 // Subject is the request subject for one venue.
 func Subject(venue string) string { return SubjectPrefix + venue }
 
-// Options tunes New. The zero RateLimit does not refuse early (D420). A venue
+// Options tunes New. The zero RateLimit does not refuse early (E04-D020). A venue
 // that answers *RateLimited is still rate_limited, and stays closed until the
 // venue's reset time.
 type Options struct {
@@ -89,7 +89,7 @@ type sample struct {
 }
 
 // New serves venues, in that order, through res and doer. res is the active
-// table (D422). doer sends the Calls; production uses the fasthttp Doer.
+// table (E04-D022). doer sends the Calls; production uses the fasthttp Doer.
 func New(venues []Venue, res symbol.Resolver, doer exchange.Doer, opt Options) (*Service, error) {
 	if res == nil {
 		return nil, errors.New("fetch: nil resolver")
@@ -141,7 +141,7 @@ func New(venues []Venue, res symbol.Resolver, doer exchange.Doer, opt Options) (
 }
 
 // Serve joins the queue group of each configured venue. The queue name is the
-// subject, which is what natsx does when the queue is empty (D417, D418).
+// subject, which is what natsx does when the queue is empty (E04-D017, E04-D018).
 // The handlers stop when ctx is cancelled. Serve returns once every interest
 // is registered.
 func (s *Service) Serve(ctx context.Context, c *natsx.Conn) ([]*natsx.Subscription, error) {
@@ -269,7 +269,7 @@ func (s *Service) fetchOpenInterest(ctx context.Context, venue string, req *mdv1
 	return out, nil
 }
 
-// pageKlines walks backward from the latest closed candle (D419). The first
+// pageKlines walks backward from the latest closed candle (E04-D019). The first
 // call asks for min(limit, KlinePage()). Each later call asks for a full page
 // ending at the earliest open time already seen, which is Klines(endNs).
 // A venue whose end is inclusive returns that candle again; it is dropped.
@@ -351,7 +351,7 @@ func pageKlines(ctx context.Context, s *Service, venue string, rest exchange.Pub
 	return got, nil
 }
 
-// instrument resolves uid on the active table (D422, D461). A missing row,
+// instrument resolves uid on the active table (E04-D022, E08-D065). A missing row,
 // including a terminal listing, is invalid, the same as a uid the table has
 // never held. A uid whose venue is not the subject venue is invalid. The
 // lookup is GetByUID; includeInactive stays false, so the terminal table is
@@ -393,7 +393,7 @@ func reply(code, reason string) *mdv1.FetchReply {
 	return &mdv1.FetchReply{Error: code, Reason: reason}
 }
 
-// stamp writes the requested instrument onto the reply (D461). A nil reply is
+// stamp writes the requested instrument onto the reply (E08-D065). A nil reply is
 // a transport error, not a FetchReply, and stays nil.
 func stamp(uid uint32, msg *mdv1.FetchReply) *mdv1.FetchReply {
 	if msg == nil {
@@ -422,7 +422,7 @@ func klineMessage(row exchange.Kline) *mdv1.Kline {
 	return msg
 }
 
-// limited is the pre-check refusing a call that would go out (D420).
+// limited is the pre-check refusing a call that would go out (E04-D020).
 type limited struct{ reason string }
 
 func (e *limited) Error() string {

@@ -20,7 +20,7 @@ import (
 )
 
 // TestBinanceSpotPrivate places orders on the spot testnet through one WebSocket API connection
-// and checks that myTrades reports the same trade id as executionReport (D601). It does not run in CI.
+// and checks that myTrades reports the same trade id as executionReport (E06-D001). It does not run in CI.
 //
 //	MFTIKO_BINANCE_SPOT_LIVE=1 go test ./exchange/binance/ -run TestBinanceSpotPrivate -v -count=1
 //
@@ -519,7 +519,7 @@ func recordSpot(t *testing.T, creds exchange.Credentials, h *live, cloid string,
 	var buf bytes.Buffer
 	w, err := conformance.NewWriter(&buf, conformance.Record{
 		Venue: VenueSpot, Side: conformance.SideTrade,
-		Note: "Spot testnet BTCUSDT fill. The trade id matches my_trades_testnet (D601).",
+		Note: "Spot testnet BTCUSDT fill. The trade id matches my_trades_testnet (E06-D001).",
 	}, time.Now, creds.Key, creds.Secret)
 	if err != nil {
 		t.Fatal(err)

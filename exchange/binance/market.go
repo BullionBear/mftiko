@@ -83,7 +83,7 @@ func appendKlines(out []exchange.TopicCaps) []exchange.TopicCaps {
 // Atom: the channel is the venue's subscribe parameter, lowercase symbol included.
 // bookTicker and depth are the public route; everything else is market.
 // orderbook_delta subscribes btcusdt@depth@100ms. mark_price and funding_rate
-// share btcusdt@markPrice@1s. Open interest is not pushed (D401). There is no top-N topic (D453).
+// share btcusdt@markPrice@1s. Open interest is not pushed (E04-D001). There is no top-N topic (E04-D053).
 func (m *market) Atom(topic exchange.Topic, inst *symbol.Info) (exchange.AtomRef, error) {
 	switch m.p.venue.Name {
 	case VenueUM:

@@ -1,11 +1,11 @@
 // Command mftiko-td-agent is the execution-plane agent: one account worker per api_id a session
-// needs, started by its owners and stopped linger after the last one leaves (DECISIONS D901, D905,
-// D608). It does not connect to NATS and does not store fills (D638, D639).
+// needs, started by its owners and stopped linger after the last one leaves (DECISIONS E09-D001, E09-D005,
+// E06-D008). It does not connect to NATS and does not store fills (E06-D038, E06-D039).
 //
-// It unseals each account's credentials with this instance's key (-seal-key, D613), signs each
-// worker's NATS user with the MFTIKO account's signing key (-nats-account, -nats-signing-key, D611),
+// It unseals each account's credentials with this instance's key (-seal-key, E06-D013), signs each
+// worker's NATS user with the MFTIKO account's signing key (-nats-account, -nats-signing-key, E06-D011),
 // and gives the worker this instance's hosts for its account kind (-endpoints, -rest-endpoints,
-// -simulated, D616). A running worker keeps the binary it was spawned with (P9).
+// -simulated, E06-D016). A running worker keeps the binary it was spawned with (P9).
 package main
 
 import (

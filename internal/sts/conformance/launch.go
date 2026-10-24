@@ -3,11 +3,11 @@ package conformance
 import "errors"
 
 // ErrArtifact is returned when a caller asks to unpack an OCI artifact.
-// Unpacking is left as an interface for a later phase (D836).
+// Unpacking is left as an interface for a later phase (E08-D036).
 var ErrArtifact = errors.New("conformance: OCI artifact unpacking is not implemented")
 
 // Worker is something the harness can exec. Command is a worker argv.
-// Artifact is the OCI reference, not implemented in this phase (D836).
+// Artifact is the OCI reference, not implemented in this phase (E08-D036).
 type Worker interface {
 	Args() ([]string, error)
 }
@@ -25,7 +25,7 @@ func (c Command) Args() ([]string, error) {
 	return out, nil
 }
 
-// Artifact is an OCI reference. Args returns ErrArtifact (D836).
+// Artifact is an OCI reference. Args returns ErrArtifact (E08-D036).
 type Artifact struct {
 	Reference string
 }

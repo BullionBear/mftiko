@@ -12,7 +12,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange"
 )
 
-// book is a reference local book: price -> qty, folded the way the conn worker folds (D402).
+// book is a reference local book: price -> qty, folded the way the conn worker folds (E04-D002).
 type book struct{ bids, asks map[float64]float64 }
 
 func newBook() *book { return &book{bids: map[float64]float64{}, asks: map[float64]float64{}} }
@@ -282,7 +282,7 @@ var platformTopics = []exchange.Topic{
 	exchange.TopicOpenInterest, exchange.TopicGreeks, exchange.TopicMarkPrice,
 }
 
-// checkPlanning: the planning half of Market is consistent (D401, D403). Atom is a function of its
+// checkPlanning: the planning half of Market is consistent (E04-D001, E04-D003). Atom is a function of its
 // arguments; its route is one of Routes; one channel fits a connection; a topic Topics does not list
 // is ErrUnsupported; every route has an endpoint, and the override replaces its host.
 func (r *runner) checkPlanning() []Problem {

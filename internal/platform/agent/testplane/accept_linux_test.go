@@ -191,7 +191,7 @@ func TestSuperseded(t *testing.T) {
 	}
 }
 
-// The shim is killed: the worker reads EOF on fd 3 and ends by itself (D104), and the agent runs the next
+// The shim is killed: the worker reads EOF on fd 3 and ends by itself (E01-D004), and the agent runs the next
 // incarnation once the last is gone. SIGTERM is ignored because Pdeathsig is SIGTERM and arrives with the
 // EOF; otherwise the worker can stop on the signal and never journal the EOF (TestShimKilledWorkerSeesEOF).
 func TestShimKilled(t *testing.T) {

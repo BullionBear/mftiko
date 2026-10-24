@@ -8,10 +8,10 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/agent"
 )
 
-// beatMargin is added to the phase's limit (D920, D968). It is not configurable.
+// beatMargin is added to the phase's limit (E09-D020, E09-D068). It is not configurable.
 const beatMargin = 10 * time.Second
 
-// Policy is the STS restart and beat policy (D919, D920, D966–D971).
+// Policy is the STS restart and beat policy (E09-D019, E09-D020, E09-D066–E09-D071).
 // The skeleton asks it from the agent loop; it does no I/O.
 type Policy struct {
 	backoff       agent.Backoff
@@ -21,7 +21,7 @@ type Policy struct {
 	windowDefault time.Duration
 	now           func() time.Time
 	// lookup is the fleet's current observation, used to match a no_beat kill to
-	// the incarnation that just ended (D967). Nil in tests that set it themselves.
+	// the incarnation that just ended (E09-D067). Nil in tests that set it themselves.
 	lookup func(agent.WorkerKey) (agent.Observed, bool)
 
 	sessions map[string]*sessPol
@@ -37,12 +37,12 @@ type sessPol struct {
 	useDeadline bool
 
 	killed map[uint32]struct{} // incarnations SIGKILLed for a missing beat
-	times  []time.Time         // when this process restarted it (D969)
+	times  []time.Time         // when this process restarted it (E09-D069)
 
 	haveEnd        bool
 	decided        uint32 // the incarnation whose exit Restart classified last
 	restarting     bool
-	noBeat         bool // this exit is the SIGKILL for a missing beat (D967)
+	noBeat         bool // this exit is the SIGKILL for a missing beat (E09-D067)
 	reason         string
 	terminalReason string
 	overrideReason string
@@ -52,7 +52,7 @@ type sessPol struct {
 // exit's own outcome in place.
 type endView struct {
 	// decided is the incarnation the fields below are about. Sync marks an exit of
-	// another incarnation undecided: the policy has not seen it yet (D995).
+	// another incarnation undecided: the policy has not seen it yet (E09-D095).
 	decided        uint32
 	undecided      bool
 	restarting     bool
@@ -125,7 +125,7 @@ func (p *Policy) ensure(id string) *sessPol {
 	return s
 }
 
-// note records the spec's resolved limits and which beat limit the worker is on (D968).
+// note records the spec's resolved limits and which beat limit the worker is on (E09-D068).
 func (p *Policy) note(id string, spec *sessionv1.SessionSpec, obs *agent.Observed) {
 	if p == nil || spec == nil {
 		return
@@ -151,7 +151,7 @@ func (p *Policy) note(id string, spec *sessionv1.SessionSpec, obs *agent.Observe
 	s.useDeadline = obs != nil && (obs.State == agent.StateInitializing || obs.State == agent.StateStarting)
 }
 
-// noteKill remembers an incarnation this process is killing because it stopped beating (D967).
+// noteKill remembers an incarnation this process is killing because it stopped beating (E09-D067).
 func (p *Policy) noteKill(key agent.WorkerKey, inc uint32) {
 	if p == nil || inc == 0 {
 		return
@@ -182,7 +182,7 @@ func (p *Policy) statusEnd(id string) endView {
 	}
 }
 
-// Restart says whether a wanted worker runs again, and how long to wait (D919, D969, D970).
+// Restart says whether a wanted worker runs again, and how long to wait (E09-D019, E09-D069, E09-D070).
 // The wait is the skeleton's Ended.Restarts, which goes back to zero after StableAfter.
 // The window count is this process's own timestamps and starts at zero after a rotation.
 func (p *Policy) Restart(key agent.WorkerKey, end agent.Ended) (bool, time.Duration) {
@@ -200,7 +200,7 @@ func (p *Policy) Restart(key agent.WorkerKey, end agent.Ended) (bool, time.Durat
 	s.reason = ""
 	if end.Exit == nil {
 		// The shim is gone and left no record. Restarting could leave the old
-		// process placing orders (D970).
+		// process placing orders (E09-D070).
 		s.reason = ReasonShimLost
 		return false, 0
 	}
@@ -230,11 +230,11 @@ func (p *Policy) Restart(key agent.WorkerKey, end agent.Ended) (bool, time.Durat
 	return true, p.backoff.After(end.Restarts)
 }
 
-// KeepWhileStale keeps the last plan, and Start still runs, while demand is stale (D109).
+// KeepWhileStale keeps the last plan, and Start still runs, while demand is stale (E01-D009).
 func (Policy) KeepWhileStale(agent.WorkerKey) bool { return true }
 
 // BeatTimeout is deadline_ms+10s during Init and Start, and hook_timeout_s+10s
-// after that, including WAITING for start (D968). Both are the resolved values.
+// after that, including WAITING for start (E09-D068). Both are the resolved values.
 // 0 means the session is not known yet, so the skeleton does not time it out.
 func (p *Policy) BeatTimeout(key agent.WorkerKey) time.Duration {
 	id, ok := idFrom("sts/", string(key))
@@ -256,7 +256,7 @@ func (p *Policy) BeatTimeout(key agent.WorkerKey) time.Duration {
 }
 
 // Silent stops a worker that has gone quiet. The fleet turns that into SIGKILL
-// for STS (D966); this method only says to stop.
+// for STS (E09-D066); this method only says to stop.
 func (Policy) Silent(agent.WorkerKey, time.Duration) bool { return true }
 
 func (p *Policy) clock() time.Time {
@@ -278,7 +278,7 @@ func (p *Policy) incarnation(key agent.WorkerKey) uint32 {
 }
 
 // consumeNoBeat reports whether this exit is the SIGKILL noteKill recorded for
-// the same incarnation, and forgets that mark either way (D967).
+// the same incarnation, and forgets that mark either way (E09-D067).
 func (p *Policy) consumeNoBeat(s *sessPol, key agent.WorkerKey, ex *commonv1.ExitInfo) bool {
 	inc := p.incarnation(key)
 	if inc == 0 || s.killed == nil {
@@ -292,7 +292,7 @@ func (p *Policy) consumeNoBeat(s *sessPol, key agent.WorkerKey, ex *commonv1.Exi
 }
 
 // failureRestart is the ON_FAILURE set: CRASHED, HUNG, and a signal the agent
-// did not ask for (D919). DONE, FAILED, and INIT_FAILED are not in it.
+// did not ask for (E09-D019). DONE, FAILED, and INIT_FAILED are not in it.
 // A signal reaches Restart only when the worker was still wanted; an agent Stop
 // either leaves the plan or is a spec replacement, and neither asks Restart.
 func failureRestart(outcome commonv1.Outcome, signal int32) bool {

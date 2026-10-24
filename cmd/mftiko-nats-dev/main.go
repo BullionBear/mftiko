@@ -1,8 +1,8 @@
 // Command mftiko-nats-dev generates the dev NATS operator, accounts, and user credentials,
-// or checks a server that is already using them (D412–D417, D611, D639).
+// or checks a server that is already using them (E04-D012–E04-D017, E06-D011, E06-D039).
 //
 // Generate writes into -out, which make dev-up sets to deploy/dev/data/nats. That directory
-// is gitignored. Keys already present are reused. It does not issue a TD agent user (D639).
+// is gitignored. Keys already present are reused. It does not issue a TD agent user (E06-D039).
 // -check does not generate and does not write session or account worker credentials; it signs
 // one ephemeral caller and one account worker in memory, and rejects a TD agent user.
 package main

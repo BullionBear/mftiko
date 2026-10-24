@@ -87,7 +87,7 @@ func setup() error {
 	if err != nil {
 		return err
 	}
-	// Both replicas sign the console cookie with this key (D1009); accept.sh passes it in the environment.
+	// Both replicas sign the console cookie with this key (E10-D009); accept.sh passes it in the environment.
 	if _, err := ensureToken(filepath.Join(*out, "cookie-key")); err != nil {
 		return err
 	}
@@ -145,7 +145,7 @@ func ensureAuth(ctx context.Context, endpoint string, table state.AuthTable) err
 	return err
 }
 
-// ensureToken returns the secret in path, or makes one: 32 random bytes, base64 (D1055).
+// ensureToken returns the secret in path, or makes one: 32 random bytes, base64 (E10-D055).
 func ensureToken(path string) (string, error) {
 	if b, err := os.ReadFile(path); err == nil {
 		if t := strings.TrimSpace(string(b)); t != "" {

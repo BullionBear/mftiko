@@ -15,7 +15,7 @@ import (
 
 // Users that are not agent instances. An agent's user is its instance name; the controller's is ControllerInstance.
 const (
-	UserAPI  = "api"  // the API server, every replica (DECISIONS D907)
+	UserAPI  = "api"  // the API server, every replica (DECISIONS E09-D007)
 	UserRoot = "root" // etcd's own administrator, used only to apply the tables; it is not in them
 )
 
@@ -59,9 +59,9 @@ func (a AuthTable) Users() []string {
 //   - The API server exists in every cluster. It reads everything and writes the session specs of the region's STS
 //     instances and the accounts of its TD instances. It also has write on those STS instances' status prefixes.
 //     W5 deletes a terminal status, and etcd RBAC does not separate delete from write, so the grant is the whole
-//     prefix (D1040). etcd therefore cannot refuse an api put of status. W1's "only the STS agent writes status"
+//     prefix (E10-D040). etcd therefore cannot refuse an api put of status. W1's "only the STS agent writes status"
 //     is kept by the API program, not by etcd. That gap is deliberate: STS does not clear status, which would
-//     overturn D1017. The API writes no demand, ack, agent, worker or writer key, and nothing under another
+//     overturn E10-D017. The API writes no demand, ack, agent, worker or writer key, and nothing under another
 //     instance's prefix.
 //
 // Granting a lease needs no permission; revoking one needs write permission on every key attached to it, which
@@ -106,7 +106,7 @@ func AuthTables(topo Topology, planes map[string]Plane) (map[string]AuthTable, e
 			switch p {
 			case PlaneSTS:
 				api.Permissions = append(api.Permissions, prefixPerm(SessionSpecPrefix(inst), true),
-					prefixPerm(SessionStatusPrefix(inst), true)) // D1040: write is the whole prefix; W5 deletes through it
+					prefixPerm(SessionStatusPrefix(inst), true)) // E10-D040: write is the whole prefix; W5 deletes through it
 			case PlaneTD:
 				api.Permissions = append(api.Permissions, prefixPerm(AccountPrefix(inst), true))
 			}

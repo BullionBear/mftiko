@@ -12,7 +12,7 @@ import (
 	"github.com/BullionBear/mftiko/contract/symbol"
 )
 
-// The REST half of every adapter is sans-I/O (DECISIONS D302): a method builds an HTTPRequest and the
+// The REST half of every adapter is sans-I/O (DECISIONS E03-D002): a method builds an HTTPRequest and the
 // function that parses its HTTPResponse, as a Call; whoever owns the connection sends it. The adapter
 // never dials, never reads a clock (now comes in), never sleeps and never retries.
 
@@ -30,7 +30,7 @@ type Cost struct {
 
 // Used is a bucket's usage as the venue reports it in a response (Binance X-MBX-USED-WEIGHT-1M).
 // ResetAt is the absolute time that counter returns to zero. The zero time means the venue did
-// not say when (D420).
+// not say when (E04-D020).
 type Used struct {
 	Bucket  string
 	N       int
@@ -38,7 +38,7 @@ type Used struct {
 }
 
 // HTTPRequest is one REST request, ready to send: the query is encoded and the request signed. Body is
-// what was signed, when the venue signs the body; nothing may marshal it again (D008).
+// what was signed, when the venue signs the body; nothing may marshal it again (E00-D008).
 type HTTPRequest struct {
 	Method string
 	Base   string // scheme://host: the venue's default, or the configured endpoint
@@ -74,7 +74,7 @@ func (r HTTPRequest) Format(f fmt.State, _ rune) { _, _ = io.WriteString(f, r.St
 func (r HTTPRequest) MarshalJSON() ([]byte, error) { return json.Marshal(r.String()) }
 
 // HTTPResponse is what came back. Body is lent to Parse for the duration of the call: anything Parse
-// keeps it copies (D302).
+// keeps it copies (E03-D002).
 type HTTPResponse struct {
 	Status int
 	Header []Header
@@ -149,7 +149,7 @@ type Doer interface {
 }
 
 // Lender is a Doer that can lend its response instead of handing it over: use gets the response
-// for the duration of the call, and the Lender reuses it once use returns (D302). Lend returns
+// for the duration of the call, and the Lender reuses it once use returns (E03-D002). Lend returns
 // use's error, or what Do would have. Run and Collect lend when they can.
 type Lender interface {
 	Doer
@@ -204,7 +204,7 @@ func Collect[E any](ctx context.Context, d Doer, now func() time.Time, first Cal
 	}
 }
 
-// Lister is what SYM reads: every instrument of one category, read to the end, or an error (D201).
+// Lister is what SYM reads: every instrument of one category, read to the end, or an error (E02-D001).
 type Lister interface {
 	Listing(ctx context.Context, c symbol.Category) ([]symbol.Listing, error)
 }

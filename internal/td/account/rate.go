@@ -6,7 +6,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange"
 )
 
-// limiter is the account's order-rate gate (D621, D628, D420). The book goroutine owns it.
+// limiter is the account's order-rate gate (E06-D021, E06-D028, E04-D020). The book goroutine owns it.
 // A submit is refused once a window is at 90% (used*10 >= limit*9). A cancel may use the window
 // up to 100%. One BatchCancel is one request on that same gate, not one count per order. A 429
 // or 418 pauses every send, including queries, until Retry-After, else the reported reset, else
@@ -38,13 +38,13 @@ func newLimiter(rs []exchange.RateLimit) *limiter {
 	return l
 }
 
-// allow is false when any window is at 90% or a pause is in force (D621). Submits use it.
+// allow is false when any window is at 90% or a pause is in force (E06-D021). Submits use it.
 func (l *limiter) allow(now time.Time) bool {
 	return l.fits(now, false, 1)
 }
 
 // allowCancel is false when n more requests would pass 100% of any window, or a pause is in
-// force (D628). One Cancel and one BatchCancel are each n = 1.
+// force (E06-D028). One Cancel and one BatchCancel are each n = 1.
 func (l *limiter) allowCancel(now time.Time, n int) bool {
 	if n < 1 {
 		n = 1
@@ -116,7 +116,7 @@ func (l *limiter) note(now time.Time, used []exchange.Used) time.Time {
 	return reset
 }
 
-// pause stops sends. retryAfter wins, then resetAt, then hold (D420).
+// pause stops sends. retryAfter wins, then resetAt, then hold (E04-D020).
 func (l *limiter) pause(now time.Time, retryAfter, hold time.Duration, resetAt time.Time) {
 	if l == nil {
 		return

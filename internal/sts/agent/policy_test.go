@@ -187,7 +187,7 @@ func endedExit(outcome commonv1.Outcome, reason string, signal int32, restarts u
 }
 
 // The policy records which incarnation its decision is about, so Sync can tell
-// an exit it has not classified yet from one it has (D995, #327).
+// an exit it has not classified yet from one it has (E09-D095, #327).
 func TestPolicyRecordsTheDecidedIncarnation(t *testing.T) {
 	p := newPolicy(Config{BackoffMin: time.Millisecond, BackoffMax: time.Millisecond})
 	key := WorkerKey("s")

@@ -34,7 +34,7 @@ func catalogSrv(repos []string, addr string, cat tagCatalog) *Server {
 }
 
 // doAuth sends the catalog requests as an authenticated caller. Every /api route, including the
-// strategy catalog, requires a bearer token or cookie (D1009).
+// strategy catalog, requires a bearer token or cookie (E10-D009).
 func doAuth(h http.Handler, method, path string) (int, http.Header, []byte) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(method, path, nil)

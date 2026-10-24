@@ -54,7 +54,7 @@ const (
 	noteUID       = "UID"
 )
 
-// step is the seq and conn_epoch rule (D409, D425): +1 within one epoch, and a new, larger epoch
+// step is the seq and conn_epoch rule (E04-D009, E04-D025): +1 within one epoch, and a new, larger epoch
 // starts at 1. It returns the note for the message and updates st.
 func (st *feedState) step(epoch, seq uint64) string {
 	var note string
@@ -128,7 +128,7 @@ type symUID struct {
 // watch follows md.v1.f.{inst}.> until SIGINT or -for, checks every subject with step, and writes
 // every message to -out. It prints the epoch changes and resets as they happen and a summary
 // per subject every -every. The first message of a ticker asks SYM, with a deadline, and every
-// payload uid must be that active-table uid (D461). It fails when any subject had a gap, a
+// payload uid must be that active-table uid (E08-D065). It fails when any subject had a gap, a
 // duplicate, a bad message, or a uid that is 0 or not SYM's.
 func watch() error {
 	out := flag.String("out", "watch.jsonl", "record file, appended")

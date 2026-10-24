@@ -46,7 +46,7 @@ func infoFromProto(msg *symv1.SymbolInfo) (symbol.Info, error) {
 			if name == "" {
 				return symbol.Info{}, errors.New("symclient: filter name is empty")
 			}
-			// An unset Bound.value is a published restriction with no bound (D008).
+			// An unset Bound.value is a published restriction with no bound (E00-D008).
 			v := decimal.Absent()
 			if b != nil && b.Value != nil {
 				v = b.GetValue()

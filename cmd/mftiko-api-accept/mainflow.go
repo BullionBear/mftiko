@@ -154,7 +154,7 @@ func (f *flow) mainSteps(credsFile, kind, ticker, topic string, algo int, offset
 	}
 	say("terminal: %s, reason %q, outcome %s", s.Status.Phase, s.Status.Reason, outcomeOf(s))
 	if _, err := os.Stat(logs.Stdout); err != nil {
-		return fmt.Errorf("the log is gone while the spec is still there (D1016): %w", err)
+		return fmt.Errorf("the log is gone while the spec is still there (E10-D016): %w", err)
 	}
 
 	if err := until(f.ctx, deleted, "W5 deletes the spec", func() error {
@@ -228,8 +228,8 @@ func (f *flow) depsReady(id, feed string, apiID int64) error {
 	})
 }
 
-// checkLogs is the log location the API shows (D1014), on this host: the runner is the STS
-// agent's host. The files and their directory have the modes of D1015.
+// checkLogs is the log location the API shows (E10-D014), on this host: the runner is the STS
+// agent's host. The files and their directory have the modes of E10-D015.
 func checkLogs(l *apiv1.LogLocation) error {
 	host, err := os.Hostname()
 	if err != nil {

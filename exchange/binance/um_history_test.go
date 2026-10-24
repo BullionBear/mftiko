@@ -18,7 +18,7 @@ import (
 )
 
 // TestBinanceUMHistory places one fill on the USD-M testnet and checks that History.Fills and
-// History.Order describe the same trade the private stream reported (D601). It does not run in CI.
+// History.Order describe the same trade the private stream reported (E06-D001). It does not run in CI.
 //
 //	MFTIKO_BINANCE_UM_LIVE=1 go test ./exchange/binance/ -run TestBinanceUMHistory -v -count=1
 //
@@ -168,7 +168,7 @@ func recordSegment(t *testing.T, creds exchange.Credentials, h *live, cloid stri
 	var buf bytes.Buffer
 	w, err := conformance.NewWriter(&buf, conformance.Record{
 		Venue: VenueUM, Side: conformance.SidePriv,
-		Note: "USD-M testnet BTCUSDT fill. The trade id matches user_trades_testnet (D601).",
+		Note: "USD-M testnet BTCUSDT fill. The trade id matches user_trades_testnet (E06-D001).",
 	}, time.Now, creds.Key, creds.Secret, h.listenKey)
 	if err != nil {
 		t.Fatal(err)

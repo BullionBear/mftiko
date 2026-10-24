@@ -64,7 +64,7 @@ func TestViewTwoRegions(t *testing.T) {
 
 	const sess = "abc123"
 	specKey := state.SessionSpecKey("sts-tw-1", sess)
-	// ENDED so derivation leaves this fixture assignment alone (D1326).
+	// ENDED so derivation leaves this fixture assignment alone (E13-D026).
 	putProto(t, ctx, servers["tw"], specKey, &sessionv1.SessionSpec{
 		Name: "s", DesiredState: sessionv1.DesiredState_DESIRED_STATE_ENDED,
 	})

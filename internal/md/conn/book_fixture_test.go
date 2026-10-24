@@ -19,7 +19,7 @@ import (
 
 // The BinanceUM fixture is the public UM testnet, not fapi.binance.com: that host answers 451
 // from the network that recorded it. The symbol is BCHUSDT. The replay takes one depth snapshot
-// and then only the recorded increments (D426).
+// and then only the recorded increments (E04-D026).
 func TestBookBinanceUMFixture(t *testing.T) {
 	if prob := binanceFixtureProblem(t); prob != "" {
 		t.Fatal(prob)

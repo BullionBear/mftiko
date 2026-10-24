@@ -78,7 +78,7 @@ func (a *account) NewStream() (exchange.PrivateStream, error) {
 }
 
 // NewTradeStream is the WebSocket API. USD-M does not carry private events; spot does, after
-// userDataStream.subscribe (D303). HMAC is refused: this adapter signs with ed25519 only.
+// userDataStream.subscribe (E03-D003). HMAC is refused: this adapter signs with ed25519 only.
 func (a *account) NewTradeStream() (exchange.TradeStream, error) {
 	sig, err := a.signer()
 	if err != nil {

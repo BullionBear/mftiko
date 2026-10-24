@@ -190,7 +190,7 @@ func TestClustersTwoRegions(t *testing.T) {
 	topo := topologyOf(map[string]*etcdtest.Server{"tw": tw, "jp": jp}, twoRegions().Instances)
 	rawTW, rawJP := tw.Client(t), jp.Client(t)
 
-	// The controller, at home in tw: every region allowed (D005 rule 2).
+	// The controller, at home in tw: every region allowed (E00-D005 rule 2).
 	d := newDialCounter(as(t, topo, ControllerInstance))
 	allowed, err := AgentRegions(topo, PlaneCtl, ControllerInstance)
 	if err != nil || allowed != nil {
@@ -198,7 +198,7 @@ func TestClustersTwoRegions(t *testing.T) {
 	}
 	cl := newClusters(t, topo, allowed, d.dial)
 
-	// It writes a TW session's JP market-data demand into JP's cluster (D005 rule 1).
+	// It writes a TW session's JP market-data demand into JP's cluster (E00-D005 rule 1).
 	key := MDDemandKey("md-jp-1", "a1b2c3", "feed/trade.BinanceUM_Perp_BTCUSDT")
 	region, err := topo.RegionOfKey(key)
 	if err != nil || region != "jp" {

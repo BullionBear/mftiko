@@ -23,7 +23,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// 交易狀態（D203）。列舉仍暫定。UNSPECIFIED 是 proto 的零值，非法且不可交易。
+// 交易狀態（E02-D003）。列舉仍暫定。UNSPECIFIED 是 proto 的零值，非法且不可交易。
 // 只有 TRADABLE 可交易。交易所原生狀態對不上時記 UNKNOWN，不可交易。
 // 之後新增的值不會讓原本不可交易的變成可交易。
 // 活躍表：PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN。
@@ -238,13 +238,13 @@ func (*Request_GetByUid) isRequest_Req() {}
 
 func (*Request_Revisions) isRequest_Req() {}
 
-// Spec 與設定載入的邊界（D203）：人寫的 UniversalTicker 在這裡解成 UID。
+// Spec 與設定載入的邊界（E02-D003）：人寫的 UniversalTicker 在這裡解成 UID。
 // 平面之間不走這條，它們已經持有 UID，用 GetByUidRequest。
 // One instrument by exact ticker: a single row, never a venue table.
 type GetRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	UniversalTicker string                 `protobuf:"bytes,1,opt,name=universal_ticker,json=universalTicker,proto3" json:"universal_ticker,omitempty"`
-	IncludeInactive bool                   `protobuf:"varint,2,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // D203：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢。Resolver 與熱路徑不設。表是 symbol_active 與 symbol_terminal
+	IncludeInactive bool                   `protobuf:"varint,2,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // E02-D003：預設只讀活躍表。設了才讀終結列（EXPIRED、DELISTED），給歷史查詢。Resolver 與熱路徑不設。表是 symbol_active 與 symbol_terminal
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -293,14 +293,14 @@ func (x *GetRequest) GetIncludeInactive() bool {
 	return false
 }
 
-// 系統內部的查詢（D203）。STS、TD、MD 持有 UID，用它拿這一列的欄位。
+// 系統內部的查詢（E02-D003）。STS、TD、MD 持有 UID，用它拿這一列的欄位。
 // 預設只讀活躍表；include_inactive 才含終結表。0 不是合法 UID，查詢是 not_found。
 type GetByUidRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 契約型別 uint32，範圍 1..4294967295（1..2^32-1），0 非法（PROTOCOL §10 P13）。
 	// Postgres 欄位是 bigint，CHECK (uid BETWEEN 1 AND 4294967295)。
 	Uid             uint32 `protobuf:"varint,1,opt,name=uid,proto3" json:"uid,omitempty"`
-	IncludeInactive bool   `protobuf:"varint,2,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // 同 GetRequest.include_inactive（D203）
+	IncludeInactive bool   `protobuf:"varint,2,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // 同 GetRequest.include_inactive（E02-D003）
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -352,14 +352,14 @@ func (x *GetByUidRequest) GetIncludeInactive() bool {
 // One (venue, category) table, paged by offset and limit. limit 0 means 500; a limit above
 // 500 is invalid, not clamped. A page whose protobuf reaches 1 MiB is unavailable, not a
 // shorter page, so offset and limit stay what the caller sent. A row may move or appear
-// between pages; that inconsistency is accepted (D203, PROTOCOL §10 P13).
+// between pages; that inconsistency is accepted (E02-D003, PROTOCOL §10 P13).
 type ListRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Venue           string                 `protobuf:"bytes,1,opt,name=venue,proto3" json:"venue,omitempty"`
 	Category        string                 `protobuf:"bytes,2,opt,name=category,proto3" json:"category,omitempty"`
 	Limit           uint32                 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"` // 0 means 500; above 500 is invalid
 	Offset          uint32                 `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
-	IncludeInactive bool                   `protobuf:"varint,5,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // 同 GetRequest.include_inactive（D203）
+	IncludeInactive bool                   `protobuf:"varint,5,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // 同 GetRequest.include_inactive（E02-D003）
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -429,7 +429,7 @@ func (x *ListRequest) GetIncludeInactive() bool {
 	return false
 }
 
-// The venue's spelling -> the listing. Callers keep SymbolInfo.uid (D203). Category is required:
+// The venue's spelling -> the listing. Callers keep SymbolInfo.uid (E02-D003). Category is required:
 // on a unified-account venue the spelling alone is ambiguous (Bybit's spot and linear "BTCUSDT").
 // include_inactive defaults to the active table. Set it to fall through to the terminal table
 // when the active table has no match; the uid is the one stored on that row. When both tables
@@ -439,7 +439,7 @@ type ReverseRequest struct {
 	Venue           string                 `protobuf:"bytes,1,opt,name=venue,proto3" json:"venue,omitempty"`
 	Category        string                 `protobuf:"bytes,2,opt,name=category,proto3" json:"category,omitempty"`
 	ExchTicker      string                 `protobuf:"bytes,3,opt,name=exch_ticker,json=exchTicker,proto3" json:"exch_ticker,omitempty"`
-	IncludeInactive bool                   `protobuf:"varint,4,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // 同 GetRequest.include_inactive（D203）
+	IncludeInactive bool                   `protobuf:"varint,4,opt,name=include_inactive,json=includeInactive,proto3" json:"include_inactive,omitempty"` // 同 GetRequest.include_inactive（E02-D003）
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -682,7 +682,7 @@ func (*Reply_Refresh) isReply_Result() {}
 func (*Reply_Revisions) isReply_Result() {}
 
 // Every (venue, category) revision. A client that may have missed
-// sym.v1.changed compares these with the revision it loaded (P7, D457, PROTOCOL §7.3).
+// sym.v1.changed compares these with the revision it loaded (P7, E04-D057, PROTOCOL §7.3).
 type RevisionsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -825,7 +825,7 @@ func (x *RevisionList) GetTables() []*TableRevision {
 }
 
 // Published on sym.v1.changed.{venue}.{category} after that table's revision
-// commits (P7, D457). Venue and category are the human-readable names, not a UID.
+// commits (P7, E04-D057). Venue and category are the human-readable names, not a UID.
 // SYM has no inst. A conn worker subscribes only its own venue.
 type Changed struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -889,30 +889,30 @@ func (x *Changed) GetRevision() int64 {
 
 type SymbolInfo struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
-	UniversalTicker string                 `protobuf:"bytes,1,opt,name=universal_ticker,json=universalTicker,proto3" json:"universal_ticker,omitempty"` // 給人看的字串。系統內部用 uid（D203）
+	UniversalTicker string                 `protobuf:"bytes,1,opt,name=universal_ticker,json=universalTicker,proto3" json:"universal_ticker,omitempty"` // 給人看的字串。系統內部用 uid（E02-D003）
 	ExchTicker      string                 `protobuf:"bytes,2,opt,name=exch_ticker,json=exchTicker,proto3" json:"exch_ticker,omitempty"`
 	Base            string                 `protobuf:"bytes,3,opt,name=base,proto3" json:"base,omitempty"`
 	Quote           string                 `protobuf:"bytes,4,opt,name=quote,proto3" json:"quote,omitempty"`
-	ContractSize    *float64               `protobuf:"fixed64,5,opt,name=contract_size,json=contractSize,proto3,oneof" json:"contract_size,omitempty"` // 一張的面值。qty = 張數 × 此值，單位是 contract_value_ccy：linear 與期權是 base，inverse 是 quote（D203）
-	Settle          *string                `protobuf:"bytes,6,opt,name=settle,proto3,oneof" json:"settle,omitempty"`                                   // 損益結算幣（settlement_asset），不是保證金幣。空 = 現貨。quanto（既不是 base 也不是 quote）一期不入庫（D203）
+	ContractSize    *float64               `protobuf:"fixed64,5,opt,name=contract_size,json=contractSize,proto3,oneof" json:"contract_size,omitempty"` // 一張的面值。qty = 張數 × 此值，單位是 contract_value_ccy：linear 與期權是 base，inverse 是 quote（E02-D003）
+	Settle          *string                `protobuf:"bytes,6,opt,name=settle,proto3,oneof" json:"settle,omitempty"`                                   // 損益結算幣（settlement_asset），不是保證金幣。空 = 現貨。quanto（既不是 base 也不是 quote）一期不入庫（E02-D003）
 	ExpiryNs        int64                  `protobuf:"varint,7,opt,name=expiry_ns,json=expiryNs,proto3" json:"expiry_ns,omitempty"`                    // 0 = does not expire
-	Strike          *float64               `protobuf:"fixed64,8,opt,name=strike,proto3,oneof" json:"strike,omitempty"`                                 // ticker 裡的拼法由此值的最短十進位表示推出（spell_strike，D203、D008）：6400.0 與 6400 是同一個值
+	Strike          *float64               `protobuf:"fixed64,8,opt,name=strike,proto3,oneof" json:"strike,omitempty"`                                 // ticker 裡的拼法由此值的最短十進位表示推出（spell_strike，E02-D003、E00-D008）：6400.0 與 6400 是同一個值
 	OptionType      string                 `protobuf:"bytes,9,opt,name=option_type,json=optionType,proto3" json:"option_type,omitempty"`               // C | P | ""
-	Status          SymbolStatus           `protobuf:"varint,10,opt,name=status,proto3,enum=mftiko.sym.v1.SymbolStatus" json:"status,omitempty"`       // 暫定（D203）。UNSPECIFIED 非法、不可交易。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。列舉仍暫定，契約已用這個 enum。表已拆成 symbol_active 與 symbol_terminal
+	Status          SymbolStatus           `protobuf:"varint,10,opt,name=status,proto3,enum=mftiko.sym.v1.SymbolStatus" json:"status,omitempty"`       // 暫定（E02-D003）。UNSPECIFIED 非法、不可交易。只接受 TRADABLE。對不上的是 UNKNOWN，不可交易。之後加 enum 值不會讓原本不可交易的變成可交易。活躍表是 PRELISTING、TRADABLE、HALTED、SETTLING、UNKNOWN；終結表是 EXPIRED、DELISTED，搬過去時 ticker 與 uid 都不變。列舉仍暫定，契約已用這個 enum。表已拆成 symbol_active 與 symbol_terminal
 	// name -> bound. A key with an absent value: the venue publishes the restriction, no bound.
-	// price_tick is price_ccy; qty_step, min_qty, max_qty are contract_value_ccy (D203).
+	// price_tick is price_ccy; qty_step, min_qty, max_qty are contract_value_ccy (E02-D003).
 	Filters     map[string]*Bound `protobuf:"bytes,11,rep,name=filters,proto3" json:"filters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	UpdatedAtNs int64             `protobuf:"varint,12,opt,name=updated_at_ns,json=updatedAtNs,proto3" json:"updated_at_ns,omitempty"`
-	// SYM 分配的隨機整數：跨活躍表與終結表唯一、永不重用，跟列持久化，不是單調序號（D203）。
+	// SYM 分配的隨機整數：跨活躍表與終結表唯一、永不重用，跟列持久化，不是單調序號（E02-D003）。
 	// 重啟與重載不改它。下架再上市是新的 UID。碰撞時 SYM 重試。
 	// 契約型別 uint32，範圍 1..4294967295（1..2^32-1），0 非法（PROTOCOL §10 P13）。
 	// Postgres 欄位是 bigint，CHECK (uid BETWEEN 1 AND 4294967295)。
 	// SQL 的兩張表以 uid 為主鍵（migrations/0002_symbol）。
 	Uid uint32 `protobuf:"varint,13,opt,name=uid,proto3" json:"uid,omitempty"`
-	// qty 的單位（D203）。adapter 從交易所原生欄位填，下游不推導。linear 與期權是 base，inverse 是 quote。
+	// qty 的單位（E02-D003）。adapter 從交易所原生欄位填，下游不推導。linear 與期權是 base，inverse 是 quote。
 	// 現貨可以留空；入庫時存成 base。
 	ContractValueCcy string `protobuf:"bytes,14,opt,name=contract_value_ccy,json=contractValueCcy,proto3" json:"contract_value_ccy,omitempty"`
-	// price、price_tick 與權利金的單位（D203）。adapter 填。現貨與期貨（含 inverse）是 quote；
+	// price、price_tick 與權利金的單位（E02-D003）。adapter 填。現貨與期貨（含 inverse）是 quote；
 	// 幣本位期權是 base；U 本位期權是 quote。現貨可以留空；入庫時存成 quote。
 	PriceCcy      string `protobuf:"bytes,15,opt,name=price_ccy,json=priceCcy,proto3" json:"price_ccy,omitempty"`
 	unknownFields protoimpl.UnknownFields

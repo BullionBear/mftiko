@@ -15,10 +15,10 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
-// retain is W5 (D1017, D1031, D1080–D1083). It runs inside reconcileOnce, after the
-// mirror compare and the pending sweep, so it has no loop of its own (D1083).
+// retain is W5 (E10-D017, E10-D031, E10-D080–E10-D083). It runs inside reconcileOnce, after the
+// mirror compare and the pending sweep, so it has no loop of its own (E10-D083).
 // Postgres is written before etcd is deleted. A database error returns and deletes
-// nothing further (D1080).
+// nothing further (E10-D080).
 func (s *Server) retain(ctx context.Context) {
 	if s.cl == nil {
 		return
@@ -136,7 +136,7 @@ func (s *Server) retentionItems() []retainItem {
 }
 
 // pastRetention is true when the status is DONE or FAILED and its updated_at_ns is
-// strictly older than the retention window (D1017). A missing timestamp has not
+// strictly older than the retention window (E10-D017). A missing timestamp has not
 // started the clock: STS writes updated_at_ns whenever it writes a status.
 func pastRetention(updated int64, terminal bool, cutoff time.Time) bool {
 	if !terminal || updated <= 0 {
@@ -159,7 +159,7 @@ func (s *Server) retainItem(ctx context.Context, item *retainItem, rows []sessio
 }
 
 // retainClosedSpec finishes a delete whose status is already gone. Only a closed
-// row with the same create_revision is that session (D1042). Anything else is
+// row with the same create_revision is that session (E10-D042). Anything else is
 // not known to be terminal and stays.
 func (s *Server) retainClosedSpec(ctx context.Context, item *retainItem, rows []sessionRecord) error {
 	row := rowForSpec(rows, item.sts, item.spec.CreateRevision)
@@ -175,7 +175,7 @@ func (s *Server) retainClosedSpec(ctx context.Context, item *retainItem, rows []
 
 // retainSpec closes the row for this spec's create_revision, then deletes the spec
 // and the status together. A closed row whose create_revision still matches is the
-// crash between those two steps: only the etcd delete is repeated (D1042).
+// crash between those two steps: only the etcd delete is repeated (E10-D042).
 func (s *Server) retainSpec(ctx context.Context, item *retainItem, rows []sessionRecord) error {
 	row := rowForSpec(rows, item.sts, item.spec.CreateRevision)
 	if row == nil {
@@ -196,7 +196,7 @@ func (s *Server) retainSpec(ctx context.Context, item *retainItem, rows []sessio
 	return ignoreDeleteRace(s, item.id, err)
 }
 
-// retainStatusOnly is the status STS wrote after W5 removed the spec (D1082).
+// retainStatusOnly is the status STS wrote after W5 removed the spec (E10-D082).
 // The delete is one compare-and-delete on that status key. A spec that exists in
 // etcd but is not in this mirror yet is left alone.
 func (s *Server) retainStatusOnly(ctx context.Context, item *retainItem, rows []sessionRecord) error {
@@ -253,7 +253,7 @@ func ignoreDeleteRace(s *Server, id string, err error) error {
 }
 
 // rowForSpec is the session_records generation of this spec. create_revision is the
-// identity (D1042). A row that has not stored one yet can still be that generation.
+// identity (E10-D042). A row that has not stored one yet can still be that generation.
 func rowForSpec(rows []sessionRecord, sts string, createRev int64) *sessionRecord {
 	var open *sessionRecord
 	for i := range rows {
@@ -302,7 +302,7 @@ func rowForStatusOnly(rows []sessionRecord, sts string) *sessionRecord {
 	return closed
 }
 
-// DeleteSession removes one terminal session now (D1017, D1084). A session that is
+// DeleteSession removes one terminal session now (E10-D017, E10-D084). A session that is
 // already gone, including a repeated DELETE, is 204. A live session is 409 not_terminal.
 func (s *Server) DeleteSession(w http.ResponseWriter, r *http.Request, sessionID apiv1.SessionID) {
 	if err := s.deleteSession(r.Context(), string(sessionID)); err != nil {

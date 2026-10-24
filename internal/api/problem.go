@@ -8,7 +8,7 @@ import (
 	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
 )
 
-// writeProblem sends an RFC 9457 body (D1004). detail is a fixed sentence; it must not echo a
+// writeProblem sends an RFC 9457 body (E10-D004). detail is a fixed sentence; it must not echo a
 // token, a cookie, or a credential.
 func writeProblem(w http.ResponseWriter, status int, code apiv1.ErrorCode, title, detail string, fields []apiv1.FieldError) {
 	p := apiv1.Problem{

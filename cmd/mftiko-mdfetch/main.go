@@ -1,13 +1,13 @@
-// Command mftiko-mdfetch is the stateless md.fetch service (DECISIONS D402, D418–D423).
+// Command mftiko-mdfetch is the stateless md.fetch service (DECISIONS E04-D002, E04-D018–E04-D023).
 //
 // It is a platform process, released and restarted with the platform, not a
 // worker artifact and not part of the MD agent. Each replica subscribes to the
 // venues it can reach. NATS prefers a local queue-group member.
 //
 // Sources are registered in this process, not by init. exchange/all names each
-// exchange. REST reads go through exchange/transport/fasthttp (D302). The proxy
+// exchange. REST reads go through exchange/transport/fasthttp (E03-D002). The proxy
 // and the TLS roots are this process's flags; adapters never see them.
-// UIDs are resolved through SYM's NATS resolver, active table only (D422, D461).
+// UIDs are resolved through SYM's NATS resolver, active table only (E04-D022, E08-D065).
 package main
 
 import (
@@ -128,7 +128,7 @@ func run(natsURL, creds, venues, proxy, roots string, timeout time.Duration, rat
 	return nil
 }
 
-// venueDoer is the REST transport this process runs public reads over (D302).
+// venueDoer is the REST transport this process runs public reads over (E03-D002).
 // An empty roots path keeps the system certificate pool. A set path replaces it.
 func venueDoer(proxy, roots string, timeout time.Duration) (exchange.Doer, error) {
 	cfg := transport.Config{Proxy: proxy}

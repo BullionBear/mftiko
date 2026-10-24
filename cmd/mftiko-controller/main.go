@@ -1,11 +1,11 @@
-// Command mftiko-controller is the control-plane controller (DECISIONS D907, D1301).
+// Command mftiko-controller is the control-plane controller (DECISIONS E09-D007, E13-D001).
 // It reads the deployment JSON mftiko-etcd-roles reads, campaigns as controller in
-// the home region, writes its AgentRecord once, keeps the global view (D1317),
+// the home region, writes its AgentRecord once, keeps the global view (E13-D017),
 // and derives session demands, gates start and ends sessions (N1–N3), then
 // deletes ended sessions and orphan demands (N4, N5).
 //
 // SIGTERM revokes the term and exits 0. ErrSuperseded, or a lost election session,
-// exits non-zero so systemd restarts the process (D1315). A process that has not
+// exits non-zero so systemd restarts the process (E13-D015). A process that has not
 // been elected waits in Campaign.
 package main
 
@@ -47,7 +47,7 @@ func main() {
 }
 
 // deployment is the mftiko-etcd-roles input. Planes names the plane of every
-// instance except the controller; intake watches those prefixes (D1312, D1317).
+// instance except the controller; intake watches those prefixes (E13-D012, E13-D017).
 type deployment struct {
 	state.Topology
 	Planes map[string]state.Plane `json:"planes"`

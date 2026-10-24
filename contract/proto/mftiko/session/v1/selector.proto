@@ -5,7 +5,7 @@ package mftiko.session.v1;
 
 option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1;sessionv1";
 
-// selector 的宣告。形狀在 E5 定（#7、#208），這份檔案留在草案清單，session.proto 定案時不跟著凍結（DECISIONS D991）。
+// selector 的宣告。形狀在 E5 定（#7、#208），這份檔案留在草案清單，session.proto 定案時不跟著凍結（DECISIONS E09-D091）。
 
 message SelectorDecl {
   string name = 1;

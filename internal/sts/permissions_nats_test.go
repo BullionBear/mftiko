@@ -22,8 +22,8 @@ import (
 
 const opTimeout = 2 * time.Second
 
-// devServer is one embedded nats-server with the dev operator layout (D412).
-// The generated config sets max_control_line to 262144 (D827).
+// devServer is one embedded nats-server with the dev operator layout (E04-D012).
+// The generated config sets max_control_line to 262144 (E08-D027).
 type devServer struct {
 	url string
 	lay natsdev.Layout
@@ -89,7 +89,7 @@ func startDevServer(t *testing.T) *devServer {
 // signedUser is a session user whose allow lists are Permissions. The JWT is
 // signed with the dev account signing key, the same key natsdev.Signer uses
 // for an account worker. There is no deny list and no response permission:
-// a session calls, it does not answer (D821).
+// a session calls, it does not answer (E08-D021).
 type signedUser struct {
 	jwt   string
 	kp    nkeys.KeyPair
@@ -130,7 +130,7 @@ func signSession(t *testing.T, lay natsdev.Layout, sessionID string, perms sts.P
 func dialUser(t *testing.T, url string, u signedUser) (*nats.Conn, error) {
 	t.Helper()
 	// The permission checks set a client name. The size check measures a
-	// connection with no name (D827); TestSessionJWTFiveHundredFeeds dials that way.
+	// connection with no name (E08-D027); TestSessionJWTFiveHundredFeeds dials that way.
 	return dialSession(t, url, u, "sts-session")
 }
 
@@ -318,7 +318,7 @@ func TestSessionJWTAllowsExactFeeds(t *testing.T) {
 }
 
 // TestSessionJWTFiveHundredFeeds connects a session that lists 500 feeds on
-// the generated server (max_control_line 262144, D827). The client sets no
+// the generated server (max_control_line 262144, E08-D027). The client sets no
 // connection name, which is the CONNECT argument SignSession measures.
 // The MD user is the dev instance, so the feed instance is dev and one
 // message is delivered on the first and last feed.

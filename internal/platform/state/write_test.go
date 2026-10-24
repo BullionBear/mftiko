@@ -116,7 +116,7 @@ func TestWriteScope(t *testing.T) {
 				SessionDemandKey("sts-tw-1", sid), // the controller's: STS only reads its assignments
 				SessionStatusKey("sts-tw-2", sid),
 				AgentKey(PlaneSTS, "sts-tw-2"),
-				MDDemandKey("md-jp-1", sid, entry), // no longer the STS agent's to write (D901)
+				MDDemandKey("md-jp-1", sid, entry), // no longer the STS agent's to write (E09-D001)
 				TDDemandKey("td-tw-1", sid, 42),
 				MDAckKey("md-jp-1", sid, entry), // the provider's
 				TDAckKey("td-jp-1", sid, 42),

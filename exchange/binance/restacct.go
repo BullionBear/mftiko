@@ -354,7 +354,7 @@ func parseBalances(resp *exchange.HTTPResponse) (exchange.Page[exchange.AccountS
 	return snapPage(exchange.AccountSnapshot{Balances: bals}), nil
 }
 
-// parsePositionMode reads dualSidePosition: true is hedge mode (D607). The setting is the
+// parsePositionMode reads dualSidePosition: true is hedge mode (E06-D007). The setting is the
 // account's, shared by USD-M and COIN-M.
 func parsePositionMode(resp *exchange.HTTPResponse) (exchange.Page[exchange.AccountSnapshot], error) {
 	if resp.Status >= 400 {

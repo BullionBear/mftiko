@@ -3,7 +3,7 @@ package mdpath
 import mdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1"
 
 // MD is what every market data event carries besides its payload. The values match sdk.MD.
-// UID comes from the payload (D461), not from the subject.
+// UID comes from the payload (E08-D065), not from the subject.
 type MD struct {
 	UID       uint32
 	MdTsNs    int64
@@ -30,7 +30,7 @@ type (
 	MarkPrice    = Feed[*mdv1.MarkPrice]
 )
 
-// Hooks are the strategy callbacks, one per topic (D805). A nil func means that topic is
+// Hooks are the strategy callbacks, one per topic (E08-D005). A nil func means that topic is
 // skipped before its payload is decoded. OnKline receives every kline_<interval> topic.
 // orderbook_delta has no hook here; Config.Book receives it.
 type Hooks struct {
@@ -46,7 +46,7 @@ type Hooks struct {
 	MarkPrice    func(MarkPrice)
 }
 
-// TapeQuery is one page of a feed's tape (D436). Limit 0 is left for the conn worker to
+// TapeQuery is one page of a feed's tape (E04-D036). Limit 0 is left for the conn worker to
 // read as 1000. Before nil asks for the newest page. SinceNs 0 sets no time bound.
 type TapeQuery struct {
 	Limit   uint32

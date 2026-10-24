@@ -24,7 +24,7 @@ var emitGate = func() {
 //
 // SIGTERM belongs to Run, not to c4.Serve. Run takes it with signal.NotifyContext and passes that
 // context to Serve, as mftiko-md-conn and mftiko-td-account do. Cancelling it is a Stop. Serve does
-// not watch signals (DECISIONS D806).
+// not watch signals (DECISIONS E08-D006).
 func Run(s Strategy) {
 	if s == nil {
 		fmt.Fprintln(os.Stderr, "mftiko sdk: nil strategy")

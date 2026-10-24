@@ -13,7 +13,7 @@ message Meta {
 }
 
 message FeedEvent {
-  uint32 uid = 13; // 商品（D203、D461）。每一則行情都帶；payload 裡沒有 ticker 字串
+  uint32 uid = 13; // 商品（E02-D003、E08-D065）。每一則行情都帶；payload 裡沒有 ticker 字串
   oneof event {
     BestQuote best_quote = 1;
     Trade trade = 2;
@@ -61,7 +61,7 @@ message Level {
   double qty = 2;
 }
 
-// orderbook_delta：本地全量 book 的增量（D402、D453）。qty 為 0 表示刪除該價位。
+// orderbook_delta：本地全量 book 的增量（E04-D002、E04-D053）。qty 為 0 表示刪除該價位。
 // reset 為 true 時，bids／asks 是完整的 book，取代本地狀態（conn worker 對交易所重新同步之後）。
 // 晚加入的接法見 read.proto 的 md.view。
 message OrderBookDelta {
@@ -84,7 +84,7 @@ message Kline {
   bool closed = 10;
 }
 
-// 只有 24h 統計（D401）；venue 不推的欄位不填。
+// 只有 24h 統計（E04-D001）；venue 不推的欄位不填。
 message Ticker {
   Meta meta = 1;
   optional double last = 2;

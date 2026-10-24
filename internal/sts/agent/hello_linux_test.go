@@ -24,7 +24,7 @@ import (
 )
 
 // hello walks Init, a wait for start, Start, ENDED, and Stop against an
-// in-process registry, etcd, and NATS (D965). Phases stay PENDING while the
+// in-process registry, etcd, and NATS (E09-D065). Phases stay PENDING while the
 // artifact is pulled, WAITING until start, then RUNNING, then DONE.
 func TestHelloLifecycle(t *testing.T) {
 	e := setupHello(t)
@@ -53,7 +53,7 @@ func TestHelloLifecycle(t *testing.T) {
 }
 
 // After the agent is replaced, the new epoch is one higher and a bindings
-// change is applied at a version strictly after the one the worker already had (D965, D922).
+// change is applied at a version strictly after the one the worker already had (E09-D065, E09-D022).
 func TestHelloRotationAppliesNewerBindings(t *testing.T) {
 	e := setupHello(t)
 	const id = "b2c3d4"

@@ -11,12 +11,12 @@ import (
 )
 
 // GC deletes unpacked images whose digest is not in keep, then cached layers that no remaining
-// rootfs references (D956). keep is the image digests the caller still needs. GC does not decide
+// rootfs references (E09-D056). keep is the image digests the caller still needs. GC does not decide
 // which digest is the newest; a digest that is being pulled or unpacked is included by the caller.
 //
 // layers, when passed, is one extra set of layer digests to retain even with no rootfs reference
-// (D973). STS passes input layers that are being pulled or unpacked. After unpack the caller stops
-// passing them. Omitting layers, or passing nil, is the D956 behavior. A keep or layer entry that
+// (E09-D073). STS passes input layers that are being pulled or unpacked. After unpack the caller stops
+// passing them. Omitting layers, or passing nil, is the E09-D056 behavior. A keep or layer entry that
 // is not a sha256 digest is a caller mistake and deletes nothing. Temporary files and directories
 // are left alone.
 func (c *Client) GC(keep []string, layers ...[]string) error {
@@ -42,7 +42,7 @@ func (c *Client) GC(keep []string, layers ...[]string) error {
 	return c.removeUnreferencedLayers(refs, held)
 }
 
-// oneLayerSet accepts the optional D973 argument. More than one set is a caller mistake.
+// oneLayerSet accepts the optional E09-D073 argument. More than one set is a caller mistake.
 func oneLayerSet(layers [][]string) ([]string, error) {
 	switch len(layers) {
 	case 0:
@@ -89,7 +89,7 @@ func (c *Client) removeUnkept(keep map[string]struct{}) error {
 	return nil
 }
 
-// referencedLayers reads the layer list of every remaining artifact directory (D950, D956).
+// referencedLayers reads the layer list of every remaining artifact directory (E09-D050, E09-D056).
 func (c *Client) referencedLayers() (map[string]struct{}, error) {
 	refs := map[string]struct{}{}
 	dir := filepath.Join(c.data, "artifacts")
@@ -152,7 +152,7 @@ func (c *Client) removeUnreferencedLayers(refs, extra map[string]struct{}) error
 	return nil
 }
 
-// removeLayer deletes one cached layer unless a pull is holding it (D973). The hold check and the
+// removeLayer deletes one cached layer unless a pull is holding it (E09-D073). The hold check and the
 // delete share c.mu, and HoldLayers is taken before the layer file is created, so a layer that is
 // being downloaded or unpacked is not removed.
 func (c *Client) removeLayer(name string) error {
@@ -167,7 +167,7 @@ func (c *Client) removeLayer(name string) error {
 	return nil
 }
 
-// HoldLayers keeps these layer digests across GC until release is called (D973). A data pull holds
+// HoldLayers keeps these layer digests across GC until release is called (E09-D073). A data pull holds
 // its layer before the download. A strategy pull holds Fetched.Layers after Pull returns and releases
 // when UnpackImage finishes. release is safe to call more than once. A digest that is not sha256 holds
 // nothing and returns ErrRequest.

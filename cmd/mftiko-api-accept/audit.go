@@ -10,7 +10,7 @@ import (
 )
 
 // audited checks that every request the flow sent is an audit row with the same method, path,
-// status and user (D1010). Rows are written off the request path (D1049), so it waits a little.
+// status and user (E10-D010). Rows are written off the request path (E10-D049), so it waits a little.
 func (f *flow) audited() error {
 	if *dbURL == "" {
 		return errors.New("-database is empty: the audit check needs Postgres")

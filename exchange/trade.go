@@ -6,9 +6,9 @@ import (
 	"time"
 )
 
-// TradeStream is the codec of one websocket that carries order requests and their answers (D303):
+// TradeStream is the codec of one websocket that carries order requests and their answers (E03-D003):
 // Binance's WebSocket API, and the order channels OKX and Bybit offer. Like every codec it is sans-I/O
-// (D302): it turns a request into a frame and a frame into answers. The account worker owns the
+// (E03-D002): it turns a request into a frame and a frame into answers. The account worker owns the
 // connection, the request ids, the time a request may wait for its answer, and the reconnect.
 //
 // An Account that has one returns it from NewTradeStream, and the worker sends Submit and Cancel over
@@ -39,7 +39,7 @@ type TradeStream interface {
 
 	// Decode parses one frame and calls sink: the answer to a request, by id; private events, when
 	// the connection carries them; the usage the venue reports. A refused logon is ErrAuth. frame is
-	// lent for the call (D302).
+	// lent for the call (E03-D002).
 	Decode(frame []byte, sink TradeSink) error
 }
 
@@ -57,7 +57,7 @@ type TradeLimits struct {
 
 // TradeSink receives what TradeStream.Decode finds. It is an AccountSink as well: Ready says the
 // stream is live (logged on, and subscribed when it carries events), and the private events come
-// through it on a connection that carries them. Pointers are valid only during the call (D302).
+// through it on a connection that carries them. Pointers are valid only during the call (E03-D002).
 type TradeSink interface {
 	AccountSink
 
@@ -70,7 +70,7 @@ type TradeSink interface {
 	Used(u []Used)
 }
 
-// Inflight tracks the requests a worker sent on a TradeStream until they are answered (D303). It is
+// Inflight tracks the requests a worker sent on a TradeStream until they are answered (E03-D003). It is
 // pure: the worker passes the time. A request not answered by its deadline, or still waiting when the
 // connection drops, has an unknown outcome (ErrUnknownOutcome): the order may or may not be on the
 // book, and the private stream or the next recon tells. Not safe for concurrent use.

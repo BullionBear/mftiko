@@ -10,14 +10,14 @@ import (
 // MD is what every market data event carries besides its payload: the instrument and the envelope
 // (PROTOCOL §7.1). The exchange's own time is in the payload's Meta (exch_ts_ns).
 type MD struct {
-	UID       uint32 // the instrument, from the payload (DECISIONS D461); look it up with Context.Info
+	UID       uint32 // the instrument, from the payload (DECISIONS E08-D065); look it up with Context.Info
 	MdTsNs    int64  // when the conn worker published it, on the MD host's clock
 	ConnEpoch uint64 // with Seq, the transport's continuity; a gap means events were dropped or lost
 	Seq       uint64
 }
 
 // Feed is one market data event: the envelope and the decoded payload. The payload is the strategy's
-// own copy (DECISIONS D803); it stays valid after the hook returns.
+// own copy (DECISIONS E08-D003); it stays valid after the hook returns.
 type Feed[T any] struct {
 	MD
 	Data T
@@ -50,7 +50,7 @@ type BookUpdate struct {
 // TD is what every account event carries. Seq and Incarnation are the account worker's td.evt numbering;
 // both are 0 on an event the SDK made itself (a local reject, a timeout).
 type TD struct {
-	APIID       int64 // the account: td.* messages do not carry it, the subject does (DECISIONS D633)
+	APIID       int64 // the account: td.* messages do not carry it, the subject does (DECISIONS E06-D033)
 	Incarnation uint32
 	Seq         uint64
 }
@@ -64,7 +64,7 @@ const (
 	// LocalReject is td.order's 1xx, or no responder (101): nothing was sent, the order is REJECTED.
 	LocalReject
 	// Timeout is td.order without an answer: the order is UNKNOWN until an OrderUpdate or a Recon says
-	// otherwise. The SDK does not ask td.view or send it again (DECISIONS D605).
+	// otherwise. The SDK does not ask td.view or send it again (DECISIONS E06-D005).
 	Timeout
 )
 
@@ -98,7 +98,7 @@ type BalanceEvent struct {
 	Balances []*tdv1.Balance
 }
 
-// ReconEvent replaces the account's state (DECISIONS D603, D854): Recon.open_orders holds only the
+// ReconEvent replaces the account's state (DECISIONS E06-D003, E08-D054): Recon.open_orders holds only the
 // strategy's own algos; positions and balances are the whole account's. By the time OnRecon runs, the
 // ledger and the OMS have been replaced with it. A td.view reply keeps a local pending_new that
 // Submit recorded after that ReconRequest and that the snapshot does not list. A pushed Recon does not.

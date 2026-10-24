@@ -19,7 +19,7 @@
 
 	const steps = ['Strategy', 'Params', 'Feeds', 'Accounts', 'Limits', 'Confirm'];
 
-	// One key for the life of this wizard. A failed submit retries with it (D1089, D1068).
+	// One key for the life of this wizard. A failed submit retries with it (E10-D089, E10-D068).
 	const idempotencyKey = newIdempotencyKey();
 
 	const strategies = new StrategyFeed();
@@ -39,7 +39,7 @@
 	let versionsError = $state<string | null>(null);
 	let versionGen = 0;
 
-	// D1086: prefill when the manifest carries default params. StrategyVersion
+	// E10-D086: prefill when the manifest carries default params. StrategyVersion
 	// (PROTOCOL §8.2) does not include them, so the box starts empty.
 	const clientErrors = $derived(localErrors(draft));
 

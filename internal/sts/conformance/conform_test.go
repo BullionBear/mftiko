@@ -43,7 +43,7 @@ func TestPass(t *testing.T) {
 }
 
 func TestViolate(t *testing.T) {
-	// The fragment is the failure that violation produces (D833). A crash
+	// The fragment is the failure that violation produces (E08-D033). A crash
 	// before Hello is a false green and is rejected separately.
 	want := map[string]string{
 		conformance.CheckFlow:           "Done ok",

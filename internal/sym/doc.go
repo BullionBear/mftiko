@@ -1,5 +1,5 @@
 // Package sym is the symbol plane: the service that keeps the golden record of every venue's
-// instruments and answers the sym subject (D201, D202). It follows mftik's symbol plane.
+// instruments and answers the sym subject (E02-D001, E02-D002). It follows mftik's symbol plane.
 //
 // It is a plain service, not an agent: no lease, no fencing. Every region runs it as a NATS queue
 // group; any replica answers. Its lifetime is not tied to any session, because "what is the tick
@@ -24,14 +24,14 @@
 //     each bump on their own; Refresh does not use those bumps.
 //   - A missing active row becomes DELISTED. A Future or Option whose expiry is already past becomes
 //     EXPIRED, including one the venue still returns. EXPIRED and DELISTED move to the terminal
-//     table with their filters and are not updated again (D203). The UniversalTicker string and the
+//     table with their filters and are not updated again (E02-D003). The UniversalTicker string and the
 //     UID stay the same. The same ticker listed again after delisting gets a new UID. A contract
 //     that is still expired is not inserted again.
 //   - The listing's status is stored as given. PRELISTING, TRADABLE, HALTED, SETTLING and UNKNOWN
 //     stay on the active table. EXPIRED and DELISTED move. Changing from one non-terminal status
 //     to another is a content change. Unspecified is invalid and is not written.
 //   - After that transaction commits, and only when the revision advanced, SYM publishes
-//     Changed{venue, category, revision} on sym.v1.changed.{venue}.{category} (PROTOCOL §7.3, D457).
+//     Changed{venue, category, revision} on sym.v1.changed.{venue}.{category} (PROTOCOL §7.3, E04-D057).
 //     Venue and category are the human-readable names. There is no inst.
 //     A failed publish is logged and the commit stands. A later revision check recovers a missed one.
 //
@@ -50,7 +50,7 @@
 // still rejects a uid that is on the other listing table, which the registry alone does not.
 // A later Insert of the same ticker draws a new UID. The old terminal row stays. List pages
 // with offset and limit; inconsistency across pages is accepted. Selectors have no UID.
-// Universe.current is a selector and is still TBD, outside D203.
+// Universe.current is a selector and is still TBD, outside E02-D003.
 // The UID is uint32, the same type as Info.UID. The interval is symbol.MinUID..symbol.MaxUID
 // and 0 is invalid. symbol.ValidUID is that check. The BIGINT columns use the same bounds.
 // Service answers the sym subject over natsx: Get, GetByUid, List, Reverse,
@@ -67,7 +67,7 @@
 // Only this service writes the tables.
 //
 // It is also the only place that uppercases asset codes and applies the alias table (XBT to BTC,
-// D203): normalize first, then Validate (quanto), then derive the ticker. Adapters pass native
+// E02-D003): normalize first, then Validate (quanto), then derive the ticker. Adapters pass native
 // codes. The exchange spelling is stored unchanged, so Bitmex XBTUSDT is Bitmex_Spot_BTCUSDT
 // with exch_ticker XBTUSDT.
 // Strikes go through spell_strike before the ticker, so 6400.0 and 6400 are one ticker. USD, USDC
@@ -75,7 +75,7 @@
 // the demand is REJECTED. Adapters fill contract_value_ccy, price_ccy and the PnL settlement
 // asset from native venue fields. Spot may leave the two currency columns empty and still pass
 // Listing.Validate; those columns are NOT NULL, so an empty spot value is stored as base and an
-// empty spot price as quote, which is the spot row of the D203 table. A contract that omits them
+// empty spot price as quote, which is the spot row of the E02-D003 table. A contract that omits them
 // fails Validate and is not stored. Settle stays NULL on spot.
 //
 // Reads (PROTOCOL §7.3): the Resolver and hot paths read the active table only. One instrument by

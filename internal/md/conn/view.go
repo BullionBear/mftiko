@@ -27,7 +27,7 @@ type viewSub struct {
 	feed *viewFeed
 }
 
-// bookSnap is the in-window book of the last applied cursor (D441). The writer
+// bookSnap is the in-window book of the last applied cursor (E04-D041). The writer
 // stores a new value; readers only Load it.
 type bookSnap struct {
 	bids, asks   []*mdv1.Level
@@ -44,7 +44,7 @@ func viewSubject(inst, topic, ticker string) string {
 }
 
 // syncViewsLocked creates a ring when a feed enters wanted, keeps a feed that
-// has gone PENDING, and drops one that was removed or REJECTED (D448, D449).
+// has gone PENDING, and drops one that was removed or REJECTED (E04-D048, E04-D049).
 // The caller holds c.mu. Subscriptions are rebound after the lock is released.
 func (c *Conn) syncViewsLocked() {
 	if c.views == nil {
@@ -96,7 +96,7 @@ func (c *Conn) newViewLocked(key string, f feed, ch string) *viewFeed {
 }
 
 // rebindViews makes the md.view subscriptions match c.views. It does not hold
-// c.mu across Subscribe: a NATS flush must not stall the websocket read (D448).
+// c.mu across Subscribe: a NATS flush must not stall the websocket read (E04-D048).
 func (c *Conn) rebindViews() {
 	c.viewMu.Lock()
 	defer c.viewMu.Unlock()
@@ -147,7 +147,7 @@ func (c *Conn) closeViews() {
 }
 
 // onUpLocked records a gap for rings that were up when the previous connection
-// ended, then sets an empty ring's head to this epoch (D437, D440).
+// ended, then sets an empty ring's head to this epoch (E04-D037, E04-D040).
 func (c *Conn) onUpLocked() {
 	wasDown := c.wasDown
 	c.wasDown = false
@@ -164,7 +164,7 @@ func (c *Conn) onUpLocked() {
 }
 
 // onDownLocked remembers each ring's head and drops book snapshots. The book
-// dies with the connection (D425). Tape stays.
+// dies with the connection (E04-D025). Tape stays.
 func (c *Conn) onDownLocked() {
 	if c.wasDown {
 		return
@@ -278,7 +278,7 @@ func (c *Conn) clearBook(ch string) {
 }
 
 // noteBook publishes the in-window book. The cursor is the orderbook_delta seq,
-// because that is the increment a subscriber folds (D441, D453).
+// because that is the increment a subscriber folds (E04-D041, E04-D053).
 func (c *Conn) noteBook(ch string, sh *shelf, exchTs int64) {
 	if sh == nil || sh.book == nil {
 		return

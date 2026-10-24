@@ -6,48 +6,48 @@ import (
 	"strings"
 )
 
-// planeSTS is the deployment label of an STS instance (D1317). planeMD and
+// planeSTS is the deployment label of an STS instance (E13-D017). planeMD and
 // planeTD are declared beside Derive.
 const planeSTS = "sts"
 
 // Delete is one key to remove. Lifecycle names only demand entries and
-// SessionDemand (D1335): spec, SessionStatus, ack and WorkerStatus belong to
+// SessionDemand (E13-D035): spec, SessionStatus, ack and WorkerStatus belong to
 // other writers (W1).
 type Delete struct {
 	Key string
 }
 
-// Lifecycle plans the deletes of one reconcile (N4, N5; D1306, D1309, D1310,
-// D1321, D1333–D1335).
+// Lifecycle plans the deletes of one reconcile (N4, N5; E13-D006, E13-D009, E13-D010,
+// E13-D021, E13-D033–E13-D035).
 //
 // full is the election round or a full resync. A demand whose session is on
-// no STS instance is an orphan and is removed only on those rounds (D1310,
-// D1334). A session that has reached a terminal status is removed on every
+// no STS instance is an orphan and is removed only on those rounds (E13-D010,
+// E13-D034). A session that has reached a terminal status is removed on every
 // round once its worker is gone: seeing the status is level-triggered, and
 // the resync repeats the same check.
 //
 // N4 removes the MD and TD demands first. SessionDemand is named only on a
 // later round, once the view no longer contains those demands, so the order
-// holds across regions (D1333). Any provider region that is not synced, or is
+// holds across regions (E13-D033). Any provider region that is not synced, or is
 // stale, holds SessionDemand back even when this round can see no demands
-// there. A stale region is never subtracted from (D1306): its own demands
+// there. A stale region is never subtracted from (E13-D006): its own demands
 // stay, and a session whose STS region is stale is left entirely, including
 // demands that live in some other region.
 //
-// The worker is gone when its WorkerStatus key is absent (D1309). The key is
+// The worker is gone when its WorkerStatus key is absent (E13-D009). The key is
 // deleted only after the worker is confirmed gone, and it is not on a lease,
 // so a fresh region reporting it absent is the current state. An absent
 // AgentRecord does not stand in for that: a WorkerStatus still in the view is
 // the last value, and N4 keeps waiting (P11). An undecodable worker key is
-// not treated as absent (D1321).
+// not treated as absent (E13-D021).
 //
 // A session counts as present when any STS instance has it in the view, as a
 // spec, a status or a SessionDemand. The demand key carries only the session
-// id (D1334), so every instance is checked. A spec that is already visible
+// id (E13-D034), so every instance is checked. A spec that is already visible
 // while its SessionDemand is not yet, which happens because the two regions
-// are not one commit (D1325), is still that session: deleting the demand
+// are not one commit (E13-D025), is still that session: deleting the demand
 // would fight the derive that is about to write it. An undecodable spec,
-// status or SessionDemand for the id is not read as "no session" (D1321).
+// status or SessionDemand for the id is not read as "no session" (E13-D021).
 func Lifecycle(v View, inst map[string]Placement, full bool) []Delete {
 	b := newLife(v, inst)
 	if full && b.stsFresh() {
@@ -103,7 +103,7 @@ func newLife(v View, inst map[string]Placement) *life {
 	return b
 }
 
-// orphans removes demands whose session id is on no STS instance (D1334).
+// orphans removes demands whose session id is on no STS instance (E13-D034).
 // The caller has already required every STS region to be fresh.
 func (b *life) orphans() {
 	for _, d := range b.v.Demands {
@@ -129,7 +129,7 @@ func (b *life) ended(group []Session) {
 	}
 	// The demands just named are still in this view. SessionDemand waits
 	// until a later view shows them gone, and until every provider region
-	// can be seen (D1333).
+	// can be seen (E13-D033).
 	if b.demandsLeft(id) || !b.providersFresh() {
 		return
 	}
@@ -160,7 +160,7 @@ func (b *life) workerGone(sess Session) bool {
 }
 
 // demandsLeft reports a demand of this session that the view still shows, or
-// an undecodable key that may be one (D1321, D1333).
+// an undecodable key that may be one (E13-D021, E13-D033).
 func (b *life) demandsLeft(id string) bool {
 	if len(b.byDemand[id]) > 0 {
 		return true
@@ -174,7 +174,7 @@ func (b *life) demandsLeft(id string) bool {
 }
 
 // hiddenSession reports an undecodable STS record that may be this session,
-// so the id cannot be declared an orphan (D1321).
+// so the id cannot be declared an orphan (E13-D021).
 func (b *life) hiddenSession(id string) bool {
 	for _, key := range b.v.Undecodable {
 		if got, ok := stsRecordSession(key); ok && got == id {

@@ -4,7 +4,7 @@
 
 ## conn 與 account worker
 
-依 [DECISIONS.md](DECISIONS.md) D985–D990（E9-10，#288）與 [PROTOCOL.md](PROTOCOL.md) §8。策略 artifact 不走這條 workflow。
+依 [DECISIONS.md](DECISIONS.md) E09-D085–E09-D090（E9-10，#288）與 [PROTOCOL.md](PROTOCOL.md) §8。策略 artifact 不走這條 workflow。
 
 產物是 OCI artifact：單層靜態 `bin/worker`，沒有 base OS，不是可 `docker run` 的容器鏡像。
 
@@ -21,7 +21,7 @@
 - 平台：`linux/amd64`。manifest 的 `-name` 與 repository 同名。
 - 權限：`GITHUB_TOKEN` 的 `packages: write`。workflow 只推送，不呼叫任何可見度 API。
 
-`latest` 給人查找。E12 的 agent 會把它解析成 digest；這一期 agent 仍執行這個 repo 建出的 binary（D914）。
+`latest` 給人查找。E12 的 agent 會把它解析成 digest；這一期 agent 仍執行這個 repo 建出的 binary（E09-D014）。
 
 ### 第一個 tag 之前
 
@@ -39,10 +39,10 @@ GitHub → BullionBear → Organization Settings → Packages → Package creati
 
 ## API 契約（`api.v1`）
 
-依 D1002、D1018、D1116（E10-20，#325）。`contract/openapi/api/v1.yaml` 從 E10-20 起定案。
+依 E10-D002、E10-D018、E10-D116（E10-20，#325）。`contract/openapi/api/v1.yaml` 從 E10-20 起定案。
 
 - **同一個 major 只做相容擴充**：加端點、加選填的請求欄位、加回應欄位。讀取端忽略不認得的欄位（PROTOCOL §1）。
 - **CI 擋不相容的改動。** `make openapi-breaking` 以 PR 的 base 為基準跑 `oasdiff breaking --fail-on ERR`，刪端點、刪欄位、把選填改成必填、改型別都會失敗。WARN 只印出、不擋。
-- **`info.version`**：目前 `1.0.0`。相容擴充加 minor（`1.1.0`），只改說明加 patch。和 git tag 無關，不跟著 `v*` tag 走。
+- **`info.version`**：目前 `1.0.1`。相容擴充加 minor（`1.1.0`），只改說明加 patch。和 git tag 無關，不跟著 `v*` tag 走。
 - **不相容的改動是新的 major**：另開 `contract/openapi/api/v2.yaml` 與 `/api/v2` 路徑，和 v1 並存到 console、CLI 都換過去。v1 的檔案照舊受 `oasdiff` 保護。
 - 改契約的 PR 一起提交 `make openapi` 的產物（`contract/gen/api/v1`、`web/src/lib/gen/api`），`make gen-check` 會檢查。

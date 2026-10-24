@@ -208,7 +208,7 @@ func TestStatusReads(t *testing.T) {
 	})
 
 	// updated_at has to be inside the retention window. A terminal status stamped
-	// at the epoch is deleted on the next reconcile (D1017).
+	// at the epoch is deleted on the next reconcile (E10-D017).
 	failedAt := time.Now().UnixNano()
 	putProto(t, tw, state.SessionStatusKey("sts-tw-1", first.Id), &statev1.SessionStatus{
 		Phase: statev1.Phase_PHASE_FAILED, Reason: "deps_failed", UpdatedAtNs: failedAt,

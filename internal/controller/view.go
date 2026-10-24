@@ -10,15 +10,15 @@ import (
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
 )
 
-// View is one reading of the regions the controller watches (D1320).
+// View is one reading of the regions the controller watches (E13-D020).
 //
 // Regions do not share a moment: logic must not treat a key in one region and
 // a key in another as one commit. A region with Synced false has not finished
-// its first list; it is stale, and nothing is written there (D1318). A stale
-// region is not subtracted from (D1306): no demand is deleted because of it,
+// its first list; it is stale, and nothing is written there (E13-D018). A stale
+// region is not subtracted from (E13-D006): no demand is deleted because of it,
 // and no session is ended because of an ack it shows. Undecodable lists keys
 // whose values did not decode; logic does not write or delete those keys
-// (D1321).
+// (E13-D021).
 //
 // Assemble fills every map, so a view it built has no nil maps.
 type View struct {
@@ -31,7 +31,7 @@ type View struct {
 	Undecodable []string           // sorted
 }
 
-// Region is one cluster's reading (D1320). Rev is how far every instance
+// Region is one cluster's reading (E13-D020). Rev is how far every instance
 // prefix in the region is known: the oldest mirror's revision, since the
 // mirrors share one cluster's revision space. Rev is 0 when any mirror has
 // not finished its first list, because a number from the others would not
@@ -323,8 +323,8 @@ func assembleRegions(now time.Time, staleAfter time.Duration, regions []string, 
 }
 
 // workerHash is h for the session worker, hex(sha256("sts/"+id))[:16]
-// (PROTOCOL §2, D1309). It matches state.WorkerHash; controller does not
-// import state (D1301).
+// (PROTOCOL §2, E13-D009). It matches state.WorkerHash; controller does not
+// import state (E13-D001).
 func workerHash(sessionID string) string {
 	sum := sha256.Sum256([]byte("sts/" + sessionID))
 	return hex.EncodeToString(sum[:8])

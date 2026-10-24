@@ -13,13 +13,13 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
-// idAttempts is how many ids one allocation draws before it gives up (D1007, D1008).
+// idAttempts is how many ids one allocation draws before it gives up (E10-D007, E10-D008).
 const idAttempts = 5
 
-// maxAPIID is 2⁵³ − 1, the largest integer a JavaScript number holds exactly (D1008).
+// maxAPIID is 2⁵³ − 1, the largest integer a JavaScript number holds exactly (E10-D008).
 const maxAPIID = 1<<53 - 1
 
-// newSessionID draws a session_id: 6 lowercase hex digits, 24 bits from r (D1007).
+// newSessionID draws a session_id: 6 lowercase hex digits, 24 bits from r (E10-D007).
 func newSessionID(r io.Reader) (string, error) {
 	var b [3]byte
 	if _, err := io.ReadFull(r, b[:]); err != nil {
@@ -28,7 +28,7 @@ func newSessionID(r io.Reader) (string, error) {
 	return hex.EncodeToString(b[:]), nil
 }
 
-// newAPIID draws an api_id uniformly from 1 to 2⁵³ − 1 (D1008): 53 bits from r, drawn again on 0.
+// newAPIID draws an api_id uniformly from 1 to 2⁵³ − 1 (E10-D008): 53 bits from r, drawn again on 0.
 func newAPIID(r io.Reader) (int64, error) {
 	var b [8]byte
 	for {
@@ -65,12 +65,12 @@ func allocate[T comparable](attempts int, draw func() (T, error), taken func(T) 
 	return zero, fmt.Errorf("%w after %d draws", errIDsExhausted, attempts)
 }
 
-// createSession allocates a session_id and creates the spec of it under stsInst, create-only (W10, D1007, D1042). It
+// createSession allocates a session_id and creates the spec of it under stsInst, create-only (W10, E10-D007, E10-D042). It
 // returns the id and the spec's revision.
 //
-// The region of stsInst must be available (D1014), or it is errRegionUnavailable before any write: its mirror is what
+// The region of stsInst must be available (E10-D014), or it is errRegionUnavailable before any write: its mirror is what
 // the check of that region's ids reads. Other regions are checked when available and skipped when not; an id that
-// lives only in an unavailable region can be drawn again, at odds of the order D1007 accepts for two replicas racing.
+// lives only in an unavailable region can be drawn again, at odds of the order E10-D007 accepts for two replicas racing.
 // An id is taken while any key names it (state.SessionOf): its spec, and also a status, demand or ack left without
 // one, such as a status the STS put back after W5 deleted the spec.
 func (s *Server) createSession(ctx context.Context, stsInst string, spec []byte) (string, int64, error) {
@@ -98,11 +98,11 @@ func (s *Server) createSession(ctx context.Context, stsInst string, spec []byte)
 	return id, rev, nil
 }
 
-// createAccount allocates an api_id and creates the account of it under tdInst, create-only (W10, D1008, D1042). It
+// createAccount allocates an api_id and creates the account of it under tdInst, create-only (W10, E10-D008, E10-D042). It
 // returns the id and the account's revision. The region rules are createSession's; an id is taken while an account
 // of any TD instance has it.
 //
-// build runs after the id is drawn and before the create, so the sealed credentials can carry that id (D613). It is
+// build runs after the id is drawn and before the create, so the sealed credentials can carry that id (E06-D013). It is
 // not called when the region is unavailable. An error from build stops the allocation; it is not a conflict.
 func (s *Server) createAccount(ctx context.Context, tdInst string, build func(apiID int64) ([]byte, error)) (int64, int64, error) {
 	if p := s.cfg.Planes[tdInst]; p != state.PlaneTD {

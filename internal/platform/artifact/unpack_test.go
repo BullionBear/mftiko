@@ -89,7 +89,7 @@ func assertNoExtract(t *testing.T, root string) {
 }
 
 func TestRejectMaliciousTar(t *testing.T) {
-	// Every rejection in D951, and the symlink-then-write escape in D952. Each archive also
+	// Every rejection in E09-D051, and the symlink-then-write escape in E09-D052. Each archive also
 	// carries a benign file before the bad entry, so a partial extract would leave it behind.
 	attacks := []struct {
 		name    string

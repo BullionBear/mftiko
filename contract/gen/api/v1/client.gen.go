@@ -93,7 +93,7 @@ type ClientInterface interface {
 
 	// ListAccountKinds 列出帳號種類
 	//
-	// exchange registry 宣告的帳號種類（D301）。`supported` 是 false 的，建立帳號時回 400（D1011、D614）。.
+	// exchange registry 宣告的帳號種類（E03-D001）。`supported` 是 false 的，建立帳號時回 400（E10-D011、E06-D014）。.
 	//
 	// Corresponds with GET /account-kinds (the `ListAccountKinds` operationId).
 	ListAccountKinds(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -105,11 +105,11 @@ type ClientInterface interface {
 
 	// CreateAccountWithBody 建立帳號
 	//
-	// `api_id` 由 API 隨機配發（D1008）。`credentials` 必填，缺少回 400（D1062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
-	// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（D1064）。
-	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（D1065）。
-	// `name` 依副本 best-effort 不重複，同名回 409（D1066）。
-	// `enabled` 不公開，API 一律寫 true（D1034）。
+	// `api_id` 由 API 隨機配發（E10-D008）。`credentials` 必填，缺少回 400（E10-D062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（E06-D013、E10-D011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+	// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
+	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。
+	// `name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+	// `enabled` 不公開，API 一律寫 true（E10-D034）。
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -118,11 +118,11 @@ type ClientInterface interface {
 
 	// CreateAccount 建立帳號
 	//
-	// `api_id` 由 API 隨機配發（D1008）。`credentials` 必填，缺少回 400（D1062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
-	// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（D1064）。
-	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（D1065）。
-	// `name` 依副本 best-effort 不重複，同名回 409（D1066）。
-	// `enabled` 不公開，API 一律寫 true（D1034）。
+	// `api_id` 由 API 隨機配發（E10-D008）。`credentials` 必填，缺少回 400（E10-D062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（E06-D013、E10-D011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+	// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
+	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。
+	// `name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+	// `enabled` 不公開，API 一律寫 true（E10-D034）。
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -131,7 +131,7 @@ type ClientInterface interface {
 
 	// DeleteAccount 刪除帳號
 	//
-	// 仍被非 terminal 的 session 引用時回 409（`referenced`，D1011）。`revision` 不符回 409（`conflict`）。.
+	// 仍被非 terminal 的 session 引用時回 409（`referenced`，E10-D011）。`revision` 不符回 409（`conflict`）。.
 	//
 	// Corresponds with DELETE /accounts/{api_id} (the `DeleteAccount` operationId).
 	DeleteAccount(ctx context.Context, apiId APIID, params *DeleteAccountParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -143,10 +143,10 @@ type ClientInterface interface {
 
 	// UpdateAccountWithBody 更新帳號
 	//
-	// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文（D1062）；有給就重新封裝，格式檢查與建立相同（D1064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（D1066）。
+	// 以 `revision` 做 CAS，不成立回 409（E10-D037）。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
 	//
-	// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
-	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。
+	// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
+	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不寫 etcd，不會重啟。
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -155,10 +155,10 @@ type ClientInterface interface {
 
 	// UpdateAccount 更新帳號
 	//
-	// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文（D1062）；有給就重新封裝，格式檢查與建立相同（D1064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（D1066）。
+	// 以 `revision` 做 CAS，不成立回 409（E10-D037）。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
 	//
-	// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
-	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。
+	// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
+	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不寫 etcd，不會重啟。
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -191,7 +191,7 @@ type ClientInterface interface {
 
 	// StreamEvents 狀態的即時更新（SSE）
 	//
-	// `text/event-stream`（D1005、D1038）。每則事件帶一個資源的完整最新狀態，用戶端整筆取代；不送差異。
+	// `text/event-stream`（E10-D005、E10-D038）。每則事件帶一個資源的完整最新狀態，用戶端整筆取代；不送差異。
 	//
 	// | `event` | `data` 的 schema |
 	// |---|---|
@@ -204,7 +204,7 @@ type ClientInterface interface {
 	// - 連上時先送每個符合條件資源的目前狀態，再送後續的變化。
 	// - 每 15 秒送一行註解（`: keepalive`）當心跳。
 	// - 部署要求 HTTP/2。認證用 cookie：瀏覽器的 `EventSource` 不能帶 header。
-	// - 結束時在 `audit` 記一列（D1010）。
+	// - 結束時在 `audit` 記一列（E10-D010）。
 	//
 	// Corresponds with GET /events (the `StreamEvents` operationId).
 	StreamEvents(ctx context.Context, params *StreamEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -225,7 +225,7 @@ type ClientInterface interface {
 
 	// ListSessionRecords 列出 session 的歷史紀錄
 	//
-	// 來自 Postgres，包含 etcd 已刪除的 session（D1031）。依 `created_at` 由新到舊。.
+	// 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。.
 	//
 	// Corresponds with GET /session-records (the `ListSessionRecords` operationId).
 	ListSessionRecords(ctx context.Context, params *ListSessionRecordsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -244,10 +244,10 @@ type ClientInterface interface {
 
 	// CreateSessionWithBody 部署 session
 	//
-	// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
-	// `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
+	// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（E10-D031）。
+	// `session_id` 由 API 隨機配發（E10-D007）。驗證範圍見 E10-D012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（E02-D002）。
 	// Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
-	// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（D1068）。
+	// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（E10-D068）。
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -256,10 +256,10 @@ type ClientInterface interface {
 
 	// CreateSession 部署 session
 	//
-	// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
-	// `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
+	// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（E10-D031）。
+	// `session_id` 由 API 隨機配發（E10-D007）。驗證範圍見 E10-D012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（E02-D002）。
 	// Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
-	// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（D1068）。
+	// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（E10-D068）。
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -268,8 +268,8 @@ type ClientInterface interface {
 
 	// DeleteSession 刪除 terminal 的 session
 	//
-	// 相當於 `docker rm`（D1017）。先把最後的 status 寫進 `session_records` 並關閉那一列，再以 txn 刪 etcd 的 spec 與 status（D1031）。
-	// 之後 STS 清掉主機上的 log 與目錄（D1016）。非 terminal 的回 409（`not_terminal`）：要結束 session 用 `POST /sessions/{session_id}/end`。
+	// 相當於 `docker rm`（E10-D017）。先把最後的 status 寫進 `session_records` 並關閉那一列，再以 txn 刪 etcd 的 spec 與 status（E10-D031）。
+	// 之後 STS 清掉主機上的 log 與目錄（E10-D016）。非 terminal 的回 409（`not_terminal`）：要結束 session 用 `POST /sessions/{session_id}/end`。
 	// 保留期到了 API 也會自己刪。
 	//
 	// Corresponds with DELETE /sessions/{session_id} (the `DeleteSession` operationId).
@@ -282,7 +282,7 @@ type ClientInterface interface {
 
 	// EndSession 結束 session
 	//
-	// 把 spec 的 `desired_state` 改成 `ended`（D1303）。伺服器端以 `mod_revision` CAS 重試，用戶端不必帶 revision（D1037）。
+	// 把 spec 的 `desired_state` 改成 `ended`（E13-D003）。伺服器端以 `mod_revision` CAS 重試，用戶端不必帶 revision（E10-D037）。
 	// 冪等：已經是 `ended` 或 terminal 的照樣回 200。controller 以 `ended_by_spec` 結束 session（PROTOCOL §3.3 N3）。
 	//
 	// Corresponds with POST /sessions/{session_id}/end (the `EndSession` operationId).
@@ -290,9 +290,9 @@ type ClientInterface interface {
 
 	// ListStrategies 列出策略
 	//
-	// 部署設定裡每個 repository 一項（D1013）。`id` 是 repository 路徑的最後一段（D1035）。
-	// 依 `id` 排序後以 `limit`、`cursor` 分頁。沒有快取：這一頁的 `latest` 每次向 registry 解析，同時最多 8 個請求（D1057）。
-	// `latest` 是普通的 tag（D1058、D1013）。連不上 registry 或 registry 5xx 回 503 `registry_unavailable`（D1059）。
+	// 部署設定裡每個 repository 一項（E10-D013）。`id` 是 repository 路徑的最後一段（E10-D035）。
+	// 依 `id` 排序後以 `limit`、`cursor` 分頁。沒有快取：這一頁的 `latest` 每次向 registry 解析，同時最多 8 個請求（E10-D057）。
+	// `latest` 是普通的 tag（E10-D058、E10-D013）。連不上 registry 或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
 	//
 	// Corresponds with GET /strategies (the `ListStrategies` operationId).
 	ListStrategies(ctx context.Context, params *ListStrategiesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -300,16 +300,16 @@ type ClientInterface interface {
 	// ListStrategyVersions 列出策略的版本
 	//
 	// registry 的 tag 清單，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
-	// 一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序，`latest` 是普通的一項（D1058）。
-	// 解析同時最多 8 個請求，沒有快取（D1057）。連不上或 registry 5xx 回 503 `registry_unavailable`（D1059）。
+	// 一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序，`latest` 是普通的一項（E10-D058）。
+	// 解析同時最多 8 個請求，沒有快取（E10-D057）。連不上或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
 	//
 	// Corresponds with GET /strategies/{strategy_id}/versions (the `ListStrategyVersions` operationId).
 	ListStrategyVersions(ctx context.Context, strategyId StrategyID, params *ListStrategyVersionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetStrategyVersion 一個版本的 manifest
 	//
-	// `ref` 是 tag，或 digest（`sha256:…`）。tag 先解析成 digest（D934）。
-	// manifest 讀不出來，或不是策略 artifact，回 502 `invalid_artifact`（D1059）。
+	// `ref` 是 tag，或 digest（`sha256:…`）。tag 先解析成 digest（E09-D034）。
+	// manifest 讀不出來，或不是策略 artifact，回 502 `invalid_artifact`（E10-D059）。
 	// 連不上 registry 或 registry 5xx 回 503 `registry_unavailable`。不存在回 404。
 	//
 	// Corresponds with GET /strategies/{strategy_id}/versions/{ref} (the `GetStrategyVersion` operationId).
@@ -318,7 +318,7 @@ type ClientInterface interface {
 
 // ListAccountKinds 列出帳號種類
 //
-// exchange registry 宣告的帳號種類（D301）。`supported` 是 false 的，建立帳號時回 400（D1011、D614）。.
+// exchange registry 宣告的帳號種類（E03-D001）。`supported` 是 false 的，建立帳號時回 400（E10-D011、E06-D014）。.
 //
 // Corresponds with GET /account-kinds (the `ListAccountKinds` operationId).
 func (c *Client) ListAccountKinds(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -350,11 +350,11 @@ func (c *Client) ListAccounts(ctx context.Context, params *ListAccountsParams, r
 
 // CreateAccountWithBody 建立帳號
 //
-// `api_id` 由 API 隨機配發（D1008）。`credentials` 必填，缺少回 400（D1062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
-// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（D1064）。
-// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（D1065）。
-// `name` 依副本 best-effort 不重複，同名回 409（D1066）。
-// `enabled` 不公開，API 一律寫 true（D1034）。
+// `api_id` 由 API 隨機配發（E10-D008）。`credentials` 必填，缺少回 400（E10-D062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（E06-D013、E10-D011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
+// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。
+// `name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+// `enabled` 不公開，API 一律寫 true（E10-D034）。
 //
 // Takes any type of body and a specified content type.
 //
@@ -373,11 +373,11 @@ func (c *Client) CreateAccountWithBody(ctx context.Context, contentType string, 
 
 // CreateAccount 建立帳號
 //
-// `api_id` 由 API 隨機配發（D1008）。`credentials` 必填，缺少回 400（D1062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
-// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（D1064）。
-// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（D1065）。
-// `name` 依副本 best-effort 不重複，同名回 409（D1066）。
-// `enabled` 不公開，API 一律寫 true（D1034）。
+// `api_id` 由 API 隨機配發（E10-D008）。`credentials` 必填，缺少回 400（E10-D062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（E06-D013、E10-D011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
+// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。
+// `name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+// `enabled` 不公開，API 一律寫 true（E10-D034）。
 //
 // Takes a body of the `application/json` content type.
 //
@@ -396,7 +396,7 @@ func (c *Client) CreateAccount(ctx context.Context, body CreateAccountJSONReques
 
 // DeleteAccount 刪除帳號
 //
-// 仍被非 terminal 的 session 引用時回 409（`referenced`，D1011）。`revision` 不符回 409（`conflict`）。.
+// 仍被非 terminal 的 session 引用時回 409（`referenced`，E10-D011）。`revision` 不符回 409（`conflict`）。.
 //
 // Corresponds with DELETE /accounts/{api_id} (the `DeleteAccount` operationId).
 func (c *Client) DeleteAccount(ctx context.Context, apiId APIID, params *DeleteAccountParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -428,10 +428,10 @@ func (c *Client) GetAccount(ctx context.Context, apiId APIID, reqEditors ...Requ
 
 // UpdateAccountWithBody 更新帳號
 //
-// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文（D1062）；有給就重新封裝，格式檢查與建立相同（D1064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（D1066）。
+// 以 `revision` 做 CAS，不成立回 409（E10-D037）。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
 //
-// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
-// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。
+// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
+// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不寫 etcd，不會重啟。
 //
 // Takes any type of body and a specified content type.
 //
@@ -450,10 +450,10 @@ func (c *Client) UpdateAccountWithBody(ctx context.Context, apiId APIID, content
 
 // UpdateAccount 更新帳號
 //
-// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文（D1062）；有給就重新封裝，格式檢查與建立相同（D1064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（D1066）。
+// 以 `revision` 做 CAS，不成立回 409（E10-D037）。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
 //
-// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
-// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。
+// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
+// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不寫 etcd，不會重啟。
 //
 // Takes a body of the `application/json` content type.
 //
@@ -536,7 +536,7 @@ func (c *Client) GetMe(ctx context.Context, reqEditors ...RequestEditorFn) (*htt
 
 // StreamEvents 狀態的即時更新（SSE）
 //
-// `text/event-stream`（D1005、D1038）。每則事件帶一個資源的完整最新狀態，用戶端整筆取代；不送差異。
+// `text/event-stream`（E10-D005、E10-D038）。每則事件帶一個資源的完整最新狀態，用戶端整筆取代；不送差異。
 //
 // | `event` | `data` 的 schema |
 // |---|---|
@@ -549,7 +549,7 @@ func (c *Client) GetMe(ctx context.Context, reqEditors ...RequestEditorFn) (*htt
 // - 連上時先送每個符合條件資源的目前狀態，再送後續的變化。
 // - 每 15 秒送一行註解（`: keepalive`）當心跳。
 // - 部署要求 HTTP/2。認證用 cookie：瀏覽器的 `EventSource` 不能帶 header。
-// - 結束時在 `audit` 記一列（D1010）。
+// - 結束時在 `audit` 記一列（E10-D010）。
 //
 // Corresponds with GET /events (the `StreamEvents` operationId).
 func (c *Client) StreamEvents(ctx context.Context, params *StreamEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -600,7 +600,7 @@ func (c *Client) GetInstance(ctx context.Context, name InstanceName, reqEditors 
 
 // ListSessionRecords 列出 session 的歷史紀錄
 //
-// 來自 Postgres，包含 etcd 已刪除的 session（D1031）。依 `created_at` 由新到舊。.
+// 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。.
 //
 // Corresponds with GET /session-records (the `ListSessionRecords` operationId).
 func (c *Client) ListSessionRecords(ctx context.Context, params *ListSessionRecordsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -649,10 +649,10 @@ func (c *Client) ListSessions(ctx context.Context, params *ListSessionsParams, r
 
 // CreateSessionWithBody 部署 session
 //
-// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
-// `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
+// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（E10-D031）。
+// `session_id` 由 API 隨機配發（E10-D007）。驗證範圍見 E10-D012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（E02-D002）。
 // Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
-// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（D1068）。
+// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（E10-D068）。
 //
 // Takes any type of body and a specified content type.
 //
@@ -671,10 +671,10 @@ func (c *Client) CreateSessionWithBody(ctx context.Context, params *CreateSessio
 
 // CreateSession 部署 session
 //
-// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
-// `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
+// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（E10-D031）。
+// `session_id` 由 API 隨機配發（E10-D007）。驗證範圍見 E10-D012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（E02-D002）。
 // Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
-// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（D1068）。
+// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（E10-D068）。
 //
 // Takes a body of the `application/json` content type.
 //
@@ -693,8 +693,8 @@ func (c *Client) CreateSession(ctx context.Context, params *CreateSessionParams,
 
 // DeleteSession 刪除 terminal 的 session
 //
-// 相當於 `docker rm`（D1017）。先把最後的 status 寫進 `session_records` 並關閉那一列，再以 txn 刪 etcd 的 spec 與 status（D1031）。
-// 之後 STS 清掉主機上的 log 與目錄（D1016）。非 terminal 的回 409（`not_terminal`）：要結束 session 用 `POST /sessions/{session_id}/end`。
+// 相當於 `docker rm`（E10-D017）。先把最後的 status 寫進 `session_records` 並關閉那一列，再以 txn 刪 etcd 的 spec 與 status（E10-D031）。
+// 之後 STS 清掉主機上的 log 與目錄（E10-D016）。非 terminal 的回 409（`not_terminal`）：要結束 session 用 `POST /sessions/{session_id}/end`。
 // 保留期到了 API 也會自己刪。
 //
 // Corresponds with DELETE /sessions/{session_id} (the `DeleteSession` operationId).
@@ -727,7 +727,7 @@ func (c *Client) GetSession(ctx context.Context, sessionId SessionID, reqEditors
 
 // EndSession 結束 session
 //
-// 把 spec 的 `desired_state` 改成 `ended`（D1303）。伺服器端以 `mod_revision` CAS 重試，用戶端不必帶 revision（D1037）。
+// 把 spec 的 `desired_state` 改成 `ended`（E13-D003）。伺服器端以 `mod_revision` CAS 重試，用戶端不必帶 revision（E10-D037）。
 // 冪等：已經是 `ended` 或 terminal 的照樣回 200。controller 以 `ended_by_spec` 結束 session（PROTOCOL §3.3 N3）。
 //
 // Corresponds with POST /sessions/{session_id}/end (the `EndSession` operationId).
@@ -745,9 +745,9 @@ func (c *Client) EndSession(ctx context.Context, sessionId SessionID, reqEditors
 
 // ListStrategies 列出策略
 //
-// 部署設定裡每個 repository 一項（D1013）。`id` 是 repository 路徑的最後一段（D1035）。
-// 依 `id` 排序後以 `limit`、`cursor` 分頁。沒有快取：這一頁的 `latest` 每次向 registry 解析，同時最多 8 個請求（D1057）。
-// `latest` 是普通的 tag（D1058、D1013）。連不上 registry 或 registry 5xx 回 503 `registry_unavailable`（D1059）。
+// 部署設定裡每個 repository 一項（E10-D013）。`id` 是 repository 路徑的最後一段（E10-D035）。
+// 依 `id` 排序後以 `limit`、`cursor` 分頁。沒有快取：這一頁的 `latest` 每次向 registry 解析，同時最多 8 個請求（E10-D057）。
+// `latest` 是普通的 tag（E10-D058、E10-D013）。連不上 registry 或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
 //
 // Corresponds with GET /strategies (the `ListStrategies` operationId).
 func (c *Client) ListStrategies(ctx context.Context, params *ListStrategiesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -765,8 +765,8 @@ func (c *Client) ListStrategies(ctx context.Context, params *ListStrategiesParam
 // ListStrategyVersions 列出策略的版本
 //
 // registry 的 tag 清單，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
-// 一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序，`latest` 是普通的一項（D1058）。
-// 解析同時最多 8 個請求，沒有快取（D1057）。連不上或 registry 5xx 回 503 `registry_unavailable`（D1059）。
+// 一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序，`latest` 是普通的一項（E10-D058）。
+// 解析同時最多 8 個請求，沒有快取（E10-D057）。連不上或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
 //
 // Corresponds with GET /strategies/{strategy_id}/versions (the `ListStrategyVersions` operationId).
 func (c *Client) ListStrategyVersions(ctx context.Context, strategyId StrategyID, params *ListStrategyVersionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -783,8 +783,8 @@ func (c *Client) ListStrategyVersions(ctx context.Context, strategyId StrategyID
 
 // GetStrategyVersion 一個版本的 manifest
 //
-// `ref` 是 tag，或 digest（`sha256:…`）。tag 先解析成 digest（D934）。
-// manifest 讀不出來，或不是策略 artifact，回 502 `invalid_artifact`（D1059）。
+// `ref` 是 tag，或 digest（`sha256:…`）。tag 先解析成 digest（E09-D034）。
+// manifest 讀不出來，或不是策略 artifact，回 502 `invalid_artifact`（E10-D059）。
 // 連不上 registry 或 registry 5xx 回 503 `registry_unavailable`。不存在回 404。
 //
 // Corresponds with GET /strategies/{strategy_id}/versions/{ref} (the `GetStrategyVersion` operationId).
@@ -1991,7 +1991,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListAccountKindsWithResponse 列出帳號種類
 	//
-	// exchange registry 宣告的帳號種類（D301）。`supported` 是 false 的，建立帳號時回 400（D1011、D614）。.
+	// exchange registry 宣告的帳號種類（E03-D001）。`supported` 是 false 的，建立帳號時回 400（E10-D011、E06-D014）。.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -2007,11 +2007,11 @@ type ClientWithResponsesInterface interface {
 
 	// CreateAccountWithBodyWithResponse 建立帳號
 	//
-	// `api_id` 由 API 隨機配發（D1008）。`credentials` 必填，缺少回 400（D1062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
-	// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（D1064）。
-	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（D1065）。
-	// `name` 依副本 best-effort 不重複，同名回 409（D1066）。
-	// `enabled` 不公開，API 一律寫 true（D1034）。
+	// `api_id` 由 API 隨機配發（E10-D008）。`credentials` 必填，缺少回 400（E10-D062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（E06-D013、E10-D011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+	// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
+	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。
+	// `name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+	// `enabled` 不公開，API 一律寫 true（E10-D034）。
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -2020,11 +2020,11 @@ type ClientWithResponsesInterface interface {
 
 	// CreateAccountWithResponse 建立帳號
 	//
-	// `api_id` 由 API 隨機配發（D1008）。`credentials` 必填，缺少回 400（D1062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
-	// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（D1064）。
-	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（D1065）。
-	// `name` 依副本 best-effort 不重複，同名回 409（D1066）。
-	// `enabled` 不公開，API 一律寫 true（D1034）。
+	// `api_id` 由 API 隨機配發（E10-D008）。`credentials` 必填，缺少回 400（E10-D062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（E06-D013、E10-D011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+	// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
+	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。
+	// `name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+	// `enabled` 不公開，API 一律寫 true（E10-D034）。
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -2033,7 +2033,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteAccountWithResponse 刪除帳號
 	//
-	// 仍被非 terminal 的 session 引用時回 409（`referenced`，D1011）。`revision` 不符回 409（`conflict`）。.
+	// 仍被非 terminal 的 session 引用時回 409（`referenced`，E10-D011）。`revision` 不符回 409（`conflict`）。.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -2049,10 +2049,10 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateAccountWithBodyWithResponse 更新帳號
 	//
-	// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文（D1062）；有給就重新封裝，格式檢查與建立相同（D1064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（D1066）。
+	// 以 `revision` 做 CAS，不成立回 409（E10-D037）。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
 	//
-	// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
-	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。
+	// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
+	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不寫 etcd，不會重啟。
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -2061,10 +2061,10 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateAccountWithResponse 更新帳號
 	//
-	// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文（D1062）；有給就重新封裝，格式檢查與建立相同（D1064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（D1066）。
+	// 以 `revision` 做 CAS，不成立回 409（E10-D037）。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
 	//
-	// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
-	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。
+	// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
+	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不寫 etcd，不會重啟。
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -2101,7 +2101,7 @@ type ClientWithResponsesInterface interface {
 
 	// StreamEventsWithResponse 狀態的即時更新（SSE）
 	//
-	// `text/event-stream`（D1005、D1038）。每則事件帶一個資源的完整最新狀態，用戶端整筆取代；不送差異。
+	// `text/event-stream`（E10-D005、E10-D038）。每則事件帶一個資源的完整最新狀態，用戶端整筆取代；不送差異。
 	//
 	// | `event` | `data` 的 schema |
 	// |---|---|
@@ -2114,7 +2114,7 @@ type ClientWithResponsesInterface interface {
 	// - 連上時先送每個符合條件資源的目前狀態，再送後續的變化。
 	// - 每 15 秒送一行註解（`: keepalive`）當心跳。
 	// - 部署要求 HTTP/2。認證用 cookie：瀏覽器的 `EventSource` 不能帶 header。
-	// - 結束時在 `audit` 記一列（D1010）。
+	// - 結束時在 `audit` 記一列（E10-D010）。
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -2141,7 +2141,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListSessionRecordsWithResponse 列出 session 的歷史紀錄
 	//
-	// 來自 Postgres，包含 etcd 已刪除的 session（D1031）。依 `created_at` 由新到舊。.
+	// 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -2166,10 +2166,10 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSessionWithBodyWithResponse 部署 session
 	//
-	// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
-	// `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
+	// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（E10-D031）。
+	// `session_id` 由 API 隨機配發（E10-D007）。驗證範圍見 E10-D012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（E02-D002）。
 	// Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
-	// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（D1068）。
+	// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（E10-D068）。
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -2178,10 +2178,10 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSessionWithResponse 部署 session
 	//
-	// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
-	// `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
+	// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（E10-D031）。
+	// `session_id` 由 API 隨機配發（E10-D007）。驗證範圍見 E10-D012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（E02-D002）。
 	// Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
-	// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（D1068）。
+	// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（E10-D068）。
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -2190,8 +2190,8 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteSessionWithResponse 刪除 terminal 的 session
 	//
-	// 相當於 `docker rm`（D1017）。先把最後的 status 寫進 `session_records` 並關閉那一列，再以 txn 刪 etcd 的 spec 與 status（D1031）。
-	// 之後 STS 清掉主機上的 log 與目錄（D1016）。非 terminal 的回 409（`not_terminal`）：要結束 session 用 `POST /sessions/{session_id}/end`。
+	// 相當於 `docker rm`（E10-D017）。先把最後的 status 寫進 `session_records` 並關閉那一列，再以 txn 刪 etcd 的 spec 與 status（E10-D031）。
+	// 之後 STS 清掉主機上的 log 與目錄（E10-D016）。非 terminal 的回 409（`not_terminal`）：要結束 session 用 `POST /sessions/{session_id}/end`。
 	// 保留期到了 API 也會自己刪。
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -2208,7 +2208,7 @@ type ClientWithResponsesInterface interface {
 
 	// EndSessionWithResponse 結束 session
 	//
-	// 把 spec 的 `desired_state` 改成 `ended`（D1303）。伺服器端以 `mod_revision` CAS 重試，用戶端不必帶 revision（D1037）。
+	// 把 spec 的 `desired_state` 改成 `ended`（E13-D003）。伺服器端以 `mod_revision` CAS 重試，用戶端不必帶 revision（E10-D037）。
 	// 冪等：已經是 `ended` 或 terminal 的照樣回 200。controller 以 `ended_by_spec` 結束 session（PROTOCOL §3.3 N3）。
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -2218,9 +2218,9 @@ type ClientWithResponsesInterface interface {
 
 	// ListStrategiesWithResponse 列出策略
 	//
-	// 部署設定裡每個 repository 一項（D1013）。`id` 是 repository 路徑的最後一段（D1035）。
-	// 依 `id` 排序後以 `limit`、`cursor` 分頁。沒有快取：這一頁的 `latest` 每次向 registry 解析，同時最多 8 個請求（D1057）。
-	// `latest` 是普通的 tag（D1058、D1013）。連不上 registry 或 registry 5xx 回 503 `registry_unavailable`（D1059）。
+	// 部署設定裡每個 repository 一項（E10-D013）。`id` 是 repository 路徑的最後一段（E10-D035）。
+	// 依 `id` 排序後以 `limit`、`cursor` 分頁。沒有快取：這一頁的 `latest` 每次向 registry 解析，同時最多 8 個請求（E10-D057）。
+	// `latest` 是普通的 tag（E10-D058、E10-D013）。連不上 registry 或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -2230,8 +2230,8 @@ type ClientWithResponsesInterface interface {
 	// ListStrategyVersionsWithResponse 列出策略的版本
 	//
 	// registry 的 tag 清單，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
-	// 一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序，`latest` 是普通的一項（D1058）。
-	// 解析同時最多 8 個請求，沒有快取（D1057）。連不上或 registry 5xx 回 503 `registry_unavailable`（D1059）。
+	// 一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序，`latest` 是普通的一項（E10-D058）。
+	// 解析同時最多 8 個請求，沒有快取（E10-D057）。連不上或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -2240,8 +2240,8 @@ type ClientWithResponsesInterface interface {
 
 	// GetStrategyVersionWithResponse 一個版本的 manifest
 	//
-	// `ref` 是 tag，或 digest（`sha256:…`）。tag 先解析成 digest（D934）。
-	// manifest 讀不出來，或不是策略 artifact，回 502 `invalid_artifact`（D1059）。
+	// `ref` 是 tag，或 digest（`sha256:…`）。tag 先解析成 digest（E09-D034）。
+	// manifest 讀不出來，或不是策略 artifact，回 502 `invalid_artifact`（E10-D059）。
 	// 連不上 registry 或 registry 5xx 回 503 `registry_unavailable`。不存在回 404。
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -3595,7 +3595,7 @@ func (r GetStrategyVersionResponse) ContentType() string {
 
 // ListAccountKindsWithResponse 列出帳號種類
 //
-// exchange registry 宣告的帳號種類（D301）。`supported` 是 false 的，建立帳號時回 400（D1011、D614）。.
+// exchange registry 宣告的帳號種類（E03-D001）。`supported` 是 false 的，建立帳號時回 400（E10-D011、E06-D014）。.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3623,11 +3623,11 @@ func (c *ClientWithResponses) ListAccountsWithResponse(ctx context.Context, para
 
 // CreateAccountWithBodyWithResponse 建立帳號
 //
-// `api_id` 由 API 隨機配發（D1008）。`credentials` 必填，缺少回 400（D1062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
-// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（D1064）。
-// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（D1065）。
-// `name` 依副本 best-effort 不重複，同名回 409（D1066）。
-// `enabled` 不公開，API 一律寫 true（D1034）。
+// `api_id` 由 API 隨機配發（E10-D008）。`credentials` 必填，缺少回 400（E10-D062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（E06-D013、E10-D011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
+// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。
+// `name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+// `enabled` 不公開，API 一律寫 true（E10-D034）。
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3642,11 +3642,11 @@ func (c *ClientWithResponses) CreateAccountWithBodyWithResponse(ctx context.Cont
 
 // CreateAccountWithResponse 建立帳號
 //
-// `api_id` 由 API 隨機配發（D1008）。`credentials` 必填，缺少回 400（D1062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（D613、D1011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
-// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（D1064）。
-// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（D1065）。
-// `name` 依副本 best-effort 不重複，同名回 409（D1066）。
-// `enabled` 不公開，API 一律寫 true（D1034）。
+// `api_id` 由 API 隨機配發（E10-D008）。`credentials` 必填，缺少回 400（E10-D062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（E06-D013、E10-D011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
+// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。
+// `name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+// `enabled` 不公開，API 一律寫 true（E10-D034）。
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3661,7 +3661,7 @@ func (c *ClientWithResponses) CreateAccountWithResponse(ctx context.Context, bod
 
 // DeleteAccountWithResponse 刪除帳號
 //
-// 仍被非 terminal 的 session 引用時回 409（`referenced`，D1011）。`revision` 不符回 409（`conflict`）。.
+// 仍被非 terminal 的 session 引用時回 409（`referenced`，E10-D011）。`revision` 不符回 409（`conflict`）。.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3689,10 +3689,10 @@ func (c *ClientWithResponses) GetAccountWithResponse(ctx context.Context, apiId 
 
 // UpdateAccountWithBodyWithResponse 更新帳號
 //
-// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文（D1062）；有給就重新封裝，格式檢查與建立相同（D1064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（D1066）。
+// 以 `revision` 做 CAS，不成立回 409（E10-D037）。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
 //
-// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
-// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。
+// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
+// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不寫 etcd，不會重啟。
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3707,10 +3707,10 @@ func (c *ClientWithResponses) UpdateAccountWithBodyWithResponse(ctx context.Cont
 
 // UpdateAccountWithResponse 更新帳號
 //
-// 以 `revision` 做 CAS，不成立回 409（D1037）。省略 `credentials` 沿用原本的密文（D1062）；有給就重新封裝，格式檢查與建立相同（D1064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（D1066）。
+// 以 `revision` 做 CAS，不成立回 409（E10-D037）。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
 //
-// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（D1034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
-// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（D843）。內容沒變時不寫 etcd，不會重啟。
+// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
+// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不寫 etcd，不會重啟。
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3777,7 +3777,7 @@ func (c *ClientWithResponses) GetMeWithResponse(ctx context.Context, reqEditors 
 
 // StreamEventsWithResponse 狀態的即時更新（SSE）
 //
-// `text/event-stream`（D1005、D1038）。每則事件帶一個資源的完整最新狀態，用戶端整筆取代；不送差異。
+// `text/event-stream`（E10-D005、E10-D038）。每則事件帶一個資源的完整最新狀態，用戶端整筆取代；不送差異。
 //
 // | `event` | `data` 的 schema |
 // |---|---|
@@ -3790,7 +3790,7 @@ func (c *ClientWithResponses) GetMeWithResponse(ctx context.Context, reqEditors 
 // - 連上時先送每個符合條件資源的目前狀態，再送後續的變化。
 // - 每 15 秒送一行註解（`: keepalive`）當心跳。
 // - 部署要求 HTTP/2。認證用 cookie：瀏覽器的 `EventSource` 不能帶 header。
-// - 結束時在 `audit` 記一列（D1010）。
+// - 結束時在 `audit` 記一列（E10-D010）。
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3835,7 +3835,7 @@ func (c *ClientWithResponses) GetInstanceWithResponse(ctx context.Context, name 
 
 // ListSessionRecordsWithResponse 列出 session 的歷史紀錄
 //
-// 來自 Postgres，包含 etcd 已刪除的 session（D1031）。依 `created_at` 由新到舊。.
+// 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3878,10 +3878,10 @@ func (c *ClientWithResponses) ListSessionsWithResponse(ctx context.Context, para
 
 // CreateSessionWithBodyWithResponse 部署 session
 //
-// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
-// `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
+// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（E10-D031）。
+// `session_id` 由 API 隨機配發（E10-D007）。驗證範圍見 E10-D012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（E02-D002）。
 // Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
-// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（D1068）。
+// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（E10-D068）。
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3896,10 +3896,10 @@ func (c *ClientWithResponses) CreateSessionWithBodyWithResponse(ctx context.Cont
 
 // CreateSessionWithResponse 部署 session
 //
-// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（D1031）。
-// `session_id` 由 API 隨機配發（D1007）。驗證範圍見 D1012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（D202）。
+// 驗證之後先寫 Postgres 的 `session_records`（`pending`），再以 create-only 寫 etcd 的 spec，最後標成 `created`（E10-D031）。
+// `session_id` 由 API 隨機配發（E10-D007）。驗證範圍見 E10-D012；不查 SYM，ticker 錯誤由 MD、TD 以 `rejected` 回報（E02-D002）。
 // Postgres 或該 STS instance 的 region 不可用時回 503，不寫 etcd。
-// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（D1068）。
+// 可帶 `Idempotency-Key`：24 小時內同 key、同 body 回同一個 session，同 key、不同 body 回 409（E10-D068）。
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3914,8 +3914,8 @@ func (c *ClientWithResponses) CreateSessionWithResponse(ctx context.Context, par
 
 // DeleteSessionWithResponse 刪除 terminal 的 session
 //
-// 相當於 `docker rm`（D1017）。先把最後的 status 寫進 `session_records` 並關閉那一列，再以 txn 刪 etcd 的 spec 與 status（D1031）。
-// 之後 STS 清掉主機上的 log 與目錄（D1016）。非 terminal 的回 409（`not_terminal`）：要結束 session 用 `POST /sessions/{session_id}/end`。
+// 相當於 `docker rm`（E10-D017）。先把最後的 status 寫進 `session_records` 並關閉那一列，再以 txn 刪 etcd 的 spec 與 status（E10-D031）。
+// 之後 STS 清掉主機上的 log 與目錄（E10-D016）。非 terminal 的回 409（`not_terminal`）：要結束 session 用 `POST /sessions/{session_id}/end`。
 // 保留期到了 API 也會自己刪。
 //
 // Returns a wrapper object for the known response body format(s).
@@ -3944,7 +3944,7 @@ func (c *ClientWithResponses) GetSessionWithResponse(ctx context.Context, sessio
 
 // EndSessionWithResponse 結束 session
 //
-// 把 spec 的 `desired_state` 改成 `ended`（D1303）。伺服器端以 `mod_revision` CAS 重試，用戶端不必帶 revision（D1037）。
+// 把 spec 的 `desired_state` 改成 `ended`（E13-D003）。伺服器端以 `mod_revision` CAS 重試，用戶端不必帶 revision（E10-D037）。
 // 冪等：已經是 `ended` 或 terminal 的照樣回 200。controller 以 `ended_by_spec` 結束 session（PROTOCOL §3.3 N3）。
 //
 // Returns a wrapper object for the known response body format(s).
@@ -3960,9 +3960,9 @@ func (c *ClientWithResponses) EndSessionWithResponse(ctx context.Context, sessio
 
 // ListStrategiesWithResponse 列出策略
 //
-// 部署設定裡每個 repository 一項（D1013）。`id` 是 repository 路徑的最後一段（D1035）。
-// 依 `id` 排序後以 `limit`、`cursor` 分頁。沒有快取：這一頁的 `latest` 每次向 registry 解析，同時最多 8 個請求（D1057）。
-// `latest` 是普通的 tag（D1058、D1013）。連不上 registry 或 registry 5xx 回 503 `registry_unavailable`（D1059）。
+// 部署設定裡每個 repository 一項（E10-D013）。`id` 是 repository 路徑的最後一段（E10-D035）。
+// 依 `id` 排序後以 `limit`、`cursor` 分頁。沒有快取：這一頁的 `latest` 每次向 registry 解析，同時最多 8 個請求（E10-D057）。
+// `latest` 是普通的 tag（E10-D058、E10-D013）。連不上 registry 或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3978,8 +3978,8 @@ func (c *ClientWithResponses) ListStrategiesWithResponse(ctx context.Context, pa
 // ListStrategyVersionsWithResponse 列出策略的版本
 //
 // registry 的 tag 清單，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
-// 一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序，`latest` 是普通的一項（D1058）。
-// 解析同時最多 8 個請求，沒有快取（D1057）。連不上或 registry 5xx 回 503 `registry_unavailable`（D1059）。
+// 一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序，`latest` 是普通的一項（E10-D058）。
+// 解析同時最多 8 個請求，沒有快取（E10-D057）。連不上或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3994,8 +3994,8 @@ func (c *ClientWithResponses) ListStrategyVersionsWithResponse(ctx context.Conte
 
 // GetStrategyVersionWithResponse 一個版本的 manifest
 //
-// `ref` 是 tag，或 digest（`sha256:…`）。tag 先解析成 digest（D934）。
-// manifest 讀不出來，或不是策略 artifact，回 502 `invalid_artifact`（D1059）。
+// `ref` 是 tag，或 digest（`sha256:…`）。tag 先解析成 digest（E09-D034）。
+// manifest 讀不出來，或不是策略 artifact，回 502 `invalid_artifact`（E10-D059）。
 // 連不上 registry 或 registry 5xx 回 503 `registry_unavailable`。不存在回 404。
 //
 // Returns a wrapper object for the known response body format(s).

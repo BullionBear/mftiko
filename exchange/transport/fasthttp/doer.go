@@ -1,5 +1,5 @@
 // Package fasthttp is the REST transport: an exchange.Doer over github.com/valyala/fasthttp
-// (DECISIONS D302). It sends the HTTPRequest an adapter built as it is, and classifies what has no
+// (DECISIONS E03-D002). It sends the HTTPRequest an adapter built as it is, and classifies what has no
 // answer:
 //
 //   - The request certainly did not go out (the dial, the proxy or the TLS handshake failed; the

@@ -31,7 +31,7 @@ const reportWait = 200 * time.Millisecond
 
 // Spec is one conn worker's identity. The binary path is not part of it: a new agent binary does
 // not respawn a worker that is already running (P9). The URL is: a different host is a new
-// incarnation (D403). conn_epoch is not part of it; it rides in Init.
+// incarnation (E04-D003). conn_epoch is not part of it; it rides in Init.
 type Spec struct {
 	Venue string
 	Route string
@@ -105,7 +105,7 @@ func journalFile(dir string, key agent.WorkerKey) string {
 }
 
 // Init carries the last conn_epoch reported for key, copied as-is. The worker dials with the next
-// number and reports that before the dial (D409).
+// number and reports that before the dial (E04-D009).
 func (p *Program) Init(key agent.WorkerKey, spec Spec, _ Live) (*workerv1.Init, error) {
 	b, err := proto.Marshal(&mdctlv1.InitPayload{
 		Venue: spec.Venue, Route: spec.Route, N: spec.N, MdInstance: p.Instance, Url: spec.URL,

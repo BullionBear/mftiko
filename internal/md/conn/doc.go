@@ -1,5 +1,5 @@
 // Package conn is one MD conn worker: a single websocket for a (venue, route, n), the diff
-// from the latest desired subscription, and publication of decoded events on md.v1.f (D402, D403, D409, D455).
+// from the latest desired subscription, and publication of decoded events on md.v1.f (E04-D002, E04-D003, E04-D009, E04-D055).
 //
 // What a frame means is exchange.Session. The socket, its pings, its idle timeout and its
 // MaxLifetime are exchange/transport/ws. That package never reconnects. This one does. The dial
@@ -13,16 +13,16 @@
 // At Init the process loads this venue's active symbol table and follows sym.v1.changed.{venue}. A reconcile
 // loop turns the agent's topic.UniversalTicker list into atoms with that table and subscribes the
 // difference. The UID on that row is copied onto the feed and written into every md.f payload and
-// every md.view book snapshot (D461). A worker started without a table applies atom ids from the
+// every md.view book snapshot (E08-D065). A worker started without a table applies atom ids from the
 // assignment instead.
 //
-// Depth updates are folded into a sdk/book ring on this connection (D424–D434, D453). The only
+// Depth updates are folded into a sdk/book ring on this connection (E04-D024–E04-D034, E04-D053). The only
 // book feed is orderbook_delta. It forwards each normalized increment unchanged. A reset and the
 // book md.view reads are the levels inside the ring. SnapshotREST takes one snapshot at
 // BookSync.Depth() and then only increments; it refetches only on a sequence gap or a checksum
-// failure (D426). A subscription of the retired name orderbook is rejected as invalid.
+// failure (E04-D026). A subscription of the retired name orderbook is rejected as invalid.
 // SnapshotStream does not: a gap or a checksum failure unsubscribes and subscribes that one
-// channel after a per-book backoff, and the venue's next snapshot is the reset (D434). The book
+// channel after a per-book backoff, and the venue's next snapshot is the reset (E04-D034). The book
 // dies with the connection: reconnect starts again, and conn_epoch changes only when the dial
 // succeeds. A resync keeps the epoch and takes the next seq of each feed. SnapshotREST depth
 // runs in this process, off the read goroutine, so a ping still gets an answer. Tape is one

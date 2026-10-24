@@ -13,7 +13,7 @@ import (
 	"github.com/BullionBear/mftiko/contract/symbol"
 )
 
-// Status is the listing enum (D203). The contract and the CHECK constraints
+// Status is the listing enum (E02-D003). The contract and the CHECK constraints
 // use these spellings. Unspecified is invalid and is not stored.
 type Status = symbol.Status
 

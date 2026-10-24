@@ -202,7 +202,7 @@ func TestRefresh(t *testing.T) {
 		}
 	})
 
-	// The venue's "1.10" and "1.1" are one float64 (D008); stored as NUMERIC, read back as text, it
+	// The venue's "1.10" and "1.1" are one float64 (E00-D008); stored as NUMERIC, read back as text, it
 	// compares equal to the listing's shortest form, so a refresh with the same numbers changes nothing.
 	t.Run("the same numbers are not a change", func(t *testing.T) {
 		truncate(t, ctx, conn)

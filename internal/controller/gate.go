@@ -20,26 +20,26 @@ const (
 	endDepsTimeout = "deps_timeout"
 )
 
-// defaultDepsTimeout is the deadline used when deps_timeout_s is 0 (D1302).
+// defaultDepsTimeout is the deadline used when deps_timeout_s is 0 (E13-D002).
 const defaultDepsTimeout = 60 * time.Second
 
 // Gate fills binding statuses and start, and ends sessions (N2, N3,
-// D1328–D1332). plan is what Derive decided this round. A SessionDemand put
+// E13-D028–E13-D032). plan is what Derive decided this round. A SessionDemand put
 // is replaced when statuses, start or the end change, and dropped when it
 // would only wipe a value the gate already wrote. Demand-entry puts and
 // drifts pass through.
 //
 // next is the earliest deps deadline still ahead, or the zero time when no
-// session is waiting on dependencies (D1331). The daemon waits on it so a
+// session is waiting on dependencies (E13-D031). The daemon waits on it so a
 // timeout does not sit until the full resync.
 //
 // An assignment that is already ENDED is left untouched, bindings included
-// (D1328, D1330). A session region that is not synced, or is stale, is not
-// written (D1306, D1318); its deadline is still reported while it is waiting.
+// (E13-D028, E13-D030). A session region that is not synced, or is stale, is not
+// written (E13-D006, E13-D018); its deadline is still reported while it is waiting.
 // An ack from a stale region is copied into bindings and does not release
-// start or end the session (D1332). A provider region that has not finished
+// start or end the session (E13-D032). A provider region that has not finished
 // its first list has not been read, so its bindings keep the stored status
-// (D1318, D1337). Silence leaves the status unset. A missing provider
+// (E13-D018, E13-D037). Silence leaves the status unset. A missing provider
 // AgentRecord is not a nack: the ack's value is used as it stands. inst is
 // the deployment's placement of every instance, as Derive takes it.
 func Gate(v View, plan Plan, inst map[string]Placement, now time.Time) (Plan, time.Time) {
@@ -91,7 +91,7 @@ func (g *gate) session(sess Session) {
 	if _, no := g.bad[key]; no {
 		return
 	}
-	// Already ended: do not revive, and do not copy later acks (D1328, D1330).
+	// Already ended: do not revive, and do not copy later acks (E13-D028, E13-D030).
 	if sess.Demand.GetDesired() == sessionv1.DesiredState_DESIRED_STATE_ENDED {
 		return
 	}
@@ -101,7 +101,7 @@ func (g *gate) session(sess Session) {
 		base = sess.Demand
 	}
 	if base == nil {
-		return // nothing assigned yet; an ENDED spec writes nothing (D1326)
+		return // nothing assigned yet; an ENDED spec writes nothing (E13-D026)
 	}
 	// N1 ended it this round (invalid_spec). Keep that reason.
 	if base.GetDesired() == sessionv1.DesiredState_DESIRED_STATE_ENDED {
@@ -155,9 +155,9 @@ func (g *gate) session(sess Session) {
 
 // fill copies each binding's ack. allReady is true when every binding has a
 // fresh READY, which includes a session with no bindings. nack is a fresh
-// REJECTED or DEAD. Stale acks are copied and count as neither (D1332). A
+// REJECTED or DEAD. Stale acks are copied and count as neither (E13-D032). A
 // binding whose provider region has not synced keeps the stored status and
-// counts as neither too (D1318, D1337).
+// counts as neither too (E13-D018, E13-D037).
 func (g *gate) fill(sess Session, next *statev1.SessionDemand) (nack, allReady bool) {
 	allReady = true
 	for _, b := range next.GetBindings() {
@@ -197,7 +197,7 @@ func (g *gate) fill(sess Session, next *statev1.SessionDemand) (nack, allReady b
 }
 
 // specEnded is a desired_state of ENDED, or a spec deleted before the session
-// is terminal (D1303). The caller has already skipped terminal sessions.
+// is terminal (E13-D003). The caller has already skipped terminal sessions.
 func specEnded(sess Session) bool {
 	if sess.Spec == nil {
 		return true

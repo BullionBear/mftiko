@@ -6,13 +6,13 @@ import (
 	"github.com/BullionBear/mftiko/contract/symbol"
 )
 
-// PublicREST is a venue's public REST, sans-I/O (D302): each method builds a Call, and the caller sends
-// it. It is code, not a service (D402): the conn worker runs Depth in process for book snapshots,
+// PublicREST is a venue's public REST, sans-I/O (E03-D002): each method builds a Call, and the caller sends
+// it. It is code, not a service (E04-D002): the conn worker runs Depth in process for book snapshots,
 // md.fetch runs Klines and OpenInterest, SYM runs Listing (through ListingOver). Public requests are
 // not signed, so those methods do not take the time. Usage takes when the response arrived, so it
-// can fill ResetAt without reading a clock (D420). Safe for concurrent use.
+// can fill ResetAt without reading a clock (E04-D020). Safe for concurrent use.
 type PublicREST interface {
-	// Listing is every instrument the venue lists in one category, canonicalized (D201), one page at a
+	// Listing is every instrument the venue lists in one category, canonicalized (E02-D001), one page at a
 	// time. One (venue, category) is the unit SYM refreshes and delists within: a spot refresh must
 	// not deactivate perp rows just because they were not in a spot response. The caller reads every
 	// page (Collect); a partial listing would make SYM delist the rest.
@@ -27,13 +27,13 @@ type PublicREST interface {
 	Klines(inst *symbol.Info, interval string, endNs int64, limit int) (Call[[]Kline], error)
 	KlinePage() int
 
-	// OpenInterest is a query-only value on venues that do not push it (D401). ErrUnsupported
+	// OpenInterest is a query-only value on venues that do not push it (E04-D001). ErrUnsupported
 	// elsewhere.
 	OpenInterest(inst *symbol.Info) (Call[*OpenInterest], error)
 
 	// Usage reads the rate-limit usage the venue reports in a response; nil when it reports none.
-	// now is when the response arrived. The adapter does not read a clock (D302). Each Used.ResetAt
-	// is when that counter returns to zero; the zero time means the venue did not say (D420).
+	// now is when the response arrived. The adapter does not read a clock (E03-D002). Each Used.ResetAt
+	// is when that counter returns to zero; the zero time means the venue did not say (E04-D020).
 	Usage(resp *HTTPResponse, now time.Time) []Used
 }
 

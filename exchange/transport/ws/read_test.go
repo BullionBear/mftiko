@@ -117,7 +117,7 @@ func readMessages(tb testing.TB, size int, at func(n int) bool) {
 	}
 }
 
-// The read path allocates nothing per message once the buffer has grown (D302).
+// The read path allocates nothing per message once the buffer has grown (E03-D002).
 //
 // MemStats counts the whole process, and the runtime allocates when it starts an OS thread: on a busy
 // machine it does, to take a P back from a goroutine held in a socket syscall. A window in which a

@@ -122,7 +122,7 @@ func (k fakeKinds) AccountKind(n string) (exchange.AccountKind, bool) {
 	return x, ok
 }
 
-// TestAPISealedAccountReachesReady is D1067: the API seals an account, the TD agent opens it with
+// TestAPISealedAccountReachesReady is E10-D067: the API seals an account, the TD agent opens it with
 // the instance private key and checks api_id and kind, and the account worker reaches READY on the
 // fake venue. The API response, both logs, and the agent work directory contain neither the
 // credential plaintext nor the sealed blob.

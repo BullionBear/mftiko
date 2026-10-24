@@ -10,13 +10,13 @@ import (
 )
 
 var (
-	// A venue name is the first part of a UniversalTicker: CamelCase, no separator (D201).
+	// A venue name is the first part of a UniversalTicker: CamelCase, no separator (E02-D001).
 	camel = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*$`)
 	// A route goes into the worker key md/<venue>/<route>/<n> and the atom id <venue>:<route>:<channel>.
 	word = regexp.MustCompile(`^[a-z][a-z0-9]*$`)
 )
 
-// Both enums are part of the contract (D201, D403, D301).
+// Both enums are part of the contract (E02-D001, E04-D003, E03-D001).
 func TestRegistry(t *testing.T) {
 	r := Registry()
 	if got, want := strings.Join(r.Venues(), ","), "Binance,BinanceCM,BinanceEO,BinanceUM,Bybit,Okx"; got != want {
@@ -40,7 +40,7 @@ func TestRegistry(t *testing.T) {
 		}
 	}
 
-	// BinancePM is an account kind only: it trades three venues and is not one (D301).
+	// BinancePM is an account kind only: it trades three venues and is not one (E03-D001).
 	if _, ok := r.Lookup("BinancePM"); ok {
 		t.Error("BinancePM resolves as a venue")
 	}
@@ -54,7 +54,7 @@ func TestRegistry(t *testing.T) {
 		t.Error("BinancePM trades BinanceEO")
 	}
 
-	// Resolve folds case against the registry (D201). Binance is spot only.
+	// Resolve folds case against the registry (E02-D001). Binance is spot only.
 	got, err := symbol.Resolve("binanceum_future_btcusdt250926", r)
 	if err != nil {
 		t.Fatal(err)

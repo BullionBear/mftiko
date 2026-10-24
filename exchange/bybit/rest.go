@@ -114,7 +114,7 @@ func (r *rest) Klines(inst *symbol.Info, interval string, endNs int64, limit int
 
 func (r *rest) KlinePage() int { return klinePage }
 
-// OpenInterest: the linear ticker carries it (D401). Spot has none.
+// OpenInterest: the linear ticker carries it (E04-D001). Spot has none.
 func (r *rest) OpenInterest(inst *symbol.Info) (exchange.Call[*exchange.OpenInterest], error) {
 	if _, err := publicRoute(inst); err != nil {
 		return exchange.Call[*exchange.OpenInterest]{}, err
@@ -202,7 +202,7 @@ func oneInstrument(row instRow, want symbol.Category) (symbol.Listing, bool) {
 }
 
 // oneSpotRow keeps a spot symbol SYM can store. A row with no positive tick or step, an asset
-// that is not canonical, or a tick or step that does not fit 15 significant digits (D008) is
+// that is not canonical, or a tick or step that does not fit 15 significant digits (E00-D008) is
 // left out. Spot has no contract size and no settlement asset.
 func oneSpotRow(row instRow) (symbol.Listing, bool) {
 	base, quote, ok := pairAssets(row.Base, row.Quote)
@@ -352,7 +352,7 @@ func posNum(s string) (float64, bool) {
 	return v, true
 }
 
-// fitsFloat is the D008 bound conformance checks: the largest price and quantity, written at
+// fitsFloat is the E00-D008 bound conformance checks: the largest price and quantity, written at
 // the step's decimals, have at most 15 significant digits and survive a text round trip.
 func fitsFloat(f symbol.Filters) bool {
 	for _, pair := range [][2]string{{symbol.PriceTick, symbol.MaxPrice}, {symbol.QtyStep, symbol.MaxQty}} {

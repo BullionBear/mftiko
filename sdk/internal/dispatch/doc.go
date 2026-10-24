@@ -1,4 +1,4 @@
-// Package dispatch is the session worker's single dispatcher (DECISIONS D803, D815–D817).
+// Package dispatch is the session worker's single dispatcher (DECISIONS E08-D003, E08-D015–E08-D017).
 //
 // One goroutine runs every hook, so a strategy needs no locks. Two buffers feed it. The TD buffer
 // holds orders, timers, Post, and read replies: FIFO, never dropped, 65536 entries, and a full
@@ -9,7 +9,7 @@
 // After each hook the TD buffer is taken first. An MD message is taken only when TD is empty. The
 // prehook then reads the envelope timestamp and drops a message older than recv_window_ms without
 // decoding it. A message that is not a v1 envelope (short, wrong version, or a non-zero reserved
-// byte) is also dropped, counted in QueueStat.dropped, and logged; the session does not end (D849).
+// byte) is also dropped, counted in QueueStat.dropped, and logged; the session does not end (E08-D049).
 // orderbook_delta does not take the age path (E8-15 applies it); a bad envelope is still dropped.
 //
 // A hook longer than 100ms counts one hook_slow. hook_blocked_ms is how long the current hook has

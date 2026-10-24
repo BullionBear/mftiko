@@ -1,6 +1,6 @@
 // Package natsx is the core-NATS client for the data plane.
 //
-// NATS carries strategy data only: market data, orders, account events, symbol data (D002, D004). It does
+// NATS carries strategy data only: market data, orders, account events, symbol data (E00-D002, E00-D004). It does
 // not orchestrate processes. This package never enables JetStream, knows no business subject, and has no
 // streaming RPC: Request and Serve are one request and one reply.
 //
@@ -9,8 +9,8 @@
 // Options.Logger. OnReconnect is an additional callback for a process that must
 // reload after a gap; it runs on the client's reconnect goroutine and must not block.
 //
-// MD and md.fetch set Options.CredsFile from MFTIKO_NATS_CREDS (D415). A session
-// does not: its JWT arrives in Init (D906). The inbox prefix is
-// Options.InboxPrefix: sessions use _INBOX_{session_id} (D906), platform
-// processes use _INBOX_{plane} (D416).
+// MD and md.fetch set Options.CredsFile from MFTIKO_NATS_CREDS (E04-D015). A session
+// does not: its JWT arrives in Init (E09-D006). The inbox prefix is
+// Options.InboxPrefix: sessions use _INBOX_{session_id} (E09-D006), platform
+// processes use _INBOX_{plane} (E04-D016).
 package natsx

@@ -38,7 +38,7 @@ type liveMsg struct {
 	payload []byte
 }
 
-// late is a late joiner (PROTOCOL §9.4, D437): subscribe md.v1.f for one feed and flush, then ask
+// late is a late joiner (PROTOCOL §9.4, E04-D037): subscribe md.v1.f for one feed and flush, then ask
 // md.v1.view. A book starts from the BookSnapshot at (epoch, S); a tape pages back to -since and
 // joins at TapePage.head. Live messages at or before the join cursor are dropped, and the first
 // one applied must follow it. It then follows live for -follow. A book is folded with sdk/book,
@@ -163,7 +163,7 @@ type viewer struct {
 	uid     uint32
 }
 
-// ask sends one ViewRequest and retries not_synced (D441) for up to ten seconds.
+// ask sends one ViewRequest and retries not_synced (E04-D041) for up to ten seconds.
 func (v viewer) ask(req *mdv1.ViewRequest) (*mdv1.ViewReply, error) {
 	b, err := proto.Marshal(req)
 	if err != nil {
@@ -272,7 +272,7 @@ func newBook(tick float64, snap *mdv1.BookSnapshot) *book.OrderBook {
 	return ob
 }
 
-// checkUID requires the payload's product to be the SYM uid of this feed (D461).
+// checkUID requires the payload's product to be the SYM uid of this feed (E08-D065).
 func checkUID(payload []byte, want uint32) error {
 	ev := &mdv1.FeedEvent{}
 	if err := proto.Unmarshal(payload, ev); err != nil {
@@ -332,7 +332,7 @@ func describeBook(ob *book.OrderBook) string {
 }
 
 // compareBook asks md.view again, brings the local book to the same cursor, and compares the
-// windows by tick. View prices are tick × price_tick (D430) and need not be the float md.f
+// windows by tick. View prices are tick × price_tick (E04-D030) and need not be the float md.f
 // carried, so the comparison is by tick, as sdk/book keys them. Live can pass the view's cursor
 // before the reply arrives; that is retried.
 func compareBook(v viewer, ob *book.OrderBook, tick float64, live <-chan liveMsg, last cursor) error {
@@ -390,7 +390,7 @@ func compareBook(v viewer, ob *book.OrderBook, tick float64, live <-chan liveMsg
 		fmt.Printf("%s compare at %s: view %d/%d levels, local %d/%d; differing within %d ticks of the best: %d, farther: %d\n",
 			stamp(), at, len(want[0]), len(want[1]), len(got[0]), len(got[1]), core, inner, outer)
 		if outer > 0 {
-			fmt.Println("  farther levels can differ by design (D431): a level dropped outside the window, or never in a")
+			fmt.Println("  farther levels can differ by design (E04-D031): a level dropped outside the window, or never in a")
 			fmt.Println("  joiner's snapshot, stays unknown to the joiner until its next update, while the worker's ring keeps its slot.")
 		}
 		if inner > 0 {

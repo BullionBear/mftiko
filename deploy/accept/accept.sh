@@ -216,7 +216,7 @@ e2e_all() {
 	"${compose[@]}" stop etcd2
 	e2etool region down
 	"${compose[@]}" start etcd2
-	# If the outage outlasted sts2's election session, it has exited (D1315) and systemd would
+	# If the outage outlasted sts2's election session, it has exited (E13-D015) and systemd would
 	# restart it; here, start it again.
 	running "/mftiko/mftiko-sts-agent -instance sts2 " || sts_agent sts2
 	e2etool region up

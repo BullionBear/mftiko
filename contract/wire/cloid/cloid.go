@@ -19,7 +19,7 @@ const (
 	// EpochMs is 2026-01-01T00:00:00Z in unix milliseconds. 40 bits of ms last until 2060-11.
 	EpochMs int64 = 1767225600000
 
-	// AlgoMin and AlgoMax bound a declared algo_id; 0 is reserved (DECISIONS D602).
+	// AlgoMin and AlgoMax bound a declared algo_id; 0 is reserved (DECISIONS E06-D002).
 	AlgoMin = 1
 	AlgoMax = 1<<AlgoBits - 1
 
@@ -110,7 +110,7 @@ func Decode(s string) (ID, error) {
 }
 
 // AlgoOf is the algo a client_order_id belongs to, and false for one that is not a platform id:
-// an order placed by hand or by another system belongs to no algo (D602).
+// an order placed by hand or by another system belongs to no algo (E06-D002).
 //
 // The check guards against mistakes, not malice. A hand-placed order whose id happens to be a valid
 // platform id is taken as that algo's.

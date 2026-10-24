@@ -99,7 +99,7 @@ func stamp() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 
 func say(format string, args ...any) { fmt.Printf(stamp()+" "+format+"\n", args...) }
 
-// sent is one request a flow made, as the server named it (X-Request-Id, D1053).
+// sent is one request a flow made, as the server named it (X-Request-Id, E10-D053).
 type sent struct {
 	id, method, path string
 	status           int

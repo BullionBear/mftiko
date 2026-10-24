@@ -21,18 +21,18 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
-// Environment variables for the three secrets (D1023). The command's flags override them.
+// Environment variables for the three secrets (E10-D023). The command's flags override them.
 const (
 	// EnvEtcdPassword is the password of the etcd user "api".
 	EnvEtcdPassword = "MFTIKO_ETCD_PASSWORD"
-	// EnvCookieKey is the HMAC-SHA256 key every replica uses to sign the console cookie (D1009).
+	// EnvCookieKey is the HMAC-SHA256 key every replica uses to sign the console cookie (E10-D009).
 	EnvCookieKey = "MFTIKO_COOKIE_KEY"
 	// EnvPostgresDSN is the Postgres connection string. Run opens a pool and does not wait for it to
-	// connect. Readiness does not use it (D1048, modifies D1024).
+	// connect. Readiness does not use it (E10-D048, modifies E10-D024).
 	EnvPostgresDSN = "MFTIKO_POSTGRES_DSN"
 )
 
-// Defaults of the API JSON. A zero or omitted duration selects the default (D1017, D1014, D1027, D1029).
+// Defaults of the API JSON. A zero or omitted duration selects the default (E10-D017, E10-D014, E10-D027, E10-D029).
 const (
 	DefaultRetention        = 7 * 24 * time.Hour
 	DefaultUnavailableAfter = 15 * time.Second
@@ -41,30 +41,30 @@ const (
 )
 
 // keyPrefix is the whole mftiko keyspace. The api role can read all of it, so one mirror per cluster watches
-// this prefix and nothing narrower (D1025, PROTOCOL §3.1).
+// this prefix and nothing narrower (E10-D025, PROTOCOL §3.1).
 const keyPrefix = state.Root + "/"
 
-// User is one operator. Token is the SHA-256 of their static token; the token itself is not stored (D1009).
+// User is one operator. Token is the SHA-256 of their static token; the token itself is not stored (E10-D009).
 type User struct {
 	Name  string
 	Token [32]byte
 }
 
 // Input is everything that is not the two JSON files: secrets, the web directory, TLS, and test knobs.
-// A flag overrides the environment variable of the same secret (D1023).
+// A flag overrides the environment variable of the same secret (E10-D023).
 type Input struct {
 	EtcdPassword string
 	CookieKey    string
 	PostgresDSN  string
-	WebDir       string // empty: API routes only (D1028)
-	TLSCert      string // with TLSKey: HTTPS and HTTP/2; both empty: plaintext HTTP (D1029)
+	WebDir       string // empty: API routes only (E10-D028)
+	TLSCert      string // with TLSKey: HTTPS and HTTP/2; both empty: plaintext HTTP (E10-D029)
 	TLSKey       string
 	Mirror       state.MirrorOptions // zero: the Mirror defaults; tests shorten the probe
 	Log          zerolog.Logger
 	Now          func() time.Time // nil: time.Now
 }
 
-// Kind is one account kind the API lists and checks (D301, D1034). cmd/mftiko-api fills it from the
+// Kind is one account kind the API lists and checks (E03-D001, E10-D034). cmd/mftiko-api fills it from the
 // exchange registry. This package does not import exchange.
 type Kind struct {
 	Name       string
@@ -74,7 +74,7 @@ type Kind struct {
 	Passphrase bool
 }
 
-// Supported is true when the kind trades exactly one venue (D614, D1011).
+// Supported is true when the kind trades exactly one venue (E06-D014, E10-D011).
 func (k Kind) Supported() bool { return len(k.Trades) == 1 }
 
 // Config is the validated settings Run serves with. The secret fields are credentials; do not log a Config.
@@ -84,12 +84,12 @@ type Config struct {
 	Users            []User
 	Repositories     []string
 	TDKeys           map[string]sealbox.PublicKey
-	Kinds            []Kind // not in the JSON; the command sets it (D1034). Empty rejects every kind.
+	Kinds            []Kind // not in the JSON; the command sets it (E10-D034). Empty rejects every kind.
 	Retention        time.Duration
 	UnavailableAfter time.Duration
 	Listen           string
 	ShutdownTimeout  time.Duration
-	Registry         artifact.Registry // zero address: catalog requests report registry_unavailable (D1060)
+	Registry         artifact.Registry // zero address: catalog requests report registry_unavailable (E10-D060)
 	Catalog          *artifact.Catalog // set when Registry is configured; nil does not dial
 	EtcdPassword     string
 	CookieKey        string
@@ -100,18 +100,18 @@ type Config struct {
 	Mirror           state.MirrorOptions
 	Log              zerolog.Logger
 	Now              func() time.Time
-	// ReconcileEvery is the full compare interval. Zero means 30 seconds (D1070).
+	// ReconcileEvery is the full compare interval. Zero means 30 seconds (E10-D070).
 	// It is not a deployment setting and is not read from JSON. Tests set it.
 	ReconcileEvery time.Duration
 }
 
-// deployment is the mftiko-etcd-roles input (D1312). Planes names every instance except the controller.
+// deployment is the mftiko-etcd-roles input (E13-D012). Planes names every instance except the controller.
 type deployment struct {
 	state.Topology
 	Planes map[string]state.Plane `json:"planes"`
 }
 
-// configFile is the -config JSON (D1023). Durations are Go duration strings; empty or zero means the default.
+// configFile is the -config JSON (E10-D023). Durations are Go duration strings; empty or zero means the default.
 type configFile struct {
 	Users            []configUser      `json:"users"`
 	Repositories     []string          `json:"repositories"`
@@ -130,7 +130,7 @@ type configUser struct {
 	TokenSHA256 string `json:"token_sha256"`
 }
 
-// Load reads the deployment JSON and the API JSON, applies in, and checks the whole configuration (D1024).
+// Load reads the deployment JSON and the API JSON, applies in, and checks the whole configuration (E10-D024).
 // It does not dial etcd, Postgres or a registry. deployment and config are each one JSON value; an unknown
 // field is an error.
 func Load(deployment, config io.Reader, in Input) (Config, error) {
@@ -228,9 +228,9 @@ func (f configFile) config(dep deployment) (Config, error) {
 	}, nil
 }
 
-// openRegistry loads the catalog client when any registry field is set (D1060). An empty address with
+// openRegistry loads the catalog client when any registry field is set (E10-D060). An empty address with
 // no credentials and plain_http false leaves the client nil: existing configs keep loading. The client
-// is not dialled here (D1024).
+// is not dialled here (E10-D024).
 func openRegistry(address, creds string, plain bool) (artifact.Registry, *artifact.Catalog, error) {
 	reg := artifact.Registry{Address: address, Credentials: creds, PlainHTTP: plain}
 	if address == "" && creds == "" && !plain {
@@ -308,7 +308,7 @@ func parseToken(s string) ([32]byte, error) {
 	return out, nil
 }
 
-// strategyID is the last path segment of a repository (D1035). Empty, "." and ".." segments are rejected.
+// strategyID is the last path segment of a repository (E10-D035). Empty, "." and ".." segments are rejected.
 func strategyID(repository string) (string, error) {
 	if repository == "" || strings.ContainsAny(repository, " \t\r\n") {
 		return "", fmt.Errorf("invalid repository %q", repository)

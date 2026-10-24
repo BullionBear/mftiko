@@ -1,10 +1,10 @@
--- API request audit (DECISIONS D1010, D1049, D1052). One row per /api request, written by
+-- API request audit (DECISIONS E10-D010, E10-D049, E10-D052). One row per /api request, written by
 -- mftiko-api when the handler returns. /healthz and /readyz are not rows. A failed insert does
--- not change the HTTP response. Rows are not deleted in this phase (D1010).
+-- not change the HTTP response. Rows are not deleted in this phase (E10-D010).
 --
 -- body is the redacted JSON. NULL when the request is not a write, the body is empty, or the
 -- body is not a single JSON value (body_len is then the raw byte length). Account credential
--- fields and token fields are removed before this is stored (D1010, D1052). When the redacted JSON
+-- fields and token fields are removed before this is stored (E10-D010, E10-D052). When the redacted JSON
 -- exceeds 64 KiB, body_truncated is true and body is
 -- {"truncated": true, "len": <redacted bytes>, "prefix": "<head of the redacted JSON>"}.
 

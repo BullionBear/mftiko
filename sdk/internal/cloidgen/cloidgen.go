@@ -9,15 +9,15 @@ import (
 	"github.com/BullionBear/mftiko/contract/wire/cloid"
 )
 
-// ErrAlgoNotDeclared means algo is not in the account's AccountDecl.algo_ids (D814, D633).
+// ErrAlgoNotDeclared means algo is not in the account's AccountDecl.algo_ids (E08-D014, E06-D033).
 // Next returns it without taking a seq.
 var ErrAlgoNotDeclared = errors.New("cloidgen: algo is not declared for the account")
 
-// tsSpan is the 40-bit window of milliseconds from cloid.EpochMs (D602).
+// tsSpan is the 40-bit window of milliseconds from cloid.EpochMs (E06-D002).
 const tsSpan = int64(1) << cloid.TsBits
 
-// nextSlot is the one counter for this process (D811). It packs the next id to issue:
-// the high bits are ts_ms-cloid.EpochMs and the low SeqBits are seq (D814).
+// nextSlot is the one counter for this process (E08-D011). It packs the next id to issue:
+// the high bits are ts_ms-cloid.EpochMs and the low SeqBits are seq (E08-D014).
 //
 // The zero value is epoch, seq 0, so the first id of a fresh process can be seq 0.
 // Storing the next id, rather than the last one issued, is what makes that true:
@@ -28,7 +28,7 @@ var nextSlot atomic.Uint64
 
 // Next is the next client_order_id for algo on account at nowMs.
 // nowMs is the caller's clock, in unix milliseconds; Next does not read the time itself.
-// algo must be listed in account's algo_ids. The id is cloid.Encode of version 1 (D814).
+// algo must be listed in account's algo_ids. The id is cloid.Encode of version 1 (E08-D014).
 func Next(account *sessionv1.AccountDecl, algo uint32, nowMs int64) (string, error) {
 	if !declared(account, algo) {
 		return "", fmt.Errorf("cloidgen: algo %d: %w", algo, ErrAlgoNotDeclared)

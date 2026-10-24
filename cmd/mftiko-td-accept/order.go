@@ -25,7 +25,7 @@ const session = "accept" // Submit.session_id and Cancel.session_id: for the wor
 
 var apiID = flag.Int64("api-id", 1, "api_id")
 
-// uidOf asks SYM for the ticker's uid, as the SDK does at the boundary (D203).
+// uidOf asks SYM for the ticker's uid, as the SDK does at the boundary (E02-D003).
 func uidOf(ticker string) (uint32, error) {
 	nc, err := dialx()
 	if err != nil {
@@ -159,7 +159,7 @@ func batch() error {
 }
 
 // view asks td.view for one Recon and prints it: every open order, position and balance, with
-// the state, incarnation and seq they share (D633).
+// the state, incarnation and seq they share (E06-D033).
 func view() error {
 	flag.Parse()
 	if flag.Arg(0) != "recon" {

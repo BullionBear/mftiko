@@ -12,7 +12,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange/internal/codec"
 )
 
-// spotTrade is one spot WebSocket API connection (D303). session.logon, then
+// spotTrade is one spot WebSocket API connection (E03-D003). session.logon, then
 // userDataStream.subscribe: orders, cancels and private events share the socket.
 // After logon the order frames are not signed.
 type spotTrade struct {

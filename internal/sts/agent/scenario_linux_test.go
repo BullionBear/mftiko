@@ -24,7 +24,7 @@ import (
 
 // The scenarios are epic #11's done criteria, end to end: the test writes only
 // SessionSpec. An in-process controller derives SessionDemand from it, and the
-// agent pulls the artifact from the in-process registry and runs it (D965).
+// agent pulls the artifact from the in-process registry and runs it (E09-D065).
 
 // hello is deployed by digest. The controller assigns it and grants start, the
 // agent runs it to RUNNING, and an ENDED spec takes it through STOPPING to DONE.
@@ -60,7 +60,7 @@ func TestScenarioHelloByDigest(t *testing.T) {
 		t.Fatalf("DONE reason %q", st.GetReason())
 	}
 	// Read from history: once the session is DONE and its worker gone, the
-	// controller may already have removed the assignment (D1333, #327).
+	// controller may already have removed the assignment (E13-D033, #327).
 	ended := e.demandSince(id, endRev, func(d *statev1.SessionDemand) bool {
 		return d.GetDesired() == sessionv1.DesiredState_DESIRED_STATE_ENDED
 	})
@@ -71,7 +71,7 @@ func TestScenarioHelloByDigest(t *testing.T) {
 
 // A crashing worker is restarted after the backoff, longer each time, until the
 // window ends it at FAILED restart_limit. A worker that stops beating is
-// SIGKILLed and recorded as HUNG / no_beat, and is not restarted (D919).
+// SIGKILLed and recorded as HUNG / no_beat, and is not restarted (E09-D019).
 func TestScenarioCrashAndHung(t *testing.T) {
 	e := setup(t)
 	e.cfg.BackoffMin = 300 * time.Millisecond
@@ -130,7 +130,7 @@ func TestScenarioCrashAndHung(t *testing.T) {
 	if n := e.starts(hung); n != 1 {
 		t.Fatalf("hung starts %d, want 1", n)
 	}
-	// The controller removes a terminal session's assignment (D1333). Neither
+	// The controller removes a terminal session's assignment (E13-D033). Neither
 	// session runs again, and both stay FAILED.
 	for id, starts := range map[string]int{crash: 3, hung: 1} {
 		pollUntil(t, "assignment of "+id+" removed", func() bool { return !e.hasDemand(id) })
@@ -145,7 +145,7 @@ func TestScenarioCrashAndHung(t *testing.T) {
 
 // The ended session's volume is pushed as state_out. A next session that names
 // that digest as an input is assigned by the controller, and its worker reads
-// the same contents the first one wrote (D984).
+// the same contents the first one wrote (E09-D084).
 func TestScenarioStateOutHandoff(t *testing.T) {
 	e := setup(t)
 	e.startController()

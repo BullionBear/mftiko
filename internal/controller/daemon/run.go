@@ -23,15 +23,15 @@ const shutdownTimeout = 5 * time.Second
 type Config struct {
 	Topology state.Topology
 	// Planes is the deployment's plane of every instance except the controller,
-	// the same map mftiko-etcd-roles reads (D1317).
+	// the same map mftiko-etcd-roles reads (E13-D017).
 	Planes  map[string]state.Plane
 	Dial    state.DialFunc // authenticated as the etcd user "controller"
 	Term    state.TermOptions
 	Release string // AgentRecord.release
 	// StaleAfter is how old a region's LastContact may be before the view marks
-	// it stale. Zero selects DefaultStaleAfter (D1318).
+	// it stale. Zero selects DefaultStaleAfter (E13-D018).
 	StaleAfter time.Duration
-	// Resync is the full-resync interval. Zero selects DefaultResync (D1319).
+	// Resync is the full-resync interval. Zero selects DefaultResync (E13-D019).
 	Resync time.Duration
 	// Mirror tunes the instance mirrors. Zero selects the Mirror defaults.
 	Mirror state.MirrorOptions
@@ -40,7 +40,7 @@ type Config struct {
 }
 
 // Controller is a running term. Put and Delete are the test write entry
-// (D1313). Derivation puts through the same queues.
+// (E13-D013). Derivation puts through the same queues.
 type Controller struct {
 	ctx    context.Context
 	term   *state.Term
@@ -54,7 +54,7 @@ type Controller struct {
 }
 
 // Run campaigns, writes the AgentRecord, and blocks until ctx is canceled or
-// the term ends. A canceled ctx revokes and returns nil (D1315). ErrSuperseded
+// the term ends. A canceled ctx revokes and returns nil (E13-D015). ErrSuperseded
 // and ErrSessionLost are returned as themselves.
 func Run(ctx context.Context, cfg Config) error {
 	c, err := Start(ctx, cfg)
@@ -64,7 +64,7 @@ func Run(ctx context.Context, cfg Config) error {
 	return c.Wait()
 }
 
-// Start campaigns in the home region and writes the AgentRecord once (D1314).
+// Start campaigns in the home region and writes the AgentRecord once (E13-D014).
 // It returns while the term is running. ctx bounds the campaign; canceling it
 // later ends the term cleanly. The caller must Wait, once.
 func Start(ctx context.Context, cfg Config) (*Controller, error) {
@@ -96,7 +96,7 @@ func Start(ctx context.Context, cfg Config) (*Controller, error) {
 		log.Warn().Err(herr).Msg("controller hostname")
 		host = ""
 	}
-	rec.Host = host // controller has no WORK_DIR; work_dir stays empty (D1092)
+	rec.Host = host // controller has no WORK_DIR; work_dir stays empty (E10-D092)
 	if err := term.PutRecord(ctx, controller.Encode(rec)); err != nil {
 		release(term, cl)
 		return nil, err
@@ -170,7 +170,7 @@ func agentPlane(p state.Plane) bool {
 
 // Put writes key on its region's queue and returns that write's result.
 // A region whose mirrors have not finished the first list is not written:
-// Put returns ErrUnsynced and does not fence it (D1318). Regions do not wait
+// Put returns ErrUnsynced and does not fence it (E13-D018). Regions do not wait
 // for each other. ErrSuperseded ends the whole term.
 func (c *Controller) Put(ctx context.Context, key, val string) error {
 	return c.writes.submit(ctx, key, val, false)
@@ -183,7 +183,7 @@ func (c *Controller) Delete(ctx context.Context, key string) error {
 
 // Wait blocks until the term ends. Canceling the Start ctx revokes the session
 // and returns nil. ErrSuperseded or a lost session is returned to the caller,
-// which exits non-zero (D1315). A second call returns the same error.
+// which exits non-zero (E13-D015). A second call returns the same error.
 func (c *Controller) Wait() error {
 	c.once.Do(func() {
 		c.err = c.outcome()

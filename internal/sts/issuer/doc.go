@@ -1,4 +1,4 @@
-// Package issuer signs the session user JWT (D906, D827).
+// Package issuer signs the session user JWT (E09-D006, E08-D027).
 //
 // The size check lives here, at the signing site, not in SessionPermissions
 // and not in the SDK. SessionPermissions only lists subjects, so it never

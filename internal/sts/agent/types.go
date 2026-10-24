@@ -8,7 +8,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/agent"
 )
 
-// Deployment defaults (D913, D918, D919). Spec values of 0 are replaced with these
+// Deployment defaults (E09-D013, E09-D018, E09-D019). Spec values of 0 are replaced with these
 // before they are handed to a worker.
 const (
 	DefaultRecvWindowMS     = 1000
@@ -20,13 +20,13 @@ const (
 	DefaultMaxArtifactBytes = 1 << 30
 )
 
-// DefaultVolumeInterval is how often a session volume is measured (D976).
+// DefaultVolumeInterval is how often a session volume is measured (E09-D076).
 const DefaultVolumeInterval = 10 * time.Second
 
-// DefaultGrace is the fleet Stop grace (D918). The skeleton's own default is the same.
+// DefaultGrace is the fleet Stop grace (E09-D018). The skeleton's own default is the same.
 const DefaultGrace = 10 * time.Second
 
-// Restart backoff (D919, D971). Tests set a shorter pair on Config.
+// Restart backoff (E09-D019, E09-D071). Tests set a shorter pair on Config.
 const (
 	DefaultBackoffMin = time.Second
 	DefaultBackoffMax = 60 * time.Second
@@ -42,7 +42,7 @@ const (
 	ReasonInvalidInput    = "invalid_input"
 )
 
-// Spec is one session spec as etcd stored it. Hash is the whole encoding (D947),
+// Spec is one session spec as etcd stored it. Hash is the whole encoding (E09-D047),
 // not a re-marshal: two encodings of the same message are different incarnations.
 type Spec struct {
 	Raw []byte
@@ -55,7 +55,7 @@ func (s Spec) Hash() string {
 	return hex.EncodeToString(sum[:])
 }
 
-// Live is empty. Bindings are not a live config: Start and Command carry them (D961).
+// Live is empty. Bindings are not a live config: Start and Command carry them (E09-D061).
 type Live struct{}
 
 // Hash is always "", which is also what a worker that applied nothing reports.

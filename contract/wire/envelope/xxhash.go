@@ -7,7 +7,7 @@ import "encoding/binary"
 // here rather than in a third-party package.
 //
 // The primes and the round, merge, and avalanche steps are the XXH64 definition. seed 0 is what
-// "xxHash64" means when no seed is stated (D410).
+// "xxHash64" means when no seed is stated (E04-D010).
 const (
 	prime64_1 uint64 = 0x9E3779B185EBCA87
 	prime64_2 uint64 = 0xC2B2AE3D27D4EB4F

@@ -169,12 +169,12 @@ func TestAuthTables(t *testing.T) {
 		{"tw", "controller", SessionStatusKey("sts-tw-1", sid), false},
 		{"tw", "controller", SessionSpecKey("sts-tw-1", sid), false},
 		{"tw", "controller", WriterKey(PlaneMD, "md-tw-1"), false},
-		// The API server: spec, account, and the whole status prefix (D1040). Nothing else, and
+		// The API server: spec, account, and the whole status prefix (E10-D040). Nothing else, and
 		// nothing under an instance this region's role was not given.
 		{"tw", "api", SessionSpecKey("sts-tw-1", sid), true},
 		{"tw", "api", AccountKey("td-tw-1", 42), true},
 		{"jp", "api", AccountKey("td-jp-1", 42), true},
-		{"tw", "api", SessionStatusKey("sts-tw-1", sid), true}, // D1040: write is the whole status/ prefix
+		{"tw", "api", SessionStatusKey("sts-tw-1", sid), true}, // E10-D040: write is the whole status/ prefix
 		{"tw", "api", SessionDemandKey("sts-tw-1", sid), false},
 		{"tw", "api", MDDemandKey("md-tw-1", sid, entry), false},
 		{"tw", "api", TDDemandKey("td-tw-1", sid, 42), false},
@@ -274,9 +274,9 @@ func TestRBACEnforced(t *testing.T) {
 	allowed("controller writes a demand", put(ctl, MDDemandKey("md-tw-1", sid, entry)))
 	denied("controller writes an ack", put(ctl, MDAckKey("md-tw-1", sid, entry)))
 	denied("controller writes a spec", put(ctl, SessionSpecKey("sts-tw-1", sid)))
-	// api on a cluster with auth on (D1041). Positive: read the keyspace, write spec
+	// api on a cluster with auth on (E10-D041). Positive: read the keyspace, write spec
 	// and account, delete a status the STS agent could have written, and write
-	// status. The status put is deliberate (D1040): etcd cannot tell it from the
+	// status. The status put is deliberate (E10-D040): etcd cannot tell it from the
 	// delete W5 needs. Negative: demand, ack, agent, worker, writer, and prefixes
 	// of instances this role was not given.
 	h := WorkerHash("w")

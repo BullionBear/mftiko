@@ -9,14 +9,14 @@ import (
 )
 
 // Venue is one market this process answers for. Categories are the ones the
-// registry lists; the NATS resolver loads each of those active tables (D422).
+// registry lists; the NATS resolver loads each of those active tables (E04-D022).
 type Venue struct {
 	Name       string
 	REST       exchange.PublicREST
 	Categories []symbol.Category
 }
 
-// SelectVenues parses the deployment list of canonical venue names (D418).
+// SelectVenues parses the deployment list of canonical venue names (E04-D018).
 // spec is comma-separated. An empty list is an error: a replica subscribes
 // only to the venues it can reach, and that list is configuration, not "every
 // venue". A name the registry does not have, a venue with no public REST

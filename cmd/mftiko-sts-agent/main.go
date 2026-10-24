@@ -1,6 +1,6 @@
-// Command mftiko-sts-agent is the strategy-plane agent (DECISIONS D916, D942–D965).
+// Command mftiko-sts-agent is the strategy-plane agent (DECISIONS E09-D016, E09-D042–E09-D065).
 // It runs the sessions the controller assigns to this instance and writes SessionStatus.
-// Each session worker is the strategy artifact named by its spec (D960).
+// Each session worker is the strategy artifact named by its spec (E09-D060).
 package main
 
 import (

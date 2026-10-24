@@ -47,7 +47,7 @@ ACCEPT_SYM_FEEDS=Bybit/Spot,Bybit/Perp,Bybit/Future,Okx/Spot,Okx/Perp,Okx/Future
 deploy/accept/accept.sh refresh -venue Okx -ticker Okx_Perp_BTCUSDT
 ```
 
-這兩家的簿是 SnapshotStream：訂閱後的第一則就是全本，不打 depth REST，所以不需要 `rest.json`。兩家都有 `trade` topic。Bybit 走 `linear` route，OKX 走 `public` route（位址是 `wss://wspap.okx.com:8443`，即 demo，不需要額外的 header）。Bybit testnet 的 `orderbook.50` 很稀疏，50 檔分散在最佳價上下大約 2000 USD，落在窗內（±204.8 USD）的只有十幾檔，這是 D431 的結果。
+這兩家的簿是 SnapshotStream：訂閱後的第一則就是全本，不打 depth REST，所以不需要 `rest.json`。兩家都有 `trade` topic。Bybit 走 `linear` route，OKX 走 `public` route（位址是 `wss://wspap.okx.com:8443`，即 demo，不需要額外的 header）。Bybit testnet 的 `orderbook.50` 很稀疏，50 檔分散在最佳價上下大約 2000 USD，落在窗內（±204.8 USD）的只有十幾檔，這是 E04-D031 的結果。
 
 以下以 BinanceUM 為例。`A=deploy/accept/accept.sh`。BinanceUM 沒有 `trade` topic，trade 類用 `aggtrade`。
 
@@ -62,7 +62,7 @@ $A acks                                      # 兩筆 ENTRY_STATE_READY，各自
 tail data/work/watch.log
 ```
 
-通過的條件：兩個 subject 都出現 `first epoch=1 seq=1`；`orderbook_delta` 的第一則是 `reset=true`（快照）；`SUMMARY` 一直是 `gaps=0 dups=0`；book 的 `resets` 只有 1（沒有因為斷號而重抓）。每一則 payload 的 `uid` 必須是 SYM 活躍表上該 ticker 的 uid，0 或對不上就失敗（D461）。
+通過的條件：兩個 subject 都出現 `first epoch=1 seq=1`；`orderbook_delta` 的第一則是 `reset=true`（快照）；`SUMMARY` 一直是 `gaps=0 dups=0`；book 的 `resets` 只有 1（沒有因為斷號而重抓）。每一則 payload 的 `uid` 必須是 SYM 活躍表上該 ticker 的 uid，0 或對不上就失敗（E08-D065）。
 
 ## 2. 晚加入
 
@@ -74,9 +74,9 @@ $A late -feed aggtrade.BinanceUM_Perp_BTCUSDT -follow 10s
 `late` 會先訂 `md.v1.f` 並 flush，再問 `md.v1.view`：
 
 - book：從 `BookSnapshot` 的 `(epoch, S)` 開始，丟掉 ≤ S 的 live，第一則套用的必須是 S+1。用 `sdk/book` 折（tick 從 SYM 取），跟完一段之後再問一次 `md.v1.view`，在同一個 cursor 上逐檔比對。
-- tape：往回分頁讀到 `-since`，印出 gap，從 `TapePage.head` 接上 live（D437）。
+- tape：往回分頁讀到 `-since`，印出 gap，從 `TapePage.head` 接上 live（E04-D037）。
 
-通過的條件：`gaps=0`；book 的比對結果是 `differing within 1024 ticks of the best: 0`。離最佳價較遠的檔（窗的外半）若有差異，只印出、不算失敗。這是 D431 的結果：一檔在晚加入者的快照當下落在窗外，或曾經在窗外被丟掉，在它下一筆更新之前晚加入者都不會知道它；worker 的環則還留著那一格。book 快照、tape 的每一則、以及之後的 live `md.f`，`uid` 都必須是 SYM 上這個 feed 的 uid（D461）。
+通過的條件：`gaps=0`；book 的比對結果是 `differing within 1024 ticks of the best: 0`。離最佳價較遠的檔（窗的外半）若有差異，只印出、不算失敗。這是 E04-D031 的結果：一檔在晚加入者的快照當下落在窗外，或曾經在窗外被丟掉，在它下一筆更新之前晚加入者都不會知道它；worker 的環則還留著那一格。book 快照、tape 的每一則、以及之後的 live `md.f`，`uid` 都必須是 SYM 上這個 feed 的 uid（E08-D065）。
 
 ## 3. 斷線再接上
 
@@ -195,13 +195,13 @@ $A td acks; $A td conns                      # incarnation、pid、socket 都不
 
 ## 4. 雙向持倉
 
-worker 只在 Start 檢查持倉模式（D616），所以切換後讓它重拉：
+worker 只在 Start 檢查持倉模式（E06-D016），所以切換後讓它重拉：
 
 ```sh
 $A td mode -creds /work/binanceum.creds.json -dual true
 docker compose -f deploy/accept/compose.yaml exec -T runner sh -c 'kill -9 $(pgrep -f "^/mftiko/mftiko-td-account")'
 $A td acks                                   # ENTRY_STATE_REJECTED reason:"hedge_mode"，下一個 incarnation
-$A ps                                        # 沒有 mftiko-td-account：不重拉（D608）
+$A ps                                        # 沒有 mftiko-td-account：不重拉（E06-D008）
 ```
 
 還原：`td mode ... -dual false`，`td demand del s1 1`，等過 linger（5 秒），再 `td demand put s1 1`，ack 回到 `READY`。
@@ -230,7 +230,7 @@ docker compose -f deploy/accept/compose.yaml exec -T runner sh -c \
 
 - 下單與私有事件在同一條交易連線（`ws-api.testnet.binance.vision`）。`td conns` 只有它和 REST host 的 socket，沒有 `stream.testnet.binance.vision`。
 - 第 2 條切的是交易連線：`cut -host ws-api.testnet.binance.vision`。斷線期間撤單改走 REST。
-- 現貨沒有批次撤單（`CancelBatch` 是 1），`batch` 在本地回 `106 batch cancel is not available`（D625），改用單筆 `cancel`。
+- 現貨沒有批次撤單（`CancelBatch` 是 1），`batch` 在本地回 `106 batch cancel is not available`（E06-D025），改用單筆 `cancel`。
 - `submit` 加 `-ticker Binance_Spot_BTCUSDT`；沒有 `-reduce-only`，買多少賣回多少。限價要在 `PERCENT_PRICE_BY_SIDE` 之內（買單不低於均價的 0.5 倍）。
 - 沒有持倉模式，不跑第 4 條。
 
@@ -255,11 +255,11 @@ docker compose -f deploy/accept/compose.yaml exec -T runner sh -c \
 - OKX 的 API key 若有 IP 白名單，要加上跑這套環境的出口 IP（否則 `50110`）。demo 帳號要是 `acctLv` 2 以上才能交易 SWAP（否則下單 `51010`）；這只能在 OKX 網站或 app 切換，`td mode -venue Okx` 讀得到 `acctLv`。
 - 數量都是平台單位。OKX SWAP 一張是 0.01 BTC：`-qty 0.01` 送出 `sz 1`，`Fill` 與 `PositionUpdate` 也是 BTC，不是張數。
 - 第 2 條：
-  - Bybit 的 `/v5/private` 與 `/v5/trade` 是同一個位址，`cut -host stream-testnet.bybit.com` 兩條都會斷。用 `td conns` 看 fd，`-fd` 一次切一條：只切交易連線不進 `DEGRADED`、沒有 recon（D614）；切私有連線才是第 2 條。
-  - OKX 下單撤單走 REST。`wspap.okx.com` 與 REST 的 keep-alive 可能是同一個位址，`cut` 會一起斷，斷線那一刻送出的撤單沒有回答。過了有效期（5 秒加 1 秒誤差）worker 查到單還在，發 `CANCEL_REJECTED` code 120，再撤一次即可（D610）。
+  - Bybit 的 `/v5/private` 與 `/v5/trade` 是同一個位址，`cut -host stream-testnet.bybit.com` 兩條都會斷。用 `td conns` 看 fd，`-fd` 一次切一條：只切交易連線不進 `DEGRADED`、沒有 recon（E06-D014）；切私有連線才是第 2 條。
+  - OKX 下單撤單走 REST。`wspap.okx.com` 與 REST 的 keep-alive 可能是同一個位址，`cut` 會一起斷，斷線那一刻送出的撤單沒有回答。過了有效期（5 秒加 1 秒誤差）worker 查到單還在，發 `CANCEL_REJECTED` code 120，再撤一次即可（E06-D010）。
 - 第 4 條：
   - OKX：`td mode -venue Okx -creds /work/okx.creds.json -dual true`，`posMode` 是整個帳號的。
-  - Bybit：v5 讀不到持倉模式，worker 只從 `positionIdx` 1、2 的掛單或持倉看出雙向（D617），所以切換之外還要有一張單。範圍是整個帳號：在別的商品上也算。
+  - Bybit：v5 讀不到持倉模式，worker 只從 `positionIdx` 1、2 的掛單或持倉看出雙向（E06-D017），所以切換之外還要有一張單。範圍是整個帳號：在別的商品上也算。
 
     ```sh
     $A td mode -venue Bybit -creds /work/bybit.creds.json -dual true -symbol ETHUSDT
@@ -316,7 +316,7 @@ $A e2e main
 3. 確認 `hello` 有 `accept` 這個 tag，`POST /sessions` 部署到 `sts1`：feed `orderbook_delta.BinanceUM_Perp_BTCUSDT`（`dev`），帳號以 algo_id 1 綁定，params 讓 hello 在最佳買價下方 2000 掛一張 0.002 的買單。
 4. 等到 `phase` 是 `running`，feed 與帳號的依賴都是 `ready`，provider 分別是 `dev` 與 `td1`（「TD 帳號 READY」）。
 5. `logs` 的主機就是 runner，stdout、stderr 在那裡，檔案 0640、目錄 0750。等到 stdout 出現 hello 的 `OnRecon` 與那張單的 `ORDER_STATUS_CANCELLED`：MD、TD、STS 整條路徑都通了。
-6. `POST /sessions/{id}/end`，等到 `done`（reason `ended_by_spec`）。此時 log 還在（D1016）。
+6. `POST /sessions/{id}/end`，等到 `done`（reason `ended_by_spec`）。此時 log 還在（E10-D016）。
 7. 等 W5 刪掉 spec（`GET` 回 404），再等 STS agent 把 stdout、stderr 清掉。
 8. 帳號的 `referenced_by` 是空的，帶 `revision` 刪除。
 9. `audit` 比對。
@@ -331,7 +331,7 @@ $A e2e invalid     # 不合法的 spec
 $A e2e replicas    # 兩個副本併發
 ```
 
-- `ticker`：feed 是 `orderbook_delta.BinanceUM_Perp_NOSUCHUSDT`，API 照收（不查 SYM，D202）。MD 回 `REJECTED`（`not listed`），controller 以 `deps_failed` 結束，terminal 的 status 帶一個 `dependency` condition，reason 與 ack 相同，message 是那個 feed。依賴列表仍顯示 `rejected`。之後 `DELETE` 立即刪除，另一個副本回 404。
+- `ticker`：feed 是 `orderbook_delta.BinanceUM_Perp_NOSUCHUSDT`，API 照收（不查 SYM，E02-D002）。MD 回 `REJECTED`（`not listed`），controller 以 `deps_failed` 結束，terminal 的 status 帶一個 `dependency` condition，reason 與 ack 相同，message 是那個 feed。依賴列表仍顯示 `rejected`。之後 `DELETE` 立即刪除，另一個副本回 404。
 - `invalid`：八種不合法的 spec（不存在的 STS instance、別的平面的 instance、未設定的策略、feed 放在 TD instance、algo_id 1024、不存在的帳號、params 不是物件、多了 `selectors`），每一個都是 400 `validation_failed`，`errors[].path` 指到那個欄位。前後兩個副本列出的 session 相同。
 - `replicas`：同一把 `Idempotency-Key` 同時向兩個副本各送 4 次，只得到一個 session；8 把不同的 key 得到 8 個不同的 id。兩個副本都列得出全部 9 個。在一個副本結束，另一個副本看得到 `desired_state` 是 `ended`，最後都 terminal 並刪除。
 
@@ -356,7 +356,7 @@ docker compose -f deploy/accept/compose.yaml start etcd2
 $A e2e region up
 ```
 
-`before`：`sts2` 上跑一個 session。`down`：兩個副本的 `/readyz` 仍是 200，`unavailable_regions` 是 `[accept2]`，session 列表也一樣；那個 session 回 503 `region_unavailable`，在 `sts2` 建立也是；在 `sts1` 建立照常、跑到 `running`、結束、刪除。`up`：`unavailable_regions` 清空，`sts2` 的 session 仍是 `running`，結束、刪除。斷線若久到 sts2 的選舉 session 過期，sts2 會退出（D1315），用 `$A sts-agent sts2` 再啟動（`e2e-all` 會做）。
+`before`：`sts2` 上跑一個 session。`down`：兩個副本的 `/readyz` 仍是 200，`unavailable_regions` 是 `[accept2]`，session 列表也一樣；那個 session 回 503 `region_unavailable`，在 `sts2` 建立也是；在 `sts1` 建立照常、跑到 `running`、結束、刪除。`up`：`unavailable_regions` 清空，`sts2` 的 session 仍是 `running`，結束、刪除。斷線若久到 sts2 的選舉 session 過期，sts2 會退出（E13-D015），用 `$A sts-agent sts2` 再啟動（`e2e-all` 會做）。
 
 ## console smoke
 

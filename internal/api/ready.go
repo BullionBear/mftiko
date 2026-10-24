@@ -14,13 +14,13 @@ type regionSnap struct {
 	rev     int64
 }
 
-// available is D1014's test: the first sync has finished, and the cluster was heard from no more than threshold ago
-// (strictly older is unavailable, as for the controller). Readiness and the id checks of writes (D1042) share it.
+// available is E10-D014's test: the first sync has finished, and the cluster was heard from no more than threshold ago
+// (strictly older is unavailable, as for the controller). Readiness and the id checks of writes (E10-D042) share it.
 func (s regionSnap) available(now time.Time, threshold time.Duration) bool {
 	return s.synced && !s.contact.IsZero() && now.Sub(s.contact) <= threshold
 }
 
-// regionStatus is one region in the /readyz body (D1026).
+// regionStatus is one region in the /readyz body (E10-D026).
 type regionStatus struct {
 	Available bool  `json:"available"`
 	Synced    bool  `json:"synced"`
@@ -34,9 +34,9 @@ type readyBody struct {
 }
 
 // readyStatus decides /readyz. A region is unavailable until its first sync, or once LastContact is older than
-// the threshold (D1014, the same comparison as the controller: strictly older). Any available region is 200.
+// the threshold (E10-D014, the same comparison as the controller: strictly older). Any available region is 200.
 // Every region unavailable is 503. draining is the shutdown path: readiness is 503 while the process is still
-// answering (D1027), ahead of closing the listener.
+// answering (E10-D027), ahead of closing the listener.
 func readyStatus(names []string, snaps []regionSnap, now time.Time, threshold time.Duration, draining bool) (readyBody, int) {
 	byName := make(map[string]regionSnap, len(snaps))
 	for _, s := range snaps {
