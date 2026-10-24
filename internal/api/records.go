@@ -46,7 +46,7 @@ const (
 const recordCols = `
 id::text, session_id, sts_instance, create_revision, spec_bytes, spec_sha256,
 state, desired_state, end_reason, created_by, idempotency_key,
-created_at, ended_at, closed_at, state_out_digest`
+created_at, ended_at, closed_at, state_out_digest, final_status`
 
 const insertRecordSQL = `
 INSERT INTO session_records (
@@ -74,6 +74,8 @@ type sessionRecord struct {
 	EndedAt        *time.Time
 	ClosedAt       *time.Time
 	StateOut       *string
+	// Final is the statev1.SessionStatus bytes kept at close (E10-D117), or nil.
+	Final []byte
 }
 
 func digestSpec(b []byte) []byte {
@@ -122,7 +124,7 @@ func scanRecord(row pgx.Row) (sessionRecord, error) {
 	err := row.Scan(
 		&r.ID, &r.SessionID, &r.STS, &r.CreateRevision, &r.Spec, &r.SHA,
 		&r.State, &r.Desired, &r.EndReason, &r.CreatedBy, &r.IdempotencyKey,
-		&r.CreatedAt, &r.EndedAt, &r.ClosedAt, &r.StateOut,
+		&r.CreatedAt, &r.EndedAt, &r.ClosedAt, &r.StateOut, &r.Final,
 	)
 	return r, err
 }
@@ -520,8 +522,9 @@ WHERE id = $1::uuid
 
 // closeRecord writes the last status and closes the row (E10-D031, E10-D082). Spec bytes stay as they
 // are. A row that is already closed is updated in place when a later status carries state_out.
-// createRev is the spec's create_revision, or nil when the spec is already gone.
-func (s *Server) closeRecord(ctx context.Context, row *sessionRecord, reason, digest string, ended time.Time, createRev *int64) error {
+// createRev is the spec's create_revision, or nil when the spec is already gone. final is the status
+// proto bytes from etcd (E10-D117); a later status replaces an earlier one, and nil keeps what is there.
+func (s *Server) closeRecord(ctx context.Context, row *sessionRecord, reason, digest string, ended time.Time, createRev *int64, final []byte) error {
 	pool, err := s.db()
 	if err != nil {
 		return err
@@ -534,11 +537,12 @@ UPDATE session_records SET
     ended_at = COALESCE(ended_at, $3),
     end_reason = COALESCE(end_reason, NULLIF($4, '')),
     state_out_digest = COALESCE(NULLIF($5, ''), state_out_digest),
-    create_revision = COALESCE(create_revision, $6)
+    create_revision = COALESCE(create_revision, $6),
+    final_status = COALESCE($7, final_status)
 WHERE id = $1::uuid
   AND state IN ('pending', 'created', 'abandoned', 'closed')
   AND ($6::bigint IS NULL OR create_revision IS NULL OR create_revision = $6)`,
-		row.ID, closed, ended.UTC(), reason, digest, createRev)
+		row.ID, closed, ended.UTC(), reason, digest, createRev, nilIfEmpty(final))
 	if err != nil {
 		return storageErr(err)
 	}
@@ -567,5 +571,16 @@ WHERE id = $1::uuid
 		v := *createRev
 		row.CreateRevision = &v
 	}
+	if len(final) > 0 {
+		row.Final = append([]byte(nil), final...)
+	}
 	return nil
+}
+
+// nilIfEmpty sends SQL NULL for an absent status, so COALESCE keeps the stored one.
+func nilIfEmpty(b []byte) []byte {
+	if len(b) == 0 {
+		return nil
+	}
+	return b
 }

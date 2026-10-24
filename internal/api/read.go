@@ -582,6 +582,7 @@ func (s *Server) sessionRecordView(rec sessionRecord) (apiv1.SessionRecord, erro
 		CreatedBy:        createdBy,
 		ClosedAt:         utcPtr(rec.ClosedAt),
 		EndedRequestedAt: endedRequestedAt(rec),
+		Final:            s.finalView(rec),
 	}, nil
 }
 
@@ -664,4 +665,18 @@ func derefInt(p *int64) int64 {
 		return 0
 	}
 	return *p
+}
+
+// finalView is the status kept when the row closed (E10-D117). A row closed before the column existed
+// has none. Bytes that do not decode are logged and left out, so the record stays readable.
+func (s *Server) finalView(rec sessionRecord) *apiv1.SessionStatus {
+	if len(rec.Final) == 0 {
+		return nil
+	}
+	st := &statev1.SessionStatus{}
+	if err := proto.Unmarshal(rec.Final, st); err != nil {
+		s.log.Error().Err(err).Str("record_id", rec.ID).Str("session_id", rec.SessionID).Msg("session record final status decode failed")
+		return nil
+	}
+	return statusView(st)
 }
