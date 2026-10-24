@@ -11,6 +11,7 @@ import (
 
 	"github.com/BullionBear/mftiko/internal/platform/agent"
 	"github.com/BullionBear/mftiko/internal/platform/agent/fleet"
+	"github.com/BullionBear/mftiko/internal/platform/agent/latest"
 	"github.com/BullionBear/mftiko/internal/platform/agent/runner"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
@@ -25,9 +26,12 @@ type Config struct {
 	Dial     state.DialFunc
 	Term     state.TermOptions
 
-	WorkDir   string
-	Shim      string // mftiko-shim
-	Account   string // mftiko-td-account, the binary every new spawn runs (P9)
+	WorkDir string
+	Shim    string // mftiko-shim
+	Account string // mftiko-td-account on the host, for development and tests; ignored when Worker is set
+	// Worker is where every new spawn gets the account worker (P9): a *latest.Source in production (E12-D010).
+	// Run starts its goroutine. Nil runs Account.
+	Worker    latest.Launcher
 	ShimEnv   []string
 	WorkerEnv []string // MFTIKO_NATS_URL: the worker's NATS credentials come in Init (E06-D011)
 	// ExtraEnv is appended to one worker's environment at launch. Tests use it.
@@ -52,7 +56,7 @@ type Config struct {
 
 func (cfg Config) validate() error {
 	switch {
-	case cfg.Instance == "" || cfg.WorkDir == "" || cfg.Shim == "" || cfg.Account == "":
+	case cfg.Instance == "" || cfg.WorkDir == "" || cfg.Shim == "" || (cfg.Account == "" && cfg.Worker == nil):
 		return errors.New("td: agent config incomplete")
 	case cfg.Kinds == nil || cfg.Open == nil || cfg.Unseal == nil || cfg.User == nil:
 		return errors.New("td: agent config incomplete")
@@ -110,8 +114,15 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return err
 	}
+	worker := cfg.Worker
+	if worker == nil {
+		worker = latest.Local{Path: cfg.Account}
+	}
+	if w, ok := worker.(interface{ Run(context.Context) }); ok {
+		go w.Run(mctx)
+	}
 	prog := &Program{
-		Account: cfg.Account, Instance: cfg.Instance, Env: cfg.WorkerEnv,
+		Worker: worker, Instance: cfg.Instance, Env: cfg.WorkerEnv,
 		Unseal: cfg.Unseal, User: cfg.User, ExtraEnv: cfg.ExtraEnv,
 	}
 	f := fleet.New(fleet.Config[Spec, Live]{
@@ -126,7 +137,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	p := &plane{
 		inst: cfg.Instance, linger: cfg.Linger, kinds: cfg.Kinds, open: cfg.Open, endpoints: cfg.Endpoints,
-		get: reader, w: term, log: cfg.Log, now: cfg.Now,
+		get: reader, w: term, log: cfg.Log, now: cfg.Now, pending: worker.Pending,
 	}
 	return runner.Run(ctx, runner.Config[Entry, Spec, Live]{
 		Term: term, Demand: src, Statuses: reader, Decode: decoder{inst: cfg.Instance}.Decode, Planner: p,
@@ -155,6 +166,7 @@ type plane struct {
 	w         writer
 	log       zerolog.Logger
 	now       func() time.Time
+	pending   func() string // why a new account worker cannot start (E12-D009); "" when it can
 
 	loaded    bool
 	acks      map[string]string

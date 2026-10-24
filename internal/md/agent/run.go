@@ -17,6 +17,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange"
 	"github.com/BullionBear/mftiko/internal/platform/agent"
 	"github.com/BullionBear/mftiko/internal/platform/agent/fleet"
+	"github.com/BullionBear/mftiko/internal/platform/agent/latest"
 	"github.com/BullionBear/mftiko/internal/platform/agent/runner"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
@@ -34,9 +35,12 @@ type Config struct {
 	Dial     state.DialFunc
 	Term     state.TermOptions
 
-	WorkDir   string
-	Shim      string // mftiko-shim
-	Conn      string // mftiko-md-conn, the binary every new spawn runs (P9)
+	WorkDir string
+	Shim    string // mftiko-shim
+	Conn    string // mftiko-md-conn on the host, for development and tests; ignored when Worker is set
+	// Worker is where every new spawn gets the conn worker (P9): a *latest.Source in production (E12-D010). Run
+	// starts its goroutine. Nil runs Conn.
+	Worker    latest.Launcher
 	ShimEnv   []string
 	WorkerEnv []string // MFTIKO_NATS_URL and MFTIKO_NATS_CREDS for the conn worker
 	// JournalDir is where each conn worker appends a journal. Tests set it; production leaves it empty.
@@ -101,9 +105,16 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return err
 	}
+	worker := cfg.Worker
+	if worker == nil {
+		worker = latest.Local{Path: cfg.Conn}
+	}
+	if src, ok := worker.(interface{ Run(context.Context) }); ok {
+		go src.Run(mctx)
+	}
 	epochs := &epochTable{}
 	prog := &Program{
-		Conn: cfg.Conn, Instance: cfg.Instance, Env: cfg.WorkerEnv, JournalDir: cfg.JournalDir,
+		Worker: worker, Instance: cfg.Instance, Env: cfg.WorkerEnv, JournalDir: cfg.JournalDir,
 		ExtraEnv: cfg.ExtraEnv, Epoch: term.Epoch, epochs: epochs,
 	}
 	f := fleet.New(fleet.Config[Spec, Live]{
@@ -118,7 +129,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	p := &plane{
 		inst: cfg.Instance, linger: cfg.Linger, markets: cfg.Markets,
-		overrides: cfg.Overrides, get: reader, w: term, log: cfg.Log, now: cfg.Now,
+		overrides: cfg.Overrides, get: reader, w: term, log: cfg.Log, now: cfg.Now, pending: worker.Pending,
 	}
 	return runner.Run(ctx, runner.Config[Entry, Spec, Live]{
 		Term: term, Demand: m, Statuses: reader, Decode: Decode, Planner: p,
@@ -130,7 +141,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 func (cfg Config) validate() error {
 	switch {
-	case cfg.Instance == "" || cfg.WorkDir == "" || cfg.Shim == "" || cfg.Conn == "":
+	case cfg.Instance == "" || cfg.WorkDir == "" || cfg.Shim == "" || (cfg.Conn == "" && cfg.Worker == nil):
 		return errors.New("md: agent config incomplete")
 	case cfg.Markets == nil:
 		return errors.New("md: agent config incomplete")
@@ -175,6 +186,7 @@ type plane struct {
 	w         writer
 	log       zerolog.Logger
 	now       func() time.Time
+	pending   func() string // why a new conn worker cannot start (E12-D009); "" when it can
 
 	loaded   bool
 	placed   map[string]string // feed hash -> conn, as etcd holds it

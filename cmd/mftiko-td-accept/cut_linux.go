@@ -16,9 +16,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// accountComm is mftiko-td-account as /proc/<pid>/comm spells it: the first 15 bytes.
-const accountComm = "mftiko-td-accou"
-
 type sock struct {
 	fd     int
 	remote string // ip:port
@@ -109,8 +106,7 @@ func accountPIDs() ([]int, error) {
 		if err != nil {
 			continue
 		}
-		comm, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid))
-		if err == nil && strings.TrimSpace(string(comm)) == accountComm {
+		if workerPlane(pid) == "td" {
 			out = append(out, pid)
 		}
 	}
@@ -162,4 +158,19 @@ func remoteAddr(hex string) string {
 	p, _ := strconv.ParseInt(port, 16, 32)
 	v, _ := strconv.ParseUint(ip, 16, 32)
 	return fmt.Sprintf("%d.%d.%d.%d:%d", v&0xff, v>>8&0xff, v>>16&0xff, v>>24, p)
+}
+
+// workerPlane is the MFTIKO_PLANE the fleet put in a worker's environment, or "" for any other process. The name of
+// the executable is no guide: a worker from an artifact runs rootfs/bin/worker (E12-02).
+func workerPlane(pid int) string {
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/environ", pid))
+	if err != nil {
+		return ""
+	}
+	for kv := range strings.SplitSeq(string(b), "\x00") {
+		if v, ok := strings.CutPrefix(kv, "MFTIKO_PLANE="); ok {
+			return v
+		}
+	}
+	return ""
 }

@@ -475,3 +475,29 @@ func mustDemand(feed string) []byte {
 	}
 	return b
 }
+
+// A conn worker never spawned shows why no artifact is ready instead of "starting" (E12-D009).
+func TestAckWaitingForArtifact(t *testing.T) {
+	key := agent.WorkerKey("md/Binance/public/0")
+	o := outcome{Worker: key, Feed: "orderbook_delta." + testTicker}
+	why := ""
+	p := &plane{pending: func() string { return why }}
+	pending := statev1.EntryState_ENTRY_STATE_PENDING
+	if got := p.waiting(o, pending, "starting", nil); got != "starting" {
+		t.Fatalf("artifact ready: %q", got)
+	}
+	why = "artifact_unavailable"
+	if got := p.waiting(o, pending, "starting", nil); got != why {
+		t.Fatalf("no artifact: %q", got)
+	}
+	ended := map[agent.WorkerKey]agent.Observed{key: {State: agent.StateExited}}
+	if got := p.waiting(o, pending, "restarting", ended); got != "restarting" {
+		t.Fatalf("a worker that ran keeps its reason: %q", got)
+	}
+	if got := p.waiting(o, statev1.EntryState_ENTRY_STATE_REJECTED, "not found", nil); got != "not found" {
+		t.Fatalf("reject: %q", got)
+	}
+	if got := (&plane{}).waiting(o, pending, "starting", nil); got != "starting" {
+		t.Fatalf("no source: %q", got)
+	}
+}

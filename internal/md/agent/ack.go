@@ -29,6 +29,7 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 			continue
 		}
 		st, reason, write := decide(o, observed, gaveUp)
+		reason = p.waiting(o, st, reason, observed)
 		if !write {
 			keep[ack] = true
 			continue
@@ -61,6 +62,21 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 		delete(p.acks, ack)
 	}
 	return nil
+}
+
+// waiting replaces "starting" on a conn worker that has never been spawned with why it cannot be: no worker
+// artifact is ready yet (E12-D009). The entry stays PENDING; pushing a good latest fixes it.
+func (p *plane) waiting(o outcome, st statev1.EntryState, reason string, observed map[agent.WorkerKey]agent.Observed) string {
+	if st != statev1.EntryState_ENTRY_STATE_PENDING || p.pending == nil || o.Worker == "" {
+		return reason
+	}
+	if _, seen := observed[o.Worker]; seen {
+		return reason
+	}
+	if why := p.pending(); why != "" {
+		return why
+	}
+	return reason
 }
 
 // decide is the ack for one outcome. LOST keeps the previous ack (P6). READY is a feed the
