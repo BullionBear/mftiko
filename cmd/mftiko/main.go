@@ -13,8 +13,11 @@
 //	mftiko session list|show|end|delete|watch
 //	mftiko session end <id> [--wait]
 //	mftiko record list|show
+//	mftiko version
+//	mftiko help [command]
 //
-// It speaks only to the API. mftiko-pack and mftiko-seal are separate programs.
+// It speaks only to the API. mftiko-pack and mftiko-seal are separate programs. docs/cli.md covers
+// installation, the config file, session files and the exit codes.
 package main
 
 import (
