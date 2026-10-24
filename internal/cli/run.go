@@ -102,6 +102,7 @@ type command struct {
 // account is mftiko account <action> (E11-D014).
 // session create is E11-D019–E11-D023.
 // session and record are E11-D024–E11-D028.
+// session watch and --wait are E11-D029–E11-D034.
 var commands = []command{
 	{action: "login", run: runLogin},
 	{action: "whoami", run: runWhoami},
@@ -121,6 +122,7 @@ var commands = []command{
 	{resource: "session", action: "show", run: runSessionShow},
 	{resource: "session", action: "end", run: runSessionEnd},
 	{resource: "session", action: "delete", run: runSessionDelete},
+	{resource: "session", action: "watch", run: runSessionWatch},
 	{resource: "record", action: "list", run: runRecordList},
 	{resource: "record", action: "show", run: runRecordShow},
 }

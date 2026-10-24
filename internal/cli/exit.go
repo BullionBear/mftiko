@@ -27,6 +27,19 @@ const (
 	ExitRegistryUnavailable = 19
 	ExitInternal            = 20
 	ExitInvalidArtifact     = 21
+	// E11-D033. These are client conventions for session create --wait and
+	// session end --wait. They are not API problem codes and are not returned
+	// by ExitCode.
+	ExitOutcomeFailed  = 30
+	ExitInitFailed     = 31
+	ExitCrashed        = 32
+	ExitHung           = 33
+	ExitOutcomeUnknown = 34
+	ExitDepsFailed     = 35
+	ExitDepsTimeout    = 36
+	ExitInvalidSpec    = 37
+	ExitWaitTimeout    = 38
+	ExitWaitDeleted    = 39
 )
 
 // ExitCode maps an API problem code to a process exit code (E11-D007).

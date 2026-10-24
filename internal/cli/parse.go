@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 )
 
@@ -30,7 +31,7 @@ commands:
   instance      list instances and show one
   account-kind  list account kinds
   account       list, show, create, update, and delete trading accounts
-  session       create a session from one file, and list, show, end, and delete sessions
+  session       create a session from one file, and list, show, end, delete, and watch sessions
   record        list session records and show one
   help          show this help
 
@@ -42,6 +43,8 @@ flags:
   -cursor value   fetch one page for strategy list, strategy versions, account list, session list, and record list
   -v              print X-Request-Id on success
   -yes            allow a destructive command when stdin is not a terminal
+  -wait target    session create: wait for a phase or terminal; session end: wait for terminal
+  -wait-timeout   how long --wait may run (default 10m)
   -version        print the release and exit
 
 The config file is ~/.config/mftiko/config.yaml and its mode must not be wider
@@ -143,7 +146,7 @@ none, update keeps the stored ciphertext. delete asks for confirmation.
 `
 
 const sessionHelp = `usage: mftiko session create -f FILE
-       mftiko session list|show|end|delete
+       mftiko session list|show|end|delete|watch
 
 create reads one YAML or JSON session file and calls POST /sessions.
 -f - reads stdin. YAML and JSON use the same parser. Numbers are sent as
@@ -187,6 +190,22 @@ record is the last known value, the log section says 最後已知，agent 目前
 The command does not read the log file. end asks for confirmation; a session
 that has already ended still succeeds. delete asks for confirmation. A session
 that is not terminal exits 14 and says to run session end first.
+
+watch
+  mftiko session watch [id]
+
+Without an id, a terminal redraws the session table. -o json, or any stdout
+that is not a terminal, writes one JSON object per event. With an id, a
+terminal redraws the session show screen. session_removed prints
+mftiko: session <id> removed and exits 0.
+
+create --wait PHASE waits until that phase. create --wait terminal and
+end --wait wait until the session is terminal. --wait-timeout is 10m unless
+set. The result line names the outcome and the exit code together:
+done (0), ended_by_spec (0), failed (30), init_failed (31), crashed (32),
+hung (33), unknown (34), deps_failed (35), deps_timeout (36),
+invalid_spec (37), 等待逾時 (38), 等待中 session 被刪除 (39).
+A named phase that is reached exits 0 and names that phase.
 `
 
 const recordHelp = `usage: mftiko record list|show
@@ -209,34 +228,37 @@ A record stays readable after the session spec is deleted.
 `
 
 type options struct {
-	context       string
-	contextSet    bool
-	timeout       time.Duration
-	output        string
-	limit         int
-	limitSet      bool
-	cursor        string
-	cursorSet     bool
-	verbose       bool
-	yes           bool
-	version       bool
-	name          stringOpt
-	kind          stringOpt
-	tdInstance    stringOpt
-	keyFile       stringOpt
-	secretFile    stringOpt
-	passFile      stringOpt
-	keyType       stringOpt
-	file          stringOpt
-	idemKey       stringOpt
-	phase         stringList
-	active        boolOpt
-	stsInstance   stringOpt
-	sessionID     stringOpt
-	strategyID    stringOpt
-	createdBy     stringOpt
-	createdAfter  stringOpt
-	createdBefore stringOpt
+	context        string
+	contextSet     bool
+	timeout        time.Duration
+	output         string
+	limit          int
+	limitSet       bool
+	cursor         string
+	cursorSet      bool
+	verbose        bool
+	yes            bool
+	version        bool
+	name           stringOpt
+	kind           stringOpt
+	tdInstance     stringOpt
+	keyFile        stringOpt
+	secretFile     stringOpt
+	passFile       stringOpt
+	keyType        stringOpt
+	file           stringOpt
+	idemKey        stringOpt
+	phase          stringList
+	active         boolOpt
+	stsInstance    stringOpt
+	sessionID      stringOpt
+	strategyID     stringOpt
+	createdBy      stringOpt
+	createdAfter   stringOpt
+	createdBefore  stringOpt
+	wait           waitOpt
+	waitTimeout    time.Duration
+	waitTimeoutSet bool
 }
 
 type stringOpt struct {
@@ -325,6 +347,37 @@ func (s *stringList) Set(v string) error {
 	return nil
 }
 
+// waitOpt is --wait. "true" is the boolean form (end --wait). A phase name
+// or the word terminal is the create target. Anything else is a usage error
+// and is not echoed.
+type waitOpt struct {
+	set    bool
+	target string
+}
+
+func (w *waitOpt) String() string { return w.target }
+
+func (w *waitOpt) Set(s string) error {
+	if s == "true" {
+		w.set = true
+		w.target = ""
+		return nil
+	}
+	if s == waitTargetTerminal || apiv1.Phase(s).Valid() {
+		w.set = true
+		w.target = s
+		return nil
+	}
+	return errors.New("must be a phase or terminal")
+}
+
+func waitValue(s string) bool {
+	if s == "" || strings.HasPrefix(s, "-") {
+		return false
+	}
+	return s == waitTargetTerminal || apiv1.Phase(s).Valid()
+}
+
 func (d *durationOpt) Set(s string) error {
 	v, err := time.ParseDuration(s)
 	if err != nil {
@@ -353,6 +406,8 @@ func parseArgs(args []string) (options, []string, error) {
 	var phase stringList
 	var active boolOpt
 	var file, idemKey stringOpt
+	var wait waitOpt
+	var waitTimeout durationOpt
 	var limit intOpt
 	fs := flag.NewFlagSet("mftiko", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -384,6 +439,8 @@ func parseArgs(args []string) (options, []string, error) {
 	fs.Var(&createdBefore, "created-before", "RFC 3339 or YYYY-MM-DD")
 	fs.Var(&file, "f", "session file, or - for stdin")
 	fs.Var(&idemKey, flagPair("idempotency", "key"), "Idempotency-Key for this run")
+	fs.Var(&wait, "wait", "phase, terminal, or the boolean form")
+	fs.Var(&waitTimeout, "wait-timeout", "how long --wait may run")
 	if err := fs.Parse(append(flags, pos...)); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return options{}, nil, errHelp
@@ -391,33 +448,36 @@ func parseArgs(args []string) (options, []string, error) {
 		return options{}, nil, errors.New(flagValue.ReplaceAllString(err.Error(), "invalid value for flag"))
 	}
 	opt := options{
-		context:       context.v,
-		contextSet:    context.set,
-		timeout:       30 * time.Second,
-		limit:         limit.v,
-		limitSet:      limit.set,
-		cursor:        cursor.v,
-		cursorSet:     cursor.set,
-		verbose:       *verbose || *verboseLong,
-		yes:           *yes,
-		version:       *version,
-		name:          name,
-		kind:          kind,
-		tdInstance:    tdInstance,
-		keyFile:       keyFile,
-		secretFile:    secretFile,
-		passFile:      passFile,
-		keyType:       keyType,
-		file:          file,
-		idemKey:       idemKey,
-		phase:         phase,
-		active:        active,
-		stsInstance:   stsInstance,
-		sessionID:     sessionID,
-		strategyID:    strategyID,
-		createdBy:     createdBy,
-		createdAfter:  createdAfter,
-		createdBefore: createdBefore,
+		context:        context.v,
+		contextSet:     context.set,
+		timeout:        30 * time.Second,
+		limit:          limit.v,
+		limitSet:       limit.set,
+		cursor:         cursor.v,
+		cursorSet:      cursor.set,
+		verbose:        *verbose || *verboseLong,
+		yes:            *yes,
+		version:        *version,
+		name:           name,
+		kind:           kind,
+		tdInstance:     tdInstance,
+		keyFile:        keyFile,
+		secretFile:     secretFile,
+		passFile:       passFile,
+		keyType:        keyType,
+		file:           file,
+		idemKey:        idemKey,
+		phase:          phase,
+		active:         active,
+		stsInstance:    stsInstance,
+		sessionID:      sessionID,
+		strategyID:     strategyID,
+		createdBy:      createdBy,
+		createdAfter:   createdAfter,
+		createdBefore:  createdBefore,
+		wait:           wait,
+		waitTimeout:    waitTimeout.v,
+		waitTimeoutSet: waitTimeout.set,
 	}
 	if timeout.set {
 		opt.timeout = timeout.v
@@ -450,6 +510,7 @@ var (
 		"session-id": true, "strategy-id": true, "created-by": true,
 		"created-after": true, "created-before": true,
 		"f": true, "idempotency-key": true,
+		"wait-timeout": true,
 	}
 	boolFlags = map[string]bool{"v": true, "verbose": true, "yes": true, "version": true, "h": true, "help": true}
 )
@@ -476,6 +537,17 @@ func splitArgs(args []string) (flags, pos []string, err error) {
 		switch {
 		case boolFlags[name]:
 			flags = append(flags, a)
+		case name == "wait":
+			if strings.Contains(body, "=") {
+				flags = append(flags, a)
+				continue
+			}
+			if i+1 < len(args) && waitValue(args[i+1]) {
+				flags = append(flags, a, args[i+1])
+				i++
+				continue
+			}
+			flags = append(flags, "-wait=true")
 		case valueFlags[name]:
 			if strings.Contains(body, "=") {
 				flags = append(flags, a)

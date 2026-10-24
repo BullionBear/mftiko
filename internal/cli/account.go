@@ -709,6 +709,8 @@ func (a *App) unexpectedFlags(allow ...string) string {
 		{"created-before", a.opt.createdBefore.set},
 		{"f", a.opt.file.set},
 		{flagPair("idempotency", "key"), a.opt.idemKey.set},
+		{"wait", a.opt.wait.set},
+		{"wait-timeout", a.opt.waitTimeoutSet},
 	}
 	var bad []string
 	for _, f := range flags {

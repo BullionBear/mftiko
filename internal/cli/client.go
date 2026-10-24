@@ -57,10 +57,12 @@ func UserAgent() string {
 // API is the HTTP client. It sends Authorization: Bearer and User-Agent, and
 // does not add Content-Type (E10-D110, E11-D008). It does not store cookies.
 type API struct {
-	token string
-	ua    string
-	hc    *http.Client
-	gen   *apiv1.Client
+	token  string
+	ua     string
+	base   string
+	hc     *http.Client
+	stream *http.Client
+	gen    *apiv1.Client
 }
 
 // Dial builds a client. Plain HTTP is refused unless InsecureHTTP is set
@@ -76,9 +78,16 @@ func Dial(e Endpoint) (*API, error) {
 	if tokenInvalid(e.Token) {
 		return nil, usage("token must be one line")
 	}
-	a := &API{token: e.Token, ua: UserAgent()}
+	a := &API{token: e.Token, ua: UserAgent(), base: raw}
 	a.hc = &http.Client{
 		Timeout:       e.Timeout,
+		Transport:     tr,
+		CheckRedirect: refuseRedirect,
+	}
+	// The events stream has no Client.Timeout. A 30s deadline would cut a
+	// watch that is still receiving heartbeats (E11-D030). Idle is measured
+	// on the stream itself.
+	a.stream = &http.Client{
 		Transport:     tr,
 		CheckRedirect: refuseRedirect,
 	}

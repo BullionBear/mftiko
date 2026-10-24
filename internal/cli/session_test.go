@@ -494,7 +494,7 @@ func TestSessionUsage(t *testing.T) {
 		t.Fatalf("help %+v", got)
 	}
 	got = runAt(context.Background(), t.TempDir(), nil, strings.NewReader(""), "help", "session")
-	if got.code != ExitOK || !strings.Contains(got.out, "最後已知，agent 目前不在線") || !strings.Contains(got.out, "-phase") || !strings.Contains(got.out, "first 7") {
+	if got.code != ExitOK || !strings.Contains(got.out, "最後已知，agent 目前不在線") || !strings.Contains(got.out, "-phase") || !strings.Contains(got.out, "first 7") || !strings.Contains(got.out, "session watch") || !strings.Contains(got.out, "等待逾時 (38)") || !strings.Contains(got.out, "deps_failed (35)") {
 		t.Fatalf("session help %+v", got)
 	}
 	got = runAt(context.Background(), t.TempDir(), nil, strings.NewReader(""), "help", "record")
@@ -502,7 +502,7 @@ func TestSessionUsage(t *testing.T) {
 		t.Fatalf("record help %+v", got)
 	}
 	got = runAt(context.Background(), t.TempDir(), nil, strings.NewReader(""), "session")
-	if got.code != ExitUsage || !strings.Contains(got.err, "session list|show|end|delete") {
+	if got.code != ExitUsage || !strings.Contains(got.err, "session list|show|end|delete|watch") {
 		t.Fatalf("bare %+v", got)
 	}
 	got = runAt(context.Background(), t.TempDir(), nil, strings.NewReader(""), "session", "show", "ABC123")
