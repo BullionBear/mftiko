@@ -4,6 +4,7 @@
 package apitest
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -14,6 +15,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -35,6 +37,11 @@ type Call struct {
 	ContentType   string
 	Cookie        string
 	RawQuery      string
+	// Query is the same string as RawQuery. Account tests read it.
+	Query string
+	// Body is the request body. Tests use it to check credential bytes.
+	// Neither field is logged.
+	Body []byte
 }
 
 // Option is fixed before the server accepts a connection.
@@ -60,28 +67,57 @@ type Option struct {
 	// TLS serves HTTPS. CertPEM returns the certificate the client should trust.
 	TLS bool
 	// Catalog, when set, serves the read-only lists. Nil keeps those routes
-	// unused. Set it before Start; the handler does not mutate it.
+	// on the account fixtures below. Set it before Start; the handler does
+	// not mutate it.
 	Catalog *Catalog
+	// Kinds, Instances, and Accounts are the account fixtures. They are copied
+	// before the server accepts a connection. They apply when Catalog is nil.
+	Kinds     []apiv1.AccountKind
+	Instances []apiv1.Instance
+	Accounts  []apiv1.Account
+	// PageSize, when set, caps an account list page below the requested limit
+	// so a test can follow cursors. 0 means honor the request, up to 1000.
+	// Strategy pages use Catalog.PageSize.
+	PageSize int
+	// Freshness is copied onto the first account list page. NextFreshness,
+	// when set, is copied onto every later page.
+	Freshness     apiv1.Freshness
+	NextFreshness *apiv1.Freshness
+	// ConflictCAS makes update and delete return 409 conflict on /revision.
+	ConflictCAS bool
+	// EchoCredential makes create return 400 whose detail is the secret.
+	// Redaction tests use it. The server does not log the value.
+	EchoCredential bool
 }
 
 // Server is a started httptest server.
 type Server struct {
-	mu       sync.Mutex
-	once     sync.Once
-	hs       *httptest.Server
-	stop     chan struct{}
-	token    string
-	name     string
-	expires  *time.Time
-	problem  *apiv1.Problem
-	reqID    string
-	block    bool
-	echo     bool
-	cat      *Catalog
-	hits     int
-	calls    []Call
-	lastAuth string
-	lastBody []byte
+	mu         sync.Mutex
+	once       sync.Once
+	hs         *httptest.Server
+	stop       chan struct{}
+	token      string
+	name       string
+	expires    *time.Time
+	problem    *apiv1.Problem
+	reqID      string
+	block      bool
+	echo       bool
+	cat        *Catalog
+	hits       int
+	calls      []Call
+	lastAuth   string
+	lastBody   []byte
+	kinds      []apiv1.AccountKind
+	instances  map[string]apiv1.InstanceDetail
+	accounts   []accountRow
+	nextID     int64
+	pageSize   int
+	fresh      apiv1.Freshness
+	nextFresh  *apiv1.Freshness
+	listPages  int
+	conflict   bool
+	echoSecret bool
 }
 
 // Start serves opt. Every field is set before the server goroutine runs.
@@ -97,6 +133,7 @@ func Start(opt Option) *Server {
 		echo:    opt.EchoAuthorization,
 		cat:     opt.Catalog,
 	}
+	s.install(opt)
 	h := s.handler()
 	if opt.TLS {
 		cert, err := leafCert()
@@ -166,7 +203,10 @@ func (s *Server) Calls() []Call {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]Call, len(s.calls))
-	copy(out, s.calls)
+	for i, c := range s.calls {
+		c.Body = append([]byte(nil), c.Body...)
+		out[i] = c
+	}
 	return out
 }
 
@@ -186,12 +226,31 @@ func (s *Server) handler() http.Handler {
 	})
 	inner := apiv1.HandlerWithOptions(strict, apiv1.StdHTTPServerOptions{BaseURL: "/api/v1"})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, err := readReqBody(r)
+		if err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		r = r.WithContext(context.WithValue(r.Context(), bodyKey, raw))
 		s.mu.Lock()
 		s.lastBody = nil
 		s.mu.Unlock()
 		cw := &capture{ResponseWriter: w, s: s}
 		inner.ServeHTTP(cw, r)
 	})
+}
+
+func readReqBody(r *http.Request) ([]byte, error) {
+	if r.Body == nil {
+		return nil, nil
+	}
+	defer r.Body.Close()
+	b, err := io.ReadAll(io.LimitReader(r.Body, 8<<20+1))
+	if err != nil {
+		return nil, err
+	}
+	r.Body = io.NopCloser(bytes.NewReader(b))
+	return append([]byte(nil), b...), nil
 }
 
 func (s *Server) middleware(next apiv1.StrictHandlerFunc, operationID string) apiv1.StrictHandlerFunc {
@@ -205,6 +264,10 @@ func (s *Server) middleware(next apiv1.StrictHandlerFunc, operationID string) ap
 			ContentType:   r.Header.Get("Content-Type"),
 			Cookie:        r.Header.Get("Cookie"),
 			RawQuery:      r.URL.RawQuery,
+			Query:         r.URL.RawQuery,
+		}
+		if raw, ok := ctx.Value(bodyKey).([]byte); ok {
+			call.Body = append([]byte(nil), raw...)
 		}
 		s.mu.Lock()
 		s.calls = append(s.calls, call)
@@ -222,6 +285,7 @@ func (s *Server) middleware(next apiv1.StrictHandlerFunc, operationID string) ap
 				return nil, errors.New("stopped")
 			}
 		}
+		ctx = context.WithValue(ctx, authKey, call.Authorization)
 		return next(ctx, w, r, request)
 	}
 }
@@ -277,21 +341,6 @@ func (a *api) Login(context.Context, apiv1.LoginRequestObject) (apiv1.LoginRespo
 	return nil, errUnused
 }
 
-func (a *api) ListAccounts(context.Context, apiv1.ListAccountsRequestObject) (apiv1.ListAccountsResponseObject, error) {
-	return nil, errUnused
-}
-func (a *api) CreateAccount(context.Context, apiv1.CreateAccountRequestObject) (apiv1.CreateAccountResponseObject, error) {
-	return nil, errUnused
-}
-func (a *api) DeleteAccount(context.Context, apiv1.DeleteAccountRequestObject) (apiv1.DeleteAccountResponseObject, error) {
-	return nil, errUnused
-}
-func (a *api) GetAccount(context.Context, apiv1.GetAccountRequestObject) (apiv1.GetAccountResponseObject, error) {
-	return nil, errUnused
-}
-func (a *api) UpdateAccount(context.Context, apiv1.UpdateAccountRequestObject) (apiv1.UpdateAccountResponseObject, error) {
-	return nil, errUnused
-}
 func (a *api) StreamEvents(context.Context, apiv1.StreamEventsRequestObject) (apiv1.StreamEventsResponseObject, error) {
 	return nil, errUnused
 }

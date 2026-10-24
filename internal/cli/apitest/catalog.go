@@ -147,7 +147,10 @@ func (a *api) ListInstances(context.Context, apiv1.ListInstancesRequestObject) (
 	}, nil
 }
 
-func (a *api) GetInstance(_ context.Context, req apiv1.GetInstanceRequestObject) (apiv1.GetInstanceResponseObject, error) {
+func (a *api) GetInstance(ctx context.Context, req apiv1.GetInstanceRequestObject) (apiv1.GetInstanceResponseObject, error) {
+	if a.s.cat == nil {
+		return a.getInstanceAccount(ctx, req)
+	}
 	cat, p, err := a.s.begin()
 	if err != nil {
 		return nil, err
@@ -166,7 +169,10 @@ func (a *api) GetInstance(_ context.Context, req apiv1.GetInstanceRequestObject)
 	return apiv1.GetInstance200JSONResponse(det), nil
 }
 
-func (a *api) ListAccountKinds(context.Context, apiv1.ListAccountKindsRequestObject) (apiv1.ListAccountKindsResponseObject, error) {
+func (a *api) ListAccountKinds(ctx context.Context, req apiv1.ListAccountKindsRequestObject) (apiv1.ListAccountKindsResponseObject, error) {
+	if a.s.cat == nil {
+		return a.listKindsAccount(ctx, req)
+	}
 	cat, p, err := a.s.begin()
 	if err != nil {
 		return nil, err

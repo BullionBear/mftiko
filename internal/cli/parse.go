@@ -29,14 +29,15 @@ commands:
   strategy      list strategies, their versions, and one manifest
   instance      list instances and show one
   account-kind  list account kinds
+  account       list, show, create, update, and delete trading accounts
   help          show this help
 
 flags:
   -context name   context in the config file, or set MFTIKO_CONTEXT (they must match if both are set)
   -timeout 30s    HTTP client timeout, a Go duration greater than 0
   -o json         write the API body unchanged; the default is a table
-  -limit N        cap the total number of rows for strategy list and strategy versions
-  -cursor value   fetch one page for strategy list and strategy versions
+  -limit N        cap the total number of rows for strategy list, strategy versions, and account list
+  -cursor value   fetch one page for strategy list, strategy versions, and account list
   -v              print X-Request-Id on success
   -yes            allow a destructive command when stdin is not a terminal
   -version        print the release and exit
@@ -57,7 +58,7 @@ Plain HTTP is refused unless the context sets insecure_http: true.
 strategy list and strategy versions follow next_cursor until the list ends.
 Each request uses limit=1000. -limit N caps the total number of rows.
 -cursor fetches only that page, and -o json writes that page unchanged.
--limit and -cursor cannot both be set.
+-limit and -cursor cannot both be set. account list uses the same two flags.
 `
 
 const strategyHelp = `usage: mftiko strategy list
@@ -105,6 +106,39 @@ Call GET /auth/me and print the user. The default is a table with local times.
 -o json writes the API body unchanged.
 `
 
+const accountHelp = `usage: mftiko account list|show|create|update|delete
+
+list
+  mftiko account list [-td-instance name] [-limit N]
+  mftiko account list [-td-instance name] [-cursor TOKEN]
+
+-limit and -cursor cannot both be set.
+
+show
+  mftiko account show <api_id>
+
+create
+  mftiko account create -name NAME -kind KIND -td-instance NAME
+      [-key-type hmac|ed25519]
+      [-key-file PATH] [-secret-file PATH] [-passphrase-file PATH]
+
+update
+  mftiko account update <api_id>
+      [-key-type hmac|ed25519]
+      [-key-file PATH] [-secret-file PATH] [-passphrase-file PATH]
+
+delete
+  mftiko account delete <api_id>
+
+Credential values are read from files or, on a terminal, without echo. They are
+never flag values. "-" reads that one file from stdin, and at most one file may
+be "-". An ed25519 secret is sent unchanged, including newlines; on a terminal
+end it with EOF. HMAC key, secret, and passphrase values lose one trailing
+newline. A kind with one key type uses it. A kind with several requires
+-key-type. Giving any credential file on update replaces the whole set. With
+none, update keeps the stored ciphertext. delete asks for confirmation.
+`
+
 type options struct {
 	context    string
 	contextSet bool
@@ -117,6 +151,13 @@ type options struct {
 	verbose    bool
 	yes        bool
 	version    bool
+	name       stringOpt
+	kind       stringOpt
+	tdInstance stringOpt
+	keyFile    stringOpt
+	secretFile stringOpt
+	passFile   stringOpt
+	keyType    stringOpt
 }
 
 type stringOpt struct {
@@ -144,19 +185,6 @@ func (d *durationOpt) String() string {
 	return d.v.String()
 }
 
-func (d *durationOpt) Set(s string) error {
-	v, err := time.ParseDuration(s)
-	if err != nil {
-		return errors.New("invalid duration")
-	}
-	if v <= 0 {
-		return errors.New("must be positive")
-	}
-	d.v = v
-	d.set = true
-	return nil
-}
-
 type intOpt struct {
 	v   int
 	set bool
@@ -179,6 +207,19 @@ func (n *intOpt) Set(s string) error {
 	return nil
 }
 
+func (d *durationOpt) Set(s string) error {
+	v, err := time.ParseDuration(s)
+	if err != nil {
+		return errors.New("invalid duration")
+	}
+	if v <= 0 {
+		return errors.New("must be positive")
+	}
+	d.v = v
+	d.set = true
+	return nil
+}
+
 func parseArgs(args []string) (options, []string, error) {
 	flags, pos, err := splitArgs(args)
 	if err != nil {
@@ -188,8 +229,9 @@ func parseArgs(args []string) (options, []string, error) {
 	var timeout durationOpt
 	var output stringOpt
 	var outputLong stringOpt
+	var name, kind, tdInstance stringOpt
+	var keyFile, secretFile, passFile, keyType, cursor stringOpt
 	var limit intOpt
-	var cursor stringOpt
 	fs := flag.NewFlagSet("mftiko", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	fs.Usage = func() {}
@@ -203,6 +245,13 @@ func parseArgs(args []string) (options, []string, error) {
 	verboseLong := fs.Bool("verbose", false, "print X-Request-Id on success")
 	yes := fs.Bool("yes", false, "confirm a destructive command off a terminal")
 	version := fs.Bool("version", false, "print the release and exit")
+	fs.Var(&name, "name", "account name")
+	fs.Var(&kind, "kind", "account kind")
+	fs.Var(&tdInstance, "td-instance", "TD instance")
+	fs.Var(&keyFile, "key-file", "file to read the credential key from")
+	fs.Var(&secretFile, "secret-file", "file to read the credential secret from")
+	fs.Var(&passFile, "passphrase-file", "file to read the credential passphrase from")
+	fs.Var(&keyType, "key-type", "hmac or ed25519")
 	if err := fs.Parse(append(flags, pos...)); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return options{}, nil, errHelp
@@ -220,6 +269,13 @@ func parseArgs(args []string) (options, []string, error) {
 		verbose:    *verbose || *verboseLong,
 		yes:        *yes,
 		version:    *version,
+		name:       name,
+		kind:       kind,
+		tdInstance: tdInstance,
+		keyFile:    keyFile,
+		secretFile: secretFile,
+		passFile:   passFile,
+		keyType:    keyType,
 	}
 	if timeout.set {
 		opt.timeout = timeout.v
@@ -245,6 +301,8 @@ func parseArgs(args []string) (options, []string, error) {
 var (
 	valueFlags = map[string]bool{
 		"context": true, "timeout": true, "o": true, "output": true,
+		"name": true, "kind": true, "td-instance": true,
+		"key-file": true, "secret-file": true, "passphrase-file": true, "key-type": true,
 		"limit": true, "cursor": true,
 	}
 	boolFlags = map[string]bool{"v": true, "verbose": true, "yes": true, "version": true, "h": true, "help": true}

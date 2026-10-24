@@ -99,6 +99,7 @@ type command struct {
 
 // commands is the dispatch table (E11-D002). login and whoami are single words,
 // as E11-D006 names them. The read-only queries are E11-D010–E11-D013.
+// account is mftiko account <action> (E11-D014).
 var commands = []command{
 	{action: "login", run: runLogin},
 	{action: "whoami", run: runWhoami},
@@ -108,6 +109,11 @@ var commands = []command{
 	{resource: "instance", action: "list", run: runInstanceList},
 	{resource: "instance", action: "show", run: runInstanceShow},
 	{resource: "account-kind", action: "list", run: runAccountKindList},
+	{resource: "account", action: "list", run: runAccountList},
+	{resource: "account", action: "show", run: runAccountShow},
+	{resource: "account", action: "create", run: runAccountCreate},
+	{resource: "account", action: "update", run: runAccountUpdate},
+	{resource: "account", action: "delete", run: runAccountDelete},
 }
 
 func lookup(pos []string) (command, []string, bool) {
@@ -191,6 +197,8 @@ func commandHelp(name string) (string, bool) {
 		return instanceHelp, true
 	case "account-kind":
 		return accountKindHelp, true
+	case "account":
+		return accountHelp, true
 	case "help":
 		return generalHelp, true
 	default:
@@ -203,6 +211,9 @@ func runLogin(a *App) int {
 		return a.exit("login takes no arguments")
 	}
 	if code := a.rejectPageFlags(); code != 0 {
+		return code
+	}
+	if code := a.onlyFlags(); code != 0 {
 		return code
 	}
 	if code := a.useContext(); code != 0 {
@@ -245,6 +256,9 @@ func runWhoami(a *App) int {
 		return a.exit("whoami takes no arguments")
 	}
 	if code := a.rejectPageFlags(); code != 0 {
+		return code
+	}
+	if code := a.onlyFlags(); code != 0 {
 		return code
 	}
 	api, code := a.api()

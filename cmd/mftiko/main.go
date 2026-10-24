@@ -8,6 +8,7 @@
 //	mftiko instance list
 //	mftiko instance show <name>
 //	mftiko account-kind list
+//	mftiko account list|show|create|update|delete
 //
 // It speaks only to the API. mftiko-pack and mftiko-seal are separate programs.
 package main
