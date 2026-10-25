@@ -49,10 +49,11 @@ type intake struct {
 	// wires it, which is before the loop starts.
 	derive func(controller.View, bool) time.Time
 
-	staleAfter time.Duration
-	resync     time.Duration
-	regions    []string
-	byRegion   map[string][]*watched
+	staleAfter    time.Duration
+	staleByRegion map[string]time.Duration // positive entries override staleAfter (E12-D046)
+	resync        time.Duration
+	regions       []string
+	byRegion      map[string][]*watched
 	// retired watches /mftiko/v1/retired/ in each region. It is not in byRegion:
 	// writable waits on instance mirrors only, so an unsynced retirement mirror
 	// does not stall demands (E12-D034). An unsynced mirror contributes no names,
@@ -97,7 +98,7 @@ func newIntake(parent context.Context, term *state.Term, cl *state.Clusters, cfg
 	opt := cfg.Mirror
 	in := &intake{
 		ctx: ctx, cancel: cancel, term: term, cl: cl, log: log, now: now, opt: opt,
-		staleAfter: cfg.StaleAfter, resync: cfg.Resync,
+		staleAfter: cfg.StaleAfter, staleByRegion: maps.Clone(cfg.StaleByRegion), resync: cfg.Resync,
 		regions:   slices.Sorted(maps.Keys(cfg.Topology.Regions)),
 		byRegion:  map[string][]*watched{},
 		retired:   map[string]*watched{},
@@ -305,7 +306,7 @@ func (in *intake) reconcile(full bool) time.Time {
 			fails = append(fails, bad...)
 		}
 	}
-	v := controller.Assemble(in.now(), in.staleAfter, in.regions, snaps)
+	v := controller.AssembleWithStale(in.now(), in.staleLimit, in.regions, snaps)
 	v.Retired = in.retiredNames()
 	in.publish(v, full, fails)
 	// The snapshot is the relist. Derivation, the gate and lifecycle run on
@@ -409,6 +410,15 @@ func (in *intake) noteDrifts(ds []controller.Drift) {
 			delete(in.drifted, ref)
 		}
 	}
+}
+
+// staleLimit is the LastContact threshold for region (E12-D046). A positive
+// per-region value wins. Otherwise the process default applies.
+func (in *intake) staleLimit(region string) time.Duration {
+	if d := in.staleByRegion[region]; d > 0 {
+		return d
+	}
+	return in.staleAfter
 }
 
 func (in *intake) noteStale(v controller.View) {

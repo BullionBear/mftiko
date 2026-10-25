@@ -1,10 +1,12 @@
 package state
 
 import (
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestValidate(t *testing.T) {
@@ -92,5 +94,58 @@ func TestAgentRegions(t *testing.T) {
 	}
 	if _, err := AgentRegions(topo, PlaneMD, "md-kr-1"); !errors.Is(err, ErrUnknownInstance) {
 		t.Errorf("unknown instance: %v", err)
+	}
+}
+
+func TestRegionTimeouts(t *testing.T) {
+	dial, req, stale, err := (Region{}).Timeouts()
+	if err != nil || dial != 0 || req != 0 || stale != 0 {
+		t.Fatalf("omitted: %s %s %s %v", dial, req, stale, err)
+	}
+	for _, raw := range []string{"0s", "0"} {
+		zero := Region{DialTimeout: raw, RequestTimeout: raw, StaleAfter: raw}
+		dial, req, stale, err = zero.Timeouts()
+		if err != nil || dial != 0 || req != 0 || stale != 0 {
+			t.Fatalf("zero %q: %s %s %s %v", raw, dial, req, stale, err)
+		}
+	}
+	set := Region{DialTimeout: "8s", RequestTimeout: "2s", StaleAfter: "20s"}
+	dial, req, stale, err = set.Timeouts()
+	if err != nil || dial != 8*time.Second || req != 2*time.Second || stale != 20*time.Second {
+		t.Fatalf("set: %s %s %s %v", dial, req, stale, err)
+	}
+
+	ep := []string{"http://127.0.0.1:1"}
+	bad := map[string]Region{
+		"not a duration": {Endpoints: ep, DialTimeout: "nope"},
+		"negative dial":  {Endpoints: ep, DialTimeout: "-1s"},
+		"negative stale": {Endpoints: ep, StaleAfter: "-1ms"},
+	}
+	for name, region := range bad {
+		topo := Topology{
+			Regions:   map[string]Region{"tw": region},
+			Instances: map[string]string{ControllerInstance: "tw"},
+		}
+		if err := topo.Validate(); !errors.Is(err, ErrBadTopology) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+
+	const body = `{
+		"regions": {"tw": {"endpoints": ["http://127.0.0.1:1"], "dial_timeout": "5s", "request_timeout": "2s", "stale_after": "15s"}},
+		"instances": {"controller": "tw"},
+		"planes": {"md-tw-1": "md"}
+	}`
+	var topo Topology
+	if err := json.Unmarshal([]byte(body), &topo); err != nil {
+		t.Fatal(err)
+	}
+	got := topo.Regions["tw"]
+	if len(got.Endpoints) != 1 || got.Endpoints[0] != "http://127.0.0.1:1" ||
+		got.DialTimeout != "5s" || got.RequestTimeout != "2s" || got.StaleAfter != "15s" {
+		t.Fatalf("%+v", got)
+	}
+	if err := topo.Validate(); err != nil {
+		t.Fatal(err)
 	}
 }

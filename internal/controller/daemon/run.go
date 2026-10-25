@@ -29,8 +29,14 @@ type Config struct {
 	Term    state.TermOptions
 	Release string // AgentRecord.release
 	// StaleAfter is how old a region's LastContact may be before the view marks
-	// it stale. Zero selects DefaultStaleAfter (E13-D018).
+	// it stale. Zero selects DefaultStaleAfter (E13-D018). A positive
+	// StaleByRegion entry for that region wins (E12-D046).
 	StaleAfter time.Duration
+	// StaleByRegion overrides StaleAfter per region. Only positive values
+	// apply. A negative value is rejected. The deployment JSON is what sets
+	// this in production; StaleAfter stays the fallback when a region omits
+	// stale_after.
+	StaleByRegion map[string]time.Duration
 	// Resync is the full-resync interval. Zero selects DefaultResync (E13-D019).
 	Resync time.Duration
 	// Mirror tunes the instance mirrors. Zero selects the Mirror defaults.
@@ -79,6 +85,9 @@ func Start(ctx context.Context, cfg Config) (*Controller, error) {
 	if err != nil {
 		return nil, fmt.Errorf("controller: %w", err)
 	}
+	// The wait covers a dial timeout longer than the 5s default (E12-D046).
+	// With every region at the default it stays at twice that default.
+	cl.SetDialWait(state.DialWait(cfg.Topology))
 	term, err := state.Campaign(ctx, cl, state.PlaneCtl, state.ControllerInstance, cfg.Term)
 	if err != nil {
 		cl.Close()
@@ -140,9 +149,13 @@ func (cfg Config) validate() error {
 		return fmt.Errorf("controller: negative stale threshold %s", cfg.StaleAfter)
 	case cfg.Resync < 0:
 		return fmt.Errorf("controller: negative resync interval %s", cfg.Resync)
-	default:
-		return nil
 	}
+	for _, name := range slices.Sorted(maps.Keys(cfg.StaleByRegion)) {
+		if cfg.StaleByRegion[name] < 0 {
+			return fmt.Errorf("controller: negative stale threshold %s for %s", cfg.StaleByRegion[name], name)
+		}
+	}
+	return nil
 }
 
 // checkPlanes requires an agent plane for every instance except the controller.

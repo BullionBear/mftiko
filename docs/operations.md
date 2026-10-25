@@ -93,6 +93,34 @@ agent 的 unit 另外：
 
 `MFTIKO_PLAIN_HTTP` 一定要是 `true` 或 `false`。unit 把它展開成 `-plain-http=${MFTIKO_PLAIN_HTTP}`，空字串這個旗標不收。
 
+controller 連每個 region 時，密碼先讀 `MFTIKO_ETCD_PASSWORD_<region>`，沒有再用 `MFTIKO_ETCD_PASSWORD`。見 [controller](#controller)。
+
+## controller
+
+依 [DECISIONS.md](DECISIONS.md) E12-D044–E12-D048（E12-08，#381）。
+
+一期在 home region 的主機跑一個 `mftiko-controller`。Unix 使用者是 `mftiko-controller`，unit 是 `mftiko-controller.service`（`Restart=always`，E12-D019、E12-D044）。設定是 `/etc/mftiko/controller/deployment.json`，祕密在 `/etc/mftiko/controller/env`。沒有熱備援，也不在每個 region 各放一個。行程退出後由 systemd 拉回。
+
+每個 region 的 etcd 使用者都是 `controller`，角色由 `mftiko-etcd-roles` 產生。密碼可以不同：先讀 `MFTIKO_ETCD_PASSWORD_<region>`，region 名稱原樣接在後面（例如 `MFTIKO_ETCD_PASSWORD_tw`）。沒有或是空字串就用 `MFTIKO_ETCD_PASSWORD`。`-etcd-password` 只覆寫這個 fallback。每個 region 都要能得到非空密碼。
+
+deployment JSON 的每個 region 可以加三個 Go duration 字串。沒寫、空字串或 `0s` 用預設。不另加命令列旗標。
+
+| 欄位 | 預設 | 用途 |
+|---|---|---|
+| `dial_timeout` | 5 秒 | etcd client 的 `DialTimeout`：建立連線時取 auth token 與版本檢查的上限 |
+| `request_timeout` | 不加額外期限 | unary RPC 的上限，含撥號時的認證。watch 與 lease keepalive 不受這欄限制。逾時的 unary 不會用全新的預算再試 |
+| `stale_after` | 15 秒 | W9 看該 region `LastContact` 的門檻。嚴格舊過才算過舊 |
+
+controller 等一個 region 撥號完成的上限，是最長 `dial_timeout` 的兩倍，至少 10 秒。比 5 秒短的 dial 仍在 dial 自己的期限內失敗。
+
+agent、API、MD、TD 讀同一份 JSON 會收下這三欄，不改自己的 dial，也不改 W8 的過舊門檻。API 的 `unavailable_after`（`mftiko_region_available`、`/readyz`）是另一個設定，預設也是 15 秒。
+
+換版：`mftiko-release switch` 會重啟本機已啟用的 controller（順序見 [release.md](release.md)）。需求留在 etcd，session worker 在 agent 的 cgroup。controller 重啟不停止它們。testnet 上的重啟、換版與斷線恢復留給 #385。
+
+搬 home region（E13-D038）：兩個 `instances.controller` 不同的 controller 會各自只寫自己的 home cluster，另一個在那邊寫入時被取代。一期把重疊當成設定錯誤。先停掉舊的（`systemctl disable --now mftiko-controller`，否則 `Restart=always` 會再拉起來），把部署 JSON 的 `instances.controller` 改成同一個 region，再在新的 home 主機啟動。不要讓兩個同時跑。
+
+和遠端 region 斷線時維持現狀（E13-D006、E12-D047）：不刪那裡的需求，也不另外寫斷線邏輯。告警用既有的 `mftiko_region_available`，見下方監控。只斷 controller、API 仍看得到該 region 時，這個 gauge 維持 1。
+
 ## 輪替
 
 - 每個 stream（stdout、stderr 各自）寫到 64 MiB 就輪替：`{h}.stdout` 改名成 `{h}.stdout.1`，原來的 `.1` 改成 `.2`，依此類推。
