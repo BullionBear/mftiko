@@ -24,7 +24,8 @@ func TestApply(t *testing.T) {
 	dep := writeDeployment(t, s.Endpoints())
 	secrets := t.TempDir()
 	writeFile(t, filepath.Join(secrets, "root"), etcdtest.RootPassword()+"\n")
-	writeFile(t, filepath.Join(secrets, "sts-tw-1"), "given-by-hand\n")
+	hand := etcdtest.Password("h")
+	writeFile(t, filepath.Join(secrets, "sts-tw-1"), hand+"\n")
 
 	var out bytes.Buffer
 	if err := runApply(ctx, dep, "", secrets, nil, &out); err != nil {
@@ -59,7 +60,7 @@ func TestApply(t *testing.T) {
 	if _, err := md.Put(ctx, state.EpochKey(state.PlaneSTS, "sts-tw-1"), "1"); !errors.Is(err, rpctypes.ErrPermissionDenied) {
 		t.Fatalf("md writes sts's epoch: %v", err)
 	}
-	clientAs(t, s.Endpoints(), "sts-tw-1", "given-by-hand")
+	clientAs(t, s.Endpoints(), "sts-tw-1", hand)
 
 	// Twice changes nothing: no user is added, no password changes, the auth revision stays.
 	before, err := raw.AuthStatus(ctx)

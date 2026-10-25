@@ -579,7 +579,8 @@ func TestPasswordRotation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := raw.UserChangePassword(ctx, "md-tw-1", "rotated"); err != nil {
+	next := etcdtest.Password("n")
+	if _, err := raw.UserChangePassword(ctx, "md-tw-1", next); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := md.Put(ctx, mdKey, "2"); !errors.Is(err, rpctypes.ErrAuthFailed) {
@@ -588,7 +589,7 @@ func TestPasswordRotation(t *testing.T) {
 	if _, err := sts.Put(ctx, stsKey, "1"); err != nil {
 		t.Fatalf("another user after the change: %v", err)
 	}
-	if _, err := dial("md-tw-1", "rotated").Put(ctx, mdKey, "3"); err != nil {
+	if _, err := dial("md-tw-1", next).Put(ctx, mdKey, "3"); err != nil {
 		t.Fatalf("write with the new password: %v", err)
 	}
 }
