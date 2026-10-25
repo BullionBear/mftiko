@@ -136,7 +136,11 @@ func TestAdopt(t *testing.T) {
 	for _, a := range agents {
 		k := waitKids(t, a, 2*time.Minute)
 		before = append(before, k)
-		reportsBefore = append(reportsBefore, waitReports(t, a.unit, 30*time.Second))
+		// fleet.Adopt logs "shims adopted" only when run/{plane} already exists.
+		// The first start creates that directory later, inside the shim, so this
+		// count is a baseline and is usually zero. Restart, stop then start, and
+		// SIGKILL are what must append a report with adopted>=1.
+		reportsBefore = append(reportsBefore, len(adoptReports(t, a.unit)))
 	}
 
 	for i, a := range agents {
@@ -318,20 +322,6 @@ func waitKids(t *testing.T, a agent, d time.Duration) kids {
 	return last.kids
 }
 
-func waitReports(t *testing.T, unit string, d time.Duration) int {
-	t.Helper()
-	var n int
-	ok := poll(d, func() bool {
-		n = len(adoptReports(t, unit))
-		return n >= 1
-	})
-	if !ok {
-		dumpUnit(t, unit, "")
-		t.Fatalf("%s never logged \"shims adopted\"", unit)
-	}
-	return n
-}
-
 func inspect(t *testing.T, a agent) snap {
 	t.Helper()
 	var s snap
@@ -345,7 +335,7 @@ func inspect(t *testing.T, a agent) snap {
 	if len(vals) >= 3 {
 		s.cgroup = vals[2]
 	}
-	if s.cgroup != "" && !strings.HasPrefix(s.cgroup, "/") {
+	if s.cgroup != "" && !strings.HasPrefix(s.cgroup, "/") && strings.Contains(s.cgroup, "/") {
 		s.cgroup = "/" + s.cgroup
 	}
 	if s.cgroup == "" || !fileExists(cgroupProcs(s.cgroup)) {
@@ -415,7 +405,7 @@ func show(t *testing.T, unit, prop string) string {
 
 func showMulti(t *testing.T, unit string, props ...string) []string {
 	t.Helper()
-	args := []string{"systemctl", "show", "--value"}
+	args := []string{"systemctl", "show"}
 	for _, p := range props {
 		args = append(args, "-p", p)
 	}
@@ -426,11 +416,27 @@ func showMulti(t *testing.T, unit string, props ...string) []string {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	for i := range lines {
-		lines[i] = strings.TrimSpace(lines[i])
+	return parseShow(out, props)
+}
+
+// parseShow reads `systemctl show` lines of the form Name=value and returns the
+// requested properties in the caller's order. systemd 255 does not emit --value
+// lines in -p order: ActiveState, MainPID, ControlGroup came back as the PID,
+// the cgroup path, then "active", and the test then read cgroup "/active".
+func parseShow(out string, props []string) []string {
+	got := map[string]string{}
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		got[strings.TrimSpace(k)] = strings.TrimSpace(v)
 	}
-	return lines
+	vals := make([]string, len(props))
+	for i, p := range props {
+		vals[i] = got[p]
+	}
+	return vals
 }
 
 func cgroupProcs(cgroup string) string {
@@ -886,6 +892,25 @@ func repoRoot(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return root
+}
+
+func TestParseShow(t *testing.T) {
+	// systemd 255 printed these three in an order that is not the -p order.
+	out := "MainPID=6416\nControlGroup=/system.slice/mftiko-md-agent.service\nActiveState=active\n"
+	got := parseShow(out, []string{"ActiveState", "MainPID", "ControlGroup"})
+	want := []string{"active", "6416", "/system.slice/mftiko-md-agent.service"}
+	if len(got) != len(want) {
+		t.Fatalf("len %d", len(got))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("prop %d: got %q want %q", i, got[i], want[i])
+		}
+	}
+	empty := parseShow("ActiveState=inactive\nMainPID=0\nControlGroup=\n", []string{"ActiveState", "MainPID", "ControlGroup"})
+	if empty[0] != "inactive" || empty[1] != "0" || empty[2] != "" {
+		t.Fatalf("empty cgroup: %#v", empty)
+	}
 }
 
 // TestUnitKeys locks the unit files to E12-D016–E12-D020. It does not need systemd.

@@ -17,7 +17,7 @@
 | Linux x86-64 | `mftiko_<tag>_linux_amd64.tar.gz` |
 | Linux ARM64 | `mftiko_<tag>_linux_arm64.tar.gz` |
 
-tarball 裡只有一個靜態 binary `mftiko`（`CGO_ENABLED=0`）。
+tarball 裡只有一個靜態 binary `mftiko`（`CGO_ENABLED=0`）。同一份 `SHA256SUMS` 也列出主機的 `mftiko-server_<tag>_linux_amd64.tar.gz`（見 [release.md](release.md)）。
 
 ```sh
 TAG=v0.2.0 OS=darwin ARCH=arm64

@@ -135,6 +135,9 @@ jobs:
       # Console production build (E10-D079). svelte-check is the step above.
       - name: web build
         run: make web
+      # Host release tarball (E12-D026). make web above produces web/build. Same script as release.yml.
+      - name: Server release build
+        run: make server-dist
       # Same script as .github/workflows/release.yml. These tags stay on the local registry.
       - name: Pack MD and TD workers into registry:2
         env:

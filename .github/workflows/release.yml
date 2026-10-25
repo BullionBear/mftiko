@@ -1,6 +1,7 @@
 # Packs the MD and TD workers and pushes them to ghcr.io/bullionbear (E09-D085–E09-D090).
 # The workflow only pushes. It does not set package visibility. See docs/release.md.
-# The cli job attaches the mftiko CLI tarballs to the tag's GitHub Release (E11-D035).
+# The cli job attaches the mftiko CLI tarballs and the host server tarball to the
+# tag's GitHub Release (E11-D035, E12-D002). One SHA256SUMS covers both.
 name: release
 
 on:
@@ -51,7 +52,7 @@ jobs:
 
   cli:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: write # create the GitHub Release and upload its assets
     steps:
@@ -63,6 +64,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
       - name: Require a v* tag
         run: |
@@ -79,6 +86,15 @@ jobs:
           OUT: dist
         run: bash .github/scripts/build-cli.sh
 
+      - name: Build the console
+        run: make web
+
+      # After the CLI tarballs, so SHA256SUMS is rewritten over every tarball in dist/ (E12-D002).
+      - name: Build the server tarball
+        env:
+          OUT: dist
+        run: bash .github/scripts/build-server.sh
+
       # The release is created once. A workflow_dispatch of the same tag replaces the assets.
       - name: Upload to the GitHub Release
         env:
@@ -86,6 +102,6 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --verify-tag --title "$TAG" --notes "mftiko CLI $TAG. Install: docs/cli.md."
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes "mftiko $TAG. CLI: docs/cli.md. Host: docs/release.md."
           fi
-          gh release upload "$TAG" dist/mftiko_*.tar.gz dist/SHA256SUMS --clobber
+          gh release upload "$TAG" dist/mftiko_*.tar.gz dist/mftiko-server_*.tar.gz dist/SHA256SUMS --clobber
