@@ -64,7 +64,7 @@
 - Postgres 用發行版套件的 unit，不在這份清單。md.fetch 沒有 unit：E12-05 的清單沒有它。
 - etcd、NATS 的使用者是各自套件的預設使用者，要先存在。資料目錄 `StateDirectory=etcd` 由 systemd 建立；NATS 的儲存看它自己的設定檔。
 - 不設 `LimitNOFILE=`、`Type=notify`、`PrivateTmp=`、`ExecStop=`。重啟是 `Restart=always`、`RestartSec=1s`、`StartLimitIntervalSec=0`（寫在 `[Unit]`），不照上游 unit 的重啟政策。
-- 跨主機的 TLS 是 E12-06。在那之前流量只走私有網路或 VPN。
+- etcd 與 NATS 一期不開 TLS（E12-D052），跨主機流量只走私有網路或 VPN。etcd 的認證見下方「etcd 認證」。
 
 **`systemctl kill` 會殺掉整個 cgroup。** `KillMode=process` 管的是 `systemctl stop` 與 `restart`：只對 agent 送訊號，shim 與 worker 留在同一個 cgroup，新的 agent 起來收養。`systemctl kill` 不看 `KillMode=`，預設對 cgroup 裡每一個行程送訊號，worker 會一起死。只停 agent 時用 `stop`、`restart`，或對 MainPID 送訊號。
 
@@ -89,7 +89,7 @@ agent 的 unit 另外：
 | sts-agent | `MFTIKO_STS_DATA_REPOSITORY`（可省略） | 資料 artifact 的 repository，不含 registry host |
 | API | `MFTIKO_COOKIE_KEY`、`MFTIKO_POSTGRES_DSN` | cookie 的 HMAC 金鑰、Postgres DSN |
 | SYM | `DATABASE_URL`、`NATS_URL` | `-nats-creds` 固定 `/etc/mftiko/sym/nats.creds`。`MFTIKO_SYM_FEEDS` 可省略，省略就是全部 feed |
-| etcd | `/etc/etcd/etcd.env` 的 `ETCD_NAME`、`ETCD_LISTEN_CLIENT_URLS`、`ETCD_ADVERTISE_CLIENT_URLS`、`ETCD_LISTEN_PEER_URLS`、`ETCD_INITIAL_ADVERTISE_PEER_URLS`、`ETCD_INITIAL_CLUSTER`、`ETCD_INITIAL_CLUSTER_STATE` | 資料目錄由 unit 設成 `/var/lib/etcd`，env 不要改 `ETCD_DATA_DIR` |
+| etcd | `/etc/etcd/etcd.env` 的 `ETCD_NAME`、`ETCD_LISTEN_CLIENT_URLS`、`ETCD_ADVERTISE_CLIENT_URLS`、`ETCD_LISTEN_PEER_URLS`、`ETCD_INITIAL_ADVERTISE_PEER_URLS`、`ETCD_INITIAL_CLUSTER`、`ETCD_INITIAL_CLUSTER_STATE`、`ETCD_AUTH_TOKEN` | 資料目錄由 unit 設成 `/var/lib/etcd`，env 不要改 `ETCD_DATA_DIR` |
 
 `MFTIKO_PLAIN_HTTP` 一定要是 `true` 或 `false`。unit 把它展開成 `-plain-http=${MFTIKO_PLAIN_HTTP}`，空字串這個旗標不收。
 
@@ -120,6 +120,95 @@ agent、API、MD、TD 讀同一份 JSON 會收下這三欄，不改自己的 dia
 搬 home region（E13-D038）：兩個 `instances.controller` 不同的 controller 會各自只寫自己的 home cluster，另一個在那邊寫入時被取代。一期把重疊當成設定錯誤。先停掉舊的（`systemctl disable --now mftiko-controller`，否則 `Restart=always` 會再拉起來），把部署 JSON 的 `instances.controller` 改成同一個 region，再在新的 home 主機啟動。不要讓兩個同時跑。
 
 和遠端 region 斷線時維持現狀（E13-D006、E12-D047）：不刪那裡的需求，也不另外寫斷線邏輯。告警用既有的 `mftiko_region_available`，見下方監控。只斷 controller、API 仍看得到該 region 時，這個 gauge 維持 1。
+
+## etcd 認證
+
+依 [DECISIONS.md](DECISIONS.md) E12-D049–E12-D053（E12-06，#379）。每個 region 的 etcd 都開 auth、用 jwt，每個服務只用自己的 user（PROTOCOL §3.2 W1）。etcd 一期不開 TLS（E12-D052），跨主機流量只走私有網路或 VPN。
+
+密碼的主本在主機 A 的 `/etc/mftiko/etcd/`（`root:root` 0700，檔案 0600）：`root` 與每個 user 一個同名檔案。服務讀的是 `/etc/mftiko/<服務>/env` 裡的副本（見上方「主機上的使用者與檔案」）。`-apply` 每個 user 讀一個檔案，所以 `api`、`controller`、`root` 在每個 region 預設是同一個密碼。controller 每個 region 的密碼也可以不同（`MFTIKO_ETCD_PASSWORD_<region>`，E12-D045），見 [controller](#controller)。以下命令都在主機 A 以 root 執行，`R` 是 region 的 client URL。
+
+### jwt 金鑰
+
+每個 region 一對，放到該 region 的每個 member：
+
+```sh
+umask 077
+openssl ecparam -name prime256v1 -genkey -noout -out jwt.key
+openssl ec -in jwt.key -pubout -out jwt.pub
+install -o etcd -g etcd -m 0600 jwt.key /etc/etcd/jwt.key
+install -o root -g root -m 0644 jwt.pub /etc/etcd/jwt.pub
+```
+
+`/etc/etcd/etcd.env` 加上：
+
+```sh
+ETCD_AUTH_TOKEN=jwt,pub-key=/etc/etcd/jwt.pub,priv-key=/etc/etcd/jwt.key,sign-method=ES256,ttl=5m
+```
+
+### 新 cluster：開 auth、套角色表
+
+1. 每個 member 照上一節放好金鑰與 `ETCD_AUTH_TOKEN`，啟動 etcd。
+2. 建 root、開 auth（`/etc/mftiko/etcd/root` 已有就沿用，所有 region 同一個）：
+
+   ```sh
+   install -d -o root -g root -m 0700 /etc/mftiko/etcd
+   test -s /etc/mftiko/etcd/root || (umask 077; openssl rand -base64 32 | tr -d '\n=+/' >/etc/mftiko/etcd/root; echo >>/etc/mftiko/etcd/root)
+   export ETCDCTL_ENDPOINTS=R
+   etcdctl user add root --interactive=false </etc/mftiko/etcd/root
+   etcdctl user grant-role root root
+   etcdctl auth enable
+   ```
+
+3. 套角色表。`-region` 省略就是部署 JSON 裡的每個 region：
+
+   ```sh
+   mftiko-etcd-roles -in <部署 JSON> -apply -secrets /etc/mftiko/etcd -region <region>
+   ```
+
+   新建的每個 user 印一行 `add user <u>, password generated into /etc/mftiko/etcd/<u>`。把該檔案的內容寫進對應服務的 env（`MFTIKO_ETCD_PASSWORD=…`），再啟動服務。
+
+4. 檢查：`ETCDCTL_USER=root ETCDCTL_PASSWORD="$(cat /etc/mftiko/etcd/root)" etcdctl auth status` 是 `true`；以某個 agent 的 user 寫另一個 instance 的 key（例如 `etcdctl --user "<inst>:$(cat /etc/mftiko/etcd/<inst>)" put /mftiko/v1/md/<別的 inst>/epoch x`）要回 `permission denied`。
+
+### instance 增減
+
+- **新增：** 部署 JSON 加上 instance，再跑一次第 3 步。已有的 user 不動、不改密碼，auth revision 不變；只新增缺的 role、permission 與 user。
+- **輸出裡的 `is not in the table`：** cluster 有、角色表沒有的東西。`-apply` 不刪。退役的 instance 照「永久退役一個 instance」用 `-drop`；其他的確認之後用 etcdctl 手動移除。
+- **移除：** 只有退役（上一節）。
+
+### 輪換服務的密碼
+
+etcd 一個 user 只有一個密碼，所以服務要停一下（E12-D050）。**先停服務，再改密碼，再啟動。** 舊進程停下時要以自己的密碼 resign、revoke 選主的 session；先改密碼的話它認證不了，session 留到 TTL（15 秒）過期，新進程要等那麼久才選得上。testnet 實測：先停再改，controller 中斷約 0.5 秒；先改再重啟約 14.5 秒。agent 停的時候 worker 不中斷，新 agent 收養；controller 重新選主；API 在停著的時候不回應。四步連著做：
+
+```sh
+u=<user>   # instance 名稱、controller 或 api
+(umask 077; openssl rand -base64 32 | tr -d '\n=+/' >/etc/mftiko/etcd/$u.new; echo >>/etc/mftiko/etcd/$u.new)
+# 1. 新密碼寫進服務的 env（主機 B 的服務就改主機 B 上的檔案）。跑著的進程不受影響。
+#    controller 若有 MFTIKO_ETCD_PASSWORD_<region>，改的是那個 region 的變數，第 3 步也只改那個 region。
+sed -i "s|^MFTIKO_ETCD_PASSWORD=.*|MFTIKO_ETCD_PASSWORD=$(cat /etc/mftiko/etcd/$u.new)|" /etc/mftiko/<服務>/env
+# 2. 停服務（API 是每個副本；主機 B 的服務在主機 B 上停）。
+systemctl stop <unit>
+# 3. 該 user 所在的每個 region 改密碼（api、controller 是每個 region）。
+for R in <該 user 所在 region 的 client URL>; do
+  ETCDCTL_ENDPOINTS=$R ETCDCTL_USER=root ETCDCTL_PASSWORD="$(cat /etc/mftiko/etcd/root)" \
+    etcdctl user passwd "$u" --interactive=false </etc/mftiko/etcd/$u.new
+done
+mv /etc/mftiko/etcd/$u.new /etc/mftiko/etcd/$u
+# 4. 啟動。
+systemctl start <unit>
+```
+
+第 3 步失敗時，env 已經是新密碼，服務起不來：改好密碼再 start，或把 env 改回舊的（`/etc/mftiko/etcd/$u`）再 start。
+
+輪換 root：`etcdctl user passwd root`，再更新 `/etc/mftiko/etcd/root`。不用重啟任何服務。
+
+### 輪換 jwt 金鑰
+
+服務不用重啟：舊金鑰簽的 token 被拒之後，client 自己重新認證（E12-D051）。
+
+1. 照「jwt 金鑰」產生新的一對，複製到該 region 每個 member，在每台上以 rename 換掉：`install … /etc/etcd/jwt.key.new` 再 `mv /etc/etcd/jwt.key.new /etc/etcd/jwt.key`，`jwt.pub` 同樣。
+2. 逐台 `systemctl restart etcd`，等健康再換下一台。auth 開了之後 `endpoint health` 要帶 root：`ETCDCTL_USER=root ETCDCTL_PASSWORD="$(cat /etc/mftiko/etcd/root)" etcdctl endpoint health`，不帶會一直失敗。
+3. 每台的重啟要在 10 秒內完成，否則連著這台的服務會因 keepalive 期限結束 term 再重新參選（agent 的 worker 不受影響）。testnet 實測約 7 秒：有 client 連著時 etcd 停下要 7 秒，啟動不到 1 秒。
+4. 檢查：服務沒有重啟（`systemctl show -p NRestarts <unit>` 不變），log 有幾次 `invalid auth token` 之後恢復；舊的 token（換之前用 `curl -X POST R/v3/auth/authenticate` 拿到的）現在回 `invalid auth token`。
 
 ## 輪替
 

@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>E4 拆票</title>
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --paper: #fbfaf6;
+    --ink: #1c1915;
+    --muted: #5e584e;
+    --line: #e3ddd2;
+    --line-strong: #cfc6b8;
+    --code: #f3efe6;
+    --accent: #6b3a1f;
+    --nav: #2a2622;
+    --draft: #8a3b12;
+    --draft-bg: #f6e6d8;
+    --ok: #1f4d38;
+    --ok-bg: #e5f0e8;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    background: var(--bg);
+    font: 16px/1.65 "Iowan Old Style", "Palatino Linotype", Palatino, "Songti TC", "PMingLiU", serif;
+  }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  code {
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.84em;
+  }
+  header.top {
+    background: var(--nav);
+    color: #f6f1e8;
+    padding: 2.4rem 2rem 1.8rem;
+  }
+  header.top h1 {
+    margin: 0 0 0.4rem;
+    font-weight: 500;
+    font-size: 1.85rem;
+    letter-spacing: 0.01em;
+  }
+  header.top p { margin: 0.35rem 0; max-width: 46rem; color: #d9d0c4; }
+  .badge {
+    display: inline-block;
+    margin-bottom: 0.7rem;
+    padding: 0.1rem 0.5rem;
+    border-radius: 2px;
+    background: var(--draft-bg);
+    color: var(--draft);
+    font: 600 0.72rem/1.4 "PingFang TC", "Helvetica Neue", sans-serif;
+    letter-spacing: 0.08em;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 15.5rem minmax(0, 52rem);
+    gap: 2.5rem;
+    max-width: 72rem;
+    margin: 0 auto;
+    padding: 1.6rem 1.4rem 4rem;
+  }
+  nav {
+    position: sticky;
+    top: 1rem;
+    align-self: start;
+    font: 0.82rem/1.45 "PingFang TC", "Helvetica Neue", sans-serif;
+  }
+  nav ol { list-style: none; margin: 0; padding: 0; }
+  nav a { color: var(--muted); text-decoration: none; }
+  nav a:hover { color: var(--ink); }
+  nav li { margin: 0.28rem 0; }
+  main h2 {
+    margin: 2.4rem 0 0.6rem;
+    padding-top: 0.4rem;
+    font-size: 1.45rem;
+    font-weight: 500;
+    border-top: 1px solid var(--line-strong);
+  }
+  main h2:first-child { margin-top: 0; border-top: 0; }
+  main h3 {
+    margin: 1.6rem 0 0.35rem;
+    font-size: 1.15rem;
+    font-weight: 600;
+  }
+  main p { margin: 0.45rem 0 0.7rem; }
+  .meta {
+    margin: 0 0 0.6rem;
+    color: var(--muted);
+    font: 0.78rem/1.45 "PingFang TC", "Helvetica Neue", sans-serif;
+  }
+  .meta span { margin-right: 1rem; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.4rem 0 1rem;
+    background: var(--paper);
+    font-size: 0.92rem;
+  }
+  th, td {
+    text-align: left;
+    vertical-align: top;
+    padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid var(--line);
+  }
+  th {
+    font: 600 0.75rem/1.3 "PingFang TC", "Helvetica Neue", sans-serif;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    background: #f7f4ee;
+  }
+  td a { text-decoration: none; }
+  .ticket {
+    margin: 0.9rem 0 1.1rem;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    padding: 0.7rem 0.9rem 0.85rem;
+  }
+  .ticket h3 { margin-top: 0; }
+  ul { margin: 0.3rem 0 0.7rem; padding-left: 1.2rem; }
+  li { margin: 0.2rem 0; }
+  .note {
+    margin: 0.8rem 0 1rem;
+    padding: 0.75rem 0.95rem;
+    background: var(--paper);
+    border-left: 3px solid var(--line-strong);
+  }
+  svg.dag {
+    width: 100%;
+    height: auto;
+    background: var(--paper);
+    border: 1px solid var(--line);
+  }
+  svg.dag rect { fill: var(--code); stroke: var(--line-strong); }
+  svg.dag rect.ext { fill: var(--draft-bg); stroke: var(--draft); }
+  svg.dag rect.done { fill: var(--ok-bg); stroke: var(--ok); }
+  svg.dag rect.ready { fill: #f8f1d8; stroke: #8a6a12; }
+  svg.dag text { fill: var(--ink); }
+  .st {
+    display: inline-block;
+    padding: 0 0.35rem;
+    border-radius: 2px;
+    font: 600 0.72rem/1.5 "PingFang TC", "Helvetica Neue", sans-serif;
+  }
+  .st-done { background: var(--ok-bg); color: var(--ok); }
+  .st-ready { background: #f8f1d8; color: #6d5310; }
+  .st-wait { background: var(--code); color: var(--muted); }
+  .ticket.done { box-shadow: inset 3px 0 0 var(--ok); }
+  .ticket.ready { box-shadow: inset 3px 0 0 #8a6a12; }
+  tr.done td { background: #f3f8f4; }
+  tr.ready td { background: #fbf6e4; }
+  svg.dag a { text-decoration: none; }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    nav { position: static; }
+  }
+  @media print {
+    header.top { background: white; color: black; }
+    header.top p { color: black; }
+    nav { display: none; }
+    .layout { display: block; padding: 0; }
+    body { background: white; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="badge">已開票 · #6 E4</div>
+  <h1>E4 MD：feed 路徑</h1>
+  <p>十三張票。先定會卡住後面的決定，中間用錄下來的流量測，要連 testnet 的放最後。驗收用的需求項目手寫，不等 controller。</p>
+  <p>2026-10-11：E4-01、E4-02、E4-03、E4-04、E4-07、E4-13 已合併。現在可以做 E4-05、E4-06、E4-08。</p>
+  <p>依據 <a href="https://github.com/BullionBear/mftiko/issues/6">#6</a>、D402、D403、D803、D901、D905。E3 的 adapter 已定案。</p>
+</header>
+<div class="layout">
+<nav>
+  <ol>
+    <li><a href="#out">不在這張 epic</a></li>
+    <li><a href="#order">依賴</a></li>
+    <li><a href="#list">總表</a></li>
+    <li><a href="#e4-01">E4-01 定 P6、P9</a></li>
+    <li><a href="#e4-02">E4-02 envelope</a></li>
+    <li><a href="#e4-03">E4-03 dev NATS</a></li>
+    <li><a href="#e4-04">E4-04 連線與 md.f</a></li>
+    <li><a href="#e4-13">E4-13 conn_epoch</a></li>
+    <li><a href="#e4-05">E4-05 訂單簿</a></li>
+    <li><a href="#e4-06">E4-06 tape 與 md.view</a></li>
+    <li><a href="#e4-07">E4-07 md.fetch</a></li>
+    <li><a href="#e4-08">E4-08 md-agent</a></li>
+    <li><a href="#e4-09">E4-09 BinanceUM</a></li>
+    <li><a href="#e4-10">E4-10 Binance Spot</a></li>
+    <li><a href="#e4-11">E4-11 Bybit、OKX</a></li>
+    <li><a href="#e4-12">E4-12 proto 定案</a></li>
+  </ol>
+</nav>
+<main>
+
+<h2 id="out">不在這張 epic</h2>
+<ul>
+  <li>selector、轉倉合約：<a href="https://github.com/BullionBear/mftiko/issues/7">#7 E5</a>。這張只做 feed，一個需求項目對一個已經寫死的商品。</li>
+  <li>controller 從 session spec 推導需求、放行 Start：<a href="https://github.com/BullionBear/mftiko/issues/50">#50 E13</a>。E4 的驗收把手寫的需求項目放進 etcd。</li>
+  <li>artifact 管線、OCI 發佈：E9。在那之前，md-agent 執行 repo 建出的 conn worker。</li>
+  <li>P14 的 NATS subject 拼法。這一版維持 <code>md.f.{inst}.{topic}.{ticker}</code> 與 <code>md.view.{inst}.{topic}.{ticker}</code>。</li>
+  <li>SDK 的 prehook、跳號後向 <code>md.view</code> 重拿：E8。E4 把訊息與 <code>md.view</code> 做出來。</li>
+  <li>每個 session 的 NATS user JWT：D906，屬於 STS。</li>
+</ul>
+
+<h2 id="order">依賴</h2>
+<p>箭頭從先做完的票指向被它擋住的票。由上往下。E1 是另一張 epic。<code>md.fetch</code> 做完就停，不擋驗收。E4-10 與 E4-09 平行，不擋 E4-11。E4-13 接在 E4-04 與 E4-08 之間：下一個行程用的 <code>conn_epoch</code> 先寫進 shim 的 <code>Report</code>。</p>
+<svg class="dag" viewBox="0 0 560 710" role="img" aria-label="E4 依賴：E4-02 通往 E4-04，再通往 E4-05、E4-06，並經 E4-13 通往 E4-08。E1 與 E4-01 也通往 E4-08。E4-05、E4-06、E4-08 同時匯入 E4-09 與 E4-10。E4-09 通往 E4-11。E4-10 與 E4-11 匯入 E4-12。E4-03 只通往 E4-07。">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1.2 L 9 5 L 0 8.8 z" fill="#6b3a1f"/>
+    </marker>
+  </defs>
+  <g fill="none" stroke="#6b3a1f" stroke-width="1.4" marker-end="url(#arrow)">
+    <path d="M72 52 V198"/>
+    <path d="M212 52 H140 V190 H72 V198"/>
+    <path d="M352 52 V98"/>
+    <path d="M492 52 V98"/>
+    <path d="M352 136 V198"/>
+    <path d="M296 118 H268"/>
+    <path d="M212 136 V210 H130"/>
+    <path d="M408 132 H424 V150 H530 V318 H410"/>
+    <path d="M352 236 V298"/>
+    <path d="M72 236 V428"/>
+    <path d="M296 218 H180 V400 H110 V428"/>
+    <path d="M352 336 V380 H90 V428"/>
+    <path d="M408 220 H460 V428"/>
+    <path d="M408 332 H492 V428"/>
+    <path d="M128 230 H145 V360 H520 V428"/>
+    <path d="M72 466 V538"/>
+    <path d="M72 576 V668 H224"/>
+    <path d="M492 466 V668 H340"/>
+  </g>
+  <g font-family="Palatino, Songti TC, serif" font-size="15">
+    <a href="https://github.com/BullionBear/mftiko/issues/3"><rect class="ext done" x="16" y="16" width="112" height="36" rx="3"/><text x="72" y="39" text-anchor="middle">E1 收養</text></a>
+    <a href="#e4-01"><rect class="done" x="156" y="16" width="112" height="36" rx="3"/><text x="212" y="39" text-anchor="middle">E4-01</text></a>
+    <a href="#e4-02"><rect class="done" x="296" y="16" width="112" height="36" rx="3"/><text x="352" y="39" text-anchor="middle">E4-02</text></a>
+    <a href="#e4-03"><rect class="done" x="436" y="16" width="112" height="36" rx="3"/><text x="492" y="39" text-anchor="middle">E4-03</text></a>
+    <a href="#e4-04"><rect class="done" x="296" y="100" width="112" height="36" rx="3"/><text x="352" y="123" text-anchor="middle">E4-04</text></a>
+    <a href="#e4-13"><rect class="done" x="156" y="100" width="112" height="36" rx="3"/><text x="212" y="123" text-anchor="middle">E4-13</text></a>
+    <a href="#e4-07"><rect class="done" x="436" y="100" width="112" height="36" rx="3"/><text x="492" y="123" text-anchor="middle">E4-07</text></a>
+    <a href="#e4-08"><rect class="ready" x="16" y="200" width="112" height="36" rx="3"/><text x="72" y="223" text-anchor="middle">E4-08</text></a>
+    <a href="#e4-05"><rect class="ready" x="296" y="200" width="112" height="36" rx="3"/><text x="352" y="223" text-anchor="middle">E4-05</text></a>
+    <a href="#e4-06"><rect class="ready" x="296" y="300" width="112" height="36" rx="3"/><text x="352" y="323" text-anchor="middle">E4-06</text></a>
+    <a href="#e4-09"><rect x="16" y="430" width="112" height="36" rx="3"/><text x="72" y="453" text-anchor="middle">E4-09</text></a>
+    <a href="#e4-10"><rect x="436" y="430" width="112" height="36" rx="3"/><text x="492" y="453" text-anchor="middle">E4-10</text></a>
+    <a href="#e4-11"><rect x="16" y="540" width="112" height="36" rx="3"/><text x="72" y="563" text-anchor="middle">E4-11</text></a>
+    <a href="#e4-12"><rect x="226" y="650" width="112" height="36" rx="3"/><text x="282" y="673" text-anchor="middle">E4-12</text></a>
+  </g>
+</svg>
+<div class="note">
+  <p>綠底是已合併，黃底是現在可以做。E4-08 還要 E1 的收養：子票都已關閉，epic <a href="https://github.com/BullionBear/mftiko/issues/3">#3</a> 本身還開著。<a href="https://github.com/BullionBear/mftiko/issues/143">#143</a> 與 <a href="https://github.com/BullionBear/mftiko/issues/147">#147</a> 的程式已在 main，issue 還沒關。</p>
+  <p>不連交易所的票不需要 API key。E4-09、E4-10、E4-11 要對 testnet 或 demo 收真的公開行情。</p>
+</div>
+
+<h2 id="list">總表</h2>
+<table>
+  <thead><tr><th>票</th><th>內容</th><th>誰</th><th>依賴</th><th>狀態</th></tr></thead>
+  <tbody>
+    <tr class="done"><td><a href="#e4-01">E4-01</a> <a href="https://github.com/BullionBear/mftiko/issues/141">#141</a></td><td>定 P6、P9</td><td>不連交易所</td><td>無</td><td>已合併</td></tr>
+    <tr class="done"><td><a href="#e4-02">E4-02</a> <a href="https://github.com/BullionBear/mftiko/issues/142">#142</a></td><td><code>contract/wire/envelope</code></td><td>不連交易所</td><td>無</td><td>已合併</td></tr>
+    <tr class="done"><td><a href="#e4-03">E4-03</a> <a href="https://github.com/BullionBear/mftiko/issues/143">#143</a></td><td>dev NATS 的 operator／account 與 inbox</td><td>不連交易所</td><td>無</td><td>已合併</td></tr>
+    <tr class="done"><td><a href="#e4-04">E4-04</a> <a href="https://github.com/BullionBear/mftiko/issues/144">#144</a></td><td>連線、訂閱 diff、解碼、<code>md.f</code></td><td>不連交易所</td><td>E4-02</td><td>已合併</td></tr>
+    <tr class="done"><td><a href="#e4-13">E4-13</a> <a href="https://github.com/BullionBear/mftiko/issues/156">#156</a></td><td><code>conn_epoch</code> 經 shim 交給下一個行程</td><td>不連交易所</td><td>E4-04</td><td>已合併</td></tr>
+    <tr class="ready"><td><a href="#e4-05">E4-05</a> <a href="https://github.com/BullionBear/mftiko/issues/145">#145</a></td><td>本地訂單簿</td><td>不連交易所</td><td>E4-04</td><td>可以做</td></tr>
+    <tr class="ready"><td><a href="#e4-06">E4-06</a> <a href="https://github.com/BullionBear/mftiko/issues/146">#146</a></td><td>tape ring、<code>md.view</code></td><td>不連交易所</td><td>E4-04；簿的回覆等 E4-05</td><td>可以做</td></tr>
+    <tr class="done"><td><a href="#e4-07">E4-07</a> <a href="https://github.com/BullionBear/mftiko/issues/147">#147</a></td><td><code>md.fetch</code></td><td>不連交易所</td><td>E4-03</td><td>已合併</td></tr>
+    <tr class="ready"><td><a href="#e4-08">E4-08</a> <a href="https://github.com/BullionBear/mftiko/issues/148">#148</a></td><td>md-agent：解析、放置、linger、ack</td><td>不連交易所</td><td>E4-01、E4-04、E4-13、E1 收養</td><td>可以做</td></tr>
+    <tr><td><a href="#e4-09">E4-09</a> <a href="https://github.com/BullionBear/mftiko/issues/149">#149</a></td><td>BinanceUM testnet 驗收</td><td>要連 testnet</td><td>E4-05、E4-06、E4-08</td><td>還不能做</td></tr>
+    <tr><td><a href="#e4-10">E4-10</a> <a href="https://github.com/BullionBear/mftiko/issues/150">#150</a></td><td>Binance Spot testnet 驗收</td><td>要連 testnet</td><td>E4-05、E4-06、E4-08</td><td>還不能做</td></tr>
+    <tr><td><a href="#e4-11">E4-11</a> <a href="https://github.com/BullionBear/mftiko/issues/151">#151</a></td><td>Bybit、OKX 同一組驗收</td><td>要連 testnet</td><td>E4-09</td><td>還不能做</td></tr>
+    <tr><td><a href="#e4-12">E4-12</a> <a href="https://github.com/BullionBear/mftiko/issues/152">#152</a></td><td><code>mdctl</code>、<code>md</code>、<code>read</code> 定案</td><td>不連交易所</td><td>E4-09、E4-10、E4-11</td><td>還不能做</td></tr>
+  </tbody>
+</table>
+
+<h2>各票</h2>
+
+<div class="ticket done" id="e4-01">
+  <h3>E4-01　定 P6 與 P9</h3>
+  <p class="meta"><span class="st st-done">已合併</span><span>不連交易所</span><span>無依賴</span></p>
+  <p>epic 寫明開工前要定的兩件事。只改 PROTOCOL 與 DECISIONS。</p>
+  <ul>
+    <li><strong>P6。</strong> worker 一結束就寫 <code>DEAD</code> 的話，conn worker crash 會讓 controller 結束這條連線上所有 session。另一種是自動重拉期間維持 <code>PENDING</code>，放棄才寫 <code>DEAD</code>。定一種，寫進 §3.5。</li>
+    <li><strong>P9。</strong> conn worker 的版本放在 controller 的部署設定，還是 etcd 裡一個 key；換版時怎麼排程換 incarnation（D106）。E9 的 artifact 管線做好之前，md-agent 執行 repo 建出的 binary。這條過渡也寫進去。</li>
+    <li>P14 不在這張定。subject 維持現在的拼法。</li>
+  </ul>
+  <p>完成：P6、P9 從 §10 的待定清單移出，內容寫進正文。</p>
+</div>
+
+<div class="ticket done" id="e4-02">
+  <h3>E4-02　md.f 的 envelope</h3>
+  <p class="meta"><span class="st st-done">已合併</span><span>不連交易所</span><span>無依賴</span></p>
+  <p><code>contract/wire/envelope</code> 現在只有 v1 的偏移：32 byte，<code>version</code>、<code>len</code>、<code>md_ts_ns</code>、<code>conn_epoch</code>、<code>seq</code>。編碼與解碼還沒有。套件說明寫著 shape only。</p>
+  <ul>
+    <li>寫入與讀取這 32 byte。讀取端用 <code>len</code> 跳到 payload，之後加長 envelope 也不破。</li>
+    <li>不碰 NATS。protobuf 的 <code>FeedEvent</code> 接在後面，這張票不組 subject。</li>
+  </ul>
+  <p>完成：來回寫一次，欄位不變；<code>len</code> 較長的後代版本，v1 的讀取端能跳過自己不認識的尾巴。</p>
+</div>
+
+<div class="ticket done" id="e4-03">
+  <h3>E4-03　dev NATS 的帳號與 inbox</h3>
+  <p class="meta"><span class="st st-done">已合併</span><span>不連交易所</span><span>無依賴</span></p>
+  <p>從 E0 移到 E4、又還沒做的那一段。natsx 的連線、request／reply、dev compose 的 NATS 與內嵌 nats-server 已在 E2-07。</p>
+  <ul>
+    <li>dev compose 補上 operator／account JWT，讓 MD 的行程能發 <code>md.f</code>、回答 <code>md.view</code> 與 <code>md.fetch</code>。</li>
+    <li>request／reply 用的 inbox 前綴。natsx 目前明確不設每條 session 的 inbox（D906）。</li>
+    <li>不簽每個 session 的 user JWT。那是 STS spawn 時做的事。</li>
+  </ul>
+  <p>完成：本機 compose 起來之後，一個測試行程能發布、能用 inbox 做一次 request／reply。</p>
+</div>
+
+<div class="ticket done" id="e4-04">
+  <h3>E4-04　連線、訂閱 diff、解碼、md.f</h3>
+  <p class="meta"><span class="st st-done">已合併</span><span>不連交易所</span><span>依賴 E4-02</span></p>
+  <p>一顆 conn worker：一條 websocket，身分是 <code>(venue, route, n)</code>。交易所的差異走 E3 的 <code>Market</code>／<code>Session</code>。Ping／Pong 與 <code>MaxLifetime</code> 已經在 <code>exchange/transport/ws</code>，這張票呼叫它，不重寫。</p>
+  <ul>
+    <li>照 desired 清單做 subscribe／unsubscribe 的 diff。送出節奏遵守 <code>SessionLimits</code>。</li>
+    <li><code>Decode</code> 進 Sink。trade 這類非簿事件編成 <code>FeedEvent</code>，前面加上 envelope，發到 <code>md.f.{inst}.{topic}.{ticker}</code>。</li>
+    <li><code>seq</code> 在同一個 <code>(feed, conn_epoch)</code> 裡從 1 連續。重連時 <code>conn_epoch</code> 加一，seq 重新從 1。</li>
+    <li>斷線由 worker 重撥。adapter 不重連。</li>
+    <li>用錄下來的 session 與假的 websocket 測，不連交易所。訂單簿的 fold 不在這張。</li>
+  </ul>
+  <p>完成：重播一條 trade session，訂閱只送出差異，發出的 seq 連續；模擬斷線重連後 <code>conn_epoch</code> 加一。</p>
+</div>
+
+<div class="ticket done" id="e4-13">
+  <h3>E4-13　conn_epoch 經 shim 交給下一個行程</h3>
+  <p class="meta"><span class="st st-done">已合併</span><span>不連交易所</span><span>依賴 E4-04</span></p>
+  <p><code>mftiko-md-conn</code> 在 fd 3 上說 C4，幀格式跟 shim 已經在說的那套一樣。<code>InitPayload.conn_epoch</code> 是上次上報的號，0 表示還沒有上報過，第一次撥號用 1。proto 與 PROTOCOL §6.2 一起改，<code>mdctl</code> 仍是草案。</p>
+  <ul>
+    <li>收 <code>Init</code>、<code>Start</code>，送 <code>Hello</code>、<code>Beat</code>、<code>Report</code>。</li>
+    <li>同一個行程裡重連，或新行程第一次撥號：先把新號寫進 <code>Report</code>，寫完才撥，<code>md.f</code> 才用這個號。撥不上不消耗。</li>
+    <li>不寫 etcd。shim 退出之後這份快照就沒了，下一次從 1 起。</li>
+    <li>agent 讀 <code>Report</code>、在 <code>Release</code> 之後寫進下一次 <code>Init</code>，是 E4-08。</li>
+  </ul>
+  <p>完成：<code>Init</code> 帶 N 時，對端在第一次撥上之前就收到 <code>conn_epoch</code> N+1。同一個行程斷線重連，下一個號同樣先到對端。用假的 C4 對端測，不連交易所。</p>
+</div>
+
+<div class="ticket ready" id="e4-05">
+  <h3>E4-05　本地訂單簿</h3>
+  <p class="meta"><span class="st st-ready">可以做</span><span>不連交易所</span><span>依賴 E4-04</span></p>
+  <p>不管策略訂的是 <code>orderbook</code> 還是 <code>orderbook_delta</code>，worker 都維護一本本地全量。兩個 topic 對到同一個 atom。快照不經過 <code>md.fetch</code>。</p>
+  <ul>
+    <li><code>SnapshotREST</code>（Binance 現貨、BinanceUM）：先緩衝增量，在進程內跑 <code>PublicREST.Depth</code>，丟掉 snapshot 已經涵蓋的更新。檔數用 <code>BookSync.Depth</code>（現在是 1000）。</li>
+    <li><code>SnapshotStream</code>（Bybit、OKX）：訂閱後的第一則就是全本。這兩家的 REST <code>Depth</code> 不參與同步。</li>
+    <li><code>BookSync.Check</code> 判斷套用、略過或重抓。斷號或 checksum 失敗就丟掉本地本、重抓，然後推一則 <code>reset</code>，內容是完整的 book。</li>
+    <li><code>orderbook</code> 推 top-N 全量，top-N 有變才推。N 是這個 MD instance 的設定，同一個 venue 上固定。<code>orderbook_delta</code> 推正規化增量，數量 0 表示刪除該檔。</li>
+  </ul>
+  <p>完成：Binance 的錄製 session 加上一份 depth fixture，結束時本地本與 snapshot 一致；抽掉一筆更新會重抓並發出 <code>reset</code>。Bybit 或 OKX 的錄製 session 用串流裡的全本對齊，不打 REST。</p>
+</div>
+
+<div class="ticket ready" id="e4-06">
+  <h3>E4-06　tape ring 與 md.view</h3>
+  <p class="meta"><span class="st st-ready">可以做</span><span>不連交易所</span><span>依賴 E4-04；訂單簿的回覆等 E4-05</span></p>
+  <p>晚加入的人先訂 <code>md.f</code>，再向持有這顆 atom 的 worker 要 <code>md.view</code>。</p>
+  <ul>
+    <li>只錄 <code>trade</code>、<code>aggtrade</code>、<code>liquidation</code>。錄不錄由 topic 決定，agent 寫在 <code>AtomAssignment.record</code>。book 不錄。</li>
+    <li>每個 atom 一個 ring，存已經發出去的位元組（envelope 加 <code>FeedEvent</code>），回覆時不再編碼。上限是時間窗加筆數，再加 worker 的總上限。</li>
+    <li>websocket 重連時在 ring 裡記一個 gap。</li>
+    <li><code>md.view.{inst}.{topic}.{ticker}</code>：trade 類回 tape 分頁，由新到舊，游標是 <code>(conn_epoch, seq)</code>，每頁小於 1 MiB。<code>orderbook_delta</code> 回 seq S 時的 book。沒有 responder 就是沒有 worker 持有這顆 atom。</li>
+    <li>tape 跟著行程與 atom。linger 結束或行程被換掉，tape 就沒了。不寫 Redis。</li>
+  </ul>
+  <p>完成：先訂 <code>md.f</code> 再讀 view，接縫上沒有缺口、也沒有重複套用 seq ≤ S 的增量。重連後的 tape 帶著 gap。book 的 view 回的是該 seq 的全本。</p>
+</div>
+
+<div class="ticket done" id="e4-07">
+  <h3>E4-07　md.fetch</h3>
+  <p class="meta"><span class="st st-done">已合併</span><span>不連交易所</span><span>依賴 E4-03</span></p>
+  <p>無狀態服務，每個 region 一個 NATS queue group。任何 replica 都能回答。沒有 agent、沒有 lease、不落庫。</p>
+  <ul>
+    <li>只轉發公開 REST：<code>Klines</code>，以及交易所不推送、只能查詢的值（BinanceUM 的 open interest）。</li>
+    <li>用 E3 的 <code>PublicREST</code> 與 fasthttp Doer。測試用錄下來的回應。</li>
+    <li>訂單簿的快照不走這裡。best quote 這類有推送的值走 feed，不輪詢。</li>
+  </ul>
+  <p>完成：對一個假的 REST 來源，K 線分頁與 open interest 各回答一次；兩個 replica 在同一個 queue group 裡，一則請求只有一個回答。</p>
+</div>
+
+<div class="ticket ready" id="e4-08">
+  <h3>E4-08　md-agent</h3>
+  <p class="meta"><span class="st st-ready">可以做</span><span>不連交易所</span><span>依賴 E4-01、E4-04、E4-13，以及 E1 的收養</span></p>
+  <p>需求項目進來之後，agent 把它變成連線上的 atom。controller 不展開。這張票不讀 session spec。</p>
+  <ul>
+    <li>feed key 仍是 <code>&lt;topic&gt;.&lt;UniversalTicker&gt;</code>。用已載入的商品表 <code>Resolver.Get</code> 解成 UID。找不到、已下架、已到期，或不是 <code>TRADABLE</code>，ack 是 <code>REJECTED</code>。之後放置與事件身分用 UID；要欄位時用 <code>GetByUID</code>。</li>
+    <li><code>Market.Atom</code> 給出 route 與 channel。atom id 維持 <code>&lt;venue&gt;:&lt;route&gt;:&lt;channel&gt;</code>。多個 feed 可以共用一個 atom，refcount 是 owner 集合的大小，不是計數器。owner 是 <code>(session, feed)</code>。</li>
+    <li>新 atom 放進同一個 <code>(venue, route)</code> 裡還有空間、n 最小的連線。放滿才開 n+1。放置有黏性，記在 etcd，重啟後沿用。不整併。</li>
+    <li>owner 歸零後等 linger（預設 5 秒）再退訂。最後一個 atom 退訂就停掉那顆 worker。不另設連線的 linger。</li>
+    <li>ack 寫回需求項目。重啟時 list 需求前綴，重建 owner 集合，收養 shim 還活著的 conn worker，連線不斷。</li>
+    <li>重拉已結束的 conn worker 時，先從舊 shim 的最新 <code>Report</code> 讀 <code>conn_epoch</code>，<code>Release</code> 之後的 <code>Init</code> 帶這個號（E4-13）。shim 已經不在就從 0 起。</li>
+    <li>E9 之前，spawn 的是 repo 建出的 binary，版本規則依 E4-01。</li>
+  </ul>
+  <p>完成：手寫兩筆需求，其中一筆與另一筆落在同一個 atom，只訂閱一次。拿掉一筆，linger 之後才退訂。agent 行程換掉之後，conn worker 還在，新 agent 看得到它。連線崩潰後重拉，新行程的 <code>Init</code> 帶著舊 shim 最後上報的 <code>conn_epoch</code>。</p>
+</div>
+
+<div class="ticket" id="e4-09">
+  <h3>E4-09　BinanceUM testnet 驗收</h3>
+  <p class="meta"><span class="st st-wait">還不能做</span><span>要連 testnet</span><span>依賴 E4-05、E4-06、E4-08</span></p>
+  <p>epic 的第一組完成標準。需求項目手寫，商品用 BinanceUM 的 BTCUSDT。</p>
+  <ul>
+    <li><code>trade</code> 與 <code>orderbook_delta</code> 都收到事件，同一個 feed 上的 <code>seq</code> 連續。</li>
+    <li>晚加入：先訂 <code>md.f</code>，再向 <code>md.view</code> 拿到當時的 book，之後只套用較新的 seq。</li>
+    <li>把連線打斷再接上，<code>conn_epoch</code> 加一。</li>
+    <li>換掉 md-agent 的行程，websocket 不斷，事件繼續來。</li>
+  </ul>
+  <p>完成：上面四條在 testnet 上各走一次，留有紀錄。</p>
+</div>
+
+<div class="ticket" id="e4-10">
+  <h3>E4-10　Binance Spot testnet 驗收</h3>
+  <p class="meta"><span class="st st-wait">還不能做</span><span>要連 testnet</span><span>依賴 E4-05、E4-06、E4-08</span></p>
+  <p>與 E4-09 同一組四條，可以同時做，不擋 E4-11。<a href="https://github.com/BullionBear/mftiko/issues/6">#6</a> 的條文只寫了 BinanceUM。這張補 venue <code>Binance</code> 的現貨：另一條 websocket，route <code>default</code>，簿仍是 <code>SnapshotREST</code>，depth 是 <code>GET /api/v3/depth</code>。商品用 <code>Binance_Spot_BTCUSDT</code>，連 spot testnet（<code>testnet.binance.vision</code>）。</p>
+  <ul>
+    <li><code>trade</code> 與 <code>orderbook_delta</code> 都收到事件，同一個 feed 上的 <code>seq</code> 連續。現貨的 depth 沒有 <code>pu</code>，對齊規則用現貨這份 <code>BookSync</code>，不沿用 UM。</li>
+    <li>晚加入：先訂 <code>md.f</code>，再向 <code>md.view</code> 拿到當時的 book，之後只套用較新的 seq。</li>
+    <li>把連線打斷再接上，<code>conn_epoch</code> 加一。</li>
+    <li>換掉 md-agent 的行程，websocket 不斷，事件繼續來。</li>
+  </ul>
+  <p>完成：上面四條在 spot testnet 上各走一次，留有紀錄。</p>
+</div>
+
+<div class="ticket" id="e4-11">
+  <h3>E4-11　Bybit 與 OKX</h3>
+  <p class="meta"><span class="st st-wait">還不能做</span><span>要連 testnet 或 demo</span><span>依賴 E4-09</span></p>
+  <p>同一組四條驗收。簿是 <code>SnapshotStream</code>，不打 depth REST。Bybit 用 linear，OKX 用 USDT 本位永續。</p>
+  <p>完成：兩家都有連續的 trade 與 <code>orderbook_delta</code>、<code>md.view</code>、重連後的 <code>conn_epoch</code>、agent 輪換時連線不斷。</p>
+</div>
+
+<div class="ticket" id="e4-12">
+  <h3>E4-12　三份 proto 定案</h3>
+  <p class="meta"><span class="st st-wait">還不能做</span><span>不連交易所</span><span>依賴 E4-09、E4-10、E4-11</span></p>
+  <p><code>mdctl.proto</code>、<code>md.proto</code>、<code>read.proto</code> 從 <code>buf.yaml</code> 的草案清單移出，<code>buf breaking</code> 開始檢查。PROTOCOL §1 那三列改成定案。勾掉 #6 的完成標準。現貨不在 #6 的勾選清單裡，這張仍等 E4-10 做完再定案。</p>
+  <p>完成：epic #6 可以關閉。</p>
+</div>
+
+</main>
+</div>
+</body>
+</html>

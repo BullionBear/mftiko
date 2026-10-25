@@ -1,6 +1,6 @@
 # NATS, official binary (E12-D020). Restart policy is E12-D019, not the upstream unit.
 # No PrivateTmp, no ExecStop, no LimitNOFILE. The server config is /etc/nats/nats-server.conf.
-# TLS is E12-06.
+# No TLS in phase 1 (E12-D052): traffic between hosts stays on the private network or VPN.
 
 [Unit]
 Description=NATS

@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>E10 票狀態盤點</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: 單欄狀態板。20 格進度條 → 現在可開工 → 依賴波次看板 → 逐票明細 */
+:root{
+  --bg:#f4f5f8; --surface:#ffffff; --fg:#151a22; --mute:#5b6472; --line:#dce0e7;
+  --done:#17734a; --done-soft:#e1f1e8;
+  --ready:#2350c4; --ready-soft:#e3eafb;
+  --wait:#8a6210; --wait-soft:#f5edda;
+  --f-display:"Noto Serif TC","Songti TC","PMingLiU",serif;
+  --f-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#12151b; --surface:#1a1e26; --fg:#e7eaf0; --mute:#98a1b0; --line:#2b313c;
+    --done:#5fcf97; --done-soft:#16302a; --ready:#8aa8ff; --ready-soft:#1c2747;
+    --wait:#e0b45a; --wait-soft:#33291a; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#12151b; --surface:#1a1e26; --fg:#e7eaf0; --mute:#98a1b0; --line:#2b313c;
+  --done:#5fcf97; --done-soft:#16302a; --ready:#8aa8ff; --ready-soft:#1c2747;
+  --wait:#e0b45a; --wait-soft:#33291a; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 var(--f-body)}
+main{max-width:1120px;margin:0 auto;padding-block:36px 72px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:40px}
+section{display:flex;flex-direction:column;gap:14px;min-width:0}
+h1{font:700 30px/1.25 var(--f-display);margin:0;text-wrap:balance}
+h2{font:700 18px/1.3 var(--f-body);margin:0;text-wrap:balance}
+p{margin:0}
+.mono,code{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+code{font-size:.86em;background:var(--surface);border:1px solid var(--line);padding:0 5px;border-radius:4px}
+.mute{color:var(--mute)}
+.lead{color:var(--mute);max-width:70ch}
+.eyebrow{font:500 12px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+
+/* header + 20 格 */
+header{display:flex;flex-direction:column;gap:10px}
+.strip{display:grid;grid-template-columns:repeat(20,1fr);gap:4px}
+.cell{aspect-ratio:1/1.15;max-width:100%;display:grid;place-items:center;border-radius:4px;
+  font:700 11px/1 var(--f-mono);font-variant-numeric:tabular-nums}
+.cell.done{background:var(--done);color:var(--surface)}
+.cell.ready{background:var(--ready);color:var(--surface)}
+.cell.merged{background:var(--done-soft);color:var(--done);box-shadow:inset 0 0 0 1.5px var(--done)}
+.cell.merged{background:var(--done-soft);color:var(--done);box-shadow:inset 0 0 0 1.5px var(--done)}
+.cell.wait{background:var(--wait-soft);color:var(--wait);box-shadow:inset 0 0 0 1px var(--wait)}
+@media (max-width:560px){.strip{grid-template-columns:repeat(10,1fr)}}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:14px}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.legend .done i{background:var(--done)}.legend .ready i{background:var(--ready)}
+.legend .merged i{background:var(--done-soft);box-shadow:inset 0 0 0 1.5px var(--done)}
+.legend .merged i{background:var(--done-soft);box-shadow:inset 0 0 0 1.5px var(--done)}
+.legend .wait i{background:var(--wait-soft);box-shadow:inset 0 0 0 1px var(--wait)}
+.legend b{font-family:var(--f-mono)}
+
+/* 可開工 */
+.now{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.pick{background:var(--surface);border:1.5px solid var(--ready);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.pick .id{font:700 14px/1 var(--f-mono);color:var(--ready)}
+.pick h3{margin:0;font:700 16px/1.4 var(--f-body)}
+.pick p{font-size:14px}
+.pick .unlock{font-size:13px;color:var(--mute)}
+.pick .unlock b{color:var(--fg)}
+
+/* 波次看板 */
+.scroll{overflow-x:auto;padding-bottom:6px}
+.board{display:grid;grid-template-columns:repeat(6,minmax(150px,1fr));gap:10px;min-width:960px}
+.col{display:flex;flex-direction:column;gap:8px}
+.col-h{display:flex;flex-direction:column;gap:2px;padding:0 2px 6px;border-bottom:1px solid var(--line)}
+.col-h b{font-size:14px}
+.col-h span{font-size:12px;color:var(--mute)}
+.t{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:3px}
+.t .id{font:700 12px/1.2 var(--f-mono);display:flex;justify-content:space-between;gap:6px}
+.t .id span{font-weight:500;color:var(--mute)}
+.t .nm{font-size:13px;line-height:1.45}
+.t .dep{font-size:12px;color:var(--mute);line-height:1.45}
+.t.done{background:var(--done-soft);border-color:transparent}
+.t.done .id{color:var(--done)}
+.t.merged{background:var(--surface);border:1.5px dashed var(--done)}
+.t.merged .id{color:var(--done)}
+.t.merged{background:var(--surface);border:1.5px dashed var(--done)}
+.t.merged .id{color:var(--done)}
+.t.ready{border:1.5px solid var(--ready)}
+.t.ready .id{color:var(--ready)}
+.t.ready .dep{color:var(--ready);font-weight:500}
+.t.crit .nm{font-weight:700}
+.note{font-size:13px;color:var(--mute)}
+
+/* 明細表 */
+table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--line);font-size:14px;min-width:820px}
+th,td{padding:9px 12px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+th{font:500 12px/1.3 var(--f-body);color:var(--mute);background:var(--bg);letter-spacing:.04em;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.k{font:700 13px/1.5 var(--f-mono);white-space:nowrap}
+td.k span{display:block;font-weight:500;color:var(--mute)}
+.pill{display:inline-block;padding:1px 9px;border-radius:99px;font-size:12px;font-weight:700;white-space:nowrap}
+.pill.done{background:var(--done-soft);color:var(--done)}
+.pill.merged{background:var(--done-soft);color:var(--done);box-shadow:inset 0 0 0 1px var(--done)}
+.pill.merged{background:var(--done-soft);color:var(--done);box-shadow:inset 0 0 0 1px var(--done)}
+.pill.ready{background:var(--ready-soft);color:var(--ready)}
+.pill.wait{background:var(--wait-soft);color:var(--wait)}
+.ref{font-family:var(--f-mono);font-size:12.5px;white-space:nowrap}
+.ref.closed{color:var(--mute)}
+.ref.open{font-weight:700}
+ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;max-width:80ch}
+footer{font-size:13px;color:var(--mute);border-top:1px solid var(--line);padding-top:16px;display:flex;flex-direction:column;gap:4px}
+
+.chain{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px;align-items:stretch}
+.chain .arrow{align-self:center;font:700 18px/1 var(--f-mono);color:var(--mute)}
+@media (max-width:720px){.chain{grid-template-columns:1fr}.chain .arrow{justify-self:center;transform:rotate(90deg)}}
+.step{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.step.ready{border:1.5px solid var(--ready)}
+.step .id{font:700 13px/1.2 var(--f-mono);display:flex;justify-content:space-between;gap:8px;align-items:center}
+.step h3{margin:0;font:700 15px/1.45 var(--f-body)}
+.step p{font-size:13.5px;color:var(--mute)}
+</style>
+
+
+</head>
+<body style="margin:0"><main>
+  <header>
+    <div class="eyebrow">mftiko · epic #12 · E10 API 契約、API server、console</div>
+    <h1>E10 票狀態盤點</h1>
+    <p class="lead">E10-01 到 E10-20（#306 到 #325），2026-10-23 20:50 更新。已關閉 17 張，其中 14 張是 10-23 當天關的。剩下 3 張排成一條鏈，只能依序完成。</p>
+    <div class="strip" role="img" aria-label="20 張票：17 張已關閉、1 張進行中、2 張等待中">
+      <div class="cell done" title="E10-01 已關閉">01</div>
+      <div class="cell done" title="E10-02 已關閉">02</div>
+      <div class="cell done" title="E10-03 已關閉">03</div>
+      <div class="cell done" title="E10-04 已關閉">04</div>
+      <div class="cell done" title="E10-05 已關閉">05</div>
+      <div class="cell done" title="E10-06 已關閉">06</div>
+      <div class="cell done" title="E10-07 已關閉">07</div>
+      <div class="cell done" title="E10-08 已關閉">08</div>
+      <div class="cell done" title="E10-09 已關閉">09</div>
+      <div class="cell done" title="E10-10 已關閉">10</div>
+      <div class="cell done" title="E10-11 已關閉">11</div>
+      <div class="cell done" title="E10-12 已關閉">12</div>
+      <div class="cell done" title="E10-13 已關閉">13</div>
+      <div class="cell done" title="E10-14 已關閉">14</div>
+      <div class="cell done" title="E10-15 已關閉">15</div>
+      <div class="cell done" title="E10-16 已關閉">16</div>
+      <div class="cell done" title="E10-17 已關閉">17</div>
+      <div class="cell ready" title="E10-18 進行中">18</div>
+      <div class="cell wait" title="E10-19 等待中">19</div>
+      <div class="cell wait" title="E10-20 等待中">20</div>
+    </div>
+    <div class="legend">
+      <span class="done"><i></i>已關閉 <b>17</b></span>
+      <span class="ready"><i></i>進行中 <b>1</b></span>
+      <span class="wait"><i></i>等待中 <b>2</b></span>
+    </div>
+  </header>
+
+  <section>
+    <h2>剩下的 3 張</h2>
+    <p class="lead">E10-19 原本的前置裡，E10-02、12、16、17 都已關閉，現在只等 E10-18。E10-20 等 E10-19。三張都沒有指派人。</p>
+    <div class="chain">
+      <div class="step ready">
+        <div class="id"><span>E10-18 · #323</span><span class="pill ready">進行中</span></div>
+        <h3>console session 詳情、agents 與 market</h3>
+        <p>draft PR #348 在 20:43 開出，CI 的 check 已通過，還沒標成 ready for review。前置 E10-13、E10-15 都已關閉。</p>
+      </div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="step">
+        <div class="id"><span>E10-19 · #324</span><span class="pill wait">等 18</span></div>
+        <h3>dev stack 與端到端驗收</h3>
+        <p>dev compose 加上 mftiko-api，用自動化腳本與 Playwright smoke 驗收主流程和異常流程。</p>
+      </div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="step">
+        <div class="id"><span>E10-20 · #325</span><span class="pill wait">等 19</span></div>
+        <h3>E10 收尾與契約定案</h3>
+        <p>把 main 上的 <code>v1.yaml</code> 設為 <code>oasdiff</code> 基準，同步文件與實作，然後關閉 epic #12。</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>逐票明細</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>票</th><th>標題</th><th>狀態</th><th>前置（粗體為未關閉）</th><th>解鎖</th><th>PR · 關閉時間</th></tr></thead>
+        <tbody>
+          <tr><td class="k">E10-01<span>#306</span></td><td>定 API、契約與 console 的開放問題與拆票</td><td><span class="pill done">已關閉</span></td><td><span class="mute">—</span></td><td class="ref">02 03 05 06 07 08 10 14</td><td class="ref">PR #326 · 10-20 20:29</td></tr>
+          <tr><td class="k">E10-02<span>#307</span></td><td>STS 的 log 留到 spec 被刪才清</td><td><span class="pill done">已關閉</span></td><td><span class="ref closed">01</span></td><td class="ref">19</td><td class="ref">PR #329 · 10-21 16:28</td></tr>
+          <tr><td class="k">E10-03<span>#308</span></td><td>API 的 OpenAPI 規格</td><td><span class="pill done">已關閉</span></td><td><span class="ref closed">01</span></td><td class="ref">04 13</td><td class="ref">PR #334 · 10-23 06:49</td></tr>
+          <tr><td class="k">E10-04<span>#309</span></td><td>OpenAPI 產碼與工具鏈</td><td><span class="pill done">已關閉</span></td><td><span class="ref closed">03</span></td><td class="ref">07 09 10 11 13 15 · E11</td><td class="ref">PR #337 · 10-23 08:23</td></tr>
+          <tr><td class="k">E10-05<span>#310</span></td><td>mftiko-api 骨架與多 cluster 讀取</td><td><span class="pill done">已關閉</span></td><td><span class="ref closed">01</span></td><td class="ref">06 07 09 10 13</td><td class="ref">PR #332 · 10-22 17:13</td></tr>
+          <tr><td class="k">E10-06<span>#311</span></td><td>etcd 的 <code>api</code> 角色與 RBAC 測試</td><td><span class="pill done">已關閉</span></td><td><span class="ref closed">01</span> <span class="ref closed">05</span></td><td class="ref">08</td><td class="ref">PR #335 · 10-23 07:03</td></tr>
+          <tr><td class="k">E10-07<span>#312</span></td><td>認證與稽核</td><td><span class="pill done">已關閉</span></td><td><span class="ref closed">01</span> <span class="ref closed">04</span> <span class="ref closed">05</span></td><td class="ref">09 15</td><td class="ref">PR #339 · 10-23 10:31</td></tr>
+          <tr><td class="k">E10-08<span>#313</span></td><td>API 寫入原語與 <code>session_id</code> 配號（P8）</td><td><span class="pill done">已關閉</span></td><td><span class="ref closed">01</span> <span class="ref closed">06</span></td><td class="ref">09 11 12</td><td class="ref">PR #336 · 10-23 08:05</td></tr>
+          <tr><td class="k">E10-09<span>#314</span></td><td>帳號 API 與憑證封裝</td><td><span class="pill done">已關閉</span></td><td><span class="ref closed">04</span> <span class="ref closed">05</span> <span class="ref closed">07</span> <span class="ref closed">08</span></td><td class="ref">16</td><td class="ref">PR #340 · 10-23 12:38</td></tr>
+          <tr><td class="k">E10-10<span>#315</span></td><td>策略目錄 API</td><td><span class="pill done">已關閉</span></td><td><span class="ref closed">01</span> <span class="ref closed">04</span> <span class="ref closed">05</span></td><td class="ref">11 17</td><td class="ref">PR #338 · 10-23 10:03</td></tr>
+          <tr><td class="k">E10-11<span>#316</span></td><td>session 建立與結束 API</td><td><span class="pill done">已關閉</span></td><td><span class="ref closed">04</span> <span class="ref closed">08</span> <span class="ref closed">10</span></td><td class="ref">17</td><td class="ref">PR #342 · 10-23 13:12</td></tr>
+          <tr><td class="k">E10-12<span>#317</span></td><td>W5 保留期刪除</td><td><span class="pill done">已關閉</span></td><td><span class="ref closed">08</span></td><td class="ref">19</td><td class="ref">PR #344 · 10-23 14:49</td></tr>
+          <tr><td class="k">E10-13<span>#318</span></td><td>狀態讀取、SSE 與 agent 端的支援</td><td><span class="pill done">已關閉</span></td><td><span class="ref closed">03</span> <span class="ref closed">04</span> <span class="ref closed">05</span></td><td class="ref">18</td><td class="ref">PR #346 · 10-23 19:33</td></tr>
+          <tr><td class="k">E10-14<span>#319</span></td><td><code>log.*</code> 的善後</td><td><span class="pill done">已關閉</span></td><td><span class="ref closed">01</span></td><td class="ref">—</td><td class="ref">PR #333 · 10-23 00:18</td></tr>
+          <tr><td class="k">E10-15<span>#320</span></td><td>console 基礎</td><td><span class="pill done">已關閉</span></td><td><span class="ref closed">04</span> <span class="ref closed">07</span></td><td class="ref">16 17 18</td><td class="ref">PR #341 · 10-23 11:39</td></tr>
+          <tr><td class="k">E10-16<span>#321</span></td><td>console 帳號頁</td><td><span class="pill done">已關閉</span></td><td><span class="ref closed">09</span> <span class="ref closed">15</span></td><td class="ref">19</td><td class="ref">PR #345 · 10-23 17:59</td></tr>
+          <tr><td class="k">E10-17<span>#322</span></td><td>console 策略與 session 建立</td><td><span class="pill done">已關閉</span></td><td><span class="ref closed">10</span> <span class="ref closed">11</span> <span class="ref closed">15</span></td><td class="ref">19</td><td class="ref">PR #343 · 10-23 16:33</td></tr>
+          <tr><td class="k">E10-18<span>#323</span></td><td>console session 詳情、agents 與 market</td><td><span class="pill ready">進行中</span></td><td><span class="ref closed">13</span> <span class="ref closed">15</span></td><td class="ref">19</td><td class="ref">draft PR #348</td></tr>
+          <tr><td class="k">E10-19<span>#324</span></td><td>dev stack 與端到端驗收</td><td><span class="pill wait">等待中</span></td><td><span class="ref closed">02</span> <span class="ref closed">12</span> <span class="ref closed">16</span> <span class="ref closed">17</span> <span class="ref open">18</span></td><td class="ref">20</td><td class="ref">—</td></tr>
+          <tr><td class="k">E10-20<span>#325</span></td><td>E10 收尾與契約定案</td><td><span class="pill wait">等待中</span></td><td><span class="ref open">19</span></td><td class="ref">關閉 epic #12</td><td class="ref">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">關閉時間為台北時間。每張 issue 都是在對應 PR 合併的同一刻關閉。</p>
+  </section>
+
+  <footer>
+    <p>資料來源：GitHub REST API（issue #306–#325、PR #348），main @ <span class="mono">a4293dc</span>。</p>
+    <p>更正：上一版說 E10-04、07、08、09、10、11、12、15、17 的 issue 還開著，那是讀到過期網頁造成的錯誤。這 9 張都在 PR 合併時就關閉了。</p>
+  </footer>
+</main>
+</body>
+</html>

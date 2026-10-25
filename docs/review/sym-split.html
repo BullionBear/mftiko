@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SYM：agent 與 conn worker</title>
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --paper: #fbfaf6;
+    --ink: #1c1915;
+    --muted: #5e584e;
+    --line: #e3ddd2;
+    --line-strong: #cfc6b8;
+    --code: #f3efe6;
+    --accent: #6b3a1f;
+    --nav: #2a2622;
+    --draft: #8a3b12;
+    --draft-bg: #f6e6d8;
+    --ok: #1f4d38;
+    --ok-bg: #e5f0e8;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    background: var(--bg);
+    font: 16px/1.65 "Iowan Old Style", "Palatino Linotype", Palatino, "Songti TC", "PMingLiU", serif;
+  }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  code {
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.84em;
+  }
+  header.top {
+    background: var(--nav);
+    color: #f6f1e8;
+    padding: 2.4rem 2rem 1.8rem;
+  }
+  header.top h1 {
+    margin: 0 0 0.4rem;
+    font-weight: 500;
+    font-size: 1.85rem;
+    letter-spacing: 0.01em;
+  }
+  header.top p { margin: 0.35rem 0; max-width: 46rem; color: #d9d0c4; }
+  .badge {
+    display: inline-block;
+    margin-bottom: 0.7rem;
+    padding: 0.1rem 0.5rem;
+    border-radius: 2px;
+    background: var(--draft-bg);
+    color: var(--draft);
+    font: 600 0.72rem/1.4 "PingFang TC", "Helvetica Neue", sans-serif;
+    letter-spacing: 0.08em;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 15.5rem minmax(0, 52rem);
+    gap: 2.5rem;
+    max-width: 72rem;
+    margin: 0 auto;
+    padding: 1.6rem 1.4rem 4rem;
+  }
+  nav {
+    position: sticky;
+    top: 1rem;
+    align-self: start;
+    font: 0.82rem/1.45 "PingFang TC", "Helvetica Neue", sans-serif;
+  }
+  nav ol { list-style: none; margin: 0; padding: 0; }
+  nav a { color: var(--muted); text-decoration: none; }
+  nav a:hover { color: var(--ink); }
+  nav li { margin: 0.28rem 0; }
+  main h2 {
+    margin: 2.4rem 0 0.6rem;
+    padding-top: 0.4rem;
+    font-size: 1.45rem;
+    font-weight: 500;
+    border-top: 1px solid var(--line-strong);
+  }
+  main h2:first-child { margin-top: 0; border-top: 0; }
+  main h3 {
+    margin: 1.6rem 0 0.35rem;
+    font-size: 1.15rem;
+    font-weight: 600;
+  }
+  main p { margin: 0.45rem 0 0.7rem; }
+  .meta {
+    margin: 0 0 0.6rem;
+    color: var(--muted);
+    font: 0.78rem/1.45 "PingFang TC", "Helvetica Neue", sans-serif;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.4rem 0 1rem;
+    background: var(--paper);
+    font-size: 0.92rem;
+  }
+  th, td {
+    text-align: left;
+    vertical-align: top;
+    padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid var(--line);
+  }
+  th {
+    font: 600 0.75rem/1.3 "PingFang TC", "Helvetica Neue", sans-serif;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    background: #f7f4ee;
+  }
+  ul { margin: 0.3rem 0 0.7rem; padding-left: 1.2rem; }
+  li { margin: 0.2rem 0; }
+  .note {
+    margin: 0.8rem 0 1rem;
+    padding: 0.75rem 0.95rem;
+    background: var(--paper);
+    border-left: 3px solid var(--line-strong);
+  }
+  .note.warn { border-left-color: var(--draft); background: var(--draft-bg); }
+  svg.dag {
+    width: 100%;
+    height: auto;
+    background: var(--paper);
+    border: 1px solid var(--line);
+  }
+  svg.dag rect { fill: var(--code); stroke: var(--line-strong); }
+  svg.dag rect.agent { fill: var(--draft-bg); stroke: var(--draft); }
+  svg.dag rect.worker { fill: var(--ok-bg); stroke: var(--ok); }
+  svg.dag rect.ext { fill: #f7f4ee; stroke: var(--line-strong); }
+  svg.dag text { fill: var(--ink); font-family: "PingFang TC", "Helvetica Neue", sans-serif; }
+  svg.dag line, svg.dag path { stroke: var(--muted); fill: none; }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    nav { position: static; }
+  }
+  @media print {
+    header.top { background: white; color: black; }
+    header.top p { color: black; }
+    nav { display: none; }
+    .layout { display: block; padding: 0; }
+    body { background: white; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="badge">目前的做法 · 尚未提交</div>
+  <h1>Agent 不認識 SYM</h1>
+  <p>MD agent 只從 UniversalTicker 選 worker，把 <code>topic.UniversalTicker</code> 送進去。Conn worker 用自己的活躍表推出 atom，再 diff 要多訂或少訂什麼。</p>
+  <p>2026-10-11。對照 <code>cmd/mftiko-md-agent</code>、<code>internal/md/agent</code>、<code>cmd/mftiko-md-conn</code>、<code>internal/md/conn</code>。</p>
+</header>
+<div class="layout">
+<nav>
+  <ol>
+    <li><a href="#two">兩個行程</a></li>
+    <li><a href="#flow">一筆 feed 怎麼走</a></li>
+    <li><a href="#agent">Agent 選哪一台 worker</a></li>
+    <li><a href="#worker">Worker 的 reconcile loop</a></li>
+    <li><a href="#diff">多訂與少訂</a></li>
+    <li><a href="#where">程式在哪</a></li>
+  </ol>
+</nav>
+<main>
+
+<h2 id="two">兩個行程</h2>
+<p>需求進 etcd 之後，<strong>MD agent</strong> 決定要多或少哪一筆行情、要不要建立 worker。它不連 SYM，也不組 <code>venue:route:channel</code>。</p>
+<p><strong>Conn worker</strong> 在 Init 載入自己那個 venue 的活躍表，訂閱 <code>sym.changed</code>。訂閱差集在這裡算。</p>
+<table>
+  <thead>
+    <tr><th>行程</th><th>跟 SYM 的關係</th><th>送出去的東西</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>MD agent</td>
+      <td>沒有。不連 NATS 上的 SYM，也不載表。</td>
+      <td><code>topic.UniversalTicker</code>，例如 <code>orderbook.Binance_Spot_BTCUSDT</code></td>
+    </tr>
+    <tr>
+      <td>conn worker</td>
+      <td>Init 時 <code>OpenRemote</code> 載這個 venue 的活躍表，之後從記憶體讀。</td>
+      <td>交易所 channel 的 subscribe／unsubscribe</td>
+    </tr>
+  </tbody>
+</table>
+<div class="note">MD instance 的 NATS 憑證仍允許 <code>sym.changed.&gt;</code>。去訂的是 worker。Agent 只把同一組 URL 與憑證放進 worker 的環境。</div>
+
+<h2 id="flow">一筆 feed 怎麼走</h2>
+<svg class="dag" viewBox="0 0 720 360" role="img" aria-label="feed 從需求到訂閱">
+  <rect class="ext" x="24" y="28" width="150" height="52"></rect>
+  <text x="99" y="50" text-anchor="middle" font-size="13">etcd demand</text>
+  <text x="99" y="68" text-anchor="middle" font-size="11">topic.ticker</text>
+
+  <path d="M174 54 H210"></path>
+  <polygon points="210,50 218,54 210,58" fill="#5e584e"></polygon>
+
+  <rect class="agent" x="218" y="16" width="250" height="76"></rect>
+  <text x="343" y="40" text-anchor="middle" font-size="13">MD agent</text>
+  <text x="343" y="58" text-anchor="middle" font-size="11">從 ticker 選 venue 與 route</text>
+  <text x="343" y="76" text-anchor="middle" font-size="11">決定建立哪一台 worker</text>
+
+  <path d="M468 54 H504"></path>
+  <polygon points="504,50 512,54 504,58" fill="#5e584e"></polygon>
+
+  <rect class="worker" x="512" y="16" width="184" height="76"></rect>
+  <text x="604" y="40" text-anchor="middle" font-size="13">conn worker</text>
+  <text x="604" y="58" text-anchor="middle" font-size="11">reconcile loop</text>
+  <text x="604" y="76" text-anchor="middle" font-size="11">收到 feed 清單</text>
+
+  <path d="M604 92 V126"></path>
+  <polygon points="600,126 604,134 608,126" fill="#5e584e"></polygon>
+
+  <rect class="worker" x="454" y="134" width="242" height="72"></rect>
+  <text x="575" y="158" text-anchor="middle" font-size="13">活躍表 + Market.Atom</text>
+  <text x="575" y="176" text-anchor="middle" font-size="11">推出現在該有的 atom</text>
+  <text x="575" y="192" text-anchor="middle" font-size="11">跟已訂閱的做 diff</text>
+
+  <path d="M575 206 V240"></path>
+  <polygon points="571,240 575,248 579,240" fill="#5e584e"></polygon>
+
+  <rect class="ext" x="470" y="248" width="210" height="56"></rect>
+  <text x="575" y="272" text-anchor="middle" font-size="13">交易所 websocket</text>
+  <text x="575" y="290" text-anchor="middle" font-size="11">多的訂，少的退</text>
+</svg>
+<p class="meta">棕框是 agent，綠框是 conn worker。SYM 只出現在 worker 那一側。</p>
+
+<h2 id="agent">Agent 選哪一台 worker</h2>
+<p>Feed key 的點之後是 UniversalTicker。Venue 在 ticker 裡。Route 跟 topic 有關：Binance UM 的訂單簿在 <code>public</code>，成交在 <code>market</code>；Bybit 的 route 是 category；OKX 的 K 線在 <code>business</code>。Agent 用 ticker 問 adapter 這筆 feed 落在哪一條 route，然後丟掉 channel。Channel 不是它要訂的東西。</p>
+<p>同一條 <code>(venue, route)</code> 上，有空位且 n 最小的連線收下這筆 feed。塞滿才開 n+1。放好的 feed 重啟後黏在原來的 n。沒有 owner 之後 linger 再從清單拿掉。寫進 etcd 的是這筆 feed 放在哪一台，然後才推計畫。</p>
+<p>Agent 仍會拒絕它自己看得到的錯：venue 不在 registry、這個 topic 這家交易所不推、連不上 endpoint、連線預算滿了。商品不存在、到期、下架、暫停，它不知道，也不寫這種 ack。</p>
+
+<h2 id="worker">Worker 的 reconcile loop</h2>
+<p>Init 載入這個 venue 每個 category 的活躍表。載不完就不撥號。表在記憶體裡，<code>sym.changed</code> 或約每 5 分鐘的 revision 比對會整份換上。終結列不在這張表裡。</p>
+<p>Agent 的 Desired 沒有 atom id，只有 feed 字串。Worker 對每一筆：</p>
+<ul>
+  <li>用 ticker 讀活躍表。不在表裡，或狀態不是 <code>TRADABLE</code>（含 <code>HALTED</code>），這筆不訂。</li>
+  <li><code>Market.Atom(topic, Info)</code> 得到 route 與 channel。Route 不是這台 worker 的，略過。</li>
+  <li><code>orderbook</code> 與 <code>orderbook_delta</code> 會落在同一個 channel。刻度與交易所寫法用表上的值。</li>
+</ul>
+<p>Feed 清單變了立刻重算。清單沒變時，reconcile loop 每秒再算一次，所以表更新不必等 agent 再推一份 Desired。讀表暫時失敗就留著上一份訂閱，不因為 SYM 抖一下而退訂。</p>
+
+<h2 id="diff">多訂與少訂</h2>
+<p>算出來的 channel 集合跟這條連線已經確認的訂閱比。多出來的 subscribe，不見的 unsubscribe。同一條 channel 上還有別的 feed 時，拿掉其中一筆不會退訂。</p>
+<table>
+  <thead>
+    <tr><th>表的回答</th><th>這筆 feed</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>TRADABLE</code></td><td>放進該有的 atom。訂單簿用表上的刻度</td></tr>
+    <tr><td>不在活躍表，或不是 <code>TRADABLE</code></td><td>不在該有的集合裡。它是這個 channel 的最後一筆時，退訂</td></tr>
+    <tr><td>這次讀取暫時失敗</td><td>整份訂閱維持上一輪</td></tr>
+    <tr><td>刻度缺或 ≤ 0</td><td>channel 仍可訂。這本訂單簿只記日誌、不維護</td></tr>
+  </tbody>
+</table>
+<div class="note">沒有載表的測試仍可以直接給 atom id。那條路徑不跑這個 loop。</div>
+
+<h2 id="where">程式在哪</h2>
+<table>
+  <thead>
+    <tr><th>位置</th><th>做什麼</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>cmd/mftiko-md-agent</code></td><td>不連 SYM。NATS 位址只放進 worker 的環境</td></tr>
+    <tr><td><code>internal/md/agent</code></td><td>從 ticker 選 worker，Desired 裡只有 feed</td></tr>
+    <tr><td><code>cmd/mftiko-md-conn</code></td><td>Init 時對自己的 venue 呼叫 <code>OpenRemote</code></td></tr>
+    <tr><td><code>internal/md/conn/reconcile.go</code></td><td>用表推出 atom，diff 之後訂或退</td></tr>
+  </tbody>
+</table>
+
+</main>
+</div>
+</body>
+</html>

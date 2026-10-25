@@ -1,6 +1,5 @@
 // Command mftiko-etcd-roles prints the etcd users and roles of every regional cluster, derived from the
-// deployment's instances (E1-08, PROTOCOL §3.2 W1). It only prints: applying the tables, and giving each user its
-// password, is part of deployment (E12).
+// deployment's instances (E1-08, PROTOCOL §3.2 W1), and with -apply applies them (E12-D049).
 //
 // -drop <inst> prints the etcdctl commands that remove that instance's user and role in its own region
 // (E12-D035). It does not apply them, and it does not omit the instance from the tables -format prints.
@@ -19,9 +18,17 @@
 // -format json (the default) prints the tables; -format etcdctl prints the etcdctl commands that create them on a
 // cluster that has none yet, one region at a time. The output holds no credentials: etcdctl prompts for them when it
 // adds each user.
+//
+// -apply adds what each cluster lacks, as root, on a cluster whose auth is on (-region limits it to one). -secrets
+// is a directory of password files: "root", and one per user named like the user. A new user gets the password in
+// its file, generated there first if there is none; an existing user keeps its password. Nothing is removed: what
+// the cluster has beyond the tables is printed. Running it twice changes nothing.
+//
+//	mftiko-etcd-roles -in deploy.json -apply -secrets /etc/mftiko/etcd
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -45,15 +52,23 @@ func main() {
 	in := flag.String("in", "-", "deployment JSON; - for stdin")
 	format := flag.String("format", "json", "json or etcdctl")
 	drop := flag.String("drop", "", "print etcdctl commands that remove this instance's user and role; does not apply them")
+	apply := flag.Bool("apply", false, "add what each cluster lacks of its table, as root")
+	region := flag.String("region", "", "with -apply, only this region")
+	secrets := flag.String("secrets", "", "with -apply, the directory of password files: root, and one per user")
 	flag.Parse()
 	if *version {
 		fmt.Println(buildinfo.String())
 		return
 	}
 	var err error
-	if *drop != "" {
+	switch {
+	case *drop != "" && *apply:
+		err = fmt.Errorf("-drop and -apply are exclusive")
+	case *drop != "":
 		err = runDrop(*in, *drop, os.Stdin, os.Stdout)
-	} else {
+	case *apply:
+		err = runApply(context.Background(), *in, *region, *secrets, os.Stdin, os.Stdout)
+	default:
 		err = run(*in, *format, os.Stdin, os.Stdout)
 	}
 	if err != nil {
