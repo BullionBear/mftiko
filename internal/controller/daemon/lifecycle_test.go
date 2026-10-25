@@ -511,7 +511,7 @@ func TestRetireMDKeepsExistingDemands(t *testing.T) {
 	var d statev1.SessionDemand
 	mustProto(t, st.val, &d)
 	if d.GetDesired() != sessionv1.DesiredState_DESIRED_STATE_RUNNING || d.GetEndReason() == "invalid_spec" {
-		t.Fatalf("existing assignment %+v", d)
+		t.Fatalf("existing assignment desired=%s reason=%s", d.GetDesired(), d.GetEndReason())
 	}
 	if !present(t, ctx, servers["jp"], feedKey) {
 		t.Fatal("existing feed demand was deleted")
