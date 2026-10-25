@@ -59,8 +59,11 @@ type Config struct {
 	Mirror     state.MirrorOptions
 	Release    string
 	Started    func(pid int)
-	Log        zerolog.Logger
-	Now        func() time.Time
+	// LogRetain is how long logs of a worker key that no longer appears are kept (E12-D041).
+	// Zero selects runner.DefaultLogRetain. The command passes -log-retain-days.
+	LogRetain time.Duration
+	Log       zerolog.Logger
+	Now       func() time.Time
 }
 
 // Run is the agent's main: connect, win the term, mirror demand, and reconcile until the term
@@ -138,7 +141,8 @@ func Run(ctx context.Context, cfg Config) error {
 		Term: term, Demand: m, Statuses: reader, Decode: Decode, Planner: p,
 		Policy: policy, Fleet: &reporting{Fleet: f, epochs: epochs},
 		Commit: p.commit, Sync: p.sync, Release: cfg.Release, WorkDir: cfg.WorkDir,
-		Resync: cfg.Resync, StaleAfter: cfg.StaleAfter, LiveRetry: cfg.LiveRetry, Log: cfg.Log, Now: cfg.Now,
+		LogRetain: runner.EffectiveLogRetain(cfg.LogRetain),
+		Resync:    cfg.Resync, StaleAfter: cfg.StaleAfter, LiveRetry: cfg.LiveRetry, Log: cfg.Log, Now: cfg.Now,
 	})
 }
 

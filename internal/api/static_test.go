@@ -60,6 +60,9 @@ func TestStaticFiles(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "healthz"), []byte("NOT-HEALTH"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "metrics"), []byte("NOT-METRICS"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Mkdir(filepath.Join(dir, "assets"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -116,6 +119,13 @@ func TestStaticFiles(t *testing.T) {
 	}
 	if hdr.Get("Content-Type") != "application/json" {
 		t.Fatalf("content-type %q", hdr.Get("Content-Type"))
+	}
+	code, hdr, body = do(h, http.MethodGet, "/metrics")
+	if code != http.StatusOK || bytes.Contains(body, []byte("NOT-METRICS")) || !bytes.Contains(body, []byte("mftiko_postgres_up")) {
+		t.Fatalf("metrics %d %q", code, body)
+	}
+	if hdr.Get("Content-Type") != metricsContentType {
+		t.Fatalf("metrics content-type %q", hdr.Get("Content-Type"))
 	}
 	code, _, body = do(h, http.MethodGet, "/leak")
 	if bytes.Contains(body, secret) {

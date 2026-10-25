@@ -98,7 +98,91 @@ agent 的 unit 另外：
 - 每個 stream（stdout、stderr 各自）寫到 64 MiB 就輪替：`{h}.stdout` 改名成 `{h}.stdout.1`，原來的 `.1` 改成 `.2`，依此類推。
 - 每個 stream 保留 5 個檔案，包含正在寫的那個；最舊的刪掉。所以一個 worker 的 stdout 最多約 320 MiB，stderr 也一樣。
 - 這是預設值（`Launch.output.max_bytes`、`keep`）。下限 64 KiB，`keep` 上限 100。
-- `{h}.shim.log` 不輪替。MD、TD 的 worker key 不再出現時，它留下的檔案也不會被清掉。這兩項記為 E12 的磁碟風險（E10-D015）。
+- `{h}.shim.log` 寫到 10 MiB 就輪替，保留 3 個檔案，含正在寫的（E12-D042）。agent 仍把這個檔接到 shim 的 stdout、stderr，不接 pipe；shim 自己重新開啟並輪替，所以 agent 不在之後還寫得進去。三個平面的 shim 都一樣。
+- MD、TD 在啟動時，以及之後每小時，刪掉不再出現的 worker key 的 stdout、stderr、`.shim.log` 與輪替檔。最後修改時間要嚴格早於 `-log-retain-days`（預設 7，小於 1 不接受）。mtime 剛好在界線上的留下。這個旗標不寫進 systemd unit。
+- 還算「出現」的不刪：agent 看得到的 worker、這一輪計畫裡的、仍留著 `WorkerStatus` 的、接不上的 shim、以及 `{h}.sock` 還在的。正在跑的 worker 的舊輪替檔因此留下，份數由上面的保留數管，不由 7 天管。
+- 只刪一般檔。名稱是 16 個十六進位字的 `.stdout`、`.stderr`、`.shim.log`，輪替的數字沒有前導零。其他檔（例如 `notes.txt`）、目錄、symlink 留下。log 目錄不在不是錯誤。socket 目錄讀不了就這一輪完全不刪。
+- 清理失敗只寫 warn，agent 不因此退出。STS 不走這條：仍是 spec 被刪之後才清，輪替出來的 `.shim.log.N` 也在那一次刪掉。
+
+## 監控與告警
+
+依 [DECISIONS.md](DECISIONS.md) E12-D038–E12-D043（E12-10，#383）。mftiko 只輸出自己的狀態。磁碟、CPU、記憶體用 node_exporter，不在 mftiko 裡。mftiko 不打 webhook，也不自己判斷門檻。下面的規則是**範例**：`for` 與門檻由部署端決定。
+
+`GET /metrics` 與 `HEAD /metrics` 在 API server，跟 `/healthz` 一樣不認證、不記稽核、不在 OpenAPI。靜態目錄裡若有一個叫 `metrics` 的檔，不會被這個路徑送出去。刮取不帶 bearer。
+
+```yaml
+scrape_configs:
+  - job_name: mftiko-api
+    static_configs:
+      - targets: ["api.example.invalid:8080"]
+```
+
+| metric | 標籤 | 意義 |
+|---|---|---|
+| `mftiko_agent_up` | `instance`、`plane`、`region` | 該 region 第一次同步之後，`AgentRecord` 的 key 在就是 1。後來 region 過期仍維持，系列不會消失 |
+| `mftiko_controller_leader` | `instance`、`region` | 同上，controller 的 `AgentRecord`（instance 是 `controller`） |
+| `mftiko_worker_phase` | `instance`、`phase`、`plane`、`region` | `WorkerStatus.phase` 的數量。`STARTING`、`RUNNING`、`STOPPING`、`BACKOFF`、`EXITED`、`LOST` 連 0 都有；另外的非空 phase 也有 |
+| `mftiko_region_available` | `region` | 與 `/readyz` 同一個判斷：第一次同步完成，且 `LastContact` 沒有嚴格舊過 `unavailable_after`（預設 15 秒，E12-D040）。尚未同步是 0 |
+| `mftiko_postgres_up` | 無 | 刮取當下 ping 稽核用的 Postgres 連線池。沒有池是 0。`/readyz` 仍不看 Postgres |
+| `mftiko_registry_up` | 無 | 刮取當下 `GET /v2/`，最終狀態 200 才是 1。沒設定或 401 是 0 |
+
+第一次同步之前，那個 region 的 agent、controller、worker 系列不出現（不是 0）。API 行程自己抓不到，看 Prometheus 的 `up`，不是 mftiko 的 gauge。
+
+`WorkerStatus` 沒有 `PENDING`、`DEAD` 這兩個 phase。需求項目的狀態是另一個東西：`BACKOFF` 期間需求是 `PENDING`；政策放棄之後的 `EXITED` 對到 `DEAD`；`LOST` 維持最後一次的項目狀態。MD 行程內換 `conn_epoch`、TD 行程內 `DEGRADED`，都不改 `WorkerStatus`，也不是 `DEAD`。API 不連 NATS，也不探測交易所。
+
+```yaml
+groups:
+  - name: mftiko.example
+    rules:
+      # 範例。for 由部署端改。
+      - alert: MftikoAPIDown
+        expr: up{job="mftiko-api"} == 0
+        for: 1m
+      - alert: MftikoRegionUnavailable
+        expr: mftiko_region_available == 0
+        for: 1m
+      - alert: MftikoAgentDown
+        expr: mftiko_agent_up == 0 and on(region) mftiko_region_available == 1
+        for: 2m
+      - alert: MftikoControllerNoLeader
+        expr: mftiko_controller_leader == 0 and on(region) mftiko_region_available == 1
+        for: 1m
+      - alert: MftikoWorkerLost
+        expr: mftiko_worker_phase{phase="LOST"} > 0
+        for: 5m
+      - alert: MftikoWorkerBackoff
+        expr: mftiko_worker_phase{phase="BACKOFF"} > 0
+        for: 10m
+      - alert: MftikoWorkerExited
+        expr: mftiko_worker_phase{phase="EXITED"} > 0
+        for: 15m
+      - alert: MftikoPostgresDown
+        expr: mftiko_postgres_up == 0
+        for: 2m
+      - alert: MftikoRegistryDown
+        expr: mftiko_registry_up == 0
+        for: 5m
+      - alert: MftikoDiskLow
+        expr: node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} < 0.1
+        for: 10m
+```
+
+`MftikoAgentDown` 與 `MftikoControllerNoLeader` 要求同一個 `region` 的 `mftiko_region_available == 1`，避免 region 分割時每一台都叫。`MftikoWorkerExited` 的 `for` 放長：短暫的 `EXITED` 是正常的，status 刪掉之後這個數回到 0；一直留著才對應需求 `DEAD`。`MftikoWorkerBackoff` 對應需求 `PENDING`。`MftikoDiskLow` 用的是 node_exporter，不是 mftiko 的 metric。
+
+#385 的演練清單（實測留到那張票）對到的訊號：
+
+| 演練 | 看哪裡 | 範例告警 |
+|---|---|---|
+| 輪換 md、td、sts 與 controller，含換版。worker 不斷，新 agent 收養 | 空窗時 `mftiko_agent_up` 或 `mftiko_controller_leader` 變 0，回來變 1。worker 的 phase 維持 `RUNNING` | `MftikoAgentDown`、`MftikoControllerNoLeader`（空窗長過 `for` 才響） |
+| 殺 worker。照平面規則重啟，策略端的影響見 §9.5 | phase 離開 `RUNNING`。重啟退避是 `BACKOFF`（需求 `PENDING`）；政策放棄是 `EXITED`（需求 `DEAD`）；shim 不在、最後狀態留著是 `LOST` | `MftikoWorkerBackoff`、`MftikoWorkerExited`、`MftikoWorkerLost` |
+| 重啟 agent 的 systemd unit。shim 與 worker 還在，新 agent 收養 | `WorkerStatus` 不綁 lease，phase 維持 `RUNNING`。`AgentRecord` 隨 term 消失，`mftiko_agent_up` 在空窗是 0 | `MftikoAgentDown` |
+| 拔掉 agent 與 etcd | API 仍看得到該 region 時，lease 到期後 `mftiko_agent_up` 變 0，`mftiko_region_available` 維持 1。API 也看不見時，`mftiko_region_available` 變 0，agent 的 0 不另外叫 | `MftikoAgentDown` 或 `MftikoRegionUnavailable` |
+| 拔掉 agent 與 NATS | `AgentRecord` 與 `WorkerStatus` 都不動。`mftiko_agent_up` 維持 1，phase 維持 `RUNNING`。沒有另開的探測 | 不響。這就是看得到的訊號 |
+| 拔掉交易所連線 | 同上。行程內重連不改 `WorkerStatus`，不是 `DEAD` | 不響。`mftiko_agent_up` 維持 1，phase 維持 `RUNNING` |
+| 拔掉 controller 與遠端 region | controller 的 `AgentRecord` 在 home，`mftiko_controller_leader` 維持 1。API 到該 region 的 mirror 一起過期時 `mftiko_region_available` 變 0。只斷 controller、API 仍連得上時，這個 gauge 維持 1（W9：controller 維持現狀、不寫該 region） | `MftikoRegionUnavailable`（API 也看不到時）。只斷 controller 時不響 |
+| Postgres 停機。API 照 E10-D080 降級，恢復後補上 | `mftiko_postgres_up` 變 0。`/readyz` 不變 | `MftikoPostgresDown` |
+| registry 不可用時 spawn 新的 worker | `mftiko_registry_up` 變 0。需求項目維持 `PENDING`（那是項目狀態，不是 `worker_phase`） | `MftikoRegistryDown` |
+| 磁碟用量 | node_exporter 的檔案系統剩餘比例。mftiko 不輸出這項 | `MftikoDiskLow` |
 
 ## 保留期
 

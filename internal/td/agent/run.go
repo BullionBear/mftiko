@@ -50,8 +50,11 @@ type Config struct {
 	Mirror     state.MirrorOptions
 	Release    string
 	Started    func(pid int)
-	Log        zerolog.Logger
-	Now        func() time.Time
+	// LogRetain is how long logs of a worker key that no longer appears are kept (E12-D041).
+	// Zero selects runner.DefaultLogRetain. The command passes -log-retain-days.
+	LogRetain time.Duration
+	Log       zerolog.Logger
+	Now       func() time.Time
 }
 
 func (cfg Config) validate() error {
@@ -145,7 +148,8 @@ func Run(ctx context.Context, cfg Config) error {
 	return runner.Run(ctx, runner.Config[Entry, Spec, Live]{
 		Term: term, Demand: src, Statuses: reader, Decode: decoder{inst: cfg.Instance}.Decode, Planner: p,
 		Policy: policy, Fleet: f, Commit: p.commit, Sync: p.sync, Release: cfg.Release, WorkDir: cfg.WorkDir,
-		Resync: cfg.Resync, StaleAfter: cfg.StaleAfter, Log: cfg.Log, Now: cfg.Now,
+		LogRetain: runner.EffectiveLogRetain(cfg.LogRetain),
+		Resync:    cfg.Resync, StaleAfter: cfg.StaleAfter, Log: cfg.Log, Now: cfg.Now,
 	})
 }
 

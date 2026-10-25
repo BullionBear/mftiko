@@ -39,6 +39,7 @@ type options struct {
 	endpoints, restEndpoints                             string
 	simulated                                            bool
 	linger                                               time.Duration
+	logRetainDays                                        int
 	artifact                                             latest.Flags
 }
 
@@ -60,6 +61,7 @@ func main() {
 	flag.StringVar(&o.restEndpoints, "rest-endpoints", "", "JSON object of account kind to REST URL; empty uses the venue default")
 	flag.BoolVar(&o.simulated, "simulated", false, "use the venue's demo trading mode where it is a flag (OKX)")
 	flag.DurationVar(&o.linger, "linger", agent.DefaultLinger, "how long an account with no owners keeps its worker")
+	flag.IntVar(&o.logRetainDays, "log-retain-days", 7, "days to keep logs of worker keys that no longer appear")
 	flag.Parse()
 	if *version {
 		fmt.Println(buildinfo.String())
@@ -82,6 +84,10 @@ func envOr(key, fallback string) string {
 }
 
 func run(ctx context.Context, o options, log zerolog.Logger) error {
+	retain, err := retainFor(o.logRetainDays)
+	if err != nil {
+		return err
+	}
 	switch {
 	case o.instance == "" || o.topology == "" || o.password == "" || o.workDir == "" || o.shim == "":
 		return errors.New("instance, topology, etcd password, work dir, and shim are required")
@@ -133,10 +139,23 @@ func run(ctx context.Context, o options, log zerolog.Logger) error {
 		Unseal: func(sealed []byte, id int64, kind string) (sealbox.Credentials, error) {
 			return sealbox.OpenCredentials(key, sealed, id, kind)
 		},
-		User:    signer.AccountWorker,
-		Linger:  o.linger,
-		Release: buildinfo.Version, Log: log,
+		User:      signer.AccountWorker,
+		Linger:    o.linger,
+		LogRetain: retain,
+		Release:   buildinfo.Version, Log: log,
 	})
+}
+
+// retainFor converts -log-retain-days. Fewer than 1 day, and a duration that does not fit, are rejected (E12-D041).
+func retainFor(days int) (time.Duration, error) {
+	if days < 1 {
+		return 0, errors.New("log retain days must be at least 1")
+	}
+	const day = 24 * time.Hour
+	if time.Duration(days) > (1<<63-1)/day {
+		return 0, errors.New("log retain days out of range")
+	}
+	return time.Duration(days) * day, nil
 }
 
 // readEndpoints merges the two files, each a JSON object of account kind to URL, and -simulated.

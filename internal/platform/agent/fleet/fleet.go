@@ -341,7 +341,8 @@ func spawned(at *shimv1.Attached, specHash, liveHash string, now time.Time) agen
 }
 
 // startShim execs the shim in a session of its own (§4.6 step 1), its log appended to a file under the work dir,
-// writes the Launch on its stdin, and returns a channel closed once it has exited.
+// writes the Launch on its stdin, and returns a channel closed once it has exited. The shim rotates that file
+// itself (E12-D042); this stays a file, not a pipe, so the shim keeps it after the agent exits.
 func (f *Fleet[S, L]) startShim(l *shimv1.Launch) (<-chan struct{}, error) {
 	if err := shim.EnsureLogDir(f.cfg.WorkDir, string(f.cfg.Plane)); err != nil {
 		return nil, err
