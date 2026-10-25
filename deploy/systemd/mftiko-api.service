@@ -1,0 +1,21 @@
+# mftiko API and console (E12-D018, E12-D019). KillMode stays control-group.
+# shutdown_timeout in the API JSON is the process drain; this unit does not set TimeoutStopSec.
+
+[Unit]
+Description=mftiko API
+After=network-online.target etcd.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=mftiko-api
+EnvironmentFile=/etc/mftiko/api/env
+ExecStart=/opt/mftiko/current/bin/mftiko-api \
+  -in /etc/mftiko/api/deployment.json \
+  -config /etc/mftiko/api/api.json \
+  -web /opt/mftiko/current/web
+Restart=always
+RestartSec=1s
+
+[Install]
+WantedBy=multi-user.target

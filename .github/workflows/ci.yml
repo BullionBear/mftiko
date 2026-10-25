@@ -94,6 +94,29 @@ jobs:
         run: make vet
       - name: build
         run: make build
+      # E12-D021: the unit files type-check. ExecStart paths have to exist; User= and
+      # EnvironmentFile= do not. The adoption run is the systemd job, not this one.
+      - name: systemd-analyze verify
+        run: |
+          sudo install -d -m 0755 /opt/mftiko/current/bin
+          for b in mftiko-md-agent mftiko-td-agent mftiko-sts-agent mftiko-shim mftiko-controller mftiko-api mftiko-sym; do
+            sudo install -m 0755 "bin/$b" "/opt/mftiko/current/bin/$b"
+          done
+          sudo install -m 0755 "$MFTIKO_ETCD_BIN" /usr/bin/etcd
+          dir="$RUNNER_TEMP/nats"
+          mkdir -p "$dir"
+          ver=v2.15.0
+          (
+            cd "$dir"
+            base="https://github.com/nats-io/nats-server/releases/download/${ver}"
+            tarball="nats-server-${ver}-linux-amd64.tar.gz"
+            curl -fsSLO "$base/$tarball"
+            curl -fsSLO "$base/SHA256SUMS"
+            grep " ${tarball}\$" SHA256SUMS | sha256sum -c -
+            tar xzf "$tarball"
+          )
+          sudo install -m 0755 "$dir/nats-server-${ver}-linux-amd64/nats-server" /usr/bin/nats-server
+          systemd-analyze verify deploy/systemd/*.service
       # The CLI release tarballs, by the release workflow's script (E11-D035).
       - name: CLI release build
         run: make cli-dist
@@ -119,3 +142,23 @@ jobs:
           PLAIN_HTTP: "1"
           TAGS: ci latest
         run: bash .github/scripts/pack-workers.sh
+
+  # E12-D021: real systemd on the Ubuntu runner. etcd, NATS, and the registry come
+  # from deploy/accept; the three agents run on the host and adopt across restart,
+  # stop/start, and SIGKILL of MainPID. Not part of make check.
+  systemd:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: docker
+        run: docker info
+
+      - name: adopt shims across agent restart
+        run: MFTIKO_SYSTEMD_ADOPT=1 go test -count=1 -timeout 25m -run '^TestAdopt$' ./deploy/systemd/

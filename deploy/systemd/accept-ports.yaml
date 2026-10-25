@@ -1,0 +1,25 @@
+# Host ports for the systemd adoption test only (E12-D021). deploy/accept/compose.yaml
+# stays as it is: agents on the host dial 127.0.0.1, and etcd advertises that address
+# so the client does not follow the compose DNS name etcd back into the bridge.
+# Not used by deploy/accept/accept.sh.
+services:
+  etcd:
+    ports:
+      - "127.0.0.1:2379:2379"
+    command:
+      - /usr/local/bin/etcd
+      - --name=accept
+      - --data-dir=/var/lib/etcd/data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://127.0.0.1:2379
+      - --listen-peer-urls=http://127.0.0.1:2380
+      - --initial-advertise-peer-urls=http://127.0.0.1:2380
+      - --initial-cluster=accept=http://127.0.0.1:2380
+      - --initial-cluster-state=new
+      - --log-level=warn
+  nats:
+    ports:
+      - "127.0.0.1:4222:4222"
+  registry:
+    ports:
+      - "127.0.0.1:5000:5000"

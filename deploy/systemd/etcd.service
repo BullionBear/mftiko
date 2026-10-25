@@ -1,0 +1,21 @@
+# etcd, official binary (E12-D020). Restart policy is E12-D019, not the upstream unit.
+# Type stays simple: this unit does not wait on sd_notify. No PrivateTmp, no ExecStop, no LimitNOFILE.
+# Host-specific cluster settings are /etc/etcd/etcd.env. TLS is E12-06.
+
+[Unit]
+Description=etcd
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=etcd
+StateDirectory=etcd
+Environment=ETCD_DATA_DIR=/var/lib/etcd
+EnvironmentFile=/etc/etcd/etcd.env
+ExecStart=/usr/bin/etcd
+Restart=always
+RestartSec=1s
+
+[Install]
+WantedBy=multi-user.target
