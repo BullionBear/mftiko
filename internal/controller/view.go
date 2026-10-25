@@ -172,12 +172,18 @@ type AckIn struct {
 	Value     *statev1.EntryStatus
 }
 
-// Assemble builds the global view. staleAfter is the LastContact threshold:
-// a synced mirror is stale when it has no contact yet, or the contact is
-// older than staleAfter (超過門檻, same as the agent's Demand.Stale). A region
-// is stale when any of its mirrors is. now is the clock the threshold is
-// compared with.
+// Assemble builds the global view. staleAfter is the LastContact threshold
+// for every region: a synced mirror is stale when it has no contact yet, or
+// the contact is older than staleAfter (超過門檻, same as the agent's
+// Demand.Stale). A region is stale when any of its mirrors is. now is the
+// clock the threshold is compared with.
 func Assemble(now time.Time, staleAfter time.Duration, regions []string, snaps []Snapshot) View {
+	return AssembleWithStale(now, func(string) time.Duration { return staleAfter }, regions, snaps)
+}
+
+// AssembleWithStale is Assemble with a threshold per region (E12-D046).
+// staleOf is called with the region name. A nil staleOf is not used.
+func AssembleWithStale(now time.Time, staleOf func(region string) time.Duration, regions []string, snaps []Snapshot) View {
 	v := View{
 		Regions:  map[string]Region{},
 		Sessions: map[string]Session{},
@@ -187,7 +193,7 @@ func Assemble(now time.Time, staleAfter time.Duration, regions []string, snaps [
 		Agents:   map[string]Agent{},
 		Retired:  map[string]struct{}{},
 	}
-	v.Regions = assembleRegions(now, staleAfter, regions, snaps)
+	v.Regions = assembleRegions(now, staleOf, regions, snaps)
 
 	byInst := map[string]map[string]*Session{} // instance -> session id -> session
 	for _, s := range snaps {
@@ -284,7 +290,7 @@ func Assemble(now time.Time, staleAfter time.Duration, regions []string, snaps [
 // map holds its own, and neither is mutated after Assemble returns.
 func workerPtr(w Worker) *Worker { return &w }
 
-func assembleRegions(now time.Time, staleAfter time.Duration, regions []string, snaps []Snapshot) map[string]Region {
+func assembleRegions(now time.Time, staleOf func(region string) time.Duration, regions []string, snaps []Snapshot) map[string]Region {
 	type acc struct {
 		n      int
 		synced int
@@ -302,7 +308,7 @@ func assembleRegions(now time.Time, staleAfter time.Duration, regions []string, 
 				a.rev, a.revSet = s.Rev, true
 			}
 		}
-		if !s.Synced || s.LastContact.IsZero() || now.Sub(s.LastContact) > staleAfter {
+		if !s.Synced || s.LastContact.IsZero() || now.Sub(s.LastContact) > staleOf(s.Region) {
 			a.stale = true
 		}
 		ag[s.Region] = a

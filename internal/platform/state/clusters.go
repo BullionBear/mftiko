@@ -10,6 +10,7 @@ import (
 	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"google.golang.org/grpc"
 )
 
 // DialFunc opens a client to one regional cluster. Clusters calls it on first use of the region, outside its lock
@@ -19,6 +20,15 @@ type DialFunc func(region string, endpoints []string) (*clientv3.Client, error)
 
 // DialTimeout bounds a dial: with credentials, connecting and authenticating.
 const DialTimeout = 5 * time.Second
+
+// DialConfig is one authenticated dial (E12-D046). A zero DialTimeout is the
+// DialTimeout constant. A zero RequestTimeout adds no unary deadline, which is
+// what every dial did before that field existed.
+type DialConfig struct {
+	User, Password string
+	DialTimeout    time.Duration
+	RequestTimeout time.Duration
+}
 
 // DefaultDial is a dial without credentials, for clusters with auth off: AuthDial with no user.
 func DefaultDial(region string, endpoints []string) (*clientv3.Client, error) {
@@ -33,26 +43,83 @@ func DefaultDial(region string, endpoints []string) (*clientv3.Client, error) {
 //
 // The client has gRPC keepalive: a connection whose peer stops answering (a hung member, a dropped route) is closed
 // within about 15s and reconnected, instead of being trusted forever. 10s is above etcd's default minimum ping
-// interval (--grpc-keepalive-min-time, 5s).
+// interval (--grpc-keepalive-min-time, 5s). Timeouts are the defaults (E12-D046): Dial with only the user set.
 func AuthDial(user, password string) DialFunc {
+	return Dial(DialConfig{User: user, Password: password})
+}
+
+// Dial returns a dial for cfg. Keepalive matches AuthDial. A user without a password, or a password without a
+// user, is refused: clientv3 would otherwise not authenticate, and every request would fail as from an unknown user.
+// A positive RequestTimeout limits unary RPCs, including the authenticate call made while dialling. Watches and
+// lease keepalive are streams and are not limited. A zero RequestTimeout sets no interceptor, so the client matches
+// AuthDial.
+func Dial(cfg DialConfig) DialFunc {
+	dialTimeout := cfg.DialTimeout
+	if dialTimeout <= 0 {
+		dialTimeout = DialTimeout
+	}
 	return func(region string, endpoints []string) (*clientv3.Client, error) {
-		if (user == "") != (password == "") {
-			// clientv3 would silently not authenticate, and every request would fail as from an unknown user.
+		if (cfg.User == "") != (cfg.Password == "") {
 			return nil, fmt.Errorf("state: dial %s: a user needs a password, and a password a user", region)
 		}
-		c, err := clientv3.New(clientv3.Config{
+		ccfg := clientv3.Config{
 			Endpoints:            endpoints,
-			DialTimeout:          DialTimeout,
+			DialTimeout:          dialTimeout,
 			DialKeepAliveTime:    10 * time.Second,
 			DialKeepAliveTimeout: 5 * time.Second,
-			Username:             user,
-			Password:             password,
-		})
+			Username:             cfg.User,
+			Password:             cfg.Password,
+		}
+		if cfg.RequestTimeout > 0 {
+			ccfg.DialOptions = []grpc.DialOption{
+				grpc.WithChainUnaryInterceptor(unaryRequestTimeout(cfg.RequestTimeout)),
+			}
+		}
+		c, err := clientv3.New(ccfg)
 		if err != nil {
 			return nil, fmt.Errorf("state: dial %s: %w", region, err)
 		}
 		return c, nil
 	}
+}
+
+// unaryRequestTimeout bounds one unary RPC (E12-D046). It is chained inside etcd's retry interceptor, so a timeout
+// is returned as an ordinary error and is not retried against a fresh budget. An auth failure is returned unchanged,
+// and token refresh on that failure still runs. The error is not wrapped: a wrapped context deadline would look like
+// the call's own deadline and etcd would retry it. Zero or negative is a no-op.
+func unaryRequestTimeout(limit time.Duration) grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		if limit <= 0 {
+			return invoker(ctx, method, req, reply, cc, opts...)
+		}
+		if deadline, ok := ctx.Deadline(); ok && !deadline.After(time.Now().Add(limit)) {
+			return invoker(ctx, method, req, reply, cc, opts...)
+		}
+		tctx, cancel := context.WithTimeout(ctx, limit)
+		defer cancel()
+		err := invoker(tctx, method, req, reply, cc, opts...)
+		if err != nil && tctx.Err() != nil && ctx.Err() == nil {
+			return fmt.Errorf("state: etcd request exceeded %s", limit)
+		}
+		return err
+	}
+}
+
+// DialWait is how long Clusters.Reader waits for a dial in progress (E12-D046). It is twice DialTimeout, or twice
+// the longest positive region dial timeout when that is longer. A region that omits dial_timeout does not shorten
+// the wait. The dial itself still fails at its own timeout.
+func DialWait(t Topology) time.Duration {
+	wait := 2 * DialTimeout
+	for _, r := range t.Regions {
+		dial, _, _, err := r.Timeouts()
+		if err != nil || dial <= 0 {
+			continue
+		}
+		if twice := 2 * dial; twice > wait {
+			wait = twice
+		}
+	}
+	return wait
 }
 
 // AgentRegions is the set of regions a process of (p, inst) may connect to (E00-D005 rule 2): an agent only its own;
@@ -95,10 +162,11 @@ type Clusters struct {
 	allowed map[string]bool
 	dial    DialFunc
 
-	mu      sync.Mutex
-	clients map[string]*clientv3.Client
-	dialing map[string]*dialing // regions being dialled now
-	closed  bool
+	mu       sync.Mutex
+	clients  map[string]*clientv3.Client
+	dialing  map[string]*dialing // regions being dialled now
+	closed   bool
+	dialWait time.Duration // Reader's wait for a dial in progress; 0 is 2*DialTimeout
 }
 
 // dialing is one dial in progress; done is closed when cli and err are set.
@@ -140,11 +208,33 @@ func NewClusters(t Topology, allowed []string, dial DialFunc) (*Clusters, error)
 // Topology returns a copy of the topology.
 func (c *Clusters) Topology() Topology { return c.topo.clone() }
 
+// SetDialWait sets how long Reader waits for a dial that is already running (E12-D046). Zero and negative are
+// ignored, leaving the default of twice DialTimeout. Call it before the first Reader. A later call is safe and
+// applies to the next wait.
+func (c *Clusters) SetDialWait(d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	c.mu.Lock()
+	c.dialWait = d
+	c.mu.Unlock()
+}
+
+func (c *Clusters) readerWait() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.dialWait > 0 {
+		return c.dialWait
+	}
+	return 2 * DialTimeout
+}
+
 // Reader is the read side of region's cluster. ErrRegionNotAllowed for regions outside the allowed set. The first
-// use of a region dials it, which with credentials waits up to DialTimeout for the cluster to authenticate the
-// client; an unreachable cluster then fails the call, and the next one dials again.
+// use of a region dials it. The caller waits up to readerWait (twice DialTimeout, unless SetDialWait says longer)
+// for that dial; an unreachable cluster then fails the call, and the next one dials again. The dial's own timeout
+// can fail it sooner.
 func (c *Clusters) Reader(region string) (Reader, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*DialTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), c.readerWait())
 	defer cancel()
 	cli, err := c.client(ctx, region)
 	if err != nil {

@@ -207,6 +207,26 @@ func TestAssembleStaleAndRevision(t *testing.T) {
 	}
 }
 
+func TestAssembleStalePerRegion(t *testing.T) {
+	now := time.Date(2026, 10, 18, 0, 0, 0, 0, time.UTC)
+	contact := now.Add(-2 * time.Second)
+	v := controller.AssembleWithStale(now, func(region string) time.Duration {
+		if region == "jp" {
+			return time.Second
+		}
+		return 15 * time.Second
+	}, []string{"tw", "jp"}, []controller.Snapshot{
+		{Plane: "md", Instance: "md-tw", Region: "tw", Rev: 3, Synced: true, LastContact: contact},
+		{Plane: "md", Instance: "md-jp", Region: "jp", Rev: 3, Synced: true, LastContact: contact},
+	})
+	if v.Regions["tw"].Stale || !v.Regions["tw"].Synced {
+		t.Fatalf("tw %+v", v.Regions["tw"])
+	}
+	if !v.Regions["jp"].Stale || !v.Regions["jp"].Synced || v.Regions["jp"].Rev != 3 {
+		t.Fatalf("jp %+v", v.Regions["jp"])
+	}
+}
+
 func baseWithAgent(s controller.Snapshot) controller.Snapshot {
 	s.Agent = &statev1.AgentRecord{Plane: "md", Instance: s.Instance, Epoch: 1}
 	return s

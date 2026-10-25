@@ -95,6 +95,19 @@ func TestDrop(t *testing.T) {
 	}
 }
 
+func TestRegionTimeoutFields(t *testing.T) {
+	in := strings.Replace(deployment, `"endpoints": ["http://etcd-tw:2379"]`,
+		`"endpoints": ["http://etcd-tw:2379"], "dial_timeout": "5s", "request_timeout": "2s", "stale_after": "15s"`, 1)
+	if err := run("-", "json", strings.NewReader(in), &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	bad := strings.Replace(deployment, `"endpoints": ["http://etcd-tw:2379"]`,
+		`"endpoints": ["http://etcd-tw:2379"], "dial_timeout": "nope"`, 1)
+	if err := run("-", "json", strings.NewReader(bad), &bytes.Buffer{}); err == nil {
+		t.Fatal("bad duration accepted")
+	}
+}
+
 func TestRejects(t *testing.T) {
 	for name, in := range map[string]string{
 		"unknown field": `{"regions": {}, "instances": {}, "planes": {}, "extra": 1}`,

@@ -201,6 +201,20 @@ func TestMinimumConfig(t *testing.T) {
 	}
 }
 
+func TestLoadAcceptsRegionTimeouts(t *testing.T) {
+	pub := mustPub(t)
+	deploy := `{
+		"regions": {"tw": {"endpoints": ["http://127.0.0.1:1"], "dial_timeout": "5s", "request_timeout": "2s", "stale_after": "15s"}},
+		"instances": {"controller": "tw", "td-tw-1": "tw"},
+		"planes": {"td-tw-1": "td"}
+	}`
+	cfg := loadWithin(t, deploy, goodConfig(pub), testInput(t))
+	got := cfg.Topology.Regions["tw"]
+	if got.DialTimeout != "5s" || got.RequestTimeout != "2s" || got.StaleAfter != "15s" {
+		t.Fatalf("%+v", got)
+	}
+}
+
 func TestLoadRejects(t *testing.T) {
 	pub := mustPub(t)
 	deploy := goodDeploy()

@@ -325,17 +325,20 @@ func TestStartRejects(t *testing.T) {
 	negTTL.Term.SessionTTL = -time.Second
 	negStale := ready
 	negStale.StaleAfter = -time.Second
+	negRegion := ready
+	negRegion.StaleByRegion = map[string]time.Duration{"jp": -time.Second}
 	missingPlane := ready
 	missingPlane.Planes = nil
 	for name, cfg := range map[string]Config{
-		"empty":          {},
-		"no controller":  {Topology: bare, Dial: state.DefaultDial, Term: state.TermOptions{ID: "a"}},
-		"no dial":        noDial,
-		"no id":          noID,
-		"negative ttl":   negTTL,
-		"negative stale": negStale,
-		"missing plane":  missingPlane,
-		"empty topology": {Dial: state.DefaultDial, Term: state.TermOptions{ID: "a"}},
+		"empty":                 {},
+		"no controller":         {Topology: bare, Dial: state.DefaultDial, Term: state.TermOptions{ID: "a"}},
+		"no dial":               noDial,
+		"no id":                 noID,
+		"negative ttl":          negTTL,
+		"negative stale":        negStale,
+		"negative region stale": negRegion,
+		"missing plane":         missingPlane,
+		"empty topology":        {Dial: state.DefaultDial, Term: state.TermOptions{ID: "a"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := Start(ctx, cfg); err == nil {
@@ -343,6 +346,48 @@ func TestStartRejects(t *testing.T) {
 			}
 		})
 	}
+	zero := ready
+	zero.StaleByRegion = map[string]time.Duration{"tw": 0}
+	if err := zero.validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A positive per-region threshold wins over Config.StaleAfter (E12-D046).
+func TestStaleThresholdPerRegion(t *testing.T) {
+	ctx := t.Context()
+	servers := etcdtest.StartRegions(t, "tw", "jp")
+	proxy := etcdtest.NewProxy(t, servers["jp"])
+	topo := topology(servers, "tw")
+	topo.Regions["jp"] = state.Region{Endpoints: proxy.Endpoints()}
+	applyAuth(t, ctx, topo, servers)
+	cfg := config(topo, t.Name(), testLog(t))
+	cfg.StaleAfter = 30 * time.Second
+	cfg.StaleByRegion = map[string]time.Duration{"jp": time.Second}
+	// The published mark is recomputed on resync. A short probe freezes
+	// LastContact once the proxy is cut (E12-D046).
+	cfg.Resync = 50 * time.Millisecond
+	cfg.Mirror = state.MirrorOptions{
+		ProbeInterval: 100 * time.Millisecond,
+		MinBackoff:    50 * time.Millisecond,
+		MaxBackoff:    200 * time.Millisecond,
+	}
+	c := startAsync(t, ctx, cfg).ready(30 * time.Second)
+	waitFresh(t, c, "tw")
+	waitFresh(t, c, "jp")
+
+	proxy.Cut()
+	until(t, 20*time.Second, "jp is stale and tw is fresh", func() error {
+		jp := c.View().Regions["jp"]
+		tw := c.View().Regions["tw"]
+		if !jp.Stale {
+			return fmt.Errorf("jp %+v", jp)
+		}
+		if tw.Stale || !tw.Synced {
+			return fmt.Errorf("tw %+v", tw)
+		}
+		return nil
+	})
 }
 
 // The leader fences its home region at election and other regions on the first
