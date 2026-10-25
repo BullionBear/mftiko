@@ -6,6 +6,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -19,12 +20,46 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/BullionBear/mftiko/internal/platform/pgtest"
 )
 
-// Acceptance for bin/mftiko-release (E12-D022–E12-D026). Versions are the
-// literal tags A–E. The database URL is the low-entropy fixture below.
+// Acceptance for bin/mftiko-release (E12-D022–E12-D026, E12-D032). Versions
+// are the literal tags A–E. switch runs the real mftiko-migrate against a
+// pgtest database (user mftiko, trust, no password).
 
-const databaseURL = "postgres://test-token-a@localhost/mftiko?sslmode=disable"
+var migrateBinary []byte
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "mftiko-migrate")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	defer os.RemoveAll(dir)
+	bin := filepath.Join(dir, "mftiko-migrate")
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		fmt.Fprintln(os.Stderr, "runtime.Caller")
+		os.Exit(1)
+	}
+	cmd := exec.Command("go", "build", "-o", bin, "./cmd/mftiko-migrate")
+	cmd.Dir = filepath.Dir(filepath.Dir(file))
+	cmd.Env = append(withoutEnv(os.Environ(), "CGO_ENABLED", "GOFLAGS"), "CGO_ENABLED=0")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		os.Exit(1)
+	}
+	migrateBinary, err = os.ReadFile(bin)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	os.Exit(m.Run())
+}
 
 const systemctlScript = `#!/bin/bash
 printf '%s\n' "$*" >>"$MFTIKO_TEST_LOG"
@@ -39,10 +74,11 @@ exit 0
 
 func TestReleaseSwitchRollback(t *testing.T) {
 	blobs := map[string][]byte{
-		"A": releaseTar(t, "A", 0, nil, true),
-		"B": releaseTar(t, "B", 0, nil, false),
+		"A": releaseTar(t, "A", nil, true),
+		"B": releaseTar(t, "B", nil, false),
 	}
 	w := newWorld(t, serve(t, blobs))
+	w.withDB()
 
 	w.fetchInstall("A")
 	assertReadOnly(t, filepath.Join(w.prefix, "releases", "A"))
@@ -54,7 +90,10 @@ func TestReleaseSwitchRollback(t *testing.T) {
 	w.fetchInstall("B")
 	w.mustList("B\nA\n")
 
-	w.must("switch", "A")
+	if out := w.must("switch", "A"); !strings.Contains(out, "applied 0001_history\n") {
+		t.Fatalf("switch A stdout %q", out)
+	}
+	appliedAt := w.migrationTimes(5)
 	w.mustCurrent("A")
 	w.mustMarker("A")
 	w.mustList("B\nA current\n")
@@ -65,7 +104,10 @@ func TestReleaseSwitchRollback(t *testing.T) {
 		t.Fatal("units that are not restarted were not installed")
 	}
 
-	w.must("switch", "B")
+	if out := w.must("switch", "B"); !strings.Contains(out, "up to date\n") {
+		t.Fatalf("switch B stdout %q", out)
+	}
+	w.migrationTimes(5, appliedAt...)
 	w.mustCurrent("B")
 	w.mustMarker("B")
 	w.mustList("B current\nA previous\n")
@@ -87,9 +129,8 @@ func TestReleaseSwitchRollback(t *testing.T) {
 	w.mustMarker("B")
 	w.mustList("B current\nA previous\n")
 
-	sw := migrateLog() + restartLog()
-	rb := restartLog()
-	want := sw + sw + rb + rb
+	one := restartLog()
+	want := one + one + one + one
 	if got := w.logText(); got != want {
 		t.Fatalf("operation log:\n%s\nwant:\n%s", got, want)
 	}
@@ -136,12 +177,13 @@ func TestReleaseSwitchRollback(t *testing.T) {
 func TestReleaseGCKeepsRunning(t *testing.T) {
 	hold := sleepBytes(t)
 	blobs := map[string][]byte{
-		"A": releaseTar(t, "A", 0, hold, false),
-		"B": releaseTar(t, "B", 0, nil, false),
-		"C": releaseTar(t, "C", 0, nil, false),
-		"D": releaseTar(t, "D", 0, nil, false),
+		"A": releaseTar(t, "A", hold, false),
+		"B": releaseTar(t, "B", nil, false),
+		"C": releaseTar(t, "C", nil, false),
+		"D": releaseTar(t, "D", nil, false),
 	}
 	w := newWorld(t, serve(t, blobs))
+	w.withDB()
 	for _, tag := range []string{"A", "B", "C", "D"} {
 		w.fetchInstall(tag)
 	}
@@ -200,9 +242,10 @@ func TestReleaseGCKeepsRunning(t *testing.T) {
 func TestReleaseGCKeepsCurrent(t *testing.T) {
 	blobs := map[string][]byte{}
 	for _, tag := range []string{"A", "B", "C", "D", "E"} {
-		blobs[tag] = releaseTar(t, tag, 0, nil, false)
+		blobs[tag] = releaseTar(t, tag, nil, false)
 	}
 	w := newWorld(t, serve(t, blobs))
+	w.withDB()
 	w.fetchInstall("A")
 	w.must("switch", "A")
 	for _, tag := range []string{"B", "C", "D", "E"} {
@@ -225,23 +268,43 @@ func TestReleaseGCKeepsCurrent(t *testing.T) {
 
 func TestReleaseMigrateFailureLeavesCurrent(t *testing.T) {
 	blobs := map[string][]byte{
-		"A":   releaseTar(t, "A", 0, nil, false),
-		"bad": releaseTar(t, "bad", 1, nil, false),
+		"A": releaseTar(t, "A", nil, false),
+		"B": releaseTar(t, "B", nil, false),
 	}
 	w := newWorld(t, serve(t, blobs))
+	w.withDB()
 	w.fetchInstall("A")
 	w.must("switch", "A")
-	w.fetchInstall("bad")
+	w.fetchInstall("B")
+	out := w.must("switch", "B")
+	if !strings.Contains(out, "up to date\n") {
+		t.Fatalf("second switch stdout %q", out)
+	}
+	w.mustCurrent("B")
 	before := w.logText()
 
-	_, errb, code := w.run("switch", "bad")
-	if code == 0 || !strings.Contains(errb, "mftiko-migrate up failed") {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn, err := pgx.Connect(ctx, w.database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	tag, err := conn.Exec(ctx, `UPDATE schema_migrations SET sha256 = $1 WHERE version = 1`, strings.Repeat("ab", 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tag.RowsAffected() != 1 {
+		t.Fatalf("updated %d rows", tag.RowsAffected())
+	}
+
+	_, errb, code := w.run("switch", "A")
+	if code == 0 || !strings.Contains(errb, "mftiko-migrate up failed") || !strings.Contains(errb, "changed") {
 		t.Fatalf("switch exit %d, stderr %s", code, errb)
 	}
-	w.mustCurrent("A")
-	w.mustMarker("A")
-	extra := strings.TrimPrefix(w.logText(), before)
-	if extra != migrateLog() {
+	w.mustCurrent("B")
+	w.mustMarker("B")
+	if extra := strings.TrimPrefix(w.logText(), before); extra != "" {
 		t.Fatalf("log after failed migrate:\n%s", extra)
 	}
 }
@@ -249,9 +312,10 @@ func TestReleaseMigrateFailureLeavesCurrent(t *testing.T) {
 func TestReleaseRestartFailureSkipsGC(t *testing.T) {
 	blobs := map[string][]byte{}
 	for _, tag := range []string{"A", "B", "C", "D", "E"} {
-		blobs[tag] = releaseTar(t, tag, 0, nil, false)
+		blobs[tag] = releaseTar(t, tag, nil, false)
 	}
 	w := newWorld(t, serve(t, blobs))
+	w.withDB()
 	w.extra = []string{"MFTIKO_TEST_RESTART_FAIL=1"}
 	for _, tag := range []string{"A", "B", "C", "D", "E"} {
 		w.fetchInstall(tag)
@@ -272,7 +336,7 @@ func TestReleaseRestartFailureSkipsGC(t *testing.T) {
 }
 
 func TestReleaseFetchRejects(t *testing.T) {
-	blob := releaseTar(t, "A", 0, nil, false)
+	blob := releaseTar(t, "A", nil, false)
 	w := newWorld(t, serveSums(t, map[string][]byte{"A": blob}, map[string]bool{"A": true}))
 	_, errb, code := w.run("fetch", "A")
 	if code == 0 || !strings.Contains(errb, "checksum failed: A") {
@@ -356,13 +420,14 @@ func TestReleaseRequiresRoot(t *testing.T) {
 }
 
 type world struct {
-	t       *testing.T
-	prefix  string
-	systemd string
-	logPath string
-	ctl     string
-	base    string
-	extra   []string
+	t        *testing.T
+	prefix   string
+	systemd  string
+	logPath  string
+	ctl      string
+	base     string
+	database string
+	extra    []string
 }
 
 func newWorld(t *testing.T, base string) *world {
@@ -407,7 +472,7 @@ func (w *world) environ() []string {
 		"MFTIKO_SYSTEMCTL="+w.ctl,
 		"MFTIKO_PROC=/proc",
 		"MFTIKO_RELEASE_BASE="+w.base,
-		"DATABASE_URL="+databaseURL,
+		"DATABASE_URL="+w.database,
 		"MFTIKO_TEST_LOG="+w.logPath,
 	)
 	return append(env, w.extra...)
@@ -488,8 +553,59 @@ func (w *world) logText() string {
 	return string(b)
 }
 
-func migrateLog() string {
-	return "migrate up\ndatabase " + databaseURL + "\n"
+func (w *world) withDB() {
+	w.t.Helper()
+	srv := pgtest.Start(w.t)
+	w.database = srv.DSN()
+}
+
+func (w *world) migrationTimes(n int, prev ...time.Time) []time.Time {
+	w.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn, err := pgx.Connect(ctx, w.database)
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	rows, err := conn.Query(ctx, `SELECT version, applied_at FROM schema_migrations ORDER BY version`)
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	defer rows.Close()
+	var got []time.Time
+	var vers []int
+	for rows.Next() {
+		var v int
+		var at time.Time
+		if err := rows.Scan(&v, &at); err != nil {
+			w.t.Fatal(err)
+		}
+		vers = append(vers, v)
+		got = append(got, at)
+	}
+	if err := rows.Err(); err != nil {
+		w.t.Fatal(err)
+	}
+	if len(vers) != n {
+		w.t.Fatalf("schema_migrations %d rows, want %d (%v)", len(vers), n, vers)
+	}
+	for i, v := range vers {
+		if v != i+1 {
+			w.t.Fatalf("schema_migrations versions %v", vers)
+		}
+	}
+	if len(prev) > 0 {
+		if len(prev) != len(got) {
+			w.t.Fatalf("applied_at %d, previous %d", len(got), len(prev))
+		}
+		for i := range got {
+			if !got[i].Equal(prev[i]) {
+				w.t.Fatalf("applied_at changed: %v -> %v", prev, got)
+			}
+		}
+	}
+	return got
 }
 
 func restartLog() string {
@@ -559,8 +675,11 @@ func dir(name string) member {
 	return member{name: name, mode: 0o755}
 }
 
-func releaseTar(t *testing.T, tag string, migrateExit int, hold []byte, legacy bool) []byte {
+func releaseTar(t *testing.T, tag string, hold []byte, legacy bool) []byte {
 	t.Helper()
+	if len(migrateBinary) == 0 {
+		t.Fatal("mftiko-migrate was not built")
+	}
 	bins := []string{
 		"mftiko-sym",
 		"mftiko-mdfetch",
@@ -572,7 +691,7 @@ func releaseTar(t *testing.T, tag string, migrateExit int, hold []byte, legacy b
 	}
 	members := []member{
 		dir("bin"), dir("web"), dir("systemd"),
-		{name: "bin/mftiko-migrate", body: []byte(migrateScript(migrateExit)), mode: 0o755},
+		{name: "bin/mftiko-migrate", body: migrateBinary, mode: 0o755},
 		{name: "web/index.html", body: []byte("ok\n"), mode: 0o644},
 		{name: "systemd/.gitkeep", body: []byte("keep\n"), mode: 0o644},
 	}
@@ -601,14 +720,6 @@ func releaseTar(t *testing.T, tag string, migrateExit int, hold []byte, legacy b
 		})
 	}
 	return tarGz(t, members)
-}
-
-func migrateScript(code int) string {
-	return fmt.Sprintf(`#!/bin/bash
-printf '%%s\n' "migrate $*" >>"$MFTIKO_TEST_LOG"
-printf '%%s\n' "database ${DATABASE_URL-}" >>"$MFTIKO_TEST_LOG"
-exit %d
-`, code)
 }
 
 func tarGz(t *testing.T, members []member) []byte {

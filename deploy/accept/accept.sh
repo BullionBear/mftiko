@@ -59,28 +59,15 @@ up() {
 	(cd "$repo" && GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -o bin/linux/ \
 		./cmd/mftiko-md-agent ./cmd/mftiko-md-conn ./cmd/mftiko-shim ./cmd/mftiko-sym ./cmd/mftiko-md-accept \
 		./cmd/mftiko-td-agent ./cmd/mftiko-td-account ./cmd/mftiko-td-accept ./cmd/mftiko-seal \
-		./cmd/mftiko-controller ./cmd/mftiko-sts-agent ./cmd/mftiko-api ./cmd/mftiko-api-accept ./cmd/mftiko-pack ./cmd/mftiko &&
+		./cmd/mftiko-controller ./cmd/mftiko-sts-agent ./cmd/mftiko-api ./cmd/mftiko-api-accept ./cmd/mftiko-pack ./cmd/mftiko \
+		./cmd/mftiko-migrate &&
 		GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -o bin/linux/examples/ ./examples/strategies/hello)
 	mkdir -p "$here/data/work"
 	(cd "$repo" && go run ./cmd/mftiko-nats-dev -out "$here/data/nats" >/dev/null)
 	"${compose[@]}" up -d --wait
-	# mftiko-migrate is not implemented yet: apply each up migration once, in order, recorded in
-	# accept_migrations. A file that fails with "already exists" was applied before that table was
-	# kept (a stack from E4 or E6): it is recorded and skipped.
-	"${compose[@]}" exec -T postgres sh -c '
-		q() { psql -qtA -v ON_ERROR_STOP=1 -U mftiko -d mftiko "$@"; }
-		q -c "create table if not exists accept_migrations (name text primary key)"
-		for f in $(ls /migrations/*.up.sql | sort); do
-			n=$(basename "$f")
-			[ -z "$(q -c "select 1 from accept_migrations where name = '"'"'$n'"'"'")" ] || continue
-			if ! out=$(q --single-transaction -f "$f" 2>&1); then
-				echo "$out" | grep -q "already exists" || { echo "$n: $out" >&2; exit 1; }
-				echo "$n: applied before, recorded"
-			else
-				echo "$n: applied"
-			fi
-			q -c "insert into accept_migrations values ('"'"'$n'"'"')"
-		done'
+	# Empty database (E12-D031). A database the old accept.sh loop already migrated needs the
+	# one-time schema_migrations insert in docs/operations.md before this will succeed.
+	run /mftiko/mftiko-migrate up
 	# The agents run the conn and account workers from the registry's latest, as in production (E12-02).
 	run sh -c '/mftiko/mftiko-pack -kind md.conn -bin /mftiko/mftiko-md-conn -name mftiko-md-conn \
 		-repo registry:5000/bullionbear/mftiko-md-conn -tag latest -plain-http &&

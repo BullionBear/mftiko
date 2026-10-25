@@ -121,6 +121,41 @@ spec 什麼時候被刪，只由 API 決定（W5，E10-D017）：
 - registry 上的資料 artifact（`state_out`）一期不刪，新的 session 可以用 digest 接手；容量由運維管理（E10-D017）。
 - `audit` 的列一期不刪（E10-D010）。
 
+## 舊驗收庫補記 schema_migrations
+
+依 [DECISIONS.md](DECISIONS.md) E12-D031（E12-13，#391）。`accept.sh up` 從空資料庫呼叫 `mftiko-migrate up`，不再讀 `accept_migrations`。這段給 #384 的 runbook 收錄。
+
+空的資料庫不要做這段，直接 `mftiko-migrate up`（或 `make migrate-up`）。
+
+開發用的資料庫若已經被舊的 `accept.sh` 套過 `migrations/0001`–`0005`，而 `schema_migrations` 還沒有這些列，手動插入一次，再跑 `mftiko-migrate up` 套更新的檔案。`sha256` 是該 `.up.sql` 原始位元組的 SHA-256（小寫十六進位）。填錯會讓下一次 `up` 停住、不套任何新檔。
+
+在 repo 根目錄（macOS 沒有 `sha256sum` 時，把下面的 `sha256sum` 換成 `shasum -a 256`）：
+
+```sh
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -v sha1="$(sha256sum migrations/0001_history.up.sql | awk '{print $1}')" \
+  -v sha2="$(sha256sum migrations/0002_symbol.up.sql | awk '{print $1}')" \
+  -v sha3="$(sha256sum migrations/0003_audit.up.sql | awk '{print $1}')" \
+  -v sha4="$(sha256sum migrations/0004_session_records.up.sql | awk '{print $1}')" \
+  -v sha5="$(sha256sum migrations/0005_session_records_final.up.sql | awk '{print $1}')" <<'SQL'
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version    INTEGER PRIMARY KEY,
+    name       TEXT NOT NULL,
+    sha256     TEXT NOT NULL,
+    applied_at TIMESTAMPTZ NOT NULL
+);
+INSERT INTO schema_migrations (version, name, sha256, applied_at) VALUES
+    (1, 'history', :'sha1', now()),
+    (2, 'symbol', :'sha2', now()),
+    (3, 'audit', :'sha3', now()),
+    (4, 'session_records', :'sha4', now()),
+    (5, 'session_records_final', :'sha5', now());
+SQL
+mftiko-migrate up
+```
+
+`:'sha1'` 這類是 psql 的字串引用，不要改成把雜湊拼進 SQL。舊的 `accept_migrations` 可以留著，`mftiko-migrate` 不讀它。
+
 ## 驗收
 
 `deploy/accept/accept.sh e2e main` 會走完一次：session RUNNING 時在主機上找到 log，檢查目錄 0750、檔案 0640；結束之後 log 還在；保留期（驗收設成 1 分鐘）過後 spec 被刪，log 也被清掉。見 [deploy/accept/README.md](../deploy/accept/README.md)。

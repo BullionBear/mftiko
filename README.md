@@ -77,7 +77,7 @@ docs/                     DECISIONS.md, PROTOCOL.md, operations.md (logs and ret
 | `make dev-up` / `make dev-down` | generate dev NATS credentials and API config (`deploy/dev/data/api`, token in `token`), build a Linux `mftiko-api` and the console, then start / stop a local PostgreSQL, etcd, NATS, registry and the API with the console on `127.0.0.1:8080` (Docker); `dev-up` waits until all are healthy |
 | `make accept-up` / `make accept-down` | start / stop the acceptance stack; the checks themselves, including the end-to-end ones (`accept.sh e2e-up`, `e2e-all`, `console-smoke`), are in `deploy/accept/README.md` |
 | `make dev-nats-smoke` | run the dev NATS permission checks (`deploy/dev/nats-smoke.sh`) against the compose server |
-| `make migrate-up` / `make migrate-down` / `make migrate-status` | apply / roll back one / list migrations against `$DATABASE_URL` |
+| `make migrate-up` / `make migrate-status` | apply pending migrations / list them against `$DATABASE_URL` |
 | `make migrate-new NAME=...` | creates the next `NNNN_<name>.up.sql` / `.down.sql` pair |
 | `make clean` | removes `bin/` and web build output |
 | `make help` | lists targets |

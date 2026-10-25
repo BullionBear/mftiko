@@ -89,13 +89,13 @@ tarball 裡的 `bin/mftiko-release`，在部署機以 root 執行。
 4. 只重啟本機 `systemctl is-enabled` 成功的 unit。順序是 `mftiko-sym`、`mftiko-mdfetch`、`mftiko-api`、`mftiko-controller`、`mftiko-md-agent`、`mftiko-td-agent`、`mftiko-sts-agent`。對哪個檔由 `ExecStart`、`ExecStartPre`、`ExecStartPost` 是否含該 binary 決定（註解不算），不靠檔名，所以 #378 可以自己取檔名。etcd、NATS、Postgres 的 unit 不執行這些 binary，不會被重啟。
 5. 上面都成功才 `gc`。重啟失敗不 gc；`current` 已經指到新版。
 
-兩台主機都跑 migrate。migration 只做向後相容的新增，可以重複執行。沒有本機 Postgres 的主機把 `DATABASE_URL` 指到 home 的資料庫。`cmd/mftiko-migrate` 目前還沒實作，真實的 `switch` 會在重啟之前停在第 1 步。
+兩台主機都跑 migrate。`mftiko-migrate up` 依編號套用嵌入的 `migrations/*.up.sql`，已紀錄且 sha256 相符的跳過，所以可以重複執行。每個檔案與 `schema_migrations` 的一列在同一個交易；先拿 `pg_advisory_lock`，兩台一次只跑一個。已套用檔案的 sha256 或 name 與紀錄不同，或紀錄沒有對應檔案，就以非 0 結束，`switch` 停在第 1 步，`current` 不動。沒有 `down`。migration 只做向後相容的新增，不支援不能放進交易的 SQL。沒有本機 Postgres 的主機把 `DATABASE_URL` 指到 home 的資料庫。
 
 **`rollback`** 安裝上一版的 unit、`daemon-reload`、依同一順序重啟。不跑 `mftiko-migrate`，不降 schema，不 gc。每次 `current` 改動都更新 `previous`，所以再 rollback 一次會回到剛離開的版本。上一版的目錄已經不在就拒絕，`current` 不動。
 
 **`gc`** 在 `switch` 成功後自動跑，也可以單獨跑。保留 `/opt/mftiko/installed` 裡還在的最近 3 版（成功的 install 追加一行，最舊在前；同一個 tag 以最後一次為準），再加上 `current`。任一 `/proc/<pid>/exe`（去掉結尾的 ` (deleted)`）落在某版目錄裡，那一版不刪。`/proc` 讀不到則什麼都不刪並失敗。不另外為 `previous` 保留：它若在這兩個條件之外會被刪，之後 rollback 會拒絕。往前換一版時，上一版是次新的，留在最近 3 版裡。刪除前目錄的 realpath 必須正好是 `/opt/mftiko/releases/<tag>`。
 
-真實的 A→B 換版，以及 agent 收養還在跑的 shim，在 #385 的 testnet 演練，不在這張的 CI。這張的腳本測試用假版本 A、B（gc 用到 E），`DATABASE_URL` 是 `postgres://test-token-a@localhost/mftiko?sslmode=disable`。
+真實的 A→B 換版，以及 agent 收養還在跑的 shim，在 #385 的 testnet 演練，不在這張的 CI。這張的腳本測試用假版本 A、B（gc 用到 E），tarball 裡是真正的 `mftiko-migrate`，`DATABASE_URL` 是測試用的 Postgres（使用者 `mftiko`、trust、沒有密碼）。
 
 驗收測試把 `MFTIKO_PREFIX`、`MFTIKO_SYSTEMD_DIR`、`MFTIKO_SYSTEMCTL`、`MFTIKO_PROC`、`MFTIKO_RELEASE_BASE` 指到暫存目錄。部署不設這些變數：預設就是 `/opt/mftiko`、`/etc/systemd/system`、`systemctl`、`/proc` 與上面的 GitHub Release URL。
 
