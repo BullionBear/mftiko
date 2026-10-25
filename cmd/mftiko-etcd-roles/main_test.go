@@ -46,6 +46,9 @@ func TestEtcdctl(t *testing.T) {
 		"etcdctl role grant-permission 'api' readwrite '/mftiko/v1/sts/sts-tw-1/spec/' '/mftiko/v1/sts/sts-tw-1/spec0'\n",
 		"etcdctl role grant-permission 'api' readwrite '/mftiko/v1/sts/sts-tw-1/status/' '/mftiko/v1/sts/sts-tw-1/status0'\n",
 		"etcdctl role grant-permission 'api' readwrite '/mftiko/v1/td/td-jp-1/account/' '/mftiko/v1/td/td-jp-1/account0'\n",
+		"etcdctl role grant-permission 'api' readwrite '/mftiko/v1/retired/sts-tw-1'\n",
+		"etcdctl role grant-permission 'sts-tw-1' read '/mftiko/v1/retired/sts-tw-1'\n",
+		"etcdctl role grant-permission 'api' readwrite '/mftiko/v1/retired/td-jp-1'\n",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q", want)
@@ -63,6 +66,32 @@ func TestEtcdctl(t *testing.T) {
 		if strings.Contains(out.String(), forbidden) {
 			t.Errorf("api granted %s", forbidden)
 		}
+	}
+}
+
+func TestDrop(t *testing.T) {
+	var out bytes.Buffer
+	if err := runDrop("-", "sts-tw-1", strings.NewReader(deployment), &out); err != nil {
+		t.Fatal(err)
+	}
+	want := "# region tw\nexport ETCDCTL_ENDPOINTS='http://etcd-tw:2379'\netcdctl user revoke-role 'sts-tw-1' 'sts-tw-1'\netcdctl user delete 'sts-tw-1'\netcdctl role delete 'sts-tw-1'\n"
+	if out.String() != want {
+		t.Fatalf("%q", out.String())
+	}
+	out.Reset()
+	if err := runDrop("-", "td-jp-1", strings.NewReader(deployment), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "export ETCDCTL_ENDPOINTS='http://etcd-jp:2379'\n") || !strings.Contains(out.String(), "etcdctl role delete 'td-jp-1'\n") {
+		t.Fatalf("%q", out.String())
+	}
+	for _, inst := range []string{"controller", "nope"} {
+		if err := runDrop("-", inst, strings.NewReader(deployment), &bytes.Buffer{}); err == nil {
+			t.Errorf("%s accepted", inst)
+		}
+	}
+	if err := run("-", "etcdctl", strings.NewReader(deployment), &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
 	}
 }
 

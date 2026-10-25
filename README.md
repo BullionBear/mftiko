@@ -42,6 +42,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-pack             packs a strategy binary into an OCI artifact and pushes it
   mftiko-controller       controller: one leader, derives demands, fences per region
   mftiko-etcd-roles       prints each region's etcd users and roles, derived from the instance list
+  mftiko-retire-clean     deletes one retired instance's own etcd keys
   mftiko-nats-dev         generates dev NATS operator, accounts and user creds, and checks them
   mftiko-seal             makes a TD instance's key pair and seals account credentials to it
   mftiko-conformance      SDK conformance suite

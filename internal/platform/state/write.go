@@ -170,6 +170,25 @@ func (r *router) txn(cmps []clientv3.Cmp, then, els []clientv3.Op) error {
 // subtree: past it lie other instances, possibly in other clusters.
 func (r *router) key(key, end []byte) error {
 	k := string(key)
+	if inst, ok := RetiredInstance(k); ok {
+		// One exact key in the instance's home region. It is not a prefix, and a
+		// range would walk into the next key (E12-D033).
+		if len(end) > 0 {
+			return fmt.Errorf("%w: %q is one key, not a range", ErrBadKey, k)
+		}
+		region, err := r.topo.RegionOf(inst)
+		if err != nil {
+			return err
+		}
+		switch r.region {
+		case "":
+			r.region, r.first = region, k
+		case region:
+		default:
+			return fmt.Errorf("%w: %q is in %s, %q in %s", ErrCrossCluster, r.first, r.region, k, region)
+		}
+		return nil
+	}
 	p, inst, err := Owner(k)
 	if err != nil {
 		return err

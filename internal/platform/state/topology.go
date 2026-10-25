@@ -58,7 +58,11 @@ func (t Topology) RegionOf(inst string) (string, error) {
 }
 
 // RegionOfKey is the region whose cluster holds key: the region of its Owner (PROTOCOL §3, E00-D005 rule 1).
+// A retirement marker is not under /{plane}/{inst}/; it routes to that instance's home region (E12-D033).
 func (t Topology) RegionOfKey(key string) (string, error) {
+	if inst, ok := RetiredInstance(key); ok {
+		return t.RegionOf(inst)
+	}
 	_, inst, err := Owner(key)
 	if err != nil {
 		return "", err

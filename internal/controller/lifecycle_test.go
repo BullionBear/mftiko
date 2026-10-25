@@ -236,6 +236,28 @@ func TestLifecycleAssignmentWithoutDemands(t *testing.T) {
 	wantKeys(t, controller.Lifecycle(v, inst, false), state.SessionDemandKey(stsInst, sessID))
 }
 
+func TestLifecycleRetiredSTSReleasesWhileWorkerRemains(t *testing.T) {
+	v, demands := endedView(statev1.Phase_PHASE_RUNNING, true, true)
+	if got := controller.Lifecycle(v, places(), true); len(got) != 0 {
+		t.Fatalf("without the marker: %v", got)
+	}
+	v.Retired = map[string]struct{}{stsInst: {}}
+	wantKeys(t, controller.Lifecycle(v, places(), false), demands...)
+	v.Demands = map[string]controller.Demand{}
+	wantKeys(t, controller.Lifecycle(v, places(), false), state.SessionDemandKey(stsInst, sessID))
+}
+
+func TestLifecycleRetiredSTSStaleRegionWaits(t *testing.T) {
+	v, _ := endedView(statev1.Phase_PHASE_RUNNING, true, false)
+	v.Retired = map[string]struct{}{stsInst: {}}
+	tw := v.Regions["tw"]
+	tw.Stale = true
+	v.Regions["tw"] = tw
+	if got := controller.Lifecycle(v, places(), true); len(got) != 0 {
+		t.Fatalf("stale region deleted %v", got)
+	}
+}
+
 func TestLifecycleDoesNotNameForeignKeys(t *testing.T) {
 	v, demands := endedView(statev1.Phase_PHASE_DONE, false, true)
 	ack := state.MDAckKey("md-tw-1", sessID, "select/near")

@@ -26,6 +26,7 @@ func TestAPIScope(t *testing.T) {
 		{"delete status", del(status)},
 		{"delete account", del(acct)},
 		{"delete specs by prefix", del(SessionSpecPrefix("sts-tw-1"), clientv3.WithPrefix())},
+		{"put retirement", put(RetiredKey("sts-tw-1"))},
 	}
 	for _, c := range allowed {
 		if _, err := routeTxn(topo, apiScope{}, nil, []clientv3.Op{c.op}, nil); err != nil {
@@ -46,6 +47,11 @@ func TestAPIScope(t *testing.T) {
 		{"put worker status", put(WorkerStatusKey(PlaneSTS, "sts-tw-1", "h"))},
 		{"put controller key", put(AgentKey(PlaneCtl, ControllerInstance))},
 		{"delete the whole sts subtree", del(instPrefix(PlaneSTS, "sts-tw-1"), clientv3.WithPrefix())},
+		{"delete retirement", del(RetiredKey("sts-tw-1"))},
+	}
+	// A range on the retirement key is not a key the router can place (E12-D033).
+	if _, err := routeTxn(topo, apiScope{}, nil, []clientv3.Op{del(RetiredKey("sts-tw-1"), clientv3.WithPrefix())}, nil); !errors.Is(err, ErrBadKey) {
+		t.Errorf("delete retirement by prefix: %v, want ErrBadKey", err)
 	}
 	for _, c := range refused {
 		if _, err := routeTxn(topo, apiScope{}, nil, []clientv3.Op{c.op}, nil); !errors.Is(err, ErrNotWriter) {
@@ -91,5 +97,45 @@ func TestAPIWriterTxn(t *testing.T) {
 	status := SessionStatusKey("sts-tw-1", "a1b2c3")
 	if _, err := w.Txn(ctx, nil, []clientv3.Op{clientv3.OpPut(status, "x")}, nil); !errors.Is(err, ErrNotWriter) {
 		t.Fatalf("status put: %v", err)
+	}
+}
+
+func TestAPIRetireTxn(t *testing.T) {
+	ctx := testCtx(t)
+	s, topo := singleRegion(t, "sts-tw-1")
+	w := newClusters(t, topo, nil, as(t, topo, UserAPI)).APIWriter()
+	agent := AgentKey(PlaneSTS, "sts-tw-1")
+	key := RetiredKey("sts-tw-1")
+	raw := s.Client(t)
+	if _, err := raw.Put(ctx, agent, "rec"); err != nil {
+		t.Fatal(err)
+	}
+	retire := func() (*clientv3.TxnResponse, error) {
+		return w.Txn(ctx,
+			[]clientv3.Cmp{clientv3.Compare(clientv3.Version(agent), "=", 0)},
+			[]clientv3.Op{clientv3.OpPut(key, "sts-tw-1")}, nil)
+	}
+	resp, err := retire()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Succeeded {
+		t.Fatal("agent present, txn succeeded")
+	}
+	if val, _, ok := kvOf(t, ctx, raw, key); ok {
+		t.Fatalf("marker written %q", val)
+	}
+	if _, err := raw.Delete(ctx, agent); err != nil {
+		t.Fatal(err)
+	}
+	resp, err = retire()
+	if err != nil || !resp.Succeeded {
+		t.Fatalf("retire: %v succeeded=%v", err, resp.Succeeded)
+	}
+	if val, _, ok := kvOf(t, ctx, raw, key); !ok || val != "sts-tw-1" {
+		t.Fatalf("marker %q ok=%v", val, ok)
+	}
+	if _, err := w.Txn(ctx, nil, []clientv3.Op{clientv3.OpDelete(key)}, nil); !errors.Is(err, ErrNotWriter) {
+		t.Fatalf("delete: %v", err)
 	}
 }

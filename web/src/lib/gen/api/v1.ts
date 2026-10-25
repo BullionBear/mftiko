@@ -342,6 +342,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/instances/{name}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 永久退役一個 instance
+         * @description 在該 instance 的 region 寫 `/retired/{name}`，並在 Postgres `retired_instances` 記一列（E12-D033）。
+         *     `AgentRecord` 還在時回 409 `conflict`，不寫。agent 不在時重複呼叫回 204。
+         *     不在 topology 的名稱，以及 controller，回 404。region 不可用回 503。
+         *     API 不刪這個 key。
+         */
+        post: operations["retireInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events": {
         parameters: {
             query?: never;
@@ -1484,6 +1507,30 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    retireInstance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: components["schemas"]["InstanceName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已退役。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             503: components["responses"]["Unavailable"];
         };
     };

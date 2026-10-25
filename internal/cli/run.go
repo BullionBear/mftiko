@@ -113,6 +113,7 @@ var commands = []command{
 	{resource: "strategy", action: "show", run: runStrategyShow},
 	{resource: "instance", action: "list", run: runInstanceList},
 	{resource: "instance", action: "show", run: runInstanceShow},
+	{resource: "instance", action: "retire", run: runInstanceRetire},
 	{resource: "account-kind", action: "list", run: runAccountKindList},
 	{resource: "account", action: "list", run: runAccountList},
 	{resource: "account", action: "show", run: runAccountShow},

@@ -638,7 +638,7 @@ func TestQueryUsage(t *testing.T) {
 		t.Fatalf("help %+v", got)
 	}
 	got = runAt(context.Background(), t.TempDir(), nil, strings.NewReader(""), "help", "instance")
-	if got.code != ExitOK || !strings.Contains(got.out, "instance show") {
+	if got.code != ExitOK || !strings.Contains(got.out, "instance show") || !strings.Contains(got.out, "instance retire") {
 		t.Fatalf("help instance %+v", got)
 	}
 	got = runAt(context.Background(), t.TempDir(), nil, strings.NewReader(""), "help", "account-kind")
@@ -677,6 +677,48 @@ func startCat(t *testing.T, cat *apitest.Catalog) (*apitest.Server, string) {
 	home := t.TempDir()
 	writeConfig(t, home, configYAML(srv.URL(), true, tokenA))
 	return srv, home
+}
+
+func TestInstanceRetire(t *testing.T) {
+	srv := apitest.Start(apitest.Option{Token: tokenA, Name: "ada"})
+	t.Cleanup(srv.Close)
+	home := t.TempDir()
+	writeConfig(t, home, configYAML(srv.URL(), true, tokenA))
+
+	var in countReader
+	in.r = strings.NewReader("y\n")
+	got := runReader(context.Background(), home, map[string]string{"MFTIKO_CONTEXT": "dev"}, &in, "instance", "retire", "sts-tw-1")
+	if got.code != ExitUsage || in.n != 0 || !strings.Contains(got.err, "not a terminal") || len(srv.Calls()) != 0 {
+		t.Fatalf("off tty %+v reads %d", got, in.n)
+	}
+	app, _, errb := newApp(home, strings.NewReader("n\n"), options{context: "dev", contextSet: true, yes: true}, true)
+	app.Args = []string{"sts-tw-1"}
+	if code := runInstanceRetire(app); code != ExitUsage || !strings.Contains(errb.String(), "[y/N]") || !strings.Contains(errb.String(), "not confirmed") || len(srv.Calls()) != 0 {
+		t.Fatalf("tty %d %q calls %d", code, errb.String(), len(srv.Calls()))
+	}
+
+	got = runAt(context.Background(), home, map[string]string{"MFTIKO_CONTEXT": "dev"}, strings.NewReader(""), "--yes", "instance", "retire", "sts-tw-1")
+	if got.code != ExitOK || got.out != "retired sts-tw-1\n" {
+		t.Fatalf("%+v", got)
+	}
+	call := srv.Calls()[0]
+	if call.Operation != "RetireInstance" || call.Method != http.MethodPost || call.Path != "/api/v1/instances/sts-tw-1/retire" || call.ContentType != "" || len(call.Body) != 0 {
+		t.Fatalf("%+v", call)
+	}
+	if call.Authorization != "Bearer "+tokenA {
+		t.Fatalf("auth %q", call.Authorization)
+	}
+	noLeak(t, tokenA, got.out+got.err)
+
+	bad := apitest.Start(apitest.Option{Token: tokenA, Name: "ada", RetireConflict: true, RequestID: "req-retire"})
+	t.Cleanup(bad.Close)
+	home2 := t.TempDir()
+	writeConfig(t, home2, configYAML(bad.URL(), true, tokenA))
+	got = runAt(context.Background(), home2, map[string]string{"MFTIKO_CONTEXT": "dev"}, strings.NewReader(""), "--yes", "instance", "retire", "sts-tw-1")
+	if got.code != ExitConflict || !strings.Contains(got.err, "conflict (13)") || !strings.Contains(got.err, "agent record is present") || strings.Contains(got.err, "run the command again") {
+		t.Fatalf("%+v", got)
+	}
+	noLeak(t, tokenA, got.out+got.err)
 }
 
 func runQuery(t *testing.T, home string, args ...string) result {

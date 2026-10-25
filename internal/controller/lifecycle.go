@@ -38,8 +38,11 @@ type Delete struct {
 // deleted only after the worker is confirmed gone, and it is not on a lease,
 // so a fresh region reporting it absent is the current state. An absent
 // AgentRecord does not stand in for that: a WorkerStatus still in the view is
-// the last value, and N4 keeps waiting (P11). An undecodable worker key is
-// not treated as absent (E13-D021).
+// the last value, and N4 keeps waiting. The exception is a retired STS
+// instance (E12-D034): /retired/{inst} in the view already satisfies both the
+// terminal status and the missing worker, and N4 then deletes in the same
+// order. An undecodable worker key is not treated as absent (E13-D021), and
+// that still holds when the instance is not retired.
 //
 // A session counts as present when any STS instance has it in the view, as a
 // spec, a status or a SessionDemand. The demand key carries only the session
@@ -142,6 +145,11 @@ func (b *life) ended(group []Session) {
 }
 
 func (b *life) ready(sess Session) bool {
+	if _, retired := b.v.Retired[sess.Instance]; retired {
+		// The retirement key stands in for a terminal status and a gone worker
+		// (E12-D034). A stale or unsynced home region still waits (W9).
+		return b.open(sess.Region)
+	}
 	return terminal(sess.Status) && b.open(sess.Region) && b.workerGone(sess)
 }
 

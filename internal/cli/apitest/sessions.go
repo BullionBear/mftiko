@@ -214,6 +214,25 @@ func (a *api) EndSession(ctx context.Context, req apiv1.EndSessionRequestObject)
 	return apiv1.EndSession200JSONResponse(d), nil
 }
 
+func (a *api) RetireInstance(ctx context.Context, req apiv1.RetireInstanceRequestObject) (apiv1.RetireInstanceResponseObject, error) {
+	if !a.allowed(ctx) {
+		return apiv1.RetireInstance401ApplicationProblemPlusJSONResponse{
+			UnauthenticatedApplicationProblemPlusJSONResponse: apiv1.UnauthenticatedApplicationProblemPlusJSONResponse(unauthProblem()),
+		}, nil
+	}
+	a.s.mu.Lock()
+	conflict := a.s.retireConflict
+	a.s.mu.Unlock()
+	if conflict {
+		p := problem(http.StatusConflict, apiv1.ErrorCodeConflict, "Conflict", "agent record is present")
+		return apiv1.RetireInstance409ApplicationProblemPlusJSONResponse{
+			ConflictApplicationProblemPlusJSONResponse: apiv1.ConflictApplicationProblemPlusJSONResponse(p),
+		}, nil
+	}
+	_ = req
+	return apiv1.RetireInstance204Response{}, nil
+}
+
 func (a *api) DeleteSession(ctx context.Context, req apiv1.DeleteSessionRequestObject) (apiv1.DeleteSessionResponseObject, error) {
 	if !a.allowed(ctx) {
 		return apiv1.DeleteSession401ApplicationProblemPlusJSONResponse{

@@ -53,6 +53,11 @@ type intake struct {
 	resync     time.Duration
 	regions    []string
 	byRegion   map[string][]*watched
+	// retired watches /mftiko/v1/retired/ in each region. It is not in byRegion:
+	// writable waits on instance mirrors only, so an unsynced retirement mirror
+	// does not stall demands (E12-D034). An unsynced mirror contributes no names,
+	// which is the behavior of a cluster that has no retirement key.
+	retired map[string]*watched
 
 	dirty atomic.Bool
 	wake  chan struct{}
@@ -95,6 +100,7 @@ func newIntake(parent context.Context, term *state.Term, cl *state.Clusters, cfg
 		staleAfter: cfg.StaleAfter, resync: cfg.Resync,
 		regions:   slices.Sorted(maps.Keys(cfg.Topology.Regions)),
 		byRegion:  map[string][]*watched{},
+		retired:   map[string]*watched{},
 		wake:      make(chan struct{}, 1),
 		logged:    map[string]int64{},
 		drifted:   map[string]int64{},
@@ -132,6 +138,9 @@ func newIntake(parent context.Context, term *state.Term, cl *state.Clusters, cfg
 		w.prefix = instancePrefix(w.plane, name)
 		in.byRegion[w.region] = append(in.byRegion[w.region], w)
 	}
+	for _, region := range in.regions {
+		in.retired[region] = &watched{name: "retired", region: region, prefix: state.RetiredPrefix}
+	}
 	return in
 }
 
@@ -157,6 +166,10 @@ func (in *intake) start() {
 			in.wg.Add(1)
 			go in.runMirror(w)
 		}
+	}
+	for _, region := range in.regions {
+		in.wg.Add(1)
+		go in.runMirror(in.retired[region])
 	}
 }
 
@@ -293,6 +306,7 @@ func (in *intake) reconcile(full bool) time.Time {
 		}
 	}
 	v := controller.Assemble(in.now(), in.staleAfter, in.regions, snaps)
+	v.Retired = in.retiredNames()
 	in.publish(v, full, fails)
 	// The snapshot is the relist. Derivation, the gate and lifecycle run on
 	// this round's view, after it is published, so a new leader compares
@@ -301,6 +315,30 @@ func (in *intake) reconcile(full bool) time.Time {
 		return time.Time{}
 	}
 	return in.derive(v, full)
+}
+
+// retiredNames is the instances whose home-region mirror has finished its first
+// list and contains /retired/{inst}. A mirror that has not synced contributes
+// nothing, so a missing retirement watch does not end sessions (E12-D034).
+func (in *intake) retiredNames() map[string]struct{} {
+	out := map[string]struct{}{}
+	for region, w := range in.retired {
+		view, _, synced := w.observe()
+		if !synced {
+			continue
+		}
+		for key := range view.Entries {
+			inst, ok := state.RetiredInstance(key)
+			if !ok {
+				continue
+			}
+			if in.planes[inst].Region != region {
+				continue
+			}
+			out[inst] = struct{}{}
+		}
+	}
+	return out
 }
 
 func (w *watched) observe() (state.View, time.Time, bool) {

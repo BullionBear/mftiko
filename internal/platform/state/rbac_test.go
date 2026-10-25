@@ -190,6 +190,11 @@ func TestAuthTables(t *testing.T) {
 		{"tw", "api", AccountKey("td-jp-1", 42), false},         // td-jp-1's account is granted only in jp
 		{"tw", "api", SessionSpecKey("sts-jp-1", sid), false},   // an instance this cluster does not grant
 		{"tw", "api", SessionStatusKey("sts-jp-1", sid), false},
+		{"tw", "api", RetiredKey("sts-tw-1"), true},
+		{"tw", "api", RetiredKey("td-jp-1"), false},
+		{"jp", "api", RetiredKey("td-jp-1"), true},
+		{"tw", "sts-tw-1", RetiredKey("sts-tw-1"), false},
+		{"tw", "controller", RetiredKey("sts-tw-1"), false},
 	} {
 		if got := writes(c.region, c.user, c.key); got != c.write {
 			t.Errorf("%s in %s writes %s: %v, want %v", c.user, c.region, c.key, got, c.write)
@@ -208,6 +213,10 @@ func TestAuthTables(t *testing.T) {
 		{"tw", "api", AgentKey(PlaneTD, "td-tw-1"), true},
 		{"tw", "api", SessionSpecKey("sts-jp-1", sid), true}, // read covers another instance's prefix
 		{"jp", "api", AccountKey("td-tw-1", 42), true},
+		{"tw", "sts-tw-1", RetiredKey("sts-tw-1"), true},
+		{"tw", "sts-tw-1", RetiredKey("md-tw-1"), false},
+		{"tw", "controller", RetiredKey("sts-tw-1"), true},
+		{"tw", "api", RetiredKey("sts-tw-1"), true},
 	} {
 		if got := reads(c.region, c.user, c.key); got != c.write {
 			t.Errorf("%s in %s reads %s: %v, want %v", c.user, c.region, c.key, got, c.write)
@@ -329,6 +338,19 @@ func TestRBACEnforced(t *testing.T) {
 		if read[key] != "planted" {
 			t.Errorf("api reads %s: %q", key, read[key])
 		}
+	}
+	sts := etcdtest.ClientAs(t, s.Endpoints(), "sts-tw-1")
+	allowed("api writes a retirement", put(api, RetiredKey("sts-tw-1")))
+	if resp, err := sts.Get(ctx, RetiredKey("sts-tw-1")); err != nil || len(resp.Kvs) != 1 {
+		t.Fatalf("sts reads its retirement: %v %+v", err, resp)
+	}
+	denied("sts writes its retirement", put(sts, RetiredKey("sts-tw-1")))
+	_, err = sts.Get(ctx, RetiredKey("md-tw-1"))
+	denied("sts reads another retirement", err)
+	denied("api writes another region's retirement", put(api, RetiredKey("td-jp-1")))
+	denied("controller writes a retirement", put(ctl, RetiredKey("md-tw-1")))
+	if _, err := ctl.Get(ctx, RetiredKey("sts-tw-1")); err != nil {
+		t.Fatalf("controller reads a retirement: %v", err)
 	}
 	allowed("api writes a spec", put(api, SessionSpecKey("sts-tw-1", sid)))
 	allowed("api writes an account", put(api, AccountKey("td-tw-1", 42)))

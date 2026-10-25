@@ -2,6 +2,9 @@
 // deployment's instances (E1-08, PROTOCOL §3.2 W1). It only prints: applying the tables, and giving each user its
 // password, is part of deployment (E12).
 //
+// -drop <inst> prints the etcdctl commands that remove that instance's user and role in its own region
+// (E12-D035). It does not apply them, and it does not omit the instance from the tables -format prints.
+//
 // The input is JSON on stdin or in -in:
 //
 //	{
@@ -38,32 +41,28 @@ func main() {
 	version := flag.Bool("version", false, "print the release and exit")
 	in := flag.String("in", "-", "deployment JSON; - for stdin")
 	format := flag.String("format", "json", "json or etcdctl")
+	drop := flag.String("drop", "", "print etcdctl commands that remove this instance's user and role; does not apply them")
 	flag.Parse()
 	if *version {
 		fmt.Println(buildinfo.String())
 		return
 	}
-	if err := run(*in, *format, os.Stdin, os.Stdout); err != nil {
+	var err error
+	if *drop != "" {
+		err = runDrop(*in, *drop, os.Stdin, os.Stdout)
+	} else {
+		err = run(*in, *format, os.Stdin, os.Stdout)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "mftiko-etcd-roles:", err)
 		os.Exit(1)
 	}
 }
 
 func run(in, format string, stdin io.Reader, out io.Writer) error {
-	r := stdin
-	if in != "-" {
-		f, err := os.Open(in)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		r = f
-	}
-	var d input
-	dec := json.NewDecoder(r)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&d); err != nil {
-		return fmt.Errorf("read deployment: %w", err)
+	d, err := readDeployment(in, stdin)
+	if err != nil {
+		return err
 	}
 	tables, err := state.AuthTables(d.Topology, d.Planes)
 	if err != nil {
@@ -82,6 +81,48 @@ func run(in, format string, stdin io.Reader, out io.Writer) error {
 	default:
 		return fmt.Errorf("unknown -format %q", format)
 	}
+}
+
+// runDrop prints the commands that remove inst's user and role on its own region's cluster (E12-D035).
+// Applying them is deployment. The full table from -format still lists the instance.
+func runDrop(in, inst string, stdin io.Reader, out io.Writer) error {
+	d, err := readDeployment(in, stdin)
+	if err != nil {
+		return err
+	}
+	plane, ok := d.Planes[inst]
+	if !ok || (plane != state.PlaneSTS && plane != state.PlaneMD && plane != state.PlaneTD) {
+		return fmt.Errorf("instance %q is not an sts, md, or td agent", inst)
+	}
+	region, err := d.RegionOf(inst)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "# region %s\n", region)
+	fmt.Fprintf(out, "export ETCDCTL_ENDPOINTS=%s\n", quote(strings.Join(d.Regions[region].Endpoints, ",")))
+	fmt.Fprintf(out, "etcdctl user revoke-role %s %s\n", quote(inst), quote(inst))
+	fmt.Fprintf(out, "etcdctl user delete %s\n", quote(inst))
+	fmt.Fprintf(out, "etcdctl role delete %s\n", quote(inst))
+	return nil
+}
+
+func readDeployment(in string, stdin io.Reader) (input, error) {
+	r := stdin
+	if in != "-" {
+		f, err := os.Open(in)
+		if err != nil {
+			return input{}, err
+		}
+		defer f.Close()
+		r = f
+	}
+	var d input
+	dec := json.NewDecoder(r)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&d); err != nil {
+		return input{}, fmt.Errorf("read deployment: %w", err)
+	}
+	return d, nil
 }
 
 // etcdctl renders one table as etcdctl commands against that region's cluster: each region's commands start by

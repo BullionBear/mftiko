@@ -424,6 +424,77 @@ func TestDeriveEmpty(t *testing.T) {
 	}
 }
 
+func TestDeriveRetirement(t *testing.T) {
+	spec := sampleSpec()
+	unset, _ := runningSession(spec)
+	empty := unset
+	empty.Retired = map[string]struct{}{}
+	if !samePlan(controller.Derive(unset, places(), deriveNow), controller.Derive(empty, places(), deriveNow)) {
+		t.Fatal("an empty Retired set changed the plan")
+	}
+
+	v, _ := runningSession(spec)
+	v.Retired = map[string]struct{}{stsInst: {}}
+	got := byKey(t, controller.Derive(v, places(), deriveNow))
+	if len(got) != 1 {
+		t.Fatalf("keys %v", keysOf(got))
+	}
+	d := asSession(t, got[state.SessionDemandKey(stsInst, sessID)])
+	if d.GetDesired() != sessionv1.DesiredState_DESIRED_STATE_ENDED || d.GetEndReason() != "instance_retired" || d.GetSpecRevision() != specRev {
+		t.Fatalf("%+v", d)
+	}
+
+	v, sess := runningSession(spec)
+	sess.Demand = &statev1.SessionDemand{
+		Desired: sessionv1.DesiredState_DESIRED_STATE_ENDED, EndReason: "deps_failed", SpecRevision: specRev,
+	}
+	v.Sessions[controller.SessionRef(stsInst, sessID)] = sess
+	v.Retired = map[string]struct{}{stsInst: {}}
+	if plan := controller.Derive(v, places(), deriveNow); len(plan.Writes) != 0 {
+		t.Fatalf("replaced an ended reason %+v", plan.Writes)
+	}
+
+	for _, inst := range []string{"md-jp-1", "td-jp-1"} {
+		v, _ = runningSession(spec)
+		v.Retired = map[string]struct{}{inst: {}}
+		got = byKey(t, controller.Derive(v, places(), deriveNow))
+		if len(got) != 1 {
+			t.Fatalf("%s keys %v", inst, keysOf(got))
+		}
+		d = asSession(t, got[state.SessionDemandKey(stsInst, sessID)])
+		if d.GetEndReason() != "invalid_spec" || d.GetDesired() != sessionv1.DesiredState_DESIRED_STATE_ENDED {
+			t.Fatalf("%s %+v", inst, d)
+		}
+	}
+
+	v, sess = runningSession(spec)
+	sess.Demand = runningDemand(deriveNow)
+	v.Sessions[controller.SessionRef(stsInst, sessID)] = sess
+	v.Retired = map[string]struct{}{"md-jp-1": {}}
+	plan := controller.Derive(v, places(), deriveNow)
+	feed := state.MDDemandKey("md-jp-1", sessID, "feed/trade.BinanceUM_Perp_BTCUSDT")
+	if _, ok := byKey(t, plan)[feed]; !ok {
+		t.Fatal("an existing assignment dropped the retired provider")
+	}
+	for _, w := range plan.Writes {
+		if d, ok := w.Value.(*statev1.SessionDemand); ok && (d.GetEndReason() == "invalid_spec" || d.GetDesired() != sessionv1.DesiredState_DESIRED_STATE_RUNNING) {
+			t.Fatalf("existing assignment reclassified %+v", d)
+		}
+	}
+}
+
+func samePlan(a, b controller.Plan) bool {
+	if len(a.Writes) != len(b.Writes) || len(a.Drifts) != len(b.Drifts) {
+		return false
+	}
+	for i := range a.Writes {
+		if a.Writes[i].Key != b.Writes[i].Key || !proto.Equal(a.Writes[i].Value, b.Writes[i].Value) {
+			return false
+		}
+	}
+	return true
+}
+
 func keysOf(m map[string]proto.Message) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

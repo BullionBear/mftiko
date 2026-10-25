@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -74,6 +75,37 @@ func runInstanceList(a *App) int {
 		return code
 	}
 	return a.finishOne(res, instanceListText)
+}
+
+func runInstanceRetire(a *App) int {
+	if len(a.Args) != 1 {
+		return a.exit("instance retire takes an instance name")
+	}
+	if code := a.onlyFlags(); code != 0 {
+		return code
+	}
+	name := a.Args[0]
+	if err := a.confirm("retire instance " + name); err != nil {
+		return a.exit(err.Error())
+	}
+	api, code := a.client()
+	if code != 0 {
+		return code
+	}
+	res, err := api.RetireInstance(a.ctx, name)
+	if code := a.checked(res, err); code != 0 {
+		return code
+	}
+	if a.JSON {
+		if len(res.Body) > 0 {
+			if _, err := a.Stdout.Write(a.sec.redactBytes(res.Body)); err != nil {
+				return a.exit(err.Error())
+			}
+		}
+		return ExitOK
+	}
+	fmt.Fprintf(a.Stdout, "retired %s\n", name)
+	return ExitOK
 }
 
 func runInstanceShow(a *App) int {

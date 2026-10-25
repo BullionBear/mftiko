@@ -27,7 +27,7 @@ commands:
   login         read a token from stdin, verify it with GET /auth/me, and store it
   whoami        call GET /auth/me and print the user
   strategy      list strategies, their versions, and one manifest
-  instance      list instances and show one
+  instance      list instances, show one, and retire one
   account-kind  list account kinds
   account       list, show, create, update, and delete trading accounts
   session       create a session from one file, and list, show, end, delete, and watch sessions
@@ -85,6 +85,7 @@ list and versions read every page. Each request uses limit=1000.
 
 const instanceHelp = `usage: mftiko instance list
        mftiko instance show <name>
+       mftiko instance retire <name>
 
 list calls GET /instances. show calls GET /instances/{name}.
 The table includes the plane, whether the agent is present, and last_known.
@@ -92,6 +93,11 @@ A missing agent, or last_known true, is not present.
 If the response has unavailable_regions or controller_absent, one warning
 is printed to stderr and the exit code stays 0. A 503 for one instance is
 region_unavailable.
+
+retire calls POST /instances/{name}/retire. It asks for confirmation.
+On a terminal, --yes does not skip the question. Off a terminal, --yes is
+required. The agent must already be stopped: a present agent record is
+conflict (13). A repeat while the agent is absent succeeds.
 `
 
 const accountKindHelp = `usage: mftiko account-kind list

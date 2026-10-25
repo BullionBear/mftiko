@@ -611,6 +611,18 @@ func seedDemands(v *controller.View, spec *sessionv1.SessionSpec) {
 	}
 }
 
+func TestGateRetiredProviderIsNotDepsFailed(t *testing.T) {
+	v, sess := runningSession(sampleSpec())
+	sess.Demand = runningDemand(deriveNow)
+	v.Sessions[controller.SessionRef(stsInst, sessID)] = sess
+	v.Retired = map[string]struct{}{"md-jp-1": {}}
+	ackAll(&v, entryStatus(statev1.EntryState_ENTRY_STATE_READY, "up"), true)
+	wrote := sessionWrite(t, gateAtFirst(v, deriveNow.Add(time.Second)))
+	if wrote.GetEndReason() != "" || !wrote.GetStart() {
+		t.Fatalf("retired provider changed the gate %+v", wrote)
+	}
+}
+
 func runningDemand(issued time.Time) *statev1.SessionDemand {
 	return &statev1.SessionDemand{
 		Desired: sessionv1.DesiredState_DESIRED_STATE_RUNNING, SpecRevision: specRev,

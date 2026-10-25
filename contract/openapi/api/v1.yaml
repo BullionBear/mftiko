@@ -598,6 +598,34 @@ paths:
         '503':
           $ref: '#/components/responses/Unavailable'
 
+  /instances/{name}/retire:
+    post:
+      tags: [instances]
+      operationId: retireInstance
+      summary: 永久退役一個 instance
+      description: |
+        在該 instance 的 region 寫 `/retired/{name}`，並在 Postgres `retired_instances` 記一列（E12-D033）。
+        `AgentRecord` 還在時回 409 `conflict`，不寫。agent 不在時重複呼叫回 204。
+        不在 topology 的名稱，以及 controller，回 404。region 不可用回 503。
+        API 不刪這個 key。
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/InstanceName'
+      responses:
+        '204':
+          description: 已退役。
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
   /events:
     get:
       tags: [events]

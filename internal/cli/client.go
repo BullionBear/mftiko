@@ -205,6 +205,13 @@ func (a *API) GetInstance(ctx context.Context, name string) (Result, error) {
 	})
 }
 
+// RetireInstance calls POST /instances/{name}/retire (E12-D033).
+func (a *API) RetireInstance(ctx context.Context, name string) (Result, error) {
+	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.gen.RetireInstance(ctx, name)
+	})
+}
+
 // ListAccountKinds calls GET /account-kinds.
 func (a *API) ListAccountKinds(ctx context.Context) (Result, error) {
 	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {

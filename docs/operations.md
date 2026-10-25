@@ -156,6 +156,19 @@ mftiko-migrate up
 
 `:'sha1'` 這類是 psql 的字串引用，不要改成把雜湊拼進 SQL。舊的 `accept_migrations` 可以留著，`mftiko-migrate` 不讀它。
 
+
+## 永久退役一個 instance
+
+步驟見 PROTOCOL §3.7（E12-D033–E12-D037）。這一節不在 testnet 上演練；演練是 #385。
+
+1. 先把新的 etcd 角色表套上去。`mftiko-etcd-roles -format etcdctl` 印出的表裡，該 instance 的使用者要能讀自己的 `/mftiko/v1/retired/{inst}`，`api` 要能寫這把精確 key。`EnsureAuth` 只加不收回。角色表還沒重套時，agent 讀這把 key 會 permission denied，當成還沒退役、照常參選，避免升級之後全部起不來。
+2. 停掉並取消開機啟動，讓 `AgentRecord` 消失：`systemctl disable --now <unit>`。unit 仍是 `Restart=always`；只 `stop` 的話 systemd 會把它拉起來。等 `mftiko instance show <inst>` 的 agent 不在。
+3. `mftiko instance retire <inst>`。確認之後才送。`AgentRecord` 還在是 exit 13，`agent record is present`，什麼都沒寫。agent 不在時再執行一次仍成功。
+4. controller 看到 `/retired/{inst}` 之後：STS 上還沒結束的 session，`SessionDemand.end_reason` 寫成 `instance_retired`，再依 N4 的順序刪 MD、TD 需求與指派，`algo_id` 放開。MD、TD 不再接受新指派；已經指派出去的 session 不因此改判 `invalid_spec`。
+5. `mftiko-retire-clean -in <部署 JSON> -instance <inst>`，密碼是該 instance 的 etcd 密碼（`-etcd-password` 或 `$MFTIKO_ETCD_PASSWORD`）。它以該使用者刪 W1 屬於它的 key。spec、demand、account 與 `/retired/{inst}` 留著。條件不滿足就停，不刪。
+6. `mftiko-etcd-roles -drop <inst>` 只印命令。以 root 在該 region 執行印出的 `user revoke-role`、`user delete`、`role delete`。
+7. 這個名字不能再用。同名 agent 看到 marker 就退出，不參選。
+
 ## 驗收
 
 `deploy/accept/accept.sh e2e main` 會走完一次：session RUNNING 時在主機上找到 log，檢查目錄 0750、檔案 0640；結束之後 log 還在；保留期（驗收設成 1 分鐘）過後 spec 被刪，log 也被清掉。見 [deploy/accept/README.md](../deploy/accept/README.md)。

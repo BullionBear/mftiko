@@ -14,9 +14,11 @@ import (
 // mod_revision it read to update or delete.
 //
 // W1 holds by scope, checked before any I/O as Term checks its own:
-//   - put: the session specs of STS instances and the accounts of TD instances (the API rows of §3.1);
-//   - delete: those, and the session statuses of STS instances (W5). etcd RBAC cannot keep the api user from
-//     putting a status, since one prefix grant covers both (E10-D040); this scope is what does.
+//   - put: the session specs of STS instances, the accounts of TD instances (the API rows of §3.1), and the
+//     exact retirement key of an instance (E12-D033);
+//   - delete: specs, accounts, and the session statuses of STS instances (W5). The retirement key is not
+//     deleted. etcd RBAC cannot keep the api user from putting a status, since one prefix grant covers both
+//     (E10-D040); this scope is what does.
 //
 // Every key of a txn must route to one cluster (ErrCrossCluster): there are no cross-cluster writes.
 type APIWriter struct{ cl *Clusters }
@@ -50,6 +52,14 @@ type apiScope struct{}
 
 func (apiScope) check(key, end []byte, del bool) error {
 	k := string(key)
+	if _, ok := RetiredInstance(k); ok {
+		// Put of the exact key only. Routing has already required the instance
+		// to exist. Delete, and any range, stay refused: the record is permanent.
+		if !del && len(end) == 0 {
+			return nil
+		}
+		return fmt.Errorf("%w: api may not delete %q", ErrNotWriter, k)
+	}
 	p, inst, err := Owner(k)
 	if err != nil {
 		return err
