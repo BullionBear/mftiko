@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"time"
 )
 
 // Topology is the deployment's etcd layout: one cluster per region, and the region of every instance (E00-D005).
@@ -14,8 +15,51 @@ type Topology struct {
 }
 
 // Region is one regional etcd cluster.
+//
+// DialTimeout, RequestTimeout and StaleAfter are optional Go duration strings
+// for the controller (E12-D046). Empty means the caller's default. Agents and
+// the API accept the same fields in the shared deployment file and do not
+// apply them to their own dials.
 type Region struct {
-	Endpoints []string `json:"endpoints"`
+	Endpoints      []string `json:"endpoints"`
+	DialTimeout    string   `json:"dial_timeout,omitempty"`
+	RequestTimeout string   `json:"request_timeout,omitempty"`
+	StaleAfter     string   `json:"stale_after,omitempty"`
+}
+
+// Timeouts parses the optional durations (E12-D046). An empty string or a
+// zero duration is 0, which selects the caller's default: dial is DialTimeout,
+// request timeout adds no unary deadline, and the stale threshold is the
+// controller's 15s. A value that is not a Go duration, or is negative, is
+// ErrBadTopology. "0" is not a duration; "0s" is zero.
+func (r Region) Timeouts() (dial, request, stale time.Duration, err error) {
+	dial, err = optionalDuration("dial_timeout", r.DialTimeout)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	request, err = optionalDuration("request_timeout", r.RequestTimeout)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	stale, err = optionalDuration("stale_after", r.StaleAfter)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return dial, request, stale, nil
+}
+
+func optionalDuration(field, raw string) (time.Duration, error) {
+	if raw == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s %q", ErrBadTopology, field, raw)
+	}
+	if d < 0 {
+		return 0, fmt.Errorf("%w: %s %s is negative", ErrBadTopology, field, d)
+	}
+	return d, nil
 }
 
 // Validate checks that there is at least one region, every region has at least one endpoint, and every instance
@@ -35,6 +79,9 @@ func (t Topology) Validate() error {
 		}
 		if slices.Contains(eps, "") {
 			return fmt.Errorf("%w: region %s has an empty endpoint", ErrBadTopology, name)
+		}
+		if _, _, _, err := t.Regions[name].Timeouts(); err != nil {
+			return fmt.Errorf("region %s: %w", name, err)
 		}
 	}
 	for _, inst := range slices.Sorted(maps.Keys(t.Instances)) {
@@ -73,7 +120,9 @@ func (t Topology) RegionOfKey(key string) (string, error) {
 func (t Topology) clone() Topology {
 	c := Topology{Regions: make(map[string]Region, len(t.Regions)), Instances: maps.Clone(t.Instances)}
 	for name, r := range t.Regions {
-		c.Regions[name] = Region{Endpoints: slices.Clone(r.Endpoints)}
+		cp := r
+		cp.Endpoints = slices.Clone(r.Endpoints)
+		c.Regions[name] = cp
 	}
 	if c.Instances == nil {
 		c.Instances = map[string]string{}

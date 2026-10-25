@@ -39,7 +39,8 @@
 //     replaced or rebuilt, and reopens a watch that went silent. Readers act level-triggered on Notify, Snapshot
 //     and Take; LastContact says how fresh the copy is, WaitRev waits for a revision.
 //
-//   - Auth (clusters.go, rbac.go): AuthDial connects as the process's own user; the client authenticates again when
+//   - Auth (clusters.go, rbac.go): AuthDial connects as the process's own user. Dial is that dial with optional
+//     timeouts (E12-D046); a zero config matches AuthDial. The client authenticates again when
 //     its token expires or the cluster's users and roles change. AuthTables derives every region's users and roles
 //     from the instances, so that etcd enforces W1 as Term does: a write the write scope would refuse, etcd refuses
 //     too. The api role is the exception on status/: that prefix's write is what lets W5 delete it, and etcd

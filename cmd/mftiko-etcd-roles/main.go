@@ -13,6 +13,9 @@
 //	  "planes":    {"md-tw-1": "md", "td-tw-1": "td", "sts-tw-1": "sts"}
 //	}
 //
+// A region may also set dial_timeout, request_timeout and stale_after (Go durations, E12-D046).
+// This command ignores them. The controller reads them.
+//
 // -format json (the default) prints the tables; -format etcdctl prints the etcdctl commands that create them on a
 // cluster that has none yet, one region at a time. The output holds no credentials: etcdctl prompts for them when it
 // adds each user.

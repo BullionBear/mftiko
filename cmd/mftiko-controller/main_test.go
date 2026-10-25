@@ -79,14 +79,66 @@ func TestReadDeployment(t *testing.T) {
 			t.Errorf("%s: accepted", name)
 		}
 	}
-	if err := run(t.Context(), "", "pw", zerolog.Nop()); err == nil {
+	const withTimeouts = `{
+	  "regions": {"tw": {"endpoints": ["http://127.0.0.1:1"], "dial_timeout": "5s", "request_timeout": "2s", "stale_after": "15s"}},
+	  "instances": {"controller": "tw"},
+	  "planes": {}
+	}`
+	topo, _, err = readDeployment("-", strings.NewReader(withTimeouts))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := topo.Regions["tw"]
+	if got.DialTimeout != "5s" || got.RequestTimeout != "2s" || got.StaleAfter != "15s" {
+		t.Fatalf("%+v", got)
+	}
+	for name, in := range map[string]string{
+		"bad dial":       `{"regions":{"tw":{"endpoints":["http://127.0.0.1:1"],"dial_timeout":"nope"}},"instances":{"controller":"tw"}}`,
+		"negative stale": `{"regions":{"tw":{"endpoints":["http://127.0.0.1:1"],"stale_after":"-1s"}},"instances":{"controller":"tw"}}`,
+		"numeric dial":   `{"regions":{"tw":{"endpoints":["http://127.0.0.1:1"],"dial_timeout":5}},"instances":{"controller":"tw"}}`,
+	} {
+		if _, _, err := readDeployment("-", strings.NewReader(in)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if err := run(t.Context(), "", "pw", zerolog.Nop(), func(string) string { return "" }); err == nil {
 		t.Fatal("missing -in accepted")
 	}
 }
 
 func TestRunRequiresPassword(t *testing.T) {
-	if err := run(context.Background(), "deploy.json", "", zerolog.Nop()); err == nil {
+	body := `{"regions":{"tw":{"endpoints":["http://127.0.0.1:1"]}},"instances":{"controller":"tw"},"planes":{}}`
+	path := filepath.Join(t.TempDir(), "deploy.json")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(context.Background(), path, "", zerolog.Nop(), func(string) string { return "" }); err == nil {
 		t.Fatal("missing password accepted")
+	}
+	got, err := regionPasswords([]string{"jp", "tw"}, "pw-fallback", func(k string) string {
+		if k == "MFTIKO_ETCD_PASSWORD_jp" {
+			return "pw-jp"
+		}
+		return ""
+	})
+	if err != nil || got["jp"] != "pw-jp" || got["tw"] != "pw-fallback" {
+		t.Fatalf("%v %v", got, err)
+	}
+	got, err = regionPasswords([]string{"tw-1"}, "", func(k string) string {
+		if k == "MFTIKO_ETCD_PASSWORD_tw-1" {
+			return "pw-tw"
+		}
+		return ""
+	})
+	if err != nil || got["tw-1"] != "pw-tw" {
+		t.Fatalf("literal region name: %v %v", got, err)
+	}
+	overrides, err := staleOverrides(state.Topology{Regions: map[string]state.Region{
+		"tw": {Endpoints: []string{"http://127.0.0.1:1"}, StaleAfter: "15s"},
+		"jp": {Endpoints: []string{"http://127.0.0.1:2"}, StaleAfter: "0s"},
+	}})
+	if _, ok := overrides["jp"]; err != nil || ok || overrides["tw"] != 15*time.Second {
+		t.Fatalf("%v %v", overrides, err)
 	}
 }
 
@@ -172,13 +224,20 @@ type child struct {
 
 func startChild(t *testing.T, deploy string) *child {
 	t.Helper()
+	return startChildWith(t, deploy, etcdtest.Password(state.ControllerInstance), nil)
+}
+
+func startChildWith(t *testing.T, deploy, password string, extra []string) *child {
+	t.Helper()
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
 	buf := &safeBuf{}
-	cmd := exec.Command(exe, "-in", deploy, "-etcd-password", etcdtest.Password(state.ControllerInstance))
-	cmd.Env = append(os.Environ(), envChild+"=1")
+	cmd := exec.Command(exe, "-in", deploy, "-etcd-password", password)
+	// The first duplicate wins, so drop parent password variables before extras.
+	cmd.Env = append(filterPasswordEnv(os.Environ()), envChild+"=1")
+	cmd.Env = append(cmd.Env, extra...)
 	cmd.Stdout = buf
 	cmd.Stderr = buf
 	if err := cmd.Start(); err != nil {
@@ -206,6 +265,59 @@ func startChild(t *testing.T, deploy string) *child {
 		}
 	})
 	return c
+}
+
+func filterPasswordEnv(base []string) []string {
+	out := make([]string, 0, len(base))
+	for _, e := range base {
+		k, _, _ := strings.Cut(e, "=")
+		if k == "MFTIKO_ETCD_PASSWORD" || strings.HasPrefix(k, "MFTIKO_ETCD_PASSWORD_") {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+func logLine(out, message, region string, parts ...string) bool {
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.Contains(line, `"message":"`+message+`"`) || !strings.Contains(line, `"region":"`+region+`"`) {
+			continue
+		}
+		ok := true
+		for _, p := range parts {
+			if !strings.Contains(line, p) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return true
+		}
+	}
+	return false
+}
+
+func applyControllerPasswords(t *testing.T, ctx context.Context, topo state.Topology, servers map[string]*etcdtest.Server, pw func(region, user string) string) {
+	t.Helper()
+	planes := map[string]state.Plane{}
+	for inst := range topo.Instances {
+		if inst == state.ControllerInstance {
+			continue
+		}
+		planes[inst] = state.PlaneMD
+	}
+	tables, err := state.AuthTables(topo, planes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for region, srv := range servers {
+		if err := state.EnsureAuth(ctx, srv.Client(t), tables[region], func(user string) string {
+			return pw(region, user)
+		}); err != nil {
+			t.Fatalf("auth %s: %v", region, err)
+		}
+	}
 }
 
 func (c *child) signal(sig syscall.Signal) {
@@ -414,5 +526,94 @@ func TestInconsistentHomesBothElect(t *testing.T) {
 	})
 	if !a.running() || !b.running() {
 		t.Fatal("a process exited")
+	}
+}
+
+func TestControllerDialRegionPasswords(t *testing.T) {
+	ctx := t.Context()
+	servers := etcdtest.StartRegions(t, "tw", "jp")
+	topo := topology(servers, "tw")
+	applyControllerPasswords(t, ctx, topo, servers, func(region, user string) string {
+		if user != state.ControllerInstance {
+			return etcdtest.Password(user)
+		}
+		if region == "jp" {
+			return "pw-jp"
+		}
+		return "pw-tw"
+	})
+	dial, err := controllerDial(topo, map[string]string{"tw": "pw-tw", "jp": "pw-jp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl, err := state.NewClusters(topo, nil, dial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cl.Close() })
+	for _, region := range []string{"tw", "jp"} {
+		r, err := cl.Reader(region)
+		if err != nil {
+			t.Fatalf("reader %s: %v", region, err)
+		}
+		if _, err := r.Get(ctx, "k"); err != nil {
+			t.Fatalf("get %s: %v", region, err)
+		}
+	}
+	if _, err := state.Dial(state.DialConfig{User: state.ControllerInstance, Password: "pw-tw"})("jp", topo.Regions["jp"].Endpoints); err == nil {
+		t.Fatal("jp accepted the tw password")
+	}
+}
+
+func TestChildUsesRegionPasswordAndTimeouts(t *testing.T) {
+	ctx := t.Context()
+	servers := etcdtest.StartRegions(t, "tw", "jp")
+	topo := topology(servers, "tw")
+	for name, r := range topo.Regions {
+		r.DialTimeout = "5s"
+		r.RequestTimeout = "5s"
+		r.StaleAfter = "15s"
+		topo.Regions[name] = r
+	}
+	applyControllerPasswords(t, ctx, topo, servers, func(region, user string) string {
+		if user == state.ControllerInstance && region == "jp" {
+			return "pw-jp"
+		}
+		return etcdtest.Password(user)
+	})
+	c := startChildWith(t, writeDeploy(t, topo), etcdtest.Password(state.ControllerInstance), []string{"MFTIKO_ETCD_PASSWORD_jp=pw-jp"})
+	until(t, 30*time.Second, "jp is fresh and the home record is written", func() error {
+		if _, ok := recordOf(t, ctx, servers["tw"]); !ok {
+			return errors.New("no record")
+		}
+		if !logLine(c.out.String(), "region staleness", "jp", `"stale":false`, `"synced":true`) {
+			return errors.New("jp not fresh yet")
+		}
+		return nil
+	})
+}
+
+func TestMissingRegionPasswordKeepsHome(t *testing.T) {
+	ctx := t.Context()
+	servers := etcdtest.StartRegions(t, "tw", "jp")
+	topo := topology(servers, "tw")
+	applyControllerPasswords(t, ctx, topo, servers, func(region, user string) string {
+		if user == state.ControllerInstance && region == "jp" {
+			return "pw-jp"
+		}
+		return etcdtest.Password(user)
+	})
+	c := startChild(t, writeDeploy(t, topo))
+	until(t, 30*time.Second, "home is elected and the jp dial fails", func() error {
+		if _, ok := recordOf(t, ctx, servers["tw"]); !ok {
+			return errors.New("no record")
+		}
+		if !logLine(c.out.String(), "mirror dial", "jp") {
+			return errors.New("jp dial has not failed")
+		}
+		return nil
+	})
+	if !c.running() {
+		t.Fatalf("controller exited\n%s", c.out.String())
 	}
 }

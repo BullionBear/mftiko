@@ -3,6 +3,9 @@ package state
 import (
 	"context"
 	"errors"
+	"io"
+	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -259,5 +262,184 @@ func TestClustersTwoRegions(t *testing.T) {
 	}
 	if md.count("jp") != 0 {
 		t.Fatal("dialled a region that is not allowed")
+	}
+}
+
+func TestDialWaitUsesTheLongestRegion(t *testing.T) {
+	topo := twoRegions()
+	if got := DialWait(topo); got != 2*DialTimeout {
+		t.Fatalf("omitted: %s", got)
+	}
+	tw := topo.Regions["tw"]
+	tw.DialTimeout = "8s"
+	topo.Regions["tw"] = tw
+	jp := topo.Regions["jp"]
+	jp.DialTimeout = "0s"
+	topo.Regions["jp"] = jp
+	if got := DialWait(topo); got != 16*time.Second {
+		t.Fatalf("longest: %s", got)
+	}
+}
+
+func TestCloneKeepsRegionTimeouts(t *testing.T) {
+	topo := twoRegions()
+	tw := topo.Regions["tw"]
+	tw.DialTimeout = "8s"
+	tw.RequestTimeout = "2s"
+	tw.StaleAfter = "20s"
+	topo.Regions["tw"] = tw
+	cl := newClusters(t, topo, nil, nil)
+	got := cl.Topology().Regions["tw"]
+	if got.DialTimeout != "8s" || got.RequestTimeout != "2s" || got.StaleAfter != "20s" {
+		t.Fatalf("%+v", got)
+	}
+	if &got.Endpoints[0] == &tw.Endpoints[0] {
+		t.Fatal("clone shares the endpoint slice")
+	}
+}
+
+func TestReaderHonorsDialWait(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	dial := func(region string, eps []string) (*clientv3.Client, error) {
+		close(started)
+		<-release
+		return nil, errors.New("still dialing")
+	}
+	topo := Topology{
+		Regions:   map[string]Region{"tw": {Endpoints: []string{"http://127.0.0.1:1"}}},
+		Instances: map[string]string{},
+	}
+	cl := newClusters(t, topo, nil, dial)
+	cl.SetDialWait(200 * time.Millisecond)
+	t.Cleanup(func() { close(release) })
+	start := time.Now()
+	_, err := cl.Reader("tw")
+	if err == nil {
+		t.Fatal("reader succeeded while the dial was blocked")
+	}
+	if time.Since(start) > time.Second {
+		t.Fatalf("reader waited %s: %v", time.Since(start), err)
+	}
+	select {
+	case <-started:
+	default:
+		t.Fatal("dial was not started")
+	}
+}
+
+// hangListener accepts TCP and never writes, so an etcd authenticate call waits
+// until its own deadline. closeConns unblocks every dial.
+func hangListener(t *testing.T) (endpoint string, closeConns func()) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var conns []net.Conn
+	stopped := make(chan struct{})
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			select {
+			case <-stopped:
+				mu.Unlock()
+				c.Close()
+				continue
+			default:
+				conns = append(conns, c)
+			}
+			mu.Unlock()
+			go func() {
+				io.Copy(io.Discard, c)
+				c.Close()
+			}()
+		}
+	}()
+	var once sync.Once
+	closeConns = func() {
+		once.Do(func() {
+			close(stopped)
+			ln.Close()
+			mu.Lock()
+			defer mu.Unlock()
+			for _, c := range conns {
+				c.Close()
+			}
+		})
+	}
+	t.Cleanup(closeConns)
+	return "http://" + ln.Addr().String(), closeConns
+}
+
+func TestHungPeerHonorsDialAndRequestTimeouts(t *testing.T) {
+	ep, closeConns := hangListener(t)
+	const user, pw = "controller", "pw"
+
+	longDial := make(chan struct{})
+	go func() {
+		defer close(longDial)
+		_, _ = Dial(DialConfig{User: user, Password: pw, DialTimeout: 5 * time.Second})("hang", []string{ep})
+	}()
+	start := time.Now()
+	_, err := Dial(DialConfig{User: user, Password: pw, DialTimeout: 200 * time.Millisecond})("hang", []string{ep})
+	if err == nil {
+		t.Fatal("short dial succeeded")
+	}
+	if time.Since(start) > 3*time.Second {
+		t.Fatalf("dial timeout took %s: %v", time.Since(start), err)
+	}
+	select {
+	case <-longDial:
+		t.Fatal("5s dial finished with the 200ms dial")
+	default:
+	}
+
+	longRequest := make(chan struct{})
+	go func() {
+		defer close(longRequest)
+		_, _ = Dial(DialConfig{User: user, Password: pw, DialTimeout: 5 * time.Second})("hang", []string{ep})
+	}()
+	start = time.Now()
+	_, err = Dial(DialConfig{
+		User: user, Password: pw,
+		DialTimeout: 5 * time.Second, RequestTimeout: 200 * time.Millisecond,
+	})("hang", []string{ep})
+	if err == nil {
+		t.Fatal("request timeout dial succeeded")
+	}
+	if time.Since(start) > 3*time.Second {
+		t.Fatalf("request timeout took %s: %v", time.Since(start), err)
+	}
+	if !strings.Contains(err.Error(), "exceeded") {
+		t.Fatalf("request timeout error %v", err)
+	}
+	select {
+	case <-longRequest:
+		t.Fatal("dial without a request timeout finished with the bounded one")
+	default:
+	}
+
+	closeConns()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		select {
+		case <-longDial:
+			select {
+			case <-longRequest:
+				return
+			default:
+			}
+		default:
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatal("hung dials did not return after the peer closed")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

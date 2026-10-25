@@ -1,4 +1,5 @@
-# mftiko controller (E12-D018, E12-D019). KillMode stays control-group.
+# mftiko controller (E12-D018, E12-D019, E12-D044). KillMode stays control-group.
+# One process on the home host. No hot standby. Restart=always brings it back.
 # ErrSuperseded still exits non-zero (E13-D015). Restart=always is E12-D019.
 
 [Unit]
