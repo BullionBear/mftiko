@@ -48,7 +48,7 @@ OASDIFF_FAIL_ON ?= ERR
 export PATH := $(TOOLS):$(NODE_BIN):$(PATH)
 
 .PHONY: all help tools proto proto-lint proto-breaking openapi openapi-lint openapi-breaking gen-check build cli-dist server-dist examples test test-race sdk-conformance vet fmt check \
-        web-install web web-check web-dev dev-up dev-down dev-nats-smoke accept-up accept-down migrate-up migrate-down migrate-status \
+        web-install web web-check web-dev dev-up dev-down dev-nats-smoke accept-up accept-down migrate-up migrate-status \
         migrate-new clean
 
 all: proto openapi build examples web ## Generate code, build every binary, the example strategies and the web console
@@ -214,9 +214,6 @@ accept-down: ## Stop the MD acceptance stack and drop its volumes
 
 migrate-up: build ## Apply every pending migration to DATABASE_URL
 	$(BIN)/mftiko-migrate -database '$(DATABASE_URL)' up
-
-migrate-down: build ## Roll back the last migration
-	$(BIN)/mftiko-migrate -database '$(DATABASE_URL)' down 1
 
 migrate-status: build ## Show applied and pending migrations
 	$(BIN)/mftiko-migrate -database '$(DATABASE_URL)' status

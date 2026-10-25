@@ -22,7 +22,7 @@ E4 的驗收（#6；E4-09 BinanceUM、E4-10 Binance 現貨、E4-11 Bybit／OKX�
 make accept-up        # 等於 deploy/accept/accept.sh up
 ```
 
-`up` 會依序：建 Linux binary、`mftiko-nats-dev` 產生 NATS 憑證、起 etcd／NATS／PostgreSQL、套 migration（`mftiko-migrate` 還沒做，這裡用 psql 逐檔套用，套過的記在 `accept_migrations`；E4、E6 時建的資料庫沒有這張表，已經存在的檔案會補記）、`setup`（etcd 的角色與使用者，與部署相同的 RBAC，然後開 auth）、`creds`（觀察端用的、可收發所有 subject 的 NATS 使用者；SYM 也用它，因為 `mftiko-nats-dev` 不發 SYM 使用者）、啟動 `mftiko-sym`，最後要 SYM 立刻刷新並印出商品。可以重跑。
+`up` 會依序：建 Linux binary、`mftiko-nats-dev` 產生 NATS 憑證、起 etcd／NATS／PostgreSQL、套 migration（`mftiko-migrate up`，從空資料庫開始，紀錄在 `schema_migrations`；不再讀 `accept_migrations`。已經被舊的 `accept.sh` 套過的開發庫要先依 [docs/operations.md](../../docs/operations.md) 補記 0001–0005）、`setup`（etcd 的角色與使用者，與部署相同的 RBAC，然後開 auth）、`creds`（觀察端用的、可收發所有 subject 的 NATS 使用者；SYM 也用它，因為 `mftiko-nats-dev` 不發 SYM 使用者）、啟動 `mftiko-sym`，最後要 SYM 立刻刷新並印出商品。可以重跑。
 
 `up` 也會用 `mftiko-pack` 把剛建好的 `mftiko-md-conn`、`mftiko-td-account` 推到 compose 裡的 registry，tag 是 `latest`（`registry:5000/bullionbear/mftiko-md-conn`、`…/mftiko-td-account`）。md-agent、td-agent 跟正式環境一樣以 `-registry` 從 `latest` 拉（E12-02），不用 `-conn`、`-account`；artifact 解在 `/var/md/data`、`/var/td/data` 底下，worker 的執行檔是 `…/artifacts/<digest>/rootfs/bin/worker`。`conns`、`td conns` 以 worker 環境裡的 `MFTIKO_PLANE` 找進程，不看執行檔名稱。改了 conn 或 account 的程式碼就重跑 `up`：新的 `latest` 只影響之後 spawn 的 worker，跑著的不換（P9）。
 
