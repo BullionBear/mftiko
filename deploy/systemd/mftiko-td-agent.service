@@ -1,0 +1,38 @@
+# mftiko TD agent (E12-D016–E12-D019).
+# KillMode=process: systemctl stop and restart signal only this process.
+# systemctl kill is not limited by KillMode and kills the whole cgroup, including workers.
+
+[Unit]
+Description=mftiko TD agent
+After=network-online.target etcd.service nats.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=mftiko-td
+EnvironmentFile=/etc/mftiko/td-agent/env
+WorkingDirectory=/var/lib/mftiko/td-agent
+StateDirectory=mftiko/td-agent
+ExecStart=/opt/mftiko/current/bin/mftiko-td-agent \
+  -instance ${MFTIKO_INSTANCE} \
+  -topology /etc/mftiko/td-agent/topology.json \
+  -work-dir /var/lib/mftiko/td-agent \
+  -shim /opt/mftiko/current/bin/mftiko-shim \
+  -registry ${MFTIKO_REGISTRY} \
+  -plain-http=${MFTIKO_PLAIN_HTTP} \
+  -data /var/lib/mftiko/td-agent \
+  -registry-creds ${MFTIKO_REGISTRY_CREDS} \
+  -endpoints ${MFTIKO_TD_ENDPOINTS} \
+  -rest-endpoints ${MFTIKO_TD_REST_ENDPOINTS} \
+  -nats-account ${MFTIKO_NATS_ACCOUNT} \
+  -nats-signing-key /etc/mftiko/td-agent/nats-signing.nk \
+  -seal-key /etc/mftiko/td-agent/seal.key
+Restart=always
+RestartSec=1s
+KillMode=process
+OOMPolicy=continue
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target

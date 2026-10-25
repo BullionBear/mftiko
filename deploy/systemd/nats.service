@@ -1,0 +1,18 @@
+# NATS, official binary (E12-D020). Restart policy is E12-D019, not the upstream unit.
+# No PrivateTmp, no ExecStop, no LimitNOFILE. The server config is /etc/nats/nats-server.conf.
+# TLS is E12-06.
+
+[Unit]
+Description=NATS
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=nats
+ExecStart=/usr/bin/nats-server -c /etc/nats/nats-server.conf
+Restart=always
+RestartSec=1s
+
+[Install]
+WantedBy=multi-user.target

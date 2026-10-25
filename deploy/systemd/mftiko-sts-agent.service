@@ -1,0 +1,36 @@
+# mftiko STS agent (E12-D016–E12-D019).
+# KillMode=process: systemctl stop and restart signal only this process.
+# systemctl kill is not limited by KillMode and kills the whole cgroup, including workers.
+
+[Unit]
+Description=mftiko STS agent
+After=network-online.target etcd.service nats.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=mftiko-sts
+EnvironmentFile=/etc/mftiko/sts-agent/env
+WorkingDirectory=/var/lib/mftiko/sts-agent
+StateDirectory=mftiko/sts-agent
+ExecStart=/opt/mftiko/current/bin/mftiko-sts-agent \
+  -instance ${MFTIKO_INSTANCE} \
+  -topology /etc/mftiko/sts-agent/topology.json \
+  -work-dir /var/lib/mftiko/sts-agent \
+  -data /var/lib/mftiko/sts-agent \
+  -shim /opt/mftiko/current/bin/mftiko-shim \
+  -registry ${MFTIKO_REGISTRY} \
+  -plain-http=${MFTIKO_PLAIN_HTTP} \
+  -registry-creds ${MFTIKO_REGISTRY_CREDS} \
+  -data-repository ${MFTIKO_STS_DATA_REPOSITORY} \
+  -nats-account ${MFTIKO_NATS_ACCOUNT} \
+  -nats-signing-key /etc/mftiko/sts-agent/nats-signing.nk
+Restart=always
+RestartSec=1s
+KillMode=process
+OOMPolicy=continue
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target

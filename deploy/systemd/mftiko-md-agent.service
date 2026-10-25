@@ -1,0 +1,35 @@
+# mftiko MD agent (E12-D016–E12-D019).
+# KillMode=process: systemctl stop and restart signal only this process.
+# systemctl kill is not limited by KillMode and kills the whole cgroup, including workers.
+
+[Unit]
+Description=mftiko MD agent
+After=network-online.target etcd.service nats.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=mftiko-md
+EnvironmentFile=/etc/mftiko/md-agent/env
+WorkingDirectory=/var/lib/mftiko/md-agent
+StateDirectory=mftiko/md-agent
+ExecStart=/opt/mftiko/current/bin/mftiko-md-agent \
+  -instance ${MFTIKO_INSTANCE} \
+  -topology /etc/mftiko/md-agent/topology.json \
+  -work-dir /var/lib/mftiko/md-agent \
+  -shim /opt/mftiko/current/bin/mftiko-shim \
+  -registry ${MFTIKO_REGISTRY} \
+  -plain-http=${MFTIKO_PLAIN_HTTP} \
+  -data /var/lib/mftiko/md-agent \
+  -registry-creds ${MFTIKO_REGISTRY_CREDS} \
+  -endpoints ${MFTIKO_MD_ENDPOINTS} \
+  -rest-endpoints ${MFTIKO_MD_REST_ENDPOINTS}
+Restart=always
+RestartSec=1s
+KillMode=process
+OOMPolicy=continue
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target

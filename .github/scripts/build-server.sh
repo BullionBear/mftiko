@@ -64,10 +64,15 @@ cp deploy/mftiko-release "$stage/bin/mftiko-release"
 chmod 0755 "$stage/bin/mftiko-release"
 cp -a web/build/. "$stage/web/"
 shopt -s nullglob
+# E12-D023 installs these suffixes only. The adoption test and its compose
+# override live next to the units and are not part of the release.
 for f in deploy/systemd/*; do
 	base=$(basename "$f")
-	[[ "$base" == .* ]] && continue
-	cp -a "$f" "$stage/systemd/$base"
+	case "$base" in
+	*.service|*.socket|*.timer|*.target|*.path|*.mount|*.slice|*.service.d|*.socket.d|*.timer.d)
+		cp -a "$f" "$stage/systemd/$base"
+		;;
+	esac
 done
 
 if [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]]; then

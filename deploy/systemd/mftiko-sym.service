@@ -1,0 +1,20 @@
+# mftiko SYM (E12-D018, E12-D019). KillMode stays control-group.
+# md.fetch is a separate process and has no unit in this set (E12-05).
+
+[Unit]
+Description=mftiko SYM
+After=network-online.target etcd.service nats.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=mftiko-sym
+EnvironmentFile=/etc/mftiko/sym/env
+ExecStart=/opt/mftiko/current/bin/mftiko-sym \
+  -nats-creds /etc/mftiko/sym/nats.creds \
+  -feeds ${MFTIKO_SYM_FEEDS}
+Restart=always
+RestartSec=1s
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,18 @@
+# mftiko controller (E12-D018, E12-D019). KillMode stays control-group.
+# ErrSuperseded still exits non-zero (E13-D015). Restart=always is E12-D019.
+
+[Unit]
+Description=mftiko controller
+After=network-online.target etcd.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=mftiko-controller
+EnvironmentFile=/etc/mftiko/controller/env
+ExecStart=/opt/mftiko/current/bin/mftiko-controller -in /etc/mftiko/controller/deployment.json
+Restart=always
+RestartSec=1s
+
+[Install]
+WantedBy=multi-user.target
