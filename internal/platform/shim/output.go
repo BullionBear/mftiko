@@ -21,6 +21,10 @@ const (
 	DefaultOutputMaxBytes = 64 << 20
 	// DefaultOutputKeep is how many files of a stream are kept, the current one included, when the Launch sets none.
 	DefaultOutputKeep = 5
+	// ShimLogMaxBytes is the size at which {h}.shim.log rotates (E12-D042).
+	ShimLogMaxBytes = 10 << 20
+	// ShimLogKeep is how many shim log files are kept, the one being written included (E12-D042).
+	ShimLogKeep = 3
 	// MinOutputMaxBytes is the smallest max_bytes a Launch may set: smaller files would rotate on every few lines.
 	MinOutputMaxBytes = 64 << 10
 	// MaxOutputKeep is the largest keep a Launch may set.
@@ -119,6 +123,7 @@ type rotator struct {
 
 	f    *os.File
 	size int64
+	gen  uint64 // increments every time path is opened, including after a rotation
 }
 
 // openRotator opens path for appending, after whatever an earlier incarnation of the worker left there.
@@ -141,6 +146,7 @@ func (r *rotator) open() error {
 		return err
 	}
 	r.f, r.size = f, fi.Size()
+	r.gen++
 	return nil
 }
 

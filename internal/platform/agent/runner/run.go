@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -15,6 +16,7 @@ import (
 
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
 	"github.com/BullionBear/mftiko/internal/platform/agent"
+	"github.com/BullionBear/mftiko/internal/platform/shim"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
@@ -28,7 +30,20 @@ const (
 	DefaultResync = time.Second
 	// DefaultWriteTimeout bounds each etcd write the loop makes.
 	DefaultWriteTimeout = 5 * time.Second
+	// DefaultLogRetain is how long an MD or TD agent keeps a log file after its worker key
+	// disappears (E12-D041). STS leaves LogRetain at zero and does not clean.
+	DefaultLogRetain = 7 * 24 * time.Hour
 )
+
+// EffectiveLogRetain is d, or DefaultLogRetain when d is not positive. MD and TD apply it. The
+// runner itself treats a non-positive LogRetain as off, so a caller that does not opt in
+// (STS, the controller) keeps today's behavior.
+func EffectiveLogRetain(d time.Duration) time.Duration {
+	if d > 0 {
+		return d
+	}
+	return DefaultLogRetain
+}
 
 // ErrTermEnded is what Run returns when the term ended: session lost, superseded, or closed, or a shim preempted
 // the agent for a newer term. It wraps the cause. The agent exits and systemd starts it again; the next process
@@ -100,14 +115,20 @@ type Config[I any, S, L agent.Hashed] struct {
 	Release string // AgentRecord.release
 	// WorkDir is this process's WORK_DIR, written on the AgentRecord when the term is elected (E10-D092).
 	// Empty leaves the field unset. The controller does not use this runner.
-	WorkDir     string
-	StaleAfter  time.Duration // DefaultStaleAfter if 0
-	Resync      time.Duration // DefaultResync if 0
-	StableAfter time.Duration // agent.DefaultStableAfter if 0
-	Retry       agent.Backoff // agent.DefaultRetry if zero
-	LiveRetry   time.Duration // agent.DefaultLiveRetry if 0
-	Log         zerolog.Logger
-	Now         func() time.Time // time.Now if nil
+	WorkDir string
+	// LogRetain is how long a log file of a worker key that no longer appears is kept (E12-D041).
+	// Zero disables cleanup. MD and TD pass EffectiveLogRetain; STS leaves this zero.
+	LogRetain time.Duration
+	// LogRetainEvery is how often cleanup runs after the one at startup. Zero means one hour.
+	// It is not a deployment setting. Tests set a short interval.
+	LogRetainEvery time.Duration
+	StaleAfter     time.Duration // DefaultStaleAfter if 0
+	Resync         time.Duration // DefaultResync if 0
+	StableAfter    time.Duration // agent.DefaultStableAfter if 0
+	Retry          agent.Backoff // agent.DefaultRetry if zero
+	LiveRetry      time.Duration // agent.DefaultLiveRetry if 0
+	Log            zerolog.Logger
+	Now            func() time.Time // time.Now if nil
 }
 
 // Run runs the term until it ends, which is ErrTermEnded, or ctx is done, which is ctx's error. A failure before
@@ -144,6 +165,7 @@ type run[I any, S, L agent.Hashed] struct {
 	rec    *agent.Reconciler[S, L]
 	st     *statuses
 	stale  bool
+	plans  map[agent.WorkerKey]agent.Plan[S, L] // last Plan, the keep-set for log cleanup
 }
 
 func newRun[I any, S, L agent.Hashed](cfg Config[I, S, L]) *run[I, S, L] {
@@ -177,6 +199,16 @@ func (r *run[I, S, L]) run(ctx context.Context) error {
 	if err := r.start(ctx); err != nil {
 		return err
 	}
+	var logTick <-chan time.Time
+	if r.cfg.LogRetain > 0 {
+		every := r.cfg.LogRetainEvery
+		if every <= 0 {
+			every = time.Hour
+		}
+		ticker := time.NewTicker(every)
+		defer ticker.Stop()
+		logTick = ticker.C
+	}
 	r.log.Info().Msg("agent reconciling")
 	for {
 		wake := r.step(ctx)
@@ -192,6 +224,8 @@ func (r *run[I, S, L]) run(ctx context.Context) error {
 		case <-r.cfg.Demand.Notify():
 		case <-r.cfg.Fleet.Changed():
 		case <-t.C:
+		case <-logTick:
+			r.cleanLogs()
 		}
 		t.Stop()
 	}
@@ -220,6 +254,7 @@ func (r *run[I, S, L]) start(ctx context.Context) error {
 		}
 	}
 	plans := r.cfg.Planner.Plan(d)
+	r.plans = plans
 	if err := r.writeStatuses(ctx, plans, observed); err != nil {
 		return err
 	}
@@ -241,6 +276,7 @@ func (r *run[I, S, L]) start(ctx context.Context) error {
 	}
 	r.log.Info().Int("workers", len(observed)).Int("planned", len(plans)).Int64("demand_rev", d.Rev).
 		Msg("agent record written")
+	r.cleanLogs()
 	return nil
 }
 
@@ -268,6 +304,7 @@ func (r *run[I, S, L]) step(ctx context.Context) time.Time {
 		}
 	}
 	plans := r.cfg.Planner.Plan(d)
+	r.plans = plans
 	acts, wake := r.rec.Step(now, stale, plans, r.cfg.Fleet.Observe())
 	for _, a := range acts {
 		if ctx.Err() != nil {
@@ -335,4 +372,58 @@ func (r *run[I, S, L]) writeStatuses(ctx context.Context, plans map[agent.Worker
 	ctx, cancel := context.WithTimeout(ctx, DefaultWriteTimeout)
 	defer cancel()
 	return r.st.sync(ctx, want, func(key string) bool { return keep[key] })
+}
+
+// cleanLogs deletes MD/TD log files whose worker key no longer appears and whose mtime is strictly
+// older than LogRetain (E12-D041). A failure is logged and the term continues. LogRetain <= 0
+// does nothing, which is the STS and controller path.
+func (r *run[I, S, L]) cleanLogs() {
+	if r.cfg.LogRetain <= 0 || r.cfg.WorkDir == "" {
+		return
+	}
+	keep, err := r.logKeep()
+	if err != nil {
+		r.log.Warn().Err(err).Msg("log cleanup")
+		return
+	}
+	dir := shim.LogDir(r.cfg.WorkDir, string(r.cfg.Term.Plane()))
+	if err := shim.CleanAbsentLogs(dir, r.cfg.LogRetain, r.now(), keep); err != nil {
+		r.log.Warn().Err(err).Msg("log cleanup")
+	}
+}
+
+// logKeep is the set of worker hashes that still appear: observed, planned, still holding a
+// WorkerStatus, unreachable shims, and live sockets. A socket directory that cannot be read
+// aborts the cleanup; a missing one does not.
+func (r *run[I, S, L]) logKeep() (map[string]struct{}, error) {
+	keep := map[string]struct{}{}
+	add := func(h string) {
+		if h != "" {
+			keep[h] = struct{}{}
+		}
+	}
+	for k := range r.cfg.Fleet.Observe() {
+		add(state.WorkerHash(string(k)))
+	}
+	for _, h := range r.cfg.Fleet.Unreachable() {
+		add(h)
+	}
+	for k := range r.plans {
+		add(state.WorkerHash(string(k)))
+	}
+	prefix := state.WorkerStatusPrefix(r.cfg.Term.Plane(), r.cfg.Term.Instance())
+	for key := range r.st.held {
+		rest, ok := strings.CutPrefix(key, prefix)
+		if ok {
+			add(rest)
+		}
+	}
+	socks, err := shim.SocketHashes(shim.RunDir(r.cfg.WorkDir, string(r.cfg.Term.Plane())))
+	if err != nil {
+		return nil, err
+	}
+	for h := range socks {
+		add(h)
+	}
+	return keep, nil
 }

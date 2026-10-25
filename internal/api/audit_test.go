@@ -138,10 +138,13 @@ func TestAuditRows(t *testing.T) {
 	base := "http://" + r.s.Addr()
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	for _, path := range []string{"/healthz", "/readyz", "/not-a-page"} {
+	for _, path := range []string{"/healthz", "/readyz", "/metrics", "/not-a-page"} {
 		code, _, body := (apiCall{method: http.MethodGet, path: path}).do(t, client, base)
 		if path == "/healthz" && code != http.StatusOK {
 			t.Fatalf("healthz %d %s", code, body)
+		}
+		if path == "/metrics" && (code != http.StatusOK || !bytes.Contains(body, []byte("mftiko_postgres_up"))) {
+			t.Fatalf("metrics %d %s", code, body)
 		}
 	}
 
@@ -157,7 +160,7 @@ func TestAuditRows(t *testing.T) {
 	rows := queryAudits(t, conn)
 	for _, row := range rows {
 		switch row.Path {
-		case "/healthz", "/readyz", "/not-a-page", "/":
+		case "/healthz", "/readyz", "/metrics", "/not-a-page", "/":
 			t.Fatalf("non-api row %+v", row)
 		}
 	}

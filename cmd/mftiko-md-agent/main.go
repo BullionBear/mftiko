@@ -44,6 +44,7 @@ func main() {
 	endpoints := flag.String("endpoints", "", "JSON object of venue to websocket URL override")
 	restEndpoints := flag.String("rest-endpoints", "", "JSON object of venue to REST URL override for the conn worker's depth snapshot")
 	linger := flag.Duration("linger", agent.DefaultLinger, "how long an atom with no owners stays subscribed")
+	logRetainDays := flag.Int("log-retain-days", 7, "days to keep logs of worker keys that no longer appear")
 	flag.Parse()
 	if *version {
 		fmt.Println(buildinfo.String())
@@ -57,7 +58,7 @@ func main() {
 		log.Error().Err(err).Msg("exit")
 		os.Exit(1)
 	}
-	if err := run(ctx, *instance, *topology, *password, *workDir, *shim, worker, *natsURL, *creds, *endpoints, *restEndpoints, *linger, log); err != nil && !errors.Is(err, context.Canceled) {
+	if err := run(ctx, *instance, *topology, *password, *workDir, *shim, worker, *natsURL, *creds, *endpoints, *restEndpoints, *linger, *logRetainDays, log); err != nil && !errors.Is(err, context.Canceled) {
 		log.Error().Err(err).Msg("exit")
 		os.Exit(1)
 	}
@@ -70,7 +71,11 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-func run(ctx context.Context, instance, topology, password, workDir, shimPath string, worker latest.Launcher, natsURL, creds, endpoints, restEndpoints string, linger time.Duration, log zerolog.Logger) error {
+func run(ctx context.Context, instance, topology, password, workDir, shimPath string, worker latest.Launcher, natsURL, creds, endpoints, restEndpoints string, linger time.Duration, logRetainDays int, log zerolog.Logger) error {
+	retain, err := retainFor(logRetainDays)
+	if err != nil {
+		return err
+	}
 	switch {
 	case instance == "" || topology == "" || password == "" || workDir == "" || shimPath == "":
 		return errors.New("instance, topology, etcd password, work dir, and shim are required")
@@ -116,8 +121,20 @@ func run(ctx context.Context, instance, topology, password, workDir, shimPath st
 		WorkDir: workDir, Shim: shimPath, Worker: worker,
 		WorkerEnv: workerEnv,
 		Markets:   agent.MarketsFrom(reg), Overrides: overrides,
-		Linger: linger, Release: buildinfo.Version, Log: log,
+		Linger: linger, LogRetain: retain, Release: buildinfo.Version, Log: log,
 	})
+}
+
+// retainFor converts -log-retain-days. Fewer than 1 day, and a duration that does not fit, are rejected (E12-D041).
+func retainFor(days int) (time.Duration, error) {
+	if days < 1 {
+		return 0, errors.New("log retain days must be at least 1")
+	}
+	const day = 24 * time.Hour
+	if time.Duration(days) > (1<<63-1)/day {
+		return 0, errors.New("log retain days out of range")
+	}
+	return time.Duration(days) * day, nil
 }
 
 func readTopology(path string) (state.Topology, error) {

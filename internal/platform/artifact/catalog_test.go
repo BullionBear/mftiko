@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"reflect"
 	"strings"
@@ -279,4 +280,60 @@ func sameStrings(got, want []string) bool {
 		}
 	}
 	return true
+}
+
+func TestCatalogReachable(t *testing.T) {
+	if registryPingURL(Registry{Address: "example.invalid:5000", PlainHTTP: true}) != "http://example.invalid:5000/v2/" {
+		t.Fatal(registryPingURL(Registry{Address: "example.invalid:5000", PlainHTTP: true}))
+	}
+	if registryPingURL(Registry{Address: "example.invalid:5000"}) != "https://example.invalid:5000/v2/" {
+		t.Fatal("https scheme")
+	}
+	if err := (*Catalog)(nil).Reachable(context.Background()); err == nil {
+		t.Fatal("nil catalog")
+	}
+	if err := (&Catalog{}).Reachable(context.Background()); err == nil {
+		t.Fatal("empty catalog")
+	}
+
+	okSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/" || r.Header.Get("User-Agent") != "mftiko-artifact" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte("ok"))
+	}))
+	t.Cleanup(okSrv.Close)
+	okCat, err := OpenCatalog(Registry{Address: okSrv.Listener.Addr().String(), PlainHTTP: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := okCat.Reachable(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	denied := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "no", http.StatusUnauthorized)
+	}))
+	t.Cleanup(denied.Close)
+	deniedCat, err := OpenCatalog(Registry{Address: denied.Listener.Addr().String(), PlainHTTP: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := deniedCat.Reachable(context.Background()); err == nil || !strings.Contains(err.Error(), "401") {
+		t.Fatal(err)
+	}
+
+	closed, err := OpenCatalog(Registry{Address: "127.0.0.1:1", PlainHTTP: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := closed.Reachable(context.Background()); err == nil {
+		t.Fatal("closed port")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := okCat.Reachable(ctx); err == nil {
+		t.Fatal("cancelled context")
+	}
 }

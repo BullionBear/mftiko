@@ -263,9 +263,9 @@ func (s *Server) stop() {
 }
 
 // routes is one handler on purpose. ServeMux rejects a GET wildcard registered over the
-// all-method /api/ pattern, so the split is done here: /healthz and /readyz are exact,
-// /api (including the strategy catalog) is authenticated and audited, and anything else
-// is the console build (E10-D028, E10-D056).
+// all-method /api/ pattern, so the split is done here: /healthz, /readyz, and /metrics are
+// exact, /api (including the strategy catalog) is authenticated and audited, and anything else
+// is the console build (E10-D028, E10-D056, E12-D038).
 func (s *Server) routes() http.Handler {
 	s.apiOnce.Do(func() {
 		s.api = apiv1.HandlerWithOptions(s, apiv1.StdHTTPServerOptions{
@@ -298,8 +298,16 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.readyz(w, r)
 		return
+	case "/metrics":
+		if !readMethod(r) {
+			methodNotAllowed(w)
+			return
+		}
+		s.metrics(w, r)
+		return
 	}
-	// Only /api is authenticated and audited. Health, readiness, and static files are not (E10-D010).
+	// Only /api is authenticated and audited. Health, readiness, metrics, and static files are not
+	// (E10-D010, E12-D038).
 	// Strategy routes are /api too; serveAPI sends them to the catalog mux after authentication.
 	if apiPath(r.URL.Path) {
 		s.serveAudited(w, r, st)

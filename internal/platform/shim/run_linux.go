@@ -46,6 +46,20 @@ func Run(log zerolog.Logger) int {
 		log.Error().Err(err).Msg("no launch")
 		return 1
 	}
+	// The agent attached {h}.shim.log, not a pipe (PROTOCOL §4.6). Rotate that file here, so the
+	// shim keeps writing it after the agent is gone (E12-D042). A parent that did not create the
+	// file — tests that capture stderr — keeps the stderr it attached.
+	if l.GetWorkDir() != "" && l.GetPlane() != "" && l.GetWorker().GetKey() != "" {
+		sl, err := openShimLog(l.GetWorkDir(), l.GetPlane(), l.GetWorker().GetKey())
+		if err != nil {
+			log.Error().Err(err).Msg("open shim log")
+			return 1
+		}
+		if sl != nil {
+			defer sl.Close()
+			log = log.Output(sl)
+		}
+	}
 	null, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
 	if err != nil {
 		log.Error().Err(err).Msg("open /dev/null")

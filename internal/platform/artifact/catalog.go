@@ -3,7 +3,10 @@ package artifact
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 
 	"github.com/opencontainers/go-digest"
@@ -49,6 +52,37 @@ func OpenCatalog(reg Registry) (*Catalog, error) {
 		return nil, err
 	}
 	return &Catalog{reg: reg, http: ac}, nil
+}
+
+// Reachable reports whether GET /v2/ on the registry returns 200 (E12-D038). A nil catalog,
+// a missing client, or an empty address is not configured. Any other final status, including
+// 401, is an error. The body is discarded and is not part of the error.
+func (c *Catalog) Reachable(ctx context.Context) error {
+	if c == nil || c.http == nil || c.reg.Address == "" {
+		return errors.New("artifact: registry is not configured")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, registryPingURL(c.reg), nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	_, copyErr := io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("artifact: registry status %d", resp.StatusCode)
+	}
+	return copyErr
+}
+
+func registryPingURL(reg Registry) string {
+	scheme := "https"
+	if reg.PlainHTTP {
+		scheme = "http"
+	}
+	return scheme + "://" + reg.Address + "/v2/"
 }
 
 func (c *Catalog) repository(name string) (*remote.Repository, error) {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -557,4 +558,191 @@ func TestRunPreempted(t *testing.T) {
 		t.Fatal("Run went on after a preemption")
 	}
 	hs.j.waitFor(t, "spawn md/a cancelled")
+}
+
+func TestEffectiveLogRetain(t *testing.T) {
+	if DefaultLogRetain != 7*24*time.Hour {
+		t.Fatalf("default retain = %s", DefaultLogRetain)
+	}
+	if EffectiveLogRetain(0) != DefaultLogRetain || EffectiveLogRetain(-time.Hour) != DefaultLogRetain {
+		t.Fatal("a non-positive retain must become the seven-day default")
+	}
+	if EffectiveLogRetain(time.Hour) != time.Hour {
+		t.Fatal("a positive retain must be kept")
+	}
+}
+
+func TestRunDeletesStaleLogs(t *testing.T) {
+	hs := newHarness(t, lister{})
+	hs.cfg.WorkDir = t.TempDir()
+	hs.cfg.LogRetain = DefaultLogRetain
+	hs.cfg.LogRetainEvery = time.Hour
+	old := time.Now().Add(-8 * 24 * time.Hour)
+	recent := time.Now().Add(-time.Hour)
+	gone := state.WorkerHash("md/old")
+	held := state.WorkerHash("md/held")
+	sock := state.WorkerHash("md/sock")
+	live := state.WorkerHash("md/a")
+	plantLog(t, hs.cfg.WorkDir, "md", gone+".stdout", old)
+	plantLog(t, hs.cfg.WorkDir, "md", gone+".shim.log", old)
+	plantLog(t, hs.cfg.WorkDir, "md", gone+".shim.log.1", old)
+	plantLog(t, hs.cfg.WorkDir, "md", gone+".stderr", recent)
+	plantLog(t, hs.cfg.WorkDir, "md", "notes.txt", old)
+	plantLog(t, hs.cfg.WorkDir, "md", live+".stdout", old)
+	plantLog(t, hs.cfg.WorkDir, "md", held+".stdout", old)
+	plantLog(t, hs.cfg.WorkDir, "md", sock+".shim.log", old)
+	if err := os.MkdirAll(filepath.Join(hs.cfg.WorkDir, "run", "md"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hs.cfg.WorkDir, "run", "md", sock+".sock"), []byte("x"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	hs.fleet.held = []string{held}
+	hs.fleet.adopt = map[agent.WorkerKey]agent.Observed{
+		"md/a": {Key: "md/a", State: agent.StateRunning},
+	}
+	hs.src.put("a", "s")
+	hs.src.put("b", "s")
+	close(hs.src.synced)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { hs.ret <- Run(ctx, hs.cfg) }()
+	hs.j.waitFor(t, "spawn md/b")
+	for _, name := range []string{gone + ".stdout", gone + ".shim.log", gone + ".shim.log.1"} {
+		if _, err := os.Stat(filepath.Join(hs.cfg.WorkDir, "log", "md", name)); !os.IsNotExist(err) {
+			t.Fatalf("%s = %v, want removed", name, err)
+		}
+	}
+	for _, name := range []string{gone + ".stderr", "notes.txt", live + ".stdout", held + ".stdout", sock + ".shim.log"} {
+		if _, err := os.Stat(filepath.Join(hs.cfg.WorkDir, "log", "md", name)); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	cancel()
+	<-hs.ret
+}
+
+func TestRunKeepsLogsWhenRetainOff(t *testing.T) {
+	hs := newHarness(t, lister{})
+	hs.cfg.WorkDir = t.TempDir()
+	name := state.WorkerHash("md/old") + ".stdout"
+	plantLog(t, hs.cfg.WorkDir, "md", name, time.Now().Add(-8*24*time.Hour))
+	close(hs.src.synced)
+	hs.src.put("a", "s")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { hs.ret <- Run(ctx, hs.cfg) }()
+	hs.j.waitFor(t, "spawn md/a")
+	if _, err := os.Stat(filepath.Join(hs.cfg.WorkDir, "log", "md", name)); err != nil {
+		t.Fatalf("a term with LogRetain 0 deleted %s: %v", name, err)
+	}
+	cancel()
+	<-hs.ret
+}
+
+func TestRunLogCleanupRepeats(t *testing.T) {
+	hs := newHarness(t, lister{})
+	hs.cfg.WorkDir = t.TempDir()
+	hs.cfg.LogRetain = time.Hour
+	hs.cfg.LogRetainEvery = 15 * time.Millisecond
+	close(hs.src.synced)
+	hs.src.put("a", "s")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { hs.ret <- Run(ctx, hs.cfg) }()
+	hs.j.waitFor(t, "spawn md/a")
+	old := time.Now().Add(-2 * time.Hour)
+	gone := state.WorkerHash("md/old")
+	live := state.WorkerHash("md/a")
+	plantLog(t, hs.cfg.WorkDir, "md", gone+".stdout", old)
+	plantLog(t, hs.cfg.WorkDir, "md", gone+".stderr", time.Now())
+	plantLog(t, hs.cfg.WorkDir, "md", live+".shim.log", old)
+	waitGone(t, filepath.Join(hs.cfg.WorkDir, "log", "md", gone+".stdout"))
+	if _, err := os.Stat(filepath.Join(hs.cfg.WorkDir, "log", "md", gone+".stderr")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(hs.cfg.WorkDir, "log", "md", live+".shim.log")); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	<-hs.ret
+}
+
+func TestRunLogCleanupSkipsWhenSocketsUnreadable(t *testing.T) {
+	hs := newHarness(t, lister{})
+	hs.cfg.WorkDir = t.TempDir()
+	hs.cfg.LogRetain = time.Hour
+	var buf safeLog
+	hs.cfg.Log = zerolog.New(&buf)
+	if err := os.WriteFile(filepath.Join(hs.cfg.WorkDir, "run"), []byte("x"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	name := state.WorkerHash("md/old") + ".stdout"
+	plantLog(t, hs.cfg.WorkDir, "md", name, time.Now().Add(-2*time.Hour))
+	close(hs.src.synced)
+	hs.src.put("a", "s")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { hs.ret <- Run(ctx, hs.cfg) }()
+	hs.j.waitFor(t, "spawn md/a")
+	if _, err := os.Stat(filepath.Join(hs.cfg.WorkDir, "log", "md", name)); err != nil {
+		t.Fatalf("cleanup deleted %s despite an unreadable socket dir: %v", name, err)
+	}
+	if !strings.Contains(buf.String(), "log cleanup") {
+		t.Fatalf("log = %q, want the cleanup warning", buf.String())
+	}
+	cancel()
+	<-hs.ret
+}
+
+func plantLog(t *testing.T, work, plane, name string, when time.Time) {
+	t.Helper()
+	path := filepath.Join(work, "log", plane, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("x"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, when, when); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func waitGone(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	tick := time.NewTicker(5 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		_, err := os.Stat(path)
+		if os.IsNotExist(err) {
+			return
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s was still present", path)
+		}
+		<-tick.C
+	}
+}
+
+// safeLog is a writer the cleanup warning can share with the test.
+type safeLog struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (s *safeLog) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *safeLog) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }

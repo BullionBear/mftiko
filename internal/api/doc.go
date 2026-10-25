@@ -11,8 +11,8 @@
 // from one Mirror per cluster (E10-D014). Session and instance reads, session records, and SSE are E10-D092–E10-D097.
 // Each SSE connection watches etcd from Last-Event-ID and does not read the mirror's history (E10-D094).
 // Every /api request is authenticated, except POST /api/v1/auth/login
-// (E10-D009, E10-D051). Cookie writes and login need Content-Type: application/json; bearer writes do not (E10-D110). On reply the audit row is queued and written to Postgres; /healthz and /readyz are not
-// (E10-D010, E10-D049). The strategy catalog is served from the registry (E10-D056–E10-D061). Load checks the DSN and the
+// (E10-D009, E10-D051). Cookie writes and login need Content-Type: application/json; bearer writes do not (E10-D110). On reply the audit row is queued and written to Postgres; /healthz, /readyz, and /metrics are not
+// (E10-D010, E10-D049, E12-D038). The strategy catalog is served from the registry (E10-D056–E10-D061). Load checks the DSN and the
 // registry settings and does not dial. Run creates a Postgres pool and does not wait for it to connect;
 // readiness still watches etcd only (E10-D048, modifies E10-D024). A down Postgres makes session create return
 // 503 and skip etcd (E10-D031); audit writes fail the same way. Create and end of a session, the
@@ -53,7 +53,8 @@
 // Run dials every region and keeps one Mirror per cluster on the whole /mftiko/v1/ keyspace, not one mirror per
 // prefix (E10-D025). /healthz is 200 while the process is up. /readyz is 200 when any region is available; the body
 // lists every region and unavailable_regions. It is 503 only when every region is unavailable, and during shutdown
-// (E10-D026, E10-D027). SIGTERM marks readiness 503, stops accepting, waits for in-flight requests up to
+// (E10-D026, E10-D027). GET and HEAD /metrics are Prometheus text for this process, matched before static files,
+// unauthenticated, and not in the OpenAPI document (E12-D038). SIGTERM marks readiness 503, stops accepting, waits for in-flight requests up to
 // shutdown_timeout and returns nil so the process exits 0. SIGINT takes that same path.
 //
 // The console files are read from disk when a web directory is set (web/build), not embedded. The directory is
