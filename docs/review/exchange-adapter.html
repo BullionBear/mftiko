@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>exchange adaptor 介面（草案）</title>
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --paper: #fbfaf6;
+    --ink: #1c1915;
+    --muted: #5e584e;
+    --line: #e3ddd2;
+    --line-strong: #cfc6b8;
+    --code: #f3efe6;
+    --accent: #6b3a1f;
+    --nav: #2a2622;
+    --draft: #8a3b12;
+    --draft-bg: #f6e6d8;
+    --ok: #1f4d38;
+    --ok-bg: #e5f0e8;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    background: var(--bg);
+    font: 16px/1.65 "Iowan Old Style", "Palatino Linotype", Palatino, "Songti TC", "PMingLiU", serif;
+  }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  code, .sig, .k {
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.84em;
+  }
+  header.top {
+    background: var(--nav);
+    color: #f6f1e8;
+    padding: 2.4rem 2rem 1.8rem;
+  }
+  header.top h1 {
+    margin: 0 0 0.4rem;
+    font-weight: 500;
+    font-size: 1.85rem;
+    letter-spacing: 0.01em;
+  }
+  header.top p { margin: 0.35rem 0; max-width: 46rem; color: #d9d0c4; }
+  .badge {
+    display: inline-block;
+    margin-bottom: 0.7rem;
+    padding: 0.1rem 0.5rem;
+    border-radius: 2px;
+    background: var(--draft-bg);
+    color: var(--draft);
+    font: 600 0.72rem/1.4 "PingFang TC", "Helvetica Neue", sans-serif;
+    letter-spacing: 0.08em;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 15.5rem minmax(0, 52rem);
+    gap: 2.5rem;
+    max-width: 72rem;
+    margin: 0 auto;
+    padding: 1.6rem 1.4rem 4rem;
+  }
+  nav {
+    position: sticky;
+    top: 1rem;
+    align-self: start;
+    font: 0.82rem/1.45 "PingFang TC", "Helvetica Neue", sans-serif;
+  }
+  nav ol { list-style: none; margin: 0; padding: 0; }
+  nav a { color: var(--muted); text-decoration: none; }
+  nav a:hover { color: var(--ink); }
+  nav li { margin: 0.28rem 0; }
+  nav .sub { padding-left: 0.85rem; }
+  main h2 {
+    margin: 2.4rem 0 0.6rem;
+    padding-top: 0.4rem;
+    font-size: 1.45rem;
+    font-weight: 500;
+    border-top: 1px solid var(--line-strong);
+  }
+  main h2:first-child { margin-top: 0; border-top: 0; }
+  main h3 {
+    margin: 1.6rem 0 0.4rem;
+    font-size: 1.12rem;
+    font-weight: 600;
+  }
+  main p { margin: 0.45rem 0 0.7rem; }
+  .note, .flag {
+    margin: 0.8rem 0 1rem;
+    padding: 0.75rem 0.95rem;
+    background: var(--paper);
+    border-left: 3px solid var(--line-strong);
+  }
+  .flag { border-left-color: var(--draft); background: #fbf6f1; }
+  .who {
+    margin: 0 0 0.55rem;
+    color: var(--muted);
+    font: 0.78rem/1.4 "PingFang TC", "Helvetica Neue", sans-serif;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.4rem 0 1rem;
+    background: var(--paper);
+    font-size: 0.92rem;
+  }
+  th, td {
+    text-align: left;
+    vertical-align: top;
+    padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid var(--line);
+  }
+  th {
+    font: 600 0.75rem/1.3 "PingFang TC", "Helvetica Neue", sans-serif;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    background: #f7f4ee;
+  }
+  .method {
+    margin: 0.7rem 0 0.9rem;
+    background: var(--paper);
+    border: 1px solid var(--line);
+  }
+  .method .sig {
+    display: block;
+    padding: 0.45rem 0.7rem;
+    background: var(--code);
+    border-bottom: 1px solid var(--line);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .method .body { padding: 0.45rem 0.75rem 0.6rem; }
+  .method p { margin: 0.25rem 0; }
+  ul { margin: 0.3rem 0 0.8rem; padding-left: 1.2rem; }
+  li { margin: 0.2rem 0; }
+  .src { color: var(--muted); font-size: 0.86rem; }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    nav { position: static; }
+  }
+  @media print {
+    header.top { background: white; color: black; }
+    header.top p { color: black; }
+    nav { display: none; }
+    .layout { display: block; padding: 0; }
+    body { background: white; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="badge">定案 · PROTOCOL v0.53 · E3-17</div>
+  <h1>exchange adaptor 介面</h1>
+  <p>這是 <code>exchange</code> 套件現在的形狀，已寫進 PROTOCOL §1 與 D006、D007。它是 Go 介面，沒有 proto。<code>buf breaking</code> 不檢查它。定案之後這些型別只做相容的改動。</p>
+  <p>來源：<span class="src">exchange/doc.go、market.go、rest.go、http.go、account.go、trade.go、history.go、events.go、types.go、errors.go、registry.go、credentials.go</span>。依據 D006、D301、D302、D303。</p>
+</header>
+<div class="layout">
+<nav>
+  <ol>
+    <li><a href="#callers">誰呼叫誰</a></li>
+    <li><a href="#rules">共同規則</a></li>
+    <li><a href="#registry">註冊</a></li>
+    <li><a href="#md">MD</a>
+      <ol>
+        <li class="sub"><a href="#market">Market</a></li>
+        <li class="sub"><a href="#session">Session</a></li>
+        <li class="sub"><a href="#book">BookSync</a></li>
+        <li class="sub"><a href="#sink">Sink 與事件</a></li>
+        <li class="sub"><a href="#publicrest">PublicREST</a></li>
+      </ol>
+    </li>
+    <li><a href="#sym">SYM</a></li>
+    <li><a href="#td">TD</a>
+      <ol>
+        <li class="sub"><a href="#account">Account</a></li>
+        <li class="sub"><a href="#private">PrivateStream</a></li>
+        <li class="sub"><a href="#trade">TradeStream</a></li>
+        <li class="sub"><a href="#history">History</a></li>
+      </ol>
+    </li>
+    <li><a href="#rest">REST 邊界</a></li>
+    <li><a href="#errors">錯誤</a></li>
+    <li><a href="#enums">enum</a></li>
+    <li><a href="#freeze">定案會鎖住的事</a></li>
+  </ol>
+</nav>
+<main>
+
+<h2 id="callers">誰呼叫誰</h2>
+<p>一個 venue 的任一部分都可以缺。公開面掛在 <code>Venue</code> 上，私有面掛在 <code>AccountKind</code> 上。</p>
+<table>
+  <thead><tr><th>呼叫者</th><th>介面</th><th>決定</th></tr></thead>
+  <tbody>
+    <tr><td>MD agent，規劃，無 I/O</td><td><code>Market</code> 的 <code>Topics</code>、<code>Atom</code>、<code>Routes</code>、<code>Budget</code>、<code>Cost</code></td><td>D401、D403、D202</td></tr>
+    <tr><td>MD conn worker</td><td><code>Market.NewSession</code>、<code>BookSync</code>、<code>PublicREST.Depth</code></td><td>D402、D803</td></tr>
+    <tr><td>md.fetch</td><td><code>PublicREST.Klines</code>、<code>OpenInterest</code></td><td>D402</td></tr>
+    <tr><td>SYM</td><td><code>Lister</code>，由 <code>ListingOver(PublicREST, Doer, now)</code> 組成</td><td>D201、D203</td></tr>
+    <tr><td>行程內 Resolver（開發用）</td><td><code>InProcessUIDSource</code></td><td>E2-05</td></tr>
+    <tr><td>TD account worker</td><td><code>Account</code>、<code>PrivateStream</code> 或 <code>TradeStream</code></td><td>D602、D603、D301、D303</td></tr>
+    <tr><td>TD agent，歷史補正</td><td><code>History</code></td><td>D601</td></tr>
+  </tbody>
+</table>
+<div class="flag">
+  <p>epic 原文把 TD 的介面寫成 <code>AccountKind</code>。E3-17 以程式為準：<code>AccountKind</code> 是註冊用的 struct，收發單的介面是 <code>Account</code>。</p>
+</div>
+
+<h2 id="rules">共同規則</h2>
+<p class="who">D302、D303、D008。寫在 <code>exchange/doc.go</code>。</p>
+<ul>
+  <li>adapter 是 codec。它把意圖編成位元組，把位元組編成事件。不連線、不讀時鐘、不 sleep、不起 goroutine、不重試。需要簽名時間的方法由呼叫者傳入 <code>now</code>。公開 REST 不簽名，不帶 <code>now</code>。</li>
+  <li>介面裡沒有 <code>coder/websocket</code>、<code>fasthttp</code>、<code>sonic</code> 的型別。前兩個只在 worker 與 <code>exchange/transport</code>。JSON 用 <code>exchange/internal/codec</code> 的兩份凍結設定：websocket 不複製字串，REST 複製字串。</li>
+  <li>緩衝區是 worker 的，借給 adapter。交給 <code>Decode</code> 或 <code>Parse</code> 的位元組只在該次呼叫有效。Sink 收到的指標與其中的字串也只在回呼期間有效，要留的自己複製。</li>
+  <li>數字是 <code>float64</code>。缺值是 <code>decimal.Absent</code>（NaN）。不用 <code>==</code> 比較。寫給交易所時用 <code>decimal.Append</code>：對齊 step、不帶指數。簽過名的 body 只 marshal 一次，簽的和送的是同一份位元組。</li>
+  <li>時間是 <code>int64</code> Unix 奈秒，欄位以 <code>Ns</code> 結尾。adapter 只填交易所自己的時間 <code>ExchTsNs</code>。收到的時間由 worker 蓋。</li>
+  <li>進去的商品是解析好的 <code>*symbol.Info</code>。出來的是 <code>symbol.ExchKey</code>（venue、category、交易所拼法）。adapter 不呼叫 SYM。系統內部的身分是 <code>Info.UID</code>。</li>
+  <li><code>Fill.FillID</code> 是交易所的 trade id。私有串流與 <code>History</code> 必須相同，資料庫以 <code>(api_id, fill_id)</code> 去重。</li>
+  <li>憑證、listenKey、簽名不得出現在 log。<code>Credentials</code>、<code>HTTPRequest</code>、<code>HTTPResponse</code>、<code>Dial</code> 的 <code>String</code>、<code>Format</code>、<code>MarshalJSON</code> 都會遮罩。</li>
+</ul>
+
+<h2 id="registry">註冊</h2>
+<p class="who"><code>exchange/registry.go</code>。D301、D006。啟動時由 <code>exchange/all.Registry()</code> 收集各家 <code>Declare()</code>，不靠 <code>init()</code>。</p>
+<p>venue 與帳號種類是兩個 enum，名稱可以相同，不能互查。venue 是市場，UniversalTicker 的第一段。帳號種類是一個 <code>api_id</code> 用哪種憑證、能交易哪些 venue。</p>
+<table>
+  <thead><tr><th></th><th>例子</th><th>掛什麼</th></tr></thead>
+  <tbody>
+    <tr><td><code>Venue</code></td><td><code>Binance</code>、<code>BinanceUM</code>、<code>BinanceCM</code>、<code>BinanceEO</code>、<code>Bybit</code>、<code>Okx</code></td><td><code>Market</code>、<code>PublicREST</code>。任一可為 nil。</td></tr>
+    <tr><td><code>AccountKind</code></td><td>上面那些，再加上 <code>BinancePM</code></td><td><code>AccountFactory</code>、<code>HistoryFactory</code>、<code>KeyTypes</code>、<code>Passphrase</code>、<code>Trades</code></td></tr>
+  </tbody>
+</table>
+<p><code>BinancePM</code> 是帳號種類，不是 venue。它交易 <code>Binance_Spot_*</code>、<code>BinanceUM_*</code>、<code>BinanceCM_*</code>，每筆請求依 ticker 的 venue 選端點。沒有 <code>BinancePM_*</code> ticker。worker 在 <code>Submit</code> 前用 <code>AccountKind.CanTrade</code> 檢查，不在清單裡就以 1xx 拒絕。</p>
+<p>一期實作的 category 是 Spot、Perp、Future：Binance 現貨，BinanceUM 的永續與季度，Bybit 的現貨與 linear，OKX 的現貨與 USDT 本位 SWAP、FUTURES。BinanceCM、BinanceEO、BinancePM 的方法維持宣告並回 <code>ErrNotImplemented</code>。Option 與 Inverse 不在一期。</p>
+
+<h2 id="md">MD</h2>
+
+<h3 id="market">Market</h3>
+<p class="who">一個 venue 的公開 websocket。規劃那一半是純函式。連線那一半由 conn worker 用。同一份實例可並發呼叫規劃方法；<code>Session</code> 不可並發。</p>
+
+<div class="method"><code class="sig">Topics() []TopicCaps</code><div class="body"><p>這個 venue 推哪些平台 topic。表上沒有的就是不支援。<code>TopicCaps.Absent</code> 列出這個 venue 永不填的事件欄位。</p></div></div>
+<div class="method"><code class="sig">Atom(topic Topic, inst *symbol.Info) (AtomRef, error)</code><div class="body"><p>一個 feed 對到一個 atom：<code>AtomRef{Route, Channel}</code>。atom id 是 <code>&lt;venue&gt;:&lt;route&gt;:&lt;channel&gt;</code>。route 是身分的一部分，因為同一個 channel 字串可以出現在不同路徑上（Bybit 現貨與 linear 的 <code>publicTrade.BTCUSDT</code>）。多個 topic 可以落在同一個 atom。不推這個 topic 時回 <code>ErrUnsupported</code>，lease 項目變成 <code>REJECTED</code>，只能查的值改走 md.fetch。</p></div></div>
+<div class="method"><code class="sig">Routes() []string</code><div class="body"><p>公開路徑。只有一條路徑的 venue 回 <code>[]string{RouteDefault}</code>，<code>RouteDefault</code> 是 <code>"default"</code>。</p></div></div>
+<div class="method"><code class="sig">Budget(route string) int</code><div class="body"><p>一條連線能裝多少。<code>&lt;= 0</code> 表示交易所不設上限。新 atom 放進同一個 <code>(venue, route)</code> 裡還有空間、n 最小的連線；都滿了才開 n+1。</p></div></div>
+<div class="method"><code class="sig">Cost(channel string) int</code><div class="body"><p>一個 channel 佔多少預算。Binance 以 stream 計（cost 1、budget 1024）。Bybit 以訂閱參數的總長度計。</p></div></div>
+<div class="method"><code class="sig">Endpoint(route, override string) (string, error)</code><div class="body"><p>這條 route 的 websocket URL。<code>override</code> 是 <code>mdctl.InitPayload.url</code>，空字串用預設 host。override 必須仍是同一家交易所。</p></div></div>
+<div class="method"><code class="sig">NewSession(route string) (Session, error)</code><div class="body"><p>一條連線的 codec 狀態。一條 websocket 一份，由讀取迴圈獨佔。</p></div></div>
+<div class="method"><code class="sig">Book(channel string) (BookSync, bool)</code><div class="body"><p>這個 channel 的訂單簿序號規則。不帶訂單簿時第二個回傳值是 false。</p></div></div>
+
+<p>平台 topic：<code>bestquote</code>、<code>trade</code>、<code>aggtrade</code>、<code>orderbook</code>、<code>orderbook_delta</code>、<code>ticker</code>、<code>liquidation</code>、<code>funding_rate</code>、<code>open_interest</code>、<code>greeks</code>、<code>mark_price</code>。K 線的區間寫在 topic 裡，<code>kline_</code> 加正規區間，例如 <code>kline_1m</code>。topic 不能含 <code>.</code>，它是 NATS subject 的一個 token。</p>
+
+<h3 id="session">Session</h3>
+<div class="method"><code class="sig">Limits() SessionLimits</code><div class="body"><p>一條連線的規則：每則訂閱的 channel 數與位元組長度（0 表示不限）、送出訊息的 <code>RateLimit</code>、keepalive、交易所主動斷線的 <code>MaxLifetime</code>（0 表示沒有）、<code>ReadLimit</code>。讀取上限必填，websocket 傳輸沒有預設。</p></div></div>
+<div class="method"><code class="sig">Subscribe(channels []string) ([]Request, error)
+Unsubscribe(channels []string) ([]Request, error)</code><div class="body"><p>依 <code>Limits</code> 把 channel 拆成多則 <code>Request</code>。每則有 worker 用來對 ack 的 <code>ID</code>、這則涵蓋的 channel、以及要送出的 <code>Frame</code>。節奏由 worker 依 <code>Limits.Rate</code> 控制。</p></div></div>
+<div class="method"><code class="sig">Ping() []byte</code><div class="body"><p>每隔 <code>Keepalive.Interval</code> 要送的應用層 ping。交易所自己 ping、或 websocket ping 就夠時，回 nil。</p></div></div>
+<div class="method"><code class="sig">Decode(frame []byte, sink Sink) error</code><div class="body"><p>解析一則文字或二進位 frame，每個事件呼叫 sink 一次。一則 frame 可以有多種、多筆事件。frame 只在這次呼叫有效。</p></div></div>
+<p><code>Keepalive</code> 有三個欄位：客戶端 ping 間隔（0 表示客戶端不 ping）、交易所是否會 ping 並期待 pong、多久沒有任何 frame 就當連線已死。</p>
+
+<h3 id="book">BookSync</h3>
+<p>本地全本與摺疊在 conn worker。adapter 只判斷一筆更新相對序號狀態該怎麼處理。</p>
+<div class="method"><code class="sig">Snapshot() SnapshotSource</code><div class="body"><p><code>SnapshotREST</code>：先緩衝串流，再打 <code>PublicREST.Depth</code>，丟掉 snapshot 已經涵蓋的更新（Binance）。<code>SnapshotStream</code>：訂閱後的第一則就是全本（OKX、Bybit）。</p></div></div>
+<div class="method"><code class="sig">Depth() int</code><div class="body"><p><code>SnapshotREST</code> 時要向 REST 要的檔數。</p></div></div>
+<div class="method"><code class="sig">Check(last BookSeq, u *BookUpdate) BookVerdict</code><div class="body"><p><code>BookApply</code> 依序套用。<code>BookSkip</code> 已被 snapshot 涵蓋，丟掉。<code>BookResync</code> 有缺口或 checksum 不對，丟掉本地本、重抓、推一個 reset。<code>BookSeq.Valid</code> 在套用第一份 snapshot 之前是 false。</p></div></div>
+<p><code>BookUpdate</code> 比 <code>md.v1.OrderBookDelta</code> 多了交易所序號：<code>First</code>（Binance U）、<code>Last</code>（Binance u、OKX seqId、Bybit u）、<code>Prev</code>（Binance futures pu、OKX prevSeqId）、<code>Checksum</code>（OKX 的 crc32，有號 32 位元）、<code>Snapshot</code>。實作 <code>BookChecksum</code> 的 venue，worker 在套用之後呼叫 <code>Verify(bids, asks []Level, u *BookUpdate) bool</code>。<code>Level.Qty == 0</code> 表示刪掉該檔。</p>
+
+<h3 id="sink">Sink 與事件</h3>
+<p>回呼的第一個字串是 atom 的 channel。指標、channel、以及裡面的字串只在呼叫期間有效。</p>
+<table>
+  <thead><tr><th>方法</th><th>事件</th><th>要點</th></tr></thead>
+  <tbody>
+    <tr><td><code>Ack(id, err)</code></td><td>—</td><td><code>err == nil</code> 表示交易所接受這則訂閱或退訂。</td></tr>
+    <tr><td><code>BestQuote</code></td><td>bid、bid qty、ask、ask qty</td><td></td></tr>
+    <tr><td><code>Trade</code></td><td>trade id、價、量、taker side</td><td></td></tr>
+    <tr><td><code>AggTrade</code></td><td>再加 first／last trade id、<code>MatchCount</code></td><td></td></tr>
+    <tr><td><code>Book</code></td><td><code>BookUpdate</code></td><td>worker 再摺進本地本。</td></tr>
+    <tr><td><code>Kline</code></td><td>區間、開盤時間、OHLC、量、<code>Closed</code></td><td>區間是 <code>1m</code>、<code>4h</code>、<code>1mo</code> 這種正規寫法。</td></tr>
+    <tr><td><code>Ticker</code></td><td>24 小時統計</td><td>只此，不是最新價的別名。各欄位都可缺。</td></tr>
+    <tr><td><code>Liquidation</code></td><td>被強平倉位的 side、價、量</td><td></td></tr>
+    <tr><td><code>FundingRate</code></td><td>費率、下次時間、<code>IntervalS</code></td><td><code>IntervalS == 0</code> 表示沒送。</td></tr>
+    <tr><td><code>OpenInterest</code></td><td>張數或幣數、名目</td><td>名目可缺。</td></tr>
+    <tr><td><code>Greeks</code></td><td>delta、gamma、vega、theta、rho、IV、mark、標的價</td><td>各欄位可缺。一期沒有 option。</td></tr>
+    <tr><td><code>MarkPrice</code></td><td>mark、index</td><td>index 可缺。</td></tr>
+    <tr><td><code>FeedEnd</code></td><td><code>Reason</code>、<code>AtNs</code></td><td>reason 是 <code>expired</code> 或 <code>delisted</code>。</td></tr>
+  </tbody>
+</table>
+
+<h3 id="publicrest">PublicREST</h3>
+<p class="who">公開 REST，可並發。每個方法回一個 <code>Call</code>，呼叫者送出。不簽名。</p>
+<div class="method"><code class="sig">Listing(c symbol.Category) (Call[Page[symbol.Listing]], error)</code><div class="body"><p>一個 category 的全部商品，一頁一個 <code>Call</code>。SYM 用 <code>Collect</code> 讀完；讀一半不能拿來下架。見下一節。</p></div></div>
+<div class="method"><code class="sig">Depth(inst *symbol.Info, limit int) (Call[*BookUpdate], error)</code><div class="body"><p><code>SnapshotREST</code> 的全本。<code>BookUpdate.Snapshot</code> 為真，<code>Last</code> 是交易所的 update id（Binance <code>lastUpdateId</code>）。</p></div></div>
+<div class="method"><code class="sig">Klines(inst *symbol.Info, interval string, endNs int64, limit int) (Call[[]Kline], error)
+KlinePage() int</code><div class="body"><p>已收盤的 K 線，結束於 <code>endNs</code>（0 表示最新），由舊到新，最多 <code>min(limit, KlinePage())</code> 根。md.fetch 從已拿到的最早一根繼續往回翻。</p></div></div>
+<div class="method"><code class="sig">OpenInterest(inst *symbol.Info) (Call[*OpenInterest], error)</code><div class="body"><p>不推送、只能查的持倉量。會推的 venue 回 <code>ErrUnsupported</code>。</p></div></div>
+<div class="method"><code class="sig">Usage(resp *HTTPResponse) []Used</code><div class="body"><p>從回應讀出交易所報告的限速用量。沒有就回 nil。節流在 worker。</p></div></div>
+
+<h2 id="sym">SYM</h2>
+<p>SYM 不拿 <code>PublicREST</code> 本身，它拿 <code>Lister</code>：</p>
+<div class="method"><code class="sig">Listing(ctx context.Context, c symbol.Category) ([]symbol.Listing, error)</code><div class="body"><p>一個 category 讀到最後一頁，否則整次失敗。真 venue 是 <code>ListingOver(rest, doer, now)</code>。沒有 Doer 時回 <code>ErrNoTransport</code>。</p></div></div>
+<p><code>symbol.Listing</code> 是跨過這條邊界的商品。adapter 填交易所原生欄位，下游不推導幣別。SYM 在 <code>Validate</code> 之前先把資產代碼轉大寫並套別名（目前只有 <code>XBT</code> → <code>BTC</code>），再判斷 quanto，再推 ticker。</p>
+<table>
+  <thead><tr><th>欄位</th><th>adapter 怎麼填</th></tr></thead>
+  <tbody>
+    <tr><td><code>Venue</code>、<code>Category</code>、<code>Base</code>、<code>Quote</code>、<code>ExchTicker</code></td><td>身分。現貨的刷新不能因為回應裡沒有永續就把永續下架。</td></tr>
+    <tr><td><code>ExpiryCode</code>、<code>ExpiryNs</code></td><td><code>ExpiryCode</code> 是交易所 ticker 上的 <code>YYMMDD</code>，不是由 <code>ExpiryNs</code> 算出來的。0 表示不到期。</td></tr>
+    <tr><td><code>ContractSize</code></td><td>一張的面額。現貨是 0。平台 qty 已經是張數乘這個值。</td></tr>
+    <tr><td><code>ContractValueCcy</code></td><td>qty 的幣。線性與期權是 base，幣本位是 quote。現貨可以空，SYM 存成 base。</td></tr>
+    <tr><td><code>PriceCcy</code></td><td>價格、<code>price_tick</code>、權利金的幣。現貨與期貨是 quote。現貨可以空，SYM 存成 quote。</td></tr>
+    <tr><td><code>Settle</code></td><td>損益結算幣，不是保證金幣。現貨空。既不是 base 也不是 quote 的 quanto 一期不入庫。</td></tr>
+    <tr><td><code>Status</code></td><td><code>symbol.Status</code>。對不上的原生狀態是 <code>UNKNOWN</code>。只有 <code>TRADABLE</code> 可交易。<code>EXPIRED</code>、<code>DELISTED</code> 進終結表，ticker 與 UID 不變。這組列舉在 <code>symbol</code> 裡仍標暫定；<code>sym.proto</code> 已經定案，之後加值是相容變更。</td></tr>
+    <tr><td><code>Filters</code></td><td>名稱對界限。已知名稱有 <code>price_tick</code>、<code>qty_step</code>、<code>min_qty</code>、<code>max_qty</code>、<code>min_notional</code>、<code>max_notional</code>、<code>min_price</code>、<code>max_price</code>。有這個限制但沒有界限時，值是 NaN。沒有這個限制時，鍵不出現。</td></tr>
+  </tbody>
+</table>
+<p><code>InProcessUIDSource</code> 是 <code>Lister</code> 加上一個沒有行為的 <code>InProcessUIDs()</code>。只有 <code>exchangetest.Source</code> 實作它。那種 UID 只活在分配它的行程裡，不能入庫，也不能送到別的行程。真的 adapter 不實作這個介面。</p>
+
+<h2 id="td">TD</h2>
+<p><code>AccountConfig</code> 是建 adapter 的輸入：<code>APIID</code>、<code>Credentials</code>、REST 與串流的 host override、以及 <code>Simulated</code>。override 空著就用預設 host。<code>Simulated</code> 給「同一台 host、靠一個旗標切 demo」的交易所；OKX 會加 <code>x-simulated-trading: 1</code>，其他家忽略。</p>
+<p>憑證只有兩種：<code>hmac</code>、<code>ed25519</code>。OKX 另要 passphrase。<code>Secret</code> 是 HMAC secret，或 PEM 編碼的 ed25519 私鑰。憑證只經 worker 的 socketpair，或給 TD agent 建 <code>History</code>，不進環境變數、檔案或 etcd。</p>
+
+<h3 id="account">Account</h3>
+<p class="who">一個 <code>api_id</code> 的私有交易面，可並發。每個方法在 <code>now</code> 簽好一個 <code>Call</code>。有 <code>TradeStream</code> 時，下單與撤單走那條 websocket；這裡的 <code>Submit</code>、<code>Cancel</code> 是 REST 退路。一期 Binance 與 Bybit 的單筆下單、撤單走 websocket，OKX 走 REST。</p>
+<div class="method"><code class="sig">Limits() AccountLimits</code><div class="body"><p><code>ClientOrderIDMaxLen</code>、<code>CancelBatch</code>（1 表示沒有批次撤單）、下單速率。</p></div></div>
+<div class="method"><code class="sig">Submit(now time.Time, req *OrderRequest) (Call[*OrderResult], error)</code><div class="body"><p>一筆單。交易所拒絕時 <code>Parse</code> 回 <code>*Reject</code>。請求可能已送出但讀不到回答，是傳輸層的 <code>ErrUnknownOutcome</code>，由私有串流或下一次 recon 判定。<code>OrderRequest</code> 帶解析好的 <code>Info</code>、side、type、TIF、qty 或 quote qty、價格、<code>ReduceOnly</code>、十進位字串的 <code>ClientOrderID</code>，以及原樣轉送的 <code>Params</code>。</p></div></div>
+<div class="method"><code class="sig">Cancel(now time.Time, ref CancelRef) (Call[struct{}], error)</code><div class="body"><p><code>OrderID</code> 與 <code>ClientOrderID</code> 有一個就夠。平台自己的單一定有 client id。</p></div></div>
+<div class="method"><code class="sig">CancelBatch(now time.Time, refs []CancelRef) (Call[[]error], error)</code><div class="body"><p>最多 <code>Limits().CancelBatch</code> 筆，一則請求。結果與 ref 一一對應，nil 是成功。<code>Parse</code> 的 error 是整則請求失敗。留在 REST。adapter 不知道 <code>algo_id</code>：worker 先從 OMS 濾出那個 algo 的未完成單，再依上限切塊。</p></div></div>
+<div class="method"><code class="sig">Snapshot(now time.Time) ([]Call[Page[AccountSnapshot]], error)</code><div class="body"><p>對帳讀取：未完成單、持倉、餘額。一家交易所可能要多則請求（BinancePM 每個產品一則），每則還可以分頁。worker 跑完再合併。<code>AsOfNs</code> 由 worker 在第一則送出前蓋。</p></div></div>
+<div class="method"><code class="sig">Leverage(now time.Time, inst *symbol.Info) (Call[float64], error)</code><div class="body"><p>回答 <code>td.view</code> 的 <code>EnsureLeverage</code>。</p></div></div>
+<div class="method"><code class="sig">NewStream() (PrivateStream, error)</code><div class="body"><p>一條私有行情連線的 codec。交易連線已經帶私有事件時（<code>TradeLimits.Events</code>）不開這條。</p></div></div>
+<div class="method"><code class="sig">NewTradeStream() (TradeStream, error)</code><div class="body"><p>一條下單連線的 codec。這家或這個 adapter 不下 websocket 單時回 <code>ErrUnsupported</code>，worker 改送 REST。</p></div></div>
+<div class="method"><code class="sig">Usage(resp *HTTPResponse) []Used</code><div class="body"><p>與公開 REST 相同。</p></div></div>
+<p>有死線開關的 venue 另外實作 <code>CancelOnDisconnect</code>：<code>ArmCancelOnDisconnect(now, timeout, insts) (Call[struct{}], error)</code>。帳號級的開關忽略 <code>insts</code>。Binance 的是逐商品。</p>
+<p>同步回答是 <code>OrderResult</code>：交易所單號、狀態、交易所時間。之後的狀態走私有串流。<code>OrderUpdate</code>、<code>Fill</code>、<code>Balance</code>、<code>Position</code> 對齊 <code>td.v1</code>，商品用 <code>ExchKey</code>。餘額沒有 prelock，那是 worker 算的。持倉 <code>Size</code> 帶號，負的是空。<code>Fill.ClientOrderID</code> 在交易所沒送時是空字串。流動性是 <code>maker</code> 或 <code>taker</code>。</p>
+<div class="flag">
+  <p><code>td.order</code> 仍帶 UniversalTicker。改成 UID 是介面註解裡寫明的後續工作，不在這次定案。</p>
+</div>
+
+<h3 id="private">PrivateStream</h3>
+<p>一條私有 websocket 的 codec，不可並發。</p>
+<div class="method"><code class="sig">Prepare(now time.Time) (*Call[string], error)</code><div class="body"><p>連線前必須先打的 REST（Binance 建立 listenKey）。結果是 <code>Dial</code> 用的 token。不需要時回 nil（OKX、Bybit）。</p></div></div>
+<div class="method"><code class="sig">Dial(now time.Time, token string) (*Dial, error)</code><div class="body"><p>要連的 URL，以及連上後要送的 frame（OKX、Bybit：先登入再訂閱），在 <code>now</code> 簽名。host 是 <code>StreamEndpoint</code> 或預設。<code>Dial.String</code> 只留遮罩後的 URL 與 frame 數量。</p></div></div>
+<div class="method"><code class="sig">Refresh(now time.Time) (*Call[struct{}], error)</code><div class="body"><p>延長憑證（Binance 的 listenKey），每隔 <code>StreamLimits.RefreshEvery</code> 一次。沒有過期問題時回 nil。</p></div></div>
+<div class="method"><code class="sig">Limits() StreamLimits
+Ping() []byte
+Decode(frame []byte, sink AccountSink) error</code><div class="body"><p><code>StreamLimits</code> 含 keepalive、refresh 間隔、<code>MaxLifetime</code>、<code>ReadLimit</code>。</p></div></div>
+<p><code>AccountSink</code>：<code>Ready</code> 表示登入與訂閱都完成，worker 接著 recon，然後才再收新單。<code>Expired(reason)</code> 表示交易所故意結束串流，要重連。其餘是 <code>Order</code>、<code>Fill</code>、<code>Balances</code>、<code>Positions</code>。</p>
+
+<h3 id="trade">TradeStream</h3>
+<p class="who">D303。一條同時送請求、收回答的 websocket。Binance 的 WS API，以及 OKX、Bybit 提供的下單 channel。不可並發。id 屬於 worker，從 1 起，同一條連線不重複。codec 自己的 frame（logon、訂閱）用不會撞號的 id。</p>
+<div class="method"><code class="sig">Dial(now time.Time) (*Dial, error)</code><div class="body"><p>URL 與連上後的 frame：logon；這條連線也帶私有事件時，再加上訂閱。這些 frame 的回答由 codec 自己消化，串流可用時呼叫 <code>Ready</code>。</p></div></div>
+<div class="method"><code class="sig">Limits() TradeLimits</code><div class="body"><p><code>Events</code> 為真時，這條連線也帶私有事件，worker 不再開 <code>PrivateStream</code>。Binance 現貨是這樣。BinanceUM 的 WS API 不帶，另開私有串流。Bybit 的 trade socket 也不帶，訂單狀態仍走 <code>/v5/private</code>。另外有連線上的請求速率、keepalive、<code>MaxLifetime</code>、<code>ReadLimit</code>。</p></div></div>
+<div class="method"><code class="sig">Ping() []byte</code><div class="body"><p>同 <code>Session.Ping</code>。</p></div></div>
+<div class="method"><code class="sig">Submit(now time.Time, id uint64, req *OrderRequest) ([]byte, error)
+Cancel(now time.Time, id uint64, ref CancelRef) ([]byte, error)</code><div class="body"><p>把一筆請求編成 frame。<code>Decode</code> 不記得送過什麼：codec 把讀回答需要的資訊寫進交易所的請求 id。Binance 收字串，<code>o17</code> 是下單、<code>c18</code> 是撤單。Bybit 的 <code>reqId</code> 是 worker id 的十進位，回答同時帶回 <code>op</code>。因此斷線後的遲到回答、以及錄下來的 session，都讀得懂。</p></div></div>
+<div class="method"><code class="sig">Decode(frame []byte, sink TradeSink) error</code><div class="body"><p>依 id 交回答，帶私有事件時交事件，並交交易所回報的用量。logon 被拒是 <code>ErrAuth</code>。</p></div></div>
+<p><code>TradeSink</code> 嵌入 <code>AccountSink</code>，另有 <code>Submitted(id, res, err)</code>、<code>Canceled(id, err)</code>、<code>Used(u)</code>。拒絕的分類與 REST 的 <code>Parse</code> 相同。</p>
+<p><code>Inflight</code> 在同一個套件，是 worker 用的純邏輯，不是 adapter 要實作的介面。它記下已送出的請求與期限。過期或斷線時還沒回答的是 <code>ErrUnknownOutcome</code>。過期之後才到的回答不再當成即時回答，worker 把它當成一則訂單消息。</p>
+<p><code>CancelBatch</code>、<code>Snapshot</code>、<code>Leverage</code>、<code>History</code> 留在 REST。Binance 的 REST 用 ed25519 簽名。</p>
+
+<h3 id="history">History</h3>
+<p class="who">D601。TD agent 做補正時建它，不起 account worker。可並發。游標是 job 存的字串，可以活過行程，所以這裡不用 <code>Page.Next</code>。</p>
+<div class="method"><code class="sig">Traits() HistoryTraits</code><div class="body"><p><code>Descending</code>：頁面由新到舊，確認線要掃到結尾才能前進。<code>ByID</code>：追上進度時可以沿 <code>FromID</code> 而不是時間。<code>MaxWindow</code>：一則請求最寬的時間窗（Binance 期貨 7 天），0 表示不限。<code>Retention</code>：交易所留成交多久。<code>PageLimit</code>：一頁幾筆。</p></div></div>
+<div class="method"><code class="sig">Fills(now time.Time, q FillQuery) (Call[*FillPage], error)</code><div class="body"><p>一個商品的一頁成交。範圍是 <code>(api_id, UniversalTicker)</code>，job 解析後傳入 <code>Info</code>。查詢用 <code>Cursor</code>、<code>FromID</code>、或 <code>StartNs</code> 與 <code>EndNs</code> 其中一種。<code>FillPage.Next</code> 空字串表示這次查詢沒有下一頁。</p></div></div>
+<div class="method"><code class="sig">Order(now time.Time, inst *symbol.Info, orderID string) (Call[*OrderUpdate], error)</code><div class="body"><p>用交易所單號查一筆。job 對「有成交、訂單表還沒有終態列」的單號各查一次，終態且 <code>filled_qty &gt; 0</code> 才入庫。</p></div></div>
+<div class="method"><code class="sig">Usage(resp *HTTPResponse) []Used</code><div class="body"><p>與其他 REST 面相同。</p></div></div>
+
+<h2 id="rest">REST 邊界</h2>
+<p><code>Call[T]</code> 是一個準備好的 <code>HTTPRequest</code> 加上 <code>Parse(*HTTPResponse) (T, error)</code>。<code>Parse</code> 把交易所的回答分成 <code>*Reject</code>、<code>*RateLimited</code>、<code>ErrAuth</code>，或一份讀不懂的錯誤。</p>
+<p><code>Page[E]</code> 帶這一頁的 <code>Items</code>，以及 <code>Next(now) (Call[Page[E]], error)</code>。沒有下一頁時 <code>Next</code> 是 nil。下一頁在送出當下的 <code>now</code> 重新簽名。</p>
+<p><code>HTTPRequest</code> 的 query 已編碼、需要簽名的 body 已簽好。<code>Cost</code> 宣告這則請求吃哪個桶、吃多少，桶的名字是 adapter 自己的（Binance 的 <code>weight</code>、<code>orders_10s</code>）。<code>Mutates</code> 為真的請求（下單、撤單）送出兩次會改帳戶；傳輸失敗且請求可能已出去時是 <code>ErrUnknownOutcome</code>。</p>
+<p><code>Doer.Do</code> 只有在沒有一份 <code>Parse</code> 讀得了的回答時才回錯誤。可能已送出（逾時、斷線、5xx）包 <code>ErrUnknownOutcome</code>；確定沒送出（撥號失敗）則不包。<code>Lender</code> 是可選的 Doer：<code>Lend</code> 把回應借給回呼，返回後傳輸重用緩衝區。<code>Run</code> 與 <code>Collect</code> 在做得到時走這條。</p>
+
+<h2 id="errors">錯誤</h2>
+<table>
+  <thead><tr><th>值</th><th>意思</th><th>誰處理</th></tr></thead>
+  <tbody>
+    <tr><td><code>ErrNotImplemented</code></td><td>方法在，程式還沒寫。一期的 CM、EO、PM 用這個。</td><td>呼叫者</td></tr>
+    <tr><td><code>ErrUnsupported</code></td><td>這家交易所沒有這個能力。</td><td>規劃變成 <code>REJECTED</code>，或改走別的路徑（REST 下單）。</td></tr>
+    <tr><td><code>ErrAuth</code></td><td>簽名、權限、IP 白名單、過期的 key。不重試。</td><td>worker 告警。</td></tr>
+    <tr><td><code>*Reject</code></td><td>交易所拒絕這筆單。<code>Code</code> 在 200–299 是對到平台表的拒絕，否則是交易所自己的碼。<code>Native</code> 永遠留原碼。</td><td>策略看到 <code>OrderReject</code> 或 <code>CancelReject</code>。</td></tr>
+    <tr><td><code>*RateLimited</code></td><td>429 或同等回答。<code>RetryAfterMs == 0</code> 表示交易所沒說要等多久。</td><td>呼叫者決定等不等。</td></tr>
+    <tr><td><code>ErrUnknownOutcome</code></td><td>會改帳戶的請求可能已送出，沒有讀得懂的回答。</td><td>私有串流或下一次 recon。不當成拒絕。</td></tr>
+    <tr><td><code>ErrNoTransport</code></td><td><code>Call</code> 沒有 Doer 可送。</td><td>呼叫者。</td></tr>
+  </tbody>
+</table>
+
+<h2 id="enums">enum</h2>
+<p><code>Side</code>、<code>OrderType</code>、<code>TimeInForce</code>、<code>OrderStatus</code> 是 <code>exchange</code> 自己的型別。數值與 <code>common.v1</code>、<code>td.v1</code> 的同名項目相同，worker 用型別轉換，<code>enums_test.go</code> 鎖住。零值都是 <code>Unspecified</code>。</p>
+<table>
+  <thead><tr><th>型別</th><th>值</th></tr></thead>
+  <tbody>
+    <tr><td><code>Side</code></td><td><code>Buy</code>、<code>Sell</code></td></tr>
+    <tr><td><code>OrderType</code></td><td><code>Limit</code>、<code>Market</code></td></tr>
+    <tr><td><code>TimeInForce</code></td><td><code>GTC</code>、<code>IOC</code>、<code>FOK</code>、<code>PostOnly</code></td></tr>
+    <tr><td><code>OrderStatus</code></td><td><code>PendingNew</code>、<code>New</code>、<code>PartiallyFilled</code>、<code>Filled</code>、<code>PendingCancel</code>、<code>Cancelled</code>、<code>Rejected</code>、<code>Expired</code>、<code>Unknown</code></td></tr>
+  </tbody>
+</table>
+<div class="flag">
+  <p>D006 原本寫 Go 直接用契約產生的型別。E3-17 改成現在的程式：<code>common.v1</code> 給 SDK 與其他語言，exchange 自持同名型別，數值對齊，<code>enums_test.go</code> 鎖住。</p>
+</div>
+
+<h2 id="freeze">定案會鎖住的事</h2>
+<p>鎖的是上面這些型別的方法、參數與回傳值，以及跨邊界的 struct 欄位。加一個可選介面、或在既有方法上加一個不破壞呼叫者的行為，要另看是不是相容。沒有工具會擋下一次不相容的 Go 改動，靠的是 review。</p>
+<ul>
+  <li>必實作：<code>Market</code>、<code>Session</code>、<code>BookSync</code>、<code>PublicREST</code>、<code>Account</code>、<code>PrivateStream</code>、<code>TradeStream</code>、<code>History</code>，以及兩端的 sink。</li>
+  <li>可選，用型別斷言：<code>BookChecksum</code>、<code>CancelOnDisconnect</code>、<code>Lender</code>。真 adapter 不實作 <code>InProcessUIDSource</code>。</li>
+  <li><code>Inflight</code>、<code>Run</code>、<code>Collect</code>、<code>ListingOver</code> 是套件函式，給 worker 與 SYM 用，不是每家要實作的方法。</li>
+  <li><code>symbol.Status</code> 的列舉仍標暫定，但它屬於已經定案的 <code>sym.proto</code>，不在這張介面裡再定一次。</li>
+  <li>一期不做的 category 與帳號種類維持 <code>ErrNotImplemented</code> 或 <code>ErrUnsupported</code>。那是實作範圍，不是介面缺方法。</li>
+</ul>
+
+</main>
+</div>
+</body>
+</html>

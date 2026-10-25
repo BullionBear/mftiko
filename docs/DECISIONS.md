@@ -3761,6 +3761,54 @@ registry 不可用、`latest` 不存在、或尚未成功解析過，該 reposit
 - MD、TD 的行為不變。
 - PROTOCOL 為 v1.72。
 
+### E12-D049 角色表用 `mftiko-etcd-roles -apply` 套用（E12-06，#379）
+
+- **`-apply`** 以 root 對每個 region 的 cluster 呼叫 `state.EnsureAuth`，跟測試開 RBAC 的方式相同。`-region` 只套一個 region。新 cluster 與 instance 增減都用它，重跑不改任何東西，auth revision 也不動。
+- **只加不刪。** cluster 有、角色表沒有的 role、user、permission，列成 `# region <r>: … is not in the table`，不刪。刪只在退役時做，照 E12-D035 用 `-drop` 印出的命令。
+- **auth 要先開。** 新 cluster 先用 etcdctl 建 root、`auth enable`（docs/operations.md），再 `-apply`。這時還沒有服務連上來，先開 auth 沒有影響。`-apply` 不負責開 auth。
+- `-format etcdctl` 照舊，給沒有角色的 cluster 看與手動套用。
+- 不採用：`-diff` 印出差異的 etcdctl 命令再手動貼上（`EnsureAuth` 本身就是比對，多一步貼錯的機會）；`-apply` 也刪多出來的（套表的時機會刪到還在用的 user，例如部署 JSON 寫錯時）。
+
+### E12-D050 etcd 密碼的產生、存放與輪換（E12-06，#379）
+
+- **產生：** `-apply` 替 cluster 沒有的 user 讀 `-secrets` 目錄裡同名的檔案；沒有檔案就產生 32 個隨機 byte，base64url 不帶 padding，先寫檔（0600，`O_EXCL`）再建 user。檔案寫不了就整個停下，不建沒人知道密碼的 user。已經有的 user 不改密碼。
+- **主本：** 主機 A 的 `/etc/mftiko/etcd/`，`root:root` 0700，每個檔案 0600：`root` 與每個 user 一個檔案。所有 region 共用這個目錄，`-apply` 從主機 A 連各 region 的 cluster。
+- **服務用的副本：** 依 E12-D004，放在該服務主機的 `/etc/mftiko/<服務>/env` 的 `MFTIKO_ETCD_PASSWORD`。主機 B 的服務由運維從主本複製過去。
+- **`-apply` 每個 user 一個檔案，所以 `api` 與 `controller` 在每個 region 預設是同一個密碼。** API 只有一個 `MFTIKO_ETCD_PASSWORD`，一定相同，輪換時每個 region 都要改。controller 可以照 E12-D045 每個 region 不同（`MFTIKO_ETCD_PASSWORD_<region>`）：在 `-apply` 之前把該 region 的密碼放進主本、再以 `-region` 套用，或者事後以 `etcdctl user passwd` 改那個 region；輪換也就能一個 region 一個 region 做。root 是所有 region 共用一個密碼。
+- **輪換有中斷。** etcd 一個 user 只有一個密碼，改了之後所有 token 都過舊（auth revision 變了），還拿著舊密碼的進程重新認證失敗，到它以新密碼重啟為止（`TestPasswordRotation`）。其他 user 只是重新認證一次，不受影響。
+- **順序：先停再改。** 新密碼寫進 env → `systemctl stop` 該服務（API 是每個副本）→ 該 user 所在的每個 region 執行 `etcdctl user passwd` → `systemctl start`。中斷就是停到起。舊進程停下時以還有效的舊密碼 resign、revoke 選主的 session，新進程立刻選得上。agent 用 `KillMode=process`，worker 不中斷，新 agent 收養。controller 重新選主。API 停著的時候不回應。
+- **testnet 實測（controller，兩個 region）：** 先停再改，停到新 term 寫好 record、兩個 region 同步約 0.5 秒。先改再 `restart` 約 14.5 秒：舊進程收到 SIGTERM 時 resign 與 revoke 都認證失敗，選主的 key 留到 lease 的 15 秒 TTL 過期，新進程一直等在 Campaign。
+- 輪換 root 不影響服務：只有 `-apply` 與運維用 root。
+- 不採用：每次輪換建一個新的 user 再切過去（user 名稱就是 instance 名稱，W1 的角色綁在名稱上）；`LoadCredential=`（E12-D004）。
+
+### E12-D051 `--auth-token=jwt`：金鑰、分發與輪換（E12-06，#379）
+
+- **設定：** `/etc/etcd/etcd.env` 的 `ETCD_AUTH_TOKEN=jwt,pub-key=/etc/etcd/jwt.pub,priv-key=/etc/etcd/jwt.key,sign-method=ES256,ttl=5m`。ES256 與 5 分鐘跟 etcdtest 相同（`etcdtest.DefaultTokenTTL`），測試跑的就是正式的設定。
+- **金鑰：** `openssl ecparam -name prime256v1 -genkey -noout` 產生 P-256 私鑰，`openssl ec -pubout` 取出公鑰。`jwt.key` 是 `etcd:etcd` 0600，`jwt.pub` 0644。每個 region 一對，各 region 的 cluster 彼此獨立，不共用。
+- **分發：** 同一個 region 的每個 member 放同一對金鑰。client 在一個 member 拿到的 token 會送到其他 member 驗證，金鑰不同就被拒。一期每個 region 只有一個 member（E12-D001），程序仍照多 member 寫。
+- **輪換：** 產生新的一對，複製到該 region 每個 member，以 rename 換掉舊檔，再逐台 `systemctl restart etcd`。之後舊金鑰簽的 token 被拒（invalid auth token），client 自己重新認證，服務不用重啟：session 撐過 etcd 的重啟，watch 繼續送，寫入照常（`TestSigningKeyRotation`）。多 member 時，換到一半的 cluster 兩種金鑰並存，client 連到另一種金鑰的 member 時重新認證一次。
+- **重啟要在 10 秒內完成。** etcd 停著的時候 keepalive 收不到回應，term 在最後一次回應加 2/3 TTL（預設 15 秒的 2/3）結束（E01-D013）。逾時的話 agent 重新參選，worker 不受影響。testnet 實測兩個 region 都約 7 秒：有 client 連著時 etcd 停下要 7 秒，啟動不到 1 秒；controller 沒有重啟，term 沒有結束。餘裕不大，一個 region 有多台 member 時要逐台、等健康再換下一台。
+- auth 開了之後 `etcdctl endpoint health` 要帶 root 的帳密，否則一直失敗；runbook 的健康檢查照這樣寫。
+- **TTL 與 E01-D013 對得上：** E01-D013 的補充要 2/3 session TTL 大於一次 token 重連。重連約是一個 keepalive 間隔（TTL/3）加上 client 的 500ms：預設 15 秒時，期限 10 秒，重連約 5.5 秒。jwt 的 `ttl` 只決定多久重連一次，不影響這個不等式。正式環境的 session TTL 都是 `DefaultSessionTTL`，沒有旗標可以調短。
+- 不採用：simple token（每個 member 各自記 token，換到別的 member 就要重新認證，重啟也全部失效；accept 的 compose 仍用 simple token，只給單項驗收）；更短的 jwt `ttl`（重連更頻繁，沒有換到安全性：密碼才是長期的祕密）。
+
+### E12-D052 etcd 的 TLS 一期不做（E12-06，#379）
+
+- peer 與 client 都不開 TLS。跨主機的 etcd 流量照 E12-D007 只走私有網路或 VPN。NATS 跨主機的 TLS 一期同樣不做，也走同一個網路。
+- 這表示密碼（認證時）與 token 在私有網路上是明文。能看到這段網路的人能冒用任何服務的 user。一期只有兩台自己管的主機，接受。
+- 理由：TLS 要 CA、每台主機的憑證與到期輪換，每個服務的 client 也要加憑證設定與旗標；VPN 一次蓋住 etcd 與 NATS。
+- 二期要開時，client 端改 `state.AuthDial` 的 `clientv3.Config.TLS`，順序是先開 client TLS，再開 peer TLS。
+
+### E12-D053 範圍（E12-06，#379）
+
+- 程式只有 `mftiko-etcd-roles -apply` 與 etcdtest 的 `RotateSigningKey`。agent、controller、API 不改：重新認證本來就由 clientv3 處理。
+- 程序寫在 docs/operations.md「etcd 認證」。etcd 的 unit 不改，`ETCD_AUTH_TOKEN` 放在 `etcd.env`。
+- **testnet（2026-10-25）：** 主機 cp 是 region `jp`（home，跑 controller），主機 sys 是 `jp2`，各一個 etcd 3.7.2 member，client 與 peer 只綁 tailscale 的位址（E12-D052）。照 operations.md 走完完成標準的三項：
+  - 兩個 region 都開 auth、token 是 jwt。`sts-jp-1` 寫 demand、寫 controller 的 key，`api` 寫 demand，`sts-jp2-1` 寫 `sts-jp-1` 的 key，都是 permission denied；`sts-jp-1` 在 `jp2` 沒有 user，認證失敗。
+  - 輪換 controller 的密碼：中斷時間見 E12-D050。
+  - 兩個 region 各輪換一次 jwt 金鑰：舊 token 被拒，controller 沒有重啟、term 沒有結束，重新認證數次後恢復。
+  - agent 與 API 沒有部署在 testnet 上（#381、#385）。它們的密碼輪換照同一份程序，`TestPasswordRotation` 涵蓋 etcd 這一端。
+
 ### E00-D006 專案分三塊，加上獨立的 exchange
 
 | 塊 | 內容 | 位置 | 可見性 |

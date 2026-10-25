@@ -509,6 +509,90 @@ func TestTokenExpiry(t *testing.T) {
 	}
 }
 
+// Rotating the signing key (E12-D051): etcd restarts with a new key pair and refuses every token signed with the
+// old one. A running process signs in again on its own: its session survives the restart, its watch keeps
+// delivering, and its writes go through. Nothing restarts but etcd.
+func TestSigningKeyRotation(t *testing.T) {
+	ctx := testCtx(t)
+	s := etcdtest.Start(t)
+	raw := s.Client(t)
+	topo := topologyOf(map[string]*etcdtest.Server{"tw": s}, map[string]string{"md-tw-1": "tw"})
+	cl := newClusters(t, topo, nil, as(t, topo, "md-tw-1"))
+	term := campaign(t, ctx, cl, PlaneMD, "md-tw-1", TermOptions{})
+	if err := term.PutRecord(ctx, "record"); err != nil {
+		t.Fatal(err)
+	}
+	r, err := cl.Reader("tw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	wch := r.Watch(wctx, DemandPrefix(PlaneMD, "md-tw-1"), clientv3.WithPrefix())
+	old := fixedTokenClient(t, s.Endpoints(), issueToken(t, ctx, raw, "md-tw-1"))
+
+	s.RotateSigningKey(t)
+	if rejected, err := old.rejected(ctx, AgentKey(PlaneMD, "md-tw-1")); err != nil || !rejected {
+		t.Fatalf("a token signed with the old key: rejected %v, %v", rejected, err)
+	}
+	if _, err := raw.Put(ctx, MDDemandKey("md-tw-1", "a1b2c3", "feed/x"), "d"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case resp := <-wch:
+		if resp.Err() != nil || len(resp.Events) != 1 {
+			t.Fatalf("watch after the rotation: %v %v", resp.Err(), resp.Events)
+		}
+	case <-ctx.Done():
+		t.Fatal("watch silent after the rotation")
+	}
+	if err := term.Put(ctx, MDAckKey("md-tw-1", "a1b2c3", "feed/x"), "READY"); err != nil {
+		t.Fatalf("write after the rotation: %v", err)
+	}
+	if !running(term) {
+		t.Fatalf("term ended: %v", term.Err())
+	}
+}
+
+// Rotating a password (E12-D050): etcd keeps one password per user, so a process that still holds the old one is
+// locked out from the change until it restarts with the new one. Other users only sign in again.
+func TestPasswordRotation(t *testing.T) {
+	ctx := testCtx(t)
+	s := etcdtest.Start(t)
+	raw := s.Client(t)
+	topo := topologyOf(map[string]*etcdtest.Server{"tw": s}, map[string]string{"md-tw-1": "tw", "sts-tw-1": "tw"})
+	if err := EnsureAuth(ctx, raw, testTables(t, topo)["tw"], etcdtest.Password); err != nil {
+		t.Fatal(err)
+	}
+	dial := func(user, password string) *clientv3.Client {
+		c, err := AuthDial(user, password)("tw", s.Endpoints())
+		if err != nil {
+			t.Fatalf("%s signs in: %v", user, err)
+		}
+		t.Cleanup(func() { c.Close() })
+		return c
+	}
+	asUser := func(user string) *clientv3.Client { return dial(user, etcdtest.Password(user)) }
+	md, sts := asUser("md-tw-1"), asUser("sts-tw-1")
+	mdKey, stsKey := EpochKey(PlaneMD, "md-tw-1"), EpochKey(PlaneSTS, "sts-tw-1")
+	if _, err := md.Put(ctx, mdKey, "1"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := raw.UserChangePassword(ctx, "md-tw-1", "rotated"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := md.Put(ctx, mdKey, "2"); !errors.Is(err, rpctypes.ErrAuthFailed) {
+		t.Fatalf("write with the old password after the change: %v, want auth failed", err)
+	}
+	if _, err := sts.Put(ctx, stsKey, "1"); err != nil {
+		t.Fatalf("another user after the change: %v", err)
+	}
+	if _, err := dial("md-tw-1", "rotated").Put(ctx, mdKey, "3"); err != nil {
+		t.Fatalf("write with the new password: %v", err)
+	}
+}
+
 // A dial with the wrong credentials fails, and the next use dials again.
 func TestDialWrongPassword(t *testing.T) {
 	ctx := testCtx(t)

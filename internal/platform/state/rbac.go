@@ -155,7 +155,7 @@ func prefixPerm(prefix string, write bool) Permission {
 // password is password(name). What is there already is left alone, so that applying the same table twice changes
 // nothing, and does not bump the cluster's auth revision. It neither removes nor revokes anything: a role or a
 // permission the table no longer has stays until removed by hand. Tests run every process under RBAC with it;
-// deployment applies the tables the same way (E12).
+// deployment applies the tables the same way (mftiko-etcd-roles -apply, E12-D049).
 func EnsureAuth(ctx context.Context, root *clientv3.Client, table AuthTable, password func(user string) string) error {
 	for _, role := range table.Roles {
 		got, err := root.RoleGet(ctx, role.Name)

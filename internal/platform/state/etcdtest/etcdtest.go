@@ -77,8 +77,11 @@ func Password(user string) string {
 // RootPassword is the root user's password.
 func RootPassword() string { return Password(RootUser) }
 
-// signingKey is the ES256 key pair etcd signs its tokens with, PEM-encoded; one per test binary.
-var signingKey = sync.OnceValues(func() (priv, pub []byte) {
+// signingKey is the ES256 key pair etcd signs its tokens with, PEM-encoded; one per test binary. RotateSigningKey
+// gives a server a new one.
+var signingKey = sync.OnceValues(newSigningKey)
+
+func newSigningKey() (priv, pub []byte) {
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		panic(err)
@@ -93,7 +96,7 @@ var signingKey = sync.OnceValues(func() (priv, pub []byte) {
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der}),
 		pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})
-})
+}
 
 // Option configures Start.
 type Option func(*options)
@@ -111,6 +114,7 @@ type Server struct {
 	bin       string
 	args      []string
 	dataDir   string
+	keyDir    string // jwt.key and jwt.pub, the token signing key pair
 	out       *lockedBuffer
 	shared    bool // Shared's: other tests use it after this one, so it is never stopped or rebuilt
 
@@ -250,6 +254,28 @@ func (s *Server) Rebuild(t testing.TB) {
 	s.mu.Unlock()
 }
 
+// RotateSigningKey kills the member, replaces its token signing key pair with a new one and starts it again, as the
+// production rotation does on each member (E12-D051). Tokens signed with the old key are refused from then on.
+func (s *Server) RotateSigningKey(t testing.TB) {
+	t.Helper()
+	if s.shared {
+		t.Fatalf("etcdtest: RotateSigningKey on the shared server; Start one for the test instead")
+		return
+	}
+	s.Stop()
+	if err := s.writeSigningKey(newSigningKey()); err != nil {
+		t.Fatalf("etcdtest: rotate signing key: %v", err)
+	}
+	s.relaunch(t)
+}
+
+func (s *Server) writeSigningKey(priv, pub []byte) error {
+	if err := os.WriteFile(filepath.Join(s.keyDir, "jwt.key"), priv, 0o600); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(s.keyDir, "jwt.pub"), pub, 0o600)
+}
+
 func (s *Server) relaunch(t testing.TB) {
 	t.Helper()
 	var errs []error
@@ -295,15 +321,12 @@ func newServer(bin, dataDir, keyDir string, o options) (*Server, error) {
 	clientURL := "http://" + client
 	peerURL := "http://" + peer
 
-	s := &Server{name: name, endpoints: []string{clientURL}, bin: bin, dataDir: dataDir, out: &lockedBuffer{}}
+	s := &Server{name: name, endpoints: []string{clientURL}, bin: bin, dataDir: dataDir, keyDir: keyDir, out: &lockedBuffer{}}
 	priv, pub := signingKey()
+	if err := s.writeSigningKey(priv, pub); err != nil {
+		return nil, err
+	}
 	privPath, pubPath := filepath.Join(keyDir, "jwt.key"), filepath.Join(keyDir, "jwt.pub")
-	if err := os.WriteFile(privPath, priv, 0o600); err != nil {
-		return nil, err
-	}
-	if err := os.WriteFile(pubPath, pub, 0o600); err != nil {
-		return nil, err
-	}
 	s.args = []string{
 		"--name", name,
 		"--data-dir", s.dataDir,
