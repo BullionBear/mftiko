@@ -118,6 +118,51 @@ func WriterKey(p Plane, inst string) string { return instPrefix(p, inst) + "writ
 // AgentKey is the AgentRecord of an agent or of the controller (PROTOCOL §3.1).
 func AgentKey(p Plane, inst string) string { return instPrefix(p, inst) + "agent" }
 
+// RetiredPrefix lists every permanent retirement marker. It is not under
+// /{plane}/{inst}/, so cleaning that prefix does not remove it (E12-D033).
+const RetiredPrefix = Root + "/retired/"
+
+// RetiredKey is the permanent marker that inst is retired. The value is the
+// instance name; readers care only that the key exists. It lives in inst's
+// home region. The API writes it and does not delete it (E12-D033, E12-D036).
+func RetiredKey(inst string) string { return RetiredPrefix + inst }
+
+// RetiredInstance reports the instance named by an exact retirement key.
+// A prefix, a range, or a key with a further path segment is not one.
+func RetiredInstance(key string) (string, bool) {
+	inst, ok := strings.CutPrefix(key, RetiredPrefix)
+	if !ok || !instanceName.MatchString(inst) {
+		return "", false
+	}
+	return inst, true
+}
+
+// RetireCleanTargets are the keys mftiko-retire-clean may delete for one
+// instance (E12-D035). prefixes take a prefix delete; exact are single keys.
+// They are the keys W1 assigns to that instance. spec, demand and account are
+// absent: a grant wide enough to delete them would let a live agent delete
+// another writer's keys.
+func RetireCleanTargets(p Plane, inst string) (prefixes, exact []string) {
+	if !p.agent() {
+		return nil, nil
+	}
+	exact = []string{EpochKey(p, inst), WriterKey(p, inst), AgentKey(p, inst)}
+	prefixes = []string{
+		ElectionPrefix(p, inst) + "/",
+		WorkerStatusPrefix(p, inst),
+		IncarnationPrefix(p, inst),
+	}
+	switch p {
+	case PlaneSTS:
+		prefixes = append(prefixes, SessionStatusPrefix(inst))
+	case PlaneMD:
+		prefixes = append(prefixes, MDAckPrefix(inst), SelectorPrefix(inst), PlacementPrefix(inst))
+	case PlaneTD:
+		prefixes = append(prefixes, TDAckPrefix(inst))
+	}
+	return prefixes, exact
+}
+
 // WorkerStatusKey is one worker's WorkerStatus; h is WorkerHash of the worker key (PROTOCOL §3.1).
 func WorkerStatusKey(p Plane, inst, h string) string { return WorkerStatusPrefix(p, inst) + h }
 

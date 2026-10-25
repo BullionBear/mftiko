@@ -354,3 +354,219 @@ func TestStaleSTSKeepsDemands(t *testing.T) {
 		}
 	}
 }
+
+// A retired STS instance ends its session and releases demands even while the
+// status is non-terminal and the worker key is still there (E12-D034).
+func TestRetireSTSReleasesDemands(t *testing.T) {
+	ctx := t.Context()
+	servers := etcdtest.StartRegions(t, "tw", "jp")
+	topo, planes := mixedTopo(servers)
+	applyPlanes(t, ctx, topo, planes, servers)
+	cfg := config(topo, t.Name(), testLog(t))
+	cfg.Planes = planes
+	cfg.Resync = 40 * time.Millisecond
+	cfg.StaleAfter = time.Second
+	cfg.Mirror = probeMirror()
+	c := startAsync(t, ctx, cfg).ready(30 * time.Second)
+	waitFresh(t, c, "tw")
+	waitFresh(t, c, "jp")
+
+	putProto(t, ctx, servers["tw"], state.SessionSpecKey("sts-tw-1", deriveSess), sampleSpec())
+	sessKey := state.SessionDemandKey("sts-tw-1", deriveSess)
+	twKey := state.MDDemandKey("md-tw-1", deriveSess, "select/near")
+	feedKey := state.MDDemandKey("md-jp-1", deriveSess, "feed/trade.BinanceUM_Perp_BTCUSDT")
+	tdKey := state.TDDemandKey("td-jp-1", deriveSess, 7)
+	specKey := state.SessionSpecKey("sts-tw-1", deriveSess)
+	statusKey := state.SessionStatusKey("sts-tw-1", deriveSess)
+	hash := state.WorkerHash("sts/" + deriveSess)
+	workerKey := state.WorkerStatusKey(state.PlaneSTS, "sts-tw-1", hash)
+
+	until(t, 20*time.Second, "the derived demands are stored", func() error {
+		for _, item := range []struct {
+			srv *etcdtest.Server
+			key string
+		}{
+			{servers["tw"], sessKey}, {servers["tw"], twKey},
+			{servers["jp"], feedKey}, {servers["jp"], tdKey},
+		} {
+			if !present(t, ctx, item.srv, item.key) {
+				return fmt.Errorf("missing %s", item.key)
+			}
+		}
+		return nil
+	})
+	putProto(t, ctx, servers["tw"], workerKey, &statev1.WorkerStatus{Phase: "RUNNING"})
+	putProto(t, ctx, servers["tw"], statusKey, &statev1.SessionStatus{Phase: statev1.Phase_PHASE_RUNNING})
+	mark := c.Stats().Rounds
+	until(t, 20*time.Second, "more rounds with the worker still present", func() error {
+		if c.Stats().Rounds < mark+2 {
+			return errors.New("waiting")
+		}
+		return nil
+	})
+	for _, item := range []struct {
+		srv *etcdtest.Server
+		key string
+	}{
+		{servers["tw"], sessKey}, {servers["tw"], twKey},
+		{servers["jp"], feedKey}, {servers["jp"], tdKey}, {servers["tw"], workerKey},
+	} {
+		if !present(t, ctx, item.srv, item.key) {
+			t.Fatalf("deleted before retirement: %s", item.key)
+		}
+	}
+
+	if _, err := client(t, servers["tw"]).Put(ctx, state.RetiredKey("sts-tw-1"), "sts-tw-1"); err != nil {
+		t.Fatal(err)
+	}
+	ref := controller.SessionRef("sts-tw-1", deriveSess)
+	var saw bool
+	until(t, 20*time.Second, "the assignment ends because the instance retired", func() error {
+		if c.View().Sessions[ref].Demand.GetEndReason() == "instance_retired" {
+			saw = true
+			return nil
+		}
+		st, ok := kvOf(t, ctx, servers["tw"], sessKey)
+		if ok {
+			var d statev1.SessionDemand
+			mustProto(t, st.val, &d)
+			if d.GetEndReason() == "instance_retired" {
+				saw = true
+				return nil
+			}
+			return fmt.Errorf("reason %q", d.GetEndReason())
+		}
+		if saw {
+			return nil
+		}
+		return errors.New("session demand is gone and the reason was not instance_retired")
+	})
+	if !saw {
+		t.Fatal("missed instance_retired")
+	}
+	until(t, 20*time.Second, "demands and the assignment are gone", func() error {
+		for _, item := range []struct {
+			srv *etcdtest.Server
+			key string
+		}{
+			{servers["tw"], twKey}, {servers["jp"], feedKey},
+			{servers["jp"], tdKey}, {servers["tw"], sessKey},
+		} {
+			if present(t, ctx, item.srv, item.key) {
+				return fmt.Errorf("still present %s", item.key)
+			}
+		}
+		return nil
+	})
+	for _, key := range []string{specKey, statusKey, workerKey, state.RetiredKey("sts-tw-1")} {
+		if !present(t, ctx, servers["tw"], key) {
+			t.Fatalf("controller deleted %s", key)
+		}
+	}
+}
+
+func TestRetireMDKeepsExistingDemands(t *testing.T) {
+	ctx := t.Context()
+	servers := etcdtest.StartRegions(t, "tw", "jp")
+	topo, planes := mixedTopo(servers)
+	applyPlanes(t, ctx, topo, planes, servers)
+	cfg := config(topo, t.Name(), testLog(t))
+	cfg.Planes = planes
+	cfg.Resync = 40 * time.Millisecond
+	cfg.StaleAfter = time.Second
+	cfg.Mirror = probeMirror()
+	c := startAsync(t, ctx, cfg).ready(30 * time.Second)
+	waitFresh(t, c, "tw")
+	waitFresh(t, c, "jp")
+
+	putProto(t, ctx, servers["tw"], state.SessionSpecKey("sts-tw-1", deriveSess), sampleSpec())
+	sessKey := state.SessionDemandKey("sts-tw-1", deriveSess)
+	feedKey := state.MDDemandKey("md-jp-1", deriveSess, "feed/trade.BinanceUM_Perp_BTCUSDT")
+	until(t, 20*time.Second, "the feed demand is stored", func() error {
+		if !present(t, ctx, servers["jp"], feedKey) || !present(t, ctx, servers["tw"], sessKey) {
+			return errors.New("missing")
+		}
+		return nil
+	})
+	if _, err := client(t, servers["jp"]).Put(ctx, state.RetiredKey("md-jp-1"), "md-jp-1"); err != nil {
+		t.Fatal(err)
+	}
+	until(t, 20*time.Second, "the view lists the retired MD", func() error {
+		if _, ok := c.View().Retired["md-jp-1"]; !ok {
+			return errors.New("not yet")
+		}
+		return nil
+	})
+	mark := c.Stats().Rounds
+	until(t, 20*time.Second, "rounds after the MD retired", func() error {
+		if c.Stats().Rounds < mark+2 {
+			return errors.New("waiting")
+		}
+		return nil
+	})
+	st, ok := kvOf(t, ctx, servers["tw"], sessKey)
+	if !ok {
+		t.Fatal("assignment deleted")
+	}
+	var d statev1.SessionDemand
+	mustProto(t, st.val, &d)
+	if d.GetDesired() != sessionv1.DesiredState_DESIRED_STATE_RUNNING || d.GetEndReason() == "invalid_spec" {
+		t.Fatalf("existing assignment desired=%s reason=%s", d.GetDesired(), d.GetEndReason())
+	}
+	if !present(t, ctx, servers["jp"], feedKey) {
+		t.Fatal("existing feed demand was deleted")
+	}
+}
+
+func TestRetireProviderBlocksNewAssignment(t *testing.T) {
+	for _, tc := range []struct {
+		name, inst string
+	}{
+		{"md", "md-jp-1"},
+		{"td", "td-jp-1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			servers := etcdtest.StartRegions(t, "tw", "jp")
+			topo, planes := mixedTopo(servers)
+			applyPlanes(t, ctx, topo, planes, servers)
+			cfg := config(topo, t.Name(), testLog(t))
+			cfg.Planes = planes
+			cfg.Resync = 40 * time.Millisecond
+			cfg.StaleAfter = time.Second
+			cfg.Mirror = probeMirror()
+			c := startAsync(t, ctx, cfg).ready(30 * time.Second)
+			waitFresh(t, c, "tw")
+			waitFresh(t, c, "jp")
+			if _, err := client(t, servers["jp"]).Put(ctx, state.RetiredKey(tc.inst), tc.inst); err != nil {
+				t.Fatal(err)
+			}
+			until(t, 20*time.Second, "the view lists "+tc.inst, func() error {
+				if _, ok := c.View().Retired[tc.inst]; !ok {
+					return errors.New("not yet")
+				}
+				return nil
+			})
+			const id = "def456"
+			putProto(t, ctx, servers["tw"], state.SessionSpecKey("sts-tw-1", id), sampleSpec())
+			sessKey := state.SessionDemandKey("sts-tw-1", id)
+			feedKey := state.MDDemandKey("md-jp-1", id, "feed/trade.BinanceUM_Perp_BTCUSDT")
+			tdKey := state.TDDemandKey("td-jp-1", id, 7)
+			until(t, 20*time.Second, "the new session is invalid_spec", func() error {
+				st, ok := kvOf(t, ctx, servers["tw"], sessKey)
+				if !ok {
+					return errors.New("assignment missing")
+				}
+				var d statev1.SessionDemand
+				mustProto(t, st.val, &d)
+				if d.GetEndReason() != "invalid_spec" {
+					return fmt.Errorf("reason %q", d.GetEndReason())
+				}
+				return nil
+			})
+			if present(t, ctx, servers["jp"], feedKey) || present(t, ctx, servers["jp"], tdKey) {
+				t.Fatal("a retired provider was assigned")
+			}
+		})
+	}
+}

@@ -23,6 +23,11 @@ const (
 // endInvalid is SessionDemand.end_reason for a spec N1 will not run (E13-D004).
 const endInvalid = "invalid_spec"
 
+// endInstanceRetired is SessionDemand.end_reason when the STS instance's
+// retirement key is present (E12-D034). The controller does not write
+// SessionStatus; W1 leaves that to the STS agent, which is gone.
+const endInstanceRetired = "instance_retired"
+
 // keyRoot is state.Root. Key helpers below match state.SessionDemandKey,
 // MDDemandKey and TDDemandKey.
 const keyRoot = "/mftiko/v1"
@@ -107,6 +112,10 @@ type builder struct {
 }
 
 func (b *builder) session(sess Session) {
+	if _, retired := b.v.Retired[sess.Instance]; retired {
+		b.retireSTS(sess)
+		return
+	}
 	if sess.Spec == nil || terminal(sess.Status) || !b.open(sess.Region) {
 		return
 	}
@@ -136,7 +145,11 @@ func (b *builder) session(sess Session) {
 		})
 		return
 	}
-	if specInvalid(sess.Spec, b.inst) {
+	// A retired provider is not assignable for a session that has no assignment
+	// yet (E12-D034). An assignment that already exists stays: the provider's
+	// absence is §3.5, not invalid_spec. An empty Retired set takes this branch
+	// exactly as a view built before retirement existed.
+	if specInvalid(sess.Spec, b.inst) || (sess.Demand == nil && providersRetired(sess.Spec, b.v.Retired)) {
 		b.putSession(sess, &statev1.SessionDemand{
 			Desired:      sessionv1.DesiredState_DESIRED_STATE_ENDED,
 			EndReason:    endInvalid,
@@ -145,6 +158,58 @@ func (b *builder) session(sess Session) {
 		return
 	}
 	b.running(sess)
+}
+
+// retireSTS ends a non-terminal session on a retired STS instance by writing
+// SessionDemand, not SessionStatus (E12-D034, W1). No MD or TD entries are
+// added. An assignment already ENDED keeps its first reason (E13-D028). No
+// assignment, and a missing or already-ENDED spec, writes nothing (E13-D026).
+func (b *builder) retireSTS(sess Session) {
+	if !b.open(sess.Region) || terminal(sess.Status) {
+		return
+	}
+	if _, undecodable := b.bad[sessionDemandKey(sess.Instance, sess.ID)]; undecodable {
+		return
+	}
+	if sess.Demand.GetDesired() == sessionv1.DesiredState_DESIRED_STATE_ENDED {
+		return
+	}
+	if sess.Demand == nil && (sess.Spec == nil || sess.Spec.GetDesiredState() == sessionv1.DesiredState_DESIRED_STATE_ENDED) {
+		return
+	}
+	b.putSession(sess, &statev1.SessionDemand{
+		Desired:      sessionv1.DesiredState_DESIRED_STATE_ENDED,
+		EndReason:    endInstanceRetired,
+		SpecRevision: sess.SpecRev,
+	})
+}
+
+func providersRetired(spec *sessionv1.SessionSpec, retired map[string]struct{}) bool {
+	if len(retired) == 0 || spec == nil {
+		return false
+	}
+	for _, f := range spec.GetFeeds() {
+		if f != nil {
+			if _, ok := retired[f.GetMdInstance()]; ok {
+				return true
+			}
+		}
+	}
+	for _, s := range spec.GetSelectors() {
+		if s != nil {
+			if _, ok := retired[s.GetMdInstance()]; ok {
+				return true
+			}
+		}
+	}
+	for _, a := range spec.GetAccounts() {
+		if a != nil {
+			if _, ok := retired[a.GetTdInstance()]; ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (b *builder) running(sess Session) {

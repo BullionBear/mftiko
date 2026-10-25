@@ -42,6 +42,8 @@ var (
 	// including the keys fencing relies on (election, epoch, writer), incarnations outside Incarnations, and the
 	// AgentRecord outside PutRecord.
 	ErrNotWriter = errors.New("state: not this writer's key")
+	// ErrRetired: /retired/{inst} is present. The agent must not campaign or write an AgentRecord (E12-D036).
+	ErrRetired = errors.New("state: instance is retired")
 
 	// ErrBadIncarnation: a stored incarnation is not a uint32 in canonical decimal form.
 	ErrBadIncarnation = errors.New("state: bad incarnation")

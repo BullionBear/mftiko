@@ -76,6 +76,7 @@ func TestLoadEmbedded(t *testing.T) {
 		"0003_audit",
 		"0004_session_records",
 		"0005_session_records_final",
+		"0006_retired_instances",
 	}
 	if len(files) != len(want) {
 		t.Fatalf("loaded %d files, want %d", len(files), len(want))
@@ -124,6 +125,7 @@ func TestUpEmptyAndRerun(t *testing.T) {
 		"0003_audit",
 		"0004_session_records",
 		"0005_session_records_final",
+		"0006_retired_instances",
 	}
 	if len(res.Applied) != len(want) {
 		t.Fatalf("applied %v", res.Applied)
@@ -134,7 +136,7 @@ func TestUpEmptyAndRerun(t *testing.T) {
 		}
 	}
 	conn := connect(t, srv.DSN())
-	for _, table := range []string{"orders", "fills", "symbol_active", "audit", "session_records", "schema_migrations"} {
+	for _, table := range []string{"orders", "fills", "symbol_active", "audit", "session_records", "retired_instances", "schema_migrations"} {
 		if !regclass(t, ctx, conn, table) {
 			t.Fatalf("up did not create %s", table)
 		}
@@ -149,7 +151,7 @@ func TestUpEmptyAndRerun(t *testing.T) {
 	if err := conn.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if n != 5 {
+	if n != 6 {
 		t.Fatalf("schema_migrations rows = %d", n)
 	}
 	before := appliedAt(t, ctx, conn)
@@ -168,7 +170,7 @@ func TestUpEmptyAndRerun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(lines) != 5 {
+	if len(lines) != 6 {
 		t.Fatalf("status %d lines", len(lines))
 	}
 	for _, line := range lines {

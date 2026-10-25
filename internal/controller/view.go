@@ -22,13 +22,17 @@ import (
 //
 // Assemble fills every map, so a view it built has no nil maps.
 type View struct {
-	Regions     map[string]Region
-	Sessions    map[string]Session // SessionRef(sts instance, session id)
-	Demands     map[string]Demand  // etcd key of an MD or TD demand entry
-	Acks        map[string]Ack     // etcd key; only acks whose demand decoded
-	Workers     map[string]Worker  // etcd key of an STS session worker
-	Agents      map[string]Agent   // instance name
-	Undecodable []string           // sorted
+	Regions  map[string]Region
+	Sessions map[string]Session // SessionRef(sts instance, session id)
+	Demands  map[string]Demand  // etcd key of an MD or TD demand entry
+	Acks     map[string]Ack     // etcd key; only acks whose demand decoded
+	Workers  map[string]Worker  // etcd key of an STS session worker
+	Agents   map[string]Agent   // instance name
+	// Retired is the set of instance names whose /retired/{inst} key is present
+	// in that instance's home region (E12-D034). Nil and empty mean no instance
+	// is retired: derivation and lifecycle then behave as they do without the key.
+	Retired     map[string]struct{}
+	Undecodable []string // sorted
 }
 
 // Region is one cluster's reading (E13-D020). Rev is how far every instance
@@ -181,6 +185,7 @@ func Assemble(now time.Time, staleAfter time.Duration, regions []string, snaps [
 		Acks:     map[string]Ack{},
 		Workers:  map[string]Worker{},
 		Agents:   map[string]Agent{},
+		Retired:  map[string]struct{}{},
 	}
 	v.Regions = assembleRegions(now, staleAfter, regions, snaps)
 

@@ -62,7 +62,11 @@ func (a AuthTable) Users() []string {
 //     prefix (E10-D040). etcd therefore cannot refuse an api put of status. W1's "only the STS agent writes status"
 //     is kept by the API program, not by etcd. That gap is deliberate: STS does not clear status, which would
 //     overturn E10-D017. The API writes no demand, ack, agent, worker or writer key, and nothing under another
-//     instance's prefix.
+//     instance's prefix. It does write each agent instance's exact /retired/{inst} key, and only that key
+//     (E12-D033). A prefix grant would let it delete the marker.
+//   - An agent reads its own exact /retired/{inst} key and does not write it (E12-D036). The key is outside the
+//     instance prefix, so the prefix read does not cover it. EnsureAuth only adds grants: a cluster whose role
+//     table predates this key denies the read until the table is applied again.
 //
 // Granting a lease needs no permission; revoking one needs write permission on every key attached to it, which
 // these tables give for the election session and the keys on it.
@@ -103,6 +107,7 @@ func AuthTables(topo Topology, planes map[string]Plane) (map[string]AuthTable, e
 			p := planes[inst]
 			roles = append(roles, agentRole(p, inst))
 			ctl.Permissions = append(ctl.Permissions, prefixPerm(DemandPrefix(p, inst), true))
+			api.Permissions = append(api.Permissions, Permission{Key: RetiredKey(inst), Write: true})
 			switch p {
 			case PlaneSTS:
 				api.Permissions = append(api.Permissions, prefixPerm(SessionSpecPrefix(inst), true),
@@ -128,6 +133,7 @@ func agentRole(p Plane, inst string) Role {
 		{Key: AgentKey(p, inst), Write: true},
 		prefixPerm(WorkerStatusPrefix(p, inst), true),
 		prefixPerm(IncarnationPrefix(p, inst), true),
+		{Key: RetiredKey(inst), Write: false},
 	}
 	switch p {
 	case PlaneSTS:

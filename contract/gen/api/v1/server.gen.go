@@ -56,6 +56,9 @@ type ServerInterface interface {
 	// GetInstance 取得 instance
 	// (GET /instances/{name})
 	GetInstance(w http.ResponseWriter, r *http.Request, name InstanceName)
+	// RetireInstance 永久退役一個 instance
+	// (POST /instances/{name}/retire)
+	RetireInstance(w http.ResponseWriter, r *http.Request, name InstanceName)
 	// ListSessionRecords 列出 session 的歷史紀錄
 	// (GET /session-records)
 	ListSessionRecords(w http.ResponseWriter, r *http.Request, params ListSessionRecordsParams)
@@ -437,6 +440,32 @@ func (siw *ServerInterfaceWrapper) GetInstance(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetInstance(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RetireInstance operation middleware
+func (siw *ServerInterfaceWrapper) RetireInstance(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name InstanceName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RetireInstance(w, r, name)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1064,6 +1093,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/accounts/{api_id}", wrapper.UpdateAccount)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/instances", wrapper.ListInstances)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/instances/{name}", wrapper.GetInstance)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/instances/{name}/retire", wrapper.RetireInstance)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/events", wrapper.StreamEvents)
 
 	return m
@@ -1850,6 +1880,86 @@ type GetInstance503ApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetInstance503ApplicationProblemPlusJSONResponse) VisitGetInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetireInstanceRequestObject struct {
+	Name InstanceName `json:"name"`
+}
+
+type RetireInstanceResponseObject interface {
+	VisitRetireInstanceResponse(w http.ResponseWriter) error
+}
+
+type RetireInstance204Response struct {
+}
+
+func (response RetireInstance204Response) VisitRetireInstanceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RetireInstance401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response RetireInstance401ApplicationProblemPlusJSONResponse) VisitRetireInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetireInstance404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response RetireInstance404ApplicationProblemPlusJSONResponse) VisitRetireInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetireInstance409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response RetireInstance409ApplicationProblemPlusJSONResponse) VisitRetireInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetireInstance503ApplicationProblemPlusJSONResponse struct {
+	UnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response RetireInstance503ApplicationProblemPlusJSONResponse) VisitRetireInstanceResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -2670,6 +2780,9 @@ type StrictServerInterface interface {
 	// GetInstance 取得 instance
 	// (GET /instances/{name})
 	GetInstance(ctx context.Context, request GetInstanceRequestObject) (GetInstanceResponseObject, error)
+	// RetireInstance 永久退役一個 instance
+	// (POST /instances/{name}/retire)
+	RetireInstance(ctx context.Context, request RetireInstanceRequestObject) (RetireInstanceResponseObject, error)
 	// ListSessionRecords 列出 session 的歷史紀錄
 	// (GET /session-records)
 	ListSessionRecords(ctx context.Context, request ListSessionRecordsRequestObject) (ListSessionRecordsResponseObject, error)
@@ -3058,6 +3171,32 @@ func (sh *strictHandler) GetInstance(w http.ResponseWriter, r *http.Request, nam
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetInstanceResponseObject); ok {
 		if err := validResponse.VisitGetInstanceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RetireInstance operation middleware
+func (sh *strictHandler) RetireInstance(w http.ResponseWriter, r *http.Request, name InstanceName) {
+	var request RetireInstanceRequestObject
+
+	request.Name = name
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RetireInstance(ctx, request.(RetireInstanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RetireInstance")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RetireInstanceResponseObject); ok {
+		if err := validResponse.VisitRetireInstanceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

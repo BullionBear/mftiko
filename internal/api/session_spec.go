@@ -561,6 +561,12 @@ func algoOverlap(views map[string]state.View, spec *sessionv1.SessionSpec, excep
 			if id == "" || id == except {
 				continue
 			}
+			// A retired STS instance cannot write a terminal status (W1). The
+			// retirement key, present in this same region mirror, releases the
+			// algo (E12-D034). Without the key the check is unchanged.
+			if _, retired := view.Entries[state.RetiredKey(inst)]; retired {
+				continue
+			}
 			var other sessionv1.SessionSpec
 			if proto.Unmarshal(entry.Value, &other) != nil {
 				continue

@@ -60,6 +60,7 @@ func (s *Server) install(opt Option) {
 	}
 	s.storageDown = opt.StorageUnavailable
 	s.algoOverlap = opt.AlgoOverlap
+	s.retireConflict = opt.RetireConflict
 	s.created = map[string]savedSession{}
 }
 

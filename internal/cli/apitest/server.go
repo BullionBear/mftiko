@@ -109,6 +109,8 @@ type Option struct {
 	StorageUnavailable bool
 	// AlgoOverlap makes POST /sessions return 409 algo_overlap.
 	AlgoOverlap bool
+	// RetireConflict makes POST /instances/{name}/retire return 409 conflict.
+	RetireConflict bool
 	// Events, when set, handles GET /api/v1/events. The function writes the
 	// response, including a stream. Nil leaves StreamEvents unused.
 	Events func(http.ResponseWriter, *http.Request)
@@ -116,46 +118,47 @@ type Option struct {
 
 // Server is a started httptest server.
 type Server struct {
-	mu           sync.Mutex
-	once         sync.Once
-	hs           *httptest.Server
-	stop         chan struct{}
-	token        string
-	name         string
-	expires      *time.Time
-	problem      *apiv1.Problem
-	reqID        string
-	block        bool
-	echo         bool
-	cat          *Catalog
-	hits         int
-	calls        []Call
-	lastAuth     string
-	lastBody     []byte
-	kinds        []apiv1.AccountKind
-	instances    map[string]apiv1.InstanceDetail
-	accounts     []accountRow
-	nextID       int64
-	pageSize     int
-	fresh        apiv1.Freshness
-	nextFresh    *apiv1.Freshness
-	listPages    int
-	conflict     bool
-	echoSecret   bool
-	sessions     []apiv1.SessionDetail
-	records      []apiv1.SessionRecord
-	agents       map[string]apiv1.AgentStatus
-	sessionPages int
-	dropLeft     int
-	createFields []apiv1.FieldError
-	storageDown  bool
-	algoOverlap  bool
-	events       func(http.ResponseWriter, *http.Request)
-	regionDown   bool
-	cond         *sync.Cond
-	created      map[string]savedSession
-	createdOrder []string
-	nextSession  int
+	mu             sync.Mutex
+	once           sync.Once
+	hs             *httptest.Server
+	stop           chan struct{}
+	token          string
+	name           string
+	expires        *time.Time
+	problem        *apiv1.Problem
+	reqID          string
+	block          bool
+	echo           bool
+	cat            *Catalog
+	hits           int
+	calls          []Call
+	lastAuth       string
+	lastBody       []byte
+	kinds          []apiv1.AccountKind
+	instances      map[string]apiv1.InstanceDetail
+	accounts       []accountRow
+	nextID         int64
+	pageSize       int
+	fresh          apiv1.Freshness
+	nextFresh      *apiv1.Freshness
+	listPages      int
+	conflict       bool
+	echoSecret     bool
+	sessions       []apiv1.SessionDetail
+	records        []apiv1.SessionRecord
+	agents         map[string]apiv1.AgentStatus
+	sessionPages   int
+	dropLeft       int
+	createFields   []apiv1.FieldError
+	storageDown    bool
+	algoOverlap    bool
+	retireConflict bool
+	events         func(http.ResponseWriter, *http.Request)
+	regionDown     bool
+	cond           *sync.Cond
+	created        map[string]savedSession
+	createdOrder   []string
+	nextSession    int
 }
 
 type savedSession struct {

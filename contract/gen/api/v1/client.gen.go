@@ -223,6 +223,16 @@ type ClientInterface interface {
 	// Corresponds with GET /instances/{name} (the `GetInstance` operationId).
 	GetInstance(ctx context.Context, name InstanceName, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// RetireInstance 永久退役一個 instance
+	//
+	// 在該 instance 的 region 寫 `/retired/{name}`，並在 Postgres `retired_instances` 記一列（E12-D033）。
+	// `AgentRecord` 還在時回 409 `conflict`，不寫。agent 不在時重複呼叫回 204。
+	// 不在 topology 的名稱，以及 controller，回 404。region 不可用回 503。
+	// API 不刪這個 key。
+	//
+	// Corresponds with POST /instances/{name}/retire (the `RetireInstance` operationId).
+	RetireInstance(ctx context.Context, name InstanceName, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListSessionRecords 列出 session 的歷史紀錄
 	//
 	// 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。.
@@ -588,6 +598,26 @@ func (c *Client) ListInstances(ctx context.Context, params *ListInstancesParams,
 // Corresponds with GET /instances/{name} (the `GetInstance` operationId).
 func (c *Client) GetInstance(ctx context.Context, name InstanceName, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetInstanceRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RetireInstance 永久退役一個 instance
+//
+// 在該 instance 的 region 寫 `/retired/{name}`，並在 Postgres `retired_instances` 記一列（E12-D033）。
+// `AgentRecord` 還在時回 409 `conflict`，不寫。agent 不在時重複呼叫回 204。
+// 不在 topology 的名稱，以及 controller，回 404。region 不可用回 503。
+// API 不刪這個 key。
+//
+// Corresponds with POST /instances/{name}/retire (the `RetireInstance` operationId).
+func (c *Client) RetireInstance(ctx context.Context, name InstanceName, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRetireInstanceRequest(c.Server, name)
 	if err != nil {
 		return nil, err
 	}
@@ -1339,6 +1369,40 @@ func NewGetInstanceRequest(server string, name InstanceName) (*http.Request, err
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRetireInstanceRequest constructs an http.Request for the RetireInstance method
+func NewRetireInstanceRequest(server string, name InstanceName) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/instances/%s/retire", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -2138,6 +2202,18 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /instances/{name} (the `GetInstance` operationId).
 	GetInstanceWithResponse(ctx context.Context, name InstanceName, reqEditors ...RequestEditorFn) (*GetInstanceResponse, error)
+
+	// RetireInstanceWithResponse 永久退役一個 instance
+	//
+	// 在該 instance 的 region 寫 `/retired/{name}`，並在 Postgres `retired_instances` 記一列（E12-D033）。
+	// `AgentRecord` 還在時回 409 `conflict`，不寫。agent 不在時重複呼叫回 204。
+	// 不在 topology 的名稱，以及 controller，回 404。region 不可用回 503。
+	// API 不刪這個 key。
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /instances/{name}/retire (the `RetireInstance` operationId).
+	RetireInstanceWithResponse(ctx context.Context, name InstanceName, reqEditors ...RequestEditorFn) (*RetireInstanceResponse, error)
 
 	// ListSessionRecordsWithResponse 列出 session 的歷史紀錄
 	//
@@ -2939,6 +3015,68 @@ func (r GetInstanceResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetInstanceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RetireInstanceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthenticated
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Conflict
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Unavailable
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r RetireInstanceResponse) GetApplicationproblemJSON401() *Unauthenticated {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r RetireInstanceResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r RetireInstanceResponse) GetApplicationproblemJSON409() *Conflict {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r RetireInstanceResponse) GetApplicationproblemJSON503() *Unavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r RetireInstanceResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RetireInstanceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RetireInstanceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RetireInstanceResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -3833,6 +3971,24 @@ func (c *ClientWithResponses) GetInstanceWithResponse(ctx context.Context, name 
 	return ParseGetInstanceResponse(rsp)
 }
 
+// RetireInstanceWithResponse 永久退役一個 instance
+//
+// 在該 instance 的 region 寫 `/retired/{name}`，並在 Postgres `retired_instances` 記一列（E12-D033）。
+// `AgentRecord` 還在時回 409 `conflict`，不寫。agent 不在時重複呼叫回 204。
+// 不在 topology 的名稱，以及 controller，回 404。region 不可用回 503。
+// API 不刪這個 key。
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /instances/{name}/retire (the `RetireInstance` operationId).
+func (c *ClientWithResponses) RetireInstanceWithResponse(ctx context.Context, name InstanceName, reqEditors ...RequestEditorFn) (*RetireInstanceResponse, error) {
+	rsp, err := c.RetireInstance(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRetireInstanceResponse(rsp)
+}
+
 // ListSessionRecordsWithResponse 列出 session 的歷史紀錄
 //
 // 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。.
@@ -4538,6 +4694,56 @@ func ParseGetInstanceResponse(rsp *http.Response) (*GetInstanceResponse, error) 
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Unavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRetireInstanceResponse parses an HTTP response from a RetireInstanceWithResponse call
+func ParseRetireInstanceResponse(rsp *http.Response) (*RetireInstanceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RetireInstanceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthenticated
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
 		var dest Unavailable

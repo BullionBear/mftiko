@@ -23,6 +23,17 @@ func Connect(ctx context.Context, topo state.Topology, p state.Plane, inst strin
 	if err != nil {
 		return nil, nil, err
 	}
+	// Before campaign, so a retired name never takes an epoch or writes an AgentRecord (E12-D036).
+	// Permission denied on the marker is "not retired": the role table has not been reapplied yet.
+	retired, err := state.InstanceRetired(ctx, cl, inst)
+	if err != nil {
+		cl.Close()
+		return nil, nil, err
+	}
+	if retired {
+		cl.Close()
+		return nil, nil, fmt.Errorf("%w: %s", state.ErrRetired, inst)
+	}
 	term, err := state.Campaign(ctx, cl, p, inst, opt)
 	if err != nil {
 		cl.Close()
