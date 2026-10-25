@@ -68,9 +68,11 @@ docs/                     DECISIONS.md, PROTOCOL.md, operations.md (logs and ret
 | `make openapi-lint` / `make openapi-breaking` | Redocly lint / `oasdiff breaking` against `main` (`OAS_BASE=` another commit); a breaking change fails the build (E10-D116) |
 | `make gen-check` | fails if `contract/gen/`, `web/src/lib/gen/`, `go.mod` or `go.sum` are not what `make proto` and `make openapi` produce |
 | `make build` | every command into `bin/` |
+| `make cli-dist` | CLI release tarballs and `SHA256SUMS` in `bin/dist/` (E11-D035) |
+| `make server-dist` | host server tarball and `SHA256SUMS` in `bin/dist/`; needs `web/build` from `make web` (E12-D026) |
 | `make examples` | example strategies into `bin/examples/` |
 | `make test` / `make test-race` / `make vet` | Go tests / with the race detector, uncached / vet |
-| `make check` | everything CI runs: `proto-lint`, `proto-breaking`, `openapi-lint`, `openapi-breaking`, `gen-check`, `vet`, `build`, `test-race`, `sdk-conformance`, `web-check`, `web` |
+| `make check` | everything CI runs: `proto-lint`, `proto-breaking`, `openapi-lint`, `openapi-breaking`, `gen-check`, `vet`, `build`, `cli-dist`, `test-race`, `sdk-conformance`, `web-check`, `web`, `server-dist` |
 | `make web` / `make web-dev` / `make web-check` | build, dev server, svelte-check |
 | `make dev-up` / `make dev-down` | generate dev NATS credentials and API config (`deploy/dev/data/api`, token in `token`), build a Linux `mftiko-api` and the console, then start / stop a local PostgreSQL, etcd, NATS, registry and the API with the console on `127.0.0.1:8080` (Docker); `dev-up` waits until all are healthy |
 | `make accept-up` / `make accept-down` | start / stop the acceptance stack; the checks themselves, including the end-to-end ones (`accept.sh e2e-up`, `e2e-all`, `console-smoke`), are in `deploy/accept/README.md` |
@@ -85,6 +87,8 @@ Building and testing the Go code need only Go 1.26+: the generated code is commi
 ## CLI
 
 `mftiko` is the command-line client for the API. Each `v*` tag's GitHub Release has binaries for darwin/arm64, darwin/amd64, linux/amd64 and linux/arm64. You can also run `go install github.com/BullionBear/mftiko/cmd/mftiko@<tag>`, or `make build`. [docs/cli.md](docs/cli.md) covers installation, the config file and tokens, a first session with `hello`, and the exit codes. `mftiko version` prints the CLI release and the `api.v1` version it was built against.
+
+The same Release carries `mftiko-server_<tag>_linux_amd64.tar.gz`: the host binaries, the console, and `bin/mftiko-release`, which installs and switches versions on a deploy machine. [docs/release.md](docs/release.md) covers the tarball, the switch order and the checksum.
 
 ## Packing a strategy
 

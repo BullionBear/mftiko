@@ -1,0 +1,442 @@
+#!/usr/bin/env bash
+# Install and switch host releases (E12-D022–E12-D026, docs/release.md).
+#
+# Shipped as bin/mftiko-release in mftiko-server_<tag>_linux_amd64.tar.gz and run as root.
+# The acceptance test points the variables below at a temp directory; a deploy
+# does not set them.
+#
+#   MFTIKO_PREFIX        /opt/mftiko
+#   MFTIKO_SYSTEMD_DIR   /etc/systemd/system
+#   MFTIKO_SYSTEMCTL     systemctl
+#   MFTIKO_PROC          /proc
+#   MFTIKO_RELEASE_BASE  https://github.com/BullionBear/mftiko/releases/download
+#
+#   fetch <tag>   download the server tarball and check it against SHA256SUMS
+#   install       unpack the tarball just fetched; never overwrite a release directory
+#   switch <tag>  migrate, install units, point current at the release, restart, gc
+#   rollback      point current at the previous release and restart; do not migrate
+#   gc            drop releases outside the keep set
+#   list          installed releases, newest first
+set -euo pipefail
+shopt -s nullglob
+
+prefix=${MFTIKO_PREFIX:-/opt/mftiko}
+systemd_dir=${MFTIKO_SYSTEMD_DIR:-/etc/systemd/system}
+systemctl=${MFTIKO_SYSTEMCTL:-systemctl}
+proc=${MFTIKO_PROC:-/proc}
+release_base=${MFTIKO_RELEASE_BASE:-https://github.com/BullionBear/mftiko/releases/download}
+release_base=${release_base%/}
+
+# Restart order (E12-D024). A unit is matched by the binary in ExecStart, not by
+# its filename, so E12-05 can name the units. The first matching binary wins.
+restart_bins=(
+	mftiko-sym
+	mftiko-mdfetch
+	mftiko-api
+	mftiko-controller
+	mftiko-md-agent
+	mftiko-td-agent
+	mftiko-sts-agent
+)
+
+usage() {
+	echo "usage: mftiko-release fetch <tag>|install|switch <tag>|rollback|gc|list" >&2
+	exit 1
+}
+
+die() {
+	echo "mftiko-release: $*" >&2
+	exit 1
+}
+
+require_root() {
+	if [[ "$(id -u)" -ne 0 && "$prefix" == /opt/mftiko ]]; then
+		die "run as root"
+	fi
+}
+
+valid_tag() {
+	local t=$1
+	[[ "$t" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || return 1
+	[[ "$t" == *..* ]] && return 1
+	[[ ${#t} -le 128 ]] || return 1
+	return 0
+}
+
+asset_name() {
+	printf 'mftiko-server_%s_linux_amd64.tar.gz' "$1"
+}
+
+path_is_unsafe() {
+	local p=$1 seg
+	case "$p" in
+	/*) return 0 ;;
+	esac
+	# -f: a member named like a glob must not expand against the working tree.
+	set -f
+	local IFS=/
+	local -a segs=($p)
+	set +f
+	for seg in "${segs[@]}"; do
+		if [[ "$seg" == ".." ]]; then
+			return 0
+		fi
+	done
+	return 1
+}
+
+verify_sums() {
+	local dir=$1 tag=$2 name
+	name=$(asset_name "$tag")
+	local lines=()
+	mapfile -t lines < <(awk -v name="$name" '$NF == name { print }' "$dir/SHA256SUMS")
+	[[ ${#lines[@]} -eq 1 ]] || return 1
+	printf '%s\n' "${lines[0]}" | (cd "$dir" && sha256sum -c --status -)
+}
+
+tar_members() {
+	tar -tzf "$1"
+}
+
+cmd_fetch() {
+	local tag=$1
+	valid_tag "$tag" || die "invalid tag: $tag"
+	command -v curl >/dev/null || die "curl is required"
+	command -v sha256sum >/dev/null || die "sha256sum is required"
+	local name dest tmp
+	name=$(asset_name "$tag")
+	dest="$prefix/incoming/$tag"
+	tmp=$(mktemp -d)
+	if ! curl -fsSL -o "$tmp/$name" "$release_base/$tag/$name"; then
+		rm -rf "$tmp"
+		die "download failed: $name"
+	fi
+	if ! curl -fsSL -o "$tmp/SHA256SUMS" "$release_base/$tag/SHA256SUMS"; then
+		rm -rf "$tmp"
+		die "download failed: SHA256SUMS"
+	fi
+	if ! verify_sums "$tmp" "$tag"; then
+		rm -rf "$tmp"
+		die "checksum failed: $tag"
+	fi
+	mkdir -p "$dest"
+	mv -f "$tmp/$name" "$dest/$name"
+	mv -f "$tmp/SHA256SUMS" "$dest/SHA256SUMS"
+	rm -rf "$tmp"
+	printf '%s\n' "$tag" >"$prefix/incoming/last"
+	echo "fetched $tag"
+}
+
+cmd_install() {
+	local tag name src dest tmp list p real got
+	[[ -f "$prefix/incoming/last" ]] || die "nothing fetched"
+	tag=$(<"$prefix/incoming/last")
+	valid_tag "$tag" || die "invalid tag: $tag"
+	name=$(asset_name "$tag")
+	src="$prefix/incoming/$tag"
+	[[ -f "$src/$name" && -f "$src/SHA256SUMS" ]] || die "incomplete download: $tag"
+	verify_sums "$src" "$tag" || die "checksum failed: $tag"
+	if ! list=$(tar_members "$src/$name"); then
+		die "cannot read tarball: $tag"
+	fi
+	while IFS= read -r p; do
+		[[ -z "$p" ]] && continue
+		if path_is_unsafe "$p"; then
+			die "unsafe path: $tag"
+		fi
+	done <<<"$list"
+	dest="$prefix/releases/$tag"
+	[[ -e "$dest" ]] && die "release exists: $tag"
+	mkdir -p "$prefix/releases"
+	tmp=$(mktemp -d "$prefix/releases/.unpack.XXXXXX")
+	# Default tar strips a leading / and does not follow -P. Members with .. are
+	# rejected above; symlinks are checked after extract.
+	if ! tar -C "$tmp" -xzf "$src/$name" --no-same-owner; then
+		chmod -R u+w "$tmp" 2>/dev/null || true
+		rm -rf "$tmp"
+		die "unpack failed: $tag"
+	fi
+	if ! layout_ok "$tmp"; then
+		chmod -R u+w "$tmp"
+		rm -rf "$tmp"
+		die "tarball layout: $tag"
+	fi
+	real=$(readlink -f "$tmp")
+	while IFS= read -r p; do
+		if ! got=$(readlink -f "$p"); then
+			chmod -R u+w "$tmp"
+			rm -rf "$tmp"
+			die "tarball link: $tag"
+		fi
+		case "$got" in
+		"$real" | "$real"/*) ;;
+		*)
+			chmod -R u+w "$tmp"
+			rm -rf "$tmp"
+			die "tarball escapes: $tag"
+			;;
+		esac
+	done < <(find "$tmp" -mindepth 1)
+	chmod -R a-w "$tmp"
+	if ! mv -T "$tmp" "$dest"; then
+		chmod -R u+w "$tmp" 2>/dev/null || true
+		rm -rf "$tmp"
+		die "install failed: $tag"
+	fi
+	printf '%s\n' "$tag" >>"$prefix/installed"
+	echo "installed $tag"
+}
+
+layout_ok() {
+	local root=$1 base
+	[[ -d "$root/bin" && -d "$root/web" && -d "$root/systemd" ]] || return 1
+	for base in "$root"/*; do
+		case "$(basename "$base")" in
+		bin | web | systemd) ;;
+		*) return 1 ;;
+		esac
+	done
+	return 0
+}
+
+# Releases that still exist, oldest first. A tag reinstalled later counts at
+# its latest install. /opt/mftiko/installed is that log (E12-D025, "最近").
+installed_order() {
+	local -a raw=() order=()
+	local -A once=()
+	local tag i
+	if [[ -f "$prefix/installed" ]]; then
+		while IFS= read -r tag || [[ -n "$tag" ]]; do
+			[[ -n "$tag" ]] && raw+=("$tag")
+		done <"$prefix/installed"
+	fi
+	for ((i = ${#raw[@]} - 1; i >= 0; i--)); do
+		tag=${raw[$i]}
+		[[ -d "$prefix/releases/$tag" ]] || continue
+		[[ -n "${once[$tag]:-}" ]] && continue
+		once[$tag]=1
+		order=("$tag" "${order[@]}")
+	done
+	if ((${#order[@]})); then
+		printf '%s\n' "${order[@]}"
+	fi
+}
+
+cmd_switch() {
+	local tag=$1
+	valid_tag "$tag" || die "invalid tag: $tag"
+	[[ -d "$prefix/releases/$tag" ]] || die "not installed: $tag"
+	run_migrate "$tag"
+	activate "$tag"
+	restart_enabled "$tag"
+	cmd_gc
+	echo "switched $tag"
+}
+
+cmd_rollback() {
+	local tag cur
+	[[ -f "$prefix/previous" ]] || die "no previous release"
+	tag=$(<"$prefix/previous")
+	valid_tag "$tag" || die "invalid previous: $tag"
+	[[ -d "$prefix/releases/$tag" ]] || die "previous release is gone: $tag"
+	if [[ -L "$prefix/current" ]]; then
+		cur=$(basename "$(readlink "$prefix/current")")
+		if [[ "$cur" == "$tag" ]]; then
+			echo "already $tag"
+			return 0
+		fi
+	fi
+	activate "$tag"
+	restart_enabled "$tag"
+	echo "rolled back $tag"
+}
+
+# The new binary, before current moves. Migrations only add (E12-D024), so the
+# still-running release keeps working if this fails and current stays put.
+# mftiko-migrate reads $DATABASE_URL, the same default as its -database flag.
+run_migrate() {
+	local tag=$1 bin
+	bin="$prefix/releases/$tag/bin/mftiko-migrate"
+	[[ -x "$bin" ]] || die "not executable: $bin"
+	if ! "$bin" up; then
+		die "mftiko-migrate up failed"
+	fi
+}
+
+activate() {
+	local tag=$1 old="" link
+	install_units "$prefix/releases/$tag/systemd"
+	echo "daemon-reload"
+	"$systemctl" daemon-reload || die "daemon-reload failed"
+	if [[ -L "$prefix/current" ]]; then
+		old=$(basename "$(readlink "$prefix/current")")
+	fi
+	link="$prefix/current.tmp.$$"
+	ln -s "releases/$tag" "$link"
+	if ! mv -Tf "$link" "$prefix/current"; then
+		rm -f "$link"
+		die "failed to point current at $tag"
+	fi
+	if [[ -n "$old" && "$old" != "$tag" ]]; then
+		printf '%s\n' "$old" >"$prefix/previous"
+	fi
+}
+
+install_units() {
+	local src=$1 base f
+	[[ -d "$src" ]] || return 0
+	mkdir -p "$systemd_dir"
+	for f in "$src"/*; do
+		base=$(basename "$f")
+		case "$base" in
+		*.service | *.socket | *.timer | *.target | *.path | *.mount | *.slice | *.service.d | *.socket.d | *.timer.d)
+			rm -rf "$systemd_dir/$base"
+			cp -a "$f" "$systemd_dir/$base"
+			;;
+		esac
+	done
+}
+
+unit_mentions() {
+	local file=$1 bin=$2 line
+	while IFS= read -r line || [[ -n "$line" ]]; do
+		[[ "$line" =~ ^[[:space:]]*# ]] && continue
+		[[ "$line" =~ ^[[:space:]]*ExecStart(Pre|Post)?[[:space:]]*= ]] || continue
+		[[ "$line" =~ (^|[^A-Za-z0-9_-])${bin}([^A-Za-z0-9_-]|$) ]] && return 0
+	done <"$file"
+	return 1
+}
+
+restart_enabled() {
+	local tag=$1 src="$prefix/releases/$tag/systemd"
+	local -A done=()
+	local bin f base
+	for bin in "${restart_bins[@]}"; do
+		for f in "$src"/*.service "$src"/*.socket; do
+			[[ -f "$f" ]] || continue
+			base=$(basename "$f")
+			[[ -n "${done[$base]:-}" ]] && continue
+			unit_mentions "$f" "$bin" || continue
+			done[$base]=1
+			if "$systemctl" is-enabled "$base" >/dev/null 2>&1; then
+				echo "restart $base"
+				"$systemctl" restart "$base" || die "restart failed: $base"
+			fi
+		done
+	done
+}
+
+cmd_gc() {
+	local -a exes=() order=()
+	local -A keep=()
+	local link target tag i start n d base real releases_real exe
+	[[ -d "$proc" ]] || die "cannot read $proc"
+	[[ -d "$prefix/releases" ]] || return 0
+	for link in "$proc"/[0-9]*/exe; do
+		target=$(readlink "$link" 2>/dev/null || true)
+		target=${target%" (deleted)"}
+		[[ -n "$target" ]] && exes+=("$target")
+	done
+	# Incomplete unpacks are not releases.
+	for d in "$prefix/releases"/.unpack.*; do
+		[[ -d "$d" ]] || continue
+		chmod -R u+w "$d" 2>/dev/null || true
+		rm -rf "$d"
+	done
+	releases_real=$(readlink -f "$prefix/releases")
+	while IFS= read -r tag; do
+		[[ -n "$tag" ]] && order+=("$tag")
+	done < <(installed_order)
+	n=${#order[@]}
+	if ((n > 3)); then
+		start=$((n - 3))
+	else
+		start=0
+	fi
+	for ((i = start; i < n; i++)); do
+		keep["${order[$i]}"]=1
+	done
+	if [[ -L "$prefix/current" ]]; then
+		tag=$(basename "$(readlink "$prefix/current")")
+		if [[ -d "$prefix/releases/$tag" ]]; then
+			keep[$tag]=1
+		fi
+	fi
+	for d in "$prefix/releases"/*; do
+		[[ -d "$d" ]] || continue
+		base=$(basename "$d")
+		[[ "$base" == .* ]] && continue
+		real=$(readlink -f "$d") || continue
+		if ((${#exes[@]})); then
+			for exe in "${exes[@]}"; do
+				case "$exe" in
+				"$real" | "$real"/*) keep[$base]=1 ;;
+				esac
+			done
+		fi
+	done
+	for d in "$prefix/releases"/*; do
+		[[ -d "$d" ]] || continue
+		base=$(basename "$d")
+		[[ "$base" == .* ]] && continue
+		[[ -n "${keep[$base]:-}" ]] && continue
+		real=$(readlink -f "$d") || die "cannot resolve $base"
+		[[ "$real" == "$releases_real/$base" ]] || die "refuse to delete $base"
+		chmod -R u+w "$d"
+		rm -rf "$d"
+		echo "gc: deleted $base"
+	done
+}
+
+cmd_list() {
+	local current_tag="" prev="" tag mark
+	local -a order=()
+	if [[ -L "$prefix/current" ]]; then
+		current_tag=$(basename "$(readlink "$prefix/current")")
+	fi
+	if [[ -f "$prefix/previous" ]]; then
+		prev=$(<"$prefix/previous")
+	fi
+	while IFS= read -r tag; do
+		[[ -n "$tag" ]] && order+=("$tag")
+	done < <(installed_order)
+	for ((i = ${#order[@]} - 1; i >= 0; i--)); do
+		tag=${order[$i]}
+		mark=$tag
+		[[ "$tag" == "$current_tag" ]] && mark+=" current"
+		[[ "$tag" == "$prev" ]] && mark+=" previous"
+		printf '%s\n' "$mark"
+	done
+}
+
+require_root
+mkdir -p "$prefix"
+prefix=$(readlink -f "$prefix")
+
+case "${1:-}" in
+fetch)
+	[[ $# -eq 2 ]] || usage
+	cmd_fetch "$2"
+	;;
+install)
+	[[ $# -eq 1 ]] || usage
+	cmd_install
+	;;
+switch)
+	[[ $# -eq 2 ]] || usage
+	cmd_switch "$2"
+	;;
+rollback)
+	[[ $# -eq 1 ]] || usage
+	cmd_rollback
+	;;
+gc)
+	[[ $# -eq 1 ]] || usage
+	cmd_gc
+	;;
+list)
+	[[ $# -eq 1 ]] || usage
+	cmd_list
+	;;
+*) usage ;;
+esac
