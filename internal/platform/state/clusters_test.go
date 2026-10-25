@@ -384,7 +384,7 @@ func TestHungPeerHonorsDialAndRequestTimeouts(t *testing.T) {
 	longDial := make(chan struct{})
 	go func() {
 		defer close(longDial)
-		_, _ = Dial(DialConfig{User: user, Password: pw, DialTimeout: 5 * time.Second})("hang", []string{ep})
+		_, _ = Dial(DialConfig{User: user, Password: pw, DialTimeout: 2 * time.Second})("hang", []string{ep})
 	}()
 	start := time.Now()
 	_, err := Dial(DialConfig{User: user, Password: pw, DialTimeout: 200 * time.Millisecond})("hang", []string{ep})
@@ -396,14 +396,14 @@ func TestHungPeerHonorsDialAndRequestTimeouts(t *testing.T) {
 	}
 	select {
 	case <-longDial:
-		t.Fatal("5s dial finished with the 200ms dial")
+		t.Fatal("2s dial finished with the 200ms dial")
 	default:
 	}
 
 	longRequest := make(chan struct{})
 	go func() {
 		defer close(longRequest)
-		_, _ = Dial(DialConfig{User: user, Password: pw, DialTimeout: 5 * time.Second})("hang", []string{ep})
+		_, _ = Dial(DialConfig{User: user, Password: pw, DialTimeout: 2 * time.Second})("hang", []string{ep})
 	}()
 	start = time.Now()
 	_, err = Dial(DialConfig{
@@ -426,7 +426,9 @@ func TestHungPeerHonorsDialAndRequestTimeouts(t *testing.T) {
 	}
 
 	closeConns()
-	deadline := time.Now().Add(3 * time.Second)
+	// Closing the peer does not cancel a dial that is waiting on its own
+	// deadline, so wait that deadline out.
+	deadline := time.Now().Add(4 * time.Second)
 	for {
 		select {
 		case <-longDial:

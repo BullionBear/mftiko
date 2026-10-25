@@ -28,10 +28,10 @@ type Region struct {
 }
 
 // Timeouts parses the optional durations (E12-D046). An empty string or a
-// zero duration is 0, which selects the caller's default: dial is DialTimeout,
-// request timeout adds no unary deadline, and the stale threshold is the
-// controller's 15s. A value that is not a Go duration, or is negative, is
-// ErrBadTopology. "0" is not a duration; "0s" is zero.
+// zero duration ("0", "0s") is 0, which selects the caller's default: dial is
+// DialTimeout, request timeout adds no unary deadline, and the stale threshold
+// is the controller's 15s. A value that is not a Go duration, or is negative,
+// is ErrBadTopology. The fields are strings, so a JSON number does not decode.
 func (r Region) Timeouts() (dial, request, stale time.Duration, err error) {
 	dial, err = optionalDuration("dial_timeout", r.DialTimeout)
 	if err != nil {

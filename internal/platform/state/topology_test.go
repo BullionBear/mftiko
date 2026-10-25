@@ -102,10 +102,12 @@ func TestRegionTimeouts(t *testing.T) {
 	if err != nil || dial != 0 || req != 0 || stale != 0 {
 		t.Fatalf("omitted: %s %s %s %v", dial, req, stale, err)
 	}
-	zero := Region{DialTimeout: "0s", RequestTimeout: "0s", StaleAfter: "0s"}
-	dial, req, stale, err = zero.Timeouts()
-	if err != nil || dial != 0 || req != 0 || stale != 0 {
-		t.Fatalf("zero: %s %s %s %v", dial, req, stale, err)
+	for _, raw := range []string{"0s", "0"} {
+		zero := Region{DialTimeout: raw, RequestTimeout: raw, StaleAfter: raw}
+		dial, req, stale, err = zero.Timeouts()
+		if err != nil || dial != 0 || req != 0 || stale != 0 {
+			t.Fatalf("zero %q: %s %s %s %v", raw, dial, req, stale, err)
+		}
 	}
 	set := Region{DialTimeout: "8s", RequestTimeout: "2s", StaleAfter: "20s"}
 	dial, req, stale, err = set.Timeouts()
@@ -116,7 +118,6 @@ func TestRegionTimeouts(t *testing.T) {
 	ep := []string{"http://127.0.0.1:1"}
 	bad := map[string]Region{
 		"not a duration": {Endpoints: ep, DialTimeout: "nope"},
-		"bare zero":      {Endpoints: ep, RequestTimeout: "0"},
 		"negative dial":  {Endpoints: ep, DialTimeout: "-1s"},
 		"negative stale": {Endpoints: ep, StaleAfter: "-1ms"},
 	}

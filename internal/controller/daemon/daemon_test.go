@@ -364,6 +364,14 @@ func TestStaleThresholdPerRegion(t *testing.T) {
 	cfg := config(topo, t.Name(), testLog(t))
 	cfg.StaleAfter = 30 * time.Second
 	cfg.StaleByRegion = map[string]time.Duration{"jp": time.Second}
+	// The published mark is recomputed on resync. A short probe freezes
+	// LastContact once the proxy is cut (E12-D046).
+	cfg.Resync = 50 * time.Millisecond
+	cfg.Mirror = state.MirrorOptions{
+		ProbeInterval: 100 * time.Millisecond,
+		MinBackoff:    50 * time.Millisecond,
+		MaxBackoff:    200 * time.Millisecond,
+	}
 	c := startAsync(t, ctx, cfg).ready(30 * time.Second)
 	waitFresh(t, c, "tw")
 	waitFresh(t, c, "jp")
