@@ -48,7 +48,7 @@ $D sweep <api_id>              # 結束演練 session，撤掉它們的 algo 留
 | 4 | TD 與交易所 | `cut exchange-td`，43 秒 | 行程內重連，不是 DEAD；不響 | `agent_up`、RUNNING、ack READY 都不變。斷線中送出的撤單，接回後 recon，回 `CANCEL_REJECTED` 120「cancel was not placed」；策略 10 秒後重送，`CANCELLED`；之後照常 | 通過 |
 | 4 | controller 與遠端 region | `cut ctl-jp2`，84 秒；中間在 sts-jp2-1 建一個 session | W9：維持現狀、不刪；`region_available` 維持 1 | controller 把 jp2 標成過舊，leader 1；jp2 上的 session 照常下單，什麼都沒刪；新 session 沒有 status，接回後 6 秒 `running` | 通過 |
 | 5 | Postgres 停機 | `docker stop` 演練的 Postgres，16 秒 | E10-D080：降級，恢復後補上 | `postgres_up` 0、`/readyz` 200；`session end` 成功（etcd）；`session delete`、`session create`、`record list` 回 503 `storage_unavailable`；`session list` 照常但沒有建立時間與建立者；跑著的 session 不受影響。恢復後 `postgres_up` 1，delete 成功，停機中結束的 session 的 record 是 closed | 通過 |
-| 6 | registry 不可用，spawn 新的 worker | `docker stop` registry；殺 conn worker 與策略 | 已就緒的版本照用（E12-D009） | `registry_up` 0；conn worker 與策略都從快取的 artifact 重拉。API 拒絕所有 session create（以 tag、已快取的 digest、新的 digest）：`registry is unavailable` → #402 | 通過 |
+| 6 | registry 不可用，spawn 新的 worker | `docker stop` registry；殺 conn worker 與策略 | 已就緒的版本照用（E12-D009） | `registry_up` 0；conn worker 與策略都從快取的 artifact 重拉。API 拒絕所有 session create（以 tag、已快取的 digest、新的 digest）：`registry is unavailable`，這是設計（E10-D012、E10-D057；#402） | 通過 |
 | 6 | agent 拉不到新版 | `cut registry-sts`；以沒拉過的 digest 建 session | 停在 pending，接回後自己接上 | `pending`，agent 每幾秒 `artifact pull will retry: artifact_unavailable`；接回 1 秒內拉到，5 秒後 `running`。`registry_up` 一直是 1（那是 API 的視角）→ #403 | 通過 |
 
 ## 發現的問題
@@ -59,9 +59,9 @@ $D sweep <api_id>              # 結束演練 session，撤掉它們的 algo 留
 | 2 | Binance 的帳號種類宣稱接受 hmac，但 adapter 只用 ed25519 簽：API 收下 HMAC 帳號，worker 每次連線都失敗，session `deps_timeout` | 修好（E12-D063） |
 | 3 | `SessionStatus.restart_count` 從來沒寫，一直是 0 | 修好（E12-D063） |
 | 4 | feed 在 conn worker 發不出 NATS 時仍是 READY | #401 |
-| 5 | registry 不可用時 API 拒絕所有 session create | #402 |
+| 5 | registry 不可用時 API 拒絕所有 session create | 照設計：建立時以 registry 驗證策略、不設快取（E10-D012、E10-D057）。#402 關閉，寫進 runbook §3.7 |
 | 6 | agent 拉不到 artifact 時沒有訊號 | #403 |
-| 7 | 沒有 `latest` tag 的策略 repository，STS 每分鐘 warn | #404 |
+| 7 | 沒有 `latest` tag 的策略 repository，STS 每分鐘 warn | #404，已由 E12-D072 修好 |
 | 8 | SYM 啟動後第一次 refresh 要等抖動後的間隔，新部署一開始解析不到商品 | #405 |
 
 ## runbook 以外的步驟

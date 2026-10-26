@@ -3909,7 +3909,7 @@ registry 不可用、`latest` 不存在、或尚未成功解析過，該 reposit
 - §2.3：agent 被 SIGKILL 或 OOM 時 lease 沒有 revoke，新 agent 等它過期，最多 15 秒才收養（實測 9–15 秒）。
 - §3.5：md 平面斷 NATS 時 feed 的 ack 仍是 READY，平台沒有訊號（#401）。
 - §3.6：Postgres 停機時 `session create`、`session delete`、`record list` 是 503；`session list` 沒有建立時間與建立者；`session end` 照常。
-- §3.7：registry 不可用時建不了 session（#402）；只有 agent 連不到 registry 時 `mftiko_registry_up` 仍是 1（#403）。
+- §3.7：registry 不可用時建不了 session，照 E10-D012、E10-D057 的設計（#402 以此關閉）；只有 agent 連不到 registry 時 `mftiko_registry_up` 仍是 1（#403）。
 
 E12-D061 列的「演練之前沒有實測」，除了主機重開，都在 testnet 上走過了。主機重開不做（E12-D062），STS 重開後的行為仍照 E12-D061 是待確認。
 
@@ -3917,7 +3917,7 @@ E12-D061 列的「演練之前沒有實測」，除了主機重開，都在 test
 
 - 程式：`deploy/drill`（`drill.sh`、`orders.py`、兩個 session 檔）、`examples/strategies/drill`，以及 E12-D063 的三個修正。
 - 演練清單的每一項都通過，紀錄在 `deploy/drill/README.md`：輪換四種行程、兩次換版、殺三個平面的 worker、`systemctl restart` 與 SIGKILL agent、四種斷網、Postgres 停機、registry 不可用（停容器、只擋 agent）。
-- 沒有在這張修的問題各開一張票：#401（feed 在 NATS 斷線時仍是 READY）、#402（registry 不可用時建不了 session）、#403（agent 拉不到 artifact 沒有訊號）、#404（沒有 `latest` 的 repository 每分鐘 warn）、#405（SYM 第一次 refresh 要等抖動的間隔）。
+- 沒有在這張修的問題各開一張票：#401（feed 在 NATS 斷線時仍是 READY）、#403（agent 拉不到 artifact 沒有訊號）、#404（沒有 `latest` 的 repository 每分鐘 warn，已由 E12-D072 修好）、#405（SYM 第一次 refresh 要等抖動的間隔）。
 - 策略在 `OnStop` 撤不了單（SDK 在 session 結束中拒絕），被殺的 incarnation 的掛單也留在交易所；演練結束用 `drill.sh sweep` 撤。
 - 演練環境留在兩台主機上，session 都已結束，帳號沒有掛單。拆除步驟在 README。
 - PROTOCOL 為 v1.75。
