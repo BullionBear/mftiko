@@ -104,39 +104,74 @@ func (b *fakeBus) view(t *testing.T, req *tdv1.ViewRequest) *tdv1.ViewReply {
 
 // fakeInstruments is a symbol table keyed by exch_ticker alone: the fake venues fill the rest of an
 // ExchKey unevenly. inactive are only found with includeInactive.
+// The book goroutine reads the tables while a test edits them, so every access takes mu.
 type fakeInstruments struct {
+	mu               sync.Mutex
 	active, inactive map[string]*symbol.Info
 	asked            atomic.Int32 // questions with includeInactive
 }
 
 func (f *fakeInstruments) Reverse(_ context.Context, k symbol.ExchKey, includeInactive bool) (*symbol.Info, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if i, ok := f.active[k.ExchTicker]; ok {
-		return i, nil
+		return cloneInfo(i), nil
 	}
 	if includeInactive {
 		f.asked.Add(1)
 		if i, ok := f.inactive[k.ExchTicker]; ok {
-			return i, nil
+			return cloneInfo(i), nil
 		}
 	}
 	return nil, errors.New("not found")
 }
 
 func (f *fakeInstruments) GetByUID(_ context.Context, uid uint32, includeInactive bool) (*symbol.Info, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	for _, i := range f.active {
 		if i.UID == uid {
-			return i, nil
+			return cloneInfo(i), nil
 		}
 	}
 	if includeInactive {
 		f.asked.Add(1)
 		for _, i := range f.inactive {
 			if i.UID == uid {
-				return i, nil
+				return cloneInfo(i), nil
 			}
 		}
 	}
 	return nil, errors.New("not found")
+}
+
+func (f *fakeInstruments) put(info *symbol.Info) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.active[info.ExchTicker] = info
+}
+
+func (f *fakeInstruments) edit(ticker string, fn func(*symbol.Info)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	fn(f.active[ticker])
+}
+
+func (f *fakeInstruments) drop(ticker string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.active, ticker)
+}
+
+func (f *fakeInstruments) uid(ticker string) uint32 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.active[ticker].UID
+}
+
+func cloneInfo(i *symbol.Info) *symbol.Info {
+	c := *i
+	return &c
 }
 
 func testInst(uid uint32, ticker string, size float64) *symbol.Info {
@@ -772,7 +807,7 @@ func (h *harness) matches() string {
 		gp[p.GetUid()] = p.GetSize()
 	}
 	for _, p := range h.v.Positions() {
-		wp[h.ins.active[p.Exch.ExchTicker].UID] = p.Size
+		wp[h.ins.uid(p.Exch.ExchTicker)] = p.Size
 	}
 	if !maps.Equal(gp, wp) {
 		return "positions " + fmt.Sprint(gp) + " vs " + fmt.Sprint(wp)
