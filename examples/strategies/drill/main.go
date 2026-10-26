@@ -10,6 +10,13 @@
 //
 // offset is a fraction of the best bid: 0.03 is 3% below it, inside BinanceUM's price band, so the
 // order is accepted and rests. A heartbeat line every 30 seconds shows the book still moving.
+//
+// The first OnRecon cancels every open order of algo_id on the account (BatchCancel, which needs the
+// account's cancel_batch from a recon): an earlier incarnation's working order stays on the exchange
+// when its worker is killed, since the platform does not cancel for the strategy (DECISIONS E06-D002).
+// OnStop cannot cancel (the SDK refuses orders once the session is stopping), so the working order
+// outlives the session. "sweep_only": true cancels and places nothing: run it before ending the drill
+// to leave no order behind.
 package main
 
 import (
@@ -34,6 +41,8 @@ type drillParams struct {
 	Offset float64 `json:"offset"`
 	Qty    float64 `json:"qty"`
 	CycleS float64 `json:"cycle_s"`
+	// SweepOnly cancels the algo's open orders at the first recon and places none.
+	SweepOnly bool `json:"sweep_only"`
 }
 
 const (
@@ -54,6 +63,7 @@ type drill struct {
 	cancelAt  time.Time // when the cancel was sent
 	books     int       // book updates since the last heartbeat
 	beatAt    time.Time
+	swept     bool // the first recon's leftovers were cancelled
 }
 
 func (d *drill) clock() time.Time {
@@ -89,13 +99,20 @@ func (d *drill) OnInit(ctx sdk.Context) error {
 	return nil
 }
 
-func (d *drill) OnStart(sdk.Context) error {
+func (d *drill) OnStart(ctx sdk.Context) error {
 	d.beatAt = d.clock()
 	d.log(line{Hook: "OnStart"})
 	return nil
 }
 
 func (d *drill) OnStop(sdk.Context) { d.log(line{Hook: "OnStop", Cloid: d.cloid}) }
+
+// cancelAll cancels the algo's open orders, this incarnation's and any an earlier one left.
+func (d *drill) cancelAll(ctx sdk.Context) {
+	if err := ctx.BatchCancel(d.p.APIID, d.p.AlgoID); err != nil {
+		d.log(line{Hook: "batch_cancel_error", Reason: err.Error()})
+	}
+}
 
 func (d *drill) OnBook(ctx sdk.Context, ev sdk.BookUpdate) {
 	if ev.UID != d.uid {
@@ -108,6 +125,7 @@ func (d *drill) OnBook(ctx sdk.Context, ev sdk.BookUpdate) {
 		d.books, d.beatAt = 0, now
 	}
 	switch {
+	case d.p.SweepOnly:
 	case d.cloid == "":
 		d.place(ctx, now)
 	case d.canceling && now.Sub(d.cancelAt) >= cancelRetry:
@@ -181,7 +199,11 @@ func (d *drill) OnFill(_ sdk.Context, ev sdk.FillEvent) {
 	d.log(line{Hook: "OnFill", Cloid: ev.Fill.GetClientOrderId()})
 }
 
-func (d *drill) OnRecon(_ sdk.Context, ev sdk.ReconEvent) {
+func (d *drill) OnRecon(ctx sdk.Context, ev sdk.ReconEvent) {
+	if !d.swept {
+		d.swept = true
+		d.cancelAll(ctx)
+	}
 	open := 0
 	if ev.Recon != nil {
 		open = len(ev.Recon.GetOpenOrders())

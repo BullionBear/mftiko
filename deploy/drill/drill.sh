@@ -8,11 +8,14 @@
 #
 #   drill.sh infra               users, nats-server and its config, the Postgres and registry containers
 #   drill.sh release TAG DIR     copy DIR's tarball and SHA256SUMS to both hosts, mftiko-release fetch, install
-#   drill.sh configure DIR       /etc/mftiko/* on both hosts from the bundle DIR (drill.sh bundle makes it)
-#   drill.sh bundle DIR          deployment JSON, topologies, env files and creds for both hosts, in DIR
-#   drill.sh status              units, NRestarts, readyz, metrics, instances
+#   drill.sh configure NATS TAG  /etc/mftiko/* on both hosts; NATS is mftiko-nats-dev's output plus
+#                                creds/sym.creds, TAG the installed release whose tools it runs
+#   drill.sh status              units, NRestarts, readyz, metrics, shim and worker PIDs
+#   drill.sh orders SINCE        each drill session's orders since SINCE (RFC 3339) and its longest gap
 #   drill.sh cut WHAT | uncut    network cuts: etcd-md, etcd-sts-b, nats-md, nats-sts-b, exchange-td, ctl-jp2,
 #                                registry-sts
+#   drill.sh session API_ID      create both drill sessions (sessions/*.yaml) and wait until they run
+#   drill.sh sweep API_ID        end the drill sessions, then cancel every order their algos left behind
 #   drill.sh a|b CMD...          run CMD on host A or B as root
 #
 # DRILL_A, DRILL_B are the ssh targets (root@cp, root@sys); DRILL_A_IP, DRILL_B_IP their private
@@ -288,10 +291,10 @@ status() {
 	a "for u in $units; do printf '%-18s %-9s %s restarts, main pid %s\n' \$u \$(systemctl is-active \$u) \$(systemctl show -p NRestarts --value \$u) \$(systemctl show -p MainPID --value \$u); done
 		printf 'readyz %s\n' \$(curl -s -o /dev/null -w '%{http_code}' http://$A_IP:$API_PORT/readyz)
 		curl -s http://$A_IP:$API_PORT/metrics | grep '^mftiko_' | grep -v ' 0\$'
-		ps -eo pid,user:12,etimes,args | grep -E '[m]ftiko-shim|[r]ootfs/bin/' | cut -c1-120"
+		ps -eo pid,user:12,etimes,args | awk '\$4 ~ /mftiko-shim\$/ || \$4 ~ /rootfs\\/bin\\//' | cut -c1-120"
 	echo "-- host B"
 	b "u=mftiko-sts-agent; printf '%-18s %-9s %s restarts, main pid %s\n' \$u \$(systemctl is-active \$u) \$(systemctl show -p NRestarts --value \$u) \$(systemctl show -p MainPID --value \$u)
-		ps -eo pid,user:12,etimes,args | grep -E '[m]ftiko-shim|[r]ootfs/bin/' | cut -c1-120"
+		ps -eo pid,user:12,etimes,args | awk '\$4 ~ /mftiko-shim\$/ || \$4 ~ /rootfs\\/bin\\//' | cut -c1-120"
 }
 
 # orders SINCE summarises both drill sessions' strategy logs from SINCE (RFC 3339 UTC) with orders.py.
@@ -331,8 +334,37 @@ uncut() {
 	echo "uncut at $(date -u +%FT%TZ)"
 }
 
+cli() { a "MFTIKO_CONTEXT=drill /usr/local/lib/mftiko-e12-12/mftiko $*"; }
+
+session() {
+	local s
+	for s in jp jp2; do
+		sed "s/API_ID/$1/" "$here/sessions/drill-$s.yaml" | cli session create -f - -wait running -wait-timeout 3m
+	done
+}
+
+# sweep ends every running drill session, then runs each one again with sweep_only: its first recon
+# cancels the algo's open orders, including those killed incarnations left (the platform does not
+# cancel for a strategy, E06-D002, and OnStop cannot). Then it ends those too.
+sweep() {
+	local id s
+	for id in $(cli session list | awk 'NR>1 && $2 ~ /^drill-/ && $3 == "running" {print $1}'); do
+		cli -yes session end "$id" -wait terminal -wait-timeout 90s
+	done
+	for s in jp jp2; do
+		sed -e "s/API_ID/$1/" -e "s/name: drill-$s/name: drill-$s-sweep/" -e 's/cycle_s: 10/cycle_s: 10\n  sweep_only: true/' \
+			"$here/sessions/drill-$s.yaml" | cli session create -f - -wait running -wait-timeout 3m
+	done
+	sleep 10 # the first recon and its BatchCancel
+	for id in $(cli session list | awk 'NR>1 && $2 ~ /-sweep$/ && $3 == "running" {print $1}'); do
+		cli -yes session end "$id" -wait terminal -wait-timeout 90s
+	done
+}
+
 case "${1:-}" in
 infra) infra ;;
+session) session "$2" ;;
+sweep) sweep "$2" ;;
 status) status ;;
 orders) orders "$2" ;;
 cut) cut "${2:-}" ;;

@@ -125,6 +125,31 @@ func TestDrillLog(t *testing.T) {
 	}
 }
 
+// The first recon cancels the algo's open orders, so an earlier incarnation's order does not stay on the
+// exchange. sweep_only then places nothing.
+func TestDrillCancelsLeftovers(t *testing.T) {
+	d, f, _, _ := started(t)
+	if len(f.batches) != 0 {
+		t.Fatalf("batch cancel %v before the first recon", f.batches)
+	}
+	recon := sdk.ReconEvent{TD: sdk.TD{APIID: 1}, Recon: &tdv1.Recon{}}
+	d.OnRecon(f, recon)
+	d.OnRecon(f, recon)
+	if strings.Join(f.batches, ",") != "1/2" {
+		t.Fatalf("batch cancels %v, want one at the first recon", f.batches)
+	}
+
+	f2 := &fakeCtx{params: []byte(strings.Replace(params, `"cycle_s":10`, `"cycle_s":10,"sweep_only":true`, 1)), book: tickBook{bid: 1_000_000}, bookOK: true}
+	d2 := &drill{out: &bytes.Buffer{}}
+	if err := d2.OnInit(f2); err != nil {
+		t.Fatal(err)
+	}
+	book1001(d2, f2)
+	if len(f2.submitted) != 0 {
+		t.Fatalf("sweep_only submitted %d", len(f2.submitted))
+	}
+}
+
 func TestDrillRejectsBadParams(t *testing.T) {
 	for _, p := range []string{`{`, `{"ticker":"BinanceUM_Perp_BTCUSDT","api_id":1,"algo_id":1,"offset":1,"qty":1,"cycle_s":1}`, `{"api_id":1}`} {
 		if err := (&drill{out: &bytes.Buffer{}}).OnInit(&fakeCtx{params: []byte(p)}); err == nil {
@@ -156,6 +181,7 @@ type fakeCtx struct {
 	submitted []sdk.Order
 	cancelled []string
 	open      []*tdv1.Order
+	batches   []string
 }
 
 func (f *fakeCtx) SessionID() string { return "c0ffee" }
@@ -177,10 +203,13 @@ func (f *fakeCtx) Cancel(_ int64, id string) error {
 	f.cancelled = append(f.cancelled, id)
 	return nil
 }
-func (f *fakeCtx) BatchCancel(int64, uint32, ...uint32) error { return nil }
-func (f *fakeCtx) RequestRecon(int64) error                   { return nil }
-func (f *fakeCtx) Order(int64, string) (*tdv1.Order, bool)    { return nil, false }
-func (f *fakeCtx) OpenOrders(int64, uint32) []*tdv1.Order     { return f.open }
+func (f *fakeCtx) BatchCancel(apiID int64, algoID uint32, _ ...uint32) error {
+	f.batches = append(f.batches, fmt.Sprintf("%d/%d", apiID, algoID))
+	return nil
+}
+func (f *fakeCtx) RequestRecon(int64) error                { return nil }
+func (f *fakeCtx) Order(int64, string) (*tdv1.Order, bool) { return nil, false }
+func (f *fakeCtx) OpenOrders(int64, uint32) []*tdv1.Order  { return f.open }
 func (f *fakeCtx) Position(int64, uint32) (*tdv1.Position, bool) {
 	return nil, false
 }

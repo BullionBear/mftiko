@@ -3,7 +3,7 @@ name: drill-jp
 sts_instance: sts-jp-1
 strategy:
   id: drill
-  ref: v1
+  ref: v5
 params:
   ticker: BinanceUM_Perp_BTCUSDT
   api_id: API_ID
