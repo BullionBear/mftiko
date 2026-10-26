@@ -1,0 +1,19 @@
+# CI test shards. One shard per line: <name> <package> [<package>...]
+#
+# A package is one path (./internal/api), not a ./... pattern. The shard
+# named rest lists no packages: it is every package in this module that
+# the other lines do not name, so a new package is tested without a
+# workflow edit. .github/scripts/test-shards.sh reads this file.
+#
+# The seven packages over 90s each have their own shard (measured for #416).
+# Move lines when a package's time changes. A package with no line of its
+# own runs in rest.
+
+sts-agent ./internal/sts/agent
+deploy ./deploy
+artifact ./internal/platform/artifact
+api ./internal/api
+daemon ./internal/controller/daemon
+state ./internal/platform/state
+md-agent ./internal/md/agent
+rest

@@ -25,7 +25,7 @@ func TestCatalogRoundTrip(t *testing.T) {
 	}
 	reg := newMemRegistry()
 	defer reg.Close()
-	img, err := PackStrategy(hostBinary(t), "hello", nil)
+	img, err := PackStrategy(strategyFixture(t), "hello", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestCatalogReadData(t *testing.T) {
 	}
 	reg := newMemRegistry()
 	defer reg.Close()
-	img, err := PackStrategy(hostBinary(t), "hello", nil)
+	img, err := PackStrategy(strategyFixture(t), "hello", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
