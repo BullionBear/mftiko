@@ -18,13 +18,17 @@ const latestTag = "latest"
 
 // latestState is the last resolve of one repository. ok is false when it has not succeeded, including
 // after a later failure (E12-D013): GC then keeps every recorded rootfs of that repository.
+// reason is that failure's artifact reason, or the error text when it has none (E12-D072).
+// It is empty when the last result succeeded. GC does not read it.
 type latestState struct {
 	ok     bool
 	digest string
+	reason string
 }
 
 // latestTags resolves latest for repositories that have a recorded rootfs (E12-D011, E12-D012).
 // One goroutine resolves at start and then every poll. GC reads the cache and does not call the registry.
+// Each repository logs a result on the first failure and when the result changes (E12-D072).
 type latestTags struct {
 	client *artifact.Client
 	poll   time.Duration
@@ -72,23 +76,50 @@ func (t *latestTags) resolve(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		t.mu.Lock()
-		prev := t.state[repo]
 		if err != nil || !digestOK(dig) {
-			t.state[repo] = latestState{}
-			t.mu.Unlock()
 			if err == nil {
 				err = fmt.Errorf("digest %q", dig)
 			}
-			t.log.Warn().Err(err).Str("repository", repo).Msg("latest not resolved")
+			t.noteUnresolved(repo, err)
 			continue
 		}
-		t.state[repo] = latestState{ok: true, digest: dig}
-		t.mu.Unlock()
-		if !prev.ok || prev.digest != dig {
-			t.log.Info().Str("repository", repo).Str("digest", dig).Msg("latest resolved")
-		}
+		t.noteResolved(repo, dig)
 	}
+}
+
+// noteUnresolved records a failed resolve. It logs warn on the first failure and when the result
+// changed (E12-D072): resolved to not resolved, or the failure reason changed. The same reason is
+// not logged again. The level stays warn.
+func (t *latestTags) noteUnresolved(repo string, err error) {
+	reason := failureReason(err)
+	t.mu.Lock()
+	prev, seen := t.state[repo]
+	t.state[repo] = latestState{reason: reason}
+	t.mu.Unlock()
+	if !seen || prev.ok || prev.reason != reason {
+		t.log.Warn().Err(err).Str("repository", repo).Msg("latest not resolved")
+	}
+}
+
+// noteResolved records a successful resolve. It logs info when this repository was not already
+// resolved to dig (E12-D072), including not resolved back to resolved and a moved digest.
+// The level stays info.
+func (t *latestTags) noteResolved(repo, dig string) {
+	t.mu.Lock()
+	prev := t.state[repo]
+	t.state[repo] = latestState{ok: true, digest: dig}
+	t.mu.Unlock()
+	if !prev.ok || prev.digest != dig {
+		t.log.Info().Str("repository", repo).Str("digest", dig).Msg("latest resolved")
+	}
+}
+
+// failureReason is the artifact reason. A failure that carries none uses the error text (E12-D072).
+func failureReason(err error) string {
+	if reason := artifact.ReasonOf(err); reason != "" {
+		return reason
+	}
+	return err.Error()
 }
 
 // protect is what GC adds for latest (E12-D011–E12-D013). It does not call the registry.
