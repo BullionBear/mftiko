@@ -30,7 +30,8 @@ func TestAccountKindsFromRegistry(t *testing.T) {
 		t.Fatalf("Okx %+v", okx)
 	}
 	um := byName["BinanceUM"]
-	if !um.supported || len(um.keyTypes) != 2 || um.keyTypes[0] != "hmac" || um.keyTypes[1] != "ed25519" {
+	// Binance kinds advertise only ed25519, the type the adapter signs with (E12-D076).
+	if !um.supported || len(um.keyTypes) != 1 || um.keyTypes[0] != "ed25519" {
 		t.Fatalf("BinanceUM %+v", um)
 	}
 }
