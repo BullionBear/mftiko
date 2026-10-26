@@ -76,7 +76,7 @@ up() {
 	tool setup -instance dev -topology /work/topology.json
 	tool creds -nats-dir /nats -out /work/observer.creds
 	if ! running /mftiko/mftiko-sym; then
-		run sh -c "nohup /mftiko/mftiko-sym -feeds '$feeds' >/work/sym.log 2>&1 &"
+		run sh -c "nohup /mftiko/mftiko-sym -feeds '$feeds' -nats-creds /nats/creds/sym-dev.creds >/work/sym.log 2>&1 &"
 		sleep 2
 	fi
 	tool refresh -venue "$venue" -ticker "$ticker"

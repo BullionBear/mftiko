@@ -55,6 +55,11 @@ func Check(dir, url string) error {
 			return err
 		}
 	}
+	for _, u := range lay.Manifest.Sym {
+		if err := checkSym(url, lay, u); err != nil {
+			return err
+		}
+	}
 	return checkAccountWorker(url, lay)
 }
 
@@ -297,6 +302,44 @@ func denyWorker(url string, worker *memUser) error {
 	return nil
 }
 
+// checkSym checks the SYM user (E12-D079): its change notice reaches a session, a session's
+// sym request is answered in the sym queue group, and it may not send requests, read its own
+// notices, publish a feed, or touch any inbox.
+func checkSym(url string, lay Layout, u User) error {
+	caller, err := newCaller(lay, u.Inst)
+	if err != nil {
+		return err
+	}
+	sym, err := dialCreds(url, filepath.Join(lay.Dir, filepath.FromSlash(u.Creds)), u.InboxPrefix)
+	if err != nil {
+		return fmt.Errorf("natsdev: sym %s: %w", u.Inst, err)
+	}
+	defer sym.Close()
+	sess, err := dialCaller(url, caller)
+	if err != nil {
+		return err
+	}
+	defer sess.Close()
+
+	// Binance.Perp is one venue and category; the tokens are only an example.
+	if err := deliver(sym, "sym.v1.changed.Binance.Perp", sess); err != nil {
+		return err
+	}
+	if err := denyOutside(url, lay, u, PlaneSym); err != nil {
+		return err
+	}
+	for _, d := range []denial{
+		{"publish sym", publishTo("sym")},
+		{"subscribe sym.v1.changed", subscribeTo("sym.v1.changed.>")},
+		{"publish md.v1.f", publishTo("md.v1.f." + u.Inst + ".trade.BTC")},
+	} {
+		if err := denyOnce(url, lay, u, d.what, d.do); err != nil {
+			return err
+		}
+	}
+	return roundTrip(url, caller, sym, "sym", "sym")
+}
+
 // denial is one publish or subscribe the user must be refused.
 type denial struct {
 	what string
@@ -483,8 +526,13 @@ func rejectAnonymous(url string) error {
 	return errors.New("natsdev: anonymous connect succeeded")
 }
 
+// dialCreds connects with a creds file. An empty inbox keeps the client default: the SYM
+// user has no inbox and sends no requests (E12-D079).
 func dialCreds(url, creds, inbox string) (*nats.Conn, error) {
-	opts := append(connectOpts(), nats.UserCredentials(creds), nats.CustomInboxPrefix(inbox))
+	opts := append(connectOpts(), nats.UserCredentials(creds))
+	if inbox != "" {
+		opts = append(opts, nats.CustomInboxPrefix(inbox))
+	}
 	nc, err := nats.Connect(url, opts...)
 	if err != nil {
 		return nil, err
@@ -530,15 +578,18 @@ func newCaller(lay Layout, inst string) (*memUser, error) {
 	}
 	account := strconv.Itoa(checkAPIID)
 	// Publish is only what this check calls. Subscribe is the feed, the bound account's events,
-	// and this session's inbox. No response permission: the caller does not answer requests.
+	// SYM's change notices, and this session's inbox. No response permission: the caller does
+	// not answer requests.
 	return signMem(lay, "session-"+checkSessionID, inbox, []string{
 		"md.v1.view." + inst + ".>",
 		"md.v1.fetch.>",
 		"td.order." + account,
 		"td.view." + account,
+		"sym",
 	}, []string{
 		"md.v1.f." + inst + ".>",
 		"td.evt." + account,
+		"sym.v1.changed.>",
 		inbox + ".>",
 	}, false)
 }
