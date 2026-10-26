@@ -11,7 +11,8 @@
 #   drill.sh configure DIR       /etc/mftiko/* on both hosts from the bundle DIR (drill.sh bundle makes it)
 #   drill.sh bundle DIR          deployment JSON, topologies, env files and creds for both hosts, in DIR
 #   drill.sh status              units, NRestarts, readyz, metrics, instances
-#   drill.sh cut WHAT | uncut    network cuts: etcd-md, etcd-sts-b, nats-md, exchange-td, ctl-jp2
+#   drill.sh cut WHAT | uncut    network cuts: etcd-md, etcd-sts-b, nats-md, nats-sts-b, exchange-td, ctl-jp2,
+#                                registry-sts
 #   drill.sh a|b CMD...          run CMD on host A or B as root
 #
 # DRILL_A, DRILL_B are the ssh targets (root@cp, root@sys); DRILL_A_IP, DRILL_B_IP their private
@@ -94,12 +95,17 @@ cd /root/e12-12/releases
 python3 -m http.server --bind 127.0.0.1 18765 >/dev/null 2>&1 & srv=\$!
 trap 'kill \$srv' EXIT
 sleep 1
+# fetch with the installed tool; install with the tarball's own, so a release whose installer was
+# fixed is installed by the fix (dd73a2d left its release 0700, #385).
+d=\$(mktemp -d); tar -xzf $tag/$tgz -C \$d bin/mftiko-release; new=\$d/bin/mftiko-release
 bin=/opt/mftiko/current/bin/mftiko-release
-[[ -x \$bin ]] || { d=\$(mktemp -d); tar -xzf $tag/$tgz -C \$d bin/mftiko-release; bin=\$d/bin/mftiko-release; }
+[[ -x \$bin ]] || bin=\$new
 if [[ -d /opt/mftiko/releases/$tag ]]; then echo "\$(hostname): $tag already installed"; exit 0; fi
 MFTIKO_RELEASE_BASE=http://127.0.0.1:18765 \$bin fetch $tag
-\$bin install
-\$bin list
+\$new install
+\$new list
+ls -ld /opt/mftiko/releases/$tag
+rm -rf \$d
 EOF
 	done
 }
@@ -309,7 +315,11 @@ cut() {
 	nats-sts-b) b "$(rule mftiko-sts "-p tcp -d $A_IP --dport $NATS_PORT")" ;;
 	exchange-td) a "$(rule mftiko-td "-p tcp ! -d 100.64.0.0/10 --dport 443")" ;;
 	ctl-jp2) a "$(rule mftiko-controller "-p tcp -d $B_IP --dport 2379")" ;;
-	*) echo "drill.sh: cut etcd-md|etcd-sts-b|nats-md|nats-sts-b|exchange-td|ctl-jp2" >&2 && return 1 ;;
+	# Docker DNATs host A's own connections to a published port before filter OUTPUT sees them: match
+	# the original destination there.
+	registry-sts) a "$(rule mftiko-sts "-p tcp -m conntrack --ctorigdst $A_IP --ctorigdstport $REG_PORT")" &&
+		b "$(rule mftiko-sts "-p tcp -d $A_IP --dport $REG_PORT")" ;;
+	*) echo "drill.sh: cut etcd-md|etcd-sts-b|nats-md|nats-sts-b|exchange-td|ctl-jp2|registry-sts" >&2 && return 1 ;;
 	esac
 	echo "cut $1 at $(date -u +%FT%TZ)"
 }
