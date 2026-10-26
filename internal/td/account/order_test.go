@@ -95,10 +95,9 @@ func rejectCode(r *tdv1.OrderReply) int32 { return r.GetCode() }
 func TestOrderLocalRejects(t *testing.T) {
 	h := start(t, setup{})
 	h.startReady()
-	other := testInst(11, "OTHER", 1)
-	other.Ticker.Venue = "Other"
-	h.ins.put(other)
-	h.ins.edit("ETHUSDT", func(i *symbol.Info) { i.Status = symbol.Halted })
+	h.ins.active["OTHER"] = testInst(11, "OTHER", 1)
+	h.ins.active["OTHER"].Ticker.Venue = "Other"
+	h.ins.active["ETHUSDT"].Status = symbol.Halted
 
 	cid := func(seq uint32) string { return mustCloid(t, 7, seq) }
 	q, p := 0.01, 100.0
@@ -825,7 +824,7 @@ func TestBatchCancelUnresolvable(t *testing.T) {
 	h.startReady()
 	btcID := h.place(7, 7, 62)
 	ethID := h.place(10, 7, 63)
-	h.ins.drop("BTCUSDT")
+	delete(h.ins.active, "BTCUSDT")
 	if r := h.batch(btcID, ethID); r.GetAccepted() || r.GetCode() != int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER) || r.GetReason() != reasonInstrument {
 		t.Fatalf("reply %+v", r)
 	}
