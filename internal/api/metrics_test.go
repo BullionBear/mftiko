@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"google.golang.org/protobuf/proto"
 
+	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
+	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
@@ -72,6 +76,9 @@ func TestRenderMetrics(t *testing.T) {
 		"mftiko_worker_phase{instance=\"sts-a\",phase=\"EXITED\",plane=\"sts\",region=\"tw\"} 0\n" +
 		"mftiko_worker_phase{instance=\"sts-a\",phase=\"LOST\",plane=\"sts\",region=\"tw\"} 0\n" +
 		"\n" +
+		"# HELP mftiko_worker_bus_up " + helpBus + "\n" +
+		"# TYPE mftiko_worker_bus_up gauge\n" +
+		"\n" +
 		"# HELP mftiko_region_available " + helpRegion + "\n" +
 		"# TYPE mftiko_region_available gauge\n" +
 		"mftiko_region_available{region=\"jp\"} 0\n" +
@@ -83,7 +90,13 @@ func TestRenderMetrics(t *testing.T) {
 		"\n" +
 		"# HELP mftiko_registry_up " + helpRegistry + "\n" +
 		"# TYPE mftiko_registry_up gauge\n" +
-		"mftiko_registry_up 1\n"
+		"mftiko_registry_up 1\n" +
+		"\n" +
+		"# HELP mftiko_artifact_pull_failing " + helpArtifactFailing + "\n" +
+		"# TYPE mftiko_artifact_pull_failing gauge\n" +
+		"\n" +
+		"# HELP mftiko_artifact_pull_fail_since_seconds " + helpArtifactSince + "\n" +
+		"# TYPE mftiko_artifact_pull_fail_since_seconds gauge\n"
 	if string(got) != want {
 		t.Fatalf("metrics:\n%s\nwant:\n%s", got, want)
 	}
@@ -144,6 +157,200 @@ func TestMetricsHTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d", rec.Code)
 	}
+}
+
+func TestArtifactPullMetrics(t *testing.T) {
+	digAB := sha256Repeat("ab")
+	digCD := sha256Repeat("cd")
+	digEF := sha256Repeat("ef")
+	dig12 := sha256Repeat("12")
+	dig34 := sha256Repeat("34")
+	dig56 := sha256Repeat("56")
+	dig78 := sha256Repeat("78")
+	dig90 := sha256Repeat("90")
+	early := int64(1_700_000_000) * int64(time.Second)
+	later := early + 2*int64(time.Second)
+
+	tw := state.View{Entries: map[string]state.Entry{
+		state.SessionSpecKey("sts-a", "a1b2c3"): {Value: mustSpec(t, digAB, &sessionv1.InputDecl{Name: "cfg", Digest: digCD, Repository: "data"})},
+		state.SessionStatusKey("sts-a", "a1b2c3"): {Value: mustStatus(t, &statev1.SessionStatus{
+			Phase: statev1.Phase_PHASE_PENDING,
+			Conditions: []*commonv1.Condition{
+				pullCond(digAB, 2, early+5),
+				{Type: "dependency", Status: false, Reason: "no_feed", Message: "1 " + dig90, AtNs: early},
+				{Type: artifactPullType, Status: true, Reason: "artifact_unavailable", Message: "1 " + dig90, AtNs: early},
+			},
+		})},
+		state.SessionSpecKey("sts-a", "c3d4e5"): {Value: mustSpec(t, digAB)},
+		state.SessionStatusKey("sts-a", "c3d4e5"): {Value: mustStatus(t, &statev1.SessionStatus{
+			Phase:      statev1.Phase_PHASE_PENDING,
+			Conditions: []*commonv1.Condition{pullCond(digAB, 9, later)},
+		})},
+		state.SessionSpecKey("sts-a", "d4e5f6"):   {Value: mustSpec(t, digCD)},
+		state.SessionStatusKey("sts-a", "d4e5f6"): {Value: mustStatus(t, &statev1.SessionStatus{Phase: statev1.Phase_PHASE_RUNNING})},
+		state.SessionSpecKey("sts-a", "e5f6a7"):   {Value: mustSpec(t, digEF)},
+		state.SessionStatusKey("sts-a", "e5f6a7"): {Value: mustStatus(t, &statev1.SessionStatus{
+			Phase:      statev1.Phase_PHASE_FAILED,
+			Reason:     "artifact_not_found",
+			Conditions: []*commonv1.Condition{pullCond(digEF, 1, early)},
+		})},
+		state.SessionSpecKey("sts-a", "f6a7b8"):   {Value: mustSpec(t, dig78)},
+		state.SessionStatusKey("sts-a", "f6a7b8"): {Value: []byte{0xff}},
+		state.SessionSpecKey("sts-a", "a7b8c9"):   {Value: mustSpec(t, dig12)},
+		state.SessionSpecKey("md-a", "aaaaaa"): {Value: mustStatus(t, &statev1.SessionStatus{
+			Phase:      statev1.Phase_PHASE_PENDING,
+			Conditions: []*commonv1.Condition{pullCond(dig56, 1, early)},
+		})},
+	}}
+	eu := state.View{Entries: map[string]state.Entry{
+		state.SessionSpecKey("sts-b", "b8c9d0"): {Value: mustSpec(t, dig34)},
+		state.SessionStatusKey("sts-b", "b8c9d0"): {Value: mustStatus(t, &statev1.SessionStatus{
+			Phase:      statev1.Phase_PHASE_PENDING,
+			Conditions: []*commonv1.Condition{pullCond(dig34, 1, early)},
+		})},
+	}}
+	cfg := Config{
+		Topology: state.Topology{Instances: map[string]string{"sts-a": "tw", "sts-b": "eu", "md-a": "tw"}},
+		Planes: map[string]state.Plane{
+			"sts-a": state.PlaneSTS, "sts-b": state.PlaneSTS, "md-a": state.PlaneMD,
+		},
+	}
+	obs := []regionObs{
+		{name: "tw", synced: true, view: tw},
+		{name: "eu", synced: false, view: eu},
+	}
+	got := string(renderMetrics(cfg, time.Unix(1_700_000_000, 0), obs, 0, 1))
+	wantFail := []string{
+		failLine(dig12, 0),
+		failLine(digAB, 1),
+		failLine(digCD, 0),
+	}
+	for _, line := range wantFail {
+		if !strings.Contains(got, line+"\n") {
+			t.Fatalf("missing %s\n%s", line, got)
+		}
+	}
+	wantSince := `mftiko_artifact_pull_fail_since_seconds{instance="sts-a",region="tw",digest="` + digAB + `"} 1700000000`
+	if !strings.Contains(got, wantSince+"\n") {
+		t.Fatalf("missing since\n%s", got)
+	}
+	if strings.Count(got, "mftiko_artifact_pull_fail_since_seconds{") != 1 {
+		t.Fatalf("since series:\n%s", got)
+	}
+	art := got[strings.Index(got, "# HELP mftiko_artifact_pull_failing"):]
+	for _, absent := range []string{digEF, dig34, dig56, dig78, dig90, `instance="sts-b"`, `instance="md-a"`} {
+		if strings.Contains(art, absent) {
+			t.Fatalf("unexpected %s\n%s", absent, art)
+		}
+	}
+}
+
+func sha256Repeat(pair string) string { return "sha256:" + strings.Repeat(pair, 32) }
+
+func failLine(dig string, v int) string {
+	return `mftiko_artifact_pull_failing{instance="sts-a",region="tw",digest="` + dig + `"} ` + strconv.Itoa(v)
+}
+
+func pullCond(dig string, fails int, at int64) *commonv1.Condition {
+	return &commonv1.Condition{
+		Type: artifactPullType, Reason: "artifact_unavailable",
+		Message: strconv.Itoa(fails) + " " + dig, AtNs: at,
+	}
+}
+
+func mustSpec(t *testing.T, code string, inputs ...*sessionv1.InputDecl) []byte {
+	t.Helper()
+	b, err := proto.Marshal(&sessionv1.SessionSpec{
+		Strategy: &sessionv1.StrategyRef{Code: code, Repository: "strategies/demo"},
+		Inputs:   inputs,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func mustStatus(t *testing.T, st *statev1.SessionStatus) []byte {
+	t.Helper()
+	b, err := proto.Marshal(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func TestWorkerBusMetrics(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	mdPrefix := state.WorkerStatusPrefix(state.PlaneMD, "md-a")
+	tdPrefix := state.WorkerStatusPrefix(state.PlaneTD, "td-a")
+	cfg := Config{
+		UnavailableAfter: 15 * time.Second,
+		Topology: state.Topology{Instances: map[string]string{
+			"md-a": "tw", "td-a": "jp",
+		}},
+		Planes: map[string]state.Plane{
+			"md-a": state.PlaneMD, "td-a": state.PlaneTD,
+		},
+	}
+	tw := state.View{Entries: map[string]state.Entry{
+		mdPrefix + "down":  {Value: mustBus(t, "md/b", true)},
+		mdPrefix + "up":    {Value: mustBus(t, "md/a", false)},
+		mdPrefix + "none":  {Value: mustPhase(t, "RUNNING")},
+		mdPrefix + "nokey": {Value: mustBus(t, "", false)},
+		mdPrefix + "odd":   {Value: mustBus(t, "a\"b\\c", false)},
+	}}
+	jp := state.View{Entries: map[string]state.Entry{
+		tdPrefix + "a": {Value: mustPhase(t, "RUNNING")},
+	}}
+	text := string(renderMetrics(cfg, now, []regionObs{
+		{name: "tw", synced: true, contact: now, view: tw},
+		{name: "jp", synced: false, view: jp},
+	}, 0, 0))
+	for _, want := range []string{
+		"mftiko_worker_bus_up{instance=\"md-a\",plane=\"md\",region=\"tw\",worker=\"a\\\"b\\\\c\"} 1\n",
+		"mftiko_worker_bus_up{instance=\"md-a\",plane=\"md\",region=\"tw\",worker=\"md/a\"} 1\n",
+		"mftiko_worker_bus_up{instance=\"md-a\",plane=\"md\",region=\"tw\",worker=\"md/b\"} 0\n",
+	} {
+		if !bytes.Contains([]byte(text), []byte(want)) {
+			t.Fatalf("missing %s in\n%s", want, text)
+		}
+	}
+	if bytes.Count([]byte(text), []byte("mftiko_worker_bus_up{")) != 3 {
+		t.Fatalf("series count\n%s", text)
+	}
+	up := strings.Index(text, "worker=\"md/a\"")
+	down := strings.Index(text, "worker=\"md/b\"")
+	if up < 0 || down < 0 || up > down {
+		t.Fatalf("sort\n%s", text)
+	}
+	stale := string(renderMetrics(cfg, now, []regionObs{{
+		name: "tw", synced: true, contact: now.Add(-15*time.Second - time.Nanosecond), view: tw,
+	}}, 0, 0))
+	if !bytes.Contains([]byte(stale), []byte("worker=\"md/a\"")) {
+		t.Fatalf("stale region dropped the series\n%s", stale)
+	}
+	unsynced := string(renderMetrics(cfg, now, []regionObs{{
+		name: "tw", synced: false, contact: now, view: tw,
+	}}, 0, 0))
+	if bytes.Contains([]byte(unsynced), []byte("mftiko_worker_bus_up{")) {
+		t.Fatalf("unsynced region emitted a series\n%s", unsynced)
+	}
+}
+
+func mustBus(t *testing.T, key string, down bool) []byte {
+	t.Helper()
+	b, err := proto.Marshal(&statev1.WorkerStatus{
+		Phase:  "RUNNING",
+		Worker: &commonv1.WorkerRef{Key: key},
+		Conditions: []*commonv1.Condition{{
+			Type:   condBusDisconnected,
+			Status: down,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }
 
 func mustPhase(t *testing.T, phase string) []byte {

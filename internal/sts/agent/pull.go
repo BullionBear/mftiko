@@ -62,6 +62,12 @@ type pullJob struct {
 	next     time.Time
 	running  bool
 	cancel   context.CancelFunc
+	// streak* is the continuous temporary-failure signal (E12-D068). It is not
+	// the backoff counter: fails and next stay as they are across success and
+	// permanent rejection (E12-D067).
+	streakFails  uint32
+	streakSince  time.Time
+	streakReason string
 }
 
 func newPuller(ctx context.Context, client *artifact.Client, dataDir string, maxBytes int64, log zerolog.Logger, now func() time.Time) *puller {
@@ -189,6 +195,7 @@ func (p *puller) finish(dig, rootfs string, m artifact.Manifest, err error) {
 	job.cancel = nil
 	if err == nil {
 		job.ready, job.rootfs, job.manifest, job.perm = true, rootfs, m, ""
+		clearStreak(&job.streakFails, &job.streakSince, &job.streakReason)
 		p.log.Info().Str("digest", dig).Str("rootfs", rootfs).Msg("artifact ready")
 		return
 	}
@@ -197,12 +204,36 @@ func (p *puller) finish(dig, rootfs string, m artifact.Manifest, err error) {
 	}
 	if artifact.Permanent(err) {
 		job.perm = artifact.ReasonOf(err)
+		clearStreak(&job.streakFails, &job.streakSince, &job.streakReason)
 		p.log.Warn().Str("digest", dig).Str("reason", job.perm).Err(err).Msg("artifact rejected")
 		return
 	}
+	now := p.now()
 	job.fails++
-	job.next = p.now().Add(pullBackoff.After(job.fails - 1))
+	job.next = now.Add(pullBackoff.After(job.fails - 1))
+	recordStreak(&job.streakFails, &job.streakSince, &job.streakReason, now, err)
 	p.log.Warn().Str("digest", dig).Uint32("fails", job.fails).Time("retry_at", job.next).Err(err).Msg("artifact pull will retry")
+}
+
+// recordStreak counts one temporary failure. since stays at the first failure of this streak.
+func recordStreak(fails *uint32, since *time.Time, reason *string, now time.Time, err error) {
+	if since.IsZero() {
+		*since = now
+		*fails = 0
+	}
+	*fails++
+	r := artifact.ReasonOf(err)
+	if r == "" {
+		r = artifact.ReasonUnavailable
+	}
+	*reason = r
+}
+
+// clearStreak drops the signal. The backoff counter is left alone (E12-D067).
+func clearStreak(fails *uint32, since *time.Time, reason *string) {
+	*fails = 0
+	*since = time.Time{}
+	*reason = ""
 }
 
 func digestOK(s string) bool {

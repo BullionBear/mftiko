@@ -989,7 +989,7 @@ type StrategyVersion struct {
 	Tags       []string `json:"tags"`
 }
 
-// Worker `WorkerStatus`。只在階段改變時寫（W7）。
+// Worker `WorkerStatus`。階段或 conditions 改變時寫（W7）。這個回應只列 phase；NATS bus 看 `mftiko_worker_bus_up`。
 type Worker struct {
 	Incarnation int         `json:"incarnation"`
 	Key         string      `json:"key"`
