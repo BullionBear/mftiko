@@ -504,7 +504,11 @@ type Report struct {
 	// 這條連線上每一筆 feed 的快照，完整清單。feed 是 topic.UniversalTicker。
 	// 不在活躍表，或這條 route 訂不了，是 REJECTED。在表上但不是 TRADABLE 是 PENDING，這輪不訂。
 	// channel 被交易所 ack 之後，掛在上面的每一筆 feed 是 SUBSCRIBED。
-	Feeds         []*FeedStatus `protobuf:"bytes,7,rep,name=feeds,proto3" json:"feeds,omitempty"`
+	Feeds []*FeedStatus `protobuf:"bytes,7,rep,name=feeds,proto3" json:"feeds,omitempty"`
+	// 發布用的 NATS 是否連著。沒填表示這個 worker 不上報（TD、STS，或還沒接到 bus）。
+	// md conn worker 在斷線與重連時都填，經 shim 的 socketpair 送出，不經 NATS（E12-D062）。
+	// 不改 feed 的 SUBSCRIBED：READY 仍是交易所 ack 過的訂閱（E12-D063）。
+	BusUp         *bool `protobuf:"varint,8,opt,name=bus_up,json=busUp,proto3,oneof" json:"bus_up,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -579,6 +583,13 @@ func (x *Report) GetFeeds() []*FeedStatus {
 		return x.Feeds
 	}
 	return nil
+}
+
+func (x *Report) GetBusUp() bool {
+	if x != nil && x.BusUp != nil {
+		return *x.BusUp
+	}
+	return false
 }
 
 type FeedStatus struct {
@@ -675,7 +686,7 @@ const file_mftiko_mdctl_v1_mdctl_proto_rawDesc = "" +
 	"\vexch_ticker\x18\x04 \x01(\tR\n" +
 	"exchTicker\x12\x1d\n" +
 	"\n" +
-	"price_tick\x18\x05 \x01(\x01R\tpriceTick\"\xf4\x01\n" +
+	"price_tick\x18\x05 \x01(\x01R\tpriceTick\"\x9b\x02\n" +
 	"\x06Report\x123\n" +
 	"\aapplied\x18\x01 \x01(\v2\x19.mftiko.common.v1.VersionR\aapplied\x12\x1d\n" +
 	"\n" +
@@ -683,7 +694,9 @@ const file_mftiko_mdctl_v1_mdctl_proto_rawDesc = "" +
 	"\x05state\x18\x03 \x01(\x0e2\x1a.mftiko.mdctl.v1.ConnStateR\x05state\x12\x16\n" +
 	"\x06reason\x18\x04 \x01(\tR\x06reason\x12\x19\n" +
 	"\bmsg_rate\x18\x06 \x01(\x01R\amsgRate\x121\n" +
-	"\x05feeds\x18\a \x03(\v2\x1b.mftiko.mdctl.v1.FeedStatusR\x05feeds\"j\n" +
+	"\x05feeds\x18\a \x03(\v2\x1b.mftiko.mdctl.v1.FeedStatusR\x05feeds\x12\x1a\n" +
+	"\x06bus_up\x18\b \x01(\bH\x00R\x05busUp\x88\x01\x01B\t\n" +
+	"\a_bus_up\"j\n" +
 	"\n" +
 	"FeedStatus\x12\x12\n" +
 	"\x04feed\x18\x01 \x01(\tR\x04feed\x120\n" +
@@ -749,6 +762,7 @@ func file_mftiko_mdctl_v1_mdctl_proto_init() {
 	file_mftiko_mdctl_v1_mdctl_proto_msgTypes[2].OneofWrappers = []any{
 		(*Command_Desired)(nil),
 	}
+	file_mftiko_mdctl_v1_mdctl_proto_msgTypes[5].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

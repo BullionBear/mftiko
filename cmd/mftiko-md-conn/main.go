@@ -66,6 +66,11 @@ func run() int {
 		return 10
 	}
 	defer nc.Close()
+	// Connect returned, so the bus starts up. Handlers only flip it. Reconnect
+	// reports up immediately and does not change ReconnectBufSize (E12-D065).
+	// The book can lag that by a few seconds.
+	bus := conn.NewBus(true)
+	conn.BindBus(bus, nc.OnDisconnect, nc.OnReconnect)
 
 	restOverrides, err := conn.RESTOverridesFromEnv()
 	if err != nil {
@@ -128,6 +133,7 @@ func run() int {
 		},
 		Log:     &log,
 		Release: buildinfo.Version,
+		Bus:     bus,
 	})
 }
 

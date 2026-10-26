@@ -25,13 +25,18 @@ const (
 	helpAgentUp  = "1 after the region's first sync when this instance's AgentRecord key exists."
 	helpLeader   = "1 after the controller region's first sync when its AgentRecord key exists."
 	helpPhase    = "WorkerStatus phase counts after the region's first sync. BACKOFF is demand PENDING; EXITED after give-up is demand DEAD; LOST keeps the last entry state."
+	helpBus      = "1 when WorkerStatus condition bus_disconnected has status false, 0 when it is true. No series when that condition is absent. mftiko does not time it."
 	helpRegion   = "1 when the region has finished its first sync and was contacted within unavailable_after."
 	helpPostgres = "1 when a scrape-time ping of the API Postgres pool succeeds."
 	helpRegistry = "1 when GET /v2/ on the configured registry returns 200."
+
 	// artifactPullType matches the STS SessionStatus condition (E12-D068). The API does not import the STS agent.
 	artifactPullType    = "artifact_pull"
 	helpArtifactFailing = "1 when a non-terminal STS session has an artifact_pull condition for this digest. 0 when a non-terminal session references the digest and it is not failing."
 	helpArtifactSince   = "Unix seconds of the earliest artifact_pull condition for this digest. Emitted only when the digest is failing."
+
+	// condBusDisconnected matches md agent's BusDisconnected. The API binary does not import that package.
+	condBusDisconnected = "bus_disconnected"
 )
 
 // knownPhases are the WorkerStatus phases (state.proto). Each is emitted, including zero.
@@ -115,6 +120,7 @@ func renderMetrics(cfg Config, now time.Time, obs []regionObs, postgresUp, regis
 	writeFamily(&b, "mftiko_agent_up", helpAgentUp, agentUpSamples(cfg, byRegion))
 	writeFamily(&b, "mftiko_controller_leader", helpLeader, leaderSamples(cfg, byRegion))
 	writeFamily(&b, "mftiko_worker_phase", helpPhase, phaseSamples(cfg, byRegion))
+	writeFamily(&b, "mftiko_worker_bus_up", helpBus, busSamples(cfg, byRegion))
 	writeFamily(&b, "mftiko_region_available", helpRegion, regionSamples(cfg, now, obs))
 	writeFamily(&b, "mftiko_postgres_up", helpPostgres, []string{gaugeLine("mftiko_postgres_up", nil, postgresUp)})
 	writeFamily(&b, "mftiko_registry_up", helpRegistry, []string{gaugeLine("mftiko_registry_up", nil, registryUp)})
@@ -255,6 +261,81 @@ func countPhases(view state.View, plane state.Plane, inst string) map[string]int
 		counts[st.Phase]++
 	}
 	return counts
+}
+
+type busSample struct {
+	inst   agentInst
+	worker string
+	up     int
+}
+
+// busSamples is one gauge per worker that carries condition bus_disconnected.
+// status true is 0 (down). status false is 1 (up). An empty worker key, a value
+// that does not unmarshal, and a worker without that condition are skipped, so
+// TD and STS do not appear as a false 1 (E12-D064).
+func busSamples(cfg Config, by map[string]regionObs) []string {
+	var samples []busSample
+	for _, inst := range agentInstances(cfg) {
+		o, ok := regionReady(by, inst.region)
+		if !ok {
+			continue
+		}
+		prefix := state.WorkerStatusPrefix(inst.plane, inst.name)
+		for key, ent := range o.view.Entries {
+			rest, ok := strings.CutPrefix(key, prefix)
+			if !ok || rest == "" || strings.Contains(rest, "/") {
+				continue
+			}
+			var st statev1.WorkerStatus
+			if proto.Unmarshal(ent.Value, &st) != nil {
+				continue
+			}
+			worker := st.GetWorker().GetKey()
+			if worker == "" {
+				continue
+			}
+			up, ok := busGauge(&st)
+			if !ok {
+				continue
+			}
+			samples = append(samples, busSample{inst: inst, worker: worker, up: up})
+		}
+	}
+	slices.SortFunc(samples, func(a, b busSample) int {
+		if c := strings.Compare(a.inst.name, b.inst.name); c != 0 {
+			return c
+		}
+		if c := strings.Compare(string(a.inst.plane), string(b.inst.plane)); c != 0 {
+			return c
+		}
+		if c := strings.Compare(a.inst.region, b.inst.region); c != 0 {
+			return c
+		}
+		return strings.Compare(a.worker, b.worker)
+	})
+	lines := make([]string, 0, len(samples))
+	for _, s := range samples {
+		lines = append(lines, gaugeLine("mftiko_worker_bus_up", [][2]string{
+			{"instance", s.inst.name},
+			{"plane", string(s.inst.plane)},
+			{"region", s.inst.region},
+			{"worker", s.worker},
+		}, s.up))
+	}
+	return lines
+}
+
+func busGauge(st *statev1.WorkerStatus) (int, bool) {
+	for _, c := range st.GetConditions() {
+		if c.GetType() != condBusDisconnected {
+			continue
+		}
+		if c.GetStatus() {
+			return 0, true
+		}
+		return 1, true
+	}
+	return 0, false
 }
 
 func regionSamples(cfg Config, now time.Time, obs []regionObs) []string {

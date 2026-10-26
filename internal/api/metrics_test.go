@@ -76,6 +76,9 @@ func TestRenderMetrics(t *testing.T) {
 		"mftiko_worker_phase{instance=\"sts-a\",phase=\"EXITED\",plane=\"sts\",region=\"tw\"} 0\n" +
 		"mftiko_worker_phase{instance=\"sts-a\",phase=\"LOST\",plane=\"sts\",region=\"tw\"} 0\n" +
 		"\n" +
+		"# HELP mftiko_worker_bus_up " + helpBus + "\n" +
+		"# TYPE mftiko_worker_bus_up gauge\n" +
+		"\n" +
 		"# HELP mftiko_region_available " + helpRegion + "\n" +
 		"# TYPE mftiko_region_available gauge\n" +
 		"mftiko_region_available{region=\"jp\"} 0\n" +
@@ -270,6 +273,80 @@ func mustSpec(t *testing.T, code string, inputs ...*sessionv1.InputDecl) []byte 
 func mustStatus(t *testing.T, st *statev1.SessionStatus) []byte {
 	t.Helper()
 	b, err := proto.Marshal(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func TestWorkerBusMetrics(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	mdPrefix := state.WorkerStatusPrefix(state.PlaneMD, "md-a")
+	tdPrefix := state.WorkerStatusPrefix(state.PlaneTD, "td-a")
+	cfg := Config{
+		UnavailableAfter: 15 * time.Second,
+		Topology: state.Topology{Instances: map[string]string{
+			"md-a": "tw", "td-a": "jp",
+		}},
+		Planes: map[string]state.Plane{
+			"md-a": state.PlaneMD, "td-a": state.PlaneTD,
+		},
+	}
+	tw := state.View{Entries: map[string]state.Entry{
+		mdPrefix + "down":  {Value: mustBus(t, "md/b", true)},
+		mdPrefix + "up":    {Value: mustBus(t, "md/a", false)},
+		mdPrefix + "none":  {Value: mustPhase(t, "RUNNING")},
+		mdPrefix + "nokey": {Value: mustBus(t, "", false)},
+		mdPrefix + "odd":   {Value: mustBus(t, "a\"b\\c", false)},
+	}}
+	jp := state.View{Entries: map[string]state.Entry{
+		tdPrefix + "a": {Value: mustPhase(t, "RUNNING")},
+	}}
+	text := string(renderMetrics(cfg, now, []regionObs{
+		{name: "tw", synced: true, contact: now, view: tw},
+		{name: "jp", synced: false, view: jp},
+	}, 0, 0))
+	for _, want := range []string{
+		"mftiko_worker_bus_up{instance=\"md-a\",plane=\"md\",region=\"tw\",worker=\"a\\\"b\\\\c\"} 1\n",
+		"mftiko_worker_bus_up{instance=\"md-a\",plane=\"md\",region=\"tw\",worker=\"md/a\"} 1\n",
+		"mftiko_worker_bus_up{instance=\"md-a\",plane=\"md\",region=\"tw\",worker=\"md/b\"} 0\n",
+	} {
+		if !bytes.Contains([]byte(text), []byte(want)) {
+			t.Fatalf("missing %s in\n%s", want, text)
+		}
+	}
+	if bytes.Count([]byte(text), []byte("mftiko_worker_bus_up{")) != 3 {
+		t.Fatalf("series count\n%s", text)
+	}
+	up := strings.Index(text, "worker=\"md/a\"")
+	down := strings.Index(text, "worker=\"md/b\"")
+	if up < 0 || down < 0 || up > down {
+		t.Fatalf("sort\n%s", text)
+	}
+	stale := string(renderMetrics(cfg, now, []regionObs{{
+		name: "tw", synced: true, contact: now.Add(-15*time.Second - time.Nanosecond), view: tw,
+	}}, 0, 0))
+	if !bytes.Contains([]byte(stale), []byte("worker=\"md/a\"")) {
+		t.Fatalf("stale region dropped the series\n%s", stale)
+	}
+	unsynced := string(renderMetrics(cfg, now, []regionObs{{
+		name: "tw", synced: false, contact: now, view: tw,
+	}}, 0, 0))
+	if bytes.Contains([]byte(unsynced), []byte("mftiko_worker_bus_up{")) {
+		t.Fatalf("unsynced region emitted a series\n%s", unsynced)
+	}
+}
+
+func mustBus(t *testing.T, key string, down bool) []byte {
+	t.Helper()
+	b, err := proto.Marshal(&statev1.WorkerStatus{
+		Phase:  "RUNNING",
+		Worker: &commonv1.WorkerRef{Key: key},
+		Conditions: []*commonv1.Condition{{
+			Type:   condBusDisconnected,
+			Status: down,
+		}},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

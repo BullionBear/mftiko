@@ -294,6 +294,24 @@ func TestAckDecision(t *testing.T) {
 	if !write || st != statev1.EntryState_ENTRY_STATE_READY || reason != "" {
 		t.Fatalf("ready %s %q", st, reason)
 	}
+	busDown := false
+	busRep, err := proto.Marshal(&mdctlv1.Report{
+		Feeds: []*mdctlv1.FeedStatus{{
+			Feed: feed, State: mdctlv1.FeedState_FEED_STATE_SUBSCRIBED,
+		}},
+		BusUp: &busDown,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withBus := map[agent.WorkerKey]agent.Observed{key: {
+		State: agent.StateRunning, Incarnation: 4,
+		Report: &workerv1.Report{Contract: conn.Contract, Payload: busRep},
+	}}
+	st, reason, write = decide(o, withBus, nil)
+	if !write || st != statev1.EntryState_ENTRY_STATE_READY || reason != "" {
+		t.Fatalf("bus down is still ready %s %q", st, reason)
+	}
 	pendingRep, err := proto.Marshal(&mdctlv1.Report{Feeds: []*mdctlv1.FeedStatus{{
 		Feed: feed, State: mdctlv1.FeedState_FEED_STATE_PENDING,
 	}}})

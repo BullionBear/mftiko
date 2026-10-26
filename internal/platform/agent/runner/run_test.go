@@ -746,3 +746,84 @@ func (s *safeLog) String() string {
 	defer s.mu.Unlock()
 	return s.b.String()
 }
+
+// Conditions ride on the same WorkerStatus write. An unchanged value is not written again.
+// A worker the hook leaves empty matches statusOf, which is what TD and STS encode.
+func TestConditionsRideOnWorkerStatus(t *testing.T) {
+	j := newJournal()
+	term := newTerm(j)
+	down := true
+	r := newRun(Config[string, h, h]{
+		Term:  term,
+		Fleet: newFleet(j),
+		Log:   zerolog.Nop(),
+		Conditions: func(o agent.Observed) []*commonv1.Condition {
+			if o.Key != "md/a" {
+				return nil
+			}
+			return []*commonv1.Condition{{Type: "bus_disconnected", Status: down}}
+		},
+	})
+	a := agent.Observed{Key: "md/a", State: agent.StateRunning}
+	b := agent.Observed{Key: "md/b", State: agent.StateRunning}
+	obs := map[agent.WorkerKey]agent.Observed{a.Key: a, b.Key: b}
+	if err := r.writeStatuses(context.Background(), nil, obs); err != nil {
+		t.Fatal(err)
+	}
+	if n := putCount(j); n != 2 {
+		t.Fatalf("puts %d, journal %q", n, j.all())
+	}
+	gotA := mustStatus(t, term, "md/a")
+	if gotA.GetPhase() != PhaseRunning || len(gotA.GetConditions()) != 1 {
+		t.Fatalf("status %+v", gotA)
+	}
+	cond := gotA.GetConditions()[0]
+	if cond.GetType() != "bus_disconnected" || !cond.GetStatus() || cond.GetAtNs() != 0 {
+		t.Fatalf("condition %+v", cond)
+	}
+	if term.val(statusKey("md/b")) != encode(statusOf(b, false, false, 0)) {
+		t.Fatal("worker without a condition changed encoding")
+	}
+	if err := r.writeStatuses(context.Background(), nil, obs); err != nil {
+		t.Fatal(err)
+	}
+	if n := putCount(j); n != 2 {
+		t.Fatalf("unchanged rewrite, puts %d", n)
+	}
+	down = false
+	if err := r.writeStatuses(context.Background(), nil, obs); err != nil {
+		t.Fatal(err)
+	}
+	if n := putCount(j); n != 3 {
+		t.Fatalf("flip puts %d", n)
+	}
+	gotA = mustStatus(t, term, "md/a")
+	if gotA.GetPhase() != PhaseRunning || gotA.GetConditions()[0].GetStatus() {
+		t.Fatalf("after reconnect %+v", gotA)
+	}
+}
+
+func putCount(j *journal) int {
+	n := 0
+	for _, e := range j.all() {
+		if strings.HasPrefix(e, "put ") {
+			n++
+		}
+	}
+	return n
+}
+
+func (t *fakeTerm) val(key string) string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.kv[key]
+}
+
+func mustStatus(t *testing.T, term *fakeTerm, key string) *statev1.WorkerStatus {
+	t.Helper()
+	st := &statev1.WorkerStatus{}
+	if err := proto.Unmarshal([]byte(term.val(statusKey(agent.WorkerKey(key)))), st); err != nil {
+		t.Fatal(err)
+	}
+	return st
+}

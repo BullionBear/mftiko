@@ -64,8 +64,9 @@ type Conn struct {
 	nc         *nats.Conn
 	reqTimeout time.Duration
 
-	mu        sync.Mutex
-	reconnect []func()
+	mu         sync.Mutex
+	reconnect  []func()
+	disconnect []func()
 }
 
 // Connect dials url, which may be a comma-separated list. The first attempt must succeed;
@@ -92,9 +93,10 @@ func Connect(url string, opt Options) (*Conn, error) {
 		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
 			if err != nil {
 				log.Warn("nats disconnected", "err", err)
-				return
+			} else {
+				log.Info("nats disconnected")
 			}
-			log.Info("nats disconnected")
+			c.notifyDisconnect()
 		}),
 		nats.ReconnectHandler(func(nc *nats.Conn) {
 			log.Info("nats reconnected", "url", nc.ConnectedUrlRedacted())
@@ -152,9 +154,31 @@ func (c *Conn) OnReconnect(fn func()) {
 	c.mu.Unlock()
 }
 
+// OnDisconnect registers fn, called when the client notices the server is gone,
+// on the client's callback goroutine. fn must not block, for the same reason as
+// OnReconnect. A nil fn is ignored. Callbacks stay registered until the
+// connection is discarded.
+func (c *Conn) OnDisconnect(fn func()) {
+	if c == nil || fn == nil {
+		return
+	}
+	c.mu.Lock()
+	c.disconnect = append(c.disconnect, fn)
+	c.mu.Unlock()
+}
+
 func (c *Conn) notifyReconnect() {
 	c.mu.Lock()
 	fns := append([]func(){}, c.reconnect...)
+	c.mu.Unlock()
+	for _, fn := range fns {
+		fn()
+	}
+}
+
+func (c *Conn) notifyDisconnect() {
+	c.mu.Lock()
+	fns := append([]func(){}, c.disconnect...)
 	c.mu.Unlock()
 	for _, fn := range fns {
 		fn()
