@@ -26,7 +26,7 @@ import (
 )
 
 func TestPackReproducible(t *testing.T) {
-	bin := hostBinary(t)
+	bin := strategyFixture(t)
 	env := map[string]string{"B": "2", "A": "1"}
 	a, err := PackStrategy(bin, "hello", env)
 	if err != nil {
@@ -63,7 +63,7 @@ func TestPackReproducible(t *testing.T) {
 }
 
 func TestPackLayerAndManifest(t *testing.T) {
-	bin := hostBinary(t)
+	bin := strategyFixture(t)
 	img, err := PackStrategy(bin, "hello", map[string]string{"Z": "9", "A": "1"})
 	if err != nil {
 		t.Fatal(err)
@@ -154,7 +154,7 @@ func TestPackLayerAndManifest(t *testing.T) {
 }
 
 func TestPackRefuses(t *testing.T) {
-	bin := hostBinary(t)
+	bin := strategyFixture(t)
 	if _, err := PackStrategy(bin, "", nil); err == nil {
 		t.Fatal("empty name packed")
 	}
@@ -219,7 +219,7 @@ func TestPackWorker(t *testing.T) {
 		t.Fatal("strategy has a fixed worker contract list")
 	}
 
-	bin := hostBinary(t)
+	bin := strategyFixture(t)
 	img, err := PackWorker(bin, KindMDConn, "mftiko-md-conn", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -345,9 +345,37 @@ func TestELFPlatform(t *testing.T) {
 	}
 }
 
+// The fixture is a strategy binary on every linux arch PackStrategy accepts.
+func TestStrategyFixtureArches(t *testing.T) {
+	for _, row := range elfArches {
+		buf := fakeStrategyELF(t, row.class, row.data, row.machine)
+		if len(buf) != strategyFixtureBytes {
+			t.Fatalf("%s: %d bytes", row.arch, len(buf))
+		}
+		osName, arch, err := elfPlatform(buf)
+		if err != nil || osName != "linux" || arch != row.arch {
+			t.Fatalf("%s: platform %s/%s %v", row.arch, osName, arch, err)
+		}
+		info, err := buildinfo.Read(bytes.NewReader(buf))
+		if err != nil {
+			t.Fatalf("%s: %v", row.arch, err)
+		}
+		if info.Main.Path != fixtureModule || info.Main.Version != fixtureVersion {
+			t.Fatalf("%s: module path %q version %q", row.arch, info.Main.Path, info.Main.Version)
+		}
+		got, err := embeddedContracts(buf)
+		if err != nil || !slices.Equal(got, sdk.Contracts()) {
+			t.Fatalf("%s: contracts %q %v", row.arch, got, err)
+		}
+		if _, err := PackStrategy(buf, "hello", nil); err != nil {
+			t.Fatalf("%s: pack %v", row.arch, err)
+		}
+	}
+}
+
 func TestPushPull(t *testing.T) {
 	t.Setenv("DOCKER_CONFIG", t.TempDir())
-	bin := hostBinary(t)
+	bin := strategyFixture(t)
 	img, err := PackStrategy(bin, "hello", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -372,7 +400,7 @@ func TestPushPull(t *testing.T) {
 
 func TestPackWorkerPush(t *testing.T) {
 	t.Setenv("DOCKER_CONFIG", t.TempDir())
-	bin := hostBinary(t)
+	bin := strategyFixture(t)
 	img, err := PackWorker(bin, KindMDConn, "mftiko-md-conn", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -429,7 +457,7 @@ func TestPushBasicAuth(t *testing.T) {
 	if err := os.WriteFile(dir+"/config.json", raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	bin := hostBinary(t)
+	bin := strategyFixture(t)
 	img, err := PackStrategy(bin, "hello", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -488,20 +516,172 @@ func fetchBlob(t *testing.T, r *remote.Repository, ref string) []byte {
 	return b
 }
 
-func hostBinary(t *testing.T) []byte {
+// strategyFixtureBytes is the size of the ELF the pack tests build and gzip.
+const strategyFixtureBytes = 4 << 10
+
+// strategyFixture is a linux ELF of strategyFixtureBytes with a Go build-info
+// blob and the SDK contracts marker. PackStrategy reads both, and the layer
+// tests compare the unpacked payload to these bytes.
+func strategyFixture(t *testing.T) []byte {
 	t.Helper()
 	if runtime.GOOS != "linux" {
-		t.Skip("the host binary is an ELF strategy only on linux")
+		t.Skip("the strategy fixture is a linux ELF")
 	}
-	exe, err := os.Executable()
+	class, data, machine := linuxELF(t)
+	buf := fakeStrategyELF(t, class, data, machine)
+	if len(buf) != strategyFixtureBytes {
+		t.Fatalf("strategy fixture is %d bytes", len(buf))
+	}
+	info, err := buildinfo.Read(bytes.NewReader(buf))
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := os.ReadFile(exe)
-	if err != nil {
-		t.Fatal(err)
+	if info.Main.Path != fixtureModule || info.Main.Version != fixtureVersion {
+		t.Fatalf("fixture module path %q version %q", info.Main.Path, info.Main.Version)
 	}
-	return b
+	ver, err := sdkVersion(buf)
+	if err != nil || ver != info.Main.Version {
+		t.Fatalf("fixture sdk %q, buildinfo %q, %v", ver, info.Main.Version, err)
+	}
+	got, err := embeddedContracts(buf)
+	if err != nil || !slices.Equal(got, sdk.Contracts()) {
+		t.Fatalf("fixture contracts %q %v", got, err)
+	}
+	osName, arch, err := elfPlatform(buf)
+	if err != nil || osName != runtime.GOOS || arch != runtime.GOARCH {
+		t.Fatalf("fixture platform %s/%s %v", osName, arch, err)
+	}
+	return buf
+}
+
+func linuxELF(t *testing.T) (elf.Class, elf.Data, elf.Machine) {
+	t.Helper()
+	for _, row := range elfArches {
+		if row.arch == runtime.GOARCH {
+			return row.class, row.data, row.machine
+		}
+	}
+	t.Fatalf("no strategy fixture for linux/%s", runtime.GOARCH)
+	return 0, 0, 0
+}
+
+// modinfoStart and modinfoEnd frame a Go module-info string. cmd/go writes
+// these 16-byte sentinels and debug/buildinfo strips them before parsing.
+var (
+	modinfoStart = []byte{
+		0x30, 0x77, 0xaf, 0x0c, 0x92, 0x74, 0x08, 0x02,
+		0x41, 0xe1, 0xc1, 0x07, 0xe6, 0xd6, 0x18, 0xe6,
+	}
+	modinfoEnd = []byte{
+		0xf9, 0x32, 0x43, 0x31, 0x86, 0x18, 0x20, 0x72,
+		0x00, 0x82, 0x42, 0x10, 0x41, 0x16, 0xd8, 0xf2,
+	}
+)
+
+const (
+	fixtureModule  = "github.com/BullionBear/mftiko"
+	fixtureVersion = "v0.0.0"
+	fixtureGo      = "go1.0"
+	// buildInfoInline is the Go 1.18 build-info header flag: version and
+	// module strings follow the 32-byte header, length-prefixed.
+	buildInfoInline = 0x2
+	// buildInfoHeaderPad fills that header after the 14-byte magic, the
+	// pointer-size byte, and the flags byte.
+	buildInfoHeaderPad = 16
+)
+
+func strategyBuildInfo() []byte {
+	modText := "path\t" + fixtureModule + "/fixture\n" +
+		"mod\t" + fixtureModule + "\t" + fixtureVersion + "\n"
+	mod := append(append(append([]byte{}, modinfoStart...), modText...), modinfoEnd...)
+
+	const magic = "\xff Go buildinf:"
+	var buf bytes.Buffer
+	buf.WriteString(magic)
+	buf.WriteByte(0) // pointer size; unused when the strings are inline
+	buf.WriteByte(buildInfoInline)
+	buf.Write(make([]byte, buildInfoHeaderPad))
+	var n [binary.MaxVarintLen64]byte
+	buf.Write(n[:binary.PutUvarint(n[:], uint64(len(fixtureGo)))])
+	buf.WriteString(fixtureGo)
+	buf.Write(n[:binary.PutUvarint(n[:], uint64(len(mod)))])
+	buf.Write(mod)
+	buf.WriteString(marker)
+	return buf.Bytes()
+}
+
+func fakeStrategyELF(t *testing.T, class elf.Class, data elf.Data, machine elf.Machine) []byte {
+	t.Helper()
+	var order binary.ByteOrder = binary.LittleEndian
+	if data == elf.ELFDATA2MSB {
+		order = binary.BigEndian
+	}
+	buf := make([]byte, strategyFixtureBytes)
+	copy(buf, elfIdent(class, data, elf.ELFOSABI_NONE, uint16(machine)))
+
+	var payloadOff int
+	switch class {
+	case elf.ELFCLASS64:
+		payloadOff = 128
+		order.PutUint64(buf[32:], 64) // e_phoff
+		order.PutUint16(buf[52:], 64) // e_ehsize
+		order.PutUint16(buf[54:], 56) // e_phentsize
+		order.PutUint16(buf[56:], 1)  // e_phnum
+		filesz := uint64(strategyFixtureBytes - payloadOff)
+		ph := elf.Prog64{
+			Type:   uint32(elf.PT_LOAD),
+			Flags:  uint32(elf.PF_R | elf.PF_W),
+			Off:    uint64(payloadOff),
+			Vaddr:  0x400000,
+			Paddr:  0x400000,
+			Filesz: filesz,
+			Memsz:  filesz,
+			Align:  16,
+		}
+		var phbuf bytes.Buffer
+		if err := binary.Write(&phbuf, order, ph); err != nil {
+			t.Fatal(err)
+		}
+		if phbuf.Len() != 56 {
+			t.Fatalf("program header is %d bytes", phbuf.Len())
+		}
+		copy(buf[64:], phbuf.Bytes())
+	case elf.ELFCLASS32:
+		payloadOff = 96
+		order.PutUint32(buf[28:], 52) // e_phoff
+		order.PutUint16(buf[40:], 52) // e_ehsize
+		order.PutUint16(buf[42:], 32) // e_phentsize
+		order.PutUint16(buf[44:], 1)  // e_phnum
+		filesz := uint32(strategyFixtureBytes - payloadOff)
+		ph := elf.Prog32{
+			Type:   uint32(elf.PT_LOAD),
+			Off:    uint32(payloadOff),
+			Vaddr:  0x400000,
+			Paddr:  0x400000,
+			Filesz: filesz,
+			Memsz:  filesz,
+			Flags:  uint32(elf.PF_R | elf.PF_W),
+			Align:  16,
+		}
+		var phbuf bytes.Buffer
+		if err := binary.Write(&phbuf, order, ph); err != nil {
+			t.Fatal(err)
+		}
+		if phbuf.Len() != 32 {
+			t.Fatalf("program header is %d bytes", phbuf.Len())
+		}
+		copy(buf[52:], phbuf.Bytes())
+	default:
+		t.Fatalf("elf class %d", class)
+	}
+	payload := strategyBuildInfo()
+	if payloadOff+len(payload) > len(buf) {
+		t.Fatalf("payload of %d bytes does not fit", len(payload))
+	}
+	// The load segment starts on a 16-byte virtual address, and the build-info
+	// magic is its first bytes, which is where debug/buildinfo looks.
+	copy(buf[payloadOff:], payload)
+	return buf
 }
 
 func elfIdent(class elf.Class, data elf.Data, abi elf.OSABI, machine uint16) []byte {
