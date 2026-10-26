@@ -459,6 +459,11 @@ func TestCrashWhileAgentDownStillRestarts(t *testing.T) {
 			t.Fatalf("terminal before the restart: phases %v, status %s", hist, describeStatus(e.status(id)))
 		}
 	}
+	// restart_count is this agent's restarts: the first agent made none (#385).
+	pollUntil(t, "restart_count after the restart", func() bool { return e.status(id).GetRestartCount() >= 1 })
+	if got, starts := e.status(id).GetRestartCount(), e.starts(id); int(got) > starts-1 {
+		t.Fatalf("restart_count %d with %d starts", got, starts)
+	}
 }
 
 // A worker that stops beating is SIGKILLed with no Stop. The shim records the

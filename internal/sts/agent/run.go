@@ -455,6 +455,7 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 		}
 		msg := &statev1.SessionStatus{
 			ObservedGeneration: rev, Phase: phase, Reason: reason, UpdatedAtNs: now.UnixNano(),
+			RestartCount: ev.restarts,
 		}
 		if obs != nil {
 			msg.Incarnation = obs.Incarnation

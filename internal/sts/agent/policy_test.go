@@ -49,12 +49,15 @@ func TestPolicyRestartOutcomes(t *testing.T) {
 	if !again || wait != time.Millisecond {
 		t.Fatalf("crash again %v wait %s", again, wait)
 	}
-	if view := p.statusEnd("s"); !view.restarting || view.reason != "crash" {
+	if view := p.statusEnd("s"); !view.restarting || view.reason != "crash" || view.restarts != 1 {
 		t.Fatalf("crash view %+v", view)
 	}
 	again, wait = p.Restart(key, endedExit(commonv1.Outcome_OUTCOME_CRASHED, "crash", 0, 3))
 	if !again || wait != 8*time.Millisecond {
 		t.Fatalf("grown backoff again %v wait %s", again, wait)
+	}
+	if view := p.statusEnd("s"); view.restarts != 2 {
+		t.Fatalf("restart_count %d after two restarts, want 2", view.restarts)
 	}
 
 	if again, _ = p.Restart(key, endedExit(commonv1.Outcome_OUTCOME_DONE, "exit", 0, 0)); again {
@@ -90,8 +93,8 @@ func TestPolicyRestartLimitSlides(t *testing.T) {
 		t.Fatal("third restart was allowed")
 	}
 	view := p.statusEnd("s")
-	if view.restarting || view.terminalReason != ReasonRestartLimit {
-		t.Fatalf("limit view %+v", view)
+	if view.restarting || view.terminalReason != ReasonRestartLimit || view.restarts != 2 {
+		t.Fatalf("limit view %+v (the refused restart is not counted)", view)
 	}
 
 	now = now.Add(11 * time.Second)
