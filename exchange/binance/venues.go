@@ -74,10 +74,11 @@ func Declare() exchange.Declaration {
 	}
 	for _, k := range []kind{kindSpot, kindUM, kindCM, kindEO, kindPM} {
 		d.AccountKinds = append(d.AccountKinds, exchange.AccountKind{
-			Name:     k.name,
-			Label:    k.label,
-			Trades:   k.trades,
-			KeyTypes: []exchange.KeyType{exchange.KeyHMAC, exchange.KeyEd25519},
+			Name:   k.name,
+			Label:  k.label,
+			Trades: k.trades,
+			// The adapter signs with ed25519 only (E03-D003); an HMAC account would never connect (#385).
+			KeyTypes: []exchange.KeyType{exchange.KeyEd25519},
 			Account:  accountFactory(k),
 			History:  historyFactory(k),
 		})

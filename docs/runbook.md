@@ -69,6 +69,8 @@ etcdctl endpoint health
 
    第一次部署用 tarball 裡的 `bin/mftiko-release`；之後用 `/opt/mftiko/current/bin/mftiko-release`。
 
+   **`dd73a2d` 與更早的 `mftiko-release` 把裝好的 release 留成 0700**，服務的使用者執行不了，`switch` 之後每個 unit 都 `Permission denied`（E12-D076）。從這種版本換版時，install 用新版 tarball 裡的 `bin/mftiko-release`；已經裝好的就 `chmod 0555 /opt/mftiko/releases/<tag>`。確認：`ls -ld /opt/mftiko/releases/<tag>` 是 `dr-xr-xr-x`。
+
 2. **先主機 A，再主機 B**：`mftiko-release switch <tag>`。它先 `mftiko-migrate up`，失敗就什麼都不動；再裝 unit、換 `current`，依序重啟 SYM、md.fetch、API、controller、md、td、sts agent（[release.md](release.md#mftiko-release)）。主機 B 的 `DATABASE_URL` 指到主機 A 的 Postgres。
 3. **確認**，每台 switch 之後：
    - `mftiko-release list` 的 `current` 是新版。
@@ -96,6 +98,7 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 ```
 
 - agent：舊 agent 停下時 revoke lease，`AgentRecord` 立刻消失；新 agent 當選後收養 shim（`shims adopted`），worker 的 phase 維持 `RUNNING`。
+- agent 被 SIGKILL（或 OOM）時沒有 revoke：systemd 立刻拉起來，但新 agent 要等舊的選主 lease 過期，最多 15 秒才收養。testnet 實測 9–15 秒（E12-D077）。
 - controller：新的當選、重新 list 之後只改有差異的需求（N6），不先刪光。
 - 確認：`NRestarts` 不增加（手動的 `restart` 不算進去；增加表示新行程起來之後又退出了），`mftiko_agent_up` 或 `mftiko_controller_leader` 回到 1。
 
@@ -197,7 +200,7 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 | agent ↔ 它的 etcd | lease 到期後 `MftikoAgentDown`（API 仍看得到該 region） | 會：連回來後重新參選、收養 | 修網路。worker 照跑 |
 | API ↔ 某個 region 的 etcd | `MftikoRegionUnavailable`，`/readyz` 503 | 會 | 修網路。agent 的 0 不另外叫 |
 | controller ↔ 遠端 region | 只斷 controller 時不響；API 也斷時 `MftikoRegionUnavailable` | 會 | controller 維持現狀，不刪那裡的需求（W9、E13-D006）。修網路 |
-| md conn worker ↔ NATS | `mftiko_worker_bus_up` 變 0，`MftikoWorkerBusDown`（範例 `for: 15s`）。`mftiko_agent_up` 維持 1，phase 維持 `RUNNING`，feed ack 維持 `READY`。TD、STS 沒有這個系列 | 會。重連 handler 一觸發 gauge 回到 1，不等緩衝排空。訂單簿要幾秒才追上 | 修網路。看 conn worker 的 stderr |
+| md conn worker ↔ NATS | `mftiko_worker_bus_up` 變 0，`MftikoWorkerBusDown`（範例 `for: 15s`）。`mftiko_agent_up` 維持 1，phase 維持 `RUNNING`，feed ack 維持 `READY`。TD、STS 沒有這個系列 | 會。重連 handler 一觸發 gauge 回到 1，不等緩衝排空。訂單簿要幾秒才追上 | 修網路。看 conn worker 的 stderr。斷線期間策略收不到行情 |
 | worker ↔ 交易所 | 不響。行程內重連（MD 的 `conn_epoch`、TD 的 `DEGRADED`），不是 `DEAD` | 會 | 看 worker 的 stderr 與交易所狀態 |
 
 - 斷線不需要重啟任何服務。重啟反而讓 agent 失去 term，worker 還是照跑。
@@ -207,7 +210,7 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 
 告警：`MftikoPostgresDown`。`/readyz` 不看 Postgres，不變。
 
-- API 降級（E10-D080）：保留期掃描跳過，`DELETE /sessions/{id}` 回 503 `storage_unavailable`，恢復後補上。已經在跑的 session 不受影響。
+- API 降級（E10-D080）：保留期掃描跳過；`session create`、`session delete`、`record list` 回 503 `storage_unavailable`；`session list` 照常，但沒有建立時間與建立者；`session end` 照常（只寫 etcd）。已經在跑的 session 不受影響。恢復後自己補上，停機中結束的 session 的 record 是 closed（E12-D077）。
 - SYM 也用這個 Postgres（`DATABASE_URL`），看 `journalctl -u mftiko-sym`。
 - `mftiko-release switch` 會在 migrate 失敗，不要在這時候換版。
 - 做：`systemctl status postgresql`、`journalctl -u postgresql`；磁碟滿見 [§3.8](#38-磁碟快滿)。恢復後不用重啟 API，下一輪掃描補上。
@@ -217,13 +220,14 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 
 告警：`MftikoRegistryDown`。
 
-- 已經在跑的 worker 不受影響。已經有就緒版本的 agent 照用那一版 spawn（E12-D009）。
+- 已經在跑的 worker 不受影響。已經有就緒版本的 agent 照用那一版 spawn（E12-D009）：worker 被殺照樣從快取重拉。
+- **新的 session 建不了。** API 建立時要從 registry 解析策略，以 tag 或 digest 都回 `registry is unavailable`。這是設計：建立時以 registry 驗證策略，API 不設快取（E10-D012、E10-D057）。
 - 一個就緒版本都沒有時（新主機、新的 conn 或 account 種類、新策略），需求維持 `PENDING`，reason 是 `artifact_pulling` 或 `artifact_unavailable`，不會變 `DEAD`。registry 恢復就自己接上。
 - 401、403：`MFTIKO_REGISTRY_CREDS` 指的 `config.json` 過期或沒有權限。更新檔案（0600，屬該服務的使用者）再重啟該 agent。
-- **只有 agent 連不到 registry。** `mftiko_registry_up` 維持 1，所以 `MftikoRegistryDown` 不響。新 session 維持 `pending`。`SessionStatus` 有 `artifact_pull`（失敗次數與第一次失敗時間），`mftiko_artifact_pull_failing` 是 1。告警是 `MftikoArtifactPullFailing`（範例 `for: 5m`）。
+- **只有 agent 連不到 registry。** `mftiko_registry_up` 是 API 自己探的結果，維持 1，所以 `MftikoRegistryDown` 不響。新 session 維持 `pending`。`SessionStatus` 有 `artifact_pull`（失敗次數與第一次失敗時間），`mftiko_artifact_pull_failing` 是 1。告警是 `MftikoArtifactPullFailing`（範例 `for: 5m`）。agent 的 log 是 `artifact pull will retry: artifact_unavailable`。
 - **先看：** 那台 STS agent 主機到 registry 的網路，以及該服務的 registry 帳密檔（`MFTIKO_REGISTRY_CREDS` 指到的 `config.json`，mode 0600）。agent 會照原退避繼續拉，不用為了這個訊號重啟。
 - 恢復：condition 清掉，`mftiko_artifact_pull_failing` 回到 0。被拒絕的 artifact 仍是 `FAILED`，沒有這個 gauge。
-- 確認：`mftiko_registry_up` 是 1，`PENDING` 的需求變 `READY`。`MftikoArtifactPullFailing` 解除時，`mftiko_artifact_pull_failing` 是 0。
+- 確認：`mftiko_registry_up` 是 1，`PENDING` 的需求變 `READY`，`pending` 的 session 變 `running`。`MftikoArtifactPullFailing` 解除時，`mftiko_artifact_pull_failing` 是 0。
 
 ### 3.8 磁碟快滿
 

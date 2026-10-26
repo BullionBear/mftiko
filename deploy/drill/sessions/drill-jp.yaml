@@ -1,0 +1,24 @@
+# The E12-12 drill session on sts-jp-1 (deploy/drill/README.md). drill.sh session fills in API_ID.
+name: drill-jp
+sts_instance: sts-jp-1
+strategy:
+  id: drill
+  ref: v5
+params:
+  ticker: BinanceUM_Perp_BTCUSDT
+  api_id: API_ID
+  algo_id: 1
+  offset: 0.03
+  qty: 0.002
+  cycle_s: 10
+feeds:
+  - feed: orderbook_delta.BinanceUM_Perp_BTCUSDT
+    md_instance: md-jp-1
+accounts:
+  - name: main
+    api_id: API_ID
+    algo_ids: [1]
+restart:
+  mode: on_failure
+  max_restarts: 10
+  window_s: 600

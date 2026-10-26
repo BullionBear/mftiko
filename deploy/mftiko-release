@@ -177,6 +177,8 @@ cmd_install() {
 			;;
 		esac
 	done < <(find "$tmp" -mindepth 1)
+	# mktemp -d is 0700: open the release itself to the service users (E12-D005), then make it read-only.
+	chmod 0755 "$tmp"
 	chmod -R a-w "$tmp"
 	if ! mv -T "$tmp" "$dest"; then
 		chmod -R u+w "$tmp" 2>/dev/null || true

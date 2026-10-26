@@ -36,8 +36,9 @@ type sessPol struct {
 	deadline    time.Duration
 	useDeadline bool
 
-	killed map[uint32]struct{} // incarnations SIGKILLed for a missing beat
-	times  []time.Time         // when this process restarted it (E09-D069)
+	killed   map[uint32]struct{} // incarnations SIGKILLed for a missing beat
+	times    []time.Time         // when this process restarted it (E09-D069)
+	restarts uint32              // how many times this process restarted it; SessionStatus.restart_count
 
 	haveEnd        bool
 	decided        uint32 // the incarnation whose exit Restart classified last
@@ -55,6 +56,7 @@ type endView struct {
 	// another incarnation undecided: the policy has not seen it yet (E09-D095).
 	decided        uint32
 	undecided      bool
+	restarts       uint32 // restart_count: restarts this agent process made, from 0 after a rotation (E09-D069)
 	restarting     bool
 	noBeat         bool
 	reason         string
@@ -176,7 +178,7 @@ func (p *Policy) statusEnd(id string) endView {
 		return endView{}
 	}
 	return endView{
-		decided:    s.decided,
+		decided: s.decided, restarts: s.restarts,
 		restarting: s.restarting, noBeat: s.noBeat, reason: s.reason,
 		terminalReason: s.terminalReason, overrideReason: s.overrideReason,
 	}
@@ -226,6 +228,7 @@ func (p *Policy) Restart(key agent.WorkerKey, end agent.Ended) (bool, time.Durat
 		return false, 0
 	}
 	s.times = append(s.times, now)
+	s.restarts++
 	s.restarting = true
 	return true, p.backoff.After(end.Restarts)
 }
