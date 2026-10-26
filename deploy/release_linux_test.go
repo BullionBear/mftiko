@@ -805,6 +805,9 @@ func pathExists(path string) bool {
 	return err == nil
 }
 
+// assertReadOnly checks an installed release: nothing in it is writable, and every directory and file is
+// readable, every directory enterable, by other users. The services run as their own users, not root
+// (E12-D005); a release left 0700 by its unpack directory starts none of them (#385).
 func assertReadOnly(t *testing.T, root string) {
 	t.Helper()
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
@@ -813,6 +816,13 @@ func assertReadOnly(t *testing.T, root string) {
 		}
 		if info.Mode()&0o222 != 0 {
 			t.Errorf("%s mode %o is writable", path, info.Mode().Perm())
+		}
+		want := os.FileMode(0o004)
+		if info.IsDir() {
+			want = 0o005
+		}
+		if info.Mode().Type()&os.ModeSymlink == 0 && info.Mode().Perm()&want != want {
+			t.Errorf("%s mode %o: other users cannot read it", path, info.Mode().Perm())
 		}
 		return nil
 	})
