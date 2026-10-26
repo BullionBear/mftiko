@@ -10,9 +10,12 @@
 //   - One feed per (venue, category), from the venue's adapter (exchange PublicREST.Listing, run
 //     over an HTTP transport by exchange.ListingOver). That is the unit a refresh may delist
 //     within: a spot refresh never deactivates perp rows.
-//   - Each feed is refreshed on its own. Runner waits jitter before the first pass and then
-//     DefaultInterval plus a fresh jitter draw. Trigger runs one venue, or every feed when the
-//     venue is empty. One feed's error does not stop the others. Failures are reported, not raised.
+//   - Each feed is refreshed on its own. A feed with no symbol_active row is refreshed once at
+//     startup, then on DefaultInterval plus a fresh jitter draw (E12-D073). A feed that already
+//     has active rows waits jitter before the first pass and then DefaultInterval plus a fresh
+//     jitter draw. A failed lookup keeps that jittered first wait. Trigger runs one venue, or
+//     every feed when the venue is empty. One feed's error does not stop the others. Failures
+//     are reported, not raised. There is no separate operator command to force a refresh.
 //   - A listing read that fails, including a page that fails halfway, is discarded before the
 //     transaction starts. No row is delisted and symbol_revision does not change.
 //   - Listings that fail Listing.Validate, or whose ticker or decimals cannot be derived, are not
