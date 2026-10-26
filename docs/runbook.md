@@ -188,11 +188,11 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 | agent ↔ 它的 etcd | lease 到期後 `MftikoAgentDown`（API 仍看得到該 region） | 會：連回來後重新參選、收養 | 修網路。worker 照跑 |
 | API ↔ 某個 region 的 etcd | `MftikoRegionUnavailable`，`/readyz` 503 | 會 | 修網路。agent 的 0 不另外叫 |
 | controller ↔ 遠端 region | 只斷 controller 時不響；API 也斷時 `MftikoRegionUnavailable` | 會 | controller 維持現狀，不刪那裡的需求（W9、E13-D006）。修網路 |
-| agent ↔ NATS | 不響。`mftiko_agent_up` 1、phase `RUNNING` | 會 | 看 worker 的 stderr。這一期沒有另外的探測 |
+| md conn worker ↔ NATS | `mftiko_worker_bus_up` 變 0，`MftikoWorkerBusDown`（範例 `for: 15s`）。`mftiko_agent_up` 維持 1，phase 維持 `RUNNING`，feed ack 維持 `READY`。TD、STS 沒有這個系列 | 會。重連 handler 一觸發 gauge 回到 1，不等緩衝排空。訂單簿要幾秒才追上 | 修網路。看 conn worker 的 stderr |
 | worker ↔ 交易所 | 不響。行程內重連（MD 的 `conn_epoch`、TD 的 `DEGRADED`），不是 `DEAD` | 會 | 看 worker 的 stderr 與交易所狀態 |
 
 - 斷線不需要重啟任何服務。重啟反而讓 agent 失去 term，worker 還是照跑。
-- 確認：`mftiko_region_available`、`mftiko_agent_up` 回到 1；`etcdctl endpoint health` 正常。
+- 確認：`mftiko_region_available`、`mftiko_agent_up` 回到 1；md conn worker 的 `mftiko_worker_bus_up` 回到 1；`etcdctl endpoint health` 正常。TD、STS 沒有 bus 這個訊號。
 
 ### 3.6 Postgres 停機
 

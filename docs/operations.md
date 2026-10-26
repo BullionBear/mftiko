@@ -330,13 +330,14 @@ scrape_configs:
 | `mftiko_agent_up` | `instance`、`plane`、`region` | 該 region 第一次同步之後，`AgentRecord` 的 key 在就是 1。後來 region 過期仍維持，系列不會消失 |
 | `mftiko_controller_leader` | `instance`、`region` | 同上，controller 的 `AgentRecord`（instance 是 `controller`） |
 | `mftiko_worker_phase` | `instance`、`phase`、`plane`、`region` | `WorkerStatus.phase` 的數量。`STARTING`、`RUNNING`、`STOPPING`、`BACKOFF`、`EXITED`、`LOST` 連 0 都有；另外的非空 phase 也有 |
+| `mftiko_worker_bus_up` | `instance`、`plane`、`region`、`worker` | md conn worker 的 NATS。`WorkerStatus` 有 type `bus_disconnected` 才有系列：status false 是 1，true 是 0。`worker` 是 `worker.key`。沒有這條的 worker（TD、STS）不出現。mftiko 不計時 |
 | `mftiko_region_available` | `region` | 與 `/readyz` 同一個判斷：第一次同步完成，且 `LastContact` 沒有嚴格舊過 `unavailable_after`（預設 15 秒，E12-D040）。尚未同步是 0 |
 | `mftiko_postgres_up` | 無 | 刮取當下 ping 稽核用的 Postgres 連線池。沒有池是 0。`/readyz` 仍不看 Postgres |
 | `mftiko_registry_up` | 無 | 刮取當下 `GET /v2/`，最終狀態 200 才是 1。沒設定或 401 是 0 |
 
 第一次同步之前，那個 region 的 agent、controller、worker 系列不出現（不是 0）。API 行程自己抓不到，看 Prometheus 的 `up`，不是 mftiko 的 gauge。
 
-`WorkerStatus` 沒有 `PENDING`、`DEAD` 這兩個 phase。需求項目的狀態是另一個東西：`BACKOFF` 期間需求是 `PENDING`；政策放棄之後的 `EXITED` 對到 `DEAD`；`LOST` 維持最後一次的項目狀態。MD 行程內換 `conn_epoch`、TD 行程內 `DEGRADED`，都不改 `WorkerStatus`，也不是 `DEAD`。API 不連 NATS，也不探測交易所。
+`WorkerStatus` 沒有 `PENDING`、`DEAD` 這兩個 phase。需求項目的狀態是另一個東西：`BACKOFF` 期間需求是 `PENDING`；政策放棄之後的 `EXITED` 對到 `DEAD`；`LOST` 維持最後一次的項目狀態。MD 行程內換 `conn_epoch`、TD 行程內 `DEGRADED`，都不改 `WorkerStatus` 的 phase，也不是 `DEAD`。md conn worker 的 NATS 斷線改的是 `conditions`，不是 phase，也不是 feed 的 `READY`。TD、STS 沒有 `mftiko_worker_bus_up`。API 不連 NATS，也不探測交易所。
 
 ```yaml
 groups:
@@ -364,6 +365,9 @@ groups:
       - alert: MftikoWorkerExited
         expr: mftiko_worker_phase{phase="EXITED"} > 0
         for: 15m
+      - alert: MftikoWorkerBusDown
+        expr: mftiko_worker_bus_up == 0
+        for: 15s
       - alert: MftikoPostgresDown
         expr: mftiko_postgres_up == 0
         for: 2m
@@ -375,7 +379,7 @@ groups:
         for: 10m
 ```
 
-`MftikoAgentDown` 與 `MftikoControllerNoLeader` 要求同一個 `region` 的 `mftiko_region_available == 1`，避免 region 分割時每一台都叫。`MftikoWorkerExited` 的 `for` 放長：短暫的 `EXITED` 是正常的，status 刪掉之後這個數回到 0；一直留著才對應需求 `DEAD`。`MftikoWorkerBackoff` 對應需求 `PENDING`。`MftikoDiskLow` 用的是 node_exporter，不是 mftiko 的 metric。
+`MftikoAgentDown` 與 `MftikoControllerNoLeader` 要求同一個 `region` 的 `mftiko_region_available == 1`，避免 region 分割時每一台都叫。`MftikoWorkerExited` 的 `for` 放長：短暫的 `EXITED` 是正常的，status 刪掉之後這個數回到 0；一直留著才對應需求 `DEAD`。`MftikoWorkerBackoff` 對應需求 `PENDING`。`MftikoWorkerBusDown` 的 `for: 15s` 是範例，與 `unavailable_after` 同一種寫法（E12-D040、E12-D064）。重連的 handler 一觸發，gauge 就回到 1，不等緩衝排空；訂單簿要幾秒才追上（E12-D065）。TD、STS 沒有這個系列。`MftikoDiskLow` 用的是 node_exporter，不是 mftiko 的 metric。
 
 #385 的演練清單（實測留到那張票）對到的訊號：
 
@@ -385,8 +389,8 @@ groups:
 | 殺 worker。照平面規則重啟，策略端的影響見 §9.5 | phase 離開 `RUNNING`。重啟退避是 `BACKOFF`（需求 `PENDING`）；政策放棄是 `EXITED`（需求 `DEAD`）；shim 不在、最後狀態留著是 `LOST` | `MftikoWorkerBackoff`、`MftikoWorkerExited`、`MftikoWorkerLost` |
 | 重啟 agent 的 systemd unit。shim 與 worker 還在，新 agent 收養 | `WorkerStatus` 不綁 lease，phase 維持 `RUNNING`。`AgentRecord` 隨 term 消失，`mftiko_agent_up` 在空窗是 0 | `MftikoAgentDown` |
 | 拔掉 agent 與 etcd | API 仍看得到該 region 時，lease 到期後 `mftiko_agent_up` 變 0，`mftiko_region_available` 維持 1。API 也看不見時，`mftiko_region_available` 變 0，agent 的 0 不另外叫 | `MftikoAgentDown` 或 `MftikoRegionUnavailable` |
-| 拔掉 agent 與 NATS | `AgentRecord` 與 `WorkerStatus` 都不動。`mftiko_agent_up` 維持 1，phase 維持 `RUNNING`。沒有另開的探測 | 不響。這就是看得到的訊號 |
-| 拔掉交易所連線 | 同上。行程內重連不改 `WorkerStatus`，不是 `DEAD` | 不響。`mftiko_agent_up` 維持 1，phase 維持 `RUNNING` |
+| 拔掉 md conn worker 與 NATS | `mftiko_agent_up` 維持 1，phase 維持 `RUNNING`，feed ack 維持 `READY`。`mftiko_worker_bus_up` 變 0，恢復後回到 1。TD、STS 沒有這個系列。重連當下 gauge 就是 1，訂單簿要幾秒才追上 | `MftikoWorkerBusDown` |
+| 拔掉交易所連線 | `mftiko_agent_up` 維持 1，phase 維持 `RUNNING`。行程內重連不改 `WorkerStatus` 的 phase，不是 `DEAD` | 不響 |
 | 拔掉 controller 與遠端 region | controller 的 `AgentRecord` 在 home，`mftiko_controller_leader` 維持 1。API 到該 region 的 mirror 一起過期時 `mftiko_region_available` 變 0。只斷 controller、API 仍連得上時，這個 gauge 維持 1（W9：controller 維持現狀、不寫該 region） | `MftikoRegionUnavailable`（API 也看不到時）。只斷 controller 時不響 |
 | Postgres 停機。API 照 E10-D080 降級，恢復後補上 | `mftiko_postgres_up` 變 0。`/readyz` 不變 | `MftikoPostgresDown` |
 | registry 不可用時 spawn 新的 worker | `mftiko_registry_up` 變 0。需求項目維持 `PENDING`（那是項目狀態，不是 `worker_phase`） | `MftikoRegistryDown` |

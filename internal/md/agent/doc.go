@@ -7,7 +7,8 @@
 // and that ticker, which is enough to name md/<venue>/<route>/<n>. The agent sends the feed
 // list. The conn worker loads its venue's active table at Init, follows sym.v1.changed, and turns
 // those feeds into atoms and reports each one as FeedStatus. SUBSCRIBED becomes READY while
-// the worker is running, and REJECTED is copied onto the ack. The owner of a feed is the set
+// the worker is running, and REJECTED is copied onto the ack. A NATS disconnect on the conn
+// worker is a WorkerStatus condition (bus_disconnected), not an ack change. The owner of a feed is the set
 // of (session, feed) demands, not a counter.
 //
 // Feeds that share a channel take one budget slot and stay on one connection. A new channel
