@@ -7,7 +7,8 @@
 // conn_epoch increases only after a dial succeeds, and each feed's seq starts at 1 on that
 // connection. Both ride in the envelope. Before the dial, Serve writes the number it is about
 // to use into a C4 Report, so the shim holds it before any md.v1.f byte of that connection exists.
-// A failed dial does not consume the number. The agent copies the shim's report into the next
+// When Config.Bus is set, a change in NATS connectivity rides on that Report as bus_up and does not
+// change a feed's SUBSCRIBED state. A failed dial does not consume the number. The agent copies the shim's report into the next
 // Init; this package does not.
 //
 // At Init the process loads this venue's active symbol table and follows sym.v1.changed.{venue}. A reconcile

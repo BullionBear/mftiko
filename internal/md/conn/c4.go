@@ -45,6 +45,8 @@ type ServeConfig struct {
 	// Subscribe registers one md.v1.view responder. Nil leaves the worker without md.v1.view.
 	// The handler runs off the websocket read. The returned function removes the interest.
 	Subscribe func(subject string, handler func(reply string, req []byte)) (func(), error)
+	// Bus is NATS connectivity reported as mdctl.Report.bus_up (E12-D062). Nil omits the field.
+	Bus *Bus
 	// Log is optional. Nil discards.
 	Log *zerolog.Logger
 	// Release is Hello.release. Empty leaves it empty.
@@ -141,7 +143,7 @@ func (s *plane) Init(ctx context.Context, sess *c4.Session, payload []byte) erro
 		Report: s.report, RetryAfter: s.cfg.RetryAfter, RetryMax: s.cfg.RetryMax, Log: s.cfg.Log,
 		REST: rest, Doer: s.cfg.Doer, RateHold: s.cfg.RateHold,
 		BufferMax: int(p.GetBookBufferMax()), BufferAge: bufAge,
-		Symbols: symbols, Subscribe: s.cfg.Subscribe,
+		Symbols: symbols, Subscribe: s.cfg.Subscribe, Bus: s.cfg.Bus,
 		TapeWindow: tapeWindow, TapeMaxEvents: int(p.GetTapeMaxEvents()), TapeBudget: int64(p.GetTapeBudgetBytes()),
 	})
 	s.mu.Lock()

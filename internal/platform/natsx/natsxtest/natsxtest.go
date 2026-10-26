@@ -23,9 +23,12 @@ const (
 )
 
 // Server is one core-NATS process. Shutdown is idempotent; the test cleanup calls it.
+// Halt leaves the port free so a later Restart can listen there again.
 type Server struct {
-	url string
-	ns  *server.Server
+	url  string
+	host string
+	port int
+	ns   *server.Server
 
 	once sync.Once
 }
@@ -75,54 +78,84 @@ func startAt(host string, port int) (*Server, error) {
 		ns.WaitForShutdown()
 		return nil, errors.New("jetstream is enabled")
 	}
-	return &Server{url: ns.ClientURL(), ns: ns}, nil
+	addr := ns.Addr()
+	if addr == nil {
+		ns.Shutdown()
+		ns.WaitForShutdown()
+		return nil, errors.New("no address")
+	}
+	gotHost, portStr, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		ns.Shutdown()
+		ns.WaitForShutdown()
+		return nil, err
+	}
+	gotPort, err := strconv.Atoi(portStr)
+	if err != nil {
+		ns.Shutdown()
+		ns.WaitForShutdown()
+		return nil, err
+	}
+	return &Server{url: ns.ClientURL(), host: gotHost, port: gotPort, ns: ns}, nil
 }
 
 // URL is the client URL, nats://127.0.0.1:<port>.
 func (s *Server) URL() string { return s.url }
 
 // Restart stops the server and starts another on the same address. A client keeps the URL it
-// already dialed and reconnects to it. Shutdown still stops whichever server is running.
+// already dialed and reconnects to it. Halt leaves the server down; Restart after Halt uses the
+// address captured at start, because a stopped server has no Addr. Shutdown still stops whichever
+// server is running.
 func (s *Server) Restart() error {
-	if s == nil || s.ns == nil {
+	if err := s.down(); err != nil {
+		return err
+	}
+	return s.listenAgain()
+}
+
+// Halt stops the server and leaves it down. Restart brings the same address back.
+func (s *Server) Halt() error {
+	return s.down()
+}
+
+func (s *Server) down() error {
+	if s == nil || s.port == 0 {
 		return errors.New("natsxtest: no server")
 	}
-	addr := s.ns.Addr()
-	if addr == nil {
-		return errors.New("natsxtest: server has no address")
-	}
-	host, portStr, err := net.SplitHostPort(addr.String())
-	if err != nil {
-		return fmt.Errorf("natsxtest: address: %w", err)
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		return fmt.Errorf("natsxtest: port: %w", err)
-	}
-	s.ns.Shutdown()
-	s.ns.WaitForShutdown()
+	s.stopNS()
+	return nil
+}
 
+func (s *Server) listenAgain() error {
 	var errs []error
 	for range startTries {
-		next, err := startAt(host, port)
+		next, err := startAt(s.host, s.port)
 		if err == nil {
 			s.ns = next.ns
 			s.url = next.url
+			s.host = next.host
+			s.port = next.port
 			return nil
 		}
 		errs = append(errs, err)
 	}
-	s.ns = nil
 	return fmt.Errorf("natsxtest: restart: %w", errors.Join(errs...))
+}
+
+func (s *Server) stopNS() {
+	if s == nil || s.ns == nil {
+		return
+	}
+	ns := s.ns
+	s.ns = nil
+	ns.Shutdown()
+	ns.WaitForShutdown()
 }
 
 // Shutdown stops the server and waits until it has exited.
 func (s *Server) Shutdown() {
-	if s == nil || s.ns == nil {
+	if s == nil {
 		return
 	}
-	s.once.Do(func() {
-		s.ns.Shutdown()
-		s.ns.WaitForShutdown()
-	})
+	s.once.Do(func() { s.stopNS() })
 }

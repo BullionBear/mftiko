@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog"
 	clientv3 "go.etcd.io/etcd/client/v3"
 
+	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
 	"github.com/BullionBear/mftiko/internal/platform/agent"
 	"github.com/BullionBear/mftiko/internal/platform/shim"
@@ -111,6 +112,10 @@ type Config[I any, S, L agent.Hashed] struct {
 	// that is not stale. MD writes acks here (PROTOCOL §3.5). gaveUp is the Reconciler's; at start it is
 	// never true. Optional.
 	Sync func(ctx context.Context, d agent.Demand[I], observed map[agent.WorkerKey]agent.Observed, gaveUp func(agent.WorkerKey) bool) error
+	// Conditions are this plane's WorkerStatus conditions for one observed worker (E12-D063).
+	// Nil leaves the field unset, which is TD, STS, and the controller. MD reports NATS
+	// connectivity. A later sync with the same bytes is not written again (W7.2).
+	Conditions func(o agent.Observed) []*commonv1.Condition
 
 	Release string // AgentRecord.release
 	// WorkDir is this process's WORK_DIR, written on the AgentRecord when the term is elected (E10-D092).
@@ -360,7 +365,13 @@ func (r *run[I, S, L]) writeStatuses(ctx context.Context, plans map[agent.Worker
 	want := map[string]string{}
 	for k, o := range observed {
 		_, planned := plans[k]
-		want[r.st.key(k)] = encode(statusOf(o, planned, r.rec.GaveUp(k), r.rec.Restarts(k)))
+		st := statusOf(o, planned, r.rec.GaveUp(k), r.rec.Restarts(k))
+		if r.cfg.Conditions != nil {
+			if conds := r.cfg.Conditions(o); len(conds) > 0 {
+				st.Conditions = conds
+			}
+		}
+		want[r.st.key(k)] = encode(st)
 	}
 	keep := map[string]bool{}
 	for k := range plans {

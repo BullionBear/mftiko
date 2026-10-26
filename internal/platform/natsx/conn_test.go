@@ -89,6 +89,42 @@ func TestRestartLogsDisconnectThenReconnect(t *testing.T) {
 	}
 }
 
+func TestOnDisconnect(t *testing.T) {
+	s := natsxtest.Start(t)
+	c := dial(t, s.URL(), natsx.Options{})
+	got := make(chan struct{}, 1)
+	c.OnDisconnect(func() {
+		select {
+		case got <- struct{}{}:
+		default:
+		}
+	})
+	c.OnDisconnect(nil)
+	if err := s.Halt(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-got:
+	case <-time.After(10 * time.Second):
+		t.Fatal("disconnect callback did not run")
+	}
+}
+
+func TestHaltThenRestart(t *testing.T) {
+	s := natsxtest.Start(t)
+	before := s.URL()
+	if err := s.Halt(); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Restart(); err != nil {
+		t.Fatal(err)
+	}
+	if s.URL() != before {
+		t.Fatalf("url changed from %s to %s", before, s.URL())
+	}
+	dial(t, s.URL(), natsx.Options{})
+}
+
 func TestOnReconnect(t *testing.T) {
 	s := natsxtest.Start(t)
 	c := dial(t, s.URL(), natsx.Options{})
