@@ -110,6 +110,23 @@ func (s *Store) Revisions(ctx context.Context) ([]TableRevision, error) {
 	return out, nil
 }
 
+// HasActive reports whether symbol_active has a row for this feed (E12-D073).
+// Terminal rows do not count. The venue and category are the generated columns
+// on that table, the same pair a refresh writes.
+func (s *Store) HasActive(ctx context.Context, venue string, category symbol.Category) (bool, error) {
+	if venue == "" || !knownCategory(category) {
+		return false, fmt.Errorf("sym: active %s %s", venue, category)
+	}
+	var exists bool
+	err := s.db.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM symbol_active WHERE venue = $1 AND category = $2)`,
+		venue, string(category)).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("sym: active %s %s: %w", venue, category, err)
+	}
+	return exists, nil
+}
+
 // List reads one page of a (venue, category).
 //
 // limit must be in 1..symbol.ListPage. offset is the number of rows to skip.

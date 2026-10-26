@@ -19,9 +19,10 @@ const (
 	// after the first run.
 	DefaultInterval = time.Hour
 	// DefaultJitter is the width of the extra delay drawn uniformly from
-	// [0, DefaultJitter). The first wait is only that draw, so feeds that
-	// start together do not call the venues together and a restart does not
-	// wait a full hour for the first listing.
+	// [0, DefaultJitter). A feed that already has active rows waits only that
+	// draw before its first refresh, so feeds that start together do not call
+	// the venues together and a restart does not wait a full hour. A feed with
+	// no active rows does not wait (E12-D073).
 	DefaultJitter = 6 * time.Minute
 )
 
@@ -61,6 +62,14 @@ type Runner struct {
 	now      func() time.Time
 	randIntn func(int64) int64
 	log      zerolog.Logger
+	// delay waits between refreshes. Production uses wait. Tests replace it.
+	delay func(context.Context, time.Duration) error
+}
+
+// activeTable reports whether symbol_active already has a row for one feed.
+// *Store implements it. A refresher that does not keeps the jittered first wait.
+type activeTable interface {
+	HasActive(ctx context.Context, venue string, category symbol.Category) (bool, error)
 }
 
 type feedRun struct {
@@ -118,6 +127,7 @@ func NewRunner(ref refresher, feeds []Feed, opt Options) (*Runner, error) {
 		now:      now,
 		randIntn: randIntn,
 		log:      opt.Log,
+		delay:    wait,
 	}, nil
 }
 
@@ -141,8 +151,11 @@ func FeedsFromRegistry(reg *exchange.Registry, http exchange.Doer) []Feed {
 	return out
 }
 
-// Run refreshes until ctx is cancelled. Each feed has its own loop. The first
-// wait is only the jitter draw; every later wait is the interval plus a new draw.
+// Run refreshes until ctx is cancelled. Each feed has its own loop. A feed with
+// no active row is refreshed once immediately (E12-D073); later waits are the
+// interval plus a new jitter draw. A feed that already has an active row waits
+// only the jitter draw first. A refresher that cannot report active rows, or a
+// lookup that fails, keeps that jittered first wait.
 func (r *Runner) Run(ctx context.Context) {
 	var wg sync.WaitGroup
 	for _, f := range r.feeds {
@@ -183,12 +196,25 @@ func (r *Runner) Trigger(ctx context.Context, venue string) ([]Report, error) {
 
 func (r *Runner) loop(ctx context.Context, f *feedRun) {
 	first := true
+	// One immediate pass, only when this feed has no active row. Cleared after
+	// that pass so a failed refresh backs off onto the normal interval.
+	immediate := r.refreshNow(ctx, f)
+	if ctx.Err() != nil {
+		return
+	}
+	delay := r.delay
+	if delay == nil {
+		delay = wait
+	}
 	for {
-		d := nextWait(r.interval, r.jitter, first, r.randIntn)
-		first = false
-		if err := wait(ctx, d); err != nil {
-			return
+		if !immediate {
+			d := nextWait(r.interval, r.jitter, first, r.randIntn)
+			if err := delay(ctx, d); err != nil {
+				return
+			}
 		}
+		immediate = false
+		first = false
 		rep := r.refreshFeed(ctx, f)
 		if ctx.Err() != nil {
 			return
@@ -214,6 +240,28 @@ func (r *Runner) loop(ctx context.Context, f *feedRun) {
 			Int64("revision", rep.Revision)
 		ev.Msg("refreshed")
 	}
+}
+
+// refreshNow is true when this feed should skip its first wait (E12-D073).
+// A missing activeTable, a failed lookup, or a cancelled context is false:
+// the feed keeps the jittered first wait, or the loop stops on cancel.
+func (r *Runner) refreshNow(ctx context.Context, f *feedRun) bool {
+	look, ok := r.refresh.(activeTable)
+	if !ok {
+		return false
+	}
+	has, err := look.HasActive(ctx, f.feed.Venue, f.feed.Category)
+	if err != nil {
+		if ctx.Err() == nil {
+			r.log.Error().
+				Err(err).
+				Str("venue", f.feed.Venue).
+				Str("category", string(f.feed.Category)).
+				Msg("active table lookup failed")
+		}
+		return false
+	}
+	return !has
 }
 
 func (r *Runner) refreshFeed(ctx context.Context, f *feedRun) Report {

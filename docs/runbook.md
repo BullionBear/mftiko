@@ -1,6 +1,6 @@
 # Runbook（一期）
 
-依 [DECISIONS.md](DECISIONS.md) E12-D059–E12-D061（E12-11，#384）、E12-D066（#401）與 E12-D071（#403）。一期的常見操作與故障處理，照順序做。每一項先寫**告警**與**先看**，再寫**做**與**確認**。長的程序在 [operations.md](operations.md) 與 [release.md](release.md)，這裡連過去，不重抄；那邊是參考，這裡是入口。
+依 [DECISIONS.md](DECISIONS.md) E12-D059–E12-D061（E12-11，#384）、E12-D066（#401）、E12-D071（#403）與 E12-D074（#405）。一期的常見操作與故障處理，照順序做。每一項先寫**告警**與**先看**，再寫**做**與**確認**。長的程序在 [operations.md](operations.md) 與 [release.md](release.md)，這裡連過去，不重抄；那邊是參考，這裡是入口。
 
 告警名稱是 [operations.md「監控與告警」](operations.md#監控與告警)的範例規則（E12-10）。`for` 與門檻由部署端決定。
 
@@ -35,6 +35,7 @@ etcdctl endpoint health
 - **不要手動改 `/mftiko/v1/` 底下的 key。** 每個前綴只有一個寫入者（PROTOCOL §3.2 W1）。例外只有本文件與 operations.md 寫出來的步驟（退役的 `-drop`、還原的 `-raise-epochs`）。
 - **不要讓兩個 controller 同時跑**（E12-D044、E13-D038）。
 - **不要先改 etcd 密碼再重啟服務**：先停、再改、再啟動（E12-D050）。
+- **不要手動強制 SYM refresh。** 活躍表是空的 feed 在 SYM 啟動時自己補一次（E12-D073）。`mftiko-md-accept refresh` 只給驗收，不是部署步驟。
 
 ## 1. 告警對照
 
@@ -74,6 +75,13 @@ etcdctl endpoint health
    - 每個 unit `systemctl show -p NRestarts` 不再增加。agent 的 log 有 `shims adopted`，沒有 `stale_epoch`。
    - `mftiko_agent_up`、`mftiko_controller_leader` 回到 1；`mftiko_worker_phase{phase="RUNNING"}` 的數量跟換版前一樣。
    - `mftiko instance show <inst>` 的 `RELEASE` 是新版。
+   - SYM 啟動後一分鐘內 `symbol_active` 有列（E12-D074）。主機 A 用 `/etc/mftiko/sym/env` 的 `DATABASE_URL`，不要印出這條 URL：
+
+     ```sh
+     psql "$DATABASE_URL" -c 'SELECT venue, category, count(*) FROM symbol_active GROUP BY 1, 2'
+     ```
+
+     有列即可，不要再手動 refresh。已有列的 feed 重啟後仍照抖動間隔，這裡看到的是原本的列。
 
 ### 2.2 回退
 

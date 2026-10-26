@@ -47,6 +47,9 @@ func TestRunnerDefaults(t *testing.T) {
 	if r.interval != time.Minute || r.jitter != 0 {
 		t.Fatalf("interval %s jitter %s", r.interval, r.jitter)
 	}
+	if r.delay == nil {
+		t.Fatal("delay is nil")
+	}
 }
 
 func TestRunnerTriggerIsolatesFeeds(t *testing.T) {
@@ -213,6 +216,221 @@ func TestFeedsFromRegistry(t *testing.T) {
 	if err != nil || len(got) != 1 || got[0].ExchTicker != "BTCUSDT" {
 		t.Fatalf("listing over the transport: %v %v", got, err)
 	}
+}
+
+func TestStartupRefreshSkipsOnlyEmptyFeeds(t *testing.T) {
+	const (
+		jitter   = 10 * time.Second
+		interval = time.Minute
+	)
+	draw := func(n int64) int64 { return n - 1 }
+	later := interval + jitter - 1
+	first := jitter - 1
+
+	t.Run("empty refreshes before the wait", func(t *testing.T) {
+		steps, waited := runStartup(t, false, nil, draw, interval, jitter)
+		if len(steps) != 2 || steps[0] != "refresh" || steps[1] != "wait" {
+			t.Fatalf("steps = %v", steps)
+		}
+		if waited != later {
+			t.Fatalf("wait after the immediate refresh = %s, want %s", waited, later)
+		}
+	})
+
+	t.Run("populated waits out the jitter", func(t *testing.T) {
+		steps, waited := runStartup(t, true, nil, draw, interval, jitter)
+		if len(steps) != 1 || steps[0] != "wait" {
+			t.Fatalf("steps = %v, want only the jitter wait", steps)
+		}
+		if waited != first {
+			t.Fatalf("first wait = %s, want %s", waited, first)
+		}
+	})
+
+	t.Run("lookup error keeps the jitter", func(t *testing.T) {
+		steps, waited := runStartup(t, false, errors.New("db down"), draw, interval, jitter)
+		if len(steps) != 1 || steps[0] != "wait" {
+			t.Fatalf("steps = %v, want only the jitter wait", steps)
+		}
+		if waited != first {
+			t.Fatalf("first wait = %s, want %s", waited, first)
+		}
+	})
+
+	t.Run("failed immediate refresh backs off", func(t *testing.T) {
+		var n atomic.Int32
+		g := gateRefresh{
+			has: func(string, symbol.Category) (bool, error) { return false, nil },
+			fn: func(Feed) (Report, error) {
+				n.Add(1)
+				return Report{}, errors.New("down")
+			},
+		}
+		r := startupRunner(t, g, interval, jitter, draw)
+		var waited time.Duration
+		r.delay = func(_ context.Context, d time.Duration) error {
+			waited = d
+			return errStopAfterWait
+		}
+		r.Run(context.Background())
+		if n.Load() != 1 {
+			t.Fatalf("refresh calls = %d, want 1", n.Load())
+		}
+		if waited != later {
+			t.Fatalf("backoff = %s, want %s", waited, later)
+		}
+	})
+
+	t.Run("no lookup keeps the jitter", func(t *testing.T) {
+		var refreshed atomic.Bool
+		fake := &fakeRefresh{fn: func(Feed) (Report, error) {
+			refreshed.Store(true)
+			return Report{}, nil
+		}}
+		r := startupRunner(t, fake, interval, jitter, draw)
+		var waited time.Duration
+		r.delay = func(_ context.Context, d time.Duration) error {
+			waited = d
+			return errors.New("stop")
+		}
+		r.Run(context.Background())
+		if refreshed.Load() {
+			t.Fatal("refreshed before the jitter wait")
+		}
+		if waited != first {
+			t.Fatalf("first wait = %s, want %s", waited, first)
+		}
+	})
+}
+
+func TestStartupRefreshPerFeed(t *testing.T) {
+	const (
+		jitter   = 10 * time.Second
+		interval = time.Minute
+	)
+	draw := func(n int64) int64 { return n - 1 }
+	var mu sync.Mutex
+	refreshed := map[symbol.Category]int{}
+	g := gateRefresh{
+		has: func(_ string, category symbol.Category) (bool, error) {
+			return category == symbol.Perp, nil
+		},
+		fn: func(f Feed) (Report, error) {
+			mu.Lock()
+			refreshed[f.Category]++
+			mu.Unlock()
+			return Report{Venue: f.Venue, Category: f.Category}, nil
+		},
+	}
+	r, err := NewRunner(g, []Feed{
+		{Venue: "Bybit", Category: symbol.Spot, REST: noopREST{}},
+		{Venue: "Bybit", Category: symbol.Perp, REST: noopREST{}},
+	}, Options{
+		Interval: interval,
+		Jitter:   jitter,
+		RandIntn: draw,
+		Log:      zerolog.Nop(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var delays []time.Duration
+	r.delay = func(_ context.Context, d time.Duration) error {
+		mu.Lock()
+		delays = append(delays, d)
+		mu.Unlock()
+		return errStopAfterWait
+	}
+	r.Run(context.Background())
+	mu.Lock()
+	defer mu.Unlock()
+	if refreshed[symbol.Spot] != 1 {
+		t.Fatalf("spot refreshes = %d", refreshed[symbol.Spot])
+	}
+	if refreshed[symbol.Perp] != 0 {
+		t.Fatalf("perp refreshes = %d", refreshed[symbol.Perp])
+	}
+	if len(delays) != 2 {
+		t.Fatalf("waits = %v", delays)
+	}
+	var sawJitter, sawLater bool
+	for _, d := range delays {
+		switch d {
+		case jitter - 1:
+			sawJitter = true
+		case interval + jitter - 1:
+			sawLater = true
+		default:
+			t.Fatalf("unexpected wait %s", d)
+		}
+	}
+	if !sawJitter || !sawLater {
+		t.Fatalf("waits = %v", delays)
+	}
+}
+
+func runStartup(t *testing.T, has bool, lookup error, draw func(int64) int64, interval, jitter time.Duration) ([]string, time.Duration) {
+	t.Helper()
+	var mu sync.Mutex
+	var steps []string
+	var waited time.Duration
+	g := gateRefresh{
+		has: func(string, symbol.Category) (bool, error) { return has, lookup },
+		fn: func(f Feed) (Report, error) {
+			mu.Lock()
+			steps = append(steps, "refresh")
+			mu.Unlock()
+			return Report{Venue: f.Venue, Category: f.Category}, nil
+		},
+	}
+	r := startupRunner(t, g, interval, jitter, draw)
+	r.delay = func(_ context.Context, d time.Duration) error {
+		mu.Lock()
+		steps = append(steps, "wait")
+		waited = d
+		mu.Unlock()
+		return errStopAfterWait
+	}
+	r.Run(context.Background())
+	mu.Lock()
+	defer mu.Unlock()
+	out := append([]string(nil), steps...)
+	return out, waited
+}
+
+func startupRunner(t *testing.T, ref refresher, interval, jitter time.Duration, draw func(int64) int64) *Runner {
+	t.Helper()
+	r, err := NewRunner(ref, []Feed{{Venue: "Bybit", Category: symbol.Spot, REST: noopREST{}}}, Options{
+		Interval: interval,
+		Jitter:   jitter,
+		RandIntn: draw,
+		Log:      zerolog.Nop(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+var errStopAfterWait = errors.New("stop after wait")
+
+type gateRefresh struct {
+	has func(venue string, category symbol.Category) (bool, error)
+	fn  func(Feed) (Report, error)
+}
+
+func (g gateRefresh) HasActive(_ context.Context, venue string, category symbol.Category) (bool, error) {
+	if g.has == nil {
+		return false, nil
+	}
+	return g.has(venue, category)
+}
+
+func (g gateRefresh) Refresh(_ context.Context, feed Feed, _ int64, _ zerolog.Logger) (Report, error) {
+	if g.fn == nil {
+		return Report{Venue: feed.Venue, Category: feed.Category}, nil
+	}
+	return g.fn(feed)
 }
 
 func TestNewRunnerRejectsDuplicate(t *testing.T) {
