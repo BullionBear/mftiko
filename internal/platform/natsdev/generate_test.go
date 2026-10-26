@@ -93,7 +93,7 @@ func TestGenerateCorruptSeedDoesNotRotate(t *testing.T) {
 
 func TestGenerateMaterial(t *testing.T) {
 	dir := t.TempDir()
-	if err := Generate(dir, Options{MDInsts: []string{"box"}, FetchInsts: []string{"box"}}); err != nil {
+	if err := Generate(dir, Options{MDInsts: []string{"box"}, FetchInsts: []string{"box"}, SymInsts: []string{"box"}}); err != nil {
 		t.Fatal(err)
 	}
 	lay, err := Load(dir)
@@ -158,7 +158,7 @@ func TestGenerateMaterial(t *testing.T) {
 		}
 	}
 	slices.Sort(credNames)
-	if !slices.Equal(credNames, []string{"fetch-box.creds", "md-box.creds"}) {
+	if !slices.Equal(credNames, []string{"fetch-box.creds", "md-box.creds", "sym-box.creds"}) {
 		t.Fatalf("creds %v", credNames)
 	}
 
@@ -227,6 +227,14 @@ func TestGenerateMaterial(t *testing.T) {
 		t.Fatal(fetch.InboxPrefix)
 	}
 	assertUser(fetch, []string{"sym"}, []string{"md.v1.fetch.>", "sym.v1.changed.>", "_INBOX_fetch.>"}, true)
+	if len(lay.Manifest.Sym) != 1 || lay.Manifest.Sym[0].Inst != "box" {
+		t.Fatalf("sym users %+v", lay.Manifest.Sym)
+	}
+	sym := lay.Manifest.Sym[0]
+	if sym.InboxPrefix != "" || sym.Name != "sym-box" {
+		t.Fatalf("sym user %+v", sym)
+	}
+	assertUser(sym, []string{"sym.v1.changed.>"}, []string{"sym"}, true)
 	if len(lay.Manifest.TD) != 0 {
 		t.Fatalf("td users %+v", lay.Manifest.TD)
 	}
@@ -328,6 +336,40 @@ func TestLoadRejectsTDAgentUser(t *testing.T) {
 	}
 	if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "no NATS user") {
 		t.Fatal(err)
+	}
+}
+
+// TestLoadRequiresSymUser: a directory generated before E12-D079 has no SYM user. Load asks for a
+// new dev-up instead of checking half a manifest, and Generate on the same directory adds the user.
+func TestLoadRequiresSymUser(t *testing.T) {
+	dir := t.TempDir()
+	if err := Generate(dir, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	lay, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lay.Manifest.Sym = nil
+	body, err := json.Marshal(lay.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "SYM user") {
+		t.Fatal(err)
+	}
+	if err := Generate(dir, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	lay, err = Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lay.Manifest.Sym) != 1 || lay.Manifest.Sym[0].Creds != "creds/sym-dev.creds" {
+		t.Fatalf("sym users %+v", lay.Manifest.Sym)
 	}
 }
 

@@ -29,9 +29,12 @@ const (
 	// Instances of one plane share that prefix.
 	// PlaneTD is the token in an account worker's inbox _INBOX_td_{api_id} (E06-D011).
 	// The TD agent has no NATS user and no _INBOX_td grant (E06-D039).
+	// PlaneSym names the SYM user. SYM only answers sym and publishes sym.v1.changed;
+	// it sends no requests, so it has no inbox (E12-D079).
 	PlaneMD    = "md"
 	PlaneFetch = "fetch"
 	PlaneTD    = "td"
+	PlaneSym   = "sym"
 
 	// DefaultInst is the instance token make dev-up generates.
 	DefaultInst = "dev"
@@ -79,9 +82,11 @@ var instToken = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 type Options struct {
 	MDInsts    []string
 	FetchInsts []string
+	SymInsts   []string
 }
 
 // User is one generated user. Paths are relative to the output directory and hold no seeds.
+// InboxPrefix is empty for SYM, which has no inbox (E12-D079).
 type User struct {
 	Inst        string `json:"inst"`
 	Name        string `json:"name"`
@@ -99,6 +104,7 @@ type Manifest struct {
 	SigningKeyFile string `json:"signing_key_file"`
 	MD             []User `json:"md"`
 	Fetch          []User `json:"fetch"`
+	Sym            []User `json:"sym"`
 	// TD is empty. A non-empty list is rejected: the TD agent has no NATS user (E06-D039).
 	TD []User `json:"td,omitempty"`
 }
@@ -155,6 +161,10 @@ func Generate(dir string, opt Options) error {
 		return err
 	}
 	fetchInsts, err := normalizeInsts(opt.FetchInsts)
+	if err != nil {
+		return err
+	}
+	symInsts, err := normalizeInsts(opt.SymInsts)
 	if err != nil {
 		return err
 	}
@@ -220,6 +230,14 @@ func Generate(dir string, opt Options) error {
 		}
 		fetchUsers = append(fetchUsers, u)
 	}
+	symUsers := make([]loadedUser, 0, len(symInsts))
+	for _, inst := range symInsts {
+		u, err := ensureServiceUser(dir, PlaneSym, inst)
+		if err != nil {
+			return err
+		}
+		symUsers = append(symUsers, u)
+	}
 
 	opPub, err := operatorKP.PublicKey()
 	if err != nil {
@@ -271,6 +289,7 @@ func Generate(dir string, opt Options) error {
 		SigningKeyFile: filepath.ToSlash(filepath.Join(dirKeys, keySigning)),
 		MD:             make([]User, 0, len(mdUsers)),
 		Fetch:          make([]User, 0, len(fetchUsers)),
+		Sym:            make([]User, 0, len(symUsers)),
 	}
 	keepCreds := map[string]bool{}
 	for _, plane := range []struct {
@@ -279,6 +298,7 @@ func Generate(dir string, opt Options) error {
 	}{
 		{mdUsers, &manifest.MD},
 		{fetchUsers, &manifest.Fetch},
+		{symUsers, &manifest.Sym},
 	} {
 		for _, u := range plane.users {
 			entry, err := writeServiceUser(dir, u, accountKP)
@@ -360,6 +380,9 @@ func (m Manifest) Summary() string {
 	for _, u := range m.Fetch {
 		fmt.Fprintf(&b, "fetch %s inbox %s creds %s\n", u.Inst, u.InboxPrefix, u.Creds)
 	}
+	for _, u := range m.Sym {
+		fmt.Fprintf(&b, "sym %s creds %s\n", u.Inst, u.Creds)
+	}
 	for _, u := range m.TD {
 		fmt.Fprintf(&b, "td %s inbox %s creds %s\n", u.Inst, u.InboxPrefix, u.Creds)
 	}
@@ -416,8 +439,8 @@ func (m Manifest) validate() error {
 	if err := safeRel(m.SigningKeyFile); err != nil {
 		return err
 	}
-	if len(m.MD) == 0 || len(m.Fetch) == 0 {
-		return errors.New("natsdev: manifest needs an MD user and an md.fetch user; run make dev-up")
+	if len(m.MD) == 0 || len(m.Fetch) == 0 || len(m.Sym) == 0 {
+		return errors.New("natsdev: manifest needs an MD, an md.fetch and a SYM user; run make dev-up")
 	}
 	if len(m.TD) != 0 {
 		return errors.New("natsdev: TD agent has no NATS user")
@@ -425,7 +448,10 @@ func (m Manifest) validate() error {
 	if err := validateUsers(PlaneMD, m.MD); err != nil {
 		return err
 	}
-	return validateUsers(PlaneFetch, m.Fetch)
+	if err := validateUsers(PlaneFetch, m.Fetch); err != nil {
+		return err
+	}
+	return validateUsers(PlaneSym, m.Sym)
 }
 
 func validateUsers(plane string, users []User) error {
@@ -438,7 +464,7 @@ func validateUsers(plane string, users []User) error {
 		if !nkeys.IsValidPublicUserKey(u.PublicKey) {
 			return fmt.Errorf("natsdev: manifest user %s is missing a public key", u.Inst)
 		}
-		want, err := InboxPrefix(plane)
+		want, err := userInbox(plane)
 		if err != nil {
 			return err
 		}
@@ -502,8 +528,17 @@ type loadedUser struct {
 	name  string
 }
 
+// userInbox is the inbox prefix a generated user carries: _INBOX_{plane}, or none for SYM,
+// which sends no requests (E12-D079).
+func userInbox(plane string) (string, error) {
+	if plane == PlaneSym {
+		return "", nil
+	}
+	return InboxPrefix(plane)
+}
+
 func ensureServiceUser(dir, plane, inst string) (loadedUser, error) {
-	inbox, err := InboxPrefix(plane)
+	inbox, err := userInbox(plane)
 	if err != nil {
 		return loadedUser{}, err
 	}
@@ -547,6 +582,11 @@ func servicePerms(plane, inst, inbox string) (pub, sub []string, resp bool, err 
 		// venues it can reach (E04-D018, E04-D056). The exact subject md.v1.fetch is not
 		// in this list. sym.v1.changed.> is the resolver (E04-D022, E04-D057).
 		return []string{"sym"}, []string{"md.v1.fetch.>", "sym.v1.changed.>", inbox + ".>"}, true, nil
+	case PlaneSym:
+		// SYM answers sym in a queue group and publishes sym.v1.changed.{venue}.{category}
+		// after a revision commit (E04-D057). It sends no requests: no inbox, and it does
+		// not subscribe to sym.v1.changed.> (E12-D079).
+		return []string{"sym.v1.changed.>"}, []string{"sym"}, true, nil
 	}
 	return nil, nil, false, fmt.Errorf("natsdev: no permissions for plane %q", plane)
 }
