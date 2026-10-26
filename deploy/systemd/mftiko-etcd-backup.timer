@@ -1,0 +1,11 @@
+# Hourly etcd snapshots (E12-D054). Enable on the home host only: systemctl enable --now mftiko-etcd-backup.timer
+
+[Unit]
+Description=hourly mftiko etcd snapshots
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

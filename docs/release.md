@@ -56,7 +56,7 @@ GitHub → BullionBear → Organization Settings → Packages → Package creati
 - 腳本 [`.github/scripts/build-server.sh`](../.github/scripts/build-server.sh)。`make server-dist` 跑它，預設寫到 `bin/dist/`。`release.yml` 的 `cli` job 先建 CLI tarball，再 `make web`、跑同一支腳本，然後把兩種 tarball 與一份 `SHA256SUMS` 一起上傳。`SHA256SUMS` 在兩者都在輸出目錄之後重算，涵蓋全部 `*.tar.gz`。
 - 產物是 `mftiko-server_<tag>_linux_amd64.tar.gz`。`CGO_ENABLED=0`、`-trimpath`，`-ldflags` 注入 `internal/platform/buildinfo`。部署機不需要 Go 與 Node。
 - **內容：**
-  - `bin/`：`mftiko-md-agent`、`mftiko-td-agent`、`mftiko-sts-agent`、`mftiko-shim`、`mftiko-controller`、`mftiko-api`、`mftiko-sym`、`mftiko-mdfetch`、`mftiko-migrate`、`mftiko-etcd-roles`、`mftiko-retire-clean`、`mftiko-seal`、`mftiko-release`。
+  - `bin/`：`mftiko-md-agent`、`mftiko-td-agent`、`mftiko-sts-agent`、`mftiko-shim`、`mftiko-controller`、`mftiko-api`、`mftiko-sym`、`mftiko-mdfetch`、`mftiko-migrate`、`mftiko-etcd-roles`、`mftiko-etcd-backup`、`mftiko-retire-clean`、`mftiko-seal`、`mftiko-release`。
   - `web/`：`make web` 的結果（`web/build`），給 `mftiko-api -web`。
   - `systemd/`：`deploy/systemd/` 裡的 unit，不含點開頭的檔。目錄可以是空的，#378 才放檔。
 - 不放：conn 與 account worker（agent 從 registry 拉，E12-02）、CLI、`*-accept`、`mftiko-conformance`、`mftiko-nats-dev`、`mftiko-pack`。

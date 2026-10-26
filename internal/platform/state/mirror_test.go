@@ -971,6 +971,87 @@ func TestMirrorClusterRebuilt(t *testing.T) {
 	}
 }
 
+// restoreBump is the --bump-revision of the runbook for a cluster restored for the first time (E12-D055).
+const restoreBump = RestoreMargin
+
+// restoredHistory writes ack 0–9, saves a snapshot, then writes ack 10–19 and deletes ack 0, and starts a mirror
+// that has seen all of it. Its probe never runs: only the watch can tell the mirror the history changed.
+func restoredHistory(t *testing.T, ctx context.Context) (*etcdtest.Server, *clientv3.Client, *Mirror, string) {
+	t.Helper()
+	s, topo := privateRegion(t, "td-tw-1")
+	raw := s.Client(t)
+	r, err := newClusters(t, topo, nil, as(t, topo, UserAPI)).Reader("tw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 10 {
+		mustPut(t, ctx, raw, ackKey(i), "before the snapshot")
+	}
+	snap := s.Snapshot(t)
+	m := startMirror(t, r, TDAckPrefix("td-tw-1"), MirrorOptions{MaxBackoff: 200 * time.Millisecond, ProbeInterval: time.Hour})
+	for i := 10; i < 20; i++ {
+		mustPut(t, ctx, raw, ackKey(i), "after the snapshot")
+	}
+	if _, err := raw.Delete(ctx, ackKey(0)); err != nil {
+		t.Fatal(err)
+	}
+	waitConverged(t, ctx, m, raw, 30*time.Second)
+	return s, raw, m, snap
+}
+
+// A restore to an older snapshot, as the runbook does it (E12-D055): the cluster ID stays, but revisions start above
+// any the mirror has seen and everything below is compacted. The mirror's watch resumes from its own revision, is
+// told it was compacted, and the mirror lists again: ack 10–19 go, ack 0 comes back.
+func TestMirrorRestoredSnapshot(t *testing.T) {
+	ctx := testCtx(t)
+	s, raw, m, snap := restoredHistory(t, ctx)
+	before, lists := m.Rev(), m.Stats().Lists
+	id := mustGet(t, ctx, raw, "id").Header.ClusterId
+
+	s.Restore(t, snap, restoreBump)
+	if got := mustGet(t, ctx, raw, "id").Header; got.ClusterId != id || got.Revision <= before {
+		t.Fatalf("restored cluster %x at %d; want the same cluster %x, above %d", got.ClusterId, got.Revision, id, before)
+	}
+	mustPut(t, ctx, raw, ackKey(3), "after the restore")
+	waitConverged(t, ctx, m, raw, 30*time.Second)
+	v := m.Snapshot()
+	if _, ok := v.Entries[ackKey(0)]; !ok || len(v.Entries) != 10 {
+		t.Fatalf("view has %d keys, ack 0 present %v; want the snapshot's 10", len(v.Entries), ok)
+	}
+	if st := m.Stats(); st.Lists <= lists {
+		t.Fatalf("stats %+v, want a relist", st)
+	}
+	if v.Rev <= before {
+		t.Fatalf("rev %d after the restore, %d before", v.Rev, before)
+	}
+}
+
+// Why the runbook bumps (E12-D055): restored without --bump-revision, the cluster reuses revisions the mirror has
+// seen. Once it overtakes the mirror's revision, the resumed watch delivers the new history's events on top of the
+// old copy, and nothing tells the mirror the copy is wrong until a probe happens to catch the revision behind it.
+func TestMirrorRestoreReusingRevisions(t *testing.T) {
+	ctx := testCtx(t)
+	s, raw, m, snap := restoredHistory(t, ctx)
+	before := m.Rev()
+
+	s.Restore(t, snap, 0)
+	var last int64
+	for i := 0; last <= before+5; i++ {
+		last = mustPut(t, ctx, raw, ackKey(100+i), "after the restore")
+	}
+	if err := m.WaitRev(ctx, last); err != nil {
+		t.Fatalf("wait for %d: %v (stats %+v)", last, err, m.Stats())
+	}
+	want, _ := etcdEntries(t, ctx, raw, m.Prefix())
+	d := diffEntries(m.Snapshot().Entries, want)
+	if !strings.Contains(d, "extra "+ackKey(10)) || !strings.Contains(d, "missing "+ackKey(0)) {
+		t.Fatalf("mirror vs etcd: %q; want ack 10–19 extra and ack 0 missing", d)
+	}
+	if st := m.Stats(); st.Lists != 1 {
+		t.Fatalf("stats %+v, want no relist", st)
+	}
+}
+
 // With nothing written, progress notifications keep LastContact fresh; cut off, it stops; back, it resumes.
 func TestMirrorLastContact(t *testing.T) {
 	ctx := testCtx(t)

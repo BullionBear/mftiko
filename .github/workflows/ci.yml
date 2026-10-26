@@ -99,7 +99,7 @@ jobs:
       - name: systemd-analyze verify
         run: |
           sudo install -d -m 0755 /opt/mftiko/current/bin
-          for b in mftiko-md-agent mftiko-td-agent mftiko-sts-agent mftiko-shim mftiko-controller mftiko-api mftiko-sym; do
+          for b in mftiko-md-agent mftiko-td-agent mftiko-sts-agent mftiko-shim mftiko-controller mftiko-api mftiko-sym mftiko-etcd-backup; do
             sudo install -m 0755 "bin/$b" "/opt/mftiko/current/bin/$b"
           done
           sudo install -m 0755 "$MFTIKO_ETCD_BIN" /usr/bin/etcd
@@ -116,7 +116,7 @@ jobs:
             tar xzf "$tarball"
           )
           sudo install -m 0755 "$dir/nats-server-${ver}-linux-amd64/nats-server" /usr/bin/nats-server
-          systemd-analyze verify deploy/systemd/*.service
+          systemd-analyze verify deploy/systemd/*.service deploy/systemd/*.timer
       # The CLI release tarballs, by the release workflow's script (E11-D035).
       - name: CLI release build
         run: make cli-dist

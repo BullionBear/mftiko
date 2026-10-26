@@ -1,0 +1,12 @@
+# etcd snapshots of every region, saved on the home host (E12-D054). Started by mftiko-etcd-backup.timer.
+# Runs as root: root's etcd password is in /etc/mftiko/etcd (root:root 0700, E12-D050).
+# Snapshots go to /var/backups/mftiko/etcd/<region>/, the newest 72 kept per region.
+
+[Unit]
+Description=mftiko etcd snapshots
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/mftiko/current/bin/mftiko-etcd-backup -in /etc/mftiko/controller/deployment.json -secrets /etc/mftiko/etcd -dir /var/backups/mftiko/etcd

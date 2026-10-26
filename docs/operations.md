@@ -60,10 +60,11 @@
 | `mftiko-sym.service` | `mftiko-sym` | 預設 `KillMode=control-group` |
 | `etcd.service` | `etcd` | 官方 binary `/usr/bin/etcd`，資料在 `/var/lib/etcd` |
 | `nats.service` | `nats` | 官方 binary `/usr/bin/nats-server -c /etc/nats/nats-server.conf` |
+| `mftiko-etcd-backup.service`、`.timer` | root | 只在主機 A。oneshot，timer 每小時啟動一次，見「etcd 備份與還原」 |
 
 - Postgres 用發行版套件的 unit，不在這份清單。md.fetch 沒有 unit：E12-05 的清單沒有它。
 - etcd、NATS 的使用者是各自套件的預設使用者，要先存在。資料目錄 `StateDirectory=etcd` 由 systemd 建立；NATS 的儲存看它自己的設定檔。
-- 不設 `LimitNOFILE=`、`Type=notify`、`PrivateTmp=`、`ExecStop=`。重啟是 `Restart=always`、`RestartSec=1s`、`StartLimitIntervalSec=0`（寫在 `[Unit]`），不照上游 unit 的重啟政策。
+- 不設 `LimitNOFILE=`、`Type=notify`、`PrivateTmp=`、`ExecStop=`。重啟是 `Restart=always`、`RestartSec=1s`、`StartLimitIntervalSec=0`（寫在 `[Unit]`），不照上游 unit 的重啟政策。`mftiko-etcd-backup.service` 例外：`Type=oneshot`，由 timer 啟動，不重啟。
 - etcd 與 NATS 一期不開 TLS（E12-D052），跨主機流量只走私有網路或 VPN。etcd 的認證見下方「etcd 認證」。
 
 **`systemctl kill` 會殺掉整個 cgroup。** `KillMode=process` 管的是 `systemctl stop` 與 `restart`：只對 agent 送訊號，shim 與 worker 留在同一個 cgroup，新的 agent 起來收養。`systemctl kill` 不看 `KillMode=`，預設對 cgroup 裡每一個行程送訊號，worker 會一起死。只停 agent 時用 `stop`、`restart`，或對 MainPID 送訊號。
@@ -209,6 +210,94 @@ systemctl start <unit>
 2. 逐台 `systemctl restart etcd`，等健康再換下一台。auth 開了之後 `endpoint health` 要帶 root：`ETCDCTL_USER=root ETCDCTL_PASSWORD="$(cat /etc/mftiko/etcd/root)" etcdctl endpoint health`，不帶會一直失敗。
 3. 每台的重啟要在 10 秒內完成，否則連著這台的服務會因 keepalive 期限結束 term 再重新參選（agent 的 worker 不受影響）。testnet 實測約 7 秒：有 client 連著時 etcd 停下要 7 秒，啟動不到 1 秒。
 4. 檢查：服務沒有重啟（`systemctl show -p NRestarts <unit>` 不變），log 有幾次 `invalid auth token` 之後恢復；舊的 token（換之前用 `curl -X POST R/v3/auth/authenticate` 拿到的）現在回 `invalid auth token`。
+
+## etcd 備份與還原
+
+依 [DECISIONS.md](DECISIONS.md) E12-D054–E12-D058（E12-07，#380）。
+
+### 備份
+
+主機 A 每小時以 root 存每個 region 的快照（E12-D054）：
+
+```sh
+systemctl enable --now mftiko-etcd-backup.timer
+systemctl start mftiko-etcd-backup.service   # 立刻存一次，確認能用
+ls -l /var/backups/mftiko/etcd/*/
+```
+
+- 檔案是 `/var/backups/mftiko/etcd/<region>/<UTC 時間>.db`（例如 `20261026T030000Z.db`），目錄 0700、檔案 0600。快照裡有所有 key 與 user 的密碼雜湊。
+- 每個 region 留最新 72 份（三天）。目錄裡別的檔案不刪。
+- 部署 JSON 是 `/etc/mftiko/controller/deployment.json`，root 的密碼是 `/etc/mftiko/etcd/root`。手動執行：`mftiko-etcd-backup -in /etc/mftiko/controller/deployment.json -secrets /etc/mftiko/etcd -dir /var/backups/mftiko/etcd [-region <r>] [-keep 72]`。
+- home region 的快照跟它的 etcd 在同一台。把 `/var/backups/mftiko/etcd/` 複製到另一台（例如主機 B）由部署端安排。
+- 失敗時 `mftiko-etcd-backup.service` 是 failed（`systemctl list-units --failed`），log 在 `journalctl -u mftiko-etcd-backup`。告警由部署端設，例如最新一份 `.db` 超過兩小時。
+- 看一份快照：`etcdutl snapshot status <檔案> -w table`，`REVISION` 是快照的 revision。
+
+### 還原
+
+一次還原一個 region。`r` 是 region，`R` 是它的 client URL。第 3 步與 `systemctl start etcd` 在該 region 的 etcd 主機上做，其他都在主機 A 以 root 做（root 的密碼只在主機 A）。兩台都要有 `etcdutl`：跟 etcd 在同一個官方 tarball，裝在 `/usr/bin/etcdutl`。testnet 的實測見 E12-D058。
+
+1. **選快照、算 bump**（主機 A）。用最新的一份：快照之後的變更都會沒有（E12-D057）。bump 一律計算，不用固定值：一次還原過的 region 已經在 10 億以上（E12-D055）。
+
+   ```sh
+   export ETCDCTL_ENDPOINTS=$R ETCDCTL_USER=root ETCDCTL_PASSWORD="$(cat /etc/mftiko/etcd/root)"
+   snap=/var/backups/mftiko/etcd/$r/<時間>.db
+   newest=$(ls -1 /var/backups/mftiko/etcd/$r/*.db | tail -1)
+   rev() { grep -o '"revision":[0-9]*' | head -1 | cut -d: -f2; }
+   R_s=$(etcdutl snapshot status "$snap" -w json | rev)
+   R_old=$(etcdctl get /mftiko/v1/ --limit=1 -w json | rev)                     # cluster 不回應時是空的
+   R_old=${R_old:-$(etcdutl snapshot status "$newest" -w json | rev)}
+   bump=$(( R_old - R_s + 1000000000 )); echo "R_s=$R_s R_old=$R_old bump=$bump"
+   ```
+
+   之後每一步都用這個 `$bump`。把快照複製到該 region 的 etcd 主機。
+
+2. **停寫入者。** 停 controller（主機 A），以及該 region 主機上的 agent。worker 不停（`KillMode=process`），稍後由新 agent 收養。API 不用停。
+
+   ```sh
+   systemctl stop mftiko-controller                                              # 主機 A
+   systemctl stop mftiko-md-agent mftiko-td-agent mftiko-sts-agent              # 該 region 的主機，有哪些停哪些
+   ```
+
+3. **還原 data dir**（該 region 的 etcd 主機）。`--name` 等四個值照 `/etc/etcd/etcd.env`，member 與 cluster ID 才不變；沒設 `ETCD_INITIAL_CLUSTER_TOKEN` 時是 etcd 的預設 `etcd-cluster`。`<bump>` 是第 1 步的值：
+
+   ```sh
+   systemctl stop etcd
+   mv /var/lib/etcd /var/lib/etcd.before-restore.$(date -u +%Y%m%dT%H%M%SZ)
+   set -a; . /etc/etcd/etcd.env; set +a
+   etcdutl snapshot restore <快照> --data-dir /var/lib/etcd \
+     --name "$ETCD_NAME" --initial-cluster "$ETCD_INITIAL_CLUSTER" \
+     --initial-cluster-token "${ETCD_INITIAL_CLUSTER_TOKEN:-etcd-cluster}" \
+     --initial-advertise-peer-urls "$ETCD_INITIAL_ADVERTISE_PEER_URLS" \
+     --bump-revision <bump> --mark-compacted
+   chown -R etcd:etcd /var/lib/etcd
+   systemctl start etcd
+   ```
+
+4. **檢查**（主機 A）。`endpoint health` 要帶 root（E12-D051），第 1 步的 export 已經帶了。revision 要大於 R_old：
+
+   ```sh
+   etcdctl endpoint health
+   new=$(etcdctl get /mftiko/v1/ --limit=1 -w json | rev); [ "$new" -gt "$R_old" ] && echo "ok: $new > $R_old"
+   etcdctl auth status                                                         # true
+   ```
+
+5. **auth。** 角色表與 user 是快照時的。補上快照之後新增的：`mftiko-etcd-roles -in /etc/mftiko/controller/deployment.json -apply -secrets /etc/mftiko/etcd -region $r`。快照之後輪換過密碼的 user，以服務 env 裡現在的密碼再設一次：`etcdctl user passwd <user> --interactive=false`，stdin 給密碼（「輪換服務的密碼」第 3 步）。要以別的 user 測權限（`etcdctl --user …`），先 `unset ETCDCTL_USER ETCDCTL_PASSWORD`，否則 etcdctl 因為環境變數與旗標衝突而退出。
+
+6. **加 epoch**（E12-D056），`-by` 是同一個 `$bump`。沒做這步，agent 會被 shim 以 `stale_epoch` 拒絕、一直重啟；controller 在第一次寫別的 region 時被那裡的 writer key 取代、一直重啟：
+
+   ```sh
+   mftiko-etcd-backup -in /etc/mftiko/controller/deployment.json -secrets /etc/mftiko/etcd -raise-epochs -region $r -by $bump
+   ```
+
+   每個 epoch key 印一行 `<key>: <舊> -> <新>`。
+
+7. **啟動**，先 controller 再 agent：`systemctl start mftiko-controller`，再在該 region 的主機 `systemctl start` 第 2 步停掉的 agent。還原的是 home region 時，快照裡的選主 key 要等它的 lease 過期，controller 約 15 秒後才當選；agent 在自己的 region 也一樣（E12-D057）。
+
+8. **驗證**，啟動 15 秒之後：
+   - agent 的 log 有 `shims adopted`，沒有 `stale_epoch`；controller 的 log 沒有 `superseded`；`systemctl show -p NRestarts <unit>` 不再增加。
+   - `mftiko instance show <inst>` 的 agent 在；`mftiko_agent_up`、`mftiko_controller_leader`、`mftiko_region_available` 都是 1；API `/readyz` 是 200。SSE 的 client 收到 `reset`（E10-D094）。
+   - 快照之後才建立的 session 沒有了，對應的 worker 由 agent 停掉（E12-D057）。要的話重新建立。
+   - 確認之後刪掉 `/var/lib/etcd.before-restore.*`。
 
 ## 輪替
 

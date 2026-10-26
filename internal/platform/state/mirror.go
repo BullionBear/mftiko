@@ -93,8 +93,8 @@ type MirrorStats struct {
 //     the new cluster has not reached. Every ProbeInterval Run reads one key: another cluster ID, or a revision or
 //     raft term below what the copy had seen before the read was sent, means the copy belongs to another history,
 //     so Run lists again. Watch responses are checked for the cluster ID too. A restore that keeps the cluster ID
-//     must not reuse revisions (etcdutl snapshot restore --bump-revision --mark-compacted): one that reused them
-//     and overtook the copy's revision within a probe interval would not be noticed.
+//     must not reuse revisions (etcdutl snapshot restore --bump-revision --mark-compacted, E12-D055): one that
+//     reused them and overtook the copy's revision within a probe interval would not be noticed.
 //   - Staleness: LastContact is the latest time T such that the copy is known to hold everything committed before
 //     T. Only linearizable reads set it: the list, and each probe's read once the copy has reached the read's
 //     revision. Events and progress notifications only move the copy's revision, so a member that serves the watch
