@@ -1,26 +1,16 @@
-# Runs make check (README: Make, Tests) on every pull request and on main.
-# E09-D090: the check job also packs the MD and TD workers into a registry:2 service
-# and pulls them back by digest. That step is not a Makefile target. The release
-# workflow pushes the same script to ghcr.io; see docs/release.md.
+# Temporary measurement for issue #415. This branch replaces PR CI with one
+# go test -race -json run. Do not merge.
 name: ci
 
 on:
   pull_request:
-  push:
-    branches: [main]
 
 permissions:
   contents: read
-
-concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  ETCD_VERSION: v3.7.2
+  actions: write
 
 jobs:
-  check:
+  measure:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
@@ -35,21 +25,21 @@ jobs:
           --health-retries 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0 # buf breaking reads the base commit from this clone
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+      - name: Runner spec
+        run: |
+          echo "nproc=$(nproc)"
+          awk '/MemTotal|MemAvailable/ {print}' /proc/meminfo
+          awk -F: '/model name/ {print $2; exit}' /proc/cpuinfo
+          go version
+          go env GOMAXPROCS GOGC CGO_ENABLED
 
-      - name: Install etcd ${{ env.ETCD_VERSION }}
+      - name: Install etcd v3.7.2
         run: |
           dir="$RUNNER_TEMP/etcd"
           mkdir -p "$dir" && cd "$dir"
@@ -62,6 +52,8 @@ jobs:
           bin="$dir/etcd-${ETCD_VERSION}-linux-amd64/etcd"
           "$bin" --version
           echo "MFTIKO_ETCD_BIN=$bin" >> "$GITHUB_ENV"
+        env:
+          ETCD_VERSION: v3.7.2
 
       - name: Install PostgreSQL
         run: |
@@ -72,96 +64,73 @@ jobs:
           "$bin" --version
           echo "MFTIKO_PG_BIN=$bin" >> "$GITHUB_ENV"
 
-      # The pull request's base, or the previous main for a push. buf and oasdiff read it as a local branch.
-      - name: Base for breaking checks
+      - name: go test -race -json
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: git branch -f ci-base "$BASE_SHA"
-
-      # make check, one step per target so a failure names its check. Same list and order as CHECKS in the Makefile.
-      # The registry:2 step after them is E09-D090. It needs this service and is not a Makefile target.
-      - name: buf lint
-        run: make proto-lint
-      - name: buf breaking
-        run: make proto-breaking BUF_AGAINST='.git#branch=ci-base'
-      - name: openapi lint
-        run: make openapi-lint
-      - name: oasdiff breaking
-        run: make openapi-breaking OAS_BASE=ci-base
-      - name: generated code is current
-        run: make gen-check
-      - name: go vet
-        run: make vet
-      - name: build
-        run: make build
-      # E12-D021: the unit files type-check. ExecStart paths have to exist; User= and
-      # EnvironmentFile= do not. The adoption run is the systemd job, not this one.
-      - name: systemd-analyze verify
+          MFTIKO_REQUIRE_ETCD: "1"
+          MFTIKO_REQUIRE_PG: "1"
+          MFTIKO_REQUIRE_REGISTRY: "1"
         run: |
-          sudo install -d -m 0755 /opt/mftiko/current/bin
-          for b in mftiko-md-agent mftiko-td-agent mftiko-sts-agent mftiko-shim mftiko-controller mftiko-api mftiko-sym mftiko-etcd-backup; do
-            sudo install -m 0755 "bin/$b" "/opt/mftiko/current/bin/$b"
-          done
-          sudo install -m 0755 "$MFTIKO_ETCD_BIN" /usr/bin/etcd
-          dir="$RUNNER_TEMP/nats"
-          mkdir -p "$dir"
-          ver=v2.15.0
-          (
-            cd "$dir"
-            base="https://github.com/nats-io/nats-server/releases/download/${ver}"
-            tarball="nats-server-${ver}-linux-amd64.tar.gz"
-            curl -fsSLO "$base/$tarball"
-            curl -fsSLO "$base/SHA256SUMS"
-            grep " ${tarball}\$" SHA256SUMS | sha256sum -c -
-            tar xzf "$tarball"
-          )
-          sudo install -m 0755 "$dir/nats-server-${ver}-linux-amd64/nats-server" /usr/bin/nats-server
-          systemd-analyze verify deploy/systemd/*.service deploy/systemd/*.timer
-      # The CLI release tarballs, by the release workflow's script (E11-D035).
-      - name: CLI release build
-        run: make cli-dist
-      # Includes the conformance fakeworker violation checks (E08-D034, PROTOCOL §9.8).
-      - name: go test -race
-        env:
-          MFTIKO_REQUIRE_ETCD: "1" # a missing etcd fails the etcd tests instead of skipping them
-          MFTIKO_REQUIRE_PG: "1" # a missing postgres fails the symbol migration tests instead of skipping them
-          MFTIKO_REQUIRE_REGISTRY: "1" # a missing registry:2 fails the strategy catalog test instead of skipping it (E10-D061)
-        run: make test-race
-      # Full Go SDK conformance. Separate from go test so the suite is not run twice (E08-D064).
-      - name: Go SDK conformance
-        run: make sdk-conformance
-      - name: svelte-check
-        run: make web-check
-      # Console production build (E10-D079). svelte-check is the step above.
-      - name: web build
-        run: make web
-      # Host release tarball (E12-D026). make web above produces web/build. Same script as release.yml.
-      - name: Server release build
-        run: make server-dist
-      # Same script as .github/workflows/release.yml. These tags stay on the local registry.
-      - name: Pack MD and TD workers into registry:2
-        env:
-          REGISTRY: 127.0.0.1:5000
-          PLAIN_HTTP: "1"
-          TAGS: ci latest
-        run: bash .github/scripts/pack-workers.sh
+          set +e
+          go test -race -json ./... > "$RUNNER_TEMP/test-race.json"
+          code=$?
+          set -e
+          echo "go_test_exit=$code"
+          python3 - "$RUNNER_TEMP/test-race.json" "$RUNNER_TEMP/test-events.json" << 'PY'
+          import json, sys
+          src, dst = sys.argv[1], sys.argv[2]
+          pkgs = {}
+          tests = []
+          fails = []
+          skips = 0
+          parents = 0
+          with open(src) as f, open(dst, "w") as out:
+              for line in f:
+                  line = line.strip()
+                  if not line:
+                      continue
+                  try:
+                      ev = json.loads(line)
+                  except json.JSONDecodeError:
+                      continue
+                  action = ev.get("Action")
+                  if action == "output":
+                      continue
+                  keep = {k: ev[k] for k in ("Action", "Package", "Test", "Elapsed") if k in ev}
+                  if action in ("pass", "fail", "skip") and "Elapsed" in ev:
+                      out.write(json.dumps(keep, separators=(",", ":")) + "\n")
+                      pkg = ev.get("Package", "")
+                      short = pkg.removeprefix("github.com/BullionBear/mftiko/")
+                      name = ev.get("Test")
+                      elapsed = float(ev["Elapsed"])
+                      if not name:
+                          pkgs[short] = (action, elapsed)
+                      elif "/" not in name:
+                          parents += 1
+                          tests.append((elapsed, action, short, name))
+                          if action == "fail":
+                              fails.append((short, name, elapsed))
+                          elif action == "skip":
+                              skips += 1
+          print(f"packages={len(pkgs)} parent_tests={parents} skips={skips} fails={len(fails)}")
+          print(f"package_sum_s={sum(v[1] for v in pkgs.values()):.1f}")
+          print("PACKAGE")
+          for short, (action, elapsed) in sorted(pkgs.items(), key=lambda kv: -kv[1][1]):
+              print(f"{elapsed:8.3f} {action:4} {short}")
+          print("SLOWEST_PARENTS")
+          for elapsed, action, short, name in sorted(tests, reverse=True)[:40]:
+              print(f"{elapsed:8.3f} {action:4} {short} {name}")
+          if fails:
+              print("FAILS")
+              for short, name, elapsed in fails:
+                  print(f"{elapsed:8.3f} {short} {name}")
+          PY
+          mkdir -p measure-out
+          cp "$RUNNER_TEMP/test-events.json" measure-out/test-events.json
+          exit "$code"
 
-  # E12-D021: real systemd on the Ubuntu runner. etcd, NATS, and the registry come
-  # from deploy/accept; the three agents run on the host and adopt across restart,
-  # stop/start, and SIGKILL of MainPID. Not part of make check.
-  systemd:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
         with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
-
-      - name: docker
-        run: docker info
-
-      - name: adopt shims across agent restart
-        run: MFTIKO_SYSTEMD_ADOPT=1 go test -count=1 -timeout 25m -run '^TestAdopt$' ./deploy/systemd/
+          name: test-events
+          path: measure-out/test-events.json
+          if-no-files-found: warn
