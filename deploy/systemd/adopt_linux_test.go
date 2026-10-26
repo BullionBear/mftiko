@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -913,7 +914,8 @@ func TestParseShow(t *testing.T) {
 	}
 }
 
-// TestUnitKeys locks the unit files to E12-D016–E12-D020. It does not need systemd.
+// TestUnitKeys locks the unit files to E12-D016–E12-D020, and the etcd snapshot unit and timer to E12-D054. It does
+// not need systemd.
 func TestUnitKeys(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
@@ -949,8 +951,10 @@ func TestUnitKeys(t *testing.T) {
 		"mftiko-td-agent.service",
 		"nats.service",
 	}
-	if strings.Join(sorted(names), ",") != strings.Join(want, ",") {
-		t.Fatalf("units %v, want %v", sorted(names), want)
+	// Oneshot units started by a timer: not long-running, so the restart policy below is not theirs.
+	oneshot := []string{"mftiko-etcd-backup.service"}
+	if strings.Join(sorted(names), ",") != strings.Join(sorted(append(slices.Clone(want), oneshot...)), ",") {
+		t.Fatalf("units %v, want %v and %v", sorted(names), want, oneshot)
 	}
 	agents := map[string]string{
 		"mftiko-md-agent.service":  "mftiko/md-agent",
@@ -1029,6 +1033,37 @@ func TestUnitKeys(t *testing.T) {
 	for _, name := range []string{"mftiko-controller.service", "mftiko-api.service", "mftiko-sym.service", "nats.service"} {
 		if _, ok := lookup(got[name], "[Service]", "StateDirectory"); ok {
 			t.Fatalf("%s sets StateDirectory", name)
+		}
+	}
+
+	backup := got["mftiko-etcd-backup.service"]
+	if v, _ := lookup(backup, "[Service]", "Type"); v != "oneshot" {
+		t.Fatalf("mftiko-etcd-backup Type=%q", v)
+	}
+	for _, key := range []string{"Restart", "User"} { // root reads /etc/mftiko/etcd (E12-D050)
+		if hasKey(backup, key) {
+			t.Fatalf("mftiko-etcd-backup sets %s", key)
+		}
+	}
+	exec := fields(lookupMust(t, backup, "mftiko-etcd-backup.service", "ExecStart"))
+	for _, want := range []string{"/opt/mftiko/current/bin/mftiko-etcd-backup", "/etc/mftiko/etcd", "/var/backups/mftiko/etcd"} {
+		if !containsStr(exec, want) {
+			t.Fatalf("mftiko-etcd-backup ExecStart has no %s: %v", want, exec)
+		}
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "mftiko-etcd-backup.timer"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	timer, err := parseUnit(string(b))
+	if err != nil {
+		t.Fatalf("mftiko-etcd-backup.timer: %v", err)
+	}
+	for _, kv := range []struct{ sec, k, v string }{
+		{"[Timer]", "OnCalendar", "hourly"}, {"[Timer]", "Persistent", "true"}, {"[Install]", "WantedBy", "timers.target"},
+	} {
+		if v, _ := lookup(timer, kv.sec, kv.k); v != kv.v {
+			t.Fatalf("mftiko-etcd-backup.timer %s=%q, want %s", kv.k, v, kv.v)
 		}
 	}
 }

@@ -38,6 +38,7 @@ bins=(
 	mftiko-mdfetch
 	mftiko-migrate
 	mftiko-etcd-roles
+	mftiko-etcd-backup
 	mftiko-retire-clean
 	mftiko-seal
 )

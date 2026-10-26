@@ -1,10 +1,12 @@
 // Package etcdtest runs a throwaway single-member etcd for tests of package state. It is imported by tests only.
 // A Server can be stopped and restarted on the same data and ports, or rebuilt from nothing; a Proxy in front of it
-// can cut its clients off while etcd keeps running, or send them to another server. A Shared server is one warm
+// can cut its clients off while etcd keeps running, or send them to another server. A Server can also save a snapshot
+// and be restored from one with etcdutl, as an operator would (E12-07). A Shared server is one warm
 // etcd that the tests of a binary take in turn, emptied between them.
 //
 // The binary is $MFTIKO_ETCD_BIN, else etcd on PATH; a test without either is skipped, unless $MFTIKO_REQUIRE_ETCD
-// is set (CI sets it), in which case it fails: a run that skipped every etcd test must not look green.
+// is set (CI sets it), in which case it fails: a run that skipped every etcd test must not look green. Restore also
+// needs etcdutl: next to that etcd binary, else on PATH, and the same rule applies.
 //
 // Auth is on, as in production (E1-08): etcd issues JWT tokens (ES256), and a root user exists whose password is
 // RootPassword. Client returns a root client; tests create the other users and roles themselves, with Password.
@@ -25,6 +27,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -267,6 +270,90 @@ func (s *Server) RotateSigningKey(t testing.TB) {
 		t.Fatalf("etcdtest: rotate signing key: %v", err)
 	}
 	s.relaunch(t)
+}
+
+// Snapshot saves the member's keyspace, auth included, to a new file in a temporary directory and returns its path,
+// as etcdctl snapshot save does.
+func (s *Server) Snapshot(t testing.TB) string {
+	t.Helper()
+	c := s.Client(t)
+	ctx, cancel := context.WithTimeout(context.Background(), readyTimeout)
+	defer cancel()
+	rc, err := c.Snapshot(ctx)
+	if err != nil {
+		t.Fatalf("etcdtest: snapshot: %v", err)
+	}
+	defer rc.Close()
+	path := filepath.Join(t.TempDir(), "snapshot.db")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("etcdtest: snapshot: %v", err)
+	}
+	defer f.Close()
+	if _, err := io.Copy(f, rc); err != nil {
+		t.Fatalf("etcdtest: snapshot: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("etcdtest: snapshot: %v", err)
+	}
+	return path
+}
+
+// Restore kills the member, replaces its data with the snapshot at path (etcdutl snapshot restore) and starts it
+// again with the same name, token and ports, so the cluster ID does not change. Users, roles and the auth flag are
+// the snapshot's. With bump > 0 the restore passes --bump-revision bump --mark-compacted, as the runbook does
+// (E12-D055); with 0 it passes neither, and revisions continue from the snapshot's.
+func (s *Server) Restore(t testing.TB, path string, bump int64) {
+	t.Helper()
+	if s.shared {
+		t.Fatalf("etcdtest: Restore on the shared server; Start one for the test instead")
+		return
+	}
+	utl := requireUtl(t, s.bin)
+	s.Stop()
+	if err := os.RemoveAll(s.dataDir); err != nil {
+		t.Fatalf("etcdtest: restore: %v", err)
+	}
+	args := []string{"snapshot", "restore", path, "--data-dir", s.dataDir}
+	for _, f := range []string{"--name", "--initial-cluster", "--initial-cluster-token", "--initial-advertise-peer-urls"} {
+		args = append(args, f, s.arg(f))
+	}
+	if bump > 0 {
+		args = append(args, "--bump-revision", fmt.Sprint(bump), "--mark-compacted")
+	}
+	if out, err := exec.Command(utl, args...).CombinedOutput(); err != nil {
+		t.Fatalf("etcdtest: etcdutl %v: %v\n%s", args, err, out)
+	}
+	s.mu.Lock()
+	s.authOn = true // a snapshot of a Server always has auth on
+	s.mu.Unlock()
+	s.relaunch(t)
+}
+
+// arg is the value of flag in the member's command line.
+func (s *Server) arg(flag string) string {
+	for i, a := range s.args {
+		if a == flag && i+1 < len(s.args) {
+			return s.args[i+1]
+		}
+	}
+	panic("etcdtest: no " + flag)
+}
+
+// requireUtl is etcdutl, next to bin or else on PATH. Without one it skips the test, or fails it if EnvRequire is set.
+func requireUtl(t testing.TB, bin string) string {
+	t.Helper()
+	if p, err := exec.LookPath(filepath.Join(filepath.Dir(bin), "etcdutl")); err == nil {
+		return p
+	}
+	if p, err := exec.LookPath("etcdutl"); err == nil {
+		return p
+	}
+	if os.Getenv(EnvRequire) != "" {
+		t.Fatalf("etcdtest: etcdutl not found next to %s nor on PATH, and %s is set", bin, EnvRequire)
+	}
+	t.Skipf("etcdutl not found next to %s nor on PATH", bin)
+	return ""
 }
 
 func (s *Server) writeSigningKey(priv, pub []byte) error {
