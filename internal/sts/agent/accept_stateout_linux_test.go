@@ -308,7 +308,7 @@ func (e *env) sessionResidue(id string) string {
 	}
 	ctx, cancel := e.opCtx()
 	defer cancel()
-	resp, err := e.root.Get(ctx, state.IncarnationKey(state.PlaneSTS, testInst, h))
+	resp, err := e.root.Get(ctx, state.IncarnationKey(state.PlaneSTS, e.inst(), h))
 	if err != nil {
 		return err.Error()
 	}
@@ -337,7 +337,7 @@ func (e *env) logsKept(id string) bool {
 	h := state.WorkerHash(string(WorkerKey(id)))
 	ctx, cancel := e.opCtx()
 	defer cancel()
-	resp, err := e.root.Get(ctx, state.IncarnationKey(state.PlaneSTS, testInst, h))
+	resp, err := e.root.Get(ctx, state.IncarnationKey(state.PlaneSTS, e.inst(), h))
 	return err == nil && len(resp.Kvs) != 0
 }
 

@@ -52,7 +52,7 @@ func TestScenarioSessionCreateAndEnd(t *testing.T) {
 	}{
 		Regions:   e.cfg.Topology.Regions,
 		Instances: e.cfg.Topology.Instances,
-		Planes:    map[string]string{testInst: "sts"},
+		Planes:    map[string]string{e.inst(): "sts"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +115,7 @@ func TestScenarioSessionCreateAndEnd(t *testing.T) {
 		return resp.StatusCode == http.StatusOK && bytes.Contains(raw.Bytes(), []byte(`"unavailable_regions":[]`))
 	})
 
-	code, hdr, body := sessionPost(t, base+"/api/v1/sessions", `{"name":"hello","sts_instance":"sts-tw-1","strategy":{"id":"hello","ref":"`+e.digest+`"}}`)
+	code, hdr, body := sessionPost(t, base+"/api/v1/sessions", `{"name":"hello","sts_instance":"`+e.inst()+`","strategy":{"id":"hello","ref":"`+e.digest+`"}}`)
 	if code != http.StatusCreated {
 		t.Fatalf("create %d %s\napi log:\n%s", code, body, buf.String())
 	}
@@ -198,7 +198,7 @@ func (e *env) sessionSpec(id string) *sessionv1.SessionSpec {
 	e.t.Helper()
 	ctx, cancel := e.opCtx()
 	defer cancel()
-	resp, err := e.root.Get(ctx, state.SessionSpecKey(testInst, id))
+	resp, err := e.root.Get(ctx, state.SessionSpecKey(e.inst(), id))
 	if err != nil {
 		e.t.Fatal(err)
 	}
