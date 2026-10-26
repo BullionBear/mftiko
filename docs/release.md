@@ -33,7 +33,7 @@ GitHub → BullionBear → Organization Settings → Packages → Package creati
 
 ### PR 怎麼驗證
 
-一般 PR 不推 `ghcr.io`。`.github/workflows/ci.yml` 的 `check` job 起 `registry:2`，用同一支 [`.github/scripts/pack-workers.sh`](../.github/scripts/pack-workers.sh) 打包，推到 `127.0.0.1:5000`，再依 digest 與每個 tag 拉回。檢查單一 image manifest（不是 OCI index）、kind、`entrypoint` `["bin/worker"]`、contracts、空的 `sdk`、`linux/amd64`，以及層裡只有 `bin/worker`。
+一般 PR 不推 `ghcr.io`。`.github/workflows/ci.yml` 的 `build` job 起 `registry:2`，用同一支 [`.github/scripts/pack-workers.sh`](../.github/scripts/pack-workers.sh) 打包，推到 `127.0.0.1:5000`，再依 digest 與每個 tag 拉回。檢查單一 image manifest（不是 OCI index）、kind、`entrypoint` `["bin/worker"]`、contracts、空的 `sdk`、`linux/amd64`，以及層裡只有 `bin/worker`。
 
 正式 registry 的推送只在 `v*` tag，或該 tag 的 `workflow_dispatch`。PR 上的 CI 跑的是同一支腳本對 `registry:2` 的這條路徑。
 

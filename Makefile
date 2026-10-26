@@ -155,8 +155,13 @@ examples: ## Build the example strategies into bin/examples/
 test: ## go test
 	$(GO) test ./...
 
-test-race: ## go test with the race detector, uncached
-	$(GO) test -race -count=1 ./...
+# PKGS limits test-race. CI passes one shard; the default is the whole module.
+# An empty list would make `go test` run the current directory, so refuse it.
+PKGS ?= ./...
+
+test-race: ## go test with the race detector, uncached. PKGS limits packages (default ./...)
+	@test -n '$(PKGS)' || { echo "test-race: PKGS is empty" >&2; exit 1; }
+	$(GO) test -race -count=1 $(PKGS)
 
 sdk-conformance: ## Full Go SDK conformance via examples/strategies/conform (E08-D064)
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/mftiko-conformance ./cmd/mftiko-conformance
@@ -169,10 +174,13 @@ vet: ## go vet
 fmt: ## go fmt
 	$(GO) fmt ./...
 
-# CI runs these one step each (.github/workflows/ci.yml), in this order: keep the two lists the same.
+# Local `make check` runs these in order. CI (.github/workflows/ci.yml) runs the
+# same targets from the lint, build, and test jobs. Keep this list and those
+# jobs in step: a target added here needs a step there. test-race in CI is one
+# shard from .github/test-shards.txt and still passes -race -count=1.
 CHECKS := proto-lint proto-breaking openapi-lint openapi-breaking gen-check vet build cli-dist test-race sdk-conformance web-check web server-dist
 
-check: $(CHECKS) ## Everything CI runs
+check: $(CHECKS) ## Lint, build, and test targets CI runs
 
 # ---------- web ----------
 
