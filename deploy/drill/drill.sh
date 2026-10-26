@@ -4,7 +4,7 @@
 # Host A is the home region (jp): etcd, NATS, Postgres, the registry, SYM, the API, the controller and
 # the md, td and sts agents. Host B is the remote region (jp2): etcd and an sts agent. Both already run
 # other services, so everything here has its own port and container, and network cuts are iptables
-# rules matched on the mftiko users' UIDs (E12-D062).
+# rules matched on the mftiko users' UIDs (E12-D075).
 #
 #   drill.sh infra               users, nats-server and its config, the Postgres and registry containers
 #   drill.sh release TAG DIR     copy DIR's tarball and SHA256SUMS to both hosts, mftiko-release fetch, install
@@ -84,7 +84,7 @@ EOF
 
 # release TAG DIR puts DIR's tarball where mftiko-release fetch finds it, on both hosts, and installs it.
 # The only difference from a deploy is MFTIKO_RELEASE_BASE: a file server on 127.0.0.1 instead of the
-# GitHub Release (no tag is published for the drill, E12-D062). fetch still checks SHA256SUMS.
+# GitHub Release (no tag is published for the drill, E12-D075). fetch still checks SHA256SUMS.
 release() {
 	local tag=$1 dir=$2 h tgz
 	tgz=mftiko-server_${tag}_linux_amd64.tar.gz

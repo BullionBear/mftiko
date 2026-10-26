@@ -1068,18 +1068,21 @@ func (x *AgentRecord) GetWorkDir() string {
 	return ""
 }
 
-// 不綁 lease（§3.2 W7），只在階段改變時寫；worker 確定不在之後由 agent 刪除。
+// 不綁 lease（§3.2 W7）。階段或 conditions 改變時寫；worker 確定不在之後由 agent 刪除。
 type WorkerStatus struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Worker        *v1.WorkerRef          `protobuf:"bytes,1,opt,name=worker,proto3" json:"worker,omitempty"`
-	Phase         string                 `protobuf:"bytes,2,opt,name=phase,proto3" json:"phase,omitempty"` // STARTING | RUNNING | STOPPING | BACKOFF | EXITED | LOST
-	Stage         string                 `protobuf:"bytes,3,opt,name=stage,proto3" json:"stage,omitempty"` // worker 回報的生命週期階段
-	Release       string                 `protobuf:"bytes,4,opt,name=release,proto3" json:"release,omitempty"`
-	ShimRelease   string                 `protobuf:"bytes,5,opt,name=shim_release,json=shimRelease,proto3" json:"shim_release,omitempty"`
-	Restarts      uint32                 `protobuf:"varint,6,opt,name=restarts,proto3" json:"restarts,omitempty"`
-	RssBytes      int64                  `protobuf:"varint,7,opt,name=rss_bytes,json=rssBytes,proto3" json:"rss_bytes,omitempty"` // 寫入當下的值，只是快照：WorkerStatus 只在階段改變時寫（§3.2 W7）
-	StartedAtNs   int64                  `protobuf:"varint,8,opt,name=started_at_ns,json=startedAtNs,proto3" json:"started_at_ns,omitempty"`
-	LastExit      *v1.ExitInfo           `protobuf:"bytes,9,opt,name=last_exit,json=lastExit,proto3" json:"last_exit,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Worker      *v1.WorkerRef          `protobuf:"bytes,1,opt,name=worker,proto3" json:"worker,omitempty"`
+	Phase       string                 `protobuf:"bytes,2,opt,name=phase,proto3" json:"phase,omitempty"` // STARTING | RUNNING | STOPPING | BACKOFF | EXITED | LOST
+	Stage       string                 `protobuf:"bytes,3,opt,name=stage,proto3" json:"stage,omitempty"` // worker 回報的生命週期階段
+	Release     string                 `protobuf:"bytes,4,opt,name=release,proto3" json:"release,omitempty"`
+	ShimRelease string                 `protobuf:"bytes,5,opt,name=shim_release,json=shimRelease,proto3" json:"shim_release,omitempty"`
+	Restarts    uint32                 `protobuf:"varint,6,opt,name=restarts,proto3" json:"restarts,omitempty"`
+	RssBytes    int64                  `protobuf:"varint,7,opt,name=rss_bytes,json=rssBytes,proto3" json:"rss_bytes,omitempty"` // 寫入當下的值，只是快照：階段或 conditions 改變時才寫（§3.2 W7）
+	StartedAtNs int64                  `protobuf:"varint,8,opt,name=started_at_ns,json=startedAtNs,proto3" json:"started_at_ns,omitempty"`
+	LastExit    *v1.ExitInfo           `protobuf:"bytes,9,opt,name=last_exit,json=lastExit,proto3" json:"last_exit,omitempty"`
+	// 通用條件，格式與 SessionStatus.conditions 相同。md conn worker 的 bus 是 type "bus_disconnected"：
+	// status true 是斷線，false 是連著。沒有這條的 worker（TD、STS）不上報（E12-D063）。
+	Conditions    []*v1.Condition `protobuf:"bytes,10,rep,name=conditions,proto3" json:"conditions,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1173,6 +1176,13 @@ func (x *WorkerStatus) GetStartedAtNs() int64 {
 func (x *WorkerStatus) GetLastExit() *v1.ExitInfo {
 	if x != nil {
 		return x.LastExit
+	}
+	return nil
+}
+
+func (x *WorkerStatus) GetConditions() []*v1.Condition {
+	if x != nil {
+		return x.Conditions
 	}
 	return nil
 }
@@ -1306,7 +1316,7 @@ const file_mftiko_state_v1_state_proto_rawDesc = "" +
 	"\arelease\x18\x04 \x01(\tR\arelease\x12\"\n" +
 	"\rstarted_at_ns\x18\x05 \x01(\x03R\vstartedAtNs\x12\x12\n" +
 	"\x04host\x18\x06 \x01(\tR\x04host\x12\x19\n" +
-	"\bwork_dir\x18\a \x01(\tR\aworkDir\"\xc2\x02\n" +
+	"\bwork_dir\x18\a \x01(\tR\aworkDir\"\xff\x02\n" +
 	"\fWorkerStatus\x123\n" +
 	"\x06worker\x18\x01 \x01(\v2\x1b.mftiko.common.v1.WorkerRefR\x06worker\x12\x14\n" +
 	"\x05phase\x18\x02 \x01(\tR\x05phase\x12\x14\n" +
@@ -1316,7 +1326,11 @@ const file_mftiko_state_v1_state_proto_rawDesc = "" +
 	"\brestarts\x18\x06 \x01(\rR\brestarts\x12\x1b\n" +
 	"\trss_bytes\x18\a \x01(\x03R\brssBytes\x12\"\n" +
 	"\rstarted_at_ns\x18\b \x01(\x03R\vstartedAtNs\x127\n" +
-	"\tlast_exit\x18\t \x01(\v2\x1a.mftiko.common.v1.ExitInfoR\blastExit\"\x1f\n" +
+	"\tlast_exit\x18\t \x01(\v2\x1a.mftiko.common.v1.ExitInfoR\blastExit\x12;\n" +
+	"\n" +
+	"conditions\x18\n" +
+	" \x03(\v2\x1b.mftiko.common.v1.ConditionR\n" +
+	"conditions\"\x1f\n" +
 	"\tPlacement\x12\x12\n" +
 	"\x04conn\x18\x01 \x01(\tR\x04conn*\xb7\x01\n" +
 	"\x05Phase\x12\x15\n" +
@@ -1389,11 +1403,12 @@ var file_mftiko_state_v1_state_proto_depIdxs = []int32{
 	19, // 11: mftiko.state.v1.EntryStatus.universe:type_name -> mftiko.state.v1.Universe
 	18, // 12: mftiko.state.v1.WorkerStatus.worker:type_name -> mftiko.common.v1.WorkerRef
 	15, // 13: mftiko.state.v1.WorkerStatus.last_exit:type_name -> mftiko.common.v1.ExitInfo
-	14, // [14:14] is the sub-list for method output_type
-	14, // [14:14] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	14, // 14: mftiko.state.v1.WorkerStatus.conditions:type_name -> mftiko.common.v1.Condition
+	15, // [15:15] is the sub-list for method output_type
+	15, // [15:15] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_mftiko_state_v1_state_proto_init() }

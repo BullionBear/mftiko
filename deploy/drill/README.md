@@ -1,6 +1,6 @@
 # E12-12 testnet 演練
 
-#385 的紀錄。依 [DECISIONS.md](../../docs/DECISIONS.md) E12-D062–E12-D065。步驟照 [runbook.md](../../docs/runbook.md) 做，runbook 以外多出來的步驟記在最後一節，並補回 runbook。
+#385 的紀錄。依 [DECISIONS.md](../../docs/DECISIONS.md) E12-D075–E12-D078。步驟照 [runbook.md](../../docs/runbook.md) 做，runbook 以外多出來的步驟記在最後一節，並補回 runbook。
 
 `drill.sh` 從這台機器以 ssh 操作兩台主機。可以重跑的部分都在裡面：
 
@@ -24,7 +24,7 @@ $D sweep <api_id>              # 結束演練 session，撤掉它們的 algo 留
 | etcd | 3.7.2，auth、jwt（E12-06） | 同左 |
 | 其他 | NATS 2.15.0（:4223）、Postgres 16 容器（:15432）、registry:2 容器（:5005）、SYM、API（:18080）、controller、md-jp-1、td-jp-1、sts-jp-1 | sts-jp2-1 |
 
-- 兩台主機上還有別的服務（traefik、別的 Postgres 與 NATS 等）。mftiko 的每個元件都用自己的 port 與容器；斷網只用 `OUTPUT` 裡比對 mftiko 使用者 UID 的 REJECT 規則（E12-D062）。
+- 兩台主機上還有別的服務（traefik、別的 Postgres 與 NATS 等）。mftiko 的每個元件都用自己的 port 與容器；斷網只用 `OUTPUT` 裡比對 mftiko 使用者 UID 的 REJECT 規則（E12-D075）。
 - release 在本機建（`build-server.sh`），經 `mftiko-release` 安裝；A 是 `dd73a2d`（main），B 是 `b32b0de`，C 是 `2326586`。worker 與策略推到主機 A 的 registry。不發佈 tag。
 - 交易所：BinanceUM testnet。帳號是 ed25519 金鑰（`api_id` 8585405279489955，td-jp-1）。
 - 策略：`examples/strategies/drill`。在最佳買價下方 3% 掛一張買單，交易所掛上之後過 10 秒撤掉，再掛下一張；每個 hook 一行 JSON。兩個 session：`drill-jp`（sts-jp-1，algo 1）與 `drill-jp2`（sts-jp2-1，algo 2），同一個帳號、同一個 feed `orderbook_delta.BinanceUM_Perp_BTCUSDT`（md-jp-1）。
@@ -38,7 +38,7 @@ $D sweep <api_id>              # 結束演練 session，撤掉它們的 algo 留
 |---|---|---|---|---|---|
 | 1 | 輪換 md、td、sts（兩台）與 controller | 每個 `systemctl stop`，20 秒，`start` | worker 不斷，新 agent 收養 | shim 與 worker 的 PID 都沒變；每個新 agent `adopted=1 unreachable=0`；`NRestarts` 0；最長空窗 10.8 秒 | 通過 |
 | 1 | 換版 A → B、B → C | 兩台依序 `mftiko-release switch`（runbook §2.1） | 同上；依 E12-D024 的順序重啟 | 依序重啟 sym、api、controller、md、td、sts；worker 的 PID 不變，繼續跑舊的 binary（E01-D003）；全部收養；`NRestarts` 0；最長空窗 10.6、10.7 秒 | 通過 |
-| 2 | 殺策略 worker | `kill -9` STS 的 worker | `on_failure` 重啟 | 1 秒內以 incarnation 2 重來，`OnInit`、`OnStart` 再跑一次；recon 看到上一個 incarnation 掛著的單（`open=1`），平台不替策略撤（E06-D002）。`restart_count` 原本一直是 0，修好（E12-D063）；換到 C 之後殺一次是 1 | 通過 |
+| 2 | 殺策略 worker | `kill -9` STS 的 worker | `on_failure` 重啟 | 1 秒內以 incarnation 2 重來，`OnInit`、`OnStart` 再跑一次；recon 看到上一個 incarnation 掛著的單（`open=1`），平台不替策略撤（E06-D002）。`restart_count` 原本一直是 0，修好（E12-D076）；換到 C 之後殺一次是 1 | 通過 |
 | 2 | 殺 conn worker | `kill -9` MD 的 worker | 照政策重拉；策略重新同步 book | 1 秒內重拉；`conn_epoch` 1 → 2 重新連上；feed 的 ack 維持 READY；最長空窗 11.3 秒 | 通過 |
 | 2 | 殺 account worker | `kill -9` TD 的 worker | 照政策重拉、recon | 1 秒內重拉，recon 之後撤單、下單照常；ack 維持 READY；最長空窗 10.5 秒 | 通過 |
 | 3 | 重啟 agent 的 unit | 每個 agent `systemctl restart` | shim 與 worker 還在，收養 | 全部收養，`NRestarts` 0 | 通過 |
@@ -55,9 +55,9 @@ $D sweep <api_id>              # 結束演練 session，撤掉它們的 algo 留
 
 | | 問題 | 處理 |
 |---|---|---|
-| 1 | `mftiko-release install` 把 release 目錄留成 0700（`mktemp -d`），服務的使用者都執行不了：`switch` 之後每個 unit `Permission denied`，controller 停了約 3 分鐘 | 修好（E12-D063）。CI 的測試是 root 執行的，而且沒有 Postgres 時跳過，所以沒看到 |
-| 2 | Binance 的帳號種類宣稱接受 hmac，但 adapter 只用 ed25519 簽：API 收下 HMAC 帳號，worker 每次連線都失敗，session `deps_timeout` | 修好（E12-D063） |
-| 3 | `SessionStatus.restart_count` 從來沒寫，一直是 0 | 修好（E12-D063） |
+| 1 | `mftiko-release install` 把 release 目錄留成 0700（`mktemp -d`），服務的使用者都執行不了：`switch` 之後每個 unit `Permission denied`，controller 停了約 3 分鐘 | 修好（E12-D076）。CI 的測試是 root 執行的，而且沒有 Postgres 時跳過，所以沒看到 |
+| 2 | Binance 的帳號種類宣稱接受 hmac，但 adapter 只用 ed25519 簽：API 收下 HMAC 帳號，worker 每次連線都失敗，session `deps_timeout` | 修好（E12-D076） |
+| 3 | `SessionStatus.restart_count` 從來沒寫，一直是 0 | 修好（E12-D076） |
 | 4 | feed 在 conn worker 發不出 NATS 時仍是 READY | #401 |
 | 5 | registry 不可用時 API 拒絕所有 session create | 照設計：建立時以 registry 驗證策略、不設快取（E10-D012、E10-D057）。#402 關閉，寫進 runbook §3.7 |
 | 6 | agent 拉不到 artifact 時沒有訊號 | #403 |
@@ -66,7 +66,7 @@ $D sweep <api_id>              # 結束演練 session，撤掉它們的 algo 留
 
 ## runbook 以外的步驟
 
-演練中多做、已經補進 runbook 的（E12-D064）：
+演練中多做、已經補進 runbook 的（E12-D077）：
 
 - 從有問題 1 的版本換版：用新版 tarball 裡的 `mftiko-release` 安裝，或安裝後 `chmod 0555 /opt/mftiko/releases/<tag>`（§2.1）。
 - agent 被 SIGKILL 或 OOM 後，等到 15 秒才收養（§2.3）。

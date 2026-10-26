@@ -834,7 +834,7 @@ export interface components {
             home_region: string;
             agent?: components["schemas"]["AgentStatus"];
         };
-        /** @description `WorkerStatus`。只在階段改變時寫（W7）。 */
+        /** @description `WorkerStatus`。階段或 conditions 改變時寫（W7）。這個回應只列 phase；NATS bus 看 `mftiko_worker_bus_up`。 */
         Worker: {
             key: string;
             incarnation: number;

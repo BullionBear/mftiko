@@ -51,7 +51,11 @@ type Config struct {
 	// number before the connection is up, and md.f for that connection is published only
 	// after. A dial that fails leaves Epoch unchanged, so the next attempt reports the same
 	// number. Nil reports nothing. Report must not call back into the Conn.
+	// Bus, when set, adds bus_up to each snapshot once a value has been sampled (E12-D062).
 	Report func(*mdctlv1.Report) error
+	// Bus is NATS connectivity for Report.bus_up. Nil omits the field. Set may run on the
+	// NATS callback goroutine and must not block; Run samples it and reports on the shim socketpair.
+	Bus *Bus
 	// RetryAfter is the wait after a failed dial. The next failure waits twice as long, up to
 	// RetryMax. Zero means 1s and a cap of 30s. Negative means do not wait, which tests use so a
 	// reconnect is immediate. A dial that follows a connection which came up does not wait,
@@ -128,6 +132,11 @@ type Conn struct {
 	announced uint64
 	report    func(*mdctlv1.Report) error
 	reportMu  sync.Mutex
+	// bus is NATS connectivity. busSet is true once a value has been sampled.
+	// busUp is that value. A report omits bus_up until then (E12-D062).
+	bus    *Bus
+	busSet bool
+	busUp  bool
 	// status is the last classification of each feed. statusDirty asks for another Report.
 	status      map[string]feedState
 	statusDirty bool
@@ -253,7 +262,7 @@ func New(cfg Config) *Conn {
 	return &Conn{
 		venue: cfg.Venue, route: cfg.Route, inst: cfg.Instance,
 		url: cfg.URL, market: cfg.Market, pub: cfg.Publish, now: now,
-		epoch: cfg.Epoch, report: cfg.Report, retryAfter: cfg.RetryAfter, retryMax: cfg.RetryMax,
+		epoch: cfg.Epoch, report: cfg.Report, bus: cfg.Bus, retryAfter: cfg.RetryAfter, retryMax: cfg.RetryMax,
 		rest: cfg.REST, doer: cfg.Doer,
 		bufferMax: bufN, bufferAge: bufAge, rateHold: hold, bookNow: bookNow, bookUntil: cfg.BookUntil,
 		symbols: cfg.Symbols, subscribe: cfg.Subscribe,
@@ -289,6 +298,7 @@ func (c *Conn) Run(ctx context.Context) error {
 		return fatal
 	}
 	defer c.closeViews()
+	go c.watchBus(runCtx)
 	go c.reconcile(runCtx)
 	var wait time.Duration
 	for {

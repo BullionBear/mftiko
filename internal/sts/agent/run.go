@@ -13,6 +13,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/protobuf/proto"
 
+	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
 	stsctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/stsctl/v1"
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
@@ -313,6 +314,9 @@ type plane struct {
 	finish   *finisher
 	saved    map[string]*statev1.SessionStatus
 	exits    map[string]exitNote
+	// pullConds is this commit's artifact_pull conditions for non-terminal sessions (E12-D068).
+	// sync reads it under mu. Terminal phases do not use it.
+	pullConds map[string][]*commonv1.Condition
 
 	// specReady is set on the first commit, which runs only after the first
 	// list of spec, demand, and status has synced. specs is the set of session
@@ -417,8 +421,11 @@ func (p *plane) noteSpecsLocked(sessions map[string]*sess) {
 	p.specReady = true
 }
 
-// sync writes SessionStatus where the phase or the reason changed (W7). Keys
-// are not deleted: the API server removes a terminal session's status (W5).
+// sync writes SessionStatus where the phase, the reason, or the artifact_pull
+// condition changed (W7, E12-D068). Keys are not deleted: the API server removes
+// a terminal session's status (W5). A terminal phase still writes only when the
+// phase or the reason changed; its conditions stay the demand's dependency
+// conditions (E10-D093).
 func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[agent.WorkerKey]agent.Observed, _ func(agent.WorkerKey) bool) error {
 	var wake []string
 	p.mu.Lock()
@@ -446,7 +453,15 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 		}
 		ev.undecided = undecidedExit(obs, ev, p.pol != nil)
 		phase, reason, write := phaseOf(in, obs, ev)
-		if !write || p.same(id, phase, reason) {
+		if !write {
+			continue
+		}
+		terminal := phase == statev1.Phase_PHASE_DONE || phase == statev1.Phase_PHASE_FAILED
+		if terminal {
+			if p.same(id, phase, reason) {
+				continue
+			}
+		} else if p.same(id, phase, reason) && conditionsEqual(p.publishedConditions(id), p.pullConds[id]) {
 			continue
 		}
 		rev := in.Rev
@@ -466,10 +481,12 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 		if prev := p.saved[id]; prev.GetStateOut() != nil {
 			msg.StateOut = proto.Clone(prev.GetStateOut()).(*statev1.StateSnapshot)
 		}
-		if phase == statev1.Phase_PHASE_DONE || phase == statev1.Phase_PHASE_FAILED {
+		if terminal {
 			// The first terminal write is the only one same() does not skip. Conditions come from
 			// the demand that is still in etcd; a missing demand writes none (E10-D093).
 			msg.Conditions = dependencyConditions(p.liveDemand(id), msg.UpdatedAtNs)
+		} else if len(p.pullConds[id]) > 0 {
+			msg.Conditions = p.pullConds[id]
 		}
 		b, err := proto.MarshalOptions{Deterministic: true}.Marshal(msg)
 		if err != nil {
@@ -572,6 +589,7 @@ func (p *plane) stage(sessions map[string]*sess, d *decision) {
 	p.pulls.retain(want)
 	p.pulls.retainInputs(wantInputs)
 	p.collect(sessions)
+	p.notePullConditions(sessions)
 }
 
 // collect runs GC for this reconcile (E09-D059, E12-D012, E12-D015). It reads the latest cache and the

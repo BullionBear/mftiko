@@ -295,7 +295,12 @@ func (c *Conn) snapshot(epoch uint64, state mdctlv1.ConnState) *mdctlv1.Report {
 		st := c.status[name]
 		feeds = append(feeds, &mdctlv1.FeedStatus{Feed: name, State: st.state, Reason: st.reason})
 	}
-	return &mdctlv1.Report{ConnEpoch: epoch, State: state, Feeds: feeds}
+	rep := &mdctlv1.Report{ConnEpoch: epoch, State: state, Feeds: feeds}
+	if c.busSet {
+		up := c.busUp
+		rep.BusUp = &up
+	}
+	return rep
 }
 
 // currentReport is the snapshot for the connection as it is now. The caller holds c.mu.
