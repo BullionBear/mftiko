@@ -22,13 +22,11 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-
-	"github.com/BullionBear/mftiko/internal/platform/pgtest"
 )
 
 // Acceptance for bin/mftiko-release (E12-D022–E12-D026, E12-D032). Versions
 // are the literal tags A–E. switch runs the real mftiko-migrate against a
-// pgtest database (user mftiko, trust, no password).
+// database on the package PostgreSQL (user mftiko, trust, no password).
 
 var migrateBinary []byte
 
@@ -58,7 +56,11 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	os.Exit(m.Run())
+	sharedPG = startPostgres()
+	code := m.Run()
+	sharedPG.close()
+	os.RemoveAll(dir)
+	os.Exit(code)
 }
 
 const systemctlScript = `#!/bin/bash
@@ -555,8 +557,7 @@ func (w *world) logText() string {
 
 func (w *world) withDB() {
 	w.t.Helper()
-	srv := pgtest.Start(w.t)
-	w.database = srv.DSN()
+	w.database = sharedPG.dsn(w.t)
 }
 
 func (w *world) migrationTimes(n int, prev ...time.Time) []time.Time {

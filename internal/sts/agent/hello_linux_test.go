@@ -172,21 +172,7 @@ func versionNewer(oldEpoch int64, oldSeq uint64, epoch int64, seq uint64) bool {
 
 func setupHello(t *testing.T) *helloEnv {
 	t.Helper()
-	s := etcdtest.Start(t)
-	topo := state.Topology{
-		Regions:   map[string]state.Region{"tw": {Endpoints: s.Endpoints()}},
-		Instances: map[string]string{testInst: "tw", state.ControllerInstance: "tw"},
-	}
-	tables, err := state.AuthTables(topo, map[string]state.Plane{testInst: state.PlaneSTS})
-	if err != nil {
-		t.Fatal(err)
-	}
-	root := s.Client(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := state.EnsureAuth(ctx, root, tables["tw"], etcdtest.Password); err != nil {
-		t.Fatal(err)
-	}
+	inst, topo, root := openCluster(t)
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -215,7 +201,7 @@ func setupHello(t *testing.T) *helloEnv {
 	log := zerolog.New(buf).Level(zerolog.InfoLevel)
 	h := &helloEnv{env: &env{t: t, root: root, log: buf, reg: reg, digest: img.Digest, repo: "hello"}}
 	h.cfg = Config{
-		Topology: topo, Instance: testInst, Dial: state.AuthDial(testInst, etcdtest.Password(testInst)),
+		Topology: topo, Instance: inst, Dial: state.AuthDial(inst, etcdtest.Password(inst)),
 		Term:      state.TermOptions{ID: t.Name()},
 		WorkDir:   wd,
 		DataDir:   t.TempDir(),

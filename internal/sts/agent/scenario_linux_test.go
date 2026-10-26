@@ -218,7 +218,7 @@ func (e *env) startController() {
 	ctx, cancel := context.WithCancel(context.Background())
 	c, err := daemon.Start(ctx, daemon.Config{
 		Topology: e.cfg.Topology,
-		Planes:   map[string]state.Plane{testInst: state.PlaneSTS},
+		Planes:   map[string]state.Plane{e.inst(): state.PlaneSTS},
 		Dial:     state.AuthDial(state.ControllerInstance, etcdtest.Password(state.ControllerInstance)),
 		Term:     state.TermOptions{ID: e.t.Name() + "-controller"},
 		Release:  "test",
@@ -236,7 +236,7 @@ func (e *env) startController() {
 			e.t.Errorf("controller: %v", err)
 		}
 	})
-	region := e.cfg.Topology.Instances[testInst]
+	region := e.cfg.Topology.Instances[e.inst()]
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		r, ok := c.View().Regions[region]
@@ -255,7 +255,7 @@ func (e *env) demand(id string) *statev1.SessionDemand {
 	e.t.Helper()
 	ctx, cancel := e.opCtx()
 	defer cancel()
-	resp, err := e.root.Get(ctx, state.SessionDemandKey(testInst, id))
+	resp, err := e.root.Get(ctx, state.SessionDemandKey(e.inst(), id))
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -276,7 +276,7 @@ func (e *env) demandSince(id string, rev int64, ok func(*statev1.SessionDemand) 
 	e.t.Helper()
 	ctx, cancel := e.opCtx()
 	defer cancel()
-	for wr := range e.root.Watch(ctx, state.SessionDemandKey(testInst, id), clientv3.WithRev(rev)) {
+	for wr := range e.root.Watch(ctx, state.SessionDemandKey(e.inst(), id), clientv3.WithRev(rev)) {
 		if err := wr.Err(); err != nil {
 			e.t.Fatal(err)
 		}
@@ -301,7 +301,7 @@ func (e *env) hasDemand(id string) bool {
 	e.t.Helper()
 	ctx, cancel := e.opCtx()
 	defer cancel()
-	resp, err := e.root.Get(ctx, state.SessionDemandKey(testInst, id), clientv3.WithCountOnly())
+	resp, err := e.root.Get(ctx, state.SessionDemandKey(e.inst(), id), clientv3.WithCountOnly())
 	if err != nil {
 		e.t.Fatal(err)
 	}

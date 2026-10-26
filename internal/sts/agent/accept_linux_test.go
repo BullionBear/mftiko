@@ -37,7 +37,6 @@ import (
 const (
 	envTestShim  = "MFTIKO_TEST_SHIM"
 	envTestAgent = "MFTIKO_STS_TEST_AGENT"
-	testInst     = "sts-tw-1"
 )
 
 func TestMain(m *testing.M) {
@@ -48,7 +47,10 @@ func TestMain(m *testing.M) {
 	if v := os.Getenv(envTestAgent); v != "" {
 		os.Exit(runAgent(v))
 	}
-	os.Exit(m.Run())
+	sharedEtcd = startEtcdCluster()
+	code := m.Run()
+	sharedEtcd.close()
+	os.Exit(code)
 }
 
 // agentArgs is what a second agent process needs. The password is passed in:
@@ -272,7 +274,7 @@ func TestOneWriter(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, err := json.Marshal(agentArgs{
-		Topology: e.cfg.Topology, Password: etcdtest.Password(testInst), Instance: testInst,
+		Topology: e.cfg.Topology, Password: etcdtest.Password(e.inst()), Instance: e.inst(),
 		WorkDir: e.cfg.WorkDir, DataDir: e.cfg.DataDir, Shim: e.cfg.Shim, ShimEnv: e.cfg.ShimEnv,
 		Registry: e.cfg.Registry, PlainHTTP: e.cfg.PlainHTTP, Resync: e.cfg.Resync,
 	})
@@ -311,7 +313,7 @@ func TestNoSpecNoStatus(t *testing.T) {
 	e := setup(t)
 	const missing, bad, good = "a1b2c3", "b2c3d4", "c3d4e5"
 	e.putDemand(missing, runningDemand(true, 1))
-	e.putRaw(state.SessionSpecKey(testInst, bad), []byte{0x0a, 0x05, 0x01})
+	e.putRaw(state.SessionSpecKey(e.inst(), bad), []byte{0x0a, 0x05, 0x01})
 	e.putDemand(bad, runningDemand(true, 2))
 	e.putSpec(good, sessionSpec(1, 1))
 	e.putDemand(good, runningDemand(false, 3))
@@ -343,7 +345,7 @@ func TestSpecChangeReplacesIncarnation(t *testing.T) {
 	const id = "a1b2c3"
 	first := sessionSpec(7, 1)
 	e.putSpec(id, first)
-	rev1 := e.modRev(state.SessionSpecKey(testInst, id))
+	rev1 := e.modRev(state.SessionSpecKey(e.inst(), id))
 	e.putDemand(id, runningDemand(true, 1))
 
 	ph := e.collect(e.rev())
@@ -358,7 +360,7 @@ func TestSpecChangeReplacesIncarnation(t *testing.T) {
 	}
 	first.Name = "replaced"
 	e.putSpec(id, first)
-	rev2 := e.modRev(state.SessionSpecKey(testInst, id))
+	rev2 := e.modRev(state.SessionSpecKey(e.inst(), id))
 	if rev2 == rev1 {
 		t.Fatal("spec revision did not move")
 	}
@@ -730,21 +732,7 @@ func testSigner(string, sts.Permissions) (string, string, error) {
 
 func setup(t *testing.T) *env {
 	t.Helper()
-	s := etcdtest.Start(t)
-	topo := state.Topology{
-		Regions:   map[string]state.Region{"tw": {Endpoints: s.Endpoints()}},
-		Instances: map[string]string{testInst: "tw", state.ControllerInstance: "tw"},
-	}
-	tables, err := state.AuthTables(topo, map[string]state.Plane{testInst: state.PlaneSTS})
-	if err != nil {
-		t.Fatal(err)
-	}
-	root := s.Client(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := state.EnsureAuth(ctx, root, tables["tw"], etcdtest.Password); err != nil {
-		t.Fatal(err)
-	}
+	inst, topo, root := openCluster(t)
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -772,7 +760,7 @@ func setup(t *testing.T) *env {
 	log := zerolog.New(buf).Level(zerolog.InfoLevel)
 	e := &env{t: t, root: root, log: buf, journal: t.TempDir(), scripts: map[string]fakeworker.Script{}, reg: reg, digest: img.Digest, repo: "hello"}
 	e.cfg = Config{
-		Topology: topo, Instance: testInst, Dial: state.AuthDial(testInst, etcdtest.Password(testInst)),
+		Topology: topo, Instance: inst, Dial: state.AuthDial(inst, etcdtest.Password(inst)),
 		Term:           state.TermOptions{ID: t.Name()},
 		WorkDir:        wd,
 		DataDir:        data,
@@ -820,6 +808,9 @@ func setup(t *testing.T) *env {
 	})
 	return e
 }
+
+// inst is this test's STS instance. Its keys are the prefix openCluster gave it.
+func (e *env) inst() string { return e.cfg.Instance }
 
 func (e *env) setScript(id string, s fakeworker.Script) {
 	e.mu.Lock()
@@ -880,20 +871,20 @@ func (e *env) putSpec(id string, spec *sessionv1.SessionSpec) int64 {
 	if spec.GetStrategy() == nil {
 		spec.Strategy = &sessionv1.StrategyRef{Name: "fake", Code: e.digest, Repository: e.repo}
 	}
-	e.put(state.SessionSpecKey(testInst, id), spec)
-	return e.modRev(state.SessionSpecKey(testInst, id))
+	e.put(state.SessionSpecKey(e.inst(), id), spec)
+	return e.modRev(state.SessionSpecKey(e.inst(), id))
 }
 
 func (e *env) putDemand(id string, d *statev1.SessionDemand) {
 	e.t.Helper()
-	e.put(state.SessionDemandKey(testInst, id), d)
+	e.put(state.SessionDemandKey(e.inst(), id), d)
 }
 
 func (e *env) delDemand(id string) {
 	e.t.Helper()
 	ctx, cancel := e.opCtx()
 	defer cancel()
-	if _, err := e.root.Delete(ctx, state.SessionDemandKey(testInst, id)); err != nil {
+	if _, err := e.root.Delete(ctx, state.SessionDemandKey(e.inst(), id)); err != nil {
 		e.t.Fatal(err)
 	}
 }
@@ -902,7 +893,7 @@ func (e *env) delSpec(id string) {
 	e.t.Helper()
 	ctx, cancel := e.opCtx()
 	defer cancel()
-	if _, err := e.root.Delete(ctx, state.SessionSpecKey(testInst, id)); err != nil {
+	if _, err := e.root.Delete(ctx, state.SessionSpecKey(e.inst(), id)); err != nil {
 		e.t.Fatal(err)
 	}
 }
@@ -925,7 +916,7 @@ func (e *env) rev() int64 {
 	e.t.Helper()
 	ctx, cancel := e.opCtx()
 	defer cancel()
-	resp, err := e.root.Get(ctx, state.SessionStatusPrefix(testInst), clientv3.WithPrefix(), clientv3.WithLimit(1))
+	resp, err := e.root.Get(ctx, state.SessionStatusPrefix(e.inst()), clientv3.WithPrefix(), clientv3.WithLimit(1))
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -936,7 +927,7 @@ func (e *env) status(id string) *statev1.SessionStatus {
 	e.t.Helper()
 	ctx, cancel := e.opCtx()
 	defer cancel()
-	resp, err := e.root.Get(ctx, state.SessionStatusKey(testInst, id))
+	resp, err := e.root.Get(ctx, state.SessionStatusKey(e.inst(), id))
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -954,7 +945,7 @@ func (e *env) record() *statev1.AgentRecord {
 	e.t.Helper()
 	ctx, cancel := e.opCtx()
 	defer cancel()
-	resp, err := e.root.Get(ctx, state.AgentKey(state.PlaneSTS, testInst))
+	resp, err := e.root.Get(ctx, state.AgentKey(state.PlaneSTS, e.inst()))
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -974,7 +965,7 @@ func (e *env) waitElections(n int) {
 	var got int
 	for {
 		ctx, cancel := e.opCtx()
-		resp, err := e.root.Get(ctx, state.ElectionPrefix(state.PlaneSTS, testInst)+"/", clientv3.WithPrefix())
+		resp, err := e.root.Get(ctx, state.ElectionPrefix(state.PlaneSTS, e.inst())+"/", clientv3.WithPrefix())
 		cancel()
 		if err != nil {
 			e.t.Fatal(err)
@@ -1145,7 +1136,7 @@ func (e *env) collect(rev int64) *feed {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	e.t.Cleanup(cancel)
-	ch := e.root.Watch(ctx, state.SessionStatusPrefix(testInst), clientv3.WithPrefix(), clientv3.WithRev(rev+1))
+	ch := e.root.Watch(ctx, state.SessionStatusPrefix(e.inst()), clientv3.WithPrefix(), clientv3.WithRev(rev+1))
 	go func() {
 		for resp := range ch {
 			if err := resp.Err(); err != nil {
@@ -1158,7 +1149,7 @@ func (e *env) collect(rev int64) *feed {
 				if ev.Type != clientv3.EventTypePut {
 					continue
 				}
-				id := strings.TrimPrefix(string(ev.Kv.Key), state.SessionStatusPrefix(testInst))
+				id := strings.TrimPrefix(string(ev.Kv.Key), state.SessionStatusPrefix(e.inst()))
 				st := &statev1.SessionStatus{}
 				if err := proto.Unmarshal(ev.Kv.Value, st); err != nil {
 					continue
