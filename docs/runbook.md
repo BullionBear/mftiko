@@ -1,6 +1,6 @@
 # Runbook（一期）
 
-依 [DECISIONS.md](DECISIONS.md) E12-D059–E12-D061（E12-11，#384）。一期的常見操作與故障處理，照順序做。每一項先寫**告警**與**先看**，再寫**做**與**確認**。長的程序在 [operations.md](operations.md) 與 [release.md](release.md)，這裡連過去，不重抄；那邊是參考，這裡是入口。
+依 [DECISIONS.md](DECISIONS.md) E12-D059–E12-D061（E12-11，#384）、E12-D066（#401）與 E12-D071（#403）。一期的常見操作與故障處理，照順序做。每一項先寫**告警**與**先看**，再寫**做**與**確認**。長的程序在 [operations.md](operations.md) 與 [release.md](release.md)，這裡連過去，不重抄；那邊是參考，這裡是入口。
 
 告警名稱是 [operations.md「監控與告警」](operations.md#監控與告警)的範例規則（E12-10）。`for` 與門檻由部署端決定。
 
@@ -49,6 +49,7 @@ etcdctl endpoint health
 | `MftikoWorkerLost` | 同上，加上該主機有沒有重開 | [§3.1](#31-worker-被殺退避或放棄)、[§3.4](#34-主機重開) |
 | `MftikoPostgresDown` | 主機 A 的 Postgres | [§3.6](#36-postgres-停機) |
 | `MftikoRegistryDown` | `ghcr.io` 是否可達、registry 帳密 | [§3.7](#37-registry-不可用) |
+| `MftikoArtifactPullFailing` | `instance`、`region`、`digest`。`mftiko_registry_up` 是否仍是 1 | [§3.7](#37-registry-不可用) |
 | `MftikoDiskLow` | `df -h`；`${WORK_DIR}/log`、`/var/lib/etcd`、`/var/backups` | [§3.8](#38-磁碟快滿) |
 | `mftiko-etcd-backup.service` 是 failed | `journalctl -u mftiko-etcd-backup` | [§2.4](#24-etcd-備份) |
 | 不響，但交易所或 NATS 斷了 | worker 的 stderr | [§3.5](#35-網路斷了) |
@@ -211,7 +212,10 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 - 已經在跑的 worker 不受影響。已經有就緒版本的 agent 照用那一版 spawn（E12-D009）。
 - 一個就緒版本都沒有時（新主機、新的 conn 或 account 種類、新策略），需求維持 `PENDING`，reason 是 `artifact_pulling` 或 `artifact_unavailable`，不會變 `DEAD`。registry 恢復就自己接上。
 - 401、403：`MFTIKO_REGISTRY_CREDS` 指的 `config.json` 過期或沒有權限。更新檔案（0600，屬該服務的使用者）再重啟該 agent。
-- 確認：`mftiko_registry_up` 是 1，`PENDING` 的需求變 `READY`。
+- **只有 agent 連不到 registry。** `mftiko_registry_up` 維持 1，所以 `MftikoRegistryDown` 不響。新 session 維持 `pending`。`SessionStatus` 有 `artifact_pull`（失敗次數與第一次失敗時間），`mftiko_artifact_pull_failing` 是 1。告警是 `MftikoArtifactPullFailing`（範例 `for: 5m`）。
+- **先看：** 那台 STS agent 主機到 registry 的網路，以及該服務的 registry 帳密檔（`MFTIKO_REGISTRY_CREDS` 指到的 `config.json`，mode 0600）。agent 會照原退避繼續拉，不用為了這個訊號重啟。
+- 恢復：condition 清掉，`mftiko_artifact_pull_failing` 回到 0。被拒絕的 artifact 仍是 `FAILED`，沒有這個 gauge。
+- 確認：`mftiko_registry_up` 是 1，`PENDING` 的需求變 `READY`。`MftikoArtifactPullFailing` 解除時，`mftiko_artifact_pull_failing` 是 0。
 
 ### 3.8 磁碟快滿
 
