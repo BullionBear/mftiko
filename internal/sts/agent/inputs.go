@@ -29,6 +29,10 @@ type inputJob struct {
 	running bool
 	cancel  context.CancelFunc
 	layers  []string // layer digests held while this job is pulling or unpacking (E09-D073)
+	// streak* matches pullJob: the artifact_pull signal, separate from backoff (E12-D067, E12-D068).
+	streakFails  uint32
+	streakSince  time.Time
+	streakReason string
 }
 
 // inputKey separates input jobs from image jobs. A name cannot contain NUL.
@@ -238,6 +242,7 @@ func (p *puller) finishInput(key string, err error) {
 	job.layers = nil
 	if err == nil {
 		job.ready, job.perm = true, ""
+		clearStreak(&job.streakFails, &job.streakSince, &job.streakReason)
 		p.log.Info().Str("input", key).Msg("input ready")
 		return
 	}
@@ -246,10 +251,13 @@ func (p *puller) finishInput(key string, err error) {
 	}
 	if artifact.Permanent(err) {
 		job.perm = artifact.ReasonOf(err)
+		clearStreak(&job.streakFails, &job.streakSince, &job.streakReason)
 		p.log.Warn().Str("input", key).Str("reason", job.perm).Err(err).Msg("input rejected")
 		return
 	}
+	now := p.now()
 	job.fails++
-	job.next = p.now().Add(pullBackoff.After(job.fails - 1))
+	job.next = now.Add(pullBackoff.After(job.fails - 1))
+	recordStreak(&job.streakFails, &job.streakSince, &job.streakReason, now, err)
 	p.log.Warn().Str("input", key).Uint32("fails", job.fails).Time("retry_at", job.next).Err(err).Msg("input pull will retry")
 }
