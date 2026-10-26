@@ -55,7 +55,7 @@ migrations/               PostgreSQL schema: NNNN_name.up.sql / .down.sql, embed
 deploy/dev/               local development services (PostgreSQL, etcd, NATS, registry) and mftiko-api serving the console
 deploy/accept/            MD, TD and end-to-end acceptance against a venue's testnet: compose stack, accept.sh, runbook
 web/                      SvelteKit console (single-page app served by mftiko-api); e2e/ is the Playwright smoke
-docs/                     DECISIONS.md, PROTOCOL.md, operations.md (logs and retention), release.md, cli.md
+docs/                     DECISIONS.md, PROTOCOL.md, runbook.md (alerts and operations), operations.md (reference), release.md, cli.md
 ```
 
 ## Make

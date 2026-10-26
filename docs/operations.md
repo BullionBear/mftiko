@@ -1,5 +1,7 @@
 # 運維：主機、log 與保留期
 
+這份是參考。要處理告警或做常見的操作，從 [runbook.md](runbook.md) 開始（E12-D059）。
+
 依 [DECISIONS.md](DECISIONS.md) E10-D014–E10-D017、E10-D021、E10-D022、E10-D080–E10-D083 與 [PROTOCOL.md](PROTOCOL.md) §4.5 S4、§3.2 W5（E10-19，#324）。一期沒有 log 的資料流（E10-D015）：要看 worker 的輸出，就到 console 顯示的主機上讀檔。
 
 ## log 在哪裡
@@ -413,7 +415,7 @@ spec 什麼時候被刪，只由 API 決定（W5，E10-D017）：
 
 ## 舊驗收庫補記 schema_migrations
 
-依 [DECISIONS.md](DECISIONS.md) E12-D031（E12-13，#391）。`accept.sh up` 從空資料庫呼叫 `mftiko-migrate up`，不再讀 `accept_migrations`。這段給 #384 的 runbook 收錄。
+依 [DECISIONS.md](DECISIONS.md) E12-D031（E12-13，#391）。`accept.sh up` 從空資料庫呼叫 `mftiko-migrate up`，不再讀 `accept_migrations`。只給開發用的資料庫，不在 [runbook](runbook.md) 裡（E12-D060）。
 
 空的資料庫不要做這段，直接 `mftiko-migrate up`（或 `make migrate-up`）。
 
