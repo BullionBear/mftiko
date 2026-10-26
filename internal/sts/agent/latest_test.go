@@ -6,6 +6,7 @@ import (
 	"debug/elf"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -51,6 +52,165 @@ func TestLatestProtect(t *testing.T) {
 
 	tags.resolve(context.Background())
 	equalDigests(t, mustProtect(t, tags), hello, helloOld, other, otherOld, missing)
+}
+
+func TestLatestLogOnChange(t *testing.T) {
+	reg := artifacttest.New(t)
+	data := t.TempDir()
+	c := openArtifact(t, reg, data)
+	drillOld := plantRepo(t, data, "drill", "drill-old")
+	otherOld := plantRepo(t, data, "other", "other-only")
+	var buf bytes.Buffer
+	tags := newLatestTags(c, time.Hour, zerolog.New(&buf))
+
+	// First failure for each repository is a warn. other has no latest tag.
+	tags.resolve(context.Background())
+	assertLatestLogs(t, buf.Bytes(), 1, 1, 0)
+	assertLogLevels(t, buf.Bytes())
+	if !bytes.Contains(buf.Bytes(), []byte("artifact_not_found")) {
+		t.Fatalf("log %s", buf.Bytes())
+	}
+	equalDigests(t, mustProtect(t, tags), drillOld, otherOld)
+	assertResolveQuiet(t, tags, &buf)
+	equalDigests(t, mustProtect(t, tags), drillOld, otherOld)
+
+	// A cancelled poll is not a result, so the next same failure stays quiet.
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	before := len(buf.Bytes())
+	tags.resolve(cancelled)
+	if len(buf.Bytes()) != before {
+		t.Fatalf("cancelled resolve logged: %s", buf.Bytes()[before:])
+	}
+	assertResolveQuiet(t, tags, &buf)
+
+	// drill gains latest. other is unchanged, so only drill logs, at info.
+	v1 := reg.Push(t, "drill", latestTag, artifact.KindMDConn, elfBin("v1"), nil)
+	plantAt(t, data, "drill", v1)
+	tags.resolve(context.Background())
+	assertLatestLogs(t, buf.Bytes(), 1, 1, 1)
+	equalDigests(t, mustProtect(t, tags), v1, otherOld)
+	assertResolveQuiet(t, tags, &buf)
+
+	// Registry down: drill goes resolved to not resolved, other changes reason.
+	reg.SetDown(true)
+	tags.resolve(context.Background())
+	assertLatestLogs(t, buf.Bytes(), 2, 2, 1)
+	if !bytes.Contains(buf.Bytes(), []byte("artifact_unavailable")) {
+		t.Fatalf("log %s", buf.Bytes())
+	}
+	equalDigests(t, mustProtect(t, tags), drillOld, v1, otherOld)
+	assertResolveQuiet(t, tags, &buf)
+
+	// Registry up: drill resolves again, other returns to not found.
+	reg.SetDown(false)
+	tags.resolve(context.Background())
+	assertLatestLogs(t, buf.Bytes(), 2, 3, 2)
+	equalDigests(t, mustProtect(t, tags), v1, otherOld)
+	assertResolveQuiet(t, tags, &buf)
+
+	// Moved latest is a state change. The same digest again is not.
+	v2 := reg.Push(t, "drill", latestTag, artifact.KindMDConn, elfBin("v2"), nil)
+	plantAt(t, data, "drill", v2)
+	tags.resolve(context.Background())
+	assertLatestLogs(t, buf.Bytes(), 2, 3, 3)
+	equalDigests(t, mustProtect(t, tags), v2, otherOld)
+	assertResolveQuiet(t, tags, &buf)
+	assertLogLevels(t, buf.Bytes())
+}
+
+func TestLatestUnresolvedReason(t *testing.T) {
+	var buf bytes.Buffer
+	tags := newLatestTags(nil, time.Hour, zerolog.New(&buf))
+	missing := &artifact.Error{Reason: artifact.ReasonNotFound, Permanent: true, Err: errors.New("missing tag")}
+	missingAgain := &artifact.Error{Reason: artifact.ReasonNotFound, Permanent: true, Err: errors.New("missing tag again")}
+	down := &artifact.Error{Reason: artifact.ReasonUnavailable, Err: errors.New("status 503")}
+	bad := fmt.Errorf("digest %q", "nope")
+	badAgain := fmt.Errorf("digest %q", "nope")
+	otherBad := fmt.Errorf("digest %q", "other")
+
+	tags.noteUnresolved("drill", missing)
+	tags.noteUnresolved("drill", missingAgain)
+	assertLatestLogs(t, buf.Bytes(), 1, 0, 0)
+	tags.noteUnresolved("drill", down)
+	assertLatestLogs(t, buf.Bytes(), 2, 0, 0)
+	tags.noteUnresolved("drill", down)
+	assertLatestLogs(t, buf.Bytes(), 2, 0, 0)
+
+	dig := digest.FromString("v1").String()
+	tags.noteResolved("drill", dig)
+	tags.noteResolved("drill", dig)
+	assertLatestLogs(t, buf.Bytes(), 2, 0, 1)
+	moved := digest.FromString("v2").String()
+	tags.noteResolved("drill", moved)
+	assertLatestLogs(t, buf.Bytes(), 2, 0, 2)
+	tags.noteUnresolved("drill", missing)
+	assertLatestLogs(t, buf.Bytes(), 3, 0, 2)
+	tags.noteUnresolved("drill", missingAgain)
+	assertLatestLogs(t, buf.Bytes(), 3, 0, 2)
+
+	// A failure with no artifact reason uses the error text.
+	tags.noteUnresolved("plain", bad)
+	tags.noteUnresolved("plain", badAgain)
+	assertLatestLogs(t, buf.Bytes(), 3, 0, 2)
+	if bytes.Count(buf.Bytes(), []byte(`"repository":"plain"`)) != 1 {
+		t.Fatalf("log %s", buf.Bytes())
+	}
+	tags.noteUnresolved("plain", otherBad)
+	if bytes.Count(buf.Bytes(), []byte(`"repository":"plain"`)) != 2 {
+		t.Fatalf("log %s", buf.Bytes())
+	}
+	assertLogLevels(t, buf.Bytes())
+}
+
+func assertLatestLogs(t *testing.T, buf []byte, drillWarn, otherWarn, drillInfo int) {
+	t.Helper()
+	if got := countLatestLog(buf, "drill", "latest not resolved"); got != drillWarn {
+		t.Fatalf("drill warns %d, want %d: %s", got, drillWarn, buf)
+	}
+	if got := countLatestLog(buf, "other", "latest not resolved"); got != otherWarn {
+		t.Fatalf("other warns %d, want %d: %s", got, otherWarn, buf)
+	}
+	if got := countLatestLog(buf, "drill", "latest resolved"); got != drillInfo {
+		t.Fatalf("drill infos %d, want %d: %s", got, drillInfo, buf)
+	}
+}
+
+func assertResolveQuiet(t *testing.T, tags *latestTags, buf *bytes.Buffer) {
+	t.Helper()
+	before := len(buf.Bytes())
+	tags.resolve(context.Background())
+	tags.resolve(context.Background())
+	if len(buf.Bytes()) != before {
+		t.Fatalf("unchanged result logged: %s", buf.Bytes()[before:])
+	}
+}
+
+func assertLogLevels(t *testing.T, buf []byte) {
+	t.Helper()
+	for _, line := range bytes.Split(bytes.TrimSpace(buf), []byte("\n")) {
+		switch {
+		case bytes.Contains(line, []byte(`"message":"latest not resolved"`)):
+			if !bytes.Contains(line, []byte(`"level":"warn"`)) {
+				t.Fatalf("level: %s", line)
+			}
+		case bytes.Contains(line, []byte(`"message":"latest resolved"`)):
+			if !bytes.Contains(line, []byte(`"level":"info"`)) {
+				t.Fatalf("level: %s", line)
+			}
+		}
+	}
+}
+
+func countLatestLog(buf []byte, repo, msg string) int {
+	n := 0
+	for _, line := range bytes.Split(buf, []byte("\n")) {
+		if bytes.Contains(line, []byte(`"repository":"`+repo+`"`)) &&
+			bytes.Contains(line, []byte(`"message":"`+msg+`"`)) {
+			n++
+		}
+	}
+	return n
 }
 
 func TestLatestRunFollowsTag(t *testing.T) {
