@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -28,7 +29,15 @@ import (
 // are the literal tags A–E. switch runs the real mftiko-migrate against a
 // database on the package PostgreSQL (user mftiko, trust, no password).
 
-var migrateBinary []byte
+// releaseArchive is the one release tarball. TestMain builds it once, at
+// gzip.BestSpeed, around the real mftiko-migrate. Tests share these bytes.
+// releaseArchiveTag is the marker in its unit files: the plain release
+// SwitchRollback installs second, and the marker MigrateFailure checks.
+// A test that needs the hold program or the legacy unit unpacks this
+// archive, edits those members, and packs again at the same level.
+var releaseArchive []byte
+
+const releaseArchiveTag = "B"
 
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "mftiko-migrate")
@@ -51,7 +60,16 @@ func TestMain(m *testing.M) {
 	if err := cmd.Run(); err != nil {
 		os.Exit(1)
 	}
-	migrateBinary, err = os.ReadFile(bin)
+	migrate, err := os.ReadFile(bin)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if len(migrate) == 0 {
+		fmt.Fprintln(os.Stderr, "mftiko-migrate was not built")
+		os.Exit(1)
+	}
+	releaseArchive, err = packTarGz(releaseMembers(releaseArchiveTag, migrate), gzip.BestSpeed)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -676,11 +694,7 @@ func dir(name string) member {
 	return member{name: name, mode: 0o755}
 }
 
-func releaseTar(t *testing.T, tag string, hold []byte, legacy bool) []byte {
-	t.Helper()
-	if len(migrateBinary) == 0 {
-		t.Fatal("mftiko-migrate was not built")
-	}
+func releaseMembers(tag string, migrate []byte) []member {
 	bins := []string{
 		"mftiko-sym",
 		"mftiko-mdfetch",
@@ -692,12 +706,9 @@ func releaseTar(t *testing.T, tag string, hold []byte, legacy bool) []byte {
 	}
 	members := []member{
 		dir("bin"), dir("web"), dir("systemd"),
-		{name: "bin/mftiko-migrate", body: migrateBinary, mode: 0o755},
+		{name: "bin/mftiko-migrate", body: migrate, mode: 0o755},
 		{name: "web/index.html", body: []byte("ok\n"), mode: 0o644},
 		{name: "systemd/.gitkeep", body: []byte("keep\n"), mode: 0o644},
-	}
-	if hold != nil {
-		members = append(members, member{name: "bin/hold", body: hold, mode: 0o755})
 	}
 	for _, bin := range bins {
 		unit := bin
@@ -713,6 +724,36 @@ func releaseTar(t *testing.T, tag string, hold []byte, legacy bool) []byte {
 		member{name: "systemd/etcd.service", body: []byte("ExecStart=/usr/bin/etcd\nMarker=" + tag + "\n"), mode: 0o644},
 		member{name: "systemd/decoy.service", body: []byte("# mentions mftiko-api\nExecStart=/usr/bin/etcd\n"), mode: 0o644},
 	)
+	return members
+}
+
+// releaseTar returns the shared archive when the test does not need a hold
+// program or the legacy unit. Those tests do not read the marker, so a tag
+// other than releaseArchiveTag still uses the same bytes. A test that does
+// need those members unpacks the shared archive, edits it, and packs again.
+func releaseTar(t *testing.T, tag string, hold []byte, legacy bool) []byte {
+	t.Helper()
+	if len(releaseArchive) == 0 {
+		t.Fatal("release archive was not built")
+	}
+	if hold == nil && !legacy {
+		return releaseArchive
+	}
+	members, err := unpackTarGz(releaseArchive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := []byte("Marker=" + releaseArchiveTag + "\n")
+	neu := []byte("Marker=" + tag + "\n")
+	for i := range members {
+		if members[i].body == nil || !strings.HasPrefix(members[i].name, "systemd/") {
+			continue
+		}
+		members[i].body = bytes.ReplaceAll(members[i].body, old, neu)
+	}
+	if hold != nil {
+		members = append(members, member{name: "bin/hold", body: hold, mode: 0o755})
+	}
 	if legacy {
 		members = append(members, member{
 			name: "systemd/legacy.service",
@@ -720,13 +761,63 @@ func releaseTar(t *testing.T, tag string, hold []byte, legacy bool) []byte {
 			mode: 0o644,
 		})
 	}
-	return tarGz(t, members)
+	out, err := packTarGz(members, gzip.BestSpeed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func unpackTarGz(data []byte) ([]member, error) {
+	zr, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	defer zr.Close()
+	tr := tar.NewReader(zr)
+	var members []member
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return members, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		m := member{
+			name: strings.TrimSuffix(hdr.Name, "/"),
+			mode: hdr.Mode,
+			link: hdr.Linkname,
+		}
+		switch hdr.Typeflag {
+		case tar.TypeDir, tar.TypeSymlink:
+			// Name, mode, and link are the whole member. A directory has no body.
+		default:
+			body, err := io.ReadAll(tr)
+			if err != nil {
+				return nil, err
+			}
+			m.body = body
+		}
+		members = append(members, m)
+	}
 }
 
 func tarGz(t *testing.T, members []member) []byte {
 	t.Helper()
+	b, err := packTarGz(members, gzip.DefaultCompression)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func packTarGz(members []member, level int) ([]byte, error) {
 	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
+	gz, err := gzip.NewWriterLevel(&buf, level)
+	if err != nil {
+		return nil, err
+	}
 	tw := tar.NewWriter(gz)
 	for _, m := range members {
 		hdr := &tar.Header{Name: m.name, Mode: m.mode, ModTime: time.Unix(0, 0)}
@@ -746,21 +837,21 @@ func tarGz(t *testing.T, members []member) []byte {
 			body = m.body
 		}
 		if err := tw.WriteHeader(hdr); err != nil {
-			t.Fatal(err)
+			return nil, err
 		}
 		if body != nil {
 			if _, err := tw.Write(body); err != nil {
-				t.Fatal(err)
+				return nil, err
 			}
 		}
 	}
 	if err := tw.Close(); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	if err := gz.Close(); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
-	return buf.Bytes()
+	return buf.Bytes(), nil
 }
 
 func assetName(tag string) string {
