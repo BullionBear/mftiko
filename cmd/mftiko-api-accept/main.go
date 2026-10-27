@@ -10,7 +10,7 @@
 //	mftiko-api-accept absent   create|resume               writes while the controller is gone, then it catches up
 //	mftiko-api-accept region   before|down|up              one region's etcd stops; the other keeps serving
 //	mftiko-api-accept replicas                             the same writes on two replicas at once
-//	mftiko-api-accept cli      main|faults|inputs|region STEP  the same, with the mftiko CLI as the only client (E11-09, E15-07)
+//	mftiko-api-accept cli      main|faults|inputs|logs|region STEP  the same, with the mftiko CLI as the only client (E11-09, E15-07, E14-08)
 //
 // The flows talk to replica a (-api) and replica b (-api-b). Every request they send is checked
 // against the audit table at the end of the flow. Every subcommand exits 1 when its check fails.

@@ -99,6 +99,16 @@ tarball 裡的 `bin/mftiko-release`，在部署機以 root 執行。
 
 驗收測試把 `MFTIKO_PREFIX`、`MFTIKO_SYSTEMD_DIR`、`MFTIKO_SYSTEMCTL`、`MFTIKO_PROC`、`MFTIKO_RELEASE_BASE` 指到暫存目錄。部署不設這些變數：預設就是 `/opt/mftiko`、`/etc/systemd/system`、`systemctl`、`/proc` 與上面的 GitHub Release URL。
 
+### 換到有 session log 端點的版本
+
+E14（#435）起，`mftiko-api.service` 帶 `-log-token /etc/mftiko/api/log-token`，`mftiko-sts-agent.service` 帶 `-log-token-sha256 ${MFTIKO_LOG_TOKEN_SHA256}` 與其他 `MFTIKO_LOG_*`（E14-D026、E14-D019）。**`switch` 之前**先在每台主機放好：
+
+- 每個 API 副本：`/etc/mftiko/api/log-token`（0600，`mftiko-api`）。檔案不在，新版的 API 起不來，`switch` 第 4 步重啟它就失敗。
+- 每台 STS 主機：`/etc/mftiko/sts-agent/env` 加 `MFTIKO_LOG_TOKEN_SHA256`。沒加的話 agent 照常起來，只是不開端點，讀 log 回 `logs_unavailable`。
+- 防火牆：STS 主機的 7442 開給 API 主機。
+
+產生的命令與輪換見 [operations.md「session log 端點」](operations.md#session-log-端點)。
+
 ## API 契約（`api.v1`）
 
 依 E10-D002、E10-D018、E10-D116（E10-20，#325）。`contract/openapi/api/v1.yaml` 從 E10-20 起定案。

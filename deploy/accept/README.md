@@ -291,9 +291,11 @@ A=deploy/accept/accept.sh
 $A e2e-up
 ```
 
-`e2e-up` 先做 `up`（會重建 runner，裡面的行程都會停掉），再依序：`make web`；`mftiko-pack` 把 `examples/strategies/hello` 推到 compose 裡的 registry（`registry:5000/strategies/hello:accept`）；`td-up`；`mftiko-api-accept setup`；接著啟動還沒在跑的 md-agent、td-agent、controller、`sts1`、`sts2` 與 API 副本 a、b。可以重跑。
+`e2e-up` 先做 `up`（會重建 runner，裡面的行程都會停掉），再依序：`make web`；`mftiko-pack` 把 `examples/strategies/hello` 與 `examples/strategies/chatter` 推到 compose 裡的 registry（`registry:5000/strategies/hello:accept`、`registry:5000/strategies/chatter:accept`）；`td-up`；`mftiko-api-accept setup`；接著啟動還沒在跑的 md-agent、td-agent、controller、`sts1`、`sts2` 與 API 副本 a、b。可以重跑。
 
-`setup` 的部署（`data/work/e2e/deployment.json`）有兩個 region：`accept`（etcd）放 controller、`dev`（MD）、`td1`（TD）、`sts1`；`accept2`（etcd2）只放 `sts2`。兩個 cluster 的 etcd 使用者與角色都照 `state.AuthTables`，然後開 auth。同一個目錄裡還有兩個副本的 API 設定（`api-a.json` 在 :8080、`api-b.json` 在 :8081，只差 port）、token（`token`）與 cookie 金鑰。保留期設成 1 分鐘，`unavailable_after` 5 秒。
+`setup` 的部署（`data/work/e2e/deployment.json`）有兩個 region：`accept`（etcd）放 controller、`dev`（MD）、`td1`（TD）、`sts1`；`accept2`（etcd2）只放 `sts2`。兩個 cluster 的 etcd 使用者與角色都照 `state.AuthTables`，然後開 auth。同一個目錄裡還有兩個副本的 API 設定（`api-a.json` 在 :8080、`api-b.json` 在 :8081，只差 port）、token（`token`）、cookie 金鑰，以及 session log 的 token（`log-token`）與它的 SHA-256（`log-token.sha256`）。保留期設成 1 分鐘，`unavailable_after` 5 秒。
+
+session log（E14）：兩個副本帶 `-log-token /work/e2e/log-token`。`sts1`、`sts2` 共用 runner 的網路，log 端點分別聽 `127.0.0.1:7442`、`127.0.0.1:7443`，`-log-advertise` 相同，只拿到 `log-token.sha256`。兩者的 worker 輸出都設成 64 KiB 輪替、保留 3 份（`-log-max-bytes 65536 -log-keep 3`），`cli logs` 才看得到輪替。
 
 副本 a 也服務 console，對外是 `http://127.0.0.1:18080`（`ACCEPT_API_PORT`），用 `data/work/e2e/token` 登入。API 啟動時會打開 `web/build` 並一直持有，所以重新 `make web` 之後要 `$A stop-api a && $A api a`。
 
@@ -366,6 +368,7 @@ $A e2e region up
 $A e2e cli main
 $A e2e cli faults
 $A e2e cli inputs
+$A e2e cli logs
 $A e2e cli region before   # 之後照「一個 region 斷線」停 etcd2
 $A e2e cli region down     # 再啟動 etcd2
 $A e2e cli region up
@@ -376,7 +379,7 @@ $A e2e cli region up
 - `main`：`version`、`whoami`、`account-kind list`、`strategy list registry:5000/strategies/hello`、`instance list`，然後：
   1. `account create`：憑證寫成 0600 的 `-key-file`、`-secret-file`。
   2. 從 YAML 檔 `session create --wait running`。
-  3. `session show`：兩個依賴都是 `ready`，provider 是 `dev` 與 `td1`；表格印出 log 路徑，主機上的檔案權限正確，stdout 有 hello 的 `OnRecon` 與 `ORDER_STATUS_CANCELLED`。
+  3. `session show`：兩個依賴都是 `ready`，provider 是 `dev` 與 `td1`；表格印出 log 路徑，主機上的檔案權限正確，stdout 有 hello 的 `OnRecon` 與 `ORDER_STATUS_CANCELLED`。`session logs --stream stdout` 印出的位元組與那個檔案相同。
   4. `session end --wait --yes`：exit 0，`done`、`ended_by_spec`。
   5. `record list -session-id`、`record show`。
   6. `session delete --yes`：之後 `session show` exit 12，record 變成 `closed`。
@@ -403,12 +406,20 @@ $A e2e cli region up
   5. `session end --wait --yes`（`done`、`ended_by_spec`），`session delete --yes`。
 
   `-pack`、`-sts-data` 可以改 `mftiko-pack` 與 `sts1` 的 `-data` 的路徑。
+- `logs`（E14-08）：用 `chatter`（`examples/strategies/chatter`，以固定速率印編號行），都在 `sts1`。
+  1. 印 5000 行（stdout 約 500 KB，每 10 行一行也印到 stderr）。輪替之後主機上留 3 個檔。`session logs --stream stdout`、`--stream stderr` 印出的位元組，與主機上的檔由舊到新接起來相同；`--tail 100` 是最後 100 行。`session export-logs -o` 的 `stdout.log`、`stderr.log` 也相同，`manifest.json` 的大小與 sha256 對得上；同一個 `-o` 再匯出一次 exit 1。
+  2. 直接問 `127.0.0.1:7442`：沒帶 token、token 錯都是 401，對的是 200。`sts1` 的命令列只有 token 的 SHA-256。
+  3. 每秒 50 行，`session logs -f`。讀到 100 行之後重啟 `sts1`（SIGTERM，再以同樣的命令列與環境啟動，log 在 `data/work/e2e/sts1-restart-<UTC>.log`），等它重新選上、再讀 100 行，然後 `session end --wait`。`-f` 自己以 exit 0 結束，印出的行號連續，沒有缺、沒有重複，也沒有 gap。
+  4. 每秒 5000 行，同樣的步驟。重啟之前 `-f` 跟得上，連續讀過好幾次輪替；重啟期間的輸出已經被輪替掉，stderr 印 `mftiko: some output was rotated out`，之後從較新的行接著印，行號只增不減，沒有重複。
+  5. 每個 session 結束後刪除。
+
+  `-log-addr`、`-log-token` 可以改 `sts1` 的端點與 token 檔。
 - `region`：
   - `before`：在 `sts2` 以 `--wait running` 建一個 session。
   - `down`：`session show` 與在 `sts2` 建立都是 exit 17；`session list` exit 0，stderr 警告 `accept2`。
   - `up`：`end --wait`、`delete`。
 
-`e2e-all` 也會跑這四條。
+`e2e-all` 也會跑這五條。
 
 ## console smoke
 
@@ -416,7 +427,7 @@ $A e2e cli region up
 $A console-smoke
 ```
 
-在這台機器上用 Playwright（`web/e2e/smoke.spec.ts`）從 console 走一次主流程：登入、建帳號（`binanceum.creds.json`）、在精靈裡部署 hello（feed、帳號、algo_id 2）、詳細頁看到 `running`、兩個依賴 `ready`、log 的主機與路徑，結束後看到 `done` 與 `ended_by_spec`，刪除帳號、登出。環境變數 `MFTIKO_E2E_URL`、`MFTIKO_E2E_TOKEN`、`MFTIKO_E2E_CREDS` 可以改目標與檔案。失敗時的 trace 在 `web/test-results/`。
+在這台機器上用 Playwright（`web/e2e/smoke.spec.ts`）從 console 走一次主流程：登入、建帳號（`binanceum.creds.json`）、在精靈裡部署 hello（feed、帳號、algo_id 2）、詳細頁看到 `running`、兩個依賴 `ready`、log 的主機與路徑；Logs 區塊打開 Follow 看到 hello 的 `OnRecon`，切換 stdout、stderr 分頁，Download 拿到 gzip；結束後看到 `done` 與 `ended_by_spec`，Logs 區塊顯示「已結束」，刪除帳號、登出。環境變數 `MFTIKO_E2E_URL`、`MFTIKO_E2E_TOKEN`、`MFTIKO_E2E_CREDS` 可以改目標與檔案。失敗時的 trace 在 `web/test-results/`。
 
 ## 收尾與紀錄
 
