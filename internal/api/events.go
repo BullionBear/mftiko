@@ -216,6 +216,9 @@ func (h *sseHub) writeLoop(ctx context.Context, hb time.Duration) {
 	for {
 		select {
 		case <-ctx.Done():
+			// Events already queued were accepted before cancellation. Write them
+			// before returning so the last log frame, including end, is not dropped.
+			h.drain()
 			return
 		case msg, ok := <-h.ch:
 			if !ok {
@@ -233,6 +236,24 @@ func (h *sseHub) writeLoop(ctx context.Context, hb time.Duration) {
 				return
 			}
 			flushSSE(h.w)
+		}
+	}
+}
+
+// drain writes events queued before cancellation. It does not wait for new ones.
+func (h *sseHub) drain() {
+	for {
+		select {
+		case msg, ok := <-h.ch:
+			if !ok {
+				return
+			}
+			if err := writeSSE(h.w, msg); err != nil {
+				return
+			}
+			flushSSE(h.w)
+		default:
+			return
 		}
 	}
 }

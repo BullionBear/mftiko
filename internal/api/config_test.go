@@ -142,6 +142,19 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.EtcdPassword != "pw" || cfg.CookieKey != "cookie-key" {
 		t.Fatal("secrets were not copied")
 	}
+	if cfg.LogToken != "" {
+		t.Fatal("log token must stay empty when unset")
+	}
+}
+
+func TestLoadCopiesLogToken(t *testing.T) {
+	pub := mustPub(t)
+	in := testInput(t)
+	in.LogToken = strings.Repeat("a", 32)
+	cfg := loadWithin(t, goodDeploy(), goodConfig(pub), in)
+	if cfg.LogToken != in.LogToken {
+		t.Fatalf("log token len %d", len(cfg.LogToken))
+	}
 }
 
 func TestZeroDurationIsDefault(t *testing.T) {

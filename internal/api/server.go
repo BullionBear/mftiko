@@ -77,7 +77,14 @@ type Server struct {
 	logged string // last unavailable_regions logged, joined
 
 	// agents remembers the last AgentRecord seen while its region was available (E10-D096).
+	// Session logs do not read it. They use the live AgentRecord on the election lease (E14-D015).
 	agents agentMemory
+
+	// logClient calls STS agents for session logs (E14-D010, E14-D029).
+	logClient *http.Client
+	// logWait pauses between log dial attempts (E14-D027). Nil waits on a timer.
+	// Tests set it so a retry records its delay and does not sleep.
+	logWait func(ctx context.Context, d time.Duration) error
 }
 
 // cluster is one region's mirror of the whole keyspace.
@@ -118,6 +125,7 @@ func start(cfg Config) (*Server, error) {
 		cfg: cfg, cl: cl, byName: map[string]*cluster{}, log: cfg.Log, now: cfg.Now,
 		ids: defaultIDs,
 		ctx: ctx, cancel: cancel,
+		logClient: newLogClient(),
 	}
 	if s.now == nil {
 		s.now = time.Now
