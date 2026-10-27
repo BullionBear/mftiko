@@ -598,3 +598,105 @@ func TestChunkSplitsRune(t *testing.T) {
 	}
 	differ(t, append(append([]byte{}, first.Data...), rest...), body)
 }
+
+func TestPauseSkipsPoll(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "h.stdout")
+	writeFile(t, path, []byte("line\n"))
+	s, err := Open(context.Background(), Options{
+		Path: path, Follow: true, Pause: func() bool { return true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	start := time.Now()
+	rec, err := s.Next()
+	if err != nil || string(rec.Data) != "line\n" {
+		t.Fatalf("%+v %v", rec, err)
+	}
+	if _, err := s.Next(); !errors.Is(err, ErrPause) {
+		t.Fatal(err)
+	}
+	if time.Since(start) > 200*time.Millisecond {
+		t.Fatal("pause waited for the poll")
+	}
+}
+
+func TestPrimeDoesNotConsume(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "h.stdout")
+	writeFile(t, path, []byte("ab\n"))
+	s, err := Open(context.Background(), Options{Path: path, Follow: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.Prime(); err != nil {
+		t.Fatal(err)
+	}
+	if s.Cursor() == "" {
+		t.Fatal("empty resolved start")
+	}
+	rec, err := s.Next()
+	if err != nil || rec.Gap || string(rec.Data) != "ab\n" {
+		t.Fatalf("%+v %v", rec, err)
+	}
+}
+
+func TestPrimeWaitsForFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "h.stdout")
+	entered := make(chan struct{})
+	var once sync.Once
+	pollHook = func() { once.Do(func() { close(entered) }) }
+	t.Cleanup(func() { pollHook = nil })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := Open(ctx, Options{Path: path, Follow: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	errc := make(chan error, 1)
+	go func() { errc <- s.Prime() }()
+	select {
+	case <-entered:
+	case err := <-errc:
+		t.Fatalf("prime returned early: %v", err)
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	writeFile(t, path, []byte("later\n"))
+	select {
+	case err := <-errc:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if s.Cursor() == "" {
+		t.Fatal("empty resolved start")
+	}
+	rec, err := s.Next()
+	if err != nil || rec.Gap || string(rec.Data) != "later\n" {
+		t.Fatalf("%+v %v", rec, err)
+	}
+}
+
+func TestPrimePause(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "h.stdout")
+	s, err := Open(context.Background(), Options{
+		Path: path, Follow: true, Pause: func() bool { return true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	start := time.Now()
+	if err := s.Prime(); !errors.Is(err, ErrPause) {
+		t.Fatal(err)
+	}
+	if time.Since(start) > 200*time.Millisecond {
+		t.Fatal("prime waited for the poll")
+	}
+}

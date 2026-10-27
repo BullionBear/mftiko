@@ -1,10 +1,14 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/BullionBear/mftiko/internal/platform/shim"
 	"github.com/BullionBear/mftiko/internal/sts/agent"
 )
 
@@ -52,7 +56,10 @@ func TestParseArgsDefaults(t *testing.T) {
 		o.backoffMax != agent.DefaultBackoffMax ||
 		o.restartWindowS != agent.DefaultRestartWindowS ||
 		o.maxRestarts != 9 ||
-		o.plainHTTPHosts != nil || o.dataRepo != "" {
+		o.plainHTTPHosts != nil || o.dataRepo != "" ||
+		o.logs.Listen != agent.DefaultLogListen || o.logs.Advertise != "" || o.logs.TokenSHA256 != "" ||
+		o.logs.MaxStreams != agent.DefaultLogStreams || o.logs.MaxRate != agent.DefaultLogRate ||
+		o.logs.MaxBytes != 0 || o.logs.Keep != 0 {
 		t.Fatalf("defaults %+v, grace %s", o, o.grace)
 	}
 	if agent.DefaultGrace != 10*time.Second {
@@ -87,5 +94,38 @@ func TestParseArgsRegistryHosts(t *testing.T) {
 		if _, _, err := parseArgs(args); err == nil {
 			t.Fatalf("accepted %q", strings.Join(args, " "))
 		}
+	}
+}
+
+func TestParseArgsLogFlags(t *testing.T) {
+	sum := sha256.Sum256([]byte("log"))
+	hash := hex.EncodeToString(sum[:])
+	upper := strings.ToUpper(hash)
+	rejected := [][]string{
+		baseArgs("-log-token-sha256", upper),
+		baseArgs("-log-listen", "", "-log-token-sha256", strings.Repeat("z", 64)),
+		baseArgs("-log-max-bytes", "100"),
+		baseArgs("-log-keep", "101"),
+		baseArgs("-log-max-streams", "-1"),
+		baseArgs("-log-max-rate", "-1"),
+	}
+	for _, args := range rejected {
+		if _, _, err := parseArgs(args); err == nil {
+			t.Fatalf("accepted %q", strings.Join(args, " "))
+		}
+	}
+	o, _, err := parseArgs(baseArgs("-log-listen", "", "-log-max-bytes", "0", "-log-keep", "0"))
+	if err != nil || o.logs.Listen != "" || o.logs.MaxBytes != 0 || o.logs.Keep != 0 {
+		t.Fatalf("%v %+v", err, o.logs)
+	}
+	o, _, err = parseArgs(baseArgs(
+		"-log-token-sha256", hash,
+		"-log-advertise", "h.example:7442",
+		"-log-max-bytes", strconv.FormatUint(shim.MinOutputMaxBytes, 10),
+		"-log-keep", "2",
+	))
+	if err != nil || o.logs.TokenSHA256 != hash || o.logs.Advertise != "h.example:7442" ||
+		o.logs.MaxBytes != shim.MinOutputMaxBytes || o.logs.Keep != 2 || o.logs.Listen != agent.DefaultLogListen {
+		t.Fatalf("%v %+v", err, o.logs)
 	}
 }

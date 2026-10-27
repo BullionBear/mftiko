@@ -23,6 +23,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/logger"
 	"github.com/BullionBear/mftiko/internal/platform/natsdev"
+	"github.com/BullionBear/mftiko/internal/platform/shim"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 	"github.com/BullionBear/mftiko/internal/sts"
 	"github.com/BullionBear/mftiko/internal/sts/agent"
@@ -46,6 +47,7 @@ type options struct {
 	restartWindowS                       int
 	artifactPoll                         time.Duration
 	natsURL, natsAccount, natsSigningKey string
+	logs                                 agent.LogConfig
 }
 
 func main() {
@@ -97,6 +99,16 @@ func parseArgs(args []string) (options, bool, error) {
 	fs.IntVar(&o.maxRestarts, "max-restarts", agent.DefaultMaxRestarts, "default max_restarts")
 	fs.IntVar(&o.restartWindowS, "restart-window", agent.DefaultRestartWindowS, "default restart window, in seconds")
 	fs.DurationVar(&o.artifactPoll, "artifact-poll", time.Minute, "how often to resolve the latest tag")
+	var logListen, logAdvertise, logToken string
+	var logStreams, logRate, logKeep int
+	var logBytes uint64
+	fs.StringVar(&logListen, "log-listen", agent.DefaultLogListen, "log endpoint listen address; empty disables it")
+	fs.StringVar(&logAdvertise, "log-advertise", "", "host:port published as AgentRecord.log_addr")
+	fs.StringVar(&logToken, "log-token-sha256", "", "SHA-256 of the log bearer token, 64 lowercase hex")
+	fs.IntVar(&logStreams, "log-max-streams", agent.DefaultLogStreams, "concurrent log reads and exports")
+	fs.IntVar(&logRate, "log-max-rate", agent.DefaultLogRate, "log read rate, bytes per second")
+	fs.Uint64Var(&logBytes, "log-max-bytes", 0, "shim log rotation size; 0 uses the shim default")
+	fs.IntVar(&logKeep, "log-keep", 0, "shim log files to keep, including the live file; 0 uses the shim default")
 	if err := fs.Parse(args); err != nil {
 		return options{}, false, err
 	}
@@ -118,6 +130,19 @@ func parseArgs(args []string) (options, bool, error) {
 		if _, _, err := artifact.SplitRepository(o.dataRepo); err != nil {
 			return o, false, fmt.Errorf("data-repository: %w", err)
 		}
+	}
+	if err := agent.CheckLogKeep(logKeep); err != nil {
+		return o, false, err
+	}
+	if logBytes != 0 && logBytes < shim.MinOutputMaxBytes {
+		return o, false, errors.New("sts: log max bytes")
+	}
+	o.logs = agent.LogConfig{
+		Listen: logListen, Advertise: logAdvertise, TokenSHA256: logToken,
+		MaxStreams: logStreams, MaxRate: logRate, MaxBytes: logBytes, Keep: uint32(logKeep),
+	}
+	if err := o.logs.Validate(); err != nil {
+		return o, false, err
 	}
 	return o, false, nil
 }
@@ -184,6 +209,7 @@ func run(ctx context.Context, o options, log zerolog.Logger) error {
 		RecvWindowMS:     o.recvWindowMS, HookTimeoutS: o.hookTimeoutS, StartTimeoutS: o.startTimeoutS,
 		VolumeMB: o.volumeMB, VolumeInterval: o.volumeInterval, Grace: o.grace, MaxRestarts: o.maxRestarts, RestartWindowS: o.restartWindowS,
 		BackoffMin: o.backoffMin, BackoffMax: o.backoffMax, ArtifactPoll: o.artifactPoll,
+		Logs:    o.logs,
 		Release: buildinfo.Version, Log: log,
 	})
 }

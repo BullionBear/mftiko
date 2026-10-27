@@ -39,6 +39,10 @@ type Program struct {
 	RecvWindowMS  int
 	HookTimeoutS  int
 	StartTimeoutS int
+	// LogMaxBytes and LogKeep are Launch.output (E14-D023). Zero keeps the
+	// shim defaults.
+	LogMaxBytes uint64
+	LogKeep     uint32
 
 	mem    map[string]sessionMem
 	tracks map[string]bindTrack
@@ -120,7 +124,14 @@ func (p *Program) Launch(key agent.WorkerKey, _ Spec) (*shimv1.Launch, error) {
 	if p.ExtraEnv != nil {
 		env = append(env, p.ExtraEnv(key)...)
 	}
-	return mem.manifest.Launch(mem.rootfs, env)
+	l, err := mem.manifest.Launch(mem.rootfs, env)
+	if err != nil {
+		return nil, err
+	}
+	if p.LogMaxBytes != 0 || p.LogKeep != 0 {
+		l.Output = &shimv1.Output{MaxBytes: p.LogMaxBytes, Keep: p.LogKeep}
+	}
+	return l, nil
 }
 
 func (p *Program) platformEnv(id string, spec *sessionv1.SessionSpec) []string {

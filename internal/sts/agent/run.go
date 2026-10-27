@@ -72,6 +72,10 @@ type Config struct {
 	BackoffMax time.Duration
 	// ArtifactPoll is how often latest is resolved for repositories on disk (E12-D012). 0 takes one minute.
 	ArtifactPoll time.Duration
+	// Logs is the session log endpoint (E14-D019–E14-D024). The zero value does
+	// not listen and does not warn. The CLI default of -log-listen is :7442;
+	// an empty Listen here is how tests and a disabled endpoint behave.
+	Logs LogConfig
 
 	Policy     agent.Policy
 	Resync     time.Duration
@@ -123,6 +127,7 @@ func (cfg *Config) applyDefaults() {
 	if cfg.ArtifactPoll <= 0 {
 		cfg.ArtifactPoll = time.Minute
 	}
+	cfg.Logs.apply()
 }
 
 func (cfg Config) validate() error {
@@ -150,6 +155,9 @@ func (cfg Config) validate() error {
 	if cfg.VolumeInterval < 0 {
 		return errors.New("sts: volume interval")
 	}
+	if err := cfg.Logs.Validate(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -160,6 +168,9 @@ func Run(ctx context.Context, cfg Config) error {
 	cfg.applyDefaults()
 	if err := cfg.validate(); err != nil {
 		return err
+	}
+	if cfg.Logs.Listen != "" && cfg.Logs.TokenSHA256 == "" {
+		cfg.Log.Warn().Msg("log endpoint disabled: -log-token-sha256 is empty")
 	}
 	cfg.Log.Info().
 		Str("registry_creds", cfg.RegistryCreds).
@@ -243,6 +254,7 @@ func Run(ctx context.Context, cfg Config) error {
 		Env: cfg.WorkerEnv, ExtraEnv: cfg.ExtraEnv, DataDir: cfg.DataDir, Instance: cfg.Instance,
 		Epoch: term.Epoch(), Sign: cfg.Sign,
 		RecvWindowMS: cfg.RecvWindowMS, HookTimeoutS: cfg.HookTimeoutS, StartTimeoutS: cfg.StartTimeoutS,
+		LogMaxBytes: cfg.Logs.MaxBytes, LogKeep: cfg.Logs.Keep,
 		policy: pol,
 	}
 	f := fleet.New(fleet.Config[Spec, Live]{
@@ -278,10 +290,13 @@ func Run(ctx context.Context, cfg Config) error {
 		stop()
 		<-p.finish.done
 	}()
+	logAddr, logReady, stopLogs := p.startLogs(ctx, term.Done(), cfg.Logs)
+	defer stopLogs()
 	return runner.Run(ctx, runner.Config[Entry, Spec, Live]{
 		Term: term, Demand: src, Statuses: reader, Decode: decoder{inst: cfg.Instance}.Decode, Planner: p,
 		Policy: policy, Fleet: &releaseFleet{Fleet: f, release: p.release}, Commit: p.commit, Sync: p.sync,
 		Release: cfg.Release, WorkDir: cfg.WorkDir, Resync: cfg.Resync, StaleAfter: cfg.StaleAfter, Log: cfg.Log, Now: cfg.Now,
+		LogAddr: logAddr, LogReady: logReady,
 	})
 }
 
@@ -337,6 +352,12 @@ type plane struct {
 	// ids whose spec key is in that commit's view (E10-D019).
 	specReady bool
 	specs     map[string]struct{}
+
+	// logView is the spec and phase slice the log endpoint reads. Nil when the
+	// endpoint is off (E14-D019, E14-D020). logs waits out open files before
+	// shim logs are deleted (E10-D020).
+	logView *logView
+	logs    logQuiescer
 }
 
 // Plan returns the last commit. A stale step does not recompute it (E01-D009).
@@ -418,6 +439,9 @@ func (p *plane) commit(_ context.Context, _ agent.Demand[Entry], observed map[ag
 		}
 	}
 	p.noteSpecsLocked(sessions)
+	for id := range sessions {
+		p.noteLogPhase(id, p.terminalLocked(id))
+	}
 	return nil
 }
 
@@ -433,6 +457,18 @@ func (p *plane) noteSpecsLocked(sessions map[string]*sess) {
 	}
 	p.specs = specs
 	p.specReady = true
+	if p.logView != nil {
+		p.logView.setSpecs(specs)
+	}
+}
+
+// noteLogPhase publishes whether id is terminal for the log endpoint. PHASE_DONE
+// and PHASE_FAILED are terminal. RESTARTING and STOPPING are not (E14-D024).
+func (p *plane) noteLogPhase(id string, terminal bool) {
+	if p.logView == nil {
+		return
+	}
+	p.logView.setPhase(id, terminal)
 }
 
 // sync writes SessionStatus where the phase, the reason, or the artifact_pull
@@ -467,6 +503,11 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 		}
 		ev.undecided = undecidedExit(obs, ev, p.pol != nil)
 		phase, reason, write := phaseOf(in, obs, ev)
+		if write {
+			// same() below skips an already-published terminal phase. The log
+			// view still has to learn it, including a DONE loaded from etcd.
+			p.noteLogPhase(id, terminalPhase(phase))
+		}
 		if !write {
 			continue
 		}

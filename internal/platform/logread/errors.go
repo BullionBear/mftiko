@@ -15,6 +15,10 @@ var ErrOrigin = errors.New("logread: bad origin")
 // Open and Export return it immediately; they do not queue.
 var ErrBusy = errors.New("logread: too many readers")
 
+// ErrPause means Pause asked a follow read to stop. It is not an I/O failure.
+// Next and Prime return it instead of waiting out the poll (E14-D024).
+var ErrPause = errors.New("logread: pause")
+
 // errClosed is Next or Read after Close.
 var errClosed = errors.New("logread: closed")
 

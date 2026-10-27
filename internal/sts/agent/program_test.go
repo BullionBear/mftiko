@@ -10,6 +10,8 @@ import (
 	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
 	stsctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/stsctl/v1"
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
+	"github.com/BullionBear/mftiko/internal/platform/artifact"
+	"github.com/BullionBear/mftiko/internal/platform/shim"
 	"github.com/BullionBear/mftiko/internal/sts"
 	"github.com/BullionBear/mftiko/sdk"
 )
@@ -156,6 +158,29 @@ func containsStr(ss []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestLaunchOutputLimits(t *testing.T) {
+	root := t.TempDir()
+	p := &Program{}
+	p.note("a1b2c3", "h", &sessionv1.SessionSpec{Name: "n"}, nil)
+	p.setImage("a1b2c3", root, artifact.Manifest{Entrypoint: []string{"bin"}})
+	l, err := p.Launch(WorkerKey("a1b2c3"), Spec{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.GetOutput() != nil {
+		t.Fatalf("output %+v", l.GetOutput())
+	}
+	p.LogMaxBytes = shim.MinOutputMaxBytes
+	p.LogKeep = 2
+	l, err = p.Launch(WorkerKey("a1b2c3"), Spec{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.GetOutput().GetMaxBytes() != shim.MinOutputMaxBytes || l.GetOutput().GetKeep() != 2 {
+		t.Fatalf("output %+v", l.GetOutput())
+	}
 }
 
 func TestVersionOrdersEpochFirst(t *testing.T) {

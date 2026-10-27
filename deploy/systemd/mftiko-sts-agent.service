@@ -10,6 +10,14 @@ StartLimitIntervalSec=0
 
 [Service]
 User=mftiko-sts
+# Log endpoint defaults (E14-D019–E14-D023). EnvironmentFile overrides these.
+Environment=MFTIKO_LOG_LISTEN=:7442
+Environment=MFTIKO_LOG_ADVERTISE=
+Environment=MFTIKO_LOG_TOKEN_SHA256=
+Environment=MFTIKO_LOG_MAX_STREAMS=16
+Environment=MFTIKO_LOG_MAX_RATE=16777216
+Environment=MFTIKO_LOG_MAX_BYTES=0
+Environment=MFTIKO_LOG_KEEP=0
 EnvironmentFile=/etc/mftiko/sts-agent/env
 WorkingDirectory=/var/lib/mftiko/sts-agent
 StateDirectory=mftiko/sts-agent
@@ -23,7 +31,14 @@ ExecStart=/opt/mftiko/current/bin/mftiko-sts-agent \
   -registry-creds ${MFTIKO_REGISTRY_CREDS} \
   -data-repository ${MFTIKO_STS_DATA_REPOSITORY} \
   -nats-account ${MFTIKO_NATS_ACCOUNT} \
-  -nats-signing-key /etc/mftiko/sts-agent/nats-signing.nk
+  -nats-signing-key /etc/mftiko/sts-agent/nats-signing.nk \
+  -log-listen ${MFTIKO_LOG_LISTEN} \
+  -log-advertise ${MFTIKO_LOG_ADVERTISE} \
+  -log-token-sha256 ${MFTIKO_LOG_TOKEN_SHA256} \
+  -log-max-streams ${MFTIKO_LOG_MAX_STREAMS} \
+  -log-max-rate ${MFTIKO_LOG_MAX_RATE} \
+  -log-max-bytes ${MFTIKO_LOG_MAX_BYTES} \
+  -log-keep ${MFTIKO_LOG_KEEP}
 Restart=always
 RestartSec=1s
 KillMode=process
