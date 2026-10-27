@@ -19,8 +19,7 @@ ExecStart=/opt/mftiko/current/bin/mftiko-sts-agent \
   -work-dir /var/lib/mftiko/sts-agent \
   -data /var/lib/mftiko/sts-agent \
   -shim /opt/mftiko/current/bin/mftiko-shim \
-  -registry ${MFTIKO_REGISTRY} \
-  -plain-http=${MFTIKO_PLAIN_HTTP} \
+  -plain-http-hosts ${MFTIKO_PLAIN_HTTP_HOSTS} \
   -registry-creds ${MFTIKO_REGISTRY_CREDS} \
   -data-repository ${MFTIKO_STS_DATA_REPOSITORY} \
   -nats-account ${MFTIKO_NATS_ACCOUNT} \

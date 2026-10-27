@@ -1322,8 +1322,12 @@ func TestPullCancelDropsTemp(t *testing.T) {
 
 func TestPullBadRequest(t *testing.T) {
 	s := newFake(t)
-	if _, err := Open(Registry{}, t.TempDir()); err == nil || !errors.Is(err, ErrRequest) {
-		wantRequest(t, err)
+	// An empty address is the full-reference client (E10-D122). A bad address is still rejected.
+	if _, err := Open(Registry{}, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(Registry{PlainHTTPHosts: []string{"reg.example", "reg.example"}}, t.TempDir()); !errors.Is(err, ErrRequest) {
+		t.Fatalf("duplicate host: %v", err)
 	}
 	for _, addr := range []string{"http://127.0.0.1:1", "127.0.0.1:1/repo", "not a host"} {
 		if _, err := Open(Registry{Address: addr, PlainHTTP: true}, t.TempDir()); !errors.Is(err, ErrRequest) {

@@ -48,13 +48,13 @@ type sessionOpt struct {
 func testCatalog() *fakeCatalog {
 	return &fakeCatalog{
 		digest: map[string]string{
-			catKey("mftiko/strategies", "v1"): stratDig,
+			catKey("registry.example/mftiko/strategies", "v1"): stratDig,
 		},
 		manifest: map[string]artifact.ManifestInfo{
-			catKey("mftiko/strategies", stratDig): strategyManifest(stratDig, artifact.KindStrategy, artifact.SDK{}),
+			catKey("registry.example/mftiko/strategies", stratDig): strategyManifest(stratDig, artifact.KindStrategy, artifact.SDK{}),
 		},
 		data: map[string]artifact.DataInfo{
-			catKey("mftiko/data", dataDig): {Digest: dataDig, Config: artifact.DataConfig{Schema: artifact.DataSchema}},
+			catKey("registry.example/mftiko/data", dataDig): {Digest: dataDig, Config: artifact.DataConfig{Schema: artifact.DataSchema}},
 		},
 		readErr: map[string]error{},
 		dataErr: map[string]error{},
@@ -102,8 +102,6 @@ func newSessionEnv(t *testing.T, opt sessionOpt) *sessionEnv {
 	s := e.replica(t)
 	cat := testCatalog()
 	s.catalog = cat
-	// Address is set after start so useCatalog does not dial. The response prefixes it (E10-D060).
-	s.cfg.Registry.Address = "registry.example"
 	s.cfg.Allow = []string{"registry.example/mftiko"}
 	se := &sessionEnv{e: e, s: s, pg: pg, clock: opt.clock, cat: cat}
 	if pg != nil {
@@ -349,7 +347,7 @@ func TestSessionCreateRoundTrip(t *testing.T) {
 	if err := proto.Unmarshal(kv.Value, &stored); err != nil {
 		t.Fatal(err)
 	}
-	if stored.GetStrategy().GetRepository() != "mftiko/strategies" || len(stored.GetParams()) != 0 || stored.GetRestart() != nil {
+	if stored.GetStrategy().GetRepository() != "registry.example/mftiko/strategies" || len(stored.GetParams()) != 0 || stored.GetRestart() != nil {
 		t.Fatalf("stored %v", &stored)
 	}
 	rows := se.rows(t)
@@ -364,7 +362,7 @@ func TestSessionCreateRoundTrip(t *testing.T) {
 		"params":{"z":1,"a":"x"},
 		"feeds":[{"feed":"not-a-ticker","md_instance":"md-tw-1"}],
 		"accounts":[{"name":"main","api_id":42,"algo_ids":[1,2]}],
-		"inputs":[{"name":"model","digest":%q,"repository":"mftiko/data"}],
+		"inputs":[{"name":"model","digest":%q,"repository":"registry.example/mftiko/data"}],
 		"restart":{"mode":"never","max_restarts":0,"window_s":3},
 		"limits":{"memory_mb":0,"gomaxprocs":1,"volume_mb":2,"hook_timeout_s":0},
 		"deps_timeout_s":5,"start_timeout_s":6,"recv_window_ms":7,"grace_ms":8
@@ -380,7 +378,7 @@ func TestSessionCreateRoundTrip(t *testing.T) {
 	if len(got.Spec.Accounts) != 1 || got.Spec.Accounts[0].TdInstance != "td-tw-1" || got.Spec.Accounts[0].ApiId != 42 {
 		t.Fatalf("accounts %+v", got.Spec.Accounts)
 	}
-	if len(got.Spec.Inputs) != 1 || got.Spec.Inputs[0].Repository != "mftiko/data" || got.Spec.Inputs[0].Digest != dataDig {
+	if len(got.Spec.Inputs) != 1 || got.Spec.Inputs[0].Repository != "registry.example/mftiko/data" || got.Spec.Inputs[0].Digest != dataDig {
 		t.Fatalf("inputs %+v", got.Spec.Inputs)
 	}
 	if got.Spec.Restart.Mode == nil || *got.Spec.Restart.Mode != apiv1.Never || got.Spec.Restart.MaxRestarts == nil || *got.Spec.Restart.MaxRestarts != 0 || got.Spec.Restart.WindowS == nil || *got.Spec.Restart.WindowS != 3 {
@@ -549,49 +547,58 @@ func TestSessionValidation(t *testing.T) {
 	}
 
 	se.s.cfg.Allow = []string{"*"}
+	before := se.cat.reads
 	code, _, body := se.post(t, `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"other.example/mftiko/strategies","ref":"`+stratDig+`"}}`, nil)
-	if code != http.StatusBadRequest || !strings.Contains(string(body), "is not on the configured registry") {
-		t.Fatalf("host %d %s", code, body)
+	if code != http.StatusBadRequest || !strings.Contains(string(body), "was not found") || se.cat.reads == before {
+		t.Fatalf("other host %d %s reads %d", code, body, se.cat.reads)
 	}
-	hasPath(t, body, "/strategy/repository")
+	hasPath(t, body, "/strategy/ref")
 	se.s.cfg.Allow = []string{"registry.example/mftiko"}
-	se.s.cfg.Registry.Address = ""
+	saved := se.s.catalog
+	se.s.catalog = nil
 	code, _, body = se.post(t, minBody("sts-tw-1"), nil)
 	if code != http.StatusServiceUnavailable || !strings.Contains(string(body), "registry is not configured") {
 		t.Fatalf("unconfigured %d %s", code, body)
 	}
-	se.s.cfg.Registry.Address = "registry.example"
+	se.s.catalog = saved
 
-	info := se.cat.manifest[catKey("mftiko/strategies", stratDig)]
+	info := se.cat.manifest[catKey("registry.example/mftiko/strategies", stratDig)]
 	info.Manifest.Kind = "conn"
-	se.cat.manifest[catKey("mftiko/strategies", stratDig)] = info
+	se.cat.manifest[catKey("registry.example/mftiko/strategies", stratDig)] = info
 	code, _, body = se.post(t, minBody("sts-tw-1"), nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("kind %d %s", code, body)
 	}
 	hasPath(t, body, "/strategy/ref")
 	info.Manifest.Kind = artifact.KindStrategy
-	se.cat.manifest[catKey("mftiko/strategies", stratDig)] = info
+	se.cat.manifest[catKey("registry.example/mftiko/strategies", stratDig)] = info
 
-	se.cat.data[catKey("mftiko/data", dataDig)] = artifact.DataInfo{Digest: dataDig, Config: artifact.DataConfig{Schema: "other"}}
-	inputBody := fmt.Sprintf(`{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":%q},"inputs":[{"name":"m","digest":%q,"repository":"mftiko/data"}]}`, stratDig, dataDig)
+	se.cat.data[catKey("registry.example/mftiko/data", dataDig)] = artifact.DataInfo{Digest: dataDig, Config: artifact.DataConfig{Schema: "other"}}
+	inputBody := fmt.Sprintf(`{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":%q},"inputs":[{"name":"m","digest":%q,"repository":"registry.example/mftiko/data"}]}`, stratDig, dataDig)
 	code, _, body = se.post(t, inputBody, nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("input %d %s", code, body)
 	}
 	hasPath(t, body, "/inputs/0/digest")
-	se.cat.data[catKey("mftiko/data", dataDig)] = artifact.DataInfo{Digest: dataDig, Config: artifact.DataConfig{Schema: artifact.DataSchema}}
+	se.cat.data[catKey("registry.example/mftiko/data", dataDig)] = artifact.DataInfo{Digest: dataDig, Config: artifact.DataConfig{Schema: artifact.DataSchema}}
 
-	se.cat.readErr[catKey("mftiko/strategies", stratDig)] = &artifact.Error{Reason: artifact.ReasonUnavailable, Err: errors.New("down")}
+	se.cat.readErr[catKey("registry.example/mftiko/strategies", stratDig)] = &artifact.Error{Reason: artifact.ReasonUnavailable, Err: errors.New("down")}
 	code, _, body = se.post(t, minBody("sts-tw-1"), nil)
 	if code != http.StatusServiceUnavailable {
 		t.Fatalf("registry %d %s", code, body)
 	}
 	mustProblem(t, body, http.StatusServiceUnavailable, "registry_unavailable")
-	delete(se.cat.readErr, catKey("mftiko/strategies", stratDig))
+	delete(se.cat.readErr, catKey("registry.example/mftiko/strategies", stratDig))
 	if se.specCount(t, "sts-tw-1") != 0 {
 		t.Fatal("registry failure wrote a spec")
 	}
+	se.cat.readErr[catKey("registry.example/mftiko/strategies", stratDig)] = &artifact.Error{Reason: artifact.ReasonUnauthorized, Permanent: true, Err: errors.New("denied")}
+	code, _, body = se.post(t, minBody("sts-tw-1"), nil)
+	if code != http.StatusServiceUnavailable || !strings.Contains(string(body), "registry is unavailable") || strings.Contains(string(body), "denied") {
+		t.Fatalf("unauthorized %d %s", code, body)
+	}
+	mustProblem(t, body, http.StatusServiceUnavailable, "registry_unavailable")
+	delete(se.cat.readErr, catKey("registry.example/mftiko/strategies", stratDig))
 
 	code, _, body = se.post(t, `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"`+stratDig+`"},"accounts":[{"name":"a","api_id":99,"algo_ids":[1]}]}`, nil)
 	if code != http.StatusBadRequest {

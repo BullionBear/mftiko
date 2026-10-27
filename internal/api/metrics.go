@@ -28,7 +28,7 @@ const (
 	helpBus      = "1 when WorkerStatus condition bus_disconnected has status false, 0 when it is true. No series when that condition is absent. mftiko does not time it."
 	helpRegion   = "1 when the region has finished its first sync and was contacted within unavailable_after."
 	helpPostgres = "1 when a scrape-time ping of the API Postgres pool succeeds."
-	helpRegistry = "1 when GET /v2/ on the configured registry returns 200."
+	helpRegistry = "0. The API does not configure one registry address, so this gauge stays 0."
 
 	// artifactPullType matches the STS SessionStatus condition (E12-D068). The API does not import the STS agent.
 	artifactPullType    = "artifact_pull"

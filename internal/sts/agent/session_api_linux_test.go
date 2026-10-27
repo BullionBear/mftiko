@@ -59,9 +59,8 @@ func TestScenarioSessionCreateAndEnd(t *testing.T) {
 	}
 	sum := sha256.Sum256([]byte(sessionAPIToken))
 	conf, err := json.Marshal(map[string]any{
-		"allow":      []string{"*"},
-		"registry":   e.reg.addr(),
-		"plain_http": true,
+		"allow":            []string{e.reg.addr() + "/hello"},
+		"plain_http_hosts": []string{e.reg.addr()},
 		"users": []map[string]string{{
 			"name":         "ada",
 			"token_sha256": hex.EncodeToString(sum[:]),
@@ -127,7 +126,7 @@ func TestScenarioSessionCreateAndEnd(t *testing.T) {
 		t.Fatalf("location %q id %q", hdr.Get("Location"), created.Id)
 	}
 	spec := e.sessionSpec(created.Id)
-	if spec.GetStrategy().GetRepository() != "hello" || spec.GetStrategy().GetName() != "fake" || spec.GetStrategy().GetCode() != e.digest {
+	if spec.GetStrategy().GetRepository() != e.repo || spec.GetStrategy().GetName() != "fake" || spec.GetStrategy().GetCode() != e.digest {
 		t.Fatalf("stored strategy %+v", spec.GetStrategy())
 	}
 

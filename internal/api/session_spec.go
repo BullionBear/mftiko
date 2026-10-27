@@ -184,12 +184,10 @@ func (s *Server) structural(req apiv1.SessionCreate) fieldList {
 		fields.add("/strategy/repository", "required")
 	} else if err := repositoryShape(repo); err != nil {
 		fields.add("/strategy/repository", "is not a repository")
+	} else if _, _, err := artifact.SplitRepository(repo); err != nil {
+		fields.add("/strategy/repository", "is not a repository")
 	} else if !allowMatches(s.cfg.Allow, repo) {
 		fields.add("/strategy/repository", "is not allowed")
-	} else if s.cfg.Registry.Address != "" {
-		if _, ok := pathOnRegistry(s.cfg.Registry.Address, repo); !ok {
-			fields.add("/strategy/repository", "is not on the configured registry")
-		}
 	}
 	if req.Strategy.Ref == "" {
 		fields.add("/strategy/ref", "required")
@@ -275,8 +273,11 @@ func (s *Server) structural(req apiv1.SessionCreate) fieldList {
 			if !sha256Ref.MatchString(in.Digest) {
 				fields.add(p+"/digest", "must be a sha256 digest")
 			}
+			inRepo := strings.TrimRight(in.Repository, "/")
 			if in.Repository == "" || strings.ContainsAny(in.Repository, " \t\r\n") {
 				fields.add(p+"/repository", "required")
+			} else if _, _, err := artifact.SplitRepository(inRepo); err != nil {
+				fields.add(p+"/repository", "is not a repository")
 			}
 		}
 	}
@@ -463,20 +464,25 @@ func (s *Server) fillInputs(ctx context.Context, req apiv1.SessionCreate, spec *
 		return errRegistryUnconfigured
 	}
 	for i, in := range *req.Inputs {
-		p := fmt.Sprintf("/inputs/%d/digest", i)
-		info, err := s.catalog.ReadData(ctx, in.Repository, in.Digest)
-		if ferrs, ferr := registryFields(err, p, "is not a data artifact"); ferr != nil {
+		p := fmt.Sprintf("/inputs/%d", i)
+		repo := strings.TrimRight(in.Repository, "/")
+		if _, _, err := artifact.SplitRepository(repo); err != nil {
+			fields.add(p+"/repository", "is not a repository")
+			continue
+		}
+		info, err := s.catalog.ReadData(ctx, repo, in.Digest)
+		if ferrs, ferr := registryFields(err, p+"/digest", "is not a data artifact"); ferr != nil {
 			return ferr
 		} else if len(ferrs) > 0 {
 			*fields = append(*fields, ferrs...)
 			continue
 		}
 		if info.Config.Schema != artifact.DataSchema {
-			fields.add(p, "is not a data artifact")
+			fields.add(p+"/digest", "is not a data artifact")
 			continue
 		}
 		spec.Inputs = append(spec.Inputs, &sessionv1.InputDecl{
-			Name: in.Name, Digest: info.Digest, Repository: in.Repository,
+			Name: in.Name, Digest: info.Digest, Repository: repo,
 		})
 	}
 	return nil
@@ -490,7 +496,7 @@ func registryFields(err error, path, missing string) (fieldList, error) {
 		return nil, err
 	}
 	switch artifact.ReasonOf(err) {
-	case artifact.ReasonUnavailable:
+	case artifact.ReasonUnavailable, artifact.ReasonUnauthorized:
 		return nil, fmt.Errorf("%w: %w", errRegistry, err)
 	case "":
 		if errors.Is(err, artifact.ErrRequest) {

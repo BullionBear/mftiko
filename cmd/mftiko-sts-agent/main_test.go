@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -14,23 +15,26 @@ func TestParseArgsVersion(t *testing.T) {
 	}
 }
 
-func TestParseArgsDefaults(t *testing.T) {
-	o, version, err := parseArgs([]string{
+func baseArgs(extra ...string) []string {
+	args := []string{
 		"-instance", "sts-tw-1",
 		"-topology", "topo.json",
-		"-etcd-password", "secret",
+		"-etcd-password", "user",
 		"-work-dir", "/tmp/sts",
 		"-shim", "/usr/bin/mftiko-shim",
 		"-data", "/var/lib/mftiko",
-		"-registry", "127.0.0.1:5000",
 		"-nats-account", "Aexample",
 		"-nats-signing-key", "/keys/mftiko.nk",
-		"-max-restarts", "9",
-	})
+	}
+	return append(args, extra...)
+}
+
+func TestParseArgsDefaults(t *testing.T) {
+	o, version, err := parseArgs(baseArgs("-max-restarts", "9"))
 	if err != nil || version {
 		t.Fatalf("version=%v err=%v", version, err)
 	}
-	if o.instance != "sts-tw-1" || o.dataDir != "/var/lib/mftiko" || o.registry != "127.0.0.1:5000" || o.password != "secret" {
+	if o.instance != "sts-tw-1" || o.dataDir != "/var/lib/mftiko" || o.password != "user" {
 		t.Fatalf("options %+v", o)
 	}
 	if o.natsURL != "nats://127.0.0.1:4222" || o.natsAccount != "Aexample" {
@@ -48,7 +52,7 @@ func TestParseArgsDefaults(t *testing.T) {
 		o.backoffMax != agent.DefaultBackoffMax ||
 		o.restartWindowS != agent.DefaultRestartWindowS ||
 		o.maxRestarts != 9 ||
-		o.plainHTTP {
+		o.plainHTTPHosts != nil || o.dataRepo != "" {
 		t.Fatalf("defaults %+v, grace %s", o, o.grace)
 	}
 	if agent.DefaultGrace != 10*time.Second {
@@ -56,18 +60,32 @@ func TestParseArgsDefaults(t *testing.T) {
 	}
 }
 
-func TestParseArgsRequiresRegistry(t *testing.T) {
-	_, _, err := parseArgs([]string{
-		"-instance", "sts-tw-1",
-		"-topology", "topo.json",
-		"-etcd-password", "secret",
-		"-work-dir", "/tmp/sts",
-		"-shim", "/usr/bin/mftiko-shim",
-		"-data", "/var/lib/mftiko",
-		"-nats-account", "Aexample",
-		"-nats-signing-key", "/keys/mftiko.nk",
-	})
-	if err == nil {
-		t.Fatal("missing -registry was accepted")
+func TestParseArgsRegistryHosts(t *testing.T) {
+	o, _, err := parseArgs(baseArgs(
+		"-plain-http-hosts", "reg.example, 127.0.0.1:5000",
+		"-data-repository", "reg.example/data/state",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(o.plainHTTPHosts) != 2 || o.plainHTTPHosts[0] != "reg.example" || o.plainHTTPHosts[1] != "127.0.0.1:5000" {
+		t.Fatalf("hosts %+v", o.plainHTTPHosts)
+	}
+	if o.dataRepo != "reg.example/data/state" {
+		t.Fatalf("data %q", o.dataRepo)
+	}
+
+	// A strategy pull does not need one registry address (E10-D122).
+	if _, _, err := parseArgs(baseArgs()); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		baseArgs("-plain-http-hosts", "http://reg.example"),
+		baseArgs("-plain-http-hosts", "reg.example,reg.example"),
+		baseArgs("-data-repository", "state"),
+	} {
+		if _, _, err := parseArgs(args); err == nil {
+			t.Fatalf("accepted %q", strings.Join(args, " "))
+		}
 	}
 }

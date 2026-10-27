@@ -199,17 +199,16 @@ func setupHello(t *testing.T) *helloEnv {
 	t.Cleanup(func() { os.RemoveAll(wd) })
 	buf := &syncBuf{}
 	log := zerolog.New(buf).Level(zerolog.InfoLevel)
-	h := &helloEnv{env: &env{t: t, root: root, log: buf, reg: reg, digest: img.Digest, repo: "hello"}}
+	h := &helloEnv{env: &env{t: t, root: root, log: buf, reg: reg, digest: img.Digest, repo: reg.repo()}}
 	h.cfg = Config{
 		Topology: topo, Instance: inst, Dial: state.AuthDial(inst, etcdtest.Password(inst)),
-		Term:      state.TermOptions{ID: t.Name()},
-		WorkDir:   wd,
-		DataDir:   t.TempDir(),
-		Shim:      self,
-		ShimEnv:   []string{envTestShim + "=1"},
-		WorkerEnv: []string{"MFTIKO_NATS_URL=" + ns.url},
-		Registry:  reg.addr(),
-		PlainHTTP: true,
+		Term:           state.TermOptions{ID: t.Name()},
+		WorkDir:        wd,
+		DataDir:        t.TempDir(),
+		Shim:           self,
+		ShimEnv:        []string{envTestShim + "=1"},
+		WorkerEnv:      []string{"MFTIKO_NATS_URL=" + ns.url},
+		PlainHTTPHosts: []string{reg.addr()},
 		Sign: func(id string, perms sts.Permissions) (string, string, error) {
 			return issuer.SignSession(id, perms, signer.AccountPublic(), signer.SigningKey())
 		},

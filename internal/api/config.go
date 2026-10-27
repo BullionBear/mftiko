@@ -82,15 +82,15 @@ type Config struct {
 	Topology         state.Topology
 	Planes           map[string]state.Plane
 	Users            []User
-	Allow            []string // strategy repository allowlist; "*" alone allows every path on Registry (E10-D119)
+	Allow            []string // strategy repository allowlist; "*" alone allows every repository (E10-D122)
 	TDKeys           map[string]sealbox.PublicKey
 	Kinds            []Kind // not in the JSON; the command sets it (E10-D034). Empty rejects every kind.
 	Retention        time.Duration
 	UnavailableAfter time.Duration
 	Listen           string
 	ShutdownTimeout  time.Duration
-	Registry         artifact.Registry // zero address: catalog requests report registry_unavailable (E10-D060)
-	Catalog          *artifact.Catalog // set when Registry is configured; nil does not dial
+	Registry         artifact.Registry // no address: each repository names its host (E10-D122)
+	Catalog          *artifact.Catalog // set by Load; nil does not dial
 	EtcdPassword     string
 	CookieKey        string
 	PostgresDSN      string
@@ -120,9 +120,8 @@ type configFile struct {
 	UnavailableAfter string            `json:"unavailable_after"`
 	Listen           string            `json:"listen"`
 	ShutdownTimeout  string            `json:"shutdown_timeout"`
-	Registry         string            `json:"registry"`
 	RegistryCreds    string            `json:"registry_creds"`
-	PlainHTTP        bool              `json:"plain_http"`
+	PlainHTTPHosts   []string          `json:"plain_http_hosts"`
 }
 
 type configUser struct {
@@ -210,7 +209,7 @@ func (f configFile) config(dep deployment) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	allow, err := normalizeAllow(f.Allow, f.Registry)
+	allow, err := normalizeAllow(f.Allow)
 	if err != nil {
 		return Config{}, err
 	}
@@ -218,7 +217,7 @@ func (f configFile) config(dep deployment) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	reg, cat, err := openRegistry(f.Registry, f.RegistryCreds, f.PlainHTTP)
+	reg, cat, err := openRegistry(f.RegistryCreds, f.PlainHTTPHosts)
 	if err != nil {
 		return Config{}, err
 	}
@@ -229,17 +228,11 @@ func (f configFile) config(dep deployment) (Config, error) {
 	}, nil
 }
 
-// openRegistry loads the catalog client when any registry field is set (E10-D060). An empty address with
-// no credentials and plain_http false leaves the client nil: existing configs keep loading. The client
-// is not dialled here (E10-D024).
-func openRegistry(address, creds string, plain bool) (artifact.Registry, *artifact.Catalog, error) {
-	reg := artifact.Registry{Address: address, Credentials: creds, PlainHTTP: plain}
-	if address == "" && creds == "" && !plain {
-		return reg, nil, nil
-	}
-	if address == "" {
-		return artifact.Registry{}, nil, errors.New("registry address is required")
-	}
+// openRegistry loads the catalog client (E10-D122, E10-D060). There is no single registry address.
+// Credentials and plain_http_hosts may both be empty: the client is anonymous and uses https.
+// The client is not dialled here (E10-D024). A set credentials path must name a file.
+func openRegistry(creds string, hosts []string) (artifact.Registry, *artifact.Catalog, error) {
+	reg := artifact.Registry{Credentials: creds, PlainHTTPHosts: hosts}
 	cat, err := artifact.OpenCatalog(reg)
 	if err != nil {
 		return artifact.Registry{}, nil, err
@@ -331,11 +324,11 @@ func lastPathSegment(repository string) string {
 	return repository
 }
 
-// normalizeAllow checks the strategy allowlist (E10-D119). "*" must be the only entry and does not
-// require a registry address. Any other entry is a registry host plus an optional path prefix.
-// A trailing slash is not part of the prefix. A concrete prefix requires Registry and must be that
-// address or a path under it. The returned slice is what requests are matched against.
-func normalizeAllow(allow []string, registry string) ([]string, error) {
+// normalizeAllow checks the strategy allowlist (E10-D119, E10-D122). "*" must be the only entry and
+// matches any host. Any other entry is a registry host or a host plus a path prefix. A trailing slash
+// is not part of the prefix. Entries are not checked against one configured address. The returned
+// slice is what requests are matched against.
+func normalizeAllow(allow []string) ([]string, error) {
 	stars := 0
 	for _, raw := range allow {
 		if raw == "*" {
@@ -350,7 +343,6 @@ func normalizeAllow(allow []string, registry string) ([]string, error) {
 	}
 	out := make([]string, 0, len(allow))
 	seen := map[string]bool{}
-	reg := strings.TrimRight(registry, "/")
 	for _, raw := range allow {
 		entry := strings.TrimRight(raw, "/")
 		if err := repositoryShape(entry); err != nil {
@@ -360,11 +352,10 @@ func normalizeAllow(allow []string, registry string) ([]string, error) {
 			return nil, fmt.Errorf("duplicate allow entry %q", entry)
 		}
 		seen[entry] = true
-		if reg == "" {
-			return nil, errors.New("registry address is required")
-		}
-		if entry != reg && !strings.HasPrefix(entry, reg+"/") {
-			return nil, fmt.Errorf("allow entry %q is not on the configured registry", raw)
+		if err := artifact.CheckHost(entry); err != nil {
+			if _, _, err := artifact.SplitRepository(entry); err != nil {
+				return nil, fmt.Errorf("invalid repository %q", raw)
+			}
 		}
 		out = append(out, entry)
 	}
@@ -388,22 +379,6 @@ func allowMatches(allow []string, repository string) bool {
 	return false
 }
 
-// pathOnRegistry returns the path stored in the session spec: repository without the configured
-// registry host (E10-D119). STS pulls that path from its own registry. A host that is not Address
-// is not ok.
-func pathOnRegistry(address, repository string) (string, bool) {
-	address = strings.TrimRight(address, "/")
-	repository = strings.TrimRight(repository, "/")
-	if address == "" || repository == "" {
-		return "", false
-	}
-	rest, ok := strings.CutPrefix(repository, address+"/")
-	if !ok || repositoryShape(rest) != nil {
-		return "", false
-	}
-	return rest, true
-}
-
 func parseTDKeys(in map[string]string) (map[string]sealbox.PublicKey, error) {
 	out := make(map[string]sealbox.PublicKey, len(in))
 	for _, inst := range slices.Sorted(maps.Keys(in)) {
@@ -423,7 +398,7 @@ func (c Config) validate() error {
 	if err := validateUsers(c.Users); err != nil {
 		return err
 	}
-	if _, err := normalizeAllow(c.Allow, c.Registry.Address); err != nil {
+	if _, err := normalizeAllow(c.Allow); err != nil {
 		return err
 	}
 	if err := validateTDKeys(c.Planes, c.TDKeys); err != nil {

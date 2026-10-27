@@ -169,7 +169,7 @@ func TestScenarioStateOutHandoff(t *testing.T) {
 	e.putSpec(id, spec)
 	ph.wait(id, statev1.Phase_PHASE_STOPPING, statev1.Phase_PHASE_DONE)
 	snap := e.waitStateOut(id)
-	if snap.GetRepository() != "state" || !snap.GetClean() || snap.GetDigest() == "" {
+	if snap.GetRepository() != e.cfg.DataRepository || !snap.GetClean() || snap.GetDigest() == "" {
 		t.Fatalf("state_out %+v", snap)
 	}
 	if got := e.manifestDigest("state", id); got != snap.GetDigest() {

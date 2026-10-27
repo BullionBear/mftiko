@@ -35,14 +35,19 @@ const DefaultMaxBytes int64 = 1 << 30
 // dockerMediaTypeManifestList is a multi-platform list, the same thing as an OCI index for this check (E09-D034).
 const dockerMediaTypeManifestList = "application/vnd.docker.distribution.manifest.list.v2+json"
 
-// Registry is how an agent reaches the one shared registry (E09-D010, E09-D033). Address is host[:port], with no
-// scheme; PlainHTTP selects http for a dev registry:2. Credentials is a Docker config.json, read with
-// oras-go's credentials store, or empty for anonymous. The file stays on the host: it is not in etcd or
-// in a spec (E09-D010).
+// Registry is how a client reaches a registry (E09-D010, E09-D033, E10-D122).
+//
+// Address, when set, is one host[:port] with no scheme. Repository names passed to this client are paths
+// on that host, and PlainHTTP selects http for every one of them. That is the MD and TD worker client
+// (E10-D126). An empty Address means each repository name is already host[:port]/path; the host is taken
+// from that name (E10-D122). PlainHTTPHosts lists the hosts that use http. Credentials is one Docker
+// config.json, read with oras-go's credentials store, or empty for anonymous. A host with no auth entry
+// is anonymous (E10-D123). The file stays on the host: it is not in etcd or in a spec (E09-D010).
 type Registry struct {
-	Address     string
-	Credentials string
-	PlainHTTP   bool
+	Address        string
+	Credentials    string
+	PlainHTTP      bool
+	PlainHTTPHosts []string
 }
 
 // Request is one worker artifact, addressed by the image manifest digest (E09-D011). OS and Arch default to
@@ -89,7 +94,7 @@ type Client struct {
 // exited mid-download (E09-D030), and temporary directories left under ${DATA}/artifacts by a process that
 // exited mid-unpack (E09-D055). dataDir is ${DATA}.
 func Open(reg Registry, dataDir string) (*Client, error) {
-	if err := checkAddress(reg.Address); err != nil {
+	if err := prepareRegistry(reg); err != nil {
 		return nil, err
 	}
 	if dataDir == "" {
@@ -135,6 +140,45 @@ func checkAddress(address string) error {
 	ref, err := registry.ParseReference(address + "/repo")
 	if err != nil || ref.Registry != address || ref.Repository != "repo" {
 		return badRequest("registry address must be host[:port], not %q", address)
+	}
+	return nil
+}
+
+// CheckHost reports whether address is host[:port], with no scheme and no path (E10-D122).
+func CheckHost(address string) error {
+	return checkAddress(address)
+}
+
+// SplitRepository splits a repository into its registry host and path (E10-D122).
+// repository is host[:port]/path with no tag and no digest. The host is what credentials match.
+func SplitRepository(repository string) (host, path string, err error) {
+	ref, perr := registry.ParseReference(repository)
+	if perr != nil || ref.Reference != "" || ref.Registry == "" || ref.Repository == "" {
+		return "", "", badRequest("repository must be host[:port]/path, not %q", repository)
+	}
+	if err := checkAddress(ref.Registry); err != nil {
+		return "", "", badRequest("repository must be host[:port]/path, not %q", repository)
+	}
+	return ref.Registry, ref.Repository, nil
+}
+
+// prepareRegistry checks Address, when set, and every plain-HTTP host (E10-D122, E10-D124).
+// An empty Address is the full-reference client. Duplicate plain-HTTP hosts are rejected.
+func prepareRegistry(reg Registry) error {
+	if reg.Address != "" {
+		if err := checkAddress(reg.Address); err != nil {
+			return err
+		}
+	}
+	seen := make(map[string]struct{}, len(reg.PlainHTTPHosts))
+	for _, host := range reg.PlainHTTPHosts {
+		if err := checkAddress(host); err != nil {
+			return err
+		}
+		if _, ok := seen[host]; ok {
+			return badRequest("duplicate plain http host %q", host)
+		}
+		seen[host] = struct{}{}
 	}
 	return nil
 }
@@ -231,13 +275,38 @@ func (c *Client) repository(name string) (*remote.Repository, error) {
 }
 
 func openRepository(reg Registry, client remote.Client, name string) (*remote.Repository, error) {
-	repo, err := remote.NewRepository(reg.Address + "/" + name)
+	ref := name
+	host := reg.Address
+	if reg.Address != "" {
+		ref = reg.Address + "/" + name
+	} else {
+		h, _, err := SplitRepository(name)
+		if err != nil {
+			return nil, err
+		}
+		host = h
+	}
+	repo, err := remote.NewRepository(ref)
 	if err != nil {
 		return nil, badRequest("repository: %v", err)
 	}
-	repo.PlainHTTP = reg.PlainHTTP
+	repo.PlainHTTP = usesPlainHTTP(reg, host)
 	repo.Client = client
 	return repo, nil
+}
+
+// usesPlainHTTP is true for the single-address client when PlainHTTP is set, and for a host listed in
+// PlainHTTPHosts (E10-D124). Other hosts stay on https.
+func usesPlainHTTP(reg Registry, host string) bool {
+	if reg.PlainHTTP && reg.Address != "" && host == reg.Address {
+		return true
+	}
+	for _, h := range reg.PlainHTTPHosts {
+		if h == host {
+			return true
+		}
+	}
+	return false
 }
 
 // readVerified reads r, stopping one byte past the declared size, and checks the sha256 (E09-D030, E09-D032).

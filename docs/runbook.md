@@ -49,8 +49,7 @@ etcdctl endpoint health
 | `MftikoWorkerExited` | 同上 | [§3.1](#31-worker-被殺退避或放棄) |
 | `MftikoWorkerLost` | 同上，加上該主機有沒有重開 | [§3.1](#31-worker-被殺退避或放棄)、[§3.4](#34-主機重開) |
 | `MftikoPostgresDown` | 主機 A 的 Postgres | [§3.6](#36-postgres-停機) |
-| `MftikoRegistryDown` | `ghcr.io` 是否可達、registry 帳密 | [§3.7](#37-registry-不可用) |
-| `MftikoArtifactPullFailing` | `instance`、`region`、`digest`。`mftiko_registry_up` 是否仍是 1 | [§3.7](#37-registry-不可用) |
+| `MftikoArtifactPullFailing` | `instance`、`region`、`digest`。該 STS 主機到 repository host 的網路，以及 `MFTIKO_REGISTRY_CREDS` | [§3.7](#37-registry-不可用) |
 | `MftikoDiskLow` | `df -h`；`${WORK_DIR}/log`、`/var/lib/etcd`、`/var/backups` | [§3.8](#38-磁碟快滿) |
 | `mftiko-etcd-backup.service` 是 failed | `journalctl -u mftiko-etcd-backup` | [§2.4](#24-etcd-備份) |
 | 不響，但交易所或 NATS 斷了 | worker 的 stderr | [§3.5](#35-網路斷了) |
@@ -123,7 +122,7 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 | 祕密 | 檔案 | 重啟 |
 |---|---|---|
 | NATS 的 user creds | `/etc/mftiko/md-agent/nats.creds`、`/etc/mftiko/sym/nats.creds`（0600，屬該服務的使用者） | `systemctl restart mftiko-md-agent`、`mftiko-sym`。worker 照跑，下次重連用新的 |
-| registry 的帳密 | `MFTIKO_REGISTRY_CREDS` 指的 `config.json`（0600） | 該 agent，或 API（`registry_creds`） |
+| registry 的帳密 | `MFTIKO_REGISTRY_CREDS` 指的同一份 `config.json`（0600）。多個 host 各做一次 `docker login <host>`，寫進這份檔的 `auths` | 該 agent，或 API（`registry_creds`） |
 | API 的 cookie 金鑰 | `/etc/mftiko/api/env` 的 `MFTIKO_COOKIE_KEY` | `mftiko-api`。console 的登入全部失效，要重新登入 |
 | Postgres 的密碼 | API 的 `MFTIKO_POSTGRES_DSN`、SYM 與 `mftiko-release` 的 `DATABASE_URL` | 先在 Postgres 改密碼，再改 env、重啟 `mftiko-api`、`mftiko-sym`。中間的空窗長過 `for` 時 `MftikoPostgresDown` 會響 |
 
@@ -137,10 +136,10 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 
 ### 2.8 推一個新策略
 
-- 推到 API 設定的那一個 registry。repository 必須落在 `allow`（E10-D119）。單獨的 `*` 表示該 registry 上的任何路徑。
+- 推到 `allow` 列出的 host 與路徑（E10-D119、E10-D122）。repository 是完整的 `host/path`。單獨的 `*` 表示任何 host 上的任何路徑。
 - 不用重啟 API。`mftiko strategy list <repository>` 列出 tag。建立 session 時讀 manifest，`kind` 必須是 strategy（E10-D120）。
-- 不在 `allow`：`validation_failed`。registry 掛了：`registry_unavailable`（見 [§3.7](#37-registry-不可用)）。
-- 每台 registry 的帳密不是這張（#430）。API 與 STS 仍用各自現有的 `config.json`。
+- 不在 `allow`：`validation_failed`。該 host 連不上，或帳密被拒：`registry_unavailable`（見 [§3.7](#37-registry-不可用)）。
+- 多個 host 的帳密寫進同一份 Docker `config.json`。對每個 host 各做一次 `docker login registry.example`（換成那個 host），它把該 host 的 `auths` 加進同一個檔。沒有列出的 host 匿名。公開 image 不用帳密。API 的 `registry_creds` 與 STS 的 `MFTIKO_REGISTRY_CREDS` 指這份檔（E10-D123、E10-D128）。
 
 ## 3. 故障處理
 
@@ -225,17 +224,17 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 
 ### 3.7 registry 不可用
 
-告警：`MftikoRegistryDown`。
+告警：`MftikoArtifactPullFailing`。`mftiko_registry_up` 維持 0：API 沒有單一 registry 位址可探，這個 gauge 不表示某台 registry 是否可達（E10-D122）。
 
 - 已經在跑的 worker 不受影響。已經有就緒版本的 agent 照用那一版 spawn（E12-D009）：worker 被殺照樣從快取重拉。
-- **新的 session 建不了。** API 建立時要從 registry 讀 manifest 並檢查 kind（E10-D120）。連不上回 `registry is unavailable`；registry 沒設定回 `registry is not configured`。這是設計：建立時以 registry 驗證策略，API 不設快取（E10-D012、E10-D057）。
-- **列出 tag 也一樣。** `mftiko strategy list <repository>` 在 registry 沒設定或連不上時回 `registry_unavailable`。不在 `allow` 是 `validation_failed`，不是 503（E10-D119、E10-D121）。
+- **新的 session 建不了。** API 建立時要從該 repository 的 host 讀 manifest 並檢查 kind（E10-D120）。連不上，或帳密被拒，回 `registry is unavailable`（`registry_unavailable`）。catalog 沒接上的行程回 `registry is not configured`。這是設計：建立時以 registry 驗證策略，API 不設快取（E10-D012、E10-D057）。
+- **列出 tag 也一樣。** `mftiko strategy list <repository>` 在連不上或 401、403 時回 `registry_unavailable`，detail 是 `registry unavailable`。不在 `allow` 是 `validation_failed`（E10-D119、E10-D121、E10-D127）。
 - 一個就緒版本都沒有時（新主機、新的 conn 或 account 種類、新策略），需求維持 `PENDING`，reason 是 `artifact_pulling` 或 `artifact_unavailable`，不會變 `DEAD`。registry 恢復就自己接上。
-- 401、403：`MFTIKO_REGISTRY_CREDS` 指的 `config.json` 過期或沒有權限。更新檔案（0600，屬該服務的使用者）再重啟該 agent。
-- **只有 agent 連不到 registry。** `mftiko_registry_up` 是 API 自己探的結果，維持 1，所以 `MftikoRegistryDown` 不響。新 session 維持 `pending`。`SessionStatus` 有 `artifact_pull`（失敗次數與第一次失敗時間），`mftiko_artifact_pull_failing` 是 1。告警是 `MftikoArtifactPullFailing`（範例 `for: 5m`）。agent 的 log 是 `artifact pull will retry: artifact_unavailable`。
-- **先看：** 那台 STS agent 主機到 registry 的網路，以及該服務的 registry 帳密檔（`MFTIKO_REGISTRY_CREDS` 指到的 `config.json`，mode 0600）。agent 會照原退避繼續拉，不用為了這個訊號重啟。
+- 401、403：同一份 `config.json` 裡沒有這個 host，或那一筆過期、沒有權限。對該 host 再做一次 `docker login <host>`，寫進 `MFTIKO_REGISTRY_CREDS`（或 API 的 `registry_creds`）指的同一個檔（0600，屬該服務的使用者），再重啟該 agent 或 API。API 列出的 detail 是 `registry unavailable`，建立的 detail 是 `registry is unavailable`（E10-D127）。STS 的 401、403 是永久錯誤，session 成為 `FAILED`，沒有 `artifact_pull`。
+- **STS 暫時連不到某個 host。** 新 session 維持 `pending`。`SessionStatus` 有 `artifact_pull`（失敗次數與第一次失敗時間），`mftiko_artifact_pull_failing` 是 1。告警是 `MftikoArtifactPullFailing`（範例 `for: 5m`）。agent 的 log 是 `artifact pull will retry: artifact_unavailable`。
+- **先看：** 那台 STS agent 主機到 repository host 的網路，以及該服務的 registry 帳密檔（`MFTIKO_REGISTRY_CREDS` 指到的 `config.json`，mode 0600）。暫時錯誤照原退避繼續拉。
 - 恢復：condition 清掉，`mftiko_artifact_pull_failing` 回到 0。被拒絕的 artifact 仍是 `FAILED`，沒有這個 gauge。
-- 確認：`mftiko_registry_up` 是 1，`PENDING` 的需求變 `READY`，`pending` 的 session 變 `running`。`MftikoArtifactPullFailing` 解除時，`mftiko_artifact_pull_failing` 是 0。
+- 確認：`PENDING` 的需求變 `READY`，`pending` 的 session 變 `running`。`MftikoArtifactPullFailing` 解除時，`mftiko_artifact_pull_failing` 是 0。
 
 ### 3.8 磁碟快滿
 

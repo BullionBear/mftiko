@@ -6,8 +6,9 @@
 // "-" reads stdin. -config is the API JSON, a file, or "-" when -in is not stdin:
 //
 //	users[].name, users[].token_sha256   one static token per user, stored as SHA-256 (E10-D009, E10-D055)
-//	allow                                 strategy repository allowlist; "*" or host plus path prefix (E10-D119)
-//	registry, registry_creds, plain_http  registry host[:port], Docker config.json, http for dev (E09-D033, E10-D060)
+//	allow                                 strategy repository allowlist; "*" or host plus path prefix (E10-D122)
+//	registry_creds                        Docker config.json; one file, one auth entry per host (E10-D123)
+//	plain_http_hosts                      hosts that use http; empty uses https (E10-D124)
 //	td_keys                               TD instance name → public key, the mftiko-seal pubkey form (E10-D011)
 //	retention                             W5 retention, Go duration, default 168h (E10-D017)
 //	unavailable_after                     region unavailable threshold, Go duration, default 15s (E10-D014)

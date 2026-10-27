@@ -300,14 +300,14 @@ type ClientInterface interface {
 
 	// ListStrategies 列出一個策略 repository 的 tag
 	//
-	// `repository` 是完整路徑，例如 `ghcr.io/acme/md_watch`（E10-D121）。
-	// 必須在部署設定的 allow 清單裡，而且在這台 API 設定的 registry 上（E10-D119）。
-	// 不在 allow 清單，或 host 不是設定的 registry，回 400 `validation_failed`，`errors[].path` 是 `/repository`。
+	// `repository` 是完整路徑，例如 `registry.example/acme/md_watch`（E10-D121、E10-D122）。
+	// 必須在部署設定的 allow 清單裡。host 來自這條路徑（E10-D122）。
+	// 不在 allow 清單，或不是 `host/path`，回 400 `validation_failed`，`errors[].path` 是 `/repository`。
 	// 回應是這個 repository 的 tag，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
 	// 一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序（E10-D058）。
 	// `latest` 是名為 `latest` 的 tag；沒有這個 tag 就省略。它不在這一頁時仍然回（E10-D121）。
 	// 解析同時最多 8 個請求，沒有快取（E10-D057）。不讀 manifest，不檢查 kind。
-	// registry 說 repository 不存在回 404 `not_found`。連不上或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
+	// registry 說 repository 不存在回 404 `not_found`。連不上、registry 5xx，或 401、403，回 503 `registry_unavailable`（E10-D059、E10-D127）。
 	//
 	// Corresponds with GET /strategies (the `ListStrategies` operationId).
 	ListStrategies(ctx context.Context, params *ListStrategiesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -762,14 +762,14 @@ func (c *Client) EndSession(ctx context.Context, sessionId SessionID, reqEditors
 
 // ListStrategies 列出一個策略 repository 的 tag
 //
-// `repository` 是完整路徑，例如 `ghcr.io/acme/md_watch`（E10-D121）。
-// 必須在部署設定的 allow 清單裡，而且在這台 API 設定的 registry 上（E10-D119）。
-// 不在 allow 清單，或 host 不是設定的 registry，回 400 `validation_failed`，`errors[].path` 是 `/repository`。
+// `repository` 是完整路徑，例如 `registry.example/acme/md_watch`（E10-D121、E10-D122）。
+// 必須在部署設定的 allow 清單裡。host 來自這條路徑（E10-D122）。
+// 不在 allow 清單，或不是 `host/path`，回 400 `validation_failed`，`errors[].path` 是 `/repository`。
 // 回應是這個 repository 的 tag，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
 // 一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序（E10-D058）。
 // `latest` 是名為 `latest` 的 tag；沒有這個 tag 就省略。它不在這一頁時仍然回（E10-D121）。
 // 解析同時最多 8 個請求，沒有快取（E10-D057）。不讀 manifest，不檢查 kind。
-// registry 說 repository 不存在回 404 `not_found`。連不上或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
+// registry 說 repository 不存在回 404 `not_found`。連不上、registry 5xx，或 401、403，回 503 `registry_unavailable`（E10-D059、E10-D127）。
 //
 // Corresponds with GET /strategies (the `ListStrategies` operationId).
 func (c *Client) ListStrategies(ctx context.Context, params *ListStrategiesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2142,14 +2142,14 @@ type ClientWithResponsesInterface interface {
 
 	// ListStrategiesWithResponse 列出一個策略 repository 的 tag
 	//
-	// `repository` 是完整路徑，例如 `ghcr.io/acme/md_watch`（E10-D121）。
-	// 必須在部署設定的 allow 清單裡，而且在這台 API 設定的 registry 上（E10-D119）。
-	// 不在 allow 清單，或 host 不是設定的 registry，回 400 `validation_failed`，`errors[].path` 是 `/repository`。
+	// `repository` 是完整路徑，例如 `registry.example/acme/md_watch`（E10-D121、E10-D122）。
+	// 必須在部署設定的 allow 清單裡。host 來自這條路徑（E10-D122）。
+	// 不在 allow 清單，或不是 `host/path`，回 400 `validation_failed`，`errors[].path` 是 `/repository`。
 	// 回應是這個 repository 的 tag，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
 	// 一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序（E10-D058）。
 	// `latest` 是名為 `latest` 的 tag；沒有這個 tag 就省略。它不在這一頁時仍然回（E10-D121）。
 	// 解析同時最多 8 個請求，沒有快取（E10-D057）。不讀 manifest，不檢查 kind。
-	// registry 說 repository 不存在回 404 `not_found`。連不上或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
+	// registry 說 repository 不存在回 404 `not_found`。連不上、registry 5xx，或 401、403，回 503 `registry_unavailable`（E10-D059、E10-D127）。
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -3809,14 +3809,14 @@ func (c *ClientWithResponses) EndSessionWithResponse(ctx context.Context, sessio
 
 // ListStrategiesWithResponse 列出一個策略 repository 的 tag
 //
-// `repository` 是完整路徑，例如 `ghcr.io/acme/md_watch`（E10-D121）。
-// 必須在部署設定的 allow 清單裡，而且在這台 API 設定的 registry 上（E10-D119）。
-// 不在 allow 清單，或 host 不是設定的 registry，回 400 `validation_failed`，`errors[].path` 是 `/repository`。
+// `repository` 是完整路徑，例如 `registry.example/acme/md_watch`（E10-D121、E10-D122）。
+// 必須在部署設定的 allow 清單裡。host 來自這條路徑（E10-D122）。
+// 不在 allow 清單，或不是 `host/path`，回 400 `validation_failed`，`errors[].path` 是 `/repository`。
 // 回應是這個 repository 的 tag，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
 // 一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序（E10-D058）。
 // `latest` 是名為 `latest` 的 tag；沒有這個 tag 就省略。它不在這一頁時仍然回（E10-D121）。
 // 解析同時最多 8 個請求，沒有快取（E10-D057）。不讀 manifest，不檢查 kind。
-// registry 說 repository 不存在回 404 `not_found`。連不上或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
+// registry 說 repository 不存在回 404 `not_found`。連不上、registry 5xx，或 401、403，回 503 `registry_unavailable`（E10-D059、E10-D127）。
 //
 // Returns a wrapper object for the known response body format(s).
 //

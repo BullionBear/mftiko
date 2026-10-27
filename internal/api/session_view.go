@@ -107,7 +107,7 @@ func (s *Server) specView(spec *sessionv1.SessionSpec) apiv1.SessionSpecView {
 	ref := apiv1.StrategyRef{
 		Name:       strat.GetName(),
 		Digest:     strat.GetCode(),
-		Repository: s.displayRepository(strat.GetRepository()),
+		Repository: strat.GetRepository(),
 		Id:         s.strategyIDForPath(strat.GetRepository()),
 	}
 	return apiv1.SessionSpecView{
@@ -126,13 +126,6 @@ func (s *Server) specView(spec *sessionv1.SessionSpec) apiv1.SessionSpecView {
 		RecvWindowMs:  int(spec.GetRecvWindowMs()),
 		GraceMs:       int(spec.GetGraceMs()),
 	}
-}
-
-func (s *Server) displayRepository(path string) string {
-	if path == "" || s.cfg.Registry.Address == "" {
-		return path
-	}
-	return s.cfg.Registry.Address + "/" + path
 }
 
 func (s *Server) strategyIDForPath(path string) *string {

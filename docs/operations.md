@@ -83,18 +83,19 @@ agent 的 unit 另外：
 | 服務 | env 裡要有的 | 正式環境的值 |
 |---|---|---|
 | 三種 agent、controller、API | `MFTIKO_ETCD_PASSWORD` | 該服務 etcd user 的密碼 |
-| 三種 agent | `MFTIKO_INSTANCE`、`MFTIKO_REGISTRY`、`MFTIKO_PLAIN_HTTP` | registry 是 `ghcr.io`，`MFTIKO_PLAIN_HTTP=false` |
-| 三種 agent | `MFTIKO_REGISTRY_CREDS`（可省略） | 空的就是匿名；有帳密時是 Docker `config.json` 的路徑，0600，屬該使用者 |
+| md-agent、td-agent | `MFTIKO_INSTANCE`、`MFTIKO_REGISTRY`、`MFTIKO_PLAIN_HTTP` | 單一 registry 位址。`MFTIKO_PLAIN_HTTP` 是 `true` 或 `false` |
+| sts-agent | `MFTIKO_INSTANCE`、`MFTIKO_PLAIN_HTTP_HOSTS`（可省略） | 逗號分隔的 plain-HTTP host。空的表示沒有。策略與資料的 host 來自路徑 |
+| 三種 agent | `MFTIKO_REGISTRY_CREDS`（可省略） | 空的就是匿名；有帳密時是一份 Docker `config.json`，多個 host 各一筆 `auths`，0600，屬該使用者 |
 | md-agent | `NATS_URL`、`MFTIKO_NATS_CREDS` | creds 檔 `/etc/mftiko/md-agent/nats.creds` |
 | md-agent | `MFTIKO_MD_ENDPOINTS`、`MFTIKO_MD_REST_ENDPOINTS`（可省略） | 空的就是交易所預設 URL；有覆寫時是 JSON 檔的路徑 |
 | td-agent、sts-agent | `NATS_URL`、`MFTIKO_NATS_ACCOUNT` | account 的公鑰。簽章種子是固定路徑 `/etc/mftiko/<服務>/nats-signing.nk` |
 | td-agent | `MFTIKO_TD_ENDPOINTS`、`MFTIKO_TD_REST_ENDPOINTS`（可省略） | 同 MD，空的就是預設 |
-| sts-agent | `MFTIKO_STS_DATA_REPOSITORY`（可省略） | 資料 artifact 的 repository，不含 registry host |
+| sts-agent | `MFTIKO_STS_DATA_REPOSITORY`（可省略） | 資料 artifact 的完整路徑 `host/path`。空的表示非空 volume 一直重試 |
 | API | `MFTIKO_COOKIE_KEY`、`MFTIKO_POSTGRES_DSN` | cookie 的 HMAC 金鑰、Postgres DSN |
 | SYM | `DATABASE_URL`、`NATS_URL` | `-nats-creds` 固定 `/etc/mftiko/sym/nats.creds`，即 `mftiko-nats-dev` 的 `creds/sym-{inst}.creds`（E12-D079）。`MFTIKO_SYM_FEEDS` 可省略，省略就是全部 feed |
 | etcd | `/etc/etcd/etcd.env` 的 `ETCD_NAME`、`ETCD_LISTEN_CLIENT_URLS`、`ETCD_ADVERTISE_CLIENT_URLS`、`ETCD_LISTEN_PEER_URLS`、`ETCD_INITIAL_ADVERTISE_PEER_URLS`、`ETCD_INITIAL_CLUSTER`、`ETCD_INITIAL_CLUSTER_STATE`、`ETCD_AUTH_TOKEN` | 資料目錄由 unit 設成 `/var/lib/etcd`，env 不要改 `ETCD_DATA_DIR` |
 
-`MFTIKO_PLAIN_HTTP` 一定要是 `true` 或 `false`。unit 把它展開成 `-plain-http=${MFTIKO_PLAIN_HTTP}`，空字串這個旗標不收。
+MD、TD 的 `MFTIKO_PLAIN_HTTP` 一定要是 `true` 或 `false`。unit 把它展開成 `-plain-http=${MFTIKO_PLAIN_HTTP}`，空字串這個旗標不收。STS 的 `MFTIKO_PLAIN_HTTP_HOSTS` 可以是空的（E10-D124）。
 
 controller 連每個 region 時，密碼先讀 `MFTIKO_ETCD_PASSWORD_<region>`，沒有再用 `MFTIKO_ETCD_PASSWORD`。見 [controller](#controller)。
 
@@ -333,7 +334,7 @@ scrape_configs:
 | `mftiko_worker_bus_up` | `instance`、`plane`、`region`、`worker` | md conn worker 的 NATS。`WorkerStatus` 有 type `bus_disconnected` 才有系列：status false 是 1，true 是 0。`worker` 是 `worker.key`。沒有這條的 worker（TD、STS）不出現。mftiko 不計時 |
 | `mftiko_region_available` | `region` | 與 `/readyz` 同一個判斷：第一次同步完成，且 `LastContact` 沒有嚴格舊過 `unavailable_after`（預設 15 秒，E12-D040）。尚未同步是 0 |
 | `mftiko_postgres_up` | 無 | 刮取當下 ping 稽核用的 Postgres 連線池。沒有池是 0。`/readyz` 仍不看 Postgres |
-| `mftiko_registry_up` | 無 | 刮取當下 `GET /v2/`，最終狀態 200 才是 1。沒設定或 401 是 0 |
+| `mftiko_registry_up` | 無 | API 沒有單一 registry 位址，這個 gauge 維持 0（E10-D122）。策略請求連不上仍是 `registry_unavailable` |
 | `mftiko_artifact_pull_failing` | `instance`、`region`、`digest` | STS 的非 terminal session。這個 digest 有 `artifact_pull` condition 就是 1；有 session 引用、但沒有人失敗是 0。region 還沒第一次同步時不出現。MD、TD 不在這裡 |
 | `mftiko_artifact_pull_fail_since_seconds` | `instance`、`region`、`digest` | 這個 digest 最早一筆 `artifact_pull` 的首次失敗時間，unix 秒。只在 failing 是 1 時出現 |
 
@@ -373,9 +374,6 @@ groups:
       - alert: MftikoPostgresDown
         expr: mftiko_postgres_up == 0
         for: 2m
-      - alert: MftikoRegistryDown
-        expr: mftiko_registry_up == 0
-        for: 5m
       - alert: MftikoArtifactPullFailing
         expr: mftiko_artifact_pull_failing == 1
         for: 5m
@@ -384,7 +382,7 @@ groups:
         for: 10m
 ```
 
-`MftikoArtifactPullFailing` 可以在 `mftiko_registry_up` 仍是 1 時響：那個 gauge 是 API 自己對 `GET /v2/` 的探測，不是 agent 拉 artifact 的結果（E12-D069）。`MftikoAgentDown` 與 `MftikoControllerNoLeader` 要求同一個 `region` 的 `mftiko_region_available == 1`，避免 region 分割時每一台都叫。`MftikoWorkerExited` 的 `for` 放長：短暫的 `EXITED` 是正常的，status 刪掉之後這個數回到 0；一直留著才對應需求 `DEAD`。`MftikoWorkerBackoff` 對應需求 `PENDING`。`MftikoWorkerBusDown` 的 `for: 15s` 是範例，與 `unavailable_after` 同一種寫法（E12-D040、E12-D064）。重連的 handler 一觸發，gauge 就回到 1，不等緩衝排空；訂單簿要幾秒才追上（E12-D065）。TD、STS 沒有這個系列。`MftikoDiskLow` 用的是 node_exporter，不是 mftiko 的 metric。
+`MftikoArtifactPullFailing` 看的是 STS 拉 artifact 的結果（E12-D069）。`mftiko_registry_up` 維持 0，API 沒有單一 registry 位址可探（E10-D122）。`MftikoAgentDown` 與 `MftikoControllerNoLeader` 要求同一個 `region` 的 `mftiko_region_available == 1`，避免 region 分割時每一台都叫。`MftikoWorkerExited` 的 `for` 放長：短暫的 `EXITED` 是正常的，status 刪掉之後這個數回到 0；一直留著才對應需求 `DEAD`。`MftikoWorkerBackoff` 對應需求 `PENDING`。`MftikoWorkerBusDown` 的 `for: 15s` 是範例，與 `unavailable_after` 同一種寫法（E12-D040、E12-D064）。重連的 handler 一觸發，gauge 就回到 1，不等緩衝排空；訂單簿要幾秒才追上（E12-D065）。TD、STS 沒有這個系列。`MftikoDiskLow` 用的是 node_exporter，不是 mftiko 的 metric。
 
 #385 的演練清單（實測留到那張票）對到的訊號：
 
@@ -398,8 +396,8 @@ groups:
 | 拔掉交易所連線 | `mftiko_agent_up` 維持 1，phase 維持 `RUNNING`。行程內重連不改 `WorkerStatus` 的 phase，不是 `DEAD` | 不響 |
 | 拔掉 controller 與遠端 region | controller 的 `AgentRecord` 在 home，`mftiko_controller_leader` 維持 1。API 到該 region 的 mirror 一起過期時 `mftiko_region_available` 變 0。只斷 controller、API 仍連得上時，這個 gauge 維持 1（W9：controller 維持現狀、不寫該 region） | `MftikoRegionUnavailable`（API 也看不到時）。只斷 controller 時不響 |
 | Postgres 停機。API 照 E10-D080 降級，恢復後補上 | `mftiko_postgres_up` 變 0。`/readyz` 不變 | `MftikoPostgresDown` |
-| registry 不可用時 spawn 新的 worker | `mftiko_registry_up` 變 0。需求項目維持 `PENDING`（那是項目狀態，不是 `worker_phase`） | `MftikoRegistryDown` |
-| 只有 STS agent 連不到 registry | `mftiko_registry_up` 維持 1。非 terminal 的 `SessionStatus` 有 `artifact_pull`，`mftiko_artifact_pull_failing` 是 1 | `MftikoArtifactPullFailing` |
+| registry 不可用時 spawn 新的 worker | 需求項目維持 `PENDING`（那是項目狀態，不是 `worker_phase`）。API 建立或列出策略回 `registry_unavailable`。`mftiko_registry_up` 維持 0 | 不另設 registry 告警 |
+| 只有 STS agent 連不到 registry | 非 terminal 的 `SessionStatus` 有 `artifact_pull`，`mftiko_artifact_pull_failing` 是 1。`mftiko_registry_up` 維持 0 | `MftikoArtifactPullFailing` |
 | 磁碟用量 | node_exporter 的檔案系統剩餘比例。mftiko 不輸出這項 | `MftikoDiskLow` |
 
 ## 保留期

@@ -243,7 +243,7 @@ func TestCatalogRegistry2(t *testing.T) {
 		size += layer.Size
 	}
 
-	cat, err := artifact.OpenCatalog(artifact.Registry{Address: addr, PlainHTTP: true})
+	cat, err := artifact.OpenCatalog(artifact.Registry{PlainHTTPHosts: []string{addr}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestCatalogRegistry2(t *testing.T) {
 		cfg: Config{
 			Users:    []User{{Name: "ada", Token: sha256.Sum256([]byte(tokenAda))}},
 			Allow:    []string{addr + "/mftiko"},
-			Registry: artifact.Registry{Address: addr, PlainHTTP: true},
+			Registry: artifact.Registry{PlainHTTPHosts: []string{addr}},
 		},
 		catalog: cat,
 	}

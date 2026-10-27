@@ -13,11 +13,13 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/rs/zerolog"
 
+	"github.com/BullionBear/mftiko/internal/platform/artifact"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/logger"
 	"github.com/BullionBear/mftiko/internal/platform/natsdev"
@@ -30,8 +32,8 @@ import (
 type options struct {
 	instance, topology, password         string
 	workDir, shim, dataDir               string
-	registry, registryCreds, dataRepo    string
-	plainHTTP                            bool
+	registryCreds, dataRepo              string
+	plainHTTPHosts                       []string
 	maxArtifactBytes                     int64
 	recvWindowMS                         int
 	hookTimeoutS                         int
@@ -76,13 +78,13 @@ func parseArgs(args []string) (options, bool, error) {
 	fs.StringVar(&o.workDir, "work-dir", "", "sockets, exit files, and worker logs")
 	fs.StringVar(&o.shim, "shim", "", "mftiko-shim executable")
 	fs.StringVar(&o.dataDir, "data", "", "artifact cache and session directories (${DATA})")
-	fs.StringVar(&o.registry, "registry", "", "OCI registry address, host[:port]")
-	fs.StringVar(&o.registryCreds, "registry-creds", "", "Docker config.json for the registry")
-	fs.StringVar(&o.dataRepo, "data-repository", "", "data artifact repository")
+	fs.StringVar(&o.registryCreds, "registry-creds", "", "Docker config.json; one file, one auth entry per registry host")
+	fs.StringVar(&o.dataRepo, "data-repository", "", "data artifact repository, host[:port]/path")
+	var plainHosts string
+	fs.StringVar(&plainHosts, "plain-http-hosts", "", "comma-separated registry hosts that use plain HTTP")
 	fs.StringVar(&o.natsURL, "nats", envOr("NATS_URL", "nats://127.0.0.1:4222"), "NATS URL session workers connect to (default $NATS_URL or the dev server)")
 	fs.StringVar(&o.natsAccount, "nats-account", "", "the MFTIKO account's public key")
 	fs.StringVar(&o.natsSigningKey, "nats-signing-key", "", "seed file of the MFTIKO account's signing key")
-	fs.BoolVar(&o.plainHTTP, "plain-http", false, "talk to the registry over plain HTTP")
 	fs.Int64Var(&o.maxArtifactBytes, "max-artifact-bytes", agent.DefaultMaxArtifactBytes, "artifact size limit")
 	fs.IntVar(&o.recvWindowMS, "recv-window-ms", agent.DefaultRecvWindowMS, "default recv_window_ms")
 	fs.IntVar(&o.hookTimeoutS, "hook-timeout-s", agent.DefaultHookTimeoutS, "default hook_timeout_s")
@@ -101,13 +103,47 @@ func parseArgs(args []string) (options, bool, error) {
 	if *version {
 		return o, true, nil
 	}
-	if o.instance == "" || o.topology == "" || o.password == "" || o.workDir == "" || o.shim == "" || o.dataDir == "" || o.registry == "" {
-		return o, false, errors.New("instance, topology, etcd password, work dir, shim, data dir, and registry are required")
+	if o.instance == "" || o.topology == "" || o.password == "" || o.workDir == "" || o.shim == "" || o.dataDir == "" {
+		return o, false, errors.New("instance, topology, etcd password, work dir, shim, and data dir are required")
 	}
 	if o.natsURL == "" || o.natsAccount == "" || o.natsSigningKey == "" {
 		return o, false, errors.New("nats URL, account, and signing key are required")
 	}
+	hosts, err := splitHosts(plainHosts)
+	if err != nil {
+		return o, false, err
+	}
+	o.plainHTTPHosts = hosts
+	if o.dataRepo != "" {
+		if _, _, err := artifact.SplitRepository(o.dataRepo); err != nil {
+			return o, false, fmt.Errorf("data-repository: %w", err)
+		}
+	}
 	return o, false, nil
+}
+
+func splitHosts(s string) ([]string, error) {
+	if s == "" {
+		return nil, nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return nil, errors.New("plain-http host is empty")
+		}
+		if err := artifact.CheckHost(p); err != nil {
+			return nil, fmt.Errorf("plain-http host: %w", err)
+		}
+		if _, ok := seen[p]; ok {
+			return nil, fmt.Errorf("duplicate plain http host %q", p)
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	return out, nil
 }
 
 func envOr(key, fallback string) string {
@@ -143,9 +179,9 @@ func run(ctx context.Context, o options, log zerolog.Logger) error {
 		Sign: func(id string, perms sts.Permissions) (string, string, error) {
 			return issuer.SignSession(id, perms, signer.AccountPublic(), signer.SigningKey())
 		},
-		Registry: o.registry, RegistryCreds: o.registryCreds, DataRepository: o.dataRepo,
-		PlainHTTP: o.plainHTTP, MaxArtifactBytes: o.maxArtifactBytes,
-		RecvWindowMS: o.recvWindowMS, HookTimeoutS: o.hookTimeoutS, StartTimeoutS: o.startTimeoutS,
+		RegistryCreds: o.registryCreds, DataRepository: o.dataRepo, PlainHTTPHosts: o.plainHTTPHosts,
+		MaxArtifactBytes: o.maxArtifactBytes,
+		RecvWindowMS:     o.recvWindowMS, HookTimeoutS: o.hookTimeoutS, StartTimeoutS: o.startTimeoutS,
 		VolumeMB: o.volumeMB, VolumeInterval: o.volumeInterval, Grace: o.grace, MaxRestarts: o.maxRestarts, RestartWindowS: o.restartWindowS,
 		BackoffMin: o.backoffMin, BackoffMax: o.backoffMax, ArtifactPoll: o.artifactPoll,
 		Release: buildinfo.Version, Log: log,

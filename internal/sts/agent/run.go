@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -47,15 +48,14 @@ type Config struct {
 	// Applied is told each bindings version a worker reports. Tests use it (E09-D065).
 	Applied func(sessionID string, epoch int64, seq uint64)
 
-	// Registry, RegistryCreds, DataRepository, PlainHTTP, and MaxArtifactBytes
-	// are the deployment's registry settings (E09-D010, E09-D013, E09-D033, E09-D048, E09-D079).
-	// RegistryCreds is a Docker config.json path. DataRepository is the data
-	// artifact name without the registry host. Empty leaves a non-empty volume
-	// retrying until a push can name a repository.
-	Registry         string
+	// RegistryCreds, DataRepository, PlainHTTPHosts, and MaxArtifactBytes are the
+	// deployment's registry settings (E09-D013, E09-D033, E09-D048, E09-D079, E10-D122–E10-D125).
+	// RegistryCreds is one Docker config.json. Hosts in that file are authenticated; other hosts
+	// are anonymous. DataRepository is host/path. Empty leaves a non-empty volume retrying until
+	// a push can name a repository. PlainHTTPHosts are the registries that use http.
 	RegistryCreds    string
 	DataRepository   string
-	PlainHTTP        bool
+	PlainHTTPHosts   []string
 	MaxArtifactBytes int64
 	RecvWindowMS     int
 	HookTimeoutS     int
@@ -126,8 +126,23 @@ func (cfg *Config) applyDefaults() {
 }
 
 func (cfg Config) validate() error {
-	if cfg.Instance == "" || cfg.WorkDir == "" || cfg.Shim == "" || cfg.DataDir == "" || cfg.Registry == "" || cfg.Sign == nil {
+	if cfg.Instance == "" || cfg.WorkDir == "" || cfg.Shim == "" || cfg.DataDir == "" || cfg.Sign == nil {
 		return errors.New("sts: agent config incomplete")
+	}
+	if cfg.DataRepository != "" {
+		if _, _, err := artifact.SplitRepository(cfg.DataRepository); err != nil {
+			return fmt.Errorf("sts: data repository: %w", err)
+		}
+	}
+	seen := make(map[string]struct{}, len(cfg.PlainHTTPHosts))
+	for _, host := range cfg.PlainHTTPHosts {
+		if err := artifact.CheckHost(host); err != nil {
+			return fmt.Errorf("sts: plain http host: %w", err)
+		}
+		if _, ok := seen[host]; ok {
+			return fmt.Errorf("sts: duplicate plain http host %q", host)
+		}
+		seen[host] = struct{}{}
 	}
 	if cfg.MaxArtifactBytes < 0 {
 		return errors.New("sts: max artifact bytes")
@@ -147,10 +162,9 @@ func Run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	cfg.Log.Info().
-		Str("registry", cfg.Registry).
 		Str("registry_creds", cfg.RegistryCreds).
 		Str("data_repository", cfg.DataRepository).
-		Bool("plain_http", cfg.PlainHTTP).
+		Str("plain_http_hosts", strings.Join(cfg.PlainHTTPHosts, ",")).
 		Int64("max_artifact_bytes", cfg.MaxArtifactBytes).
 		Int("recv_window_ms", cfg.RecvWindowMS).
 		Int("hook_timeout_s", cfg.HookTimeoutS).
@@ -211,7 +225,7 @@ func Run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	art, err := artifact.Open(artifact.Registry{
-		Address: cfg.Registry, Credentials: cfg.RegistryCreds, PlainHTTP: cfg.PlainHTTP,
+		Credentials: cfg.RegistryCreds, PlainHTTPHosts: cfg.PlainHTTPHosts,
 	}, cfg.DataDir)
 	if err != nil {
 		return err
