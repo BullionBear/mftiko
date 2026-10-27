@@ -710,6 +710,19 @@ func (p *plane) releaseHost(ctx context.Context, id string) error {
 	if !p.hostStill(id) {
 		return nil
 	}
+	if p.logs != nil {
+		// Drop log readers before unlinking. An open descriptor would keep the
+		// bytes, and a reader must not race this delete (E10-D020, E14-04).
+		if err := p.logs.quiesce(ctx, id); err != nil {
+			return err
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !p.hostStill(id) {
+		return nil
+	}
 	if err := removeShimLogs(p.workDir, id); err != nil {
 		return err
 	}

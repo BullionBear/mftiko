@@ -19,5 +19,6 @@
 // packed and pushed, then state_out is filled in; an empty volume is removed
 // without a push. That step deletes the volume and the inputs. Shim logs,
 // terminal.json, and the incarnation key stay until the spec is gone
-// (E09-D078–E09-D084, E10-D016, E10-D020).
+// (E09-D078–E09-D084, E10-D016, E10-D020). While the term holds it, the log
+// endpoint serves those files (E14-D019–E14-D024).
 package agent

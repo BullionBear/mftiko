@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -109,6 +110,68 @@ func TestReleaseHostOrder(t *testing.T) {
 	}
 	if _, err := os.Lstat(sess); err != nil {
 		t.Fatalf("session dir: %v", err)
+	}
+}
+
+type quiesceOrder struct {
+	path string
+	saw  bool
+	err  error
+}
+
+func (q *quiesceOrder) quiesce(context.Context, string) error {
+	_, err := os.Lstat(q.path)
+	q.saw = err == nil
+	return q.err
+}
+
+func TestReleaseHostQuiesceBeforeDelete(t *testing.T) {
+	data := t.TempDir()
+	work := t.TempDir()
+	const id = "a1b2c3"
+	if err := os.MkdirAll(filepath.Join(data, "sessions", id), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestTerminal(t, data, id)
+	h := state.WorkerHash(string(WorkerKey(id)))
+	logDir := filepath.Join(work, "log", string(state.PlaneSTS))
+	if err := os.MkdirAll(logDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(logDir, h+".stdout")
+	if err := os.WriteFile(logPath, []byte("x"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	q := &quiesceOrder{path: logPath}
+	p := &plane{
+		prog: &Program{DataDir: data}, workDir: work, logs: q,
+		specReady: true, specs: map[string]struct{}{},
+	}
+	err := p.releaseHost(context.Background(), id)
+	if err == nil || !strings.Contains(err.Error(), "incarnations") {
+		t.Fatalf("err %v", err)
+	}
+	if !q.saw {
+		t.Fatal("quiesce ran after the log was deleted")
+	}
+	if _, statErr := os.Lstat(logPath); !os.IsNotExist(statErr) {
+		t.Fatalf("log still there: %v", statErr)
+	}
+
+	if err := os.WriteFile(logPath, []byte("x"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	q.saw = false
+	q.err = errors.New("busy")
+	err = p.releaseHost(context.Background(), id)
+	if err == nil || !strings.Contains(err.Error(), "busy") {
+		t.Fatalf("err %v", err)
+	}
+	if !q.saw {
+		t.Fatal("quiesce did not see the log")
+	}
+	if _, statErr := os.Lstat(logPath); statErr != nil {
+		t.Fatalf("log deleted despite quiesce: %v", statErr)
 	}
 }
 

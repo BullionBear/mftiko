@@ -422,6 +422,9 @@ func TestRunStartup(t *testing.T) {
 	if rec.GetHost() != host || rec.GetWorkDir() != dir {
 		t.Fatalf("agent record host %q work_dir %q", rec.GetHost(), rec.GetWorkDir())
 	}
+	if rec.GetLogAddr() != "" {
+		t.Fatalf("log_addr %q", rec.GetLogAddr())
+	}
 	hs.j.waitFor(t, "spawn md/want s") // then the loop
 }
 
@@ -800,6 +803,46 @@ func TestConditionsRideOnWorkerStatus(t *testing.T) {
 	gotA = mustStatus(t, term, "md/a")
 	if gotA.GetPhase() != PhaseRunning || gotA.GetConditions()[0].GetStatus() {
 		t.Fatalf("after reconnect %+v", gotA)
+	}
+}
+
+func TestRunLogAddr(t *testing.T) {
+	hs := newHarness(t, lister{})
+	close(hs.src.synced)
+	var mu sync.Mutex
+	addr := "md.example:7442"
+	ready := make(chan struct{}, 1)
+	hs.cfg.LogAddr = func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return addr
+	}
+	hs.cfg.LogReady = ready
+	hs.run(t)
+	hs.j.waitFor(t, "record")
+	rec := hs.term.record()
+	if rec == nil || rec.GetLogAddr() != "md.example:7442" {
+		t.Fatalf("log_addr %+v", rec)
+	}
+	started := rec.GetStartedAtNs()
+	if started == 0 {
+		t.Fatal("started_at")
+	}
+	mu.Lock()
+	addr = "md.example:7443"
+	mu.Unlock()
+	ready <- struct{}{}
+	deadline := time.After(5 * time.Second)
+	for {
+		rec = hs.term.record()
+		if rec.GetLogAddr() == "md.example:7443" && rec.GetStartedAtNs() == started && rec.GetEpoch() == 7 {
+			return
+		}
+		select {
+		case <-hs.j.changed:
+		case <-deadline:
+			t.Fatalf("record %+v", rec)
+		}
 	}
 }
 

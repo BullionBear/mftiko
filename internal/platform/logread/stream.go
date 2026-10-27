@@ -40,7 +40,12 @@ type Options struct {
 	Tail   int
 	Cursor Cursor
 	Follow bool
-	Limit  *Limiter
+	// Pause, when set, is called on the Next goroutine once Follow has no
+	// bytes ready, before the 250ms wait. true makes Next and Prime return
+	// ErrPause. nil keeps today's wait. Callers use it to end a follow when
+	// the session is terminal without sleeping (E14-D024).
+	Pause func() bool
+	Limit *Limiter
 }
 
 // Record is one chunk of a stream. A gap record is the gap frame (E14-D017):
@@ -62,6 +67,7 @@ type Stream struct {
 	tail   int
 	want   Cursor
 	follow bool
+	pause  func() bool
 	lim    *Limiter
 	hold   bool
 
@@ -112,6 +118,7 @@ func Open(ctx context.Context, opt Options) (*Stream, error) {
 		tail:   opt.Tail,
 		want:   opt.Cursor,
 		follow: opt.Follow,
+		pause:  opt.Pause,
 		lim:    opt.Limit,
 	}
 	if opt.Limit != nil && opt.Limit.max > 0 {
@@ -222,6 +229,36 @@ func (s *Stream) Next() (Record, error) {
 			continue
 		}
 		return Record{}, err
+	}
+}
+
+// Prime blocks until a file is open so Cursor is the resolved start, without
+// consuming log bytes. A gap stays armed for the next Next. Without Follow, a
+// missing file is io.EOF. When Pause asks the read to stop, Prime returns
+// ErrPause. Call it from the same goroutine as Next.
+func (s *Stream) Prime() error {
+	if s.closed {
+		return errClosed
+	}
+	for {
+		if err := s.ctx.Err(); err != nil {
+			return err
+		}
+		if s.gapArmed || s.f != nil {
+			return nil
+		}
+		if err := s.catchUp(); err != nil {
+			return err
+		}
+		if s.gapArmed || s.f != nil {
+			return nil
+		}
+		if !s.follow {
+			return io.EOF
+		}
+		if err := s.poll(); err != nil {
+			return err
+		}
 	}
 }
 
@@ -533,6 +570,9 @@ func (s *Stream) pace(n int) error {
 func (s *Stream) poll() error {
 	if pollHook != nil {
 		pollHook()
+	}
+	if s.pause != nil && s.pause() {
+		return ErrPause
 	}
 	timer := time.NewTimer(pollInterval)
 	defer timer.Stop()

@@ -4259,6 +4259,39 @@ E12-D061 列的「演練之前沒有實測」，除了主機重開，都在 test
 - follow 讀到目前檔的結尾之後，每 250 ms 檢查一次這個路徑的 inode 與大小。寫死，不做成 flag。
 - 不引入 fsnotify。結尾當下先看一次，沒有新資料才等 250 ms。
 
+### E14-D019 預設值與關閉（E14-04，#439）
+
+- `-log-listen` 預設 `:7442`（E14-D002）。沒有給 `-log-advertise` 時，`log_addr` 是 `AgentRecord.host` 加上實際聽上的 port。
+- `-log-listen` 是空字串就不開端點，`log_addr` 留空。API 因此回 `logs_unavailable`（E14-D015）。
+- `log_addr` 在 listen 成功之後才寫進當選那筆 `AgentRecord`。任期結束就關掉 listener，不再接受連線。MD、TD、controller 仍不寫 `log_addr`。
+
+### E14-D020 沒有 token（E14-04，#439）
+
+- `-log-token-sha256` 是 64 個小寫 hex，不是密文，可以放在命令列。比對是對 SHA-256 做常數時間比較。
+- 不是 64 個小寫 hex 時，行程在選主前結束，exit 2。
+- 有 `-log-listen` 但省略 token 時，不開端點，`log_addr` 留空，記一行 warning，agent 不因此失敗（E00-D002）。`-log-listen` 也是空的（程式庫的零值，或明確關掉）則不聽、不記這行。
+
+### E14-D021 聽不起來（E14-04，#439）
+
+- 任期內每 5 秒重試一次。只有 listen 成功才寫 `log_addr`。任期結束就停止重試。
+- listen 失敗與端點上的錯誤只記 log，不影響選主、reconcile、spawn（E00-D002）。
+
+### E14-D022 上限旗標（E14-04，#439）
+
+- `-log-max-streams` 預設 16。`-log-max-rate` 預設 16 MiB/s，單位是 bytes。
+- 同時進行的 `GET .../logs/{stream}` 與 `GET .../logs/export` 超過 `-log-max-streams` 時回 503，`Retry-After: 1`，沒有 body。速率上限只放慢送出，不回 503（E14-D007）。
+
+### E14-D023 `-log-max-bytes`、`-log-keep`（E14-04，#439）
+
+- 預設 0，用 shim 既有的預設（64 MiB、keep 5），行為不變。非 0 時寫進該 STS 行程的 `Launch.output`。
+- #443 測輪替時會設小值。
+
+### E14-D024 `final`（E14-04，#439）
+
+- 只有本機 session phase 已是 terminal，而且這條 stream 已讀到 EOF，才送 `final`。
+- 程式的 terminal 是 `PHASE_DONE` 與 `PHASE_FAILED`（W5）。這裡的 SUCCEEDED 與 STOPPED 都是 `PHASE_DONE`（正常結束，以及 `ended_by_spec`）。FAILED 是 `PHASE_FAILED`。
+- `PHASE_RESTARTING`、`PHASE_STOPPING`，以及兩次 incarnation 之間檔案還沒再被寫的空檔，都不是 terminal。follow 繼續等下一個 incarnation 寫同一組檔。
+
 ### E15-D001 上傳工具是 `mftiko-pack data`（E15-01，#446）
 
 - `mftiko-pack data -dir DIR -repo HOST/PATH [-tag TAG] [-plain-http] [-max-bytes N] [-L]`。第一個參數是 `data` 時走這條；原本打包 worker 的 `-bin …` 不變（E09-D036）。

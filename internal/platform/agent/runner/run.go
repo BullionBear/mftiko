@@ -121,6 +121,15 @@ type Config[I any, S, L agent.Hashed] struct {
 	// WorkDir is this process's WORK_DIR, written on the AgentRecord when the term is elected (E10-D092).
 	// Empty leaves the field unset. The controller does not use this runner.
 	WorkDir string
+	// LogAddr, when set, is written on AgentRecord.log_addr (E14-D002, E14-D021).
+	// It is read again when LogReady is signaled, so a listen that succeeds
+	// after the first record can fill the field in. Nil leaves the field empty:
+	// MD, TD, the controller, and an STS endpoint that is not listening.
+	LogAddr func() string
+	// LogReady wakes one rewrite of the AgentRecord. Nil never fires. Do not
+	// close it: a closed channel would spin this loop. A buffer of one is
+	// enough, because the value is read from LogAddr at write time.
+	LogReady <-chan struct{}
 	// LogRetain is how long a log file of a worker key that no longer appears is kept (E12-D041).
 	// Zero disables cleanup. MD and TD pass EffectiveLogRetain; STS leaves this zero.
 	LogRetain time.Duration
@@ -162,15 +171,17 @@ func Run[I any, S, L agent.Hashed](ctx context.Context, cfg Config[I, S, L]) err
 }
 
 type run[I any, S, L agent.Hashed] struct {
-	cfg    Config[I, S, L]
-	log    zerolog.Logger
-	now    func() time.Time
-	host   string // os.Hostname at newRun, before Run starts its goroutine (E10-D092)
-	intake *Intake[I]
-	rec    *agent.Reconciler[S, L]
-	st     *statuses
-	stale  bool
-	plans  map[agent.WorkerKey]agent.Plan[S, L] // last Plan, the keep-set for log cleanup
+	cfg        Config[I, S, L]
+	log        zerolog.Logger
+	now        func() time.Time
+	host       string // os.Hostname at newRun, before Run starts its goroutine (E10-D092)
+	intake     *Intake[I]
+	rec        *agent.Reconciler[S, L]
+	st         *statuses
+	stale      bool
+	plans      map[agent.WorkerKey]agent.Plan[S, L] // last Plan, the keep-set for log cleanup
+	startedAt  int64                                // AgentRecord.started_at_ns; a later rewrite keeps it
+	publishLog bool                                 // LogReady asked for another AgentRecord
 }
 
 func newRun[I any, S, L agent.Hashed](cfg Config[I, S, L]) *run[I, S, L] {
@@ -216,6 +227,14 @@ func (r *run[I, S, L]) run(ctx context.Context) error {
 	}
 	r.log.Info().Msg("agent reconciling")
 	for {
+		r.takeLogReady()
+		if r.publishLog {
+			if err := r.putAgentRecord(ctx); err != nil {
+				r.log.Warn().Err(err).Msg("log address")
+			} else {
+				r.publishLog = false
+			}
+		}
 		wake := r.step(ctx)
 		next := r.now().Add(r.cfg.Resync)
 		if !wake.IsZero() && wake.Before(next) {
@@ -231,8 +250,24 @@ func (r *run[I, S, L]) run(ctx context.Context) error {
 		case <-t.C:
 		case <-logTick:
 			r.cleanLogs()
+		case <-r.cfg.LogReady:
+			r.publishLog = true
 		}
 		t.Stop()
+	}
+}
+
+// takeLogReady notices a LogReady signal that arrived during start or step.
+// A nil channel is ignored. The receive is non-blocking so a quiet endpoint
+// does not stall the loop.
+func (r *run[I, S, L]) takeLogReady() {
+	if r.cfg.LogReady == nil {
+		return
+	}
+	select {
+	case <-r.cfg.LogReady:
+		r.publishLog = true
+	default:
 	}
 }
 
@@ -273,16 +308,31 @@ func (r *run[I, S, L]) start(ctx context.Context) error {
 			return fmt.Errorf("agent: prepare: %w", err)
 		}
 	}
-	t := r.cfg.Term
-	rec := &statev1.AgentRecord{Plane: string(t.Plane()), Instance: t.Instance(), Epoch: t.Epoch(),
-		Release: r.cfg.Release, StartedAtNs: r.now().UnixNano(), Host: r.host, WorkDir: r.cfg.WorkDir}
-	if err := t.PutRecord(ctx, encode(rec)); err != nil {
+	if err := r.putAgentRecord(ctx); err != nil {
 		return fmt.Errorf("agent: put record: %w", err)
 	}
 	r.log.Info().Int("workers", len(observed)).Int("planned", len(plans)).Int64("demand_rev", d.Rev).
 		Msg("agent record written")
 	r.cleanLogs()
 	return nil
+}
+
+// putAgentRecord writes the term's AgentRecord. The first call stamps
+// started_at_ns; a later call, after LogReady, keeps that stamp and refreshes
+// log_addr from LogAddr (E14-D021).
+func (r *run[I, S, L]) putAgentRecord(ctx context.Context) error {
+	if r.startedAt == 0 {
+		r.startedAt = r.now().UnixNano()
+	}
+	t := r.cfg.Term
+	rec := &statev1.AgentRecord{
+		Plane: string(t.Plane()), Instance: t.Instance(), Epoch: t.Epoch(),
+		Release: r.cfg.Release, StartedAtNs: r.startedAt, Host: r.host, WorkDir: r.cfg.WorkDir,
+	}
+	if r.cfg.LogAddr != nil {
+		rec.LogAddr = r.cfg.LogAddr()
+	}
+	return t.PutRecord(ctx, encode(rec))
 }
 
 // step is one reconcile: the demand, the plans, the actions run in order, and WorkerStatus. It returns when the
