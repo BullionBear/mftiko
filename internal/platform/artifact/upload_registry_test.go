@@ -65,6 +65,8 @@ func TestUploadDataRegistry2(t *testing.T) {
 	if err := UnpackReadOnly(ctx, []string{got.Layer.Path}, dest, UnpackLimits{}); err != nil {
 		t.Fatal(err)
 	}
+	// The tree is 0555/0444; a non-root TempDir cleanup cannot remove it (E09-D075).
+	t.Cleanup(func() { _ = RemoveWritable(dest) })
 	if string(mustRead(t, filepath.Join(dest, "weights", "model.pt"))) != "tensor bytes" {
 		t.Fatal("unpacked body")
 	}
