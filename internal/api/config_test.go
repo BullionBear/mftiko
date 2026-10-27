@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/BullionBear/mftiko/internal/platform/artifact"
 	"github.com/BullionBear/mftiko/internal/platform/sealbox"
 )
 
@@ -145,6 +146,13 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.LogToken != "" {
 		t.Fatal("log token must stay empty when unset")
 	}
+	if cfg.MaxInputBytes != artifact.DefaultMaxBytes {
+		t.Fatalf("max input bytes %d", cfg.MaxInputBytes)
+	}
+	set := loadWithin(t, goodDeploy(), `{"max_input_bytes": 4096, "td_keys": {"td-tw-1": "`+pub+`"}}`, testInput(t))
+	if set.MaxInputBytes != 4096 {
+		t.Fatalf("max input bytes %d, want 4096", set.MaxInputBytes)
+	}
 }
 
 func TestLoadCopiesLogToken(t *testing.T) {
@@ -258,6 +266,7 @@ func TestLoadRejects(t *testing.T) {
 		{"star mixed", deploy, `{"allow": ["*", "reg.example/a"], "td_keys": {"td-tw-1": "` + pub + `"}}`, "allow * must be the only entry"},
 		{"allow tag", deploy, `{"allow": ["reg.example/a:v1"], "td_keys": {"td-tw-1": "` + pub + `"}}`, "invalid repository"},
 		{"unknown registry", deploy, `{"registry": "reg.example", "td_keys": {"td-tw-1": "` + pub + `"}}`, "unknown field"},
+		{"negative max input", deploy, `{"max_input_bytes": -1, "td_keys": {"td-tw-1": "` + pub + `"}}`, "max_input_bytes"},
 		{"bad pubkey", deploy, `{"td_keys": {"td-tw-1": "not-a-key"}}`, "td key"},
 		{"missing td key", deploy, `{}`, "has no public key"},
 		{"td key for other plane", deployDoc(

@@ -93,9 +93,11 @@ func setup() error {
 	}
 	sum := sha256.Sum256([]byte(token))
 	for _, r := range []struct{ name, listen string }{{"a", ":8080"}, {"b", ":8081"}} {
+		// allow covers data/ as well: uploaded inputs and state_out live there, and inputs are checked
+		// against allow too (E15-D007).
 		conf := map[string]any{
 			"users":             []any{map[string]string{"name": userName, "token_sha256": hex.EncodeToString(sum[:])}},
-			"allow":             []string{strings.TrimRight(*registry, "/") + "/strategies/"},
+			"allow":             []string{strings.TrimRight(*registry, "/") + "/strategies/", strings.TrimRight(*registry, "/") + "/data/"},
 			"plain_http_hosts":  []string{strings.TrimRight(*registry, "/")},
 			"td_keys":           map[string]string{tdInst: key.Public().String()},
 			"retention":         *retention,

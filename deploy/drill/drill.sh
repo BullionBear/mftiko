@@ -221,7 +221,7 @@ pk=\$($rel/mftiko-seal pubkey -key /etc/mftiko/td-agent/seal.key)
 cat >/root/e12-12/api.json <<JSON
 {
   "users": [{"name": "drill", "token_sha256": "\$sha"}],
-  "allow": ["\$reg/strategies/"],
+  "allow": ["\$reg/strategies/", "\$reg/data/"],
   "plain_http_hosts": ["\$reg"],
   "td_keys": {"td-jp-1": "\$pk"},
   "retention": "168h",

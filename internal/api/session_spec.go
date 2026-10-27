@@ -278,6 +278,8 @@ func (s *Server) structural(req apiv1.SessionCreate) fieldList {
 				fields.add(p+"/repository", "required")
 			} else if _, _, err := artifact.SplitRepository(inRepo); err != nil {
 				fields.add(p+"/repository", "is not a repository")
+			} else if !allowMatches(s.cfg.Allow, inRepo) {
+				fields.add(p+"/repository", "is not allowed")
 			}
 		}
 	}
@@ -481,6 +483,10 @@ func (s *Server) fillInputs(ctx context.Context, req apiv1.SessionCreate, spec *
 			fields.add(p+"/digest", "is not a data artifact")
 			continue
 		}
+		if info.Size > s.maxInputBytes() {
+			fields.add(p+"/digest", "is too large")
+			continue
+		}
 		spec.Inputs = append(spec.Inputs, &sessionv1.InputDecl{
 			Name: in.Name, Digest: info.Digest, Repository: repo,
 		})
@@ -631,4 +637,12 @@ func sessionTerminal(st *statev1.SessionStatus) bool {
 		return false
 	}
 	return st.Phase == statev1.Phase_PHASE_DONE || st.Phase == statev1.Phase_PHASE_FAILED
+}
+
+// maxInputBytes is the per-input limit on the declared config plus layer (E15-D006).
+func (s *Server) maxInputBytes() int64 {
+	if s.cfg.MaxInputBytes > 0 {
+		return s.cfg.MaxInputBytes
+	}
+	return artifact.DefaultMaxBytes
 }

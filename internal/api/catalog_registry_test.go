@@ -23,6 +23,7 @@ import (
 	"github.com/rs/zerolog"
 
 	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
+	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
 	"github.com/BullionBear/mftiko/internal/platform/artifact"
 )
 
@@ -324,4 +325,71 @@ func TestCatalogRegistry2(t *testing.T) {
 	if listed.Repository != fullConn || len(listed.Items) != 1 || listed.Items[0].Tag != "w" || listed.Items[0].Digest == "" {
 		t.Fatalf("worker tags %+v", listed)
 	}
+}
+
+// E15-D006, E15-D007 against registry:2: an uploaded data artifact is accepted inside allow, its
+// declared size is checked against max_input_bytes, and a repository outside allow is refused before
+// the registry is asked.
+func TestInputsRegistry2(t *testing.T) {
+	addr := devRegistry(t)
+	t.Setenv("DOCKER_CONFIG", t.TempDir())
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "model.pt"), []byte("weights"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	repo := addr + "/mftiko/data/model"
+	ctx := context.Background()
+	up, err := artifact.UploadData(ctx, artifact.DataUpload{
+		Root: dir, Destination: artifact.Destination{Repository: repo, PlainHTTP: true}, TempDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cat, err := artifact.OpenCatalog(artifact.Registry{PlainHTTPHosts: []string{addr}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := cat.ReadData(ctx, repo, up.Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Size <= up.Size || info.Config.Source != nil {
+		t.Fatalf("info %+v, layer %d", info, up.Size)
+	}
+	s := &Server{log: zerolog.Nop(), cfg: Config{Allow: []string{addr + "/mftiko"}}, catalog: cat}
+	req := func(repository string) apiv1.SessionCreate {
+		return apiv1.SessionCreate{Inputs: &[]apiv1.InputDecl{{Name: "model", Digest: up.Digest, Repository: repository}}}
+	}
+
+	var fields fieldList
+	spec := &sessionv1.SessionSpec{}
+	if err := s.fillInputs(ctx, req(repo), spec, &fields); err != nil || len(fields) != 0 {
+		t.Fatalf("inside allow: err %v fields %+v", err, fields)
+	}
+	if len(spec.Inputs) != 1 || spec.Inputs[0].Digest != up.Digest || spec.Inputs[0].Repository != repo {
+		t.Fatalf("inputs %+v", spec.Inputs)
+	}
+
+	s.cfg.MaxInputBytes = info.Size
+	fields = nil
+	if err := s.fillInputs(ctx, req(repo), &sessionv1.SessionSpec{}, &fields); err != nil || len(fields) != 0 {
+		t.Fatalf("at the limit: err %v fields %+v", err, fields)
+	}
+	s.cfg.MaxInputBytes = info.Size - 1
+	fields = nil
+	if err := s.fillInputs(ctx, req(repo), &sessionv1.SessionSpec{}, &fields); err != nil ||
+		len(fields) != 1 || fields[0].Path != "/inputs/0/digest" || fields[0].Reason != "is too large" {
+		t.Fatalf("over the limit: err %v fields %+v", err, fields)
+	}
+
+	outside := req("127.0.0.1:1/elsewhere/model")
+	for _, f := range s.structural(outside) {
+		if f.Path == "/inputs/0/repository" {
+			if f.Reason != "is not allowed" {
+				t.Fatalf("outside allow: %+v", f)
+			}
+			return
+		}
+	}
+	t.Fatal("an input outside allow was not refused")
 }

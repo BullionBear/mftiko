@@ -565,7 +565,7 @@ export interface components {
         InputDecl: {
             name: string;
             digest: components["schemas"]["Digest"];
-            /** @description 完整路徑（registry host 加路徑）。資料 artifact 不查 allow（E10-D122）。 */
+            /** @description 完整路徑（registry host 加路徑）。必須在 allow 內，與策略的 repository 相同（E15-D007，修改 E10-D122）。宣告的 config 加層大小不得超過 `max_input_bytes`（E15-D006）。 */
             repository: string;
         };
         /** @description etcd 裡的 spec，以 API 的型別呈現。策略已解析成 digest；帳號帶入了 `td_instance`。 */
