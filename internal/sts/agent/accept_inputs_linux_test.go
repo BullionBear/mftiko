@@ -71,7 +71,7 @@ func (e *env) pushData(name, body string) (manifestDigest, layerDigest string) {
 
 func (e *env) putBlob(body []byte) string {
 	e.t.Helper()
-	base := "http://" + e.cfg.Registry + "/v2/hello/blobs/uploads/"
+	base := "http://" + e.reg.addr() + "/v2/hello/blobs/uploads/"
 	resp, err := http.Post(base, "application/octet-stream", nil)
 	if err != nil {
 		e.t.Fatal(err)
@@ -101,7 +101,7 @@ func (e *env) putBlob(body []byte) string {
 func (e *env) putManifest(body []byte) string {
 	e.t.Helper()
 	sum := digest.FromBytes(body).String()
-	req, err := http.NewRequest(http.MethodPut, "http://"+e.cfg.Registry+"/v2/hello/manifests/"+sum, bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPut, "http://"+e.reg.addr()+"/v2/hello/manifests/"+sum, bytes.NewReader(body))
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestInputReadOnlyAndLayerGC(t *testing.T) {
 	const id = "a1b2c3"
 	manifest, layer := e.pushData("note.txt", "hello-input")
 	spec := sessionSpec(1, 1)
-	spec.Inputs = []*sessionv1.InputDecl{{Name: "model", Digest: manifest, Repository: "hello"}}
+	spec.Inputs = []*sessionv1.InputDecl{{Name: "model", Digest: manifest, Repository: e.repo}}
 	e.putSpec(id, spec)
 	e.putDemand(id, runningDemand(true, 1))
 	ph := e.collect(e.rev())
@@ -182,7 +182,7 @@ func TestInputRejectedDoesNotSpawn(t *testing.T) {
 	e := setup(t)
 	const id = "a1b2c3"
 	spec := sessionSpec(1, 1)
-	spec.Inputs = []*sessionv1.InputDecl{{Name: "bad", Digest: e.digest, Repository: "hello"}}
+	spec.Inputs = []*sessionv1.InputDecl{{Name: "bad", Digest: e.digest, Repository: e.repo}}
 	e.putSpec(id, spec)
 	e.putDemand(id, runningDemand(true, 1))
 	ph := e.collect(e.rev())
@@ -309,7 +309,7 @@ func TestInputUnpackedAgainWhenMissing(t *testing.T) {
 	const id = "a1b2c3"
 	manifest, _ := e.pushData("note.txt", "hello-input")
 	spec := sessionSpec(1, 1)
-	spec.Inputs = []*sessionv1.InputDecl{{Name: "model", Digest: manifest, Repository: "hello"}}
+	spec.Inputs = []*sessionv1.InputDecl{{Name: "model", Digest: manifest, Repository: e.repo}}
 	e.putSpec(id, spec)
 	e.putDemand(id, runningDemand(true, 1))
 	ph := e.collect(e.rev())

@@ -40,9 +40,8 @@ EOF
 (umask 077 && cat >"$out/api.json" <<EOF
 {
   "users": [{"name": "dev", "token_sha256": "$hash"}],
-  "allow": ["*"],
-  "registry": "registry:5000",
-  "plain_http": true,
+  "allow": ["registry:5000"],
+  "plain_http_hosts": ["registry:5000"],
   "td_keys": {"td1": "$pub"},
   "listen": ":8080"
 }

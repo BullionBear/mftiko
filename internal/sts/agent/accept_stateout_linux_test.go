@@ -37,7 +37,7 @@ func TestStateOutRoundTrip(t *testing.T) {
 	e.putDemand(id, endedDemand("ended_by_spec", 2))
 	ph.wait(id, statev1.Phase_PHASE_DONE)
 	snap := e.waitStateOut(id)
-	if snap.GetRepository() != "state" || !snap.GetClean() || snap.GetIncarnation() == 0 ||
+	if snap.GetRepository() != e.cfg.DataRepository || !snap.GetClean() || snap.GetIncarnation() == 0 ||
 		snap.GetSizeBytes() == 0 || snap.GetAtNs() == 0 || snap.GetDigest() == "" {
 		t.Fatalf("state_out %+v", snap)
 	}
@@ -107,7 +107,7 @@ func TestStateOutRegistryDown(t *testing.T) {
 	})
 	e.reg.setDown(false)
 	snap := e.waitStateOut(id)
-	if snap.GetDigest() == "" || snap.GetRepository() != "state" || !snap.GetClean() || snap.GetIncarnation() != meta.Incarnation {
+	if snap.GetDigest() == "" || snap.GetRepository() != e.cfg.DataRepository || !snap.GetClean() || snap.GetIncarnation() != meta.Incarnation {
 		t.Fatalf("state_out %+v after %d", snap, meta.Incarnation)
 	}
 	pollUntil(t, "volume released and terminal.json kept", func() bool { return e.logsKept(id) })
@@ -150,7 +150,7 @@ func TestStateOutResumeAfterRestart(t *testing.T) {
 		waitDone(t, done)
 	}()
 	snap := e.waitStateOut(id)
-	if snap.GetRepository() != "state" || snap.GetDigest() == "" || !snap.GetClean() || snap.GetIncarnation() == 0 {
+	if snap.GetRepository() != e.cfg.DataRepository || snap.GetDigest() == "" || !snap.GetClean() || snap.GetIncarnation() == 0 {
 		t.Fatalf("state_out %+v", snap)
 	}
 	if got := e.manifestDigest("state", id); got != snap.GetDigest() {
@@ -187,7 +187,7 @@ func (e *env) waitStateOut(id string) *statev1.StateSnapshot {
 
 func (e *env) manifestDigest(repo, ref string) string {
 	e.t.Helper()
-	resp, err := http.Get("http://" + e.cfg.Registry + "/v2/" + repo + "/manifests/" + ref)
+	resp, err := http.Get("http://" + e.reg.addr() + "/v2/" + repo + "/manifests/" + ref)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func TestLogsWaitForSpec(t *testing.T) {
 	})
 	e.reg.setDown(false)
 	snap := e.waitStateOut(id)
-	if snap.GetDigest() == "" || snap.GetRepository() != "state" {
+	if snap.GetDigest() == "" || snap.GetRepository() != e.cfg.DataRepository {
 		t.Fatalf("state_out %+v", snap)
 	}
 	pollUntil(t, "no residue of "+id, func() bool { return e.sessionResidue(id) == "" })

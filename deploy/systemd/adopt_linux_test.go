@@ -593,7 +593,7 @@ func writeDemand(t *testing.T, cli *clientv3.Client, strategyDigest string) stri
 	})
 	put(state.SessionSpecKey("sts1", sessionID), &sessionv1.SessionSpec{
 		Name: "s", DesiredState: sessionv1.DesiredState_DESIRED_STATE_RUNNING,
-		Strategy: &sessionv1.StrategyRef{Name: "fake", Code: strategyDigest, Repository: "strategies/fake"},
+		Strategy: &sessionv1.StrategyRef{Name: "fake", Code: strategyDigest, Repository: "127.0.0.1:5000/strategies/fake"},
 	})
 	put(state.SessionDemandKey("sts1", sessionID), &statev1.SessionDemand{
 		Desired: sessionv1.DesiredState_DESIRED_STATE_RUNNING, Start: true, IssuedAtNs: time.Now().UnixNano(),
@@ -675,9 +675,19 @@ func envText(a agent, accountPub string) string {
 	lines := []string{
 		"MFTIKO_ETCD_PASSWORD=" + agentPass,
 		"MFTIKO_INSTANCE=" + a.inst,
-		"MFTIKO_REGISTRY=127.0.0.1:5000",
-		"MFTIKO_PLAIN_HTTP=true",
 		"NATS_URL=nats://127.0.0.1:4222",
+	}
+	switch a.name {
+	case "md-agent", "td-agent":
+		lines = append(lines,
+			"MFTIKO_REGISTRY=127.0.0.1:5000",
+			"MFTIKO_PLAIN_HTTP=true",
+		)
+	case "sts-agent":
+		lines = append(lines,
+			"MFTIKO_PLAIN_HTTP_HOSTS=127.0.0.1:5000",
+			"MFTIKO_STS_DATA_REPOSITORY=127.0.0.1:5000/data/adopt",
+		)
 	}
 	switch a.name {
 	case "md-agent":
@@ -994,7 +1004,11 @@ func TestUnitKeys(t *testing.T) {
 				}
 			}
 			exec := fields(lookupMust(t, secs, name, "ExecStart"))
-			if !containsStr(exec, "-registry") {
+			if name == "mftiko-sts-agent.service" {
+				if containsStr(exec, "-registry") || !containsStr(exec, "-plain-http-hosts") || !containsStr(exec, "-data-repository") {
+					t.Fatalf("%s ExecStart: %v", name, exec)
+				}
+			} else if !containsStr(exec, "-registry") {
 				t.Fatalf("%s ExecStart has no -registry: %v", name, exec)
 			}
 			for _, bad := range []string{"-conn", "-account"} {

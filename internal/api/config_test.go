@@ -240,11 +240,11 @@ func TestLoadRejects(t *testing.T) {
 		], "td_keys": {"td-tw-1": "` + pub + `"}}`, "same token hash"},
 		{"short token", deploy, `{"users": [{"name": "yi", "token_sha256": "abcd"}], "td_keys": {"td-tw-1": "` + pub + `"}}`, "64 hex"},
 		{"empty allow", deploy, `{"allow": [""], "td_keys": {"td-tw-1": "` + pub + `"}}`, "invalid repository"},
-		{"allow space", deploy, `{"allow": ["a b"], "registry": "reg.example", "td_keys": {"td-tw-1": "` + pub + `"}}`, "invalid repository"},
-		{"duplicate allow", deploy, `{"allow": ["reg.example/a", "reg.example/a"], "registry": "reg.example", "td_keys": {"td-tw-1": "` + pub + `"}}`, "duplicate allow entry"},
-		{"star mixed", deploy, `{"allow": ["*", "reg.example/a"], "registry": "reg.example", "td_keys": {"td-tw-1": "` + pub + `"}}`, "allow * must be the only entry"},
-		{"allow without registry", deploy, `{"allow": ["reg.example/a"], "td_keys": {"td-tw-1": "` + pub + `"}}`, "registry address is required"},
-		{"allow other host", deploy, `{"allow": ["other.example/a"], "registry": "reg.example", "td_keys": {"td-tw-1": "` + pub + `"}}`, "is not on the configured registry"},
+		{"allow space", deploy, `{"allow": ["a b"], "td_keys": {"td-tw-1": "` + pub + `"}}`, "invalid repository"},
+		{"duplicate allow", deploy, `{"allow": ["reg.example/a", "reg.example/a"], "td_keys": {"td-tw-1": "` + pub + `"}}`, "duplicate allow entry"},
+		{"star mixed", deploy, `{"allow": ["*", "reg.example/a"], "td_keys": {"td-tw-1": "` + pub + `"}}`, "allow * must be the only entry"},
+		{"allow tag", deploy, `{"allow": ["reg.example/a:v1"], "td_keys": {"td-tw-1": "` + pub + `"}}`, "invalid repository"},
+		{"unknown registry", deploy, `{"registry": "reg.example", "td_keys": {"td-tw-1": "` + pub + `"}}`, "unknown field"},
 		{"bad pubkey", deploy, `{"td_keys": {"td-tw-1": "not-a-key"}}`, "td key"},
 		{"missing td key", deploy, `{}`, "has no public key"},
 		{"td key for other plane", deployDoc(
@@ -377,23 +377,23 @@ func TestAllowList(t *testing.T) {
 			}
 		})
 	}
-	reject("dot segment", `{"registry":"reg.example","allow":["reg.example/a/./b"]`+keys+`}`, "invalid repository")
-	reject("dotdot segment", `{"registry":"reg.example","allow":["reg.example/a/../b"]`+keys+`}`, "invalid repository")
-	reject("empty segment", `{"registry":"reg.example","allow":["reg.example/a//b"]`+keys+`}`, "invalid repository")
-	reject("leading slash", `{"registry":"reg.example","allow":["/a"]`+keys+`}`, "invalid repository")
-	reject("trailing slash duplicate", `{"registry":"reg.example","allow":["reg.example/a/","reg.example/a"]`+keys+`}`, "duplicate allow entry")
+	reject("dot segment", `{"allow":["reg.example/a/./b"]`+keys+`}`, "invalid repository")
+	reject("dotdot segment", `{"allow":["reg.example/a/../b"]`+keys+`}`, "invalid repository")
+	reject("empty segment", `{"allow":["reg.example/a//b"]`+keys+`}`, "invalid repository")
+	reject("leading slash", `{"allow":["/a"]`+keys+`}`, "invalid repository")
+	reject("trailing slash duplicate", `{"allow":["reg.example/a/","reg.example/a"]`+keys+`}`, "duplicate allow entry")
 
 	cfg := loadWithin(t, deploy, `{"allow":["*"]`+keys+`}`, testInput(t))
-	if len(cfg.Allow) != 1 || cfg.Allow[0] != "*" {
-		t.Fatalf("star %+v", cfg.Allow)
+	if len(cfg.Allow) != 1 || cfg.Allow[0] != "*" || cfg.Catalog == nil {
+		t.Fatalf("star %+v catalog nil=%v", cfg.Allow, cfg.Catalog == nil)
 	}
-	cfg = loadWithin(t, deploy, `{"registry":"reg.example","allow":["reg.example/mftiko/"]`+keys+`}`, testInput(t))
+	cfg = loadWithin(t, deploy, `{"allow":["reg.example/mftiko/"]`+keys+`}`, testInput(t))
 	if len(cfg.Allow) != 1 || cfg.Allow[0] != "reg.example/mftiko" {
 		t.Fatalf("prefix %+v", cfg.Allow)
 	}
-	cfg = loadWithin(t, deploy, `{"registry":"reg.example","allow":["reg.example"]`+keys+`}`, testInput(t))
-	if len(cfg.Allow) != 1 || cfg.Allow[0] != "reg.example" {
-		t.Fatalf("host %+v", cfg.Allow)
+	cfg = loadWithin(t, deploy, `{"allow":["reg.example","other.example/team"]`+keys+`}`, testInput(t))
+	if len(cfg.Allow) != 2 || cfg.Allow[0] != "reg.example" || cfg.Allow[1] != "other.example/team" {
+		t.Fatalf("hosts %+v", cfg.Allow)
 	}
 }
 
@@ -408,21 +408,22 @@ func TestRegistrySettings(t *testing.T) {
 			t.Fatalf("error %v, want substring %q", err, want)
 		}
 	}
-	reject(`{"plain_http":true`+keys+`}`, "registry address is required")
-	reject(`{"registry_creds":"/no/such/config.json"`+keys+`}`, "registry address is required")
-	reject(`{"registry":"http://127.0.0.1:5000"`+keys+`}`, "host[:port]")
-	reject(`{"registry":"127.0.0.1:5000/repo"`+keys+`}`, "host[:port]")
+	reject(`{"plain_http":true`+keys+`}`, "unknown field")
+	reject(`{"registry":"127.0.0.1:1"`+keys+`}`, "unknown field")
+	reject(`{"plain_http_hosts":["http://127.0.0.1:5000"]`+keys+`}`, "host[:port]")
+	reject(`{"plain_http_hosts":["127.0.0.1:5000/repo"]`+keys+`}`, "host[:port]")
+	reject(`{"plain_http_hosts":["reg.example","reg.example"]`+keys+`}`, "duplicate plain http host")
 
 	bad := filepath.Join(t.TempDir(), "bad.json")
 	if err := os.WriteFile(bad, []byte(`{`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	reject(`{"registry":"127.0.0.1:1","registry_creds":"`+bad+`"`+keys+`}`, "credentials")
+	reject(`{"registry_creds":"`+bad+`"`+keys+`}`, "credentials")
 
 	missing := t.TempDir() + "/missing.json"
 	done := make(chan error, 1)
 	go func() {
-		conf := `{"registry":"127.0.0.1:1","registry_creds":"` + missing + `"` + keys + `}`
+		conf := `{"registry_creds":"` + missing + `"` + keys + `}`
 		_, err := Load(strings.NewReader(deploy), strings.NewReader(conf), testInput(t))
 		done <- err
 	}()
@@ -435,9 +436,9 @@ func TestRegistrySettings(t *testing.T) {
 		t.Fatal("Load blocked on a missing credentials file")
 	}
 
-	conf := `{"registry":"127.0.0.1:1","plain_http":true` + keys + `}`
+	conf := `{"plain_http_hosts":["127.0.0.1:1"]` + keys + `}`
 	cfg := loadWithin(t, deploy, conf, testInput(t))
-	if cfg.Catalog == nil || cfg.Registry.Address != "127.0.0.1:1" || !cfg.Registry.PlainHTTP || cfg.Registry.Credentials != "" {
+	if cfg.Catalog == nil || cfg.Registry.Address != "" || len(cfg.Registry.PlainHTTPHosts) != 1 || cfg.Registry.PlainHTTPHosts[0] != "127.0.0.1:1" || cfg.Registry.Credentials != "" {
 		t.Fatalf("registry %+v catalog nil=%v", cfg.Registry, cfg.Catalog == nil)
 	}
 
@@ -445,9 +446,9 @@ func TestRegistrySettings(t *testing.T) {
 	if err := os.WriteFile(creds, []byte(`{"auths":{}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	conf = `{"registry":"127.0.0.1:1","registry_creds":"` + creds + `"` + keys + `}`
+	conf = `{"registry_creds":"` + creds + `"` + keys + `}`
 	cfg = loadWithin(t, deploy, conf, testInput(t))
-	if cfg.Catalog == nil || cfg.Registry.Credentials != creds {
+	if cfg.Catalog == nil || cfg.Registry.Credentials != creds || cfg.Registry.Address != "" {
 		t.Fatalf("creds %q catalog nil=%v", cfg.Registry.Credentials, cfg.Catalog == nil)
 	}
 }

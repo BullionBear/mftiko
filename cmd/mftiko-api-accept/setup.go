@@ -54,7 +54,7 @@ func accDeployment() deployment {
 func setup() error {
 	out := flag.String("out", "/work/e2e", "directory for deployment.json, api-*.json and token")
 	sealKey := flag.String("td-seal-key", "/work/td-seal.key", "td1's private key; the API seals accounts to its public half")
-	registry := flag.String("registry", "registry:5000", "registry host:port the API's catalog reads (plain HTTP)")
+	registry := flag.String("registry", "registry:5000", "registry host:port for allow and plain HTTP")
 	retention := flag.String("retention", "1m", "W5 retention; short, so main sees the spec deleted")
 	flag.Parse()
 	if *password == "" {
@@ -96,8 +96,7 @@ func setup() error {
 		conf := map[string]any{
 			"users":             []any{map[string]string{"name": userName, "token_sha256": hex.EncodeToString(sum[:])}},
 			"allow":             []string{strings.TrimRight(*registry, "/") + "/strategies/"},
-			"registry":          *registry,
-			"plain_http":        true,
+			"plain_http_hosts":  []string{strings.TrimRight(*registry, "/")},
 			"td_keys":           map[string]string{tdInst: key.Public().String()},
 			"retention":         *retention,
 			"unavailable_after": "5s",

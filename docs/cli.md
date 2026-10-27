@@ -100,7 +100,7 @@ token 不能當旗標傳入，也不會出現在輸出與錯誤訊息裡。
 
 `examples/strategies/hello` 是參考策略：它在 book 的最佳買價下方 `offset` 處掛一張買單，看到單子 `ACCEPTED` 就撤掉（E08-D062）。
 
-1. 打包並推到 API 設定的 registry，見 README「Packing a strategy」。repository 必須落在 API 的 `allow`（E10-D119）。之後 `mftiko strategy list registry:5000/strategies/hello` 列出它的 tag 與完整 digest。
+1. 打包並推到 `allow` 列出的 host，見 README「Packing a strategy」。repository 是完整的 `host/path`，必須落在 API 的 `allow`（E10-D119、E10-D122）。之後 `mftiko strategy list registry:5000/strategies/hello` 列出它的 tag 與完整 digest。
 2. 查 instance 名稱與交易帳號：`mftiko instance list`（`sts`、`md` 平面）、`mftiko account list`（`api_id`）。帳號用 `mftiko account create` 建立，見 `mftiko help account`。永久退役一個 instance 用 `mftiko instance retire <name>`（E12-D033）；步驟在 [operations.md](operations.md)。
 3. 寫 session 檔，例如 `hello.yaml`。欄位與 API 的 `SessionCreate` 一對一，用 snake_case（E11-D019）：
 

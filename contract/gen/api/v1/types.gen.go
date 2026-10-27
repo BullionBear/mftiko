@@ -591,8 +591,10 @@ type Freshness struct {
 
 // InputDecl defines model for InputDecl.
 type InputDecl struct {
-	Digest     Digest `json:"digest"`
-	Name       string `json:"name"`
+	Digest Digest `json:"digest"`
+	Name   string `json:"name"`
+
+	// Repository 完整路徑（registry host 加路徑）。資料 artifact 不查 allow（E10-D122）。
 	Repository string `json:"repository"`
 }
 
@@ -921,8 +923,10 @@ type StateSnapshot struct {
 	Clean       bool      `json:"clean"`
 	Digest      Digest    `json:"digest"`
 	Incarnation int       `json:"incarnation"`
-	Repository  string    `json:"repository"`
-	SizeBytes   int64     `json:"size_bytes"`
+
+	// Repository 資料 artifact 的完整路徑，含 registry host（E10-D125）。
+	Repository string `json:"repository"`
+	SizeBytes  int64  `json:"size_bytes"`
 }
 
 // StrategyRef defines model for StrategyRef.
@@ -930,9 +934,11 @@ type StrategyRef struct {
 	Digest Digest `json:"digest"`
 
 	// Id 儲存路徑的最後一段，只供顯示。路徑是空的就省略（E10-D118）。
-	Id         *string `json:"id,omitempty"`
-	Name       string  `json:"name"`
-	Repository string  `json:"repository"`
+	Id   *string `json:"id,omitempty"`
+	Name string  `json:"name"`
+
+	// Repository 存進 spec 的完整路徑，含 registry host（E10-D122）。
+	Repository string `json:"repository"`
 }
 
 // StrategyRepository 一個 repository 的 tag。`latest` 不在 `items` 這一頁時仍然回（E10-D121）。
@@ -945,7 +951,7 @@ type StrategyRepository struct {
 
 	// Repository 請求的完整路徑，去掉結尾的 `/`。
 	//
-	// Example: ghcr.io/acme/md_watch
+	// Example: registry.example/acme/md_watch
 	Repository string `json:"repository"`
 }
 
@@ -954,9 +960,9 @@ type StrategySelector struct {
 	// Ref tag 或 digest。tag 由 API 解析成 digest 再寫進 spec（E09-D034）。API 讀 manifest，`kind` 必須是 strategy（E10-D120）。
 	Ref string `json:"ref"`
 
-	// Repository 完整路徑，例如 `ghcr.io/acme/md_watch`。必須在 allow 清單裡，而且在設定的 registry 上（E10-D119）。
+	// Repository 完整路徑（registry host 加路徑），例如 `registry.example/acme/md_watch`。必須在 allow 清單裡（E10-D122）。
 	//
-	// Example: ghcr.io/acme/md_watch
+	// Example: registry.example/acme/md_watch
 	Repository string `json:"repository"`
 }
 

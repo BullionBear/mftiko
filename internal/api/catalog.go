@@ -47,9 +47,6 @@ func (s *Server) useCatalog() error {
 		s.catalog = s.cfg.Catalog
 		return nil
 	}
-	if s.cfg.Registry.Address == "" {
-		return nil
-	}
 	c, err := artifact.OpenCatalog(s.cfg.Registry)
 	if err != nil {
 		return err
@@ -163,10 +160,10 @@ func (s *Server) ListStrategies(w http.ResponseWriter, r *http.Request, params a
 	writeJSON(w, http.StatusOK, body)
 }
 
-// admitRepository checks shape, the allowlist, and the configured registry (E10-D119, E10-D120).
+// admitRepository checks shape and the allowlist (E10-D119, E10-D120, E10-D122).
 // The allowlist is checked before the registry is used, including when the registry is down.
-// An allowed repository with no registry configured returns errRegistry. path is the spec path,
-// without the registry host.
+// The returned value is the full repository, host included. It is what the catalog reads and
+// what a session spec stores. A name that is not host/path is not a repository.
 func (s *Server) admitRepository(pointer, repository string) (string, fieldList, error) {
 	repository = strings.TrimRight(repository, "/")
 	if repository == "" {
@@ -178,14 +175,10 @@ func (s *Server) admitRepository(pointer, repository string) (string, fieldList,
 	if !allowMatches(s.cfg.Allow, repository) {
 		return "", fieldList{{Path: pointer, Reason: "is not allowed"}}, nil
 	}
-	if s.cfg.Registry.Address == "" {
-		return "", nil, errRegistryUnconfigured
+	if _, _, err := artifact.SplitRepository(repository); err != nil {
+		return "", fieldList{{Path: pointer, Reason: "is not a repository"}}, nil
 	}
-	path, ok := pathOnRegistry(s.cfg.Registry.Address, repository)
-	if !ok {
-		return "", fieldList{{Path: pointer, Reason: "is not on the configured registry"}}, nil
-	}
-	return path, nil, nil
+	return repository, nil, nil
 }
 
 func (s *Server) versionDigest(ctx context.Context, repository, ref string) (string, error) {
@@ -281,8 +274,8 @@ func (s *Server) writeRegistry(w http.ResponseWriter, r *http.Request, err error
 	writeProblem(w, status, code, title, detail, nil)
 }
 
-// registryProblem maps a registry error onto the contract (E10-D059). 401 and 403 stay on the existing
-// internal code: E10-D059 does not name a code for them.
+// registryProblem maps a registry error onto the contract (E10-D059, E10-D127).
+// 401 and 403 are registry_unavailable, the same code as a registry that cannot be reached.
 func registryProblem(err error, missing string) (int, apiv1.ErrorCode, string, string) {
 	if missing == "" {
 		missing = "version not found"
@@ -290,6 +283,8 @@ func registryProblem(err error, missing string) (int, apiv1.ErrorCode, string, s
 	switch artifact.ReasonOf(err) {
 	case artifact.ReasonNotFound:
 		return http.StatusNotFound, apiv1.ErrorCodeNotFound, "Not Found", missing
+	case artifact.ReasonUnauthorized:
+		return http.StatusServiceUnavailable, apiv1.ErrorCodeRegistryUnavailable, "Registry Unavailable", "registry unavailable"
 	case artifact.ReasonUnavailable:
 		if artifact.Permanent(err) {
 			return http.StatusInternalServerError, apiv1.ErrorCodeInternal, "Internal Server Error", "internal error"

@@ -205,10 +205,9 @@ sec nats/keys/mftiko-signing.nk sts-agent mftiko-sts nats-signing.nk
 cat >/etc/mftiko/sts-agent/env <<ENV
 MFTIKO_ETCD_PASSWORD=\$(pw sts-jp-1)
 MFTIKO_INSTANCE=sts-jp-1
-MFTIKO_REGISTRY=\$reg
-MFTIKO_PLAIN_HTTP=true
+MFTIKO_PLAIN_HTTP_HOSTS=\$reg
 MFTIKO_REGISTRY_CREDS=
-MFTIKO_STS_DATA_REPOSITORY=data/drill
+MFTIKO_STS_DATA_REPOSITORY=\$reg/data/drill
 NATS_URL=\$nats
 MFTIKO_NATS_ACCOUNT=\$acct
 ENV
@@ -223,8 +222,7 @@ cat >/root/e12-12/api.json <<JSON
 {
   "users": [{"name": "drill", "token_sha256": "\$sha"}],
   "allow": ["\$reg/strategies/"],
-  "registry": "\$reg",
-  "plain_http": true,
+  "plain_http_hosts": ["\$reg"],
   "td_keys": {"td-jp-1": "\$pk"},
   "retention": "168h",
   "unavailable_after": "15s",
@@ -257,10 +255,9 @@ cp nats/keys/mftiko-signing.nk b/sts-agent/nats-signing.nk
 cat >b/sts-agent/env <<ENV
 MFTIKO_ETCD_PASSWORD=\$(pw sts-jp2-1)
 MFTIKO_INSTANCE=sts-jp2-1
-MFTIKO_REGISTRY=\$reg
-MFTIKO_PLAIN_HTTP=true
+MFTIKO_PLAIN_HTTP_HOSTS=\$reg
 MFTIKO_REGISTRY_CREDS=
-MFTIKO_STS_DATA_REPOSITORY=data/drill
+MFTIKO_STS_DATA_REPOSITORY=\$reg/data/drill
 NATS_URL=\$nats
 MFTIKO_NATS_ACCOUNT=\$acct
 ENV

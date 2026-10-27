@@ -19,17 +19,16 @@
 // session_records row, and reconcile are E10-D068–E10-D073. W5 deletion runs in that same reconcile
 // and on DELETE /api/v1/sessions/{id} (E10-D080–E10-D085): Postgres is closed first, and a down
 // Postgres deletes nothing. A catalog
-// request dials the registry when one is configured (E10-D057, E10-D060).
+// request dials the registry named by the repository (E10-D057, E10-D122).
 // Either of the command's file flags may be "-" to read that file from stdin; only one of them may.
 //
 // Settings are three kinds (E10-D023), the same split cmd/mftiko-api parses. The deployment JSON is the file
 // mftiko-etcd-roles reads (E10-D012, E13-D012). The API JSON is:
 //
 //	users[].name, users[].token_sha256   one static token per user, stored as SHA-256 (E10-D009, E10-D055)
-//	allow                                 strategy repository allowlist; "*" or host plus path prefix (E10-D119)
-//	registry                              registry host[:port]; empty leaves the catalog unconfigured (E10-D060)
-//	registry_creds                        Docker config.json path; empty is anonymous (E09-D033, E10-D060)
-//	plain_http                            http for a dev registry:2 (E09-D033, E10-D060)
+//	allow                                 strategy repository allowlist; "*" or host plus path prefix (E10-D122)
+//	registry_creds                        Docker config.json path; empty is anonymous (E10-D123)
+//	plain_http_hosts                      hosts that use http; empty uses https (E10-D124)
 //	td_keys                               TD instance name → public key, the mftiko-seal pubkey form (E10-D011)
 //	retention                             W5 retention, Go duration, default 168h (E10-D017)
 //	unavailable_after                     region unavailable threshold, Go duration, default 15s (E10-D014)
@@ -45,7 +44,7 @@
 // and the Postgres DSN (MFTIKO_POSTGRES_DSN, flag -postgres-dsn). The flag overrides the environment variable, as
 // it does for the controller.
 //
-// Load validates all of that, including the registry address and credentials file, and does not dial Postgres or a
+// Load validates all of that, including plain-HTTP hosts and the credentials file, and does not dial Postgres or a
 // registry (E10-D024, E10-D060). Run opens a Postgres pool without waiting for a connection (E10-D048). Readiness watches
 // etcd only. Session create returns 503 and does not write etcd when Postgres is down (E10-D031). Catalog requests are what dial the registry (E10-D057). A token should be at least 32 random bytes; the
 // file stores only the SHA-256, so a shorter value that was hashed in is still accepted (E10-D055). The README has

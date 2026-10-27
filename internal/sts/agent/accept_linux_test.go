@@ -60,16 +60,16 @@ func TestMain(m *testing.M) {
 // agentArgs is what a second agent process needs. The password is passed in:
 // etcdtest derives it from a secret of each process.
 type agentArgs struct {
-	Topology  state.Topology
-	Password  string
-	Instance  string
-	WorkDir   string
-	DataDir   string
-	Shim      string
-	Registry  string
-	PlainHTTP bool
-	ShimEnv   []string
-	Resync    time.Duration
+	Topology       state.Topology
+	Password       string
+	Instance       string
+	WorkDir        string
+	DataDir        string
+	Shim           string
+	PlainHTTPHosts []string
+	DataRepository string
+	ShimEnv        []string
+	Resync         time.Duration
 }
 
 func runAgent(v string) int {
@@ -83,7 +83,7 @@ func runAgent(v string) int {
 		Topology: a.Topology, Instance: a.Instance, Dial: state.AuthDial(a.Instance, a.Password),
 		Term:    state.TermOptions{ID: "sts-subprocess"},
 		WorkDir: a.WorkDir, DataDir: a.DataDir, Shim: a.Shim, ShimEnv: a.ShimEnv,
-		Registry: a.Registry, PlainHTTP: a.PlainHTTP, Sign: testSigner,
+		PlainHTTPHosts: a.PlainHTTPHosts, DataRepository: a.DataRepository, Sign: testSigner,
 		Resync: a.Resync, Grace: DefaultGrace, Release: "test", Log: log,
 		Mirror: state.MirrorOptions{ProbeInterval: 50 * time.Millisecond, Log: &log},
 	})
@@ -280,7 +280,7 @@ func TestOneWriter(t *testing.T) {
 	args, err := json.Marshal(agentArgs{
 		Topology: e.cfg.Topology, Password: etcdtest.Password(e.inst()), Instance: e.inst(),
 		WorkDir: e.cfg.WorkDir, DataDir: e.cfg.DataDir, Shim: e.cfg.Shim, ShimEnv: e.cfg.ShimEnv,
-		Registry: e.cfg.Registry, PlainHTTP: e.cfg.PlainHTTP, Resync: e.cfg.Resync,
+		PlainHTTPHosts: e.cfg.PlainHTTPHosts, DataRepository: e.cfg.DataRepository, Resync: e.cfg.Resync,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -590,7 +590,7 @@ func TestArtifactNotFound(t *testing.T) {
 	e := setup(t)
 	const id = "a1b2c3"
 	spec := sessionSpec(1, 1)
-	spec.Strategy = &sessionv1.StrategyRef{Name: "gone", Code: "sha256:" + strings.Repeat("ab", 32), Repository: "hello"}
+	spec.Strategy = &sessionv1.StrategyRef{Name: "gone", Code: "sha256:" + strings.Repeat("ab", 32), Repository: e.repo}
 	e.putSpec(id, spec)
 	e.putDemand(id, runningDemand(true, 1))
 	ph := e.collect(e.rev())
@@ -751,7 +751,7 @@ func setup(t *testing.T) *env {
 	data := t.TempDir()
 	buf := &syncBuf{}
 	log := zerolog.New(buf).Level(zerolog.InfoLevel)
-	e := &env{t: t, root: root, log: buf, journal: t.TempDir(), scripts: map[string]fakeworker.Script{}, reg: reg, digest: img.Digest, repo: "hello"}
+	e := &env{t: t, root: root, log: buf, journal: t.TempDir(), scripts: map[string]fakeworker.Script{}, reg: reg, digest: img.Digest, repo: reg.repo()}
 	e.cfg = Config{
 		Topology: topo, Instance: inst, Dial: state.AuthDial(inst, etcdtest.Password(inst)),
 		Term:           state.TermOptions{ID: t.Name()},
@@ -759,9 +759,8 @@ func setup(t *testing.T) *env {
 		DataDir:        data,
 		Shim:           self,
 		ShimEnv:        []string{envTestShim + "=1"},
-		Registry:       reg.addr(),
-		DataRepository: "state",
-		PlainHTTP:      true,
+		DataRepository: reg.addr() + "/state",
+		PlainHTTPHosts: []string{reg.addr()},
 		Sign:           testSigner,
 		Grace:          DefaultGrace,
 		Resync:         50 * time.Millisecond,

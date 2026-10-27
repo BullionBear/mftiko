@@ -145,7 +145,7 @@ sts_agent() {
 	n=$(nth "$inst")
 	account=$(sed -n 's/.*"account": "\(A[A-Z0-9]*\)".*/\1/p' "$here/data/nats/manifest.json")
 	run sh -c "mkdir -p /var/sts/$inst && nohup /mftiko/mftiko-sts-agent -instance $inst -topology /work/e2e/deployment.json \
-		-work-dir /var/sts/$inst -data /var/sts/$inst/data -shim /mftiko/mftiko-shim -registry registry:5000 -plain-http \
+		-work-dir /var/sts/$inst -data /var/sts/$inst/data -shim /mftiko/mftiko-shim -plain-http-hosts=registry:5000 \
 		-nats-account $account -nats-signing-key /nats/keys/mftiko-signing.nk >/work/e2e/$inst-$n.log 2>&1 &"
 	echo "sts-agent $inst started, log data/work/e2e/$inst-$n.log"
 }

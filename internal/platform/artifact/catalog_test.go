@@ -337,3 +337,81 @@ func TestCatalogReachable(t *testing.T) {
 		t.Fatal("cancelled context")
 	}
 }
+
+func TestSplitRepository(t *testing.T) {
+	host, path, err := SplitRepository("reg.example/team/alpha")
+	if err != nil || host != "reg.example" || path != "team/alpha" {
+		t.Fatalf("%s %s %v", host, path, err)
+	}
+	host, path, err = SplitRepository("127.0.0.1:5000/foo/bar")
+	if err != nil || host != "127.0.0.1:5000" || path != "foo/bar" {
+		t.Fatalf("%s %s %v", host, path, err)
+	}
+	for _, bad := range []string{"", "hello", "reg.example", "reg.example/team:v1", "http://reg.example/team"} {
+		if _, _, err := SplitRepository(bad); !errors.Is(err, ErrRequest) {
+			t.Fatalf("%q: %v", bad, err)
+		}
+	}
+}
+
+// TestCatalogPerHostCredentials checks one Docker config.json against two hosts (E10-D123, E10-D124).
+// The listed host uses the auth entry. The other host is anonymous. Plain HTTP applies only to listed hosts.
+func TestCatalogPerHostCredentials(t *testing.T) {
+	authReg := newMemRegistry()
+	defer authReg.Close()
+	authReg.user, authReg.pass = "user", "user"
+	authReg.store("hello", "v1", []byte("auth"))
+	anonReg := newMemRegistry()
+	defer anonReg.Close()
+	anonReg.store("hello", "v1", []byte("anon"))
+
+	authHost, anonHost := authReg.address(), anonReg.address()
+	raw, err := json.Marshal(map[string]any{
+		"auths": map[string]any{
+			authHost: map[string]string{"auth": base64.StdEncoding.EncodeToString([]byte("user:user"))},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := t.TempDir() + "/config.json"
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cat, err := OpenCatalog(Registry{
+		Credentials:    path,
+		PlainHTTPHosts: []string{authHost, anonHost},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	tags, err := cat.Tags(ctx, authHost+"/hello")
+	if err != nil || !sameStrings(tags, []string{"v1"}) {
+		t.Fatalf("listed host: %v %q", err, tags)
+	}
+	tags, err = cat.Tags(ctx, anonHost+"/hello")
+	if err != nil || !sameStrings(tags, []string{"v1"}) {
+		t.Fatalf("unlisted host: %v %q", err, tags)
+	}
+
+	anon, err := OpenCatalog(Registry{PlainHTTPHosts: []string{authHost, anonHost}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := anon.Tags(ctx, authHost+"/hello"); ReasonOf(err) != ReasonUnauthorized {
+		t.Fatalf("anonymous on listed host: %v", err)
+	}
+	tags, err = anon.Tags(ctx, anonHost+"/hello")
+	if err != nil || !sameStrings(tags, []string{"v1"}) {
+		t.Fatalf("anonymous on open host: %v %q", err, tags)
+	}
+
+	httpsOnly, err := OpenCatalog(Registry{PlainHTTPHosts: []string{anonHost}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := httpsOnly.Tags(ctx, authHost+"/hello"); err == nil {
+		t.Fatal("plain http was used for a host that is not listed")
+	}
+}

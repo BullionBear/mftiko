@@ -33,7 +33,7 @@ type ManifestInfo struct {
 // OpenCatalog checks the registry address and, when set, loads the Docker config.json (E09-D033, E10-D060).
 // It does not dial the registry and does not create a data directory.
 func OpenCatalog(reg Registry) (*Catalog, error) {
-	if err := checkAddress(reg.Address); err != nil {
+	if err := prepareRegistry(reg); err != nil {
 		return nil, err
 	}
 	// A set path has to name a file. NewStore treats a missing file as anonymous, which would

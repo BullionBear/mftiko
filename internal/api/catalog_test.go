@@ -235,17 +235,17 @@ func TestListStrategies(t *testing.T) {
 
 	wrong := &fakeCatalog{tags: map[string][]string{}}
 	code, p = getProblem(t, catalogSrv([]string{"*"}, "reg.example", wrong).routes(), strategyQuery("other.example/team/hello", ""))
-	if code != http.StatusBadRequest || p.Errors == nil || (*p.Errors)[0].Reason != "is not on the configured registry" || wrong.tagCalls != 0 {
-		t.Fatalf("wrong host: %d %+v calls %d", code, p, wrong.tagCalls)
+	if code != http.StatusNotFound || p.Code != apiv1.ErrorCodeNotFound || wrong.tagCalls != 1 {
+		t.Fatalf("other host: %d %+v calls %d", code, p, wrong.tagCalls)
 	}
 
 	digA := sha(0)
 	f := &fakeCatalog{
-		tags: map[string][]string{"team/hello": {"v1", "latest", "a", "a", "gone"}},
+		tags: map[string][]string{"reg.example/team/hello": {"v1", "latest", "a", "a", "gone"}},
 		digest: map[string]string{
-			catKey("team/hello", "a"):      digA,
-			catKey("team/hello", "latest"): digA,
-			catKey("team/hello", "v1"):     digA,
+			catKey("reg.example/team/hello", "a"):      digA,
+			catKey("reg.example/team/hello", "latest"): digA,
+			catKey("reg.example/team/hello", "v1"):     digA,
 		},
 	}
 	h := catalogSrv([]string{"reg.example/team"}, "reg.example", f).routes()
@@ -298,7 +298,7 @@ func TestListStrategies(t *testing.T) {
 		t.Fatalf("missing %d %+v", code, p)
 	}
 
-	empty := &fakeCatalog{tags: map[string][]string{"team/empty": {}}}
+	empty := &fakeCatalog{tags: map[string][]string{"reg.example/team/empty": {}}}
 	code, _, body = doAuth(catalogSrv([]string{"reg.example/team"}, "reg.example", empty).routes(), http.MethodGet, strategyQuery("reg.example/team/empty", ""))
 	if code != http.StatusOK {
 		t.Fatalf("empty %d %s", code, body)
@@ -314,9 +314,9 @@ func TestListStrategies(t *testing.T) {
 
 func TestListStrategiesUnavailable(t *testing.T) {
 	f := &fakeCatalog{
-		tags: map[string][]string{"team/alpha": {"latest"}},
+		tags: map[string][]string{"reg.example/team/alpha": {"latest"}},
 		resolveErr: map[string]error{
-			catKey("team/alpha", "latest"): artErr(artifact.ReasonUnavailable, false),
+			catKey("reg.example/team/alpha", "latest"): artErr(artifact.ReasonUnavailable, false),
 		},
 	}
 	code, p := getProblem(t, catalogSrv([]string{"reg.example/team"}, "reg.example", f).routes(), strategyQuery("reg.example/team/alpha", ""))
@@ -327,9 +327,9 @@ func TestListStrategiesUnavailable(t *testing.T) {
 		t.Fatalf("detail leaked: %+v", p)
 	}
 
-	f.resolveErr[catKey("team/alpha", "latest")] = artErr(artifact.ReasonUnauthorized, true)
+	f.resolveErr[catKey("reg.example/team/alpha", "latest")] = artErr(artifact.ReasonUnauthorized, true)
 	code, p = getProblem(t, catalogSrv([]string{"reg.example/team"}, "reg.example", f).routes(), strategyQuery("reg.example/team/alpha", ""))
-	if code != http.StatusInternalServerError || p.Code != apiv1.ErrorCodeInternal || problemDetail(p) != "internal error" {
+	if code != http.StatusServiceUnavailable || p.Code != apiv1.ErrorCodeRegistryUnavailable || problemDetail(p) != "registry unavailable" {
 		t.Fatalf("unauthorized %d %+v", code, p)
 	}
 	if strings.Contains(problemDetail(p), "secret-registry-detail") {
@@ -337,9 +337,9 @@ func TestListStrategiesUnavailable(t *testing.T) {
 	}
 
 	f = &fakeCatalog{
-		tags: map[string][]string{"team/alpha": {"latest"}},
+		tags: map[string][]string{"reg.example/team/alpha": {"latest"}},
 		resolveErr: map[string]error{
-			catKey("team/alpha", "latest"): artErr(artifact.ReasonUnavailable, true),
+			catKey("reg.example/team/alpha", "latest"): artErr(artifact.ReasonUnavailable, true),
 		},
 	}
 	code, p = getProblem(t, catalogSrv([]string{"reg.example/team"}, "reg.example", f).routes(), strategyQuery("reg.example/team/alpha", ""))
@@ -350,8 +350,8 @@ func TestListStrategiesUnavailable(t *testing.T) {
 
 func TestCatalogValidation(t *testing.T) {
 	f := &fakeCatalog{
-		tags:   map[string][]string{"team/hello": {"v1"}},
-		digest: map[string]string{catKey("team/hello", "v1"): sha(0)},
+		tags:   map[string][]string{"reg.example/team/hello": {"v1"}},
+		digest: map[string]string{catKey("reg.example/team/hello", "v1"): sha(0)},
 	}
 	h := catalogSrv([]string{"reg.example/team"}, "reg.example", f).routes()
 	code, p := getProblem(t, h, strategyQuery("reg.example/team/hello", "limit=0"))
@@ -393,14 +393,14 @@ func TestCatalogValidation(t *testing.T) {
 
 func TestCatalogResolveParallel(t *testing.T) {
 	f := &fakeCatalog{
-		tags:   map[string][]string{"team/hello": {}},
+		tags:   map[string][]string{"reg.example/team/hello": {}},
 		digest: map[string]string{},
 		hold:   make(chan struct{}),
 	}
 	for i := 0; i < 20; i++ {
 		tag := "t" + string(rune('a'+i))
-		f.tags["team/hello"] = append(f.tags["team/hello"], tag)
-		f.digest[catKey("team/hello", tag)] = sha(0)
+		f.tags["reg.example/team/hello"] = append(f.tags["reg.example/team/hello"], tag)
+		f.digest[catKey("reg.example/team/hello", tag)] = sha(0)
 	}
 	var once sync.Once
 	closeHold := func() { once.Do(func() { close(f.hold) }) }
@@ -465,7 +465,7 @@ func TestCatalogClosedPort(t *testing.T) {
 		conn.Close()
 		t.Skip("127.0.0.1:1 accepted a connection")
 	}
-	cat, err := artifact.OpenCatalog(artifact.Registry{Address: "127.0.0.1:1", PlainHTTP: true})
+	cat, err := artifact.OpenCatalog(artifact.Registry{PlainHTTPHosts: []string{"127.0.0.1:1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
