@@ -458,15 +458,51 @@ groups:
 
 ### dev
 
-- `make dev-up` 的 registry 在主機上是 `127.0.0.1:5000`，在 compose 裡（API 看到的）是 `registry:5000`。從主機推用前者，session 檔寫後者。內容相同，digest 相同。dev 的 `allow` 是整個 `registry:5000`。
+`make dev-up` 跑 controller 與 `sts1`（E15-10），沒有 feeds、沒有 accounts 的 session 會真的跑起來。`md1`、`td1` 不跑，帶 feeds 或 accounts 的 session 停在等依賴；那種用 `deploy/accept`。
 
-  ```sh
-  make build
-  bin/mftiko-pack data -dir ./model -repo 127.0.0.1:5000/data/model -tag v1 -plain-http
-  ```
+- registry 在主機上是 `127.0.0.1:5000`，在 compose 裡（API 與 `sts1` 看到的）是 `registry:5000`。從主機推用前者，session 檔寫後者。內容相同，digest 相同。dev 的 `allow` 是整個 `registry:5000`。
+- `sts1` 在 Linux 容器裡跑 worker，所以策略要是 Linux 的 binary。`make dev-up` 把 `examples/strategies/` 建成 Linux 版放在 `bin/linux/examples/`。
+- `sts1` 以 `nobody` 跑，input 的 0444、0555 擋得住寫入。
+- `mftiko session logs` 在 dev 可用：API 與 `sts1` 共用 `deploy/dev/data/api/log-token`。
 
-  session 檔裡是 `repository: registry:5000/data/model`，`sts_instance: sts1`。
-- dev 沒有跑任何 agent：建立通過上面第 4 步的檢查之後，session 停在 `pending`。要看到策略真的讀到 input，用驗收環境的 `accept.sh e2e cli inputs`（[deploy/accept/README.md](../deploy/accept/README.md)）：它照這個流程推一個目錄、經 CLI 建 session、到 `running`，再到 STS 的目錄核對內容與權限。
+以 `examples/strategies/inputs` 為例。它在 `OnInit` 比對 params 裡的 sha256，並確認寫入被拒：
+
+```sh
+make dev-up
+make migrate-up   # 第一次，或有新的 migration 時
+make build        # bin/mftiko、bin/mftiko-pack
+bin/mftiko-pack -bin bin/linux/examples/inputs -name inputs -repo 127.0.0.1:5000/strategies/inputs -tag dev -plain-http
+bin/mftiko-pack data -dir ./model -repo 127.0.0.1:5000/data/model -tag v1 -plain-http   # 印出 sha256:…
+shasum -a 256 model/model.pt                                                               # 給 params
+```
+
+`inputs.yaml`，CLI 的 context 與 `mftiko login` 見 [cli.md](cli.md)（dev 的 token 在 `deploy/dev/data/api/token`）：
+
+```yaml
+name: inputs
+sts_instance: sts1
+strategy:
+  repository: registry:5000/strategies/inputs
+  ref: dev
+params:
+  input: model
+  sha256:
+    model.pt: "<shasum 的結果>"
+inputs:
+  - name: model
+    repository: registry:5000/data/model
+    digest: sha256:…                       # mftiko-pack data 印出的
+restart:
+  mode: never
+```
+
+```sh
+bin/mftiko session create -f inputs.yaml --wait running
+bin/mftiko session logs <session_id>      # {"hook":"OnInit","input":"model","files":1}
+bin/mftiko session end <session_id> --wait --yes
+```
+
+sha256 寫錯時，session 以 `failed` 結束，last exit 是 `init_failed`，reason 指出哪個檔案不符。`make dev-down` 保留資料，`make dev-up` 之後可以照樣重跑。完整路徑另有 `accept.sh e2e cli inputs`（[deploy/accept/README.md](../deploy/accept/README.md)）。
 
 ### 容量
 
