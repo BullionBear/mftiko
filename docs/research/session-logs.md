@@ -1,6 +1,6 @@
 # session log
 
-這一頁記 E14 已經定的事（E14-D001–E14-D010，#436，2026-10-27）。HTTP 路徑與 `Frame` 的欄位已寫在 PROTOCOL §11（#437，E14-D011–E14-D015）。讀檔的 cursor、CLI 的輸出細節、console 的版面仍由 #438–#444 寫，這裡不定。
+這一頁記 E14 已經定的事（E14-D001–E14-D010，#436，2026-10-27）。HTTP 路徑與 `Frame` 的欄位已寫在 PROTOCOL §11（#437，E14-D011–E14-D015）。讀檔的 cursor 寫在 §4.3（#438，E14-D016–E14-D018）。CLI 的輸出細節、console 的版面仍由後面的票寫，這裡不定。
 
 檔案仍是唯一來源。shim 的 S4、策略 SDK、PROTOCOL §9 不改。STS 的 log 留到 spec 被刪（E10-D016）。
 
@@ -33,7 +33,7 @@ HTTP 路徑、狀態碼、`Authorization` 與 `Frame` 的欄位寫在 PROTOCOL �
 
 讀的是 S4 的檔：`${WORK_DIR}/log/{plane}/{h}.stdout` 與 `{h}.stderr`。STS 的 `h = WorkerHash("sts/<session_id>")`。權限 0640，目錄 0750（E10-D015、PROTOCOL §4.5）。輪替規則不在這一張改。
 
-讀取器在 `internal/platform/logread`，不認識平面，不連網路（#438）。cursor 是不透明的 base64url，內容 `(dev, inode, offset, hash)`（E14-D016）。接不上送 gap，從最舊的檔接著讀，不估算遺失的 bytes（E14-D017）。follow 握著目前檔的 fd，到檔尾先看一次、之後每 250 ms 再看；路徑的 inode 換了就把舊 fd 讀完再開新的，正常輪替不送 gap（E14-D018）。
+讀取器在 `internal/platform/logread`，不認識平面，不連網路（#438）。cursor 是不透明的 base64url，內容 `(dev, inode, offset, hash)`（E14-D016）。字母沒有 `=`、分號與空白，可以直接放進 `Frame.next`。接不上送 gap，從最舊的檔接著讀，不估算遺失的 bytes（E14-D017）。follow 握著目前檔的 fd，到檔尾先看一次、之後每 250 ms 再看；路徑的 inode 換了就把舊 fd 讀完再開新的，正常輪替不送 gap（E14-D018）。Open 之後、尚未讀出位元組時的 cursor 就是解析出來的起點。
 
 tail 從正在寫的檔往回數行，最後一行沒有換行也算一行，不夠再往 `.1`、`.2`。匯出一開始就打開所有輪替檔的 fd，總大小固定，由舊到新讀；途中檔名被刪也讀得完。每段最多 256 KiB（E14-D007），盡量切在換行，否則切在完整的 UTF-8 字元之後。讀取速率與同時讀取數是 E14-D007 的那兩個 flag，由呼叫端傳進 token bucket。
 

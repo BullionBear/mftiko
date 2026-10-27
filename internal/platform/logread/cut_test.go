@@ -34,7 +34,8 @@ func TestCutNewlineAndRune(t *testing.T) {
 }
 
 func TestMaxChunkConstant(t *testing.T) {
-	if maxChunk != 256<<10 {
+	// Frame.data's cap is 262144 bytes (PROTOCOL §11, E14-D007).
+	if maxChunk != 262144 {
 		t.Fatalf("maxChunk %d", maxChunk)
 	}
 }

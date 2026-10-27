@@ -4,8 +4,8 @@ package logread
 
 import "unicode/utf8"
 
-// maxChunk is the most one record carries. A frame on the wire is 256 KiB
-// (E14-D007); cutting here keeps a record inside that bound.
+// maxChunk is the most one record carries. Frame.data is at most 262144
+// bytes (PROTOCOL §11, E14-D007); cutting here keeps a record inside that bound.
 const maxChunk = 256 << 10
 
 // cut splits b into the next record and the bytes that stay buffered.

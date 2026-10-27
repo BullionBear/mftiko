@@ -27,7 +27,8 @@ type cursor struct {
 
 // encode packs dev, inode, offset, and hash as four little-endian uint64
 // values and then base64url without padding. The layout is part of E14-D016;
-// the token is still opaque to callers.
+// the token is still opaque to callers. The alphabet is [A-Za-z0-9_-], so the
+// token has no '=', semicolon, or whitespace and can be Frame.next (E14-D011).
 func encode(dev, ino uint64, off int64, hash uint64) Cursor {
 	var raw [32]byte
 	binary.LittleEndian.PutUint64(raw[0:8], dev)

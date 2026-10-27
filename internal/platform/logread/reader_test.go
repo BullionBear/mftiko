@@ -281,6 +281,45 @@ func TestKeep1NoGap(t *testing.T) {
 	}
 }
 
+func TestCursorIsResolvedStart(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "h.stdout")
+	body := []byte("abcdef\n")
+	writeFile(t, path, body)
+	ctx := context.Background()
+	s, err := Open(ctx, Options{Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := s.Cursor()
+	if start == "" {
+		t.Fatal("empty start")
+	}
+	rec, err := s.Next()
+	if err != nil || rec.Gap || string(rec.Data) != string(body) {
+		t.Fatalf("%+v %v", rec, err)
+	}
+	if rec.Cursor == start {
+		t.Fatal("cursor did not advance")
+	}
+	s.Close()
+	if s.Cursor() != "" {
+		t.Fatal("closed stream still has a cursor")
+	}
+	s, err = Open(ctx, Options{Path: path, Origin: OriginCursor, Cursor: start})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if s.Cursor() != start {
+		t.Fatalf("resume at %q, start %q", s.Cursor(), start)
+	}
+	data, gaps := collect(t, s)
+	if gaps != 0 || string(data) != string(body) {
+		t.Fatalf("gaps %d %q", gaps, data)
+	}
+}
+
 func TestCursorResumeAndReject(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "h.stdout")

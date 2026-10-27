@@ -505,6 +505,17 @@ func (s *Stream) note(chunk []byte) {
 	s.off += int64(len(chunk))
 }
 
+// Cursor is the resume token of the next byte Next has not yet returned.
+// After Open, and before Next, it is the resolved start: the agent sends that
+// value alone as the first Frame's next (PROTOCOL §11). It is empty when no
+// file is open. Call it from the same goroutine as Next.
+func (s *Stream) Cursor() Cursor {
+	if s == nil || s.closed {
+		return ""
+	}
+	return s.cursor()
+}
+
 func (s *Stream) cursor() Cursor {
 	if s.f == nil {
 		return ""

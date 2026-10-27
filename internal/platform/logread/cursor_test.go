@@ -8,6 +8,7 @@ import (
 	"errors"
 	"hash/fnv"
 	"testing"
+	"unicode"
 )
 
 func TestCursorRoundTrip(t *testing.T) {
@@ -32,6 +33,25 @@ func TestCursorRoundTrip(t *testing.T) {
 	for _, bad := range []Cursor{"", "!!!", "YQ", Cursor(base64.URLEncoding.EncodeToString(make([]byte, 32)))} {
 		if _, err := decode(bad); !errors.Is(err, ErrCursor) {
 			t.Fatalf("%q: %v", bad, err)
+		}
+	}
+}
+
+func TestCursorAlphabet(t *testing.T) {
+	samples := []Cursor{
+		encode(0, 0, 0, fnv64(nil)),
+		encode(1, 2, 3, 4),
+		encode(^uint64(0), ^uint64(0), 1<<62, ^uint64(0)),
+	}
+	for _, c := range samples {
+		if c == "" {
+			t.Fatal("empty token")
+		}
+		for _, r := range string(c) {
+			ok := r == '-' || r == '_' || (r >= '0' && r <= '9') || (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z')
+			if !ok || r == ';' || r == '=' || unicode.IsSpace(r) {
+				t.Fatalf("%q contains %q", c, r)
+			}
 		}
 	}
 }
