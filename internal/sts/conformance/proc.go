@@ -8,10 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"sync"
-	"syscall"
 	"time"
 
-	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/proto"
 
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
@@ -55,7 +53,7 @@ func startProc(argv, env []string) (*proc, error) {
 	if len(argv) == 0 || argv[0] == "" {
 		return nil, fmt.Errorf("conformance: empty worker command")
 	}
-	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0)
+	fds, err := ctlPair()
 	if err != nil {
 		return nil, fmt.Errorf("conformance: socketpair: %w", err)
 	}
@@ -64,7 +62,7 @@ func startProc(argv, env []string) (*proc, error) {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Env = env
 	cmd.ExtraFiles = []*os.File{theirs} // fd 3
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
+	cmd.SysProcAttr = procAttr()
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		ours.Close()
