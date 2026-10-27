@@ -486,11 +486,13 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 			ObservedGeneration: rev, Phase: phase, Reason: reason, UpdatedAtNs: now.UnixNano(),
 			RestartCount: ev.restarts,
 		}
-		if obs != nil {
-			msg.Incarnation = obs.Incarnation
-			if obs.Exit != nil {
-				msg.LastExit = exitForStatus(obs.Exit, ev)
-			}
+		var note exitNote
+		if p.exits != nil {
+			note = p.exits[id]
+		}
+		if inc, last, ok := statusExit(obs, note, ev); ok {
+			msg.Incarnation = inc
+			msg.LastExit = last
 		}
 		if prev := p.saved[id]; prev.GetStateOut() != nil {
 			msg.StateOut = proto.Clone(prev.GetStateOut()).(*statev1.StateSnapshot)

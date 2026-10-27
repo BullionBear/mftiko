@@ -115,6 +115,28 @@ func exitReason(ex *commonv1.ExitInfo, end endView) string {
 	return ex.GetReason()
 }
 
+// statusExit is the incarnation and last exit written on SessionStatus.
+// A worker that is still observed supplies them. After release, obs is nil
+// and the ExitInfo noteExitLocked stored fills both, including
+// on_stop_completed (E09-D098). ok is false when there is neither an
+// observation nor a stored exit, so a session that never spawned stays at
+// incarnation 0 with no last_exit (E09-D063).
+func statusExit(obs *agent.Observed, note exitNote, ev endView) (inc uint32, last *commonv1.ExitInfo, ok bool) {
+	if obs != nil {
+		if obs.Exit != nil {
+			last = exitForStatus(obs.Exit, ev)
+		}
+		return obs.Incarnation, last, true
+	}
+	if !note.ok {
+		return 0, nil, false
+	}
+	if note.exit != nil {
+		last = exitForStatus(note.exit, ev)
+	}
+	return note.inc, last, true
+}
+
 // exitForStatus is the ExitInfo written on SessionStatus. The shim's record
 // stays as the process ended; a missing-beat SIGKILL is published as HUNG
 // with reason no_beat (E09-D067).

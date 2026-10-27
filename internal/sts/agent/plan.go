@@ -199,7 +199,9 @@ func buildViews(inst string, specV, demandV, statusV state.View, local map[strin
 // no parsed spec, so it does not occupy algos. Only a desired of RUNNING enters
 // the plan, and only when no earlier non-terminal session on this instance
 // overlaps it (E09-D016, E09-D017). An assignment that is ENDED or gone is not a
-// conflict; it still occupies its algos until it is terminal.
+// conflict; it still occupies its algos until it is terminal. A spec whose
+// desired_state is already ENDED is ended the same way even while the assignment
+// is still RUNNING (E09-D097): that edit is not a spec change (E09-D047).
 func decide(sessions map[string]*sess, prevHash map[string]string) decision {
 	out := decision{
 		Plans:   map[agent.WorkerKey]agent.Plan[Spec, Live]{},
@@ -257,6 +259,15 @@ func decide(sessions map[string]*sess, prevHash map[string]string) decision {
 		}
 		switch d.Desired {
 		case sessionv1.DesiredState_DESIRED_STATE_RUNNING:
+			// Session end CAS-es the spec before the assignment catches up.
+			// desired_state ENDED is not a new incarnation (E09-D097, E09-D047).
+			if s.parsed.GetDesiredState() == sessionv1.DesiredState_DESIRED_STATE_ENDED {
+				item.Kind = kindEnded
+				item.EndReason = "ended_by_spec"
+				out.Intents[id] = item
+				anchors = append(anchors, anchor{id: id, issued: d.IssuedAt, parsed: s.parsed})
+				continue
+			}
 			anchors = append(anchors, anchor{id: id, issued: d.IssuedAt, parsed: s.parsed})
 			candidates = append(candidates, candidate{
 				id: id, issued: d.IssuedAt, start: d.Start, spec: *s.spec, parsed: s.parsed,

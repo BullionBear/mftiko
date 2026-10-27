@@ -343,6 +343,58 @@ func TestNoSpecNoStatus(t *testing.T) {
 	}
 }
 
+// Ending a session only CAS-es desired_state. The assignment stays RUNNING
+// until the controller catches up. That is not a spec change: the running
+// incarnation is stopped, not replaced, and the terminal status keeps its
+// incarnation and last exit (E09-D047, E09-D097, E09-D098, #433).
+func TestSpecEndedStopsWithoutReplacing(t *testing.T) {
+	e := setup(t)
+	const id = "a1b2c3"
+	spec := sessionSpec(1, 1)
+	e.putSpec(id, spec)
+	e.putDemand(id, runningDemand(true, 1))
+	ph := e.collect(e.rev())
+	stop, done := e.start()
+	defer func() {
+		stop()
+		waitDone(t, done)
+	}()
+	ph.wait(id, statev1.Phase_PHASE_RUNNING)
+	if n := e.starts(id); n != 1 {
+		t.Fatalf("starts before end %d", n)
+	}
+	spec.DesiredState = sessionv1.DesiredState_DESIRED_STATE_ENDED
+	e.putSpec(id, spec)
+	st := ph.wait(id, statev1.Phase_PHASE_DONE)
+	if st.GetReason() != "ended_by_spec" {
+		t.Fatalf("DONE reason %q status %s", st.GetReason(), describeStatus(st))
+	}
+	pollUntil(t, "terminal incarnation and last_exit.on_stop_completed", func() bool {
+		got := e.status(id)
+		return got.GetPhase() == statev1.Phase_PHASE_DONE && got.GetReason() == "ended_by_spec" &&
+			got.GetIncarnation() != 0 && got.GetLastExit().GetOnStopCompleted()
+	})
+	if n := e.starts(id); n != 1 {
+		t.Fatalf("starts %d", n)
+	}
+	if d := e.demand(id); d.GetDesired() != sessionv1.DesiredState_DESIRED_STATE_RUNNING {
+		t.Fatalf("assignment caught up: %+v", d)
+	}
+	if strings.Contains(e.log.String(), "spec changed; replacing the incarnation") {
+		t.Fatalf("desired_state ENDED replaced the incarnation:\n%s", e.log.String())
+	}
+	if e.hasDown(id, func(m *workerv1.WorkerDown) bool {
+		return m.GetStop().GetReason() == agent.ReasonSpecChanged
+	}) {
+		t.Fatal("stopped for a spec change")
+	}
+	if !e.hasDown(id, func(m *workerv1.WorkerDown) bool {
+		return m.GetStop().GetReason() == agent.ReasonNotPlanned
+	}) {
+		t.Fatal("worker was not stopped as not in demand")
+	}
+}
+
 // A changed spec encoding replaces the incarnation and moves observed_generation.
 func TestSpecChangeReplacesIncarnation(t *testing.T) {
 	e := setup(t)
