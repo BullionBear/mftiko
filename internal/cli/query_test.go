@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -19,29 +20,29 @@ const (
 )
 
 func TestStrategyList(t *testing.T) {
-	cat := &apitest.Catalog{Strategies: []apiv1.Strategy{
-		{Id: "alpha", Repository: "example.invalid/alpha", Latest: &apiv1.StrategyTag{Tag: "latest", Digest: digA}},
-		{Id: "beta", Repository: "example.invalid/beta"},
+	repo := "example.invalid/alpha"
+	cat := &apitest.Catalog{Tags: map[string][]apiv1.StrategyTag{
+		repo: {
+			{Tag: "v1", Digest: digA},
+			{Tag: "latest", Digest: digA},
+		},
+		"example.invalid/beta": {},
 	}}
 	srv, home := startCat(t, cat)
-	got := runQuery(t, home, "strategy", "list")
+	got := runQuery(t, home, "strategy", "list", repo)
 	if got.code != ExitOK {
 		t.Fatalf("exit %d stderr %q", got.code, got.err)
 	}
 	if got.err != "" {
 		t.Fatalf("stderr %q", got.err)
 	}
-	if shortDigest(digA) != "0000000" {
-		t.Fatalf("short digest %q", shortDigest(digA))
-	}
-	if !strings.Contains(got.out, "alpha") || !strings.Contains(got.out, "latest") || !strings.Contains(got.out, shortDigest(digA)) {
+	if !strings.Contains(got.out, "v1") || !strings.Contains(got.out, digA) || !strings.Contains(got.out, "sha256:") {
 		t.Fatalf("table %q", got.out)
 	}
-	if strings.Contains(got.out, digA) || strings.Contains(got.out, "sha256:") || strings.Contains(got.out, "00000000") {
-		t.Fatalf("table shows more than 7 digest characters: %q", got.out)
-	}
-	if !strings.Contains(got.out, "beta") || !strings.Contains(got.out, "example.invalid/beta") {
-		t.Fatalf("missing strategy: %q", got.out)
+	for _, line := range strings.Split(strings.TrimRight(got.out, "\n"), "\n") {
+		if strings.Contains(line, digA) && !strings.HasSuffix(strings.TrimSpace(line), "latest") {
+			t.Fatalf("unmarked %q in %q", line, got.out)
+		}
 	}
 	if strings.Contains(got.out, "warning") {
 		t.Fatalf("stdout %q", got.out)
@@ -50,7 +51,8 @@ func TestStrategyList(t *testing.T) {
 	if call.Operation != "ListStrategies" || call.Method != "GET" || call.Path != "/api/v1/strategies" {
 		t.Fatalf("call %+v", call)
 	}
-	if !strings.Contains(call.RawQuery, "limit=1000") || strings.Contains(call.RawQuery, "cursor=") {
+	q, err := url.ParseQuery(call.RawQuery)
+	if err != nil || q.Get("repository") != repo || q.Get("limit") != "1000" || q.Get("cursor") != "" {
 		t.Fatalf("query %q", call.RawQuery)
 	}
 	if call.Authorization != "Bearer "+tokenA || call.ContentType != "" || call.Cookie != "" {
@@ -60,14 +62,15 @@ func TestStrategyList(t *testing.T) {
 		t.Fatalf("user agent %q", call.UserAgent)
 	}
 
-	got = runQuery(t, home, "-o", "json", "strategy", "list")
+	got = runQuery(t, home, "-o", "json", "strategy", "list", repo)
 	if got.code != ExitOK {
 		t.Fatalf("json exit %d stderr %q", got.code, got.err)
 	}
 	if !bytes.Equal([]byte(got.out), srv.LastBody()) {
 		t.Fatalf("stdout is not the API body\n%s\n%s", got.out, srv.LastBody())
 	}
-	if !strings.Contains(got.out, digA) || strings.Contains(got.out, "next_cursor") || strings.Contains(got.out, "unavailable_regions") {
+	if !strings.Contains(got.out, digA) || !strings.Contains(got.out, `"repository"`) || !strings.Contains(got.out, `"latest"`) ||
+		strings.Contains(got.out, "next_cursor") || strings.Contains(got.out, "unavailable_regions") {
 		t.Fatalf("json %s", got.out)
 	}
 
@@ -76,7 +79,7 @@ func TestStrategyList(t *testing.T) {
 	})
 	t.Cleanup(over.Close)
 	writeConfig(t, home, configYAML(over.URL(), true, tokenA))
-	got = runAt(context.Background(), home, map[string]string{"MFTIKO_CONTEXT": "dev", "MFTIKO_TOKEN": tokenB}, strings.NewReader(""), "strategy", "list")
+	got = runAt(context.Background(), home, map[string]string{"MFTIKO_CONTEXT": "dev", "MFTIKO_TOKEN": tokenB}, strings.NewReader(""), "strategy", "list", repo)
 	noLeak(t, tokenA, got.out+got.err)
 	noLeak(t, tokenB, got.out+got.err)
 	if got.code != ExitOK || over.Calls()[0].Authorization != "Bearer "+tokenB {
@@ -86,36 +89,78 @@ func TestStrategyList(t *testing.T) {
 	bad := apitest.Start(apitest.Option{Token: tokenA, RequestID: "req-q", Catalog: cat})
 	t.Cleanup(bad.Close)
 	writeConfig(t, home, configYAML(bad.URL(), true, tokenB))
-	got = runQuery(t, home, "strategy", "list")
+	got = runQuery(t, home, "strategy", "list", repo)
 	if got.code != ExitUnauthenticated || !strings.Contains(got.err, "unauthenticated (11):") {
 		t.Fatalf("bad token %+v", got)
 	}
 	if len(bad.Calls()) != 1 || bad.Calls()[0].Operation != "ListStrategies" {
 		t.Fatalf("calls %+v", bad.Calls())
 	}
+
+	_, home = startCat(t, cat)
+	got = runQuery(t, home, "strategy", "list", "example.invalid/missing")
+	if got.code != ExitNotFound || !strings.Contains(got.err, "not_found (12):") || got.out != "" {
+		t.Fatalf("missing %+v", got)
+	}
+	got = runQuery(t, home, "strategy", "list")
+	if got.code != ExitUsage || !strings.Contains(got.err, "strategy list takes a repository") {
+		t.Fatalf("usage %+v", got)
+	}
+
+	// The latest tag is not on the first page. Rows that share its digest are still marked.
+	off := &apitest.Catalog{
+		PageSize: 1,
+		Tags: map[string][]apiv1.StrategyTag{
+			repo: {
+				{Tag: "v1", Digest: digA},
+				{Tag: "latest", Digest: digA},
+				{Tag: "v2", Digest: digB},
+			},
+		},
+	}
+	_, home = startCat(t, off)
+	got = runQuery(t, home, "--cursor", "0", "strategy", "list", repo)
+	if got.code != ExitOK {
+		t.Fatalf("cursor exit %d stderr %q", got.code, got.err)
+	}
+	if strings.Contains(got.out, digB) || !strings.Contains(got.out, digA) {
+		t.Fatalf("first page %q", got.out)
+	}
+	marked := false
+	for _, line := range strings.Split(strings.TrimRight(got.out, "\n"), "\n") {
+		if strings.Contains(line, "v1") && strings.Contains(line, digA) && strings.HasSuffix(strings.TrimSpace(line), "latest") {
+			marked = true
+		}
+	}
+	if !marked {
+		t.Fatalf("latest off the page was not marked: %q", got.out)
+	}
 }
 
 func TestStrategyPaging(t *testing.T) {
-	strategies := make([]apiv1.Strategy, 5)
-	for i := range strategies {
-		strategies[i] = apiv1.Strategy{Id: string(rune('a' + i)), Repository: "example.invalid/" + string(rune('a'+i))}
+	repo := "example.invalid/alpha"
+	tags := make([]apiv1.StrategyTag, 5)
+	for i := range tags {
+		tags[i] = apiv1.StrategyTag{Tag: string(rune('a' + i)), Digest: digA}
 	}
-	cat := &apitest.Catalog{Strategies: strategies, PageSize: 2}
+	cat := &apitest.Catalog{Tags: map[string][]apiv1.StrategyTag{repo: tags}, PageSize: 2}
 	srv, home := startCat(t, cat)
 
-	got := runQuery(t, home, "-o", "json", "strategy", "list")
+	got := runQuery(t, home, "-o", "json", "strategy", "list", repo)
 	if got.code != ExitOK {
 		t.Fatalf("all exit %d stderr %q", got.code, got.err)
 	}
 	var merged struct {
-		Items      []apiv1.Strategy `json:"items"`
-		NextCursor *string          `json:"next_cursor"`
+		Items      []apiv1.StrategyTag `json:"items"`
+		Repository string              `json:"repository"`
+		Latest     *apiv1.StrategyTag  `json:"latest"`
+		NextCursor *string             `json:"next_cursor"`
 	}
 	if err := json.Unmarshal([]byte(got.out), &merged); err != nil {
 		t.Fatal(err)
 	}
-	if len(merged.Items) != 5 || merged.NextCursor != nil || merged.Items[0].Id != "a" || merged.Items[4].Id != "e" {
-		t.Fatalf("merged %+v", merged.Items)
+	if len(merged.Items) != 5 || merged.NextCursor != nil || merged.Items[0].Tag != "a" || merged.Items[4].Tag != "e" || merged.Repository != repo || merged.Latest != nil {
+		t.Fatalf("merged %+v repo %q latest %+v", merged.Items, merged.Repository, merged.Latest)
 	}
 	if strings.Contains(got.out, "next_cursor") {
 		t.Fatalf("merged json kept a cursor: %s", got.out)
@@ -131,35 +176,35 @@ func TestStrategyPaging(t *testing.T) {
 		t.Fatalf("queries %q %q", calls[1].RawQuery, calls[2].RawQuery)
 	}
 
-	one := &apitest.Catalog{Strategies: strategies, PageSize: 2}
+	one := &apitest.Catalog{Tags: map[string][]apiv1.StrategyTag{repo: tags}, PageSize: 2}
 	srv, home = startCat(t, one)
-	got = runQuery(t, home, "strategy", "list", "--limit", "1", "-o", "json")
+	got = runQuery(t, home, "strategy", "list", repo, "--limit", "1", "-o", "json")
 	if got.code != ExitOK {
 		t.Fatalf("limit 1 exit %d stderr %q", got.code, got.err)
 	}
 	if err := json.Unmarshal([]byte(got.out), &merged); err != nil {
 		t.Fatal(err)
 	}
-	if len(merged.Items) != 1 || merged.Items[0].Id != "a" || len(srv.Calls()) != 1 {
+	if len(merged.Items) != 1 || merged.Items[0].Tag != "a" || merged.Repository != repo || len(srv.Calls()) != 1 {
 		t.Fatalf("limit 1 items %d calls %d", len(merged.Items), len(srv.Calls()))
 	}
 
-	three := &apitest.Catalog{Strategies: strategies, PageSize: 2}
+	three := &apitest.Catalog{Tags: map[string][]apiv1.StrategyTag{repo: tags}, PageSize: 2}
 	srv, home = startCat(t, three)
-	got = runQuery(t, home, "--limit", "3", "-o", "json", "strategy", "list")
+	got = runQuery(t, home, "--limit", "3", "-o", "json", "strategy", "list", repo)
 	if got.code != ExitOK {
 		t.Fatalf("limit 3 exit %d stderr %q", got.code, got.err)
 	}
 	if err := json.Unmarshal([]byte(got.out), &merged); err != nil {
 		t.Fatal(err)
 	}
-	if len(merged.Items) != 3 || merged.Items[2].Id != "c" || len(srv.Calls()) != 2 {
+	if len(merged.Items) != 3 || merged.Items[2].Tag != "c" || len(srv.Calls()) != 2 {
 		t.Fatalf("limit 3 items %+v calls %d", merged.Items, len(srv.Calls()))
 	}
 
-	page := &apitest.Catalog{Strategies: strategies, PageSize: 2}
+	page := &apitest.Catalog{Tags: map[string][]apiv1.StrategyTag{repo: tags}, PageSize: 2}
 	srv, home = startCat(t, page)
-	got = runQuery(t, home, "-o", "json", "--cursor", "2", "strategy", "list")
+	got = runQuery(t, home, "-o", "json", "--cursor", "2", "strategy", "list", repo)
 	if got.code != ExitOK {
 		t.Fatalf("cursor exit %d stderr %q", got.code, got.err)
 	}
@@ -171,11 +216,10 @@ func TestStrategyPaging(t *testing.T) {
 	}
 
 	// E11-D010 supplement: --limit together with --cursor is a usage error (exit 1).
-	both := &apitest.Catalog{Strategies: strategies, PageSize: 2}
+	both := &apitest.Catalog{Tags: map[string][]apiv1.StrategyTag{repo: tags}, PageSize: 2}
 	srv, home = startCat(t, both)
 	for _, args := range [][]string{
-		{"strategy", "list", "--limit", "2", "--cursor", "2"},
-		{"strategy", "versions", "alpha", "--cursor", "2", "--limit", "2"},
+		{"strategy", "list", repo, "--limit", "2", "--cursor", "2"},
 	} {
 		got = runQuery(t, home, args...)
 		if got.code != ExitUsage || got.out != "" || len(srv.Calls()) != 0 || !strings.Contains(got.err, "-limit and -cursor cannot both be set") {
@@ -188,9 +232,9 @@ func TestStrategyPaging(t *testing.T) {
 		Type: "about:blank", Title: "Registry Unavailable", Status: http.StatusServiceUnavailable,
 		Code: apiv1.ErrorCodeRegistryUnavailable, Detail: &detail,
 	}
-	broken := &apitest.Catalog{Strategies: strategies, PageSize: 2, FailAt: 2, Fail: fail}
+	broken := &apitest.Catalog{Tags: map[string][]apiv1.StrategyTag{repo: tags}, PageSize: 2, FailAt: 2, Fail: fail}
 	srv, home = startCat(t, broken)
-	got = runQuery(t, home, "strategy", "list")
+	got = runQuery(t, home, "strategy", "list", repo)
 	if got.code != ExitRegistryUnavailable || got.out != "" || len(srv.Calls()) != 2 {
 		t.Fatalf("mid-page %+v calls %d", got, len(srv.Calls()))
 	}
@@ -208,7 +252,7 @@ func TestStrategyPaging(t *testing.T) {
 		"loop": {Body: loop2},
 	}}
 	srv, home = startCat(t, loops)
-	got = runQuery(t, home, "strategy", "list")
+	got = runQuery(t, home, "strategy", "list", repo)
 	if got.code != ExitNetwork || got.out != "" || !strings.Contains(got.err, "pagination cursor repeated") || strings.Contains(got.err, "loop") {
 		t.Fatalf("repeat %+v", got)
 	}
@@ -220,7 +264,7 @@ func TestStrategyPaging(t *testing.T) {
 		"": {Body: []byte("{\"nope\":true}\n")},
 	}}
 	_, home = startCat(t, badPage)
-	got = runQuery(t, home, "strategy", "list")
+	got = runQuery(t, home, "strategy", "list", repo)
 	if got.code != ExitUsage || got.out != "" || !strings.Contains(got.err, "response is not a list") {
 		t.Fatalf("not a list %+v", got)
 	}
@@ -229,131 +273,16 @@ func TestStrategyPaging(t *testing.T) {
 		"": {Body: []byte("{\"items\":null}\n")},
 	}}
 	_, home = startCat(t, nullItems)
-	got = runQuery(t, home, "-o", "json", "strategy", "list")
+	got = runQuery(t, home, "-o", "json", "strategy", "list", repo)
 	if got.code != ExitUsage || got.out != "" {
 		t.Fatalf("null items %+v", got)
 	}
 
-	loud := &apitest.Catalog{Strategies: strategies[:3], PageSize: 2}
+	loud := &apitest.Catalog{Tags: map[string][]apiv1.StrategyTag{repo: tags[:3]}, PageSize: 2}
 	_, home = startCat(t, loud)
-	got = runQuery(t, home, "-v", "strategy", "list")
+	got = runQuery(t, home, "-v", "strategy", "list", repo)
 	if got.code != ExitOK || strings.Count(got.err, "X-Request-Id: req-q\n") != 2 {
 		t.Fatalf("verbose stderr %q", got.err)
-	}
-}
-
-func TestStrategyVersions(t *testing.T) {
-	cat := &apitest.Catalog{
-		PageSize: 1,
-		Versions: map[string][]apiv1.StrategyTag{
-			"alpha": {
-				{Tag: "v1", Digest: digA},
-				{Tag: "latest", Digest: digA},
-				{Tag: "v2", Digest: digB},
-			},
-		},
-	}
-	srv, home := startCat(t, cat)
-	got := runQuery(t, home, "strategy", "versions", "alpha")
-	if got.code != ExitOK {
-		t.Fatalf("exit %d stderr %q", got.code, got.err)
-	}
-	if len(srv.Calls()) != 3 || srv.Calls()[0].Path != "/api/v1/strategies/alpha/versions" {
-		t.Fatalf("calls %+v", srv.Calls())
-	}
-	for _, line := range strings.Split(strings.TrimRight(got.out, "\n"), "\n") {
-		if strings.Contains(line, digA) && !strings.HasSuffix(line, "  latest") {
-			t.Fatalf("unmarked %q in %q", line, got.out)
-		}
-		if strings.Contains(line, digB) && strings.Contains(line, "latest") {
-			t.Fatalf("v2 marked %q", line)
-		}
-	}
-	if !strings.Contains(got.out, digA) || !strings.Contains(got.out, digB) {
-		t.Fatalf("digests missing: %q", got.out)
-	}
-
-	got = runQuery(t, home, "-o", "json", "strategy", "versions", "alpha")
-	if got.code != ExitOK || !strings.Contains(got.out, digA) || strings.Contains(got.out, "next_cursor") {
-		t.Fatalf("json %+v", got)
-	}
-
-	first := &apitest.Catalog{PageSize: 1, Versions: cat.Versions}
-	_, home = startCat(t, first)
-	got = runQuery(t, home, "--cursor", "0", "strategy", "versions", "alpha")
-	if got.code != ExitOK {
-		t.Fatalf("cursor exit %d stderr %q", got.code, got.err)
-	}
-	if strings.Contains(got.out, "latest") || !strings.Contains(got.out, digA) {
-		t.Fatalf("first page marked or missing digest: %q", got.out)
-	}
-
-	_, home = startCat(t, &apitest.Catalog{})
-	got = runQuery(t, home, "strategy", "versions", "missing")
-	if got.code != ExitNotFound || !strings.Contains(got.err, "not_found (12):") || got.out != "" {
-		t.Fatalf("missing %+v", got)
-	}
-}
-
-func TestStrategyShow(t *testing.T) {
-	sdk := "sdk-1"
-	size := int64(0)
-	ver := apiv1.StrategyVersion{
-		StrategyId: "alpha", Repository: "example.invalid/alpha", Digest: digA,
-		Tags: []string{"v1", "latest"}, Name: "chase", Runtime: "go", Os: "linux", Arch: "amd64",
-		Sdk: &sdk, Contracts: []string{"c4", "c6"}, SizeBytes: &size,
-	}
-	cat := &apitest.Catalog{Manifests: map[string]apiv1.StrategyVersion{
-		"alpha\x00v1":      ver,
-		"alpha\x00" + digA: ver,
-	}}
-	srv, home := startCat(t, cat)
-	for _, ref := range []string{"v1", digA} {
-		got := runQuery(t, home, "strategy", "show", "alpha", ref)
-		if got.code != ExitOK {
-			t.Fatalf("show %s exit %d stderr %q", ref, got.code, got.err)
-		}
-		for _, want := range []string{digA, "v1, latest", "chase", "go", "sdk-1", "c4, c6"} {
-			if !strings.Contains(got.out, want) {
-				t.Fatalf("show %s missing %q in %q", ref, want, got.out)
-			}
-		}
-		if row(t, got.out, "SIZE_BYTES") != "0" || row(t, got.out, "DIGEST") != digA {
-			t.Fatalf("show %s fields %q", ref, got.out)
-		}
-		if strings.Contains(got.out, "warning") {
-			t.Fatalf("stdout %q", got.out)
-		}
-	}
-	if srv.Calls()[1].Operation != "GetStrategyVersion" {
-		t.Fatalf("call %+v", srv.Calls()[1])
-	}
-
-	got := runQuery(t, home, "-o", "json", "strategy", "show", "alpha", "v1")
-	if got.code != ExitOK || !bytes.Equal([]byte(got.out), srv.LastBody()) {
-		t.Fatalf("json equal %v\n%s\n%s", got.code == ExitOK, got.out, srv.LastBody())
-	}
-	if !strings.Contains(got.out, digA) {
-		t.Fatalf("json %s", got.out)
-	}
-
-	got = runQuery(t, home, "strategy", "show", "alpha", "missing")
-	if got.code != ExitNotFound || got.out != "" || !strings.Contains(got.err, "not_found (12):") {
-		t.Fatalf("missing %+v", got)
-	}
-
-	badDetail := "manifest is not a strategy artifact"
-	bad := &apiv1.Problem{
-		Type: "about:blank", Title: "Invalid Artifact", Status: http.StatusBadGateway,
-		Code: apiv1.ErrorCodeInvalidArtifact, Detail: &badDetail,
-	}
-	_, home = startCat(t, &apitest.Catalog{FailAt: 1, Fail: bad, Manifests: cat.Manifests})
-	got = runQuery(t, home, "strategy", "show", "alpha", "v1")
-	if got.code != ExitInvalidArtifact || got.out != "" || !strings.Contains(got.err, "invalid_artifact (21):") {
-		t.Fatalf("artifact %+v", got)
-	}
-	if strings.Contains(got.err, "registry connection problem") {
-		t.Fatalf("stderr %q", got.err)
 	}
 }
 
@@ -538,28 +467,30 @@ func TestPartialAvailability(t *testing.T) {
 		t.Fatalf("json stdout changed: %s", got.out)
 	}
 
-	p1 := []byte("{\"items\":[{\"id\":\"a\",\"repository\":\"example.invalid/a\"}],\"unavailable_regions\":[\"east\"],\"next_cursor\":\"p2\"}\n")
-	p2 := []byte("{\"items\":[{\"id\":\"b\",\"repository\":\"example.invalid/b\"}],\"freshness\":{\"unavailable_regions\":[\"west\"],\"controller_absent\":true}}\n")
+	p1 := []byte("{\"items\":[{\"tag\":\"a\",\"digest\":\"" + digA + "\"}],\"repository\":\"example.invalid/alpha\",\"unavailable_regions\":[\"east\"],\"next_cursor\":\"p2\"}\n")
+	p2 := []byte("{\"items\":[{\"tag\":\"b\",\"digest\":\"" + digB + "\"}],\"repository\":\"example.invalid/alpha\",\"latest\":{\"tag\":\"latest\",\"digest\":\"" + digA + "\"},\"freshness\":{\"unavailable_regions\":[\"west\"],\"controller_absent\":true}}\n")
 	pages := &apitest.Catalog{StrategyPages: map[string]apitest.RawPage{
 		"":   {Body: p1},
 		"p2": {Body: p2},
 	}}
 	_, home = startCat(t, pages)
-	got = runQuery(t, home, "-o", "json", "-v", "strategy", "list")
+	got = runQuery(t, home, "-o", "json", "-v", "strategy", "list", "example.invalid/alpha")
 	if got.code != ExitOK {
 		t.Fatalf("union exit %d stderr %q stdout %s", got.code, got.err, got.out)
 	}
 	var body struct {
-		Items              []apiv1.Strategy `json:"items"`
-		UnavailableRegions []string         `json:"unavailable_regions"`
-		NextCursor         *string          `json:"next_cursor"`
-		ControllerAbsent   *bool            `json:"controller_absent"`
+		Items              []apiv1.StrategyTag `json:"items"`
+		Repository         string              `json:"repository"`
+		Latest             *apiv1.StrategyTag  `json:"latest"`
+		UnavailableRegions []string            `json:"unavailable_regions"`
+		NextCursor         *string             `json:"next_cursor"`
+		ControllerAbsent   *bool               `json:"controller_absent"`
 	}
 	if err := json.Unmarshal([]byte(got.out), &body); err != nil {
 		t.Fatal(err)
 	}
-	if len(body.Items) != 2 || body.Items[0].Id != "a" || body.Items[1].Id != "b" {
-		t.Fatalf("items %+v", body.Items)
+	if len(body.Items) != 2 || body.Items[0].Tag != "a" || body.Items[1].Tag != "b" || body.Repository != "example.invalid/alpha" || body.Latest == nil || body.Latest.Digest != digA {
+		t.Fatalf("items %+v repo %q latest %+v", body.Items, body.Repository, body.Latest)
 	}
 	if len(body.UnavailableRegions) != 2 || body.UnavailableRegions[0] != "east" || body.UnavailableRegions[1] != "west" {
 		t.Fatalf("regions %+v", body.UnavailableRegions)
@@ -617,24 +548,24 @@ func TestQueryUsage(t *testing.T) {
 	var in countReader
 	in.r = strings.NewReader(tokenA + "\n")
 	got := runReader(context.Background(), t.TempDir(), nil, &in, "login", "--limit", "1")
-	if got.code != ExitUsage || in.n != 0 || !strings.Contains(got.err, "only for strategy list and strategy versions") {
+	if got.code != ExitUsage || in.n != 0 || !strings.Contains(got.err, "only for strategy list, account list") {
 		t.Fatalf("login limit %+v reads %d", got, in.n)
 	}
 	noLeak(t, tokenA, got.out+got.err)
 
 	got = runAt(context.Background(), t.TempDir(), nil, strings.NewReader(""), "whoami", "--cursor", "page")
-	if got.code != ExitUsage || !strings.Contains(got.err, "only for strategy list and strategy versions") {
+	if got.code != ExitUsage || !strings.Contains(got.err, "only for strategy list, account list") {
 		t.Fatalf("whoami cursor %+v", got)
 	}
 
-	got = runAt(context.Background(), t.TempDir(), nil, strings.NewReader(""), "--limit", tokenA, "strategy", "list")
+	got = runAt(context.Background(), t.TempDir(), nil, strings.NewReader(""), "--limit", tokenA, "strategy", "list", "example.invalid/alpha")
 	if got.code != ExitUsage {
 		t.Fatalf("bad limit %d", got.code)
 	}
 	noLeak(t, tokenA, got.out+got.err)
 
 	got = runAt(context.Background(), t.TempDir(), nil, strings.NewReader(""), "help", "strategy")
-	if got.code != ExitOK || got.err != "" || !strings.Contains(got.out, "strategy versions") {
+	if got.code != ExitOK || got.err != "" || !strings.Contains(got.out, "strategy list <repository>") || strings.Contains(got.out, "strategy versions") {
 		t.Fatalf("help %+v", got)
 	}
 	got = runAt(context.Background(), t.TempDir(), nil, strings.NewReader(""), "help", "instance")
@@ -654,12 +585,14 @@ func TestQueryUsage(t *testing.T) {
 		t.Fatalf("bogus %+v", got)
 	}
 
-	cat := &apitest.Catalog{Strategies: []apiv1.Strategy{
-		{Id: "a", Repository: "example.invalid/a"},
-		{Id: "b", Repository: "example.invalid/b"},
+	cat := &apitest.Catalog{Tags: map[string][]apiv1.StrategyTag{
+		"example.invalid/alpha": {
+			{Tag: "a", Digest: digA},
+			{Tag: "b", Digest: digB},
+		},
 	}, PageSize: 2}
 	srv, home := startCat(t, cat)
-	got = runQuery(t, home, "strategy", "list", "--limit", "2")
+	got = runQuery(t, home, "strategy", "list", "example.invalid/alpha", "--limit", "2")
 	if got.code != ExitOK || len(srv.Calls()) != 1 || !strings.Contains(got.out, "a") || !strings.Contains(got.out, "b") {
 		t.Fatalf("flag after command %+v calls %d", got, len(srv.Calls()))
 	}

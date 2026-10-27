@@ -40,7 +40,7 @@ EOF
 (umask 077 && cat >"$out/api.json" <<EOF
 {
   "users": [{"name": "dev", "token_sha256": "$hash"}],
-  "repositories": [],
+  "allow": ["*"],
   "registry": "registry:5000",
   "plain_http": true,
   "td_keys": {"td1": "$pub"},

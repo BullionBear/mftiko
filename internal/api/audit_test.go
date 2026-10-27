@@ -539,7 +539,7 @@ func TestReadyIgnoresPostgres(t *testing.T) {
 	conf, err := json.Marshal(map[string]any{
 		"listen":            "127.0.0.1:0",
 		"unavailable_after": "2s",
-		"repositories":      []string{"mftiko/strategies"},
+		"allow":             []string{"*"},
 		"users":             []any{map[string]string{"name": "ada", "token_sha256": tokenHash(tokenAda)}},
 	})
 	if err != nil {

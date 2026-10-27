@@ -82,7 +82,7 @@ type Config struct {
 	Topology         state.Topology
 	Planes           map[string]state.Plane
 	Users            []User
-	Repositories     []string
+	Allow            []string // strategy repository allowlist; "*" alone allows every path on Registry (E10-D119)
 	TDKeys           map[string]sealbox.PublicKey
 	Kinds            []Kind // not in the JSON; the command sets it (E10-D034). Empty rejects every kind.
 	Retention        time.Duration
@@ -114,7 +114,7 @@ type deployment struct {
 // configFile is the -config JSON (E10-D023). Durations are Go duration strings; empty or zero means the default.
 type configFile struct {
 	Users            []configUser      `json:"users"`
-	Repositories     []string          `json:"repositories"`
+	Allow            []string          `json:"allow"`
 	TDKeys           map[string]string `json:"td_keys"`
 	Retention        string            `json:"retention"`
 	UnavailableAfter string            `json:"unavailable_after"`
@@ -210,7 +210,8 @@ func (f configFile) config(dep deployment) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	if err := validateRepos(f.Repositories); err != nil {
+	allow, err := normalizeAllow(f.Allow, f.Registry)
+	if err != nil {
 		return Config{}, err
 	}
 	keys, err := parseTDKeys(f.TDKeys)
@@ -222,7 +223,7 @@ func (f configFile) config(dep deployment) (Config, error) {
 		return Config{}, err
 	}
 	return Config{
-		Topology: dep.Topology, Planes: dep.Planes, Users: users, Repositories: append([]string(nil), f.Repositories...),
+		Topology: dep.Topology, Planes: dep.Planes, Users: users, Allow: allow,
 		TDKeys: keys, Retention: retention, UnavailableAfter: unavailable, Listen: listen, ShutdownTimeout: shutdown,
 		Registry: reg, Catalog: cat,
 	}, nil
@@ -308,38 +309,99 @@ func parseToken(s string) ([32]byte, error) {
 	return out, nil
 }
 
-// strategyID is the last path segment of a repository (E10-D035). Empty, "." and ".." segments are rejected.
-func strategyID(repository string) (string, error) {
+// repositoryShape rejects an empty repository, whitespace, and empty, "." or ".." segments (E10-D119).
+func repositoryShape(repository string) error {
 	if repository == "" || strings.ContainsAny(repository, " \t\r\n") {
-		return "", fmt.Errorf("invalid repository %q", repository)
+		return fmt.Errorf("invalid repository %q", repository)
 	}
 	parts := strings.Split(repository, "/")
 	for _, p := range parts {
 		if p == "" || p == "." || p == ".." {
-			return "", fmt.Errorf("invalid repository %q", repository)
+			return fmt.Errorf("invalid repository %q", repository)
 		}
-	}
-	return parts[len(parts)-1], nil
-}
-
-func validateRepos(repos []string) error {
-	seen := map[string]bool{}
-	ids := map[string]bool{}
-	for _, r := range repos {
-		id, err := strategyID(r)
-		if err != nil {
-			return err
-		}
-		if seen[r] {
-			return fmt.Errorf("duplicate repository %q", r)
-		}
-		seen[r] = true
-		if ids[id] {
-			return fmt.Errorf("duplicate strategy id %q", id)
-		}
-		ids[id] = true
 	}
 	return nil
+}
+
+func lastPathSegment(repository string) string {
+	repository = strings.TrimRight(repository, "/")
+	if i := strings.LastIndex(repository, "/"); i >= 0 {
+		return repository[i+1:]
+	}
+	return repository
+}
+
+// normalizeAllow checks the strategy allowlist (E10-D119). "*" must be the only entry and does not
+// require a registry address. Any other entry is a registry host plus an optional path prefix.
+// A trailing slash is not part of the prefix. A concrete prefix requires Registry and must be that
+// address or a path under it. The returned slice is what requests are matched against.
+func normalizeAllow(allow []string, registry string) ([]string, error) {
+	stars := 0
+	for _, raw := range allow {
+		if raw == "*" {
+			stars++
+		}
+	}
+	if stars > 0 {
+		if stars != 1 || len(allow) != 1 {
+			return nil, errors.New("allow * must be the only entry")
+		}
+		return []string{"*"}, nil
+	}
+	out := make([]string, 0, len(allow))
+	seen := map[string]bool{}
+	reg := strings.TrimRight(registry, "/")
+	for _, raw := range allow {
+		entry := strings.TrimRight(raw, "/")
+		if err := repositoryShape(entry); err != nil {
+			return nil, err
+		}
+		if seen[entry] {
+			return nil, fmt.Errorf("duplicate allow entry %q", entry)
+		}
+		seen[entry] = true
+		if reg == "" {
+			return nil, errors.New("registry address is required")
+		}
+		if entry != reg && !strings.HasPrefix(entry, reg+"/") {
+			return nil, fmt.Errorf("allow entry %q is not on the configured registry", raw)
+		}
+		out = append(out, entry)
+	}
+	return out, nil
+}
+
+// allowMatches reports whether repository is on the allowlist (E10-D119).
+// A prefix matches the repository itself and any path under it. "*" matches every repository.
+// Trailing slashes are not part of the comparison.
+func allowMatches(allow []string, repository string) bool {
+	repository = strings.TrimRight(repository, "/")
+	for _, entry := range allow {
+		if entry == "*" {
+			return true
+		}
+		prefix := strings.TrimRight(entry, "/")
+		if repository == prefix || strings.HasPrefix(repository, prefix+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// pathOnRegistry returns the path stored in the session spec: repository without the configured
+// registry host (E10-D119). STS pulls that path from its own registry. A host that is not Address
+// is not ok.
+func pathOnRegistry(address, repository string) (string, bool) {
+	address = strings.TrimRight(address, "/")
+	repository = strings.TrimRight(repository, "/")
+	if address == "" || repository == "" {
+		return "", false
+	}
+	rest, ok := strings.CutPrefix(repository, address+"/")
+	if !ok || repositoryShape(rest) != nil {
+		return "", false
+	}
+	return rest, true
 }
 
 func parseTDKeys(in map[string]string) (map[string]sealbox.PublicKey, error) {
@@ -361,7 +423,7 @@ func (c Config) validate() error {
 	if err := validateUsers(c.Users); err != nil {
 		return err
 	}
-	if err := validateRepos(c.Repositories); err != nil {
+	if _, err := normalizeAllow(c.Allow, c.Registry.Address); err != nil {
 		return err
 	}
 	if err := validateTDKeys(c.Planes, c.TDKeys); err != nil {

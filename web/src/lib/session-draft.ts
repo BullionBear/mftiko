@@ -15,7 +15,7 @@ export type AccountRow = {
 export type Draft = {
 	name: string;
 	stsInstance: string;
-	strategyId: string;
+	repository: string;
 	strategyRef: string;
 	paramsText: string;
 	feeds: FeedRow[];
@@ -39,7 +39,7 @@ const STATIC_PATHS = new Set([
 	'/name',
 	'/sts_instance',
 	'/strategy',
-	'/strategy/id',
+	'/strategy/repository',
 	'/strategy/ref',
 	'/params',
 	'/feeds',
@@ -63,7 +63,7 @@ export function emptyDraft(): Draft {
 	return {
 		name: '',
 		stsInstance: '',
-		strategyId: '',
+		repository: '',
 		strategyRef: '',
 		paramsText: '',
 		feeds: [],
@@ -127,7 +127,7 @@ export function localErrors(draft: Draft): Record<string, string> {
 	const errors: Record<string, string> = {};
 	if (draft.name.trim() === '') errors['/name'] = 'required';
 	if (draft.stsInstance === '') errors['/sts_instance'] = 'required';
-	if (draft.strategyId === '') errors['/strategy/id'] = 'required';
+	if (draft.repository.trim() === '') errors['/strategy/repository'] = 'required';
 	if (draft.strategyRef === '') errors['/strategy/ref'] = 'required';
 	const params = paramsError(draft.paramsText);
 	if (params) errors['/params'] = params;
@@ -192,7 +192,7 @@ export function sessionRequestBody(draft: Draft): string {
 	const body: Record<string, unknown> = {
 		name: draft.name,
 		sts_instance: draft.stsInstance,
-		strategy: { id: draft.strategyId, ref: draft.strategyRef }
+		strategy: { repository: draft.repository.trim(), ref: draft.strategyRef }
 	};
 	if (draft.feeds.length > 0) {
 		body.feeds = draft.feeds.map((row) => ({ feed: row.feed, md_instance: row.mdInstance }));

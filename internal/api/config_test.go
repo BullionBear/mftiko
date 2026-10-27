@@ -86,7 +86,7 @@ func goodDeploy() string {
 func goodConfig(pub string) string {
 	return `{
 		"users": [{"name": "yi", "token_sha256": "` + tokenHash("yi-token") + `"}],
-		"repositories": ["mftiko/strategies"],
+		"allow": ["*"],
 		"td_keys": {"td-tw-1": "` + pub + `"}
 	}`
 }
@@ -129,8 +129,8 @@ func TestLoadDefaults(t *testing.T) {
 	if len(cfg.Users) != 1 || cfg.Users[0].Name != "yi" || cfg.Users[0].Token != sum {
 		t.Fatalf("users %+v", cfg.Users)
 	}
-	if len(cfg.Repositories) != 1 || cfg.Repositories[0] != "mftiko/strategies" {
-		t.Fatalf("repos %+v", cfg.Repositories)
+	if len(cfg.Allow) != 1 || cfg.Allow[0] != "*" {
+		t.Fatalf("allow %+v", cfg.Allow)
 	}
 	want, err := sealbox.ParsePublicKey(pub)
 	if err != nil {
@@ -196,8 +196,8 @@ func TestMinimumConfig(t *testing.T) {
 		map[string]string{},
 	)
 	cfg := loadWithin(t, deploy, `{}`, testInput(t))
-	if len(cfg.Users) != 0 || len(cfg.Repositories) != 0 || len(cfg.TDKeys) != 0 {
-		t.Fatalf("users %d repos %d keys %d", len(cfg.Users), len(cfg.Repositories), len(cfg.TDKeys))
+	if len(cfg.Users) != 0 || len(cfg.Allow) != 0 || len(cfg.TDKeys) != 0 {
+		t.Fatalf("users %d allow %d keys %d", len(cfg.Users), len(cfg.Allow), len(cfg.TDKeys))
 	}
 }
 
@@ -239,9 +239,12 @@ func TestLoadRejects(t *testing.T) {
 			{"name": "b", "token_sha256": "` + strings.ToUpper(hash) + `"}
 		], "td_keys": {"td-tw-1": "` + pub + `"}}`, "same token hash"},
 		{"short token", deploy, `{"users": [{"name": "yi", "token_sha256": "abcd"}], "td_keys": {"td-tw-1": "` + pub + `"}}`, "64 hex"},
-		{"empty repo", deploy, `{"repositories": [""], "td_keys": {"td-tw-1": "` + pub + `"}}`, "invalid repository"},
-		{"repo space", deploy, `{"repositories": ["a b"], "td_keys": {"td-tw-1": "` + pub + `"}}`, "invalid repository"},
-		{"duplicate repo", deploy, `{"repositories": ["a", "a"], "td_keys": {"td-tw-1": "` + pub + `"}}`, "duplicate repository"},
+		{"empty allow", deploy, `{"allow": [""], "td_keys": {"td-tw-1": "` + pub + `"}}`, "invalid repository"},
+		{"allow space", deploy, `{"allow": ["a b"], "registry": "reg.example", "td_keys": {"td-tw-1": "` + pub + `"}}`, "invalid repository"},
+		{"duplicate allow", deploy, `{"allow": ["reg.example/a", "reg.example/a"], "registry": "reg.example", "td_keys": {"td-tw-1": "` + pub + `"}}`, "duplicate allow entry"},
+		{"star mixed", deploy, `{"allow": ["*", "reg.example/a"], "registry": "reg.example", "td_keys": {"td-tw-1": "` + pub + `"}}`, "allow * must be the only entry"},
+		{"allow without registry", deploy, `{"allow": ["reg.example/a"], "td_keys": {"td-tw-1": "` + pub + `"}}`, "registry address is required"},
+		{"allow other host", deploy, `{"allow": ["other.example/a"], "registry": "reg.example", "td_keys": {"td-tw-1": "` + pub + `"}}`, "is not on the configured registry"},
 		{"bad pubkey", deploy, `{"td_keys": {"td-tw-1": "not-a-key"}}`, "td key"},
 		{"missing td key", deploy, `{}`, "has no public key"},
 		{"td key for other plane", deployDoc(
@@ -361,28 +364,36 @@ func TestWebAndTLS(t *testing.T) {
 	}
 }
 
-func TestStrategyRepositoryIDs(t *testing.T) {
+func TestAllowList(t *testing.T) {
 	pub := mustPub(t)
 	deploy := goodDeploy()
-	cases := []struct {
-		name, repos, want string
-	}{
-		{"duplicate id", `["a/x","b/x"]`, `duplicate strategy id "x"`},
-		{"duplicate id of a bare name", `["x","y/x"]`, `duplicate strategy id "x"`},
-		{"dot segment", `["a/./b"]`, "invalid repository"},
-		{"dotdot segment", `["a/../b"]`, "invalid repository"},
-		{"empty segment", `["a//b"]`, "invalid repository"},
-		{"leading slash", `["/a"]`, "invalid repository"},
-		{"trailing slash", `["a/"]`, "invalid repository"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			conf := `{"repositories":` + tc.repos + `,"td_keys":{"td-tw-1":"` + pub + `"}}`
+	keys := `,"td_keys":{"td-tw-1":"` + pub + `"}`
+	reject := func(name, conf, want string) {
+		t.Helper()
+		t.Run(name, func(t *testing.T) {
 			_, err := Load(strings.NewReader(deploy), strings.NewReader(conf), testInput(t))
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("error %v, want substring %q", err, tc.want)
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("error %v, want substring %q", err, want)
 			}
 		})
+	}
+	reject("dot segment", `{"registry":"reg.example","allow":["reg.example/a/./b"]`+keys+`}`, "invalid repository")
+	reject("dotdot segment", `{"registry":"reg.example","allow":["reg.example/a/../b"]`+keys+`}`, "invalid repository")
+	reject("empty segment", `{"registry":"reg.example","allow":["reg.example/a//b"]`+keys+`}`, "invalid repository")
+	reject("leading slash", `{"registry":"reg.example","allow":["/a"]`+keys+`}`, "invalid repository")
+	reject("trailing slash duplicate", `{"registry":"reg.example","allow":["reg.example/a/","reg.example/a"]`+keys+`}`, "duplicate allow entry")
+
+	cfg := loadWithin(t, deploy, `{"allow":["*"]`+keys+`}`, testInput(t))
+	if len(cfg.Allow) != 1 || cfg.Allow[0] != "*" {
+		t.Fatalf("star %+v", cfg.Allow)
+	}
+	cfg = loadWithin(t, deploy, `{"registry":"reg.example","allow":["reg.example/mftiko/"]`+keys+`}`, testInput(t))
+	if len(cfg.Allow) != 1 || cfg.Allow[0] != "reg.example/mftiko" {
+		t.Fatalf("prefix %+v", cfg.Allow)
+	}
+	cfg = loadWithin(t, deploy, `{"registry":"reg.example","allow":["reg.example"]`+keys+`}`, testInput(t))
+	if len(cfg.Allow) != 1 || cfg.Allow[0] != "reg.example" {
+		t.Fatalf("host %+v", cfg.Allow)
 	}
 }
 

@@ -1,0 +1,8 @@
+# E10-D118 (#429): one in-place break of api.v1. These lines match only this diff.
+# A later base already contains the break, so the lines match nothing and stay dormant.
+POST /sessions added the new required request property `strategy/repository`
+GET /strategies added the new required `query` request parameter `repository`
+GET /strategies removed the required property `items/items/id` from the response with the `200` status
+GET /strategies removed the required property `items/items/repository` from the response with the `200` status
+GET /strategies/{strategy_id}/versions api path removed without deprecation
+GET /strategies/{strategy_id}/versions/{ref} api path removed without deprecation

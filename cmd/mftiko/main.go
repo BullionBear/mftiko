@@ -2,9 +2,7 @@
 //
 //	mftiko login
 //	mftiko whoami
-//	mftiko strategy list
-//	mftiko strategy versions <id>
-//	mftiko strategy show <id> <ref>
+//	mftiko strategy list <repository>
 //	mftiko instance list
 //	mftiko instance show <name>
 //	mftiko account-kind list

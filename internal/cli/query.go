@@ -13,53 +13,23 @@ import (
 )
 
 func runStrategyList(a *App) int {
-	if len(a.Args) != 0 {
-		return a.exit("strategy list takes no arguments")
-	}
-	api, code := a.preparePaged()
-	if code != 0 {
-		return code
-	}
-	got, code := a.collect(func(limit int, cursor string) (Result, error) {
-		return api.ListStrategies(a.ctx, limit, cursor)
-	})
-	if code != 0 {
-		return code
-	}
-	return a.finishPaged(got, strategiesText)
-}
-
-func runStrategyVersions(a *App) int {
 	if len(a.Args) != 1 {
-		return a.exit("strategy versions takes a strategy id")
+		return a.exit("strategy list takes a repository")
 	}
-	id := a.Args[0]
+	repository := a.Args[0]
 	api, code := a.preparePaged()
 	if code != 0 {
 		return code
 	}
-	got, code := a.collect(func(limit int, cursor string) (Result, error) {
-		return api.ListStrategyVersions(a.ctx, id, limit, cursor)
+	got, code := a.collectExtra(func(limit int, cursor string) (Result, error) {
+		return api.ListStrategies(a.ctx, repository, limit, cursor)
+	}, []string{"repository", "latest"})
+	if code != 0 {
+		return code
+	}
+	return a.finishPaged(got, func(items []json.RawMessage) (string, error) {
+		return strategiesText(items, got.extra["latest"])
 	})
-	if code != 0 {
-		return code
-	}
-	return a.finishPaged(got, versionsText)
-}
-
-func runStrategyShow(a *App) int {
-	if len(a.Args) != 2 {
-		return a.exit("strategy show takes a strategy id and a ref")
-	}
-	api, code := a.prepareOne()
-	if code != 0 {
-		return code
-	}
-	res, err := api.GetStrategyVersion(a.ctx, a.Args[0], a.Args[1])
-	if code := a.checked(res, err); code != 0 {
-		return code
-	}
-	return a.finishOne(res, strategyShowText)
 }
 
 func runInstanceList(a *App) int {
@@ -138,47 +108,24 @@ func runAccountKindList(a *App) int {
 	return a.finishOne(res, accountKindText)
 }
 
-func strategiesText(items []json.RawMessage) (string, error) {
-	rows := make([][]string, 0, len(items))
-	for _, raw := range items {
-		var s apiv1.Strategy
-		if err := json.Unmarshal(raw, &s); err != nil {
+// strategiesText marks every row whose digest equals the response latest digest,
+// including when the tag named latest is not on this page (E10-D121). The digest
+// is printed in full.
+func strategiesText(items []json.RawMessage, latest json.RawMessage) (string, error) {
+	mark := ""
+	if len(latest) > 0 {
+		var t apiv1.StrategyTag
+		if err := json.Unmarshal(latest, &t); err != nil {
 			return "", errNotList
 		}
-		tag, dig := "", ""
-		if s.Latest != nil {
-			tag = s.Latest.Tag
-			dig = shortDigest(string(s.Latest.Digest))
-		}
-		rows = append(rows, []string{s.Id, s.Repository, tag, dig})
+		mark = string(t.Digest)
 	}
-	var b strings.Builder
-	if err := WriteTable(&b, []string{"ID", "REPOSITORY", "LATEST_TAG", "LATEST_DIGEST"}, rows); err != nil {
-		return "", err
-	}
-	return b.String(), nil
-}
-
-// versionsText marks every row whose digest equals the digest of a tag named
-// latest in this result (E11-D013). Rows outside this result are not consulted.
-func versionsText(items []json.RawMessage) (string, error) {
-	tags := make([]apiv1.StrategyTag, 0, len(items))
+	rows := make([][]string, 0, len(items))
 	for _, raw := range items {
 		var t apiv1.StrategyTag
 		if err := json.Unmarshal(raw, &t); err != nil {
 			return "", errNotList
 		}
-		tags = append(tags, t)
-	}
-	mark := ""
-	for _, t := range tags {
-		if t.Tag == "latest" && t.Digest != "" {
-			mark = string(t.Digest)
-			break
-		}
-	}
-	rows := make([][]string, 0, len(tags))
-	for _, t := range tags {
 		flag := ""
 		if mark != "" && string(t.Digest) == mark {
 			flag = "latest"
@@ -187,39 +134,6 @@ func versionsText(items []json.RawMessage) (string, error) {
 	}
 	var b strings.Builder
 	if err := WriteTable(&b, []string{"TAG", "DIGEST", "LATEST"}, rows); err != nil {
-		return "", err
-	}
-	return b.String(), nil
-}
-
-func strategyShowText(body []byte) (string, error) {
-	var v apiv1.StrategyVersion
-	if err := json.Unmarshal(body, &v); err != nil || v.StrategyId == "" {
-		return "", errors.New("response is not a strategy version")
-	}
-	sdk := ""
-	if v.Sdk != nil {
-		sdk = *v.Sdk
-	}
-	size := ""
-	if v.SizeBytes != nil {
-		size = strconv.FormatInt(*v.SizeBytes, 10)
-	}
-	rows := [][]string{
-		{"STRATEGY_ID", v.StrategyId},
-		{"REPOSITORY", v.Repository},
-		{"DIGEST", string(v.Digest)},
-		{"TAGS", strings.Join(v.Tags, ", ")},
-		{"NAME", v.Name},
-		{"RUNTIME", v.Runtime},
-		{"OS", v.Os},
-		{"ARCH", v.Arch},
-		{"SDK", sdk},
-		{"CONTRACTS", strings.Join(v.Contracts, ", ")},
-		{"SIZE_BYTES", size},
-	}
-	var b strings.Builder
-	if err := WriteTable(&b, []string{"FIELD", "VALUE"}, rows); err != nil {
 		return "", err
 	}
 	return b.String(), nil

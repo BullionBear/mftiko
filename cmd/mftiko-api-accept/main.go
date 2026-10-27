@@ -55,7 +55,9 @@ const (
 	sts2Inst    = "sts2"
 	strategyID  = "hello"
 	strategyTag = "accept"
-	userName    = "accept"
+	// strategyRepository is the pack path accept.sh pushes (registry:5000/strategies/hello).
+	strategyRepository = "registry:5000/strategies/" + strategyID
+	userName           = "accept"
 )
 
 var commands = map[string]func() error{

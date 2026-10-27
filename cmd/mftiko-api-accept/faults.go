@@ -138,7 +138,7 @@ func invalidFlow() error {
 	}{
 		{"unknown sts instance", "/sts_instance", mutate(ok, func(s *apiv1.SessionCreate) { s.StsInstance = "nope" })},
 		{"sts instance of another plane", "/sts_instance", mutate(ok, func(s *apiv1.SessionCreate) { s.StsInstance = mdInst })},
-		{"unknown strategy", "/strategy/id", mutate(ok, func(s *apiv1.SessionCreate) { s.Strategy.Id = "nope" })},
+		{"strategy not allowed", "/strategy/repository", mutate(ok, func(s *apiv1.SessionCreate) { s.Strategy.Repository = "example.invalid/nope" })},
 		{"feed on a td instance", "/feeds/0/md_instance", mutate(ok, func(s *apiv1.SessionCreate) {
 			s.Feeds = &[]apiv1.FeedDeclInput{{Feed: "orderbook_delta.BinanceUM_Perp_BTCUSDT", MdInstance: tdInst}}
 		})},
@@ -148,8 +148,8 @@ func invalidFlow() error {
 		{"account that does not exist", "/accounts/0/api_id", mutate(ok, func(s *apiv1.SessionCreate) {
 			s.Accounts = &[]apiv1.AccountDeclInput{{Name: "x", ApiId: 999_999_999, AlgoIds: []int{1}}}
 		})},
-		{"params not an object", "/params", rawBody(`{"name":"x","sts_instance":"` + stsInst + `","strategy":{"id":"` + strategyID + `","ref":"` + strategyTag + `"},"params":[1]}`)},
-		{"field the API does not take", "/selectors", rawBody(`{"name":"x","sts_instance":"` + stsInst + `","strategy":{"id":"` + strategyID + `","ref":"` + strategyTag + `"},"selectors":[]}`)},
+		{"params not an object", "/params", rawBody(`{"name":"x","sts_instance":"` + stsInst + `","strategy":{"repository":"` + strategyRepository + `","ref":"` + strategyTag + `"},"params":[1]}`)},
+		{"field the API does not take", "/selectors", rawBody(`{"name":"x","sts_instance":"` + stsInst + `","strategy":{"repository":"` + strategyRepository + `","ref":"` + strategyTag + `"},"selectors":[]}`)},
 	}
 	for _, c := range cases {
 		body, err := c.body()
@@ -191,7 +191,9 @@ func mutate(base apiv1.SessionCreate, change func(*apiv1.SessionCreate)) func() 
 	}
 }
 
-func rawBody(s string) func() ([]byte, error) { return func() ([]byte, error) { return []byte(s), nil } }
+func rawBody(s string) func() ([]byte, error) {
+	return func() ([]byte, error) { return []byte(s), nil }
+}
 
 // bothIDs lists the sessions on both replicas and requires them to agree.
 func (f *flow) bothIDs() ([]string, error) {

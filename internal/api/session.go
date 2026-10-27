@@ -452,6 +452,8 @@ func (s *Server) writeSessionProblem(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, errStorage):
 		writeProblem(w, http.StatusServiceUnavailable, apiv1.ErrorCodeStorageUnavailable, "Storage Unavailable", "storage is unavailable", nil)
+	case errors.Is(err, errRegistryUnconfigured):
+		writeProblem(w, http.StatusServiceUnavailable, apiv1.ErrorCodeRegistryUnavailable, "Registry Unavailable", "registry is not configured", nil)
 	case errors.Is(err, errRegistry):
 		writeProblem(w, http.StatusServiceUnavailable, apiv1.ErrorCodeRegistryUnavailable, "Registry Unavailable", "registry is unavailable", nil)
 	case errors.Is(err, errRegionUnavailable):

@@ -80,15 +80,9 @@ type ServerInterface interface {
 	// EndSession 結束 session
 	// (POST /sessions/{session_id}/end)
 	EndSession(w http.ResponseWriter, r *http.Request, sessionId SessionID)
-	// ListStrategies 列出策略
+	// ListStrategies 列出一個策略 repository 的 tag
 	// (GET /strategies)
 	ListStrategies(w http.ResponseWriter, r *http.Request, params ListStrategiesParams)
-	// ListStrategyVersions 列出策略的版本
-	// (GET /strategies/{strategy_id}/versions)
-	ListStrategyVersions(w http.ResponseWriter, r *http.Request, strategyId StrategyID, params ListStrategyVersionsParams)
-	// GetStrategyVersion 一個版本的 manifest
-	// (GET /strategies/{strategy_id}/versions/{ref})
-	GetStrategyVersion(w http.ResponseWriter, r *http.Request, strategyId StrategyID, ref string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -825,6 +819,19 @@ func (siw *ServerInterfaceWrapper) ListStrategies(w http.ResponseWriter, r *http
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListStrategiesParams
 
+	// ------------- Required query parameter "repository" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "repository", r.URL.Query(), &params.Repository, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "repository"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "repository", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -853,96 +860,6 @@ func (siw *ServerInterfaceWrapper) ListStrategies(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListStrategies(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListStrategyVersions operation middleware
-func (siw *ServerInterfaceWrapper) ListStrategyVersions(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "strategy_id" -------------
-	var strategyId StrategyID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "strategy_id", r.PathValue("strategy_id"), &strategyId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "strategy_id", Err: err})
-		return
-	}
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListStrategyVersionsParams
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "cursor" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListStrategyVersions(w, r, strategyId, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetStrategyVersion operation middleware
-func (siw *ServerInterfaceWrapper) GetStrategyVersion(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "strategy_id" -------------
-	var strategyId StrategyID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "strategy_id", r.PathValue("strategy_id"), &strategyId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "strategy_id", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "ref" -------------
-	var ref string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "ref", r.PathValue("ref"), &ref, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ref", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetStrategyVersion(w, r, strategyId, ref)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1076,8 +993,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/logout", wrapper.Logout)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/auth/me", wrapper.GetMe)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/strategies", wrapper.ListStrategies)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/strategies/{strategy_id}/versions", wrapper.ListStrategyVersions)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/strategies/{strategy_id}/versions/{ref}", wrapper.GetStrategyVersion)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/sessions", wrapper.ListSessions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/sessions", wrapper.CreateSession)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/sessions/{session_id}", wrapper.DeleteSession)
@@ -1100,8 +1015,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 }
 
 type ConflictApplicationProblemPlusJSONResponse Problem
-
-type InvalidArtifactApplicationProblemPlusJSONResponse Problem
 
 type NotFoundApplicationProblemPlusJSONResponse Problem
 
@@ -2490,7 +2403,7 @@ type ListStrategiesResponseObject interface {
 	VisitListStrategiesResponse(w http.ResponseWriter) error
 }
 
-type ListStrategies200JSONResponse StrategyList
+type ListStrategies200JSONResponse StrategyRepository
 
 func (response ListStrategies200JSONResponse) VisitListStrategiesResponse(w http.ResponseWriter) error {
 
@@ -2536,201 +2449,27 @@ func (response ListStrategies401ApplicationProblemPlusJSONResponse) VisitListStr
 	return err
 }
 
+type ListStrategies404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response ListStrategies404ApplicationProblemPlusJSONResponse) VisitListStrategiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListStrategies503ApplicationProblemPlusJSONResponse struct {
 	UnavailableApplicationProblemPlusJSONResponse
 }
 
 func (response ListStrategies503ApplicationProblemPlusJSONResponse) VisitListStrategiesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(503)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListStrategyVersionsRequestObject struct {
-	StrategyId StrategyID `json:"strategy_id"`
-	Params     ListStrategyVersionsParams
-}
-
-type ListStrategyVersionsResponseObject interface {
-	VisitListStrategyVersionsResponse(w http.ResponseWriter) error
-}
-
-type ListStrategyVersions200JSONResponse StrategyTagList
-
-func (response ListStrategyVersions200JSONResponse) VisitListStrategyVersionsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListStrategyVersions400ApplicationProblemPlusJSONResponse struct {
-	ValidationFailedApplicationProblemPlusJSONResponse
-}
-
-func (response ListStrategyVersions400ApplicationProblemPlusJSONResponse) VisitListStrategyVersionsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListStrategyVersions401ApplicationProblemPlusJSONResponse struct {
-	UnauthenticatedApplicationProblemPlusJSONResponse
-}
-
-func (response ListStrategyVersions401ApplicationProblemPlusJSONResponse) VisitListStrategyVersionsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListStrategyVersions404ApplicationProblemPlusJSONResponse struct {
-	NotFoundApplicationProblemPlusJSONResponse
-}
-
-func (response ListStrategyVersions404ApplicationProblemPlusJSONResponse) VisitListStrategyVersionsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListStrategyVersions503ApplicationProblemPlusJSONResponse struct {
-	UnavailableApplicationProblemPlusJSONResponse
-}
-
-func (response ListStrategyVersions503ApplicationProblemPlusJSONResponse) VisitListStrategyVersionsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(503)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetStrategyVersionRequestObject struct {
-	StrategyId StrategyID `json:"strategy_id"`
-	Ref        string     `json:"ref"`
-}
-
-type GetStrategyVersionResponseObject interface {
-	VisitGetStrategyVersionResponse(w http.ResponseWriter) error
-}
-
-type GetStrategyVersion200JSONResponse StrategyVersion
-
-func (response GetStrategyVersion200JSONResponse) VisitGetStrategyVersionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetStrategyVersion400ApplicationProblemPlusJSONResponse struct {
-	ValidationFailedApplicationProblemPlusJSONResponse
-}
-
-func (response GetStrategyVersion400ApplicationProblemPlusJSONResponse) VisitGetStrategyVersionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetStrategyVersion401ApplicationProblemPlusJSONResponse struct {
-	UnauthenticatedApplicationProblemPlusJSONResponse
-}
-
-func (response GetStrategyVersion401ApplicationProblemPlusJSONResponse) VisitGetStrategyVersionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetStrategyVersion404ApplicationProblemPlusJSONResponse struct {
-	NotFoundApplicationProblemPlusJSONResponse
-}
-
-func (response GetStrategyVersion404ApplicationProblemPlusJSONResponse) VisitGetStrategyVersionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetStrategyVersion502ApplicationProblemPlusJSONResponse struct {
-	InvalidArtifactApplicationProblemPlusJSONResponse
-}
-
-func (response GetStrategyVersion502ApplicationProblemPlusJSONResponse) VisitGetStrategyVersionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(502)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetStrategyVersion503ApplicationProblemPlusJSONResponse struct {
-	UnavailableApplicationProblemPlusJSONResponse
-}
-
-func (response GetStrategyVersion503ApplicationProblemPlusJSONResponse) VisitGetStrategyVersionResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -2804,15 +2543,9 @@ type StrictServerInterface interface {
 	// EndSession 結束 session
 	// (POST /sessions/{session_id}/end)
 	EndSession(ctx context.Context, request EndSessionRequestObject) (EndSessionResponseObject, error)
-	// ListStrategies 列出策略
+	// ListStrategies 列出一個策略 repository 的 tag
 	// (GET /strategies)
 	ListStrategies(ctx context.Context, request ListStrategiesRequestObject) (ListStrategiesResponseObject, error)
-	// ListStrategyVersions 列出策略的版本
-	// (GET /strategies/{strategy_id}/versions)
-	ListStrategyVersions(ctx context.Context, request ListStrategyVersionsRequestObject) (ListStrategyVersionsResponseObject, error)
-	// GetStrategyVersion 一個版本的 manifest
-	// (GET /strategies/{strategy_id}/versions/{ref})
-	GetStrategyVersion(ctx context.Context, request GetStrategyVersionRequestObject) (GetStrategyVersionResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -3412,60 +3145,6 @@ func (sh *strictHandler) ListStrategies(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListStrategiesResponseObject); ok {
 		if err := validResponse.VisitListStrategiesResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ListStrategyVersions operation middleware
-func (sh *strictHandler) ListStrategyVersions(w http.ResponseWriter, r *http.Request, strategyId StrategyID, params ListStrategyVersionsParams) {
-	var request ListStrategyVersionsRequestObject
-
-	request.StrategyId = strategyId
-	request.Params = params
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListStrategyVersions(ctx, request.(ListStrategyVersionsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListStrategyVersions")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListStrategyVersionsResponseObject); ok {
-		if err := validResponse.VisitListStrategyVersionsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetStrategyVersion operation middleware
-func (sh *strictHandler) GetStrategyVersion(w http.ResponseWriter, r *http.Request, strategyId StrategyID, ref string) {
-	var request GetStrategyVersionRequestObject
-
-	request.StrategyId = strategyId
-	request.Ref = ref
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetStrategyVersion(ctx, request.(GetStrategyVersionRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetStrategyVersion")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetStrategyVersionResponseObject); ok {
-		if err := validResponse.VisitGetStrategyVersionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

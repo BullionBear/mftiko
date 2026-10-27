@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import FeedStatus from '#lib/FeedStatus.svelte';
 	import { api, collectPages, createSession, failureOf, isProblem, type Account, type StrategyTag } from '#lib/api.ts';
-	import { AccountFeed, InstanceFeed, StrategyFeed } from '#lib/live.svelte.ts';
+	import { AccountFeed, InstanceFeed } from '#lib/live.svelte.ts';
 	import {
 		applyProblem,
 		emptyDraft,
@@ -22,7 +22,6 @@
 	// One key for the life of this wizard. A failed submit retries with it (E10-D089, E10-D068).
 	const idempotencyKey = newIdempotencyKey();
 
-	const strategies = new StrategyFeed();
 	const accountsFeed = new AccountFeed();
 	const sts = new InstanceFeed('sts');
 
@@ -35,12 +34,13 @@
 	let rowKey = 1;
 
 	let versions = $state<StrategyTag[] | null>(null);
+	let latestTag = $state<StrategyTag | null>(null);
 	let versionsLoading = $state(false);
 	let versionsError = $state<string | null>(null);
 	let versionGen = 0;
 
-	// E10-D086: prefill when the manifest carries default params. StrategyVersion
-	// (PROTOCOL §8.2) does not include them, so the box starts empty.
+	// E10-D086: prefill when the manifest carries default params. The tag list
+	// does not include them, so the box starts empty.
 	const clientErrors = $derived(localErrors(draft));
 
 	function message(path: string): string | undefined {
@@ -62,34 +62,37 @@
 	}
 
 	onMount(() => {
-		void strategies.reload();
 		void accountsFeed.reload();
 		void sts.reload();
 		return () => {
 			versionGen += 1;
-			strategies.cancel();
 			accountsFeed.cancel();
 			sts.cancel();
 		};
 	});
 
 	function reloadAll() {
-		void strategies.reload();
 		void accountsFeed.reload();
 		void sts.reload();
-		if (draft.strategyId) void loadVersions(draft.strategyId);
+		if (draft.repository.trim() !== '') void loadTags();
 	}
 
-	async function loadVersions(id: string): Promise<void> {
+	async function loadTags(): Promise<void> {
+		const repo = draft.repository.trim();
 		const mine = ++versionGen;
 		versionsLoading = true;
 		versionsError = null;
 		versions = null;
+		latestTag = null;
+		draft.strategyRef = '';
+		if (repo === '') {
+			versionsLoading = false;
+			return;
+		}
 		const result = await collectPages<StrategyTag>((cursor) =>
-			api.GET('/strategies/{strategy_id}/versions', {
+			api.GET('/strategies', {
 				params: {
-					path: { strategy_id: id },
-					query: cursor ? { limit: 100, cursor } : { limit: 100 }
+					query: cursor ? { repository: repo, limit: 100, cursor } : { repository: repo, limit: 100 }
 				}
 			})
 		);
@@ -100,16 +103,7 @@
 			return;
 		}
 		versions = result.items;
-	}
-
-	function pickStrategy(id: string) {
-		draft.strategyId = id;
-		draft.strategyRef = '';
-		versions = null;
-		versionsError = null;
-		clearServer();
-		if (id) void loadVersions(id);
-		else versionGen += 1;
+		latestTag = result.latest ?? null;
 	}
 
 	function addFeed() {
@@ -266,9 +260,9 @@
 {/if}
 
 <FeedStatus
-	loading={strategies.loading || accountsFeed.loading || sts.loading || versionsLoading}
-	error={strategies.error ?? accountsFeed.error ?? sts.error ?? versionsError}
-	empty={strategies.items === null || accountsFeed.items === null || sts.items === null}
+	loading={accountsFeed.loading || sts.loading}
+	error={accountsFeed.error ?? sts.error}
+	empty={accountsFeed.items === null || sts.items === null}
 	onretry={reloadAll}
 />
 
@@ -316,52 +310,56 @@
 			{@render fieldError('/sts_instance')}
 		</div>
 		<div class="field">
-			<label for="strategy">Strategy</label>
-			<select
-				id="strategy"
-				value={draft.strategyId}
-				aria-invalid={invalid('/strategy/id')}
-				aria-describedby={describedBy('/strategy/id')}
-				onchange={(event) => {
-					const el = event.currentTarget;
-					if (el instanceof HTMLSelectElement) pickStrategy(el.value);
+			<label for="repository">Repository</label>
+			<input
+				id="repository"
+				name="repository"
+				bind:value={draft.repository}
+				autocomplete="off"
+				autocapitalize="off"
+				spellcheck="false"
+				placeholder="ghcr.io/acme/md_watch"
+				aria-invalid={invalid('/strategy/repository')}
+				aria-describedby={describedBy('/strategy/repository')}
+				oninput={() => {
+					versionGen += 1;
+					versions = null;
+					latestTag = null;
+					draft.strategyRef = '';
+					clearServer();
 				}}
-			>
-				<option value="">Select a strategy</option>
-				{#each strategies.items ?? [] as strategy (strategy.id)}
-					<option value={strategy.id}>{strategy.id}</option>
-				{/each}
-			</select>
-			{@render fieldError('/strategy/id')}
+			/>
+			{@render fieldError('/strategy/repository')}
 			{@render fieldError('/strategy')}
+			<button type="button" onclick={() => void loadTags()} disabled={versionsLoading || draft.repository.trim() === ''}>
+				Load tags
+			</button>
+			{#if versionsError}
+				<p class="status">{versionsError}</p>
+			{/if}
 		</div>
 		<div class="field">
 			<label for="version">Version</label>
 			<select
 				id="version"
 				bind:value={draft.strategyRef}
-				disabled={!draft.strategyId || versionsLoading}
+				disabled={!versions || versionsLoading}
 				aria-invalid={invalid('/strategy/ref')}
 				aria-describedby={describedBy('/strategy/ref')}
 			>
 				<option value="">Select a version</option>
 				{#each versions ?? [] as version (version.tag)}
-					<option value={version.tag}>{version.tag} · {shortDigest(version.digest)}</option>
+					<option value={version.tag}>
+						{version.tag}{latestTag && version.digest === latestTag.digest ? ' · latest' : ''} · {shortDigest(version.digest)}
+					</option>
 				{/each}
 			</select>
 			{@render fieldError('/strategy/ref')}
 			{#if versions && versions.length === 0 && !versionsLoading}
-				<p class="status">No versions.</p>
+				<p class="status">No tags.</p>
 			{/if}
-			{#if draft.strategyId && draft.strategyRef}
-				<p>
-					<a href="/strategies/{encodeURIComponent(draft.strategyId)}?ref={encodeURIComponent(draft.strategyRef)}">
-						View manifest
-					</a>
-					{#if selectedTag}
-						<span class="status mono">{selectedTag.digest}</span>
-					{/if}
-				</p>
+			{#if selectedTag}
+				<p class="status mono">{selectedTag.digest}</p>
 			{/if}
 		</div>
 	{:else if stepIndex === 1}
@@ -670,10 +668,10 @@
 			<dd>{blank(draft.name)} {@render fieldError('/name')}</dd>
 			<dt>STS</dt>
 			<dd>{draft.stsInstance || '—'} {@render fieldError('/sts_instance')}</dd>
-			<dt>Strategy</dt>
+			<dt>Repository</dt>
 			<dd>
-				{draft.strategyId || '—'}
-				{@render fieldError('/strategy/id')}
+				{draft.repository.trim() || '—'}
+				{@render fieldError('/strategy/repository')}
 				{@render fieldError('/strategy')}
 			</dd>
 			<dt>Version</dt>

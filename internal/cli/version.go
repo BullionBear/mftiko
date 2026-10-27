@@ -11,7 +11,7 @@ import (
 // APIVersion is the info.version of contract/openapi/api/v1.yaml this CLI was
 // built against (E11-D036, E10-D116). TestAPIVersionMatchesContract keeps the
 // two equal.
-const APIVersion = "1.0.1"
+const APIVersion = "2.0.0"
 
 // build is the CLI's identity. The Makefile and the release stamp buildinfo
 // with -ldflags. A go install build is not stamped, so the module version and

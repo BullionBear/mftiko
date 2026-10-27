@@ -104,6 +104,7 @@ func newSessionEnv(t *testing.T, opt sessionOpt) *sessionEnv {
 	s.catalog = cat
 	// Address is set after start so useCatalog does not dial. The response prefixes it (E10-D060).
 	s.cfg.Registry.Address = "registry.example"
+	s.cfg.Allow = []string{"registry.example/mftiko"}
 	se := &sessionEnv{e: e, s: s, pg: pg, clock: opt.clock, cat: cat}
 	if pg != nil {
 		for _, id := range []int64{42, 43} {
@@ -131,7 +132,7 @@ func (se *sessionEnv) post(t *testing.T, body string, hdr http.Header) (int, htt
 }
 
 func minBody(sts string) string {
-	return fmt.Sprintf(`{"name":"n","sts_instance":%q,"strategy":{"id":"strategies","ref":%q}}`, sts, stratDig)
+	return fmt.Sprintf(`{"name":"n","sts_instance":%q,"strategy":{"repository":"registry.example/mftiko/strategies","ref":%q}}`, sts, stratDig)
 }
 
 func keyHeader(k string) http.Header {
@@ -358,7 +359,7 @@ func TestSessionCreateRoundTrip(t *testing.T) {
 
 	full := fmt.Sprintf(`{
 		"name":"full","sts_instance":"sts-tw-1",
-		"strategy":{"id":"strategies","ref":"v1"},
+		"strategy":{"repository":"registry.example/mftiko/strategies","ref":"v1"},
 		"labels":{"team":"desk"},
 		"params":{"z":1,"a":"x"},
 		"feeds":[{"feed":"not-a-ticker","md_instance":"md-tw-1"}],
@@ -514,23 +515,25 @@ func TestSessionValidation(t *testing.T) {
 		name, body, path string
 	}{
 		{"empty", `{}`, "/name"},
-		{"sts plane", `{"name":"n","sts_instance":"md-tw-1","strategy":{"id":"strategies","ref":"` + stratDig + `"}}`, "/sts_instance"},
-		{"unknown strategy", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"nope","ref":"` + stratDig + `"}}`, "/strategy/id"},
-		{"bad ref", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"sha256:zz"}}`, "/strategy/ref"},
-		{"selectors", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"` + stratDig + `"},"selectors":[]}`, "/selectors"},
-		{"params array", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"` + stratDig + `"},"params":[1]}`, "/params"},
-		{"dup feed", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"` + stratDig + `"},"feeds":[{"feed":"a","md_instance":"md-tw-1"},{"feed":"a","md_instance":"md-tw-1"}]}`, "/feeds/1/feed"},
-		{"md plane", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"` + stratDig + `"},"feeds":[{"feed":"a","md_instance":"td-tw-1"}]}`, "/feeds/0/md_instance"},
-		{"md missing", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"` + stratDig + `"},"feeds":[{"feed":"a","md_instance":"md-nope"}]}`, "/feeds/0/md_instance"},
-		{"dup api", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"algo_ids":[1]},{"name":"b","api_id":42,"algo_ids":[2]}]}`, "/accounts/1/api_id"},
-		{"algo zero", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"algo_ids":[0]}]}`, "/accounts/0/algo_ids"},
-		{"algo high", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"algo_ids":[1024]}]}`, "/accounts/0/algo_ids"},
-		{"dup algo", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"algo_ids":[1,1]}]}`, "/accounts/0/algo_ids"},
-		{"bad label", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"` + stratDig + `"},"labels":{" bad":"x"}}`, "/labels/ bad"},
-		{"bad input", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"` + stratDig + `"},"inputs":[{"name":"Bad","digest":"` + dataDig + `","repository":"mftiko/data"}]}`, "/inputs/0/name"},
-		{"dup input", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"` + stratDig + `"},"inputs":[{"name":"m","digest":"` + dataDig + `","repository":"mftiko/data"},{"name":"m","digest":"` + dataDig + `","repository":"mftiko/data"}]}`, "/inputs/1/name"},
-		{"u32", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"` + stratDig + `"},"deps_timeout_s":4294967296}`, "/deps_timeout_s"},
-		{"negative", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"` + stratDig + `"},"grace_ms":-1}`, "/grace_ms"},
+		{"sts plane", `{"name":"n","sts_instance":"md-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"}}`, "/sts_instance"},
+		{"strategy not allowed", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/other","ref":"` + stratDig + `"}}`, "/strategy/repository"},
+		{"strategy missing", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/missing","ref":"` + stratDig + `"}}`, "/strategy/ref"},
+		{"strategy shape", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/../x","ref":"` + stratDig + `"}}`, "/strategy/repository"},
+		{"bad ref", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"sha256:zz"}}`, "/strategy/ref"},
+		{"selectors", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"selectors":[]}`, "/selectors"},
+		{"params array", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"params":[1]}`, "/params"},
+		{"dup feed", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"feeds":[{"feed":"a","md_instance":"md-tw-1"},{"feed":"a","md_instance":"md-tw-1"}]}`, "/feeds/1/feed"},
+		{"md plane", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"feeds":[{"feed":"a","md_instance":"td-tw-1"}]}`, "/feeds/0/md_instance"},
+		{"md missing", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"feeds":[{"feed":"a","md_instance":"md-nope"}]}`, "/feeds/0/md_instance"},
+		{"dup api", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"algo_ids":[1]},{"name":"b","api_id":42,"algo_ids":[2]}]}`, "/accounts/1/api_id"},
+		{"algo zero", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"algo_ids":[0]}]}`, "/accounts/0/algo_ids"},
+		{"algo high", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"algo_ids":[1024]}]}`, "/accounts/0/algo_ids"},
+		{"dup algo", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"algo_ids":[1,1]}]}`, "/accounts/0/algo_ids"},
+		{"bad label", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"labels":{" bad":"x"}}`, "/labels/ bad"},
+		{"bad input", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"inputs":[{"name":"Bad","digest":"` + dataDig + `","repository":"mftiko/data"}]}`, "/inputs/0/name"},
+		{"dup input", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"inputs":[{"name":"m","digest":"` + dataDig + `","repository":"mftiko/data"},{"name":"m","digest":"` + dataDig + `","repository":"mftiko/data"}]}`, "/inputs/1/name"},
+		{"u32", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"deps_timeout_s":4294967296}`, "/deps_timeout_s"},
+		{"negative", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"grace_ms":-1}`, "/grace_ms"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -545,10 +548,24 @@ func TestSessionValidation(t *testing.T) {
 		t.Fatalf("validation wrote %d rows", n)
 	}
 
+	se.s.cfg.Allow = []string{"*"}
+	code, _, body := se.post(t, `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"other.example/mftiko/strategies","ref":"`+stratDig+`"}}`, nil)
+	if code != http.StatusBadRequest || !strings.Contains(string(body), "is not on the configured registry") {
+		t.Fatalf("host %d %s", code, body)
+	}
+	hasPath(t, body, "/strategy/repository")
+	se.s.cfg.Allow = []string{"registry.example/mftiko"}
+	se.s.cfg.Registry.Address = ""
+	code, _, body = se.post(t, minBody("sts-tw-1"), nil)
+	if code != http.StatusServiceUnavailable || !strings.Contains(string(body), "registry is not configured") {
+		t.Fatalf("unconfigured %d %s", code, body)
+	}
+	se.s.cfg.Registry.Address = "registry.example"
+
 	info := se.cat.manifest[catKey("mftiko/strategies", stratDig)]
 	info.Manifest.Kind = "conn"
 	se.cat.manifest[catKey("mftiko/strategies", stratDig)] = info
-	code, _, body := se.post(t, minBody("sts-tw-1"), nil)
+	code, _, body = se.post(t, minBody("sts-tw-1"), nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("kind %d %s", code, body)
 	}
@@ -557,7 +574,7 @@ func TestSessionValidation(t *testing.T) {
 	se.cat.manifest[catKey("mftiko/strategies", stratDig)] = info
 
 	se.cat.data[catKey("mftiko/data", dataDig)] = artifact.DataInfo{Digest: dataDig, Config: artifact.DataConfig{Schema: "other"}}
-	inputBody := fmt.Sprintf(`{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":%q},"inputs":[{"name":"m","digest":%q,"repository":"mftiko/data"}]}`, stratDig, dataDig)
+	inputBody := fmt.Sprintf(`{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":%q},"inputs":[{"name":"m","digest":%q,"repository":"mftiko/data"}]}`, stratDig, dataDig)
 	code, _, body = se.post(t, inputBody, nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("input %d %s", code, body)
@@ -576,13 +593,13 @@ func TestSessionValidation(t *testing.T) {
 		t.Fatal("registry failure wrote a spec")
 	}
 
-	code, _, body = se.post(t, `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"`+stratDig+`"},"accounts":[{"name":"a","api_id":99,"algo_ids":[1]}]}`, nil)
+	code, _, body = se.post(t, `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"`+stratDig+`"},"accounts":[{"name":"a","api_id":99,"algo_ids":[1]}]}`, nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("account %d %s", code, body)
 	}
 	hasPath(t, body, "/accounts/0/api_id")
 
-	acct := `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"algo_ids":[7]}]}`
+	acct := `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"algo_ids":[7]}]}`
 	code, hdr, body := se.post(t, acct, nil)
 	first := mustSession(t, code, hdr, body)
 	seen(t, se.s, "tw", state.SessionSpecKey("sts-tw-1", first.Id))
@@ -607,7 +624,7 @@ func TestSessionValidation(t *testing.T) {
 	putKey(t, t.Context(), se.e.servers["tw"], state.AccountKey("td-tw-1", 77), "acct")
 	seen(t, se.s, "jp", both)
 	seen(t, se.s, "tw", state.AccountKey("td-tw-1", 77))
-	code, _, body = se.post(t, `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"`+stratDig+`"},"accounts":[{"name":"a","api_id":77,"algo_ids":[4]}]}`, nil)
+	code, _, body = se.post(t, `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"`+stratDig+`"},"accounts":[{"name":"a","api_id":77,"algo_ids":[4]}]}`, nil)
 	lex := mustSession(t, code, nilHdr(t, code, body), body)
 	if lex.Spec.Accounts[0].TdInstance != "td-jp-1" {
 		t.Fatalf("td %s", lex.Spec.Accounts[0].TdInstance)

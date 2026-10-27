@@ -13,13 +13,13 @@ import (
 // Catalog is the read-only data behind the fake server (E11-03).
 // Set every field before Start. The handler reads it and does not mutate it.
 type Catalog struct {
-	Strategies []apiv1.Strategy
-	// Versions is keyed by strategy id. An empty slice is a known strategy
-	// with no tags. A strategy listed in Strategies is known even when this
-	// map has no entry.
-	Versions map[string][]apiv1.StrategyTag
-	// Manifests is keyed by strategy id, a NUL byte, and the ref (tag or digest).
-	Manifests  map[string]apiv1.StrategyVersion
+	// Tags is keyed by the full repository path. A missing key is 404.
+	// An empty slice is a known repository with no tags.
+	Tags map[string][]apiv1.StrategyTag
+	// Latest, when non-nil, supplies the latest field for each repository.
+	// A missing key omits latest. When the map is nil, latest is the tag
+	// named latest among all tags, even when that tag is not on the page.
+	Latest     map[string]*apiv1.StrategyTag
 	Instances  []apiv1.Instance
 	Controller apiv1.ControllerStatus
 	Freshness  apiv1.Freshness
@@ -83,51 +83,36 @@ func (a *api) ListStrategies(_ context.Context, req apiv1.ListStrategiesRequestO
 		}
 		return rawPage{status: page.Status, body: page.Body}, nil
 	}
-	items, next, bad := pageSlice(cat.Strategies, req.Params.Limit, req.Params.Cursor, cat.PageSize)
-	if bad != nil {
-		return listStrategiesProblem(bad), nil
-	}
-	return apiv1.ListStrategies200JSONResponse{Items: items, NextCursor: next}, nil
-}
-
-func (a *api) ListStrategyVersions(_ context.Context, req apiv1.ListStrategyVersionsRequestObject) (apiv1.ListStrategyVersionsResponseObject, error) {
-	cat, p, err := a.s.begin()
-	if err != nil {
-		return nil, err
-	}
-	if p != nil {
-		return listVersionsProblem(p), nil
-	}
-	tags, ok := cat.Versions[req.StrategyId]
-	if !ok && !strategyKnown(cat, req.StrategyId) {
-		return listVersionsProblem(notFound("strategy not found")), nil
+	repo := req.Params.Repository
+	tags, ok := cat.Tags[repo]
+	if !ok {
+		return listStrategiesProblem(notFound("repository not found")), nil
 	}
 	items, next, bad := pageSlice(tags, req.Params.Limit, req.Params.Cursor, cat.PageSize)
 	if bad != nil {
-		return listVersionsProblem(bad), nil
+		return listStrategiesProblem(bad), nil
 	}
-	return apiv1.ListStrategyVersions200JSONResponse{Items: items, NextCursor: next}, nil
+	return apiv1.ListStrategies200JSONResponse{
+		Repository: repo, Items: items, Latest: latestTag(cat, repo, tags), NextCursor: next,
+	}, nil
 }
 
-func (a *api) GetStrategyVersion(_ context.Context, req apiv1.GetStrategyVersionRequestObject) (apiv1.GetStrategyVersionResponseObject, error) {
-	cat, p, err := a.s.begin()
-	if err != nil {
-		return nil, err
+func latestTag(cat *Catalog, repo string, tags []apiv1.StrategyTag) *apiv1.StrategyTag {
+	if cat.Latest != nil {
+		t := cat.Latest[repo]
+		if t == nil {
+			return nil
+		}
+		cp := *t
+		return &cp
 	}
-	if p != nil {
-		return getVersionProblem(p), nil
+	for _, t := range tags {
+		if t.Tag == "latest" {
+			cp := t
+			return &cp
+		}
 	}
-	ver, ok := cat.Manifests[req.StrategyId+"\x00"+req.Ref]
-	if !ok {
-		return getVersionProblem(notFound("version not found")), nil
-	}
-	if ver.Tags == nil {
-		ver.Tags = []string{}
-	}
-	if ver.Contracts == nil {
-		ver.Contracts = []string{}
-	}
-	return apiv1.GetStrategyVersion200JSONResponse(ver), nil
+	return nil
 }
 
 func (a *api) ListInstances(context.Context, apiv1.ListInstancesRequestObject) (apiv1.ListInstancesResponseObject, error) {
@@ -184,15 +169,6 @@ func (a *api) ListAccountKinds(ctx context.Context, req apiv1.ListAccountKindsRe
 		return listKindsProblem(p), nil
 	}
 	return apiv1.ListAccountKinds200JSONResponse{Items: normKinds(cat.Kinds)}, nil
-}
-
-func strategyKnown(cat *Catalog, id string) bool {
-	for _, s := range cat.Strategies {
-		if s.Id == id {
-			return true
-		}
-	}
-	return false
 }
 
 func normFreshness(fr apiv1.Freshness) apiv1.Freshness {
@@ -302,12 +278,6 @@ func (p rawPage) write(w http.ResponseWriter) error {
 func (p rawPage) VisitListStrategiesResponse(w http.ResponseWriter) error {
 	return p.write(w)
 }
-func (p rawPage) VisitListStrategyVersionsResponse(w http.ResponseWriter) error {
-	return p.write(w)
-}
-func (p rawPage) VisitGetStrategyVersionResponse(w http.ResponseWriter) error {
-	return p.write(w)
-}
 func (p rawPage) VisitListInstancesResponse(w http.ResponseWriter) error {
 	return p.write(w)
 }
@@ -332,40 +302,10 @@ func listStrategiesProblem(p *apiv1.Problem) apiv1.ListStrategiesResponseObject 
 		return apiv1.ListStrategies400ApplicationProblemPlusJSONResponse{ValidationFailedApplicationProblemPlusJSONResponse: apiv1.ValidationFailedApplicationProblemPlusJSONResponse(*p)}
 	case http.StatusUnauthorized:
 		return apiv1.ListStrategies401ApplicationProblemPlusJSONResponse{UnauthenticatedApplicationProblemPlusJSONResponse: apiv1.UnauthenticatedApplicationProblemPlusJSONResponse(*p)}
+	case http.StatusNotFound:
+		return apiv1.ListStrategies404ApplicationProblemPlusJSONResponse{NotFoundApplicationProblemPlusJSONResponse: apiv1.NotFoundApplicationProblemPlusJSONResponse(*p)}
 	case http.StatusServiceUnavailable:
 		return apiv1.ListStrategies503ApplicationProblemPlusJSONResponse{UnavailableApplicationProblemPlusJSONResponse: apiv1.UnavailableApplicationProblemPlusJSONResponse(*p)}
-	default:
-		return problemRaw(p)
-	}
-}
-
-func listVersionsProblem(p *apiv1.Problem) apiv1.ListStrategyVersionsResponseObject {
-	switch p.Status {
-	case http.StatusBadRequest:
-		return apiv1.ListStrategyVersions400ApplicationProblemPlusJSONResponse{ValidationFailedApplicationProblemPlusJSONResponse: apiv1.ValidationFailedApplicationProblemPlusJSONResponse(*p)}
-	case http.StatusUnauthorized:
-		return apiv1.ListStrategyVersions401ApplicationProblemPlusJSONResponse{UnauthenticatedApplicationProblemPlusJSONResponse: apiv1.UnauthenticatedApplicationProblemPlusJSONResponse(*p)}
-	case http.StatusNotFound:
-		return apiv1.ListStrategyVersions404ApplicationProblemPlusJSONResponse{NotFoundApplicationProblemPlusJSONResponse: apiv1.NotFoundApplicationProblemPlusJSONResponse(*p)}
-	case http.StatusServiceUnavailable:
-		return apiv1.ListStrategyVersions503ApplicationProblemPlusJSONResponse{UnavailableApplicationProblemPlusJSONResponse: apiv1.UnavailableApplicationProblemPlusJSONResponse(*p)}
-	default:
-		return problemRaw(p)
-	}
-}
-
-func getVersionProblem(p *apiv1.Problem) apiv1.GetStrategyVersionResponseObject {
-	switch p.Status {
-	case http.StatusBadRequest:
-		return apiv1.GetStrategyVersion400ApplicationProblemPlusJSONResponse{ValidationFailedApplicationProblemPlusJSONResponse: apiv1.ValidationFailedApplicationProblemPlusJSONResponse(*p)}
-	case http.StatusUnauthorized:
-		return apiv1.GetStrategyVersion401ApplicationProblemPlusJSONResponse{UnauthenticatedApplicationProblemPlusJSONResponse: apiv1.UnauthenticatedApplicationProblemPlusJSONResponse(*p)}
-	case http.StatusNotFound:
-		return apiv1.GetStrategyVersion404ApplicationProblemPlusJSONResponse{NotFoundApplicationProblemPlusJSONResponse: apiv1.NotFoundApplicationProblemPlusJSONResponse(*p)}
-	case http.StatusBadGateway:
-		return apiv1.GetStrategyVersion502ApplicationProblemPlusJSONResponse{InvalidArtifactApplicationProblemPlusJSONResponse: apiv1.InvalidArtifactApplicationProblemPlusJSONResponse(*p)}
-	case http.StatusServiceUnavailable:
-		return apiv1.GetStrategyVersion503ApplicationProblemPlusJSONResponse{UnavailableApplicationProblemPlusJSONResponse: apiv1.UnavailableApplicationProblemPlusJSONResponse(*p)}
 	default:
 		return problemRaw(p)
 	}

@@ -35,8 +35,8 @@ func authConfig(t *testing.T, log zerolog.Logger, dsn string, now func() time.Ti
 		map[string]string{"md-tw-1": "md"},
 	)
 	conf, err := json.Marshal(map[string]any{
-		"listen":       "127.0.0.1:0",
-		"repositories": []string{"mftiko/strategies"},
+		"listen": "127.0.0.1:0",
+		"allow":  []string{"*"},
 		"users": []any{
 			map[string]string{"name": "ada", "token_sha256": tokenHash(tokenAda)},
 			map[string]string{"name": "bea", "token_sha256": tokenHash(tokenBea)},

@@ -26,7 +26,7 @@ const generalHelp = usageLine + `
 commands:
   login         read a token from stdin, verify it with GET /auth/me, and store it
   whoami        call GET /auth/me and print the user
-  strategy      list strategies, their versions, and one manifest
+  strategy      list the tags of one strategy repository
   instance      list instances, show one, and retire one
   account-kind  list account kinds
   account       list, show, create, update, and delete trading accounts
@@ -39,8 +39,8 @@ flags:
   -context name   context in the config file, or set MFTIKO_CONTEXT (they must match if both are set)
   -timeout 30s    HTTP client timeout, a Go duration greater than 0
   -o json         write the API body unchanged; the default is a table
-  -limit N        cap the total number of rows for strategy list, strategy versions, account list, session list, and record list
-  -cursor value   fetch one page for strategy list, strategy versions, account list, session list, and record list
+  -limit N        cap the total number of rows for strategy list, account list, session list, and record list
+  -cursor value   fetch one page for strategy list, account list, session list, and record list
   -v              print X-Request-Id on success
   -yes            allow a destructive command when stdin is not a terminal
   -wait target    session create: wait for a phase or terminal; session end: wait for terminal
@@ -60,27 +60,24 @@ MFTIKO_TOKEN or the context, and the environment variable wins. login is the
 exception: its token is only the line on stdin. There is no token flag.
 Plain HTTP is refused unless the context sets insecure_http: true.
 
-strategy list and strategy versions follow next_cursor until the list ends.
+strategy list follows next_cursor until the list ends.
 Each request uses limit=1000. -limit N caps the total number of rows.
 -cursor fetches only that page, and -o json writes that page unchanged.
 -limit and -cursor cannot both be set. account list, session list, and record list use the same two flags.
 `
 
-const strategyHelp = `usage: mftiko strategy list
-       mftiko strategy versions <id>
-       mftiko strategy show <id> <ref>
+const strategyHelp = `usage: mftiko strategy list <repository>
 
-list calls GET /strategies. versions calls GET /strategies/{id}/versions.
-show calls GET /strategies/{id}/versions/{ref}. ref is a tag or a digest.
+list calls GET /strategies?repository=<repository>.
+repository is the full path, for example ghcr.io/acme/md_watch.
 
-list shows the latest tag and the first 7 characters of its digest,
-with a leading sha256: removed.
-versions marks each row whose digest equals the latest tag in the rows
-that were fetched. show prints the full digest.
+The table shows each tag and its full digest. A row is marked latest when
+its digest equals the latest tag, including when that tag is not on this page.
 
-list and versions read every page. Each request uses limit=1000.
+list reads every page. Each request uses limit=1000.
 -limit N caps the total number of rows. -cursor fetches one page, and
 -o json writes that page unchanged. The two flags cannot both be set.
+Across pages, -o json keeps repository and latest with the merged items.
 `
 
 const instanceHelp = `usage: mftiko instance list

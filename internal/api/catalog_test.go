@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -20,14 +21,14 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/artifact"
 )
 
-func catalogSrv(repos []string, addr string, cat tagCatalog) *Server {
+func catalogSrv(allow []string, addr string, cat tagCatalog) *Server {
 	return &Server{
 		log: zerolog.Nop(),
 		now: time.Now,
 		cfg: Config{
-			Users:        []User{{Name: "ada", Token: sha256.Sum256([]byte(tokenAda))}},
-			Repositories: append([]string(nil), repos...),
-			Registry:     artifact.Registry{Address: addr, PlainHTTP: true},
+			Users:    []User{{Name: "ada", Token: sha256.Sum256([]byte(tokenAda))}},
+			Allow:    append([]string(nil), allow...),
+			Registry: artifact.Registry{Address: addr, PlainHTTP: true},
 		},
 		catalog: cat,
 	}
@@ -81,7 +82,11 @@ func (f *fakeCatalog) Tags(ctx context.Context, repository string) ([]string, er
 	if err := f.tagsErr[repository]; err != nil {
 		return nil, err
 	}
-	return append([]string(nil), f.tags[repository]...), nil
+	tags, ok := f.tags[repository]
+	if f.tags != nil && !ok {
+		return nil, &artifact.Error{Reason: artifact.ReasonNotFound, Permanent: true, Err: errors.New("missing")}
+	}
+	return append([]string(nil), tags...), nil
 }
 
 func (f *fakeCatalog) Resolve(ctx context.Context, repository, reference string) (string, error) {
@@ -204,105 +209,36 @@ func problemDetail(p apiv1.Problem) string {
 	return *p.Detail
 }
 
+func strategyQuery(repo, extra string) string {
+	u := "/api/v1/strategies?repository=" + url.QueryEscape(repo)
+	if extra != "" {
+		u += "&" + extra
+	}
+	return u
+}
+
 func TestListStrategies(t *testing.T) {
-	code, hdr, body := doAuth(catalogSrv(nil, "", nil).routes(), http.MethodGet, "/api/v1/strategies")
-	if code != http.StatusOK || hdr.Get("Content-Type") != "application/json" || string(body) != "{\"items\":[]}\n" {
-		t.Fatalf("empty: %d %s %s", code, hdr.Get("Content-Type"), body)
+	code, p := getProblem(t, catalogSrv(nil, "", nil).routes(), "/api/v1/strategies")
+	if code != http.StatusBadRequest || p.Errors == nil || (*p.Errors)[0].Path != "/repository" {
+		t.Fatalf("missing query: %d %+v", code, p)
 	}
 
-	code, p := getProblem(t, catalogSrv([]string{"team/alpha"}, "", nil).routes(), "/api/v1/strategies")
+	code, p = getProblem(t, catalogSrv(nil, "reg.example", &fakeCatalog{}).routes(), strategyQuery("reg.example/team/hello", ""))
+	if code != http.StatusBadRequest || p.Code != apiv1.ErrorCodeValidationFailed || p.Errors == nil || (*p.Errors)[0].Reason != "is not allowed" {
+		t.Fatalf("not allowed: %d %+v", code, p)
+	}
+
+	code, p = getProblem(t, catalogSrv([]string{"*"}, "", nil).routes(), strategyQuery("reg.example/team/hello", ""))
 	if code != http.StatusServiceUnavailable || p.Code != apiv1.ErrorCodeRegistryUnavailable || problemDetail(p) != "registry is not configured" {
 		t.Fatalf("unconfigured: %d %+v", code, p)
 	}
 
-	f := &fakeCatalog{
-		digest: map[string]string{
-			catKey("team/alpha", "latest"): sha(0),
-			catKey("team/zeta", "latest"):  sha(1),
-		},
-	}
-	s := catalogSrv([]string{"team/zeta", "other/mid", "team/alpha"}, "reg.example", f)
-	h := s.routes()
-	var page apiv1.StrategyList
-	code, hdr, body = doAuth(h, http.MethodGet, "/api/v1/strategies?limit=2")
-	if code != http.StatusOK {
-		t.Fatalf("page: %d %s", code, body)
-	}
-	if err := json.Unmarshal(body, &page); err != nil {
-		t.Fatal(err)
-	}
-	if page.NextCursor == nil || len(page.Items) != 2 {
-		t.Fatalf("page %+v", page)
-	}
-	if page.Items[0].Id != "alpha" || page.Items[0].Repository != "reg.example/team/alpha" ||
-		page.Items[0].Latest == nil || page.Items[0].Latest.Tag != "latest" || page.Items[0].Latest.Digest != sha(0) {
-		t.Fatalf("first %+v", page.Items[0])
-	}
-	if page.Items[1].Id != "mid" || page.Items[1].Latest != nil {
-		t.Fatalf("missing latest should be omitted: %+v", page.Items[1])
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(*page.NextCursor)
-	if err != nil || string(raw) != "mid" {
-		t.Fatalf("cursor %q %v", *page.NextCursor, err)
-	}
-	if f.resolved() != 2 {
-		t.Fatalf("resolved %d, want the page only", f.resolved())
-	}
-	code, _, body = doAuth(h, http.MethodGet, "/api/v1/strategies?limit=2&cursor="+*page.NextCursor)
-	if code != http.StatusOK {
-		t.Fatalf("next: %d %s", code, body)
-	}
-	page = apiv1.StrategyList{}
-	if err := json.Unmarshal(body, &page); err != nil {
-		t.Fatal(err)
-	}
-	if page.NextCursor != nil || len(page.Items) != 1 || page.Items[0].Id != "zeta" || page.Items[0].Latest.Digest != sha(1) {
-		t.Fatalf("last page %+v", page)
+	wrong := &fakeCatalog{tags: map[string][]string{}}
+	code, p = getProblem(t, catalogSrv([]string{"*"}, "reg.example", wrong).routes(), strategyQuery("other.example/team/hello", ""))
+	if code != http.StatusBadRequest || p.Errors == nil || (*p.Errors)[0].Reason != "is not on the configured registry" || wrong.tagCalls != 0 {
+		t.Fatalf("wrong host: %d %+v calls %d", code, p, wrong.tagCalls)
 	}
 
-	// A cursor past the end is a page with no items. It does not ask the registry again.
-	before := f.resolved()
-	encoded := base64.RawURLEncoding.EncodeToString([]byte("zzz"))
-	code, _, body = doAuth(h, http.MethodGet, "/api/v1/strategies?cursor="+encoded)
-	if code != http.StatusOK || string(body) != "{\"items\":[]}\n" {
-		t.Fatalf("past the end: %d %s", code, body)
-	}
-	if f.resolved() != before {
-		t.Fatal("empty page resolved a tag")
-	}
-}
-
-func TestListStrategiesUnavailable(t *testing.T) {
-	f := &fakeCatalog{resolveErr: map[string]error{
-		catKey("team/alpha", "latest"): artErr(artifact.ReasonUnavailable, false),
-	}}
-	code, p := getProblem(t, catalogSrv([]string{"team/alpha", "team/beta"}, "reg.example", f).routes(), "/api/v1/strategies")
-	if code != http.StatusServiceUnavailable || p.Code != apiv1.ErrorCodeRegistryUnavailable || problemDetail(p) != "registry unavailable" {
-		t.Fatalf("%d %+v", code, p)
-	}
-	if strings.Contains(string(mustJSON(p)), "secret-registry-detail") {
-		t.Fatalf("detail leaked: %+v", p)
-	}
-
-	f.resolveErr[catKey("team/alpha", "latest")] = artErr(artifact.ReasonUnauthorized, true)
-	code, p = getProblem(t, catalogSrv([]string{"team/alpha"}, "reg.example", f).routes(), "/api/v1/strategies")
-	if code != http.StatusInternalServerError || p.Code != apiv1.ErrorCodeInternal || problemDetail(p) != "internal error" {
-		t.Fatalf("unauthorized %d %+v", code, p)
-	}
-	if strings.Contains(problemDetail(p), "secret-registry-detail") {
-		t.Fatal(p)
-	}
-
-	f = &fakeCatalog{resolveErr: map[string]error{
-		catKey("team/alpha", "latest"): artErr(artifact.ReasonUnavailable, true),
-	}}
-	code, p = getProblem(t, catalogSrv([]string{"team/alpha"}, "reg.example", f).routes(), "/api/v1/strategies")
-	if code != http.StatusInternalServerError || p.Code != apiv1.ErrorCodeInternal {
-		t.Fatalf("permanent unavailable %d %+v", code, p)
-	}
-}
-
-func TestListStrategyVersions(t *testing.T) {
 	digA := sha(0)
 	f := &fakeCatalog{
 		tags: map[string][]string{"team/hello": {"v1", "latest", "a", "a", "gone"}},
@@ -312,170 +248,103 @@ func TestListStrategyVersions(t *testing.T) {
 			catKey("team/hello", "v1"):     digA,
 		},
 	}
-	h := catalogSrv([]string{"team/hello"}, "reg.example", f).routes()
-	var page apiv1.StrategyTagList
-	code, _, body := doAuth(h, http.MethodGet, "/api/v1/strategies/hello/versions?limit=2")
+	h := catalogSrv([]string{"reg.example/team"}, "reg.example", f).routes()
+	repo := "reg.example/team/hello"
+	var page apiv1.StrategyRepository
+	code, _, body := doAuth(h, http.MethodGet, strategyQuery(repo, "limit=1"))
 	if code != http.StatusOK {
-		t.Fatalf("%d %s", code, body)
+		t.Fatalf("page: %d %s", code, body)
 	}
 	if err := json.Unmarshal(body, &page); err != nil {
 		t.Fatal(err)
 	}
-	if len(page.Items) != 2 || page.Items[0].Tag != "a" || page.Items[1].Tag != "latest" || page.NextCursor == nil {
-		t.Fatalf("page %+v", page)
+	if page.Repository != repo || page.NextCursor == nil || len(page.Items) != 1 || page.Items[0].Tag != "a" || page.Items[0].Digest != digA {
+		t.Fatalf("first %+v", page)
 	}
-	code, _, body = doAuth(h, http.MethodGet, "/api/v1/strategies/hello/versions?limit=2&cursor="+*page.NextCursor)
-	page = apiv1.StrategyTagList{}
+	if page.Latest == nil || page.Latest.Tag != "latest" || page.Latest.Digest != digA {
+		t.Fatalf("latest off the page: %+v", page.Latest)
+	}
+	if f.resolved() != 4 {
+		t.Fatalf("resolved %d, want every tag", f.resolved())
+	}
+	code, _, body = doAuth(h, http.MethodGet, strategyQuery(repo, "limit=2&cursor="+*page.NextCursor))
+	if code != http.StatusOK {
+		t.Fatalf("next: %d %s", code, body)
+	}
+	page = apiv1.StrategyRepository{}
 	if err := json.Unmarshal(body, &page); err != nil {
 		t.Fatal(err)
 	}
-	if code != http.StatusOK || len(page.Items) != 1 || page.Items[0].Tag != "v1" || page.NextCursor != nil || page.Items[0].Digest != digA {
-		t.Fatalf("last %+v code %d", page, code)
+	if page.NextCursor != nil || len(page.Items) != 2 || page.Items[0].Tag != "latest" || page.Items[1].Tag != "v1" || page.Latest == nil || page.Latest.Digest != digA {
+		t.Fatalf("last page %+v", page)
 	}
 
-	f.tagsErr = map[string]error{"team/hello": artErr(artifact.ReasonUnavailable, false)}
-	code, p := getProblem(t, h, "/api/v1/strategies/hello/versions")
-	if code != http.StatusServiceUnavailable || p.Code != apiv1.ErrorCodeRegistryUnavailable {
-		t.Fatalf("tags %d %+v", code, p)
+	before := f.resolved()
+	encoded := base64.RawURLEncoding.EncodeToString([]byte("zzz"))
+	code, _, body = doAuth(h, http.MethodGet, strategyQuery(repo, "cursor="+encoded))
+	if code != http.StatusOK {
+		t.Fatalf("past the end: %d %s", code, body)
+	}
+	page = apiv1.StrategyRepository{}
+	if err := json.Unmarshal(body, &page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 0 || page.Repository != repo || page.Latest == nil || f.resolved() == before {
+		t.Fatalf("past the end %+v resolved %d to %d", page, before, f.resolved())
 	}
 
-	code, p = getProblem(t, h, "/api/v1/strategies/missing/versions")
-	if code != http.StatusNotFound || p.Code != apiv1.ErrorCodeNotFound || problemDetail(p) != "strategy not found" {
-		t.Fatalf("unknown %d %+v", code, p)
+	code, p = getProblem(t, h, strategyQuery("reg.example/team/missing", ""))
+	if code != http.StatusNotFound || p.Code != apiv1.ErrorCodeNotFound || problemDetail(p) != "repository not found" {
+		t.Fatalf("missing %d %+v", code, p)
+	}
+
+	empty := &fakeCatalog{tags: map[string][]string{"team/empty": {}}}
+	code, _, body = doAuth(catalogSrv([]string{"reg.example/team"}, "reg.example", empty).routes(), http.MethodGet, strategyQuery("reg.example/team/empty", ""))
+	if code != http.StatusOK {
+		t.Fatalf("empty %d %s", code, body)
+	}
+	page = apiv1.StrategyRepository{}
+	if err := json.Unmarshal(body, &page); err != nil {
+		t.Fatal(err)
+	}
+	if page.Repository != "reg.example/team/empty" || len(page.Items) != 0 || page.Latest != nil {
+		t.Fatalf("empty page %+v", page)
 	}
 }
 
-func TestGetStrategyVersion(t *testing.T) {
-	digA := sha(0)
-	digB := sha(1)
+func TestListStrategiesUnavailable(t *testing.T) {
 	f := &fakeCatalog{
-		tags: map[string][]string{
-			"team/hello": {"v1", "latest", "a", "other"},
-			"team/conn":  {"w"},
-			"team/lang":  {"v"},
-			"team/ver":   {"v"},
-			"team/none":  {"v"},
+		tags: map[string][]string{"team/alpha": {"latest"}},
+		resolveErr: map[string]error{
+			catKey("team/alpha", "latest"): artErr(artifact.ReasonUnavailable, false),
 		},
-		digest: map[string]string{
-			catKey("team/hello", "a"):      digA,
-			catKey("team/hello", "latest"): digA,
-			catKey("team/hello", "v1"):     digA,
-			catKey("team/hello", "other"):  digB,
-			catKey("team/conn", "w"):       digB,
-			catKey("team/lang", "v"):       sha(2),
-			catKey("team/ver", "v"):        sha(3),
-			catKey("team/none", "v"):       sha(4),
+	}
+	code, p := getProblem(t, catalogSrv([]string{"reg.example/team"}, "reg.example", f).routes(), strategyQuery("reg.example/team/alpha", ""))
+	if code != http.StatusServiceUnavailable || p.Code != apiv1.ErrorCodeRegistryUnavailable || problemDetail(p) != "registry unavailable" {
+		t.Fatalf("%d %+v", code, p)
+	}
+	if strings.Contains(string(mustJSON(p)), "secret-registry-detail") {
+		t.Fatalf("detail leaked: %+v", p)
+	}
+
+	f.resolveErr[catKey("team/alpha", "latest")] = artErr(artifact.ReasonUnauthorized, true)
+	code, p = getProblem(t, catalogSrv([]string{"reg.example/team"}, "reg.example", f).routes(), strategyQuery("reg.example/team/alpha", ""))
+	if code != http.StatusInternalServerError || p.Code != apiv1.ErrorCodeInternal || problemDetail(p) != "internal error" {
+		t.Fatalf("unauthorized %d %+v", code, p)
+	}
+	if strings.Contains(problemDetail(p), "secret-registry-detail") {
+		t.Fatal(p)
+	}
+
+	f = &fakeCatalog{
+		tags: map[string][]string{"team/alpha": {"latest"}},
+		resolveErr: map[string]error{
+			catKey("team/alpha", "latest"): artErr(artifact.ReasonUnavailable, true),
 		},
-		manifest: map[string]artifact.ManifestInfo{
-			catKey("team/hello", digA):  strategyManifest(digA, artifact.KindStrategy, artifact.SDK{Lang: "go", Version: "1.2.3"}),
-			catKey("team/conn", digB):   strategyManifest(digB, artifact.KindMDConn, artifact.SDK{}),
-			catKey("team/lang", sha(2)): strategyManifest(sha(2), artifact.KindStrategy, artifact.SDK{Lang: "go"}),
-			catKey("team/ver", sha(3)):  strategyManifest(sha(3), artifact.KindStrategy, artifact.SDK{Version: "9"}),
-			catKey("team/none", sha(4)): strategyManifest(sha(4), artifact.KindStrategy, artifact.SDK{}),
-		},
-		readErr: map[string]error{},
 	}
-	repos := []string{"team/hello", "team/conn", "team/lang", "team/ver", "team/none"}
-	h := catalogSrv(repos, "reg.example", f).routes()
-
-	var got apiv1.StrategyVersion
-	code, hdr, body := doAuth(h, http.MethodGet, "/api/v1/strategies/hello/versions/latest")
-	if code != http.StatusOK || hdr.Get("Content-Type") != "application/json" {
-		t.Fatalf("tag %d %s %s", code, hdr.Get("Content-Type"), body)
-	}
-	if err := json.Unmarshal(body, &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.StrategyId != "hello" || got.Repository != "reg.example/team/hello" || got.Digest != digA ||
-		got.Name != "hello" || got.Runtime != "go" || got.Os != "linux" || got.Arch != "amd64" ||
-		got.Sdk == nil || *got.Sdk != "go 1.2.3" || got.SizeBytes == nil || *got.SizeBytes != 42 {
-		t.Fatalf("%+v", got)
-	}
-	if strings.Join(got.Tags, ",") != "a,latest,v1" || strings.Join(got.Contracts, ",") != "worker.v1,stsctl.v1" {
-		t.Fatalf("tags %q contracts %q", got.Tags, got.Contracts)
-	}
-	code, _, body = doAuth(h, http.MethodGet, "/api/v1/strategies/hello/versions/"+digA)
-	if code != http.StatusOK {
-		t.Fatalf("digest %d %s", code, body)
-	}
-	if err := json.Unmarshal(body, &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.Digest != digA || strings.Join(got.Tags, ",") != "a,latest,v1" {
-		t.Fatalf("by digest %+v", got)
-	}
-
-	code, p := getProblem(t, h, "/api/v1/strategies/hello/versions/no-such")
-	if code != http.StatusNotFound || problemDetail(p) != "version not found" {
-		t.Fatalf("tag %d %+v", code, p)
-	}
-	code, p = getProblem(t, h, "/api/v1/strategies/hello/versions/"+sha(9))
-	if code != http.StatusNotFound || p.Code != apiv1.ErrorCodeNotFound {
-		t.Fatalf("digest %d %+v", code, p)
-	}
-	reads := f.reads
-	code, p = getProblem(t, h, "/api/v1/strategies/hello/versions/sha256:ABC")
-	if code != http.StatusNotFound || problemDetail(p) != "version not found" {
-		t.Fatalf("bad digest %d %+v", code, p)
-	}
-	if f.reads != reads {
-		t.Fatalf("reads %d to %d: a bad digest must not be fetched", reads, f.reads)
-	}
-
-	code, p = getProblem(t, h, "/api/v1/strategies/conn/versions/w")
-	if code != http.StatusBadGateway || p.Code != apiv1.ErrorCodeInvalidArtifact || problemDetail(p) != "manifest is not a strategy artifact" {
-		t.Fatalf("kind %d %+v", code, p)
-	}
-
-	f.readErr[catKey("team/hello", digA)] = artErr(artifact.ReasonBadManifest, true)
-	code, p = getProblem(t, h, "/api/v1/strategies/hello/versions/latest")
-	if code != http.StatusBadGateway || p.Code != apiv1.ErrorCodeInvalidArtifact || problemDetail(p) != "manifest could not be read" {
-		t.Fatalf("bad manifest %d %+v", code, p)
-	}
-	f.readErr[catKey("team/hello", digA)] = artErr(artifact.ReasonNotImage, true)
-	code, p = getProblem(t, h, "/api/v1/strategies/hello/versions/latest")
-	if code != http.StatusBadGateway || problemDetail(p) != "manifest is not a strategy artifact" {
-		t.Fatalf("index %d %+v", code, p)
-	}
-	delete(f.readErr, catKey("team/hello", digA))
-
-	checkSDK := func(id, want string, present bool) {
-		t.Helper()
-		code, _, body := doAuth(h, http.MethodGet, "/api/v1/strategies/"+id+"/versions/v")
-		if code != http.StatusOK {
-			t.Fatalf("%s %d %s", id, code, body)
-		}
-		var v apiv1.StrategyVersion
-		if err := json.Unmarshal(body, &v); err != nil {
-			t.Fatal(err)
-		}
-		if !present {
-			if v.Sdk != nil {
-				t.Fatalf("%s sdk %q", id, *v.Sdk)
-			}
-			return
-		}
-		if v.Sdk == nil || *v.Sdk != want {
-			t.Fatalf("%s sdk %+v", id, v.Sdk)
-		}
-	}
-	checkSDK("lang", "go", true)
-	checkSDK("ver", "9", true)
-	checkSDK("none", "", false)
-
-	code, _, body = doAuth(h, http.MethodGet, "/api/v1")
-	if code != http.StatusNotFound {
-		t.Fatalf("/api/v1 %d %s", code, body)
-	}
-	// A write without application/json is 400 before routing. This POST is JSON,
-	// so it reaches the catalog mux, which only registers GET.
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/strategies", nil)
-	req.Header.Set("Authorization", "Bearer "+tokenAda)
-	req.Header.Set("Content-Type", "application/json")
-	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("POST %d", rec.Code)
+	code, p = getProblem(t, catalogSrv([]string{"reg.example/team"}, "reg.example", f).routes(), strategyQuery("reg.example/team/alpha", ""))
+	if code != http.StatusInternalServerError || p.Code != apiv1.ErrorCodeInternal {
+		t.Fatalf("permanent unavailable %d %+v", code, p)
 	}
 }
 
@@ -484,25 +353,41 @@ func TestCatalogValidation(t *testing.T) {
 		tags:   map[string][]string{"team/hello": {"v1"}},
 		digest: map[string]string{catKey("team/hello", "v1"): sha(0)},
 	}
-	h := catalogSrv([]string{"team/hello"}, "reg.example", f).routes()
-	code, p := getProblem(t, h, "/api/v1/strategies?limit=0")
+	h := catalogSrv([]string{"reg.example/team"}, "reg.example", f).routes()
+	code, p := getProblem(t, h, strategyQuery("reg.example/team/hello", "limit=0"))
 	if code != http.StatusBadRequest || p.Code != apiv1.ErrorCodeValidationFailed || p.Errors == nil || (*p.Errors)[0].Path != "/limit" {
 		t.Fatalf("limit 0: %d %+v", code, p)
 	}
-	code, p = getProblem(t, h, "/api/v1/strategies?limit=1001")
+	code, p = getProblem(t, h, strategyQuery("reg.example/team/hello", "limit=1001"))
 	if code != http.StatusBadRequest || (*p.Errors)[0].Path != "/limit" {
 		t.Fatalf("limit 1001: %d %+v", code, p)
 	}
-	code, p = getProblem(t, h, "/api/v1/strategies?limit=abc")
+	code, p = getProblem(t, h, strategyQuery("reg.example/team/hello", "limit=abc"))
 	if code != http.StatusBadRequest || p.Code != apiv1.ErrorCodeValidationFailed || (*p.Errors)[0].Path != "/limit" {
 		t.Fatalf("limit abc: %d %+v", code, p)
 	}
-	code, p = getProblem(t, h, "/api/v1/strategies/hello/versions?cursor="+strings.Repeat("!", 4))
+	code, p = getProblem(t, h, strategyQuery("reg.example/team/hello", "cursor="+strings.Repeat("!", 4)))
 	if code != http.StatusBadRequest || (*p.Errors)[0].Path != "/cursor" {
 		t.Fatalf("cursor: %d %+v", code, p)
 	}
 	if f.resolved() != 0 || f.tagCalls != 0 {
 		t.Fatal("validation called the registry")
+	}
+
+	code, _, body := doAuth(h, http.MethodGet, "/api/v1")
+	if code != http.StatusNotFound {
+		t.Fatalf("/api/v1 %d %s", code, body)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/strategies", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenAda)
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST %d", rec.Code)
+	}
+	if f.tagCalls != 0 {
+		t.Fatal("routing called the registry")
 	}
 }
 
@@ -521,9 +406,9 @@ func TestCatalogResolveParallel(t *testing.T) {
 	closeHold := func() { once.Do(func() { close(f.hold) }) }
 	t.Cleanup(closeHold)
 
-	h := catalogSrv([]string{"team/hello"}, "reg.example", f).routes()
+	h := catalogSrv([]string{"reg.example/team"}, "reg.example", f).routes()
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/strategies/hello/versions", nil)
+	req := httptest.NewRequest(http.MethodGet, strategyQuery("reg.example/team/hello", ""), nil)
 	req.Header.Set("Authorization", "Bearer "+tokenAda)
 	done := make(chan struct{})
 	go func() {
@@ -551,21 +436,21 @@ func TestCatalogResolveParallel(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("%d %s", rec.Code, rec.Body)
 	}
-	var page apiv1.StrategyTagList
+	var page apiv1.StrategyRepository
 	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
 		t.Fatal(err)
 	}
-	if len(page.Items) != 20 {
-		t.Fatalf("items %d", len(page.Items))
+	if len(page.Items) != 20 || page.Repository != "reg.example/team/hello" {
+		t.Fatalf("items %d repo %q", len(page.Items), page.Repository)
 	}
 }
 
 func TestCatalogCancelWritesNothing(t *testing.T) {
 	f := &fakeCatalog{hold: make(chan struct{})}
-	h := catalogSrv([]string{"team/hello"}, "reg.example", f).routes()
+	h := catalogSrv([]string{"reg.example/team"}, "reg.example", f).routes()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/strategies/hello/versions", nil).WithContext(ctx)
+	req := httptest.NewRequest(http.MethodGet, strategyQuery("reg.example/team/hello", ""), nil).WithContext(ctx)
 	req.Header.Set("Authorization", "Bearer "+tokenAda)
 	rec := &markWriter{ResponseWriter: httptest.NewRecorder()}
 	h.ServeHTTP(rec, req)
@@ -584,11 +469,11 @@ func TestCatalogClosedPort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := catalogSrv([]string{"team/hello"}, "127.0.0.1:1", cat)
+	s := catalogSrv([]string{"127.0.0.1:1/team"}, "127.0.0.1:1", cat)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/strategies/hello/versions", nil).WithContext(ctx)
+	req := httptest.NewRequest(http.MethodGet, strategyQuery("127.0.0.1:1/team/hello", ""), nil).WithContext(ctx)
 	req.Header.Set("Authorization", "Bearer "+tokenAda)
 	s.routes().ServeHTTP(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {

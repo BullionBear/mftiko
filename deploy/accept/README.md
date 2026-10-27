@@ -372,7 +372,7 @@ $A e2e cli region up
 
 同樣的流程，唯一的 client 換成 `mftiko` CLI（E11-D038）。`mftiko-api-accept cli` 在 runner 裡開一個 reverse proxy 接到副本 a，CLI 的 context 指到 proxy。CLI 送出的每一個請求（分頁、SSE、重試）都由 proxy 記下 `X-Request-Id`，最後照樣和 `audit` 逐一比對。每次執行都用新的 `HOME`，先 `mftiko login`（token 從 stdin），之後不設 `MFTIKO_TOKEN`。token 或憑證出現在 CLI 的任何輸出裡就失敗。
 
-- `main`：`version`、`whoami`、`account-kind list`、`strategy list`／`versions hello`／`show hello accept`、`instance list`，然後：
+- `main`：`version`、`whoami`、`account-kind list`、`strategy list registry:5000/strategies/hello`、`instance list`，然後：
   1. `account create`：憑證寫成 0600 的 `-key-file`、`-secret-file`。
   2. 從 YAML 檔 `session create --wait running`。
   3. `session show`：兩個依賴都是 `ready`，provider 是 `dev` 與 `td1`；表格印出 log 路徑，主機上的檔案權限正確，stdout 有 hello 的 `OnRecon` 與 `ORDER_STATUS_CANCELLED`。

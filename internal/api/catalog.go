@@ -36,14 +36,6 @@ type tagCatalog interface {
 // sha256Ref is the contract's digest (sha256 and 64 lowercase hex digits).
 var sha256Ref = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
-var errStrategyNotFound = errors.New("strategy not found")
-
-type strategyRepo struct {
-	id         string
-	path       string
-	repository string // address/path, the value the response shows (E10-D060)
-}
-
 type resolveJob struct {
 	key        string
 	repository string
@@ -79,8 +71,6 @@ func (s *Server) strategyRoutes() http.Handler {
 			ErrorHandlerFunc: s.strategyParamError,
 		}
 		mux.HandleFunc("GET /api/v1/strategies", wrapper.ListStrategies)
-		mux.HandleFunc("GET /api/v1/strategies/{strategy_id}/versions", wrapper.ListStrategyVersions)
-		mux.HandleFunc("GET /api/v1/strategies/{strategy_id}/versions/{ref}", wrapper.GetStrategyVersion)
 		s.strategyHandler = mux
 	})
 	return s.strategyHandler
@@ -111,82 +101,44 @@ func paramPointer(err error) string {
 	return "/" + name
 }
 
-// ListStrategies lists the configured repositories (E10-D013). latest is the digest of the tag named
-// latest, resolved only for this page (E10-D057, E10-D058). A missing latest tag omits the field.
+// ListStrategies lists tags of one repository (E10-D121). latest is the tag named latest, included
+// even when that tag is not on this page. A missing latest tag omits the field. Kind is not checked.
 func (s *Server) ListStrategies(w http.ResponseWriter, r *http.Request, params apiv1.ListStrategiesParams) {
 	limit, after, fields := bindPage(params.Limit, params.Cursor)
+	full := strings.TrimRight(params.Repository, "/")
+	if params.Repository == "" {
+		fields = append(fields, apiv1.FieldError{Path: "/repository", Reason: "required"})
+	}
 	if len(fields) > 0 {
 		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, "Bad Request", "request is not valid", fields)
 		return
 	}
-	repos, err := s.strategyRepos()
-	if err != nil {
-		s.log.Error().Err(err).Msg("catalog")
-		writeProblem(w, http.StatusInternalServerError, apiv1.ErrorCodeInternal, "Internal Server Error", "internal error", nil)
+	path, admitted, err := s.admitRepository("/repository", full)
+	if errors.Is(err, errRegistry) {
+		s.log.Warn().Msg("catalog: registry is not configured")
+		writeProblem(w, http.StatusServiceUnavailable, apiv1.ErrorCodeRegistryUnavailable, "Registry Unavailable", "registry is not configured", nil)
 		return
 	}
-	if len(repos) == 0 {
-		writeJSON(w, http.StatusOK, apiv1.StrategyList{Items: []apiv1.Strategy{}})
+	if err != nil {
+		s.writeRegistry(w, r, err, "repository not found")
+		return
+	}
+	if len(admitted) > 0 {
+		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, "Bad Request", "request is not valid", admitted)
 		return
 	}
 	if !s.ensureCatalog(w) {
 		return
 	}
-	keys := make([]string, len(repos))
-	for i, repo := range repos {
-		keys[i] = repo.id
-	}
-	start, end, next := pageKeys(keys, after, limit)
-	page := repos[start:end]
-	jobs := make([]resolveJob, len(page))
-	for i, repo := range page {
-		jobs[i] = resolveJob{key: repo.id, repository: repo.path, reference: "latest"}
-	}
-	digests, err := s.resolveAll(r.Context(), jobs)
+	tags, err := s.catalog.Tags(r.Context(), path)
 	if err != nil {
-		s.writeRegistry(w, r, err, "version not found")
-		return
-	}
-	items := make([]apiv1.Strategy, 0, len(page))
-	for _, repo := range page {
-		item := apiv1.Strategy{Id: repo.id, Repository: repo.repository}
-		if dig, ok := digests[repo.id]; ok {
-			item.Latest = &apiv1.StrategyTag{Tag: "latest", Digest: dig}
-		}
-		items = append(items, item)
-	}
-	writeJSON(w, http.StatusOK, apiv1.StrategyList{Items: items, NextCursor: next})
-}
-
-// ListStrategyVersions lists every tag, sorted by name, each resolved to a digest (E10-D057, E10-D058).
-func (s *Server) ListStrategyVersions(w http.ResponseWriter, r *http.Request, strategyID apiv1.StrategyID, params apiv1.ListStrategyVersionsParams) {
-	limit, after, fields := bindPage(params.Limit, params.Cursor)
-	if len(fields) > 0 {
-		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, "Bad Request", "request is not valid", fields)
-		return
-	}
-	repo, err := s.strategyByID(strategyID)
-	if errors.Is(err, errStrategyNotFound) {
-		writeProblem(w, http.StatusNotFound, apiv1.ErrorCodeNotFound, "Not Found", "strategy not found", nil)
-		return
-	}
-	if err != nil {
-		s.log.Error().Err(err).Msg("catalog")
-		writeProblem(w, http.StatusInternalServerError, apiv1.ErrorCodeInternal, "Internal Server Error", "internal error", nil)
-		return
-	}
-	if !s.ensureCatalog(w) {
-		return
-	}
-	tags, err := s.catalog.Tags(r.Context(), repo.path)
-	if err != nil {
-		s.writeRegistry(w, r, err, "strategy not found")
+		s.writeRegistry(w, r, err, "repository not found")
 		return
 	}
 	tags = uniqueSorted(tags)
 	jobs := make([]resolveJob, len(tags))
 	for i, tag := range tags {
-		jobs[i] = resolveJob{key: tag, repository: repo.path, reference: tag}
+		jobs[i] = resolveJob{key: tag, repository: path, reference: tag}
 	}
 	digests, err := s.resolveAll(r.Context(), jobs)
 	if err != nil {
@@ -204,78 +156,36 @@ func (s *Server) ListStrategyVersions(w http.ResponseWriter, r *http.Request, st
 	for _, tag := range present[start:end] {
 		items = append(items, apiv1.StrategyTag{Tag: tag, Digest: digests[tag]})
 	}
-	writeJSON(w, http.StatusOK, apiv1.StrategyTagList{Items: items, NextCursor: next})
+	body := apiv1.StrategyRepository{Repository: full, Items: items, NextCursor: next}
+	if dig, ok := digests["latest"]; ok {
+		body.Latest = &apiv1.StrategyTag{Tag: "latest", Digest: dig}
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
-// GetStrategyVersion returns one manifest. A tag is resolved to a digest first (E09-D034).
-func (s *Server) GetStrategyVersion(w http.ResponseWriter, r *http.Request, strategyID apiv1.StrategyID, ref string) {
-	repo, err := s.strategyByID(strategyID)
-	if errors.Is(err, errStrategyNotFound) {
-		writeProblem(w, http.StatusNotFound, apiv1.ErrorCodeNotFound, "Not Found", "strategy not found", nil)
-		return
+// admitRepository checks shape, the allowlist, and the configured registry (E10-D119, E10-D120).
+// The allowlist is checked before the registry is used, including when the registry is down.
+// An allowed repository with no registry configured returns errRegistry. path is the spec path,
+// without the registry host.
+func (s *Server) admitRepository(pointer, repository string) (string, fieldList, error) {
+	repository = strings.TrimRight(repository, "/")
+	if repository == "" {
+		return "", fieldList{{Path: pointer, Reason: "required"}}, nil
 	}
-	if err != nil {
-		s.log.Error().Err(err).Msg("catalog")
-		writeProblem(w, http.StatusInternalServerError, apiv1.ErrorCodeInternal, "Internal Server Error", "internal error", nil)
-		return
+	if err := repositoryShape(repository); err != nil {
+		return "", fieldList{{Path: pointer, Reason: "is not a repository"}}, nil
 	}
-	if !s.ensureCatalog(w) {
-		return
+	if !allowMatches(s.cfg.Allow, repository) {
+		return "", fieldList{{Path: pointer, Reason: "is not allowed"}}, nil
 	}
-	dig, err := s.versionDigest(r.Context(), repo.path, ref)
-	if err != nil {
-		s.writeRegistry(w, r, err, "version not found")
-		return
+	if s.cfg.Registry.Address == "" {
+		return "", nil, errRegistryUnconfigured
 	}
-	info, err := s.catalog.ReadManifest(r.Context(), repo.path, dig)
-	if err != nil {
-		s.writeRegistry(w, r, err, "version not found")
-		return
+	path, ok := pathOnRegistry(s.cfg.Registry.Address, repository)
+	if !ok {
+		return "", fieldList{{Path: pointer, Reason: "is not on the configured registry"}}, nil
 	}
-	if info.Manifest.Kind != artifact.KindStrategy {
-		s.log.Warn().Str("kind", info.Manifest.Kind).Str("digest", info.Digest).Msg("catalog")
-		writeProblem(w, http.StatusBadGateway, apiv1.ErrorCodeInvalidArtifact, "Invalid Artifact", "manifest is not a strategy artifact", nil)
-		return
-	}
-	tags, err := s.catalog.Tags(r.Context(), repo.path)
-	if err != nil {
-		s.writeRegistry(w, r, err, "version not found")
-		return
-	}
-	tags = uniqueSorted(tags)
-	jobs := make([]resolveJob, len(tags))
-	for i, tag := range tags {
-		jobs[i] = resolveJob{key: tag, repository: repo.path, reference: tag}
-	}
-	digests, err := s.resolveAll(r.Context(), jobs)
-	if err != nil {
-		s.writeRegistry(w, r, err, "version not found")
-		return
-	}
-	names := make([]string, 0)
-	for _, tag := range tags {
-		if digests[tag] == info.Digest {
-			names = append(names, tag)
-		}
-	}
-	contracts := info.Manifest.Contracts
-	if contracts == nil {
-		contracts = []string{}
-	}
-	size := info.Size
-	writeJSON(w, http.StatusOK, apiv1.StrategyVersion{
-		StrategyId: repo.id,
-		Repository: repo.repository,
-		Digest:     info.Digest,
-		Tags:       names,
-		Name:       info.Manifest.Name,
-		Runtime:    info.Manifest.Runtime,
-		Os:         info.Manifest.OS,
-		Arch:       info.Manifest.Arch,
-		Sdk:        formatSDK(info.Manifest.SDK),
-		Contracts:  contracts,
-		SizeBytes:  &size,
-	})
+	return path, nil, nil
 }
 
 func (s *Server) versionDigest(ctx context.Context, repository, ref string) (string, error) {
@@ -295,37 +205,6 @@ func (s *Server) ensureCatalog(w http.ResponseWriter) bool {
 	s.log.Warn().Msg("catalog: registry is not configured")
 	writeProblem(w, http.StatusServiceUnavailable, apiv1.ErrorCodeRegistryUnavailable, "Registry Unavailable", "registry is not configured", nil)
 	return false
-}
-
-func (s *Server) strategyRepos() ([]strategyRepo, error) {
-	out := make([]strategyRepo, 0, len(s.cfg.Repositories))
-	addr := s.cfg.Registry.Address
-	for _, p := range s.cfg.Repositories {
-		id, err := strategyID(p)
-		if err != nil {
-			return nil, err
-		}
-		ref := p
-		if addr != "" {
-			ref = addr + "/" + p
-		}
-		out = append(out, strategyRepo{id: id, path: p, repository: ref})
-	}
-	slices.SortFunc(out, func(a, b strategyRepo) int { return strings.Compare(a.id, b.id) })
-	return out, nil
-}
-
-func (s *Server) strategyByID(id string) (strategyRepo, error) {
-	repos, err := s.strategyRepos()
-	if err != nil {
-		return strategyRepo{}, err
-	}
-	for _, repo := range repos {
-		if repo.id == id {
-			return repo, nil
-		}
-	}
-	return strategyRepo{}, errStrategyNotFound
 }
 
 // resolveAll resolves every job. At most tagResolveParallel requests are in flight (E10-D057).
@@ -470,22 +349,4 @@ func uniqueSorted(tags []string) []string {
 	out := slices.Clone(tags)
 	slices.Sort(out)
 	return slices.Compact(out)
-}
-
-// formatSDK is how the catalog shows the manifest's sdk object. Both fields set is "lang version".
-// One field set is that field. Both empty (md.conn and td.account, E09-D089) omits sdk.
-func formatSDK(sdk artifact.SDK) *string {
-	switch {
-	case sdk.Lang != "" && sdk.Version != "":
-		s := sdk.Lang + " " + sdk.Version
-		return &s
-	case sdk.Lang != "":
-		s := sdk.Lang
-		return &s
-	case sdk.Version != "":
-		s := sdk.Version
-		return &s
-	default:
-		return nil
-	}
 }

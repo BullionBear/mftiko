@@ -54,10 +54,10 @@ make cli-dist     # bin/dist/：與 Release 相同的四個 tarball 與 SHA256SU
 ```sh
 $ mftiko version
 mftiko v0.2.0 (commit 12c62e6, built 2026-10-24T11:22:25Z)
-api.v1 1.0.1
+api.v1 2.0.0
 ```
 
-第一行是 CLI 的版本：Makefile 或 release 注入的 `git describe`（符合 `vX.Y.Z` 的 tag）、短 commit 與 UTC build 時間。第二行是這個 CLI 編譯時所用 `api.v1` 的 `info.version`（E10-D116）。同一個 major 裡 API 只做相容擴充，所以較舊的 CLI 仍可以連較新的 API。`-version` 印一樣的內容。`-o json` 印 `{"version","commit","built","api_version"}`。這個命令不讀設定檔，也不呼叫 API。每個請求的 `User-Agent` 是 `mftiko-cli/<版本>`。
+第一行是 CLI 的版本：Makefile 或 release 注入的 `git describe`（符合 `vX.Y.Z` 的 tag）、短 commit 與 UTC build 時間。第二行是這個 CLI 編譯時所用 `api.v1` 的 `info.version`（E10-D116、E10-D118）。`2.0.0` 在原地拿掉策略 `id`。對著 `1.x` 編譯的 CLI 不能在 `2.0.0` 的 API 上建立 session 或列出策略。`2.0.0` 之後，同一個 major 只加相容欄位，直到下一次打破另開 v2。`-version` 印一樣的內容。`-o json` 印 `{"version","commit","built","api_version"}`。這個命令不讀設定檔，也不呼叫 API。每個請求的 `User-Agent` 是 `mftiko-cli/<版本>`。
 
 ## 設定與認證
 
@@ -100,7 +100,7 @@ token 不能當旗標傳入，也不會出現在輸出與錯誤訊息裡。
 
 `examples/strategies/hello` 是參考策略：它在 book 的最佳買價下方 `offset` 處掛一張買單，看到單子 `ACCEPTED` 就撤掉（E08-D062）。
 
-1. 打包並推到 API 設定的 registry，見 README「Packing a strategy」。之後 `mftiko strategy list` 會列出 `hello`，`mftiko strategy versions hello` 會列出它的 tag。
+1. 打包並推到 API 設定的 registry，見 README「Packing a strategy」。repository 必須落在 API 的 `allow`（E10-D119）。之後 `mftiko strategy list registry:5000/strategies/hello` 列出它的 tag 與完整 digest。
 2. 查 instance 名稱與交易帳號：`mftiko instance list`（`sts`、`md` 平面）、`mftiko account list`（`api_id`）。帳號用 `mftiko account create` 建立，見 `mftiko help account`。永久退役一個 instance 用 `mftiko instance retire <name>`（E12-D033）；步驟在 [operations.md](operations.md)。
 3. 寫 session 檔，例如 `hello.yaml`。欄位與 API 的 `SessionCreate` 一對一，用 snake_case（E11-D019）：
 
@@ -108,7 +108,7 @@ token 不能當旗標傳入，也不會出現在輸出與錯誤訊息裡。
 name: hello-btc
 sts_instance: sts1
 strategy:
-  id: hello
+  repository: registry:5000/strategies/hello
   ref: v0.2.0            # tag 或 sha256: digest
 params:                  # 策略自己的參數，平台不解讀
   tickers: [BinanceUM_Perp_BTCUSDT]
@@ -166,7 +166,7 @@ session 檔也可以是 JSON，`-f -` 從 stdin 讀。YAML 與 JSON 用同一個
 | 18 | `storage_unavailable` | Postgres 不可用 |
 | 19 | `registry_unavailable` | 連不上策略 registry |
 | 20 | `internal` | API 內部錯誤；回報時附上 `X-Request-Id` |
-| 21 | `invalid_artifact` | 策略的 manifest 讀不出來，或不是策略 artifact |
+| 21 | `invalid_artifact` | 列出 tag 時解析結果讀不出來（E10-D059）。建立時 kind 不對是 `validation_failed`（E10-D120） |
 
 下面這組只出現在 `session create --wait` 與 `session end --wait`（E11-D033）。到達目標 phase、`outcome=done` 或 `end_reason=ended_by_spec` 都回 0：
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 )
 
@@ -31,12 +32,15 @@ type fetched struct {
 	ids     []string
 	raw     []byte
 	single  bool
+	// extra is stable fields kept across automatic pages (E10-D121). Strategy list
+	// keeps repository and latest. Other lists leave it nil.
+	extra map[string]json.RawMessage
 }
 
 // rejectPageFlags refuses paging flags on commands that do not page.
 func (a *App) rejectPageFlags() int {
 	if a.opt.limitSet || a.opt.cursorSet {
-		return a.exit("-limit and -cursor are only for strategy list and strategy versions, and account list, session list, and record list")
+		return a.exit("-limit and -cursor are only for strategy list, account list, session list, and record list")
 	}
 	return 0
 }
@@ -85,6 +89,12 @@ type fetchFunc func(limit int, cursor string) (Result, error)
 // stops the walk. A failed page writes nothing. --limit stops once that many
 // rows are in hand, without requesting another page.
 func (a *App) collect(fetch fetchFunc) (fetched, int) {
+	return a.collectExtra(fetch, nil)
+}
+
+// collectExtra is collect, and also keeps the named top-level fields from the
+// first page that has them (E10-D121). A null value is not kept.
+func (a *App) collectExtra(fetch fetchFunc, keep []string) (fetched, int) {
 	single, cursor, total, code := a.paging()
 	if code != 0 {
 		return fetched{}, code
@@ -113,6 +123,14 @@ func (a *App) collect(fetch fetchFunc) (fetched, int) {
 		}
 		if res.RequestID != "" {
 			out.ids = append(out.ids, res.RequestID)
+		}
+		for k, v := range keepFields(res.Body, keep) {
+			if out.extra == nil {
+				out.extra = map[string]json.RawMessage{}
+			}
+			if _, ok := out.extra[k]; !ok {
+				out.extra[k] = v
+			}
 		}
 		if single {
 			out.raw = res.Body
@@ -156,6 +174,28 @@ func decodePage(body []byte) ([]json.RawMessage, string, pageMeta, error) {
 		}
 	}
 	return items, next, metaOf(top), nil
+}
+
+func keepFields(body []byte, keep []string) map[string]json.RawMessage {
+	if len(keep) == 0 {
+		return nil
+	}
+	var top map[string]json.RawMessage
+	if json.Unmarshal(body, &top) != nil {
+		return nil
+	}
+	out := map[string]json.RawMessage{}
+	for _, k := range keep {
+		raw, ok := top[k]
+		if !ok || string(raw) == "null" {
+			continue
+		}
+		out[k] = raw
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func readMeta(body []byte) (pageMeta, error) {
@@ -222,7 +262,7 @@ func addRegions(dst, src []string) []string {
 // mergeJSON is the automatic-page -o json body (E11-D011). Item objects stay
 // the bytes the server sent. unavailable_regions is omitted when the union is
 // empty. next_cursor and controller_absent are not written.
-func mergeJSON(items []json.RawMessage, regions []string) []byte {
+func mergeJSON(items []json.RawMessage, regions []string, extra map[string]json.RawMessage) []byte {
 	var b bytes.Buffer
 	b.WriteString(`{"items":[`)
 	for i, item := range items {
@@ -232,6 +272,23 @@ func mergeJSON(items []json.RawMessage, regions []string) []byte {
 		b.Write(item)
 	}
 	b.WriteByte(']')
+	if len(extra) > 0 {
+		keys := make([]string, 0, len(extra))
+		for k := range extra {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			enc, err := json.Marshal(k)
+			if err != nil {
+				continue
+			}
+			b.WriteByte(',')
+			b.Write(enc)
+			b.WriteByte(':')
+			b.Write(extra[k])
+		}
+	}
 	if len(regions) > 0 {
 		b.WriteString(`,"unavailable_regions":`)
 		enc, err := json.Marshal(regions)
@@ -284,7 +341,7 @@ func (a *App) finishPaged(f fetched, render func([]json.RawMessage) (string, err
 	if a.JSON {
 		body := f.raw
 		if !f.single {
-			body = mergeJSON(f.items, f.regions)
+			body = mergeJSON(f.items, f.regions, f.extra)
 		}
 		if code := a.writeRaw(body); code != 0 {
 			return code

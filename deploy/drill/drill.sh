@@ -222,7 +222,7 @@ pk=\$($rel/mftiko-seal pubkey -key /etc/mftiko/td-agent/seal.key)
 cat >/root/e12-12/api.json <<JSON
 {
   "users": [{"name": "drill", "token_sha256": "\$sha"}],
-  "repositories": ["strategies/drill"],
+  "allow": ["\$reg/strategies/"],
   "registry": "\$reg",
   "plain_http": true,
   "td_keys": {"td-jp-1": "\$pk"},
@@ -339,7 +339,7 @@ cli() { a "MFTIKO_CONTEXT=drill /usr/local/lib/mftiko-e12-12/mftiko $*"; }
 session() {
 	local s
 	for s in jp jp2; do
-		sed "s/API_ID/$1/" "$here/sessions/drill-$s.yaml" | cli session create -f - -wait running -wait-timeout 3m
+		sed -e "s/API_ID/$1/" -e "s|REGISTRY|$A_IP:$REG_PORT|" "$here/sessions/drill-$s.yaml" | cli session create -f - -wait running -wait-timeout 3m
 	done
 }
 
@@ -352,7 +352,7 @@ sweep() {
 		cli -yes session end "$id" -wait terminal -wait-timeout 90s
 	done
 	for s in jp jp2; do
-		sed -e "s/API_ID/$1/" -e "s/name: drill-$s/name: drill-$s-sweep/" -e 's/cycle_s: 10/cycle_s: 10\n  sweep_only: true/' \
+		sed -e "s/API_ID/$1/" -e "s|REGISTRY|$A_IP:$REG_PORT|" -e "s/name: drill-$s/name: drill-$s-sweep/" -e 's/cycle_s: 10/cycle_s: 10\n  sweep_only: true/' \
 			"$here/sessions/drill-$s.yaml" | cli session create -f - -wait running -wait-timeout 3m
 	done
 	sleep 10 # the first recon and its BatchCancel

@@ -16,9 +16,8 @@ export type AgentStatus = components['schemas']['AgentStatus'];
 export type Worker = components['schemas']['Worker'];
 export type DemandStatus = components['schemas']['DemandStatus'];
 export type Dependency = components['schemas']['Dependency'];
-export type Strategy = components['schemas']['Strategy'];
 export type StrategyTag = components['schemas']['StrategyTag'];
-export type StrategyVersion = components['schemas']['StrategyVersion'];
+export type StrategyRepository = components['schemas']['StrategyRepository'];
 export type Account = components['schemas']['Account'];
 export type AccountKind = components['schemas']['AccountKind'];
 export type KeyType = components['schemas']['KeyType'];
@@ -66,7 +65,7 @@ api.use(jsonWrites, redirectOnUnauthorized);
 /** POST /sessions with the body bytes unchanged (E10-D033, E10-D086) and one Idempotency-Key (E10-D089). */
 export function createSession(body: string, idempotencyKey: string) {
 	return api.POST('/sessions', {
-		body: { name: '', sts_instance: 'a', strategy: { id: '', ref: '' } },
+		body: { name: '', sts_instance: 'a', strategy: { repository: '', ref: '' } },
 		bodySerializer: () => body,
 		params: { header: { 'Idempotency-Key': idempotencyKey } }
 	});
@@ -112,39 +111,55 @@ type PageBody<T> = {
 	items: T[];
 	next_cursor?: string;
 	freshness?: Freshness;
+	latest?: StrategyTag;
+	repository?: string;
 };
 
 const PAGE_CAP = 50;
 
-/** Follow `next_cursor` until the list ends (E10-D004). Stops if a cursor repeats. */
+export type CollectedPages<T> = {
+	items: T[];
+	freshness?: Freshness;
+	latest?: StrategyTag;
+	repository?: string;
+	failure?: ApiFailure;
+};
+
+/** Follow `next_cursor` until the list ends (E10-D004). Stops if a cursor repeats.
+ * `latest` and `repository` are kept from the first page that sends them (E10-D121). */
 export async function collectPages<T>(
 	load: (cursor?: string) => Promise<{ data?: PageBody<T>; error?: unknown; response: Response }>
-): Promise<{ items: T[]; freshness?: Freshness; failure?: ApiFailure }> {
+): Promise<CollectedPages<T>> {
 	const items: T[] = [];
 	const seen = new Set<string>();
 	let cursor: string | undefined;
 	let freshness: Freshness | undefined;
+	let latest: StrategyTag | undefined;
+	let repository: string | undefined;
+	const page = (): CollectedPages<T> => ({ items, freshness, latest, repository });
 	for (let i = 0; i < PAGE_CAP; i++) {
 		let result: { data?: PageBody<T>; error?: unknown; response: Response };
 		try {
 			result = await load(cursor);
 		} catch {
-			return { items, freshness, failure: { status: 0, message: 'API unreachable' } };
+			return { ...page(), failure: { status: 0, message: 'API unreachable' } };
 		}
 		const failure = failureOf(result.error, result.response);
-		if (failure) return { items, freshness, failure };
+		if (failure) return { ...page(), failure };
 		const data = result.data;
 		if (!data) {
-			return { items, freshness, failure: { status: result.response.status, message: 'Empty response' } };
+			return { ...page(), failure: { status: result.response.status, message: 'Empty response' } };
 		}
 		items.push(...data.items);
 		if (data.freshness) freshness = data.freshness;
-		if (!data.next_cursor) return { items, freshness };
+		if (data.latest && latest === undefined) latest = data.latest;
+		if (data.repository && repository === undefined) repository = data.repository;
+		if (!data.next_cursor) return page();
 		if (seen.has(data.next_cursor)) {
-			return { items, freshness, failure: { status: 0, message: 'Pagination cursor repeated' } };
+			return { ...page(), failure: { status: 0, message: 'Pagination cursor repeated' } };
 		}
 		seen.add(data.next_cursor);
 		cursor = data.next_cursor;
 	}
-	return { items, freshness, failure: { status: 0, message: 'Result truncated' } };
+	return { ...page(), failure: { status: 0, message: 'Result truncated' } };
 }
