@@ -1,16 +1,17 @@
 # Source of truth for contract A (PROTOCOL §0, §1). Final since E10-20 (E10-D018, E10-D116).
 # E10-D118 (#429) is the one in-place break: info.version 2.0.0, path still /api/v1.
+# 2.1.0 adds session log read and export (E14-D011–E14-D015). Compatible: new paths and one ErrorCode.
 # oasdiff ignores only the lines in contract/openapi/api-v1-err-ignore.txt. The next incompatible
 # change opens v2.yaml. console 與 CLI 只認這份契約，不認平台的 proto（E10-D002）。
 openapi: 3.0.3
 info:
   title: mftiko API
-  version: 2.0.0
+  version: 2.1.0
   description: |
     mftiko API server 的對外契約（DECISIONS E10-D001、E10-D002）。
 
     **慣例（E10-D036）**
-    - 路徑都在 `/api/v1` 底下。`2.0.0` 這一次在原地拿掉策略 `id`（E10-D118）；之後同一個檔案只做相容擴充，讀取端忽略不認得的欄位。下一次不相容另開 `v2.yaml`。
+    - 路徑都在 `/api/v1` 底下。`2.0.0` 這一次在原地拿掉策略 `id`（E10-D118）。`2.1.0` 加上 session log 的讀取與匯出（E14-D011–E14-D015）。同一個檔案只做相容擴充，讀取端忽略不認得的欄位。下一次不相容另開 `v2.yaml`。
     - 時間是 RFC 3339 字串（UTC，奈秒精度可省略）。
     - enum 是 API 自己的小寫字串，不是 proto 的名稱。
     - 錯誤一律是 `application/problem+json`（RFC 9457），另帶穩定的 `code`；驗證錯誤的 `errors[].path` 是 JSON Pointer（RFC 6901），指向請求 body 裡的欄位（E10-D004）。
@@ -279,6 +280,102 @@ paths:
           $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /sessions/{session_id}/logs:
+    get:
+      tags: [sessions]
+      operationId: getSessionLogs
+      summary: 讀 session worker 的 stdout 與 stderr（SSE）
+      description: |
+        `text/event-stream`（E14-D011、E10-D005）。API 對 STS agent 並行開 stdout、stderr 兩條（契約 L，PROTOCOL §11），哪條先到就先送哪條。不保證跨 stream 的順序；沒有時間戳（E14-D004）。同一條 stream 的順序保留。
+
+        | `event` | `data` 的 schema |
+        |---|---|
+        | `log` | `LogEvent` |
+        | `gap` | `LogGapEvent` |
+        | `end` | `LogEndEvent` |
+
+        - `log` 與 `gap` 帶 `stream`（`stdout` 或 `stderr`）。`end` 不帶 `stream`，它結束兩邊。
+        - `id` 是 `stdout=<cursor>;stderr=<cursor>`。cursor 是該 stream 最後一則 frame 的 `next`，不含分號與空白。重連時帶 `Last-Event-ID`，連到任何一個副本都接得上。有這個 header 就用這兩個 cursor 續接，`tail` 不生效。格式不對回 400 `validation_failed`。
+        - 省略 `tail` 表示全部（agent 收到 `from=start`）。`tail` 是行數；最後一行沒有換行也算一行（E14-D012）。`follow` 省略是 false。
+        - 兩邊的起點都到了才送第一則事件。任一條 `removed` 就送 `end`，`reason` 是 `removed`。`follow` 時兩邊都 `final` 才送 `end`，`reason` 是 `terminal`。沒有 `follow` 時兩邊都 `eof` 才送 `end`，`reason` 是 `eof`。
+        - 每 15 秒一行 `: keepalive`。agent 的空 frame 不轉成事件。
+        - 認證是 cookie 或 `Authorization: Bearer`（E10-D009），不是 agent 的 log token。
+        - session 不存在，或 agent 回 404，是 404 `not_found`。`log_addr` 是空的、連不上、agent 回 401 或 503，是 503 `logs_unavailable`（E14-D013、E14-D015）。該 STS 的 region 讀不到是 503 `region_unavailable`（E10-D014）。
+        - worker key 是 `sts/<session_id>`。同一個 session 的所有 incarnation 寫同一組檔，這裡不帶 incarnation。
+      x-mftiko-events:
+        log: LogEvent
+        gap: LogGapEvent
+        end: LogEndEvent
+      parameters:
+        - $ref: '#/components/parameters/SessionID'
+        - name: tail
+          in: query
+          required: false
+          description: 最後幾行。省略表示從留著的最舊內容讀起。單位是行；最後一行沒有換行也算一行（E14-D012）。0 是零行。
+          schema:
+            type: integer
+            minimum: 0
+        - name: follow
+          in: query
+          required: false
+          description: true 時在讀到目前結尾之後繼續等。省略是 false。
+          schema:
+            type: boolean
+            default: false
+        - name: Last-Event-ID
+          in: header
+          required: false
+          description: '`stdout=<cursor>;stderr=<cursor>`。有它就續接，`tail` 不生效。'
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 事件串流。
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/LogsUnavailable'
+  /sessions/{session_id}/logs/export:
+    get:
+      tags: [sessions]
+      operationId: exportSessionLogs
+      summary: 下載 session log 的 tar.gz
+      description: |
+        agent 直接產出 tar.gz，API 原樣轉送，不寫暫存（E14-D014、E14-D005）。`Content-Type` 是 `application/gzip`。有 `Content-Length`。
+
+        tar 裡依序是一般檔 `stdout.log`、`stderr.log`、`manifest.json`，沒有目錄。前兩個是該 stream 由舊到新接起來的位元組。`manifest.json` 在最後，是 UTF-8 JSON：`stdout` 與 `stderr` 各有 `size`（位元組數）與 `sha256`（該檔位元組的 SHA-256，64 個小寫 hex）。
+
+        錯誤與 `GET /sessions/{session_id}/logs` 相同。沒有 `tail`，也沒有 `follow`。
+      parameters:
+        - $ref: '#/components/parameters/SessionID'
+      responses:
+        '200':
+          description: tar.gz。`manifest.json` 在最後。
+          headers:
+            Content-Length:
+              required: true
+              schema:
+                type: integer
+                minimum: 0
+          content:
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/LogsUnavailable'
 
   /session-records:
     get:
@@ -708,6 +805,14 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
+    LogsUnavailable:
+      description: |
+        session log 讀不到（E14-D013、E14-D015）。`logs_unavailable`：`log_addr` 是空的、連不上、agent 回 401 或 503。
+        `region_unavailable`：該 STS 的 region 讀不到（E10-D014）。
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     InvalidArtifact:
       description: manifest 讀不出來，或不是策略 artifact。`code` 是 `invalid_artifact`（E10-D059）。
       content:
@@ -750,6 +855,7 @@ components:
         - region_unavailable
         - storage_unavailable
         - registry_unavailable
+        - logs_unavailable
         - invalid_artifact
         - internal
     FieldError:
@@ -1608,3 +1714,38 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/EventTopic'
+
+    # ---------- session log（E14-D011–E14-D015）----------
+    LogStream:
+      type: string
+      enum: [stdout, stderr]
+    LogEvent:
+      type: object
+      description: 一則 `log`。`data` 是該段 frame 的位元組，以 JSON 字串送出，不是 base64。
+      required: [stream, data]
+      properties:
+        stream:
+          $ref: '#/components/schemas/LogStream'
+        data:
+          type: string
+          minLength: 1
+    LogGapEvent:
+      type: object
+      description: 一則 `gap`。這條 stream 的 cursor 接不上，接著從留著的內容讀。不帶遺失的位元組數。
+      required: [stream]
+      properties:
+        stream:
+          $ref: '#/components/schemas/LogStream'
+    LogEndReason:
+      type: string
+      description: |
+        `eof`：沒有 `follow`，兩邊都讀完。`terminal`：`follow` 中，兩邊都讀到 session 的結尾。
+        `removed`：spec 已經不在。
+      enum: [eof, terminal, removed]
+    LogEndEvent:
+      type: object
+      description: 一則 `end`。不帶 `stream`，它結束兩邊。
+      required: [reason]
+      properties:
+        reason:
+          $ref: '#/components/schemas/LogEndReason'

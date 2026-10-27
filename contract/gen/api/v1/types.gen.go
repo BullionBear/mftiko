@@ -97,6 +97,7 @@ const (
 	ErrorCodeConflict            ErrorCode = "conflict"
 	ErrorCodeInternal            ErrorCode = "internal"
 	ErrorCodeInvalidArtifact     ErrorCode = "invalid_artifact"
+	ErrorCodeLogsUnavailable     ErrorCode = "logs_unavailable"
 	ErrorCodeNotFound            ErrorCode = "not_found"
 	ErrorCodeNotTerminal         ErrorCode = "not_terminal"
 	ErrorCodeReferenced          ErrorCode = "referenced"
@@ -117,6 +118,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeInternal:
 		return true
 	case ErrorCodeInvalidArtifact:
+		return true
+	case ErrorCodeLogsUnavailable:
 		return true
 	case ErrorCodeNotFound:
 		return true
@@ -169,6 +172,45 @@ func (e KeyType) Valid() bool {
 	case Ed25519:
 		return true
 	case Hmac:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LogEndReason.
+const (
+	Eof      LogEndReason = "eof"
+	Removed  LogEndReason = "removed"
+	Terminal LogEndReason = "terminal"
+)
+
+// Valid indicates whether the value is a known member of the LogEndReason enum.
+func (e LogEndReason) Valid() bool {
+	switch e {
+	case Eof:
+		return true
+	case Removed:
+		return true
+	case Terminal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LogStream.
+const (
+	Stderr LogStream = "stderr"
+	Stdout LogStream = "stdout"
+)
+
+// Valid indicates whether the value is a known member of the LogStream enum.
+func (e LogStream) Valid() bool {
+	switch e {
+	case Stderr:
+		return true
+	case Stdout:
 		return true
 	default:
 		return false
@@ -673,6 +715,28 @@ type Limits struct {
 	VolumeMb *int `json:"volume_mb,omitempty"`
 }
 
+// LogEndEvent 一則 `end`。不帶 `stream`，它結束兩邊。
+type LogEndEvent struct {
+	// Reason `eof`：沒有 `follow`，兩邊都讀完。`terminal`：`follow` 中，兩邊都讀到 session 的結尾。
+	// `removed`：spec 已經不在。
+	Reason LogEndReason `json:"reason"`
+}
+
+// LogEndReason `eof`：沒有 `follow`，兩邊都讀完。`terminal`：`follow` 中，兩邊都讀到 session 的結尾。
+// `removed`：spec 已經不在。
+type LogEndReason string
+
+// LogEvent 一則 `log`。`data` 是該段 frame 的位元組，以 JSON 字串送出，不是 base64。
+type LogEvent struct {
+	Data   string    `json:"data"`
+	Stream LogStream `json:"stream"`
+}
+
+// LogGapEvent 一則 `gap`。這條 stream 的 cursor 接不上，接著從留著的內容讀。不帶遺失的位元組數。
+type LogGapEvent struct {
+	Stream LogStream `json:"stream"`
+}
+
 // LogLocation 一期不接 `log.*`，運維上機器讀（E10-D015）。`AgentRecord` 沒有 `host` 時省略整個物件（E10-D014）。
 type LogLocation struct {
 	Host   string `json:"host"`
@@ -681,6 +745,9 @@ type LogLocation struct {
 	// Stdout Example: /var/lib/mftiko/log/sts/3f9a0c1e.stdout
 	Stdout string `json:"stdout"`
 }
+
+// LogStream defines model for LogStream.
+type LogStream string
 
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
@@ -1007,6 +1074,9 @@ type Conflict = Problem
 // InvalidArtifact RFC 9457。`code` 是給程式判斷的穩定值（E10-D036）。
 type InvalidArtifact = Problem
 
+// LogsUnavailable RFC 9457。`code` 是給程式判斷的穩定值（E10-D036）。
+type LogsUnavailable = Problem
+
 // NotFound RFC 9457。`code` 是給程式判斷的穩定值（E10-D036）。
 type NotFound = Problem
 
@@ -1084,6 +1154,18 @@ type ListSessionsParams struct {
 type CreateSessionParams struct {
 	// IdempotencyKey 選填。同 key、同 body 在 24 小時內回同一個 session；同 key、不同 body 回 409（E10-D068）。
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
+// GetSessionLogsParams defines parameters for GetSessionLogs.
+type GetSessionLogsParams struct {
+	// Tail 最後幾行。省略表示從留著的最舊內容讀起。單位是行；最後一行沒有換行也算一行（E14-D012）。0 是零行。
+	Tail *int `form:"tail,omitempty" json:"tail,omitempty"`
+
+	// Follow true 時在讀到目前結尾之後繼續等。省略是 false。
+	Follow *bool `form:"follow,omitempty" json:"follow,omitempty"`
+
+	// LastEventID `stdout=<cursor>;stderr=<cursor>`。有它就續接，`tail` 不生效。
+	LastEventID *string `json:"Last-Event-ID,omitempty"`
 }
 
 // ListStrategiesParams defines parameters for ListStrategies.
