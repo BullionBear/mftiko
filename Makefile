@@ -204,14 +204,17 @@ web-dev: web-install ## Dev server; proxies /api to mftiko-api on :8080
 
 # ---------- database ----------
 
-# The api service runs bin/linux/mftiko-api in a Linux container, for this machine's architecture.
-dev-up: web ## Dev NATS credentials and API config, a Linux mftiko-api and the console, then start PostgreSQL, etcd, NATS, a registry and the API (console on :8080)
+# The api, controller and sts1 services run bin/linux in Linux containers, for this machine's
+# architecture. bin/linux/examples/ holds the example strategies built for those containers.
+dev-up: web ## Dev NATS credentials and API config, Linux binaries and the console, then start PostgreSQL, etcd, NATS, a registry, the API (console on :8080), the controller and sts1
 	$(GO) run ./cmd/mftiko-nats-dev -out $(DEV_NATS)
 	deploy/dev/api-init.sh
-	GOOS=linux GOARCH=$$($(GO) env GOARCH) CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/linux/ ./cmd/mftiko-api
+	GOOS=linux GOARCH=$$($(GO) env GOARCH) CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/linux/ \
+		./cmd/mftiko-api ./cmd/mftiko-controller ./cmd/mftiko-sts-agent ./cmd/mftiko-shim
+	GOOS=linux GOARCH=$$($(GO) env GOARCH) CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/linux/examples/ ./examples/strategies/...
 	$(COMPOSE) up -d --wait
 
-dev-down: ## Stop local PostgreSQL, etcd, NATS, the registry and the API. Keeps their data, including the gitignored NATS and API directories
+dev-down: ## Stop the dev stack. Keeps its data, including the gitignored NATS and API directories
 	$(COMPOSE) down
 
 dev-nats-smoke: ## Run the dev NATS permission checks against the compose server

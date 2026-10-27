@@ -5,6 +5,7 @@
 # account JWTs (E04-D012). The registry is registry:2 with no auth (E09-D010). `make dev-up` generates the NATS
 # credentials into deploy/dev/data/nats before compose starts; that directory is gitignored and is not
 # created here, because a missing bind-mount source makes Docker create a directory in its place.
+# The controller and sts1 run sessions that have no feeds and no accounts (E15-10); md1 and td1 are not run.
 # Tests do not use these: state starts its own etcd (etcdtest), natsx its own server (natsxtest),
 # natsdev its own JWT server, the symbol tests start their own PostgreSQL (pgtest), and artifact tests
 # speak to an in-process registry.
@@ -93,16 +94,16 @@ services:
 
   # The API server and the console (E10-19). bin/linux/mftiko-api from `make dev-up`, the console from
   # web/build (E10-D028), plain HTTP (E10-D029). deploy/dev/api-init.sh writes ./data/api: the deployment
-  # (one region, controller, md1, td1, sts1), the API JSON, the token to sign in with, the cookie key
-  # and td1's seal key. etcd has no auth here; the etcd client goes on without it, so the password is
-  # a placeholder. No agent runs in this stack: sessions stay pending (deploy/accept runs them).
-  # Audit and session records need `make migrate-up`; until then the API serves and logs the errors.
+  # (one region, controller, md1, td1, sts1), the API JSON, the token to sign in with, the cookie key,
+  # the session-log token and td1's seal key. etcd has no auth here; the etcd client goes on without it,
+  # so the password is a placeholder. Audit and session records need `make migrate-up`; until then the
+  # API serves and logs the errors.
   api:
     image: alpine:3.22
     command:
       - sh
       - -c
-      - MFTIKO_COOKIE_KEY=$$(cat /api/cookie-key) exec /mftiko/mftiko-api -in /api/deployment.json -config /api/api.json -web /web/build
+      - MFTIKO_COOKIE_KEY=$$(cat /api/cookie-key) exec /mftiko/mftiko-api -in /api/deployment.json -config /api/api.json -web /web/build -log-token /api/log-token
     environment:
       MFTIKO_ETCD_PASSWORD: dev
       MFTIKO_POSTGRES_DSN: postgres://mftiko@postgres:5432/mftiko?sslmode=disable
@@ -122,7 +123,69 @@ services:
       timeout: 3s
       retries: 30
 
+  # The controller for the one region (E13-D012). It derives each session's demand; without it a
+  # session stays pending.
+  controller:
+    image: alpine:3.22
+    command: ["/mftiko/mftiko-controller", "-in", "/api/deployment.json"]
+    environment:
+      MFTIKO_ETCD_PASSWORD: dev
+    volumes:
+      - ../../bin/linux:/mftiko:ro
+      - ./data/api:/api:ro
+    depends_on:
+      etcd: {condition: service_healthy}
+
+  # sts1 runs as nobody: as root, the 0444 and 0555 of an input do not stop a write (E09-D075). nobody
+  # cannot read ./data/api (0700) or the signing seed (0600) on a Linux host, so this one-shot copies
+  # what sts1 reads into its volume, owned by nobody, on every `make dev-up`.
+  sts1-init:
+    image: alpine:3.22
+    command:
+      - sh
+      - -euc
+      - |
+        install -d -o 65534 -g 65534 -m 0700 /var/lib/mftiko/etc /var/lib/mftiko/sts-agent
+        install -o 65534 -g 65534 -m 0600 /api/deployment.json /api/log-token.sha256 /nats/keys/mftiko-signing.nk /var/lib/mftiko/etc/
+        sed -n 's/.*"account": "\(A[A-Z0-9]*\)".*/\1/p' /nats/manifest.json >/var/lib/mftiko/etc/nats-account
+        test -s /var/lib/mftiko/etc/nats-account
+    volumes:
+      - ./data/api:/api:ro
+      - ./data/nats/manifest.json:/nats/manifest.json:ro
+      - ./data/nats/keys:/nats/keys:ro
+      - stsdata:/var/lib/mftiko
+
+  # The STS agent for sts1 (E09). It pulls strategies and inputs from the compose registry over plain
+  # HTTP (E10-D124), pushes state_out to registry:5000/data/state, and runs each worker under
+  # bin/linux/mftiko-shim in this container; workers reach NATS at nats:4222. The API reads session logs
+  # from sts1:7442 with the token in ./data/api (E14-D001). -work-dir and -data are the volume, as
+  # /var/lib/mftiko/sts-agent is on a host (E12-D003).
+  sts1:
+    image: alpine:3.22
+    hostname: sts1
+    user: "65534:65534"
+    command:
+      - sh
+      - -c
+      - >-
+        exec /mftiko/mftiko-sts-agent -instance sts1 -topology /var/lib/mftiko/etc/deployment.json
+        -work-dir /var/lib/mftiko/sts-agent -data /var/lib/mftiko/sts-agent -shim /mftiko/mftiko-shim
+        -plain-http-hosts registry:5000 -data-repository registry:5000/data/state -nats nats://nats:4222
+        -nats-account $$(cat /var/lib/mftiko/etc/nats-account) -nats-signing-key /var/lib/mftiko/etc/mftiko-signing.nk
+        -log-advertise sts1:7442 -log-token-sha256 $$(cat /var/lib/mftiko/etc/log-token.sha256)
+    environment:
+      MFTIKO_ETCD_PASSWORD: dev
+    volumes:
+      - ../../bin/linux:/mftiko:ro
+      - stsdata:/var/lib/mftiko
+    depends_on:
+      sts1-init: {condition: service_completed_successfully}
+      etcd: {condition: service_healthy}
+      nats: {condition: service_healthy}
+      registry: {condition: service_healthy}
+
 volumes:
   pgdata:
   etcddata:
   regdata:
+  stsdata:

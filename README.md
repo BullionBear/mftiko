@@ -52,7 +52,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-api-accept       drives the end-to-end acceptance through mftiko-api (deploy/accept)
 examples/strategies/      hello, tape-keeper; import only sdk and contract, as an outside author would
 migrations/               PostgreSQL schema: NNNN_name.up.sql / .down.sql, embedded into mftiko-migrate
-deploy/dev/               local development services (PostgreSQL, etcd, NATS, registry) and mftiko-api serving the console
+deploy/dev/               local development services (PostgreSQL, etcd, NATS, registry), mftiko-api serving the console, the controller and sts1
 deploy/accept/            MD, TD and end-to-end acceptance against a venue's testnet: compose stack, accept.sh, runbook
 web/                      SvelteKit console (single-page app served by mftiko-api); e2e/ is the Playwright smoke
 docs/                     DECISIONS.md, PROTOCOL.md, runbook.md (alerts and operations), operations.md (reference), release.md, cli.md
@@ -76,7 +76,7 @@ docs/                     DECISIONS.md, PROTOCOL.md, runbook.md (alerts and oper
 | `make test` / `make test-race` / `make vet` | Go tests / with the race detector, uncached / vet |
 | `make check` | `proto-lint`, `proto-breaking`, `openapi-lint`, `openapi-breaking`, `gen-check`, `vet`, `build`, `cli-dist`, `test-race`, `sdk-conformance`, `web-check`, `web`, `server-dist` (CI runs these from `.github/workflows/ci.yml`) |
 | `make web` / `make web-dev` / `make web-check` | build, dev server, svelte-check |
-| `make dev-up` / `make dev-down` | generate dev NATS credentials and API config (`deploy/dev/data/api`, token in `token`), build a Linux `mftiko-api` and the console, then start / stop a local PostgreSQL, etcd, NATS, registry and the API with the console on `127.0.0.1:8080` (Docker); `dev-up` waits until all are healthy |
+| `make dev-up` / `make dev-down` | generate dev NATS credentials and API config (`deploy/dev/data/api`, token in `token`), build Linux binaries (`mftiko-api`, `mftiko-controller`, `mftiko-sts-agent`, `mftiko-shim`, and the example strategies in `bin/linux/examples/`) and the console, then start / stop a local PostgreSQL, etcd, NATS, registry, the API with the console on `127.0.0.1:8080`, the controller and the STS agent `sts1` (Docker); `dev-up` waits until all are healthy. Sessions with no feeds and no accounts run; `md1` and `td1` are not started (docs/operations.md, "dev") |
 | `make accept-up` / `make accept-down` | start / stop the acceptance stack; the checks themselves, including the end-to-end ones (`accept.sh e2e-up`, `e2e-all`, `console-smoke`), are in `deploy/accept/README.md` |
 | `make dev-nats-smoke` | run the dev NATS permission checks (`deploy/dev/nats-smoke.sh`) against the compose server |
 | `make migrate-up` / `make migrate-status` | apply pending migrations / list them against `$DATABASE_URL` |

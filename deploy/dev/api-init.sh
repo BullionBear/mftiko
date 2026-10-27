@@ -5,11 +5,14 @@
 #   api.json          user "dev", the registry from compose, td1's public key, listen :8080 (E10-D023)
 #   token             the dev user's token (E10-D009); sign in to the console with it
 #   cookie-key        the console cookie's HMAC key, passed as $MFTIKO_COOKIE_KEY
+#   log-token         the session-log bearer the API sends to sts1 (E14-D001); -log-token
+#   log-token.sha256  its SHA-256, which sts1 checks (-log-token-sha256)
 #   td1-seal.key      td1's private key (mftiko-seal); accounts created in dev are sealed to it
 #
-# The token, the cookie key and the seal key are made once and kept; the two JSON files are rewritten
-# every time. Nothing runs md1, td1 or sts1 in this stack: they are there so the console's forms have
-# instances to name. deploy/accept runs the agents (README there).
+# The tokens, the cookie key and the seal key are made once and kept; the JSON files and the hash are
+# rewritten every time. The stack runs the controller and sts1 (E15-10). Nothing runs md1 or td1: they
+# are there so the console's forms have instances to name, and a session with feeds or accounts waits
+# for them. deploy/accept runs those agents (README there).
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -24,6 +27,8 @@ secret() {
 }
 secret token
 secret cookie-key
+secret log-token
+tr -d '\n' <"$out/log-token" | shasum -a 256 | cut -d' ' -f1 >"$out/log-token.sha256"
 
 seal=(go run "$repo/cmd/mftiko-seal")
 [ -s "$out/td1-seal.key" ] || (cd "$repo" && "${seal[@]}" keygen -key "$out/td1-seal.key" >/dev/null)
