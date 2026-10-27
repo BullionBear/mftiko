@@ -354,15 +354,15 @@ func TestCatalogValidation(t *testing.T) {
 		digest: map[string]string{catKey("team/hello", "v1"): sha(0)},
 	}
 	h := catalogSrv([]string{"reg.example/team"}, "reg.example", f).routes()
-	code, p := getProblem(t, h, "/api/v1/strategies?limit=0")
+	code, p := getProblem(t, h, strategyQuery("reg.example/team/hello", "limit=0"))
 	if code != http.StatusBadRequest || p.Code != apiv1.ErrorCodeValidationFailed || p.Errors == nil || (*p.Errors)[0].Path != "/limit" {
 		t.Fatalf("limit 0: %d %+v", code, p)
 	}
-	code, p = getProblem(t, h, "/api/v1/strategies?limit=1001")
+	code, p = getProblem(t, h, strategyQuery("reg.example/team/hello", "limit=1001"))
 	if code != http.StatusBadRequest || (*p.Errors)[0].Path != "/limit" {
 		t.Fatalf("limit 1001: %d %+v", code, p)
 	}
-	code, p = getProblem(t, h, "/api/v1/strategies?limit=abc")
+	code, p = getProblem(t, h, strategyQuery("reg.example/team/hello", "limit=abc"))
 	if code != http.StatusBadRequest || p.Code != apiv1.ErrorCodeValidationFailed || (*p.Errors)[0].Path != "/limit" {
 		t.Fatalf("limit abc: %d %+v", code, p)
 	}
