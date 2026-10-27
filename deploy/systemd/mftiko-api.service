@@ -13,7 +13,8 @@ EnvironmentFile=/etc/mftiko/api/env
 ExecStart=/opt/mftiko/current/bin/mftiko-api \
   -in /etc/mftiko/api/deployment.json \
   -config /etc/mftiko/api/api.json \
-  -web /opt/mftiko/current/web
+  -web /opt/mftiko/current/web \
+  -log-token /etc/mftiko/api/log-token
 Restart=always
 RestartSec=1s
 

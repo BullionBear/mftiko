@@ -99,6 +99,61 @@ func TestParseArgs(t *testing.T) {
 	if _, _, err := parseArgs([]string{"-no-such"}, nil); err == nil {
 		t.Fatal("unknown flag accepted")
 	}
+	opt, _, err = parseArgs([]string{"-in", "d", "-config", "c", "-log-token", "/etc/mftiko/api/log-token"}, getenv)
+	if err != nil || opt.logToken != "/etc/mftiko/api/log-token" {
+		t.Fatalf("err %v opt %+v", err, opt)
+	}
+}
+
+func TestReadLogToken(t *testing.T) {
+	if tok, err := readLogToken(""); err != nil || tok != "" {
+		t.Fatalf("empty path: %q %v", tok, err)
+	}
+	if _, err := readLogToken(filepath.Join(t.TempDir(), "missing")); err == nil || !strings.Contains(err.Error(), "-log-token") {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	if _, err := readLogToken(write("blank", " \n\t")); err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatal(err)
+	}
+	if _, err := readLogToken(write("short", strings.Repeat("a", 31))); err == nil || !strings.Contains(err.Error(), "32") {
+		t.Fatal(err)
+	}
+	got, err := readLogToken(write("ok", "\n"+strings.Repeat("b", 32)+"\n"))
+	if err != nil || got != strings.Repeat("b", 32) {
+		t.Fatalf("%q %v", got, err)
+	}
+	if _, err := readLogToken(write("space", strings.Repeat("c", 16)+" "+strings.Repeat("c", 16))); err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatal(err)
+	}
+	if _, err := readLogToken(write("cr", strings.Repeat("d", 16)+"\r"+strings.Repeat("d", 16))); err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatal(err)
+	}
+	for _, err := range []error{
+		readLogTokenErr(t, write("blank", " ")),
+		readLogTokenErr(t, write("short", "abc")),
+	} {
+		if strings.Contains(err.Error(), "aaaa") || strings.Contains(err.Error(), strings.Repeat("d", 8)) {
+			t.Fatalf("error includes token bytes: %v", err)
+		}
+	}
+}
+
+func readLogTokenErr(t *testing.T, path string) error {
+	t.Helper()
+	_, err := readLogToken(path)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	return err
 }
 
 func TestRunRejectsArgs(t *testing.T) {
@@ -115,6 +170,16 @@ func TestRunRejectsArgs(t *testing.T) {
 	}
 	if err := run(context.Background(), options{in: missing, config: conf}, strings.NewReader(""), zerolog.Nop()); err == nil {
 		t.Fatal("missing deployment accepted")
+	}
+	tok := filepath.Join(t.TempDir(), "log-token")
+	if err := os.WriteFile(tok, []byte("short\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := run(context.Background(), options{
+		in: filepath.Join(t.TempDir(), "no-deploy"), config: filepath.Join(t.TempDir(), "no-config"), logToken: tok,
+	}, strings.NewReader(""), zerolog.Nop())
+	if err == nil || !strings.Contains(err.Error(), "-log-token") {
+		t.Fatal(err)
 	}
 }
 

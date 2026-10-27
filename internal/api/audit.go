@@ -268,8 +268,20 @@ func (s *Server) auditRow(r *http.Request, st *accessState, cw *capture) auditRo
 		body:      stored,
 		bodyLen:   n,
 		truncated: truncated,
-		detail:    responseDetail(status, cw.buf),
+		detail:    cw.auditDetail(status),
 	}
+}
+
+// auditDetail prefers the log handler's result code (E14-D030). Other routes keep the
+// problem detail, and only for an error status.
+func (c *capture) auditDetail(status int) string {
+	if c == nil {
+		return ""
+	}
+	if c.result != "" {
+		return clip(c.result, detailLimit)
+	}
+	return responseDetail(status, c.buf)
 }
 
 func strPtr(s string) *string {

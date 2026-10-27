@@ -1049,6 +1049,12 @@ func TestUnitKeys(t *testing.T) {
 			t.Fatalf("%s sets StateDirectory", name)
 		}
 	}
+	apiExec := fields(lookupMust(t, got["mftiko-api.service"], "mftiko-api.service", "ExecStart"))
+	for _, want := range []string{"-log-token", "/etc/mftiko/api/log-token"} {
+		if !containsStr(apiExec, want) {
+			t.Fatalf("mftiko-api ExecStart has no %s: %v", want, apiExec)
+		}
+	}
 
 	backup := got["mftiko-etcd-backup.service"]
 	if v, _ := lookup(backup, "[Service]", "Type"); v != "oneshot" {

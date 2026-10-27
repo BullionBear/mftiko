@@ -68,6 +68,8 @@ type capture struct {
 	status int
 	wrote  bool
 	buf    []byte
+	// result is the audit detail for a log request (E14-D030). Empty keeps responseDetail.
+	result string
 }
 
 func (c *capture) WriteHeader(code int) {
