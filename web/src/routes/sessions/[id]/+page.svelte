@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import CopyButton from '#lib/CopyButton.svelte';
 	import FeedStatus from '#lib/FeedStatus.svelte';
+	import SessionLogs from '#lib/SessionLogs.svelte';
 	import type { Dependency, SessionDetail } from '#lib/api.ts';
 	import { SessionDetailFeed } from '#lib/live.svelte.ts';
 	import { openPageStream } from '#lib/events.svelte.ts';
@@ -25,7 +26,8 @@
 		}
 		void detail.load(sessionId);
 		const stopWatch = detail.watch(sessionId);
-		// sessions for this id, plus instances so a last-known STS agent is marked on the logs (E10-D105, E10-D107).
+		// /events: sessions for this id, plus instances so a last-known STS agent is marked on the logs.
+		// Log follow is its own EventSource while that switch is on (E10-D105, E10-D107, E14-D036).
 		const stopStream = openPageStream(['sessions', 'instances'], sessionId);
 		return () => {
 			stopStream();
@@ -177,6 +179,9 @@
 	{/if}
 	{#if detail.agentError}
 		<p class="status error" role="alert">{detail.agentError}</p>
+	{/if}
+	{#if detail.session.id === id}
+		<SessionLogs sessionId={detail.session.id} />
 	{/if}
 
 	<h2>state_out</h2>

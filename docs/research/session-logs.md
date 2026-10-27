@@ -1,6 +1,6 @@
 # session log
 
-這一頁記 E14 已經定的事（E14-D001–E14-D010，#436，2026-10-27）。HTTP 路徑與 `Frame` 的欄位已寫在 PROTOCOL §11（#437，E14-D011–E14-D015）。讀檔的 cursor 寫在 §4.3（#438，E14-D016–E14-D018）。CLI 的輸出細節、console 的版面仍由後面的票寫，這裡不定。
+這一頁記 E14 已經定的事（E14-D001–E14-D010，#436，2026-10-27）。HTTP 路徑與 `Frame` 的欄位已寫在 PROTOCOL §11（#437，E14-D011–E14-D015）。讀檔的 cursor 寫在 §4.3（#438，E14-D016–E14-D018）。CLI 的輸出細節由 #441 寫。console 的版面由 E14-D036–E14-D040（#442）定下。
 
 檔案仍是唯一來源。shim 的 S4、策略 SDK、PROTOCOL §9 不改。STS 的 log 留到 spec 被刪（E10-D016）。
 
@@ -55,7 +55,7 @@ stdout 與 stderr 怎麼分流、gap 怎麼印、匯出寫到哪個檔名，由 
 
 ### 4.6 console
 
-session 詳細頁現在顯示 `LogLocation` 的主機與完整路徑，`AgentRecord.last_known` 為真時加註（E10-D105）。這一頁要能看 log，是 E14 的目標。分頁、追蹤、下載的版面由 #442 寫。這裡不定最後顯示幾行，也不定要不要搜尋。
+session 詳細頁顯示 `LogLocation` 的主機與完整路徑，`AgentRecord.last_known` 為真時加註（E10-D105）。分頁、最後幾行、追蹤、gap 與下載由 E14-D036–E14-D040（#442）定下。不做搜尋，不解析 ANSI。
 
 ### 4.8 錯誤
 
