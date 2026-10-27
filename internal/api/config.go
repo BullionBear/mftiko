@@ -82,10 +82,13 @@ func (k Kind) Supported() bool { return len(k.Trades) == 1 }
 
 // Config is the validated settings Run serves with. The secret fields are credentials; do not log a Config.
 type Config struct {
-	Topology         state.Topology
-	Planes           map[string]state.Plane
-	Users            []User
-	Allow            []string // strategy repository allowlist; "*" alone allows every repository (E10-D122)
+	Topology state.Topology
+	Planes   map[string]state.Plane
+	Users    []User
+	Allow    []string // strategy and input repository allowlist; "*" alone allows every repository (E10-D122, E15-D007)
+	// MaxInputBytes limits each input's declared config plus layer; zero means artifact.DefaultMaxBytes.
+	// It should equal the STS -max-artifact-bytes (E15-D006).
+	MaxInputBytes    int64
 	TDKeys           map[string]sealbox.PublicKey
 	Kinds            []Kind // not in the JSON; the command sets it (E10-D034). Empty rejects every kind.
 	Retention        time.Duration
@@ -128,6 +131,7 @@ type configFile struct {
 	ShutdownTimeout  string            `json:"shutdown_timeout"`
 	RegistryCreds    string            `json:"registry_creds"`
 	PlainHTTPHosts   []string          `json:"plain_http_hosts"`
+	MaxInputBytes    int64             `json:"max_input_bytes"`
 }
 
 type configUser struct {
@@ -228,8 +232,15 @@ func (f configFile) config(dep deployment) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	maxInput := f.MaxInputBytes
+	if maxInput < 0 {
+		return Config{}, fmt.Errorf("max_input_bytes %d is negative", maxInput)
+	}
+	if maxInput == 0 {
+		maxInput = artifact.DefaultMaxBytes
+	}
 	return Config{
-		Topology: dep.Topology, Planes: dep.Planes, Users: users, Allow: allow,
+		Topology: dep.Topology, Planes: dep.Planes, Users: users, Allow: allow, MaxInputBytes: maxInput,
 		TDKeys: keys, Retention: retention, UnavailableAfter: unavailable, Listen: listen, ShutdownTimeout: shutdown,
 		Registry: reg, Catalog: cat,
 	}, nil

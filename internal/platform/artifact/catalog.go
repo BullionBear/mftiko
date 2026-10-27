@@ -202,9 +202,11 @@ func (c *Catalog) ReadManifest(ctx context.Context, repository, digestStr string
 }
 
 // DataInfo is a data artifact's manifest digest and config (E09-D072, E10-D012). The layer is not downloaded.
+// Size is the config plus the layer as the manifest declares them, the total a pull checks (E09-D013, E15-D006).
 type DataInfo struct {
 	Digest string
 	Config DataConfig
+	Size   int64
 }
 
 // ReadData fetches the image manifest and its config for digest and checks that they are a mftiko
@@ -235,6 +237,10 @@ func (c *Catalog) ReadData(ctx context.Context, repository, digestStr string) (D
 	if err != nil {
 		return DataInfo{}, err
 	}
+	size, err := declaredSize(manifest)
+	if err != nil {
+		return DataInfo{}, err
+	}
 	cfg, err := fetchVerifiedBlob(ctx, repo, manifest.Config)
 	if err != nil {
 		return DataInfo{}, err
@@ -246,5 +252,5 @@ func (c *Catalog) ReadData(ctx context.Context, repository, digestStr string) (D
 	if parsed.Schema != DataSchema {
 		return DataInfo{}, permanent(ReasonBadManifest, fmt.Errorf("schema %q", parsed.Schema))
 	}
-	return DataInfo{Digest: want.String(), Config: parsed}, nil
+	return DataInfo{Digest: want.String(), Config: parsed, Size: size}, nil
 }

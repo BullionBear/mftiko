@@ -585,6 +585,31 @@ func TestSessionValidation(t *testing.T) {
 	hasPath(t, body, "/inputs/0/digest")
 	se.cat.data[catKey("registry.example/mftiko/data", dataDig)] = artifact.DataInfo{Digest: dataDig, Config: artifact.DataConfig{Schema: artifact.DataSchema}}
 
+	// E15-D006: the declared size is checked against max_input_bytes; equal passes.
+	se.s.cfg.MaxInputBytes = 1000
+	se.cat.data[catKey("registry.example/mftiko/data", dataDig)] = artifact.DataInfo{Digest: dataDig, Config: artifact.DataConfig{Schema: artifact.DataSchema}, Size: 1001}
+	code, _, body = se.post(t, inputBody, nil)
+	if code != http.StatusBadRequest || !strings.Contains(string(body), "is too large") {
+		t.Fatalf("large input %d %s", code, body)
+	}
+	hasPath(t, body, "/inputs/0/digest")
+	if se.specCount(t, "sts-tw-1") != 0 {
+		t.Fatal("a too large input wrote a spec")
+	}
+	se.s.cfg.MaxInputBytes = 0
+	se.cat.data[catKey("registry.example/mftiko/data", dataDig)] = artifact.DataInfo{Digest: dataDig, Config: artifact.DataConfig{Schema: artifact.DataSchema}}
+
+	// E15-D007: an input repository outside allow is rejected before the registry is asked,
+	// so it is a 400 even while the registry is down.
+	outside := fmt.Sprintf(`{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":%q},"inputs":[{"name":"m","digest":%q,"repository":"other.example/data"}]}`, stratDig, dataDig)
+	se.cat.readErr[catKey("registry.example/mftiko/strategies", stratDig)] = &artifact.Error{Reason: artifact.ReasonUnavailable, Err: errors.New("down")}
+	code, _, body = se.post(t, outside, nil)
+	delete(se.cat.readErr, catKey("registry.example/mftiko/strategies", stratDig))
+	if code != http.StatusBadRequest || !strings.Contains(string(body), "is not allowed") {
+		t.Fatalf("input outside allow %d %s", code, body)
+	}
+	hasPath(t, body, "/inputs/0/repository")
+
 	se.cat.readErr[catKey("registry.example/mftiko/strategies", stratDig)] = &artifact.Error{Reason: artifact.ReasonUnavailable, Err: errors.New("down")}
 	code, _, body = se.post(t, minBody("sts-tw-1"), nil)
 	if code != http.StatusServiceUnavailable {
@@ -638,6 +663,13 @@ func TestSessionValidation(t *testing.T) {
 	lex := mustSession(t, code, nilHdr(t, code, body), body)
 	if lex.Spec.Accounts[0].TdInstance != "td-jp-1" {
 		t.Fatalf("td %s", lex.Spec.Accounts[0].TdInstance)
+	}
+
+	// Last, because it writes a spec: an input exactly at max_input_bytes is accepted (E15-D006).
+	se.s.cfg.MaxInputBytes = 1000
+	se.cat.data[catKey("registry.example/mftiko/data", dataDig)] = artifact.DataInfo{Digest: dataDig, Config: artifact.DataConfig{Schema: artifact.DataSchema}, Size: 1000}
+	if code, _, body := se.post(t, inputBody, nil); code != http.StatusCreated {
+		t.Fatalf("input at the limit %d %s", code, body)
 	}
 }
 
