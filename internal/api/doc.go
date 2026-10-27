@@ -12,7 +12,9 @@
 // Each SSE connection watches etcd from Last-Event-ID and does not read the mirror's history (E10-D094).
 // Every /api request is authenticated, except POST /api/v1/auth/login
 // (E10-D009, E10-D051). Cookie writes and login need Content-Type: application/json; bearer writes do not (E10-D110). On reply the audit row is queued and written to Postgres; /healthz, /readyz, and /metrics are not
-// (E10-D010, E10-D049, E12-D038). The strategy catalog is served from the registry (E10-D056–E10-D061). Load checks the DSN and the
+// (E10-D010, E10-D049, E12-D038). GET /api/v1/sessions/{id}/logs and .../logs/export call the STS
+// agent when a log token is set (E14-D010, E14-D025–E14-D030). With no token those two routes answer
+// 503 logs_unavailable; the rest of the API, including /readyz, is unchanged. The strategy catalog is served from the registry (E10-D056–E10-D061). Load checks the DSN and the
 // registry settings and does not dial. Run creates a Postgres pool and does not wait for it to connect;
 // readiness still watches etcd only (E10-D048, modifies E10-D024). A down Postgres makes session create return
 // 503 and skip etcd (E10-D031); audit writes fail the same way. Create and end of a session, the

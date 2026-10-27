@@ -43,6 +43,7 @@ type sessionOpt struct {
 	clock       *testClock
 	unavailable time.Duration
 	dsn         string
+	logToken    string
 }
 
 func testCatalog() *fakeCatalog {
@@ -99,6 +100,8 @@ func newSessionEnv(t *testing.T, opt sessionOpt) *sessionEnv {
 	if opt.unavailable > 0 {
 		e.cfg.UnavailableAfter = opt.unavailable
 	}
+	// Set before replica: start copies Config by value (E14-D026).
+	e.cfg.LogToken = opt.logToken
 	s := e.replica(t)
 	cat := testCatalog()
 	s.catalog = cat

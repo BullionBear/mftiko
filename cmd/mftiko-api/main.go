@@ -1,5 +1,6 @@
 // Command mftiko-api is the API server. It writes declarations (sessions, accounts) to etcd and serves the web
-// console; it never calls an agent directly and never queries SYM (DECISIONS E10-D001, E00-D004, E02-D002). Several replicas
+// console. It does not query SYM (E00-D004, E02-D002). Session logs are the exception to E10-D001: the process
+// calls the STS agent at AgentRecord.log_addr (E14-D010). Several replicas
 // may run side by side; none of them takes part in an election (E10-D006).
 //
 // Settings come in three kinds (E10-D023). -in is the deployment JSON that mftiko-etcd-roles reads (E10-D012, E13-D012);
@@ -34,6 +35,11 @@
 //
 // Put the hex digest in users[].token_sha256. Clients send the token string itself.
 //
+// -log-token is a file holding the session-log bearer (E14-D026). It is read once at startup and trimmed.
+// The file must contain at least 32 bytes and no whitespace or control bytes. Deployments use
+// /etc/mftiko/api/log-token. Without the flag the process still starts; only the two log routes answer
+// 503 logs_unavailable. Changing the token requires a restart.
+//
 // /healthz is 200 while the process is up. /readyz is 200 when any region is available; the body lists every
 // region and unavailable_regions. It is 503 only when every region is unavailable, and during shutdown
 // (E10-D026, E10-D027). SIGTERM and SIGINT mark readiness 503, stop accepting, wait for in-flight requests up to
@@ -54,6 +60,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/rs/zerolog"
@@ -87,6 +94,7 @@ func main() {
 type options struct {
 	in, config, web, cert, key        string
 	etcdPassword, cookieKey, postgres string
+	logToken                          string
 }
 
 func parseArgs(args []string, getenv func(string) string) (options, bool, error) {
@@ -105,6 +113,7 @@ func parseArgs(args []string, getenv func(string) string) (options, bool, error)
 	fs.StringVar(&opt.etcdPassword, "etcd-password", getenv(api.EnvEtcdPassword), "password of the etcd user \"api\" (default $"+api.EnvEtcdPassword+")")
 	fs.StringVar(&opt.cookieKey, "cookie-key", getenv(api.EnvCookieKey), "HMAC key of the console cookie (default $"+api.EnvCookieKey+")")
 	fs.StringVar(&opt.postgres, "postgres-dsn", getenv(api.EnvPostgresDSN), "Postgres DSN; a pool is opened at startup and not waited on (default $"+api.EnvPostgresDSN+")")
+	fs.StringVar(&opt.logToken, "log-token", "", "file holding the session-log bearer; empty disables the log routes")
 	if err := fs.Parse(args); err != nil {
 		return options{}, false, err
 	}
@@ -117,6 +126,10 @@ func run(ctx context.Context, opt options, stdin io.Reader, log zerolog.Logger) 
 	}
 	if opt.in == "-" && opt.config == "-" {
 		return errors.New("only one of -in and -config can read stdin")
+	}
+	logToken, err := readLogToken(opt.logToken)
+	if err != nil {
+		return err
 	}
 	dep, err := openArg(opt.in, stdin)
 	if err != nil {
@@ -136,6 +149,7 @@ func run(ctx context.Context, opt options, stdin io.Reader, log zerolog.Logger) 
 		TLSCert:      opt.cert,
 		TLSKey:       opt.key,
 		Log:          log,
+		LogToken:     logToken,
 	})
 	if err != nil {
 		return err
@@ -166,6 +180,32 @@ func accountKinds(r *exchange.Registry) []api.Kind {
 		})
 	}
 	return out
+}
+
+// readLogToken reads the session-log bearer once (E14-D026). An empty path disables the log
+// routes. The error does not include the file's contents.
+func readLogToken(path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("-log-token: %w", err)
+	}
+	tok := strings.TrimSpace(string(b))
+	if tok == "" {
+		return "", errors.New("-log-token: empty")
+	}
+	if len(tok) < 32 {
+		return "", errors.New("-log-token: shorter than 32 bytes")
+	}
+	for i := 0; i < len(tok); i++ {
+		c := tok[i]
+		if c <= ' ' || c >= 0x7f {
+			return "", errors.New("-log-token: unsupported byte")
+		}
+	}
+	return tok, nil
 }
 
 func openArg(path string, stdin io.Reader) (io.ReadCloser, error) {

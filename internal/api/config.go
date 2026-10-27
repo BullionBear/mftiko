@@ -62,6 +62,9 @@ type Input struct {
 	Mirror       state.MirrorOptions // zero: the Mirror defaults; tests shorten the probe
 	Log          zerolog.Logger
 	Now          func() time.Time // nil: time.Now
+	// LogToken is the raw bearer sent to an STS agent for session logs (E14-D001, E14-D026).
+	// Empty leaves the process up; the two log routes then answer 503 logs_unavailable.
+	LogToken string
 }
 
 // Kind is one account kind the API lists and checks (E03-D001, E10-D034). cmd/mftiko-api fills it from the
@@ -100,6 +103,9 @@ type Config struct {
 	Mirror           state.MirrorOptions
 	Log              zerolog.Logger
 	Now              func() time.Time
+	// LogToken is the raw bearer sent to an STS agent (E14-D001, E14-D026). Empty means the log
+	// routes answer 503 and every other route still serves. Do not log a Config.
+	LogToken string
 	// ReconcileEvery is the full compare interval. Zero means 30 seconds (E10-D070).
 	// It is not a deployment setting and is not read from JSON. Tests set it.
 	ReconcileEvery time.Duration
@@ -154,6 +160,7 @@ func Load(deployment, config io.Reader, in Input) (Config, error) {
 	cfg.Mirror = in.Mirror
 	cfg.Log = in.Log
 	cfg.Now = in.Now
+	cfg.LogToken = in.LogToken
 	if err := cfg.validate(); err != nil {
 		return Config{}, err
 	}
