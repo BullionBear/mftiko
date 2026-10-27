@@ -80,6 +80,12 @@ type ServerInterface interface {
 	// EndSession 結束 session
 	// (POST /sessions/{session_id}/end)
 	EndSession(w http.ResponseWriter, r *http.Request, sessionId SessionID)
+	// GetSessionLogs 讀 session worker 的 stdout 與 stderr（SSE）
+	// (GET /sessions/{session_id}/logs)
+	GetSessionLogs(w http.ResponseWriter, r *http.Request, sessionId SessionID, params GetSessionLogsParams)
+	// ExportSessionLogs 下載 session log 的 tar.gz
+	// (GET /sessions/{session_id}/logs/export)
+	ExportSessionLogs(w http.ResponseWriter, r *http.Request, sessionId SessionID)
 	// ListStrategies 列出一個策略 repository 的 tag
 	// (GET /strategies)
 	ListStrategies(w http.ResponseWriter, r *http.Request, params ListStrategiesParams)
@@ -810,6 +816,108 @@ func (siw *ServerInterfaceWrapper) EndSession(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// GetSessionLogs operation middleware
+func (siw *ServerInterfaceWrapper) GetSessionLogs(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "session_id" -------------
+	var sessionId SessionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "session_id", r.PathValue("session_id"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "session_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSessionLogsParams
+
+	// ------------- Optional query parameter "tail" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tail", r.URL.Query(), &params.Tail, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tail"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tail", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "follow" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "follow", r.URL.Query(), &params.Follow, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "follow"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "follow", Err: err})
+		}
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Last-Event-ID" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Last-Event-ID")]; found {
+		var LastEventID string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Last-Event-ID", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Last-Event-ID", valueList[0], &LastEventID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Last-Event-ID", Err: err})
+			return
+		}
+
+		params.LastEventID = &LastEventID
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSessionLogs(w, r, sessionId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportSessionLogs operation middleware
+func (siw *ServerInterfaceWrapper) ExportSessionLogs(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "session_id" -------------
+	var sessionId SessionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "session_id", r.PathValue("session_id"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "session_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportSessionLogs(w, r, sessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListStrategies operation middleware
 func (siw *ServerInterfaceWrapper) ListStrategies(w http.ResponseWriter, r *http.Request) {
 
@@ -998,6 +1106,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/sessions/{session_id}", wrapper.DeleteSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/sessions/{session_id}", wrapper.GetSession)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/sessions/{session_id}/end", wrapper.EndSession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/sessions/{session_id}/logs", wrapper.GetSessionLogs)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/sessions/{session_id}/logs/export", wrapper.ExportSessionLogs)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/session-records", wrapper.ListSessionRecords)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/session-records/{record_id}", wrapper.GetSessionRecord)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/account-kinds", wrapper.ListAccountKinds)
@@ -1015,6 +1125,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 }
 
 type ConflictApplicationProblemPlusJSONResponse Problem
+
+type LogsUnavailableApplicationProblemPlusJSONResponse Problem
 
 type NotFoundApplicationProblemPlusJSONResponse Problem
 
@@ -2395,6 +2507,204 @@ func (response EndSession503ApplicationProblemPlusJSONResponse) VisitEndSessionR
 	return err
 }
 
+type GetSessionLogsRequestObject struct {
+	SessionId SessionID `json:"session_id"`
+	Params    GetSessionLogsParams
+}
+
+type GetSessionLogsResponseObject interface {
+	VisitGetSessionLogsResponse(w http.ResponseWriter) error
+}
+
+type GetSessionLogs200TexteventStreamResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetSessionLogs200TexteventStreamResponse) VisitGetSessionLogsResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// If w doesn't support flushing, fall back to io.Copy.
+		_, err := io.Copy(w, response.Body)
+		return err
+	}
+	// text/event-stream messages are typically small; use a
+	// modest buffer and flush after each chunk so clients see
+	// events immediately instead of waiting on OS buffering.
+	buf := make([]byte, 4096)
+	for {
+		n, err := response.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+			flusher.Flush()
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+type GetSessionLogs400ApplicationProblemPlusJSONResponse struct {
+	ValidationFailedApplicationProblemPlusJSONResponse
+}
+
+func (response GetSessionLogs400ApplicationProblemPlusJSONResponse) VisitGetSessionLogsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionLogs401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response GetSessionLogs401ApplicationProblemPlusJSONResponse) VisitGetSessionLogsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionLogs404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response GetSessionLogs404ApplicationProblemPlusJSONResponse) VisitGetSessionLogsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionLogs503ApplicationProblemPlusJSONResponse struct {
+	LogsUnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response GetSessionLogs503ApplicationProblemPlusJSONResponse) VisitGetSessionLogsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportSessionLogsRequestObject struct {
+	SessionId SessionID `json:"session_id"`
+}
+
+type ExportSessionLogsResponseObject interface {
+	VisitExportSessionLogsResponse(w http.ResponseWriter) error
+}
+
+type ExportSessionLogs200ResponseHeaders struct {
+	ContentLength int
+}
+
+type ExportSessionLogs200ApplicationgzipResponse struct {
+	Body          io.Reader
+	Headers       ExportSessionLogs200ResponseHeaders
+	ContentLength int64
+}
+
+func (response ExportSessionLogs200ApplicationgzipResponse) VisitExportSessionLogsResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/gzip")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.Header().Set("Content-Length", fmt.Sprint(response.Headers.ContentLength))
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportSessionLogs401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response ExportSessionLogs401ApplicationProblemPlusJSONResponse) VisitExportSessionLogsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportSessionLogs404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response ExportSessionLogs404ApplicationProblemPlusJSONResponse) VisitExportSessionLogsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportSessionLogs503ApplicationProblemPlusJSONResponse struct {
+	LogsUnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response ExportSessionLogs503ApplicationProblemPlusJSONResponse) VisitExportSessionLogsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListStrategiesRequestObject struct {
 	Params ListStrategiesParams
 }
@@ -2543,6 +2853,12 @@ type StrictServerInterface interface {
 	// EndSession 結束 session
 	// (POST /sessions/{session_id}/end)
 	EndSession(ctx context.Context, request EndSessionRequestObject) (EndSessionResponseObject, error)
+	// GetSessionLogs 讀 session worker 的 stdout 與 stderr（SSE）
+	// (GET /sessions/{session_id}/logs)
+	GetSessionLogs(ctx context.Context, request GetSessionLogsRequestObject) (GetSessionLogsResponseObject, error)
+	// ExportSessionLogs 下載 session log 的 tar.gz
+	// (GET /sessions/{session_id}/logs/export)
+	ExportSessionLogs(ctx context.Context, request ExportSessionLogsRequestObject) (ExportSessionLogsResponseObject, error)
 	// ListStrategies 列出一個策略 repository 的 tag
 	// (GET /strategies)
 	ListStrategies(ctx context.Context, request ListStrategiesRequestObject) (ListStrategiesResponseObject, error)
@@ -3119,6 +3435,59 @@ func (sh *strictHandler) EndSession(w http.ResponseWriter, r *http.Request, sess
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(EndSessionResponseObject); ok {
 		if err := validResponse.VisitEndSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSessionLogs operation middleware
+func (sh *strictHandler) GetSessionLogs(w http.ResponseWriter, r *http.Request, sessionId SessionID, params GetSessionLogsParams) {
+	var request GetSessionLogsRequestObject
+
+	request.SessionId = sessionId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSessionLogs(ctx, request.(GetSessionLogsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSessionLogs")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSessionLogsResponseObject); ok {
+		if err := validResponse.VisitGetSessionLogsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportSessionLogs operation middleware
+func (sh *strictHandler) ExportSessionLogs(w http.ResponseWriter, r *http.Request, sessionId SessionID) {
+	var request ExportSessionLogsRequestObject
+
+	request.SessionId = sessionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportSessionLogs(ctx, request.(ExportSessionLogsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportSessionLogs")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportSessionLogsResponseObject); ok {
+		if err := validResponse.VisitExportSessionLogsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

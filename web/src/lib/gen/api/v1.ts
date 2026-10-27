@@ -153,6 +153,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sessions/{session_id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 讀 session worker 的 stdout 與 stderr（SSE）
+         * @description `text/event-stream`（E14-D011、E10-D005）。API 對 STS agent 並行開 stdout、stderr 兩條（契約 L，PROTOCOL §11），哪條先到就先送哪條。不保證跨 stream 的順序；沒有時間戳（E14-D004）。同一條 stream 的順序保留。
+         *
+         *     | `event` | `data` 的 schema |
+         *     |---|---|
+         *     | `log` | `LogEvent` |
+         *     | `gap` | `LogGapEvent` |
+         *     | `end` | `LogEndEvent` |
+         *
+         *     - `log` 與 `gap` 帶 `stream`（`stdout` 或 `stderr`）。`end` 不帶 `stream`，它結束兩邊。
+         *     - `id` 是 `stdout=<cursor>;stderr=<cursor>`。cursor 是該 stream 最後一則 frame 的 `next`，不含分號與空白。重連時帶 `Last-Event-ID`，連到任何一個副本都接得上。有這個 header 就用這兩個 cursor 續接，`tail` 不生效。格式不對回 400 `validation_failed`。
+         *     - 省略 `tail` 表示全部（agent 收到 `from=start`）。`tail` 是行數；最後一行沒有換行也算一行（E14-D012）。`follow` 省略是 false。
+         *     - 兩邊的起點都到了才送第一則事件。任一條 `removed` 就送 `end`，`reason` 是 `removed`。`follow` 時兩邊都 `final` 才送 `end`，`reason` 是 `terminal`。沒有 `follow` 時兩邊都 `eof` 才送 `end`，`reason` 是 `eof`。
+         *     - 每 15 秒一行 `: keepalive`。agent 的空 frame 不轉成事件。
+         *     - 認證是 cookie 或 `Authorization: Bearer`（E10-D009），不是 agent 的 log token。
+         *     - session 不存在，或 agent 回 404，是 404 `not_found`。`log_addr` 是空的、連不上、agent 回 401 或 503，是 503 `logs_unavailable`（E14-D013、E14-D015）。該 STS 的 region 讀不到是 503 `region_unavailable`（E10-D014）。
+         *     - worker key 是 `sts/<session_id>`。同一個 session 的所有 incarnation 寫同一組檔，這裡不帶 incarnation。
+         */
+        get: operations["getSessionLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sessions/{session_id}/logs/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 下載 session log 的 tar.gz
+         * @description agent 直接產出 tar.gz，API 原樣轉送，不寫暫存（E14-D014、E14-D005）。`Content-Type` 是 `application/gzip`。有 `Content-Length`。
+         *
+         *     tar 裡依序是一般檔 `stdout.log`、`stderr.log`、`manifest.json`，沒有目錄。前兩個是該 stream 由舊到新接起來的位元組。`manifest.json` 在最後，是 UTF-8 JSON：`stdout` 與 `stderr` 各有 `size`（位元組數）與 `sha256`（該檔位元組的 SHA-256，64 個小寫 hex）。
+         *
+         *     錯誤與 `GET /sessions/{session_id}/logs` 相同。沒有 `tail`，也沒有 `follow`。
+         */
+        get: operations["exportSessionLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/session-records": {
         parameters: {
             query?: never;
@@ -374,7 +433,7 @@ export interface components {
             errors?: components["schemas"]["FieldError"][];
         };
         /** @enum {string} */
-        ErrorCode: "validation_failed" | "unauthenticated" | "not_found" | "conflict" | "not_terminal" | "referenced" | "algo_overlap" | "region_unavailable" | "storage_unavailable" | "registry_unavailable" | "invalid_artifact" | "internal";
+        ErrorCode: "validation_failed" | "unauthenticated" | "not_found" | "conflict" | "not_terminal" | "referenced" | "algo_overlap" | "region_unavailable" | "storage_unavailable" | "registry_unavailable" | "logs_unavailable" | "invalid_artifact" | "internal";
         FieldError: {
             /** @description JSON Pointer（RFC 6901），例如 `/feeds/2/feed`。 */
             path: string;
@@ -832,6 +891,27 @@ export interface components {
         ResetEvent: {
             topics: components["schemas"]["EventTopic"][];
         };
+        /** @enum {string} */
+        LogStream: "stdout" | "stderr";
+        /** @description 一則 `log`。`data` 是該段 frame 的位元組，以 JSON 字串送出，不是 base64。 */
+        LogEvent: {
+            stream: components["schemas"]["LogStream"];
+            data: string;
+        };
+        /** @description 一則 `gap`。這條 stream 的 cursor 接不上，接著從留著的內容讀。不帶遺失的位元組數。 */
+        LogGapEvent: {
+            stream: components["schemas"]["LogStream"];
+        };
+        /**
+         * @description `eof`：沒有 `follow`，兩邊都讀完。`terminal`：`follow` 中，兩邊都讀到 session 的結尾。
+         *     `removed`：spec 已經不在。
+         * @enum {string}
+         */
+        LogEndReason: "eof" | "terminal" | "removed";
+        /** @description 一則 `end`。不帶 `stream`，它結束兩邊。 */
+        LogEndEvent: {
+            reason: components["schemas"]["LogEndReason"];
+        };
     };
     responses: {
         /** @description 請求不合法。`code` 是 `validation_failed`，`errors` 指出欄位。 */
@@ -872,6 +952,18 @@ export interface components {
         };
         /** @description 所需的 region（`region_unavailable`）、Postgres（`storage_unavailable`）或 registry（`registry_unavailable`）不可用。 */
         Unavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description session log 讀不到（E14-D013、E14-D015）。`logs_unavailable`：`log_addr` 是空的、連不上、agent 回 401 或 503。
+         *     `region_unavailable`：該 STS 的 region 讀不到（E10-D014）。
+         */
+        LogsUnavailable: {
             headers: {
                 [name: string]: unknown;
             };
@@ -1133,6 +1225,66 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             503: components["responses"]["Unavailable"];
+        };
+    };
+    getSessionLogs: {
+        parameters: {
+            query?: {
+                /** @description 最後幾行。省略表示從留著的最舊內容讀起。單位是行；最後一行沒有換行也算一行（E14-D012）。0 是零行。 */
+                tail?: number;
+                /** @description true 時在讀到目前結尾之後繼續等。省略是 false。 */
+                follow?: boolean;
+            };
+            header?: {
+                /** @description `stdout=<cursor>;stderr=<cursor>`。有它就續接，`tail` 不生效。 */
+                "Last-Event-ID"?: string;
+            };
+            path: {
+                session_id: components["parameters"]["SessionID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 事件串流。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["LogsUnavailable"];
+        };
+    };
+    exportSessionLogs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description tar.gz。`manifest.json` 在最後。 */
+            200: {
+                headers: {
+                    "Content-Length": number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/gzip": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["LogsUnavailable"];
         };
     };
     listSessionRecords: {
