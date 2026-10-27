@@ -49,6 +49,14 @@ die() {
 	exit 1
 }
 
+# Temporary timing for the deploy study. No output change unless MFTIKO_MEASURE is set.
+meas_from() {
+	local start=$1 what=$2 now
+	[[ -n "${MFTIKO_MEASURE:-}" ]] || return 0
+	now=$(date +%s%3N) || return 0
+	printf 'MEASURE\ttest=%s\tkind=release_part\twhat=%s\tms=%s\n' "${MFTIKO_MEASURE_TEST:-}" "$what" "$((now - start))" >>"$MFTIKO_MEASURE" || true
+}
+
 require_root() {
 	if [[ "$(id -u)" -ne 0 && "$prefix" == /opt/mftiko ]]; then
 		die "run as root"
@@ -225,13 +233,21 @@ installed_order() {
 }
 
 cmd_switch() {
-	local tag=$1
+	local tag=$1 t0=
 	valid_tag "$tag" || die "invalid tag: $tag"
 	[[ -d "$prefix/releases/$tag" ]] || die "not installed: $tag"
+	if [[ -n "${MFTIKO_MEASURE:-}" ]]; then t0=$(date +%s%3N); fi
 	run_migrate "$tag"
+	meas_from "$t0" "migrate $tag"
+	if [[ -n "${MFTIKO_MEASURE:-}" ]]; then t0=$(date +%s%3N); fi
 	activate "$tag"
+	meas_from "$t0" "activate $tag"
+	if [[ -n "${MFTIKO_MEASURE:-}" ]]; then t0=$(date +%s%3N); fi
 	restart_enabled "$tag"
+	meas_from "$t0" "restart $tag"
+	if [[ -n "${MFTIKO_MEASURE:-}" ]]; then t0=$(date +%s%3N); fi
 	cmd_gc
+	meas_from "$t0" "gc $tag"
 	echo "switched $tag"
 }
 

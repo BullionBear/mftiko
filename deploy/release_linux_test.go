@@ -31,6 +31,10 @@ import (
 var migrateBinary []byte
 
 func TestMain(m *testing.M) {
+	measurePath := filepath.Join(os.TempDir(), "mftiko-measure-deploy.txt")
+	_ = os.WriteFile(measurePath, nil, 0o644)
+	_ = os.Setenv("MFTIKO_MEASURE", measurePath)
+	measureSelf()
 	dir, err := os.MkdirTemp("", "mftiko-migrate")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -48,15 +52,21 @@ func TestMain(m *testing.M) {
 	cmd.Env = append(withoutEnv(os.Environ(), "CGO_ENABLED", "GOFLAGS"), "CGO_ENABLED=0")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	buildStarted := time.Now()
 	if err := cmd.Run(); err != nil {
 		os.Exit(1)
 	}
+	measureLog("-", "setup", "build_migrate", time.Since(buildStarted).Milliseconds(), "")
+	readStarted := time.Now()
 	migrateBinary, err = os.ReadFile(bin)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	measureLog("-", "setup", "read_migrate", time.Since(readStarted).Milliseconds(), fmt.Sprintf("\tbytes=%d", len(migrateBinary)))
+	pgStarted := time.Now()
 	sharedPG = startPostgres()
+	measureLog("-", "setup", "postgres_cluster", time.Since(pgStarted).Milliseconds(), "")
 	code := m.Run()
 	sharedPG.close()
 	os.RemoveAll(dir)
@@ -464,6 +474,8 @@ var envKeys = []string{
 	"DATABASE_URL",
 	"MFTIKO_TEST_LOG",
 	"MFTIKO_TEST_RESTART_FAIL",
+	"MFTIKO_MEASURE",
+	"MFTIKO_MEASURE_TEST",
 }
 
 func (w *world) environ() []string {
@@ -477,11 +489,19 @@ func (w *world) environ() []string {
 		"DATABASE_URL="+w.database,
 		"MFTIKO_TEST_LOG="+w.logPath,
 	)
+	if p := os.Getenv("MFTIKO_MEASURE"); p != "" {
+		env = append(env, "MFTIKO_MEASURE="+p, "MFTIKO_MEASURE_TEST="+w.t.Name())
+	}
 	return append(env, w.extra...)
 }
 
 func (w *world) run(args ...string) (string, string, int) {
 	w.t.Helper()
+	started := time.Now()
+	code := -1
+	defer func() {
+		measureLog(w.t.Name(), "release", strings.Join(args, " "), time.Since(started).Milliseconds(), fmt.Sprintf("\texit=%d", code))
+	}()
 	cmd := exec.Command("bash", append([]string{releaseScript(w.t)}, args...)...)
 	cmd.Env = w.environ()
 	var stdout, stderr bytes.Buffer
@@ -489,11 +509,13 @@ func (w *world) run(args ...string) (string, string, int) {
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err == nil {
+		code = 0
 		return stdout.String(), stderr.String(), 0
 	}
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
-		return stdout.String(), stderr.String(), ee.ExitCode()
+		code = ee.ExitCode()
+		return stdout.String(), stderr.String(), code
 	}
 	w.t.Fatal(err)
 	return "", "", -1
@@ -725,9 +747,12 @@ func releaseTar(t *testing.T, tag string, hold []byte, legacy bool) []byte {
 
 func tarGz(t *testing.T, members []member) []byte {
 	t.Helper()
+	started := time.Now()
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
+	raw := 0
+	var migrateMs int64
 	for _, m := range members {
 		hdr := &tar.Header{Name: m.name, Mode: m.mode, ModTime: time.Unix(0, 0)}
 		var body []byte
@@ -749,18 +774,28 @@ func tarGz(t *testing.T, members []member) []byte {
 			t.Fatal(err)
 		}
 		if body != nil {
+			writeStarted := time.Now()
 			if _, err := tw.Write(body); err != nil {
 				t.Fatal(err)
 			}
+			if m.name == "bin/mftiko-migrate" {
+				migrateMs += time.Since(writeStarted).Milliseconds()
+			}
+			raw += len(body)
 		}
 	}
 	if err := tw.Close(); err != nil {
 		t.Fatal(err)
 	}
+	flushStarted := time.Now()
 	if err := gz.Close(); err != nil {
 		t.Fatal(err)
 	}
-	return buf.Bytes()
+	flushMs := time.Since(flushStarted).Milliseconds()
+	out := buf.Bytes()
+	measureLog(t.Name(), "setup", "release_tar", time.Since(started).Milliseconds(),
+		fmt.Sprintf("\tbytes=%d\tlayer=%d\tmigrate_ms=%d\tflush_ms=%d", raw, len(out), migrateMs, flushMs))
+	return out
 }
 
 func assetName(tag string) string {
@@ -834,6 +869,8 @@ func assertReadOnly(t *testing.T, root string) {
 
 func waitExe(t *testing.T, pid int, want func(exe string, ok bool) bool) {
 	t.Helper()
+	pc := beginPoll(t, "poll", "proc exe", 10*time.Millisecond)
+	defer pc.done()
 	deadline := time.Now().Add(5 * time.Second)
 	var last string
 	var ok bool
@@ -846,6 +883,7 @@ func waitExe(t *testing.T, pid int, want func(exe string, ok bool) bool) {
 			t.Fatalf("pid %d exe %q present %v", pid, last, ok)
 		}
 		time.Sleep(10 * time.Millisecond)
+		pc.slept()
 	}
 }
 

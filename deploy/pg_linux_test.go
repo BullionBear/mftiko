@@ -87,9 +87,11 @@ func (p *pgServer) dsn(t *testing.T) string {
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
+	createStarted := time.Now()
 	if err := pgtest.ExecSQL(ctx, conn, "CREATE DATABASE "+name+" WITH TEMPLATE template0"); err != nil {
 		t.Fatal(err)
 	}
+	measureLog(t.Name(), "setup", "create_database", time.Since(createStarted).Milliseconds(), "")
 	mark := p.out.Len()
 	t.Cleanup(func() {
 		if t.Failed() {
@@ -153,11 +155,13 @@ func launchPostgres(bin, initdb string) (*pgServer, error) {
 	)
 	init.Env = cleanPGEnv()
 	init.Stdout, init.Stderr = out, out
+	initStarted := time.Now()
 	if err := init.Run(); err != nil {
 		err = fmt.Errorf("initdb: %w\n%s", err, out.Since(0))
 		os.RemoveAll(dir)
 		return nil, err
 	}
+	measureLog("-", "setup", "initdb", time.Since(initStarted).Milliseconds(), "")
 	admin := fmt.Sprintf("postgres://mftiko@127.0.0.1:%d/postgres?sslmode=disable", port)
 	cmd := exec.Command(bin,
 		"-D", data,
@@ -171,10 +175,12 @@ func launchPostgres(bin, initdb string) (*pgServer, error) {
 	)
 	cmd.Env = cleanPGEnv()
 	cmd.Stdout, cmd.Stderr = out, out
+	execStarted := time.Now()
 	if err := cmd.Start(); err != nil {
 		os.RemoveAll(dir)
 		return nil, err
 	}
+	measureLog("-", "setup", "postgres_exec", time.Since(execStarted).Milliseconds(), "")
 	exited := make(chan struct{})
 	go func() {
 		_ = cmd.Wait()
@@ -195,6 +201,11 @@ func launchPostgres(bin, initdb string) (*pgServer, error) {
 }
 
 func waitPG(dsn string, exited <-chan struct{}) error {
+	started := time.Now()
+	sleeps := 0
+	defer func() {
+		measureLog("-", "setup", "postgres_ready", time.Since(started).Milliseconds(), fmt.Sprintf("\tsleep_ms=%d\tsleeps=%d", sleeps*20, sleeps))
+	}()
 	deadline := time.Now().Add(pgReadyTimeout)
 	var err error
 	for {
@@ -211,6 +222,7 @@ func waitPG(dsn string, exited <-chan struct{}) error {
 			return fmt.Errorf("not ready after %s: %w", pgReadyTimeout, err)
 		}
 		time.Sleep(20 * time.Millisecond)
+		sleeps++
 	}
 }
 

@@ -237,6 +237,8 @@ func (e *env) startController() {
 		}
 	})
 	region := e.cfg.Topology.Instances[e.inst()]
+	pc := beginPoll(e.t, "poll", "controller synced", 20*time.Millisecond)
+	defer pc.done()
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		r, ok := c.View().Regions[region]
@@ -247,6 +249,7 @@ func (e *env) startController() {
 			e.t.Fatalf("controller view of %s: %+v present %v", region, r, ok)
 		}
 		time.Sleep(20 * time.Millisecond)
+		pc.slept()
 	}
 }
 
@@ -274,6 +277,8 @@ func (e *env) demand(id string) *statev1.SessionDemand {
 // has removed the key.
 func (e *env) demandSince(id string, rev int64, ok func(*statev1.SessionDemand) bool) *statev1.SessionDemand {
 	e.t.Helper()
+	pc := beginPoll(e.t, "poll", "demand since "+id, 0)
+	defer pc.done()
 	ctx, cancel := e.opCtx()
 	defer cancel()
 	for wr := range e.root.Watch(ctx, state.SessionDemandKey(e.inst(), id), clientv3.WithRev(rev)) {

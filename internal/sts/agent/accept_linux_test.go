@@ -40,6 +40,12 @@ const (
 )
 
 func TestMain(m *testing.M) {
+	if os.Getenv(fakeworker.EnvWorker) == "" && os.Getenv(envTestShim) != "1" && os.Getenv(envTestAgent) == "" {
+		path := filepath.Join(os.TempDir(), "mftiko-measure-sts-agent.txt")
+		_ = os.WriteFile(path, nil, 0o644)
+		_ = os.Setenv("MFTIKO_MEASURE", path)
+	}
+	measureProc(measureRole())
 	fakeworker.MaybeMain()
 	if os.Getenv(envTestShim) == "1" {
 		os.Exit(shim.Run(logger.NewWithWriter("mftiko-shim", os.Stderr)))
@@ -47,10 +53,30 @@ func TestMain(m *testing.M) {
 	if v := os.Getenv(envTestAgent); v != "" {
 		os.Exit(runAgent(v))
 	}
+	if self, err := os.Executable(); err == nil {
+		if st, err := os.Stat(self); err == nil {
+			measureLog("-", "setup", "test_binary", 0, fmt.Sprintf("\tbytes=%d", st.Size()))
+		}
+	}
+	started := time.Now()
 	sharedEtcd = startEtcdCluster()
+	measureLog("-", "setup", "etcd_cluster", time.Since(started).Milliseconds(), "")
 	code := m.Run()
 	sharedEtcd.close()
 	os.Exit(code)
+}
+
+func measureRole() string {
+	switch {
+	case os.Getenv(fakeworker.EnvWorker) == "1":
+		return "worker"
+	case os.Getenv(envTestShim) == "1":
+		return "shim"
+	case os.Getenv(envTestAgent) != "":
+		return "agent"
+	default:
+		return "testbin"
+	}
 }
 
 // agentArgs is what a second agent process needs. The password is passed in:
@@ -365,6 +391,8 @@ func TestSpecChangeReplacesIncarnation(t *testing.T) {
 		t.Fatal("spec revision did not move")
 	}
 	deadline := time.Now().Add(20 * time.Second)
+	pc := beginPoll(t, "poll", "spec change replaces incarnation", 20*time.Millisecond)
+	defer pc.done()
 	for {
 		st = ph.current(id)
 		if st.GetPhase() == statev1.Phase_PHASE_RUNNING && st.GetObservedGeneration() == rev2 &&
@@ -376,6 +404,7 @@ func TestSpecChangeReplacesIncarnation(t *testing.T) {
 				st.GetPhase(), st.GetObservedGeneration(), rev2, e.starts(id), e.log.String())
 		}
 		time.Sleep(20 * time.Millisecond)
+		pc.slept()
 	}
 }
 
@@ -652,6 +681,8 @@ func TestStopGraceFromSpec(t *testing.T) {
 
 func (e *env) stopGrace(id string) uint32 {
 	e.t.Helper()
+	pc := beginPoll(e.t, "poll", "stop grace "+id, 20*time.Millisecond)
+	defer pc.done()
 	deadline := time.Now().Add(20 * time.Second)
 	for {
 		for _, en := range e.journalEntries(id) {
@@ -668,6 +699,7 @@ func (e *env) stopGrace(id string) uint32 {
 			e.t.Fatalf("no Stop in %s\n%+v", id, e.journalEntries(id))
 		}
 		time.Sleep(20 * time.Millisecond)
+		pc.slept()
 	}
 }
 
@@ -679,6 +711,7 @@ var (
 
 func packedStrategy() (artifact.Image, error) {
 	packOnce.Do(func() {
+		started := time.Now()
 		exe, err := os.Executable()
 		if err != nil {
 			packErr = err
@@ -690,6 +723,11 @@ func packedStrategy() (artifact.Image, error) {
 			return
 		}
 		packImg, packErr = artifact.PackStrategy(bin, "fake", nil)
+		extra := fmt.Sprintf("\tbytes=%d", len(bin))
+		if packErr == nil {
+			extra += fmt.Sprintf("\tlayer=%d", len(packImg.Layer))
+		}
+		measureLog("-", "setup", "pack_strategy", time.Since(started).Milliseconds(), extra)
 	})
 	return packImg, packErr
 }
@@ -724,6 +762,7 @@ type env struct {
 	mu      sync.Mutex
 	pids    []int
 	scripts map[string]fakeworker.Script
+	born    time.Time
 }
 
 func testSigner(string, sts.Permissions) (string, string, error) {
@@ -732,21 +771,28 @@ func testSigner(string, sts.Permissions) (string, string, error) {
 
 func setup(t *testing.T) *env {
 	t.Helper()
+	t.Setenv("MFTIKO_MEASURE_TEST", t.Name())
+	opened := time.Now()
 	inst, topo, root := openCluster(t)
+	measureLog(t.Name(), "setup", "open_cluster", time.Since(opened).Milliseconds(), "")
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("DOCKER_CONFIG", t.TempDir())
+	packed := time.Now()
 	img, err := packedStrategy()
 	if err != nil {
 		t.Fatal(err)
 	}
+	measureLog(t.Name(), "setup", "packed_strategy", time.Since(packed).Milliseconds(), "")
 	reg := newMemRegistry()
 	t.Cleanup(reg.Close)
 	pushCtx, pushCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	pushed := time.Now()
 	err = artifact.Push(pushCtx, img, artifact.Destination{Repository: reg.repo(), PlainHTTP: true})
 	pushCancel()
+	measureLog(t.Name(), "setup", "push", time.Since(pushed).Milliseconds(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -786,9 +832,17 @@ func setup(t *testing.T) *env {
 		if err != nil {
 			return nil
 		}
+		if p := os.Getenv("MFTIKO_MEASURE"); p != "" {
+			env = append(env, "MFTIKO_MEASURE="+p, "MFTIKO_MEASURE_TEST="+t.Name())
+		}
 		return env
 	}
 	e.cfg.Started = func(pid int) {
+		since := int64(0)
+		if !e.born.IsZero() {
+			since = time.Since(e.born).Milliseconds()
+		}
+		measureLog(t.Name(), "spawn", "shim_start", since, fmt.Sprintf("\tpid=%d", pid))
 		e.mu.Lock()
 		e.pids = append(e.pids, pid)
 		e.mu.Unlock()
@@ -822,6 +876,7 @@ func (e *env) journalPath(id string) string { return filepath.Join(e.journal, id
 
 func (e *env) start() (stop func(), done <-chan struct{}) {
 	e.t.Helper()
+	e.born = time.Now()
 	ctx, cancel := context.WithCancel(context.Background())
 	ch := make(chan struct{})
 	go func() {
@@ -837,6 +892,8 @@ func (e *env) start() (stop func(), done <-chan struct{}) {
 
 func waitDone(t *testing.T, done <-chan struct{}) {
 	t.Helper()
+	pc := beginPoll(t, "poll", "agent_exit", 0)
+	defer pc.done()
 	select {
 	case <-done:
 	case <-time.After(20 * time.Second):
@@ -961,6 +1018,8 @@ func (e *env) record() *statev1.AgentRecord {
 
 func (e *env) waitElections(n int) {
 	e.t.Helper()
+	pc := beginPoll(e.t, "poll", "elections", 20*time.Millisecond)
+	defer pc.done()
 	deadline := time.Now().Add(20 * time.Second)
 	var got int
 	for {
@@ -978,11 +1037,14 @@ func (e *env) waitElections(n int) {
 			e.t.Fatalf("election keys %d, want %d", got, n)
 		}
 		time.Sleep(20 * time.Millisecond)
+		pc.slept()
 	}
 }
 
 func (e *env) waitLog(sub string) {
 	e.t.Helper()
+	pc := beginPoll(e.t, "poll", "log "+sub, 20*time.Millisecond)
+	defer pc.done()
 	deadline := time.Now().Add(20 * time.Second)
 	for {
 		if strings.Contains(e.log.String(), sub) {
@@ -992,6 +1054,7 @@ func (e *env) waitLog(sub string) {
 			e.t.Fatalf("log missing %q:\n%s", sub, e.log.String())
 		}
 		time.Sleep(20 * time.Millisecond)
+		pc.slept()
 	}
 }
 
@@ -1071,6 +1134,8 @@ func (e *env) hasDown(id string, pred func(*workerv1.WorkerDown) bool) bool {
 
 func (e *env) waitDown(id string, pred func(*workerv1.WorkerDown) bool) {
 	e.t.Helper()
+	pc := beginPoll(e.t, "poll", "down "+id, 20*time.Millisecond)
+	defer pc.done()
 	deadline := time.Now().Add(20 * time.Second)
 	for {
 		if e.hasDown(id, pred) {
@@ -1080,11 +1145,14 @@ func (e *env) waitDown(id string, pred func(*workerv1.WorkerDown) bool) {
 			e.t.Fatalf("journal %s never matched\n%+v", id, e.journalEntries(id))
 		}
 		time.Sleep(20 * time.Millisecond)
+		pc.slept()
 	}
 }
 
 func (e *env) shimPID(id string) int {
 	e.t.Helper()
+	pc := beginPoll(e.t, "poll", "shim pid "+id, 20*time.Millisecond)
+	defer pc.done()
 	deadline := time.Now().Add(20 * time.Second)
 	for {
 		for i := len(e.journalEntries(id)) - 1; i >= 0; i-- {
@@ -1097,11 +1165,14 @@ func (e *env) shimPID(id string) int {
 			e.t.Fatalf("no shim pid in %s", id)
 		}
 		time.Sleep(20 * time.Millisecond)
+		pc.slept()
 	}
 }
 
 func (e *env) workerPID(id string) int {
 	e.t.Helper()
+	pc := beginPoll(e.t, "poll", "worker pid "+id, 20*time.Millisecond)
+	defer pc.done()
 	deadline := time.Now().Add(20 * time.Second)
 	for {
 		for i := len(e.journalEntries(id)) - 1; i >= 0; i-- {
@@ -1114,6 +1185,7 @@ func (e *env) workerPID(id string) int {
 			e.t.Fatalf("no worker pid in %s", id)
 		}
 		time.Sleep(20 * time.Millisecond)
+		pc.slept()
 	}
 }
 
@@ -1204,6 +1276,8 @@ func (f *feed) wait(id string, seq ...statev1.Phase) *statev1.SessionStatus {
 
 func (f *feed) waitWithin(limit time.Duration, id string, seq ...statev1.Phase) *statev1.SessionStatus {
 	f.t.Helper()
+	pc := beginPoll(f.t, "phase", id+" "+phaseList(seq), 20*time.Millisecond)
+	defer pc.done()
 	deadline := time.Now().Add(limit)
 	var hist []statev1.Phase
 	for {
@@ -1224,8 +1298,19 @@ func (f *feed) waitWithin(limit time.Duration, id string, seq ...statev1.Phase) 
 		select {
 		case <-f.ch:
 		case <-time.After(20 * time.Millisecond):
+			pc.slept()
 		}
 	}
+}
+
+func phaseList(seq []statev1.Phase) string {
+	parts := make([]string, len(seq))
+	for i, p := range seq {
+		s := p.String()
+		s = strings.TrimPrefix(s, "PHASE_")
+		parts[i] = s
+	}
+	return strings.Join(parts, ">")
 }
 
 // describeStatus is the part of a SessionStatus a failed wait needs to tell why

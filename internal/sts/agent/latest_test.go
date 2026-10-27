@@ -359,6 +359,8 @@ func mustProtect(t *testing.T, tags *latestTags) []string {
 
 func waitProtect(t *testing.T, tags *latestTags, want ...string) {
 	t.Helper()
+	pc := beginPoll(t, "poll", "latest protect", 10*time.Millisecond)
+	defer pc.done()
 	slices.Sort(want)
 	deadline := time.Now().Add(10 * time.Second)
 	for {
@@ -370,6 +372,7 @@ func waitProtect(t *testing.T, tags *latestTags, want ...string) {
 			t.Fatalf("protect %v, want %v", got, want)
 		}
 		time.Sleep(10 * time.Millisecond)
+		pc.slept()
 	}
 }
 

@@ -35,8 +35,12 @@ const sessionAPIToken = "tok-0123456789abcdef0123456789abcdef"
 // fake worker, and the in-process registry already live here.
 func TestScenarioSessionCreateAndEnd(t *testing.T) {
 	e := setup(t)
+	pgStarted := time.Now()
 	pg := pgtest.Start(t)
+	measureLog(t.Name(), "setup", "postgres", time.Since(pgStarted).Milliseconds(), "")
+	schemaStarted := time.Now()
 	applySessionSchema(t, pg.DSN())
+	measureLog(t.Name(), "setup", "session_schema", time.Since(schemaStarted).Milliseconds(), "")
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -214,6 +218,8 @@ func (e *env) sessionSpec(id string) *sessionv1.SessionSpec {
 
 func pollSession(t *testing.T, limit time.Duration, what string, ok func() bool) {
 	t.Helper()
+	pc := beginPoll(t, "poll", what, 20*time.Millisecond)
+	defer pc.done()
 	deadline := time.Now().Add(limit)
 	for {
 		if ok() {
@@ -223,5 +229,6 @@ func pollSession(t *testing.T, limit time.Duration, what string, ok func() bool)
 			t.Fatalf("timed out waiting for %s", what)
 		}
 		time.Sleep(20 * time.Millisecond)
+		pc.slept()
 	}
 }

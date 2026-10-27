@@ -130,9 +130,11 @@ func openCluster(t *testing.T) (string, state.Topology, *clientv3.Client) {
 	root := etcdtest.ClientAs(t, eps, etcdtest.RootUser)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	authStarted := time.Now()
 	if err := state.EnsureAuth(ctx, root, tables["tw"], etcdtest.Password); err != nil {
 		t.Fatal(err)
 	}
+	measureLog(t.Name(), "setup", "ensure_auth", time.Since(authStarted).Milliseconds(), "")
 	return inst, topo, root
 }
 
@@ -195,10 +197,12 @@ func launchEtcd(bin string, try int) (*etcdCluster, error) {
 		"--bcrypt-cost=4",
 	)
 	cmd.Stdout, cmd.Stderr = out, out
+	execStarted := time.Now()
 	if err := cmd.Start(); err != nil {
 		os.RemoveAll(dir)
 		return nil, err
 	}
+	measureLog("-", "setup", "etcd_exec", time.Since(execStarted).Milliseconds(), "")
 	exited := make(chan struct{})
 	go func() {
 		_ = cmd.Wait()
@@ -255,6 +259,10 @@ func enableRoot(endpoints []string) error {
 	defer c.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), etcdReadyTimeout)
 	defer cancel()
+	authStarted := time.Now()
+	defer func() {
+		measureLog("-", "setup", "etcd_root", time.Since(authStarted).Milliseconds(), "")
+	}()
 	if _, err := c.UserAdd(ctx, etcdtest.RootUser, etcdtest.RootPassword()); err != nil {
 		return fmt.Errorf("add root: %w", err)
 	}
@@ -268,6 +276,11 @@ func enableRoot(endpoints []string) error {
 }
 
 func waitEtcd(endpoints []string, exited <-chan struct{}, auth bool) error {
+	started := time.Now()
+	sleeps := 0
+	defer func() {
+		measureLog("-", "setup", "etcd_ready", time.Since(started).Milliseconds(), fmt.Sprintf("\tsleep_ms=%d\tsleeps=%d", sleeps*20, sleeps))
+	}()
 	deadline := time.Now().Add(etcdReadyTimeout)
 	var err error
 	for {
@@ -284,6 +297,7 @@ func waitEtcd(endpoints []string, exited <-chan struct{}, auth bool) error {
 			return fmt.Errorf("not ready after %s: %w", etcdReadyTimeout, err)
 		}
 		time.Sleep(20 * time.Millisecond)
+		sleeps++
 	}
 }
 

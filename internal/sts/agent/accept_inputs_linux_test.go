@@ -120,6 +120,8 @@ func (e *env) putManifest(body []byte) string {
 
 func pollUntil(t *testing.T, what string, ok func() bool) {
 	t.Helper()
+	pc := beginPoll(t, "poll", what, 20*time.Millisecond)
+	defer pc.done()
 	deadline := time.Now().Add(20 * time.Second)
 	for {
 		if ok() {
@@ -129,6 +131,7 @@ func pollUntil(t *testing.T, what string, ok func() bool) {
 			t.Fatalf("timed out waiting for %s", what)
 		}
 		time.Sleep(20 * time.Millisecond)
+		pc.slept()
 	}
 }
 

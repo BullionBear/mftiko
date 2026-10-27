@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -152,7 +153,9 @@ func (p *puller) run(req artifact.Request, ctx context.Context) {
 	req.Kind = artifact.KindStrategy
 	req.Contracts = sdk.Contracts()
 	req.MaxBytes = p.maxBytes
+	pulled := time.Now()
 	fetched, err := p.client.Pull(ctx, req)
+	measureLog("", "artifact", "pull", time.Since(pulled).Milliseconds(), "")
 	if err != nil {
 		p.finish(dig, "", artifact.Manifest{}, err)
 		return
@@ -168,7 +171,15 @@ func (p *puller) run(req artifact.Request, ctx context.Context) {
 	if p.afterHold != nil {
 		p.afterHold(fetched)
 	}
+	unpackStarted := time.Now()
 	root, err := p.client.UnpackImageFrom(ctx, fetched.Digest, req.Repository, fetched.Layers, artifact.UnpackLimits{})
+	extra := ""
+	if err == nil && os.Getenv("MFTIKO_MEASURE") != "" {
+		if st, statErr := os.Stat(filepath.Join(root, "bin", "strategy")); statErr == nil {
+			extra = fmt.Sprintf("\tbytes=%d", st.Size())
+		}
+	}
+	measureLog("", "artifact", "unpack", time.Since(unpackStarted).Milliseconds(), extra)
 	if err != nil {
 		p.finish(dig, "", artifact.Manifest{}, err)
 		return

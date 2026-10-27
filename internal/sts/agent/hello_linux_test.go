@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -135,6 +136,8 @@ func (e *helloEnv) best() (epoch int64, seq uint64, ok bool) {
 
 func (e *helloEnv) waitApplied(pred func(epoch int64, seq uint64) bool) (int64, uint64) {
 	e.t.Helper()
+	pc := beginPoll(e.t, "poll", "applied", 20*time.Millisecond)
+	defer pc.done()
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		epoch, seq, ok := e.best()
@@ -145,11 +148,14 @@ func (e *helloEnv) waitApplied(pred func(epoch int64, seq uint64) bool) (int64, 
 			e.t.Fatalf("applied (%d,%d) ok=%v never matched", epoch, seq, ok)
 		}
 		time.Sleep(20 * time.Millisecond)
+		pc.slept()
 	}
 }
 
 func (e *helloEnv) waitRecord(pred func(*statev1.AgentRecord) bool) *statev1.AgentRecord {
 	e.t.Helper()
+	pc := beginPoll(e.t, "poll", "agent record", 20*time.Millisecond)
+	defer pc.done()
 	deadline := time.Now().Add(20 * time.Second)
 	for {
 		rec := e.record()
@@ -160,6 +166,7 @@ func (e *helloEnv) waitRecord(pred func(*statev1.AgentRecord) bool) *statev1.Age
 			e.t.Fatalf("agent record %+v", rec)
 		}
 		time.Sleep(20 * time.Millisecond)
+		pc.slept()
 	}
 }
 
@@ -172,22 +179,31 @@ func versionNewer(oldEpoch int64, oldSeq uint64, epoch int64, seq uint64) bool {
 
 func setupHello(t *testing.T) *helloEnv {
 	t.Helper()
+	t.Setenv("MFTIKO_MEASURE_TEST", t.Name())
+	opened := time.Now()
 	inst, topo, root := openCluster(t)
+	measureLog(t.Name(), "setup", "open_cluster", time.Since(opened).Milliseconds(), "")
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
+	packed := time.Now()
 	img := packedHello(t)
+	measureLog(t.Name(), "setup", "packed_hello", time.Since(packed).Milliseconds(), "")
 	t.Setenv("DOCKER_CONFIG", t.TempDir())
 	reg := newMemRegistry()
 	t.Cleanup(reg.Close)
 	pushCtx, pushCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	pushed := time.Now()
 	err = artifact.Push(pushCtx, img, artifact.Destination{Repository: reg.repo(), PlainHTTP: true})
 	pushCancel()
+	measureLog(t.Name(), "setup", "push", time.Since(pushed).Milliseconds(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
+	natsStarted := time.Now()
 	ns := startHelloNATS(t)
+	measureLog(t.Name(), "setup", "nats", time.Since(natsStarted).Milliseconds(), "")
 	signer, err := natsdev.LoadSigner(ns.lay.Manifest.Account, filepath.Join(ns.lay.Dir, filepath.FromSlash(ns.lay.Manifest.SigningKeyFile)))
 	if err != nil {
 		t.Fatal(err)
@@ -222,6 +238,11 @@ func setupHello(t *testing.T) *helloEnv {
 		Log:        log,
 	}
 	h.cfg.Started = func(pid int) {
+		since := int64(0)
+		if !h.born.IsZero() {
+			since = time.Since(h.born).Milliseconds()
+		}
+		measureLog(t.Name(), "spawn", "shim_start", since, fmt.Sprintf("\tpid=%d", pid))
 		h.mu.Lock()
 		h.pids = append(h.pids, pid)
 		h.mu.Unlock()
@@ -306,11 +327,13 @@ func packedHello(t *testing.T) artifact.Image {
 			return
 		}
 		bin := filepath.Join(os.TempDir(), "mftiko-hello-e9-06")
+		buildStarted := time.Now()
 		cmd := exec.Command("go", "build", "-o", bin, "./examples/strategies/hello")
 		cmd.Dir = root
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			helloErr = &helloBuildError{err: err, out: string(out)}
+			measureLog("-", "setup", "build_hello", time.Since(buildStarted).Milliseconds(), "")
 			return
 		}
 		raw, err := os.ReadFile(bin)
@@ -318,6 +341,7 @@ func packedHello(t *testing.T) artifact.Image {
 			helloErr = err
 			return
 		}
+		measureLog("-", "setup", "build_hello", time.Since(buildStarted).Milliseconds(), fmt.Sprintf("\tbytes=%d", len(raw)))
 		helloImg, helloErr = artifact.PackStrategy(raw, "hello", nil)
 	})
 	if helloErr != nil {
