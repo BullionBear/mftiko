@@ -8,8 +8,9 @@
 // rules an SDK keeps.
 //
 // It runs as a re-executed test binary: a test package calls MaybeMain from TestMain, and spawns os.Args[0] with
-// Env in its environment. It writes what it saw (the messages it received, its environment, fd 3, its ids) to a
-// journal of JSON lines that the test reads back with ReadJournal.
+// Env in its environment. Run is the same worker for a small binary that closes its own descriptors and then
+// exits. It writes what it saw (the messages it received, its environment, fd 3, its ids) to a journal of JSON
+// lines that the test reads back with ReadJournal.
 package fakeworker
 
 import (
@@ -146,6 +147,20 @@ func MaybeMain() {
 		return
 	}
 	os.Exit(run())
+}
+
+// Run runs the scripted fake and returns its exit code. It does not exit the process.
+// The sleeper grandchild does not return. MaybeMain is the re-executed test binary;
+// a dedicated worker calls Run and closes the descriptors the shim waits on before it exits.
+func Run() int {
+	if os.Getenv(envSleeper) == "1" {
+		select {}
+	}
+	if os.Getenv(EnvWorker) != "1" {
+		fmt.Fprintln(os.Stderr, "fakeworker: "+EnvWorker+" is not set")
+		return 2
+	}
+	return run()
 }
 
 // Entry is one journal line. Event says which fields are set.

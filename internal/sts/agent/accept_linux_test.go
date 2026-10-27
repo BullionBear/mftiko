@@ -47,6 +47,10 @@ func TestMain(m *testing.M) {
 	if v := os.Getenv(envTestAgent); v != "" {
 		os.Exit(runAgent(v))
 	}
+	if err := prepareWorker(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	sharedEtcd = startEtcdCluster()
 	code := m.Run()
 	sharedEtcd.close()
@@ -671,27 +675,16 @@ func (e *env) stopGrace(id string) uint32 {
 	}
 }
 
-var (
-	packOnce sync.Once
-	packImg  artifact.Image
-	packErr  error
-)
+// packImg is the fake strategy TestMain builds without -race and packs once.
+// Tests that spawn the scripted worker push this image. They do not pack the
+// race-instrumented test binary.
+var packImg artifact.Image
 
 func packedStrategy() (artifact.Image, error) {
-	packOnce.Do(func() {
-		exe, err := os.Executable()
-		if err != nil {
-			packErr = err
-			return
-		}
-		bin, err := os.ReadFile(exe)
-		if err != nil {
-			packErr = err
-			return
-		}
-		packImg, packErr = artifact.PackStrategy(bin, "fake", nil)
-	})
-	return packImg, packErr
+	if packImg.Digest == "" {
+		return artifact.Image{}, errors.New("sts: worker was not packed")
+	}
+	return packImg, nil
 }
 
 type syncBuf struct {
