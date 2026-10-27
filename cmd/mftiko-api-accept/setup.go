@@ -50,7 +50,7 @@ func accDeployment() deployment {
 // setup gives every instance, the controller and the API their etcd users in both regions
 // (state.AuthTables), adds root and turns auth on, like mftiko-md-accept setup does for one
 // instance. It writes deployment.json, api-a.json and api-b.json (the replicas differ only in
-// their port) and the token, which it keeps across runs. Running it again changes nothing in etcd.
+// their port), the token and the session-log token, which it keeps across runs. Running it again changes nothing in etcd.
 func setup() error {
 	out := flag.String("out", "/work/e2e", "directory for deployment.json, api-*.json and token")
 	sealKey := flag.String("td-seal-key", "/work/td-seal.key", "td1's private key; the API seals accounts to its public half")
@@ -91,6 +91,16 @@ func setup() error {
 	if _, err := ensureToken(filepath.Join(*out, "cookie-key")); err != nil {
 		return err
 	}
+	// The session-log bearer (E14-D001): the replicas read log-token (-log-token), sts1 and sts2 get
+	// only its SHA-256 (-log-token-sha256), as on a host.
+	logToken, err := ensureToken(filepath.Join(*out, "log-token"))
+	if err != nil {
+		return err
+	}
+	logSum := sha256.Sum256([]byte(logToken))
+	if err := os.WriteFile(filepath.Join(*out, "log-token.sha256"), []byte(hex.EncodeToString(logSum[:])+"\n"), 0o600); err != nil {
+		return err
+	}
 	sum := sha256.Sum256([]byte(token))
 	for _, r := range []struct{ name, listen string }{{"a", ":8080"}, {"b", ":8081"}} {
 		// allow covers data/ as well: uploaded inputs and state_out live there, and inputs are checked
@@ -108,7 +118,7 @@ func setup() error {
 			return err
 		}
 	}
-	say("wrote %s: deployment.json, api-a.json, api-b.json, token, cookie-key", *out)
+	say("wrote %s: deployment.json, api-a.json, api-b.json, token, cookie-key, log-token, log-token.sha256", *out)
 	return nil
 }
 

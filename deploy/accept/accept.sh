@@ -26,8 +26,9 @@
 #                                sts1, sts2, the MD and TD agents, and API replicas a (:8080, published
 #                                on 127.0.0.1:18080) and b (:8081); web/build is the console
 #   accept.sh e2e ARGS...        run mftiko-api-accept ARGS in the runner (main, ticker, invalid, ...;
-#                                cli main|faults|inputs|region STEP drives the mftiko CLI instead, E11-09;
-#                                cli inputs uploads a data artifact and runs hello with it, E15-07)
+#                                cli main|faults|inputs|logs|region STEP drives the mftiko CLI instead, E11-09;
+#                                cli inputs uploads a data artifact and runs hello with it, E15-07;
+#                                cli logs reads, follows and exports session logs, E14-08)
 #   accept.sh e2e-all            every flow, with the controller and etcd2 stopped and started around
 #                                absent and region
 #   accept.sh console-smoke      the Playwright smoke (web/e2e) against replica a, from this host
@@ -62,7 +63,7 @@ up() {
 		./cmd/mftiko-td-agent ./cmd/mftiko-td-account ./cmd/mftiko-td-accept ./cmd/mftiko-seal \
 		./cmd/mftiko-controller ./cmd/mftiko-sts-agent ./cmd/mftiko-api ./cmd/mftiko-api-accept ./cmd/mftiko-pack ./cmd/mftiko \
 		./cmd/mftiko-migrate &&
-		GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -o bin/linux/examples/ ./examples/strategies/hello)
+		GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -o bin/linux/examples/ ./examples/strategies/hello ./examples/strategies/chatter)
 	mkdir -p "$here/data/work"
 	(cd "$repo" && go run ./cmd/mftiko-nats-dev -out "$here/data/nats" >/dev/null)
 	"${compose[@]}" up -d --wait
@@ -145,9 +146,14 @@ sts_agent() {
 	fi
 	n=$(nth "$inst")
 	account=$(sed -n 's/.*"account": "\(A[A-Z0-9]*\)".*/\1/p' "$here/data/nats/manifest.json")
+	# Both agents share the runner's network, so each has its own log port; the API replicas are in the
+	# same container. Output rotates at 64 KiB, keeping 3 files, so cli logs can see a rotation (E14-D023).
+	port=$((7441 + ${inst#sts}))
 	run sh -c "mkdir -p /var/sts/$inst && nohup /mftiko/mftiko-sts-agent -instance $inst -topology /work/e2e/deployment.json \
 		-work-dir /var/sts/$inst -data /var/sts/$inst/data -shim /mftiko/mftiko-shim -plain-http-hosts=registry:5000 \
-		-nats-account $account -nats-signing-key /nats/keys/mftiko-signing.nk >/work/e2e/$inst-$n.log 2>&1 &"
+		-nats-account $account -nats-signing-key /nats/keys/mftiko-signing.nk \
+		-log-listen 127.0.0.1:$port -log-advertise 127.0.0.1:$port -log-token-sha256 \$(cat /work/e2e/log-token.sha256) \
+		-log-max-bytes 65536 -log-keep 3 >/work/e2e/$inst-$n.log 2>&1 &"
 	echo "sts-agent $inst started, log data/work/e2e/$inst-$n.log"
 }
 
@@ -162,7 +168,8 @@ api() {
 	fi
 	n=$(nth "api-$r")
 	run sh -c "MFTIKO_COOKIE_KEY=\$(cat /work/e2e/cookie-key) MFTIKO_POSTGRES_DSN=\$DATABASE_URL nohup /mftiko/mftiko-api \
-		-in /work/e2e/deployment.json -config /work/e2e/api-$r.json -web /web/build >/work/e2e/api-$r-$n.log 2>&1 &"
+		-in /work/e2e/deployment.json -config /work/e2e/api-$r.json -web /web/build -log-token /work/e2e/log-token \
+		>/work/e2e/api-$r-$n.log 2>&1 &"
 	run sh -c "i=0; until wget -q -O /dev/null http://127.0.0.1:$port/readyz 2>/dev/null; do i=\$((i+1)); [ \$i -lt 60 ] || exit 1; sleep 0.5; done"
 	echo "API replica $r ready on :$port, log data/work/e2e/api-$r-$n.log"
 }
@@ -176,7 +183,9 @@ e2e_up() {
 	up
 	(cd "$repo" && make web)
 	run sh -c 'mkdir -p /work/e2e && /mftiko/mftiko-pack -bin /mftiko/examples/hello -name hello \
-		-repo registry:5000/strategies/hello -tag accept -plain-http'
+		-repo registry:5000/strategies/hello -tag accept -plain-http &&
+		/mftiko/mftiko-pack -bin /mftiko/examples/chatter -name chatter \
+		-repo registry:5000/strategies/chatter -tag accept -plain-http'
 	td_up
 	e2etool setup
 	running /mftiko/mftiko-md-agent || agent
@@ -205,6 +214,7 @@ e2e_all() {
 	e2etool cli main
 	e2etool cli faults
 	e2etool cli inputs
+	e2etool cli logs
 	run sh -c 'kill -TERM $(pgrep -f "^/mftiko/mftiko-controller")'
 	echo "SIGTERM sent to the controller"
 	e2etool absent create

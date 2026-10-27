@@ -54,6 +54,7 @@ etcdctl endpoint health
 | `mftiko-etcd-backup.service` 是 failed | `journalctl -u mftiko-etcd-backup` | [§2.4](#24-etcd-備份) |
 | 不響，但交易所或 NATS 斷了 | worker 的 stderr | [§3.5](#35-網路斷了) |
 | 不響，但 session `failed`、reason 是 `artifact_*`、incarnation 0 | `mftiko session show <id>` 的 spec `inputs`；STS 的 `input rejected` | [§3.11](#311-input-拉取失敗) |
+| 不響，但 `mftiko session logs` exit 22 `logs_unavailable`，console 顯示「目前讀不到 log」 | 該 STS 的 agent 與 `log endpoint` 那一行 | [§3.12](#312-讀不到-session-log) |
 
 ## 2. 例行操作
 
@@ -126,6 +127,7 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 | registry 的帳密 | `MFTIKO_REGISTRY_CREDS` 指的同一份 `config.json`（0600）。多個 host 各做一次 `docker login <host>`，寫進這份檔的 `auths` | 該 agent，或 API（`registry_creds`） |
 | API 的 cookie 金鑰 | `/etc/mftiko/api/env` 的 `MFTIKO_COOKIE_KEY` | `mftiko-api`。console 的登入全部失效，要重新登入 |
 | Postgres 的密碼 | API 的 `MFTIKO_POSTGRES_DSN`、SYM 與 `mftiko-release` 的 `DATABASE_URL` | 先在 Postgres 改密碼，再改 env、重啟 `mftiko-api`、`mftiko-sym`。中間的空窗長過 `for` 時 `MftikoPostgresDown` 會響 |
+| session log 的 token | API 的 `/etc/mftiko/api/log-token`；每台 STS 的 `/etc/mftiko/sts-agent/env` 的 `MFTIKO_LOG_TOKEN_SHA256` | 先每台 `mftiko-sts-agent`，再每個 `mftiko-api`。中間讀 log 是 `logs_unavailable`。步驟見 [輪換 token](operations.md#輪換-token) |
 
 - 先寫到同一個目錄的 `<路徑>.new`（`install -m 0600 -o <使用者> <新檔> <路徑>.new`），再 `mv <路徑>.new <路徑>`。rename 是原子的；先刪再建的話，worker 剛好重連時會讀不到。
 - 一期不在 runbook 裡：NATS 的 account signing key（要同時改 NATS server 的 account 設定）與 TD 的 seal key（每個帳號都要用新公鑰重新 seal）。見 E12-D060。
@@ -288,3 +290,40 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 worker 有啟動、last exit 是 `init_failed` 的不是這一項：input 已經解開，是策略讀的路徑或內容不對。看 `mftiko session logs <id> --stream stderr`。
 
 **確認：** 新的 session `running`；STS 的 log 有 `input ready`；策略的 log 沒有讀檔錯誤。
+
+### 3.12 讀不到 session log
+
+沒有告警。`mftiko session logs`、`export-logs` exit 22，`logs_unavailable (22)`；console 的 Logs 區塊顯示「目前讀不到 log」。API 讀不到該 session 所在 STS 的 log 端點（E14-D015、E14-D027）。worker 照常跑，只是讀不到。**SSH 讀檔照舊可用**：`mftiko session show <id>` 列出主機與路徑（[log 在哪裡](operations.md#log-在哪裡)）。
+
+**先看：**
+
+1. `mftiko session show <id>` 的 `sts_instance`，再 `mftiko instance show <sts>`：agent 在嗎？不在就是 [§3.2](#32-agent-不在)。
+2. 該 STS 主機：`journalctl -u mftiko-sts-agent --since -1h | grep -E 'log endpoint|log listen'`。
+
+   | 那一行 | 意思 |
+   |---|---|
+   | `log endpoint listening`，帶 `addr` 與 `advertise` | 端點開著。`advertise` 就是 API 連的位址 |
+   | `log endpoint disabled: -log-token-sha256 is empty` | env 沒有 `MFTIKO_LOG_TOKEN_SHA256`，端點沒開 |
+   | `log listen`（每 5 秒一次） | port 聽不起來，多半被占用（`ss -ltnp 'sport = :7442'`） |
+   | 都沒有 | `MFTIKO_LOG_LISTEN` 是空的，端點關著 |
+
+3. 從 API 主機直接問 agent，用 `advertise` 的位址：
+
+   ```sh
+   curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $(cat /etc/mftiko/api/log-token)" \
+     "http://<advertise>/v1/sessions/<id>/logs/stdout?tail=0"
+   ```
+
+**做：**
+
+| 結果 | 原因 | 做 |
+|---|---|---|
+| 200 | agent 正常。多半是 API 起來時讀到的 token 已經換過，或 API 連不到那台主機的時間很短 | `systemctl restart mftiko-api`，再試 |
+| 401 | API 的 `log-token` 與 STS 的 `MFTIKO_LOG_TOKEN_SHA256` 對不上，通常是[輪換](operations.md#輪換-token)只做了一半 | 兩邊照 operations.md 對齊，重啟 |
+| 404 | 該 agent 的 view 裡沒有這個 session | 確認 session id 與 `sts_instance`；spec 已刪的 session 本來就讀不到 |
+| 503 | 同時讀取超過 `MFTIKO_LOG_MAX_STREAMS` | 等其他讀取結束（關掉多開的 `-f`、console 的 Follow），或調大 |
+| 連不上、逾時 | 防火牆沒開給 API 主機、`advertise` 的名字在 API 主機上解析不到，或端點沒開（上一步） | 開 7442 給 API 主機，或設 `MFTIKO_LOG_ADVERTISE=<私有 IP>:7442` 再重啟 agent（[port 與防火牆](operations.md#port-與防火牆)） |
+
+改 STS 的 env 要 `systemctl restart mftiko-sts-agent`；worker 不受影響。
+
+**確認：** `mftiko session logs <id> --tail 1` exit 0；console 的 Logs 區塊有內容。

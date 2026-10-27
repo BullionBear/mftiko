@@ -35,6 +35,8 @@ import (
 //	cli region before|down|up region_unavailable while accept2's etcd is stopped
 //	cli inputs                mftiko-pack data, a session file with inputs --wait running, the input
 //	                          read-only on sts1's disk, an input outside allow refused (E15-07)
+//	cli logs                  session logs, --tail, -f across an sts1 restart, a gap, export-logs, the
+//	                          agent's token (E14-08)
 func cliFlow() error {
 	which := popStep()
 	step := ""
@@ -47,6 +49,8 @@ func cliFlow() error {
 	ticker := flag.String("ticker", "BinanceUM_Perp_BTCUSDT", "the ticker hello quotes")
 	pack := flag.String("pack", "/mftiko/mftiko-pack", "the mftiko-pack binary, for cli inputs")
 	stsData := flag.String("sts-data", "/var/sts/"+stsInst+"/data", "sts1's -data, for cli inputs")
+	logAddr := flag.String("log-addr", "127.0.0.1:7442", "sts1's log endpoint, for cli logs")
+	logToken := flag.String("log-token", "/work/e2e/log-token", "the session-log token, for cli logs")
 	f, cancel, err := flowFromFlags()
 	if err != nil {
 		return err
@@ -69,8 +73,10 @@ func cliFlow() error {
 		err = c.regionSteps(step)
 	case "inputs":
 		err = c.inputSteps(*pack, *stsData)
+	case "logs":
+		err = c.logSteps(*logAddr, *logToken)
 	default:
-		return errors.New("cli main|faults|inputs|region before|down|up")
+		return errors.New("cli main|faults|inputs|logs|region before|down|up")
 	}
 	if err != nil {
 		return err
@@ -421,6 +427,24 @@ restart:
 		return err
 	}
 	say("log %s:%s has hello's OnRecon and its cancelled order", s.Logs.Host, s.Logs.Stdout)
+	// The same bytes through the API and sts1's log endpoint (E14-08).
+	if err := until(c.f.ctx, time.Minute, "session logs equal to hello's stdout on disk", func() error {
+		o, err := c.ok("session", "logs", id, "--stream", "stdout")
+		if err != nil {
+			return stop(err)
+		}
+		b, err := os.ReadFile(s.Logs.Stdout)
+		if err != nil {
+			return stop(err)
+		}
+		if o.stdout != string(b) {
+			return fmt.Errorf("session logs printed %d bytes, the file has %d", len(o.stdout), len(b))
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	say("mftiko session logs %s --stream stdout: the same bytes as %s", id, s.Logs.Stdout)
 
 	if _, err := c.ok("session", "end", id, "--wait", "--yes"); err != nil {
 		return err

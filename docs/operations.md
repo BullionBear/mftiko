@@ -43,7 +43,7 @@
 
 - host binary 在 `/opt/mftiko/releases/<tag>/`，`/opt/mftiko/current` 指到現用的一版。安裝、換版與清理用 tarball 裡的 `bin/mftiko-release`（E12-D022–E12-D026，[release.md](release.md)）。
 - shim 與 worker 沿用 agent 的使用者。TD 的 seal key 只有 `mftiko-td` 讀得到。
-- `/etc/mftiko/<服務>/` 是 `root:<使用者>` 0750；設定檔 0640；祕密檔（NATS creds、signing key、seal key、registry 的 config.json）0600，屬服務的使用者。
+- `/etc/mftiko/<服務>/` 是 `root:<使用者>` 0750；設定檔 0640；祕密檔（NATS creds、signing key、seal key、registry 的 config.json、API 的 `log-token`）0600，屬服務的使用者。STS 主機上只有 log token 的 SHA-256，放在 env（[session log 端點](#session-log-端點)）。
 - etcd 密碼放在 `/etc/mftiko/<服務>/env`（0600，root），以 `EnvironmentFile=` 帶進 `MFTIKO_ETCD_PASSWORD`。不用 `LoadCredential=`：unit 停下時那個目錄會被刪，agent 停下後還在跑的 worker 就讀不到 creds 了。instance、registry、NATS 也在這份 env，見下方 systemd。
 - 改祕密就改檔案，路徑不變，再重啟 unit。
 - 同一個使用者底下，策略讀得到 sts-agent 的祕密檔與 shim 的環境，一期接受（E12-D004）。
@@ -91,7 +91,8 @@ agent 的 unit 另外：
 | td-agent、sts-agent | `NATS_URL`、`MFTIKO_NATS_ACCOUNT` | account 的公鑰。簽章種子是固定路徑 `/etc/mftiko/<服務>/nats-signing.nk` |
 | td-agent | `MFTIKO_TD_ENDPOINTS`、`MFTIKO_TD_REST_ENDPOINTS`（可省略） | 同 MD，空的就是預設 |
 | sts-agent | `MFTIKO_STS_DATA_REPOSITORY`（可省略） | 資料 artifact 的完整路徑 `host/path`。空的表示非空 volume 一直重試 |
-| API | `MFTIKO_COOKIE_KEY`、`MFTIKO_POSTGRES_DSN` | cookie 的 HMAC 金鑰、Postgres DSN |
+| sts-agent | `MFTIKO_LOG_TOKEN_SHA256`；`MFTIKO_LOG_LISTEN`、`MFTIKO_LOG_ADVERTISE`、`MFTIKO_LOG_MAX_STREAMS`、`MFTIKO_LOG_MAX_RATE`、`MFTIKO_LOG_MAX_BYTES`、`MFTIKO_LOG_KEEP`（可省略，unit 有預設） | log token 的 SHA-256，64 個小寫 hex。其餘見 [session log 端點](#session-log-端點) |
+| API | `MFTIKO_COOKIE_KEY`、`MFTIKO_POSTGRES_DSN` | cookie 的 HMAC 金鑰、Postgres DSN。log token 不在 env，是檔案 `/etc/mftiko/api/log-token` |
 | SYM | `DATABASE_URL`、`NATS_URL` | `-nats-creds` 固定 `/etc/mftiko/sym/nats.creds`，即 `mftiko-nats-dev` 的 `creds/sym-{inst}.creds`（E12-D079）。`MFTIKO_SYM_FEEDS` 可省略，省略就是全部 feed |
 | etcd | `/etc/etcd/etcd.env` 的 `ETCD_NAME`、`ETCD_LISTEN_CLIENT_URLS`、`ETCD_ADVERTISE_CLIENT_URLS`、`ETCD_LISTEN_PEER_URLS`、`ETCD_INITIAL_ADVERTISE_PEER_URLS`、`ETCD_INITIAL_CLUSTER`、`ETCD_INITIAL_CLUSTER_STATE`、`ETCD_AUTH_TOKEN` | 資料目錄由 unit 設成 `/var/lib/etcd`，env 不要改 `ETCD_DATA_DIR` |
 
@@ -312,6 +313,54 @@ ls -l /var/backups/mftiko/etcd/*/
 - 還算「出現」的不刪：agent 看得到的 worker、這一輪計畫裡的、仍留著 `WorkerStatus` 的、接不上的 shim、以及 `{h}.sock` 還在的。正在跑的 worker 的舊輪替檔因此留下，份數由上面的保留數管，不由 7 天管。
 - 只刪一般檔。名稱是 16 個十六進位字的 `.stdout`、`.stderr`、`.shim.log`，輪替的數字沒有前導零。其他檔（例如 `notes.txt`）、目錄、symlink 留下。log 目錄不在不是錯誤。socket 目錄讀不了就這一輪完全不刪。
 - 清理失敗只寫 warn，agent 不因此退出。STS 不走這條：仍是 spec 被刪之後才清，輪替出來的 `.shim.log.N` 也在那一次刪掉。
+
+## session log 端點
+
+依 [DECISIONS.md](DECISIONS.md) E14-D001、E14-D002、E14-D019–E14-D030（E14-08，#443）與 [PROTOCOL.md](PROTOCOL.md) §11。`mftiko session logs`、`export-logs` 與 console 的 Logs 區塊經 API 讀 STS worker 的 stdout、stderr：API 依 spec 的 `sts_instance`，連到該 instance 當選 leader 的 `AgentRecord.log_addr`。檔案仍是 shim 寫的那一份，SSH 讀檔照舊可用。
+
+### port 與防火牆
+
+- STS agent 聽 `MFTIKO_LOG_LISTEN`（unit 預設 `:7442`）。`log_addr` 是 `MFTIKO_LOG_ADVERTISE`；空的就是主機名加實際的 port（E14-D019）。API 主機要解析得到這個名字，名字不對就給 `MFTIKO_LOG_ADVERTISE=<私有 IP>:7442`。
+- **只開給 API 主機。** 這條是明文 HTTP，一期不開 TLS（E14-D001），與 etcd、NATS 一樣只走私有網路或 VPN（E12-D052）。主機 B 的 7442 只允許主機 A（API 所在）連入。
+- 聽不起來（port 被占用）時，agent 照常選主、跑 session，每 5 秒重試，log 有 `log listen`。聽上之後才寫 `log_addr`（E14-D021）。
+- MD、TD、controller 沒有這個端點。
+
+### token
+
+- 一份共用的 bearer。API 存 token 本身：`/etc/mftiko/api/log-token`（0600，`mftiko-api`），unit 以 `-log-token` 傳入，啟動時讀一次（E14-D026）。STS 只存它的 SHA-256：`/etc/mftiko/sts-agent/env` 的 `MFTIKO_LOG_TOKEN_SHA256`（E14-D020）。
+- 每個 API 副本是同一份 token，每台 STS 主機是同一個 SHA-256。
+- 產生（在主機 A，以 root）：
+
+  ```sh
+  (umask 077 && openssl rand -base64 32 | tr -d '\n' >/etc/mftiko/api/log-token)
+  chown mftiko-api /etc/mftiko/api/log-token
+  tr -d '\n' </etc/mftiko/api/log-token | sha256sum | cut -d' ' -f1   # 這個值寫進每台 STS 的 MFTIKO_LOG_TOKEN_SHA256
+  ```
+
+  token 去掉前後空白之後至少 32 bytes，不得含空白、控制字元或非 ASCII。不合格時 API 起不來，錯誤不印 token。
+- **檔案不在，API 起不來。** unit 一定帶 `-log-token`。只有不帶這個旗標的行程（不是 systemd 的部署）會照常起來，兩個 log 端點回 503 `logs_unavailable`。
+- STS 的 `MFTIKO_LOG_TOKEN_SHA256` 是空的：端點不開，`log_addr` 留空，log 一行 `log endpoint disabled: -log-token-sha256 is empty`，agent 照常跑。不是 64 個小寫 hex：agent 在選主前以 exit 2 結束。
+
+### 輪換 token
+
+沒有新舊並存，換的時候讀 log 會短暫回 `logs_unavailable`。
+
+1. 照上面產生新的 token 與 SHA-256。
+2. 每台 STS 主機改 `MFTIKO_LOG_TOKEN_SHA256`，`systemctl restart mftiko-sts-agent`。只停 agent，shim 與 worker 繼續跑（[systemd](#systemd)）。
+3. 每個 API 副本換 `/etc/mftiko/api/log-token`，`systemctl restart mftiko-api`。
+4. 確認：`mftiko session logs <跑著的 session> --tail 1` exit 0。
+
+第 2 步到第 3 步之間，API 帶舊 token，agent 回 401，API 轉成 `logs_unavailable`（E14-D013）。
+
+### 上限
+
+| env | unit 預設 | 意思 |
+|---|---|---|
+| `MFTIKO_LOG_MAX_STREAMS` | 16 | 同時進行的讀取與匯出。超過回 503 `Retry-After: 1`，API 重試後仍滿就是 `logs_unavailable`（E14-D022） |
+| `MFTIKO_LOG_MAX_RATE` | 16777216 | 讀取速率，bytes/s。只放慢，不拒絕 |
+| `MFTIKO_LOG_MAX_BYTES`、`MFTIKO_LOG_KEEP` | 0、0 | worker 輸出的輪替。0 是 shim 的預設 64 MiB、5 份（[輪替](#輪替)，E14-D023）。改了只影響之後啟動的 worker |
+
+讀到已經被輪替掉的位置時，CLI 在 stderr 印 `mftiko: some output was rotated out`，console 顯示一行 `some output was rotated out`，然後從最舊還在的檔接著讀（E14-D017）。
 
 ## 監控與告警
 
@@ -579,4 +628,4 @@ mftiko-migrate up
 
 ## 驗收
 
-`deploy/accept/accept.sh e2e main` 會走完一次：session RUNNING 時在主機上找到 log，檢查目錄 0750、檔案 0640；結束之後 log 還在；保留期（驗收設成 1 分鐘）過後 spec 被刪，log 也被清掉。見 [deploy/accept/README.md](../deploy/accept/README.md)。
+`deploy/accept/accept.sh e2e main` 會走完一次：session RUNNING 時在主機上找到 log，檢查目錄 0750、檔案 0640；結束之後 log 還在；保留期（驗收設成 1 分鐘）過後 spec 被刪，log 也被清掉。見 [deploy/accept/README.md](../deploy/accept/README.md)。`accept.sh e2e cli logs` 經 CLI 讀、追蹤、匯出 log，跨過 STS agent 重啟，並讓輸出輪替出 gap（E14-08）。
