@@ -17,7 +17,7 @@
 | Linux x86-64 | `mftiko_<tag>_linux_amd64.tar.gz` |
 | Linux ARM64 | `mftiko_<tag>_linux_arm64.tar.gz` |
 
-tarball 裡只有一個靜態 binary `mftiko`（`CGO_ENABLED=0`）。同一份 `SHA256SUMS` 也列出主機的 `mftiko-server_<tag>_linux_amd64.tar.gz`（見 [release.md](release.md)）。
+tarball 裡有兩個靜態 binary（`CGO_ENABLED=0`）：`mftiko`，以及上傳資料 artifact 用的 `mftiko-pack`（E15-D009，README「Packing a data artifact」）。同一份 `SHA256SUMS` 也列出主機的 `mftiko-server_<tag>_linux_amd64.tar.gz`（見 [release.md](release.md)）。
 
 ```sh
 TAG=v0.2.0 OS=darwin ARCH=arm64
@@ -26,11 +26,11 @@ curl -fsSLO "$base/mftiko_${TAG}_${OS}_${ARCH}.tar.gz"
 curl -fsSLO "$base/SHA256SUMS"
 grep " mftiko_${TAG}_${OS}_${ARCH}.tar.gz\$" SHA256SUMS | shasum -a 256 -c -   # Linux 可用 sha256sum -c -
 tar -xzf "mftiko_${TAG}_${OS}_${ARCH}.tar.gz"
-install -m 0755 mftiko /usr/local/bin/mftiko
+install -m 0755 mftiko mftiko-pack /usr/local/bin/
 mftiko version
 ```
 
-macOS 從瀏覽器下載的檔案會帶 quarantine 屬性；用 `curl` 下載的不會。binary 沒有簽章與公證，被 Gatekeeper 擋下時執行 `xattr -d com.apple.quarantine /usr/local/bin/mftiko`。
+macOS 從瀏覽器下載的檔案會帶 quarantine 屬性；用 `curl` 下載的不會。binary 沒有簽章與公證，被 Gatekeeper 擋下時對該 binary 執行 `xattr -d com.apple.quarantine /usr/local/bin/mftiko`（`mftiko-pack` 同理）。
 
 ### go install
 
@@ -38,6 +38,7 @@ macOS 從瀏覽器下載的檔案會帶 quarantine 屬性；用 `curl` 下載的
 
 ```sh
 go install github.com/BullionBear/mftiko/cmd/mftiko@v0.2.0
+go install github.com/BullionBear/mftiko/cmd/mftiko-pack@v0.2.0   # 上傳資料 artifact 才需要
 ```
 
 這條路徑沒有 Makefile 的 `-ldflags`。`mftiko version` 改印 Go 記錄的 module 版本（上例是 `v0.2.0`），build 時間是 `unknown`。

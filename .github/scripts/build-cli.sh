@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Build the mftiko CLI for each release platform into OUT (E11-D035, docs/release.md).
+# Build the mftiko CLI for each release platform into OUT (E11-D035, E15-D009, docs/release.md).
 #
 # OUT is the directory to write; the default is bin/dist. It gets one
-# mftiko_<version>_<os>_<arch>.tar.gz per platform, each holding the single binary
-# mftiko, and SHA256SUMS over the tarballs. make cli-dist, CI and the release
+# mftiko_<version>_<os>_<arch>.tar.gz per platform, each holding the binaries
+# mftiko and mftiko-pack, and SHA256SUMS over the tarballs. make cli-dist, CI and the release
 # workflow all run this script.
 set -euo pipefail
 
@@ -39,15 +39,21 @@ for p in "${platforms[@]}"; do
   dir="$tmp/$os-$arch"
   mkdir -p "$dir"
   CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "$ldflags" -o "$dir/mftiko" ./cmd/mftiko
-  # The binary this machine can run must report the version it was stamped with.
+  CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "$ldflags" -o "$dir/mftiko-pack" ./cmd/mftiko-pack
+  # The binaries this machine can run must report the version they were stamped with.
   if [[ "$p" == "$host" ]]; then
     first=$("$dir/mftiko" version | head -1)
     if [[ "$first" != "mftiko ${version} "* ]]; then
       echo "$p: mftiko version printed \"$first\", want version $version" >&2
       exit 1
     fi
+    pack=$("$dir/mftiko-pack" -version)
+    if [[ "$pack" != "${version} "* ]]; then
+      echo "$p: mftiko-pack -version printed \"$pack\", want version $version" >&2
+      exit 1
+    fi
   fi
-  tar -C "$dir" -czf "$out/mftiko_${version}_${os}_${arch}.tar.gz" mftiko
+  tar -C "$dir" -czf "$out/mftiko_${version}_${os}_${arch}.tar.gz" mftiko mftiko-pack
 done
 
 (cd "$out" && sha256 mftiko_*.tar.gz > SHA256SUMS)

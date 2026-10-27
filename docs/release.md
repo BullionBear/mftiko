@@ -42,7 +42,7 @@ GitHub → BullionBear → Organization Settings → Packages → Package creati
 依 [DECISIONS.md](DECISIONS.md) E11-D035、E11-D036（E11-08，#360）。安裝與使用見 [cli.md](cli.md)。
 
 - `release.yml` 的 `cli` job 在同一個 `v*` tag 上先執行 [`.github/scripts/build-cli.sh`](../.github/scripts/build-cli.sh)，再建主機 tarball（「主機」）。CLI 建出 `darwin/arm64`、`darwin/amd64`、`linux/amd64`、`linux/arm64` 四個平台，`CGO_ENABLED=0`、`-trimpath`，以 `-ldflags` 注入 `internal/platform/buildinfo`。
-- CLI 產物是 `mftiko_<tag>_<os>_<arch>.tar.gz`（裡面只有 `mftiko`）。主機產物是 `mftiko-server_<tag>_linux_amd64.tar.gz`。兩者上傳到同一個 GitHub Release，外加一份 `SHA256SUMS`：CLI tarball 建完會先寫一份，主機 tarball 寫入後整份重算，所以這份檔涵蓋兩種 tarball。Release 不存在時由 job 建立（`--verify-tag`，不建 git tag）。同一個 tag 的 `workflow_dispatch` 會以 `--clobber` 換掉 assets。權限只有這個 job 的 `contents: write`。
+- CLI 產物是 `mftiko_<tag>_<os>_<arch>.tar.gz`（裡面是 `mftiko` 與 `mftiko-pack`，E15-D009；腳本也檢查本機平台的 `mftiko-pack -version`）。主機產物是 `mftiko-server_<tag>_linux_amd64.tar.gz`。兩者上傳到同一個 GitHub Release，外加一份 `SHA256SUMS`：CLI tarball 建完會先寫一份，主機 tarball 寫入後整份重算，所以這份檔涵蓋兩種 tarball。Release 不存在時由 job 建立（`--verify-tag`，不建 git tag）。同一個 tag 的 `workflow_dispatch` 會以 `--clobber` 換掉 assets。權限只有這個 job 的 `contents: write`。
 - 腳本會執行本機平台的那一個 CLI binary，確認 `mftiko version` 印的就是注入的版本。
 - PR 驗證：`ci.yml` 的 `make cli-dist` 與 `make server-dist` 跑這兩支腳本，不上傳。`server-dist` 在 `make web` 之後。
 - binary 沒有 macOS 簽章與公證，也沒有 Homebrew tap。

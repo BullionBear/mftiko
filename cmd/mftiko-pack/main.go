@@ -2,9 +2,13 @@
 // (E09-D002, E09-D035–E09-D041, E09-D085–E09-D090, PROTOCOL §8). It does not build the binary.
 //
 //	mftiko-pack -bin FILE -name NAME -repo REGISTRY/REPOSITORY [-kind strategy|md.conn|td.account] [-tag TAG] [-env K=V]... [-plain-http]
+//	mftiko-pack data -dir DIR -repo REGISTRY/REPOSITORY [-tag TAG] [-plain-http] [-max-bytes N] [-L]
 //
 // -kind defaults to strategy. Success prints the image manifest digest on stdout.
 // For a strategy that digest is StrategyRef.code.
+//
+// data packs a directory into a data artifact for a session's inputs (E15-D001–E15-D005,
+// PROTOCOL §8.4). Success prints the manifest digest on stdout and a summary on stderr.
 package main
 
 import (
@@ -20,7 +24,8 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 )
 
-const usage = "usage: mftiko-pack -bin FILE -name NAME -repo REGISTRY/REPOSITORY [-kind strategy|md.conn|td.account] [-tag TAG] [-env K=V]... [-plain-http]"
+const usage = "usage: mftiko-pack -bin FILE -name NAME -repo REGISTRY/REPOSITORY [-kind strategy|md.conn|td.account] [-tag TAG] [-env K=V]... [-plain-http]\n" +
+	"       mftiko-pack data -dir DIR -repo REGISTRY/REPOSITORY [-tag TAG] [-plain-http] [-max-bytes N] [-L]"
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
@@ -30,6 +35,9 @@ func main() {
 }
 
 func run(args []string, stdout io.Writer) error {
+	if len(args) > 0 && args[0] == "data" {
+		return runData(args[1:], stdout, os.Stderr)
+	}
 	fs := flag.NewFlagSet("mftiko-pack", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	version := fs.Bool("version", false, "print the release and exit")
@@ -104,4 +112,48 @@ func parseEnv(args []string) (map[string]string, error) {
 		env[k] = v
 	}
 	return env, nil
+}
+
+// runData is mftiko-pack data (E15-D001, E15-D002). stdout gets only the digest.
+func runData(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("mftiko-pack data", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	dir := fs.String("dir", "", "directory to upload")
+	repo := fs.String("repo", "", "registry/repository")
+	tag := fs.String("tag", "", "optional tag; the digest does not depend on it")
+	plain := fs.Bool("plain-http", false, "push over HTTP instead of HTTPS")
+	maxBytes := fs.Int64("max-bytes", artifact.DefaultMaxBytes, "limit on the compressed config and layer")
+	follow := fs.Bool("L", false, "pack what each symlink points at")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return errors.New(usage)
+		}
+		return err
+	}
+	if fs.NArg() != 0 || *dir == "" || *repo == "" {
+		return errors.New(usage)
+	}
+	if *maxBytes <= 0 {
+		return fmt.Errorf("-max-bytes %d is not positive", *maxBytes)
+	}
+	up, err := artifact.UploadData(context.Background(), artifact.DataUpload{
+		Root:           *dir,
+		Destination:    artifact.Destination{Repository: *repo, Tag: *tag, PlainHTTP: *plain},
+		FollowSymlinks: *follow,
+		MaxBytes:       *maxBytes,
+	})
+	var unsupported *artifact.UnsupportedError
+	if errors.As(err, &unsupported) && unsupported.Symlinks() && !*follow {
+		return fmt.Errorf("%w\npass -L to pack what each symlink points at", err)
+	}
+	if err != nil {
+		return err
+	}
+	name := *repo
+	if *tag != "" {
+		name += ":" + *tag
+	}
+	fmt.Fprintf(stderr, "%s: %d entries, %d bytes unpacked, %d bytes compressed\n", name, up.Entries, up.Unpacked, up.Size)
+	_, err = fmt.Fprintln(stdout, up.Digest)
+	return err
 }

@@ -104,6 +104,18 @@ bin/mftiko-pack -bin bin/examples/hello -name hello -repo 127.0.0.1:5000/hello -
 
 `make dev-up` starts the registry. The line printed on success is the image manifest digest, which is `StrategyRef.code`. `-tag` is optional and only names the image for a person to look up; the same binary and parameters pack to the same digest either way (E09-D038). A registry that asks for a login is read from `~/.docker/config.json` (E09-D040). `-plain-http` is for the dev registry.
 
+## Packing a data artifact
+
+`mftiko-pack data` packs a directory, for example a pretrained model, into a data artifact that a session reads read-only under `$MFTIKO_INPUT_DIR/<name>/` (PROTOCOL §8.4, E15-D001).
+
+```
+bin/mftiko-pack data -dir ./model -repo 127.0.0.1:5000/data/model -tag v1 -plain-http
+```
+
+stdout is the manifest digest; a session file names it under `inputs` with the repository. A summary of the entries and sizes goes to stderr. The same directory packs to the same digest, with or without `-tag`, and blobs the registry already has are not sent again (E15-D008). Credentials and `-plain-http` work as for a strategy.
+
+Nothing is pushed when the directory has an entry the STS would refuse to unpack: an absolute symlink, a symlink whose target contains `..`, a socket, a device, a fifo, or a name starting with `.wh.` (E15-D004). `-L` packs what each symlink points at instead, which a HuggingFace cache needs. Nothing is pushed over the limits either: 4 GiB unpacked, 100,000 entries counting directories, and `-max-bytes` (default 1 GiB) for the compressed upload, which must match the STS `-max-artifact-bytes` (E15-D005). Model weights barely compress, so the 1 GiB is the limit that binds.
+
 ## API authentication
 
 Each person has one static token. The API JSON stores `users[].name` and `users[].token_sha256`, the hex SHA-256 of the token, and never the token itself (E10-D009, E10-D055). The API cannot check the length, so generate at least 32 random bytes and keep the token somewhere the config file does not:
