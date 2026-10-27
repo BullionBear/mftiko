@@ -4193,6 +4193,24 @@ E12-D061 列的「演練之前沒有實測」，除了主機重開，都在 test
 - 契約 L 是草案，寫在 PROTOCOL §11。HTTP 路徑與 OpenAPI 在 #437。
 - PROTOCOL 為 v1.81。`api.v1` 的 `info.version` 仍是 `2.0.0`。
 
+### E14-D016 cursor（E14-03，#438）
+
+- 對外是不透明的 base64url 字串，用 `base64.RawURLEncoding`（URL 字母、不補 `=`）。
+- 內容 32 bytes，小端序四個 uint64：`dev`、`inode`、`offset`、`hash`。`offset` 是該檔內的位元組位置。
+- 比票面多 `dev`，避免跨檔案系統時 inode 撞號。
+- `hash` 是 offset 之前最多 64 bytes 的 FNV-1a 64（`hash/fnv` 的 `New64a`）。不足 64 bytes 就雜湊實際有的前綴；offset 為 0 是空輸入的雜湊。只做比對，不是安全用途。
+- 依 `(dev, inode)` 在輪替檔裡找。找不到、檔比 offset 短、或雜湊不符，就是接不上。解不開的字串是錯誤，不當成 gap。
+
+### E14-D017 gap（E14-03，#438）
+
+- 用 cursor 接不上時送一個 gap，再從目前最舊的輪替檔開頭讀。不估算遺失的 bytes，gap 不帶數量。
+- follow 同一個連線裡，路徑的 inode 換了就先把舊 fd 讀完。舊 inode 還在某個輪替檔，就接著讀比它新的檔，不送 gap。舊 inode 已經不在、而且目錄裡沒有編號輪替檔（`keep = 1`，或新檔還沒被再輪替），開新的路徑繼續，也不送 gap。舊 inode 不在、但還留著編號輪替檔，表示中間有檔已經掉出去，這時送 gap，再從最舊的檔讀。
+
+### E14-D018 輪詢（E14-03，#438）
+
+- follow 讀到目前檔的結尾之後，每 250 ms 檢查一次這個路徑的 inode 與大小。寫死，不做成 flag。
+- 不引入 fsnotify。結尾當下先看一次，沒有新資料才等 250 ms。
+
 ### E00-D006 專案分三塊，加上獨立的 exchange
 
 | 塊 | 內容 | 位置 | 可見性 |

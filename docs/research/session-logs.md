@@ -31,9 +31,11 @@ HTTP 路徑、狀態碼、`Authorization` 怎麼帶、`Frame` 有哪些欄位，
 
 ### 4.3 讀取
 
-讀的是 S4 的檔：`${WORK_DIR}/log/sts/{h}.stdout` 與 `{h}.stderr`，`h = WorkerHash("sts/<session_id>")`。權限 0640，目錄 0750（E10-D015、PROTOCOL §4.5）。輪替規則不在這一張改。
+讀的是 S4 的檔：`${WORK_DIR}/log/{plane}/{h}.stdout` 與 `{h}.stderr`。STS 的 `h = WorkerHash("sts/<session_id>")`。權限 0640，目錄 0750（E10-D015、PROTOCOL §4.5）。輪替規則不在這一張改。
 
-讀取速率與同時讀取數的上限是 E14-D007 的那兩個 flag。cursor 怎麼組成、tail 怎麼跨輪替檔、follow 怎麼握 fd，由 #438 寫，這裡不定。
+讀取器在 `internal/platform/logread`，不認識平面，不連網路（#438）。cursor 是不透明的 base64url，內容 `(dev, inode, offset, hash)`（E14-D016）。接不上送 gap，從最舊的檔接著讀，不估算遺失的 bytes（E14-D017）。follow 握著目前檔的 fd，到檔尾先看一次、之後每 250 ms 再看；路徑的 inode 換了就把舊 fd 讀完再開新的，正常輪替不送 gap（E14-D018）。
+
+tail 從正在寫的檔往回數行，最後一行沒有換行也算一行，不夠再往 `.1`、`.2`。匯出一開始就打開所有輪替檔的 fd，總大小固定，由舊到新讀；途中檔名被刪也讀得完。每段最多 256 KiB（E14-D007），盡量切在換行，否則切在完整的 UTF-8 字元之後。讀取速率與同時讀取數是 E14-D007 的那兩個 flag，由呼叫端傳進 token bucket。
 
 ### 4.4 API
 
