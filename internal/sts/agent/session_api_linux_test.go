@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"maps"
 	"net"
 	"net/http"
 	"testing"
@@ -35,6 +36,55 @@ const sessionAPIToken = "tok-0123456789abcdef0123456789abcdef"
 // fake worker, and the in-process registry already live here.
 func TestScenarioSessionCreateAndEnd(t *testing.T) {
 	e := setup(t)
+	base := e.startAPI(map[string]any{
+		"allow":            []string{e.reg.addr() + "/hello"},
+		"plain_http_hosts": []string{e.reg.addr()},
+	})
+
+	code, hdr, body := sessionPost(t, base+"/api/v1/sessions", `{"name":"hello","sts_instance":"`+e.inst()+`","strategy":{"repository":"`+e.reg.addr()+`/hello","ref":"`+e.digest+`"}}`)
+	if code != http.StatusCreated {
+		t.Fatalf("create %d %s", code, body)
+	}
+	var created apiv1.Session
+	if err := json.Unmarshal(body, &created); err != nil {
+		t.Fatal(err)
+	}
+	if hdr.Get("Location") != "/api/v1/sessions/"+created.Id || created.Id == "" {
+		t.Fatalf("location %q id %q", hdr.Get("Location"), created.Id)
+	}
+	spec := e.sessionSpec(created.Id)
+	if spec.GetStrategy().GetRepository() != e.repo || spec.GetStrategy().GetName() != "fake" || spec.GetStrategy().GetCode() != e.digest {
+		t.Fatalf("stored strategy %+v", spec.GetStrategy())
+	}
+
+	e.startController()
+	stop, done := e.start()
+	defer func() {
+		stop()
+		waitDone(t, done)
+	}()
+
+	pollSession(t, 30*time.Second, "worker running", func() bool {
+		st := e.status(created.Id)
+		return st.GetPhase() == statev1.Phase_PHASE_RUNNING && e.hasDemand(created.Id)
+	})
+
+	code, _, body = sessionPost(t, base+"/api/v1/sessions/"+created.Id+"/end", `{}`)
+	if code != http.StatusOK {
+		t.Fatalf("end %d %s", code, body)
+	}
+	pollSession(t, 30*time.Second, "session done", func() bool {
+		st := e.status(created.Id)
+		return st.GetPhase() == statev1.Phase_PHASE_DONE && st.GetReason() == "ended_by_spec"
+	})
+}
+
+// startAPI runs the API for e's topology with conf as its config file, plus the
+// sessionAPIToken user, until the test ends. It returns the base URL once /readyz
+// sees every region.
+func (e *env) startAPI(conf map[string]any) string {
+	t := e.t
+	t.Helper()
 	pg := pgtest.Start(t)
 	applySessionSchema(t, pg.DSN())
 
@@ -58,20 +108,18 @@ func TestScenarioSessionCreateAndEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256([]byte(sessionAPIToken))
-	conf, err := json.Marshal(map[string]any{
-		"allow":            []string{e.reg.addr() + "/hello"},
-		"plain_http_hosts": []string{e.reg.addr()},
-		"users": []map[string]string{{
-			"name":         "ada",
-			"token_sha256": hex.EncodeToString(sum[:]),
-		}},
-	})
+	conf = maps.Clone(conf)
+	conf["users"] = []map[string]string{{
+		"name":         "ada",
+		"token_sha256": hex.EncodeToString(sum[:]),
+	}}
+	raw, err := json.Marshal(conf)
 	if err != nil {
 		t.Fatal(err)
 	}
 	buf := &syncBuf{}
 	log := zerolog.New(buf).Level(zerolog.InfoLevel)
-	cfg, err := api.Load(bytes.NewReader(dep), bytes.NewReader(conf), api.Input{
+	cfg, err := api.Load(bytes.NewReader(dep), bytes.NewReader(raw), api.Input{
 		EtcdPassword: etcdtest.Password(state.UserAPI),
 		CookieKey:    "cookie-key",
 		PostgresDSN:  pg.DSN(),
@@ -113,43 +161,7 @@ func TestScenarioSessionCreateAndEnd(t *testing.T) {
 		_, _ = raw.ReadFrom(resp.Body)
 		return resp.StatusCode == http.StatusOK && bytes.Contains(raw.Bytes(), []byte(`"unavailable_regions":[]`))
 	})
-
-	code, hdr, body := sessionPost(t, base+"/api/v1/sessions", `{"name":"hello","sts_instance":"`+e.inst()+`","strategy":{"repository":"`+e.reg.addr()+`/hello","ref":"`+e.digest+`"}}`)
-	if code != http.StatusCreated {
-		t.Fatalf("create %d %s\napi log:\n%s", code, body, buf.String())
-	}
-	var created apiv1.Session
-	if err := json.Unmarshal(body, &created); err != nil {
-		t.Fatal(err)
-	}
-	if hdr.Get("Location") != "/api/v1/sessions/"+created.Id || created.Id == "" {
-		t.Fatalf("location %q id %q", hdr.Get("Location"), created.Id)
-	}
-	spec := e.sessionSpec(created.Id)
-	if spec.GetStrategy().GetRepository() != e.repo || spec.GetStrategy().GetName() != "fake" || spec.GetStrategy().GetCode() != e.digest {
-		t.Fatalf("stored strategy %+v", spec.GetStrategy())
-	}
-
-	e.startController()
-	stop, done := e.start()
-	defer func() {
-		stop()
-		waitDone(t, done)
-	}()
-
-	pollSession(t, 30*time.Second, "worker running", func() bool {
-		st := e.status(created.Id)
-		return st.GetPhase() == statev1.Phase_PHASE_RUNNING && e.hasDemand(created.Id)
-	})
-
-	code, _, body = sessionPost(t, base+"/api/v1/sessions/"+created.Id+"/end", `{}`)
-	if code != http.StatusOK {
-		t.Fatalf("end %d %s", code, body)
-	}
-	pollSession(t, 30*time.Second, "session done", func() bool {
-		st := e.status(created.Id)
-		return st.GetPhase() == statev1.Phase_PHASE_DONE && st.GetReason() == "ended_by_spec"
-	})
+	return base
 }
 
 func applySessionSchema(t *testing.T, dsn string) {
