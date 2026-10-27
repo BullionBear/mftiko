@@ -196,7 +196,7 @@ $(WEB)/node_modules: $(WEB)/package.json $(WEB)/package-lock.json
 web: web-install ## Build the web console into web/build/
 	cd $(WEB) && npm run build
 
-web-check: web-install ## svelte-check
+web-check: web-install ## svelte-check and the console log-view tests
 	cd $(WEB) && npm run check
 
 web-dev: web-install ## Dev server; proxies /api to mftiko-api on :8080

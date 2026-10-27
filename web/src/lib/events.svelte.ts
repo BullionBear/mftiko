@@ -1,4 +1,5 @@
-// One EventSource per page, for the topics that page needs (E10-D107, E10-D075).
+// One /events EventSource per page, for the topics that page needs.
+// Log follow on the session page is a separate EventSource (E10-D107, E14-D036, E10-D075).
 // The browser sends the cookie and, on reconnect, Last-Event-ID. This module does not.
 import { api, type EventTopic, type InstanceDetail, type ResetEvent, type SessionDetail, type SessionRemovedEvent } from './api';
 import { consoleState } from './console.svelte';
@@ -57,7 +58,7 @@ class PageStream {
 	private source: EventSource | null = null;
 	private topics: EventTopic[] = [];
 
-	/** Opens this page's only EventSource, replacing any page that still held one. */
+	/** Opens this page's only /events EventSource, replacing any page that still held one. */
 	open(topics: readonly EventTopic[], sessionId?: string): () => void {
 		const mine = ++this.generation;
 		this.closeSource();
