@@ -26,7 +26,8 @@
 #                                sts1, sts2, the MD and TD agents, and API replicas a (:8080, published
 #                                on 127.0.0.1:18080) and b (:8081); web/build is the console
 #   accept.sh e2e ARGS...        run mftiko-api-accept ARGS in the runner (main, ticker, invalid, ...;
-#                                cli main|faults|region STEP drives the mftiko CLI instead, E11-09)
+#                                cli main|faults|inputs|region STEP drives the mftiko CLI instead, E11-09;
+#                                cli inputs uploads a data artifact and runs hello with it, E15-07)
 #   accept.sh e2e-all            every flow, with the controller and etcd2 stopped and started around
 #                                absent and region
 #   accept.sh console-smoke      the Playwright smoke (web/e2e) against replica a, from this host
@@ -203,6 +204,7 @@ e2e_all() {
 	e2etool replicas
 	e2etool cli main
 	e2etool cli faults
+	e2etool cli inputs
 	run sh -c 'kill -TERM $(pgrep -f "^/mftiko/mftiko-controller")'
 	echo "SIGTERM sent to the controller"
 	e2etool absent create

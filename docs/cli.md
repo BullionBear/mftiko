@@ -149,6 +149,23 @@ session 檔也可以是 JSON，`-f -` 從 stdin 讀。YAML 與 JSON 用同一個
 
 每次執行送一個新的 `Idempotency-Key`。連線失敗或逾時，最多用同一個 key 重試 3 次（E11-D020、E11-D021）。
 
+### 帶 input 的 session
+
+預訓練模型這類檔案先用 `mftiko-pack data` 推成資料 artifact，再把它印出的 digest 寫進 session 檔的 `inputs`。策略在 `$MFTIKO_INPUT_DIR/<name>/` 唯讀讀到（Go 的 `ctx.InputDir`、Python 的 `ctx.input_dir`）：
+
+```sh
+mftiko-pack data -dir ./model -repo registry:5000/data/model -tag v1   # 印出 sha256:…；HTTP 的 registry 加 -plain-http
+```
+
+```yaml
+inputs:
+  - name: model                        # 策略以這個名字找目錄
+    repository: registry:5000/data/model
+    digest: sha256:…                   # 只收 digest
+```
+
+repository 必須在 `allow` 內；不是資料 artifact 或超過 `max_input_bytes`，`session create` exit 10，指到 `/inputs/<i>/…`。流程、上限與帳密見 [operations.md「上傳資料 artifact」](operations.md#上傳資料-artifact)，拉取失敗見 [runbook §3.11](runbook.md#311-input-拉取失敗)。
+
 ## exit code
 
 錯誤訊息同一行印名稱與號碼，例如 `mftiko: not_found (12): ...`，接著是 `detail`、每條 `errors[].path`，以及回應的 `X-Request-Id`（E11-D007、E11-D008）。exit code 依 problem body 的 `code` 決定，不看 HTTP status。
