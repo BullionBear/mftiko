@@ -114,6 +114,10 @@ type Option struct {
 	// Events, when set, handles GET /api/v1/events. The function writes the
 	// response, including a stream. Nil leaves StreamEvents unused.
 	Events func(http.ResponseWriter, *http.Request)
+	// Logs, when set, handles GET /api/v1/sessions/{id}/logs and
+	// GET /api/v1/sessions/{id}/logs/export. Nil leaves those routes on the
+	// strict handlers, which return 503 logs_unavailable.
+	Logs func(http.ResponseWriter, *http.Request)
 }
 
 // Server is a started httptest server.
@@ -154,6 +158,7 @@ type Server struct {
 	algoOverlap    bool
 	retireConflict bool
 	events         func(http.ResponseWriter, *http.Request)
+	logs           func(http.ResponseWriter, *http.Request)
 	regionDown     bool
 	cond           *sync.Cond
 	created        map[string]savedSession
@@ -181,6 +186,7 @@ func Start(opt Option) *Server {
 	}
 	s.install(opt)
 	s.events = opt.Events
+	s.logs = opt.Logs
 	s.cond = sync.NewCond(&s.mu)
 	h := s.handler()
 	if opt.TLS {
@@ -313,6 +319,12 @@ func (s *Server) handler() http.Handler {
 			s.serveEvents(w, r)
 			return
 		}
+		if r.Method == http.MethodGet && s.logs != nil {
+			if op, ok := logOp(r.URL.Path); ok {
+				s.serveHook(w, r, op, s.logs)
+				return
+			}
+		}
 		if s.takeDrop(r, raw) {
 			hijackClose(w)
 			return
@@ -379,8 +391,31 @@ func (s *Server) middleware(next apiv1.StrictHandlerFunc, operationID string) ap
 }
 
 func (s *Server) serveEvents(w http.ResponseWriter, r *http.Request) {
+	s.serveHook(w, r, "StreamEvents", s.events)
+}
+
+func logOp(path string) (string, bool) {
+	rest, ok := strings.CutPrefix(path, "/api/v1/sessions/")
+	if !ok {
+		return "", false
+	}
+	_, tail, ok := strings.Cut(rest, "/")
+	if !ok {
+		return "", false
+	}
+	switch tail {
+	case "logs":
+		return "GetSessionLogs", true
+	case "logs/export":
+		return "ExportSessionLogs", true
+	default:
+		return "", false
+	}
+}
+
+func (s *Server) serveHook(w http.ResponseWriter, r *http.Request, operation string, fn func(http.ResponseWriter, *http.Request)) {
 	call := Call{
-		Operation:     "StreamEvents",
+		Operation:     operation,
 		Method:        r.Method,
 		Path:          r.URL.Path,
 		Authorization: r.Header.Get("Authorization"),
@@ -393,8 +428,12 @@ func (s *Server) serveEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	token := s.token
+	reqID := s.reqID
 	s.addCall(call)
 	s.mu.Unlock()
+	if reqID != "" {
+		w.Header().Set("X-Request-Id", reqID)
+	}
 	if call.Authorization != "Bearer "+token {
 		p := problem(http.StatusUnauthorized, apiv1.ErrorCodeUnauthenticated, "Unauthorized", "bearer token was not accepted")
 		w.Header().Set("Content-Type", "application/problem+json")
@@ -402,7 +441,9 @@ func (s *Server) serveEvents(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(p)
 		return
 	}
-	s.events(w, r)
+	if fn != nil {
+		fn(w, r)
+	}
 }
 
 func (s *Server) onError(w http.ResponseWriter, _ *http.Request, err error) {

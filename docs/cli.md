@@ -133,6 +133,8 @@ restart:
 ```sh
 mftiko session create -f hello.yaml --wait running   # 印出 session_id 與解析出的 digest
 mftiko session show <session_id>                     # 狀態、需求項目的 ack、log 位置
+mftiko session logs <session_id>                     # stdout、stderr；旗標見 mftiko help session
+mftiko session export-logs <session_id>              # 匯出 tar.gz；旗標見 mftiko help session
 mftiko session watch <session_id>                    # 即時重畫，Ctrl-C 離開
 mftiko session end <session_id> --wait               # 確認之後結束，等到 terminal
 mftiko record list
@@ -155,7 +157,7 @@ session 檔也可以是 JSON，`-f -` 從 stdin 讀。YAML 與 JSON 用同一個
 |---|---|---|
 | 0 | | 成功 |
 | 1 | 用法或設定 | 旗標錯、設定檔有問題、沒有 token、非 TTY 沒給 `--yes` |
-| 2 | 網路 | 連不上、TLS 失敗、逾時 |
+| 2 | 網路 | 連不上、TLS 失敗、逾時。`session logs` 重連到 30 秒上限仍失敗，或 `session export-logs` 的 gzip／tar 不完整、沒有 `manifest.json`，也是 2 |
 | 10 | `validation_failed` | 請求內容不合法；`errors[].path` 指出欄位，session 檔會對回行號 |
 | 11 | `unauthenticated` | token 無效或沒帶 |
 | 12 | `not_found` | 資源不存在 |
@@ -168,6 +170,7 @@ session 檔也可以是 JSON，`-f -` 從 stdin 讀。YAML 與 JSON 用同一個
 | 19 | `registry_unavailable` | 連不上策略 registry |
 | 20 | `internal` | API 內部錯誤；回報時附上 `X-Request-Id` |
 | 21 | `invalid_artifact` | 列出 tag 時解析結果讀不出來（E10-D059）。建立時 kind 不對是 `validation_failed`（E10-D120） |
+| 22 | `logs_unavailable` | session log 暫時讀不到（E14-D008） |
 
 下面這組只出現在 `session create --wait` 與 `session end --wait`（E11-D033）。到達目標 phase、`outcome=done` 或 `end_reason=ended_by_spec` 都回 0：
 
@@ -195,6 +198,12 @@ session 檔也可以是 JSON，`-f -` 從 stdin 讀。YAML 與 JSON 用同一個
 | `no token; set MFTIKO_TOKEN or run mftiko login` | 這個 context 還沒有 token |
 | `context url is http; set insecure_http: true to allow plaintext` | 明文 HTTP 只給 dev；正式環境用 HTTPS |
 | `network (2): ...` | 確認 `url`（含 `/api/v1`）、API 是否在跑、`ca_file` 是否正確；需要時調大 `--timeout` |
+| `network (2): reconnect exhausted` | `session logs` 在 `end` 之前斷線，退避已到 30 秒（E14-D033） |
+| `logs_unavailable (22)` | session log 暫時讀不到；稍後再試。告警處理見 [runbook.md](runbook.md) |
+| `API 版本太舊` | API 沒有 log 路徑（純 404，不是 problem）。升級 API。problem 的 `not_found` 仍是 exit 12 |
+| `file exists:` | `session export-logs` 的目標已存在，不覆蓋 |
+| `incomplete log export` | 匯出的 gzip 或 tar 截斷，暫存已刪，exit 2 |
+| `log export has no manifest.json` | 匯出裡沒有 `manifest.json`，暫存已刪，exit 2。不核 sha256 |
 | `unauthenticated (11)` | `MFTIKO_TOKEN` 優先於 context 裡的 token，檢查是否設了舊值 |
 | `not a terminal; pass --yes` | 腳本裡的刪除或結束要加 `--yes`；在 TTY 上 `--yes` 不會跳過確認 |
 | `registry_unavailable (19)` | API 連不上 registry，與 CLI 端無關 |

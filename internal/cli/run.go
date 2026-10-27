@@ -103,6 +103,7 @@ type command struct {
 // session create is E11-D019–E11-D023.
 // session and record are E11-D024–E11-D028.
 // session watch and --wait are E11-D029–E11-D034.
+// session logs and export-logs are E14-D031–E14-D035.
 // version is E11-D036.
 var commands = []command{
 	{action: "login", run: runLogin},
@@ -124,6 +125,8 @@ var commands = []command{
 	{resource: "session", action: "end", run: runSessionEnd},
 	{resource: "session", action: "delete", run: runSessionDelete},
 	{resource: "session", action: "watch", run: runSessionWatch},
+	{resource: "session", action: "logs", run: runSessionLogs},
+	{resource: "session", action: "export-logs", run: runSessionExportLogs},
 	{resource: "record", action: "list", run: runRecordList},
 	{resource: "record", action: "show", run: runRecordShow},
 }

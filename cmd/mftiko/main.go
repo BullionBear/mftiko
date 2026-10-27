@@ -8,7 +8,7 @@
 //	mftiko account-kind list
 //	mftiko account list|show|create|update|delete
 //	mftiko session create -f <file> [--wait <phase|terminal>]
-//	mftiko session list|show|end|delete|watch
+//	mftiko session list|show|end|delete|watch|logs|export-logs
 //	mftiko session end <id> [--wait]
 //	mftiko record list|show
 //	mftiko version

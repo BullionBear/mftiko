@@ -7,7 +7,7 @@ import (
 	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
 )
 
-// GetSessionLogs keeps the strict server compiling (E14-D011). #440 replaces the body.
+// GetSessionLogs is the strict default (E14-D011). Option.Logs replaces it.
 func (a *api) GetSessionLogs(ctx context.Context, _ apiv1.GetSessionLogsRequestObject) (apiv1.GetSessionLogsResponseObject, error) {
 	if !a.allowed(ctx) {
 		return apiv1.GetSessionLogs401ApplicationProblemPlusJSONResponse{
@@ -20,7 +20,7 @@ func (a *api) GetSessionLogs(ctx context.Context, _ apiv1.GetSessionLogsRequestO
 	}, nil
 }
 
-// ExportSessionLogs keeps the strict server compiling (E14-D014). #440 replaces the body.
+// ExportSessionLogs is the strict default (E14-D014). Option.Logs replaces it.
 func (a *api) ExportSessionLogs(ctx context.Context, _ apiv1.ExportSessionLogsRequestObject) (apiv1.ExportSessionLogsResponseObject, error) {
 	if !a.allowed(ctx) {
 		return apiv1.ExportSessionLogs401ApplicationProblemPlusJSONResponse{
