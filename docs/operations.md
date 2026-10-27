@@ -78,7 +78,7 @@ agent 的 unit 另外：
 - binary 是 `/opt/mftiko/current/bin/…`，`-shim` 是 `/opt/mftiko/current/bin/mftiko-shim`。不帶 `-conn`、`-account`。
 - `After=etcd.service` 與 `After=nats.service` 只排順序，沒有 `Requires=`。etcd 不是這個 unit 時（例如驗收用容器），agent 還是起得來。
 
-同一份 unit 用在兩台主機。部署值放在 `/etc/mftiko/<服務>/env`（0600，root），unit 用 `${VAR}` 展開。沒有寫進 unit 的旗標（etcd 密碼、`NATS_URL`、`DATABASE_URL`）由行程讀環境變數，變數名就是旗標原本的預設來源。
+同一份 unit 用在兩台主機。部署值放在 `/etc/mftiko/<服務>/env`（0600，root），unit 用 `${VAR}` 展開。沒有寫進 unit 的旗標（etcd 密碼、`NATS_URL`、`DATABASE_URL`、`MFTIKO_MAX_UNPACKED_BYTES`、`MFTIKO_MAX_UNPACKED_FILES`）由行程讀環境變數，變數名就是旗標原本的預設來源。
 
 | 服務 | env 裡要有的 | 正式環境的值 |
 |---|---|---|
@@ -91,6 +91,7 @@ agent 的 unit 另外：
 | td-agent、sts-agent | `NATS_URL`、`MFTIKO_NATS_ACCOUNT` | account 的公鑰。簽章種子是固定路徑 `/etc/mftiko/<服務>/nats-signing.nk` |
 | td-agent | `MFTIKO_TD_ENDPOINTS`、`MFTIKO_TD_REST_ENDPOINTS`（可省略） | 同 MD，空的就是預設 |
 | sts-agent | `MFTIKO_STS_DATA_REPOSITORY`（可省略） | 資料 artifact 的完整路徑 `host/path`。空的表示非空 volume 一直重試 |
+| sts-agent | `MFTIKO_MAX_UNPACKED_BYTES`、`MFTIKO_MAX_UNPACKED_FILES`（可省略） | 一個 rootfs 或一個 input 解開後的大小與 entry 數。省略或 0 是 4 GiB、100,000。負值讓 agent 不啟動。unit 不展開這兩個變數，行程把它們當 `-max-unpacked-bytes`、`-max-unpacked-files` 的預設。要與 `mftiko-pack data` 的同名旗標一起調。rootfs 與每個 input 各自比 |
 | sts-agent | `MFTIKO_LOG_TOKEN_SHA256`；`MFTIKO_LOG_LISTEN`、`MFTIKO_LOG_ADVERTISE`、`MFTIKO_LOG_MAX_STREAMS`、`MFTIKO_LOG_MAX_RATE`、`MFTIKO_LOG_MAX_BYTES`、`MFTIKO_LOG_KEEP`（可省略，unit 有預設） | log token 的 SHA-256，64 個小寫 hex。其餘見 [session log 端點](#session-log-端點) |
 | API | `MFTIKO_COOKIE_KEY`、`MFTIKO_POSTGRES_DSN` | cookie 的 HMAC 金鑰、Postgres DSN。log token 不在 env，是檔案 `/etc/mftiko/api/log-token` |
 | SYM | `DATABASE_URL`、`NATS_URL` | `-nats-creds` 固定 `/etc/mftiko/sym/nats.creds`，即 `mftiko-nats-dev` 的 `creds/sym-{inst}.creds`（E12-D079）。`MFTIKO_SYM_FEEDS` 可省略，省略就是全部 feed |
@@ -451,7 +452,7 @@ groups:
 
 ## 上傳資料 artifact
 
-依 [PROTOCOL.md](PROTOCOL.md) §8.4 與 [DECISIONS.md](DECISIONS.md) E15-D001–E15-D011（E15-07，#452）。預訓練模型這類檔案（`.pt`、`.pth`、`.pkl`）以資料 artifact 交給 session，唯讀，不用重 build 策略 image。故障處理在 [runbook §3.11](runbook.md#311-input-拉取失敗)。
+依 [PROTOCOL.md](PROTOCOL.md) §8.4 與 [DECISIONS.md](DECISIONS.md) E15-D001–E15-D011（E15-07，#452）。解開上限見 E15-D012–E15-D016（E15-08，#453）。預訓練模型這類檔案（`.pt`、`.pth`、`.pkl`）以資料 artifact 交給 session，唯讀，不用重 build 策略 image。故障處理在 [runbook §3.11](runbook.md#311-input-拉取失敗)。
 
 ### 流程
 
@@ -488,10 +489,11 @@ groups:
 | | 預設 | 誰檢查 | 要調整 |
 |---|---|---|---|
 | 壓縮後（config 加層） | 1 GiB | `mftiko-pack data -max-bytes`、API 的 `max_input_bytes`、STS 的 `-max-artifact-bytes` | 三個一起調 |
-| 解開後 | 4 GiB | `mftiko-pack data` 推之前、STS 解開時 | 一期不能調（#453） |
-| entry 數 | 100,000，目錄也算 | 同上 | 同上 |
+| 解開後 | 4 GiB | `mftiko-pack data -max-unpacked-bytes`、STS 的 `-max-unpacked-bytes`（`MFTIKO_MAX_UNPACKED_BYTES`） | 兩個一起調。省略或 0 是 4 GiB |
+| entry 數 | 100,000，目錄也算 | `mftiko-pack data -max-unpacked-files`、STS 的 `-max-unpacked-files`（`MFTIKO_MAX_UNPACKED_FILES`） | 兩個一起調。省略或 0 是 100,000 |
 
 - 權重檔幾乎壓不動，實際上以壓縮後的 1 GiB 為準。
+- 解開上限跟著部署走。`mftiko-pack data` 與 STS 要一起調，否則大於 4 GiB 的資料推不出去（E15-D015）。rootfs 與每個 input 各自比、不加總。負值讓 STS 不啟動，也讓打包失敗。超過是 `INIT_FAILED`、reason `artifact_unsafe_layer`。API 不下載層，也不檢查解開後大小（E15-D016）。
 - STS 的 `-max-artifact-bytes` 與策略 image 共用（E09-D013）。systemd unit 沒有帶這個旗標，要調就用 drop-in 覆寫 `ExecStart`。API 的 `max_input_bytes` 比 STS 的大時，太大的 input 建立會成功，到 STS 才以 `artifact_too_large` 失敗。
 
 ### 帳密與 HTTP

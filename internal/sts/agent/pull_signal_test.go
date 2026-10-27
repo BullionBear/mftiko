@@ -22,7 +22,7 @@ import (
 
 func TestPullStreakSignal(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
-	p := newPuller(context.Background(), nil, t.TempDir(), 0, zerolog.Nop(), func() time.Time { return now })
+	p := newPuller(context.Background(), nil, t.TempDir(), 0, artifact.UnpackLimits{}, zerolog.Nop(), func() time.Time { return now })
 	dig := sha256Repeat("ab")
 	p.jobs[dig] = &pullJob{}
 	transient := &artifact.Error{Reason: artifact.ReasonUnavailable, Err: errors.New("unavailable")}
@@ -65,7 +65,7 @@ func TestPullStreakSignal(t *testing.T) {
 
 func TestPullPermanentClearsSignal(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
-	p := newPuller(context.Background(), nil, t.TempDir(), 0, zerolog.Nop(), func() time.Time { return now })
+	p := newPuller(context.Background(), nil, t.TempDir(), 0, artifact.UnpackLimits{}, zerolog.Nop(), func() time.Time { return now })
 	dig := sha256Repeat("ab")
 	p.jobs[dig] = &pullJob{}
 	perm := &artifact.Error{Reason: artifact.ReasonNotFound, Permanent: true, Err: errors.New("unavailable")}
@@ -87,7 +87,7 @@ func TestPullPermanentClearsSignal(t *testing.T) {
 
 func TestInputPullStreakSignal(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
-	p := newPuller(context.Background(), nil, t.TempDir(), 0, zerolog.Nop(), func() time.Time { return now })
+	p := newPuller(context.Background(), nil, t.TempDir(), 0, artifact.UnpackLimits{}, zerolog.Nop(), func() time.Time { return now })
 	key := inputKey("a1b2c3", "cfg")
 	p.inputs[key] = &inputJob{}
 	transient := &artifact.Error{Reason: artifact.ReasonUnavailable, Err: errors.New("unavailable")}
@@ -116,7 +116,7 @@ func TestInputPullStreakSignal(t *testing.T) {
 func TestArtifactPullConditions(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 	earlier := now.Add(-time.Minute)
-	p := newPuller(context.Background(), nil, t.TempDir(), 0, zerolog.Nop(), func() time.Time { return now })
+	p := newPuller(context.Background(), nil, t.TempDir(), 0, artifact.UnpackLimits{}, zerolog.Nop(), func() time.Time { return now })
 	digAB := sha256Repeat("ab")
 	digCD := sha256Repeat("cd")
 	id := "a1b2c3"
@@ -177,7 +177,7 @@ func TestArtifactPullConditions(t *testing.T) {
 func TestNotePullConditions(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 	dig := sha256Repeat("ab")
-	pulls := newPuller(context.Background(), nil, t.TempDir(), 0, zerolog.Nop(), func() time.Time { return now })
+	pulls := newPuller(context.Background(), nil, t.TempDir(), 0, artifact.UnpackLimits{}, zerolog.Nop(), func() time.Time { return now })
 	pulls.jobs[dig] = &pullJob{streakFails: 1, streakSince: now, streakReason: artifact.ReasonUnavailable}
 	spec := &sessionv1.SessionSpec{Strategy: &sessionv1.StrategyRef{Code: dig}}
 	p := &plane{pulls: pulls}

@@ -36,7 +36,7 @@ func TestStrategyLayersHeldBeforeUnpack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := newPuller(context.Background(), client, data, 0, zerolog.Nop(), time.Now)
+	p := newPuller(context.Background(), client, data, 0, artifact.UnpackLimits{}, zerolog.Nop(), time.Now)
 
 	var mu sync.Mutex
 	var hookErr error

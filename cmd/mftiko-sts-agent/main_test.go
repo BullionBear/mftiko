@@ -34,6 +34,8 @@ func baseArgs(extra ...string) []string {
 }
 
 func TestParseArgsDefaults(t *testing.T) {
+	t.Setenv("MFTIKO_MAX_UNPACKED_BYTES", "")
+	t.Setenv("MFTIKO_MAX_UNPACKED_FILES", "")
 	o, version, err := parseArgs(baseArgs("-max-restarts", "9"))
 	if err != nil || version {
 		t.Fatalf("version=%v err=%v", version, err)
@@ -46,6 +48,7 @@ func TestParseArgsDefaults(t *testing.T) {
 	}
 	if o.artifactPoll != time.Minute ||
 		o.maxArtifactBytes != agent.DefaultMaxArtifactBytes ||
+		o.maxUnpackedBytes != 0 || o.maxUnpackedFiles != 0 ||
 		o.recvWindowMS != agent.DefaultRecvWindowMS ||
 		o.hookTimeoutS != agent.DefaultHookTimeoutS ||
 		o.startTimeoutS != agent.DefaultStartTimeoutS ||
@@ -127,5 +130,55 @@ func TestParseArgsLogFlags(t *testing.T) {
 	if err != nil || o.logs.TokenSHA256 != hash || o.logs.Advertise != "h.example:7442" ||
 		o.logs.MaxBytes != shim.MinOutputMaxBytes || o.logs.Keep != 2 || o.logs.Listen != agent.DefaultLogListen {
 		t.Fatalf("%v %+v", err, o.logs)
+	}
+}
+
+func TestParseArgsUnpackLimits(t *testing.T) {
+	t.Setenv("MFTIKO_MAX_UNPACKED_BYTES", "")
+	t.Setenv("MFTIKO_MAX_UNPACKED_FILES", "")
+	o, _, err := parseArgs(baseArgs("-max-unpacked-bytes", "0", "-max-unpacked-files", "0"))
+	if err != nil || o.maxUnpackedBytes != 0 || o.maxUnpackedFiles != 0 {
+		t.Fatalf("zero: %v bytes %d files %d", err, o.maxUnpackedBytes, o.maxUnpackedFiles)
+	}
+	o, _, err = parseArgs(baseArgs("-max-unpacked-bytes", "8", "-max-unpacked-files", "3"))
+	if err != nil || o.maxUnpackedBytes != 8 || o.maxUnpackedFiles != 3 {
+		t.Fatalf("flags: %v bytes %d files %d", err, o.maxUnpackedBytes, o.maxUnpackedFiles)
+	}
+	for _, args := range [][]string{
+		baseArgs("-max-unpacked-bytes", "-1"),
+		baseArgs("-max-unpacked-files", "-1"),
+	} {
+		if _, _, err := parseArgs(args); err == nil || !strings.Contains(err.Error(), "unpack limits") {
+			t.Fatalf("%q: %v", args, err)
+		}
+	}
+
+	t.Setenv("MFTIKO_MAX_UNPACKED_BYTES", "16")
+	t.Setenv("MFTIKO_MAX_UNPACKED_FILES", "4")
+	o, _, err = parseArgs(baseArgs())
+	if err != nil || o.maxUnpackedBytes != 16 || o.maxUnpackedFiles != 4 {
+		t.Fatalf("env: %v bytes %d files %d", err, o.maxUnpackedBytes, o.maxUnpackedFiles)
+	}
+	o, _, err = parseArgs(baseArgs("-max-unpacked-bytes", "32"))
+	if err != nil || o.maxUnpackedBytes != 32 || o.maxUnpackedFiles != 4 {
+		t.Fatalf("flag overrides env: %v bytes %d files %d", err, o.maxUnpackedBytes, o.maxUnpackedFiles)
+	}
+	o, _, err = parseArgs(baseArgs("-max-unpacked-bytes", "0"))
+	if err != nil || o.maxUnpackedBytes != 0 || o.maxUnpackedFiles != 4 {
+		t.Fatalf("explicit zero: %v bytes %d files %d", err, o.maxUnpackedBytes, o.maxUnpackedFiles)
+	}
+
+	t.Setenv("MFTIKO_MAX_UNPACKED_BYTES", "-5")
+	if _, _, err := parseArgs(baseArgs()); err == nil || !strings.Contains(err.Error(), "unpack limits") {
+		t.Fatalf("negative env: %v", err)
+	}
+	t.Setenv("MFTIKO_MAX_UNPACKED_BYTES", "nope")
+	if _, _, err := parseArgs(baseArgs()); err == nil || !strings.Contains(err.Error(), "MFTIKO_MAX_UNPACKED_BYTES") {
+		t.Fatalf("bad bytes env: %v", err)
+	}
+	t.Setenv("MFTIKO_MAX_UNPACKED_BYTES", "")
+	t.Setenv("MFTIKO_MAX_UNPACKED_FILES", "nope")
+	if _, _, err := parseArgs(baseArgs()); err == nil || !strings.Contains(err.Error(), "MFTIKO_MAX_UNPACKED_FILES") {
+		t.Fatalf("bad files env: %v", err)
 	}
 }

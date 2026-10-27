@@ -39,10 +39,13 @@ type puller struct {
 	client   *artifact.Client
 	dataDir  string
 	maxBytes int64
-	sem      chan struct{}
-	log      zerolog.Logger
-	now      func() time.Time
-	base     context.Context
+	// limits caps one rootfs and each input, compared separately (E15-D012–E15-D014).
+	// Zero fields are the defaults. Run passes Config.UnpackLimits after applyDefaults.
+	limits artifact.UnpackLimits
+	sem    chan struct{}
+	log    zerolog.Logger
+	now    func() time.Time
+	base   context.Context
 
 	mu     sync.Mutex
 	jobs   map[string]*pullJob
@@ -70,12 +73,12 @@ type pullJob struct {
 	streakReason string
 }
 
-func newPuller(ctx context.Context, client *artifact.Client, dataDir string, maxBytes int64, log zerolog.Logger, now func() time.Time) *puller {
+func newPuller(ctx context.Context, client *artifact.Client, dataDir string, maxBytes int64, limits artifact.UnpackLimits, log zerolog.Logger, now func() time.Time) *puller {
 	if now == nil {
 		now = time.Now
 	}
 	return &puller{
-		client: client, dataDir: dataDir, maxBytes: maxBytes, sem: make(chan struct{}, pullSlots),
+		client: client, dataDir: dataDir, maxBytes: maxBytes, limits: limits, sem: make(chan struct{}, pullSlots),
 		log: log, now: now, base: ctx, jobs: map[string]*pullJob{}, inputs: map[string]*inputJob{},
 	}
 }
@@ -168,7 +171,7 @@ func (p *puller) run(req artifact.Request, ctx context.Context) {
 	if p.afterHold != nil {
 		p.afterHold(fetched)
 	}
-	root, err := p.client.UnpackImageFrom(ctx, fetched.Digest, req.Repository, fetched.Layers, artifact.UnpackLimits{})
+	root, err := p.client.UnpackImageFrom(ctx, fetched.Digest, req.Repository, fetched.Layers, p.limits)
 	if err != nil {
 		p.finish(dig, "", artifact.Manifest{}, err)
 		return

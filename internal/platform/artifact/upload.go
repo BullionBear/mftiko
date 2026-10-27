@@ -48,7 +48,8 @@ type DataUpload struct {
 	FollowSymlinks bool
 	// MaxBytes limits the config plus the compressed layer; zero means DefaultMaxBytes (E09-D013).
 	MaxBytes int64
-	// Limits is the unpack limit the STS applies (E09-D053); zero fields mean the defaults.
+	// Limits is the unpack limit the STS applies (E09-D053, E15-D012); zero fields mean the defaults.
+	// mftiko-pack data sets it from -max-unpacked-bytes and -max-unpacked-files (E15-D015).
 	Limits UnpackLimits
 	// TempDir holds the packed layer until the push ends; empty means os.TempDir().
 	TempDir string

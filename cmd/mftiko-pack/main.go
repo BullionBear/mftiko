@@ -2,7 +2,7 @@
 // (E09-D002, E09-D035–E09-D041, E09-D085–E09-D090, PROTOCOL §8). It does not build the binary.
 //
 //	mftiko-pack -bin FILE -name NAME -repo REGISTRY/REPOSITORY [-kind strategy|md.conn|td.account] [-tag TAG] [-env K=V]... [-plain-http]
-//	mftiko-pack data -dir DIR -repo REGISTRY/REPOSITORY [-tag TAG] [-plain-http] [-max-bytes N] [-L]
+//	mftiko-pack data -dir DIR -repo REGISTRY/REPOSITORY [-tag TAG] [-plain-http] [-max-bytes N] [-max-unpacked-bytes N] [-max-unpacked-files N] [-L]
 //
 // -kind defaults to strategy. Success prints the image manifest digest on stdout.
 // For a strategy that digest is StrategyRef.code.
@@ -25,7 +25,7 @@ import (
 )
 
 const usage = "usage: mftiko-pack -bin FILE -name NAME -repo REGISTRY/REPOSITORY [-kind strategy|md.conn|td.account] [-tag TAG] [-env K=V]... [-plain-http]\n" +
-	"       mftiko-pack data -dir DIR -repo REGISTRY/REPOSITORY [-tag TAG] [-plain-http] [-max-bytes N] [-L]"
+	"       mftiko-pack data -dir DIR -repo REGISTRY/REPOSITORY [-tag TAG] [-plain-http] [-max-bytes N] [-max-unpacked-bytes N] [-max-unpacked-files N] [-L]"
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
@@ -114,7 +114,9 @@ func parseEnv(args []string) (map[string]string, error) {
 	return env, nil
 }
 
-// runData is mftiko-pack data (E15-D001, E15-D002). stdout gets only the digest.
+// runData is mftiko-pack data (E15-D001, E15-D002, E15-D015). stdout gets only the digest.
+// The unpack flags default to 4 GiB and 100,000 entries. 0 means those defaults.
+// They have to match the STS deployment: a larger tree is not pushed.
 func runData(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("mftiko-pack data", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -123,6 +125,8 @@ func runData(args []string, stdout, stderr io.Writer) error {
 	tag := fs.String("tag", "", "optional tag; the digest does not depend on it")
 	plain := fs.Bool("plain-http", false, "push over HTTP instead of HTTPS")
 	maxBytes := fs.Int64("max-bytes", artifact.DefaultMaxBytes, "limit on the compressed config and layer")
+	maxUnpacked := fs.Int64("max-unpacked-bytes", artifact.DefaultMaxUnpackedBytes, "unpacked size limit; 0 is 4 GiB; match the STS -max-unpacked-bytes or a larger tree is not pushed")
+	maxFiles := fs.Int("max-unpacked-files", artifact.DefaultMaxFiles, "unpacked entry limit; 0 is 100000; match the STS -max-unpacked-files")
 	follow := fs.Bool("L", false, "pack what each symlink points at")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -136,11 +140,15 @@ func runData(args []string, stdout, stderr io.Writer) error {
 	if *maxBytes <= 0 {
 		return fmt.Errorf("-max-bytes %d is not positive", *maxBytes)
 	}
+	if *maxUnpacked < 0 || *maxFiles < 0 {
+		return fmt.Errorf("-max-unpacked-bytes %d -max-unpacked-files %d", *maxUnpacked, *maxFiles)
+	}
 	up, err := artifact.UploadData(context.Background(), artifact.DataUpload{
 		Root:           *dir,
 		Destination:    artifact.Destination{Repository: *repo, Tag: *tag, PlainHTTP: *plain},
 		FollowSymlinks: *follow,
 		MaxBytes:       *maxBytes,
+		Limits:         artifact.UnpackLimits{MaxBytes: *maxUnpacked, MaxFiles: *maxFiles},
 	})
 	var unsupported *artifact.UnsupportedError
 	if errors.As(err, &unsupported) && unsupported.Symlinks() && !*follow {

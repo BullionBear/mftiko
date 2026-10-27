@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -134,6 +135,7 @@ func pollUntil(t *testing.T, what string, ok func() bool) {
 
 // A good input is unpacked read-only, the volume is 0700, and the data layer
 // is collected once the unpack has finished. The strategy layer stays.
+// Unpack limits are unset, so this input (a directory plus one file) is still accepted (E15-D012).
 func TestInputReadOnlyAndLayerGC(t *testing.T) {
 	e := setup(t)
 	const id = "a1b2c3"
@@ -175,6 +177,99 @@ func TestInputReadOnlyAndLayerGC(t *testing.T) {
 	if _, err := os.Stat(rootfs); err != nil {
 		t.Fatalf("strategy rootfs: %v", err)
 	}
+}
+
+// An input over the unpack entry limit ends the session before spawn.
+// The rootfs is one file, so the same limit still lets a session with no inputs run.
+func TestInputOverUnpackLimit(t *testing.T) {
+	e := setup(t)
+	e.cfg.UnpackLimits.MaxFiles = 1
+	const id, sib = "a1b2c3", "b2c3d4"
+	manifest, _ := e.pushData("note.txt", "aaaa")
+	spec := sessionSpec(1, 1)
+	spec.Inputs = []*sessionv1.InputDecl{{Name: "model", Digest: manifest, Repository: e.repo}}
+	e.putSpec(id, spec)
+	e.putDemand(id, runningDemand(true, 1))
+	e.putSpec(sib, sessionSpec(2, 1))
+	e.putDemand(sib, runningDemand(true, 2))
+	ph := e.collect(e.rev())
+	stop, done := e.start()
+	defer func() {
+		stop()
+		waitDone(t, done)
+	}()
+	st := ph.wait(id, statev1.Phase_PHASE_FAILED)
+	if st.GetReason() != artifact.ReasonUnsafeLayer {
+		t.Fatalf("reason %q", st.GetReason())
+	}
+	if n := e.starts(id); n != 0 {
+		t.Fatalf("spawned %d times", n)
+	}
+	ph.wait(sib, statev1.Phase_PHASE_RUNNING)
+	if strings.Contains(e.log.String(), "artifact rejected") {
+		t.Fatalf("rootfs was rejected:\n%s", e.log.String())
+	}
+	e.waitLog("input rejected")
+	if !strings.Contains(e.log.String(), artifact.ReasonUnsafeLayer) {
+		t.Fatalf("log missing reason:\n%s", e.log.String())
+	}
+	_, inputs := sessionDirs(e.cfg.DataDir, id)
+	if _, err := os.Stat(filepath.Join(inputs, "model", "note.txt")); !os.IsNotExist(err) {
+		t.Fatalf("input file: %v", err)
+	}
+}
+
+// Two inputs that each fit the entry limit still run. The counts are not added together.
+func TestInputsUnpackLimitsNotSummed(t *testing.T) {
+	e := setup(t)
+	e.cfg.UnpackLimits.MaxFiles = 2
+	const id = "a1b2c3"
+	one, _ := e.pushData("a.txt", "aaaa")
+	two, _ := e.pushData("b.txt", "bbbb")
+	spec := sessionSpec(1, 1)
+	spec.Inputs = []*sessionv1.InputDecl{
+		{Name: "one", Digest: one, Repository: e.repo},
+		{Name: "two", Digest: two, Repository: e.repo},
+	}
+	e.putSpec(id, spec)
+	e.putDemand(id, runningDemand(true, 1))
+	ph := e.collect(e.rev())
+	stop, done := e.start()
+	defer func() {
+		stop()
+		waitDone(t, done)
+	}()
+	ph.wait(id, statev1.Phase_PHASE_RUNNING)
+	_, inputs := sessionDirs(e.cfg.DataDir, id)
+	if string(mustReadFile(t, filepath.Join(inputs, "one", "a.txt"))) != "aaaa" {
+		t.Fatal("one")
+	}
+	if string(mustReadFile(t, filepath.Join(inputs, "two", "b.txt"))) != "bbbb" {
+		t.Fatal("two")
+	}
+}
+
+// A rootfs over the unpacked size limit fails the same way, with no inputs.
+func TestRootfsOverUnpackLimit(t *testing.T) {
+	e := setup(t)
+	e.cfg.UnpackLimits.MaxBytes = 1
+	const id = "a1b2c3"
+	e.putSpec(id, sessionSpec(1, 1))
+	e.putDemand(id, runningDemand(true, 1))
+	ph := e.collect(e.rev())
+	stop, done := e.start()
+	defer func() {
+		stop()
+		waitDone(t, done)
+	}()
+	st := ph.wait(id, statev1.Phase_PHASE_FAILED)
+	if st.GetReason() != artifact.ReasonUnsafeLayer {
+		t.Fatalf("reason %q", st.GetReason())
+	}
+	if n := e.starts(id); n != 0 {
+		t.Fatalf("spawned %d times", n)
+	}
+	e.waitLog("artifact rejected")
 }
 
 // An input whose manifest is not a data artifact ends the session and does not spawn.

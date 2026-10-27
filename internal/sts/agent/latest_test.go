@@ -344,7 +344,7 @@ func collectPlane(t *testing.T, c *artifact.Client, tags *latestTags, data strin
 	t.Cleanup(cancel)
 	return &plane{
 		art: c, tags: tags, log: zerolog.Nop(),
-		pulls: newPuller(ctx, c, data, 0, zerolog.Nop(), time.Now),
+		pulls: newPuller(ctx, c, data, 0, artifact.UnpackLimits{}, zerolog.Nop(), time.Now),
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -36,6 +37,8 @@ type options struct {
 	registryCreds, dataRepo              string
 	plainHTTPHosts                       []string
 	maxArtifactBytes                     int64
+	maxUnpackedBytes                     int64
+	maxUnpackedFiles                     int
 	recvWindowMS                         int
 	hookTimeoutS                         int
 	startTimeoutS                        int
@@ -70,6 +73,14 @@ func main() {
 }
 
 func parseArgs(args []string) (options, bool, error) {
+	unpackedBytes, err := envInt64("MFTIKO_MAX_UNPACKED_BYTES")
+	if err != nil {
+		return options{}, false, err
+	}
+	unpackedFiles, err := envInt("MFTIKO_MAX_UNPACKED_FILES")
+	if err != nil {
+		return options{}, false, err
+	}
 	var o options
 	fs := flag.NewFlagSet("mftiko-sts-agent", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -88,6 +99,8 @@ func parseArgs(args []string) (options, bool, error) {
 	fs.StringVar(&o.natsAccount, "nats-account", "", "the MFTIKO account's public key")
 	fs.StringVar(&o.natsSigningKey, "nats-signing-key", "", "seed file of the MFTIKO account's signing key")
 	fs.Int64Var(&o.maxArtifactBytes, "max-artifact-bytes", agent.DefaultMaxArtifactBytes, "artifact size limit")
+	fs.Int64Var(&o.maxUnpackedBytes, "max-unpacked-bytes", unpackedBytes, "one unpack's size limit; 0 is 4 GiB ($MFTIKO_MAX_UNPACKED_BYTES)")
+	fs.IntVar(&o.maxUnpackedFiles, "max-unpacked-files", unpackedFiles, "one unpack's entry limit; 0 is 100000 ($MFTIKO_MAX_UNPACKED_FILES)")
 	fs.IntVar(&o.recvWindowMS, "recv-window-ms", agent.DefaultRecvWindowMS, "default recv_window_ms")
 	fs.IntVar(&o.hookTimeoutS, "hook-timeout-s", agent.DefaultHookTimeoutS, "default hook_timeout_s")
 	fs.IntVar(&o.startTimeoutS, "start-timeout-s", agent.DefaultStartTimeoutS, "default start_timeout_s")
@@ -144,6 +157,9 @@ func parseArgs(args []string) (options, bool, error) {
 	if err := o.logs.Validate(); err != nil {
 		return o, false, err
 	}
+	if o.maxUnpackedBytes < 0 || o.maxUnpackedFiles < 0 {
+		return o, false, fmt.Errorf("unpack limits bytes %d files %d", o.maxUnpackedBytes, o.maxUnpackedFiles)
+	}
 	return o, false, nil
 }
 
@@ -178,6 +194,32 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
+// envInt64 reads key. Unset or empty is 0, which means the unpack default (E15-D012).
+func envInt64(key string) (int64, error) {
+	v, ok := os.LookupEnv(key)
+	if !ok || v == "" {
+		return 0, nil
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", key, err)
+	}
+	return n, nil
+}
+
+// envInt reads key. Unset or empty is 0, which means the unpack default (E15-D012).
+func envInt(key string) (int, error) {
+	v, ok := os.LookupEnv(key)
+	if !ok || v == "" {
+		return 0, nil
+	}
+	n, err := strconv.ParseInt(v, 10, 0)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", key, err)
+	}
+	return int(n), nil
+}
+
 func run(ctx context.Context, o options, log zerolog.Logger) error {
 	topo, err := readTopology(o.topology)
 	if err != nil {
@@ -206,6 +248,7 @@ func run(ctx context.Context, o options, log zerolog.Logger) error {
 		},
 		RegistryCreds: o.registryCreds, DataRepository: o.dataRepo, PlainHTTPHosts: o.plainHTTPHosts,
 		MaxArtifactBytes: o.maxArtifactBytes,
+		UnpackLimits:     artifact.UnpackLimits{MaxBytes: o.maxUnpackedBytes, MaxFiles: o.maxUnpackedFiles},
 		RecvWindowMS:     o.recvWindowMS, HookTimeoutS: o.hookTimeoutS, StartTimeoutS: o.startTimeoutS,
 		VolumeMB: o.volumeMB, VolumeInterval: o.volumeInterval, Grace: o.grace, MaxRestarts: o.maxRestarts, RestartWindowS: o.restartWindowS,
 		BackoffMin: o.backoffMin, BackoffMax: o.backoffMax, ArtifactPoll: o.artifactPoll,
