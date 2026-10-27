@@ -112,9 +112,18 @@ bin/mftiko-pack -bin bin/examples/hello -name hello -repo 127.0.0.1:5000/hello -
 bin/mftiko-pack data -dir ./model -repo 127.0.0.1:5000/data/model -tag v1 -plain-http
 ```
 
-stdout is the manifest digest; a session file names it under `inputs` with the repository. A summary of the entries and sizes goes to stderr. The same directory packs to the same digest, with or without `-tag`, and blobs the registry already has are not sent again (E15-D008). Credentials and `-plain-http` work as for a strategy.
+stdout is the manifest digest; a session file names it under `inputs` with the repository, which must be in the API's `allow` (E15-D007):
 
-Nothing is pushed when the directory has an entry the STS would refuse to unpack: an absolute symlink, a symlink whose target contains `..`, a socket, a device, a fifo, or a name starting with `.wh.` (E15-D004). `-L` packs what each symlink points at instead, which a HuggingFace cache needs. Nothing is pushed over the limits either: 4 GiB unpacked, 100,000 entries counting directories, and `-max-bytes` (default 1 GiB) for the compressed upload, which must match the STS `-max-artifact-bytes` (E15-D005). Model weights barely compress, so the 1 GiB is the limit that binds.
+```yaml
+inputs:
+  - name: model                        # $MFTIKO_INPUT_DIR/model/
+    repository: registry:5000/data/model
+    digest: sha256:…
+```
+
+With `make dev-up`, push to `127.0.0.1:5000` from the host and write `registry:5000`, the name the API and STS use, in the session file; the digest is the same. A summary of the entries and sizes goes to stderr. The same directory packs to the same digest, with or without `-tag`, and blobs the registry already has are not sent again (E15-D008). Credentials and `-plain-http` work as for a strategy.
+
+Nothing is pushed when the directory has an entry the STS would refuse to unpack: an absolute symlink, a symlink whose target contains `..`, a socket, a device, a fifo, or a name starting with `.wh.` (E15-D004). `-L` packs what each symlink points at instead, which a HuggingFace cache needs. Nothing is pushed over the limits either: 4 GiB unpacked, 100,000 entries counting directories, and `-max-bytes` (default 1 GiB) for the compressed upload, which must match the STS `-max-artifact-bytes` (E15-D005). Model weights barely compress, so the 1 GiB is the limit that binds. The API's `max_input_bytes` checks the same 1 GiB when the session is created. The whole procedure, credentials and failures are in [docs/operations.md](docs/operations.md#上傳資料-artifact).
 
 ## API authentication
 

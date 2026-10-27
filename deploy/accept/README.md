@@ -365,6 +365,7 @@ $A e2e region up
 ```sh
 $A e2e cli main
 $A e2e cli faults
+$A e2e cli inputs
 $A e2e cli region before   # 之後照「一個 region 斷線」停 etcd2
 $A e2e cli region down     # 再啟動 etcd2
 $A e2e cli region up
@@ -394,12 +395,20 @@ $A e2e cli region up
   | 刪除未結束的 session | exit 14 |
 
   最後清掉 session 與帳號。
+- `inputs`（E15-07）：上傳的目錄經 CLI 交給 session。
+  1. 在 runner 寫一個目錄：1 MiB 隨機的 `model.pt`、`sub/meta.json`，以及指向 `model.pt` 的 symlink `latest.pt`。用 `/mftiko/mftiko-pack data` 推到 `registry:5000/data/accept-model:accept`，stdout 是 digest。
+  2. input 的 repository 是 `registry:5000/private/accept-model`（不在 `allow`）：exit 10，stderr 指到 `/inputs/0/repository`。
+  3. hello（沒有 params）帶 input `model`，`session create --wait running`。`session show` 的 spec 列出這個 input。
+  4. `sts1` 的 `/var/sts/sts1/data/sessions/<id>/inputs/model/` 裡，檔案內容與推上去的相同，檔案 0444、目錄 0555，`latest.pt` 仍是指向 `model.pt` 的 symlink。
+  5. `session end --wait --yes`（`done`、`ended_by_spec`），`session delete --yes`。
+
+  `-pack`、`-sts-data` 可以改 `mftiko-pack` 與 `sts1` 的 `-data` 的路徑。
 - `region`：
   - `before`：在 `sts2` 以 `--wait running` 建一個 session。
   - `down`：`session show` 與在 `sts2` 建立都是 exit 17；`session list` exit 0，stderr 警告 `accept2`。
   - `up`：`end --wait`、`delete`。
 
-`e2e-all` 也會跑這三條。
+`e2e-all` 也會跑這四條。
 
 ## console smoke
 

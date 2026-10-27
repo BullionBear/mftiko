@@ -400,6 +400,78 @@ groups:
 | 只有 STS agent 連不到 registry | 非 terminal 的 `SessionStatus` 有 `artifact_pull`，`mftiko_artifact_pull_failing` 是 1。`mftiko_registry_up` 維持 0 | `MftikoArtifactPullFailing` |
 | 磁碟用量 | node_exporter 的檔案系統剩餘比例。mftiko 不輸出這項 | `MftikoDiskLow` |
 
+## 上傳資料 artifact
+
+依 [PROTOCOL.md](PROTOCOL.md) §8.4 與 [DECISIONS.md](DECISIONS.md) E15-D001–E15-D011（E15-07，#452）。預訓練模型這類檔案（`.pt`、`.pth`、`.pkl`）以資料 artifact 交給 session，唯讀，不用重 build 策略 image。故障處理在 [runbook §3.11](runbook.md#311-input-拉取失敗)。
+
+### 流程
+
+1. 準備一個目錄，例如 `./model/`。目錄本身不進路徑：`./model/model.pt` 解開後是 `$MFTIKO_INPUT_DIR/<name>/model.pt`。
+2. `mftiko-pack data` 推上去。stdout 只有 manifest digest，stderr 是 entry 數與解開前後的大小：
+
+   ```sh
+   mftiko-pack data -dir ./model -repo registry.example/data/model -tag v1
+   ```
+
+   `-tag` 選填，digest 不受它影響。同一個目錄重推得到同一個 digest，registry 上已有的 blob 不重傳。`mftiko-pack` 隨 CLI 的 release tarball 發佈（[cli.md](cli.md)）。
+3. session 檔加上 `inputs`。`digest` 只收 digest，不收 tag：
+
+   ```yaml
+   inputs:
+     - name: model                          # ^[a-z0-9][a-z0-9_-]{0,63}$；策略以這個名字找目錄
+       repository: registry.example/data/model
+       digest: sha256:…                     # mftiko-pack data 印出的
+   ```
+
+4. `mftiko session create -f session.yaml --wait running`。API 建立時讀 manifest：repository 不在 `allow`、不是資料 artifact、超過 `max_input_bytes`，都是 400 `validation_failed`（CLI exit 10），`errors[].path` 指到 `/inputs/<i>/repository` 或 `/inputs/<i>/digest`。
+5. 策略在 `OnInit` 讀：Go 是 `ctx.InputDir("model")`，Python 是 `ctx.input_dir("model")`。
+
+### 格式與目錄
+
+- 格式見 PROTOCOL §8.4：manifest 的 `artifactType` 是 `application/vnd.mftiko.data.v1`，一層 tar+gzip，config 沒有 `source`。用 `mftiko-pack data` 推，不要手組 manifest。
+- STS 在 worker 啟動之前拉下並解到 `${DATA}/sessions/<session_id>/inputs/<name>/`，也就是 worker 的 `$MFTIKO_INPUT_DIR/<name>/`。每個 input 都就緒才啟動 worker。
+- 檔案 0444、目錄 0555，屬 STS agent 的使用者（E09-D075）。**唯讀只是權限位元**：worker 與 agent 是同一個使用者，自己 `chmod` 就改得回來，以 root 跑時完全不擋。要寫的東西寫 `$MFTIKO_VOLUME_DIR`。
+- symlink：相對且留在目錄內的照原樣存，解開後仍是 symlink。絕對路徑或含 `..` 的 symlink、socket、device、fifo、`.wh.*` 讓 `mftiko-pack data` 在送出任何請求前失敗；`-L` 改存 symlink 指到的內容（E15-D004）。
+- session 結束後 STS 刪掉 inputs 目錄（[保留期](#保留期)）。registry 上的 artifact 不動。
+
+### 上限
+
+| | 預設 | 誰檢查 | 要調整 |
+|---|---|---|---|
+| 壓縮後（config 加層） | 1 GiB | `mftiko-pack data -max-bytes`、API 的 `max_input_bytes`、STS 的 `-max-artifact-bytes` | 三個一起調 |
+| 解開後 | 4 GiB | `mftiko-pack data` 推之前、STS 解開時 | 一期不能調（#453） |
+| entry 數 | 100,000，目錄也算 | 同上 | 同上 |
+
+- 權重檔幾乎壓不動，實際上以壓縮後的 1 GiB 為準。
+- STS 的 `-max-artifact-bytes` 與策略 image 共用（E09-D013）。systemd unit 沒有帶這個旗標，要調就用 drop-in 覆寫 `ExecStart`。API 的 `max_input_bytes` 比 STS 的大時，太大的 input 建立會成功，到 STS 才以 `artifact_too_large` 失敗。
+
+### 帳密與 HTTP
+
+- **推的人：** `mftiko-pack` 讀 `~/.docker/config.json`（`DOCKER_CONFIG` 可換目錄）。先 `docker login <host>`。
+- **讀的人有兩個：** API 建立時讀 manifest（API 設定的 `registry_creds`），STS 拉層（`MFTIKO_REGISTRY_CREDS`）。兩份 `config.json` 都要能讀這個 host（E10-D123、E10-D128）。API 讀得到、STS 讀不到時，建立成功，session 以 `artifact_unauthorized` 失敗。
+- **走 HTTP 的 host：** API 的 `plain_http_hosts`、STS 的 `MFTIKO_PLAIN_HTTP_HOSTS`、`mftiko-pack data -plain-http`，三處都要有（E10-D124）。
+
+### allow
+
+- input 的 repository 與策略一樣，必須在 API 的 `allow` 內（E15-D007，修改 E10-D122）。
+- STS 的 `MFTIKO_STS_DATA_REPOSITORY`（`state_out` 推到這裡）也要在 `allow` 內，否則下一個 session 以 `state_out` 接手時建立會被擋。慣例是 `allow` 同時列 `<host>/strategies/` 與 `<host>/data/`，`deploy/accept` 就是這樣設。
+
+### dev
+
+- `make dev-up` 的 registry 在主機上是 `127.0.0.1:5000`，在 compose 裡（API 看到的）是 `registry:5000`。從主機推用前者，session 檔寫後者。內容相同，digest 相同。dev 的 `allow` 是整個 `registry:5000`。
+
+  ```sh
+  make build
+  bin/mftiko-pack data -dir ./model -repo 127.0.0.1:5000/data/model -tag v1 -plain-http
+  ```
+
+  session 檔裡是 `repository: registry:5000/data/model`，`sts_instance: sts1`。
+- dev 沒有跑任何 agent：建立通過上面第 4 步的檢查之後，session 停在 `pending`。要看到策略真的讀到 input，用驗收環境的 `accept.sh e2e cli inputs`（[deploy/accept/README.md](../deploy/accept/README.md)）：它照這個流程推一個目錄、經 CLI 建 session、到 `running`，再到 STS 的目錄核對內容與權限。
+
+### 容量
+
+資料 artifact 一期不刪（E10-D017）：上傳的模型與 `state_out` 都留在 registry，每個版本都累積。要清理在 registry 端做；先確認沒有還在的 session 引用那個 digest（`mftiko session show <id>` 的 spec 列出 `inputs`）。
+
 ## 保留期
 
 session 的東西分兩段清，比照 `docker rm`（E10-D016）：
@@ -418,7 +490,7 @@ spec 什麼時候被刪，只由 API 決定（W5，E10-D017）：
 
 不隨 spec 刪除的：
 
-- registry 上的資料 artifact（`state_out`）一期不刪，新的 session 可以用 digest 接手；容量由運維管理（E10-D017）。
+- registry 上的資料 artifact（`state_out` 與[上傳的 input](#上傳資料-artifact)）一期不刪，新的 session 可以用 digest 接手；容量由運維管理（E10-D017）。
 - `audit` 的列一期不刪（E10-D010）。
 
 ## 舊驗收庫補記 schema_migrations

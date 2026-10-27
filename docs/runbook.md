@@ -53,6 +53,7 @@ etcdctl endpoint health
 | `MftikoDiskLow` | `df -h`；`${WORK_DIR}/log`、`/var/lib/etcd`、`/var/backups` | [§3.8](#38-磁碟快滿) |
 | `mftiko-etcd-backup.service` 是 failed | `journalctl -u mftiko-etcd-backup` | [§2.4](#24-etcd-備份) |
 | 不響，但交易所或 NATS 斷了 | worker 的 stderr | [§3.5](#35-網路斷了) |
+| 不響，但 session `failed`、reason 是 `artifact_*`、incarnation 0 | `mftiko session show <id>` 的 spec `inputs`；STS 的 `input rejected` | [§3.11](#311-input-拉取失敗) |
 
 ## 2. 例行操作
 
@@ -140,6 +141,12 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 - 不用重啟 API。`mftiko strategy list <repository>` 列出 tag。建立 session 時讀 manifest，`kind` 必須是 strategy（E10-D120）。
 - 不在 `allow`：`validation_failed`。該 host 連不上，或帳密被拒：`registry_unavailable`（見 [§3.7](#37-registry-不可用)）。
 - 多個 host 的帳密寫進同一份 Docker `config.json`。對每個 host 各做一次 `docker login registry.example`（換成那個 host），它把該 host 的 `auths` 加進同一個檔。沒有列出的 host 匿名。公開 image 不用帳密。API 的 `registry_creds` 與 STS 的 `MFTIKO_REGISTRY_CREDS` 指這份檔（E10-D123、E10-D128）。
+
+### 2.9 上傳一個模型或其他資料
+
+- 流程、上限、帳密與 `allow` 在 [operations.md「上傳資料 artifact」](operations.md#上傳資料-artifact)：`mftiko-pack data` 推一個目錄，把印出的 digest 寫進 session 檔的 `inputs`，`mftiko session create -f`。
+- input 的 repository 要在 `allow` 內，與策略相同（E15-D007）。API 的 `registry_creds` 與 STS 的 `MFTIKO_REGISTRY_CREDS` 都要能讀那個 host。
+- 不用重啟 API 或 agent。確認：session `running`；策略自己的 log（`mftiko session logs <id>`）。
 
 ## 3. 故障處理
 
@@ -258,3 +265,26 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 
 - 單一 member 停了：`systemctl status etcd`，`Restart=always` 會拉起來。起不來看 `journalctl -u etcd`（磁碟滿、data dir 權限）。
 - 資料毀損或被誤改：從快照還原，照 [還原](operations.md#還原)的 8 步做，**bump 一律計算**，epoch 加同一個 bump。快照之後的變更會沒有（E12-D057）。
+
+### 3.11 input 拉取失敗
+
+沒有告警：被拒絕的 input 不重試，`mftiko_artifact_pull_failing` 不會是 1。暫時連不上 registry 的走 [§3.7](#37-registry-不可用)：session 停在 `pending`，帶 `artifact_pull`。
+
+**先看：**
+
+- `mftiko session show <id>`：phase `failed`，reason 是下表其中之一，incarnation 0，沒有 last exit。worker 沒有啟動過。spec 的 `inputs` 列出每個 input 的 repository 與 digest。
+- 該 STS 主機：`journalctl -u mftiko-sts-agent --since -1h | grep 'input rejected'`，那一行有 `reason` 與原因（例如超過哪個上限、哪個 tar entry）。
+
+| reason | 意思 | 做 |
+|---|---|---|
+| `artifact_too_large` | 壓縮後超過 STS 的 `-max-artifact-bytes`。API 的 `max_input_bytes` 比它大才會走到這裡 | 拆成幾個 input，或把兩邊一起調大（[上限](operations.md#上限)） |
+| `artifact_unsafe_layer` | 解開時被拒：超過 4 GiB 或 100,000 個 entry，或有不允許的項目（絕對路徑、`..`、device、`.wh.*`） | 用 `mftiko-pack data` 重推，它在推之前就擋這些；超過上限就拆 |
+| `artifact_wrong_mediatype` | 那個 digest 不是資料 artifact，例如貼成策略 image 的 digest。API 建立時會擋，所以通常是 spec 不是經 API 寫的 | 用 `mftiko-pack data` 印出的 digest 重建 |
+| `artifact_unauthorized` | STS 讀那個 host 得到 401、403。API 讀得到（建立成功），STS 的 `MFTIKO_REGISTRY_CREDS` 卻沒有那個 host，或那一筆過期 | 在 STS 主機對該 host `docker login`，寫進 `MFTIKO_REGISTRY_CREDS` 指的檔（0600，`mftiko-sts`），`systemctl restart mftiko-sts-agent` |
+| `artifact_not_found` | 建立之後，那個 digest 在 registry 上不見了 | 重推，用新的 digest 重建 |
+
+**做：** `failed` 不會自己重試。修好原因之後 `mftiko session delete <id> --yes`（已經 terminal），再 `mftiko session create -f`。
+
+worker 有啟動、last exit 是 `init_failed` 的不是這一項：input 已經解開，是策略讀的路徑或內容不對。看 `mftiko session logs <id> --stream stderr`。
+
+**確認：** 新的 session `running`；STS 的 log 有 `input ready`；策略的 log 沒有讀檔錯誤。

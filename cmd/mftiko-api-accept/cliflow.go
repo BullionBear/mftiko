@@ -33,6 +33,8 @@ import (
 //	cli faults                validation_failed, algo_overlap, referenced, not_terminal, not_found,
 //	                          unauthenticated and a refused delete off a terminal
 //	cli region before|down|up region_unavailable while accept2's etcd is stopped
+//	cli inputs                mftiko-pack data, a session file with inputs --wait running, the input
+//	                          read-only on sts1's disk, an input outside allow refused (E15-07)
 func cliFlow() error {
 	which := popStep()
 	step := ""
@@ -43,6 +45,8 @@ func cliFlow() error {
 	credsFile := flag.String("creds", "/work/binanceum.creds.json", "credentials JSON for the account ({key_type, key, secret[, passphrase]})")
 	kind := flag.String("kind", "BinanceUM", "account kind")
 	ticker := flag.String("ticker", "BinanceUM_Perp_BTCUSDT", "the ticker hello quotes")
+	pack := flag.String("pack", "/mftiko/mftiko-pack", "the mftiko-pack binary, for cli inputs")
+	stsData := flag.String("sts-data", "/var/sts/"+stsInst+"/data", "sts1's -data, for cli inputs")
 	f, cancel, err := flowFromFlags()
 	if err != nil {
 		return err
@@ -63,8 +67,10 @@ func cliFlow() error {
 		err = c.faultSteps(*credsFile, *kind)
 	case "region":
 		err = c.regionSteps(step)
+	case "inputs":
+		err = c.inputSteps(*pack, *stsData)
 	default:
-		return errors.New("cli main|faults|region before|down|up")
+		return errors.New("cli main|faults|inputs|region before|down|up")
 	}
 	if err != nil {
 		return err
