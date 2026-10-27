@@ -19,3 +19,4 @@ breaking:
     - contract/proto/mftiko/session/v1/selector.proto # E5 (E09-D091)
     - contract/proto/mftiko/state/v1/selector.proto # E5 (E09-D091)
     - contract/proto/mftiko/stsctl/v1/selector.proto # E5 (E09-D091)
+    - contract/proto/mftiko/log/v1/log.proto # E14 (E14-D003, #437); draft until the epic finalizes it

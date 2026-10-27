@@ -249,7 +249,7 @@ func TestCatalogReadData(t *testing.T) {
 	defer os.Remove(layer)
 	pushed, err := c.PushData(ctx, DataPush{
 		Repository: "state", Tag: "a1b2c3", LayerPath: layer,
-		Source: DataSource{SessionID: "a1b2c3", Clean: true},
+		Source: &DataSource{SessionID: "a1b2c3", Clean: true},
 	})
 	if err != nil {
 		t.Fatal(err)

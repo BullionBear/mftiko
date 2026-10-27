@@ -6,3 +6,66 @@ GET /strategies removed the required property `items/items/id` from the response
 GET /strategies removed the required property `items/items/repository` from the response with the `200` status
 GET /strategies/{strategy_id}/versions api path removed without deprecation
 GET /strategies/{strategy_id}/versions/{ref} api path removed without deprecation
+
+# E14-D008 (#437): logs_unavailable joined the shared ErrorCode enum.
+# These lines match only this diff. A later base already contains the value, so they match nothing.
+DELETE /accounts/{api_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+DELETE /accounts/{api_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `404`
+DELETE /accounts/{api_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `409`
+DELETE /accounts/{api_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `503`
+DELETE /sessions/{session_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+DELETE /sessions/{session_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `404`
+DELETE /sessions/{session_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `409`
+DELETE /sessions/{session_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `503`
+GET /account-kinds added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+GET /accounts added the new `logs_unavailable` enum value to the `code` response property for the response status `400`
+GET /accounts added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+GET /accounts/{api_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+GET /accounts/{api_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `404`
+GET /accounts/{api_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `503`
+GET /auth/me added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+GET /events added the new `logs_unavailable` enum value to the `code` response property for the response status `400`
+GET /events added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+GET /instances added the new `logs_unavailable` enum value to the `code` response property for the response status `400`
+GET /instances added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+GET /instances/{name} added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+GET /instances/{name} added the new `logs_unavailable` enum value to the `code` response property for the response status `404`
+GET /instances/{name} added the new `logs_unavailable` enum value to the `code` response property for the response status `503`
+GET /session-records added the new `logs_unavailable` enum value to the `code` response property for the response status `400`
+GET /session-records added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+GET /session-records added the new `logs_unavailable` enum value to the `code` response property for the response status `503`
+GET /session-records/{record_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+GET /session-records/{record_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `404`
+GET /session-records/{record_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `503`
+GET /sessions added the new `logs_unavailable` enum value to the `code` response property for the response status `400`
+GET /sessions added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+GET /sessions/{session_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+GET /sessions/{session_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `404`
+GET /sessions/{session_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `503`
+GET /strategies added the new `logs_unavailable` enum value to the `code` response property for the response status `400`
+GET /strategies added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+GET /strategies added the new `logs_unavailable` enum value to the `code` response property for the response status `404`
+GET /strategies added the new `logs_unavailable` enum value to the `code` response property for the response status `503`
+POST /accounts added the new `logs_unavailable` enum value to the `code` response property for the response status `400`
+POST /accounts added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+POST /accounts added the new `logs_unavailable` enum value to the `code` response property for the response status `409`
+POST /accounts added the new `logs_unavailable` enum value to the `code` response property for the response status `503`
+POST /auth/login added the new `logs_unavailable` enum value to the `code` response property for the response status `400`
+POST /auth/login added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+POST /auth/logout added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+POST /instances/{name}/retire added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+POST /instances/{name}/retire added the new `logs_unavailable` enum value to the `code` response property for the response status `404`
+POST /instances/{name}/retire added the new `logs_unavailable` enum value to the `code` response property for the response status `409`
+POST /instances/{name}/retire added the new `logs_unavailable` enum value to the `code` response property for the response status `503`
+POST /sessions added the new `logs_unavailable` enum value to the `code` response property for the response status `400`
+POST /sessions added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+POST /sessions added the new `logs_unavailable` enum value to the `code` response property for the response status `409`
+POST /sessions added the new `logs_unavailable` enum value to the `code` response property for the response status `503`
+POST /sessions/{session_id}/end added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+POST /sessions/{session_id}/end added the new `logs_unavailable` enum value to the `code` response property for the response status `404`
+POST /sessions/{session_id}/end added the new `logs_unavailable` enum value to the `code` response property for the response status `503`
+PUT /accounts/{api_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `400`
+PUT /accounts/{api_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `401`
+PUT /accounts/{api_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `404`
+PUT /accounts/{api_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `409`
+PUT /accounts/{api_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `503`

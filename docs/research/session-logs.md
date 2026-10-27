@@ -1,6 +1,6 @@
 # session log
 
-這一頁記 E14 已經定的事（E14-D001–E14-D010，#436，2026-10-27）。HTTP 路徑、`Frame` 的欄位、讀檔的 cursor、CLI 的輸出細節、console 的版面，由 #437–#444 寫，這裡不定。
+這一頁記 E14 已經定的事（E14-D001–E14-D010，#436，2026-10-27）。HTTP 路徑與 `Frame` 的欄位已寫在 PROTOCOL §11（#437，E14-D011–E14-D015）。讀檔的 cursor、CLI 的輸出細節、console 的版面仍由 #438–#444 寫，這裡不定。
 
 檔案仍是唯一來源。shim 的 S4、策略 SDK、PROTOCOL §9 不改。STS 的 log 留到 spec 被刪（E10-D016）。
 
@@ -27,7 +27,7 @@ agent 回給 API 的是 varint 長度前綴的 `mftiko.log.v1.Frame`（E14-D003�
 
 上限（E14-D007）：同時串流數 16、讀取速率 16 MiB/s，做成 flag。一則 frame 256 KiB、follow 的心跳 15 秒，寫死，不是 flag。旗標的名字除了 `-log-advertise` 以外，這裡不定。
 
-HTTP 路徑、狀態碼、`Authorization` 怎麼帶、`Frame` 有哪些欄位，由 #437 寫進契約。聽哪個位址、token 怎麼比、端點失敗時 term 怎麼辦，由 #439 寫。
+HTTP 路徑、狀態碼、`Authorization` 與 `Frame` 的欄位寫在 PROTOCOL §11（#437）。聽哪個位址、token 怎麼比、端點失敗時 term 怎麼辦，由 #439 寫。
 
 ### 4.3 讀取
 
@@ -43,7 +43,7 @@ tail 從正在寫的檔往回數行，最後一行沒有換行也算一行，不
 
 匯出給呼叫端的是 tar.gz。`manifest.json` 放在最後，因為總長與 sha256 要等串流寫完才有（E14-D005）。誰壓縮、tar 裡的檔名與順序，由 #440 寫。
 
-API 怎麼保存那份 token、`log_addr` 不在時怎麼回、兩個 stream 怎麼合併，由 #440 寫。路由與 OpenAPI 由 #437 寫。`api.v1` 的 `info.version` 在這一張仍是 `2.0.0`。
+兩個 stream 的合併、`tail` 的單位、狀態碼怎麼轉、匯出由 agent 產出、怎麼找 `log_addr`，是 E14-D011–E14-D015，寫在 PROTOCOL §11 與 `contract/openapi/api/v1.yaml`。`api.v1` 的 `info.version` 是 `2.1.0`。API 怎麼保存那份 token、連線中斷怎麼重試，由 #440 寫。
 
 ### 4.5 CLI
 

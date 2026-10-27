@@ -445,7 +445,7 @@ func (f *finisher) step(ctx context.Context, id string) error {
 		Repository: p.dataRepo,
 		Tag:        id,
 		LayerPath:  layer,
-		Source: artifact.DataSource{
+		Source: &artifact.DataSource{
 			SessionID: meta.SessionID, Incarnation: meta.Incarnation, Clean: meta.Clean,
 		},
 	})

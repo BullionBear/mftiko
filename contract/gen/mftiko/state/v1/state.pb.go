@@ -985,6 +985,7 @@ type AgentRecord struct {
 	StartedAtNs   int64                  `protobuf:"varint,5,opt,name=started_at_ns,json=startedAtNs,proto3" json:"started_at_ns,omitempty"`
 	Host          string                 `protobuf:"bytes,6,opt,name=host,proto3" json:"host,omitempty"`                      // os.Hostname()，當選時寫入（E10-D092）。取不到則空字串。
 	WorkDir       string                 `protobuf:"bytes,7,opt,name=work_dir,json=workDir,proto3" json:"work_dir,omitempty"` // 該行程的 WORK_DIR（E10-D092）。controller 沒有 WORK_DIR，留空。
+	LogAddr       string                 `protobuf:"bytes,8,opt,name=log_addr,json=logAddr,proto3" json:"log_addr,omitempty"` // STS 當選時寫入（E14-D002）。值是 -log-advertise，預設 <hostname>:7442。MD、TD、controller 留空。
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1064,6 +1065,13 @@ func (x *AgentRecord) GetHost() string {
 func (x *AgentRecord) GetWorkDir() string {
 	if x != nil {
 		return x.WorkDir
+	}
+	return ""
+}
+
+func (x *AgentRecord) GetLogAddr() string {
+	if x != nil {
+		return x.LogAddr
 	}
 	return ""
 }
@@ -1308,7 +1316,7 @@ const file_mftiko_state_v1_state_proto_rawDesc = "" +
 	"\asubject\x18\x03 \x01(\tR\asubject\x123\n" +
 	"\x06worker\x18\x04 \x01(\v2\x1b.mftiko.common.v1.WorkerRefR\x06worker\x125\n" +
 	"\buniverse\x18\x05 \x01(\v2\x19.mftiko.state.v1.UniverseR\buniverse\x12\"\n" +
-	"\rupdated_at_ns\x18\x06 \x01(\x03R\vupdatedAtNs\"\xc2\x01\n" +
+	"\rupdated_at_ns\x18\x06 \x01(\x03R\vupdatedAtNs\"\xdd\x01\n" +
 	"\vAgentRecord\x12\x14\n" +
 	"\x05plane\x18\x01 \x01(\tR\x05plane\x12\x1a\n" +
 	"\binstance\x18\x02 \x01(\tR\binstance\x12\x14\n" +
@@ -1316,7 +1324,8 @@ const file_mftiko_state_v1_state_proto_rawDesc = "" +
 	"\arelease\x18\x04 \x01(\tR\arelease\x12\"\n" +
 	"\rstarted_at_ns\x18\x05 \x01(\x03R\vstartedAtNs\x12\x12\n" +
 	"\x04host\x18\x06 \x01(\tR\x04host\x12\x19\n" +
-	"\bwork_dir\x18\a \x01(\tR\aworkDir\"\xff\x02\n" +
+	"\bwork_dir\x18\a \x01(\tR\aworkDir\x12\x19\n" +
+	"\blog_addr\x18\b \x01(\tR\alogAddr\"\xff\x02\n" +
 	"\fWorkerStatus\x123\n" +
 	"\x06worker\x18\x01 \x01(\v2\x1b.mftiko.common.v1.WorkerRefR\x06worker\x12\x14\n" +
 	"\x05phase\x18\x02 \x01(\tR\x05phase\x12\x14\n" +

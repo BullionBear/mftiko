@@ -298,6 +298,39 @@ type ClientInterface interface {
 	// Corresponds with POST /sessions/{session_id}/end (the `EndSession` operationId).
 	EndSession(ctx context.Context, sessionId SessionID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetSessionLogs 讀 session worker 的 stdout 與 stderr（SSE）
+	//
+	// `text/event-stream`（E14-D011、E10-D005）。API 對 STS agent 並行開 stdout、stderr 兩條（契約 L，PROTOCOL §11），哪條先到就先送哪條。不保證跨 stream 的順序；沒有時間戳（E14-D004）。同一條 stream 的順序保留。
+	//
+	// | `event` | `data` 的 schema |
+	// |---|---|
+	// | `log` | `LogEvent` |
+	// | `gap` | `LogGapEvent` |
+	// | `end` | `LogEndEvent` |
+	//
+	// - `log` 與 `gap` 帶 `stream`（`stdout` 或 `stderr`）。`end` 不帶 `stream`，它結束兩邊。
+	// - `id` 是 `stdout=<cursor>;stderr=<cursor>`。cursor 是該 stream 最後一則 frame 的 `next`，不含分號與空白。重連時帶 `Last-Event-ID`，連到任何一個副本都接得上。有這個 header 就用這兩個 cursor 續接，`tail` 不生效。格式不對回 400 `validation_failed`。
+	// - 省略 `tail` 表示全部（agent 收到 `from=start`）。`tail` 是行數；最後一行沒有換行也算一行（E14-D012）。`follow` 省略是 false。
+	// - 兩邊的起點都到了才送第一則事件。任一條 `removed` 就送 `end`，`reason` 是 `removed`。`follow` 時兩邊都 `final` 才送 `end`，`reason` 是 `terminal`。沒有 `follow` 時兩邊都 `eof` 才送 `end`，`reason` 是 `eof`。
+	// - 每 15 秒一行 `: keepalive`。agent 的空 frame 不轉成事件。
+	// - 認證是 cookie 或 `Authorization: Bearer`（E10-D009），不是 agent 的 log token。
+	// - session 不存在，或 agent 回 404，是 404 `not_found`。`log_addr` 是空的、連不上、agent 回 401 或 503，是 503 `logs_unavailable`（E14-D013、E14-D015）。該 STS 的 region 讀不到是 503 `region_unavailable`（E10-D014）。
+	// - worker key 是 `sts/<session_id>`。同一個 session 的所有 incarnation 寫同一組檔，這裡不帶 incarnation。
+	//
+	// Corresponds with GET /sessions/{session_id}/logs (the `GetSessionLogs` operationId).
+	GetSessionLogs(ctx context.Context, sessionId SessionID, params *GetSessionLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExportSessionLogs 下載 session log 的 tar.gz
+	//
+	// agent 直接產出 tar.gz，API 原樣轉送，不寫暫存（E14-D014、E14-D005）。`Content-Type` 是 `application/gzip`。有 `Content-Length`。
+	//
+	// tar 裡依序是一般檔 `stdout.log`、`stderr.log`、`manifest.json`，沒有目錄。前兩個是該 stream 由舊到新接起來的位元組。`manifest.json` 在最後，是 UTF-8 JSON：`stdout` 與 `stderr` 各有 `size`（位元組數）與 `sha256`（該檔位元組的 SHA-256，64 個小寫 hex）。
+	//
+	// 錯誤與 `GET /sessions/{session_id}/logs` 相同。沒有 `tail`，也沒有 `follow`。
+	//
+	// Corresponds with GET /sessions/{session_id}/logs/export (the `ExportSessionLogs` operationId).
+	ExportSessionLogs(ctx context.Context, sessionId SessionID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListStrategies 列出一個策略 repository 的 tag
 	//
 	// `repository` 是完整路徑，例如 `registry.example/acme/md_watch`（E10-D121、E10-D122）。
@@ -750,6 +783,59 @@ func (c *Client) GetSession(ctx context.Context, sessionId SessionID, reqEditors
 // Corresponds with POST /sessions/{session_id}/end (the `EndSession` operationId).
 func (c *Client) EndSession(ctx context.Context, sessionId SessionID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewEndSessionRequest(c.Server, sessionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSessionLogs 讀 session worker 的 stdout 與 stderr（SSE）
+//
+// `text/event-stream`（E14-D011、E10-D005）。API 對 STS agent 並行開 stdout、stderr 兩條（契約 L，PROTOCOL §11），哪條先到就先送哪條。不保證跨 stream 的順序；沒有時間戳（E14-D004）。同一條 stream 的順序保留。
+//
+// | `event` | `data` 的 schema |
+// |---|---|
+// | `log` | `LogEvent` |
+// | `gap` | `LogGapEvent` |
+// | `end` | `LogEndEvent` |
+//
+// - `log` 與 `gap` 帶 `stream`（`stdout` 或 `stderr`）。`end` 不帶 `stream`，它結束兩邊。
+// - `id` 是 `stdout=<cursor>;stderr=<cursor>`。cursor 是該 stream 最後一則 frame 的 `next`，不含分號與空白。重連時帶 `Last-Event-ID`，連到任何一個副本都接得上。有這個 header 就用這兩個 cursor 續接，`tail` 不生效。格式不對回 400 `validation_failed`。
+// - 省略 `tail` 表示全部（agent 收到 `from=start`）。`tail` 是行數；最後一行沒有換行也算一行（E14-D012）。`follow` 省略是 false。
+// - 兩邊的起點都到了才送第一則事件。任一條 `removed` 就送 `end`，`reason` 是 `removed`。`follow` 時兩邊都 `final` 才送 `end`，`reason` 是 `terminal`。沒有 `follow` 時兩邊都 `eof` 才送 `end`，`reason` 是 `eof`。
+// - 每 15 秒一行 `: keepalive`。agent 的空 frame 不轉成事件。
+// - 認證是 cookie 或 `Authorization: Bearer`（E10-D009），不是 agent 的 log token。
+// - session 不存在，或 agent 回 404，是 404 `not_found`。`log_addr` 是空的、連不上、agent 回 401 或 503，是 503 `logs_unavailable`（E14-D013、E14-D015）。該 STS 的 region 讀不到是 503 `region_unavailable`（E10-D014）。
+// - worker key 是 `sts/<session_id>`。同一個 session 的所有 incarnation 寫同一組檔，這裡不帶 incarnation。
+//
+// Corresponds with GET /sessions/{session_id}/logs (the `GetSessionLogs` operationId).
+func (c *Client) GetSessionLogs(ctx context.Context, sessionId SessionID, params *GetSessionLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSessionLogsRequest(c.Server, sessionId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExportSessionLogs 下載 session log 的 tar.gz
+//
+// agent 直接產出 tar.gz，API 原樣轉送，不寫暫存（E14-D014、E14-D005）。`Content-Type` 是 `application/gzip`。有 `Content-Length`。
+//
+// tar 裡依序是一般檔 `stdout.log`、`stderr.log`、`manifest.json`，沒有目錄。前兩個是該 stream 由舊到新接起來的位元組。`manifest.json` 在最後，是 UTF-8 JSON：`stdout` 與 `stderr` 各有 `size`（位元組數）與 `sha256`（該檔位元組的 SHA-256，64 個小寫 hex）。
+//
+// 錯誤與 `GET /sessions/{session_id}/logs` 相同。沒有 `tail`，也沒有 `follow`。
+//
+// Corresponds with GET /sessions/{session_id}/logs/export (the `ExportSessionLogs` operationId).
+func (c *Client) ExportSessionLogs(ctx context.Context, sessionId SessionID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExportSessionLogsRequest(c.Server, sessionId)
 	if err != nil {
 		return nil, err
 	}
@@ -1783,6 +1869,128 @@ func NewEndSessionRequest(server string, sessionId SessionID) (*http.Request, er
 	return req, nil
 }
 
+// NewGetSessionLogsRequest constructs an http.Request for the GetSessionLogs method
+func NewGetSessionLogsRequest(server string, sessionId SessionID, params *GetSessionLogsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "session_id", sessionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sessions/%s/logs", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Tail != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "tail", *params.Tail, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Follow != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "follow", *params.Follow, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.LastEventID != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Last-Event-ID", *params.LastEventID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Last-Event-ID", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewExportSessionLogsRequest constructs an http.Request for the ExportSessionLogs method
+func NewExportSessionLogsRequest(server string, sessionId SessionID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "session_id", sessionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sessions/%s/logs/export", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListStrategiesRequest constructs an http.Request for the ListStrategies method
 func NewListStrategiesRequest(server string, params *ListStrategiesParams) (*http.Request, error) {
 	var err error
@@ -2139,6 +2347,43 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /sessions/{session_id}/end (the `EndSession` operationId).
 	EndSessionWithResponse(ctx context.Context, sessionId SessionID, reqEditors ...RequestEditorFn) (*EndSessionResponse, error)
+
+	// GetSessionLogsWithResponse 讀 session worker 的 stdout 與 stderr（SSE）
+	//
+	// `text/event-stream`（E14-D011、E10-D005）。API 對 STS agent 並行開 stdout、stderr 兩條（契約 L，PROTOCOL §11），哪條先到就先送哪條。不保證跨 stream 的順序；沒有時間戳（E14-D004）。同一條 stream 的順序保留。
+	//
+	// | `event` | `data` 的 schema |
+	// |---|---|
+	// | `log` | `LogEvent` |
+	// | `gap` | `LogGapEvent` |
+	// | `end` | `LogEndEvent` |
+	//
+	// - `log` 與 `gap` 帶 `stream`（`stdout` 或 `stderr`）。`end` 不帶 `stream`，它結束兩邊。
+	// - `id` 是 `stdout=<cursor>;stderr=<cursor>`。cursor 是該 stream 最後一則 frame 的 `next`，不含分號與空白。重連時帶 `Last-Event-ID`，連到任何一個副本都接得上。有這個 header 就用這兩個 cursor 續接，`tail` 不生效。格式不對回 400 `validation_failed`。
+	// - 省略 `tail` 表示全部（agent 收到 `from=start`）。`tail` 是行數；最後一行沒有換行也算一行（E14-D012）。`follow` 省略是 false。
+	// - 兩邊的起點都到了才送第一則事件。任一條 `removed` 就送 `end`，`reason` 是 `removed`。`follow` 時兩邊都 `final` 才送 `end`，`reason` 是 `terminal`。沒有 `follow` 時兩邊都 `eof` 才送 `end`，`reason` 是 `eof`。
+	// - 每 15 秒一行 `: keepalive`。agent 的空 frame 不轉成事件。
+	// - 認證是 cookie 或 `Authorization: Bearer`（E10-D009），不是 agent 的 log token。
+	// - session 不存在，或 agent 回 404，是 404 `not_found`。`log_addr` 是空的、連不上、agent 回 401 或 503，是 503 `logs_unavailable`（E14-D013、E14-D015）。該 STS 的 region 讀不到是 503 `region_unavailable`（E10-D014）。
+	// - worker key 是 `sts/<session_id>`。同一個 session 的所有 incarnation 寫同一組檔，這裡不帶 incarnation。
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /sessions/{session_id}/logs (the `GetSessionLogs` operationId).
+	GetSessionLogsWithResponse(ctx context.Context, sessionId SessionID, params *GetSessionLogsParams, reqEditors ...RequestEditorFn) (*GetSessionLogsResponse, error)
+
+	// ExportSessionLogsWithResponse 下載 session log 的 tar.gz
+	//
+	// agent 直接產出 tar.gz，API 原樣轉送，不寫暫存（E14-D014、E14-D005）。`Content-Type` 是 `application/gzip`。有 `Content-Length`。
+	//
+	// tar 裡依序是一般檔 `stdout.log`、`stderr.log`、`manifest.json`，沒有目錄。前兩個是該 stream 由舊到新接起來的位元組。`manifest.json` 在最後，是 UTF-8 JSON：`stdout` 與 `stderr` 各有 `size`（位元組數）與 `sha256`（該檔位元組的 SHA-256，64 個小寫 hex）。
+	//
+	// 錯誤與 `GET /sessions/{session_id}/logs` 相同。沒有 `tail`，也沒有 `follow`。
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /sessions/{session_id}/logs/export (the `ExportSessionLogs` operationId).
+	ExportSessionLogsWithResponse(ctx context.Context, sessionId SessionID, reqEditors ...RequestEditorFn) (*ExportSessionLogsResponse, error)
 
 	// ListStrategiesWithResponse 列出一個策略 repository 的 tag
 	//
@@ -3355,6 +3600,130 @@ func (r EndSessionResponse) ContentType() string {
 	return ""
 }
 
+type GetSessionLogsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *ValidationFailed
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthenticated
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *LogsUnavailable
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r GetSessionLogsResponse) GetApplicationproblemJSON400() *ValidationFailed {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetSessionLogsResponse) GetApplicationproblemJSON401() *Unauthenticated {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetSessionLogsResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r GetSessionLogsResponse) GetApplicationproblemJSON503() *LogsUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSessionLogsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSessionLogsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSessionLogsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSessionLogsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ExportSessionLogsResponse200Headers the declared response headers of an HTTP 200 response for ExportSessionLogs
+type ExportSessionLogsResponse200Headers struct {
+	ContentLength int
+}
+
+type ExportSessionLogsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthenticated
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *LogsUnavailable
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ExportSessionLogsResponse200Headers
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ExportSessionLogsResponse) GetApplicationproblemJSON401() *Unauthenticated {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ExportSessionLogsResponse) GetApplicationproblemJSON404() *NotFound {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r ExportSessionLogsResponse) GetApplicationproblemJSON503() *LogsUnavailable {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ExportSessionLogsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ExportSessionLogsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExportSessionLogsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExportSessionLogsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListStrategiesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3805,6 +4174,55 @@ func (c *ClientWithResponses) EndSessionWithResponse(ctx context.Context, sessio
 		return nil, err
 	}
 	return ParseEndSessionResponse(rsp)
+}
+
+// GetSessionLogsWithResponse 讀 session worker 的 stdout 與 stderr（SSE）
+//
+// `text/event-stream`（E14-D011、E10-D005）。API 對 STS agent 並行開 stdout、stderr 兩條（契約 L，PROTOCOL §11），哪條先到就先送哪條。不保證跨 stream 的順序；沒有時間戳（E14-D004）。同一條 stream 的順序保留。
+//
+// | `event` | `data` 的 schema |
+// |---|---|
+// | `log` | `LogEvent` |
+// | `gap` | `LogGapEvent` |
+// | `end` | `LogEndEvent` |
+//
+// - `log` 與 `gap` 帶 `stream`（`stdout` 或 `stderr`）。`end` 不帶 `stream`，它結束兩邊。
+// - `id` 是 `stdout=<cursor>;stderr=<cursor>`。cursor 是該 stream 最後一則 frame 的 `next`，不含分號與空白。重連時帶 `Last-Event-ID`，連到任何一個副本都接得上。有這個 header 就用這兩個 cursor 續接，`tail` 不生效。格式不對回 400 `validation_failed`。
+// - 省略 `tail` 表示全部（agent 收到 `from=start`）。`tail` 是行數；最後一行沒有換行也算一行（E14-D012）。`follow` 省略是 false。
+// - 兩邊的起點都到了才送第一則事件。任一條 `removed` 就送 `end`，`reason` 是 `removed`。`follow` 時兩邊都 `final` 才送 `end`，`reason` 是 `terminal`。沒有 `follow` 時兩邊都 `eof` 才送 `end`，`reason` 是 `eof`。
+// - 每 15 秒一行 `: keepalive`。agent 的空 frame 不轉成事件。
+// - 認證是 cookie 或 `Authorization: Bearer`（E10-D009），不是 agent 的 log token。
+// - session 不存在，或 agent 回 404，是 404 `not_found`。`log_addr` 是空的、連不上、agent 回 401 或 503，是 503 `logs_unavailable`（E14-D013、E14-D015）。該 STS 的 region 讀不到是 503 `region_unavailable`（E10-D014）。
+// - worker key 是 `sts/<session_id>`。同一個 session 的所有 incarnation 寫同一組檔，這裡不帶 incarnation。
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /sessions/{session_id}/logs (the `GetSessionLogs` operationId).
+func (c *ClientWithResponses) GetSessionLogsWithResponse(ctx context.Context, sessionId SessionID, params *GetSessionLogsParams, reqEditors ...RequestEditorFn) (*GetSessionLogsResponse, error) {
+	rsp, err := c.GetSessionLogs(ctx, sessionId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSessionLogsResponse(rsp)
+}
+
+// ExportSessionLogsWithResponse 下載 session log 的 tar.gz
+//
+// agent 直接產出 tar.gz，API 原樣轉送，不寫暫存（E14-D014、E14-D005）。`Content-Type` 是 `application/gzip`。有 `Content-Length`。
+//
+// tar 裡依序是一般檔 `stdout.log`、`stderr.log`、`manifest.json`，沒有目錄。前兩個是該 stream 由舊到新接起來的位元組。`manifest.json` 在最後，是 UTF-8 JSON：`stdout` 與 `stderr` 各有 `size`（位元組數）與 `sha256`（該檔位元組的 SHA-256，64 個小寫 hex）。
+//
+// 錯誤與 `GET /sessions/{session_id}/logs` 相同。沒有 `tail`，也沒有 `follow`。
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /sessions/{session_id}/logs/export (the `ExportSessionLogs` operationId).
+func (c *ClientWithResponses) ExportSessionLogsWithResponse(ctx context.Context, sessionId SessionID, reqEditors ...RequestEditorFn) (*ExportSessionLogsResponse, error) {
+	rsp, err := c.ExportSessionLogs(ctx, sessionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExportSessionLogsResponse(rsp)
 }
 
 // ListStrategiesWithResponse 列出一個策略 repository 的 tag
@@ -4761,6 +5179,106 @@ func ParseEndSessionResponse(rsp *http.Response) (*EndSessionResponse, error) {
 		}
 		response.ApplicationproblemJSON503 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseGetSessionLogsResponse parses an HTTP response from a GetSessionLogsWithResponse call
+func ParseGetSessionLogsResponse(rsp *http.Response) (*GetSessionLogsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSessionLogsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthenticated
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest LogsUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseExportSessionLogsResponse parses an HTTP response from a ExportSessionLogsWithResponse call
+func ParseExportSessionLogsResponse(rsp *http.Response) (*ExportSessionLogsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExportSessionLogsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthenticated
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest LogsUnavailable
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ExportSessionLogsResponse200Headers
+		if values := rsp.Header.Values("Content-Length"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Content-Length", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ContentLength = value
+		}
+		response.Headers200 = &headers
 	}
 
 	return response, nil

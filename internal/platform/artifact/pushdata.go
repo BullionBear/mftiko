@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 
@@ -16,12 +17,12 @@ import (
 )
 
 // DataPush is one data artifact upload (E09-D079, E09-D025, E09-D033). Repository is the name
-// without the registry host. Tag is the session id. Source is written into the config.
-// LayerPath is the packed layer on disk; it is streamed, not loaded into memory.
+// without the registry host. Tag is the session id. Source is written into the config; nil
+// writes none (E15-D003). LayerPath is the packed layer on disk; it is streamed, not loaded into memory.
 type DataPush struct {
 	Repository string
 	Tag        string
-	Source     DataSource
+	Source     *DataSource
 	LayerPath  string
 }
 
@@ -45,7 +46,26 @@ func (c *Client) PushData(ctx context.Context, req DataPush) (PushedData, error)
 	if req.LayerPath == "" {
 		return PushedData{}, badRequest("layer is required")
 	}
-	f, err := os.Open(req.LayerPath)
+	repo, err := c.repository(req.Repository)
+	if err != nil {
+		return PushedData{}, err
+	}
+	return pushDataFile(ctx, repo, dataFile{path: req.LayerPath, ref: req.Tag, source: req.Source})
+}
+
+// dataFile is one packed layer to push. An empty ref pushes the manifest by its digest.
+// maxBytes, when positive, limits the config plus the layer; nothing is pushed above it (E15-D005).
+type dataFile struct {
+	path     string
+	ref      string
+	source   *DataSource
+	maxBytes int64
+}
+
+// pushDataFile uploads the config, the layer and the manifest (E09-D079). Blobs the
+// registry already has are not sent again (E15-D008).
+func pushDataFile(ctx context.Context, repo *remote.Repository, req dataFile) (PushedData, error) {
+	f, err := os.Open(req.path)
 	if err != nil {
 		return PushedData{}, err
 	}
@@ -66,14 +86,17 @@ func (c *Client) PushData(ctx context.Context, req DataPush) (PushedData, error)
 		return PushedData{}, err
 	}
 	if end != st.Size() {
-		return PushedData{}, fmtLayerChanged(req.LayerPath)
+		return PushedData{}, fmtLayerChanged(req.path)
 	}
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return PushedData{}, err
 	}
-	cfg, err := json.Marshal(DataConfig{Schema: DataSchema, Source: &req.Source})
+	cfg, err := json.Marshal(DataConfig{Schema: DataSchema, Source: req.source})
 	if err != nil {
 		return PushedData{}, err
+	}
+	if total := int64(len(cfg)) + st.Size(); req.maxBytes > 0 && total > req.maxBytes {
+		return PushedData{}, fmt.Errorf("%w: config and layer are %d bytes, limit %d", ErrUploadLimit, total, req.maxBytes)
 	}
 	cfgDesc := ocispec.Descriptor{
 		MediaType: MediaTypeDataConfig, Digest: digest.FromBytes(cfg), Size: int64(len(cfg)),
@@ -94,17 +117,17 @@ func (c *Client) PushData(ctx context.Context, req DataPush) (PushedData, error)
 	manDesc := ocispec.Descriptor{
 		MediaType: ocispec.MediaTypeImageManifest, Digest: digest.FromBytes(raw), Size: int64(len(raw)),
 	}
-	repo, err := c.repository(req.Repository)
-	if err != nil {
-		return PushedData{}, err
-	}
 	if err := pushBlob(ctx, repo, cfgDesc, bytes.NewReader(cfg)); err != nil {
 		return PushedData{}, err
 	}
 	if err := pushBlob(ctx, repo, layerDesc, f); err != nil {
 		return PushedData{}, err
 	}
-	if err := pushBlobRef(ctx, repo, manDesc, bytes.NewReader(raw), req.Tag); err != nil {
+	ref := req.ref
+	if ref == "" {
+		ref = manDesc.Digest.String()
+	}
+	if err := pushBlobRef(ctx, repo, manDesc, bytes.NewReader(raw), ref); err != nil {
 		return PushedData{}, err
 	}
 	return PushedData{Digest: manDesc.Digest.String(), Size: st.Size()}, nil
@@ -114,7 +137,12 @@ func fmtLayerChanged(path string) error {
 	return badRequest("layer %s changed while hashing", path)
 }
 
+// pushBlob skips a blob the registry already has (E15-D008). A failed check is not an
+// error: the push that follows reports the registry's answer.
 func pushBlob(ctx context.Context, repo *remote.Repository, desc ocispec.Descriptor, r io.Reader) error {
+	if ok, err := repo.Exists(ctx, desc); err == nil && ok {
+		return nil
+	}
 	err := repo.Push(ctx, desc, r)
 	if err == nil || errors.Is(err, errdef.ErrAlreadyExists) {
 		return nil
