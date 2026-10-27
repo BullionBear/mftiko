@@ -28,6 +28,7 @@ type memRegistry struct {
 	tags        map[string]map[string]struct{}
 	repos       map[string]struct{}
 	hits        int
+	blobPuts    int // completed blob uploads
 	user        string
 	pass        string
 	tagPageSize int
@@ -130,6 +131,7 @@ func (r *memRegistry) blobUpload(w http.ResponseWriter, req *http.Request, rest 
 	}
 	r.mu.Lock()
 	r.blobs[sum] = body
+	r.blobPuts++
 	r.mu.Unlock()
 	w.Header().Set("Docker-Content-Digest", sum)
 	w.Header().Set("Location", "/v2/"+repo+"/blobs/"+sum)
@@ -141,7 +143,7 @@ func (r *memRegistry) blob(w http.ResponseWriter, req *http.Request, rest string
 	r.mu.Lock()
 	body, ok := r.blobs[leaf]
 	r.mu.Unlock()
-	if !ok || req.Method != http.MethodGet {
+	if !ok || (req.Method != http.MethodGet && req.Method != http.MethodHead) {
 		http.NotFound(w, req)
 		return
 	}

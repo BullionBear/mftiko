@@ -157,7 +157,7 @@ func TestPushDataRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	req := DataPush{
 		Repository: "state", Tag: "a1b2c3", LayerPath: layer,
-		Source: DataSource{SessionID: "a1b2c3", Incarnation: 2, Clean: true},
+		Source: &DataSource{SessionID: "a1b2c3", Incarnation: 2, Clean: true},
 	}
 	first, err := c.PushData(ctx, req)
 	if err != nil {
@@ -188,7 +188,10 @@ func TestPushDataRoundTrip(t *testing.T) {
 	if string(mustRead(t, filepath.Join(dest, "note"))) != "kept" {
 		t.Fatal("unpacked body")
 	}
-	manifest, _, _ := fetch(t, host+"/state", "a1b2c3")
+	manifest, config, _ := fetch(t, host+"/state", "a1b2c3")
+	if string(config) != `{"schema":"mftiko.data.v1","source":{"session_id":"a1b2c3","incarnation":2,"clean":true}}` {
+		t.Fatalf("state_out config %s", config)
+	}
 	if digest.FromBytes(manifest).String() != first.Digest {
 		t.Fatal("tag does not name the pushed manifest")
 	}
@@ -232,7 +235,7 @@ func TestPushDataUsesRegistryCredentials(t *testing.T) {
 	defer os.Remove(layer)
 	if _, err := c.PushData(context.Background(), DataPush{
 		Repository: "state", Tag: "a1b2c3", LayerPath: layer,
-		Source: DataSource{SessionID: "a1b2c3"},
+		Source: &DataSource{SessionID: "a1b2c3"},
 	}); err != nil {
 		t.Fatal(err)
 	}
