@@ -44,6 +44,8 @@ const (
 
 // Spec is one session spec as etcd stored it. Hash is the whole encoding (E09-D047),
 // not a re-marshal: two encodings of the same message are different incarnations.
+// desired_state becoming ENDED is not one of those (E09-D097); the hash still
+// covers those bytes so an upgraded agent can adopt a running worker.
 type Spec struct {
 	Raw []byte
 	Rev int64 // mod_revision of the spec key; SessionStatus.observed_generation

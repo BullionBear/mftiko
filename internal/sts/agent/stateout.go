@@ -46,11 +46,14 @@ type terminalMeta struct {
 
 // exitNote is the last confirmed exit for a session. sealed is set once
 // terminal.json has been written, so a later note cannot change clean (E09-D082).
+// exit is the shim's ExitInfo. A SessionStatus written after release, when the
+// worker is no longer observed, copies incarnation and last_exit from it (E09-D098).
 type exitNote struct {
 	inc    uint32
 	clean  bool
 	ok     bool
 	sealed bool
+	exit   *commonv1.ExitInfo
 }
 
 // releaseFleet notes the exit around Fleet.Release. Spawn's own release of a
@@ -103,7 +106,11 @@ func (p *plane) noteExitLocked(id string, inc uint32, ex *commonv1.ExitInfo) {
 	if p.exits[id].sealed {
 		return
 	}
-	p.exits[id] = exitNote{inc: inc, clean: exitClean(ex), ok: true}
+	var saved *commonv1.ExitInfo
+	if ex != nil {
+		saved = proto.Clone(ex).(*commonv1.ExitInfo)
+	}
+	p.exits[id] = exitNote{inc: inc, clean: exitClean(ex), ok: true, exit: saved}
 }
 
 func (p *plane) noteLostLocked(id string, inc uint32) {
@@ -158,7 +165,8 @@ func (p *plane) workerBusy(id string) bool {
 
 func (p *plane) seal(id string, inc uint32, clean bool) {
 	p.mu.Lock()
-	p.exits[id] = exitNote{inc: inc, clean: clean, ok: true, sealed: true}
+	prev := p.exits[id]
+	p.exits[id] = exitNote{inc: inc, clean: clean, ok: true, sealed: true, exit: prev.exit}
 	p.mu.Unlock()
 }
 

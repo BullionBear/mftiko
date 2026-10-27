@@ -2,9 +2,11 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"slices"
 	"testing"
 
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/protobuf/proto"
 
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
@@ -237,6 +239,29 @@ func TestEndedAndGone(t *testing.T) {
 	wantPlan(t, d, "b2c3d4", true)
 }
 
+func TestSpecEndedWhileDemandRunning(t *testing.T) {
+	const id = "a1b2c3"
+	s := running(t, id, 10, true, acc(7, 1))
+	s.parsed.DesiredState = sessionv1.DesiredState_DESIRED_STATE_ENDED
+	overlap := running(t, "b2c3d4", 20, true, acc(7, 1))
+	other := running(t, "c3d4e5", 30, true, acc(8, 1))
+	d := decide(map[string]*sess{
+		id: s, "b2c3d4": overlap, "c3d4e5": other,
+	}, map[string]string{id: "old"})
+	wantEnded(t, d, id, "ended_by_spec")
+	wantConflict(t, d, "b2c3d4")
+	wantPlan(t, d, "c3d4e5", true)
+	if slices.Contains(d.Changed, id) || d.Hashes[id] != "old" {
+		t.Fatalf("desired_state ENDED was a spec change: %+v hash %q", d.Changed, d.Hashes[id])
+	}
+
+	// An assignment that is already ENDED keeps its own reason.
+	kept := ended(t, id, 10, "deps_failed", acc(7, 1))
+	kept.parsed.DesiredState = sessionv1.DesiredState_DESIRED_STATE_ENDED
+	d = decide(map[string]*sess{id: kept}, nil)
+	wantEnded(t, d, id, "deps_failed")
+}
+
 func TestSpecChangeAndGeneration(t *testing.T) {
 	id := "a1b2c3"
 	s := running(t, id, 1, true, acc(7, 1))
@@ -363,6 +388,87 @@ func TestPhase(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTerminalStatusKeepsExitAfterRelease(t *testing.T) {
+	const id = "a1b2c3"
+	ex := &commonv1.ExitInfo{
+		Outcome: commonv1.Outcome_OUTCOME_DONE, Reason: "stop: not in demand", OnStopCompleted: true,
+	}
+	w := &memWriter{}
+	p := &plane{
+		inst: "sts-tw-1", w: w,
+		intents: map[string]intent{id: {Kind: kindEnded, EndReason: "ended_by_spec", Rev: 9, SpecHash: "h"}},
+		local:   map[string]statusView{},
+		saved:   map[string]*statev1.SessionStatus{},
+		exits:   map[string]exitNote{},
+	}
+	p.noteExitLocked(id, 4, ex)
+	ex.OnStopCompleted = false
+	ex.Reason = "mutated"
+	if err := p.sync(context.Background(), agent.Demand[Entry]{}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	st := &statev1.SessionStatus{}
+	if err := proto.Unmarshal([]byte(w.val), st); err != nil {
+		t.Fatal(err)
+	}
+	if st.GetPhase() != statev1.Phase_PHASE_DONE || st.GetReason() != "ended_by_spec" ||
+		st.GetIncarnation() != 4 || !st.GetLastExit().GetOnStopCompleted() ||
+		st.GetLastExit().GetReason() != "stop: not in demand" {
+		t.Fatalf("status %+v exit %+v", st, st.GetLastExit())
+	}
+	if w.key != state.SessionStatusKey("sts-tw-1", id) {
+		t.Fatalf("key %s", w.key)
+	}
+
+	// Nothing was stored: a session that never spawned stays at incarnation 0.
+	bare := &plane{
+		inst: "sts-tw-1", w: w,
+		intents: map[string]intent{"b2c3d4": {Kind: kindEnded, EndReason: "ended_by_spec", Rev: 3}},
+		local:   map[string]statusView{},
+		saved:   map[string]*statev1.SessionStatus{},
+		exits:   map[string]exitNote{},
+	}
+	if err := bare.sync(context.Background(), agent.Demand[Entry]{}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	st = &statev1.SessionStatus{}
+	if err := proto.Unmarshal([]byte(w.val), st); err != nil {
+		t.Fatal(err)
+	}
+	if st.GetIncarnation() != 0 || st.GetLastExit() != nil {
+		t.Fatalf("unspawned status %+v", st)
+	}
+
+	// A live observation wins over the stored exit.
+	w.val = ""
+	p.local = map[string]statusView{}
+	p.saved = map[string]*statev1.SessionStatus{}
+	live := obs(agent.StateExited, "", "h", exitInfo(commonv1.Outcome_OUTCOME_DONE, "stop: not in demand"))
+	live.Incarnation = 6
+	live.Exit.OnStopCompleted = true
+	if err := p.sync(context.Background(), agent.Demand[Entry]{}, map[agent.WorkerKey]agent.Observed{
+		WorkerKey(id): *live,
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	st = &statev1.SessionStatus{}
+	if err := proto.Unmarshal([]byte(w.val), st); err != nil {
+		t.Fatal(err)
+	}
+	if st.GetIncarnation() != 6 || !st.GetLastExit().GetOnStopCompleted() {
+		t.Fatalf("observed status %+v", st)
+	}
+}
+
+type memWriter struct {
+	key, val string
+}
+
+func (w *memWriter) Put(_ context.Context, key, val string, _ ...clientv3.OpOption) error {
+	w.key, w.val = key, val
+	return nil
 }
 
 func fieldBytes(field int, data []byte) []byte {
