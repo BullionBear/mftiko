@@ -17,7 +17,7 @@
 | instance 與 agent | `mftiko instance list`、`mftiko instance show <inst>`（`AGENT`、`EPOCH`、`RELEASE`、`HOST`，以及 `WORKERS` 的 phase 與 incarnation、`DEMANDS`） |
 | session | `mftiko session list`、`mftiko session show <id>`（phase、reason、log 的主機與路徑） |
 | 服務 | `systemctl status <unit>`、`systemctl show -p NRestarts,ActiveState <unit>`、`journalctl -u <unit> --since -15min` |
-| worker 的輸出 | `${WORK_DIR}/log/{plane}/{h}.stdout`、`.stderr`、`.shim.log`（[log 在哪裡](operations.md#log-在哪裡)） |
+| worker 的輸出 | STS session 的 stdout、stderr：`mftiko session logs <id>`、`mftiko session export-logs <id>`（旗標見 `mftiko help session`）。shim 與 MD、TD 仍是主機上的 `${WORK_DIR}/log/{plane}/{h}.stdout`、`.stderr`、`.shim.log`（[log 在哪裡](operations.md#log-在哪裡)） |
 | etcd | 見下方 `etcdctl` 的設定 |
 
 **etcdctl。** auth 開著，健康檢查與讀取都要帶 root（E12-D051）：

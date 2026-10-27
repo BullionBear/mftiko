@@ -251,6 +251,15 @@ func (s *streamBody) Close() {
 // openEvents calls GET /events. Last-Event-ID is sent only when lastID is
 // not empty. The header wait uses the same 45s idle as the body (E11-D030).
 func (a *API) openEvents(ctx context.Context, sessionID, lastID string) (*streamBody, error) {
+	return a.openStream(ctx, func(ctx context.Context) (*http.Response, error) {
+		return a.doEvents(ctx, sessionID, lastID)
+	})
+}
+
+// openStream waits up to sseIdle for response headers, then returns the body.
+// The HTTP client is the caller's. Canceling the header wait does not cancel
+// the command context.
+func (a *API) openStream(ctx context.Context, do func(context.Context) (*http.Response, error)) (*streamBody, error) {
 	reqCtx, cancel := context.WithCancel(ctx)
 	var mu sync.Mutex
 	idleHit := false
@@ -284,7 +293,7 @@ func (a *API) openEvents(ctx context.Context, sessionID, lastID string) (*stream
 			cancel()
 		}
 	}()
-	resp, err := a.doEvents(reqCtx, sessionID, lastID)
+	resp, err := do(reqCtx)
 	mu.Lock()
 	stopped = true
 	wasIdle := idleHit

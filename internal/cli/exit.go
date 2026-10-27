@@ -27,6 +27,7 @@ const (
 	ExitRegistryUnavailable = 19
 	ExitInternal            = 20
 	ExitInvalidArtifact     = 21
+	ExitLogsUnavailable     = 22
 	// E11-D033. These are client conventions for session create --wait and
 	// session end --wait. They are not API problem codes and are not returned
 	// by ExitCode.
@@ -70,6 +71,8 @@ func ExitCode(code apiv1.ErrorCode) (int, bool) {
 		return ExitInternal, true
 	case apiv1.ErrorCodeInvalidArtifact:
 		return ExitInvalidArtifact, true
+	case apiv1.ErrorCodeLogsUnavailable:
+		return ExitLogsUnavailable, true
 	default:
 		return 0, false
 	}

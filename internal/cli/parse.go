@@ -30,7 +30,7 @@ commands:
   instance      list instances, show one, and retire one
   account-kind  list account kinds
   account       list, show, create, update, and delete trading accounts
-  session       create a session from one file, and list, show, end, delete, and watch sessions
+  session       create a session from one file, and list, show, end, delete, watch, and read logs
   record        list session records and show one
   version       print the CLI release and the api.v1 version it was built against
   help          show this help
@@ -156,7 +156,7 @@ none, update keeps the stored ciphertext. delete asks for confirmation.
 `
 
 const sessionHelp = `usage: mftiko session create -f FILE
-       mftiko session list|show|end|delete|watch
+       mftiko session list|show|end|delete|watch|logs|export-logs
 
 create reads one YAML or JSON session file and calls POST /sessions.
 -f - reads stdin. YAML and JSON use the same parser. Numbers are sent as
@@ -216,6 +216,44 @@ done (0), ended_by_spec (0), failed (30), init_failed (31), crashed (32),
 hung (33), unknown (34), deps_failed (35), deps_timeout (36),
 invalid_spec (37), 等待逾時 (38), 等待中 session 被刪除 (39).
 A named phase that is reached exits 0 and names that phase.
+
+logs
+  mftiko session logs <id> [-f] [--tail N] [--stream stdout|stderr]
+  mftiko session logs --latest [-f] [--tail N] [--stream stdout|stderr]
+
+logs calls GET /sessions/{id}/logs. Worker stdout is written to stdout and
+worker stderr to stderr. --stream stdout or --stream stderr writes only that
+stream. The API still sends both. A gap prints one stderr line:
+mftiko: some output was rotated out.
+-f and --follow ask the API to follow. They are boolean only on this command.
+session create -f is still the session file. --tail N is the number of lines,
+including 0. Omit --tail to read from the start.
+--latest and the session id cannot both be set. --latest lists sessions and
+picks the newest created_at. An equal time keeps the greater session id.
+A missing created_at is older than any timestamp. No session is
+not_found (12).
+An end event exits 0, including eof, terminal, and removed.
+If the stream ends before end, the command reconnects with Last-Event-ID.
+The first failure waits 1s, then 2s, 4s, 8s, 16s, and 30s. A failure after
+the 30s wait exits 2 and says reconnect exhausted. Any byte resets the next
+wait to 1s. This HTTP client has no timeout. A problem response is not
+retried: logs_unavailable is exit 22. A plain 404 that is not a problem
+says API 版本太舊 and exits 1. -o is not used.
+
+export-logs
+  mftiko session export-logs <id> [-o FILE]
+  mftiko session export-logs --latest [-o FILE]
+
+export-logs calls GET /sessions/{id}/logs/export and writes the tar.gz.
+The default name is mftiko-<id>-logs-<UTC time>.tar.gz in the current
+directory. The UTC time is 20060102T150405Z. -o sets the path and is not
+json. An existing path is not overwritten and exits 1. The bytes are written
+to a temporary file in the same directory and linked into place only when
+the gzip and tar are complete and contain a regular file named manifest.json.
+A truncated archive, or one without that file, is deleted and exits 2.
+The command does not check the manifest sha256. --timeout bounds this
+download. logs_unavailable is exit 22. A plain 404 that is not a problem
+says API 版本太舊 and exits 1. --latest works the same way as logs.
 `
 
 const recordHelp = `usage: mftiko record list|show
@@ -269,6 +307,14 @@ type options struct {
 	wait           waitOpt
 	waitTimeout    time.Duration
 	waitTimeoutSet bool
+	follow         bool
+	tail           int
+	tailSet        bool
+	stream         string
+	streamSet      bool
+	latest         bool
+	exportPath     string
+	exportPathSet  bool
 }
 
 type stringOpt struct {
@@ -315,6 +361,48 @@ func (n *intOpt) Set(s string) error {
 	}
 	n.v = v
 	n.set = true
+	return nil
+}
+
+// tailOpt is --tail. Zero is a real count. A negative value is rejected and
+// is not echoed (E14-D012, E11-D003).
+type tailOpt struct {
+	v   int
+	set bool
+}
+
+func (n *tailOpt) String() string {
+	if !n.set {
+		return ""
+	}
+	return strconv.Itoa(n.v)
+}
+
+func (n *tailOpt) Set(s string) error {
+	v, err := strconv.Atoi(s)
+	if err != nil || v < 0 {
+		return errors.New("must be a non-negative integer")
+	}
+	n.v = v
+	n.set = true
+	return nil
+}
+
+// streamOpt is --stream. The value is stdout or stderr. The error does not
+// include the value, so a token passed here is not echoed (E11-D003, E14-D032).
+type streamOpt struct {
+	v   string
+	set bool
+}
+
+func (s *streamOpt) String() string { return s.v }
+
+func (s *streamOpt) Set(v string) error {
+	if v != "stdout" && v != "stderr" {
+		return errors.New("must be stdout or stderr")
+	}
+	s.v = v
+	s.set = true
 	return nil
 }
 
@@ -419,6 +507,11 @@ func parseArgs(args []string) (options, []string, error) {
 	var wait waitOpt
 	var waitTimeout durationOpt
 	var limit intOpt
+	var tail tailOpt
+	var stream streamOpt
+	var follow, followLong bool
+	logsCmd := len(pos) >= 2 && pos[0] == "session" && pos[1] == "logs"
+	exportCmd := len(pos) >= 2 && pos[0] == "session" && pos[1] == "export-logs"
 	fs := flag.NewFlagSet("mftiko", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	fs.Usage = func() {}
@@ -447,7 +540,17 @@ func parseArgs(args []string) (options, []string, error) {
 	fs.Var(&createdBy, "created-by", "user who created the record")
 	fs.Var(&createdAfter, "created-after", "RFC 3339 or YYYY-MM-DD")
 	fs.Var(&createdBefore, "created-before", "RFC 3339 or YYYY-MM-DD")
-	fs.Var(&file, "f", "session file, or - for stdin")
+	if logsCmd {
+		// -f is the session file everywhere except session logs, where it
+		// follows the stream (E14-D031). --follow is that command only.
+		fs.BoolVar(&follow, "f", false, "follow the log stream")
+		fs.BoolVar(&followLong, "follow", false, "follow the log stream")
+	} else {
+		fs.Var(&file, "f", "session file, or - for stdin")
+	}
+	fs.Var(&tail, "tail", "log lines to read, including zero")
+	fs.Var(&stream, "stream", "stdout or stderr")
+	latest := fs.Bool("latest", false, "the newest session")
 	fs.Var(&idemKey, flagPair("idempotency", "key"), "Idempotency-Key for this run")
 	fs.Var(&wait, "wait", "phase, terminal, or the boolean form")
 	fs.Var(&waitTimeout, "wait-timeout", "how long --wait may run")
@@ -488,20 +591,38 @@ func parseArgs(args []string) (options, []string, error) {
 		wait:           wait,
 		waitTimeout:    waitTimeout.v,
 		waitTimeoutSet: waitTimeout.set,
+		follow:         follow || followLong,
+		tail:           tail.v,
+		tailSet:        tail.set,
+		stream:         stream.v,
+		streamSet:      stream.set,
+		latest:         *latest,
 	}
 	if timeout.set {
 		opt.timeout = timeout.v
 	}
+	var chosen string
+	var chosenSet bool
 	switch {
 	case output.set && outputLong.set && output.v != outputLong.v:
 		return options{}, nil, errors.New("-o and -output differ")
 	case output.set:
-		opt.output = output.v
+		chosen, chosenSet = output.v, true
 	case outputLong.set:
-		opt.output = outputLong.v
+		chosen, chosenSet = outputLong.v, true
 	}
-	if opt.output != "" && opt.output != "json" {
-		return options{}, nil, errors.New("-o must be json")
+	if exportCmd {
+		// -o is the archive path on export-logs, not the json switch (E14-D035).
+		if chosenSet && chosen == "" {
+			return options{}, nil, errors.New("-o needs a path")
+		}
+		opt.exportPath = chosen
+		opt.exportPathSet = chosenSet
+	} else {
+		opt.output = chosen
+		if opt.output != "" && opt.output != "json" {
+			return options{}, nil, errors.New("-o must be json")
+		}
 	}
 	if opt.contextSet && strings.TrimSpace(opt.context) == "" {
 		return options{}, nil, errors.New("-context needs a name")
@@ -521,14 +642,35 @@ var (
 		"created-after": true, "created-before": true,
 		"f": true, "idempotency-key": true,
 		"wait-timeout": true,
+		"tail":         true, "stream": true,
 	}
-	boolFlags = map[string]bool{"v": true, "verbose": true, "yes": true, "version": true, "h": true, "help": true}
+	boolFlags = map[string]bool{
+		"v": true, "verbose": true, "yes": true, "version": true, "h": true, "help": true,
+		"latest": true,
+	}
 )
 
 // splitArgs pulls flags in front of positionals so flag.FlagSet sees every
 // flag, including ones written after the command. Unknown flags fail here,
 // and the error names the flag without its value.
+// session logs treats -f and --follow as booleans. Every other command still
+// takes -f as the session file (E14-D031).
 func splitArgs(args []string) (flags, pos []string, err error) {
+	if isSessionLogs(args) {
+		return splitKind(args, true)
+	}
+	return splitKind(args, false)
+}
+
+func isSessionLogs(args []string) bool {
+	_, pos, err := splitKind(args, true)
+	if err != nil {
+		return false
+	}
+	return len(pos) >= 2 && pos[0] == "session" && pos[1] == "logs"
+}
+
+func splitKind(args []string, logFollow bool) (flags, pos []string, err error) {
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if a == "--" {
@@ -545,6 +687,8 @@ func splitArgs(args []string) (flags, pos []string, err error) {
 			return nil, nil, fmt.Errorf("flag provided but not defined: %s", a)
 		}
 		switch {
+		case logFollow && (name == "f" || name == "follow"):
+			flags = append(flags, a)
 		case boolFlags[name]:
 			flags = append(flags, a)
 		case name == "wait":
