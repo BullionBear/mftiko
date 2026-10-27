@@ -7,6 +7,9 @@
 // PullData fetches one data artifact the same way, checking the data media types (PROTOCOL §8.4, E09-D072).
 // PackData and Client.PushData pack a session volume and stream it up (E09-D079–E09-D081). Push is unchanged:
 // it still uploads a strategy image from memory with Docker config credentials.
+// UploadData is an operator upload of one directory (E15-D001–E15-D008): Docker config credentials like Push,
+// no source in the config, an error instead of a skip for what unpack rejects, and every limit checked
+// before the first blob. Blobs the registry already has are not sent again, for PushData too.
 // Unpack extracts gzip-compressed tar layers into a directory (E09-D051–E09-D053, E09-D057). UnpackImage installs
 // them at ${DATA}/artifacts/<digest>/rootfs and records the layer list used for GC (E09-D050, E09-D055).
 // UnpackImageFrom also records the repository beside a rootfs it installs (E12-D011). A rootfs that is already
