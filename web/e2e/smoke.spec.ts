@@ -49,7 +49,8 @@ test('console main flow', async ({ page }) => {
 	await page.goto('/sessions/new');
 	await page.getByLabel('Name', { exact: true }).fill(name);
 	await page.getByLabel('STS instance').selectOption('sts1');
-	await page.getByLabel('Strategy').selectOption('hello');
+	await page.getByLabel('Repository').fill('registry:5000/strategies/hello');
+	await page.getByRole('button', { name: 'Load tags' }).click();
 	await page.getByLabel('Version').selectOption('accept');
 	await page.getByRole('button', { name: 'Next' }).click();
 	await page

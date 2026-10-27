@@ -83,7 +83,7 @@ func (f *flow) mainSteps(credsFile, kind, ticker, topic string, algo int, offset
 	apiID := acc.JSON201.ApiId
 	say("account api_id %d on %s", apiID, tdInst)
 
-	listed, err := f.a.ListStrategiesWithResponse(f.ctx, &apiv1.ListStrategiesParams{Repository: strategyRepository}, nil)
+	listed, err := f.a.ListStrategiesWithResponse(f.ctx, &apiv1.ListStrategiesParams{Repository: strategyRepository})
 	if err != nil {
 		return err
 	}
