@@ -109,8 +109,6 @@ var commands = []command{
 	{action: "whoami", run: runWhoami},
 	{action: "version", run: runVersion},
 	{resource: "strategy", action: "list", run: runStrategyList},
-	{resource: "strategy", action: "versions", run: runStrategyVersions},
-	{resource: "strategy", action: "show", run: runStrategyShow},
 	{resource: "instance", action: "list", run: runInstanceList},
 	{resource: "instance", action: "show", run: runInstanceShow},
 	{resource: "instance", action: "retire", run: runInstanceRetire},

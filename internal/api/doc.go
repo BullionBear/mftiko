@@ -26,7 +26,7 @@
 // mftiko-etcd-roles reads (E10-D012, E13-D012). The API JSON is:
 //
 //	users[].name, users[].token_sha256   one static token per user, stored as SHA-256 (E10-D009, E10-D055)
-//	repositories                          strategy repositories, path without the registry host (E10-D013, E10-D060)
+//	allow                                 strategy repository allowlist; "*" or host plus path prefix (E10-D119)
 //	registry                              registry host[:port]; empty leaves the catalog unconfigured (E10-D060)
 //	registry_creds                        Docker config.json path; empty is anonymous (E09-D033, E10-D060)
 //	plain_http                            http for a dev registry:2 (E09-D033, E10-D060)

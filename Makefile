@@ -119,6 +119,9 @@ openapi-breaking: tools ## oasdiff breaking against OAS_BASE; fails on a breakin
 	if [ -n '$(OASDIFF_FAIL_ON)' ]; then \
 	  args+=(--fail-on '$(OASDIFF_FAIL_ON)'); \
 	fi; \
+	if [ -f contract/openapi/api-v1-err-ignore.txt ]; then \
+	  args+=(--err-ignore contract/openapi/api-v1-err-ignore.txt); \
+	fi; \
 	oasdiff "$${args[@]}"
 
 # Regenerates, then compares with what was there before: fails if contract/gen/, web/src/lib/gen/, go.mod or go.sum

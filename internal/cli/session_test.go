@@ -802,7 +802,7 @@ func TestSessionCreateConflict(t *testing.T) {
 }
 
 func TestSessionCreateFieldErrors(t *testing.T) {
-	const src = "name: demo\nsts_instance: sts1\nstrategy:\n  id: chase\n  ref: v1\nparams:\n  big: 123\n"
+	const src = "name: demo\nsts_instance: sts1\nstrategy:\n  repository: example.invalid/chase\n  ref: v1\nparams:\n  big: 123\n"
 	_, locs, err := convertSession("ignored", []byte(src))
 	if err != nil {
 		t.Fatal(err)
@@ -888,7 +888,7 @@ func TestSessionCreateUsage(t *testing.T) {
 		t.Fatalf("name: %d %q", got.code, got.err)
 	}
 	got = runAt(context.Background(), home, nil, strings.NewReader(""), "session", "create", "-f", path, "-limit", "1", "--idempotency-key", idemOnes)
-	if got.code != ExitUsage || !strings.Contains(got.err, "-limit and -cursor are only for strategy list and strategy versions, and account list") || !strings.Contains(got.err, "Idempotency-Key: "+idemOnes+"\n") {
+	if got.code != ExitUsage || !strings.Contains(got.err, "-limit and -cursor are only for strategy list and account list") || !strings.Contains(got.err, "Idempotency-Key: "+idemOnes+"\n") {
 		t.Fatalf("limit: %d %q", got.code, got.err)
 	}
 

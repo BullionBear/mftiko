@@ -223,7 +223,7 @@ func newWriteEnv(t *testing.T) *writeEnv {
 	conf, err := json.Marshal(map[string]any{
 		"listen":            "127.0.0.1:0",
 		"unavailable_after": "2s",
-		"repositories":      []string{"mftiko/strategies"},
+		"allow":             []string{"*"},
 		"td_keys":           map[string]string{"td-tw-1": mustPub(t), "td-jp-1": mustPub(t)},
 	})
 	if err != nil {

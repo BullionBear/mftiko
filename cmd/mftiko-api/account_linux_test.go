@@ -157,7 +157,7 @@ func TestAPISealedAccountReachesReady(t *testing.T) {
 		"listen":            "127.0.0.1:0",
 		"unavailable_after": "2s",
 		"shutdown_timeout":  "1s",
-		"repositories":      []string{"mftiko/strategies"},
+		"allow":             []string{"*"},
 		"users":             []any{map[string]string{"name": "op", "token_sha256": tokenHash(readyToken)}},
 		"td_keys":           map[string]string{readyInst: key.Public().String()},
 	})

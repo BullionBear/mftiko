@@ -24,11 +24,12 @@ import (
 // errIdempotencyConflict is the same Idempotency-Key with a different body (E10-D068). It is 409 conflict.
 // errIdempotentReplay is internal: the key already names this spec, and the caller finishes that row.
 var (
-	errStorage             = errors.New("api: storage unavailable")
-	errRegistry            = errors.New("api: registry unavailable")
-	errAlgoOverlap         = errors.New("api: algo overlap")
-	errIdempotencyConflict = errors.New("api: idempotency key does not match")
-	errIdempotentReplay    = errors.New("api: idempotent replay")
+	errStorage              = errors.New("api: storage unavailable")
+	errRegistry             = errors.New("api: registry unavailable")
+	errRegistryUnconfigured = fmt.Errorf("%w: registry is not configured", errRegistry)
+	errAlgoOverlap          = errors.New("api: algo overlap")
+	errIdempotencyConflict  = errors.New("api: idempotency key does not match")
+	errIdempotentReplay     = errors.New("api: idempotent replay")
 	// errNotTerminal is DELETE of a session that is not DONE or FAILED (E10-D017, E10-D084).
 	errNotTerminal = errors.New("api: session is not terminal")
 	// errNoRecord is a session etcd still has and session_records does not (E10-D081).
@@ -178,12 +179,17 @@ func (s *Server) structural(req apiv1.SessionCreate) fieldList {
 	} else {
 		s.checkInstance(req.StsInstance, "/sts_instance", state.PlaneSTS, &fields)
 	}
-	if req.Strategy.Id == "" {
-		fields.add("/strategy/id", "required")
-	} else if _, err := s.strategyByID(req.Strategy.Id); errors.Is(err, errStrategyNotFound) {
-		fields.add("/strategy/id", "is not a configured strategy")
-	} else if err != nil {
-		fields.add("/strategy/id", "is not a configured strategy")
+	repo := strings.TrimRight(req.Strategy.Repository, "/")
+	if req.Strategy.Repository == "" {
+		fields.add("/strategy/repository", "required")
+	} else if err := repositoryShape(repo); err != nil {
+		fields.add("/strategy/repository", "is not a repository")
+	} else if !allowMatches(s.cfg.Allow, repo) {
+		fields.add("/strategy/repository", "is not allowed")
+	} else if s.cfg.Registry.Address != "" {
+		if _, ok := pathOnRegistry(s.cfg.Registry.Address, repo); !ok {
+			fields.add("/strategy/repository", "is not on the configured registry")
+		}
 	}
 	if req.Strategy.Ref == "" {
 		fields.add("/strategy/ref", "required")
@@ -416,20 +422,23 @@ func compactObject(raw json.RawMessage) ([]byte, error) {
 }
 
 func (s *Server) fillStrategy(ctx context.Context, req apiv1.SessionCreate, spec *sessionv1.SessionSpec, fields *fieldList) error {
-	repo, err := s.strategyByID(req.Strategy.Id)
+	path, admitted, err := s.admitRepository("/strategy/repository", req.Strategy.Repository)
 	if err != nil {
-		fields.add("/strategy/id", "is not a configured strategy")
+		return err
+	}
+	if len(admitted) > 0 {
+		*fields = append(*fields, admitted...)
 		return nil
 	}
 	if s.catalog == nil {
-		return fmt.Errorf("%w: registry is not configured", errRegistry)
+		return errRegistryUnconfigured
 	}
-	dig, err := s.versionDigest(ctx, repo.path, req.Strategy.Ref)
+	dig, err := s.versionDigest(ctx, path, req.Strategy.Ref)
 	if ferrs, ferr := registryFields(err, "/strategy/ref", "was not found"); ferr != nil || len(ferrs) > 0 {
 		*fields = append(*fields, ferrs...)
 		return ferr
 	}
-	info, err := s.catalog.ReadManifest(ctx, repo.path, dig)
+	info, err := s.catalog.ReadManifest(ctx, path, dig)
 	if ferrs, ferr := registryFields(err, "/strategy/ref", "was not found"); ferr != nil || len(ferrs) > 0 {
 		*fields = append(*fields, ferrs...)
 		return ferr
@@ -441,7 +450,7 @@ func (s *Server) fillStrategy(ctx context.Context, req apiv1.SessionCreate, spec
 	spec.Strategy = &sessionv1.StrategyRef{
 		Name:       info.Manifest.Name,
 		Code:       info.Digest,
-		Repository: repo.path,
+		Repository: path,
 	}
 	return nil
 }
@@ -451,7 +460,7 @@ func (s *Server) fillInputs(ctx context.Context, req apiv1.SessionCreate, spec *
 		return nil
 	}
 	if s.catalog == nil {
-		return fmt.Errorf("%w: registry is not configured", errRegistry)
+		return errRegistryUnconfigured
 	}
 	for i, in := range *req.Inputs {
 		p := fmt.Sprintf("/inputs/%d/digest", i)

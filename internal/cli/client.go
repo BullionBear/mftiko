@@ -161,33 +161,15 @@ func (a *API) GetMe(ctx context.Context) (Result, error) {
 	})
 }
 
-// ListStrategies calls GET /strategies. limit is the page size sent to the API
+// ListStrategies calls GET /strategies?repository=. limit is the page size sent to the API
 // (E11-D010). An empty cursor omits the query parameter.
-func (a *API) ListStrategies(ctx context.Context, limit int, cursor string) (Result, error) {
-	params := apiv1.ListStrategiesParams{Limit: &limit}
+func (a *API) ListStrategies(ctx context.Context, repository string, limit int, cursor string) (Result, error) {
+	params := apiv1.ListStrategiesParams{Repository: repository, Limit: &limit}
 	if cursor != "" {
 		params.Cursor = &cursor
 	}
 	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
 		return a.gen.ListStrategies(ctx, &params)
-	})
-}
-
-// ListStrategyVersions calls GET /strategies/{id}/versions.
-func (a *API) ListStrategyVersions(ctx context.Context, id string, limit int, cursor string) (Result, error) {
-	params := apiv1.ListStrategyVersionsParams{Limit: &limit}
-	if cursor != "" {
-		params.Cursor = &cursor
-	}
-	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
-		return a.gen.ListStrategyVersions(ctx, id, &params)
-	})
-}
-
-// GetStrategyVersion calls GET /strategies/{id}/versions/{ref}.
-func (a *API) GetStrategyVersion(ctx context.Context, id, ref string) (Result, error) {
-	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
-		return a.gen.GetStrategyVersion(ctx, id, ref)
 	})
 }
 

@@ -1,8 +1,8 @@
-# The E12-12 drill session on sts-jp2-1 (deploy/drill/README.md). drill.sh session fills in API_ID.
+# The E12-12 drill session on sts-jp2-1 (deploy/drill/README.md). drill.sh session fills in API_ID and REGISTRY.
 name: drill-jp2
 sts_instance: sts-jp2-1
 strategy:
-  id: drill
+  repository: REGISTRY/strategies/drill
   ref: v5
 params:
   ticker: BinanceUM_Perp_BTCUSDT

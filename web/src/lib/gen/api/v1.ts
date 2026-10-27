@@ -63,56 +63,17 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 列出策略
-         * @description 部署設定裡每個 repository 一項（E10-D013）。`id` 是 repository 路徑的最後一段（E10-D035）。
-         *     依 `id` 排序後以 `limit`、`cursor` 分頁。沒有快取：這一頁的 `latest` 每次向 registry 解析，同時最多 8 個請求（E10-D057）。
-         *     `latest` 是普通的 tag（E10-D058、E10-D013）。連不上 registry 或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
+         * 列出一個策略 repository 的 tag
+         * @description `repository` 是完整路徑，例如 `ghcr.io/acme/md_watch`（E10-D121）。
+         *     必須在部署設定的 allow 清單裡，而且在這台 API 設定的 registry 上（E10-D119）。
+         *     不在 allow 清單，或 host 不是設定的 registry，回 400 `validation_failed`，`errors[].path` 是 `/repository`。
+         *     回應是這個 repository 的 tag，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
+         *     一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序（E10-D058）。
+         *     `latest` 是名為 `latest` 的 tag；沒有這個 tag 就省略。它不在這一頁時仍然回（E10-D121）。
+         *     解析同時最多 8 個請求，沒有快取（E10-D057）。不讀 manifest，不檢查 kind。
+         *     registry 說 repository 不存在回 404 `not_found`。連不上或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
          */
         get: operations["listStrategies"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/strategies/{strategy_id}/versions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * 列出策略的版本
-         * @description registry 的 tag 清單，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
-         *     一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序，`latest` 是普通的一項（E10-D058）。
-         *     解析同時最多 8 個請求，沒有快取（E10-D057）。連不上或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
-         */
-        get: operations["listStrategyVersions"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/strategies/{strategy_id}/versions/{ref}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * 一個版本的 manifest
-         * @description `ref` 是 tag，或 digest（`sha256:…`）。tag 先解析成 digest（E09-D034）。
-         *     manifest 讀不出來，或不是策略 artifact，回 502 `invalid_artifact`（E10-D059）。
-         *     連不上 registry 或 registry 5xx 回 503 `registry_unavailable`。不存在回 404。
-         */
-        get: operations["getStrategyVersion"];
         put?: never;
         post?: never;
         delete?: never;
@@ -457,40 +418,21 @@ export interface components {
              */
             expires_at: string | null;
         };
-        Strategy: {
-            /** @description repository 路徑的最後一段（E10-D035）。 */
-            id: string;
-            /** @example ghcr.io/bullionbear/strategy-chase */
-            repository: string;
-            latest?: components["schemas"]["StrategyTag"];
-        };
-        StrategyList: {
-            items: components["schemas"]["Strategy"][];
-            next_cursor?: string;
-        };
         StrategyTag: {
             tag: string;
             digest: components["schemas"]["Digest"];
         };
-        StrategyTagList: {
-            items: components["schemas"]["StrategyTag"][];
-            next_cursor?: string;
-        };
-        /** @description manifest 的摘要（PROTOCOL §8.2）。 */
-        StrategyVersion: {
-            strategy_id: string;
+        /** @description 一個 repository 的 tag。`latest` 不在 `items` 這一頁時仍然回（E10-D121）。 */
+        StrategyRepository: {
+            /**
+             * @description 請求的完整路徑，去掉結尾的 `/`。
+             * @example ghcr.io/acme/md_watch
+             */
             repository: string;
-            digest: components["schemas"]["Digest"];
-            tags: string[];
-            /** @description manifest 裡的 `name`（`mftiko-pack -name`），只供顯示。 */
-            name: string;
-            runtime: string;
-            os: string;
-            arch: string;
-            sdk?: string;
-            contracts: string[];
-            /** Format: int64 */
-            size_bytes?: number;
+            items: components["schemas"]["StrategyTag"][];
+            /** @description 名為 `latest` 的 tag。repository 沒有這個 tag 就省略。 */
+            latest?: components["schemas"]["StrategyTag"];
+            next_cursor?: string;
         };
         /**
          * @description API 自己的請求型別，轉成 `SessionSpec` 寫進 etcd（E10-D002）。沒有 `desired_state`：建立時一律是 running。
@@ -520,9 +462,12 @@ export interface components {
             inputs?: components["schemas"]["InputDecl"][];
         };
         StrategySelector: {
-            /** @description `GET /strategies` 的 `id`。 */
-            id: string;
-            /** @description tag 或 digest。tag 由 API 解析成 digest 再寫進 spec（E09-D034）。 */
+            /**
+             * @description 完整路徑，例如 `ghcr.io/acme/md_watch`。必須在 allow 清單裡，而且在設定的 registry 上（E10-D119）。
+             * @example ghcr.io/acme/md_watch
+             */
+            repository: string;
+            /** @description tag 或 digest。tag 由 API 解析成 digest 再寫進 spec（E09-D034）。API 讀 manifest，`kind` 必須是 strategy（E10-D120）。 */
             ref: string;
         };
         FeedDeclInput: {
@@ -585,7 +530,7 @@ export interface components {
         /** @enum {string} */
         DesiredState: "running" | "ended";
         StrategyRef: {
-            /** @description repository 不在目前的部署設定裡時省略。 */
+            /** @description 儲存路徑的最後一段，只供顯示。路徑是空的就省略（E10-D118）。 */
             id?: string;
             name: string;
             digest: components["schemas"]["Digest"];
@@ -947,7 +892,6 @@ export interface components {
         Cursor: string;
         SessionID: components["schemas"]["SessionIDValue"];
         APIID: components["schemas"]["APIIDValue"];
-        StrategyID: string;
     };
     requestBodies: never;
     headers: never;
@@ -1023,7 +967,9 @@ export interface operations {
     };
     listStrategies: {
         parameters: {
-            query?: {
+            query: {
+                /** @description 完整的 repository 路徑（registry host 加路徑）。 */
+                repository: string;
                 limit?: components["parameters"]["Limit"];
                 /** @description 上一頁回應的 `next_cursor`，對呼叫端不透明。 */
                 cursor?: components["parameters"]["Cursor"];
@@ -1034,75 +980,18 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 策略。 */
+            /** @description tag 與 latest。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["StrategyList"];
-                };
-            };
-            400: components["responses"]["ValidationFailed"];
-            401: components["responses"]["Unauthenticated"];
-            503: components["responses"]["Unavailable"];
-        };
-    };
-    listStrategyVersions: {
-        parameters: {
-            query?: {
-                limit?: components["parameters"]["Limit"];
-                /** @description 上一頁回應的 `next_cursor`，對呼叫端不透明。 */
-                cursor?: components["parameters"]["Cursor"];
-            };
-            header?: never;
-            path: {
-                strategy_id: components["parameters"]["StrategyID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 版本。 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StrategyTagList"];
+                    "application/json": components["schemas"]["StrategyRepository"];
                 };
             };
             400: components["responses"]["ValidationFailed"];
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
-            503: components["responses"]["Unavailable"];
-        };
-    };
-    getStrategyVersion: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                strategy_id: components["parameters"]["StrategyID"];
-                ref: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description manifest 摘要。 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StrategyVersion"];
-                };
-            };
-            400: components["responses"]["ValidationFailed"];
-            401: components["responses"]["Unauthenticated"];
-            404: components["responses"]["NotFound"];
-            502: components["responses"]["InvalidArtifact"];
             503: components["responses"]["Unavailable"];
         };
     };

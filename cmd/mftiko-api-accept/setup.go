@@ -95,7 +95,7 @@ func setup() error {
 	for _, r := range []struct{ name, listen string }{{"a", ":8080"}, {"b", ":8081"}} {
 		conf := map[string]any{
 			"users":             []any{map[string]string{"name": userName, "token_sha256": hex.EncodeToString(sum[:])}},
-			"repositories":      []string{"strategies/" + strategyID},
+			"allow":             []string{strings.TrimRight(*registry, "/") + "/strategies/"},
 			"registry":          *registry,
 			"plain_http":        true,
 			"td_keys":           map[string]string{tdInst: key.Public().String()},

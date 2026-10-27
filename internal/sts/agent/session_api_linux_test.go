@@ -59,9 +59,9 @@ func TestScenarioSessionCreateAndEnd(t *testing.T) {
 	}
 	sum := sha256.Sum256([]byte(sessionAPIToken))
 	conf, err := json.Marshal(map[string]any{
-		"repositories": []string{"hello"},
-		"registry":     e.reg.addr(),
-		"plain_http":   true,
+		"allow":      []string{"*"},
+		"registry":   e.reg.addr(),
+		"plain_http": true,
 		"users": []map[string]string{{
 			"name":         "ada",
 			"token_sha256": hex.EncodeToString(sum[:]),
@@ -115,7 +115,7 @@ func TestScenarioSessionCreateAndEnd(t *testing.T) {
 		return resp.StatusCode == http.StatusOK && bytes.Contains(raw.Bytes(), []byte(`"unavailable_regions":[]`))
 	})
 
-	code, hdr, body := sessionPost(t, base+"/api/v1/sessions", `{"name":"hello","sts_instance":"`+e.inst()+`","strategy":{"id":"hello","ref":"`+e.digest+`"}}`)
+	code, hdr, body := sessionPost(t, base+"/api/v1/sessions", `{"name":"hello","sts_instance":"`+e.inst()+`","strategy":{"repository":"`+e.reg.addr()+`/hello","ref":"`+e.digest+`"}}`)
 	if code != http.StatusCreated {
 		t.Fatalf("create %d %s\napi log:\n%s", code, body, buf.String())
 	}

@@ -10,12 +10,12 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -247,46 +247,29 @@ func TestCatalogRegistry2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fullHello := addr + "/" + helloRepo
+	fullConn := addr + "/" + connRepo
 	s := &Server{
 		log: zerolog.Nop(),
 		cfg: Config{
-			Users:        []User{{Name: "ada", Token: sha256.Sum256([]byte(tokenAda))}},
-			Repositories: []string{helloRepo, connRepo},
-			Registry:     artifact.Registry{Address: addr, PlainHTTP: true},
+			Users:    []User{{Name: "ada", Token: sha256.Sum256([]byte(tokenAda))}},
+			Allow:    []string{addr + "/mftiko"},
+			Registry: artifact.Registry{Address: addr, PlainHTTP: true},
 		},
 		catalog: cat,
 	}
 	h := s.routes()
 
-	check := func(ref string) apiv1.StrategyVersion {
-		t.Helper()
-		code, hdr, body := doAuth(h, http.MethodGet, "/api/v1/strategies/cat"+suffix+"/versions/"+ref)
-		if code != http.StatusOK || hdr.Get("Content-Type") != "application/json" {
-			t.Fatalf("%s: %d %s", ref, code, body)
-		}
-		var got apiv1.StrategyVersion
-		if err := json.Unmarshal(body, &got); err != nil {
-			t.Fatal(err)
-		}
-		if got.StrategyId != "cat"+suffix || got.Repository != addr+"/"+helloRepo || got.Digest != img.Digest ||
-			got.Name != want.Name || got.Runtime != want.Runtime || got.Os != want.OS || got.Arch != want.Arch ||
-			got.Sdk == nil || *got.Sdk != want.SDK.Lang+" "+want.SDK.Version ||
-			strings.Join(got.Contracts, ",") != strings.Join(want.Contracts, ",") ||
-			strings.Join(got.Tags, ",") != "a,latest,v1" || got.SizeBytes == nil || *got.SizeBytes != size {
-			t.Fatalf("%s: %+v", ref, got)
-		}
-		return got
-	}
-	check("latest")
-	check(img.Digest)
-
-	var listed apiv1.StrategyTagList
-	code, _, body := doAuth(h, http.MethodGet, "/api/v1/strategies/cat"+suffix+"/versions")
-	if code != http.StatusOK {
+	var listed apiv1.StrategyRepository
+	code, hdr, body := doAuth(h, http.MethodGet, "/api/v1/strategies?repository="+url.QueryEscape(fullHello))
+	if code != http.StatusOK || hdr.Get("Content-Type") != "application/json" {
 		t.Fatalf("list %d %s", code, body)
 	}
 	if err := json.Unmarshal(body, &listed); err != nil {
 		t.Fatal(err)
+	}
+	if listed.Repository != fullHello || listed.Latest == nil || listed.Latest.Tag != "latest" || listed.Latest.Digest != img.Digest {
+		t.Fatalf("latest %+v", listed.Latest)
 	}
 	if len(listed.Items) != 3 || listed.Items[0].Tag != "a" || listed.Items[1].Tag != "latest" || listed.Items[2].Tag != "v1" {
 		t.Fatalf("tags %+v", listed.Items)
@@ -296,34 +279,29 @@ func TestCatalogRegistry2(t *testing.T) {
 			t.Fatalf("tag %s digest %s", item.Tag, item.Digest)
 		}
 	}
+	if want.Name == "" || want.Runtime == "" || want.OS == "" || want.Arch == "" || size <= 0 {
+		t.Fatalf("packed manifest %+v size %d", want, size)
+	}
 
 	if err := artifact.Push(ctx, img, artifact.Destination{
-		Repository: addr + "/" + helloRepo, Tag: "z", PlainHTTP: true,
+		Repository: fullHello, Tag: "z", PlainHTTP: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	code, _, body = doAuth(h, http.MethodGet, "/api/v1/strategies/cat"+suffix+"/versions")
+	code, _, body = doAuth(h, http.MethodGet, "/api/v1/strategies?repository="+url.QueryEscape(fullHello))
 	if code != http.StatusOK {
 		t.Fatalf("list again %d %s", code, body)
 	}
 	if err := json.Unmarshal(body, &listed); err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Items) != 4 || listed.Items[3].Tag != "z" || listed.Items[3].Digest != img.Digest {
-		t.Fatalf("after push %+v", listed.Items)
+	if len(listed.Items) != 4 || listed.Items[3].Tag != "z" || listed.Items[3].Digest != img.Digest || listed.Latest == nil || listed.Latest.Tag != "latest" {
+		t.Fatalf("after push %+v latest %+v", listed.Items, listed.Latest)
 	}
 
-	code, p := getProblem(t, h, "/api/v1/strategies/cat"+suffix+"/versions/no-such")
-	if code != http.StatusNotFound || p.Code != apiv1.ErrorCodeNotFound {
-		t.Fatalf("missing tag %d %+v", code, p)
-	}
-	missing := "sha256:" + strings.Repeat("b", 64)
-	if missing == img.Digest {
-		missing = "sha256:" + strings.Repeat("c", 64)
-	}
-	code, p = getProblem(t, h, "/api/v1/strategies/cat"+suffix+"/versions/"+missing)
-	if code != http.StatusNotFound || p.Code != apiv1.ErrorCodeNotFound {
-		t.Fatalf("missing digest %d %+v", code, p)
+	code, p := getProblem(t, h, "/api/v1/strategies?repository="+url.QueryEscape(addr+"/mftiko/missing"))
+	if code != http.StatusNotFound || p.Code != apiv1.ErrorCodeNotFound || problemDetail(p) != "repository not found" {
+		t.Fatalf("missing repository %d %+v", code, p)
 	}
 
 	worker, err := artifact.PackWorker(tinyELF(), artifact.KindMDConn, "conn", nil)
@@ -331,12 +309,19 @@ func TestCatalogRegistry2(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := artifact.Push(ctx, worker, artifact.Destination{
-		Repository: addr + "/" + connRepo, Tag: "w", PlainHTTP: true,
+		Repository: fullConn, Tag: "w", PlainHTTP: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	code, p = getProblem(t, h, "/api/v1/strategies/conn"+suffix+"/versions/w")
-	if code != http.StatusBadGateway || p.Code != apiv1.ErrorCodeInvalidArtifact || problemDetail(p) != "manifest is not a strategy artifact" {
-		t.Fatalf("worker %d %+v", code, p)
+	code, _, body = doAuth(h, http.MethodGet, "/api/v1/strategies?repository="+url.QueryEscape(fullConn))
+	if code != http.StatusOK {
+		t.Fatalf("worker list %d %s", code, body)
+	}
+	listed = apiv1.StrategyRepository{}
+	if err := json.Unmarshal(body, &listed); err != nil {
+		t.Fatal(err)
+	}
+	if listed.Repository != fullConn || len(listed.Items) != 1 || listed.Items[0].Tag != "w" || listed.Items[0].Digest == "" {
+		t.Fatalf("worker tags %+v", listed)
 	}
 }

@@ -18,7 +18,7 @@ func idleSession(name, sts string) apiv1.SessionCreate {
 	return apiv1.SessionCreate{
 		Name:        name,
 		StsInstance: sts,
-		Strategy:    apiv1.StrategySelector{Id: strategyID, Ref: strategyTag},
+		Strategy:    apiv1.StrategySelector{Repository: strategyRepository, Ref: strategyTag},
 	}
 }
 

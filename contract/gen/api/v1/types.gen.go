@@ -925,68 +925,45 @@ type StateSnapshot struct {
 	SizeBytes   int64     `json:"size_bytes"`
 }
 
-// Strategy defines model for Strategy.
-type Strategy struct {
-	// Id repository 路徑的最後一段（E10-D035）。
-	Id     string       `json:"id"`
-	Latest *StrategyTag `json:"latest,omitempty"`
-
-	// Repository Example: ghcr.io/bullionbear/strategy-chase
-	Repository string `json:"repository"`
-}
-
-// StrategyList defines model for StrategyList.
-type StrategyList struct {
-	Items      []Strategy `json:"items"`
-	NextCursor *string    `json:"next_cursor,omitempty"`
-}
-
 // StrategyRef defines model for StrategyRef.
 type StrategyRef struct {
 	Digest Digest `json:"digest"`
 
-	// Id repository 不在目前的部署設定裡時省略。
+	// Id 儲存路徑的最後一段，只供顯示。路徑是空的就省略（E10-D118）。
 	Id         *string `json:"id,omitempty"`
 	Name       string  `json:"name"`
 	Repository string  `json:"repository"`
 }
 
+// StrategyRepository 一個 repository 的 tag。`latest` 不在 `items` 這一頁時仍然回（E10-D121）。
+type StrategyRepository struct {
+	Items []StrategyTag `json:"items"`
+
+	// Latest 名為 `latest` 的 tag。repository 沒有這個 tag 就省略。
+	Latest     *StrategyTag `json:"latest,omitempty"`
+	NextCursor *string      `json:"next_cursor,omitempty"`
+
+	// Repository 請求的完整路徑，去掉結尾的 `/`。
+	//
+	// Example: ghcr.io/acme/md_watch
+	Repository string `json:"repository"`
+}
+
 // StrategySelector defines model for StrategySelector.
 type StrategySelector struct {
-	// Id `GET /strategies` 的 `id`。
-	Id string `json:"id"`
-
-	// Ref tag 或 digest。tag 由 API 解析成 digest 再寫進 spec（E09-D034）。
+	// Ref tag 或 digest。tag 由 API 解析成 digest 再寫進 spec（E09-D034）。API 讀 manifest，`kind` 必須是 strategy（E10-D120）。
 	Ref string `json:"ref"`
+
+	// Repository 完整路徑，例如 `ghcr.io/acme/md_watch`。必須在 allow 清單裡，而且在設定的 registry 上（E10-D119）。
+	//
+	// Example: ghcr.io/acme/md_watch
+	Repository string `json:"repository"`
 }
 
 // StrategyTag defines model for StrategyTag.
 type StrategyTag struct {
 	Digest Digest `json:"digest"`
 	Tag    string `json:"tag"`
-}
-
-// StrategyTagList defines model for StrategyTagList.
-type StrategyTagList struct {
-	Items      []StrategyTag `json:"items"`
-	NextCursor *string       `json:"next_cursor,omitempty"`
-}
-
-// StrategyVersion manifest 的摘要（PROTOCOL §8.2）。
-type StrategyVersion struct {
-	Arch      string   `json:"arch"`
-	Contracts []string `json:"contracts"`
-	Digest    Digest   `json:"digest"`
-
-	// Name manifest 裡的 `name`（`mftiko-pack -name`），只供顯示。
-	Name       string   `json:"name"`
-	Os         string   `json:"os"`
-	Repository string   `json:"repository"`
-	Runtime    string   `json:"runtime"`
-	Sdk        *string  `json:"sdk,omitempty"`
-	SizeBytes  *int64   `json:"size_bytes,omitempty"`
-	StrategyId string   `json:"strategy_id"`
-	Tags       []string `json:"tags"`
 }
 
 // Worker `WorkerStatus`。階段或 conditions 改變時寫（W7）。這個回應只列 phase；NATS bus 看 `mftiko_worker_bus_up`。
@@ -1017,9 +994,6 @@ type Limit = int
 
 // SessionID 6 個小寫 hex，API 隨機配發（E10-D007）。
 type SessionID = SessionIDValue
-
-// StrategyID defines model for StrategyID.
-type StrategyID = string
 
 // Conflict RFC 9457。`code` 是給程式判斷的穩定值（E10-D036）。
 type Conflict = Problem
@@ -1108,15 +1082,9 @@ type CreateSessionParams struct {
 
 // ListStrategiesParams defines parameters for ListStrategies.
 type ListStrategiesParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// Cursor 上一頁回應的 `next_cursor`，對呼叫端不透明。
-	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
-}
-
-// ListStrategyVersionsParams defines parameters for ListStrategyVersions.
-type ListStrategyVersionsParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+	// Repository 完整的 repository 路徑（registry host 加路徑）。
+	Repository string `form:"repository" json:"repository"`
+	Limit      *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor 上一頁回應的 `next_cursor`，對呼叫端不透明。
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`

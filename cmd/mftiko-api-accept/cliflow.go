@@ -313,22 +313,12 @@ func (c *cli) mainSteps(credsFile, kind, ticker string) error {
 	if !slices.ContainsFunc(kinds.Items, func(k apiv1.AccountKind) bool { return k.Kind == kind && k.Supported }) {
 		return fmt.Errorf("account-kind list: %s is not supported", kind)
 	}
-	var strategies apiv1.StrategyList
-	if err := c.okJSON(&strategies, "strategy", "list"); err != nil {
+	var strategies apiv1.StrategyRepository
+	if err := c.okJSON(&strategies, "strategy", "list", strategyRepository); err != nil {
 		return err
 	}
-	if !slices.ContainsFunc(strategies.Items, func(s apiv1.Strategy) bool { return s.Id == strategyID }) {
-		return fmt.Errorf("strategy list has no %s", strategyID)
-	}
-	var versions apiv1.StrategyTagList
-	if err := c.okJSON(&versions, "strategy", "versions", strategyID); err != nil {
-		return err
-	}
-	if !slices.ContainsFunc(versions.Items, func(t apiv1.StrategyTag) bool { return t.Tag == strategyTag }) {
-		return fmt.Errorf("strategy versions %s has no %s", strategyID, strategyTag)
-	}
-	if _, err := c.ok("strategy", "show", strategyID, strategyTag); err != nil {
-		return err
+	if !slices.ContainsFunc(strategies.Items, func(t apiv1.StrategyTag) bool { return t.Tag == strategyTag }) {
+		return fmt.Errorf("strategy list %s has no %s", strategyRepository, strategyTag)
 	}
 	var insts apiv1.InstanceList
 	if err := c.okJSON(&insts, "instance", "list"); err != nil {
@@ -339,7 +329,7 @@ func (c *cli) mainSteps(credsFile, kind, ticker string) error {
 			return fmt.Errorf("instance list has no %s", want)
 		}
 	}
-	say("queries: %s supported, %s:%s, instances %s %s %s", kind, strategyID, strategyTag, mdInst, tdInst, stsInst)
+	say("queries: %s supported, %s:%s, instances %s %s %s", kind, strategyRepository, strategyTag, mdInst, tdInst, stsInst)
 
 	apiID, err := c.account("accept-cli-"+strings.ToLower(kind), kind, credsFile)
 	if err != nil {
@@ -350,7 +340,7 @@ func (c *cli) mainSteps(credsFile, kind, ticker string) error {
 name: accept-cli-main
 sts_instance: %s
 strategy:
-  id: %s
+  repository: %s
   ref: %s
 params:
   tickers: [%s]
@@ -367,7 +357,7 @@ accounts:
     algo_ids: [1]
 restart:
   mode: never
-`, stsInst, strategyID, strategyTag, ticker, apiID, feed, mdInst, apiID))
+`, stsInst, strategyRepository, strategyTag, ticker, apiID, feed, mdInst, apiID))
 	if err != nil {
 		return err
 	}
@@ -507,7 +497,7 @@ const (
 
 // idleFile is hello with no params on sts, optionally bound to one account: it runs until ended.
 func idleFile(name, sts string, apiID int64, algo int) string {
-	s := fmt.Sprintf("name: %s\nsts_instance: %s\nstrategy:\n  id: %s\n  ref: %s\n", name, sts, strategyID, strategyTag)
+	s := fmt.Sprintf("name: %s\nsts_instance: %s\nstrategy:\n  repository: %s\n  ref: %s\n", name, sts, strategyRepository, strategyTag)
 	if apiID != 0 {
 		s += fmt.Sprintf("accounts:\n  - name: main\n    api_id: %d\n    algo_ids: [%d]\n", apiID, algo)
 	}

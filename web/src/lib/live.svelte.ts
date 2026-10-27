@@ -15,7 +15,6 @@ import {
 	type Plane,
 	type Session,
 	type SessionDetail,
-	type Strategy,
 	type Worker
 } from './api';
 import { consoleState } from './console.svelte';
@@ -568,31 +567,3 @@ export class AccountKindFeed {
 	}
 }
 
-export class StrategyFeed {
-	items = $state<Strategy[] | null>(null);
-	loading = $state(false);
-	error = $state<string | null>(null);
-	private gen = 0;
-
-	cancel(): void {
-		this.gen += 1;
-	}
-
-	async reload(): Promise<void> {
-		const mine = ++this.gen;
-		this.loading = true;
-		const result = await collectPages<Strategy>((cursor) =>
-			api.GET('/strategies', {
-				params: { query: cursor ? { limit: 100, cursor } : { limit: 100 } }
-			})
-		);
-		if (mine !== this.gen) return;
-		this.loading = false;
-		if (result.failure) {
-			if (result.failure.status !== 401) this.error = result.failure.message;
-			return;
-		}
-		this.items = result.items;
-		this.error = null;
-	}
-}

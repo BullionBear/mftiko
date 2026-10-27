@@ -8,7 +8,7 @@ import (
 const sessionYAML = `name: demo
 sts_instance: sts1
 strategy:
-  id: chase
+  repository: example.invalid/chase
   ref: v1
 params:
   big: 123456789012345678901234567890
@@ -21,7 +21,7 @@ params:
   stop: false
 `
 
-const sessionJSON = `{"name":"demo","sts_instance":"sts1","strategy":{"id":"chase","ref":"v1"},"params":{"big":123456789012345678901234567890,"dec":1.2300,"flag":"no","switch":"on","yesno":"yes","power":"off","ok":true,"stop":false}}`
+const sessionJSON = `{"name":"demo","sts_instance":"sts1","strategy":{"repository":"example.invalid/chase","ref":"v1"},"params":{"big":123456789012345678901234567890,"dec":1.2300,"flag":"no","switch":"on","yesno":"yes","power":"off","ok":true,"stop":false}}`
 
 func TestConvertSessionNumbersAndBools(t *testing.T) {
 	got, _, err := convertSession("demo.yaml", []byte(sessionYAML))
@@ -133,7 +133,7 @@ func TestConvertSessionDuplicateAndShape(t *testing.T) {
 }
 
 func TestConvertSessionLocations(t *testing.T) {
-	const src = "name: demo\nsts_instance: sts1\nstrategy:\n  id: chase\n  ref: v1\nparams:\n  big: 123\n"
+	const src = "name: demo\nsts_instance: sts1\nstrategy:\n  repository: example.invalid/chase\n  ref: v1\nparams:\n  big: 123\n"
 	_, locs, err := convertSession("s.yaml", []byte(src))
 	if err != nil {
 		t.Fatal(err)

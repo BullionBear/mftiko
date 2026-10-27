@@ -163,7 +163,7 @@ func offlineConfig(t *testing.T, log zerolog.Logger, cert, key string) Config {
 		map[string]string{"controller": "tw", "md-tw-1": "tw"},
 		map[string]string{"md-tw-1": "md"},
 	)
-	conf := `{"listen": "127.0.0.1:0", "repositories": ["mftiko/strategies"]}`
+	conf := `{"listen": "127.0.0.1:0", "allow": ["*"]}`
 	return loadWithin(t, deploy, conf, Input{
 		EtcdPassword: "pw",
 		CookieKey:    "cookie-key",
@@ -234,7 +234,7 @@ func TestMirrorFollowsCutAndDrain(t *testing.T) {
 	conf, err := json.Marshal(map[string]any{
 		"listen":            "127.0.0.1:0",
 		"unavailable_after": "2s",
-		"repositories":      []string{"mftiko/strategies"},
+		"allow":             []string{"*"},
 		"users":             []any{map[string]string{"name": "op", "token_sha256": tokenHash("op")}},
 		"td_keys":           map[string]string{"td-tw-1": mustPub(t), "td-jp-1": mustPub(t)},
 	})

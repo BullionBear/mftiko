@@ -136,20 +136,11 @@ func (s *Server) displayRepository(path string) string {
 }
 
 func (s *Server) strategyIDForPath(path string) *string {
-	if path == "" {
+	if path == "" || repositoryShape(path) != nil {
 		return nil
 	}
-	repos, err := s.strategyRepos()
-	if err != nil {
-		return nil
-	}
-	for _, repo := range repos {
-		if repo.path == path {
-			id := repo.id
-			return &id
-		}
-	}
-	return nil
+	id := lastPathSegment(path)
+	return &id
 }
 
 func paramsView(b []byte) []byte {

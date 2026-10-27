@@ -135,6 +135,13 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 - **新增：** 部署 JSON 加上 instance → [套角色表](operations.md#新-cluster開-auth套角色表)第 3 步 → 把印出的密碼寫進該服務的 env → 啟動該 unit。
 - **永久下線：** [永久退役一個 instance](operations.md#永久退役一個-instance)，照七步做。重點：先套新的角色表、`systemctl disable --now`（只 `stop` 會被拉起來），等 agent 不在才 `mftiko instance retire`。名字不能再用。
 
+### 2.8 推一個新策略
+
+- 推到 API 設定的那一個 registry。repository 必須落在 `allow`（E10-D119）。單獨的 `*` 表示該 registry 上的任何路徑。
+- 不用重啟 API。`mftiko strategy list <repository>` 列出 tag。建立 session 時讀 manifest，`kind` 必須是 strategy（E10-D120）。
+- 不在 `allow`：`validation_failed`。registry 掛了：`registry_unavailable`（見 [§3.7](#37-registry-不可用)）。
+- 每台 registry 的帳密不是這張（#430）。API 與 STS 仍用各自現有的 `config.json`。
+
 ## 3. 故障處理
 
 ### 3.1 worker 被殺、退避或放棄
@@ -221,7 +228,8 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 告警：`MftikoRegistryDown`。
 
 - 已經在跑的 worker 不受影響。已經有就緒版本的 agent 照用那一版 spawn（E12-D009）：worker 被殺照樣從快取重拉。
-- **新的 session 建不了。** API 建立時要從 registry 解析策略，以 tag 或 digest 都回 `registry is unavailable`。這是設計：建立時以 registry 驗證策略，API 不設快取（E10-D012、E10-D057）。
+- **新的 session 建不了。** API 建立時要從 registry 讀 manifest 並檢查 kind（E10-D120）。連不上回 `registry is unavailable`；registry 沒設定回 `registry is not configured`。這是設計：建立時以 registry 驗證策略，API 不設快取（E10-D012、E10-D057）。
+- **列出 tag 也一樣。** `mftiko strategy list <repository>` 在 registry 沒設定或連不上時回 `registry_unavailable`。不在 `allow` 是 `validation_failed`，不是 503（E10-D119、E10-D121）。
 - 一個就緒版本都沒有時（新主機、新的 conn 或 account 種類、新策略），需求維持 `PENDING`，reason 是 `artifact_pulling` 或 `artifact_unavailable`，不會變 `DEAD`。registry 恢復就自己接上。
 - 401、403：`MFTIKO_REGISTRY_CREDS` 指的 `config.json` 過期或沒有權限。更新檔案（0600，屬該服務的使用者）再重啟該 agent。
 - **只有 agent 連不到 registry。** `mftiko_registry_up` 是 API 自己探的結果，維持 1，所以 `MftikoRegistryDown` 不響。新 session 維持 `pending`。`SessionStatus` 有 `artifact_pull`（失敗次數與第一次失敗時間），`mftiko_artifact_pull_failing` 是 1。告警是 `MftikoArtifactPullFailing`（範例 `for: 5m`）。agent 的 log 是 `artifact pull will retry: artifact_unavailable`。

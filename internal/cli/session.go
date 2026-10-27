@@ -718,7 +718,7 @@ func runSessionCreate(a *App) int {
 		return a.failSession(key, ExitUsage, msg)
 	}
 	if a.opt.limitSet || a.opt.cursorSet {
-		return a.failSession(key, ExitUsage, "-limit and -cursor are only for strategy list and strategy versions, and account list")
+		return a.failSession(key, ExitUsage, "-limit and -cursor are only for strategy list and account list")
 	}
 	if a.opt.waitTimeoutSet && !a.opt.wait.set {
 		return a.failSession(key, ExitUsage, "-wait-timeout requires -wait")

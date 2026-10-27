@@ -104,7 +104,7 @@ func TestRetireInstance(t *testing.T) {
 
 func TestRetireReleasesAlgo(t *testing.T) {
 	se := newSessionEnv(t, sessionOpt{})
-	acct := `{"name":"n","sts_instance":"sts-tw-1","strategy":{"id":"strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"algo_ids":[7]}]}`
+	acct := `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"algo_ids":[7]}]}`
 	code, hdr, body := se.post(t, acct, nil)
 	first := mustSession(t, code, hdr, body)
 	seen(t, se.s, "tw", state.SessionSpecKey("sts-tw-1", first.Id))

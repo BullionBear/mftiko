@@ -83,15 +83,15 @@ func (f *flow) mainSteps(credsFile, kind, ticker, topic string, algo int, offset
 	apiID := acc.JSON201.ApiId
 	say("account api_id %d on %s", apiID, tdInst)
 
-	versions, err := f.a.ListStrategyVersionsWithResponse(f.ctx, strategyID, nil)
+	listed, err := f.a.ListStrategiesWithResponse(f.ctx, &apiv1.ListStrategiesParams{Repository: strategyRepository}, nil)
 	if err != nil {
 		return err
 	}
-	if versions.JSON200 == nil {
-		return statusOf(versions.HTTPResponse, versions.Body)
+	if listed.JSON200 == nil {
+		return statusOf(listed.HTTPResponse, listed.Body)
 	}
-	if !slices.ContainsFunc(versions.JSON200.Items, func(t apiv1.StrategyTag) bool { return t.Tag == strategyTag }) {
-		return fmt.Errorf("%s has no version tagged %s: was it packed?", strategyID, strategyTag)
+	if !slices.ContainsFunc(listed.JSON200.Items, func(t apiv1.StrategyTag) bool { return t.Tag == strategyTag }) {
+		return fmt.Errorf("%s has no version tagged %s: was it packed?", strategyRepository, strategyTag)
 	}
 
 	params, err := json.Marshal(map[string]any{
@@ -104,7 +104,7 @@ func (f *flow) mainSteps(credsFile, kind, ticker, topic string, algo int, offset
 	feed := topic + "." + ticker
 	body := apiv1.SessionCreate{
 		Name: "accept-main", StsInstance: stsInst,
-		Strategy: apiv1.StrategySelector{Id: strategyID, Ref: strategyTag},
+		Strategy: apiv1.StrategySelector{Repository: strategyRepository, Ref: strategyTag},
 		Params:   &raw,
 		Feeds:    &[]apiv1.FeedDeclInput{{Feed: feed, MdInstance: mdInst}},
 		Accounts: &[]apiv1.AccountDeclInput{{Name: "main", ApiId: apiID, AlgoIds: []int{algo}}},

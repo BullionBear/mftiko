@@ -131,7 +131,7 @@ func TestRunCanceled(t *testing.T) {
 	if err := os.WriteFile(deploy, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	conf := `{"listen":"127.0.0.1:0","repositories":["mftiko/strategies"]}`
+	conf := `{"listen":"127.0.0.1:0","allow":["*"]}`
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	errCh := make(chan error, 1)
@@ -383,9 +383,9 @@ func TestChildFollowsAndShutsDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	conf, err := json.Marshal(map[string]any{
-		"listen":       "127.0.0.1:0",
-		"repositories": []string{"mftiko/strategies"},
-		"users":        []any{map[string]string{"name": "op", "token_sha256": tokenHash("op")}},
+		"listen": "127.0.0.1:0",
+		"allow":  []string{"*"},
+		"users":  []any{map[string]string{"name": "op", "token_sha256": tokenHash("op")}},
 	})
 	if err != nil {
 		t.Fatal(err)

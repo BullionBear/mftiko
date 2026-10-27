@@ -6,7 +6,7 @@
 // "-" reads stdin. -config is the API JSON, a file, or "-" when -in is not stdin:
 //
 //	users[].name, users[].token_sha256   one static token per user, stored as SHA-256 (E10-D009, E10-D055)
-//	repositories                          strategy repositories, path without the registry host (E10-D013, E10-D060)
+//	allow                                 strategy repository allowlist; "*" or host plus path prefix (E10-D119)
 //	registry, registry_creds, plain_http  registry host[:port], Docker config.json, http for dev (E09-D033, E10-D060)
 //	td_keys                               TD instance name → public key, the mftiko-seal pubkey form (E10-D011)
 //	retention                             W5 retention, Go duration, default 168h (E10-D017)
@@ -97,7 +97,7 @@ func parseArgs(args []string, getenv func(string) string) (options, bool, error)
 	fs.SetOutput(io.Discard)
 	version := fs.Bool("version", false, "print the release and exit")
 	fs.StringVar(&opt.in, "in", "", "deployment JSON, the same file as mftiko-etcd-roles; - for stdin")
-	fs.StringVar(&opt.config, "config", "", "API JSON (users, repositories, registry, td keys, retention, thresholds); - for stdin")
+	fs.StringVar(&opt.config, "config", "", "API JSON (users, allow, registry, td keys, retention, thresholds); - for stdin")
 	fs.StringVar(&opt.web, "web", "", "console build directory, served from disk; empty serves the API only")
 	fs.StringVar(&opt.cert, "tls-cert", "", "TLS certificate; with -tls-key, serve HTTPS and HTTP/2")
 	fs.StringVar(&opt.key, "tls-key", "", "TLS private key; with -tls-cert, serve HTTPS and HTTP/2")

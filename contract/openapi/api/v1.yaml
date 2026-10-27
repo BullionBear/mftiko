@@ -1,15 +1,16 @@
-# Source of truth for contract A (PROTOCOL §0, §1). Final since E10-20 (E10-D018, E10-D116): within v1, compatible
-# additions only; CI runs oasdiff breaking against the base and fails on a breaking change.
-# console 與 CLI 只認這份契約，不認平台的 proto（E10-D002）。
+# Source of truth for contract A (PROTOCOL §0, §1). Final since E10-20 (E10-D018, E10-D116).
+# E10-D118 (#429) is the one in-place break: info.version 2.0.0, path still /api/v1.
+# oasdiff ignores only the lines in contract/openapi/api-v1-err-ignore.txt. The next incompatible
+# change opens v2.yaml. console 與 CLI 只認這份契約，不認平台的 proto（E10-D002）。
 openapi: 3.0.3
 info:
   title: mftiko API
-  version: 1.0.1
+  version: 2.0.0
   description: |
     mftiko API server 的對外契約（DECISIONS E10-D001、E10-D002）。
 
     **慣例（E10-D036）**
-    - 路徑都在 `/api/v1` 底下；同一個 major 內只做相容擴充，讀取端忽略不認得的欄位。
+    - 路徑都在 `/api/v1` 底下。`2.0.0` 這一次在原地拿掉策略 `id`（E10-D118）；之後同一個檔案只做相容擴充，讀取端忽略不認得的欄位。下一次不相容另開 `v2.yaml`。
     - 時間是 RFC 3339 字串（UTC，奈秒精度可省略）。
     - enum 是 API 自己的小寫字串，不是 proto 的名稱。
     - 錯誤一律是 `application/problem+json`（RFC 9457），另帶穩定的 `code`；驗證錯誤的 `errors[].path` 是 JSON Pointer（RFC 6901），指向請求 body 裡的欄位（E10-D004）。
@@ -28,7 +29,7 @@ tags:
   - name: auth
     description: 每人一個靜態 token，console 換成 cookie（E10-D009）。
   - name: strategies
-    description: 策略目錄，以 registry 為準（E10-D013、E10-D035）。
+    description: 一個策略 repository 的 tag。`repository` 是完整路徑，必須在 allow 清單裡（E10-D118、E10-D119、E10-D121）。
   - name: sessions
     description: 存活中與保留期內的 session，來自 etcd（E00-D004）。
   - name: session-records
@@ -97,87 +98,39 @@ paths:
     get:
       tags: [strategies]
       operationId: listStrategies
-      summary: 列出策略
+      summary: 列出一個策略 repository 的 tag
       description: |
-        部署設定裡每個 repository 一項（E10-D013）。`id` 是 repository 路徑的最後一段（E10-D035）。
-        依 `id` 排序後以 `limit`、`cursor` 分頁。沒有快取：這一頁的 `latest` 每次向 registry 解析，同時最多 8 個請求（E10-D057）。
-        `latest` 是普通的 tag（E10-D058、E10-D013）。連不上 registry 或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
+        `repository` 是完整路徑，例如 `ghcr.io/acme/md_watch`（E10-D121）。
+        必須在部署設定的 allow 清單裡，而且在這台 API 設定的 registry 上（E10-D119）。
+        不在 allow 清單，或 host 不是設定的 registry，回 400 `validation_failed`，`errors[].path` 是 `/repository`。
+        回應是這個 repository 的 tag，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
+        一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序（E10-D058）。
+        `latest` 是名為 `latest` 的 tag；沒有這個 tag 就省略。它不在這一頁時仍然回（E10-D121）。
+        解析同時最多 8 個請求，沒有快取（E10-D057）。不讀 manifest，不檢查 kind。
+        registry 說 repository 不存在回 404 `not_found`。連不上或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
       parameters:
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Cursor'
-      responses:
-        '200':
-          description: 策略。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StrategyList'
-        '400':
-          $ref: '#/components/responses/ValidationFailed'
-        '401':
-          $ref: '#/components/responses/Unauthenticated'
-        '503':
-          $ref: '#/components/responses/Unavailable'
-  /strategies/{strategy_id}/versions:
-    get:
-      tags: [strategies]
-      operationId: listStrategyVersions
-      summary: 列出策略的版本
-      description: |
-        registry 的 tag 清單，每個 tag 解析成 digest。同一個 digest 有多個 tag 時各列一項。
-        一次取回完整清單（client 跟著 registry 的分頁），依 tag 名稱排序，`latest` 是普通的一項（E10-D058）。
-        解析同時最多 8 個請求，沒有快取（E10-D057）。連不上或 registry 5xx 回 503 `registry_unavailable`（E10-D059）。
-      parameters:
-        - $ref: '#/components/parameters/StrategyID'
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Cursor'
-      responses:
-        '200':
-          description: 版本。
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StrategyTagList'
-        '400':
-          $ref: '#/components/responses/ValidationFailed'
-        '401':
-          $ref: '#/components/responses/Unauthenticated'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '503':
-          $ref: '#/components/responses/Unavailable'
-  /strategies/{strategy_id}/versions/{ref}:
-    get:
-      tags: [strategies]
-      operationId: getStrategyVersion
-      summary: 一個版本的 manifest
-      description: |
-        `ref` 是 tag，或 digest（`sha256:…`）。tag 先解析成 digest（E09-D034）。
-        manifest 讀不出來，或不是策略 artifact，回 502 `invalid_artifact`（E10-D059）。
-        連不上 registry 或 registry 5xx 回 503 `registry_unavailable`。不存在回 404。
-      parameters:
-        - $ref: '#/components/parameters/StrategyID'
-        - name: ref
-          in: path
+        - name: repository
+          in: query
           required: true
+          description: 完整的 repository 路徑（registry host 加路徑）。
           schema:
             type: string
             minLength: 1
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: manifest 摘要。
+          description: tag 與 latest。
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/StrategyVersion'
+                $ref: '#/components/schemas/StrategyRepository'
         '400':
           $ref: '#/components/responses/ValidationFailed'
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
-        '502':
-          $ref: '#/components/responses/InvalidArtifact'
         '503':
           $ref: '#/components/responses/Unavailable'
 
@@ -723,13 +676,6 @@ components:
       required: true
       schema:
         $ref: '#/components/schemas/APIIDValue'
-    StrategyID:
-      name: strategy_id
-      in: path
-      required: true
-      schema:
-        type: string
-        minLength: 1
 
   responses:
     ValidationFailed:
@@ -882,28 +828,6 @@ components:
           nullable: true
 
     # ---------- 策略 ----------
-    Strategy:
-      type: object
-      required: [id, repository]
-      properties:
-        id:
-          type: string
-          description: repository 路徑的最後一段（E10-D035）。
-        repository:
-          type: string
-          example: ghcr.io/bullionbear/strategy-chase
-        latest:
-          $ref: '#/components/schemas/StrategyTag'
-    StrategyList:
-      type: object
-      required: [items]
-      properties:
-        items:
-          type: array
-          items:
-            $ref: '#/components/schemas/Strategy'
-        next_cursor:
-          type: string
     StrategyTag:
       type: object
       required: [tag, digest]
@@ -912,49 +836,25 @@ components:
           type: string
         digest:
           $ref: '#/components/schemas/Digest'
-    StrategyTagList:
+    StrategyRepository:
       type: object
-      required: [items]
+      description: 一個 repository 的 tag。`latest` 不在 `items` 這一頁時仍然回（E10-D121）。
+      required: [repository, items]
       properties:
+        repository:
+          type: string
+          description: 請求的完整路徑，去掉結尾的 `/`。
+          example: ghcr.io/acme/md_watch
         items:
           type: array
           items:
             $ref: '#/components/schemas/StrategyTag'
+        latest:
+          allOf:
+            - $ref: '#/components/schemas/StrategyTag'
+          description: 名為 `latest` 的 tag。repository 沒有這個 tag 就省略。
         next_cursor:
           type: string
-    StrategyVersion:
-      type: object
-      description: manifest 的摘要（PROTOCOL §8.2）。
-      required: [strategy_id, repository, digest, tags, name, runtime, os, arch, contracts]
-      properties:
-        strategy_id:
-          type: string
-        repository:
-          type: string
-        digest:
-          $ref: '#/components/schemas/Digest'
-        tags:
-          type: array
-          items:
-            type: string
-        name:
-          type: string
-          description: manifest 裡的 `name`（`mftiko-pack -name`），只供顯示。
-        runtime:
-          type: string
-        os:
-          type: string
-        arch:
-          type: string
-        sdk:
-          type: string
-        contracts:
-          type: array
-          items:
-            type: string
-        size_bytes:
-          type: integer
-          format: int64
 
     # ---------- session：宣告 ----------
     SessionCreate:
@@ -1014,14 +914,15 @@ components:
             $ref: '#/components/schemas/InputDecl'
     StrategySelector:
       type: object
-      required: [id, ref]
+      required: [repository, ref]
       properties:
-        id:
+        repository:
           type: string
-          description: '`GET /strategies` 的 `id`。'
+          description: 完整路徑，例如 `ghcr.io/acme/md_watch`。必須在 allow 清單裡，而且在設定的 registry 上（E10-D119）。
+          example: ghcr.io/acme/md_watch
         ref:
           type: string
-          description: tag 或 digest。tag 由 API 解析成 digest 再寫進 spec（E09-D034）。
+          description: tag 或 digest。tag 由 API 解析成 digest 再寫進 spec（E09-D034）。API 讀 manifest，`kind` 必須是 strategy（E10-D120）。
     FeedDeclInput:
       type: object
       required: [feed, md_instance]
@@ -1147,7 +1048,7 @@ components:
       properties:
         id:
           type: string
-          description: repository 不在目前的部署設定裡時省略。
+          description: 儲存路徑的最後一段，只供顯示。路徑是空的就省略（E10-D118）。
         name:
           type: string
         digest:
