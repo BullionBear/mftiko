@@ -280,7 +280,7 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 | reason | 意思 | 做 |
 |---|---|---|
 | `artifact_too_large` | 壓縮後超過 STS 的 `-max-artifact-bytes`。API 的 `max_input_bytes` 比它大才會走到這裡 | 拆成幾個 input，或把兩邊一起調大（[上限](operations.md#上限)） |
-| `artifact_unsafe_layer` | 解開時被拒：超過 4 GiB 或 100,000 個 entry，或有不允許的項目（絕對路徑、`..`、device、`.wh.*`） | 用 `mftiko-pack data` 重推，它在推之前就擋這些；超過上限就拆 |
+| `artifact_unsafe_layer` | 解開時被拒：超過 STS 的 `-max-unpacked-bytes` 或 `-max-unpacked-files`（預設 4 GiB、100,000 個 entry），或有不允許的項目（絕對路徑、`..`、device、`.wh.*`） | 用 `mftiko-pack data` 重推，它在推之前就擋這些；超過上限就拆，或把 STS 與 `mftiko-pack data` 的同名旗標一起調大（[上限](operations.md#上限)） |
 | `artifact_wrong_mediatype` | 那個 digest 不是資料 artifact，例如貼成策略 image 的 digest。API 建立時會擋，所以通常是 spec 不是經 API 寫的 | 用 `mftiko-pack data` 印出的 digest 重建 |
 | `artifact_unauthorized` | STS 讀那個 host 得到 401、403。API 讀得到（建立成功），STS 的 `MFTIKO_REGISTRY_CREDS` 卻沒有那個 host，或那一筆過期 | 在 STS 主機對該 host `docker login`，寫進 `MFTIKO_REGISTRY_CREDS` 指的檔（0600，`mftiko-sts`），`systemctl restart mftiko-sts-agent` |
 | `artifact_not_found` | 建立之後，那個 digest 在 registry 上不見了 | 重推，用新的 digest 重建 |

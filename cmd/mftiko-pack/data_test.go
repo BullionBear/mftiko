@@ -109,6 +109,47 @@ func TestPackDataSymlinkHint(t *testing.T) {
 	}
 }
 
+func TestPackDataUnpackLimitFlags(t *testing.T) {
+	t.Setenv("DOCKER_CONFIG", t.TempDir())
+	reg := newCLIRegistry()
+	defer reg.Close()
+	dir := modelDir(t)
+	args := []string{"-dir", dir, "-repo", reg.repo(), "-plain-http"}
+	var plain, zero bytes.Buffer
+	if err := runData(args, &plain, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if err := runData(append(append([]string{}, args...), "-max-unpacked-bytes", "0", "-max-unpacked-files", "0"), &zero, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(plain.String()) == "" || strings.TrimSpace(plain.String()) != strings.TrimSpace(zero.String()) {
+		t.Fatalf("omitted %q, explicit zero %q", plain.String(), zero.String())
+	}
+	before := reg.hits()
+	err := runData(append(append([]string{}, args...), "-max-unpacked-bytes", "1"), io.Discard, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "limit") {
+		t.Fatalf("small byte limit: %v", err)
+	}
+	for _, bad := range [][]string{
+		{"-max-unpacked-bytes", "-1"},
+		{"-max-unpacked-files", "-1"},
+	} {
+		if err := runData(append(append([]string{}, args...), bad...), io.Discard, io.Discard); err == nil || !strings.Contains(err.Error(), "-max-unpacked-") {
+			t.Fatalf("%q: %v", bad, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "more.txt"), []byte("aaaa"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err = runData(append(append([]string{}, args...), "-max-unpacked-files", "1"), io.Discard, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "limit") {
+		t.Fatalf("file limit: %v", err)
+	}
+	if reg.hits() != before {
+		t.Fatalf("registry requests %d after rejected uploads, want %d", reg.hits(), before)
+	}
+}
+
 func TestPackDataErrors(t *testing.T) {
 	t.Setenv("DOCKER_CONFIG", t.TempDir())
 	reg := newCLIRegistry()

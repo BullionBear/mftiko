@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog"
 
 	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
+	"github.com/BullionBear/mftiko/internal/platform/artifact"
 )
 
 func TestInputNames(t *testing.T) {
@@ -44,7 +45,7 @@ func TestInputNames(t *testing.T) {
 }
 
 func TestInflightLayers(t *testing.T) {
-	p := newPuller(context.Background(), nil, t.TempDir(), 0, zerolog.Nop(), time.Now)
+	p := newPuller(context.Background(), nil, t.TempDir(), 0, artifact.UnpackLimits{}, zerolog.Nop(), time.Now)
 	dig := "sha256:" + strings.Repeat("ab", 32)
 	p.inputs[inputKey("s", "model")] = &inputJob{running: true, layers: []string{dig, "nope"}}
 	got := p.inflightLayers()

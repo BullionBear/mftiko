@@ -54,8 +54,8 @@ type DataFetched struct {
 // PullData fetches one data artifact (E09-D072). It checks artifactType, the config media type, and that
 // there is a single layer of the data media type. Download, verification, the layer cache, and
 // single-flight are the worker pull's. The download cap is MaxBytes, the same deployment limit as a
-// strategy pull (E09-D013, default DefaultMaxBytes). E09-D072's size and unpack limits are the strategy
-// unpack limits (E09-D053: 4 GiB and 100,000 files); the caller passes a zero UnpackLimits.
+// strategy pull (E09-D013, default DefaultMaxBytes). The unpack that follows uses the deployment's
+// UnpackLimits (E09-D053, E15-D012); a zero value is 4 GiB and 100,000 files.
 func (c *Client) PullData(ctx context.Context, req DataRequest) (*DataFetched, error) {
 	if req.Repository == "" {
 		return nil, badRequest("repository is required")

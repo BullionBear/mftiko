@@ -57,10 +57,14 @@ type Config struct {
 	DataRepository   string
 	PlainHTTPHosts   []string
 	MaxArtifactBytes int64
-	RecvWindowMS     int
-	HookTimeoutS     int
-	StartTimeoutS    int
-	VolumeMB         int
+	// UnpackLimits caps one rootfs and each input, compared separately
+	// (E15-D012–E15-D014, E09-D053). A zero field means the default
+	// (4 GiB, 100,000 entries). A negative field fails startup.
+	UnpackLimits  artifact.UnpackLimits
+	RecvWindowMS  int
+	HookTimeoutS  int
+	StartTimeoutS int
+	VolumeMB      int
 	// VolumeInterval is how often volumes are measured (E09-D076). 0 takes DefaultVolumeInterval.
 	VolumeInterval time.Duration
 	Grace          time.Duration
@@ -124,6 +128,12 @@ func (cfg *Config) applyDefaults() {
 	if cfg.MaxArtifactBytes <= 0 {
 		cfg.MaxArtifactBytes = DefaultMaxArtifactBytes
 	}
+	if cfg.UnpackLimits.MaxBytes == 0 {
+		cfg.UnpackLimits.MaxBytes = artifact.DefaultMaxUnpackedBytes
+	}
+	if cfg.UnpackLimits.MaxFiles == 0 {
+		cfg.UnpackLimits.MaxFiles = artifact.DefaultMaxFiles
+	}
 	if cfg.ArtifactPoll <= 0 {
 		cfg.ArtifactPoll = time.Minute
 	}
@@ -152,6 +162,9 @@ func (cfg Config) validate() error {
 	if cfg.MaxArtifactBytes < 0 {
 		return errors.New("sts: max artifact bytes")
 	}
+	if cfg.UnpackLimits.MaxBytes < 0 || cfg.UnpackLimits.MaxFiles < 0 {
+		return fmt.Errorf("sts: unpack limits bytes %d files %d", cfg.UnpackLimits.MaxBytes, cfg.UnpackLimits.MaxFiles)
+	}
 	if cfg.VolumeInterval < 0 {
 		return errors.New("sts: volume interval")
 	}
@@ -177,6 +190,8 @@ func Run(ctx context.Context, cfg Config) error {
 		Str("data_repository", cfg.DataRepository).
 		Str("plain_http_hosts", strings.Join(cfg.PlainHTTPHosts, ",")).
 		Int64("max_artifact_bytes", cfg.MaxArtifactBytes).
+		Int64("max_unpacked_bytes", cfg.UnpackLimits.MaxBytes).
+		Int("max_unpacked_files", cfg.UnpackLimits.MaxFiles).
 		Int("recv_window_ms", cfg.RecvWindowMS).
 		Int("hook_timeout_s", cfg.HookTimeoutS).
 		Int("start_timeout_s", cfg.StartTimeoutS).
@@ -244,7 +259,7 @@ func Run(ctx context.Context, cfg Config) error {
 	if err := cleanInputTemps(cfg.DataDir); err != nil {
 		return err
 	}
-	pulls := newPuller(ctx, art, cfg.DataDir, cfg.MaxArtifactBytes, cfg.Log, cfg.Now)
+	pulls := newPuller(ctx, art, cfg.DataDir, cfg.MaxArtifactBytes, cfg.UnpackLimits, cfg.Log, cfg.Now)
 	tags := newLatestTags(art, cfg.ArtifactPoll, cfg.Log)
 	go tags.Run(mctx)
 	vols := newVolumer(cfg.DataDir, cfg.VolumeInterval, cfg.Log)

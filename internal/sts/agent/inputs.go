@@ -223,7 +223,7 @@ func (p *puller) runInput(id, name, repository, digest string, ctx context.Conte
 		return
 	}
 	// Read-only before the rename, so dest never shows the extraction's permissions (E09-D075, E09-D096).
-	if err := artifact.UnpackReadOnly(ctx, []string{fetched.Layer.Path}, dest, artifact.UnpackLimits{}); err != nil {
+	if err := artifact.UnpackReadOnly(ctx, []string{fetched.Layer.Path}, dest, p.limits); err != nil {
 		p.finishInput(key, err)
 		return
 	}
