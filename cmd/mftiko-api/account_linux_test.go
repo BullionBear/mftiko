@@ -33,13 +33,14 @@ import (
 	"github.com/BullionBear/mftiko/exchange/exchangetest"
 	"github.com/BullionBear/mftiko/internal/api"
 	platagent "github.com/BullionBear/mftiko/internal/platform/agent"
-	"github.com/BullionBear/mftiko/internal/platform/logger"
+	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/sealbox"
 	"github.com/BullionBear/mftiko/internal/platform/shim"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 	"github.com/BullionBear/mftiko/internal/platform/state/etcdtest"
 	"github.com/BullionBear/mftiko/internal/td/account"
 	tdagent "github.com/BullionBear/mftiko/internal/td/agent"
+	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
 const (
@@ -58,7 +59,7 @@ func init() {
 		case os.Getenv(envTDWorker) == "1":
 			return runAccountWorker(), true
 		case os.Getenv(envTDShim) == "1":
-			return shim.Run(logger.NewWithWriter("mftiko-shim", os.Stderr)), true
+			return shim.Run(logger.NewWithWriter("mftiko-shim", buildinfo.Version, buildinfo.CommitHash, os.Stderr)), true
 		default:
 			return 0, false
 		}
@@ -83,7 +84,7 @@ func runAccountWorker() int {
 		cfg.StreamEndpoint = "ws" + strings.TrimPrefix(srv.URL, "http")
 		return open(cfg)
 	}
-	log := logger.New("mftiko-td-account")
+	log := logger.New("mftiko-td-account", buildinfo.Version, buildinfo.CommitHash)
 	fd := os.NewFile(3, "ctl")
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
@@ -174,7 +175,7 @@ func TestAPISealedAccountReachesReady(t *testing.T) {
 			MinBackoff:    20 * time.Millisecond,
 			MaxBackoff:    200 * time.Millisecond,
 		},
-		Log: logger.NewWithWriter("mftiko-api", apiLog).Level(zerolog.InfoLevel),
+		Log: logger.NewWithWriter("mftiko-api", buildinfo.Version, buildinfo.CommitHash, apiLog).Level(zerolog.InfoLevel),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -248,7 +249,7 @@ func TestAPISealedAccountReachesReady(t *testing.T) {
 	t.Cleanup(func() { os.RemoveAll(wd) })
 	journal := filepath.Join(t.TempDir(), "starts")
 	agentLog := &safeBuf{}
-	log := logger.NewWithWriter("mftiko-td-agent", agentLog).Level(zerolog.InfoLevel)
+	log := logger.NewWithWriter("mftiko-td-agent", buildinfo.Version, buildinfo.CommitHash, agentLog).Level(zerolog.InfoLevel)
 	var mu sync.Mutex
 	var pids []int
 	agentCfg := tdagent.Config{

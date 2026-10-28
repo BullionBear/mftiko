@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	mdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1"
 	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
@@ -17,7 +19,7 @@ import (
 
 func TestHelloEmptyParams(t *testing.T) {
 	f := &fakeCtx{}
-	h := &hello{out: &bytes.Buffer{}}
+	h := &hello{}
 	if err := h.OnInit(f); err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +44,8 @@ func TestHelloPlacesAndCancels(t *testing.T) {
 		bookOK: true,
 	}
 	var buf bytes.Buffer
-	h := &hello{out: &buf}
+	f.logs = &buf
+	h := &hello{}
 	if err := h.OnInit(f); err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +96,7 @@ func TestHelloPlacesAndCancels(t *testing.T) {
 		}
 	}
 	if !sawCancel || !sawRecon {
-		t.Fatalf("stdout %s", buf.String())
+		t.Fatalf("log %s", buf.String())
 	}
 }
 
@@ -141,6 +144,14 @@ type fakeCtx struct {
 	submitted []sdk.Order
 	cancelled []string
 	open      []*tdv1.Order
+	logs      *bytes.Buffer
+}
+
+func (f *fakeCtx) Log() zerolog.Logger {
+	if f.logs == nil {
+		return zerolog.Nop()
+	}
+	return zerolog.New(f.logs).With().Timestamp().Logger()
 }
 
 func (f *fakeCtx) SessionID() string { return "c0ffee" }

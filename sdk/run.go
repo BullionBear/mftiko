@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"runtime/debug"
 	"strconv"
 	"syscall"
 
@@ -27,20 +26,23 @@ var emitGate = func() {
 // not watch signals (DECISIONS E08-D006).
 func Run(s Strategy) {
 	if s == nil {
-		fmt.Fprintln(os.Stderr, "mftiko sdk: nil strategy")
+		log := Log()
+		log.Error().Msg("nil strategy")
 		os.Exit(c4.ExitInit)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer stop()
 	fd, err := ctlFD()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "mftiko sdk: control fd")
+		log := Log()
+		log.Error().Msg("control fd")
 		os.Exit(c4.ExitInit)
 	}
 	syscall.CloseOnExec(fd)
 	f := os.NewFile(uintptr(fd), "ctl")
 	if f == nil {
-		fmt.Fprintln(os.Stderr, "mftiko sdk: control fd")
+		log := Log()
+		log.Error().Msg("control fd")
 		os.Exit(c4.ExitInit)
 	}
 	os.Exit(serve(ctx, f, s, host{}))
@@ -56,7 +58,8 @@ func serve(ctx context.Context, rw io.ReadWriteCloser, s Strategy, h host) int {
 	logf := h.c4log
 	if logf == nil {
 		logf = func(msg string, err error) {
-			fmt.Fprintf(os.Stderr, "mftiko sdk: %s: %v\n", msg, err)
+			log := p.logger()
+			log.Error().Err(err).Msg(msg)
 		}
 	}
 	return c4.Serve(ctx, rw, c4.Config{
@@ -67,24 +70,6 @@ func serve(ctx context.Context, rw io.ReadWriteCloser, s Strategy, h host) int {
 		InitCarriesLive: true,
 		Log:             logf,
 	}, p)
-}
-
-// release is the module version, or the VCS revision, from the build info.
-// The session binary does not import the platform's buildinfo package.
-func release() string {
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return ""
-	}
-	if info.Main.Version != "" && info.Main.Version != "(devel)" {
-		return info.Main.Version
-	}
-	for _, s := range info.Settings {
-		if s.Key == "vcs.revision" && s.Value != "" {
-			return s.Value
-		}
-	}
-	return ""
 }
 
 // ctlFD is MFTIKO_CTL_FD, or 3, the socketpair end the shim leaves in place (PROTOCOL §5.1).

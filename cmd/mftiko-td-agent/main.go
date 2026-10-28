@@ -26,11 +26,11 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/agent/latest"
 	"github.com/BullionBear/mftiko/internal/platform/artifact"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
-	"github.com/BullionBear/mftiko/internal/platform/logger"
 	"github.com/BullionBear/mftiko/internal/platform/natsdev"
 	"github.com/BullionBear/mftiko/internal/platform/sealbox"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 	"github.com/BullionBear/mftiko/internal/td/agent"
+	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
 type options struct {
@@ -67,7 +67,7 @@ func main() {
 		fmt.Println(buildinfo.String())
 		return
 	}
-	log := logger.New("mftiko-td-agent")
+	log := logger.New("mftiko-td-agent", buildinfo.Version, buildinfo.CommitHash)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx, o, log); err != nil && !errors.Is(err, context.Canceled) {

@@ -28,7 +28,10 @@ def summarise(since, path):
                 continue
             try:
                 line = json.loads(raw)
-                t = ts(line["ts"])
+                stamp = line.get("time") or line.get("ts")
+                if not stamp:
+                    continue
+                t = ts(stamp)
             except (ValueError, KeyError):
                 continue
             if t < since:

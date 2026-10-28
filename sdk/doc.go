@@ -1,6 +1,10 @@
 // Package sdk is the Go strategy SDK and the reference implementation of the session worker
 // contract (DECISIONS E08-D002, PROTOCOL §9). A strategy is a Go program whose main calls Run.
 //
+// Log and Context.Log are the strategy logger, the same zerolog line the platform writes
+// (DECISIONS E15-D017–E15-D022). component is strategy; version and commit come from this binary;
+// Context.Log also carries session_id. Both write stderr. Stdout stays the strategy's own data.
+//
 // A strategy implements Strategy and the optional hooks it needs (strategy.go), and acts through
 // Context (context.go). Instruments are UIDs throughout (DECISIONS E08-D004, E08-D023–E08-D026). Resolve and
 // Info are implemented by sdk/internal/symclient. The TD path (Submit, Cancel, BatchCancel, the

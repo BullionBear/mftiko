@@ -18,9 +18,10 @@ import (
 	shimv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/shim/v1"
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
 	"github.com/BullionBear/mftiko/contract/wire/frame"
-	"github.com/BullionBear/mftiko/internal/platform/logger"
+	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/shim"
 	"github.com/BullionBear/mftiko/internal/platform/shim/fakeworker"
+	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
 // These run the client against a real shim, the test binary re-executed, with the fake worker under it.
@@ -31,7 +32,7 @@ const envTestShim = "MFTIKO_TEST_SHIM"
 func TestMain(m *testing.M) {
 	fakeworker.MaybeMain()
 	if os.Getenv(envTestShim) == "1" {
-		os.Exit(shim.Run(logger.NewWithWriter("mftiko-shim", os.Stderr)))
+		os.Exit(shim.Run(logger.NewWithWriter("mftiko-shim", buildinfo.Version, buildinfo.CommitHash, os.Stderr)))
 	}
 	os.Exit(m.Run())
 }

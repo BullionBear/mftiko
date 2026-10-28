@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/artifact"
 	"github.com/BullionBear/mftiko/internal/platform/shim"
 	"github.com/BullionBear/mftiko/internal/sts"
+	"github.com/BullionBear/mftiko/pkg/logger"
 	"github.com/BullionBear/mftiko/sdk"
 )
 
@@ -181,6 +184,87 @@ func TestLaunchOutputLimits(t *testing.T) {
 	if l.GetOutput().GetMaxBytes() != shim.MinOutputMaxBytes || l.GetOutput().GetKeep() != 2 {
 		t.Fatalf("output %+v", l.GetOutput())
 	}
+}
+
+func TestLaunchPassesLogEnv(t *testing.T) {
+	root := t.TempDir()
+	launch := func(env []string) []string {
+		t.Helper()
+		p := &Program{Env: env}
+		p.note("a1b2c3", "h", &sessionv1.SessionSpec{Name: "n"}, nil)
+		p.setImage("a1b2c3", root, artifact.Manifest{Entrypoint: []string{"bin"}})
+		l, err := p.Launch(WorkerKey("a1b2c3"), Spec{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return l.GetEnv()
+	}
+	countPrefix := func(env []string, prefix string) int {
+		n := 0
+		for _, e := range env {
+			if strings.HasPrefix(e, prefix) {
+				n++
+			}
+		}
+		return n
+	}
+
+	t.Run("copied", func(t *testing.T) {
+		t.Setenv(logger.EnvLevel, "debug")
+		t.Setenv(logger.EnvFormat, "json")
+		env := launch([]string{"MFTIKO_NATS_URL=nats://127.0.0.1:1"})
+		if !containsStr(env, "MFTIKO_LOG_LEVEL=debug") || !containsStr(env, "MFTIKO_LOG_FORMAT=json") {
+			t.Fatalf("env %v", env)
+		}
+		if !containsStr(env, "MFTIKO_NATS_URL=nats://127.0.0.1:1") {
+			t.Fatalf("env %v", env)
+		}
+	})
+	t.Run("empty is passed", func(t *testing.T) {
+		t.Setenv(logger.EnvLevel, "")
+		t.Setenv(logger.EnvFormat, "")
+		env := launch(nil)
+		if !containsStr(env, "MFTIKO_LOG_LEVEL=") || !containsStr(env, "MFTIKO_LOG_FORMAT=") {
+			t.Fatalf("env %v", env)
+		}
+	})
+	t.Run("unset is omitted", func(t *testing.T) {
+		hideEnv(t, logger.EnvLevel)
+		hideEnv(t, logger.EnvFormat)
+		env := launch(nil)
+		if countPrefix(env, "MFTIKO_LOG_LEVEL=") != 0 || countPrefix(env, "MFTIKO_LOG_FORMAT=") != 0 {
+			t.Fatalf("env %v", env)
+		}
+	})
+	t.Run("program env wins", func(t *testing.T) {
+		t.Setenv(logger.EnvLevel, "debug")
+		t.Setenv(logger.EnvFormat, "console")
+		env := launch([]string{"MFTIKO_LOG_LEVEL=warn"})
+		if !containsStr(env, "MFTIKO_LOG_LEVEL=warn") || containsStr(env, "MFTIKO_LOG_LEVEL=debug") {
+			t.Fatalf("env %v", env)
+		}
+		if countPrefix(env, "MFTIKO_LOG_LEVEL=") != 1 {
+			t.Fatalf("env %v", env)
+		}
+		if !containsStr(env, "MFTIKO_LOG_FORMAT=console") {
+			t.Fatalf("env %v", env)
+		}
+	})
+}
+
+func hideEnv(t *testing.T, key string) {
+	t.Helper()
+	v, ok := os.LookupEnv(key)
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if ok {
+			os.Setenv(key, v)
+		} else {
+			os.Unsetenv(key)
+		}
+	})
 }
 
 func TestVersionOrdersEpochFirst(t *testing.T) {

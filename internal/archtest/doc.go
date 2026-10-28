@@ -6,7 +6,8 @@
 //   - exchange depends only on contract. The exchange package itself, the adapter interfaces, links none of
 //     fasthttp, coder/websocket or sonic: they belong to the workers and exchange/transport, and sonic also to
 //     exchange/internal/codec (DECISIONS E03-D002).
-//   - sdk depends only on contract, and nothing it links may be etcd, a PostgreSQL driver, exchange or internal.
+//   - sdk depends only on contract and pkg/logger. pkg/logger depends only on zerolog and the standard library.
+//     Nothing sdk links may be etcd, a PostgreSQL driver, exchange or internal (E15-D018).
 //   - examples use only sdk and contract, as an outside author would.
 //   - internal/platform imports no plane and no exchange.
 //   - The planes (internal/api, sts, md, td, sym, controller) do not import each other. They use exchange's

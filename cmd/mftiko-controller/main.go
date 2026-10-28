@@ -29,8 +29,8 @@ import (
 
 	"github.com/BullionBear/mftiko/internal/controller/daemon"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
-	"github.com/BullionBear/mftiko/internal/platform/logger"
 	"github.com/BullionBear/mftiko/internal/platform/state"
+	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
 func main() {
@@ -42,7 +42,7 @@ func main() {
 		fmt.Println(buildinfo.String())
 		return
 	}
-	log := logger.New("mftiko-controller")
+	log := logger.New("mftiko-controller", buildinfo.Version, buildinfo.CommitHash)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx, *in, *password, log, os.Getenv); err != nil && !errors.Is(err, context.Canceled) {

@@ -81,14 +81,14 @@ test('console main flow', async ({ page }) => {
 	await expect(fact(page, 'stdout')).toContainText(/\/log\/sts\/[0-9a-f]+\.stdout/);
 	await expect(fact(page, 'stderr')).toContainText(/\/log\/sts\/[0-9a-f]+\.stderr/);
 
-	// Logs (E14-07): follow stdout until hello prints its recon, switch tabs, download the export.
+	// Logs (E14-07, E15-D022): hello's recon is on stderr. Follow that tab, then switch back.
 	const panel = page.locator('#log-panel');
 	await page.getByLabel('Follow').check();
-	await expect(panel).toContainText('"hook":"OnRecon"', { timeout: 2 * 60_000 });
 	await page.getByRole('tab', { name: 'stderr' }).click();
 	await expect(panel).toHaveAttribute('data-stream', 'stderr');
+	await expect(panel).toContainText('"hook":"OnRecon"', { timeout: 2 * 60_000 });
 	await page.getByRole('tab', { name: 'stdout' }).click();
-	await expect(panel).toContainText('"hook":"OnRecon"');
+	await expect(panel).toHaveAttribute('data-stream', 'stdout');
 	const downloaded = page.waitForEvent('download');
 	await page.getByRole('link', { name: 'Download' }).click();
 	const tgz = await readFile(await (await downloaded).path());

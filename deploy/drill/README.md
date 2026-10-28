@@ -27,7 +27,7 @@ $D sweep <api_id>              # 結束演練 session，撤掉它們的 algo 留
 - 兩台主機上還有別的服務（traefik、別的 Postgres 與 NATS 等）。mftiko 的每個元件都用自己的 port 與容器；斷網只用 `OUTPUT` 裡比對 mftiko 使用者 UID 的 REJECT 規則（E12-D075）。
 - release 在本機建（`build-server.sh`），經 `mftiko-release` 安裝；A 是 `dd73a2d`（main），B 是 `b32b0de`，C 是 `2326586`。worker 與策略推到主機 A 的 registry。不發佈 tag。
 - 交易所：BinanceUM testnet。帳號是 ed25519 金鑰（`api_id` 8585405279489955，td-jp-1）。
-- 策略：`examples/strategies/drill`。在最佳買價下方 3% 掛一張買單，交易所掛上之後過 10 秒撤掉，再掛下一張；每個 hook 一行 JSON。兩個 session：`drill-jp`（sts-jp-1，algo 1）與 `drill-jp2`（sts-jp2-1，algo 2），同一個帳號、同一個 feed `orderbook_delta.BinanceUM_Perp_BTCUSDT`（md-jp-1）。
+- 策略：`examples/strategies/drill`。在最佳買價下方 3% 掛一張買單，交易所掛上之後過 10 秒撤掉，再掛下一張；每個 hook 在 stderr 一行 JSON（E15-D022）。兩個 session：`drill-jp`（sts-jp-1，algo 1）與 `drill-jp2`（sts-jp2-1，algo 2），同一個帳號、同一個 feed `orderbook_delta.BinanceUM_Perp_BTCUSDT`（md-jp-1）。
 - 基準：全部 gauge 是 1，worker 都 RUNNING；兩個 session 的單每 10 秒一輪，`orders` 的最長空窗約 10.5 秒。
 
 ## 結果

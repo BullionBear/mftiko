@@ -1,8 +1,8 @@
 // Command drill keeps one order working for the E12-12 testnet drill (#385): it places a buy limit far
 // enough below the best bid that it rests, cancels it once the exchange has it on the book and it is
-// cycle_s old, and places the next one. Every hook it sees is one JSON line on stdout, so each drill
-// step can be read off the log: whether orders kept cycling, and what the strategy saw meanwhile
-// (PROTOCOL §9.5).
+// cycle_s old, and places the next one. Every hook it sees is one JSON line on stderr, through
+// ctx.Log (E15-D022), so each drill step can be read off the log: whether orders kept cycling,
+// and what the strategy saw meanwhile.
 //
 // Params are the strategy's own JSON. The platform does not interpret them.
 //
@@ -22,9 +22,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"math"
-	"os"
 	"time"
 
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
@@ -54,7 +52,6 @@ type drill struct {
 	p   drillParams
 	uid uint32
 	now func() time.Time
-	out io.Writer
 
 	cloid     string    // the working order; "" when none
 	sentAt    time.Time // when it was submitted
@@ -73,13 +70,6 @@ func (d *drill) clock() time.Time {
 	return time.Now()
 }
 
-func (d *drill) writer() io.Writer {
-	if d.out != nil {
-		return d.out
-	}
-	return os.Stdout
-}
-
 func (d *drill) OnInit(ctx sdk.Context) error {
 	if err := json.Unmarshal(ctx.Params(), &d.p); err != nil {
 		return err
@@ -95,22 +85,22 @@ func (d *drill) OnInit(ctx sdk.Context) error {
 		return err
 	}
 	d.uid = info.UID
-	d.log(line{Hook: "OnInit", Ticker: d.p.Ticker})
+	d.log(ctx, line{Hook: "OnInit", Ticker: d.p.Ticker})
 	return nil
 }
 
 func (d *drill) OnStart(ctx sdk.Context) error {
 	d.beatAt = d.clock()
-	d.log(line{Hook: "OnStart"})
+	d.log(ctx, line{Hook: "OnStart"})
 	return nil
 }
 
-func (d *drill) OnStop(sdk.Context) { d.log(line{Hook: "OnStop", Cloid: d.cloid}) }
+func (d *drill) OnStop(ctx sdk.Context) { d.log(ctx, line{Hook: "OnStop", Cloid: d.cloid}) }
 
 // cancelAll cancels the algo's open orders, this incarnation's and any an earlier one left.
 func (d *drill) cancelAll(ctx sdk.Context) {
 	if err := ctx.BatchCancel(d.p.APIID, d.p.AlgoID); err != nil {
-		d.log(line{Hook: "batch_cancel_error", Reason: err.Error()})
+		d.log(ctx, line{Hook: "batch_cancel_error", Reason: err.Error()})
 	}
 }
 
@@ -121,7 +111,7 @@ func (d *drill) OnBook(ctx sdk.Context, ev sdk.BookUpdate) {
 	now := d.clock()
 	d.books++
 	if now.Sub(d.beatAt) >= heartbeat {
-		d.log(line{Hook: "heartbeat", Books: d.books, Cloid: d.cloid})
+		d.log(ctx, line{Hook: "heartbeat", Books: d.books, Cloid: d.cloid})
 		d.books, d.beatAt = 0, now
 	}
 	switch {
@@ -133,7 +123,7 @@ func (d *drill) OnBook(ctx sdk.Context, ev sdk.BookUpdate) {
 	case !d.canceling && !d.acceptAt.IsZero() && now.Sub(d.acceptAt).Seconds() >= d.p.CycleS:
 		d.canceling, d.cancelAt = true, now
 		if err := ctx.Cancel(d.p.APIID, d.cloid); err != nil {
-			d.log(line{Hook: "cancel_error", Cloid: d.cloid, Reason: err.Error()})
+			d.log(ctx, line{Hook: "cancel_error", Cloid: d.cloid, Reason: err.Error()})
 			d.canceling = false
 		}
 	}
@@ -166,19 +156,19 @@ func (d *drill) place(ctx sdk.Context, now time.Time) {
 		Price:    price,
 	})
 	if err != nil {
-		d.log(line{Hook: "submit_error", Reason: err.Error()})
+		d.log(ctx, line{Hook: "submit_error", Reason: err.Error()})
 		return
 	}
 	d.cloid, d.sentAt, d.acceptAt, d.canceling = id, now, time.Time{}, false
-	d.log(line{Hook: "submit", Cloid: id, Price: price})
+	d.log(ctx, line{Hook: "submit", Cloid: id, Price: price})
 }
 
-func (d *drill) OnOrder(_ sdk.Context, ev sdk.OrderEvent) {
+func (d *drill) OnOrder(ctx sdk.Context, ev sdk.OrderEvent) {
 	if ev.Order == nil {
 		return
 	}
 	o := ev.Order
-	d.log(line{Hook: "OnOrder", Cloid: o.GetClientOrderId(), Status: o.GetStatus().String(),
+	d.log(ctx, line{Hook: "OnOrder", Cloid: o.GetClientOrderId(), Status: o.GetStatus().String(),
 		Cause: ev.Cause.String(), Code: ev.Code, Reason: ev.Reason})
 	if o.GetClientOrderId() != d.cloid {
 		return
@@ -195,8 +185,8 @@ func (d *drill) OnOrder(_ sdk.Context, ev sdk.OrderEvent) {
 	}
 }
 
-func (d *drill) OnFill(_ sdk.Context, ev sdk.FillEvent) {
-	d.log(line{Hook: "OnFill", Cloid: ev.Fill.GetClientOrderId()})
+func (d *drill) OnFill(ctx sdk.Context, ev sdk.FillEvent) {
+	d.log(ctx, line{Hook: "OnFill", Cloid: ev.Fill.GetClientOrderId()})
 }
 
 func (d *drill) OnRecon(ctx sdk.Context, ev sdk.ReconEvent) {
@@ -218,11 +208,11 @@ func (d *drill) OnRecon(ctx sdk.Context, ev sdk.ReconEvent) {
 			d.cloid = ""
 		}
 	}
-	d.log(line{Hook: "OnRecon", Open: &open})
+	d.log(ctx, line{Hook: "OnRecon", Open: &open})
 }
 
-func (d *drill) OnReject(_ sdk.Context, ev sdk.RejectEvent) {
-	d.log(line{Hook: "OnReject", Code: ev.Code, Reason: ev.Reason})
+func (d *drill) OnReject(ctx sdk.Context, ev sdk.RejectEvent) {
+	d.log(ctx, line{Hook: "OnReject", Code: ev.Code, Reason: ev.Reason})
 	for _, id := range ev.ClientOrderIDs {
 		if id == d.cloid {
 			if ev.Request == sdk.RejectedCancel {
@@ -244,28 +234,51 @@ func terminal(s tdv1.OrderStatus) bool {
 	}
 }
 
-// line is one log line. Empty fields are left out.
+// line is one log line. Empty fields are left out. The time is the logger's time field.
 type line struct {
-	TS     string  `json:"ts"`
-	Hook   string  `json:"hook"`
-	Ticker string  `json:"ticker,omitempty"`
-	Cloid  string  `json:"cloid,omitempty"`
-	Status string  `json:"status,omitempty"`
-	Cause  string  `json:"cause,omitempty"`
-	Code   int32   `json:"code,omitempty"`
-	Reason string  `json:"reason,omitempty"`
-	Price  float64 `json:"price,omitempty"`
-	Books  int     `json:"books,omitempty"`
-	Open   *int    `json:"open,omitempty"`
+	Hook   string
+	Ticker string
+	Cloid  string
+	Status string
+	Cause  string
+	Code   int32
+	Reason string
+	Price  float64
+	Books  int
+	Open   *int
 }
 
-func (d *drill) log(l line) {
-	l.TS = d.clock().UTC().Format(time.RFC3339Nano)
-	raw, err := json.Marshal(l)
-	if err != nil {
-		return
+func (d *drill) log(ctx sdk.Context, l line) {
+	log := ctx.Log()
+	ev := log.Info().Str("hook", l.Hook)
+	if l.Ticker != "" {
+		ev = ev.Str("ticker", l.Ticker)
 	}
-	fmt.Fprintln(d.writer(), string(raw))
+	if l.Cloid != "" {
+		ev = ev.Str("cloid", l.Cloid)
+	}
+	if l.Status != "" {
+		ev = ev.Str("status", l.Status)
+	}
+	if l.Cause != "" {
+		ev = ev.Str("cause", l.Cause)
+	}
+	if l.Code != 0 {
+		ev = ev.Int32("code", l.Code)
+	}
+	if l.Reason != "" {
+		ev = ev.Str("reason", l.Reason)
+	}
+	if l.Price != 0 {
+		ev = ev.Float64("price", l.Price)
+	}
+	if l.Books != 0 {
+		ev = ev.Int("books", l.Books)
+	}
+	if l.Open != nil {
+		ev = ev.Int("open", *l.Open)
+	}
+	ev.Msg("drill")
 }
 
 var (

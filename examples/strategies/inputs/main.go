@@ -6,8 +6,9 @@
 //
 // OnInit reads each listed file under ctx.InputDir(input) and compares its SHA-256. It then
 // checks that the input is read-only: creating a file and opening a listed file for writing must
-// both fail with EACCES. Any mismatch is an error, so the session ends INIT_FAILED. After that the
-// strategy runs until its session is ended.
+// both fail with EACCES. Any mismatch is an error, so the session ends INIT_FAILED. A matching
+// input is one JSON line on stderr through ctx.Log (E15-D022). After that the strategy runs until
+// its session is ended.
 //
 // The input is read-only only by its mode bits (0444 and 0555, E09-D075). A worker running as
 // root can still write, and this strategy then fails OnInit.
@@ -34,16 +35,7 @@ type inputsParams struct {
 	SHA256 map[string]string `json:"sha256"` // slash-separated path under the input: hex SHA-256
 }
 
-type inputs struct {
-	out io.Writer
-}
-
-func (s *inputs) writer() io.Writer {
-	if s.out != nil {
-		return s.out
-	}
-	return os.Stdout
-}
+type inputs struct{}
 
 func (s *inputs) OnInit(ctx sdk.Context) error {
 	var p inputsParams
@@ -77,7 +69,8 @@ func (s *inputs) OnInit(ctx sdk.Context) error {
 	if err := refusesWrites(dir, filepath.Join(dir, filepath.FromSlash(names[0]))); err != nil {
 		return err
 	}
-	fmt.Fprintf(s.writer(), "{\"hook\":\"OnInit\",\"input\":%q,\"files\":%d}\n", p.Input, len(names))
+	log := ctx.Log()
+	log.Info().Str("hook", "OnInit").Str("input", p.Input).Int("files", len(names)).Msg("inputs")
 	return nil
 }
 

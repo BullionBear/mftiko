@@ -31,10 +31,10 @@ import (
 	"github.com/BullionBear/mftiko/exchange/transport/fasthttp"
 	"github.com/BullionBear/mftiko/internal/md/fetch"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
-	"github.com/BullionBear/mftiko/internal/platform/logger"
 	"github.com/BullionBear/mftiko/internal/platform/natsdev"
 	"github.com/BullionBear/mftiko/internal/platform/natsx"
 	"github.com/BullionBear/mftiko/internal/sym"
+	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
 // defaultHTTPTimeout bounds one venue request when the caller sets no deadline.
@@ -55,7 +55,7 @@ func main() {
 		fmt.Println(buildinfo.String())
 		return
 	}
-	log := logger.New("mftiko-mdfetch")
+	log := logger.New("mftiko-mdfetch", buildinfo.Version, buildinfo.CommitHash)
 	if err := run(*natsURL, *creds, *venues, *proxy, *roots, *timeout, *rate, *hold, log); err != nil {
 		log.Error().Err(err).Msg("exit")
 		os.Exit(1)

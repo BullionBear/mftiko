@@ -139,9 +139,13 @@ func check(pkgs []pkg, std map[string]bool) []string {
 				if own && !under(to, "contract", "exchange") {
 					bad(imp, "exchange depends only on contract")
 				}
+			case from == "pkg/logger":
+				if own || (external && !under(imp, "github.com/rs/zerolog")) {
+					bad(imp, "pkg/logger depends only on zerolog and the standard library")
+				}
 			case under(from, "sdk"):
-				if own && !under(to, "contract", "sdk") {
-					bad(imp, "sdk depends only on contract")
+				if own && to != "pkg/logger" && !under(to, "contract", "sdk") {
+					bad(imp, "sdk depends only on contract and pkg/logger")
 				}
 			case under(from, "examples"):
 				if own && !under(to, "contract", "sdk") {
@@ -284,7 +288,7 @@ func TestDependencyRules(t *testing.T) {
 		}
 	}
 	// The rules key on paths; if a block moved, they would pass by matching nothing.
-	for _, want := range []string{"contract/symbol", "contract/wire/frame", "exchange", "sdk", "internal/platform/state",
+	for _, want := range []string{"contract/symbol", "contract/wire/frame", "exchange", "sdk", "pkg/logger", "internal/platform/state",
 		"internal/platform/agent", "internal/platform/agent/runner", "internal/platform/natsx", "internal/platform/shim",
 		"internal/platform/artifact", "cmd/mftiko-pack",
 		"internal/md", "internal/td", "internal/sts", "internal/sym", "internal/api",
@@ -321,8 +325,9 @@ func TestCheckReportsViolations(t *testing.T) {
 		{ImportPath: m("exchange/transport/fasthttp"), Imports: []string{m("exchange"), m("exchange/transport"), "github.com/valyala/fasthttp"},
 			Deps: []string{"github.com/valyala/fasthttp", m("exchange")}}, // the transport: free
 		{ImportPath: m("contract/symbol"), Imports: []string{"context", "google.golang.org/protobuf/proto", "github.com/rs/zerolog", m("exchange")}},
-		{ImportPath: m("sdk"), Imports: []string{m("contract/wire/frame"), m("internal/platform/natsx")},
+		{ImportPath: m("sdk"), Imports: []string{m("contract/wire/frame"), m("pkg/logger"), m("internal/platform/natsx")},
 			Deps: []string{"fmt", m("contract/wire/frame"), "go.etcd.io/etcd/client/v3", m("exchange"), m("contract/wire/c4")}},
+		{ImportPath: m("pkg/logger"), Imports: []string{"fmt", "github.com/rs/zerolog", m("internal/platform/buildinfo"), "github.com/nats-io/nats.go"}},
 		{ImportPath: m("examples/strategies/x"), Imports: []string{m("sdk"), m("internal/md")}},
 		{ImportPath: m("internal/td"), Imports: []string{m("internal/platform/agent")},
 			Deps: []string{m("internal/platform/agent"), m("internal/platform/agent/runner"), "github.com/nats-io/nats.go"}},
@@ -365,6 +370,8 @@ func TestCheckReportsViolations(t *testing.T) {
 		"contract/symbol imports github.com/rs/zerolog",
 		"contract/symbol imports " + m("exchange"),
 		"sdk imports " + m("internal/platform/natsx"),
+		"pkg/logger imports " + m("internal/platform/buildinfo"),
+		"pkg/logger imports github.com/nats-io/nats.go",
 		"sdk links go.etcd.io/etcd/client/v3",
 		"sdk links " + m("exchange"),
 		"examples/strategies/x imports " + m("internal/md"),

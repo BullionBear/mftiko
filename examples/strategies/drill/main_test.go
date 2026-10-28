@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	mdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1"
 	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
 	"github.com/BullionBear/mftiko/contract/symbol"
@@ -22,8 +24,8 @@ func started(t *testing.T) (*drill, *fakeCtx, *time.Time, *bytes.Buffer) {
 	t.Helper()
 	now := time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC)
 	var buf bytes.Buffer
-	d := &drill{now: func() time.Time { return now }, out: &buf}
-	f := &fakeCtx{params: []byte(params), book: tickBook{bid: 1_000_000}, bookOK: true}
+	d := &drill{now: func() time.Time { return now }}
+	f := &fakeCtx{params: []byte(params), book: tickBook{bid: 1_000_000}, bookOK: true, logs: &buf}
 	if err := d.OnInit(f); err != nil {
 		t.Fatal(err)
 	}
@@ -113,9 +115,9 @@ func TestDrillLog(t *testing.T) {
 	for _, l := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
 		var v struct {
 			Hook string `json:"hook"`
-			TS   string `json:"ts"`
+			Time string `json:"time"`
 		}
-		if err := json.Unmarshal([]byte(l), &v); err != nil || v.TS == "" {
+		if err := json.Unmarshal([]byte(l), &v); err != nil || v.Time == "" {
 			t.Fatalf("line %q: %v", l, err)
 		}
 		hooks = append(hooks, v.Hook)
@@ -140,7 +142,7 @@ func TestDrillCancelsLeftovers(t *testing.T) {
 	}
 
 	f2 := &fakeCtx{params: []byte(strings.Replace(params, `"cycle_s":10`, `"cycle_s":10,"sweep_only":true`, 1)), book: tickBook{bid: 1_000_000}, bookOK: true}
-	d2 := &drill{out: &bytes.Buffer{}}
+	d2 := &drill{}
 	if err := d2.OnInit(f2); err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +154,7 @@ func TestDrillCancelsLeftovers(t *testing.T) {
 
 func TestDrillRejectsBadParams(t *testing.T) {
 	for _, p := range []string{`{`, `{"ticker":"BinanceUM_Perp_BTCUSDT","api_id":1,"algo_id":1,"offset":1,"qty":1,"cycle_s":1}`, `{"api_id":1}`} {
-		if err := (&drill{out: &bytes.Buffer{}}).OnInit(&fakeCtx{params: []byte(p)}); err == nil {
+		if err := (&drill{}).OnInit(&fakeCtx{params: []byte(p)}); err == nil {
 			t.Errorf("params %s were accepted", p)
 		}
 	}
@@ -182,6 +184,14 @@ type fakeCtx struct {
 	cancelled []string
 	open      []*tdv1.Order
 	batches   []string
+	logs      *bytes.Buffer
+}
+
+func (f *fakeCtx) Log() zerolog.Logger {
+	if f.logs == nil {
+		return zerolog.Nop()
+	}
+	return zerolog.New(f.logs).With().Timestamp().Logger()
 }
 
 func (f *fakeCtx) SessionID() string { return "c0ffee" }

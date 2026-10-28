@@ -131,8 +131,8 @@ func (f *flow) mainSteps(credsFile, kind, ticker, topic string, algo int, offset
 		return err
 	}
 	say("log on %s: %s", logs.Host, logs.Stdout)
-	if err := until(f.ctx, 2*time.Minute, "hello's order cancelled in its stdout", func() error {
-		b, err := os.ReadFile(logs.Stdout)
+	if err := until(f.ctx, 2*time.Minute, "hello's order cancelled in its stderr", func() error {
+		b, err := os.ReadFile(logs.Stderr)
 		if err != nil {
 			return err
 		}
@@ -143,7 +143,7 @@ func (f *flow) mainSteps(credsFile, kind, ticker, topic string, algo int, offset
 	}); err != nil {
 		return err
 	}
-	say("stdout has hello's OnRecon and its cancelled order")
+	say("stderr has hello's OnRecon and its cancelled order")
 
 	if err := f.end(f.a, id); err != nil {
 		return fmt.Errorf("end: %w", err)
@@ -153,8 +153,10 @@ func (f *flow) mainSteps(credsFile, kind, ticker, topic string, algo int, offset
 		return err
 	}
 	say("terminal: %s, reason %q, outcome %s", s.Status.Phase, s.Status.Reason, outcomeOf(s))
-	if _, err := os.Stat(logs.Stdout); err != nil {
-		return fmt.Errorf("the log is gone while the spec is still there (E10-D016): %w", err)
+	for _, p := range []string{logs.Stdout, logs.Stderr} {
+		if _, err := os.Stat(p); err != nil {
+			return fmt.Errorf("the log is gone while the spec is still there (E10-D016): %w", err)
+		}
 	}
 
 	if err := until(f.ctx, deleted, "W5 deletes the spec", func() error {
