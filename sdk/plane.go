@@ -3,7 +3,6 @@ package sdk
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -581,5 +580,6 @@ func (p *plane) note(msg string) {
 		p.host.log(msg)
 		return
 	}
-	fmt.Fprintln(os.Stderr, "mftiko sdk:", msg)
+	log := p.logger()
+	log.Info().Msg(msg)
 }

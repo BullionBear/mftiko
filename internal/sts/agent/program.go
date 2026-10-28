@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -17,6 +19,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/agent"
 	"github.com/BullionBear/mftiko/internal/platform/artifact"
 	"github.com/BullionBear/mftiko/internal/sts"
+	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
 // workerContract is the C5 contract Init, Start, and Command name (stsctl.v1).
@@ -146,7 +149,32 @@ func (p *Program) platformEnv(id string, spec *sessionv1.SessionSpec) []string {
 	if n := spec.GetLimits().GetGomaxprocs(); n > 0 {
 		env = append(env, fmt.Sprintf("GOMAXPROCS=%d", n))
 	}
+	return appendLogEnv(env)
+}
+
+// appendLogEnv copies MFTIKO_LOG_LEVEL and MFTIKO_LOG_FORMAT from this process when they are set
+// (E15-D021). An empty value is set and is passed. A key already in env is left as it is, so a
+// duplicate cannot fail CheckLaunch. Unset means the worker keeps the logger default.
+func appendLogEnv(env []string) []string {
+	for _, key := range []string{logger.EnvLevel, logger.EnvFormat} {
+		if envHasKey(env, key) {
+			continue
+		}
+		if v, ok := os.LookupEnv(key); ok {
+			env = append(env, key+"="+v)
+		}
+	}
 	return env
+}
+
+func envHasKey(env []string, key string) bool {
+	prefix := key + "="
+	for _, e := range env {
+		if e == key || strings.HasPrefix(e, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // Init fills InitPayload from the spec (E09-D018, E09-D024). incarnation is 0 here; StampIncarnation

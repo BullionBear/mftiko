@@ -152,12 +152,12 @@ CI (`.github/workflows/ci.yml`) runs on every pull request and on `main`. `lint`
 
 ## Logging and build identity
 
-Every binary logs through `internal/platform/logger` (zerolog): JSON, one object per line, on stderr. Each line carries `component`, `version` and `commit`.
+Every platform binary and the Go SDK log through `pkg/logger` (zerolog): JSON, one object per line, on stderr. Each line carries `component`, `version` and `commit`. A strategy uses `ctx.Log()` inside a hook and `sdk.Log()` outside one. Its `component` is `strategy`; `version` and `commit` come from that strategy binary, and `ctx.Log()` also carries `session_id`. Stdout stays the strategy's own data.
 
 - `MFTIKO_LOG_LEVEL`: `trace`, `debug`, `info` (default), `warn`, `error`.
 - `MFTIKO_LOG_FORMAT=console`: human-readable output for local development.
 
-`make build` stamps `internal/platform/buildinfo` with the version (`git describe`, matching `vX.Y.Z` tags), the short commit hash and the UTC build time. Every binary prints them with `-version`.
+The STS agent passes both variables to the session worker when they are set on the agent (E15-D021). `make build` stamps `internal/platform/buildinfo` with the version (`git describe`, matching `vX.Y.Z` tags), the short commit hash and the UTC build time. Every binary prints them with `-version`. Platform processes pass that identity into the logger. A strategy does not: its log fields come from its own build info.
 
 ## Other languages
 

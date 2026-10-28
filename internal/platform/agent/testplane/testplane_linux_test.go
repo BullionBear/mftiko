@@ -29,11 +29,12 @@ import (
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
 	"github.com/BullionBear/mftiko/internal/platform/agent"
 	"github.com/BullionBear/mftiko/internal/platform/agent/runner"
-	"github.com/BullionBear/mftiko/internal/platform/logger"
+	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/shim"
 	"github.com/BullionBear/mftiko/internal/platform/shim/fakeworker"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 	"github.com/BullionBear/mftiko/internal/platform/state/etcdtest"
+	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
 // The test plane end to end: etcd with auth and RBAC, the agent skeleton, real shims (this test binary
@@ -47,7 +48,7 @@ const (
 func TestMain(m *testing.M) {
 	fakeworker.MaybeMain()
 	if os.Getenv(envTestShim) == "1" {
-		os.Exit(shim.Run(logger.NewWithWriter("mftiko-shim", os.Stderr)))
+		os.Exit(shim.Run(logger.NewWithWriter("mftiko-shim", buildinfo.Version, buildinfo.CommitHash, os.Stderr)))
 	}
 	if v := os.Getenv(envTestAgent); v != "" {
 		os.Exit(runAgent(v))

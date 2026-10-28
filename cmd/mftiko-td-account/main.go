@@ -22,10 +22,10 @@ import (
 	"github.com/BullionBear/mftiko/exchange/all"
 	"github.com/BullionBear/mftiko/exchange/transport/fasthttp"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
-	"github.com/BullionBear/mftiko/internal/platform/logger"
 	"github.com/BullionBear/mftiko/internal/platform/natsx"
 	"github.com/BullionBear/mftiko/internal/sym"
 	"github.com/BullionBear/mftiko/internal/td/account"
+	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
 func main() {
@@ -42,7 +42,7 @@ func run() int {
 		fmt.Println(buildinfo.String())
 		return 0
 	}
-	log := logger.New("mftiko-td-account")
+	log := logger.New("mftiko-td-account", buildinfo.Version, buildinfo.CommitHash)
 	fd, err := ctlFD()
 	if err != nil {
 		log.Error().Err(err).Msg("control fd")

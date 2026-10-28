@@ -39,7 +39,9 @@ type Config struct {
 	Shim    string // mftiko-shim
 	DataDir string // ${DATA}: layers, rootfs, session volume and inputs
 	ShimEnv []string
-	// WorkerEnv is the platform environment every worker gets (MFTIKO_NATS_URL).
+	// WorkerEnv is the platform environment every worker gets, such as MFTIKO_NATS_URL.
+	// MFTIKO_LOG_LEVEL and MFTIKO_LOG_FORMAT are copied from this process by platformEnv when
+	// they are set and this slice does not already name them (E15-D021).
 	WorkerEnv []string
 	// ExtraEnv is appended to one worker's environment at launch. Tests use it.
 	ExtraEnv func(agent.WorkerKey) []string

@@ -5,16 +5,14 @@
 //	{"tickers":["Binance_Spot_BTCUSDT"],"api_id":7,"algo_id":1,"offset":1000,"qty":0.001}
 //
 // OnInit resolves each ticker. OnBook reads the local book and, once, places a
-// buy limit offset below the best bid, far enough that it rests. OnRecon prints
+// buy limit offset below the best bid, far enough that it rests. OnRecon logs
 // the live orders. When OnOrder says that order is on the book
 // (ORDER_STATUS_ACCEPTED), hello cancels it, and a later OnOrder observes the cancel.
+// Those lines go to stderr through ctx.Log (E15-D022).
 package main
 
 import (
 	"encoding/json"
-	"fmt"
-	"io"
-	"os"
 
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
@@ -37,14 +35,6 @@ type hello struct {
 	placed    bool
 	cloid     string
 	cancelled bool
-	out       io.Writer
-}
-
-func (h *hello) writer() io.Writer {
-	if h.out != nil {
-		return h.out
-	}
-	return os.Stdout
 }
 
 func (h *hello) OnInit(ctx sdk.Context) error {
@@ -106,8 +96,10 @@ func (h *hello) OnBook(ctx sdk.Context, ev sdk.BookUpdate) {
 	h.cloid = id
 }
 
-func (h *hello) OnRecon(_ sdk.Context, ev sdk.ReconEvent) {
-	h.write(reconLine(ev))
+func (h *hello) OnRecon(ctx sdk.Context, ev sdk.ReconEvent) {
+	line := reconLine(ev)
+	log := ctx.Log()
+	log.Info().Str("hook", line.Hook).Int64("api_id", line.APIID).Interface("open", line.Open).Msg("recon")
 }
 
 func (h *hello) OnOrder(ctx sdk.Context, ev sdk.OrderEvent) {
@@ -122,16 +114,10 @@ func (h *hello) OnOrder(ctx sdk.Context, ev sdk.OrderEvent) {
 		h.cancelled = true
 		_ = ctx.Cancel(h.p.APIID, h.cloid)
 	case tdv1.OrderStatus_ORDER_STATUS_CANCELLED:
-		h.write(cancelLine(ev.Order))
+		line := cancelLine(ev.Order)
+		log := ctx.Log()
+		log.Info().Str("hook", "OnOrder").Str("cloid", line.Cloid).Str("status", line.Status).Msg("order")
 	}
-}
-
-func (h *hello) write(v any) {
-	raw, err := json.Marshal(v)
-	if err != nil {
-		return
-	}
-	fmt.Fprintln(h.writer(), string(raw))
 }
 
 func listed(uids []uint32, uid uint32) bool {

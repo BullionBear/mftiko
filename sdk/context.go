@@ -4,6 +4,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	mdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1"
 	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
@@ -20,6 +22,14 @@ type Context interface {
 	SessionID() string
 	// Params are the strategy's own parameters from the session spec; the platform does not read them.
 	Params() []byte
+	// Log is the session logger (E15-D019). It carries component=strategy, this binary's version and
+	// commit, and session_id. Logs go to stderr. Outside a hook, use the package Log, which has the
+	// same fields except session_id. The level and format come from MFTIKO_LOG_LEVEL and MFTIKO_LOG_FORMAT.
+	// zerolog's level methods have pointer receivers, so keep the returned value:
+	//
+	//	log := ctx.Log()
+	//	log.Info().Msg("in a hook")
+	Log() zerolog.Logger
 
 	// ---------- instruments ----------
 

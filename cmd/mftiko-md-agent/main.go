@@ -25,8 +25,8 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/agent/latest"
 	"github.com/BullionBear/mftiko/internal/platform/artifact"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
-	"github.com/BullionBear/mftiko/internal/platform/logger"
 	"github.com/BullionBear/mftiko/internal/platform/state"
+	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
 func main() {
@@ -50,7 +50,7 @@ func main() {
 		fmt.Println(buildinfo.String())
 		return
 	}
-	log := logger.New("mftiko-md-agent")
+	log := logger.New("mftiko-md-agent", buildinfo.Version, buildinfo.CommitHash)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	worker, err := art.Launcher(artifact.KindMDConn, "conn", *conn, log)

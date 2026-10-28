@@ -69,7 +69,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange/all"
 	"github.com/BullionBear/mftiko/internal/api"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
-	"github.com/BullionBear/mftiko/internal/platform/logger"
+	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
 func main() {
@@ -82,7 +82,7 @@ func main() {
 		fmt.Println(buildinfo.String())
 		return
 	}
-	log := logger.New("mftiko-api")
+	log := logger.New("mftiko-api", buildinfo.Version, buildinfo.CommitHash)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx, opt, os.Stdin, log); err != nil && !errors.Is(err, context.Canceled) {

@@ -28,10 +28,11 @@ import (
 	"github.com/BullionBear/mftiko/internal/md/conn"
 	"github.com/BullionBear/mftiko/internal/platform/agent"
 	"github.com/BullionBear/mftiko/internal/platform/agent/runner"
-	"github.com/BullionBear/mftiko/internal/platform/logger"
+	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/shim"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 	"github.com/BullionBear/mftiko/internal/platform/state/etcdtest"
+	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
 const (
@@ -46,7 +47,7 @@ func TestMain(m *testing.M) {
 		os.Exit(runFake())
 	}
 	if os.Getenv(envTestShim) == "1" {
-		os.Exit(shim.Run(logger.NewWithWriter("mftiko-shim", os.Stderr)))
+		os.Exit(shim.Run(logger.NewWithWriter("mftiko-shim", buildinfo.Version, buildinfo.CommitHash, os.Stderr)))
 	}
 	os.Exit(m.Run())
 }

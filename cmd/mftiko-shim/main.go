@@ -9,8 +9,8 @@ import (
 	"os"
 
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
-	"github.com/BullionBear/mftiko/internal/platform/logger"
 	"github.com/BullionBear/mftiko/internal/platform/shim"
+	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
 func main() {
@@ -20,5 +20,5 @@ func main() {
 		fmt.Println(buildinfo.String())
 		return
 	}
-	os.Exit(shim.Run(logger.New("mftiko-shim")))
+	os.Exit(shim.Run(logger.New("mftiko-shim", buildinfo.Version, buildinfo.CommitHash)))
 }

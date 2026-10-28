@@ -34,7 +34,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange/exchangetest"
 	"github.com/BullionBear/mftiko/exchange/transport/fasthttp"
 	"github.com/BullionBear/mftiko/internal/platform/agent"
-	"github.com/BullionBear/mftiko/internal/platform/logger"
+	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/natsx"
 	"github.com/BullionBear/mftiko/internal/platform/natsx/natsxtest"
 	"github.com/BullionBear/mftiko/internal/platform/sealbox"
@@ -43,6 +43,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/state/etcdtest"
 	"github.com/BullionBear/mftiko/internal/td/account"
 	tdagent "github.com/BullionBear/mftiko/internal/td/agent"
+	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
 const (
@@ -66,7 +67,7 @@ func TestMain(m *testing.M) {
 		os.Exit(runWorker())
 	}
 	if os.Getenv(envTestShim) == "1" {
-		os.Exit(shim.Run(logger.NewWithWriter("mftiko-shim", os.Stderr)))
+		os.Exit(shim.Run(logger.NewWithWriter("mftiko-shim", buildinfo.Version, buildinfo.CommitHash, os.Stderr)))
 	}
 	os.Exit(m.Run())
 }
@@ -87,7 +88,7 @@ func runWorker() int {
 	if os.Getenv(envCrash) == "1" {
 		return 20
 	}
-	log := logger.NewWithWriter("mftiko-td-account", os.Stderr)
+	log := logger.NewWithWriter("mftiko-td-account", buildinfo.Version, buildinfo.CommitHash, os.Stderr)
 	inc, _ := strconv.ParseUint(os.Getenv("MFTIKO_INCARNATION"), 10, 32)
 	// Only the adapter of this venue is used: the venue the worker talks to is the test's.
 	kind := exchangetest.NewAccountVenue(exchangetest.AccountOptions{Key: apiKey}).Kind("Fake")

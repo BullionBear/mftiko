@@ -22,13 +22,13 @@ import (
 
 	"github.com/BullionBear/mftiko/internal/platform/artifact"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
-	"github.com/BullionBear/mftiko/internal/platform/logger"
 	"github.com/BullionBear/mftiko/internal/platform/natsdev"
 	"github.com/BullionBear/mftiko/internal/platform/shim"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 	"github.com/BullionBear/mftiko/internal/sts"
 	"github.com/BullionBear/mftiko/internal/sts/agent"
 	"github.com/BullionBear/mftiko/internal/sts/issuer"
+	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
 type options struct {
@@ -63,7 +63,7 @@ func main() {
 		fmt.Println(buildinfo.String())
 		return
 	}
-	log := logger.New("mftiko-sts-agent")
+	log := logger.New("mftiko-sts-agent", buildinfo.Version, buildinfo.CommitHash)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx, o, log); err != nil && !errors.Is(err, context.Canceled) {

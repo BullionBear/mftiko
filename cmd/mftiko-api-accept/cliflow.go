@@ -414,8 +414,8 @@ restart:
 	if err := checkLogs(s.Logs); err != nil {
 		return err
 	}
-	if err := until(c.f.ctx, 2*time.Minute, "hello's order cancelled in its stdout", func() error {
-		b, err := os.ReadFile(s.Logs.Stdout)
+	if err := until(c.f.ctx, 2*time.Minute, "hello's order cancelled in its stderr", func() error {
+		b, err := os.ReadFile(s.Logs.Stderr)
 		if err != nil {
 			return err
 		}
@@ -426,7 +426,7 @@ restart:
 	}); err != nil {
 		return err
 	}
-	say("log %s:%s has hello's OnRecon and its cancelled order", s.Logs.Host, s.Logs.Stdout)
+	say("log %s:%s has hello's OnRecon and its cancelled order", s.Logs.Host, s.Logs.Stderr)
 	// The same bytes through the API and sts1's log endpoint (E14-08).
 	if err := until(c.f.ctx, time.Minute, "session logs equal to hello's stdout on disk", func() error {
 		o, err := c.ok("session", "logs", id, "--stream", "stdout")

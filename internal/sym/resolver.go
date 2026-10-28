@@ -14,7 +14,8 @@ import (
 
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/exchange"
-	"github.com/BullionBear/mftiko/internal/platform/logger"
+	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
+	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
 // ErrRealVenue is returned when a listing source is not an in-process fake.
@@ -87,7 +88,7 @@ type cached struct {
 // The draw is not persisted. A source that is not an InProcessUIDSource is
 // ErrRealVenue.
 func NewResolver(ctx context.Context, sources []VenueListing, uids Source) (*Resolver, error) {
-	return newResolver(ctx, sources, uids, logger.New("sym"))
+	return newResolver(ctx, sources, uids, logger.New("sym", buildinfo.Version, buildinfo.CommitHash))
 }
 
 func newResolver(ctx context.Context, sources []VenueListing, uids Source, log zerolog.Logger) (*Resolver, error) {

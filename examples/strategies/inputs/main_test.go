@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rs/zerolog"
+
 	"github.com/BullionBear/mftiko/sdk"
 )
 
@@ -18,9 +20,17 @@ type fakeCtx struct {
 	sdk.Context
 	params []byte
 	dir    string // MFTIKO_INPUT_DIR
+	logs   *bytes.Buffer
 }
 
 func (f *fakeCtx) Params() []byte { return f.params }
+
+func (f *fakeCtx) Log() zerolog.Logger {
+	if f.logs == nil {
+		return zerolog.Nop()
+	}
+	return zerolog.New(f.logs).With().Timestamp().Logger()
+}
 
 func (f *fakeCtx) InputDir(name string) string {
 	if f.dir == "" {
@@ -94,12 +104,12 @@ func skipRoot(t *testing.T) {
 func TestInputsReadOnlyMatch(t *testing.T) {
 	skipRoot(t)
 	var out bytes.Buffer
-	s := &inputs{out: &out}
-	if err := s.OnInit(&fakeCtx{params: params(t, goodFiles()), dir: tree(t, true)}); err != nil {
+	s := &inputs{}
+	if err := s.OnInit(&fakeCtx{params: params(t, goodFiles()), dir: tree(t, true), logs: &out}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), `"files":3`) {
-		t.Fatalf("stdout %q", out.String())
+	if !strings.Contains(out.String(), `"files":3`) || !strings.Contains(out.String(), `"hook":"OnInit"`) {
+		t.Fatalf("log %q", out.String())
 	}
 }
 
@@ -123,7 +133,7 @@ func TestInputsRefusals(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			err := (&inputs{out: &bytes.Buffer{}}).OnInit(&fakeCtx{params: c.params, dir: c.dir})
+			err := (&inputs{}).OnInit(&fakeCtx{params: c.params, dir: c.dir})
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("err %v, want %q", err, c.want)
 			}
@@ -139,7 +149,7 @@ func TestInputsWritableFile(t *testing.T) {
 	if err := os.Chmod(filepath.Join(model, "model.pt"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err := (&inputs{out: &bytes.Buffer{}}).OnInit(&fakeCtx{params: params(t, goodFiles()), dir: root})
+	err := (&inputs{}).OnInit(&fakeCtx{params: params(t, goodFiles()), dir: root})
 	if err == nil || !strings.Contains(err.Error(), "opened for writing") {
 		t.Fatalf("err %v", err)
 	}

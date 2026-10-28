@@ -319,7 +319,7 @@ $A e2e main
 2. `POST /accounts` 建 BinanceUM 帳號，`td_instance` 是 `td1`。API 以 td1 的公鑰封裝憑證。
 3. 確認 `hello` 有 `accept` 這個 tag，`POST /sessions` 部署到 `sts1`：feed `orderbook_delta.BinanceUM_Perp_BTCUSDT`（`dev`），帳號以 algo_id 1 綁定，params 讓 hello 在最佳買價下方 2000 掛一張 0.002 的買單。
 4. 等到 `phase` 是 `running`，feed 與帳號的依賴都是 `ready`，provider 分別是 `dev` 與 `td1`（「TD 帳號 READY」）。
-5. `logs` 的主機就是 runner，stdout、stderr 在那裡，檔案 0640、目錄 0750。等到 stdout 出現 hello 的 `OnRecon` 與那張單的 `ORDER_STATUS_CANCELLED`：MD、TD、STS 整條路徑都通了。
+5. `logs` 的主機就是 runner，stdout、stderr 在那裡，檔案 0640、目錄 0750。等到 stderr 出現 hello 的 `OnRecon` 與那張單的 `ORDER_STATUS_CANCELLED`：MD、TD、STS 整條路徑都通了。
 6. `POST /sessions/{id}/end`，等到 `done`（reason `ended_by_spec`）。此時 log 還在（E10-D016）。
 7. 等 W5 刪掉 spec（`GET` 回 404），再等 STS agent 把 stdout、stderr 清掉。
 8. 帳號的 `referenced_by` 是空的，帶 `revision` 刪除。
@@ -379,7 +379,7 @@ $A e2e cli region up
 - `main`：`version`、`whoami`、`account-kind list`、`strategy list registry:5000/strategies/hello`、`instance list`，然後：
   1. `account create`：憑證寫成 0600 的 `-key-file`、`-secret-file`。
   2. 從 YAML 檔 `session create --wait running`。
-  3. `session show`：兩個依賴都是 `ready`，provider 是 `dev` 與 `td1`；表格印出 log 路徑，主機上的檔案權限正確，stdout 有 hello 的 `OnRecon` 與 `ORDER_STATUS_CANCELLED`。`session logs --stream stdout` 印出的位元組與那個檔案相同。
+  3. `session show`：兩個依賴都是 `ready`，provider 是 `dev` 與 `td1`；表格印出 log 路徑，主機上的檔案權限正確，stderr 有 hello 的 `OnRecon` 與 `ORDER_STATUS_CANCELLED`。`session logs --stream stdout` 印出的位元組與那個檔案相同。
   4. `session end --wait --yes`：exit 0，`done`、`ended_by_spec`。
   5. `record list -session-id`、`record show`。
   6. `session delete --yes`：之後 `session show` exit 12，record 變成 `closed`。
@@ -427,7 +427,7 @@ $A e2e cli region up
 $A console-smoke
 ```
 
-在這台機器上用 Playwright（`web/e2e/smoke.spec.ts`）從 console 走一次主流程：登入、建帳號（`binanceum.creds.json`）、在精靈裡部署 hello（feed、帳號、algo_id 2）、詳細頁看到 `running`、兩個依賴 `ready`、log 的主機與路徑；Logs 區塊打開 Follow 看到 hello 的 `OnRecon`，切換 stdout、stderr 分頁，Download 拿到 gzip；結束後看到 `done` 與 `ended_by_spec`，Logs 區塊顯示「已結束」，刪除帳號、登出。環境變數 `MFTIKO_E2E_URL`、`MFTIKO_E2E_TOKEN`、`MFTIKO_E2E_CREDS` 可以改目標與檔案。失敗時的 trace 在 `web/test-results/`。
+在這台機器上用 Playwright（`web/e2e/smoke.spec.ts`）從 console 走一次主流程：登入、建帳號（`binanceum.creds.json`）、在精靈裡部署 hello（feed、帳號、algo_id 2）、詳細頁看到 `running`、兩個依賴 `ready`、log 的主機與路徑；Logs 區塊打開 Follow，切到 stderr 看到 hello 的 `OnRecon`，再切回 stdout，Download 拿到 gzip；結束後看到 `done` 與 `ended_by_spec`，Logs 區塊顯示「已結束」，刪除帳號、登出。環境變數 `MFTIKO_E2E_URL`、`MFTIKO_E2E_TOKEN`、`MFTIKO_E2E_CREDS` 可以改目標與檔案。失敗時的 trace 在 `web/test-results/`。
 
 ## 收尾與紀錄
 

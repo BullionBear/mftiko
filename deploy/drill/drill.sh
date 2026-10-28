@@ -299,7 +299,7 @@ orders() {
 	local h
 	for h in "$A" "$B"; do
 		scp -q "$here/orders.py" "$h:/root/e12-12/orders.py"
-		ssh -o BatchMode=yes "$h" "python3 /root/e12-12/orders.py $1 \$(ls -t /var/lib/mftiko/sts-agent/log/sts/*.stdout | head -1)"
+		ssh -o BatchMode=yes "$h" "python3 /root/e12-12/orders.py $1 \$(ls -t /var/lib/mftiko/sts-agent/log/sts/*.stderr | head -1)"
 	done
 }
 

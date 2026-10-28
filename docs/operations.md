@@ -549,7 +549,8 @@ restart:
 
 ```sh
 bin/mftiko session create -f inputs.yaml --wait running
-bin/mftiko session logs <session_id>      # {"hook":"OnInit","input":"model","files":1}
+bin/mftiko session logs <session_id> --stream stderr
+# {"level":"info","component":"strategy","hook":"OnInit","input":"model","files":1,"message":"inputs"}
 bin/mftiko session end <session_id> --wait --yes
 ```
 
