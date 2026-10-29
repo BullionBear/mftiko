@@ -50,7 +50,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-md-accept        drives the MD feed-path acceptance (deploy/accept)
   mftiko-td-accept        drives the TD trading-path acceptance (deploy/accept)
   mftiko-api-accept       drives the end-to-end acceptance through mftiko-api (deploy/accept)
-examples/strategies/      hello, tape-keeper; import only sdk and contract, as an outside author would
+examples/strategies/      hello, tape-keeper, chatter, drill, inputs, logevents, conform; import only sdk and contract, as an outside author would
 migrations/               PostgreSQL schema: NNNN_name.up.sql / .down.sql, embedded into mftiko-migrate
 deploy/dev/               local development services (PostgreSQL, etcd, NATS, registry), mftiko-api serving the console, the controller and sts1
 deploy/accept/            MD, TD and end-to-end acceptance against a venue's testnet: compose stack, accept.sh, runbook
@@ -158,6 +158,8 @@ Every platform binary and the Go SDK log through `pkg/logger` (zerolog): JSON, o
 - `MFTIKO_LOG_FORMAT=console`: human-readable output for local development.
 
 The STS agent passes both variables to the session worker when they are set on the agent (E15-D021). `make build` stamps `internal/platform/buildinfo` with the version (`git describe`, matching `vX.Y.Z` tags), the short commit hash and the UTC build time. Every binary prints them with `-version`. Platform processes pass that identity into the logger. A strategy does not: its log fields come from its own build info.
+
+Log alerts match fields, not text (E16-D005). A strategy writes its rejected orders, the orders whose outcome is unknown, and its PnL with an `event` field: `order_rejected`, `order_unknown`, `pnl` and `pnl_floor_breached`. `go doc github.com/BullionBear/mftiko/sdk` has their levels and fields and where to write them (E16-D006). Stderr is collected centrally, so a strategy must not log secrets (E16-D011). `examples/strategies/logevents` writes the lines that the rules R1–R5 match, one rule per timer tick. It needs no feeds and no accounts, so it runs on `make dev-up`.
 
 ## Other languages
 
