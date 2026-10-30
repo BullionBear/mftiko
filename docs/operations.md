@@ -23,7 +23,7 @@
 
 | | 模式 | 說明 |
 |---|---|---|
-| `${WORK_DIR}/log/{plane}/` | `0750` | shim 每次啟動都 chmod 成 0750；目錄上已有的 setgid 保留（E10-D015、E10-D022） |
+| `${WORK_DIR}/log/{plane}/` | `0750` | agent 與 shim 啟動時，不是 0750 才 chmod 成 0750；目錄上已有的 setgid 保留（E10-D015、E10-D022、E16-D036） |
 | stdout、stderr、`.shim.log` | `0640` | 新檔建立後 chmod，不受 umask 影響（E10-D021）；已存在的舊檔不改（E10-D022） |
 
 讓運維不必 sudo 就能讀：部署時把 `${WORK_DIR}/log` 的 group 設成運維的 group `mftiko-ops`（E12-D005），並加上 setgid（`chgrp mftiko-ops ${WORK_DIR}/log && chmod 2750 ${WORK_DIR}/log`）。之後建立的 `{plane}` 目錄與檔案都沿用這個 group。worker 與 agent 本身不需要這個 group。只有 `log/` 底下是給運維讀的；`${WORK_DIR}` 的其他東西（shim 的 socket、session 目錄等）不在這個約定裡。
@@ -471,6 +471,7 @@ sudo -u alloy ls -l /var/lib/mftiko/sts-agent/log/sts/  # 讀得到，檔的 gro
 ```
 
 - setgid 只管之後建立的。chgrp 之前就有的 `log/sts/` 與檔仍是原本的 group，Alloy 讀不到：`chgrp -R mftiko-ops /var/lib/mftiko/sts-agent/log && chmod g+s /var/lib/mftiko/sts-agent/log/sts`。
+- v0.4.0 與更早的 agent 與 shim 每次啟動都 chmod `log/sts/`，agent 不在 `mftiko-ops`，Linux 因此清掉 setgid，之後的檔是 agent 的 group（E16-D036）。升級之後照上一條補一次。
 - worker 與 agent 不用加進 `mftiko-ops`。
 - dev 的 sts1 以 nobody 跑，Alloy 以 `473:65534`（image 裡的 `alloy` 使用者加上 nobody 的 group）跑，一樣以 group 讀（E16-D027）。
 
