@@ -59,7 +59,7 @@ GitHub → BullionBear → Organization Settings → Packages → Package creati
   - `bin/`：`mftiko-md-agent`、`mftiko-td-agent`、`mftiko-sts-agent`、`mftiko-shim`、`mftiko-controller`、`mftiko-api`、`mftiko-sym`、`mftiko-mdfetch`、`mftiko-migrate`、`mftiko-etcd-roles`、`mftiko-etcd-backup`、`mftiko-retire-clean`、`mftiko-seal`、`mftiko-release`。
   - `web/`：`make web` 的結果（`web/build`），給 `mftiko-api -web`。
   - `systemd/`：`deploy/systemd/` 裡的 unit，不含點開頭的檔。目錄可以是空的，#378 才放檔。
-- 不放：conn 與 account worker（agent 從 registry 拉，E12-02）、CLI、`*-accept`、`mftiko-conformance`、`mftiko-nats-dev`、`mftiko-pack`。
+- 不放：conn 與 account worker（agent 從 registry 拉，E12-02）、CLI、`*-accept`、`mftiko-conformance`、`mftiko-nats-dev`、`mftiko-webhook-dev`、`mftiko-alert-smoke`、`mftiko-pack`。
 - PR 的 CI 在 `make web` 之後跑 `make server-dist`：檢查上面的清單，並在 linux/amd64 上確認每個 Go binary 的 `-version` 以注入的版本開頭（`Version (commit …)`）。
 
 ### 目錄

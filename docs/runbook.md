@@ -1,8 +1,8 @@
 # Runbook（一期）
 
-依 [DECISIONS.md](DECISIONS.md) E12-D059–E12-D061（E12-11，#384）、E12-D066（#401）、E12-D071（#403）與 E12-D074（#405）。一期的常見操作與故障處理，照順序做。每一項先寫**告警**與**先看**，再寫**做**與**確認**。長的程序在 [operations.md](operations.md) 與 [release.md](release.md)，這裡連過去，不重抄；那邊是參考，這裡是入口。
+依 [DECISIONS.md](DECISIONS.md) E12-D059–E12-D061（E12-11，#384）、E12-D066（#401）、E12-D071（#403）、E12-D074（#405）與 E16-D032–E16-D035（E16-04，#484）。一期的常見操作與故障處理，照順序做。每一項先寫**告警**與**先看**，再寫**做**與**確認**。長的程序在 [operations.md](operations.md) 與 [release.md](release.md)，這裡連過去，不重抄；那邊是參考，這裡是入口。
 
-告警名稱是 [operations.md「監控與告警」](operations.md#監控與告警)的範例規則（E12-10）。`for` 與門檻由部署端決定。
+告警名稱是 [operations.md「監控與告警」](operations.md#監控與告警)的範例規則（E12-10），策略 log 的告警（`MftikoStrategy*`）在[「策略 log 與告警」](operations.md#策略-log-與告警)（E16）。`for` 與門檻由部署端決定。
 
 ## 0. 共通
 
@@ -18,6 +18,7 @@
 | session | `mftiko session list`、`mftiko session show <id>`（phase、reason、log 的主機與路徑） |
 | 服務 | `systemctl status <unit>`、`systemctl show -p NRestarts,ActiveState <unit>`、`journalctl -u <unit> --since -15min` |
 | worker 的輸出 | STS session 的 stdout、stderr：`mftiko session logs <id>`、`mftiko session export-logs <id>`（旗標見 `mftiko help session`）。shim 與 MD、TD 仍是主機上的 `${WORK_DIR}/log/{plane}/{h}.stdout`、`.stderr`、`.shim.log`（[log 在哪裡](operations.md#log-在哪裡)） |
+| 策略 log 與它的告警 | Loki 的 `{filename="…"}`，spec 刪掉之後也查得到；Alertmanager 的 UI（範例 `:9093`）看哪些告警響著、哪些被抑制（[策略 log 與告警](operations.md#策略-log-與告警)） |
 | etcd | 見下方 `etcdctl` 的設定 |
 
 **etcdctl。** auth 開著，健康檢查與讀取都要帶 root（E12-D051）：
@@ -43,7 +44,7 @@ etcdctl endpoint health
 |---|---|---|
 | `MftikoAPIDown` | `systemctl status mftiko-api` | [§3.9](#39-api-不在) |
 | `MftikoRegionUnavailable` | 哪個 `region`；API 主機到該 region etcd 的網路 | [§3.5](#35-網路斷了) |
-| `MftikoAgentDown` | `instance`、`plane`；該主機的 unit | [§3.2](#32-agent-不在) |
+| `MftikoAgentDown` | `instance`、`plane`；該主機的 unit。響的期間，同一個 `region`、`instance` 的 `MftikoStrategy*` 被抑制 | [§3.2](#32-agent-不在) |
 | `MftikoControllerNoLeader` | 主機 A 的 `mftiko-controller` | [§3.3](#33-controller-沒有-leader) |
 | `MftikoWorkerBackoff` | `instance`、`plane`；worker 的 stderr | [§3.1](#31-worker-被殺退避或放棄) |
 | `MftikoWorkerExited` | 同上 | [§3.1](#31-worker-被殺退避或放棄) |
@@ -51,6 +52,9 @@ etcdctl endpoint health
 | `MftikoPostgresDown` | 主機 A 的 Postgres | [§3.6](#36-postgres-停機) |
 | `MftikoArtifactPullFailing` | `instance`、`region`、`digest`。該 STS 主機到 repository host 的網路，以及 `MFTIKO_REGISTRY_CREDS` | [§3.7](#37-registry-不可用) |
 | `MftikoDiskLow` | `df -h`；`${WORK_DIR}/log`、`/var/lib/etcd`、`/var/backups` | [§3.8](#38-磁碟快滿) |
+| `MftikoStrategyLogError` | `session_id`（沒有時 `filename`）；annotation `logs` | [§3.13](#313-策略-log-的告警) |
+| `MftikoStrategyLogCrash` | `filename`；annotation `logs` 的 Loki 查詢 | [§3.13](#313-策略-log-的告警) |
+| `MftikoStrategyOverloaded` | `session_id`（沒有時 `filename`）；annotation `logs` | [§3.13](#313-策略-log-的告警) |
 | `mftiko-etcd-backup.service` 是 failed | `journalctl -u mftiko-etcd-backup` | [§2.4](#24-etcd-備份) |
 | 不響，但交易所或 NATS 斷了 | worker 的 stderr | [§3.5](#35-網路斷了) |
 | 不響，但 session `failed`、reason 是 `artifact_*`、incarnation 0 | `mftiko session show <id>` 的 spec `inputs`；STS 的 `input rejected` | [§3.11](#311-input-拉取失敗) |
@@ -181,7 +185,9 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
    - **log 說這個 instance 已退役**：`/retired/{inst}` 在，agent 照設計不參選、退出（PROTOCOL §3.7）。`systemctl disable --now`。
    - **連不上 etcd**：見 [§3.5](#35-網路斷了)。
    - **unit 是 inactive**：有人 `stop` 了，`systemctl start`。
-3. worker 在 agent 不在時照跑；agent 回來後收養。
+3. worker 在 agent 不在時照跑；agent 回來後收養。STS 的 agent 不在時：
+   - 同一個 `region`、`instance` 的 `MftikoStrategy*` 不送（E16-D030）。策略照寫 log，agent 回來之後規則仍成立的才送。這段期間要看策略的 log，在 Loki 查（[§3.13](#313-策略-log-的告警)）。
+   - `mftiko session logs` 經 agent 讀，讀不到（[§3.12](#312-讀不到-session-log)）。用 Loki 或 SSH 讀檔。
 4. 確認：`mftiko_agent_up` 是 1，log 有 `shims adopted`。
 
 ### 3.3 controller 沒有 leader
@@ -327,3 +333,21 @@ worker 有啟動、last exit 是 `init_failed` 的不是這一項：input 已經
 改 STS 的 env 要 `systemctl restart mftiko-sts-agent`；worker 不受影響。
 
 **確認：** `mftiko session logs <id> --tail 1` exit 0；console 的 Logs 區塊有內容。
+
+### 3.13 策略 log 的告警
+
+告警：`MftikoStrategyLogError`（R1）、`MftikoStrategyLogCrash`（R2）、`MftikoStrategyOverloaded`（R5）。規則與設定見[策略 log 與告警](operations.md#策略-log-與告警)。一則告警是一個 session 的檔（`filename`），不帶 log 的內文（E16-D010）。
+
+**先看：**
+
+1. 哪個 session：告警有 `session_id` 就是它。只有 `filename` 時，照 annotation `logs` 的 Loki 查詢找 shim 那一行的 `worker sts/<session_id>`（[從 filename 查回 session](operations.md#從-filename-查回-session)）。
+2. `mftiko session show <id>`：phase、reason、incarnation 與 last exit。
+3. 那一段 log：`mftiko session logs <id> --stream stderr --tail 50`，就是 annotation `logs`；要整份用 `mftiko session export-logs <id>`。spec 已經刪掉、或 agent 不在（[§3.2](#32-agent-不在)）時，在 Loki 查 `{filename="<filename>"}`。
+
+| 告警 | 那幾行 | 做 |
+|---|---|---|
+| `MftikoStrategyLogError` | 策略自己寫的 warn 以上；或 SDK 以 error 寫的 `init failed`、`start failed`（session 以 `init_failed` 結束）、`live not applied`（SDK 套不上新的 bindings，照舊的跑，例如 selector，E08-D046）、`on stop`（`OnStop` 回傳錯誤） | 依那一行。`init_failed` 多半是 params 或 input（[§3.11](#311-input-拉取失敗)的最後一段），修好之後重建 session |
+| `MftikoStrategyLogCrash` | `panic: `、`fatal error: `：hook 外的 Go panic 或 runtime 錯誤，後面接 stack trace，worker 行程結束。hook 裡的 panic 由 SDK 接住，session 以 `crashed` 結束，不寫這一行。`[mftiko-shim] N bytes of stderr lost here`：shim 丟掉了輸出 | panic、fatal error：worker 照 restart 政策重啟或結束（[§3.1](#31-worker-被殺退避或放棄)）。以 `--tail 200` 或 `export-logs` 看 stack trace，修好策略、推新版再重建。`lost here`：磁碟滿（[§3.8](#38-磁碟快滿)），或策略寫得比 shim 寫檔快 |
+| `MftikoStrategyOverloaded` | SDK 以 info 寫的 `hook exceeded 100ms`：有 hook 跑超過 100ms，之後的事件跟著延後。`td buffer full`：TD 的事件積壓到上限，session 以 `failed` 結束（E08-D015） | 從前後策略自己的 log 找出慢的 hook，hook 裡不做會阻塞的事。`td buffer full` 修好之後重建 session |
+
+**確認：** 最後一行之後約 5 分鐘（規則的窗口）條件不再成立，Alertmanager 在下一個 `group_interval`（範例 5m）送 resolved。重建的 session 是新的 `filename`；舊檔的告警照樣自己解除。
