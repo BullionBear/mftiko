@@ -1,0 +1,44 @@
+# Strategy log alerts for Loki's ruler (DECISIONS E16-D005, E16-D020): R1, R2 and R5. make dev-up loads
+# this file, and docs/operations.md points here instead of copying it (E16-D022).
+#
+# Every for is 30s so the dev stack fires quickly (E16-D024); set your own in production, together with
+# the window and the thresholds (E12-D039). Each rule sums by region and instance, which the mftiko_*
+# alerts also carry, so Alertmanager can relate them (E16-D008), and by filename: one file is one
+# session (E16-D004). session_id is there when the line has it; logs says how to read the session.
+groups:
+  - name: mftiko-strategy-log
+    rules:
+      # R1: a JSON line at warn or above. zerolog writes warn, not warning.
+      - alert: MftikoStrategyLogError
+        expr: |
+          sum by (region, instance, filename, session_id) (
+            count_over_time({plane="sts"} |= `"level"` | json level="level", session_id="session_id" | __error__="" | level=~"warn|error|fatal|panic" [5m])
+          ) > 0
+        for: 30s
+        annotations:
+          summary: A strategy wrote a log line at warn or above.
+          logs: '{{ if $labels.session_id }}mftiko session logs {{ $labels.session_id }} --stream stderr --tail 50{{ else }}{filename="{{ $labels.filename }}"} |= "[mftiko-shim]"{{ end }}'
+
+      # R2: a line that is not JSON: a Go panic or fatal error, or output the shim could not write.
+      # The shim's own header line ([mftiko-shim] <time> worker …) does not match.
+      - alert: MftikoStrategyLogCrash
+        expr: |
+          sum by (region, instance, filename) (
+            count_over_time({plane="sts"} |~ `^(panic: |fatal error: |\[mftiko-shim\] [0-9]+ bytes of [a-z]+ lost here)` [5m])
+          ) > 0
+        for: 30s
+        annotations:
+          summary: A strategy panicked, hit a fatal error, or lost output.
+          logs: '{filename="{{ $labels.filename }}"} |= "[mftiko-shim]"'
+
+      # R5: what the Go SDK writes at info when a hook runs over 100ms or the TD buffer is full.
+      # R1 does not see these.
+      - alert: MftikoStrategyOverloaded
+        expr: |
+          sum by (region, instance, filename, session_id) (
+            count_over_time({plane="sts"} |~ `hook exceeded 100ms|td buffer full` | json message="message", session_id="session_id" | __error__="" | message=~"hook exceeded 100ms|td buffer full" [5m])
+          ) > 0
+        for: 30s
+        annotations:
+          summary: A strategy's hook ran over 100ms or its TD buffer was full.
+          logs: '{{ if $labels.session_id }}mftiko session logs {{ $labels.session_id }} --stream stderr --tail 50{{ else }}{filename="{{ $labels.filename }}"} |= "[mftiko-shim]"{{ end }}'

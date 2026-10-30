@@ -6,6 +6,8 @@
 # credentials into deploy/dev/data/nats before compose starts; that directory is gitignored and is not
 # created here, because a missing bind-mount source makes Docker create a directory in its place.
 # The controller and sts1 run sessions that have no feeds and no accounts (E15-10); md1 and td1 are not run.
+# Alloy, Loki, Prometheus and Alertmanager alert on sts1's strategy logs and on the API's metrics, and send
+# every alert to the webhook receiver, which writes deploy/dev/data/webhook/received.jsonl (E16-03).
 # Tests do not use these: state starts its own etcd (etcdtest), natsx its own server (natsxtest),
 # natsdev its own JWT server, the symbol tests start their own PostgreSQL (pgtest), and artifact tests
 # speak to an in-process registry.
@@ -138,14 +140,17 @@ services:
 
   # sts1 runs as nobody: as root, the 0444 and 0555 of an input do not stop a write (E09-D075). nobody
   # cannot read ./data/api (0700) or the signing seed (0600) on a Linux host, so this one-shot copies
-  # what sts1 reads into its volume, owned by nobody, on every `make dev-up`.
+  # what sts1 reads into its volume, owned by nobody, on every `make dev-up`. The work dir is 0750, as
+  # its log/ is, so alloy reads the strategy logs through nobody's group (E16-D027).
   sts1-init:
     image: alpine:3.22
     command:
       - sh
       - -euc
       - |
-        install -d -o 65534 -g 65534 -m 0700 /var/lib/mftiko/etc /var/lib/mftiko/sts-agent
+        install -d -o 65534 -g 65534 -m 0700 /var/lib/mftiko/etc
+        install -d -o 65534 -g 65534 -m 0750 /var/lib/mftiko/sts-agent
+        chmod 0750 /var/lib/mftiko/sts-agent
         install -o 65534 -g 65534 -m 0600 /api/deployment.json /api/log-token.sha256 /nats/keys/mftiko-signing.nk /var/lib/mftiko/etc/
         sed -n 's/.*"account": "\(A[A-Z0-9]*\)".*/\1/p' /nats/manifest.json >/var/lib/mftiko/etc/nats-account
         test -s /var/lib/mftiko/etc/nats-account
@@ -184,8 +189,114 @@ services:
       nats: {condition: service_healthy}
       registry: {condition: service_healthy}
 
+  # ---------- strategy log alerts (E16 phase 1) ----------
+  # sts1's strategy stderr → alloy → loki → loki's ruler → alertmanager → webhook; prometheus scrapes
+  # the API's /metrics and sends to the same alertmanager (E16-D002, E16-D008). The rule files are the
+  # examples docs/operations.md points to, with every for at 30s (E16-D022, E16-D024).
+
+  # The dev webhook receiver (E16-D021): each notification is one line in ./data/webhook/received.jsonl,
+  # which `make dev-up` creates and E16-04's smoke reads. Its -check mode is also the healthcheck of
+  # loki and alloy, whose images have no shell or wget (E16-D026).
+  webhook:
+    image: alpine:3.22
+    command: ["/mftiko/mftiko-webhook-dev", "-listen", ":9099", "-out", "/data/received.jsonl"]
+    volumes:
+      - ../../bin/linux:/mftiko:ro
+      - ./data/webhook:/data
+    healthcheck:
+      test: ["CMD", "/mftiko/mftiko-webhook-dev", "-check", "http://127.0.0.1:9099/healthz"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Loki, one process (E16-D002, E16-D024). The ruler reads loki/mftiko.rules.yml (R1, R2, R5; E16-D005,
+  # E16-D020) as tenant "fake", the one Loki uses without auth. Query it at http://127.0.0.1:3100.
+  loki:
+    image: grafana/loki:3.7.8
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    ports:
+      - "127.0.0.1:3100:3100"
+    volumes:
+      - ./loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - ./loki/mftiko.rules.yml:/etc/loki/rules/fake/mftiko.rules.yml:ro
+      - ../../bin/linux:/mftiko:ro
+      - lokidata:/loki
+    healthcheck:
+      test: ["CMD", "/mftiko/mftiko-webhook-dev", "-check", "http://127.0.0.1:3100/ready"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  # Alloy tails sts1's *.stderr from the volume, read-only, and pushes to loki (E16-D003, E16-D004,
+  # E16-D023). It runs as the image's alloy user with nobody's group, as an Alloy on a host runs in
+  # mftiko-ops (E16-D027). Its UI is http://127.0.0.1:12345.
+  alloy:
+    image: grafana/alloy:v1.20.1
+    user: "473:65534"
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - --disable-reporting
+      - /etc/alloy/config.alloy
+    ports:
+      - "127.0.0.1:12345:12345"
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - stsdata:/var/lib/mftiko:ro
+      - alloydata:/var/lib/alloy/data
+      - ../../bin/linux:/mftiko:ro
+    depends_on:
+      sts1-init: {condition: service_completed_successfully}
+      loki: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "/mftiko/mftiko-webhook-dev", "-check", "http://127.0.0.1:12345/-/ready"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Prometheus scrapes the API's /metrics (E12-D038) and evaluates prometheus/mftiko.rules.yml. The
+  # images are from quay.io, where the Prometheus project publishes them (E16-D028). Its UI is
+  # http://127.0.0.1:9090.
+  prometheus:
+    image: quay.io/prometheus/prometheus:v3.15.0
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus"]
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/mftiko.rules.yml:/etc/prometheus/rules/mftiko.rules.yml:ro
+      - promdata:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/ready"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # One Alertmanager for loki's ruler and prometheus (E16-D008). It sends everything to webhook
+  # (E16-D021). One instance, so clustering is off. Its UI is http://127.0.0.1:9093.
+  alertmanager:
+    image: quay.io/prometheus/alertmanager:v0.34.1
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager", "--cluster.listen-address="]
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - amdata:/alertmanager
+    depends_on:
+      webhook: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9093/-/ready"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
 volumes:
   pgdata:
   etcddata:
   regdata:
   stsdata:
+  lokidata:
+  alloydata:
+  promdata:
+  amdata:

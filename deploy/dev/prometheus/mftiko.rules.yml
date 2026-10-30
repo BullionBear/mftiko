@@ -1,0 +1,42 @@
+# The mftiko_* alerts (DECISIONS E12-D038, E12-D039): the examples docs/operations.md describes, in the
+# one file make dev-up loads (E16-D022). mftiko does not judge thresholds or send webhooks; the
+# deployment's Prometheus and Alertmanager do.
+#
+# Every for is 30s so the dev stack fires quickly (E16-D024). docs/operations.md lists what to start
+# from in production. MftikoDiskLow reads node_exporter, which the dev stack does not run.
+groups:
+  - name: mftiko.example
+    rules:
+      - alert: MftikoAPIDown
+        expr: up{job="mftiko-api"} == 0
+        for: 30s
+      - alert: MftikoRegionUnavailable
+        expr: mftiko_region_available == 0
+        for: 30s
+      - alert: MftikoAgentDown
+        expr: mftiko_agent_up == 0 and on(region) mftiko_region_available == 1
+        for: 30s
+      - alert: MftikoControllerNoLeader
+        expr: mftiko_controller_leader == 0 and on(region) mftiko_region_available == 1
+        for: 30s
+      - alert: MftikoWorkerLost
+        expr: mftiko_worker_phase{phase="LOST"} > 0
+        for: 30s
+      - alert: MftikoWorkerBackoff
+        expr: mftiko_worker_phase{phase="BACKOFF"} > 0
+        for: 30s
+      - alert: MftikoWorkerExited
+        expr: mftiko_worker_phase{phase="EXITED"} > 0
+        for: 30s
+      - alert: MftikoWorkerBusDown
+        expr: mftiko_worker_bus_up == 0
+        for: 30s
+      - alert: MftikoPostgresDown
+        expr: mftiko_postgres_up == 0
+        for: 30s
+      - alert: MftikoArtifactPullFailing
+        expr: mftiko_artifact_pull_failing == 1
+        for: 30s
+      - alert: MftikoDiskLow
+        expr: node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} < 0.1
+        for: 30s

@@ -1,0 +1,29 @@
+// Alloy for the dev stack (DECISIONS E16-D002–E16-D004, E16-D023). It tails sts1's strategy logs,
+// the stderr the shim writes for each session (PROTOCOL §4.5 S4), and pushes them to Loki.
+//
+// Only *.stderr: the rotated *.stderr.N are the same lines under another name (E16-D003). Each file is
+// one session, and loki.source.file labels it with filename (E16-D004). The other labels match the
+// mftiko_* metrics, so Alertmanager can relate the two (E16-D008). On a host, host is the host name
+// and region and instance are that STS agent's.
+
+local.file_match "sts" {
+	path_targets = [{
+		"__path__" = "/var/lib/mftiko/sts-agent/log/sts/*.stderr",
+		"host"     = "dev",
+		"region"   = "dev",
+		"plane"    = "sts",
+		"instance" = "sts1",
+	}]
+	sync_period = "5s"
+}
+
+loki.source.file "sts" {
+	targets    = local.file_match.sts.targets
+	forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
+}

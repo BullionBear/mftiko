@@ -1,0 +1,24 @@
+# Alertmanager for the dev stack (DECISIONS E16-D008, E16-D009, E16-D021, E16-D024). Loki's ruler and
+# Prometheus both send here. Every notification goes to mftiko-webhook-dev, which appends it to
+# deploy/dev/data/webhook/received.jsonl. Dev has no Discord receiver; docs/operations.md has the
+# production one.
+route:
+  receiver: webhook
+  # One file is one session (E16-D004); the mftiko_* alerts have no filename and group by instance.
+  group_by: [alertname, instance, filename]
+  group_wait: 10s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: webhook
+    webhook_configs:
+      - url: http://webhook:9099/alertmanager
+        send_resolved: true
+
+inhibit_rules:
+  # While an STS agent is down, its sessions' log alerts are held back (E16-D008). Loki's rules and
+  # the mftiko_* alerts carry the same region and instance (E16-D004).
+  - source_matchers: ['alertname="MftikoAgentDown"']
+    target_matchers: ['alertname=~"MftikoStrategy.*"']
+    equal: [region, instance]
