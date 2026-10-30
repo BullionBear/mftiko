@@ -51,7 +51,7 @@ OASDIFF_FAIL_ON ?= ERR
 export PATH := $(TOOLS):$(NODE_BIN):$(PATH)
 
 .PHONY: all help tools proto proto-lint proto-breaking openapi openapi-lint openapi-breaking gen-check build cli-dist server-dist examples test test-race sdk-conformance vet fmt check \
-        web-install web web-check web-dev dev-up dev-down dev-nats-smoke accept-up accept-down migrate-up migrate-status \
+        web-install web web-check web-dev dev-up dev-down dev-nats-smoke dev-alert-smoke accept-up accept-down migrate-up migrate-status \
         migrate-new clean
 
 all: proto openapi build examples web ## Generate code, build every binary, the example strategies and the web console
@@ -225,6 +225,10 @@ dev-down: ## Stop the dev stack. Keeps its data, including the gitignored NATS a
 
 dev-nats-smoke: ## Run the dev NATS permission checks against the compose server
 	deploy/dev/nats-smoke.sh
+
+# Needs make dev-up and make migrate-up. It stops sts1 for about a minute and starts it again.
+dev-alert-smoke: build ## Check the dev strategy log alerts end to end: R1, R2, R5 and MftikoAgentDown reach the webhook receiver
+	deploy/dev/alert-smoke.sh
 
 accept-up: ## Start the MD acceptance stack (deploy/accept/README.md): Linux binaries, etcd, NATS, PostgreSQL, SYM
 	deploy/accept/accept.sh up

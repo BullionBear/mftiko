@@ -46,6 +46,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-retire-clean     deletes one retired instance's own etcd keys
   mftiko-nats-dev         generates dev NATS operator, accounts and user creds, and checks them
   mftiko-webhook-dev      the dev Alertmanager's webhook receiver, which writes each alert to a file
+  mftiko-alert-smoke      checks the dev strategy log alerts end to end (make dev-alert-smoke)
   mftiko-seal             makes a TD instance's key pair and seals account credentials to it
   mftiko-conformance      SDK conformance suite
   mftiko-md-accept        drives the MD feed-path acceptance (deploy/accept)
@@ -77,9 +78,10 @@ docs/                     DECISIONS.md, PROTOCOL.md, runbook.md (alerts and oper
 | `make test` / `make test-race` / `make vet` | Go tests / with the race detector, uncached / vet |
 | `make check` | `proto-lint`, `proto-breaking`, `openapi-lint`, `openapi-breaking`, `gen-check`, `vet`, `build`, `cli-dist`, `test-race`, `sdk-conformance`, `web-check`, `web`, `server-dist` (CI runs these from `.github/workflows/ci.yml`) |
 | `make web` / `make web-dev` / `make web-check` | build, dev server, svelte-check |
-| `make dev-up` / `make dev-down` | generate dev NATS credentials and API config (`deploy/dev/data/api`, token in `token`), build Linux binaries (`mftiko-api`, `mftiko-controller`, `mftiko-sts-agent`, `mftiko-shim`, `mftiko-webhook-dev`, and the example strategies in `bin/linux/examples/`) and the console, then start / stop a local PostgreSQL, etcd, NATS, registry, the API with the console on `127.0.0.1:8080`, the controller and the STS agent `sts1` (Docker); `dev-up` waits until all are healthy. Sessions with no feeds and no accounts run; `md1` and `td1` are not started (docs/operations.md, "dev"). Alongside: Alloy sends sts1's strategy stderr to Loki (`127.0.0.1:3100`), Prometheus (`127.0.0.1:9090`) scrapes the API, and both send alerts to one Alertmanager (`127.0.0.1:9093`), which writes each one to `deploy/dev/data/webhook/received.jsonl` (E16-03; docs/operations.md, "監控與告警") |
+| `make dev-up` / `make dev-down` | generate dev NATS credentials and API config (`deploy/dev/data/api`, token in `token`), build Linux binaries (`mftiko-api`, `mftiko-controller`, `mftiko-sts-agent`, `mftiko-shim`, `mftiko-webhook-dev`, and the example strategies in `bin/linux/examples/`) and the console, then start / stop a local PostgreSQL, etcd, NATS, registry, the API with the console on `127.0.0.1:8080`, the controller and the STS agent `sts1` (Docker); `dev-up` waits until all are healthy. Sessions with no feeds and no accounts run; `md1` and `td1` are not started (docs/operations.md, "dev"). Alongside: Alloy sends sts1's strategy stderr to Loki (`127.0.0.1:3100`), Prometheus (`127.0.0.1:9090`) scrapes the API, and both send alerts to one Alertmanager (`127.0.0.1:9093`), which writes each one to `deploy/dev/data/webhook/received.jsonl` (E16-03; docs/operations.md, "策略 log 與告警") |
 | `make accept-up` / `make accept-down` | start / stop the acceptance stack; the checks themselves, including the end-to-end ones (`accept.sh e2e-up`, `e2e-all`, `console-smoke`), are in `deploy/accept/README.md` |
 | `make dev-nats-smoke` | run the dev NATS permission checks (`deploy/dev/nats-smoke.sh`) against the compose server |
+| `make dev-alert-smoke` | after `make dev-up` and `make migrate-up`, check the strategy log alerts end to end (`deploy/dev/alert-smoke.sh`): R1, R2 and R5 once each and `MftikoAgentDown` once reach the webhook receiver, and the three are inhibited while sts1 is stopped (E16-04; docs/operations.md, "策略 log 與告警"). It stops sts1 for about a minute, so it refuses while sts1 runs a session |
 | `make migrate-up` / `make migrate-status` | apply pending migrations / list them against `$DATABASE_URL` |
 | `make migrate-new NAME=...` | creates the next `NNNN_<name>.up.sql` / `.down.sql` pair |
 | `make clean` | removes `bin/` and web build output |
