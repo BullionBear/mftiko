@@ -24,8 +24,11 @@ NODE_BIN := $(abspath $(WEB)/node_modules/.bin)
 # PostgreSQL for migrate-*. The default is the local database from deploy/dev/compose.yaml, which has
 # no password (trust auth on 127.0.0.1). Every other environment sets DATABASE_URL itself.
 DATABASE_URL ?= postgres://mftiko@localhost:5432/mftiko?sslmode=disable
-COMPOSE      := docker compose -f deploy/dev/compose.yaml
+# DEV_UID and DEV_GID are whoever runs make: the dev webhook receiver writes deploy/dev/data/webhook
+# as that user, so its file can be removed or emptied without sudo (E16-D021).
+COMPOSE      := DEV_UID=$$(id -u) DEV_GID=$$(id -g) docker compose -f deploy/dev/compose.yaml
 DEV_NATS     := deploy/dev/data/nats
+DEV_WEBHOOK  := deploy/dev/data/webhook
 
 PROTOC_GEN_GO_VERSION := v1.36.12
 # v1.72.0 is the newest buf that `go install`s with this module's Go 1.26.0.
@@ -204,13 +207,16 @@ web-dev: web-install ## Dev server; proxies /api to mftiko-api on :8080
 
 # ---------- database ----------
 
-# The api, controller and sts1 services run bin/linux in Linux containers, for this machine's
-# architecture. bin/linux/examples/ holds the example strategies built for those containers.
-dev-up: web ## Dev NATS credentials and API config, Linux binaries and the console, then start PostgreSQL, etcd, NATS, a registry, the API (console on :8080), the controller and sts1
+# The api, controller, sts1 and webhook services run bin/linux in Linux containers, for this machine's
+# architecture; loki and alloy run bin/linux/mftiko-webhook-dev as their healthcheck. bin/linux/examples/
+# holds the example strategies built for those containers. deploy/dev/data/webhook is created here, by
+# the user webhook runs as: a bind mount whose source is missing makes Docker create it, as root.
+dev-up: web ## Dev NATS credentials and API config, Linux binaries and the console, then start PostgreSQL, etcd, NATS, a registry, the API (console on :8080), the controller, sts1, and Alloy, Loki, Prometheus and Alertmanager with a webhook receiver
 	$(GO) run ./cmd/mftiko-nats-dev -out $(DEV_NATS)
 	deploy/dev/api-init.sh
+	mkdir -p $(DEV_WEBHOOK)
 	GOOS=linux GOARCH=$$($(GO) env GOARCH) CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/linux/ \
-		./cmd/mftiko-api ./cmd/mftiko-controller ./cmd/mftiko-sts-agent ./cmd/mftiko-shim
+		./cmd/mftiko-api ./cmd/mftiko-controller ./cmd/mftiko-sts-agent ./cmd/mftiko-shim ./cmd/mftiko-webhook-dev
 	GOOS=linux GOARCH=$$($(GO) env GOARCH) CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/linux/examples/ ./examples/strategies/...
 	$(COMPOSE) up -d --wait
 

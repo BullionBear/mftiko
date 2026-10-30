@@ -365,16 +365,19 @@ ls -l /var/backups/mftiko/etcd/*/
 
 ## 監控與告警
 
-依 [DECISIONS.md](DECISIONS.md) E12-D038–E12-D043（E12-10，#383）、E12-D062–E12-D066（#401）與 E12-D069–E12-D071（#403）。mftiko 只輸出自己的狀態。磁碟、CPU、記憶體用 node_exporter，不在 mftiko 裡。mftiko 不打 webhook，也不自己判斷門檻。下面的規則是**範例**：`for` 與門檻由部署端決定。
+依 [DECISIONS.md](DECISIONS.md) E12-D038–E12-D043（E12-10，#383）、E12-D062–E12-D066（#401）與 E12-D069–E12-D071（#403）。mftiko 只輸出自己的狀態。磁碟、CPU、記憶體用 node_exporter，不在 mftiko 裡。mftiko 不打 webhook，也不自己判斷門檻。規則是**範例**：`for` 與門檻由部署端決定。
 
 `GET /metrics` 與 `HEAD /metrics` 在 API server，跟 `/healthz` 一樣不認證、不記稽核、不在 OpenAPI。靜態目錄裡若有一個叫 `metrics` 的檔，不會被這個路徑送出去。刮取不帶 bearer。
 
 ```yaml
 scrape_configs:
   - job_name: mftiko-api
+    honor_labels: true
     static_configs:
       - targets: ["api.example.invalid:8080"]
 ```
+
+`honor_labels: true` 不能省：系列自己帶 `instance`（`md1`、`sts1` 這種 mftiko 的 instance）。省略時 Prometheus 把它改名成 `exported_instance`，`instance` 變成刮取目標的位址，告警與抑制就對不上 instance（E16-D031）。沒有 `instance` 的系列（`mftiko_region_available`、`mftiko_postgres_up` 等）照樣拿到目標的位址。
 
 | metric | 標籤 | 意義 |
 |---|---|---|
@@ -392,47 +395,34 @@ scrape_configs:
 
 `WorkerStatus` 沒有 `PENDING`、`DEAD` 這兩個 phase。需求項目的狀態是另一個東西：`BACKOFF` 期間需求是 `PENDING`；政策放棄之後的 `EXITED` 對到 `DEAD`；`LOST` 維持最後一次的項目狀態。MD 行程內換 `conn_epoch`、TD 行程內 `DEGRADED`，都不改 `WorkerStatus` 的 phase，也不是 `DEAD`。md conn worker 的 NATS 斷線改的是 `conditions`，不是 phase，也不是 feed 的 `READY`。TD、STS 沒有 `mftiko_worker_bus_up`。API 不連 NATS，也不探測交易所。
 
+範例規則在 [`deploy/dev/prometheus/mftiko.rules.yml`](../deploy/dev/prometheus/mftiko.rules.yml)，`make dev-up` 的 Prometheus 載入同一份，這裡不另外抄（E16-D022）。抓取設定在同一個目錄的 `prometheus.yml`；`job_name` 要是 `mftiko-api`，`MftikoAPIDown` 看的是它。檔裡的 `for` 一律 30 秒，好在 dev 上走通（E16-D024）。正式環境從下表的 `for` 開始調：
+
+| 告警 | 正式環境的 `for` 起點 |
+|---|---|
+| `MftikoAPIDown`、`MftikoRegionUnavailable`、`MftikoControllerNoLeader` | 1m |
+| `MftikoAgentDown`、`MftikoPostgresDown` | 2m |
+| `MftikoWorkerLost`、`MftikoArtifactPullFailing` | 5m |
+| `MftikoWorkerBackoff`、`MftikoDiskLow` | 10m |
+| `MftikoWorkerExited` | 15m |
+| `MftikoWorkerBusDown` | 15s |
+
+Prometheus 與 Loki 的 ruler 送同一個 Alertmanager（E16-D008）。策略 log 的告警（R1、R2、R5）在 [`deploy/dev/loki/mftiko.rules.yml`](../deploy/dev/loki/mftiko.rules.yml)（E16-D005、E16-D020），`for` 一樣是 30 秒。dev 的 Alertmanager（[`deploy/dev/alertmanager/alertmanager.yml`](../deploy/dev/alertmanager/alertmanager.yml)）把每一則都送到 `mftiko-webhook-dev`，寫進 `deploy/dev/data/webhook/received.jsonl`，沒有 Discord（E16-D021）。正式環境把 receiver 換成 Discord，`inhibit_rules` 照 dev 的檔：
+
 ```yaml
-groups:
-  - name: mftiko.example
-    rules:
-      # 範例。for 由部署端改。
-      - alert: MftikoAPIDown
-        expr: up{job="mftiko-api"} == 0
-        for: 1m
-      - alert: MftikoRegionUnavailable
-        expr: mftiko_region_available == 0
-        for: 1m
-      - alert: MftikoAgentDown
-        expr: mftiko_agent_up == 0 and on(region) mftiko_region_available == 1
-        for: 2m
-      - alert: MftikoControllerNoLeader
-        expr: mftiko_controller_leader == 0 and on(region) mftiko_region_available == 1
-        for: 1m
-      - alert: MftikoWorkerLost
-        expr: mftiko_worker_phase{phase="LOST"} > 0
-        for: 5m
-      - alert: MftikoWorkerBackoff
-        expr: mftiko_worker_phase{phase="BACKOFF"} > 0
-        for: 10m
-      - alert: MftikoWorkerExited
-        expr: mftiko_worker_phase{phase="EXITED"} > 0
-        for: 15m
-      - alert: MftikoWorkerBusDown
-        expr: mftiko_worker_bus_up == 0
-        for: 15s
-      - alert: MftikoPostgresDown
-        expr: mftiko_postgres_up == 0
-        for: 2m
-      - alert: MftikoArtifactPullFailing
-        expr: mftiko_artifact_pull_failing == 1
-        for: 5m
-      - alert: MftikoDiskLow
-        expr: node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} < 0.1
-        for: 10m
+route:
+  receiver: discord
+  group_by: [alertname, instance, filename]
+  group_interval: 5m
+  repeat_interval: 4h
+receivers:
+  - name: discord
+    discord_configs:
+      # webhook URL 是祕密：0600，屬 Alertmanager 的使用者，不進 repo（E16-D009）
+      - webhook_url_file: /etc/alertmanager/discord-webhook
 ```
 
-`MftikoArtifactPullFailing` 看的是 STS 拉 artifact 的結果（E12-D069）。`mftiko_registry_up` 維持 0，API 沒有單一 registry 位址可探（E10-D122）。`MftikoAgentDown` 與 `MftikoControllerNoLeader` 要求同一個 `region` 的 `mftiko_region_available == 1`，避免 region 分割時每一台都叫。`MftikoWorkerExited` 的 `for` 放長：短暫的 `EXITED` 是正常的，status 刪掉之後這個數回到 0；一直留著才對應需求 `DEAD`。`MftikoWorkerBackoff` 對應需求 `PENDING`。`MftikoWorkerBusDown` 的 `for: 15s` 是範例，與 `unavailable_after` 同一種寫法（E12-D040、E12-D064）。重連的 handler 一觸發，gauge 就回到 1，不等緩衝排空；訂單簿要幾秒才追上（E12-D065）。TD、STS 沒有這個系列。`MftikoDiskLow` 用的是 node_exporter，不是 mftiko 的 metric。
+
+`MftikoArtifactPullFailing` 看的是 STS 拉 artifact 的結果（E12-D069）。`mftiko_registry_up` 維持 0，API 沒有單一 registry 位址可探（E10-D122）。`MftikoAgentDown` 與 `MftikoControllerNoLeader` 要求同一個 `region` 的 `mftiko_region_available == 1`，避免 region 分割時每一台都叫。`MftikoWorkerExited` 的 `for` 放長：短暫的 `EXITED` 是正常的，status 刪掉之後這個數回到 0；一直留著才對應需求 `DEAD`。`MftikoWorkerBackoff` 對應需求 `PENDING`。`MftikoWorkerBusDown` 的 `for` 起點 15 秒，與 `unavailable_after` 同一種寫法（E12-D040、E12-D064）。重連的 handler 一觸發，gauge 就回到 1，不等緩衝排空；訂單簿要幾秒才追上（E12-D065）。TD、STS 沒有這個系列。`MftikoDiskLow` 用的是 node_exporter，不是 mftiko 的 metric。
 
 #385 的演練清單（實測留到那張票）對到的訊號：
 
