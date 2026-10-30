@@ -195,10 +195,13 @@ services:
   # examples docs/operations.md points to, with every for at 30s (E16-D022, E16-D024).
 
   # The dev webhook receiver (E16-D021): each notification is one line in ./data/webhook/received.jsonl,
-  # which `make dev-up` creates and E16-04's smoke reads. Its -check mode is also the healthcheck of
-  # loki and alloy, whose images have no shell or wget (E16-D026).
+  # which `make dev-up` creates and E16-04's smoke reads. It runs as the user who ran make (DEV_UID and
+  # DEV_GID, which the Makefile sets), so the file is theirs to remove or empty; run without make, it is
+  # root's. Its -check mode is also the healthcheck of loki and alloy, whose images have no shell or wget
+  # (E16-D026).
   webhook:
     image: alpine:3.22
+    user: "${DEV_UID:-0}:${DEV_GID:-0}"
     command: ["/mftiko/mftiko-webhook-dev", "-listen", ":9099", "-out", "/data/received.jsonl"]
     volumes:
       - ../../bin/linux:/mftiko:ro

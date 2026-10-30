@@ -1,6 +1,7 @@
 // Command mftiko-webhook-dev is the dev stack's webhook receiver (DECISIONS E16-D021). The dev
 // Alertmanager sends every notification to it, and each POST appends one line to -out, which the dev
 // compose sets to deploy/dev/data/webhook/received.jsonl (gitignored). E16-04's smoke reads that file.
+// make dev-up runs it as the user who ran make, so that user can remove or empty the file.
 //
 // A line is {"time":"<RFC3339Nano, UTC>","path":"<request path>","body":<request body>}. The body is
 // kept as JSON when it is one JSON value, and as a JSON string otherwise. A GET or HEAD answers 200

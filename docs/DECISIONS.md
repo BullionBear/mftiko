@@ -4661,6 +4661,7 @@ E12-D061 列的「演練之前沒有實測」，除了主機重開，都在 test
 
 - 新增 `cmd/mftiko-webhook-dev`，比照 `mftiko-nats-dev`。每收到一個 POST，就在 `deploy/dev/data/webhook/received.jsonl` 加一行，給 E16-04 的 smoke 讀。不用第三方 image。
 - 一行是 `{"time":…,"path":…,"body":…}`：`time` 是收到的時間（UTC），`body` 是一個 JSON 值時原樣保留，否則存成字串。GET、HEAD 回 200、不記，是它自己的健康檢查。一個 POST 上限 1 MiB。
+- 以執行 `make` 的使用者跑：Makefile 叫 compose 時帶 `DEV_UID`、`DEV_GID`（`id -u`、`id -g`），服務的 `user:` 用它們。檔案與 `make dev-up` 建的目錄都屬那個使用者，刪掉或清空不用 sudo；檔案每次寫入都重新開啟，刪掉之後下一則告警另起一個。不經 make 直接跑 compose 時兩個變數是空的，退回 root。
 - dev 的 Alertmanager 一律送假接收端，沒有 Discord 切換，也沒有 `webhook_url_file`。Discord 的設定只寫在 `docs/operations.md`，當部署端的範例。#483 的完成標準拿掉「放了檔時發到 Discord」。
 - 伺服器 tarball 不放這個 binary（`.github/scripts/build-server.sh` 列舉要放的）。
 
