@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"syscall"
 	"testing"
+	"time"
 )
 
 const envLogMode = "MFTIKO_TEST_LOGMODE"
@@ -76,6 +77,36 @@ func TestLogModeIgnoresUmask(t *testing.T) {
 	}
 }
 
+// A plane directory that is 0750 already gets no chmod. Linux clears setgid on a
+// chmod by a process outside the directory's group, and the agent is not in
+// mftiko-ops, so even a chmod that keeps the bit would drop it (E16-D036). A chmod
+// changes ctime, so an unchanged ctime means none was made.
+func TestEnsureLogDirLeavesModeAlone(t *testing.T) {
+	work := t.TempDir()
+	dir := LogDir(work, "sts")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o750|os.ModeSetgid); err != nil {
+		t.Fatal(err)
+	}
+	before := fileCtime(t, dir)
+	time.Sleep(10 * time.Millisecond)
+	if err := EnsureLogDir(work, "sts"); err != nil {
+		t.Fatal(err)
+	}
+	if after := fileCtime(t, dir); after != before {
+		t.Fatalf("ctime %v, was %v: EnsureLogDir chmodded a 0750 directory", after, before)
+	}
+	fi, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o750 || fi.Mode()&os.ModeSetgid == 0 {
+		t.Fatalf("dir mode %v, want 0750 with setgid", fi.Mode())
+	}
+}
+
 func runLogModeChild() {
 	syscall.Umask(0o077)
 	work := os.Getenv("MFTIKO_TEST_LOGDIR")
@@ -130,4 +161,17 @@ func fileGID(t *testing.T, path string) uint32 {
 		t.Fatalf("%s: stat %T", path, fi.Sys())
 	}
 	return st.Gid
+}
+
+func fileCtime(t *testing.T, path string) time.Time {
+	t.Helper()
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatalf("%s: stat %T", path, fi.Sys())
+	}
+	return time.Unix(st.Ctim.Sec, st.Ctim.Nsec)
 }

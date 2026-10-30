@@ -41,9 +41,9 @@ const (
 	LogFileMode os.FileMode = 0o640
 )
 
-// EnsureLogDir creates ${WORK_DIR}/log/{plane} if needed and chmods it to 0750
-// (E10-D021, E10-D022). A setgid bit already on the directory is kept, so new files
-// inherit the group set on ${WORK_DIR}/log (E10-D015).
+// EnsureLogDir creates ${WORK_DIR}/log/{plane} if needed and chmods it to 0750 when it is
+// not 0750 already (E10-D021, E10-D022, E16-D036). A setgid bit already on the directory
+// is kept, so new files inherit the group set on ${WORK_DIR}/log (E10-D015).
 func EnsureLogDir(workDir, plane string) error {
 	dir := LogDir(workDir, plane)
 	if err := os.MkdirAll(dir, LogDirMode); err != nil {
@@ -54,10 +54,16 @@ func EnsureLogDir(workDir, plane string) error {
 
 // chmodLogDir sets 0750 and keeps setgid when the directory already has it.
 // Chmod of 0750 alone would clear the bit the parent ${WORK_DIR}/log passed down.
+// A directory that is 0750 already is left alone: the agent is not in the
+// directory's group (mftiko-ops), and Linux clears setgid on every chmod by a
+// process outside the file's group, even one that asks to keep it (E16-D036).
 func chmodLogDir(dir string) error {
 	fi, err := os.Lstat(dir)
 	if err != nil {
 		return err
+	}
+	if fi.Mode().Perm() == LogDirMode {
+		return nil
 	}
 	mode := LogDirMode
 	if fi.Mode()&os.ModeSetgid != 0 {
