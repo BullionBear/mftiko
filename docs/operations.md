@@ -406,21 +406,7 @@ scrape_configs:
 | `MftikoWorkerExited` | 15m |
 | `MftikoWorkerBusDown` | 15s |
 
-Prometheus 與 Loki 的 ruler 送同一個 Alertmanager（E16-D008）。策略 log 的告警（R1、R2、R5）在 [`deploy/dev/loki/mftiko.rules.yml`](../deploy/dev/loki/mftiko.rules.yml)（E16-D005、E16-D020），`for` 一樣是 30 秒。dev 的 Alertmanager（[`deploy/dev/alertmanager/alertmanager.yml`](../deploy/dev/alertmanager/alertmanager.yml)）把每一則都送到 `mftiko-webhook-dev`，寫進 `deploy/dev/data/webhook/received.jsonl`，沒有 Discord（E16-D021）。正式環境把 receiver 換成 Discord，`inhibit_rules` 照 dev 的檔：
-
-```yaml
-route:
-  receiver: discord
-  group_by: [alertname, instance, filename]
-  group_interval: 5m
-  repeat_interval: 4h
-receivers:
-  - name: discord
-    discord_configs:
-      # webhook URL 是祕密：0600，屬 Alertmanager 的使用者，不進 repo（E16-D009）
-      - webhook_url_file: /etc/alertmanager/discord-webhook
-```
-
+Prometheus 與 Loki 的 ruler 送同一個 Alertmanager（E16-D008）。策略 log 的告警（R1、R2、R5）、Alertmanager 與 Discord 的設定見[策略 log 與告警](#策略-log-與告警)。
 
 `MftikoArtifactPullFailing` 看的是 STS 拉 artifact 的結果（E12-D069）。`mftiko_registry_up` 維持 0，API 沒有單一 registry 位址可探（E10-D122）。`MftikoAgentDown` 與 `MftikoControllerNoLeader` 要求同一個 `region` 的 `mftiko_region_available == 1`，避免 region 分割時每一台都叫。`MftikoWorkerExited` 的 `for` 放長：短暫的 `EXITED` 是正常的，status 刪掉之後這個數回到 0；一直留著才對應需求 `DEAD`。`MftikoWorkerBackoff` 對應需求 `PENDING`。`MftikoWorkerBusDown` 的 `for` 起點 15 秒，與 `unavailable_after` 同一種寫法（E12-D040、E12-D064）。重連的 handler 一觸發，gauge 就回到 1，不等緩衝排空；訂單簿要幾秒才追上（E12-D065）。TD、STS 沒有這個系列。`MftikoDiskLow` 用的是 node_exporter，不是 mftiko 的 metric。
 
@@ -439,6 +425,139 @@ receivers:
 | registry 不可用時 spawn 新的 worker | 需求項目維持 `PENDING`（那是項目狀態，不是 `worker_phase`）。API 建立或列出策略回 `registry_unavailable`。`mftiko_registry_up` 維持 0 | 不另設 registry 告警 |
 | 只有 STS agent 連不到 registry | 非 terminal 的 `SessionStatus` 有 `artifact_pull`，`mftiko_artifact_pull_failing` 是 1。`mftiko_registry_up` 維持 0 | `MftikoArtifactPullFailing` |
 | 磁碟用量 | node_exporter 的檔案系統剩餘比例。mftiko 不輸出這項 | `MftikoDiskLow` |
+
+## 策略 log 與告警
+
+依 [DECISIONS.md](DECISIONS.md) E16-D001–E16-D005、E16-D008–E16-D011、E16-D020–E16-D035（E16，#476）。phase 1 只收 STS session worker 的 stderr，文件稱「策略 log」（E16-D001）。Loki、Alloy、Alertmanager 由部署端安裝與維運，mftiko 不打包、不發佈。範例設定就是 `make dev-up` 跑的那幾個檔，這裡不另外抄（E16-D002、E16-D022）。告警響了怎麼處理見 [runbook §3.13](runbook.md#313-策略-log-的告警)。
+
+### 架構
+
+1. shim 把 session worker 的 stderr 寫到 `${WORK_DIR}/log/sts/{h}.stderr`。同一個 session 的每個 incarnation 都寫同一個檔，一個檔就是一個 session（[log 在哪裡](#log-在哪裡)）。
+2. 每台 STS 主機的 Alloy 以 glob `/var/lib/mftiko/sts-agent/log/sts/*.stderr` 找檔，新的 session 自動接上，推到 Loki（E16-D003）。只收 `*.stderr`：輪替出來的 `*.stderr.N` 是同樣的行換了檔名，收了會重複。stdout 是策略自己的資料，不收。不是 JSON 的行照收，例如 shim 的 `[mftiko-shim] …` 與 Go 的 panic。
+3. Loki 的 ruler 評估 R1、R2、R5，成立的送到 Alertmanager。
+4. Prometheus 的 `mftiko_*` 告警（[監控與告警](#監控與告警)）送到同一個 Alertmanager（E16-D008）。
+5. Alertmanager 分組、抑制，送到 Discord（[Discord](#discord)）。dev 送到假接收端（E16-D021）。
+
+stream label 是 `host`、`region`、`plane`（`sts`）、`instance`（STS instance），加上 Alloy 給的 `filename`（E16-D004）。`region`、`instance` 要和 `mftiko_*` 的同名標籤一樣，Alertmanager 才對得上。
+
+| 規則 | 告警 | 響的時候 |
+|---|---|---|
+| R1 | `MftikoStrategyLogError` | 有 warn 以上的行（`warn`、`error`、`fatal`、`panic`） |
+| R2 | `MftikoStrategyLogCrash` | 有不是 JSON 的 `panic: `、`fatal error: `，或 shim 丟掉輸出時寫的 `[mftiko-shim] N bytes of … lost here`。shim 在每個 incarnation 開頭寫的那一行不算 |
+| R5 | `MftikoStrategyOverloaded` | 有 SDK 以 info 寫的 `hook exceeded 100ms` 或 `td buffer full`。R1 看不到這兩種 |
+
+- 三條都是 `count_over_time(… [5m]) > 0`：最後一行之後，條件還成立 5 分鐘。告警依 `region`、`instance`、`filename` 分；R1、R5 的行有 `session_id` 時也帶上，R2 的行不是 JSON，沒有（E16-D029）。
+- annotation `logs` 是查 log 的方法：有 `session_id` 時是 `mftiko session logs <session_id> --stream stderr --tail 50`，沒有時是[從 filename 查回 session](#從-filename-查回-session)的 Loki 查詢。通知不帶 log 的內文，也不帶數值（E16-D009、E16-D010）。
+- `MftikoAgentDown` 響的期間，同一個 `region`、`instance` 的 `MftikoStrategy*` 不送（`inhibit_rules`，E16-D030）。agent 不在時 worker 照跑、照寫 log；這段期間的策略錯誤，要等 agent 回來之後規則仍成立才送。
+- 策略卡住或死掉就不再寫 log，這三條不會響。那一段由 `MftikoWorkerBackoff`、`MftikoWorkerExited`、`MftikoWorkerLost` 負責（E16-D008）。
+
+### 主機
+
+- 每台跑 STS agent 的主機一個 Alloy（主機 A、B，E16-D003）。
+- Loki 與 Alertmanager 在主機 A（home region）。主機 B 的 Alloy 經私有網路推到主機 A 的 Loki（E16-D011）。
+- Loki 的 HTTP 埠（範例是 3100）只開給跑 Alloy 的主機。推送與查詢是同一個埠：運維在主機 A 上查，或經 SSH 轉發。Alertmanager（範例是 9093）沒有認證，同樣只走私有網路。
+- 一期不開 TLS，與 etcd、NATS、session log 端點相同（E12-D052、E14-D001）。
+
+### Alloy 的權限
+
+Alloy 以自己的使用者（以下寫作 `alloy`）經 group `mftiko-ops` 讀 log，不用 root（E16-D003）。前提是部署時已照[權限](#權限)把 `${WORK_DIR}/log` 改成 `mftiko-ops` 並加上 setgid；`mftiko-release` 不做這一步。每台 STS 主機，以 root：
+
+```sh
+chgrp mftiko-ops /var/lib/mftiko/sts-agent/log
+chmod 2750 /var/lib/mftiko/sts-agent/log
+usermod -aG mftiko-ops alloy
+systemctl restart alloy                                # 行程重啟才拿到新的 group
+sudo -u alloy ls -l /var/lib/mftiko/sts-agent/log/sts/  # 讀得到，檔的 group 是 mftiko-ops
+```
+
+- setgid 只管之後建立的。chgrp 之前就有的 `log/sts/` 與檔仍是原本的 group，Alloy 讀不到：`chgrp -R mftiko-ops /var/lib/mftiko/sts-agent/log && chmod g+s /var/lib/mftiko/sts-agent/log/sts`。
+- worker 與 agent 不用加進 `mftiko-ops`。
+- dev 的 sts1 以 nobody 跑，Alloy 以 `473:65534`（image 裡的 `alloy` 使用者加上 nobody 的 group）跑，一樣以 group 讀（E16-D027）。
+
+### 範例設定
+
+檔在 [`deploy/dev`](../deploy/dev)（E16-D022）。正式環境要改的：
+
+| 檔 | 正式環境要改的 |
+|---|---|
+| [`alloy/config.alloy`](../deploy/dev/alloy/config.alloy) | `__path__` 不用改：unit 的 `-work-dir` 與 dev 都是 `/var/lib/mftiko/sts-agent`。`host` 改成主機名（可用 `constants.hostname`）。`region`、`instance` 改成這台 STS agent 的：`instance` 是 env 的 `MFTIKO_INSTANCE`，`region` 是 `mftiko instance list` 的 `REGION`。`loki.write` 的 `url` 改成主機 A 的私有位址，例如 `http://loki.example.invalid:3100/loki/api/v1/push` |
+| [`loki/mftiko.rules.yml`](../deploy/dev/loki/mftiko.rules.yml) | `for`（dev 30s）、窗口 `[5m]` 與門檻 `> 0` 由部署端定（E12-D039）。一行讓條件成立一個窗口那麼久，所以 `for` 要短於窗口，否則只有一行時永遠不響。要多幾行才叫，就提高門檻 |
+| [`loki/loki.yaml`](../deploy/dev/loki/loki.yaml) | 儲存的目錄（`common.path_prefix` 以下）放到主機 A 的資料磁碟。`limits_config.retention_period`（dev 24h，[Loki 的保留期](#loki-的保留期)）。`ruler.alertmanager_url` 指到主機 A 的 Alertmanager，`ruler.evaluation_interval`（dev 15s，Loki 預設 1m）。規則檔放在 `ruler.storage.local.directory` 底下租戶的目錄；auth 關著時租戶是 `fake`，dev 掛在 `/etc/loki/rules/fake/`。`discover_service_name: []` 保留，stream label 才只有上面那幾個 |
+| [`alertmanager/alertmanager.yml`](../deploy/dev/alertmanager/alertmanager.yml) | receiver 換成 Discord（[下面](#discord)）。`group_wait`（dev 10s，Alertmanager 預設 30s）。`group_interval` 5m、`repeat_interval` 4h 是放寬過的起點，一個策略一直寫 error 時不洗版（E16-D009）。`inhibit_rules` 照抄 |
+| [`prometheus/`](../deploy/dev/prometheus) | `mftiko_*` 的規則與刮取，見[監控與告警](#監控與告警)。`alerting` 指到主機 A 的 Alertmanager |
+
+### 從 filename 查回 session
+
+檔名的 `{h}` 是 `WorkerHash("sts/<session_id>")`，反推不回 session（E16-D004）。告警帶 `session_id` 時，直接跑 `logs` 那一條命令。只有 `filename` 時（R2，或行裡沒有 `session_id`）：
+
+- **Loki**（spec 刪掉之後也查得到，直到 Loki 的保留期）：`{filename="<filename>"} |= "[mftiko-shim]"`，就是 annotation `logs`。shim 在每個 incarnation 開頭寫一行 `[mftiko-shim] <時間> worker sts/<session_id> incarnation <n>`，所以查詢的時間範圍要涵蓋 session 開始或重啟的時候。在 Grafana 的 Explore 貼上這個查詢，或在主機 A：
+
+  ```sh
+  curl -sG http://127.0.0.1:3100/loki/api/v1/query_range --data-urlencode since=168h \
+    --data-urlencode 'query={filename="<filename>"} |= "[mftiko-shim]"' | grep -o 'worker sts/[^ ]*' | sort -u
+  ```
+
+- **主機上**（檔還在時）：`grep -h '^\[mftiko-shim\] .* worker ' <filename>*`，含輪替出來的檔。
+- **API**（spec 還在時）：`mftiko session list -o json` 裡 `logs.stderr` 等於這個 `filename` 的那一筆，例如 `mftiko session list -o json | jq -r --arg f '<filename>' '.items[] | select(.logs.stderr == $f) | .id'`。
+
+### Discord
+
+用 Alertmanager 內建的 `discord_configs`，不另做轉接（E16-D009）。dev 沒有 Discord，`make dev-alert-smoke` 只送假接收端（E16-D034）。
+
+1. 在 Discord 頻道設定的「整合」建立一個 webhook，複製它的 URL。URL 是祕密：拿到就能往頻道發訊息。
+2. 在主機 A 以 root 寫進檔：0600，屬 Alertmanager 的使用者（以下寫作 `alertmanager`），不進 repo。從 stdin 讀，URL 不進 shell 的歷史。換 URL 也照這三行：
+
+   ```sh
+   (umask 077 && tr -d '\n' >/etc/alertmanager/discord-webhook.new)   # 貼上 URL，Enter，Ctrl-D
+   chown alertmanager /etc/alertmanager/discord-webhook.new
+   mv /etc/alertmanager/discord-webhook.new /etc/alertmanager/discord-webhook
+   ```
+
+3. Alertmanager 的設定。route 與 `inhibit_rules` 同 dev 的檔，只換 receiver，`group_wait` 用 Alertmanager 的預設：
+
+   ```yaml
+   route:
+     receiver: discord
+     group_by: [alertname, instance, filename]
+     group_interval: 5m
+     repeat_interval: 4h
+   receivers:
+     - name: discord
+       discord_configs:
+         - webhook_url_file: /etc/alertmanager/discord-webhook
+   inhibit_rules:
+     - source_matchers: ['alertname="MftikoAgentDown"']
+       target_matchers: ['alertname=~"MftikoStrategy.*"']
+       equal: [region, instance]
+   ```
+
+4. 檢查設定，再 reload。改了設定或 webhook 的檔之後都要 reload：
+
+   ```sh
+   amtool check-config /etc/alertmanager/alertmanager.yml
+   curl -fsS -X POST http://127.0.0.1:9093/-/reload
+   ```
+
+   reload 失敗時 Alertmanager 繼續用原本的設定，`curl` 以非 0 結束，Alertmanager 的 log 有原因。
+5. 確認：送一則測試告警，頻道收到 `[FIRING:1] MftikoDiscordTest`。它沒有後續就自己解除。
+
+   ```sh
+   amtool --alertmanager.url=http://127.0.0.1:9093 alert add alertname=MftikoDiscordTest instance=test region=test
+   ```
+
+Discord 的訊息用 Alertmanager 預設的範本：告警名稱、label 與 annotation（`summary`、`logs`）。規則不放 log 的內文，訊息裡就沒有（E16-D010）。
+
+### Loki 的保留期
+
+- 由部署端設：`limits_config.retention_period`，並開 `compactor.retention_enabled`，否則 Loki 不刪（dev 24h，E16-D011、E16-D024）。
+- 和 session 的[保留期](#保留期)是兩回事。spec 刪掉時，STS 只刪主機上的檔（E10-D016），Loki 裡的副本留到 Loki 自己的保留期。反過來，Loki 已經刪掉的行，spec 還在時仍可以 `mftiko session logs` 讀，只是主機上的檔有[輪替](#輪替)的上限。
+- 策略的 stderr 集中存進 Loki，可能留得比主機上的檔久。策略不要把祕密寫進 log，例如 `InitPayload.nats` 的 seed（PROTOCOL §6.1，E16-D011）。
+
+### dev 與 smoke
+
+- `make dev-up` 跑 Alloy、Loki、Prometheus、Alertmanager 與假接收端 `mftiko-webhook-dev`。每則通知（含 resolved）是 `deploy/dev/data/webhook/received.jsonl` 的一行（E16-D021）。Loki 在 `http://127.0.0.1:3100`，Alertmanager 在 `http://127.0.0.1:9093`。dev 的 `md1`、`td1` 沒有跑，`MftikoAgentDown` 對它們一直響（E16-D029）。
+- `make dev-alert-smoke`（先 `make dev-up`、`make migrate-up`）以 repo 的 `examples/strategies/conform` 開三個 session，讓 R1、R2、R5 各響一則：確認假接收端收到、照 `logs` 查得回 session。R2 的那一行是 smoke 附加到 session 的 stderr 的，不是真的 panic。接著停掉 sts1，確認 Alertmanager 有 `MftikoAgentDown{instance="sts1"}`、三則策略告警被它抑制、假接收端收到它，最後把 sts1 啟動回來（E16-D032–E16-D035）。約兩分鐘。
+- 它會停 sts1 約一分鐘，sts1 有跑著的 session 時不跑。上一次停 sts1 的 `MftikoAgentDown` 還沒送出 resolved 時，先等它，最多 6 分鐘。通過時刪掉自己的 session，失敗時留著並印出 id。
 
 ## 上傳資料 artifact
 
@@ -570,6 +689,7 @@ spec 什麼時候被刪，只由 API 決定（W5，E10-D017）：
 
 - registry 上的資料 artifact（`state_out` 與[上傳的 input](#上傳資料-artifact)）一期不刪，新的 session 可以用 digest 接手；容量由運維管理（E10-D017）。
 - `audit` 的列一期不刪（E10-D010）。
+- Loki 裡策略 stderr 的副本，留到 Loki 自己的保留期（[Loki 的保留期](#loki-的保留期)，E16-D011）。
 
 ## 舊驗收庫補記 schema_migrations
 
