@@ -679,9 +679,73 @@ func fakeStrategyELF(t *testing.T, class elf.Class, data elf.Data, machine elf.M
 		t.Fatalf("payload of %d bytes does not fit", len(payload))
 	}
 	// The load segment starts on a 16-byte virtual address, and the build-info
-	// magic is its first bytes, which is where debug/buildinfo looks.
+	// magic is its first bytes. Go 1.27's debug/buildinfo only finds it through
+	// a .go.buildinfo section, so the section header table names that range.
 	copy(buf[payloadOff:], payload)
+	putELFSections(t, buf, class, order, payloadOff, len(payload))
 	return buf
+}
+
+// putELFSections writes a null section, .go.buildinfo over the payload, and
+// .shstrtab at the end of buf, followed by the section header table.
+func putELFSections(t *testing.T, buf []byte, class elf.Class, order binary.ByteOrder, payloadOff, payloadLen int) {
+	t.Helper()
+	const shstrtab = "\x00.go.buildinfo\x00.shstrtab\x00"
+	const nameBuildInfo, nameShstrtab = 1, 15
+	const vaddr = 0x400000
+	type section struct {
+		name, typ uint32
+		flags     uint64
+		addr, off uint64
+		size      uint64
+		addralign uint64
+	}
+	shentsize := 40
+	if class == elf.ELFCLASS64 {
+		shentsize = 64
+	}
+	shoff := len(buf) - 3*shentsize
+	strOff := shoff - len(shstrtab)
+	if payloadOff+payloadLen > strOff {
+		t.Fatalf("payload of %d bytes overlaps the section headers", payloadLen)
+	}
+	copy(buf[strOff:], shstrtab)
+	sections := []section{
+		{},
+		{nameBuildInfo, uint32(elf.SHT_PROGBITS), uint64(elf.SHF_WRITE | elf.SHF_ALLOC), vaddr, uint64(payloadOff), uint64(payloadLen), 16},
+		{nameShstrtab, uint32(elf.SHT_STRTAB), 0, 0, uint64(strOff), uint64(len(shstrtab)), 1},
+	}
+	var shbuf bytes.Buffer
+	for _, s := range sections {
+		var sh any = elf.Section32{
+			Name: s.name, Type: s.typ, Flags: uint32(s.flags), Addr: uint32(s.addr),
+			Off: uint32(s.off), Size: uint32(s.size), Addralign: uint32(s.addralign),
+		}
+		if class == elf.ELFCLASS64 {
+			sh = elf.Section64{
+				Name: s.name, Type: s.typ, Flags: s.flags, Addr: s.addr,
+				Off: s.off, Size: s.size, Addralign: s.addralign,
+			}
+		}
+		if err := binary.Write(&shbuf, order, sh); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if shbuf.Len() != 3*shentsize {
+		t.Fatalf("section headers are %d bytes", shbuf.Len())
+	}
+	copy(buf[shoff:], shbuf.Bytes())
+	if class == elf.ELFCLASS64 {
+		order.PutUint64(buf[40:], uint64(shoff))     // e_shoff
+		order.PutUint16(buf[58:], uint16(shentsize)) // e_shentsize
+		order.PutUint16(buf[60:], 3)                 // e_shnum
+		order.PutUint16(buf[62:], 2)                 // e_shstrndx
+	} else {
+		order.PutUint32(buf[32:], uint32(shoff))     // e_shoff
+		order.PutUint16(buf[46:], uint16(shentsize)) // e_shentsize
+		order.PutUint16(buf[48:], 3)                 // e_shnum
+		order.PutUint16(buf[50:], 2)                 // e_shstrndx
+	}
 }
 
 func elfIdent(class elf.Class, data elf.Data, abi elf.OSABI, machine uint16) []byte {

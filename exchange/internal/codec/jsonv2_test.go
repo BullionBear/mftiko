@@ -1,9 +1,12 @@
-//go:build goexperiment.jsonv2
+//go:build goexperiment.jsonv2 && !go1.27
 
 // sonic as configured here against encoding/json/v2, on the same fixtures into the same structs, numbers read
 // by Decimal in both (issue #106). encoding/json/v2 is behind GOEXPERIMENT in Go 1.26, and so is this file:
 //
 //	GOEXPERIMENT=jsonv2 go test ./exchange/internal/codec -run JSONv2 -bench . -benchmem
+//
+// Go 1.27 turns the experiment on by default, but the module's go line is 1.26, so stdversion rejects
+// encoding/json/v2 here and the file stays off under 1.27 until go.mod moves to 1.27 and the tag goes (issue #498).
 //
 // encoding/json/v2 matches names case-sensitively, like both configurations, and always copies strings.
 
