@@ -5,6 +5,7 @@ import (
 	"errors"
 	"maps"
 	"slices"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"google.golang.org/protobuf/proto"
@@ -13,7 +14,10 @@ import (
 	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
 	"github.com/BullionBear/mftiko/contract/wire/cloid"
 	"github.com/BullionBear/mftiko/contract/wire/decimal"
+	"github.com/BullionBear/mftiko/sdk/eventlog"
 	"github.com/BullionBear/mftiko/sdk/internal/cloidgen"
+	"github.com/BullionBear/mftiko/sdk/internal/dispatch"
+	"github.com/BullionBear/mftiko/sdk/internal/evlog"
 )
 
 // Order is a new order, in the units of td.Submit.
@@ -46,7 +50,8 @@ func (p *Path) Submit(o Order) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	id, err := cloidgen.Next(acc.decl, o.AlgoID, p.now().UnixMilli())
+	now, gen, recorded := p.callTime()
+	id, err := p.gen.Next(acc.decl, o.AlgoID, now.UnixMilli())
 	if err != nil {
 		if errors.Is(err, cloidgen.ErrAlgoNotDeclared) {
 			return "", ErrAlgoNotDeclared
@@ -68,8 +73,11 @@ func (p *Path) Submit(o Order) (string, error) {
 		p.mu.Unlock()
 		return "", ErrStopping
 	}
+	if !recorded {
+		gen = acc.sentGen
+	}
 	acc.orders[id] = row
-	acc.submitGen[id] = acc.sentGen
+	acc.submitGen[id] = gen
 	p.mu.Unlock()
 
 	req := &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Submit{Submit: &tdv1.Submit{
@@ -86,9 +94,66 @@ func (p *Path) Submit(o Order) (string, error) {
 		Params:        maps.Clone(o.Params),
 		RecvWindowMs:  o.RecvWindowMs,
 	}}}
-	wait, release := p.reserveSend()
-	p.track(func() { p.roundOrder(wait, release, o.APIID, id, nil, req, orderSubmit) })
+	call := p.record(eventlog.OpSubmit, now, o.APIID, gen, id)
+	p.send(call, o.APIID, id, nil, req, orderSubmit)
 	return id, nil
+}
+
+// callTime is the clock of one order call. A replay reads it, and the generation a Submit
+// records, from the recorded call it is about to repeat: the client order id is made from that
+// time, so the id repeats as well (E20-D004). ok is false outside a replay.
+func (p *Path) callTime() (at time.Time, gen uint64, ok bool) {
+	if p.replay != nil && p.replay.Call != nil {
+		if ns, g, found := p.replay.Call(p.calls.Load() + 1); found {
+			return time.Unix(0, ns), g, true
+		}
+	}
+	return p.now(), 0, false
+}
+
+// record writes one order_call and returns its call id: the order_publish and the order_reply of
+// that request carry the same id (E20-D003). at is the call's clock; the zero time reads it.
+// With the log off record does nothing and returns 0.
+func (p *Path) record(flags uint16, at time.Time, apiID int64, gen uint64, ids ...string) uint64 {
+	if p.rec == nil {
+		return 0
+	}
+	if at.IsZero() {
+		at, _, _ = p.callTime()
+	}
+	var buf [256]byte
+	body := eventlog.AppendOrderCall(buf[:0], apiID, gen, ids)
+	call := p.calls.Add(1)
+	p.rec.Append(eventlog.KindOrderCall, flags, 0, at.UnixNano(), call, body, nil)
+	return call
+}
+
+// send starts the round of one request on its own goroutine. A replay sends nothing: it writes
+// the request as the order_publish it would have been and keeps the round for ReplayReply.
+func (p *Path) send(call uint64, apiID int64, id string, ids []string, req *tdv1.OrderRequest, kind orderKind) {
+	if p.replay != nil {
+		p.replayed(call, apiID, id, ids, req, kind)
+		return
+	}
+	wait, release := p.reserveSend()
+	p.track(func() { p.roundOrder(wait, release, call, apiID, id, ids, req, kind) })
+}
+
+// pending is a replayed request waiting for its recorded reply.
+type pending struct {
+	apiID int64
+	id    string
+	ids   []string
+	kind  orderKind
+}
+
+func (p *Path) replayed(call uint64, apiID int64, id string, ids []string, req *tdv1.OrderRequest, kind orderKind) {
+	if body, err := proto.Marshal(req); err == nil {
+		p.rec.Append(eventlog.KindOrderPublish, 0, 0, p.now().UnixNano(), call, body, nil)
+	}
+	p.mu.Lock()
+	p.rounds[call] = pending{apiID: apiID, id: id, ids: ids, kind: kind}
+	p.mu.Unlock()
 }
 
 // Cancel asks TD to cancel one order of this session. A 1xx, including no responder,
@@ -112,8 +177,8 @@ func (p *Path) Cancel(apiID int64, clientOrderID string) error {
 		Uid:           uid,
 		ClientOrderId: clientOrderID,
 	}}}
-	wait, release := p.reserveSend()
-	p.track(func() { p.roundOrder(wait, release, apiID, clientOrderID, []string{clientOrderID}, req, orderCancel) })
+	call := p.record(eventlog.OpCancel, time.Time{}, apiID, 0, clientOrderID)
+	p.send(call, apiID, clientOrderID, []string{clientOrderID}, req, orderCancel)
 	return nil
 }
 
@@ -146,38 +211,80 @@ func (p *Path) BatchCancel(apiID int64, algoID uint32, uids ...uint32) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	p.track(func() { p.sendBatches(apiID, batch, ids) })
+	call := p.recordBatch(apiID, batch, ids)
+	if p.replay != nil {
+		p.sendBatches(apiID, batch, ids, call)
+		return nil
+	}
+	p.track(func() { p.sendBatches(apiID, batch, ids, call) })
 	return nil
 }
 
-func (p *Path) sendBatches(apiID int64, batch uint32, ids []string) {
+// recordBatch writes one order_call for each round of a BatchCancel, all at the call's clock and
+// marked FromBatch, and returns the first round's call id; the others follow it. A cancel_batch of
+// 1 makes each round a Cancel (E06-D031).
+func (p *Path) recordBatch(apiID int64, batch uint32, ids []string) uint64 {
+	if p.rec == nil {
+		return 0
+	}
+	at, _, _ := p.callTime()
+	flags := eventlog.OpBatchCancel | eventlog.FromBatch
 	if batch == 1 {
-		for _, id := range ids {
+		flags = eventlog.OpCancel | eventlog.FromBatch
+	}
+	n := int(batch)
+	var first uint64
+	for i := 0; i < len(ids); i += n {
+		call := p.record(flags, at, apiID, 0, ids[i:min(i+n, len(ids))]...)
+		if first == 0 {
+			first = call
+		}
+	}
+	return first
+}
+
+// sendBatches sends the rounds one after another, each after the previous round's reply. call is
+// the first round's call id, or 0 with the log off.
+func (p *Path) sendBatches(apiID int64, batch uint32, ids []string, call uint64) {
+	n := int(batch)
+	for i := 0; i < len(ids); i += n {
+		var (
+			id    string
+			chunk []string
+			req   *tdv1.OrderRequest
+			kind  orderKind
+		)
+		if batch == 1 {
+			id = ids[i]
 			var uid uint32
 			p.mu.Lock()
 			if o := p.ordersOf(apiID)[id]; o != nil {
 				uid = o.GetUid()
 			}
 			p.mu.Unlock()
-			req := &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Cancel{Cancel: &tdv1.Cancel{
+			chunk = []string{id}
+			req = &tdv1.OrderRequest{Req: &tdv1.OrderRequest_Cancel{Cancel: &tdv1.Cancel{
 				SessionId: p.sessionID, Uid: uid, ClientOrderId: id,
 			}}}
+			kind = orderCancel
+		} else {
+			chunk = append([]string(nil), ids[i:min(i+n, len(ids))]...)
+			orders := make([]*tdv1.BatchCancelOrder, len(chunk))
+			for k, c := range chunk {
+				orders[k] = &tdv1.BatchCancelOrder{ClientOrderId: c}
+			}
+			req = &tdv1.OrderRequest{Req: &tdv1.OrderRequest_BatchCancel{BatchCancel: &tdv1.BatchCancel{Orders: orders}}}
+			kind = orderBatch
+		}
+		if p.replay != nil {
+			p.replayed(call, apiID, id, chunk, req, kind)
+		} else {
 			wait, release := p.reserveSend()
-			p.roundOrder(wait, release, apiID, id, []string{id}, req, orderCancel)
+			p.roundOrder(wait, release, call, apiID, id, chunk, req, kind)
 		}
-		return
-	}
-	n := int(batch)
-	for i := 0; i < len(ids); i += n {
-		j := min(i+n, len(ids))
-		chunk := append([]string(nil), ids[i:j]...)
-		orders := make([]*tdv1.BatchCancelOrder, len(chunk))
-		for k, id := range chunk {
-			orders[k] = &tdv1.BatchCancelOrder{ClientOrderId: id}
+		if call != 0 {
+			call++
 		}
-		req := &tdv1.OrderRequest{Req: &tdv1.OrderRequest_BatchCancel{BatchCancel: &tdv1.BatchCancel{Orders: orders}}}
-		wait, release := p.reserveSend()
-		p.roundOrder(wait, release, apiID, "", chunk, req, orderBatch)
 	}
 }
 
@@ -189,7 +296,7 @@ const (
 	orderBatch
 )
 
-func (p *Path) roundOrder(wait <-chan struct{}, release func(), apiID int64, id string, ids []string, req *tdv1.OrderRequest, kind orderKind) {
+func (p *Path) roundOrder(wait <-chan struct{}, release func(), call uint64, apiID int64, id string, ids []string, req *tdv1.OrderRequest, kind orderKind) {
 	if release != nil {
 		defer release()
 	}
@@ -198,22 +305,41 @@ func (p *Path) roundOrder(wait <-chan struct{}, release func(), apiID int64, id 
 	body, err := proto.Marshal(req)
 	var msg *nats.Msg
 	if err == nil {
-		msg, err = p.requestInOrder(ctx, wait, release, orderSubject(apiID), body)
+		msg, err = p.requestInOrder(ctx, wait, release, call, orderSubject(apiID), body)
 	}
 	if p.ctx.Err() != nil {
 		return
 	}
+	in := p.replyIn(call, msg, err)
 	reply := &tdv1.OrderReply{}
 	if err == nil {
 		err = proto.Unmarshal(msg.Data, reply)
 	}
-	p.enqueue(func() { p.finishOrder(apiID, id, ids, kind, reply, err) })
+	p.enqueue(in, func() { p.finishOrder(apiID, id, ids, kind, reply, err) })
+}
+
+// replyIn is the order_reply input of a round: the reply as it came, or how the request failed.
+func (p *Path) replyIn(call uint64, msg *nats.Msg, err error) dispatch.Input {
+	if p.rec == nil {
+		return dispatch.Input{}
+	}
+	in := dispatch.Input{Kind: eventlog.KindOrderReply, RecvNs: p.now().UnixNano(), Ref: call}
+	if err == nil {
+		in.Body = msg.Data
+		return in
+	}
+	flags, text := evlog.Outcome(err)
+	in.Flags = flags
+	in.Body = []byte(text)
+	return in
 }
 
 // requestInOrder publishes body after wait, then lets the next td.order
 // publish start, and only then reads the reply. The subscription is flushed
-// before the publish so the reply cannot arrive with nobody listening.
-func (p *Path) requestInOrder(ctx context.Context, wait <-chan struct{}, release func(), subject string, body []byte) (*nats.Msg, error) {
+// before the publish so the reply cannot arrive with nobody listening. With the
+// event log on, the bytes are written as call's order_publish once they are on the
+// connection.
+func (p *Path) requestInOrder(ctx context.Context, wait <-chan struct{}, release func(), call uint64, subject string, body []byte) (*nats.Msg, error) {
 	if wait != nil {
 		select {
 		case <-wait:
@@ -234,6 +360,9 @@ func (p *Path) requestInOrder(ctx context.Context, wait <-chan struct{}, release
 	}
 	if err := p.nc.PublishRequest(subject, inbox, body); err != nil {
 		return nil, err
+	}
+	if p.rec != nil {
+		p.rec.Append(eventlog.KindOrderPublish, 0, 0, p.now().UnixNano(), call, body, nil)
 	}
 	if release != nil {
 		release()

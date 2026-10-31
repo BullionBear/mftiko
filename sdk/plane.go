@@ -198,7 +198,7 @@ func (p *plane) Init(ctx context.Context, sess *c4.Session, payload []byte) erro
 		Accounts:   init.GetAccounts(),
 		RecvWindow: p.recv,
 		NC:         nc,
-		Push:       p.disp.PushTD,
+		Push:       p.disp.PushIn,
 		Fail:       p.disp.Fail,
 		Now:        p.host.now,
 		Hooks:      p.tdHooks(),
