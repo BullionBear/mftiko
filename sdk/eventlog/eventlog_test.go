@@ -147,6 +147,14 @@ func TestBodies(t *testing.T) {
 	if err != nil || gen != 5 || string(reply) != "view" {
 		t.Fatalf("td_view %d %q %v", gen, reply, err)
 	}
+	slotHead := InitHead(9)
+	slot, payload, err := ParseInit(append(slotHead[:], "init"...))
+	if err != nil || slot != 9 || string(payload) != "init" {
+		t.Fatalf("init %d %q %v", slot, payload, err)
+	}
+	if _, _, err := ParseInit([]byte("short")); err == nil {
+		t.Fatal("short init")
+	}
 	dropped, err := ParseEnd(AppendEnd(nil, 4))
 	if err != nil || dropped != 4 {
 		t.Fatalf("end %d %v", dropped, err)

@@ -422,6 +422,22 @@ func ParseResolve(b []byte) (ticker string, rest []byte, err error) {
 	return s, r, nil
 }
 
+// InitHead is the bytes an init body has before the InitPayload: the client order id counter as
+// Init found it, so a replay issues the same ids (E20-D004).
+func InitHead(slot uint64) [8]byte {
+	var b [8]byte
+	binary.LittleEndian.PutUint64(b[:], slot)
+	return b
+}
+
+// ParseInit decodes an init body.
+func ParseInit(b []byte) (slot uint64, payload []byte, err error) {
+	if len(b) < 8 {
+		return 0, nil, errBody("init")
+	}
+	return binary.LittleEndian.Uint64(b), b[8:], nil
+}
+
 // TDViewHead is the bytes a td_view body has before the ViewReply: the request's generation.
 func TDViewHead(gen uint64) [8]byte {
 	var b [8]byte
