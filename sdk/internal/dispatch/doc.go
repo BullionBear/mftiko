@@ -16,4 +16,10 @@
 // been running. A hook longer than hook_timeout_s makes Run return *c4.Exit with outcome HUNG;
 // this package does not send Exiting. OnStop is c4.Stopper: c4 calls it after Exiting, and the
 // TD drain and the strategy callback run on the dispatcher goroutine.
+//
+// With the event log on, each hook's input is written to it before the hook runs, stamped with the
+// hook's start, and a hook_end follows when the hook returns or panics (E20-D003, E20-D005). The log
+// copies the bytes into its own ring and never waits, so recording does not slow the loop. With the
+// log off nothing is kept for it. Every hook's start is also the session clock that Context.Now reads
+// (E20-D004).
 package dispatch

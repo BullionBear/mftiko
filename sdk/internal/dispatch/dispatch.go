@@ -7,11 +7,14 @@ import (
 	"math"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	"github.com/BullionBear/mftiko/contract/wire/c4"
 	"github.com/BullionBear/mftiko/contract/wire/envelope"
+	"github.com/BullionBear/mftiko/sdk/eventlog"
+	"github.com/BullionBear/mftiko/sdk/internal/evlog"
 )
 
 const (
@@ -41,6 +44,19 @@ type QueueStat struct {
 	MaxAgeMs uint32
 }
 
+// Input is the frame the event log writes for one hook, before the hook runs (E20-D003, E20-D005).
+// The frame's t_ns is the hook's start. Kind 0 records nothing. RecvNs is when the input reached
+// the session; zero on a TD entry is the time it was queued. The frame body is Head followed by
+// Body. The log copies them before the hook starts, so they may alias a buffer the hook reuses.
+type Input struct {
+	Kind   eventlog.Kind
+	Flags  uint16
+	RecvNs int64
+	Ref    uint64
+	Head   []byte
+	Body   []byte
+}
+
 // Config is the dispatcher's session inputs. Zero RingBytes selects MDBytes. Zero HookTimeout
 // does not arm the hard limit; the session worker rejects a payload whose hook_timeout_s is 0
 // before Run (E08-D003). Now nil means time.Now.
@@ -64,6 +80,16 @@ type Config struct {
 	Log func(string)
 	// RingBytes is the MD ring size. Zero selects MDBytes. Tests pass a smaller ring; a session does not.
 	RingBytes int
+	// Rec is the event log. A message the prehook keeps and every TD entry pushed with an Input is
+	// written to it before its hook runs, and a hook_end after (E20-D003, E20-D005). Nil records
+	// nothing, and the dispatcher keeps no receive times or inputs for it (E20-D007).
+	Rec *evlog.Log
+	// Clock is set to each hook's start, in unix nanoseconds, before the hook runs. Context.Now reads
+	// it (E20-D004). Nil uses a clock of the dispatcher's own.
+	Clock *atomic.Int64
+	// Replay makes a dispatcher for an offline replay. Run is not called: Step runs each recorded
+	// input. Timers are not armed, nothing is queued, and a Post is kept for TakePost (E20-D009).
+	Replay bool
 }
 
 // Disp is one session's dispatcher. Run and OnStop are called as a c4 plane's Run and Stopper.
@@ -78,6 +104,9 @@ type Disp struct {
 	feed        func([]byte)
 	book        func([]byte)
 	log         func(string)
+	rec         *evlog.Log
+	clock       *atomic.Int64
+	replay      bool
 
 	mu   sync.Mutex
 	cond *sync.Cond
@@ -85,6 +114,8 @@ type Disp struct {
 	td     tdq
 	ring   *ring
 	timers []*Timer
+	posts  uint64            // Post calls so far
+	kept   map[uint64]func() // replay: each Post's fn by its number
 
 	// Terminal state. outcome is what Run returns: nil is DONE, *c4.Exit is FAILED or the value
 	// the caller asked for, any other error is a hook panic (CRASHED). The watchdog's HUNG is not
@@ -96,6 +127,7 @@ type Disp struct {
 	tdClosed   bool // pushes are rejected; set once delivery has finished or been skipped
 	mdClosed   bool // the ring has been discarded and MD is no longer accepted
 	inStop     bool // dispatcher goroutine only: OnStop's drain is running, so the hard limit is c4's
+	stopAt     int64
 
 	hookOn    bool
 	hookStart time.Time
@@ -125,6 +157,9 @@ func New(cfg Config) *Disp {
 		feed:        cfg.Feed,
 		book:        cfg.Book,
 		log:         cfg.Log,
+		rec:         cfg.Rec,
+		clock:       cfg.Clock,
+		replay:      cfg.Replay,
 		ring:        newRing(cfg.RingBytes),
 		td:          tdq{buf: make([]tdItem, TDCap)},
 		runResult:   make(chan error, 1),
@@ -137,6 +172,16 @@ func New(cfg Config) *Disp {
 	}
 	if d.log == nil {
 		d.log = func(string) {}
+	}
+	if d.clock == nil {
+		d.clock = new(atomic.Int64)
+	}
+	if d.rec != nil {
+		d.ring.timed = true
+		d.td.meta = make([]Input, TDCap)
+	}
+	if d.replay {
+		d.kept = map[uint64]func(){}
 	}
 	d.cond = sync.NewCond(&d.mu)
 	return d
@@ -176,25 +221,62 @@ func (d *Disp) setStopLocked(err error) {
 
 // PushTD queues fn on the TD buffer. errFull means the buffer is full and the session is ending
 // FAILED (E08-D015); fn was not queued. errClosed means the session is no longer accepting entries.
-func (d *Disp) PushTD(fn func()) error {
+func (d *Disp) PushTD(fn func()) error { return d.PushIn(Input{}, fn) }
+
+// PushIn is PushTD for a hook whose input the event log records as in (E20-D003).
+func (d *Disp) PushIn(in Input, fn func()) error {
 	if fn == nil {
 		return nil
 	}
 	d.mu.Lock()
-	if d.tdClosed || d.hung {
+	err := d.pushLocked(in, fn, nil)
+	d.mu.Unlock()
+	if err == errFull {
+		d.log("td buffer full")
+	}
+	return err
+}
+
+// Post queues fn from any goroutine; it is Context.Post. Posts are numbered in call order, and the
+// event log records the number (E20-D004). A replay keeps fn under that number for TakePost.
+func (d *Disp) Post(fn func()) error {
+	if fn == nil {
+		return nil
+	}
+	d.mu.Lock()
+	d.posts++
+	if d.replay {
+		d.kept[d.posts] = fn
 		d.mu.Unlock()
+		return nil
+	}
+	var in Input
+	if d.rec != nil {
+		in = Input{Kind: eventlog.KindPost, Ref: d.posts}
+	}
+	err := d.pushLocked(in, fn, nil)
+	d.mu.Unlock()
+	if err == errFull {
+		d.log("td buffer full")
+	}
+	return err
+}
+
+func (d *Disp) pushLocked(in Input, fn func(), t *Timer) error {
+	if d.replay || d.tdClosed || d.hung {
 		return errClosed
 	}
 	if d.td.n == TDCap {
 		d.setStopLocked(&c4.Exit{Outcome: commonv1.Outcome_OUTCOME_FAILED, Reason: ReasonTDFull})
 		d.cond.Broadcast()
-		d.mu.Unlock()
-		d.log("td buffer full")
 		return errFull
 	}
-	d.td.push(tdItem{fn: fn, at: d.now()})
+	at := d.now()
+	if in.Kind != 0 && in.RecvNs == 0 {
+		in.RecvNs = at.UnixNano()
+	}
+	d.td.push(tdItem{fn: fn, at: at, timer: t}, in)
 	d.cond.Broadcast()
-	d.mu.Unlock()
 	return nil
 }
 
@@ -206,23 +288,29 @@ func (d *Disp) PushMD(msg []byte) error   { return d.pushMD(msg, false) }
 func (d *Disp) PushBook(msg []byte) error { return d.pushMD(msg, true) }
 
 func (d *Disp) pushMD(msg []byte, book bool) error {
+	var at int64
+	if d.rec != nil {
+		at = d.now().UnixNano()
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.mdClosed || d.hung {
 		return errClosed
 	}
-	if d.ring.push(msg, book) {
+	if d.ring.push(msg, book, at) {
 		d.cond.Broadcast()
 	}
 	return nil
 }
 
 // Timer returns a timer whose callback runs on the TD buffer. Fires that arrive while one run of
-// this timer is already queued run once (E08-D003).
+// this timer is already queued run once (E08-D003). Timers are numbered from 1 in the order they
+// are made; the event log records the number of each one that runs (E20-D004).
 func (d *Disp) Timer(fn func()) *Timer {
 	t := &Timer{d: d, fn: fn}
 	d.mu.Lock()
 	d.timers = append(d.timers, t)
+	t.id = uint64(len(d.timers))
 	d.mu.Unlock()
 	return t
 }
@@ -232,6 +320,7 @@ func (d *Disp) Timer(fn func()) *Timer {
 type Timer struct {
 	d    *Disp
 	fn   func()
+	id   uint64
 	mu   sync.Mutex
 	tim  *time.Timer
 	dead bool
@@ -241,8 +330,12 @@ type Timer struct {
 }
 
 // After schedules one run after delay. A run already queued is not duplicated; the timer is still
-// rearmed, and a later fire queues the next run once the queued one has started.
+// rearmed, and a later fire queues the next run once the queued one has started. In a replay it
+// does nothing: the log says when the timer ran.
 func (t *Timer) After(delay time.Duration) {
+	if t.d.replay {
+		return
+	}
 	if delay < 0 {
 		delay = 0
 	}
@@ -266,15 +359,16 @@ func (t *Timer) Fire() {
 	d := t.d
 	d.mu.Lock()
 	full := false
-	if !t.queued && !d.tdClosed && !d.hung {
-		if d.td.n == TDCap {
-			d.setStopLocked(&c4.Exit{Outcome: commonv1.Outcome_OUTCOME_FAILED, Reason: ReasonTDFull})
-			d.cond.Broadcast()
-			full = true
-		} else {
+	if !t.queued {
+		var in Input
+		if d.rec != nil {
+			in = Input{Kind: eventlog.KindTimer, Ref: t.id}
+		}
+		switch d.pushLocked(in, t.fn, t) {
+		case nil:
 			t.queued = true
-			d.td.push(tdItem{fn: t.fn, at: d.now(), timer: t})
-			d.cond.Broadcast()
+		case errFull:
+			full = true
 		}
 	}
 	d.mu.Unlock()
@@ -291,6 +385,36 @@ func (t *Timer) stop() {
 		t.tim.Stop()
 		t.tim = nil
 	}
+}
+
+// Step runs fn as one replayed hook whose recorded start was tNs: the clock reads tNs while fn
+// runs. A panic is returned instead of ending anything; the replay compares it with the hook_end
+// it read.
+func (d *Disp) Step(tNs int64, fn func()) (panicked any) {
+	d.clock.Store(tNs)
+	defer func() { panicked = recover() }()
+	fn()
+	return nil
+}
+
+// TimerFunc is the callback of the timer numbered id, for a replayed timer frame. Nil when no
+// such timer has been made.
+func (d *Disp) TimerFunc(id uint64) func() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if id == 0 || id > uint64(len(d.timers)) {
+		return nil
+	}
+	return d.timers[id-1].fn
+}
+
+// TakePost is the fn of the Post numbered id in a replay. It is handed out once.
+func (d *Disp) TakePost(id uint64) func() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	fn := d.kept[id]
+	delete(d.kept, id)
+	return fn
 }
 
 // Stats reports both buffers and the hook counters. It clears each buffer's max age, which is the
@@ -370,12 +494,12 @@ func (d *Disp) loop() {
 			return
 		}
 		if d.td.n > 0 {
-			it := d.popLocked()
+			it, in := d.popLocked()
 			if age := d.now().Sub(it.at); age > d.tdMax {
 				d.tdMax = age
 			}
 			d.mu.Unlock()
-			d.runHook(it.fn)
+			d.runHook(in, it.fn)
 			continue
 		}
 		d.mu.Unlock()
@@ -386,6 +510,9 @@ func (d *Disp) loop() {
 // phase1 stops MD, discards the ring, and lets Run return so c4 can send Exiting. It then waits
 // for OnStop. The current hook has already returned: the loop only gets here between hooks.
 func (d *Disp) phase1() {
+	if d.rec != nil {
+		d.stopAt = d.now().UnixNano()
+	}
 	d.mu.Lock()
 	d.mdClosed = true
 	d.ring.discard()
@@ -401,8 +528,20 @@ func (d *Disp) phase1() {
 // phase2 delivers the TD buffer for DONE and FAILED, then runs the strategy OnStop. CRASHED does
 // not deliver (E08-D003). The whole of this runs on the dispatcher goroutine. c4's context is the
 // time limit, shared by the delivery and OnStop; this method does not arm a second one.
+//
+// The event log gets a stop frame first: recv_ns is when the loop stopped MD, t_ns is when c4
+// asked for OnStop, and StopDeliver says whether the TD buffer is delivered.
 func (d *Disp) phase2(ctx context.Context, deliver bool) {
 	d.inStop = true
+	var askedNs int64
+	if d.rec != nil {
+		askedNs = d.now().UnixNano()
+		var flags uint16
+		if deliver && ctx.Err() == nil {
+			flags = eventlog.StopDeliver
+		}
+		d.rec.Append(eventlog.KindStop, flags, d.stopAt, askedNs, 0, nil, nil)
+	}
 	var err error
 	defer func() {
 		if rec := recover(); rec != nil {
@@ -432,13 +571,23 @@ func (d *Disp) phase2(ctx context.Context, deliver bool) {
 	}
 	if d.onStop != nil {
 		start := d.now()
+		d.clock.Store(start.UnixNano())
 		d.mu.Lock()
 		d.hookOn = true
 		d.hookStart = start
 		d.mu.Unlock()
+		var seq uint64
+		if d.rec != nil {
+			seq = d.rec.Append(eventlog.KindOnStop, 0, askedNs, start.UnixNano(), 0, nil, nil)
+		}
 		d.step("onstop")
-		err = d.callOnStop(ctx)
-		d.finishHook(start)
+		var panicked any
+		err, panicked = d.callOnStop(ctx)
+		if panicked != nil {
+			d.finishHook(start, seq, panicked, nil)
+		} else {
+			d.finishHook(start, seq, nil, err)
+		}
 	}
 	if err == nil {
 		err = delivered
@@ -454,12 +603,12 @@ func (d *Disp) drain(ctx context.Context) error {
 			d.mu.Unlock()
 			return nil
 		}
-		it := d.popLocked()
+		it, in := d.popLocked()
 		if age := d.now().Sub(it.at); age > d.tdMax {
 			d.tdMax = age
 		}
 		d.mu.Unlock()
-		d.runHook(it.fn)
+		d.runHook(in, it.fn)
 		if perr := d.takeStopPanic(); perr != nil {
 			return perr
 		}
@@ -481,18 +630,19 @@ func (d *Disp) closeTD() {
 	d.mu.Unlock()
 }
 
-func (d *Disp) callOnStop(ctx context.Context) (err error) {
+func (d *Disp) callOnStop(ctx context.Context) (err error, panicked any) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			err = fmt.Errorf("dispatch: onstop panic: %v", rec)
+			panicked = rec
 		}
 	}()
-	return d.onStop(ctx)
+	return d.onStop(ctx), nil
 }
 
 func (d *Disp) runMD() {
 	d.mu.Lock()
-	msg, book, ok := d.ring.peek()
+	msg, book, at, ok := d.ring.peek()
 	now := d.now()
 	d.mu.Unlock()
 	if !ok {
@@ -506,6 +656,7 @@ func (d *Disp) runMD() {
 
 	// A message that is not a v1 envelope is dropped here: counted, logged, and not delivered.
 	// The session keeps running (E08-D049). Order of the check is length, version, reserved bytes.
+	// Neither this drop nor the age drop below is written to the event log (E20-D003).
 	if _, err := envelope.MDTsNs(msg); err != nil {
 		d.mu.Lock()
 		d.preDrop++
@@ -539,7 +690,11 @@ func (d *Disp) runMD() {
 	if fn == nil {
 		return
 	}
-	d.runHook(func() { fn(msg) })
+	in := Input{Kind: eventlog.KindMDFeed, RecvNs: at, Body: msg}
+	if book {
+		in.Kind = eventlog.KindMDBook
+	}
+	d.runHook(in, func() { fn(msg) })
 }
 
 // stale reports whether msg is past the recv window. now is the clock at dequeue (E08-D003).
@@ -569,30 +724,41 @@ func (d *Disp) noteMD(age time.Duration) {
 // runHook runs fn on this goroutine. A panic becomes CRASHED, or a delivery error when OnStop is
 // already running. The hard limit is armed only before Exiting: past that, c4's OnStop context is
 // the shared budget (E08-D003).
-func (d *Disp) runHook(fn func()) {
+//
+// in is written to the event log before fn runs, so the input of a hook that panics or never
+// returns is in the file (E20-D005).
+func (d *Disp) runHook(in Input, fn func()) {
 	if fn == nil {
 		return
 	}
 	start := d.now()
+	d.clock.Store(start.UnixNano())
 	d.mu.Lock()
 	d.hookOn = true
 	d.hookStart = start
 	d.mu.Unlock()
+	var seq uint64
+	if d.rec != nil && in.Kind != 0 {
+		seq = d.rec.Append(in.Kind, in.Flags, in.RecvNs, start.UnixNano(), in.Ref, in.Head, in.Body)
+	}
 
 	stopWatch := func() {}
 	if !d.inStop && d.hookTimeout > 0 {
 		stopWatch = d.arm(d.hookTimeout)
 	}
-	defer d.finishHook(start)
-	defer stopWatch()
 	defer func() {
-		if rec := recover(); rec != nil {
+		rec := recover()
+		if rec != nil {
 			d.notePanic(rec)
 		}
+		stopWatch()
+		d.finishHook(start, seq, rec, nil)
 	}()
 	fn()
 }
 
+// arm starts the watchdog of one hook. When it fires, the event log gets a stop frame with
+// StopHung; the hook that is still running gets no hook_end (E20-D005).
 func (d *Disp) arm(limit time.Duration) func() {
 	timer := time.NewTimer(limit)
 	done := make(chan struct{})
@@ -602,6 +768,10 @@ func (d *Disp) arm(limit time.Duration) func() {
 			d.mu.Lock()
 			d.hung = true
 			d.mu.Unlock()
+			if d.rec != nil {
+				at := d.now().UnixNano()
+				d.rec.Append(eventlog.KindStop, eventlog.StopHung, at, at, 0, nil, nil)
+			}
 			d.finish(hungExit())
 		case <-done:
 			timer.Stop()
@@ -610,8 +780,12 @@ func (d *Disp) arm(limit time.Duration) func() {
 	return func() { close(done) }
 }
 
-func (d *Disp) finishHook(start time.Time) {
-	elapsed := d.now().Sub(start)
+// finishHook closes the hook that began at start. seq is the rec_seq of its input: the hook_end
+// frame refers to it, and 0 writes none. panicked is a recovered panic and err an error the hook
+// returned; the frame carries whichever is set (E20-D005).
+func (d *Disp) finishHook(start time.Time, seq uint64, panicked any, err error) {
+	end := d.now()
+	elapsed := end.Sub(start)
 	d.mu.Lock()
 	d.hookOn = false
 	slow := elapsed > SlowAfter
@@ -619,9 +793,25 @@ func (d *Disp) finishHook(start time.Time) {
 		d.hookSlow++
 	}
 	d.mu.Unlock()
+	if seq != 0 {
+		flags, text := EndOf(panicked, err)
+		d.rec.Append(eventlog.KindHookEnd, flags, 0, end.UnixNano(), seq, text, nil)
+	}
 	if slow {
 		d.log("hook exceeded 100ms")
 	}
+}
+
+// EndOf is the flags and body of a hook_end: EndPanic and the panic value, EndError and the
+// error, or nothing.
+func EndOf(panicked any, err error) (uint16, []byte) {
+	switch {
+	case panicked != nil:
+		return eventlog.EndPanic, []byte(fmt.Sprint(panicked))
+	case err != nil:
+		return eventlog.EndError, []byte(err.Error())
+	}
+	return 0, nil
 }
 
 func (d *Disp) notePanic(rec any) {
@@ -656,12 +846,12 @@ func (d *Disp) stopTimers() {
 	}
 }
 
-func (d *Disp) popLocked() tdItem {
-	it := d.td.pop()
+func (d *Disp) popLocked() (tdItem, Input) {
+	it, in := d.td.pop()
 	if it.timer != nil {
 		it.timer.queued = false
 	}
-	return it
+	return it, in
 }
 
 func (d *Disp) step(s string) {
@@ -729,9 +919,11 @@ var (
 	errClosed = errors.New("dispatch: stopping")
 )
 
-// tdq is a fixed ring of TDCap entries (E08-D015).
+// tdq is a fixed ring of TDCap entries (E08-D015). meta is each entry's event log input, kept in
+// step with buf. It is allocated only when the log is on (E20-D007).
 type tdq struct {
 	buf  []tdItem
+	meta []Input
 	head int
 	n    int
 }
@@ -742,16 +934,24 @@ type tdItem struct {
 	timer *Timer
 }
 
-func (q *tdq) push(it tdItem) {
+func (q *tdq) push(it tdItem, in Input) {
 	i := (q.head + q.n) % len(q.buf)
 	q.buf[i] = it
+	if q.meta != nil {
+		q.meta[i] = in
+	}
 	q.n++
 }
 
-func (q *tdq) pop() tdItem {
+func (q *tdq) pop() (tdItem, Input) {
 	it := q.buf[q.head]
 	q.buf[q.head] = tdItem{}
+	var in Input
+	if q.meta != nil {
+		in = q.meta[q.head]
+		q.meta[q.head] = Input{}
+	}
 	q.head = (q.head + 1) % len(q.buf)
 	q.n--
-	return it
+	return it, in
 }

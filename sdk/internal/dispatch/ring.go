@@ -9,9 +9,15 @@ package dispatch
 // pinned message still leaves too little room, or the new message is larger than the whole ring,
 // the new message is dropped and counted. Dropping never blocks the caller: a hook must not stall
 // the receive path (E08-D003).
+//
+// at is each message's receive time for the event log, kept in step with msgs. It is used only
+// when timed is set, so a session without the log does not grow it (E20-D007).
 type ring struct {
 	buf  []byte
 	msgs []mdMsg // oldest at index 0; msgs[0] is the pinned message when pinned
+
+	timed bool
+	at    []int64
 
 	pinned bool
 	pinN   int // byte length of the pinned message; valid when pinned, including 0
@@ -34,8 +40,9 @@ func newRing(n int) *ring {
 	return &ring{buf: make([]byte, n)}
 }
 
-// push copies msg into the ring. false means msg was dropped (and counted).
-func (r *ring) push(msg []byte, book bool) bool {
+// push copies msg into the ring. false means msg was dropped (and counted). at is kept only
+// when the ring is timed.
+func (r *ring) push(msg []byte, book bool, at int64) bool {
 	if len(msg) > len(r.buf) {
 		r.dropped++
 		return false
@@ -50,6 +57,9 @@ func (r *ring) push(msg []byte, book bool) bool {
 	copy(r.buf[r.used:], msg)
 	r.used += len(msg)
 	r.msgs = append(r.msgs, mdMsg{n: len(msg), book: book})
+	if r.timed {
+		r.at = append(r.at, at)
+	}
 	return true
 }
 
@@ -72,6 +82,10 @@ func (r *ring) dropUnpinned() bool {
 	n := r.msgs[idx].n
 	copy(r.msgs[idx:], r.msgs[idx+1:])
 	r.msgs = r.msgs[:len(r.msgs)-1]
+	if r.timed {
+		copy(r.at[idx:], r.at[idx+1:])
+		r.at = r.at[:len(r.at)-1]
+	}
 	from := off + n
 	copy(r.buf[off:], r.buf[from:r.used])
 	r.used -= n
@@ -79,15 +93,18 @@ func (r *ring) dropUnpinned() bool {
 	return true
 }
 
-// peek pins the oldest message and returns its bytes. The slice aliases the ring and stays valid
-// until release. ok is false when the ring is empty or a message is already pinned.
-func (r *ring) peek() (msg []byte, book bool, ok bool) {
+// peek pins the oldest message and returns its bytes and receive time. The slice aliases the ring
+// and stays valid until release. ok is false when the ring is empty or a message is already pinned.
+func (r *ring) peek() (msg []byte, book bool, at int64, ok bool) {
 	if r.pinned || len(r.msgs) == 0 {
-		return nil, false, false
+		return nil, false, 0, false
 	}
 	r.pinned = true
 	r.pinN = r.msgs[0].n
-	return r.buf[:r.pinN], r.msgs[0].book, true
+	if r.timed {
+		at = r.at[0]
+	}
+	return r.buf[:r.pinN], r.msgs[0].book, at, true
 }
 
 // release drops the pinned message and slides whatever follows to the front.
@@ -98,6 +115,10 @@ func (r *ring) release() {
 	n := r.pinN
 	copy(r.msgs, r.msgs[1:])
 	r.msgs = r.msgs[:len(r.msgs)-1]
+	if r.timed {
+		copy(r.at, r.at[1:])
+		r.at = r.at[:len(r.at)-1]
+	}
 	copy(r.buf, r.buf[n:r.used])
 	r.used -= n
 	r.pinned = false
@@ -107,6 +128,7 @@ func (r *ring) release() {
 // discard drops every message, including a pinned one. The caller must already be done with the slice.
 func (r *ring) discard() {
 	r.msgs = r.msgs[:0]
+	r.at = r.at[:0]
 	r.used = 0
 	r.pinned = false
 	r.pinN = 0
