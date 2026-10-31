@@ -4906,7 +4906,7 @@ E12-D061 列的「演練之前沒有實測」，除了主機重開，都在 test
 - 開關是 `SessionSpec.event_log`（欄位 17，`EventLog{enabled, keep_mb}`），省略或 `enabled` 為 false 就是關閉。STS agent 原樣抄進 `InitPayload.event_log`（欄位 12）。`api.v1` 的 `SessionCreate` 與 `SessionSpecView` 加 `event_log`，`info.version` 2.2.0。
 - 關閉時寫入器是 nil，每個收錄點先判斷才組框：不配置、不讀時鐘、不建目錄。`TestLogOffKeepsNothing` 量 MD、TD 的 hook 都是 0 次配置；`TestEventLogOff` 確認 volume 沒有檔、`Report` 沒有 `event_log`。
 - 開啟時 hook 也不配置：框頭在 stack 上，body 直接複製進 ring（`TestLogOnAllocatesNothingPerHook`）。
-- ring 滿、框比 ring 大、寫入器已關閉：丟掉並計數，`rec_seq` 照樣用掉，讀取端看得出缺號。`Append` 不等磁碟：`TestStuckLogDoesNotBlockDispatcher` 讓寫檔永遠卡住，dispatcher 照樣跑完 2000 個 hook，框全部算丟掉。
+- ring 滿、框比 ring 大、寫入器已關閉：丟掉並計數，`rec_seq` 照樣用掉，讀取端看得出缺號。`Append` 不等磁碟：`TestStuckLogDoesNotBlockDispatcher` 讓寫檔卡住不返回，dispatcher 照樣跑完 2000 個 hook，放不進 ring 的框算丟掉；寫檔放開、`Close` 之後，寫進檔案的加上丟掉的正好是全部的框。
 - `stsctl.Report.event_log`（欄位 6，`EventLogStat{records, dropped}`）是從 worker 起算的累計，只在開啟時有。
 - benchmark（`BenchmarkHook`，一則 160 bytes 的 MD 訊息、一則 120 bytes 的 TD 事件，每個 hook 寫輸入與 `hook_end` 兩個框，4 核 Xeon、go1.26、6 次的中位數）：沒有 watchdog 時，MD 的 hook 從 265 ns 到 407 ns，TD 的從 255 ns 到 356 ns，開與關都是 0 次配置；有 watchdog（正式的路徑）時，MD 從 886 ns 到 1013 ns，TD 從 891 ns 到 966 ns。`Append` 一個框 39 ns。
 
