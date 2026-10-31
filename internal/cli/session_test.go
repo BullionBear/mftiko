@@ -288,6 +288,79 @@ func TestSessionShow(t *testing.T) {
 	}
 }
 
+// TestSessionShowGolden pins the session show table with inputs, once after the STS pushed a
+// state_out and once before (E15-D025). CreatedAt is left out because that column is in the
+// local zone. MFTIKO_UPDATE_GOLDEN=1 rewrites the files in testdata/; review the diff.
+func TestSessionShowGolden(t *testing.T) {
+	at := time.Date(2026, 10, 31, 1, 2, 3, 0, time.UTC)
+	by := "ada"
+	model := apiv1.InputDecl{Name: "model", Repository: "example.invalid/data/model", Digest: "sha256:" + strings.Repeat("1", 64)}
+	vocab := apiv1.InputDecl{Name: "vocab", Repository: "example.invalid/data/vocab", Digest: "sha256:" + strings.Repeat("2", 64)}
+	done := apiv1.SessionDetail{
+		Id: "ab12cd", StsInstance: "sts-1", Region: "tw", Revision: 7, CreatedBy: &by,
+		Spec: apiv1.SessionSpecView{
+			Name: "chase", DesiredState: apiv1.DesiredStateEnded,
+			Strategy: strategyRef("alpha", "chase", digA),
+			Inputs:   []apiv1.InputDecl{model, vocab},
+		},
+		Status: &apiv1.SessionStatus{
+			Phase: apiv1.PhaseDone, Reason: "ended_by_spec", Incarnation: 1, UpdatedAt: at,
+			LastExit: &apiv1.Exit{Outcome: apiv1.OutcomeDone, At: at, OnStopCompleted: true},
+			StateOut: &apiv1.StateSnapshot{
+				Digest: "sha256:" + strings.Repeat("3", 64), Repository: "example.invalid/data/state",
+				Clean: true, Incarnation: 1, SizeBytes: 4096, At: at,
+			},
+		},
+		Logs: &apiv1.LogLocation{
+			Host:   "host-a",
+			Stdout: "/var/lib/mftiko/log/sts/ab12cd.stdout",
+			Stderr: "/var/lib/mftiko/log/sts/ab12cd.stderr",
+		},
+	}
+	running := done
+	running.Id = "cd34ef"
+	running.Spec.DesiredState = apiv1.DesiredStateRunning
+	running.Spec.Inputs = []apiv1.InputDecl{model}
+	running.Status = &apiv1.SessionStatus{Phase: apiv1.PhaseRunning, Reason: "running", Incarnation: 1, UpdatedAt: at}
+	running.Logs = nil
+	_, home := startSess(t, apitest.Option{
+		Sessions: []apiv1.SessionDetail{done, running},
+		Agents:   map[string]apiv1.AgentStatus{"sts-1": {Host: strp("host-a"), Release: "test", StartedAt: at}},
+	})
+	for _, c := range []struct{ id, file string }{
+		{"ab12cd", "session_show_state_out.golden"},
+		{"cd34ef", "session_show_pending.golden"},
+	} {
+		got := runAt(context.Background(), home, nil, strings.NewReader(""), "--context", "dev", "session", "show", c.id)
+		if got.code != ExitOK || got.err != "" {
+			t.Fatalf("%s: %+v", c.id, got)
+		}
+		golden(t, c.file, got.out)
+	}
+}
+
+// golden compares got with testdata/name, or writes it there under MFTIKO_UPDATE_GOLDEN=1.
+func golden(t *testing.T, name, got string) {
+	t.Helper()
+	path := filepath.Join("testdata", name)
+	if os.Getenv("MFTIKO_UPDATE_GOLDEN") == "1" {
+		if err := os.MkdirAll("testdata", 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("%v; run with MFTIKO_UPDATE_GOLDEN=1 and review the file", err)
+	}
+	if got != string(want) {
+		t.Fatalf("%s differs\n--- want\n%s--- got\n%s", path, want, got)
+	}
+}
+
 func TestSessionEnd(t *testing.T) {
 	d := baseSession("ab12cd", apiv1.PhaseRunning)
 	d.Spec.DesiredState = apiv1.DesiredStateRunning

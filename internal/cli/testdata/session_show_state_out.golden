@@ -1,0 +1,30 @@
+SPEC
+STRATEGY_ID  STRATEGY_NAME  DIGEST   STS_INSTANCE  CREATED_AT  CREATED_BY
+alpha        chase          0000000  sts-1                     ada
+
+INPUTS
+NAME   REPOSITORY                  DIGEST
+model  example.invalid/data/model  sha256:1111111111111111111111111111111111111111111111111111111111111111
+vocab  example.invalid/data/vocab  sha256:2222222222222222222222222222222222222222222222222222222222222222
+
+STATUS
+PHASE  REASON         RESTART_COUNT
+done   ended_by_spec  0
+
+DEPENDENCIES
+KIND  ITEM  PROVIDER  STATE  REASON  MARK
+
+CONDITIONS
+TYPE  STATUS  REASON  MESSAGE
+
+EXIT
+OUTCOME  CODE  SIGNAL
+done     0     0
+
+STATE_OUT
+DIGEST
+sha256:3333333333333333333333333333333333333333333333333333333333333333
+
+LOGS
+HOST    STDOUT                                              STDERR                                              NOTE
+host-a  sts-1 host-a:/var/lib/mftiko/log/sts/ab12cd.stdout  sts-1 host-a:/var/lib/mftiko/log/sts/ab12cd.stderr

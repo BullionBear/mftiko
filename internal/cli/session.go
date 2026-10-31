@@ -27,6 +27,10 @@ var sessionIDRe = regexp.MustCompile(`^[0-9a-f]{6}$`)
 // (E11-D008), and last_known is on the instance, not on LogLocation.
 const lastKnownNote = "最後已知，agent 目前不在線"
 
+// stateOutPending is the STATE_OUT cell before the STS has pushed a state_out
+// (E15-D024), the same words as the console.
+const stateOutPending = "尚未產生"
+
 func runSessionList(a *App) int {
 	if code := a.onlyFlags("phase", "active", "sts-instance", "limit", "cursor"); code != 0 {
 		return code
@@ -534,6 +538,11 @@ func sessionText(d apiv1.SessionDetail, agent *apiv1.AgentStatus) (string, error
 	}}); err != nil {
 		return "", err
 	}
+	// E15-D024: input and state_out digests are printed in full, unlike the
+	// strategy's, so they can be compared with what mftiko-pack data printed.
+	if err := writeSection(&b, "INPUTS", []string{"NAME", "REPOSITORY", "DIGEST"}, inputRows(d.Spec.Inputs)); err != nil {
+		return "", err
+	}
 	phase, reason, restarts := "", "", ""
 	if d.Status != nil {
 		phase = string(d.Status.Phase)
@@ -558,6 +567,13 @@ func sessionText(d apiv1.SessionDetail, agent *apiv1.AgentStatus) (string, error
 	if err := writeSection(&b, "EXIT", []string{"OUTCOME", "CODE", "SIGNAL"}, [][]string{{outcome, code, signal}}); err != nil {
 		return "", err
 	}
+	stateOut := stateOutPending
+	if d.Status != nil && d.Status.StateOut != nil {
+		stateOut = d.Status.StateOut.Digest
+	}
+	if err := writeSection(&b, "STATE_OUT", []string{"DIGEST"}, [][]string{{stateOut}}); err != nil {
+		return "", err
+	}
 	host, stdout, stderr, note := "", "", "", ""
 	if d.Logs != nil {
 		host = d.Logs.Host
@@ -572,6 +588,14 @@ func sessionText(d apiv1.SessionDetail, agent *apiv1.AgentStatus) (string, error
 		return "", err
 	}
 	return b.String(), nil
+}
+
+func inputRows(inputs []apiv1.InputDecl) [][]string {
+	rows := make([][]string, 0, len(inputs))
+	for _, in := range inputs {
+		rows = append(rows, []string{in.Name, in.Repository, in.Digest})
+	}
+	return rows
 }
 
 func depRows(deps []apiv1.Dependency) [][]string {

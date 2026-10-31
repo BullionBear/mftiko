@@ -192,9 +192,11 @@ end
 delete
   mftiko session delete <id>
 
-show prints the spec summary, status, each demand ack, exit information, and
-the log location. The strategy field shows id, name, and the first 7 characters
-of the digest with a leading sha256: removed. -o json keeps the full digest.
+show prints the spec summary, each input, status, each demand ack, exit
+information, the state_out digest, and the log location. The strategy field
+shows id, name, and the first 7 characters of the digest with a leading
+sha256: removed. -o json keeps the full digest. Input and state_out digests
+are printed in full; before the STS pushes a state_out it says 尚未產生.
 A log path is <sts_instance> <host>:<path>. When the STS agent
 record is the last known value, the log section says 最後已知，agent 目前不在線.
 The command does not read the log file. end asks for confirmation; a session
