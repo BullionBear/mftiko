@@ -456,6 +456,25 @@ stream label 是 `host`、`region`、`plane`（`sts`）、`instance`（STS insta
 - 每台跑 STS agent 的主機一個 Alloy（主機 A、B，E16-D003）。
 - Loki 與 Alertmanager 在主機 A（home region）。主機 B 的 Alloy 經私有網路推到主機 A 的 Loki（E16-D011）。
 - Loki 的 HTTP 埠（範例是 3100）只開給跑 Alloy 的主機。推送與查詢是同一個埠：運維在主機 A 上查，或經 SSH 轉發。Alertmanager（範例是 9093）沒有認證，同樣只走私有網路。
+- 主機沒有雲端防火牆時，在主機 A 以 nftables 自己的 table 放行（E16-D038）。Loki 的 `server.http_listen_address` 設成私有位址；gRPC（9096）設 `127.0.0.1`。tailscale 會重排自己的 iptables chain，規則不要插在 `INPUT` 裡；自己的 table 掛在 input hook、priority 比 filter 早，drop 就是最終結果。以 systemd 的 oneshot unit 在開機時 `nft -f` 載入：
+
+  ```
+  table inet mftiko_loki
+  delete table inet mftiko_loki
+  table inet mftiko_loki {
+  	set alloy {
+  		type ipv4_addr
+  		elements = { 100.64.0.1, 100.64.0.2 }   # 主機 A 自己與每台跑 Alloy 的主機
+  	}
+  	chain input {
+  		type filter hook input priority -10; policy accept;
+  		tcp dport 3100 ip saddr @alloy accept
+  		tcp dport 3100 drop
+  	}
+  }
+  ```
+
+  開頭兩行讓同一個檔可以重複載入：`nft -f` 在一個交易裡換掉整個 table。加一台 Alloy 主機就改 `elements` 再 `nft -f` 一次。
 - 一期不開 TLS，與 etcd、NATS、session log 端點相同（E12-D052、E14-D001）。
 
 ### Alloy 的權限
@@ -473,6 +492,7 @@ sudo -u alloy ls -l /var/lib/mftiko/sts-agent/log/sts/  # 讀得到，檔的 gro
 - setgid 只管之後建立的。chgrp 之前就有的 `log/sts/` 與檔仍是原本的 group，Alloy 讀不到：`chgrp -R mftiko-ops /var/lib/mftiko/sts-agent/log && chmod g+s /var/lib/mftiko/sts-agent/log/sts`。
 - v0.4.0 與更早的 agent 與 shim 每次啟動都 chmod `log/sts/`，agent 不在 `mftiko-ops`，Linux 因此清掉 setgid，之後的檔是 agent 的 group（E16-D036）。升級之後照上一條補一次。
 - worker 與 agent 不用加進 `mftiko-ops`。
+- Grafana 官方的 `.deb` 安裝時會把 `alloy` 加進 `adm` 與 `systemd-journal`，讀得到 `/var/log` 與 journal。只要讀策略 log 就拿掉：`gpasswd -d alloy adm && gpasswd -d alloy systemd-journal`，再確認 `id alloy` 只剩 `alloy`、`mftiko-ops`（E16-D038）。`.deb` 第一次安裝不 enable 也不啟動 `alloy`，設定與 group 都好了再 `systemctl enable --now alloy`。
 - dev 的 sts1 以 nobody 跑，Alloy 以 `473:65534`（image 裡的 `alloy` 使用者加上 nobody 的 group）跑，一樣以 group 讀（E16-D027）。
 
 ### 範例設定
@@ -483,9 +503,32 @@ sudo -u alloy ls -l /var/lib/mftiko/sts-agent/log/sts/  # 讀得到，檔的 gro
 |---|---|
 | [`alloy/config.alloy`](../deploy/dev/alloy/config.alloy) | `__path__` 不用改：unit 的 `-work-dir` 與 dev 都是 `/var/lib/mftiko/sts-agent`。`host` 改成主機名（可用 `constants.hostname`）。`region`、`instance` 改成這台 STS agent 的：`instance` 是 env 的 `MFTIKO_INSTANCE`，`region` 是 `mftiko instance list` 的 `REGION`。`loki.write` 的 `url` 改成主機 A 的私有位址，例如 `http://loki.example.invalid:3100/loki/api/v1/push` |
 | [`loki/mftiko.rules.yml`](../deploy/dev/loki/mftiko.rules.yml) | `for`（dev 30s）、窗口 `[5m]` 與門檻 `> 0` 由部署端定（E12-D039）。一行讓條件成立一個窗口那麼久，所以 `for` 要短於窗口，否則只有一行時永遠不響。要多幾行才叫，就提高門檻 |
-| [`loki/loki.yaml`](../deploy/dev/loki/loki.yaml) | 儲存的目錄（`common.path_prefix` 以下）放到主機 A 的資料磁碟。`limits_config.retention_period`（dev 24h，[Loki 的保留期](#loki-的保留期)）。`ruler.alertmanager_url` 指到主機 A 的 Alertmanager，`ruler.evaluation_interval`（dev 15s，Loki 預設 1m）。規則檔放在 `ruler.storage.local.directory` 底下租戶的目錄；auth 關著時租戶是 `fake`，dev 掛在 `/etc/loki/rules/fake/`。`discover_service_name: []` 保留，stream label 才只有上面那幾個 |
+| [`loki/loki.yaml`](../deploy/dev/loki/loki.yaml) | 儲存的目錄（`common.path_prefix` 以下）放到主機 A 的資料磁碟。`limits_config.retention_period`（dev 24h，[Loki 的保留期](#loki-的保留期)）。`ruler.alertmanager_url` 指到主機 A 的 Alertmanager，`ruler.evaluation_interval`（dev 15s，Loki 預設 1m）。規則檔放在 `ruler.storage.local.directory` 底下租戶的目錄；auth 關著時租戶是 `fake`，dev 掛在 `/etc/loki/rules/fake/`。`discover_service_name: []` 保留，stream label 才只有上面那幾個。`ruler.external_url` 設成 Grafana 的網址、`ruler.datasource_uid` 設成 Grafana 裡 Loki datasource 的 uid：通知的 `Source` 連結才打得開 Explore 並選好 Loki。沒設時連結是 `/explore?…` 的相對路徑（E16-D038） |
 | [`alertmanager/alertmanager.yml`](../deploy/dev/alertmanager/alertmanager.yml) | receiver 換成 Discord（[下面](#discord)）。`group_wait`（dev 10s，Alertmanager 預設 30s）。`group_interval` 5m、`repeat_interval` 4h 是放寬過的起點，一個策略一直寫 error 時不洗版（E16-D009）。`inhibit_rules` 照抄 |
 | [`prometheus/`](../deploy/dev/prometheus) | `mftiko_*` 的規則與刮取，見[監控與告警](#監控與告警)。`alerting` 指到主機 A 的 Alertmanager |
+
+### 在已經有 log 的主機加上 Alloy
+
+Alloy 第一次看到一個檔，從頭讀。檔裡的舊行以讀到的時間進 Loki，所以 R1、R2、R5 會為很久以前的行響，Discord 跟著洗版。STS 主機已經跑過 session 時，先把現有的 `*.stderr` 記成讀到檔尾，再啟動 Alloy（E16-D038）：
+
+```sh
+# 以 root，alloy 還沒啟動；HOST、INSTANCE、REGION 與 config.alloy 的 host、instance、region 相同
+POS=/var/lib/alloy/data/loki.source.file.sts/positions.yml
+install -d -o alloy -g alloy -m 0750 "$(dirname $POS)"
+{
+  echo "positions:"
+  for f in /var/lib/mftiko/sts-agent/log/sts/*.stderr; do
+    [ -e "$f" ] || continue
+    printf '  ? path: %s\n    labels: '"'"'{host="%s", instance="%s", plane="sts", region="%s"}'"'"'\n  : "%s"\n' \
+      "$f" "$HOST" "$INSTANCE" "$REGION" "$(stat -c %s "$f")"
+  done
+} > $POS && chown alloy:alloy $POS
+systemctl enable --now alloy
+```
+
+- 目錄名是 `loki.source.file` 元件的 id（`loki.source.file "sts"`）。`labels` 要和 `path_targets` 去掉 `__path__` 之後的 label 一字不差，依 key 排序，否則 Alloy 當成新的檔、從頭讀。
+- 記下之後才寫的行不會漏：Alloy 從記下的位置讀起。之後新的 session 的檔照樣從頭讀。
+- 不用 `tail_from_end = true`：它也套用在之後新的檔上。Alloy 每 `sync_period` 才發現新檔，session 一開頭的幾行（例如 `init failed`）會被跳過。
 
 ### 從 filename 查回 session
 
