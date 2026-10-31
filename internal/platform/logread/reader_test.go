@@ -47,11 +47,13 @@ func differ(t *testing.T, got, want []byte) {
 	t.Fatalf("mismatch at %d: got %d bytes, want %d", i, len(got), len(want))
 }
 
+// collect reads s to io.EOF, or, with Follow and a Pause that is always true,
+// until nothing is ready.
 func collect(t *testing.T, s *Stream) (data []byte, gaps int) {
 	t.Helper()
 	for {
 		rec, err := s.Next()
-		if errors.Is(err, io.EOF) {
+		if errors.Is(err, io.EOF) || errors.Is(err, ErrPause) {
 			return data, gaps
 		}
 		if err != nil {
@@ -543,6 +545,166 @@ func TestFellOffGapResumes(t *testing.T) {
 	if gaps != 0 || string(again) != "old\nnew\n" {
 		t.Fatalf("resume gaps %d %q", gaps, again)
 	}
+}
+
+// openNoWait follows path from the start. Pause is always true, so collect
+// stops where a follow read would wait.
+func openNoWait(t *testing.T, path string) *Stream {
+	t.Helper()
+	s, err := Open(context.Background(), Options{Path: path, Follow: true, Pause: func() bool { return true }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	return s
+}
+
+// duringList runs rotate once, inside the next listFiles, after the numbered
+// names are stat'ed and before the live one (E14-D042).
+func duringList(t *testing.T, rotate func()) {
+	t.Helper()
+	var once sync.Once
+	listHook = func() { once.Do(rotate) }
+	t.Cleanup(func() { listHook = nil })
+}
+
+func appendFile(t *testing.T, path string, b []byte) {
+	t.Helper()
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write(b); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func rename(t *testing.T, from, to string) {
+	t.Helper()
+	if err := os.Rename(from, to); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The first rotation lands inside the listing: the scan finds no .1 yet, and
+// path is already the new file, so our inode is under neither name. The bytes
+// the writer added just before rotating are only on our descriptor. They come
+// before the new file, with no gap (E14-D041).
+func TestRotateDuringListFirst(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "h.stdout")
+	first := bytes.Repeat([]byte("a"), 64)
+	late := bytes.Repeat([]byte("b"), 32)
+	next := bytes.Repeat([]byte("c"), 16)
+	writeFile(t, path, first)
+	s := openNoWait(t, path)
+	data, gaps := collect(t, s)
+	if gaps != 0 {
+		t.Fatal(gaps)
+	}
+	differ(t, data, first)
+
+	duringList(t, func() {
+		appendFile(t, path, late)
+		rename(t, path, path+".1")
+		writeFile(t, path, next)
+	})
+	data, gaps = collect(t, s)
+	if gaps != 0 {
+		t.Fatalf("gaps %d", gaps)
+	}
+	differ(t, data, append(append([]byte{}, late...), next...))
+}
+
+// With numbered files the same race shows the scan an older file and not
+// ours: the rotator renamed .1 to .2 before the scan reached them, and renames
+// path to .1 after the scan has passed .1. No generation fell off, so there is
+// no gap, and the older file is not read again (E14-D041).
+func TestRotateDuringListNumbered(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "h.stdout")
+	older := bytes.Repeat([]byte("o"), 48)
+	first := bytes.Repeat([]byte("a"), 64)
+	next := bytes.Repeat([]byte("c"), 16)
+	writeFile(t, path+".1", older)
+	writeFile(t, path, first)
+	s := openNoWait(t, path)
+	data, gaps := collect(t, s)
+	if gaps != 0 {
+		t.Fatal(gaps)
+	}
+	differ(t, data, append(append([]byte{}, older...), first...))
+
+	rename(t, path+".1", path+".2")
+	duringList(t, func() {
+		rename(t, path, path+".1")
+		writeFile(t, path, next)
+	})
+	data, gaps = collect(t, s)
+	if gaps != 0 {
+		t.Fatalf("gaps %d", gaps)
+	}
+	differ(t, data, next)
+}
+
+// keep=1 inside the listing: our inode has no name left, so this is tail -F
+// without a gap, after the descriptor is read to its end (E14-D041).
+func TestRemoveDuringList(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "h.stdout")
+	first := bytes.Repeat([]byte("a"), 64)
+	late := bytes.Repeat([]byte("b"), 32)
+	next := bytes.Repeat([]byte("c"), 16)
+	writeFile(t, path, first)
+	s := openNoWait(t, path)
+	data, gaps := collect(t, s)
+	if gaps != 0 {
+		t.Fatal(gaps)
+	}
+	differ(t, data, first)
+
+	duringList(t, func() {
+		appendFile(t, path, late)
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, path, next)
+	})
+	data, gaps = collect(t, s)
+	if gaps != 0 {
+		t.Fatalf("gaps %d", gaps)
+	}
+	differ(t, data, append(append([]byte{}, late...), next...))
+}
+
+// A rotation after the listing gives the name listed for our inode to the
+// next file. find hashes through the descriptor, so a shorter file under that
+// name is neither an error nor a mismatch, and following goes on to it.
+func TestFindAfterListRotates(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "h.stdout")
+	first := bytes.Repeat([]byte("a"), 100)
+	next := []byte("b")
+	writeFile(t, path, first)
+	s := openNoWait(t, path)
+	data, _ := collect(t, s)
+	differ(t, data, first)
+
+	ents, err := listFiles(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rename(t, path, path+".1")
+	writeFile(t, path, next)
+	idx, listed, err := s.find(ents)
+	if err != nil || !listed || idx != 0 {
+		t.Fatalf("idx %d listed %v: %v", idx, listed, err)
+	}
+	data, gaps := collect(t, s)
+	if gaps != 0 {
+		t.Fatalf("gaps %d", gaps)
+	}
+	differ(t, data, next)
 }
 
 func TestPollInterval(t *testing.T) {

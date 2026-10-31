@@ -375,12 +375,17 @@ func (s *Stream) openCursor() error {
 // new live file: that is tail -F, and it does not gap either. Numbered files
 // with our inode already gone mean a generation fell off the rotation, which
 // is a gap, and bytes resume at the oldest survivor (E14-D017).
+//
+// A rotation between listFiles' stats can leave our inode out of the listing
+// while it is only renamed, so a missing inode is settled on the descriptor:
+// bytes past the offset are read first, a file that still has a name is
+// listed again, and only a file with no name left counts as gone (E14-D041).
 func (s *Stream) afterEOF() error {
 	ents, err := listFiles(s.path)
 	if err != nil {
 		return err
 	}
-	idx, err := s.find(ents)
+	idx, listed, err := s.find(ents)
 	if err != nil {
 		return err
 	}
@@ -396,6 +401,23 @@ func (s *Stream) afterEOF() error {
 			return io.EOF
 		}
 		return errWait
+	}
+	if !listed {
+		fi, err := s.f.Stat()
+		if err != nil {
+			return err
+		}
+		if fi.Size() > s.off {
+			s.size = fi.Size()
+			return nil
+		}
+		n, err := linkCount(fi)
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			return errRetry
+		}
 	}
 	if len(ents) == 0 {
 		if !s.follow {
@@ -413,27 +435,31 @@ func (s *Stream) afterEOF() error {
 	return s.switchTo(ents[len(ents)-1], 0)
 }
 
-func (s *Stream) find(ents []fileEnt) (int, error) {
+// find is the index in ents of the file this descriptor reads, or -1 when it
+// is not there or no longer holds the bytes before the offset. listed is
+// whether any entry is this inode at all. The hash is read through the
+// descriptor: the listed name may already belong to the next file.
+func (s *Stream) find(ents []fileEnt) (idx int, listed bool, err error) {
 	for i, e := range ents {
 		if e.dev != s.dev || e.ino != s.ino {
 			continue
 		}
 		if e.size < s.off {
-			return -1, nil
+			return -1, true, nil
 		}
-		h, err := hashFile(e.path, s.off)
+		h, err := hashAt(s.f, s.off)
 		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				return -1, errRetry
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return -1, true, errRetry
 			}
-			return -1, err
+			return -1, true, err
 		}
 		if h != fnv64(s.prefix) {
-			return -1, nil
+			return -1, true, nil
 		}
-		return i, nil
+		return i, true, nil
 	}
-	return -1, nil
+	return -1, false, nil
 }
 
 func (s *Stream) switchTo(e fileEnt, off int64) error {
