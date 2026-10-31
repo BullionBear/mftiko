@@ -515,7 +515,7 @@ func TestRecordBinanceUMPublicTrade(t *testing.T) {
 		t.Skip("set MFTIKO_BINANCE_UM_RECORD=1 to record production public fixtures")
 	}
 	recordTrade(t, um, "public", "testdata/conformance/BinanceUM", "public_trade",
-		"USD-M BTCUSDT @trade on the public route (E03-D004), from the subscribe to the unsubscribe ack.")
+		"USD-M BTCUSDT @trade on the public route (E03-D004): the ack and the first trades, t without a gap.")
 }
 
 func recordREST(t *testing.T, dir string) {
@@ -643,7 +643,7 @@ func recordMarket(t *testing.T, ctx context.Context, dir string) {
 	writeSession(t, dir, "market", VenueUM, "market", "USD-M BTCUSDT aggTrade, kline, ticker, mark price, and one all-market miniTicker array.", tp.snapshot())
 }
 
-// recordTrade records one btcusdt@trade subscription. writeSession refuses a gap in t.
+// recordTrade records the ack and the first trades of btcusdt@trade. writeSession refuses a gap in t.
 func recordTrade(t *testing.T, p product, route, dir, name, note string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -652,8 +652,6 @@ func recordTrade(t *testing.T, p product, route, dir, name, note string) {
 	defer stop()
 	sub(t, ctx, conn, sess, "btcusdt@trade")
 	waitN(t, tp, `"e":"trade"`, 12, 30*time.Second)
-	unsub(t, ctx, conn, sess, "btcusdt@trade")
-	waitN(t, tp, `"id":2`, 1, 10*time.Second)
 	stop()
 	writeSession(t, dir, name, p.venue.Name, route, note, tp.snapshot())
 }

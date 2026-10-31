@@ -313,7 +313,7 @@ func TestRecordBinanceSpotPublicTrade(t *testing.T) {
 		t.Skip("set MFTIKO_BINANCE_SPOT_RECORD=1 to record production public fixtures")
 	}
 	recordTrade(t, spot, exchange.RouteDefault, "testdata/conformance/Binance", "default_trade",
-		"Spot BTCUSDT @trade (E03-D006), from the subscribe to the unsubscribe ack.")
+		"Spot BTCUSDT @trade (E03-D006): the ack and the first trades, t without a gap.")
 }
 
 func recordSpotREST(t *testing.T, dir string) {

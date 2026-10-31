@@ -1,0 +1,2 @@
+{"kind":"meta","venue":"Binance","side":"market","route":"default","note":"Spot BTCUSDT @trade (E03-D006). Not recorded: stream.binance.com answers 451 to the host that made this change, so the one event is the 2026-10-31 sample in #496."}
+{"kind":"ws.in","frame":"{\"e\":\"trade\",\"E\":1793442533951,\"s\":\"BTCUSDT\",\"t\":6808701077,\"p\":\"77522.79000000\",\"q\":\"0.00014000\",\"T\":1793442533950,\"m\":false,\"M\":true}"}
