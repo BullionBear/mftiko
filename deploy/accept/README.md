@@ -401,7 +401,7 @@ $A e2e cli region up
 - `inputs`（E15-07）：上傳的目錄經 CLI 交給 session。
   1. 在 runner 寫一個目錄：1 MiB 隨機的 `model.pt`、`sub/meta.json`，以及指向 `model.pt` 的 symlink `latest.pt`。用 `/mftiko/mftiko-pack data` 推到 `registry:5000/data/accept-model:accept`，stdout 是 digest。
   2. input 的 repository 是 `registry:5000/private/accept-model`（不在 `allow`）：exit 10，stderr 指到 `/inputs/0/repository`。
-  3. hello（沒有 params）帶 input `model`，`session create --wait running`。`session show` 的 spec 列出這個 input。
+  3. hello（沒有 params）帶 input `model`，`session create --wait running`。`session show` 的 spec 列出這個 input；表格的 `INPUTS` 印出它的 name、repository 與完整 digest，`STATE_OUT` 是「尚未產生」（E15-D024）。
   4. `sts1` 的 `/var/sts/sts1/data/sessions/<id>/inputs/model/` 裡，檔案內容與推上去的相同，檔案 0444、目錄 0555，`latest.pt` 仍是指向 `model.pt` 的 symlink。
   5. `session end --wait --yes`（`done`、`ended_by_spec`），`session delete --yes`。
 
@@ -428,6 +428,8 @@ $A console-smoke
 ```
 
 在這台機器上用 Playwright（`web/e2e/smoke.spec.ts`）從 console 走一次主流程：登入、建帳號（`binanceum.creds.json`）、在精靈裡部署 hello（feed、帳號、algo_id 2）、詳細頁看到 `running`、兩個依賴 `ready`、log 的主機與路徑；Logs 區塊打開 Follow，切到 stderr 看到 hello 的 `OnRecon`，再切回 stdout，Download 拿到 gzip；結束後看到 `done` 與 `ended_by_spec`，Logs 區塊顯示「已結束」，刪除帳號、登出。環境變數 `MFTIKO_E2E_URL`、`MFTIKO_E2E_TOKEN`、`MFTIKO_E2E_CREDS` 可以改目標與檔案。失敗時的 trace 在 `web/test-results/`。
+
+inputs（E15-D025）：Playwright 之前，`console-smoke` 先在 runner 裡把只有一個檔的目錄用 `mftiko-pack data` 推到 `registry:5000/data/console-smoke`，寫 session 檔 `data/work/e2e/console-inputs/session.json`（hello、`sts1`、input `model`），用 CLI `session create -f` 建出來，輸出在同一個目錄的 `created.json`。第二個 test 在精靈裡填同一個 session：digest 先填 tag `latest`，Deploy 被擋回 Inputs 這一步，顯示 `must be a sha256 digest`；改成 session 檔的 digest 再部署。詳細頁的 Inputs 表是 name、repository、完整 digest，`state_out` 顯示「尚未產生」，等到 `running`。兩個 session 的 `sts_instance` 與 `spec`（`GET /sessions/{id}`）要完全相同，最後兩個都結束。`MFTIKO_E2E_INPUTS` 可以改這個目錄。
 
 ## 收尾與紀錄
 

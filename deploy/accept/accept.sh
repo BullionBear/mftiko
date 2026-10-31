@@ -31,7 +31,9 @@
 #                                cli logs reads, follows and exports session logs, E14-08)
 #   accept.sh e2e-all            every flow, with the controller and etcd2 stopped and started around
 #                                absent and region
-#   accept.sh console-smoke      the Playwright smoke (web/e2e) against replica a, from this host
+#   accept.sh console-smoke      the Playwright smoke (web/e2e) against replica a, from this host; first
+#                                creates the session its inputs test compares with, from a session file
+#                                with the CLI (E15-D025)
 #   accept.sh controller | stop-controller
 #   accept.sh sts-agent NAME | stop-sts-agent NAME
 #   accept.sh api a|b | stop-api a|b
@@ -204,6 +206,34 @@ e2e_up() {
 	echo "console: http://127.0.0.1:${ACCEPT_API_PORT:-18080}/  token: data/work/e2e/token"
 }
 
+# console_inputs is for web/e2e's inputs test (E15-D025): it pushes a one-file data artifact, writes a
+# session file for hello on sts1 that reads it as input model, and creates that session with the CLI.
+# The test deploys the same session from the console and compares the two specs. The files are in
+# data/work/e2e/console-inputs/: session.json, and created.json, what the CLI printed.
+console_inputs() {
+	run sh -s <<'EOF'
+set -e
+d=/work/e2e/console-inputs
+rm -rf "$d"
+mkdir -p "$d/model" "$d/home/.config/mftiko"
+echo 'console smoke' >"$d/model/weights.txt"
+digest=$(/mftiko/mftiko-pack data -dir "$d/model" -repo registry:5000/data/console-smoke -plain-http)
+cat >"$d/session.json" <<JSON
+{
+  "name": "console-inputs",
+  "sts_instance": "sts1",
+  "strategy": {"repository": "registry:5000/strategies/hello", "ref": "accept"},
+  "inputs": [{"name": "model", "repository": "registry:5000/data/console-smoke", "digest": "$digest"}]
+}
+JSON
+printf 'contexts:\n  accept:\n    url: http://127.0.0.1:8080/api/v1\n    insecure_http: true\n' >"$d/home/.config/mftiko/config.yaml"
+chmod 600 "$d/home/.config/mftiko/config.yaml"
+HOME="$d/home" MFTIKO_CONTEXT=accept MFTIKO_TOKEN=$(cat /work/e2e/token) \
+	/mftiko/mftiko -o json session create -f "$d/session.json" >"$d/created.json"
+echo "session file $d/session.json: input model $digest"
+EOF
+}
+
 # e2e_all runs every flow in order and stops at the first that fails. The controller and etcd2 are
 # stopped and started here, between the steps of absent and region.
 e2e_all() {
@@ -271,6 +301,7 @@ e2e)
 e2e-all) e2e_all ;;
 console-smoke)
 	shift
+	console_inputs
 	(cd "$repo/web" && npx playwright test "$@")
 	;;
 controller) controller ;;
@@ -282,6 +313,6 @@ stop-api) stop_api "$2" ;;
 ps) run ps -o pid,ppid,args ;;
 sh) "${compose[@]}" exec runner sh ;;
 down) "${compose[@]}" down -v ;;
-"" | -h | --help) sed -n '2,42p' "$0" ;;
+"" | -h | --help) sed -n '2,43p' "$0" ;;
 *) tool "$@" ;;
 esac

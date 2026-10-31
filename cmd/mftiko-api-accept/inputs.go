@@ -64,6 +64,15 @@ func (c *cli) inputSteps(pack, stsData string) error {
 	if in := shown.Spec.Inputs; len(in) != 1 || in[0].Name != "model" || in[0].Repository != inputRepository || in[0].Digest != digest {
 		return fmt.Errorf("session show: inputs %+v, want model %s@%s", in, inputRepository, digest)
 	}
+	// E15-D024: the table prints the input with its full digest. sts1 has no data repository, so
+	// state_out is never pushed here.
+	table, err := c.ok("session", "show", id)
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(table.stdout, "model  "+inputRepository+"  "+digest+"\n") || !strings.Contains(table.stdout, "STATE_OUT\nDIGEST\n尚未產生\n") {
+		return fmt.Errorf("session show table: want input model %s@%s and state_out 尚未產生:\n%s", inputRepository, digest, table.stdout)
+	}
 
 	dest := filepath.Join(stsData, "sessions", id, "inputs", "model")
 	if err := checkInput(dest, sums); err != nil {
