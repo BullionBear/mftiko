@@ -351,3 +351,12 @@ worker 有啟動、last exit 是 `init_failed` 的不是這一項：input 已經
 | `MftikoStrategyOverloaded` | SDK 以 info 寫的 `hook exceeded 100ms`：有 hook 跑超過 100ms，之後的事件跟著延後。`td buffer full`：TD 的事件積壓到上限，session 以 `failed` 結束（E08-D015） | 從前後策略自己的 log 找出慢的 hook，hook 裡不做會阻塞的事。`td buffer full` 修好之後重建 session |
 
 **確認：** 最後一行之後約 5 分鐘（規則的窗口）條件不再成立，Alertmanager 在下一個 `group_interval`（範例 5m）送 resolved。重建的 session 是新的 `filename`；舊檔的告警照樣自己解除。
+
+`mftiko session logs` 把 worker 的 stderr 寫到 CLI 自己的 stderr（E14-D032）。接 `grep` 或寫進檔時要 `2>&1`，否則什麼都沒有。
+
+**Loki 沒有某台主機的 log：**
+
+1. `systemctl is-active alloy`；`journalctl -u alloy` 有沒有 `permission denied`。
+2. `sudo -u alloy head -c 0 /var/lib/mftiko/sts-agent/log/sts/<h>.stderr`。讀不到時看 `ls -ld …/log/sts` 是不是 `drwxr-s--- … mftiko-ops`、檔的 group 是不是 `mftiko-ops`；v0.4.0 與更早的 agent 會清掉 setgid（E16-D036），照[Alloy 的權限](operations.md#alloy-的權限)補。
+3. `curl -s 127.0.0.1:12345/metrics | grep -E 'loki_source_file_read_lines_total|loki_write_(sent|dropped)_entries_total'`：讀了沒有、送了沒有、丟了沒有。
+4. 從那台 `curl http://<主機 A>:3100/ready`。連不上就看主機 A 的防火牆是否放行這台（[主機](operations.md#主機)）。
