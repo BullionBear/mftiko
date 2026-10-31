@@ -547,6 +547,7 @@ func TestSessionValidation(t *testing.T) {
 		{"negative", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"grace_ms":-1}`, "/grace_ms"},
 		{"keep negative", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"event_log":{"enabled":true,"keep_mb":-1}}`, "/event_log/keep_mb"},
 		{"keep over volume", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"limits":{"volume_mb":2},"event_log":{"enabled":true,"keep_mb":2}}`, "/event_log/keep_mb"},
+		{"default keep over volume", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"limits":{"volume_mb":256},"event_log":{"enabled":true}}`, "/event_log/keep_mb"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

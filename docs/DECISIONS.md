@@ -4896,7 +4896,7 @@ E12-D061 列的「演練之前沒有實測」，除了主機重開，都在 test
 - 檔名的 n 從 1 起。同一個 incarnation 回來時，從已有的最大 n 之後接著編，不覆寫（`O_EXCL`）。目錄 0750，檔 0640。
 - 輪替：一個檔的大小是保留上限的 1/4，介於 64 KiB 與 64 MiB 之間。下一個框會超過就換檔；比這還大的框自己一個檔。
 - 保留：每開一個新檔之前，從最舊的檔開始刪（不分 incarnation），直到剩下的加上一個滿的檔不超過上限。正在寫的檔不會被刪。上限是 `SessionSpec.event_log.keep_mb`，0 是 256 MiB。
-- 檔案在 session volume 裡：算在 `limits.volume_mb` 裡（超過是 `volume_over_limit`，E09-D076），同一個 session 的下一個 incarnation 看得到前一個的檔，session 結束時隨 volume 打包進 `state_out`（E09-D080）。`limits.volume_mb` 不是 0 時，API 要求 `keep_mb` 比它小。
+- 檔案在 session volume 裡：算在 `limits.volume_mb` 裡（超過是 `volume_over_limit`，E09-D076），同一個 session 的下一個 incarnation 看得到前一個的檔，session 結束時隨 volume 打包進 `state_out`（E09-D080）。開啟紀錄且 `limits.volume_mb` 不是 0 時，API 要求保留上限（`keep_mb`，0 就是 256）比它小，策略自己的檔案才有空間。`volume_mb` 省略時是 STS 部署的預設（1024），API 不知道；部署調到 256 以下時，開啟紀錄的 spec 要自己給 `keep_mb`。
 - 寫不進去（沒有 volume 目錄、建目錄或寫檔失敗）時，那些框算丟掉，SDK 記一行自己的 log（只記第一次），一秒後再試。
 - 不採用：交給 shim 或 `ctx.Log()` 寫（E20-D001）；每一則同步寫檔（會阻塞 dispatcher，E20-D007）。
 

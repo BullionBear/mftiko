@@ -2934,7 +2934,7 @@ message Frame {
 
 ### 12.1 開關、位置與寫入器
 
-- **開關（E20-D007）。** `SessionSpec.event_log`（§3.6），STS agent 原樣抄進 `InitPayload.event_log`（§6.1）。省略或 `enabled` 為 false 就是關閉，這是預設。契約 A 的 `SessionCreate` 與 `SessionSpecView` 帶 `event_log`。`keep_mb` 是 0–4294967295；`limits.volume_mb` 不是 0 時 `keep_mb` 要比它小，否則 400 `validation_failed`。
+- **開關（E20-D007）。** `SessionSpec.event_log`（§3.6），STS agent 原樣抄進 `InitPayload.event_log`（§6.1）。省略或 `enabled` 為 false 就是關閉，這是預設。契約 A 的 `SessionCreate` 與 `SessionSpecView` 帶 `event_log`。`keep_mb` 是 0–4294967295。開啟紀錄且 `limits.volume_mb` 不是 0 時，保留上限（`keep_mb`，0 就是 256）要比 `volume_mb` 小，否則 400 `validation_failed`。`volume_mb` 省略時用 STS 部署的預設（§8.4，1024），API 不知道它的值；部署把它調到 256 以下時，開啟紀錄的 spec 要自己給比它小的 `keep_mb`。
 - **關閉。** SDK 不開寫入器。每個收錄點先判斷才組框：不配置、不讀時鐘、不建目錄、不寫檔。`Report` 沒有 `event_log`。
 - **位置（E20-D006）。** `$MFTIKO_VOLUME_DIR/eventlog/{incarnation}-{n}.mel`，目錄 0750，檔 0640。n 從 1 起。同一個 incarnation 回來時，從已有的最大 n 之後接著編，不覆寫（`O_EXCL`）。檔案在 volume 裡：算在 `limits.volume_mb`（超過是 `volume_over_limit`），同一個 session 的下一個 incarnation 看得到前一個的檔，session 結束時隨 volume 打包進 `state_out`（§8.4）。沒有 `MFTIKO_VOLUME_DIR` 時，每個框都算丟掉。
 - **寫入器（E20-D006、E20-D007）。** hook 的路徑把框頭與 body 複製進一塊預先配好的 8 MiB ring 就返回，不等磁碟，也不配置。另一個 goroutine 每 100 ms，或 ring 用到 1/4 時，把 ring 寫進檔案。ring 放不下、框比 ring 大、寫入器已關閉時，這個框丟掉並計數，`rec_seq` 照樣用掉（§12.3）。dispatcher 不等寫入器。

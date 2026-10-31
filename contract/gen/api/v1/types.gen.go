@@ -590,7 +590,7 @@ type ErrorCode string
 type EventLog struct {
 	Enabled *bool `json:"enabled,omitempty"`
 
-	// KeepMb 保留上限，超過就刪最舊的檔；0 = SDK 的預設，256 MiB。`limits.volume_mb` 不是 0 時必須比它小。
+	// KeepMb 保留上限，超過就刪最舊的檔；0 = SDK 的預設，256 MiB。開啟紀錄且 `limits.volume_mb` 不是 0 時，保留上限（0 就是 256）必須比它小。
 	KeepMb *int `json:"keep_mb,omitempty"`
 }
 
