@@ -73,8 +73,8 @@ func TestWorkerOutputFlood(t *testing.T) {
 			t.Errorf("%s: files %v, want %d", stream, names, keep)
 		}
 		for i, c := range contents {
-			if len(c) > maxBytes {
-				t.Errorf("%s is %d bytes, over %d", names[i], len(c), maxBytes)
+			if len(c) > maxBytes+MaxLineOverrun {
+				t.Errorf("%s is %d bytes, over %d", names[i], len(c), maxBytes+MaxLineOverrun)
 			}
 		}
 		last := contents[len(contents)-1]

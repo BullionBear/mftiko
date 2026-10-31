@@ -38,8 +38,9 @@ func files(t *testing.T, path string) (names []string, contents [][]byte) {
 	return names, contents
 }
 
-// Rotation keeps exactly keep files, none over max_bytes, and loses only what fell off the oldest: what is kept is
-// the tail of what was written, in order.
+// Rotation keeps exactly keep files and loses only what fell off the oldest: what is kept is the tail of what was
+// written, in order. A file is rotated once it reaches max_bytes, at the end of the line it is in, so every rotated
+// file ends with a newline and is at most max_bytes plus the overrun (E16-D037).
 func TestRotator(t *testing.T) {
 	for _, keep := range []int{1, 2, 3, 5} {
 		t.Run(strconv.Itoa(keep), func(t *testing.T) {
@@ -50,12 +51,16 @@ func TestRotator(t *testing.T) {
 				t.Fatal(err)
 			}
 			var all []byte
-			for i := range 400 { // writes of every size, some larger than a file
-				b := bytes.Repeat([]byte{byte('a' + i%26)}, i%(3*maxBytes/2)+1)
+			for i := range 400 { // lines of every length up to 1.5 files
+				all = append(all, bytes.Repeat([]byte{byte('a' + i%26)}, i%(3*maxBytes/2))...)
+				all = append(all, '\n')
+			}
+			for rest := all; len(rest) > 0; { // in writes that start and end anywhere in a line
+				b := rest[:min(len(rest), 1+len(rest)%173)]
 				if n, err := r.Write(b); err != nil || n != len(b) {
 					t.Fatalf("write %d: %d %v", len(b), n, err)
 				}
-				all = append(all, b...)
+				rest = rest[len(b):]
 			}
 			if err := r.Close(); err != nil {
 				t.Fatal(err)
@@ -66,38 +71,58 @@ func TestRotator(t *testing.T) {
 			}
 			var kept []byte
 			for i, c := range contents {
-				if len(c) > maxBytes {
-					t.Errorf("%s is %d bytes, over %d", names[i], len(c), maxBytes)
+				if int64(len(c)) > maxBytes+r.overrun {
+					t.Errorf("%s is %d bytes, over %d", names[i], len(c), maxBytes+r.overrun)
 				}
-				if i < len(contents)-1 && len(c) != maxBytes {
-					t.Errorf("%s is %d bytes: a rotated file is full", names[i], len(c))
+				if i < len(contents)-1 && (len(c) < maxBytes || c[len(c)-1] != '\n') {
+					t.Errorf("%s is %d bytes ending %q: a rotated file is full and ends a line", names[i], len(c), c[len(c)-1:])
 				}
 				kept = append(kept, c...)
 			}
 			if !bytes.HasSuffix(all, kept) {
 				t.Fatal("the files are not the tail of what was written")
 			}
-			if want := (keep-1)*maxBytes + len(contents[len(contents)-1]); len(kept) != want {
-				t.Errorf("kept %d bytes, want %d", len(kept), want)
-			}
 		})
 	}
 }
 
-// A new incarnation appends to what the last one left, and rotation goes on from there.
+// A line longer than max_bytes plus the overrun is cut where the file reaches that size (E16-D037).
+func TestRotatorCutsLongLine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "h.stdout")
+	r, err := openRotator(path, 100, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := append(bytes.Repeat([]byte("x"), 500), '\n')
+	if n, err := r.Write(line); err != nil || n != len(line) {
+		t.Fatalf("write: %d %v", n, err)
+	}
+	r.Close()
+	_, contents := files(t, path)
+	var sizes []int
+	for _, c := range contents {
+		sizes = append(sizes, len(c))
+	}
+	if len(sizes) != 3 || sizes[0] != 200 || sizes[1] != 200 || sizes[2] != 101 {
+		t.Fatalf("file sizes %v, want [200 200 101]", sizes)
+	}
+}
+
+// A new incarnation appends to what the last one left, and rotation goes on from there: the file reaches max_bytes
+// in the middle of a line and is rotated at its end.
 func TestRotatorAppends(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "h.stderr")
 	r, _ := openRotator(path, 10, 3)
-	r.Write([]byte("0123456")) //nolint:errcheck
+	r.Write([]byte("0123456\n")) //nolint:errcheck
 	r.Close()
 	r, err := openRotator(path, 10, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r.Write([]byte("789abc")) //nolint:errcheck
+	r.Write([]byte("89abc\nde")) //nolint:errcheck
 	r.Close()
 	_, contents := files(t, path)
-	if got := string(bytes.Join(contents, nil)); got != "0123456789abc" || string(contents[0]) != "0123456789" {
+	if len(contents) != 2 || string(contents[0]) != "0123456\n89abc\n" || string(contents[1]) != "de" {
 		t.Fatalf("files %q", contents)
 	}
 }

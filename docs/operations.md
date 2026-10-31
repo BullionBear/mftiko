@@ -306,10 +306,10 @@ ls -l /var/backups/mftiko/etcd/*/
 
 ## 輪替
 
-- 每個 stream（stdout、stderr 各自）寫到 64 MiB 就輪替：`{h}.stdout` 改名成 `{h}.stdout.1`，原來的 `.1` 改成 `.2`，依此類推。
+- 每個 stream（stdout、stderr 各自）寫到 64 MiB，寫完那一行就輪替：`{h}.stdout` 改名成 `{h}.stdout.1`，原來的 `.1` 改成 `.2`，依此類推。一行不會被切到兩個檔，所以 Loki 收到的也是整行（E16-D037）。一個檔最多是上限加 64 KiB；比這還長的行在那裡切開。
 - 每個 stream 保留 5 個檔案，包含正在寫的那個；最舊的刪掉。所以一個 worker 的 stdout 最多約 320 MiB，stderr 也一樣。
 - 這是預設值（`Launch.output.max_bytes`、`keep`）。下限 64 KiB，`keep` 上限 100。
-- `{h}.shim.log` 寫到 10 MiB 就輪替，保留 3 個檔案，含正在寫的（E12-D042）。agent 仍把這個檔接到 shim 的 stdout、stderr，不接 pipe；shim 自己重新開啟並輪替，所以 agent 不在之後還寫得進去。三個平面的 shim 都一樣。
+- `{h}.shim.log` 寫到 10 MiB、寫完那一行就輪替，保留 3 個檔案，含正在寫的（E12-D042）。agent 仍把這個檔接到 shim 的 stdout、stderr，不接 pipe；shim 自己重新開啟並輪替，所以 agent 不在之後還寫得進去。三個平面的 shim 都一樣。
 - MD、TD 在啟動時，以及之後每小時，刪掉不再出現的 worker key 的 stdout、stderr、`.shim.log` 與輪替檔。最後修改時間要嚴格早於 `-log-retain-days`（預設 7，小於 1 不接受）。mtime 剛好在界線上的留下。這個旗標不寫進 systemd unit。
 - 還算「出現」的不刪：agent 看得到的 worker、這一輪計畫裡的、仍留著 `WorkerStatus` 的、接不上的 shim、以及 `{h}.sock` 還在的。正在跑的 worker 的舊輪替檔因此留下，份數由上面的保留數管，不由 7 天管。
 - 只刪一般檔。名稱是 16 個十六進位字的 `.stdout`、`.stderr`、`.shim.log`，輪替的數字沒有前導零。其他檔（例如 `notes.txt`）、目錄、symlink 留下。log 目錄不在不是錯誤。socket 目錄讀不了就這一輪完全不刪。

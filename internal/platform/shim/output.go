@@ -1,6 +1,7 @@
 package shim
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -29,6 +30,9 @@ const (
 	MinOutputMaxBytes = 64 << 10
 	// MaxOutputKeep is the largest keep a Launch may set.
 	MaxOutputKeep = 100
+	// MaxLineOverrun is how far past max_bytes a file may grow while the rotator waits for the end of a line, so
+	// that a line is not cut in two at a rotation (E16-D037). A longer line is cut there.
+	MaxLineOverrun = 64 << 10
 )
 
 // LogDir is where a plane's shims write their workers' output: ${WORK_DIR}/log/{plane} (PROTOCOL §4.5 S4).
@@ -120,21 +124,24 @@ func checkOutput(o *shimv1.Output) error {
 	return nil
 }
 
-// rotator is one stream's files: path, and path.1 to path.(keep-1) before it. A write never makes a file larger than
-// maxBytes: what does not fit goes to a new file, and the oldest falls off. It is used by one goroutine.
+// rotator is one stream's files: path, and path.1 to path.(keep-1) before it. Once a file reaches maxBytes, the
+// rotator writes on to the end of the line and then starts a new file, and the oldest falls off. A file is never
+// larger than maxBytes plus overrun: a line that runs past that is cut there (E16-D037). It is used by one goroutine.
 type rotator struct {
 	path     string
 	maxBytes int64
+	overrun  int64
 	keep     int
 
-	f    *os.File
-	size int64
-	gen  uint64 // increments every time path is opened, including after a rotation
+	f         *os.File
+	size      int64
+	lineStart bool   // the file ends at the end of a line, or is empty
+	gen       uint64 // increments every time path is opened, including after a rotation
 }
 
 // openRotator opens path for appending, after whatever an earlier incarnation of the worker left there.
 func openRotator(path string, maxBytes int64, keep int) (*rotator, error) {
-	r := &rotator{path: path, maxBytes: maxBytes, keep: keep}
+	r := &rotator{path: path, maxBytes: maxBytes, overrun: min(maxBytes, MaxLineOverrun), keep: keep}
 	if err := r.open(); err != nil {
 		return nil, err
 	}
@@ -151,7 +158,8 @@ func (r *rotator) open() error {
 		f.Close()
 		return err
 	}
-	r.f, r.size = f, fi.Size()
+	// What an earlier incarnation left counts as ended: the next write starts a line of its own.
+	r.f, r.size, r.lineStart = f, fi.Size(), true
 	r.gen++
 	return nil
 }
@@ -160,15 +168,27 @@ func (r *rotator) open() error {
 func (r *rotator) Write(p []byte) (int, error) {
 	n := 0
 	for len(p) > 0 {
-		if r.size >= r.maxBytes {
+		if r.size >= r.maxBytes && (r.lineStart || r.size >= r.maxBytes+r.overrun) {
 			if err := r.rotate(); err != nil {
 				return n, err
 			}
 		}
-		chunk := p[:min(int64(len(p)), r.maxBytes-r.size)]
+		var chunk []byte
+		if r.size < r.maxBytes {
+			chunk = p[:min(int64(len(p)), r.maxBytes-r.size)]
+		} else {
+			// Past maxBytes in the middle of a line: up to its end, or up to the overrun.
+			chunk = p[:min(int64(len(p)), r.maxBytes+r.overrun-r.size)]
+			if i := bytes.IndexByte(chunk, '\n'); i >= 0 {
+				chunk = chunk[:i+1]
+			}
+		}
 		w, err := r.f.Write(chunk)
 		n += w
 		r.size += int64(w)
+		if w > 0 {
+			r.lineStart = chunk[w-1] == '\n'
+		}
 		if err != nil {
 			return n, err
 		}
