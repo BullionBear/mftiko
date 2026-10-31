@@ -246,6 +246,10 @@ func (d *Disp) Post(fn func()) error {
 	d.mu.Lock()
 	d.posts++
 	if d.replay {
+		if d.tdClosed {
+			d.mu.Unlock()
+			return errClosed
+		}
 		d.kept[d.posts] = fn
 		d.mu.Unlock()
 		return nil
@@ -416,6 +420,10 @@ func (d *Disp) TakePost(id uint64) func() {
 	delete(d.kept, id)
 	return fn
 }
+
+// CloseTD is, in a replay, the point where a session's ending closes the TD buffer: just before
+// OnStop. A Post from then on fails as it did.
+func (d *Disp) CloseTD() { d.closeTD() }
 
 // Stats reports both buffers and the hook counters. It clears each buffer's max age, which is the
 // report interval (PROTOCOL §6.1). hook_blocked_ms is 0 when no hook is running (E08-D017).

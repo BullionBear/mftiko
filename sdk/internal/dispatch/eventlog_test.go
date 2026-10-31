@@ -319,6 +319,17 @@ func TestReplayDispatcher(t *testing.T) {
 	if got := strings.Join(ran, " "); got != "post-2 timer@3ms" {
 		t.Fatalf("an armed timer ran in a replay: %s", got)
 	}
+	// A session closes the TD buffer before OnStop; a Post there fails, and still takes a number.
+	d.CloseTD()
+	if err := d.Post(func() { t.Error("a closed replay kept a post") }); !errors.Is(err, errClosed) {
+		t.Fatalf("post after CloseTD %v", err)
+	}
+	if err := d.Post(func() {}); !errors.Is(err, errClosed) || d.TakePost(3) != nil || d.TakePost(4) != nil {
+		t.Fatalf("post after CloseTD %v", err)
+	}
+	if d.posts != 4 {
+		t.Fatalf("posts %d, want 4", d.posts)
+	}
 }
 
 // BenchmarkHook is the dispatcher's own cost of one MD message or one TD entry, push to hook
