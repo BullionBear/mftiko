@@ -626,7 +626,8 @@ Discord 的訊息用 Alertmanager 預設的範本：告警名稱、label 與 ann
        digest: sha256:…                     # mftiko-pack data 印出的
    ```
 
-4. `mftiko session create -f session.yaml --wait running`。API 建立時讀 manifest：repository 不在 `allow`、不是資料 artifact、超過 `max_input_bytes`，都是 400 `validation_failed`（CLI exit 10），`errors[].path` 指到 `/inputs/<i>/repository` 或 `/inputs/<i>/digest`。
+   不寫 session 檔時，console 的 Deploy session 在 Inputs 這一步加列，填同樣三欄。digest 一樣只收 `sha256:…`，填 tag 在送出前就被擋下（E15-D023）。
+4. `mftiko session create -f session.yaml --wait running`。API 建立時讀 manifest：repository 不在 `allow`、不是資料 artifact、超過 `max_input_bytes`，都是 400 `validation_failed`（CLI exit 10），`errors[].path` 指到 `/inputs/<i>/repository` 或 `/inputs/<i>/digest`。console 把這些錯誤顯示在該列的欄位。`mftiko session show` 的 `INPUTS` 與 session 頁的 Inputs 表列出 name、repository 與完整 digest（E15-D024）。
 5. 策略在 `OnInit` 讀：Go 是 `ctx.InputDir("model")`，Python 是 `ctx.input_dir("model")`。
 
 ### 格式與目錄

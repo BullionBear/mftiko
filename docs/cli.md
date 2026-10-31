@@ -132,7 +132,7 @@ restart:
 
 ```sh
 mftiko session create -f hello.yaml --wait running   # 印出 session_id 與解析出的 digest
-mftiko session show <session_id>                     # 狀態、需求項目的 ack、log 位置
+mftiko session show <session_id>                     # inputs、狀態、需求項目的 ack、state_out、log 位置
 mftiko session logs <session_id>                     # stdout、stderr；旗標見 mftiko help session
 mftiko session export-logs <session_id>              # 匯出 tar.gz；旗標見 mftiko help session
 mftiko session watch <session_id>                    # 即時重畫，Ctrl-C 離開
@@ -164,7 +164,7 @@ inputs:
     digest: sha256:…                   # 只收 digest
 ```
 
-repository 必須在 `allow` 內；不是資料 artifact 或超過 `max_input_bytes`，`session create` exit 10，指到 `/inputs/<i>/…`。流程、上限與帳密見 [operations.md「上傳資料 artifact」](operations.md#上傳資料-artifact)，拉取失敗見 [runbook §3.11](runbook.md#311-input-拉取失敗)。
+repository 必須在 `allow` 內；不是資料 artifact 或超過 `max_input_bytes`，`session create` exit 10，指到 `/inputs/<i>/…`。`session show` 的 `INPUTS` 印出每個 input 的完整 digest；`STATE_OUT` 是 session 結束後 STS 推出的 `state_out` digest，推送之前印「尚未產生」（E15-D024）。console 的 Deploy session 在 Inputs 這一步填同樣三欄（E15-D023）。流程、上限與帳密見 [operations.md「上傳資料 artifact」](operations.md#上傳資料-artifact)，拉取失敗見 [runbook §3.11](runbook.md#311-input-拉取失敗)。
 
 ## exit code
 

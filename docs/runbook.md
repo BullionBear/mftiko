@@ -280,7 +280,7 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 
 **先看：**
 
-- `mftiko session show <id>`：phase `failed`，reason 是下表其中之一，incarnation 0，沒有 last exit。worker 沒有啟動過。spec 的 `inputs` 列出每個 input 的 repository 與 digest。
+- `mftiko session show <id>`：phase `failed`，reason 是下表其中之一，incarnation 0，沒有 last exit。worker 沒有啟動過。`INPUTS` 列出每個 input 的 repository 與完整 digest（`-o json` 是 spec 的 `inputs`）。
 - 該 STS 主機：`journalctl -u mftiko-sts-agent --since -1h | grep 'input rejected'`，那一行有 `reason` 與原因（例如超過哪個上限、哪個 tar entry）。
 
 | reason | 意思 | 做 |
