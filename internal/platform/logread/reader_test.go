@@ -707,6 +707,84 @@ func TestFindAfterListRotates(t *testing.T) {
 	differ(t, data, next)
 }
 
+// Our file is read to its end and is already .1 when the next rotation lands
+// inside the listing, after .1 was stat'ed: the scan has our file under .1 and
+// then the new live file. The previous live file, now .1, still comes next,
+// with no gap.
+func TestRotateDuringListAfterOurs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "h.stdout")
+	first := bytes.Repeat([]byte("a"), 64)
+	second := bytes.Repeat([]byte("b"), 32)
+	third := bytes.Repeat([]byte("c"), 16)
+	writeFile(t, path, first)
+	s := openNoWait(t, path)
+	data, _ := collect(t, s)
+	differ(t, data, first)
+
+	rename(t, path, path+".1")
+	writeFile(t, path, second)
+	duringList(t, func() {
+		rename(t, path+".1", path+".2")
+		rename(t, path, path+".1")
+		writeFile(t, path, third)
+	})
+	data, gaps := collect(t, s)
+	if gaps != 0 {
+		t.Fatalf("gaps %d", gaps)
+	}
+	differ(t, data, append(append([]byte{}, second...), third...))
+}
+
+// The next rotation is half done when the scan starts: our file is already .2
+// and .1 stays empty until the rotator renames path to .1, after the scan has
+// passed .1. The listing has our file and then the new live file; the file
+// between them still comes next, with no gap.
+func TestRotateHalfDoneDuringList(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "h.stdout")
+	first := bytes.Repeat([]byte("a"), 64)
+	second := bytes.Repeat([]byte("b"), 32)
+	third := bytes.Repeat([]byte("c"), 16)
+	writeFile(t, path, first)
+	s := openNoWait(t, path)
+	data, _ := collect(t, s)
+	differ(t, data, first)
+
+	rename(t, path, path+".1")
+	writeFile(t, path, second)
+	rename(t, path+".1", path+".2")
+	duringList(t, func() {
+		rename(t, path, path+".1")
+		writeFile(t, path, third)
+	})
+	data, gaps := collect(t, s)
+	if gaps != 0 {
+		t.Fatalf("gaps %d", gaps)
+	}
+	differ(t, data, append(append([]byte{}, second...), third...))
+}
+
+// A hole in the numbering that stays, as a crash between two renames leaves
+// it, is read across without a gap.
+func TestHoleInNumbering(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "h.stdout")
+	older := bytes.Repeat([]byte("a"), 8)
+	newer := bytes.Repeat([]byte("b"), 8)
+	live := bytes.Repeat([]byte("c"), 8)
+	writeFile(t, path+".3", older)
+	writeFile(t, path+".1", newer)
+	writeFile(t, path, live)
+	s, err := Open(context.Background(), Options{Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	data, gaps := collect(t, s)
+	if gaps != 0 {
+		t.Fatalf("gaps %d", gaps)
+	}
+	differ(t, data, append(append(append([]byte{}, older...), newer...), live...))
+}
+
 func TestPollInterval(t *testing.T) {
 	if pollInterval != 250*time.Millisecond {
 		t.Fatal(pollInterval)

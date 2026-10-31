@@ -84,6 +84,7 @@ type Stream struct {
 	sawFile       bool
 	closed        bool
 	spins         int
+	hole          holeAt
 }
 
 // Open starts a read. A missing live file is an empty stream, not an error:
@@ -380,6 +381,8 @@ func (s *Stream) openCursor() error {
 // while it is only renamed, so a missing inode is settled on the descriptor:
 // bytes past the offset are read first, a file that still has a name is
 // listed again, and only a file with no name left counts as gone (E14-D041).
+// The same race can leave out the file after ours; checkNext keeps it from
+// being skipped.
 func (s *Stream) afterEOF() error {
 	ents, err := listFiles(s.path)
 	if err != nil {
@@ -395,6 +398,9 @@ func (s *Stream) afterEOF() error {
 			return nil
 		}
 		if idx+1 < len(ents) {
+			if err := s.checkNext(ents, idx); err != nil {
+				return err
+			}
 			return s.switchTo(ents[idx+1], 0)
 		}
 		if !s.follow {
@@ -462,6 +468,41 @@ func (s *Stream) find(ents []fileEnt) (idx int, listed bool, err error) {
 	return -1, false, nil
 }
 
+// holeAt is a hole in the numbering right below our file: our suffix and the
+// file listed after the hole.
+type holeAt struct {
+	n        int
+	dev, ino uint64
+}
+
+// checkNext returns errRetry unless ents[idx+1] is the file written right
+// after ours, ents[idx]. Rotation moves files only to higher suffixes, older
+// first. Our name still holding our file after the scan means it held it for
+// the whole scan, so the file the scan found one suffix lower was the next one
+// at that moment. A hole there is a rotation that was still moving the next
+// file when the scan passed it, or one a crash or a removed file left, which
+// stays. It is trusted once two listings show the same file after it: while
+// ours stays put, the next file moves at most once, so one of them saw it.
+func (s *Stream) checkNext(ents []fileEnt, idx int) error {
+	cur, next := ents[idx], ents[idx+1]
+	now, ok, err := statRegular(cur.path)
+	if err != nil {
+		return err
+	}
+	if !ok || now.dev != s.dev || now.ino != s.ino {
+		return errRetry
+	}
+	if next.n == cur.n-1 {
+		return nil
+	}
+	h := holeAt{n: cur.n, dev: next.dev, ino: next.ino}
+	if s.hole == h {
+		return nil
+	}
+	s.hole = h
+	return errRetry
+}
+
 func (s *Stream) switchTo(e fileEnt, off int64) error {
 	f, err := openNoFollow(e.path)
 	if err != nil {
@@ -507,6 +548,7 @@ func (s *Stream) switchTo(e fileEnt, off int64) error {
 	s.prefix = prefix
 	s.buf = nil
 	s.sawFile = true
+	s.hole = holeAt{}
 	return nil
 }
 

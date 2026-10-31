@@ -25,9 +25,11 @@ var errRetry = errors.New("logread: retry")
 // and before the live one. Tests rotate there (E14-D042). It is not a setting.
 var listHook func()
 
-// fileEnt is one regular file in a rotation, oldest first when listed.
+// fileEnt is one regular file in a rotation, oldest first when listed. n is
+// its suffix, 0 for the live file.
 type fileEnt struct {
 	path string
+	n    int
 	dev  uint64
 	ino  uint64
 	size int64
@@ -46,6 +48,7 @@ func listFiles(live string) ([]fileEnt, error) {
 			return nil, err
 		}
 		if ok {
+			ent.n = i
 			out = append(out, ent)
 		}
 	}
