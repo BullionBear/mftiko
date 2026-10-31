@@ -16,6 +16,7 @@ import (
 	stsctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/stsctl/v1"
 	"github.com/BullionBear/mftiko/contract/wire/envelope"
 	"github.com/BullionBear/mftiko/sdk/internal/dispatch"
+	"github.com/BullionBear/mftiko/sdk/internal/evlog"
 )
 
 const flushTimeout = 5 * time.Second
@@ -73,6 +74,11 @@ func (t *Tap) Book(msg []byte) {
 // Book receives orderbook_delta on the dispatcher. The bytes alias the ring and are valid
 // only until Book returns. Nil discards the message after it has been taken off the ring.
 // Log nil discards lines.
+//
+// Rec is the event log: each md.view and md.fetch request, and the reply the callback's hook
+// is given (E20-D003). Nil records nothing. Now is its clock; nil is time.Now. Replay opens the
+// path for an offline replay without NATS: Apply subscribes nothing, a read is written to Rec and
+// waits for ReplayReply (E20-D009).
 type Config struct {
 	NC         *nats.Conn
 	RecvWindow time.Duration
@@ -82,6 +88,9 @@ type Config struct {
 	Hooks      Hooks
 	Book       func(msg []byte)
 	Log        func(string)
+	Rec        *evlog.Log
+	Now        func() time.Time
+	Replay     bool
 }
 
 // Path is one session's market-data path. Close drops the subscriptions and waits for
@@ -98,7 +107,7 @@ type Path struct {
 	logFn    func(string)
 	pushMD   func([]byte) error
 	pushBook func([]byte) error
-	pushTD   func(func()) error
+	pushIn   func(dispatch.Input, func()) error
 	bySub    map[string]*feed
 	byKey    map[string]*feed
 	epoch    int64
@@ -108,6 +117,12 @@ type Path struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 	wg       sync.WaitGroup
+
+	rec     *evlog.Log
+	nowFn   func() time.Time
+	replay  bool
+	reads   atomic.Uint64                           // reads recorded so far; the next one's read id is one more
+	waiting map[uint64]func(data []byte, err error) // replay: each read's callback, by read id
 }
 
 // feed is one subscribed subject. topic, key, and view are fixed for the life of the
@@ -124,8 +139,11 @@ type feed struct {
 // Open checks the session and registers the path on Tap. It does not subscribe; call Apply
 // with the start bindings.
 func Open(cfg Config) (*Path, error) {
-	if cfg.NC == nil {
+	if cfg.NC == nil && !cfg.Replay {
 		return nil, errors.New("mdpath: nil nats conn")
+	}
+	if cfg.Replay && cfg.Rec == nil {
+		return nil, errors.New("mdpath: a replay needs the log it writes its reads to")
 	}
 	if cfg.RecvWindow <= 0 {
 		return nil, errors.New("mdpath: recv window must be positive")
@@ -146,14 +164,23 @@ func Open(cfg Config) (*Path, error) {
 		logFn:    cfg.Log,
 		pushMD:   cfg.Disp.PushMD,
 		pushBook: cfg.Disp.PushBook,
-		pushTD:   cfg.Disp.PushTD,
+		pushIn:   cfg.Disp.PushIn,
 		bySub:    map[string]*feed{},
 		byKey:    map[string]*feed{},
 		ctx:      ctx,
 		cancel:   cancel,
+		rec:      cfg.Rec,
+		nowFn:    cfg.Now,
+		replay:   cfg.Replay,
 	}
 	if p.logFn == nil {
 		p.logFn = func(string) {}
+	}
+	if p.nowFn == nil {
+		p.nowFn = time.Now
+	}
+	if p.replay {
+		p.waiting = map[uint64]func([]byte, error){}
 	}
 	cfg.Tap.p.Store(p)
 	return p, nil
@@ -214,10 +241,12 @@ func (p *Path) Apply(b *stsctlv1.Bindings) error {
 	p.mu.Unlock()
 
 	add, drop, merged := classify(cur, next)
-	if err := p.subscribe(add); err != nil {
-		return err
+	if !p.replay {
+		if err := p.subscribe(add); err != nil {
+			return err
+		}
 	}
-	if len(add) > 0 {
+	if len(add) > 0 && !p.replay {
 		if err := p.nc.FlushTimeout(flushTimeout); err != nil {
 			p.abandon(add)
 			return err
@@ -379,11 +408,11 @@ func (p *Path) decodeBook(msg []byte) {
 	}
 }
 
-func (p *Path) enqueue(fn func()) {
+func (p *Path) enqueue(in dispatch.Input, fn func()) {
 	if fn == nil {
 		return
 	}
-	if err := p.pushTD(fn); err != nil {
+	if err := p.pushIn(in, fn); err != nil {
 		p.logFn("md reply dropped: " + err.Error())
 	}
 }

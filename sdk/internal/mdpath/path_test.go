@@ -617,9 +617,9 @@ func TestCallbackWaitsForTheDispatcher(t *testing.T) {
 
 	enqueued := make(chan struct{})
 	var oncePush sync.Once
-	orig := r.p.pushTD
-	r.p.pushTD = func(fn func()) error {
-		err := orig(fn)
+	orig := r.p.pushIn
+	r.p.pushIn = func(in dispatch.Input, fn func()) error {
+		err := orig(in, fn)
 		oncePush.Do(func() { close(enqueued) })
 		return err
 	}
@@ -831,7 +831,7 @@ type rig struct {
 	mark   *box[MarkPrice]
 }
 
-func newRig(t *testing.T, recv time.Duration, book func([]byte)) *rig {
+func newRig(t *testing.T, recv time.Duration, book func([]byte), opts ...func(*Config)) *rig {
 	t.Helper()
 	url := startNATS(t)
 	nc := connect(t, url, "session")
@@ -853,7 +853,7 @@ func newRig(t *testing.T, recv time.Duration, book func([]byte)) *rig {
 	ctx, cancel := context.WithCancel(context.Background())
 	errc := make(chan error, 1)
 	go func() { errc <- d.Run(ctx) }()
-	p, err := Open(Config{
+	cfg := Config{
 		NC:         nc,
 		RecvWindow: recv,
 		Disp:       d,
@@ -862,7 +862,11 @@ func newRig(t *testing.T, recv time.Duration, book func([]byte)) *rig {
 		Hooks:      allHooksWired(r),
 		Book:       book,
 		Log:        logs.add,
-	})
+	}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	p, err := Open(cfg)
 	if err != nil {
 		cancel()
 		t.Fatal(err)
