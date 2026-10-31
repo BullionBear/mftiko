@@ -93,6 +93,16 @@ func forbiddenInStrategy(importPath string) bool {
 	return own && under(r, "exchange", "internal")
 }
 
+// forbiddenInSDKRuntime reports whether the SDK a strategy runs on must not link the package. The
+// event log is written as raw bytes; turning it into JSON is the offline dump's (DECISIONS E20-D002).
+func forbiddenInSDKRuntime(importPath string) bool {
+	if under(importPath, "google.golang.org/protobuf/encoding/protojson") {
+		return true
+	}
+	r, own := rel(importPath)
+	return own && under(r, "sdk/eventlog/dump")
+}
+
 // forbiddenInExchange reports whether the exchange package, which holds the adapter interfaces, must not
 // link the package: the transport and JSON libraries are the workers' and exchange/transport's, and sonic is also
 // exchange/internal/codec's (DECISIONS E03-D002).
@@ -209,6 +219,13 @@ func check(pkgs []pkg, std map[string]bool) []string {
 				}
 			}
 		}
+		if under(from, "sdk") && !under(from, "sdk/eventlog/dump") {
+			for _, d := range p.Deps {
+				if forbiddenInSDKRuntime(d) {
+					out = append(out, fmt.Sprintf("%s links %s: the SDK writes the event log as raw bytes; JSON is the offline dump's (E20-D002)", from, d))
+				}
+			}
+		}
 		if under(from, "internal/td") {
 			for _, d := range p.Deps {
 				if forbiddenInTD(d) {
@@ -288,7 +305,7 @@ func TestDependencyRules(t *testing.T) {
 		}
 	}
 	// The rules key on paths; if a block moved, they would pass by matching nothing.
-	for _, want := range []string{"contract/symbol", "contract/wire/frame", "exchange", "sdk", "pkg/logger", "internal/platform/state",
+	for _, want := range []string{"contract/symbol", "contract/wire/frame", "exchange", "sdk", "sdk/eventlog/dump", "pkg/logger", "internal/platform/state",
 		"internal/platform/agent", "internal/platform/agent/runner", "internal/platform/natsx", "internal/platform/shim",
 		"internal/platform/artifact", "cmd/mftiko-pack",
 		"internal/md", "internal/td", "internal/sts", "internal/sym", "internal/api",
@@ -327,6 +344,8 @@ func TestCheckReportsViolations(t *testing.T) {
 		{ImportPath: m("contract/symbol"), Imports: []string{"context", "google.golang.org/protobuf/proto", "github.com/rs/zerolog", m("exchange")}},
 		{ImportPath: m("sdk"), Imports: []string{m("contract/wire/frame"), m("pkg/logger"), m("internal/platform/natsx")},
 			Deps: []string{"fmt", m("contract/wire/frame"), "go.etcd.io/etcd/client/v3", m("exchange"), m("contract/wire/c4")}},
+		{ImportPath: m("sdk/internal/dispatch"), Deps: []string{"google.golang.org/protobuf/encoding/protojson", m("sdk/eventlog/dump")}},
+		{ImportPath: m("sdk/eventlog/dump"), Deps: []string{"google.golang.org/protobuf/encoding/protojson"}}, // the offline dump: allowed
 		{ImportPath: m("pkg/logger"), Imports: []string{"fmt", "github.com/rs/zerolog", m("internal/platform/buildinfo"), "github.com/nats-io/nats.go"}},
 		{ImportPath: m("examples/strategies/x"), Imports: []string{m("sdk"), m("internal/md")}},
 		{ImportPath: m("internal/td"), Imports: []string{m("internal/platform/agent")},
@@ -374,6 +393,8 @@ func TestCheckReportsViolations(t *testing.T) {
 		"pkg/logger imports github.com/nats-io/nats.go",
 		"sdk links go.etcd.io/etcd/client/v3",
 		"sdk links " + m("exchange"),
+		"sdk/internal/dispatch links google.golang.org/protobuf/encoding/protojson",
+		"sdk/internal/dispatch links " + m("sdk/eventlog/dump"),
 		"examples/strategies/x imports " + m("internal/md"),
 		"internal/td/account links " + m("contract/wire/cloid"),
 		"internal/td links " + m("internal/platform/agent/runner"),
