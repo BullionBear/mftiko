@@ -119,6 +119,8 @@ type plane struct {
 	seed    uint64
 	rngOnce sync.Once
 	rng     *rand.Rand
+	// rp is the offline replay this plane runs in; nil in a session (E20-D009).
+	rp *replayer
 }
 
 func newPlane(s Strategy, h host) *plane {

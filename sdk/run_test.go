@@ -437,14 +437,15 @@ func (m *manual) fire() {
 }
 
 type script struct {
-	t    *testing.T
-	r    *rec
-	h    host
-	w    *frame.Writer
-	mu   sync.Mutex
-	ups  []*workerv1.WorkerUp
-	code int
-	got  bool
+	t     *testing.T
+	r     *rec
+	strat Strategy // served instead of r when set
+	h     host
+	w     *frame.Writer
+	mu    sync.Mutex
+	ups   []*workerv1.WorkerUp
+	code  int
+	got   bool
 }
 
 func newScript(t *testing.T, r *rec, h host) *script {
@@ -481,8 +482,12 @@ func (s *script) start() {
 			s.mu.Unlock()
 		}
 	}()
+	strat := Strategy(s.r)
+	if s.strat != nil {
+		strat = s.strat
+	}
 	go func() {
-		code := serve(context.Background(), b, s.r, s.h)
+		code := serve(context.Background(), b, strat, s.h)
 		s.mu.Lock()
 		s.code = code
 		s.got = true

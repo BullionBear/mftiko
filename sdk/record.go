@@ -151,6 +151,9 @@ func (p *plane) outside(name string, kind eventlog.Kind, recvNs int64, ref uint6
 // resolve is Context.Resolve. With the log on each call is a resolve frame: the ticker, and the
 // SymbolInfo or the error. A replay answers from those frames instead of SYM.
 func (p *plane) resolve(ticker string) (symbol.Info, error) {
+	if p.rp != nil {
+		return p.rp.resolve(ticker)
+	}
 	var callNs int64
 	if p.rec != nil {
 		callNs = p.now().UnixNano()
