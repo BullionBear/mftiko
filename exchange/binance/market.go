@@ -48,12 +48,7 @@ func (m *market) Topics() []exchange.TopicCaps {
 	case VenueUM:
 		return umTopics()
 	case VenueSpot:
-		return appendKlines([]exchange.TopicCaps{
-			{Topic: exchange.TopicBestQuote},
-			{Topic: exchange.TopicAggTrade},
-			{Topic: exchange.TopicOrderBookDelta},
-			{Topic: exchange.TopicTicker},
-		})
+		return spotTopics()
 	default:
 		return nil
 	}
@@ -62,6 +57,7 @@ func (m *market) Topics() []exchange.TopicCaps {
 func umTopics() []exchange.TopicCaps {
 	out := []exchange.TopicCaps{
 		{Topic: exchange.TopicBestQuote},
+		{Topic: exchange.TopicTrade},
 		{Topic: exchange.TopicAggTrade},
 		{Topic: exchange.TopicOrderBookDelta},
 		{Topic: exchange.TopicTicker},
@@ -73,6 +69,16 @@ func umTopics() []exchange.TopicCaps {
 	return appendKlines(out)
 }
 
+func spotTopics() []exchange.TopicCaps {
+	return appendKlines([]exchange.TopicCaps{
+		{Topic: exchange.TopicBestQuote},
+		{Topic: exchange.TopicTrade},
+		{Topic: exchange.TopicAggTrade},
+		{Topic: exchange.TopicOrderBookDelta},
+		{Topic: exchange.TopicTicker},
+	})
+}
+
 func appendKlines(out []exchange.TopicCaps) []exchange.TopicCaps {
 	for _, iv := range klineIntervals {
 		out = append(out, exchange.TopicCaps{Topic: exchange.KlineTopic(iv.canon)})
@@ -81,7 +87,7 @@ func appendKlines(out []exchange.TopicCaps) []exchange.TopicCaps {
 }
 
 // Atom: the channel is the venue's subscribe parameter, lowercase symbol included.
-// bookTicker and depth are the public route; everything else is market.
+// bookTicker, depth and trade are the public route; everything else is market.
 // orderbook_delta subscribes btcusdt@depth@100ms. mark_price and funding_rate
 // share btcusdt@markPrice@1s. Open interest is not pushed (E04-D001). There is no top-N topic (E04-D053).
 func (m *market) Atom(topic exchange.Topic, inst *symbol.Info) (exchange.AtomRef, error) {
@@ -105,6 +111,8 @@ func (m *market) umAtom(topic exchange.Topic, inst *symbol.Info) (exchange.AtomR
 		return atom("public", sym+"@bookTicker"), nil
 	case exchange.TopicOrderBookDelta:
 		return atom("public", sym+"@depth@100ms"), nil
+	case exchange.TopicTrade:
+		return atom("public", sym+"@trade"), nil
 	case exchange.TopicAggTrade:
 		return atom("market", sym+"@aggTrade"), nil
 	case exchange.TopicTicker:
@@ -119,7 +127,6 @@ func (m *market) umAtom(topic exchange.Topic, inst *symbol.Info) (exchange.AtomR
 }
 
 // spotAtom subscribes the one spot route. There is no mark price, liquidation, or open interest.
-// @trade exists and was left out: the shared feed is aggTrade, the same choice as UM.
 func (m *market) spotAtom(topic exchange.Topic, inst *symbol.Info) (exchange.AtomRef, error) {
 	if err := instrumentVenue(inst, VenueSpot); err != nil {
 		return exchange.AtomRef{}, err
@@ -130,6 +137,8 @@ func (m *market) spotAtom(topic exchange.Topic, inst *symbol.Info) (exchange.Ato
 		return atom(exchange.RouteDefault, sym+"@bookTicker"), nil
 	case exchange.TopicOrderBookDelta:
 		return atom(exchange.RouteDefault, sym+"@depth@100ms"), nil
+	case exchange.TopicTrade:
+		return atom(exchange.RouteDefault, sym+"@trade"), nil
 	case exchange.TopicAggTrade:
 		return atom(exchange.RouteDefault, sym+"@aggTrade"), nil
 	case exchange.TopicTicker:
@@ -203,8 +212,8 @@ func (m *market) NewSession(route string) (exchange.Session, error) {
 	if _, err := m.endpoint(route); err != nil {
 		return nil, err
 	}
-	s := &session{per: m.p.budget}
-	if m.p.venue.Name == VenueSpot {
+	s := &session{per: m.p.budget, spot: m.p.venue.Name == VenueSpot}
+	if s.spot {
 		// Five incoming messages a second, and a ping counts. The server pings every 20s and
 		// drops the socket if no pong comes back within a minute. A client ping would spend
 		// that budget, so the idle limit is the pong deadline and nothing is sent on a timer.
@@ -305,11 +314,18 @@ func spotDiff(ch string) bool {
 
 // session is one public connection. Ids start at 1 and are not reused on it.
 // A zero rateN and idle are the UM socket: 10 messages a second, 10 minutes to pong.
+// A zero spot is UM too: a trade is sent only when its X is MARKET.
 type session struct {
 	per   int
 	n     uint64
 	rateN int
 	idle  time.Duration
+	spot  bool
+	// lastTrade is the last t on each @trade channel. The value is a pointer so that an update
+	// never assigns the map: that would store the frame's key in place of the cloned one.
+	lastTrade map[string]*int64
+	// dropped counts UM trades whose X is not MARKET.
+	dropped uint64
 }
 
 func (s *session) Limits() exchange.SessionLimits {

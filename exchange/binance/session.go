@@ -17,7 +17,12 @@ type subFrame struct {
 	ID     uint64   `json:"id"`
 }
 
+// Subscribe also forgets the last trade id of each channel: the venue starts a new subscription
+// at its current trade, and that jump is not a gap.
 func (s *session) Subscribe(channels []string) ([]exchange.Request, error) {
+	for _, ch := range channels {
+		delete(s.lastTrade, ch)
+	}
 	return s.requests("SUBSCRIBE", channels)
 }
 
@@ -68,7 +73,7 @@ func (s *session) Decode(frame []byte, sink exchange.Sink) error {
 		return errors.New("binance: empty frame")
 	}
 	if frame[0] == '[' {
-		return emitAll(frame, "", sink)
+		return s.emitAll(frame, "", sink)
 	}
 	var h struct {
 		Stream string          `json:"stream"`
@@ -104,9 +109,9 @@ func (s *session) Decode(frame []byte, sink exchange.Sink) error {
 		payload = h.Data
 	}
 	if len(payload) > 0 && payload[0] == '[' {
-		return emitAll(payload, stream, sink)
+		return s.emitAll(payload, stream, sink)
 	}
-	return emitOne(payload, stream, sink)
+	return s.emitOne(payload, stream, sink)
 }
 
 type subErr struct {
@@ -114,7 +119,7 @@ type subErr struct {
 	Msg  string `json:"msg"`
 }
 
-func emitAll(frame []byte, stream string, sink exchange.Sink) error {
+func (s *session) emitAll(frame []byte, stream string, sink exchange.Sink) error {
 	var rows []json.RawMessage
 	if err := codec.DecodeFrame(frame, &rows); err != nil {
 		return err
@@ -128,7 +133,7 @@ func emitAll(frame []byte, stream string, sink exchange.Sink) error {
 		}
 	}
 	for _, row := range rows {
-		if err := emitOne(row, stream, sink); err != nil {
+		if err := s.emitOne(row, stream, sink); err != nil {
 			return err
 		}
 	}
@@ -146,7 +151,7 @@ func knownEvent(frame []byte) error {
 		return nil
 	}
 	switch m.E {
-	case "bookTicker", "depthUpdate", "aggTrade", "kline", "24hrTicker", "24hrMiniTicker", "markPriceUpdate", "forceOrder":
+	case "bookTicker", "depthUpdate", "trade", "aggTrade", "kline", "24hrTicker", "24hrMiniTicker", "markPriceUpdate", "forceOrder":
 		return nil
 	default:
 		return fmt.Errorf("binance: unknown event %q", m.E)
@@ -162,7 +167,7 @@ type eventMeta struct {
 // keep reports whether this row belongs to UM. st 1 is UM, st 2 is CM.
 func keep(st *int) bool { return st == nil || *st == 1 }
 
-func emitOne(frame []byte, stream string, sink exchange.Sink) error {
+func (s *session) emitOne(frame []byte, stream string, sink exchange.Sink) error {
 	var m eventMeta
 	if err := codec.DecodeFrame(frame, &m); err != nil {
 		return err
@@ -178,6 +183,8 @@ func emitOne(frame []byte, stream string, sink exchange.Sink) error {
 		return emitBookTicker(frame, stream, sink)
 	case "depthUpdate":
 		return emitDepth(frame, stream, sink)
+	case "trade":
+		return s.emitTrade(frame, stream, sink)
 	case "aggTrade":
 		return emitAggTrade(frame, stream, sink)
 	case "kline":
@@ -268,6 +275,58 @@ func emitDepth(frame []byte, stream string, sink exchange.Sink) error {
 		Bids:     levels(e.B), Asks: levels(e.A),
 		First: uint64(e.U), Last: uint64(e.Last), Prev: uint64(e.Pu),
 	})
+	return nil
+}
+
+// emitTrade checks t on every trade event, whatever its X, before UM drops and counts the events
+// whose X is not MARKET (E03-D005). Spot has no X and sends every trade (E03-D006). A t that does not
+// follow the channel's previous t is a gap: the trade is still sent, and the gap is Decode's error.
+func (s *session) emitTrade(frame []byte, stream string, sink exchange.Sink) error {
+	var e struct {
+		E  int64         `json:"E"`
+		T  int64         `json:"T"`
+		S  string        `json:"s"`
+		ID *int64        `json:"t"`
+		P  codec.Decimal `json:"p"`
+		Q  codec.Decimal `json:"q"`
+		M  bool          `json:"m"`
+		X  string        `json:"X"`
+	}
+	if err := codec.DecodeFrame(frame, &e); err != nil {
+		return err
+	}
+	if e.S == "" || e.ID == nil {
+		return errors.New("binance: trade is missing a symbol or id")
+	}
+	ch := channel(stream, e.S, "trade")
+	gap := s.nextTrade(ch, *e.ID)
+	if !s.spot && e.X != "MARKET" {
+		s.dropped++
+		return gap
+	}
+	sink.Trade(ch, &exchange.Trade{
+		ExchTsNs: eventNs(e.T, e.E), TradeID: fmt.Sprintf("%d", *e.ID),
+		Price: float64(e.P), Qty: float64(e.Q), Side: takerSide(e.M),
+	})
+	return gap
+}
+
+// nextTrade records id as ch's last trade id. It is an error when id is not one past the last one.
+func (s *session) nextTrade(ch string, id int64) error {
+	last, ok := s.lastTrade[ch]
+	if !ok {
+		if s.lastTrade == nil {
+			s.lastTrade = map[string]*int64{}
+		}
+		// ch can point into the lent frame (E03-D002).
+		s.lastTrade[strings.Clone(ch)] = &id
+		return nil
+	}
+	prev := *last
+	*last = id
+	if id != prev+1 {
+		return fmt.Errorf("binance: %s gap: t=%d after t=%d", ch, id, prev)
+	}
 	return nil
 }
 

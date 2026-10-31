@@ -6,17 +6,20 @@
 //     name, and BinancePM, which trades Binance, BinanceUM and BinanceCM through papi and is no
 //     venue: there is no BinancePM_* ticker.
 //
-// Facts the implementation must honor. Checked 2026-10-05 against developers.binance.com, and the
-// UM public wire again on 2026-10-10 against fapi.binance.com and fstream.binance.com.
+// Facts the implementation must honor. Checked 2026-10-05 against developers.binance.com, the
+// UM public wire again on 2026-10-10 against fapi.binance.com and fstream.binance.com, and @trade
+// on 2026-10-31.
 //
 //   - BinanceUM: since the 2026-03-06 notice the websocket is split by path on fstream.binance.com:
-//     /public/ws (bookTicker, depth), /market/ws (aggTrade, markPrice, kline, tickers, forceOrder),
-//     /private (user data). The legacy URLs ended 2026-04-23. These are the routes "public" and
-//     "market"; the private path belongs to the account stream. Both sockets take a JSON
-//     SUBSCRIBE and answer with raw events, not the combined-stream wrapper. The wrapper is
+//     /public/ws (bookTicker, depth, trade), /market/ws (aggTrade, markPrice, kline, tickers,
+//     forceOrder), /private (user data). The legacy URLs ended 2026-04-23. These are the routes
+//     "public" and "market"; the private path belongs to the account stream. Both sockets take a
+//     JSON SUBSCRIBE and answer with raw events, not the combined-stream wrapper. The wrapper is
 //     still accepted. A client may send 10 messages a second. The server pings every 3 minutes
-//     and drops a connection that sends no pong for 10. btcusdt@trade was acked and then silent
-//     for 20s, so aggTrade is the trade feed.
+//     and drops a connection that sends no pong for 10. The 2026-10-10 check sent btcusdt@trade
+//     to /market/ws, which acks it and then sends nothing; the 2026-10-31 retest confirmed that
+//     @trade belongs to /public/ws (E03-D007). aggTrade stays on /market/ws, and the two topics
+//     coexist (E03-D004).
 //   - BinanceUM, Binance spot: 1024 streams per connection (E04-D003), so cost 1 and budget 1024.
 //   - BinanceCM: the CM-UM integration (rolled out 2026-06-24 to 06-30) kept dapi and
 //     dstream.binance.com, and the CM wallet stays separate, so CM stays its own venue (E03-D001).
@@ -58,7 +61,8 @@
 // UM private wire, checked against the USD-M testnet on 2026-10-10. UM public wire, checked the
 // same day against production fapi and fstream. Spot private wire, checked the same day against
 // the spot testnet. Spot public wire, checked the same day against production api.binance.com
-// and stream.binance.com. CM, EO and PM still return exchange.ErrNotImplemented.
+// and stream.binance.com. @trade on UM and on spot, checked against production on 2026-10-31.
+// CM, EO and PM still return exchange.ErrNotImplemented.
 //
 // # Public fields
 //
@@ -92,6 +96,13 @@
 //	                           REST lastUpdateId is the snapshot. Updates with u below it are
 //	                           already in the snapshot; the first one that still overlaps it
 //	                           bridges; after that pu must equal the previous u
+//	trade                      trade. Id t, price p, qty q, time T else E. m means the buyer is
+//	                           the maker, so the taker side is the other one. Only X MARKET is
+//	                           sent; any other X is dropped and counted on the session. t is
+//	                           checked first, on every event whatever its X, so a dropped trade
+//	                           is not a gap. A t that is not one past the channel's last t is:
+//	                           the trade is still sent, and Decode returns the gap as its error.
+//	                           A subscribe starts the channel's count again (E03-D005)
 //	aggTrade                   aggtrade. Price p, qty q, id a, first f, last l. m means the buyer
 //	                           is the maker, so the taker side is the other one
 //	kline_<interval>           kline. Interval i, with 1M written 1mo. Closed is x. Quote volume q.
@@ -124,7 +135,9 @@
 //	depth@100ms       depthUpdate has U and u and no pu. Also @depth (1000ms). Not @250ms or
 //	                  @500ms. Drop an event with u <= lastUpdateId, then the next event's U
 //	                  is at most one past the previous u. UM chains on pu and skips only u < last
-//	aggTrade          the same event as UM. @trade is not subscribed
+//	trade             no X and no st, so every trade is sent (E03-D006). M is ignored. t is
+//	                  checked as on UM
+//	aggTrade          the same event as UM
 //	kline_<interval>  the same interval table as UM, so 1s is not subscribed even though spot
 //	                  offers it. REST klines are at most 1000 and the weight is 2. UM's page
 //	                  is 1500 and the weight steps with the limit

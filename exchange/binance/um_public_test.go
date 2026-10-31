@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -113,6 +114,104 @@ func TestUMDecode(t *testing.T) {
 	}
 	if err := s.Decode([]byte(`["conformance",1]`), &capture{}); err == nil {
 		t.Fatal("an unknown array was accepted")
+	}
+}
+
+// umTradeEvent is one UM trade event: BTCUSDT 2 at 100.5, the buyer the maker, so the taker sold.
+func umTradeEvent(id int, x string) string {
+	return fmt.Sprintf(`{"e":"trade","E":2000,"T":1000,"s":"BTCUSDT","t":%d,"p":"100.5","q":"2","X":"%s","m":true,"st":1}`, id, x)
+}
+
+// TestUMTrade: only X MARKET is sent, and t is checked on every event before that filter
+// (E03-D005). A dropped trade is therefore not a gap, and a missing t is one whatever X is.
+func TestUMTrade(t *testing.T) {
+	s := &session{}
+	decode := func(frame string) ([]tradeGot, error) {
+		var got capture
+		err := s.Decode([]byte(frame), &got)
+		return got.trades, err
+	}
+	got, err := decode(umTradeEvent(1001, "MARKET"))
+	want := tradeGot{ch: "btcusdt@trade", id: "1001", side: exchange.SideSell, px: 100.5, qty: 2, ts: 1000 * int64(time.Millisecond)}
+	if err != nil || len(got) != 1 || got[0] != want {
+		t.Fatalf("1001: %+v %v", got, err)
+	}
+	if got, err := decode(umTradeEvent(1002, "INSURANCE_FUND")); err != nil || len(got) != 0 || s.dropped != 1 {
+		t.Fatalf("1002 INSURANCE_FUND: %+v dropped %d %v", got, s.dropped, err)
+	}
+	if got, err := decode(umTradeEvent(1003, "MARKET")); err != nil || len(got) != 1 || got[0].id != "1003" {
+		t.Fatalf("1003 after a dropped 1002: %+v %v", got, err)
+	}
+	// 1004 never comes. 1005 is still sent, and the gap is the error.
+	got, err = decode(umTradeEvent(1005, "MARKET"))
+	if len(got) != 1 || got[0].id != "1005" || err == nil || err.Error() != "binance: btcusdt@trade gap: t=1005 after t=1003" {
+		t.Fatalf("1005: %+v %v", got, err)
+	}
+	if got, err := decode(umTradeEvent(1006, "MARKET")); err != nil || len(got) != 1 {
+		t.Fatalf("1006 after the gap: %+v %v", got, err)
+	}
+	// The gap before a trade that is dropped is still a gap.
+	got, err = decode(umTradeEvent(1008, "ADL"))
+	if len(got) != 0 || s.dropped != 2 || err == nil || err.Error() != "binance: btcusdt@trade gap: t=1008 after t=1006" {
+		t.Fatalf("1008 ADL: %+v dropped %d %v", got, s.dropped, err)
+	}
+	noX := `{"e":"trade","E":2000,"T":1000,"s":"BTCUSDT","t":1009,"p":"100.5","q":"2","m":true,"st":1}`
+	if got, err := decode(noX); err != nil || len(got) != 0 || s.dropped != 3 {
+		t.Fatalf("1009 without X: %+v dropped %d %v", got, s.dropped, err)
+	}
+	if got, err := decode(umTradeEvent(1010, "MARKET")); err != nil || len(got) != 1 {
+		t.Fatalf("1010: %+v %v", got, err)
+	}
+}
+
+// TestTradeCursor: t is followed per channel, and a wrapped frame is the same channel as a raw
+// one. Every frame is overwritten once Decode returns, so a channel name kept from a wrapped frame
+// must be a copy (E03-D002). A subscribe starts the channel's count again.
+func TestTradeCursor(t *testing.T) {
+	s := &session{}
+	decode := func(frame string) ([]tradeGot, error) {
+		var got capture
+		buf := []byte(frame)
+		err := s.Decode(buf, &got)
+		for i := range buf {
+			buf[i] = 0xA5
+		}
+		return got.trades, err
+	}
+	wrapped := func(id int) string {
+		return `{"stream":"btcusdt@trade","data":` + umTradeEvent(id, "MARKET") + `}`
+	}
+	if got, err := decode(wrapped(1001)); err != nil || len(got) != 1 || got[0].ch != "btcusdt@trade" {
+		t.Fatalf("wrapped 1001: %+v %v", got, err)
+	}
+	if _, err := decode(wrapped(1003)); err == nil {
+		t.Fatal("1003 after 1001 is not a gap")
+	}
+	if _, err := decode(wrapped(1005)); err == nil {
+		t.Fatal("1005 after 1003 is not a gap")
+	}
+	if _, err := decode(wrapped(1006)); err != nil {
+		t.Fatalf("1006: %v", err)
+	}
+	if _, err := decode(umTradeEvent(1007, "MARKET")); err != nil {
+		t.Fatalf("raw 1007 after wrapped 1006: %v", err)
+	}
+	eth := `{"e":"trade","E":2000,"T":1000,"s":"ETHUSDT","t":1,"p":"10","q":"1","X":"MARKET","m":false,"st":1}`
+	if got, err := decode(eth); err != nil || len(got) != 1 || got[0].ch != "ethusdt@trade" {
+		t.Fatalf("ETHUSDT 1: %+v %v", got, err)
+	}
+	if _, err := s.Subscribe([]string{"btcusdt@trade"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decode(umTradeEvent(2001, "MARKET")); err != nil {
+		t.Fatalf("2001 after a new subscribe: %v", err)
+	}
+	noID := `{"e":"trade","E":2000,"T":1000,"s":"BTCUSDT","p":"100.5","q":"2","X":"MARKET","m":true,"st":1}`
+	if got, err := decode(noID); err == nil || len(got) != 0 {
+		t.Fatalf("a trade without t: %+v %v", got, err)
+	}
+	if _, err := decode(umTradeEvent(2002, "MARKET")); err != nil {
+		t.Fatalf("2002 after a refused frame: %v", err)
 	}
 }
 
@@ -298,8 +397,13 @@ func TestUMEndpoint(t *testing.T) {
 	if !bytes.Contains(reqs[0].Frame, []byte(`"method":"SUBSCRIBE"`)) || !bytes.Contains(reqs[0].Frame, []byte(`btcusdt@depth@100ms`)) {
 		t.Fatalf("frame %s", reqs[0].Frame)
 	}
-	if _, err := m.Atom(exchange.TopicTrade, btcInst()); !errorsIs(err, exchange.ErrUnsupported) {
-		t.Fatalf("trade: %v", err)
+	tr, err := m.Atom(exchange.TopicTrade, btcInst())
+	if err != nil || tr.Route != "public" || tr.Channel != "btcusdt@trade" {
+		t.Fatalf("trade atom %+v %v", tr, err)
+	}
+	agg, err := m.Atom(exchange.TopicAggTrade, btcInst())
+	if err != nil || agg.Route != "market" || agg.Channel != "btcusdt@aggTrade" {
+		t.Fatalf("aggTrade atom %+v %v", agg, err)
 	}
 	a, err := m.Atom(exchange.TopicOrderBookDelta, btcInst())
 	b, err2 := m.Atom(exchange.TopicOrderBookDelta, btcInst())
@@ -317,6 +421,7 @@ type capture struct {
 	acks, quotes, marks, funds int
 	ackErr                     error
 	rate                       float64
+	trades                     []tradeGot
 	aggs                       []aggGot
 	tickers                    []tickGot
 	books                      []bookGot
@@ -324,6 +429,12 @@ type capture struct {
 	liqs                       []liqGot
 }
 
+type tradeGot struct {
+	ch, id  string
+	side    exchange.Side
+	px, qty float64
+	ts      int64
+}
 type aggGot struct {
 	ch, id string
 	side   exchange.Side
@@ -355,7 +466,11 @@ func (c *capture) Ack(_ uint64, err error) {
 	}
 }
 func (c *capture) BestQuote(string, *exchange.BestQuote) { c.quotes++ }
-func (c *capture) Trade(string, *exchange.Trade)         {}
+
+// Trade keeps copies: TestTradeCursor overwrites the frame once Decode returns.
+func (c *capture) Trade(ch string, e *exchange.Trade) {
+	c.trades = append(c.trades, tradeGot{strings.Clone(ch), strings.Clone(e.TradeID), e.Side, e.Price, e.Qty, e.ExchTsNs})
+}
 func (c *capture) AggTrade(ch string, e *exchange.AggTrade) {
 	c.aggs = append(c.aggs, aggGot{ch, e.TradeID, e.Side, e.MatchCount, e.Price})
 }
@@ -392,6 +507,15 @@ func TestRecordBinanceUMPublic(t *testing.T) {
 	recordREST(t, dir)
 	recordPublic(t, ctx, dir)
 	recordMarket(t, ctx, dir)
+}
+
+// TestRecordBinanceUMPublicTrade records @trade on the public route (E03-D004, E03-D008).
+func TestRecordBinanceUMPublicTrade(t *testing.T) {
+	if os.Getenv("MFTIKO_BINANCE_UM_RECORD") != "1" {
+		t.Skip("set MFTIKO_BINANCE_UM_RECORD=1 to record production public fixtures")
+	}
+	recordTrade(t, um, "public", "testdata/conformance/BinanceUM", "public_trade",
+		"USD-M BTCUSDT @trade on the public route (E03-D004), from the subscribe to the unsubscribe ack.")
 }
 
 func recordREST(t *testing.T, dir string) {
@@ -517,6 +641,21 @@ func recordMarket(t *testing.T, ctx context.Context, dir string) {
 	}
 	stop()
 	writeSession(t, dir, "market", VenueUM, "market", "USD-M BTCUSDT aggTrade, kline, ticker, mark price, and one all-market miniTicker array.", tp.snapshot())
+}
+
+// recordTrade records one btcusdt@trade subscription. writeSession refuses a gap in t.
+func recordTrade(t *testing.T, p product, route, dir, name, note string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	tp, conn, sess, stop := dialProduct(t, ctx, p, route)
+	defer stop()
+	sub(t, ctx, conn, sess, "btcusdt@trade")
+	waitN(t, tp, `"e":"trade"`, 12, 30*time.Second)
+	unsub(t, ctx, conn, sess, "btcusdt@trade")
+	waitN(t, tp, `"id":2`, 1, 10*time.Second)
+	stop()
+	writeSession(t, dir, name, p.venue.Name, route, note, tp.snapshot())
 }
 
 type piece struct {
@@ -807,7 +946,14 @@ func replayTape(pieces []piece) error {
 
 func writeSession(t *testing.T, dir, name, venue, route, note string, pieces []piece) {
 	t.Helper()
-	sess := &session{per: um.budget}
+	prod := um
+	if venue == VenueSpot {
+		prod = spot
+	}
+	sess, err := (&market{p: prod}).NewSession(route)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i, p := range pieces {
 		if p.frame == nil {
 			continue
