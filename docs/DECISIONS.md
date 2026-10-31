@@ -4873,6 +4873,7 @@ E12-D061 列的「演練之前沒有實測」，除了主機重開，都在 test
 - **收錄 After 計時器與 Post 的觸發順序、Tape/BookSnapshot/Fetch* 讀取回覆、cloid 產生用的時間。Context 新增 `ctx.Now()`、`ctx.Rand()`，回放時注入。**
 - `Context.Now()` 是目前這個 hook 的開始時間（UTC），hook 裡不動；回放時是紀錄的 `hook_start_ns`。本地訂單簿判斷 `recv_window_ms` 也讀這個時鐘（E08-D058），回放才會留下、丟掉同樣的 delta。
 - `Context.Rand()` 是 `math/rand/v2` 的 PCG。seed 每個 worker 抽一次，寫在 `init` 的 `ref`，回放用同一個 seed。不能並行使用，只在 hook 裡抽。
+- `Context` 是 interface：策略在自己的測試裡實作的假 `Context` 要補上 `Now`、`Rand` 才編得過。`examples/strategies` 的 `hello`、`drill` 已補。
 - 計時器依建立的順序從 1 編號，Post 依呼叫的順序從 1 編號。`timer`、`post` 的 `ref` 是這個號碼，回放在紀錄的位置執行同號的那一個；回放裡 `After` 不排程。從策略自己的 goroutine 呼叫 `Post`，號碼可能跟紀錄不同（`Context.Post` 的說明）。
 - 讀取：`Tape`、`BookSnapshot`、`FetchKlines`、`FetchOpenInterest` 各寫一個 `read_call`（subject 與請求），回覆是 `read_reply`。`td.view` 的回覆是 `td_view`，`td.order` 的是 `order_reply`。逾時與沒有 responder 也記，錯誤文字原樣，回放以同一個 sentinel 重建（`errors.Is` 對得上）。
 - cloid：`init` 的 body 開頭 8 bytes 是 Init 當時 `cloidgen` 的計數器（`ts_ms` 與 seq 併成的 uint64，E08-D014）。`order_call` 的 `t_ns` 是產生 cloid 的時間，Submit 另帶 `submit_gen`（E08-D054 的世代）。回放以自己的 `cloidgen.Gen` 從那個計數器起，依紀錄的呼叫時間取號，cloid 逐筆相同。計數器一個行程一顆（E08-D011），一個 worker 行程只跑一個 session，所以這樣就夠。
