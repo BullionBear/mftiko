@@ -24,7 +24,7 @@ func TestShimLogRotatesStderr(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer sl.Close()
-	for _, chunk := range []string{"aaaa", "bbbb", "cccc", "dddd"} {
+	for _, chunk := range []string{"aaa\n", "bbb\n", "ccc\n", "ddd\n"} {
 		if _, err := sl.Write([]byte(chunk)); err != nil {
 			t.Fatal(err)
 		}
@@ -39,7 +39,7 @@ func TestShimLogRotatesStderr(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.HasPrefix(current, []byte("dddd")) || !bytes.Contains(current, []byte("Q")) {
+	if !bytes.HasPrefix(current, []byte("ddd\n")) || !bytes.Contains(current, []byte("Q")) {
 		t.Fatalf("current %q", current)
 	}
 	older, err := os.ReadFile(path + ".2")
