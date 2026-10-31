@@ -236,6 +236,14 @@ func (c *Client) Info(uid uint32) (symbol.Info, error) {
 	return cloneInfo(info), nil
 }
 
+// Seed stores info as a resolved row without asking SYM. A replay seeds the rows Resolve returned
+// in the recording, so Info answers as it did (E20-D009).
+func (c *Client) Seed(info symbol.Info) {
+	c.mu.Lock()
+	c.storeLocked(info)
+	c.mu.Unlock()
+}
+
 func (c *Client) allowed() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -494,7 +502,7 @@ func (c *Client) rpcGet(ctx context.Context, t symbol.UniversalTicker) (symbol.I
 	if err != nil {
 		return symbol.Info{}, err
 	}
-	info, err := infoFromProto(rep.GetInfo())
+	info, err := InfoFromProto(rep.GetInfo())
 	if err != nil {
 		return symbol.Info{}, err
 	}
@@ -512,7 +520,7 @@ func (c *Client) rpcByUID(ctx context.Context, uid uint32, inactive bool) (symbo
 	if err != nil {
 		return symbol.Info{}, err
 	}
-	info, err := infoFromProto(rep.GetInfo())
+	info, err := InfoFromProto(rep.GetInfo())
 	if err != nil {
 		return symbol.Info{}, err
 	}

@@ -9,7 +9,8 @@ import (
 	"github.com/BullionBear/mftiko/contract/wire/decimal"
 )
 
-func infoFromProto(msg *symv1.SymbolInfo) (symbol.Info, error) {
+// InfoFromProto reads a SYM row. The event log records Resolve's result as one (E20-D003).
+func InfoFromProto(msg *symv1.SymbolInfo) (symbol.Info, error) {
 	if msg == nil {
 		return symbol.Info{}, errors.New("symclient: empty info")
 	}
@@ -55,6 +56,68 @@ func infoFromProto(msg *symv1.SymbolInfo) (symbol.Info, error) {
 		}
 	}
 	return info, nil
+}
+
+// InfoToProto is the SYM row of info. InfoFromProto of it is info again.
+func InfoToProto(info symbol.Info) *symv1.SymbolInfo {
+	out := &symv1.SymbolInfo{
+		Uid:              info.UID,
+		UniversalTicker:  info.Ticker.String(),
+		ExchTicker:       info.ExchTicker,
+		Base:             info.Base,
+		Quote:            info.Quote,
+		ContractValueCcy: info.ContractValueCcy,
+		PriceCcy:         info.PriceCcy,
+		ExpiryNs:         info.ExpiryNs,
+		OptionType:       info.OptionType,
+		Status:           statusToProto(info.Status),
+		UpdatedAtNs:      info.UpdatedAtNs,
+	}
+	if info.ContractSize != 0 {
+		v := info.ContractSize
+		out.ContractSize = &v
+	}
+	if info.Settle != "" {
+		v := info.Settle
+		out.Settle = &v
+	}
+	if info.Strike != 0 {
+		v := info.Strike
+		out.Strike = &v
+	}
+	if len(info.Filters) > 0 {
+		out.Filters = make(map[string]*symv1.Bound, len(info.Filters))
+		for name, v := range info.Filters {
+			b := &symv1.Bound{}
+			if decimal.Has(v) {
+				x := v
+				b.Value = &x
+			}
+			out.Filters[name] = b
+		}
+	}
+	return out
+}
+
+func statusToProto(s symbol.Status) symv1.SymbolStatus {
+	switch s {
+	case symbol.Prelisting:
+		return symv1.SymbolStatus_SYMBOL_STATUS_PRELISTING
+	case symbol.Tradable:
+		return symv1.SymbolStatus_SYMBOL_STATUS_TRADABLE
+	case symbol.Halted:
+		return symv1.SymbolStatus_SYMBOL_STATUS_HALTED
+	case symbol.Settling:
+		return symv1.SymbolStatus_SYMBOL_STATUS_SETTLING
+	case symbol.Expired:
+		return symv1.SymbolStatus_SYMBOL_STATUS_EXPIRED
+	case symbol.Delisted:
+		return symv1.SymbolStatus_SYMBOL_STATUS_DELISTED
+	case symbol.Unknown:
+		return symv1.SymbolStatus_SYMBOL_STATUS_UNKNOWN
+	default:
+		return symv1.SymbolStatus_SYMBOL_STATUS_UNSPECIFIED
+	}
 }
 
 func statusFromProto(s symv1.SymbolStatus) (symbol.Status, error) {
