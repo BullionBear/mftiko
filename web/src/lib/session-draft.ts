@@ -12,6 +12,9 @@ export type AccountRow = {
 	algoDraft: string;
 };
 
+/** A data artifact the session reads (E15-D023). Digest only: tags are not resolved here. */
+export type InputRow = { key: number; name: string; repository: string; digest: string };
+
 export type Draft = {
 	name: string;
 	stsInstance: string;
@@ -20,6 +23,7 @@ export type Draft = {
 	paramsText: string;
 	feeds: FeedRow[];
 	accounts: AccountRow[];
+	inputs: InputRow[];
 	restartMode: '' | 'on_failure' | 'never';
 	maxRestarts: string;
 	windowS: string;
@@ -35,6 +39,9 @@ export type Draft = {
 
 const UINT32_MAX = 4294967295;
 
+/** The API's input digest rule; the reason text is the API's too. */
+const SHA256_DIGEST = /^sha256:[0-9a-f]{64}$/;
+
 const STATIC_PATHS = new Set([
 	'/name',
 	'/sts_instance',
@@ -44,6 +51,7 @@ const STATIC_PATHS = new Set([
 	'/params',
 	'/feeds',
 	'/accounts',
+	'/inputs',
 	'/restart',
 	'/restart/mode',
 	'/restart/max_restarts',
@@ -68,6 +76,7 @@ export function emptyDraft(): Draft {
 		paramsText: '',
 		feeds: [],
 		accounts: [],
+		inputs: [],
 		restartMode: '',
 		maxRestarts: '',
 		windowS: '',
@@ -163,6 +172,17 @@ export function localErrors(draft: Draft): Record<string, string> {
 			errors[path] = 'required';
 		}
 	});
+	// Allow, data artifact kind, and size are the API's (E15-D006, E15-D007).
+	const seenInputs = new Set<string>();
+	draft.inputs.forEach((row, i) => {
+		if (row.name.trim() === '') errors[`/inputs/${i}/name`] = 'required';
+		else if (seenInputs.has(row.name)) errors[`/inputs/${i}/name`] = 'duplicate';
+		else seenInputs.add(row.name);
+		if (row.repository.trim() === '') errors[`/inputs/${i}/repository`] = 'required';
+		const digest = row.digest.trim();
+		if (digest === '') errors[`/inputs/${i}/digest`] = 'required';
+		else if (!SHA256_DIGEST.test(digest)) errors[`/inputs/${i}/digest`] = 'must be a sha256 digest';
+	});
 	const numbers: [string, string][] = [
 		['/restart/max_restarts', draft.maxRestarts],
 		['/restart/window_s', draft.windowS],
@@ -204,6 +224,13 @@ export function sessionRequestBody(draft: Draft): string {
 			algo_ids: accountAlgos(row)
 		}));
 	}
+	if (draft.inputs.length > 0) {
+		body.inputs = draft.inputs.map((row) => ({
+			name: row.name,
+			repository: row.repository.trim(),
+			digest: row.digest.trim()
+		}));
+	}
 	const restart: Record<string, unknown> = {};
 	if (draft.restartMode) restart.mode = draft.restartMode;
 	putUint(restart, 'max_restarts', draft.maxRestarts);
@@ -231,6 +258,8 @@ function knownPath(path: string, draft: Draft): boolean {
 	if (feed) return Number(feed[1]) < draft.feeds.length;
 	const account = /^\/accounts\/(\d+)(?:\/(?:name|api_id|algo_ids))?$/.exec(path);
 	if (account) return Number(account[1]) < draft.accounts.length;
+	const input = /^\/inputs\/(\d+)(?:\/(?:name|repository|digest))?$/.exec(path);
+	if (input) return Number(input[1]) < draft.inputs.length;
 	return false;
 }
 
@@ -269,6 +298,7 @@ export function stepForPath(path: string): number {
 	if (path === '/params' || path.startsWith('/params/')) return 1;
 	if (path === '/feeds' || path.startsWith('/feeds/')) return 2;
 	if (path === '/accounts' || path.startsWith('/accounts/')) return 3;
+	if (path === '/inputs' || path.startsWith('/inputs/')) return 4;
 	if (
 		path === '/restart' ||
 		path.startsWith('/restart/') ||
@@ -279,10 +309,10 @@ export function stepForPath(path: string): number {
 		path === '/recv_window_ms' ||
 		path === '/grace_ms'
 	) {
-		return 4;
+		return 5;
 	}
 	if (path === '/name' || path === '/sts_instance' || path === '/strategy' || path.startsWith('/strategy/')) return 0;
-	return 5;
+	return 6;
 }
 
 export function firstErrorStep(fields: Record<string, string>): number | undefined {

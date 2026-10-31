@@ -17,7 +17,7 @@
 	} from '#lib/session-draft.ts';
 	import { onMount } from 'svelte';
 
-	const steps = ['Strategy', 'Params', 'Feeds', 'Accounts', 'Limits', 'Confirm'];
+	const steps = ['Strategy', 'Params', 'Feeds', 'Accounts', 'Inputs', 'Limits', 'Confirm'];
 
 	// One key for the life of this wizard. A failed submit retries with it (E10-D089, E10-D068).
 	const idempotencyKey = newIdempotencyKey();
@@ -123,6 +123,16 @@
 
 	function removeAccount(key: number) {
 		draft.accounts = draft.accounts.filter((row) => row.key !== key);
+		clearServer();
+	}
+
+	function addInput() {
+		draft.inputs.push({ key: rowKey++, name: '', repository: '', digest: '' });
+		clearServer();
+	}
+
+	function removeInput(key: number) {
+		draft.inputs = draft.inputs.filter((row) => row.key !== key);
 		clearServer();
 	}
 
@@ -497,6 +507,62 @@
 		{@render fieldError('/accounts')}
 		<button type="button" onclick={addAccount}>Add account</button>
 	{:else if stepIndex === 4}
+		<p class="status">
+			Data artifacts pushed with mftiko-pack data, by digest. The console does not resolve tags; the API checks the
+			repository and the size.
+		</p>
+		{#each draft.inputs as row, i (row.key)}
+			<div class="row input-row">
+				<div class="field">
+					<label for="input-name-{row.key}">Name</label>
+					<input
+						id="input-name-{row.key}"
+						bind:value={draft.inputs[i].name}
+						autocomplete="off"
+						autocapitalize="off"
+						spellcheck="false"
+						placeholder="model"
+						aria-invalid={invalid(`/inputs/${i}/name`)}
+						aria-describedby={describedBy(`/inputs/${i}/name`)}
+					/>
+					{@render fieldError(`/inputs/${i}/name`)}
+				</div>
+				<div class="field wide">
+					<label for="input-repo-{row.key}">Repository</label>
+					<input
+						id="input-repo-{row.key}"
+						bind:value={draft.inputs[i].repository}
+						autocomplete="off"
+						autocapitalize="off"
+						spellcheck="false"
+						placeholder="ghcr.io/acme/data/model"
+						aria-invalid={invalid(`/inputs/${i}/repository`)}
+						aria-describedby={describedBy(`/inputs/${i}/repository`)}
+					/>
+					{@render fieldError(`/inputs/${i}/repository`)}
+				</div>
+				<div class="field wide">
+					<label for="input-digest-{row.key}">Digest</label>
+					<input
+						id="input-digest-{row.key}"
+						class="mono"
+						bind:value={draft.inputs[i].digest}
+						autocomplete="off"
+						autocapitalize="off"
+						spellcheck="false"
+						placeholder="sha256:…"
+						aria-invalid={invalid(`/inputs/${i}/digest`)}
+						aria-describedby={describedBy(`/inputs/${i}/digest`)}
+					/>
+					{@render fieldError(`/inputs/${i}/digest`)}
+				</div>
+				<button type="button" onclick={() => removeInput(row.key)}>Remove</button>
+			</div>
+			{@render fieldError(`/inputs/${i}`)}
+		{/each}
+		{@render fieldError('/inputs')}
+		<button type="button" onclick={addInput}>Add input</button>
+	{:else if stepIndex === 5}
 		<fieldset>
 			<legend>Restart</legend>
 			<div class="field">
@@ -725,6 +791,27 @@
 				{/if}
 				{@render fieldError('/accounts')}
 			</dd>
+			<dt>Inputs</dt>
+			<dd>
+				{#if draft.inputs.length === 0}
+					—
+				{:else}
+					<ul>
+						{#each draft.inputs as row, i (row.key)}
+							<li>
+								<span class="mono">{row.name || '—'}</span>
+								· {row.repository.trim() || '—'}
+								· <span class="mono digest">{row.digest.trim() || '—'}</span>
+								{@render fieldError(`/inputs/${i}`)}
+								{@render fieldError(`/inputs/${i}/name`)}
+								{@render fieldError(`/inputs/${i}/repository`)}
+								{@render fieldError(`/inputs/${i}/digest`)}
+							</li>
+						{/each}
+					</ul>
+				{/if}
+				{@render fieldError('/inputs')}
+			</dd>
 			<dt>Restart</dt>
 			<dd>
 				{draft.restartMode || 'default (on_failure)'}
@@ -845,6 +932,19 @@
 		margin-top: 0.75rem;
 	}
 
+	.input-row .wide {
+		grid-column: span 2;
+	}
+
+	input.mono {
+		font-family: var(--mono);
+		font-size: 0.9rem;
+	}
+
+	.digest {
+		word-break: break-all;
+	}
+
 	.add-algo {
 		grid-template-columns: auto 1fr auto;
 		align-items: center;
@@ -905,6 +1005,10 @@
 		.nums,
 		.add-algo {
 			grid-template-columns: 1fr;
+		}
+
+		.input-row .wide {
+			grid-column: auto;
 		}
 	}
 </style>

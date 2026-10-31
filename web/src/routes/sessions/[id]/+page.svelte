@@ -124,6 +124,30 @@
 		<dd class="mono">{detail.session.spec.strategy.digest}</dd>
 	</dl>
 
+	<h2 id="inputs-title">Inputs</h2>
+	{#if detail.session.spec.inputs.length === 0}
+		<p class="status">None.</p>
+	{:else}
+		<table class="data" aria-labelledby="inputs-title">
+			<thead>
+				<tr>
+					<th>Name</th>
+					<th>Repository</th>
+					<th>Digest</th>
+				</tr>
+			</thead>
+			<tbody>
+				{#each detail.session.spec.inputs as input (input.name)}
+					<tr>
+						<td class="mono">{input.name}</td>
+						<td class="mono">{input.repository}</td>
+						<td class="mono digest">{input.digest}</td>
+					</tr>
+				{/each}
+			</tbody>
+		</table>
+	{/if}
+
 	<h2>Dependencies</h2>
 	{#if detail.session.dependencies.length === 0}
 		<p class="status">None.</p>
@@ -191,7 +215,7 @@
 			<CopyButton value={detail.session.status.state_out.digest} label="Copy state_out digest" />
 		</p>
 	{:else}
-		<p class="status">—</p>
+		<p class="status" lang="zh-Hant">尚未產生</p>
 	{/if}
 {/if}
 
@@ -216,7 +240,8 @@
 		align-items: center;
 	}
 
-	.path .mono {
+	.path .mono,
+	.digest {
 		word-break: break-all;
 	}
 
