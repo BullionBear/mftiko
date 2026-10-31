@@ -357,3 +357,42 @@ func checkIssued(t *testing.T, raw []string) {
 		}
 	}
 }
+
+func TestGenRepeatsTheProcessCounter(t *testing.T) {
+	reset(t)
+	a := acct(7)
+	now := cloid.EpochMs + 1000
+	mustNext(t, a, 7, now)
+	slot := Slot()
+	var live []string
+	for _, ms := range []int64{now, now, now + 1, now} {
+		s, err := Next(a, 7, ms)
+		if err != nil {
+			t.Fatal(err)
+		}
+		live = append(live, s)
+	}
+	after := Slot()
+	g := NewGen(slot)
+	for i, ms := range []int64{now, now, now + 1, now} {
+		s, err := g.Next(a, 7, ms)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s != live[i] {
+			t.Fatalf("id %d: replay %s, live %s", i, s, live[i])
+		}
+	}
+	if Slot() != after {
+		t.Fatal("a Gen of its own moved the process counter")
+	}
+	var none *Gen
+	s, err := none.Next(a, 7, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The last live id borrowed now+1 seq 1, so the process counter's next is now+1 seq 2.
+	if id, _ := cloid.Decode(s); id.TsMs != now+1 || id.Seq != 2 || Slot() == after {
+		t.Fatalf("a nil Gen did not take the process counter: ts %d seq %d", id.TsMs-now, id.Seq)
+	}
+}

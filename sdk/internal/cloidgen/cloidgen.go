@@ -26,10 +26,38 @@ const tsSpan = int64(1) << cloid.TsBits
 // Next advances it with one compare-and-swap. There is no mutex.
 var nextSlot atomic.Uint64
 
+// process is the Gen of the process counter.
+var process = &Gen{slot: &nextSlot}
+
+// Gen issues ids from one counter. The package Next, and a nil *Gen, use the process counter
+// (E08-D011). A replay makes a Gen of its own from the counter the event log recorded, so the
+// ids it issues repeat the recording and the process counter is not touched (E20-D004).
+type Gen struct {
+	slot *atomic.Uint64
+}
+
+// NewGen is a Gen whose counter starts at slot, a value Slot returned.
+func NewGen(slot uint64) *Gen {
+	g := &Gen{slot: new(atomic.Uint64)}
+	g.slot.Store(slot)
+	return g
+}
+
+// Slot is the process counter as it stands: the next id it would issue, packed as above.
+func Slot() uint64 { return nextSlot.Load() }
+
 // Next is the next client_order_id for algo on account at nowMs.
 // nowMs is the caller's clock, in unix milliseconds; Next does not read the time itself.
 // algo must be listed in account's algo_ids. The id is cloid.Encode of version 1 (E08-D014).
 func Next(account *sessionv1.AccountDecl, algo uint32, nowMs int64) (string, error) {
+	return process.Next(account, algo, nowMs)
+}
+
+// Next is the package Next on g's counter.
+func (g *Gen) Next(account *sessionv1.AccountDecl, algo uint32, nowMs int64) (string, error) {
+	if g == nil {
+		g = process
+	}
 	if !declared(account, algo) {
 		return "", fmt.Errorf("cloidgen: algo %d: %w", algo, ErrAlgoNotDeclared)
 	}
@@ -37,7 +65,7 @@ func Next(account *sessionv1.AccountDecl, algo uint32, nowMs int64) (string, err
 		// Listed, but it cannot be encoded. Do not take a number.
 		return cloid.Encode(algo, cloid.EpochMs, 0)
 	}
-	tsMs, seq, err := issue(nowMs)
+	tsMs, seq, err := g.issue(nowMs)
 	if err != nil {
 		return "", err
 	}
@@ -57,7 +85,7 @@ func declared(account *sessionv1.AccountDecl, algo uint32) bool {
 // the epoch, keeps the counter's ts_ms. nowMs ahead of the counter jumps to that
 // millisecond and seq 0. A millisecond whose seq is exhausted borrows the next one.
 // A ts_ms cloid.Encode cannot represent is refused and the counter is left as it was.
-func issue(nowMs int64) (int64, uint32, error) {
+func (g *Gen) issue(nowMs int64) (int64, uint32, error) {
 	// A nowMs before the epoch is behind every ts the counter can hold. Subtracting it
 	// from EpochMs would overflow int64 when nowMs is near MinInt64.
 	nowOff := int64(-1)
@@ -65,7 +93,7 @@ func issue(nowMs int64) (int64, uint32, error) {
 		nowOff = nowMs - cloid.EpochMs
 	}
 	for {
-		old := nextSlot.Load()
+		old := g.slot.Load()
 		ts := int64(old >> cloid.SeqBits)
 		seq := uint32(old & cloid.SeqMax)
 
@@ -86,7 +114,7 @@ func issue(nowMs int64) (int64, uint32, error) {
 			nextSeq = 0
 		}
 		packed := uint64(nextTs)<<cloid.SeqBits | uint64(nextSeq)
-		if nextSlot.CompareAndSwap(old, packed) {
+		if g.slot.CompareAndSwap(old, packed) {
 			return cloid.EpochMs + issueTs, issueSeq, nil
 		}
 	}
