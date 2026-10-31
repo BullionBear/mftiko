@@ -81,6 +81,7 @@ func (p *plane) sendReport() {
 			{Name: "td", Depth: td.Depth, Dropped: td.Dropped, MaxAgeMs: td.MaxAgeMs},
 			{Name: "md", Depth: md.Depth, Dropped: md.Dropped, MaxAgeMs: md.MaxAgeMs},
 		},
+		EventLog: p.eventLogStat(),
 	}
 	if ok {
 		rep.BindingsApplied = &commonv1.Version{Epoch: epoch, Seq: seq}

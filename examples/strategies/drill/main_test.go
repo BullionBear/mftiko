@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
 	"strings"
 	"testing"
 	"time"
@@ -194,6 +195,8 @@ func (f *fakeCtx) Log() zerolog.Logger {
 	return zerolog.New(f.logs).With().Timestamp().Logger()
 }
 
+func (f *fakeCtx) Now() time.Time    { return time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC) }
+func (f *fakeCtx) Rand() *rand.Rand  { return rand.New(rand.NewPCG(1, 0)) }
 func (f *fakeCtx) SessionID() string { return "c0ffee" }
 func (f *fakeCtx) Params() []byte    { return f.params }
 func (f *fakeCtx) Resolve(ticker string) (symbol.Info, error) {
