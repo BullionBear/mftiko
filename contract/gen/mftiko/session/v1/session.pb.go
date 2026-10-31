@@ -140,7 +140,8 @@ type SessionSpec struct {
 	// 跨 region 的 session 要比 WAN 延遲大。
 	RecvWindowMs uint32 `protobuf:"varint,14,opt,name=recv_window_ms,json=recvWindowMs,proto3" json:"recv_window_ms,omitempty"`
 	// Stop 的 grace（E09-D018、E09-D062）。0 = STS 部署設定的預設，10 秒。
-	GraceMs       uint32 `protobuf:"varint,16,opt,name=grace_ms,json=graceMs,proto3" json:"grace_ms,omitempty"`
+	GraceMs       uint32    `protobuf:"varint,16,opt,name=grace_ms,json=graceMs,proto3" json:"grace_ms,omitempty"`
+	EventLog      *EventLog `protobuf:"bytes,17,opt,name=event_log,json=eventLog,proto3" json:"event_log,omitempty"` // 策略事件紀錄（E20-D007）；省略就是關閉
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -280,6 +281,67 @@ func (x *SessionSpec) GetGraceMs() uint32 {
 	return 0
 }
 
+func (x *SessionSpec) GetEventLog() *EventLog {
+	if x != nil {
+		return x.EventLog
+	}
+	return nil
+}
+
+// 策略事件紀錄：SDK 把交給策略的輸入與策略的輸出寫進 session volume 的 eventlog/（E20-D006、PROTOCOL §12）。
+// 檔案算在 limits.volume_mb 裡；keep_mb 要比 volume_mb 小，留空間給策略自己的檔案。
+type EventLog struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Enabled       bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`             // 預設關閉。關閉時 SDK 不配置、不寫檔
+	KeepMb        uint32                 `protobuf:"varint,2,opt,name=keep_mb,json=keepMb,proto3" json:"keep_mb,omitempty"` // 保留上限，超過就刪最舊的檔；0 = SDK 的預設，256 MiB
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EventLog) Reset() {
+	*x = EventLog{}
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EventLog) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EventLog) ProtoMessage() {}
+
+func (x *EventLog) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EventLog.ProtoReflect.Descriptor instead.
+func (*EventLog) Descriptor() ([]byte, []int) {
+	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *EventLog) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *EventLog) GetKeepMb() uint32 {
+	if x != nil {
+		return x.KeepMb
+	}
+	return 0
+}
+
 // 唯讀注入的資料 artifact，解到 $MFTIKO_INPUT_DIR/<name>/（§8.4）。
 type InputDecl struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -292,7 +354,7 @@ type InputDecl struct {
 
 func (x *InputDecl) Reset() {
 	*x = InputDecl{}
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[1]
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -304,7 +366,7 @@ func (x *InputDecl) String() string {
 func (*InputDecl) ProtoMessage() {}
 
 func (x *InputDecl) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[1]
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -317,7 +379,7 @@ func (x *InputDecl) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InputDecl.ProtoReflect.Descriptor instead.
 func (*InputDecl) Descriptor() ([]byte, []int) {
-	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{1}
+	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *InputDecl) GetName() string {
@@ -352,7 +414,7 @@ type StrategyRef struct {
 
 func (x *StrategyRef) Reset() {
 	*x = StrategyRef{}
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[2]
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -364,7 +426,7 @@ func (x *StrategyRef) String() string {
 func (*StrategyRef) ProtoMessage() {}
 
 func (x *StrategyRef) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[2]
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -377,7 +439,7 @@ func (x *StrategyRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StrategyRef.ProtoReflect.Descriptor instead.
 func (*StrategyRef) Descriptor() ([]byte, []int) {
-	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{2}
+	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *StrategyRef) GetName() string {
@@ -413,7 +475,7 @@ type FeedDecl struct {
 
 func (x *FeedDecl) Reset() {
 	*x = FeedDecl{}
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[3]
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -425,7 +487,7 @@ func (x *FeedDecl) String() string {
 func (*FeedDecl) ProtoMessage() {}
 
 func (x *FeedDecl) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[3]
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -438,7 +500,7 @@ func (x *FeedDecl) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FeedDecl.ProtoReflect.Descriptor instead.
 func (*FeedDecl) Descriptor() ([]byte, []int) {
-	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{3}
+	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *FeedDecl) GetFeed() string {
@@ -469,7 +531,7 @@ type AccountDecl struct {
 
 func (x *AccountDecl) Reset() {
 	*x = AccountDecl{}
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[4]
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -481,7 +543,7 @@ func (x *AccountDecl) String() string {
 func (*AccountDecl) ProtoMessage() {}
 
 func (x *AccountDecl) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[4]
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -494,7 +556,7 @@ func (x *AccountDecl) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccountDecl.ProtoReflect.Descriptor instead.
 func (*AccountDecl) Descriptor() ([]byte, []int) {
-	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{4}
+	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *AccountDecl) GetName() string {
@@ -536,7 +598,7 @@ type RestartPolicy struct {
 
 func (x *RestartPolicy) Reset() {
 	*x = RestartPolicy{}
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[5]
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -548,7 +610,7 @@ func (x *RestartPolicy) String() string {
 func (*RestartPolicy) ProtoMessage() {}
 
 func (x *RestartPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[5]
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -561,7 +623,7 @@ func (x *RestartPolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartPolicy.ProtoReflect.Descriptor instead.
 func (*RestartPolicy) Descriptor() ([]byte, []int) {
-	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{5}
+	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *RestartPolicy) GetMode() RestartMode {
@@ -597,7 +659,7 @@ type Limits struct {
 
 func (x *Limits) Reset() {
 	*x = Limits{}
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[6]
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -609,7 +671,7 @@ func (x *Limits) String() string {
 func (*Limits) ProtoMessage() {}
 
 func (x *Limits) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_session_v1_session_proto_msgTypes[6]
+	mi := &file_mftiko_session_v1_session_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -622,7 +684,7 @@ func (x *Limits) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Limits.ProtoReflect.Descriptor instead.
 func (*Limits) Descriptor() ([]byte, []int) {
-	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{6}
+	return file_mftiko_session_v1_session_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Limits) GetMemoryMb() uint32 {
@@ -657,7 +719,7 @@ var File_mftiko_session_v1_session_proto protoreflect.FileDescriptor
 
 const file_mftiko_session_v1_session_proto_rawDesc = "" +
 	"\n" +
-	"\x1fmftiko/session/v1/session.proto\x12\x11mftiko.session.v1\x1a mftiko/session/v1/selector.proto\"\x9c\x06\n" +
+	"\x1fmftiko/session/v1/session.proto\x12\x11mftiko.session.v1\x1a mftiko/session/v1/selector.proto\"\xd6\x06\n" +
 	"\vSessionSpec\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12B\n" +
 	"\x06labels\x18\x02 \x03(\v2*.mftiko.session.v1.SessionSpec.LabelsEntryR\x06labels\x12D\n" +
@@ -674,10 +736,14 @@ const file_mftiko_session_v1_session_proto_rawDesc = "" +
 	"\x06limits\x18\f \x01(\v2\x19.mftiko.session.v1.LimitsR\x06limits\x124\n" +
 	"\x06inputs\x18\r \x03(\v2\x1c.mftiko.session.v1.InputDeclR\x06inputs\x12$\n" +
 	"\x0erecv_window_ms\x18\x0e \x01(\rR\frecvWindowMs\x12\x19\n" +
-	"\bgrace_ms\x18\x10 \x01(\rR\agraceMs\x1a9\n" +
+	"\bgrace_ms\x18\x10 \x01(\rR\agraceMs\x128\n" +
+	"\tevent_log\x18\x11 \x01(\v2\x1b.mftiko.session.v1.EventLogR\beventLog\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"W\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"=\n" +
+	"\bEventLog\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x17\n" +
+	"\akeep_mb\x18\x02 \x01(\rR\x06keepMb\"W\n" +
 	"\tInputDecl\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06digest\x18\x02 \x01(\tR\x06digest\x12\x1e\n" +
@@ -733,36 +799,38 @@ func file_mftiko_session_v1_session_proto_rawDescGZIP() []byte {
 }
 
 var file_mftiko_session_v1_session_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_mftiko_session_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_mftiko_session_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_mftiko_session_v1_session_proto_goTypes = []any{
 	(DesiredState)(0),     // 0: mftiko.session.v1.DesiredState
 	(RestartMode)(0),      // 1: mftiko.session.v1.RestartMode
 	(*SessionSpec)(nil),   // 2: mftiko.session.v1.SessionSpec
-	(*InputDecl)(nil),     // 3: mftiko.session.v1.InputDecl
-	(*StrategyRef)(nil),   // 4: mftiko.session.v1.StrategyRef
-	(*FeedDecl)(nil),      // 5: mftiko.session.v1.FeedDecl
-	(*AccountDecl)(nil),   // 6: mftiko.session.v1.AccountDecl
-	(*RestartPolicy)(nil), // 7: mftiko.session.v1.RestartPolicy
-	(*Limits)(nil),        // 8: mftiko.session.v1.Limits
-	nil,                   // 9: mftiko.session.v1.SessionSpec.LabelsEntry
-	(*SelectorDecl)(nil),  // 10: mftiko.session.v1.SelectorDecl
+	(*EventLog)(nil),      // 3: mftiko.session.v1.EventLog
+	(*InputDecl)(nil),     // 4: mftiko.session.v1.InputDecl
+	(*StrategyRef)(nil),   // 5: mftiko.session.v1.StrategyRef
+	(*FeedDecl)(nil),      // 6: mftiko.session.v1.FeedDecl
+	(*AccountDecl)(nil),   // 7: mftiko.session.v1.AccountDecl
+	(*RestartPolicy)(nil), // 8: mftiko.session.v1.RestartPolicy
+	(*Limits)(nil),        // 9: mftiko.session.v1.Limits
+	nil,                   // 10: mftiko.session.v1.SessionSpec.LabelsEntry
+	(*SelectorDecl)(nil),  // 11: mftiko.session.v1.SelectorDecl
 }
 var file_mftiko_session_v1_session_proto_depIdxs = []int32{
-	9,  // 0: mftiko.session.v1.SessionSpec.labels:type_name -> mftiko.session.v1.SessionSpec.LabelsEntry
+	10, // 0: mftiko.session.v1.SessionSpec.labels:type_name -> mftiko.session.v1.SessionSpec.LabelsEntry
 	0,  // 1: mftiko.session.v1.SessionSpec.desired_state:type_name -> mftiko.session.v1.DesiredState
-	4,  // 2: mftiko.session.v1.SessionSpec.strategy:type_name -> mftiko.session.v1.StrategyRef
-	5,  // 3: mftiko.session.v1.SessionSpec.feeds:type_name -> mftiko.session.v1.FeedDecl
-	10, // 4: mftiko.session.v1.SessionSpec.selectors:type_name -> mftiko.session.v1.SelectorDecl
-	6,  // 5: mftiko.session.v1.SessionSpec.accounts:type_name -> mftiko.session.v1.AccountDecl
-	7,  // 6: mftiko.session.v1.SessionSpec.restart:type_name -> mftiko.session.v1.RestartPolicy
-	8,  // 7: mftiko.session.v1.SessionSpec.limits:type_name -> mftiko.session.v1.Limits
-	3,  // 8: mftiko.session.v1.SessionSpec.inputs:type_name -> mftiko.session.v1.InputDecl
-	1,  // 9: mftiko.session.v1.RestartPolicy.mode:type_name -> mftiko.session.v1.RestartMode
-	10, // [10:10] is the sub-list for method output_type
-	10, // [10:10] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	5,  // 2: mftiko.session.v1.SessionSpec.strategy:type_name -> mftiko.session.v1.StrategyRef
+	6,  // 3: mftiko.session.v1.SessionSpec.feeds:type_name -> mftiko.session.v1.FeedDecl
+	11, // 4: mftiko.session.v1.SessionSpec.selectors:type_name -> mftiko.session.v1.SelectorDecl
+	7,  // 5: mftiko.session.v1.SessionSpec.accounts:type_name -> mftiko.session.v1.AccountDecl
+	8,  // 6: mftiko.session.v1.SessionSpec.restart:type_name -> mftiko.session.v1.RestartPolicy
+	9,  // 7: mftiko.session.v1.SessionSpec.limits:type_name -> mftiko.session.v1.Limits
+	4,  // 8: mftiko.session.v1.SessionSpec.inputs:type_name -> mftiko.session.v1.InputDecl
+	3,  // 9: mftiko.session.v1.SessionSpec.event_log:type_name -> mftiko.session.v1.EventLog
+	1,  // 10: mftiko.session.v1.RestartPolicy.mode:type_name -> mftiko.session.v1.RestartMode
+	11, // [11:11] is the sub-list for method output_type
+	11, // [11:11] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_mftiko_session_v1_session_proto_init() }
@@ -777,7 +845,7 @@ func file_mftiko_session_v1_session_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mftiko_session_v1_session_proto_rawDesc), len(file_mftiko_session_v1_session_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   8,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

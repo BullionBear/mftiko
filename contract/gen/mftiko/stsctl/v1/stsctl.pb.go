@@ -95,8 +95,9 @@ type InitPayload struct {
 	Nats        *NatsCredentials       `protobuf:"bytes,9,opt,name=nats,proto3" json:"nats,omitempty"` // 這個 session 專屬的 NATS 憑證，只經 socketpair 送進去（DECISIONS E09-D006）
 	// 以下兩個是 STS agent 解析後的實值（DECISIONS E08-D003）：spec 寫 0 表示用預設，agent 換成它的預設值再填，
 	// 所以這裡不會是 0。SDK 不知道預設值；收到 0 是 agent 的錯，以 INIT_FAILED 結束。
-	RecvWindowMs  uint32 `protobuf:"varint,10,opt,name=recv_window_ms,json=recvWindowMs,proto3" json:"recv_window_ms,omitempty"` // MD 事件的最長壽命，prehook 用（SessionSpec.recv_window_ms）
-	HookTimeoutS  uint32 `protobuf:"varint,11,opt,name=hook_timeout_s,json=hookTimeoutS,proto3" json:"hook_timeout_s,omitempty"` // 單一 hook 的硬上限，watchdog 用（SessionSpec.limits.hook_timeout_s）
+	RecvWindowMs  uint32       `protobuf:"varint,10,opt,name=recv_window_ms,json=recvWindowMs,proto3" json:"recv_window_ms,omitempty"` // MD 事件的最長壽命，prehook 用（SessionSpec.recv_window_ms）
+	HookTimeoutS  uint32       `protobuf:"varint,11,opt,name=hook_timeout_s,json=hookTimeoutS,proto3" json:"hook_timeout_s,omitempty"` // 單一 hook 的硬上限，watchdog 用（SessionSpec.limits.hook_timeout_s）
+	EventLog      *v1.EventLog `protobuf:"bytes,12,opt,name=event_log,json=eventLog,proto3" json:"event_log,omitempty"`                // SessionSpec.event_log 原樣；沒有就是關閉（E20-D007）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -206,6 +207,13 @@ func (x *InitPayload) GetHookTimeoutS() uint32 {
 		return x.HookTimeoutS
 	}
 	return 0
+}
+
+func (x *InitPayload) GetEventLog() *v1.EventLog {
+	if x != nil {
+		return x.EventLog
+	}
+	return nil
 }
 
 // STS agent 為這個 session 簽的 user JWT。權限見 PROTOCOL §7。
@@ -651,6 +659,7 @@ type Report struct {
 	HookBlockedMs   uint64                 `protobuf:"varint,3,opt,name=hook_blocked_ms,json=hookBlockedMs,proto3" json:"hook_blocked_ms,omitempty"`
 	HookSlow        uint64                 `protobuf:"varint,4,opt,name=hook_slow,json=hookSlow,proto3" json:"hook_slow,omitempty"`
 	Queues          []*QueueStat           `protobuf:"bytes,5,rep,name=queues,proto3" json:"queues,omitempty"`
+	EventLog        *EventLogStat          `protobuf:"bytes,6,opt,name=event_log,json=eventLog,proto3" json:"event_log,omitempty"` // 只在事件紀錄開啟時有（E20-D007）
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -720,6 +729,66 @@ func (x *Report) GetQueues() []*QueueStat {
 	return nil
 }
 
+func (x *Report) GetEventLog() *EventLogStat {
+	if x != nil {
+		return x.EventLog
+	}
+	return nil
+}
+
+// 策略事件紀錄的累計筆數，從 worker 起算（E20-D007）。
+type EventLogStat struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Records       uint64                 `protobuf:"varint,1,opt,name=records,proto3" json:"records,omitempty"` // 已寫進檔案的
+	Dropped       uint64                 `protobuf:"varint,2,opt,name=dropped,proto3" json:"dropped,omitempty"` // 沒寫進檔案的：ring 滿、寫檔失敗
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EventLogStat) Reset() {
+	*x = EventLogStat{}
+	mi := &file_mftiko_stsctl_v1_stsctl_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EventLogStat) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EventLogStat) ProtoMessage() {}
+
+func (x *EventLogStat) ProtoReflect() protoreflect.Message {
+	mi := &file_mftiko_stsctl_v1_stsctl_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EventLogStat.ProtoReflect.Descriptor instead.
+func (*EventLogStat) Descriptor() ([]byte, []int) {
+	return file_mftiko_stsctl_v1_stsctl_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *EventLogStat) GetRecords() uint64 {
+	if x != nil {
+		return x.Records
+	}
+	return 0
+}
+
+func (x *EventLogStat) GetDropped() uint64 {
+	if x != nil {
+		return x.Dropped
+	}
+	return 0
+}
+
 // name 是 td 或 md（E08-D003）。
 type QueueStat struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -733,7 +802,7 @@ type QueueStat struct {
 
 func (x *QueueStat) Reset() {
 	*x = QueueStat{}
-	mi := &file_mftiko_stsctl_v1_stsctl_proto_msgTypes[9]
+	mi := &file_mftiko_stsctl_v1_stsctl_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -745,7 +814,7 @@ func (x *QueueStat) String() string {
 func (*QueueStat) ProtoMessage() {}
 
 func (x *QueueStat) ProtoReflect() protoreflect.Message {
-	mi := &file_mftiko_stsctl_v1_stsctl_proto_msgTypes[9]
+	mi := &file_mftiko_stsctl_v1_stsctl_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -758,7 +827,7 @@ func (x *QueueStat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueueStat.ProtoReflect.Descriptor instead.
 func (*QueueStat) Descriptor() ([]byte, []int) {
-	return file_mftiko_stsctl_v1_stsctl_proto_rawDescGZIP(), []int{9}
+	return file_mftiko_stsctl_v1_stsctl_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *QueueStat) GetName() string {
@@ -793,7 +862,7 @@ var File_mftiko_stsctl_v1_stsctl_proto protoreflect.FileDescriptor
 
 const file_mftiko_stsctl_v1_stsctl_proto_rawDesc = "" +
 	"\n" +
-	"\x1dmftiko/stsctl/v1/stsctl.proto\x12\x10mftiko.stsctl.v1\x1a\x1dmftiko/common/v1/common.proto\x1a\x1fmftiko/session/v1/session.proto\x1a\x1fmftiko/stsctl/v1/selector.proto\"\xcb\x03\n" +
+	"\x1dmftiko/stsctl/v1/stsctl.proto\x12\x10mftiko.stsctl.v1\x1a\x1dmftiko/common/v1/common.proto\x1a\x1fmftiko/session/v1/session.proto\x1a\x1fmftiko/stsctl/v1/selector.proto\"\x85\x04\n" +
 	"\vInitPayload\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12 \n" +
@@ -807,7 +876,8 @@ const file_mftiko_stsctl_v1_stsctl_proto_rawDesc = "" +
 	"\x04nats\x18\t \x01(\v2!.mftiko.stsctl.v1.NatsCredentialsR\x04nats\x12$\n" +
 	"\x0erecv_window_ms\x18\n" +
 	" \x01(\rR\frecvWindowMs\x12$\n" +
-	"\x0ehook_timeout_s\x18\v \x01(\rR\fhookTimeoutS\"c\n" +
+	"\x0ehook_timeout_s\x18\v \x01(\rR\fhookTimeoutS\x128\n" +
+	"\tevent_log\x18\f \x01(\v2\x1b.mftiko.session.v1.EventLogR\beventLog\"c\n" +
 	"\x0fNatsCredentials\x12\x19\n" +
 	"\buser_jwt\x18\x01 \x01(\tR\auserJwt\x12\x12\n" +
 	"\x04seed\x18\x02 \x01(\tR\x04seed\x12!\n" +
@@ -835,13 +905,17 @@ const file_mftiko_stsctl_v1_stsctl_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x15\n" +
 	"\x06api_id\x18\x02 \x01(\x03R\x05apiId\x124\n" +
 	"\x05state\x18\x03 \x01(\x0e2\x1e.mftiko.stsctl.v1.BindingStateR\x05state\x123\n" +
-	"\x06worker\x18\x04 \x01(\v2\x1b.mftiko.common.v1.WorkerRefR\x06worker\"\xdc\x01\n" +
+	"\x06worker\x18\x04 \x01(\v2\x1b.mftiko.common.v1.WorkerRefR\x06worker\"\x99\x02\n" +
 	"\x06Report\x12D\n" +
 	"\x10bindings_applied\x18\x01 \x01(\v2\x19.mftiko.common.v1.VersionR\x0fbindingsApplied\x12\x12\n" +
 	"\x04hook\x18\x02 \x01(\tR\x04hook\x12&\n" +
 	"\x0fhook_blocked_ms\x18\x03 \x01(\x04R\rhookBlockedMs\x12\x1b\n" +
 	"\thook_slow\x18\x04 \x01(\x04R\bhookSlow\x123\n" +
-	"\x06queues\x18\x05 \x03(\v2\x1b.mftiko.stsctl.v1.QueueStatR\x06queues\"m\n" +
+	"\x06queues\x18\x05 \x03(\v2\x1b.mftiko.stsctl.v1.QueueStatR\x06queues\x12;\n" +
+	"\tevent_log\x18\x06 \x01(\v2\x1e.mftiko.stsctl.v1.EventLogStatR\beventLog\"B\n" +
+	"\fEventLogStat\x12\x18\n" +
+	"\arecords\x18\x01 \x01(\x04R\arecords\x12\x18\n" +
+	"\adropped\x18\x02 \x01(\x04R\adropped\"m\n" +
 	"\tQueueStat\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05depth\x18\x02 \x01(\rR\x05depth\x12\x18\n" +
@@ -868,7 +942,7 @@ func file_mftiko_stsctl_v1_stsctl_proto_rawDescGZIP() []byte {
 }
 
 var file_mftiko_stsctl_v1_stsctl_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_mftiko_stsctl_v1_stsctl_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_mftiko_stsctl_v1_stsctl_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_mftiko_stsctl_v1_stsctl_proto_goTypes = []any{
 	(BindingState)(0),       // 0: mftiko.stsctl.v1.BindingState
 	(*InitPayload)(nil),     // 1: mftiko.stsctl.v1.InitPayload
@@ -880,36 +954,40 @@ var file_mftiko_stsctl_v1_stsctl_proto_goTypes = []any{
 	(*FeedBinding)(nil),     // 7: mftiko.stsctl.v1.FeedBinding
 	(*AccountBinding)(nil),  // 8: mftiko.stsctl.v1.AccountBinding
 	(*Report)(nil),          // 9: mftiko.stsctl.v1.Report
-	(*QueueStat)(nil),       // 10: mftiko.stsctl.v1.QueueStat
-	(*v1.StrategyRef)(nil),  // 11: mftiko.session.v1.StrategyRef
-	(*v1.FeedDecl)(nil),     // 12: mftiko.session.v1.FeedDecl
-	(*v1.AccountDecl)(nil),  // 13: mftiko.session.v1.AccountDecl
-	(*v11.Version)(nil),     // 14: mftiko.common.v1.Version
-	(*SelectorBinding)(nil), // 15: mftiko.stsctl.v1.SelectorBinding
-	(*v11.WorkerRef)(nil),   // 16: mftiko.common.v1.WorkerRef
+	(*EventLogStat)(nil),    // 10: mftiko.stsctl.v1.EventLogStat
+	(*QueueStat)(nil),       // 11: mftiko.stsctl.v1.QueueStat
+	(*v1.StrategyRef)(nil),  // 12: mftiko.session.v1.StrategyRef
+	(*v1.FeedDecl)(nil),     // 13: mftiko.session.v1.FeedDecl
+	(*v1.AccountDecl)(nil),  // 14: mftiko.session.v1.AccountDecl
+	(*v1.EventLog)(nil),     // 15: mftiko.session.v1.EventLog
+	(*v11.Version)(nil),     // 16: mftiko.common.v1.Version
+	(*SelectorBinding)(nil), // 17: mftiko.stsctl.v1.SelectorBinding
+	(*v11.WorkerRef)(nil),   // 18: mftiko.common.v1.WorkerRef
 }
 var file_mftiko_stsctl_v1_stsctl_proto_depIdxs = []int32{
-	11, // 0: mftiko.stsctl.v1.InitPayload.strategy:type_name -> mftiko.session.v1.StrategyRef
-	12, // 1: mftiko.stsctl.v1.InitPayload.feeds:type_name -> mftiko.session.v1.FeedDecl
-	13, // 2: mftiko.stsctl.v1.InitPayload.accounts:type_name -> mftiko.session.v1.AccountDecl
+	12, // 0: mftiko.stsctl.v1.InitPayload.strategy:type_name -> mftiko.session.v1.StrategyRef
+	13, // 1: mftiko.stsctl.v1.InitPayload.feeds:type_name -> mftiko.session.v1.FeedDecl
+	14, // 2: mftiko.stsctl.v1.InitPayload.accounts:type_name -> mftiko.session.v1.AccountDecl
 	2,  // 3: mftiko.stsctl.v1.InitPayload.nats:type_name -> mftiko.stsctl.v1.NatsCredentials
-	6,  // 4: mftiko.stsctl.v1.StartPayload.bindings:type_name -> mftiko.stsctl.v1.Bindings
-	6,  // 5: mftiko.stsctl.v1.Command.bindings:type_name -> mftiko.stsctl.v1.Bindings
-	5,  // 6: mftiko.stsctl.v1.Command.fail:type_name -> mftiko.stsctl.v1.Fail
-	14, // 7: mftiko.stsctl.v1.Bindings.version:type_name -> mftiko.common.v1.Version
-	7,  // 8: mftiko.stsctl.v1.Bindings.feeds:type_name -> mftiko.stsctl.v1.FeedBinding
-	15, // 9: mftiko.stsctl.v1.Bindings.selectors:type_name -> mftiko.stsctl.v1.SelectorBinding
-	8,  // 10: mftiko.stsctl.v1.Bindings.accounts:type_name -> mftiko.stsctl.v1.AccountBinding
-	0,  // 11: mftiko.stsctl.v1.FeedBinding.state:type_name -> mftiko.stsctl.v1.BindingState
-	0,  // 12: mftiko.stsctl.v1.AccountBinding.state:type_name -> mftiko.stsctl.v1.BindingState
-	16, // 13: mftiko.stsctl.v1.AccountBinding.worker:type_name -> mftiko.common.v1.WorkerRef
-	14, // 14: mftiko.stsctl.v1.Report.bindings_applied:type_name -> mftiko.common.v1.Version
-	10, // 15: mftiko.stsctl.v1.Report.queues:type_name -> mftiko.stsctl.v1.QueueStat
-	16, // [16:16] is the sub-list for method output_type
-	16, // [16:16] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	15, // 4: mftiko.stsctl.v1.InitPayload.event_log:type_name -> mftiko.session.v1.EventLog
+	6,  // 5: mftiko.stsctl.v1.StartPayload.bindings:type_name -> mftiko.stsctl.v1.Bindings
+	6,  // 6: mftiko.stsctl.v1.Command.bindings:type_name -> mftiko.stsctl.v1.Bindings
+	5,  // 7: mftiko.stsctl.v1.Command.fail:type_name -> mftiko.stsctl.v1.Fail
+	16, // 8: mftiko.stsctl.v1.Bindings.version:type_name -> mftiko.common.v1.Version
+	7,  // 9: mftiko.stsctl.v1.Bindings.feeds:type_name -> mftiko.stsctl.v1.FeedBinding
+	17, // 10: mftiko.stsctl.v1.Bindings.selectors:type_name -> mftiko.stsctl.v1.SelectorBinding
+	8,  // 11: mftiko.stsctl.v1.Bindings.accounts:type_name -> mftiko.stsctl.v1.AccountBinding
+	0,  // 12: mftiko.stsctl.v1.FeedBinding.state:type_name -> mftiko.stsctl.v1.BindingState
+	0,  // 13: mftiko.stsctl.v1.AccountBinding.state:type_name -> mftiko.stsctl.v1.BindingState
+	18, // 14: mftiko.stsctl.v1.AccountBinding.worker:type_name -> mftiko.common.v1.WorkerRef
+	16, // 15: mftiko.stsctl.v1.Report.bindings_applied:type_name -> mftiko.common.v1.Version
+	11, // 16: mftiko.stsctl.v1.Report.queues:type_name -> mftiko.stsctl.v1.QueueStat
+	10, // 17: mftiko.stsctl.v1.Report.event_log:type_name -> mftiko.stsctl.v1.EventLogStat
+	18, // [18:18] is the sub-list for method output_type
+	18, // [18:18] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_mftiko_stsctl_v1_stsctl_proto_init() }
@@ -928,7 +1006,7 @@ func file_mftiko_stsctl_v1_stsctl_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mftiko_stsctl_v1_stsctl_proto_rawDesc), len(file_mftiko_stsctl_v1_stsctl_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   10,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

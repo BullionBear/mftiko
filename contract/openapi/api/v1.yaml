@@ -1,17 +1,18 @@
 # Source of truth for contract A (PROTOCOL §0, §1). Final since E10-20 (E10-D018, E10-D116).
 # E10-D118 (#429) is the one in-place break: info.version 2.0.0, path still /api/v1.
 # 2.1.0 adds session log read and export (E14-D011–E14-D015). Compatible: new paths and one ErrorCode.
+# 2.2.0 adds the strategy event log switch (E20-D007). Compatible: one optional request field, one response field.
 # oasdiff ignores only the lines in contract/openapi/api-v1-err-ignore.txt. The next incompatible
 # change opens v2.yaml. console 與 CLI 只認這份契約，不認平台的 proto（E10-D002）。
 openapi: 3.0.3
 info:
   title: mftiko API
-  version: 2.1.0
+  version: 2.2.0
   description: |
     mftiko API server 的對外契約（DECISIONS E10-D001、E10-D002）。
 
     **慣例（E10-D036）**
-    - 路徑都在 `/api/v1` 底下。`2.0.0` 這一次在原地拿掉策略 `id`（E10-D118）。`2.1.0` 加上 session log 的讀取與匯出（E14-D011–E14-D015）。同一個檔案只做相容擴充，讀取端忽略不認得的欄位。下一次不相容另開 `v2.yaml`。
+    - 路徑都在 `/api/v1` 底下。`2.0.0` 這一次在原地拿掉策略 `id`（E10-D118）。`2.1.0` 加上 session log 的讀取與匯出（E14-D011–E14-D015）。`2.2.0` 加上策略事件紀錄的開關（E20-D007）。同一個檔案只做相容擴充，讀取端忽略不認得的欄位。下一次不相容另開 `v2.yaml`。
     - 時間是 RFC 3339 字串（UTC，奈秒精度可省略）。
     - enum 是 API 自己的小寫字串，不是 proto 的名稱。
     - 錯誤一律是 `application/problem+json`（RFC 9457），另帶穩定的 `code`；驗證錯誤的 `errors[].path` 是 JSON Pointer（RFC 6901），指向請求 body 裡的欄位（E10-D004）。
@@ -1018,6 +1019,8 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/InputDecl'
+        event_log:
+          $ref: '#/components/schemas/EventLog'
     StrategySelector:
       type: object
       required: [repository, ref]
@@ -1091,6 +1094,18 @@ components:
           type: integer
           minimum: 0
           description: 0 = STS 的預設值（E08-D003）。
+    EventLog:
+      type: object
+      description: |
+        策略事件紀錄（E20-D006、E20-D007）：SDK 把交給策略的輸入與策略的輸出寫進 session volume 的 `eventlog/`，檔案格式見 PROTOCOL §12。
+        預設關閉。檔案算在 `limits.volume_mb` 裡。
+      properties:
+        enabled:
+          type: boolean
+        keep_mb:
+          type: integer
+          minimum: 0
+          description: 保留上限，超過就刪最舊的檔；0 = SDK 的預設，256 MiB。`limits.volume_mb` 不是 0 時必須比它小。
     InputDecl:
       type: object
       required: [name, digest, repository]
@@ -1108,7 +1123,7 @@ components:
     SessionSpecView:
       type: object
       description: etcd 裡的 spec，以 API 的型別呈現。策略已解析成 digest；帳號帶入了 `td_instance`。
-      required: [name, labels, desired_state, strategy, params, feeds, accounts, restart, deps_timeout_s, start_timeout_s, recv_window_ms, grace_ms, limits, inputs]
+      required: [name, labels, desired_state, strategy, params, feeds, accounts, restart, deps_timeout_s, start_timeout_s, recv_window_ms, grace_ms, limits, inputs, event_log]
       properties:
         name:
           type: string
@@ -1146,6 +1161,8 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/InputDecl'
+        event_log:
+          $ref: '#/components/schemas/EventLog'
     DesiredState:
       type: string
       enum: [running, ended]

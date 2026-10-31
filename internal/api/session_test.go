@@ -331,6 +331,9 @@ func TestSessionCreateRoundTrip(t *testing.T) {
 	if len(minimal.Dependencies) != 0 || len(minimal.Spec.Feeds) != 0 || len(minimal.Spec.Accounts) != 0 {
 		t.Fatalf("empty slices %+v", minimal)
 	}
+	if ev := minimal.Spec.EventLog; ev.Enabled == nil || *ev.Enabled || ev.KeepMb == nil || *ev.KeepMb != 0 {
+		t.Fatalf("event log %+v", ev)
+	}
 	var raw map[string]any
 	if err := json.Unmarshal(body, &raw); err != nil {
 		t.Fatal(err)
@@ -368,6 +371,7 @@ func TestSessionCreateRoundTrip(t *testing.T) {
 		"inputs":[{"name":"model","digest":%q,"repository":"registry.example/mftiko/data"}],
 		"restart":{"mode":"never","max_restarts":0,"window_s":3},
 		"limits":{"memory_mb":0,"gomaxprocs":1,"volume_mb":2,"hook_timeout_s":0},
+		"event_log":{"enabled":true,"keep_mb":1},
 		"deps_timeout_s":5,"start_timeout_s":6,"recv_window_ms":7,"grace_ms":8
 	}`, dataDig)
 	code, hdr, body = se.post(t, full, nil)
@@ -393,6 +397,9 @@ func TestSessionCreateRoundTrip(t *testing.T) {
 	if got.Spec.DepsTimeoutS != 5 || got.Spec.StartTimeoutS != 6 || got.Spec.RecvWindowMs != 7 || got.Spec.GraceMs != 8 {
 		t.Fatalf("numbers %+v", got.Spec)
 	}
+	if ev := got.Spec.EventLog; ev.Enabled == nil || !*ev.Enabled || ev.KeepMb == nil || *ev.KeepMb != 1 {
+		t.Fatalf("event log %+v", ev)
+	}
 	if got.Spec.Strategy.Digest != stratDig {
 		t.Fatalf("tag did not resolve: %+v", got.Spec.Strategy)
 	}
@@ -402,6 +409,9 @@ func TestSessionCreateRoundTrip(t *testing.T) {
 	}
 	if string(stored.GetParams()) != `{"z":1,"a":"x"}` || stored.GetStrategy().GetCode() != stratDig || stored.GetAccounts()[0].GetTdInstance() != "td-tw-1" {
 		t.Fatalf("stored full %v", &stored)
+	}
+	if ev := stored.GetEventLog(); !ev.GetEnabled() || ev.GetKeepMb() != 1 {
+		t.Fatalf("stored event log %v", ev)
 	}
 
 	stRaw, err := proto.Marshal(&statev1.SessionStatus{
@@ -535,6 +545,8 @@ func TestSessionValidation(t *testing.T) {
 		{"dup input", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"inputs":[{"name":"m","digest":"` + dataDig + `","repository":"mftiko/data"},{"name":"m","digest":"` + dataDig + `","repository":"mftiko/data"}]}`, "/inputs/1/name"},
 		{"u32", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"deps_timeout_s":4294967296}`, "/deps_timeout_s"},
 		{"negative", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"grace_ms":-1}`, "/grace_ms"},
+		{"keep negative", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"event_log":{"enabled":true,"keep_mb":-1}}`, "/event_log/keep_mb"},
+		{"keep over volume", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"limits":{"volume_mb":2},"event_log":{"enabled":true,"keep_mb":2}}`, "/event_log/keep_mb"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

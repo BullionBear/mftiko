@@ -115,6 +115,6 @@ E14（#435）起，`mftiko-api.service` 帶 `-log-token /etc/mftiko/api/log-toke
 
 - **同一個 major 只做相容擴充**：加端點、加選填的請求欄位、加回應欄位。讀取端忽略不認得的欄位（PROTOCOL §1）。`2.0.0` 是唯一的原地例外（E10-D118，#429）：拿掉策略 `id`，路徑仍是 `/api/v1`。
 - **CI 擋不相容的改動。** `make openapi-breaking` 以 PR 的 base 為基準跑 `oasdiff breaking --fail-on ERR`，刪端點、刪欄位、把選填改成必填、改型別都會失敗。WARN 只印出、不擋。E10-D118 的那一次 diff 寫在 `contract/openapi/api-v1-err-ignore.txt`；base 已經含這次打破之後，那些行對不到任何改動。
-- **`info.version`**：目前 `2.1.0`（session log 的讀取與匯出，E14-D011–E14-D015）。相容擴充加 minor，只改說明加 patch。和 git tag 無關，不跟著 `v*` tag 走。
+- **`info.version`**：目前 `2.2.0`（策略事件紀錄的開關，E20-D007；`2.1.0` 是 session log 的讀取與匯出，E14-D011–E14-D015）。相容擴充加 minor，只改說明加 patch。和 git tag 無關，不跟著 `v*` tag 走。
 - **下一次不相容的改動是新的 major**：另開 `contract/openapi/api/v2.yaml` 與 `/api/v2` 路徑，和 v1 並存到 console、CLI 都換過去。v1 的檔案照舊受 `oasdiff` 保護。
 - 改契約的 PR 一起提交 `make openapi` 的產物（`contract/gen/api/v1`、`web/src/lib/gen/api`），`make gen-check` 會檢查。

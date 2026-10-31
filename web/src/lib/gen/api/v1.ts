@@ -519,6 +519,7 @@ export interface components {
             grace_ms?: number;
             limits?: components["schemas"]["Limits"];
             inputs?: components["schemas"]["InputDecl"][];
+            event_log?: components["schemas"]["EventLog"];
         };
         StrategySelector: {
             /**
@@ -562,6 +563,15 @@ export interface components {
             /** @description 0 = STS 的預設值（E08-D003）。 */
             hook_timeout_s?: number;
         };
+        /**
+         * @description 策略事件紀錄（E20-D006、E20-D007）：SDK 把交給策略的輸入與策略的輸出寫進 session volume 的 `eventlog/`，檔案格式見 PROTOCOL §12。
+         *     預設關閉。檔案算在 `limits.volume_mb` 裡。
+         */
+        EventLog: {
+            enabled?: boolean;
+            /** @description 保留上限，超過就刪最舊的檔；0 = SDK 的預設，256 MiB。`limits.volume_mb` 不是 0 時必須比它小。 */
+            keep_mb?: number;
+        };
         InputDecl: {
             name: string;
             digest: components["schemas"]["Digest"];
@@ -586,6 +596,7 @@ export interface components {
             grace_ms: number;
             limits: components["schemas"]["Limits"];
             inputs: components["schemas"]["InputDecl"][];
+            event_log: components["schemas"]["EventLog"];
         };
         /** @enum {string} */
         DesiredState: "running" | "ended";

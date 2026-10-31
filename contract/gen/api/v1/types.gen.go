@@ -585,6 +585,15 @@ type EntryState string
 // ErrorCode defines model for ErrorCode.
 type ErrorCode string
 
+// EventLog 策略事件紀錄（E20-D006、E20-D007）：SDK 把交給策略的輸入與策略的輸出寫進 session volume 的 `eventlog/`，檔案格式見 PROTOCOL §12。
+// 預設關閉。檔案算在 `limits.volume_mb` 裡。
+type EventLog struct {
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// KeepMb 保留上限，超過就刪最舊的檔；0 = SDK 的預設，256 MiB。`limits.volume_mb` 不是 0 時必須比它小。
+	KeepMb *int `json:"keep_mb,omitempty"`
+}
+
 // EventTopic defines model for EventTopic.
 type EventTopic string
 
@@ -840,8 +849,12 @@ type SessionCreate struct {
 	Accounts *[]AccountDeclInput `json:"accounts,omitempty"`
 
 	// DepsTimeoutS 0 = 60 秒（E13-D002）。
-	DepsTimeoutS *int             `json:"deps_timeout_s,omitempty"`
-	Feeds        *[]FeedDeclInput `json:"feeds,omitempty"`
+	DepsTimeoutS *int `json:"deps_timeout_s,omitempty"`
+
+	// EventLog 策略事件紀錄（E20-D006、E20-D007）：SDK 把交給策略的輸入與策略的輸出寫進 session volume 的 `eventlog/`，檔案格式見 PROTOCOL §12。
+	// 預設關閉。檔案算在 `limits.volume_mb` 裡。
+	EventLog *EventLog        `json:"event_log,omitempty"`
+	Feeds    *[]FeedDeclInput `json:"feeds,omitempty"`
 
 	// GraceMs 0 = STS 部署設定的預設，10 秒（E09-D018、E09-D062）。
 	GraceMs *int         `json:"grace_ms,omitempty"`
@@ -952,12 +965,16 @@ type SessionRemovedEvent struct {
 
 // SessionSpecView etcd 裡的 spec，以 API 的型別呈現。策略已解析成 digest；帳號帶入了 `td_instance`。
 type SessionSpecView struct {
-	Accounts     []AccountDecl   `json:"accounts"`
-	DepsTimeoutS int             `json:"deps_timeout_s"`
-	DesiredState DesiredState    `json:"desired_state"`
-	Feeds        []FeedDeclInput `json:"feeds"`
-	GraceMs      int             `json:"grace_ms"`
-	Inputs       []InputDecl     `json:"inputs"`
+	Accounts     []AccountDecl `json:"accounts"`
+	DepsTimeoutS int           `json:"deps_timeout_s"`
+	DesiredState DesiredState  `json:"desired_state"`
+
+	// EventLog 策略事件紀錄（E20-D006、E20-D007）：SDK 把交給策略的輸入與策略的輸出寫進 session volume 的 `eventlog/`，檔案格式見 PROTOCOL §12。
+	// 預設關閉。檔案算在 `limits.volume_mb` 裡。
+	EventLog EventLog        `json:"event_log"`
+	Feeds    []FeedDeclInput `json:"feeds"`
+	GraceMs  int             `json:"grace_ms"`
+	Inputs   []InputDecl     `json:"inputs"`
 
 	// Labels 使用者自訂，平台不解讀。key 是 `^[A-Za-z0-9][A-Za-z0-9._/-]{0,62}$`（E10-D036）。
 	Labels        Labels          `json:"labels"`

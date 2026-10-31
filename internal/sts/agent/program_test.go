@@ -121,6 +121,38 @@ func TestBindingsSeqContinuesAcrossIncarnation(t *testing.T) {
 	}
 }
 
+func TestInitCopiesEventLog(t *testing.T) {
+	p := &Program{Sign: func(string, sts.Permissions) (string, string, error) {
+		return "j", "s", nil
+	}}
+	cases := []struct {
+		name string
+		ev   *sessionv1.EventLog
+	}{
+		{"absent", nil},
+		{"on", &sessionv1.EventLog{Enabled: true, KeepMb: 64}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := proto.Marshal(&sessionv1.SessionSpec{Name: "n", EventLog: tc.ev})
+			if err != nil {
+				t.Fatal(err)
+			}
+			init, err := p.Init(WorkerKey("s1"), Spec{Raw: raw}, Live{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var msg stsctlv1.InitPayload
+			if err := proto.Unmarshal(init.GetPayload(), &msg); err != nil {
+				t.Fatal(err)
+			}
+			if (msg.GetEventLog() == nil) != (tc.ev == nil) || !proto.Equal(msg.GetEventLog(), tc.ev) {
+				t.Fatalf("event_log %v, spec %v", msg.GetEventLog(), tc.ev)
+			}
+		})
+	}
+}
+
 func TestKillSilentRemembersTheIncarnation(t *testing.T) {
 	pol := newPolicy(Config{})
 	p := &Program{policy: pol}
