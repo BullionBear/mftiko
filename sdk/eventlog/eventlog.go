@@ -139,8 +139,8 @@ const (
 	ReadOpenInterest uint16 = 4
 )
 
-// Outcome is the flags of resolve, order_reply and read_reply. OK carries the reply. Failed and
-// NotFound carry the error text. The others carry nothing more.
+// Outcome is the flags of resolve, order_reply and read_reply. OK carries the reply; every other
+// outcome carries the error's text.
 const (
 	OK           uint16 = 0
 	NoResponders uint16 = 1

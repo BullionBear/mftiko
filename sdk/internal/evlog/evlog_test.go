@@ -3,6 +3,7 @@ package evlog
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -271,15 +272,39 @@ func TestMemory(t *testing.T) {
 }
 
 func TestOutcome(t *testing.T) {
-	for _, err := range []error{nil, nats.ErrNoResponders, context.DeadlineExceeded, context.Canceled, errors.New("bad reply")} {
-		flags, text := Outcome(err)
-		back := Err(flags, []byte(text))
-		f2, t2 := Outcome(back)
-		if f2 != flags || t2 != text {
-			t.Fatalf("%v: %d %q then %d %q", err, flags, text, f2, t2)
+	for _, c := range []struct {
+		err   error
+		flags uint16
+		is    error
+	}{
+		{nil, eventlog.OK, nil},
+		{nats.ErrNoResponders, eventlog.NoResponders, nats.ErrNoResponders},
+		{fmt.Errorf("fetch: %w", nats.ErrNoResponders), eventlog.NoResponders, nats.ErrNoResponders},
+		{context.DeadlineExceeded, eventlog.Timeout, context.DeadlineExceeded},
+		{nats.ErrTimeout, eventlog.Timeout, nats.ErrTimeout},
+		{fmt.Errorf("fetch: %w", nats.ErrTimeout), eventlog.Timeout, nats.ErrTimeout},
+		{context.Canceled, eventlog.Canceled, context.Canceled},
+		{errors.New("bad reply"), eventlog.Failed, nil},
+	} {
+		flags, text := Outcome(c.err)
+		if flags != c.flags {
+			t.Fatalf("%v: flags %d, want %d", c.err, flags, c.flags)
 		}
-		if err != nil && !errors.Is(back, err) && back.Error() != err.Error() {
-			t.Fatalf("%v came back as %v", err, back)
+		back := Err(flags, []byte(text))
+		if c.err == nil {
+			if back != nil || text != "" {
+				t.Fatalf("nil came back as %v %q", back, text)
+			}
+			continue
+		}
+		if back.Error() != c.err.Error() {
+			t.Fatalf("%v came back as %q", c.err, back.Error())
+		}
+		if c.is != nil && !errors.Is(back, c.is) {
+			t.Fatalf("%v came back as %v, which is not %v", c.err, back, c.is)
+		}
+		if f2, t2 := Outcome(back); f2 != flags || t2 != text {
+			t.Fatalf("%v: %d %q then %d %q", c.err, flags, text, f2, t2)
 		}
 	}
 }

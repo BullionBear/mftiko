@@ -16,6 +16,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -481,33 +482,56 @@ func createFile(path string) (File, error) {
 }
 
 // Outcome classifies a request error for order_reply, read_reply and resolve (PROTOCOL §12.4).
-// text is the error for Failed.
+// text is the error's message; every outcome but OK carries it.
 func Outcome(err error) (flags uint16, text string) {
 	switch {
 	case err == nil:
 		return eventlog.OK, ""
 	case errors.Is(err, nats.ErrNoResponders):
-		return eventlog.NoResponders, ""
+		flags = eventlog.NoResponders
 	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, nats.ErrTimeout):
-		return eventlog.Timeout, ""
+		flags = eventlog.Timeout
 	case errors.Is(err, context.Canceled):
-		return eventlog.Canceled, ""
+		flags = eventlog.Canceled
+	default:
+		flags = eventlog.Failed
 	}
-	return eventlog.Failed, err.Error()
+	return flags, err.Error()
 }
 
-// Err is the error a replay hands back for an outcome: the same sentinel for the classified ones,
-// and the recorded text for Failed.
+// Err is the error a replay hands back for an outcome: the recorded message, and errors.Is
+// matches the sentinel the recorded error matched.
 func Err(flags uint16, body []byte) error {
+	text := string(body)
 	switch flags {
 	case eventlog.OK:
 		return nil
 	case eventlog.NoResponders:
-		return nats.ErrNoResponders
+		return Wrap(text, nats.ErrNoResponders)
 	case eventlog.Timeout:
-		return context.DeadlineExceeded
+		if strings.HasSuffix(text, nats.ErrTimeout.Error()) {
+			return Wrap(text, nats.ErrTimeout)
+		}
+		return Wrap(text, context.DeadlineExceeded)
 	case eventlog.Canceled:
-		return context.Canceled
+		return Wrap(text, context.Canceled)
 	}
-	return errors.New(string(body))
+	return Wrap(text, nil)
 }
+
+// Wrap is an error with the recorded text that errors.Is matches to is. It is is itself when the
+// text is is's own message or empty.
+func Wrap(text string, is error) error {
+	if is != nil && (text == "" || text == is.Error()) {
+		return is
+	}
+	return &recorded{text: text, is: is}
+}
+
+type recorded struct {
+	text string
+	is   error
+}
+
+func (e *recorded) Error() string { return e.text }
+func (e *recorded) Unwrap() error { return e.is }
