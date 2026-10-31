@@ -86,6 +86,46 @@ func TestSpotPublicDecode(t *testing.T) {
 	}
 }
 
+// spotTradeEvent is one spot trade event: BTCUSDT 2 at 100.5, the buyer the taker. There is no X and no st.
+func spotTradeEvent(id int) string {
+	return fmt.Sprintf(`{"e":"trade","E":2000,"s":"BTCUSDT","t":%d,"p":"100.50000000","q":"2.00000000","T":1000,"m":false,"M":true}`, id)
+}
+
+// TestSpotTrade: spot sends every trade and checks t the way UM does (E03-D006).
+func TestSpotTrade(t *testing.T) {
+	decode := func(s exchange.Session, frame string) ([]tradeGot, error) {
+		var got capture
+		err := s.Decode([]byte(frame), &got)
+		return got.trades, err
+	}
+	ss, err := (&market{p: spot}).NewSession(exchange.RouteDefault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := decode(ss, spotTradeEvent(1001))
+	want := tradeGot{ch: "btcusdt@trade", id: "1001", side: exchange.SideBuy, px: 100.5, qty: 2, ts: 1000 * int64(time.Millisecond)}
+	if err != nil || len(got) != 1 || got[0] != want {
+		t.Fatalf("1001: %+v %v", got, err)
+	}
+	if got, err := decode(ss, spotTradeEvent(1002)); err != nil || len(got) != 1 {
+		t.Fatalf("1002: %+v %v", got, err)
+	}
+	got, err = decode(ss, spotTradeEvent(1004))
+	if len(got) != 1 || err == nil || err.Error() != "binance: btcusdt@trade gap: t=1004 after t=1002" {
+		t.Fatalf("1004: %+v %v", got, err)
+	}
+	if d := ss.(*session).dropped; d != 0 {
+		t.Fatalf("spot dropped %d", d)
+	}
+	ums, err := (&market{p: um}).NewSession("public")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := decode(ums, spotTradeEvent(1001)); err != nil || len(got) != 0 {
+		t.Fatalf("UM sent a trade without X: %+v %v", got, err)
+	}
+}
+
 func TestSpotPlanning(t *testing.T) {
 	m := &market{p: spot}
 	topics := map[exchange.Topic]bool{}
@@ -93,7 +133,7 @@ func TestSpotPlanning(t *testing.T) {
 		topics[c.Topic] = true
 	}
 	for _, want := range []exchange.Topic{
-		exchange.TopicBestQuote, exchange.TopicAggTrade,
+		exchange.TopicBestQuote, exchange.TopicTrade, exchange.TopicAggTrade,
 		exchange.TopicOrderBookDelta, exchange.TopicTicker, exchange.KlineTopic("1m"),
 	} {
 		if !topics[want] {
@@ -101,7 +141,7 @@ func TestSpotPlanning(t *testing.T) {
 		}
 	}
 	for _, absent := range []exchange.Topic{
-		exchange.TopicTrade, exchange.TopicLiquidation, exchange.TopicFundingRate,
+		exchange.TopicLiquidation, exchange.TopicFundingRate,
 		exchange.TopicMarkPrice, exchange.TopicOpenInterest, exchange.KlineTopic("1s"),
 	} {
 		if topics[absent] {
@@ -118,6 +158,10 @@ func TestSpotPlanning(t *testing.T) {
 	a, err = m.Atom(exchange.TopicOrderBookDelta, spotInst())
 	if err != nil || a.Channel != "btcusdt@depth@100ms" {
 		t.Fatalf("depth %+v %v", a, err)
+	}
+	a, err = m.Atom(exchange.TopicTrade, spotInst())
+	if err != nil || a.Route != exchange.RouteDefault || a.Channel != "btcusdt@trade" {
+		t.Fatalf("trade %+v %v", a, err)
 	}
 	ep, err := m.Endpoint(exchange.RouteDefault, "")
 	if err != nil || ep != "wss://stream.binance.com:9443/ws" {
@@ -261,6 +305,15 @@ func TestRecordBinanceSpotPublic(t *testing.T) {
 	}
 	recordSpotREST(t, dir)
 	recordSpotMarket(t, ctx, dir)
+}
+
+// TestRecordBinanceSpotPublicTrade records spot @trade (E03-D006, E03-D008).
+func TestRecordBinanceSpotPublicTrade(t *testing.T) {
+	if os.Getenv("MFTIKO_BINANCE_SPOT_RECORD") != "1" {
+		t.Skip("set MFTIKO_BINANCE_SPOT_RECORD=1 to record production public fixtures")
+	}
+	recordTrade(t, spot, exchange.RouteDefault, "testdata/conformance/Binance", "default_trade",
+		"Spot BTCUSDT @trade (E03-D006): the ack and the first trades, t without a gap.")
 }
 
 func recordSpotREST(t *testing.T, dir string) {

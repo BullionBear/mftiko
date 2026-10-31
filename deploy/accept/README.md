@@ -51,7 +51,7 @@ deploy/accept/accept.sh refresh -venue Okx -ticker Okx_Perp_BTCUSDT
 
 這兩家的簿是 SnapshotStream：訂閱後的第一則就是全本，不打 depth REST，所以不需要 `rest.json`。兩家都有 `trade` topic。Bybit 走 `linear` route，OKX 走 `public` route（位址是 `wss://wspap.okx.com:8443`，即 demo，不需要額外的 header）。Bybit testnet 的 `orderbook.50` 很稀疏，50 檔分散在最佳價上下大約 2000 USD，落在窗內（±204.8 USD）的只有十幾檔，這是 E04-D031 的結果。
 
-以下以 BinanceUM 為例。`A=deploy/accept/accept.sh`。BinanceUM 沒有 `trade` topic，trade 類用 `aggtrade`。
+以下以 BinanceUM 為例。`A=deploy/accept/accept.sh`。trade 類用 `aggtrade`，它在 `market` route；BinanceUM 的 `trade` 在 `public` route，與 `orderbook_delta` 同一條 conn（E03-D004）。
 
 ## 1. 收到事件，seq 連續
 
