@@ -508,8 +508,8 @@
 		<button type="button" onclick={addAccount}>Add account</button>
 	{:else if stepIndex === 4}
 		<p class="status">
-			Data artifacts pushed with mftiko-pack data, by digest. The console does not resolve tags; the API checks the
-			repository and the size.
+			Data artifacts pushed with mftiko-pack data, by digest. The strategy reads each one at $MFTIKO_INPUT_DIR/&lt;name&gt;/.
+			The console does not resolve tags; the API checks the repository and the size.
 		</p>
 		{#each draft.inputs as row, i (row.key)}
 			<div class="row input-row">
@@ -521,7 +521,6 @@
 						autocomplete="off"
 						autocapitalize="off"
 						spellcheck="false"
-						placeholder="model"
 						aria-invalid={invalid(`/inputs/${i}/name`)}
 						aria-describedby={describedBy(`/inputs/${i}/name`)}
 					/>
