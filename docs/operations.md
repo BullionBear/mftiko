@@ -433,7 +433,7 @@ Prometheus 與 Loki 的 ruler 送同一個 Alertmanager（E16-D008）。策略 l
 ### 架構
 
 1. shim 把 session worker 的 stderr 寫到 `${WORK_DIR}/log/sts/{h}.stderr`。同一個 session 的每個 incarnation 都寫同一個檔，一個檔就是一個 session（[log 在哪裡](#log-在哪裡)）。
-2. 每台 STS 主機的 Alloy 以 glob `/var/lib/mftiko/sts-agent/log/sts/*.stderr` 找檔，新的 session 自動接上，推到 Loki（E16-D003）。只收 `*.stderr`：輪替出來的 `*.stderr.N` 是同樣的行換了檔名，收了會重複。stdout 是策略自己的資料，不收。不是 JSON 的行照收，例如 shim 的 `[mftiko-shim] …` 與 Go 的 panic。
+2. 每台 STS 主機的 Alloy 以 glob `/var/lib/mftiko/sts-agent/log/sts/*.stderr` 找檔，新的 session 自動接上，推到 Loki（E16-D003）。只收 `*.stderr`：輪替出來的 `*.stderr.N` 是同樣的行換了檔名，收了會重複。Alloy 每 `sync_period`（範例 1s）才發現新的檔；在那之前就輪替掉的第一個檔不進 Loki（E16-D038）。在追的檔輪替時，Alloy 先讀完舊檔才換到新檔，不漏。stdout 是策略自己的資料，不收。不是 JSON 的行照收，例如 shim 的 `[mftiko-shim] …` 與 Go 的 panic。
 3. Loki 的 ruler 評估 R1、R2、R5，成立的送到 Alertmanager。
 4. Prometheus 的 `mftiko_*` 告警（[監控與告警](#監控與告警)）送到同一個 Alertmanager（E16-D008）。
 5. Alertmanager 分組、抑制，送到 Discord（[Discord](#discord)）。dev 送到假接收端（E16-D021）。
@@ -501,7 +501,7 @@ sudo -u alloy ls -l /var/lib/mftiko/sts-agent/log/sts/  # 讀得到，檔的 gro
 
 | 檔 | 正式環境要改的 |
 |---|---|
-| [`alloy/config.alloy`](../deploy/dev/alloy/config.alloy) | `__path__` 不用改：unit 的 `-work-dir` 與 dev 都是 `/var/lib/mftiko/sts-agent`。`host` 改成主機名（可用 `constants.hostname`）。`region`、`instance` 改成這台 STS agent 的：`instance` 是 env 的 `MFTIKO_INSTANCE`，`region` 是 `mftiko instance list` 的 `REGION`。`loki.write` 的 `url` 改成主機 A 的私有位址，例如 `http://loki.example.invalid:3100/loki/api/v1/push` |
+| [`alloy/config.alloy`](../deploy/dev/alloy/config.alloy) | `__path__` 不用改：unit 的 `-work-dir` 與 dev 都是 `/var/lib/mftiko/sts-agent`。`host` 改成主機名（可用 `constants.hostname`）。`region`、`instance` 改成這台 STS agent 的：`instance` 是 env 的 `MFTIKO_INSTANCE`，`region` 是 `mftiko instance list` 的 `REGION`。`loki.write` 的 `url` 改成主機 A 的私有位址，例如 `http://loki.example.invalid:3100/loki/api/v1/push`。`sync_period` 保持 1s：比它長，一開始就寫很快的 session 可能在被發現之前就輪替掉第一個檔 |
 | [`loki/mftiko.rules.yml`](../deploy/dev/loki/mftiko.rules.yml) | `for`（dev 30s）、窗口 `[5m]` 與門檻 `> 0` 由部署端定（E12-D039）。一行讓條件成立一個窗口那麼久，所以 `for` 要短於窗口，否則只有一行時永遠不響。要多幾行才叫，就提高門檻 |
 | [`loki/loki.yaml`](../deploy/dev/loki/loki.yaml) | 儲存的目錄（`common.path_prefix` 以下）放到主機 A 的資料磁碟。`limits_config.retention_period`（dev 24h，[Loki 的保留期](#loki-的保留期)）。`ruler.alertmanager_url` 指到主機 A 的 Alertmanager，`ruler.evaluation_interval`（dev 15s，Loki 預設 1m）。規則檔放在 `ruler.storage.local.directory` 底下租戶的目錄；auth 關著時租戶是 `fake`，dev 掛在 `/etc/loki/rules/fake/`。`discover_service_name: []` 保留，stream label 才只有上面那幾個。`ruler.external_url` 設成 Grafana 的網址、`ruler.datasource_uid` 設成 Grafana 裡 Loki datasource 的 uid：通知的 `Source` 連結才打得開 Explore 並選好 Loki。沒設時連結是 `/explore?…` 的相對路徑（E16-D038） |
 | [`alertmanager/alertmanager.yml`](../deploy/dev/alertmanager/alertmanager.yml) | receiver 換成 Discord（[下面](#discord)）。`group_wait`（dev 10s，Alertmanager 預設 30s）。`group_interval` 5m、`repeat_interval` 4h 是放寬過的起點，一個策略一直寫 error 時不洗版（E16-D009）。`inhibit_rules` 照抄 |

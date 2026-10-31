@@ -4788,6 +4788,7 @@ E12-D061 列的「演練之前沒有實測」，除了主機重開，都在 test
 - Alloy 以官方 `.deb` 安裝。它的 postinst 把 `alloy` 加進 `adm` 與 `systemd-journal`，拿掉，只留 `mftiko-ops`（E16-D003）。
 - 已經有 log 的主機（mftik、mm）先把現有的 `*.stderr` 記成讀到檔尾再啟動 Alloy，舊行不進 Loki、不觸發告警。不用 `tail_from_end`：新 session 開頭的行會被跳過。
 - `ruler.external_url` 指 Grafana、`ruler.datasource_uid` 指 Loki datasource：沒設時 Discord 訊息的 `Source` 是相對路徑，打不開。
+- Alloy 的 `sync_period` 1s（原本 5s，dev 一起改）。v0.4.2 重測時，chatter（每秒約 20 KB、`max_bytes` 64 KiB）的第一個檔約 3 秒就輪替成 `.stderr.1`，Alloy 還沒發現這個 session，前 656 行（shim 的開頭行與 chatter 1–655）沒進 Loki。在追的檔輪替不漏。預設 64 MiB 時要 1 秒內寫滿才會發生。
 - 演練找到兩個程式的問題，各自修正：agent 每次 chmod 清掉 `log/sts` 的 setgid（E16-D036，v0.4.1），與輪替把一行切成兩段（E16-D037）。
 
 ### E00-D006 專案分三塊，加上獨立的 exchange

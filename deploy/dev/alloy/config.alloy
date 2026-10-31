@@ -14,7 +14,9 @@ local.file_match "sts" {
 		"plane"    = "sts",
 		"instance" = "sts1",
 	}]
-	sync_period = "5s"
+	// How often a new session's file is found. A file that rotates before it is found loses its first part,
+	// since *.stderr.N is not collected (E16-D038).
+	sync_period = "1s"
 }
 
 loki.source.file "sts" {
