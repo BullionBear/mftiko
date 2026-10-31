@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"errors"
+	"math/rand/v2"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -15,8 +16,11 @@ import (
 	stsctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/stsctl/v1"
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/contract/wire/c4"
+	"github.com/BullionBear/mftiko/sdk/eventlog"
 	"github.com/BullionBear/mftiko/sdk/internal/bookpath"
+	"github.com/BullionBear/mftiko/sdk/internal/cloidgen"
 	"github.com/BullionBear/mftiko/sdk/internal/dispatch"
+	"github.com/BullionBear/mftiko/sdk/internal/evlog"
 	"github.com/BullionBear/mftiko/sdk/internal/mdpath"
 	"github.com/BullionBear/mftiko/sdk/internal/symclient"
 	"github.com/BullionBear/mftiko/sdk/internal/tdpath"
@@ -86,7 +90,7 @@ type plane struct {
 
 	cmdMu   sync.Mutex
 	cmdCond *sync.Cond
-	cmds    [][]byte
+	cmds    []relayed
 	cmdStop bool
 	cmdDone chan struct{}
 	repDone chan struct{}
@@ -104,6 +108,19 @@ type plane struct {
 	// asked is set when the strategy calls Exit or Fail, so Start does not
 	// send the first Recon after the session has already been ended.
 	asked atomic.Bool
+
+	// rec is the event log, nil when the session spec leaves it off (E20-D007). Init sets it under
+	// mu before anything that writes to it starts; shutdown closes it last.
+	rec *evlog.Log
+	// clock is the step clock, in unix nanoseconds: the start of the hook that is running. The
+	// dispatcher sets it for its hooks and outside for the others. Context.Now reads it (E20-D004).
+	clock atomic.Int64
+	// seed is Context.Rand's seed. The init frame records it.
+	seed    uint64
+	rngOnce sync.Once
+	rng     *rand.Rand
+	// rp is the offline replay this plane runs in; nil in a session (E20-D009).
+	rp *replayer
 }
 
 func newPlane(s Strategy, h host) *plane {
@@ -124,6 +141,7 @@ func (p *plane) Init(ctx context.Context, sess *c4.Session, payload []byte) erro
 	if p.host.settled != nil {
 		defer close(p.host.settled)
 	}
+	recvAt := p.now()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -162,6 +180,7 @@ func (p *plane) Init(ctx context.Context, sess *c4.Session, payload []byte) erro
 	p.inputDir = p.host.env("MFTIKO_INPUT_DIR")
 	p.hookTimeout = time.Duration(init.GetHookTimeoutS()) * time.Second
 	p.recv = time.Duration(init.GetRecvWindowMs()) * time.Millisecond
+	p.seed = rand.Uint64()
 
 	nc, err := p.connectNATS(ctx, url, creds)
 	if err != nil {
@@ -170,6 +189,13 @@ func (p *plane) Init(ctx context.Context, sess *c4.Session, payload []byte) erro
 	if err := p.own(func() { p.nc = nc }); err != nil {
 		nc.Close()
 		return err
+	}
+	if init.GetEventLog().GetEnabled() {
+		rec := p.openRec(&init)
+		if err := p.own(func() { p.rec = rec }); err != nil {
+			rec.Close()
+			return err
+		}
 	}
 
 	p.tap = &mdpath.Tap{}
@@ -182,6 +208,8 @@ func (p *plane) Init(ctx context.Context, sess *c4.Session, payload []byte) erro
 		Feed:          p.tap.Feed,
 		Book:          p.tap.Book,
 		Log:           p.note,
+		Rec:           p.rec,
+		Clock:         &p.clock,
 	})
 	sym, err := symclient.Open(p.root, symclient.NATS(nc), symclient.Options{Log: p.note})
 	if err != nil {
@@ -198,11 +226,12 @@ func (p *plane) Init(ctx context.Context, sess *c4.Session, payload []byte) erro
 		Accounts:   init.GetAccounts(),
 		RecvWindow: p.recv,
 		NC:         nc,
-		Push:       p.disp.PushTD,
+		Push:       p.disp.PushIn,
 		Fail:       p.disp.Fail,
 		Now:        p.host.now,
 		Hooks:      p.tdHooks(),
 		Log:        p.note,
+		Rec:        p.rec,
 	})
 	if err != nil {
 		return err
@@ -225,6 +254,8 @@ func (p *plane) Init(ctx context.Context, sess *c4.Session, payload []byte) erro
 			}
 		},
 		Log: p.note,
+		Rec: p.rec,
+		Now: p.host.now,
 	})
 	if err != nil {
 		return err
@@ -238,9 +269,11 @@ func (p *plane) Init(ctx context.Context, sess *c4.Session, payload []byte) erro
 		Info:       p.bookInfo,
 		Hook:       p.bookHook(),
 		RecvWindow: p.recv,
-		Now:        p.host.now,
-		Schedule:   p.schedule,
-		Log:        p.note,
+		// The book reads the clock only inside hooks. The step clock makes a replay keep or
+		// drop the same deltas (E20-D004).
+		Now:      p.stepNow,
+		Schedule: p.schedule,
+		Log:      p.note,
 	})
 	if err != nil {
 		return err
@@ -258,13 +291,21 @@ func (p *plane) Init(ctx context.Context, sess *c4.Session, payload []byte) erro
 	defer p.sym.AllowResolve(false)
 	p.setHookCtx(ctx)
 	defer p.setHookCtx(nil)
-	p.hook.Store("OnInit")
-	err = p.strat.OnInit(p.sc)
-	p.hook.Store("")
-	return err
+	// The init frame is the payload without the NATS credentials, after the client order id
+	// counter as Init found it (E20-D003, E20-D004).
+	var head [8]byte
+	var body []byte
+	if p.rec != nil {
+		head = eventlog.InitHead(cloidgen.Slot())
+		body = withoutField(payload, natsField)
+	}
+	return p.outside("OnInit", eventlog.KindInit, recvAt.UnixNano(), p.seed, head[:], body, func() error {
+		return p.strat.OnInit(p.sc)
+	})
 }
 
 func (p *plane) Start(ctx context.Context, payload []byte) error {
+	recvAt := p.now()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -294,9 +335,13 @@ func (p *plane) Start(ctx context.Context, payload []byte) error {
 	}
 	p.setHookCtx(ctx)
 	defer p.setHookCtx(nil)
-	p.hook.Store("OnStart")
-	err := p.strat.OnStart(p.sc)
-	p.hook.Store("")
+	var body []byte
+	if p.rec != nil {
+		body = payload
+	}
+	err := p.outside("OnStart", eventlog.KindStart, recvAt.UnixNano(), 0, nil, body, func() error {
+		return p.strat.OnStart(p.sc)
+	})
 	if err != nil {
 		return err
 	}
@@ -333,11 +378,19 @@ func (p *plane) Run(ctx context.Context) error {
 // an older one, is success, so c4 still sends Applied. A selector is an error
 // and c4 sends nothing.
 func (p *plane) Live(payload []byte) error {
+	var at int64
+	if p.rec != nil {
+		at = p.now().UnixNano()
+	}
 	var b stsctlv1.Bindings
 	if err := proto.Unmarshal(payload, &b); err != nil {
 		return errors.New("bindings")
 	}
-	return p.applyBindings(&b)
+	if err := p.applyBindings(&b); err != nil {
+		return err
+	}
+	p.recordBindings(at, 0, payload)
+	return nil
 }
 
 // Relay enqueues one Command. It runs on the fd 3 reader, so it does not apply
@@ -347,8 +400,12 @@ func (p *plane) Relay(corrID, payload []byte) {
 	if p.sess != nil {
 		_ = p.sess.Relay(corrID, payload)
 	}
+	var at int64
+	if p.rec != nil {
+		at = p.now().UnixNano()
+	}
 	p.cmdMu.Lock()
-	p.cmds = append(p.cmds, append([]byte(nil), payload...))
+	p.cmds = append(p.cmds, relayed{at: at, b: append([]byte(nil), payload...)})
 	p.cmdCond.Signal()
 	p.cmdMu.Unlock()
 }
@@ -358,9 +415,11 @@ func (p *plane) OnStop(ctx context.Context) error {
 		return p.disp.OnStop(ctx)
 	}
 	if p.strat != nil && p.sc != nil {
-		p.hook.Store("OnStop")
-		p.strat.OnStop(p.sc)
-		p.hook.Store("")
+		recvAt := p.now()
+		_ = p.outside("OnStop", eventlog.KindOnStop, recvAt.UnixNano(), 0, nil, nil, func() error {
+			p.strat.OnStop(p.sc)
+			return nil
+		})
 	}
 	return nil
 }
@@ -395,9 +454,9 @@ func (p *plane) applyBindings(b *stsctlv1.Bindings) error {
 	return nil
 }
 
-func (p *plane) handleCommand(b []byte) {
+func (p *plane) handleCommand(r relayed) {
 	var cmd stsctlv1.Command
-	if err := proto.Unmarshal(b, &cmd); err != nil {
+	if err := proto.Unmarshal(r.b, &cmd); err != nil {
 		p.note("command")
 		return
 	}
@@ -405,6 +464,12 @@ func (p *plane) handleCommand(b []byte) {
 	case *stsctlv1.Command_Bindings:
 		if err := p.applyBindings(c.Bindings); err != nil {
 			p.note("command bindings: " + err.Error())
+			return
+		}
+		if p.rec != nil {
+			if raw, ok := fieldBytes(r.b, bindingsField); ok {
+				p.recordBindings(r.at, eventlog.FromCommand, raw)
+			}
 		}
 	case *stsctlv1.Command_Fail:
 		reason := ""
@@ -493,10 +558,10 @@ func (p *plane) cmdLoop() {
 			p.cmdMu.Unlock()
 			return
 		}
-		b := p.cmds[0]
+		r := p.cmds[0]
 		p.cmds = p.cmds[1:]
 		p.cmdMu.Unlock()
-		p.handleCommand(b)
+		p.handleCommand(r)
 	}
 }
 
@@ -527,8 +592,12 @@ func (p *plane) shutdown() {
 	td := p.td
 	sym := p.sym
 	books := p.books
+	rec := p.rec
 	p.nc, p.md, p.td, p.sym, p.books = nil, nil, nil, nil, nil
 	p.mu.Unlock()
+	// Last, so the frames of everything closed here are in it. The process exits after
+	// shutdown returns, so this is where the ring is flushed (E20-D005).
+	defer rec.Close()
 	if books != nil {
 		books.Close()
 	}

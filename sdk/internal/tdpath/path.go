@@ -15,7 +15,10 @@ import (
 
 	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
 	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
+	"github.com/BullionBear/mftiko/sdk/eventlog"
+	"github.com/BullionBear/mftiko/sdk/internal/cloidgen"
 	"github.com/BullionBear/mftiko/sdk/internal/dispatch"
+	"github.com/BullionBear/mftiko/sdk/internal/evlog"
 )
 
 const (
@@ -45,23 +48,39 @@ var (
 
 // Config opens a Path. NC is not closed by the path.
 //
-// Push runs each delivered event and each order reply as one hook. Nil uses an in-process
-// queue that runs the func before Push returns, and a func pushed from inside a running
-// func waits until the running one returns. The session passes the dispatcher's PushTD.
+// Push runs each delivered event and each order reply as one hook; in is what the event log
+// writes for it. Nil uses an in-process queue that runs the func before Push returns, and a func
+// pushed from inside a running func waits until the running one returns. The session passes the
+// dispatcher's PushIn.
 //
 // Fail is called once when the hold cannot take another event. After is the Recon backoff
 // clock; nil uses time.After. Now is the Submit clock; nil uses time.Now.
+//
+// Rec is the event log: the order calls, the requests put on td.order, and the inputs of the
+// hooks the path pushes (E20-D003). Nil records nothing. Gen issues the client order ids; nil is
+// the process counter. Replay opens the path for an offline replay (E20-D009).
 type Config struct {
 	SessionID  string
 	Accounts   []*sessionv1.AccountDecl
 	RecvWindow time.Duration
 	NC         *nats.Conn
-	Push       func(fn func()) error
+	Push       func(in dispatch.Input, fn func()) error
 	Fail       func(reason string)
 	Now        func() time.Time
 	After      func(time.Duration) <-chan time.Time
 	Hooks      Hooks
 	Log        func(string)
+	Rec        *evlog.Log
+	Gen        *cloidgen.Gen
+	Replay     *Replay
+}
+
+// Replay runs a path without NATS. No loop runs and nothing is sent: each request is written to
+// Rec as the order_publish it would have been, and the recorded replies are handed back with
+// ReplayEvent, ReplayView and ReplayReply. Call is the recorded call_ns and submit_gen of the
+// order call numbered id; ok false, a call the recording does not have, reads Now.
+type Replay struct {
+	Call func(id uint64) (callNs int64, submitGen uint64, ok bool)
 }
 
 // Path is one session's TD path. Close cancels it. Do not call Close from a hook: the
@@ -77,7 +96,7 @@ type Path struct {
 	subscribing bool
 	failed      bool
 	hooks       Hooks
-	push        func(fn func()) error
+	push        func(in dispatch.Input, fn func()) error
 	fail        func(string)
 	nowFn       func() time.Time
 	after       func(time.Duration) <-chan time.Time
@@ -87,6 +106,12 @@ type Path struct {
 	wg          sync.WaitGroup
 	settled     atomic.Uint64
 	failOnce    atomic.Bool
+
+	rec    *evlog.Log
+	gen    *cloidgen.Gen
+	replay *Replay
+	calls  atomic.Uint64      // order calls recorded so far; the next one's call id is one more
+	rounds map[uint64]pending // replay: the requests waiting for their recorded reply, by call id
 
 	// sendMu orders td.order publishes. sendTurn is closed by the previous
 	// request once its bytes are on the connection. The hook does not wait.
@@ -120,6 +145,7 @@ type account struct {
 	positions   map[uint32]*tdv1.Position
 	balances    map[string]*tdv1.Balance
 	hold        []*tdv1.AccountEvent
+	heldIn      []dispatch.Input // each held event's event log input; kept only while the log is on
 	holding     bool
 	pending     bool
 	asking      bool
@@ -136,8 +162,11 @@ type account struct {
 // or RequestRecon. recv window is InitPayload.recv_window_ms and must be positive:
 // one attempt of ReconRequest, Submit, Cancel and BatchCancel waits that long.
 func Open(cfg Config) (*Path, error) {
-	if cfg.NC == nil {
+	if cfg.NC == nil && cfg.Replay == nil {
 		return nil, errors.New("tdpath: nil nats conn")
+	}
+	if cfg.Replay != nil && cfg.Rec == nil {
+		return nil, errors.New("tdpath: a replay needs the log it writes its outputs to")
 	}
 	if cfg.SessionID == "" {
 		return nil, errors.New("tdpath: empty session id")
@@ -189,6 +218,9 @@ func Open(cfg Config) (*Path, error) {
 		logf:      cfg.Log,
 		ctx:       ctx,
 		cancel:    cancel,
+		rec:       cfg.Rec,
+		gen:       cfg.Gen,
+		replay:    cfg.Replay,
 	}
 	if p.push == nil {
 		q := &runq{}
@@ -196,6 +228,10 @@ func Open(cfg Config) (*Path, error) {
 	}
 	if p.after == nil {
 		p.after = time.After
+	}
+	if p.replay != nil {
+		p.rounds = map[uint64]pending{}
+		return p, nil
 	}
 	for _, acc := range accs {
 		p.wg.Add(1)
@@ -239,6 +275,11 @@ func (p *Path) Listen() error {
 		p.mu.Unlock()
 		return nil
 	}
+	if p.replay != nil {
+		p.listening = true
+		p.mu.Unlock()
+		return nil
+	}
 	if p.subscribing {
 		p.mu.Unlock()
 		return errors.New("tdpath: listen is already in progress")
@@ -257,6 +298,7 @@ func (p *Path) Listen() error {
 		for _, acc := range p.accounts {
 			acc.holding = false
 			acc.hold = nil
+			acc.heldIn = nil
 		}
 		p.mu.Unlock()
 		return err
@@ -279,7 +321,7 @@ func (p *Path) Listen() error {
 }
 
 // Recon asks every account for a snapshot. Events stay held until that account's reply
-// has been given to the Recon hook.
+// has been given to the Recon hook. A replay asks nothing: the replies are in the log.
 func (p *Path) Recon() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -288,6 +330,9 @@ func (p *Path) Recon() error {
 	}
 	if !p.listening {
 		return ErrNotListening
+	}
+	if p.replay != nil {
+		return nil
 	}
 	for _, acc := range p.accounts {
 		acc.holding = true
@@ -311,6 +356,10 @@ func (p *Path) RequestRecon(apiID int64) error {
 	acc := p.byAPI[apiID]
 	if acc == nil {
 		return ErrUnknownAccount
+	}
+	p.record(eventlog.OpRecon, time.Time{}, apiID, 0)
+	if p.replay != nil {
+		return nil
 	}
 	acc.holding = true
 	acc.pending = true
@@ -351,7 +400,13 @@ func (p *Path) subscribeAll() ([]*nats.Subscription, error) {
 	return subs, nil
 }
 
+// onMsg runs on the NATS goroutine. With the event log on, the event's input is the bytes as
+// they came and the time they came; the hook that applies the event writes it (E20-D003).
 func (p *Path) onMsg(apiID int64, m *nats.Msg) {
+	var at int64
+	if p.rec != nil {
+		at = p.now().UnixNano()
+	}
 	raw := append([]byte(nil), m.Data...)
 	ev := &tdv1.AccountEvent{}
 	if err := proto.Unmarshal(raw, ev); err != nil {
@@ -360,10 +415,14 @@ func (p *Path) onMsg(apiID int64, m *nats.Msg) {
 		}
 		return
 	}
-	p.onEvent(apiID, ev)
+	var in dispatch.Input
+	if p.rec != nil {
+		in = dispatch.Input{Kind: eventlog.KindTDEvent, RecvNs: at, Ref: uint64(apiID), Body: raw}
+	}
+	p.onEvent(apiID, ev, in)
 }
 
-func (p *Path) onEvent(apiID int64, ev *tdv1.AccountEvent) {
+func (p *Path) onEvent(apiID int64, ev *tdv1.AccountEvent, in dispatch.Input) {
 	p.mu.Lock()
 	acc := p.byAPI[apiID]
 	if acc == nil || p.failed {
@@ -371,7 +430,7 @@ func (p *Path) onEvent(apiID int64, ev *tdv1.AccountEvent) {
 		return
 	}
 	if acc.holding || !acc.have {
-		p.hold(acc, ev)
+		p.hold(acc, ev, in)
 		return
 	}
 	inc := ev.GetSource().GetIncarnation()
@@ -382,7 +441,7 @@ func (p *Path) onEvent(apiID int64, ev *tdv1.AccountEvent) {
 	if inc != acc.inc || seq > acc.seq+1 {
 		acc.holding = true
 		acc.pending = true
-		p.hold(acc, ev)
+		p.hold(acc, ev, in)
 		p.wake(acc)
 		return
 	}
@@ -392,18 +451,35 @@ func (p *Path) onEvent(apiID int64, ev *tdv1.AccountEvent) {
 	}
 	acc.seq = seq
 	p.mu.Unlock()
-	p.enqueue(func() { p.apply(apiID, ev) })
+	p.enqueue(in, func() { p.apply(apiID, ev) })
 }
 
 // hold appends ev or ends the session. The caller holds p.mu; hold releases it.
-func (p *Path) hold(acc *account, ev *tdv1.AccountEvent) {
+func (p *Path) hold(acc *account, ev *tdv1.AccountEvent, in dispatch.Input) {
 	if p.heldLocked() >= dispatch.TDCap {
 		p.mu.Unlock()
 		p.stop(dispatch.ReasonTDFull)
 		return
 	}
 	acc.hold = append(acc.hold, ev)
+	if p.rec != nil {
+		acc.heldIn = append(acc.heldIn, in)
+	}
 	p.mu.Unlock()
+}
+
+// next takes the head of the hold, and its event log input when the log is on.
+func (a *account) next() (*tdv1.AccountEvent, dispatch.Input) {
+	ev := a.hold[0]
+	a.hold[0] = nil
+	a.hold = a.hold[1:]
+	var in dispatch.Input
+	if len(a.heldIn) > 0 {
+		in = a.heldIn[0]
+		a.heldIn[0] = dispatch.Input{}
+		a.heldIn = a.heldIn[1:]
+	}
+	return ev, in
 }
 
 func (p *Path) heldLocked() int {
@@ -497,6 +573,11 @@ func (p *Path) ask(acc *account) error {
 	if err != nil {
 		return err
 	}
+	var in dispatch.Input
+	if p.rec != nil {
+		head := eventlog.TDViewHead(gen)
+		in = dispatch.Input{Kind: eventlog.KindTDView, RecvNs: p.now().UnixNano(), Ref: uint64(apiID), Head: head[:], Body: msg.Data}
+	}
 	rep := &tdv1.ViewReply{}
 	if err := proto.Unmarshal(msg.Data, rep); err != nil {
 		return err
@@ -505,7 +586,7 @@ func (p *Path) ask(acc *account) error {
 		return errNotRecon
 	}
 	done := make(chan struct{})
-	p.enqueue(func() {
+	p.enqueue(in, func() {
 		p.beginReply(apiID, rep, gen)
 		p.releaseStep(acc, done)
 	})
@@ -626,11 +707,9 @@ func (p *Path) releaseStep(acc *account, done chan struct{}) {
 			close(done)
 			return
 		}
-		ev := acc.hold[0]
-		switch classify(acc, ev) {
+		switch classify(acc, acc.hold[0]) {
 		case classDrop:
-			acc.hold[0] = nil
-			acc.hold = acc.hold[1:]
+			acc.next()
 			p.mu.Unlock()
 			continue
 		case classGap, classNewer:
@@ -641,12 +720,11 @@ func (p *Path) releaseStep(acc *account, done chan struct{}) {
 			close(done)
 			return
 		default:
-			acc.hold[0] = nil
-			acc.hold = acc.hold[1:]
+			ev, in := acc.next()
 			acc.seq = ev.GetSeq()
 			apiID := acc.decl.GetApiId()
 			p.mu.Unlock()
-			p.enqueue(func() {
+			p.enqueue(in, func() {
 				p.apply(apiID, ev)
 				p.releaseStep(acc, done)
 			})
@@ -670,8 +748,8 @@ func (p *Path) apply(apiID int64, ev *tdv1.AccountEvent) {
 	}
 }
 
-func (p *Path) enqueue(fn func()) {
-	if err := p.push(fn); err != nil {
+func (p *Path) enqueue(in dispatch.Input, fn func()) {
+	if err := p.push(in, fn); err != nil {
 		if strings.Contains(err.Error(), dispatch.ReasonTDFull) {
 			p.stop(dispatch.ReasonTDFull)
 			return
@@ -759,7 +837,7 @@ type runq struct {
 	on bool
 }
 
-func (r *runq) push(fn func()) error {
+func (r *runq) push(_ dispatch.Input, fn func()) error {
 	if fn == nil {
 		return nil
 	}

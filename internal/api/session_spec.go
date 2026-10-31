@@ -47,6 +47,8 @@ const (
 	maxLabels     = 32
 	maxLabelValue = 256
 	maxNameLen    = 128
+	// defaultKeepMB is what the SDK keeps when event_log.keep_mb is 0 (session.proto EventLog).
+	defaultKeepMB = 256
 )
 
 type fieldList []apiv1.FieldError
@@ -297,7 +299,30 @@ func (s *Server) structural(req apiv1.SessionCreate) fieldList {
 		checkU32(req.Limits.VolumeMb, "/limits/volume_mb", &fields)
 		checkU32(req.Limits.HookTimeoutS, "/limits/hook_timeout_s", &fields)
 	}
+	if ev := req.EventLog; ev != nil {
+		keep := 0
+		if ev.KeepMb != nil {
+			keep = *ev.KeepMb
+		}
+		if keep < 0 || keep > math.MaxUint32 {
+			fields.add("/event_log/keep_mb", "must be between 0 and 4294967295")
+		} else if vol := volumeMB(req.Limits); vol > 0 && ev.Enabled != nil && *ev.Enabled {
+			if keep == 0 {
+				keep = defaultKeepMB
+			}
+			if keep >= vol {
+				fields.add("/event_log/keep_mb", "must be less than limits.volume_mb; 0 keeps 256")
+			}
+		}
+	}
 	return fields
+}
+
+func volumeMB(l *apiv1.Limits) int {
+	if l == nil || l.VolumeMb == nil {
+		return 0
+	}
+	return *l.VolumeMb
 }
 
 func checkU32(n *int, path string, fields *fieldList) {
@@ -390,6 +415,14 @@ func (s *Server) fillNumbers(req apiv1.SessionCreate, spec *sessionv1.SessionSpe
 			fields.add("/limits/hook_timeout_s", "must be between 0 and 4294967295")
 		}
 		spec.Limits = lim
+	}
+	if req.EventLog != nil {
+		ev := &sessionv1.EventLog{Enabled: req.EventLog.Enabled != nil && *req.EventLog.Enabled}
+		ev.KeepMb, err = mustU32(req.EventLog.KeepMb)
+		if err != nil {
+			fields.add("/event_log/keep_mb", "must be between 0 and 4294967295")
+		}
+		spec.EventLog = ev
 	}
 	if req.Feeds != nil {
 		for _, f := range *req.Feeds {

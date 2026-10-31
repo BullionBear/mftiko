@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"errors"
+	"math/rand/v2"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -30,6 +31,14 @@ type Context interface {
 	//	log := ctx.Log()
 	//	log.Info().Msg("in a hook")
 	Log() zerolog.Logger
+	// Now is when the running hook started, in UTC. It does not move inside a hook. A replay returns
+	// the recorded start, so a strategy that reads the time through Now decides the same way again
+	// (E20-D004).
+	Now() time.Time
+	// Rand is the session's random source. Its seed is drawn once per worker and written to the
+	// event log; a replay seeds it the same, so the same draws in the same hooks repeat (E20-D004).
+	// It is not safe for concurrent use: draw from hooks only.
+	Rand() *rand.Rand
 
 	// ---------- instruments ----------
 
@@ -101,7 +110,9 @@ type Context interface {
 
 	// After schedules fn on the dispatcher. Repeats of one timer coalesce (E08-D003).
 	After(d time.Duration, fn func(Context))
-	// Post hands fn to the dispatcher from any goroutine. It is the only thread-safe entry.
+	// Post hands fn to the dispatcher from any goroutine. It is the only thread-safe entry. The event
+	// log numbers Posts in call order, and a replay runs the Post with the recorded number. Posts made
+	// from hooks get the same numbers again; Posts from the strategy's own goroutines may not (E20-D004).
 	Post(fn func(Context))
 	// Exit ends the session as DONE; Fail ends it as FAILED (PROTOCOL §5.3).
 	Exit()

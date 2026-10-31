@@ -361,6 +361,50 @@ func TestInfoConcurrentWithRefresh(t *testing.T) {
 	})
 }
 
+func TestInfoProtoRoundTrip(t *testing.T) {
+	call := instrument(3001, "Okx_Option_BTCUSD-261225-100000-C", "BTC-USD-261225-100000-C", 5, symbol.Tradable)
+	call.ContractSize = 0.1
+	call.Settle = "BTC"
+	call.ExpiryNs = 1_800_000_000_000_000_000
+	call.Strike = 100000
+	call.OptionType = "C"
+	call.Filters[symbol.MaxQty] = decimal.Absent()
+	for _, info := range []symbol.Info{spotBTC(0.1, symbol.Halted), call, listedOnly(4001)} {
+		got, err := InfoFromProto(InfoToProto(info))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Ticker != info.Ticker || got.ContractSize != info.ContractSize || got.Settle != info.Settle ||
+			got.ExpiryNs != info.ExpiryNs || got.Strike != info.Strike || got.OptionType != info.OptionType ||
+			got.Status != info.Status || got.UID != info.UID || got.ExchTicker != info.ExchTicker {
+			t.Fatalf("round trip\n got %+v\nwant %+v", got, info)
+		}
+		if len(got.Filters) != len(info.Filters) {
+			t.Fatalf("filters %v, want %v", got.Filters, info.Filters)
+		}
+		for name, v := range info.Filters {
+			if g, ok := got.Filters[name]; !ok || decimal.Has(g) != decimal.Has(v) || (decimal.Has(v) && g != v) {
+				t.Fatalf("filter %s: %v, want %v", name, g, v)
+			}
+		}
+	}
+	if !proto.Equal(InfoToProto(spotBTC(0.1, symbol.Tradable)), infoProto(spotBTC(0.1, symbol.Tradable))) {
+		t.Fatal("InfoToProto of a spot row is not the row SYM sends")
+	}
+}
+
+func TestSeedAnswersInfo(t *testing.T) {
+	c := openAt(t, newFake(), time.Hour)
+	c.Seed(spotBTC(0.1, symbol.Tradable))
+	info, err := c.Info(1001)
+	if err != nil || info.Ticker.String() != "Bybit_Spot_BTCUSDT" || info.Filters[symbol.PriceTick] != 0.1 {
+		t.Fatalf("seeded info %+v %v", info, err)
+	}
+	if _, err := c.Info(1002); !errors.Is(err, ErrUnknownUID) {
+		t.Fatalf("unseeded info: %v", err)
+	}
+}
+
 // waitFor polls cond until it holds. The short gap is only the pause between
 // observations; the test passes when cond is true, not when a duration elapses.
 func waitFor(t *testing.T, cond func() bool) {

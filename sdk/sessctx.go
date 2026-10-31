@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"errors"
+	"math/rand/v2"
 	"path/filepath"
 	"strings"
 	"time"
@@ -25,12 +26,13 @@ func (c *sessCtx) SessionID() string { return c.p.sessionID }
 
 func (c *sessCtx) Params() []byte { return append([]byte(nil), c.p.params...) }
 
-func (c *sessCtx) Resolve(ticker string) (symbol.Info, error) {
-	if c.p.sym == nil {
-		return symbol.Info{}, ErrStopping
-	}
-	info, err := c.p.sym.Resolve(c.p.resolveCtx(), ticker)
-	return info, asSDK(err)
+func (c *sessCtx) Resolve(ticker string) (symbol.Info, error) { return c.p.resolve(ticker) }
+
+func (c *sessCtx) Now() time.Time { return c.p.stepNow() }
+
+func (c *sessCtx) Rand() *rand.Rand {
+	c.p.rngOnce.Do(func() { c.p.rng = rand.New(rand.NewPCG(c.p.seed, 0)) })
+	return c.p.rng
 }
 
 func (c *sessCtx) Info(uid uint32) (symbol.Info, error) {
@@ -184,7 +186,7 @@ func (c *sessCtx) Post(fn func(Context)) {
 	if fn == nil || c.p.disp == nil {
 		return
 	}
-	_ = c.p.disp.PushTD(func() { c.p.inHook("Post", func() { fn(c) }) })
+	_ = c.p.disp.Post(func() { c.p.inHook("Post", func() { fn(c) }) })
 }
 
 func (c *sessCtx) Exit() {

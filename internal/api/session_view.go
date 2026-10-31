@@ -121,6 +121,7 @@ func (s *Server) specView(spec *sessionv1.SessionSpec) apiv1.SessionSpecView {
 		Inputs:        inputs,
 		Restart:       restartView(spec.GetRestart()),
 		Limits:        limitsView(spec.GetLimits()),
+		EventLog:      eventLogView(spec.GetEventLog()),
 		DepsTimeoutS:  int(spec.GetDepsTimeoutS()),
 		StartTimeoutS: int(spec.GetStartTimeoutS()),
 		RecvWindowMs:  int(spec.GetRecvWindowMs()),
@@ -172,6 +173,12 @@ func limitsView(p *sessionv1.Limits) apiv1.Limits {
 	vol := int(p.GetVolumeMb())
 	hook := int(p.GetHookTimeoutS())
 	return apiv1.Limits{MemoryMb: &mem, Gomaxprocs: &procs, VolumeMb: &vol, HookTimeoutS: &hook}
+}
+
+func eventLogView(p *sessionv1.EventLog) apiv1.EventLog {
+	on := p.GetEnabled()
+	keep := int(p.GetKeepMb())
+	return apiv1.EventLog{Enabled: &on, KeepMb: &keep}
 }
 
 func (s *Server) dependencies(views map[string]state.View, view state.View, sts, id string, st *statev1.SessionStatus) []apiv1.Dependency {

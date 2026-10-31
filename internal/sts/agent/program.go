@@ -206,6 +206,10 @@ func (p *Program) Init(key agent.WorkerKey, spec Spec, _ Live) (*workerv1.Init, 
 	if msg.GetStrategy() != nil {
 		strategy = proto.Clone(msg.GetStrategy()).(*sessionv1.StrategyRef)
 	}
+	var eventLog *sessionv1.EventLog
+	if msg.GetEventLog() != nil {
+		eventLog = proto.Clone(msg.GetEventLog()).(*sessionv1.EventLog)
+	}
 	payload := &stsctlv1.InitPayload{
 		SessionId: id, StsInstance: p.Instance, Name: msg.GetName(),
 		Strategy: strategy,
@@ -216,6 +220,7 @@ func (p *Program) Init(key agent.WorkerKey, spec Spec, _ Live) (*workerv1.Init, 
 		},
 		RecvWindowMs: orU32(msg.GetRecvWindowMs(), p.RecvWindowMS),
 		HookTimeoutS: hookTimeoutS(msg, p.HookTimeoutS),
+		EventLog:     eventLog,
 	}
 	raw, err := proto.Marshal(payload)
 	if err != nil {
