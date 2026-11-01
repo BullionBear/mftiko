@@ -50,6 +50,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-seal             makes a TD instance's key pair and seals account credentials to it
   mftiko-conformance      SDK conformance suite
   mftiko-eventlog         dumps a Go strategy's event log as JSON lines, offline (PROTOCOL §12)
+  mftiko-latency-exporter  Prometheus latency metrics from session event logs (E17-D001–E17-D006)
   mftiko-md-accept        drives the MD feed-path acceptance (deploy/accept)
   mftiko-td-accept        drives the TD trading-path acceptance (deploy/accept)
   mftiko-api-accept       drives the end-to-end acceptance through mftiko-api (deploy/accept)
