@@ -1,6 +1,6 @@
-# Prometheus for the dev stack (DECISIONS E12-D038, E16-D008). It scrapes the API's /metrics, the
-# only mftiko endpoint with metrics, without a bearer, evaluates mftiko.rules.yml and sends to the dev
-# Alertmanager, the same one Loki's ruler sends to.
+# Prometheus for the dev stack (DECISIONS E12-D038, E16-D008, E17-D006). It scrapes the API's
+# /metrics and mftiko-latency-exporter, both without a bearer, evaluates mftiko.rules.yml and sends
+# to the dev Alertmanager, the same one Loki's ruler sends to. The latency job has no rules.
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
@@ -20,3 +20,9 @@ scrape_configs:
     honor_labels: true
     static_configs:
       - targets: ["api:8080"]
+  # sts1's latency exporter (E17-D006). It listens on its container address, not on a wildcard.
+  # Series labels are session_id, kind and outcome (E17-D004); instance is this target, so this
+  # job does not set honor_labels. No alert reads these series.
+  - job_name: mftiko-latency
+    static_configs:
+      - targets: ["latency:9095"]

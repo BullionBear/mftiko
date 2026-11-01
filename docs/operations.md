@@ -57,6 +57,7 @@
 | `mftiko-md-agent.service` | `mftiko-md` | `KillMode=process`，`OOMPolicy=continue`，`TimeoutStopSec=30s` |
 | `mftiko-td-agent.service` | `mftiko-td` | 同上 |
 | `mftiko-sts-agent.service` | `mftiko-sts` | 同上 |
+| `mftiko-latency-exporter.service` | `mftiko-sts` | 預設 `KillMode=control-group`。沒有子行程。見[延遲 exporter](#延遲-exporter) |
 | `mftiko-controller.service` | `mftiko-controller` | 預設 `KillMode=control-group` |
 | `mftiko-api.service` | `mftiko-api` | 預設 `KillMode=control-group`。console 是 `-web /opt/mftiko/current/web`，沒有另一個 unit |
 | `mftiko-sym.service` | `mftiko-sym` | 預設 `KillMode=control-group` |
@@ -93,6 +94,7 @@ agent 的 unit 另外：
 | sts-agent | `MFTIKO_STS_DATA_REPOSITORY`（可省略） | 資料 artifact 的完整路徑 `host/path`。空的表示非空 volume 一直重試 |
 | sts-agent | `MFTIKO_MAX_UNPACKED_BYTES`、`MFTIKO_MAX_UNPACKED_FILES`（可省略） | 一個 rootfs 或一個 input 解開後的大小與 entry 數。省略或 0 是 4 GiB、100,000。負值讓 agent 不啟動。unit 不展開這兩個變數，行程把它們當 `-max-unpacked-bytes`、`-max-unpacked-files` 的預設。要與 `mftiko-pack data` 的同名旗標一起調。rootfs 與每個 input 各自比 |
 | sts-agent | `MFTIKO_LOG_TOKEN_SHA256`；`MFTIKO_LOG_LISTEN`、`MFTIKO_LOG_ADVERTISE`、`MFTIKO_LOG_MAX_STREAMS`、`MFTIKO_LOG_MAX_RATE`、`MFTIKO_LOG_MAX_BYTES`、`MFTIKO_LOG_KEEP`（可省略，unit 有預設） | log token 的 SHA-256，64 個小寫 hex。其餘見 [session log 端點](#session-log-端點) |
+| mftiko-latency-exporter | `MFTIKO_LATENCY_ADDR` | 私有的 `host:port`。見[延遲 exporter](#延遲-exporter) |
 | API | `MFTIKO_COOKIE_KEY`、`MFTIKO_POSTGRES_DSN` | cookie 的 HMAC 金鑰、Postgres DSN。log token 不在 env，是檔案 `/etc/mftiko/api/log-token` |
 | SYM | `DATABASE_URL`、`NATS_URL` | `-nats-creds` 固定 `/etc/mftiko/sym/nats.creds`，即 `mftiko-nats-dev` 的 `creds/sym-{inst}.creds`（E12-D079）。`MFTIKO_SYM_FEEDS` 可省略，省略就是全部 feed |
 | etcd | `/etc/etcd/etcd.env` 的 `ETCD_NAME`、`ETCD_LISTEN_CLIENT_URLS`、`ETCD_ADVERTISE_CLIENT_URLS`、`ETCD_LISTEN_PEER_URLS`、`ETCD_INITIAL_ADVERTISE_PEER_URLS`、`ETCD_INITIAL_CLUSTER`、`ETCD_INITIAL_CLUSTER_STATE`、`ETCD_AUTH_TOKEN` | 資料目錄由 unit 設成 `/var/lib/etcd`，env 不要改 `ETCD_DATA_DIR` |
@@ -365,7 +367,7 @@ ls -l /var/backups/mftiko/etcd/*/
 
 ## 監控與告警
 
-依 [DECISIONS.md](DECISIONS.md) E12-D038–E12-D043（E12-10，#383）、E12-D062–E12-D066（#401）與 E12-D069–E12-D071（#403）。mftiko 只輸出自己的狀態。磁碟、CPU、記憶體用 node_exporter，不在 mftiko 裡。mftiko 不打 webhook，也不自己判斷門檻。規則是**範例**：`for` 與門檻由部署端決定。
+依 [DECISIONS.md](DECISIONS.md) E12-D038–E12-D043（E12-10，#383）、E12-D062–E12-D066（#401）與 E12-D069–E12-D071（#403）。mftiko 只輸出自己的狀態。磁碟、CPU、記憶體用 node_exporter，不在 mftiko 裡。延遲是每台 STS 主機上的 `mftiko-latency-exporter`，見[延遲 exporter](#延遲-exporter)（E17-D001）。mftiko 不打 webhook，也不自己判斷門檻。規則是**範例**：`for` 與門檻由部署端決定。
 
 `GET /metrics` 與 `HEAD /metrics` 在 API server，跟 `/healthz` 一樣不認證、不記稽核、不在 OpenAPI。靜態目錄裡若有一個叫 `metrics` 的檔，不會被這個路徑送出去。刮取不帶 bearer。
 
@@ -395,7 +397,7 @@ scrape_configs:
 
 `WorkerStatus` 沒有 `PENDING`、`DEAD` 這兩個 phase。需求項目的狀態是另一個東西：`BACKOFF` 期間需求是 `PENDING`；政策放棄之後的 `EXITED` 對到 `DEAD`；`LOST` 維持最後一次的項目狀態。MD 行程內換 `conn_epoch`、TD 行程內 `DEGRADED`，都不改 `WorkerStatus` 的 phase，也不是 `DEAD`。md conn worker 的 NATS 斷線改的是 `conditions`，不是 phase，也不是 feed 的 `READY`。TD、STS 沒有 `mftiko_worker_bus_up`。API 不連 NATS，也不探測交易所。
 
-範例規則在 [`deploy/dev/prometheus/mftiko.rules.yml`](../deploy/dev/prometheus/mftiko.rules.yml)，`make dev-up` 的 Prometheus 載入同一份，這裡不另外抄（E16-D022）。抓取設定在同一個目錄的 `prometheus.yml`；`job_name` 要是 `mftiko-api`，`MftikoAPIDown` 看的是它。檔裡的 `for` 一律 30 秒，好在 dev 上走通（E16-D024）。正式環境從下表的 `for` 開始調：
+範例規則在 [`deploy/dev/prometheus/mftiko.rules.yml`](../deploy/dev/prometheus/mftiko.rules.yml)，`make dev-up` 的 Prometheus 載入同一份，這裡不另外抄（E16-D022）。抓取設定在同一個目錄的 `prometheus.yml`；`job_name` 要是 `mftiko-api`，`MftikoAPIDown` 看的是它。`mftiko-latency` 是延遲 exporter，這份規則檔沒有它的告警（E17-D006）。檔裡的 `for` 一律 30 秒，好在 dev 上走通（E16-D024）。正式環境從下表的 `for` 開始調：
 
 | 告警 | 正式環境的 `for` 起點 |
 |---|---|
@@ -425,6 +427,131 @@ Prometheus 與 Loki 的 ruler 送同一個 Alertmanager（E16-D008）。策略 l
 | registry 不可用時 spawn 新的 worker | 需求項目維持 `PENDING`（那是項目狀態，不是 `worker_phase`）。API 建立或列出策略回 `registry_unavailable`。`mftiko_registry_up` 維持 0 | 不另設 registry 告警 |
 | 只有 STS agent 連不到 registry | 非 terminal 的 `SessionStatus` 有 `artifact_pull`，`mftiko_artifact_pull_failing` 是 1。`mftiko_registry_up` 維持 0 | `MftikoArtifactPullFailing` |
 | 磁碟用量 | node_exporter 的檔案系統剩餘比例。mftiko 不輸出這項 | `MftikoDiskLow` |
+
+## 延遲 exporter
+
+依 [DECISIONS.md](DECISIONS.md) E17-D001–E17-D006（E17，#477、#506、#507）。每台 STS 主機一個 `mftiko-latency-exporter`。它 tail 各 session 的 `$MFTIKO_VOLUME_DIR/eventlog/*.mel`（PROTOCOL §12），用 `sdk/eventlog` reader 解框，在 `-metrics-addr` 上提供 `GET /metrics` 與 `HEAD /metrics`。不改 SDK，不碰下單與行情的熱路徑。沒開 event log 的 session 沒有 `eventlog/`，略過（E17-D005）。
+
+範例告警先不做（E17-D006）。[`deploy/dev/prometheus/mftiko.rules.yml`](../deploy/dev/prometheus/mftiko.rules.yml) 沒有這些系列的規則。
+
+### 跟 node_exporter、API `/metrics` 一起看
+
+三個來源各看一件事，刮取時並存。exporter 不取代另外兩個（E17-D001）。
+
+| 來源 | 看什麼 |
+|---|---|
+| node_exporter | 主機的磁碟、CPU、記憶體，以及行程自己的數字。mftiko 不輸出這些。範例 `MftikoDiskLow` 讀 node_exporter 的檔案系統剩餘比例。dev compose 不跑 node_exporter |
+| API `GET /metrics` | 平台與 agent 的狀態（E12-D038）：agent 在不在、worker phase、region、Postgres。agent 不開 metric 端點 |
+| `mftiko-latency-exporter` | 下面的延遲 histogram 與缺號 counter。手寫 Prometheus text，沒有 Go runtime，也沒有 process metric |
+
+主機與行程的門檻仍放在 node_exporter 上。exporter 行程自己的 CPU、記憶體也看 node_exporter，不看它的 `/metrics`。
+
+### 指標
+
+E17-D003。標籤只有 `session_id`、`kind`、`outcome`（E17-D004），不放 symbol、order id。一個系列沒用到的標籤不出現。
+
+| metric | 型別 | 標籤 | 意義 |
+|---|---|---|---|
+| `mftiko_md_hook_delay_seconds` | histogram | `session_id`、`kind` | md 收到到 hook 開始（`t_ns − recv_ns`）。`kind` 是 `md_feed` 或 `md_book` |
+| `mftiko_hook_duration_seconds` | histogram | `session_id`、`kind` | hook 執行時間，輸入的 `t_ns` 到 `hook_end`。`kind` 是輸入的 kind |
+| `mftiko_exch_hook_delay_seconds` | histogram | `session_id`、`kind` | `exch_ts_ns` 到 hook 開始。沒有 `exch_ts_ns` 的框不計。`kind` 是 `md_feed` 或 `md_book` |
+| `mftiko_order_ack_seconds` | histogram | `session_id`、`outcome` | `order_call` 到 `order_reply`。`outcome` 是 `accepted` 或 `local_reject`（1xx） |
+| `mftiko_order_exchange_seconds` | histogram | `session_id`、`outcome` | `order_call` 到以 `client_order_id` 對上的第一個交易所 `td_event`（`recv_ns`）。`outcome` 是 `new`、`accepted` 或 `rejected` |
+| `mftiko_order_reply_total` | counter | `session_id`、`outcome` | 逾時或沒有 responder。`outcome` 是 `timeout` 或 `no_responders` |
+| `mftiko_eventlog_rec_gap_total` | counter | `session_id` | `rec_seq` 缺號：寫入端丟掉，或檔在讀到之前被刪 |
+| `mftiko_md_seq_gap_total` | counter | `session_id`、`kind` | 同一個 feed、同一個 `conn_epoch` 裡 envelope `Seq` 跳號。`kind` 是 `md_feed` 或 `md_book` |
+
+跨主機拆段（`exch_ts → td_ts → recv_ns`）與 TD 送出到交易所不做，留給 E18。
+
+Prometheus 另外加上 `job` 與 `instance`。`instance` 是刮取目標的位址，系列自己不帶 `instance`，所以這個 job 不要抄 API 的 `honor_labels: true`。有開 event log、紀錄裡真的有對應的框，`_count` 才有系列。沒有樣本的 family 仍有 `# HELP` 與 `# TYPE`。
+
+行程重啟後從頭讀磁碟上還留著的檔，數字是那些檔的內容。比上一刮小的 counter，Prometheus 當成 reset。
+
+### 權限
+
+`eventlog/` 是 `0750`，`.mel` 是 `0640`（PROTOCOL §12）。建立它們的是 session worker，擁有者與 group 都是 `mftiko-sts`。目錄與檔的 group 讀取是開著的。
+
+上層 `sessions/<id>/volume` 是 `0700`。STS agent 每次準備 session 都把它設回 `0700`（E09-D077），設在上面的 setgid 會被清掉。group 的執行位元不在 `volume/` 上，所以把另一個使用者加進 `mftiko-sts` 或 `mftiko-ops` 仍然走不進 `eventlog/`。exporter 以 `mftiko-sts` 跑，跟 worker 同一個使用者：用擁有者權限走進 `volume/`，讀 group 可讀的 `eventlog/`。不要為了 exporter 改 `volume/` 的 mode，下一輪 agent 會把它改回去。不要把 exporter 放進 `mftiko-ops`。那個 group 只讀 `${WORK_DIR}/log`（[Alloy 的權限](#alloy-的權限)）。
+
+一期與策略相同，這個使用者讀得到 sts-agent 的祕密檔（E12-D004）。exporter 只開 `eventlog/`。
+
+有開過 event log 的 session 時，用這個確認讀得到：
+
+```sh
+sudo -u mftiko-sts ls /var/lib/mftiko/sts-agent/sessions/*/volume/eventlog
+```
+
+### 部署
+
+binary 在伺服器 tarball 的 `bin/mftiko-latency-exporter`（[release.md](release.md)）。`mftiko-eventlog` 仍不進 tarball，那是離線的 dump（PROTOCOL §12.7）。unit 是 [`deploy/systemd/mftiko-latency-exporter.service`](../deploy/systemd/mftiko-latency-exporter.service)。`mftiko-release switch` 會安裝它。重啟清單仍是 E12-D024 的那幾個，不含這個 unit：換版之後對已經 enable 的執行 `systemctl restart mftiko-latency-exporter`，否則跑著的還是換版前的 inode。
+
+`-metrics-addr` 是 `host:port`。只收 loopback、link-local，或 RFC1918（`10.0.0.0/8`、`172.16.0.0/12`、`192.168.0.0/16`）。`0.0.0.0`、`::`、公網位址，以及 `100.64.0.0/10` 會讓行程退出，不聽 port。主機之間若只靠 tailscale 的 `100.64` 位址，要另有一個上面收的位址給它聽，而且跑 Prometheus 的主機要走得到那個位址。`-data` 與 STS agent 的 `-data` 是同一個目錄；unit 裡是 `/var/lib/mftiko/sts-agent`。沒有自己的狀態目錄。
+
+設定只有位址，在 `/etc/mftiko/latency-exporter/env`（0600，root），變數 `MFTIKO_LATENCY_ADDR`。在每台 STS 主機上，以 root：
+
+```sh
+install -d -o root -g mftiko-sts -m 0750 /etc/mftiko/latency-exporter
+umask 077
+printf '%s\n' 'MFTIKO_LATENCY_ADDR=10.0.0.12:9095' >/etc/mftiko/latency-exporter/env
+systemctl enable --now mftiko-latency-exporter
+```
+
+`10.0.0.12` 換成這台主機上、Prometheus 走得到的私有位址。port 自定；dev 用 9095。
+
+聽的 port 只放行跑 Prometheus 的主機。明文 HTTP，一期不開 TLS，與 etcd、NATS 一樣只走私有網路或 VPN（E12-D052、E17-D006）。
+
+Prometheus 在 API 那個 job 之外再加一個，不帶 bearer。每台 STS 主機一個 target。
+
+```yaml
+scrape_configs:
+  - job_name: mftiko-latency
+    static_configs:
+      - targets: ["10.0.0.12:9095"]
+```
+
+`up{job="mftiko-latency"}` 是 Prometheus 自己的：exporter 起不來是 0。要不要為它告警由部署端定，repo 裡沒有範例。
+
+確認：從 Prometheus 那台 `curl -fsS http://10.0.0.12:9095/metrics`，看得到 `# TYPE mftiko_md_hook_delay_seconds histogram`。開了 event log 的 session 跑過、紀錄裡有對應的框之後，PromQL 查得到 `_count`。
+
+### dev
+
+`make dev-up` 加一個 `latency` 服務，跟 sts1 一樣以 nobody（65534）跑，唯讀掛同一份 volume。`-metrics-addr` 是該容器在 compose 網路上的私有位址（`172.16.0.0/12` 裡的一個），port 9095 不對主機發布。Prometheus 的 job `mftiko-latency` 刮 `latency:9095`。查詢走 Prometheus 的 UI，`http://127.0.0.1:9090`。
+
+沒有 feeds、沒有 accounts 的 session 會跑起來（[上傳資料 artifact](#上傳資料-artifact) 的 dev）。`examples/strategies/hello` 在 params 是空的時候，`OnInit` 直接返回，不訂行情、不下單。開了 event log 就有 hook 的 histogram。md 與 order 的系列要紀錄裡真的有那些框。
+
+CLI 的 context 與 `mftiko login` 見 [cli.md](cli.md)。dev 的 token 在 `deploy/dev/data/api/token`。
+
+```sh
+make dev-up
+make migrate-up
+make build
+bin/mftiko-pack -bin bin/linux/examples/hello -name hello -repo 127.0.0.1:5000/strategies/hello -tag dev -plain-http
+```
+
+`eventlog.yaml`：
+
+```yaml
+name: eventlog
+sts_instance: sts1
+strategy:
+  repository: registry:5000/strategies/hello
+  ref: dev
+params: {}
+event_log:
+  enabled: true
+  keep_mb: 1
+restart:
+  mode: never
+```
+
+```sh
+bin/mftiko session create -f eventlog.yaml --wait running
+# 等過一次刮取（dev 15 秒），再查 hook 的 histogram：
+curl -fsSG http://127.0.0.1:9090/api/v1/query --data-urlencode 'query=mftiko_hook_duration_seconds_count'
+bin/mftiko session end <session_id> --wait --yes
+```
+
+`keep_mb: 1` 比 volume 上限小。`params: {}` 是空的物件，平台不解讀。
 
 ## 策略 log 與告警
 
@@ -505,7 +632,7 @@ sudo -u alloy ls -l /var/lib/mftiko/sts-agent/log/sts/  # 讀得到，檔的 gro
 | [`loki/mftiko.rules.yml`](../deploy/dev/loki/mftiko.rules.yml) | `for`（dev 30s）、窗口 `[5m]` 與門檻 `> 0` 由部署端定（E12-D039）。一行讓條件成立一個窗口那麼久，所以 `for` 要短於窗口，否則只有一行時永遠不響。要多幾行才叫，就提高門檻 |
 | [`loki/loki.yaml`](../deploy/dev/loki/loki.yaml) | 儲存的目錄（`common.path_prefix` 以下）放到主機 A 的資料磁碟。`limits_config.retention_period`（dev 24h，[Loki 的保留期](#loki-的保留期)）。`ruler.alertmanager_url` 指到主機 A 的 Alertmanager，`ruler.evaluation_interval`（dev 15s，Loki 預設 1m）。規則檔放在 `ruler.storage.local.directory` 底下租戶的目錄；auth 關著時租戶是 `fake`，dev 掛在 `/etc/loki/rules/fake/`。`discover_service_name: []` 保留，stream label 才只有上面那幾個。`ruler.external_url` 設成 Grafana 的網址、`ruler.datasource_uid` 設成 Grafana 裡 Loki datasource 的 uid：通知的 `Source` 連結才打得開 Explore 並選好 Loki。沒設時連結是 `/explore?…` 的相對路徑（E16-D038） |
 | [`alertmanager/alertmanager.yml`](../deploy/dev/alertmanager/alertmanager.yml) | receiver 換成 Discord（[下面](#discord)）。`group_wait`（dev 10s，Alertmanager 預設 30s）。`group_interval` 5m、`repeat_interval` 4h 是放寬過的起點，一個策略一直寫 error 時不洗版（E16-D009）。`inhibit_rules` 照抄 |
-| [`prometheus/`](../deploy/dev/prometheus) | `mftiko_*` 的規則與刮取，見[監控與告警](#監控與告警)。`alerting` 指到主機 A 的 Alertmanager |
+| [`prometheus/`](../deploy/dev/prometheus) | `mftiko_*` 的規則與刮取，見[監控與告警](#監控與告警)。`mftiko-latency` 的 target 見[延遲 exporter](#延遲-exporter)。`alerting` 指到主機 A 的 Alertmanager |
 
 ### 在已經有 log 的主機加上 Alloy
 
@@ -599,7 +726,7 @@ Discord 的訊息用 Alertmanager 預設的範本：告警名稱、label 與 ann
 
 ### dev 與 smoke
 
-- `make dev-up` 跑 Alloy、Loki、Prometheus、Alertmanager 與假接收端 `mftiko-webhook-dev`。每則通知（含 resolved）是 `deploy/dev/data/webhook/received.jsonl` 的一行（E16-D021）。Loki 在 `http://127.0.0.1:3100`，Alertmanager 在 `http://127.0.0.1:9093`。dev 的 `md1`、`td1` 沒有跑，`MftikoAgentDown` 對它們一直響（E16-D029）。
+- `make dev-up` 跑 Alloy、Loki、Prometheus、Alertmanager 與假接收端 `mftiko-webhook-dev`，也跑 `mftiko-latency-exporter`（[延遲 exporter](#延遲-exporter)）。每則通知（含 resolved）是 `deploy/dev/data/webhook/received.jsonl` 的一行（E16-D021）。Loki 在 `http://127.0.0.1:3100`，Alertmanager 在 `http://127.0.0.1:9093`。dev 的 `md1`、`td1` 沒有跑，`MftikoAgentDown` 對它們一直響（E16-D029）。
 - `make dev-alert-smoke`（先 `make dev-up`、`make migrate-up`）以 repo 的 `examples/strategies/conform` 開三個 session，讓 R1、R2、R5 各響一則：確認假接收端收到、照 `logs` 查得回 session。R2 的那一行是 smoke 附加到 session 的 stderr 的，不是真的 panic。接著停掉 sts1，確認 Alertmanager 有 `MftikoAgentDown{instance="sts1"}`、三則策略告警被它抑制、假接收端收到它，最後把 sts1 啟動回來（E16-D032–E16-D035）。約兩分鐘。
 - 它會停 sts1 約一分鐘，sts1 有跑著的 session 時不跑。上一次停 sts1 的 `MftikoAgentDown` 還沒送出 resolved 時，先等它，最多 6 分鐘。通過時刪掉自己的 session，失敗時留著並印出 id。
 

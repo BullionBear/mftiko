@@ -56,7 +56,7 @@ GitHub → BullionBear → Organization Settings → Packages → Package creati
 - 腳本 [`.github/scripts/build-server.sh`](../.github/scripts/build-server.sh)。`make server-dist` 跑它，預設寫到 `bin/dist/`。`release.yml` 的 `cli` job 先建 CLI tarball，再 `make web`、跑同一支腳本，然後把兩種 tarball 與一份 `SHA256SUMS` 一起上傳。`SHA256SUMS` 在兩者都在輸出目錄之後重算，涵蓋全部 `*.tar.gz`。
 - 產物是 `mftiko-server_<tag>_linux_amd64.tar.gz`。`CGO_ENABLED=0`、`-trimpath`，`-ldflags` 注入 `internal/platform/buildinfo`。部署機不需要 Go 與 Node。
 - **內容：**
-  - `bin/`：`mftiko-md-agent`、`mftiko-td-agent`、`mftiko-sts-agent`、`mftiko-shim`、`mftiko-controller`、`mftiko-api`、`mftiko-sym`、`mftiko-mdfetch`、`mftiko-migrate`、`mftiko-etcd-roles`、`mftiko-etcd-backup`、`mftiko-retire-clean`、`mftiko-seal`、`mftiko-release`。
+  - `bin/`：`mftiko-md-agent`、`mftiko-td-agent`、`mftiko-sts-agent`、`mftiko-shim`、`mftiko-controller`、`mftiko-api`、`mftiko-sym`、`mftiko-mdfetch`、`mftiko-migrate`、`mftiko-etcd-roles`、`mftiko-etcd-backup`、`mftiko-retire-clean`、`mftiko-seal`、`mftiko-latency-exporter`、`mftiko-release`。
   - `web/`：`make web` 的結果（`web/build`），給 `mftiko-api -web`。
   - `systemd/`：`deploy/systemd/` 裡的 unit，不含點開頭的檔。目錄可以是空的，#378 才放檔。
 - 不放：conn 與 account worker（agent 從 registry 拉，E12-02）、CLI、`*-accept`、`mftiko-conformance`、`mftiko-nats-dev`、`mftiko-webhook-dev`、`mftiko-alert-smoke`、`mftiko-pack`、`mftiko-eventlog`（策略事件紀錄的離線 dump，以 `go install` 取得，PROTOCOL §12.7）。
@@ -86,7 +86,7 @@ tarball 裡的 `bin/mftiko-release`，在部署機以 root 執行。
 1. 執行 `releases/<tag>/bin/mftiko-migrate up`。它讀繼承的 `DATABASE_URL`（與 `-database` 的預設相同），腳本不另傳 `-database`。失敗則 `current`、unit、行程都不動。
 2. 把該版 `systemd/` 的 unit 複製到 `/etc/systemd/system/`（`*.service`、`*.socket`、`*.timer`、`*.target`、`*.path`、`*.mount`、`*.slice` 與 `*.service.d`、`*.socket.d`、`*.timer.d`）。同名覆寫；這版沒有的 unit 不刪。然後 `daemon-reload`。
 3. 原子換掉 `current`。`previous` 記的是換之前的 tag。
-4. 只重啟本機 `systemctl is-enabled` 成功的 unit。順序是 `mftiko-sym`、`mftiko-mdfetch`、`mftiko-api`、`mftiko-controller`、`mftiko-md-agent`、`mftiko-td-agent`、`mftiko-sts-agent`。對哪個檔由 `ExecStart`、`ExecStartPre`、`ExecStartPost` 是否含該 binary 決定（註解不算），不靠檔名，所以 #378 可以自己取檔名。etcd、NATS、Postgres 的 unit 不執行這些 binary，不會被重啟。
+4. 只重啟本機 `systemctl is-enabled` 成功的 unit。順序是 `mftiko-sym`、`mftiko-mdfetch`、`mftiko-api`、`mftiko-controller`、`mftiko-md-agent`、`mftiko-td-agent`、`mftiko-sts-agent`。對哪個檔由 `ExecStart`、`ExecStartPre`、`ExecStartPost` 是否含該 binary 決定（註解不算），不靠檔名，所以 #378 可以自己取檔名。etcd、NATS、Postgres 的 unit 不執行這些 binary，不會被重啟。`mftiko-latency-exporter` 的 unit 會被安裝，不在這份重啟清單裡（E12-D024）；換版之後另外 `systemctl restart mftiko-latency-exporter`，見 [operations.md](operations.md#延遲-exporter)。
 5. 上面都成功才 `gc`。重啟失敗不 gc；`current` 已經指到新版。
 
 兩台主機都跑 migrate。`mftiko-migrate up` 依編號套用嵌入的 `migrations/*.up.sql`，已紀錄且 sha256 相符的跳過，所以可以重複執行。每個檔案與 `schema_migrations` 的一列在同一個交易；先拿 `pg_advisory_lock`，兩台一次只跑一個。已套用檔案的 sha256 或 name 與紀錄不同，或紀錄沒有對應檔案，就以非 0 結束，`switch` 停在第 1 步，`current` 不動。沒有 `down`。migration 只做向後相容的新增，不支援不能放進交易的 SQL。沒有本機 Postgres 的主機把 `DATABASE_URL` 指到 home 的資料庫。

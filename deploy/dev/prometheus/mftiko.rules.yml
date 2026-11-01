@@ -4,6 +4,7 @@
 #
 # Every for is 30s so the dev stack fires quickly (E16-D024). docs/operations.md lists what to start
 # from in production. MftikoDiskLow reads node_exporter, which the dev stack does not run.
+# The latency exporter's series are scraped and have no rules here (E17-D006).
 groups:
   - name: mftiko.example
     rules:

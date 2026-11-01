@@ -955,6 +955,7 @@ func TestUnitKeys(t *testing.T) {
 		"etcd.service",
 		"mftiko-api.service",
 		"mftiko-controller.service",
+		"mftiko-latency-exporter.service",
 		"mftiko-md-agent.service",
 		"mftiko-sts-agent.service",
 		"mftiko-sym.service",
@@ -1053,6 +1054,23 @@ func TestUnitKeys(t *testing.T) {
 	for _, want := range []string{"-log-token", "/etc/mftiko/api/log-token"} {
 		if !containsStr(apiExec, want) {
 			t.Fatalf("mftiko-api ExecStart has no %s: %v", want, apiExec)
+		}
+	}
+	lat := got["mftiko-latency-exporter.service"]
+	if v, _ := lookup(lat, "[Service]", "User"); v != "mftiko-sts" {
+		t.Fatalf("mftiko-latency-exporter User=%q", v)
+	}
+	if _, ok := lookup(lat, "[Service]", "StateDirectory"); ok {
+		t.Fatal("mftiko-latency-exporter sets StateDirectory")
+	}
+	latExec := fields(lookupMust(t, lat, "mftiko-latency-exporter.service", "ExecStart"))
+	for _, want := range []string{
+		"/opt/mftiko/current/bin/mftiko-latency-exporter",
+		"-metrics-addr", "${MFTIKO_LATENCY_ADDR}",
+		"-data", "/var/lib/mftiko/sts-agent",
+	} {
+		if !containsStr(latExec, want) {
+			t.Fatalf("mftiko-latency-exporter ExecStart has no %s: %v", want, latExec)
 		}
 	}
 
