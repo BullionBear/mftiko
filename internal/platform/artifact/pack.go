@@ -40,8 +40,9 @@ type Image struct {
 	Layer    []byte
 }
 
-// PackStrategy packs a Go strategy binary into one reproducible OCI image (E09-D002, E09-D035–E09-D038).
-// It does not push. env may be nil. The manifest is checked with CheckLaunchFields before the
+// PackStrategy packs a strategy binary into one reproducible OCI image (E09-D002, E09-D035–E09-D038).
+// The binary is Go, or another SDK's that embeds an mftiko.sdk= record; runtime and sdk come from
+// strategySDK (E09-D099). It does not push. env may be nil. The manifest is checked with CheckLaunchFields before the
 // image is built (E09-D041).
 func PackStrategy(binary []byte, name string, env map[string]string) (Image, error) {
 	if name == "" {
@@ -55,7 +56,7 @@ func PackStrategy(binary []byte, name string, env map[string]string) (Image, err
 	if err != nil {
 		return Image{}, err
 	}
-	version, err := sdkVersion(binary)
+	sdk, err := strategySDK(binary)
 	if err != nil {
 		return Image{}, err
 	}
@@ -66,12 +67,12 @@ func PackStrategy(binary []byte, name string, env map[string]string) (Image, err
 		Schema:     Schema,
 		Kind:       KindStrategy,
 		Name:       name,
-		Runtime:    "go",
+		Runtime:    sdk.Lang,
 		OS:         osName,
 		Arch:       arch,
 		Entrypoint: []string{strategyEntrypoint},
 		Env:        env,
-		SDK:        SDK{Lang: "go", Version: version},
+		SDK:        sdk,
 		Contracts:  contracts,
 	}
 	if err := m.CheckLaunchFields(); err != nil {
@@ -240,6 +241,26 @@ func fileLayer(name string, binary []byte) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// strategySDK is the SDK a strategy binary was built with, which is also its runtime
+// (E09-D099). An embedded mftiko.sdk= record wins; without one the binary is Go and
+// the version is the mftiko module's in its buildinfo (E09-D002). The record wins
+// even when buildinfo is present, so a non-Go SDK that also carries Go buildinfo is
+// still packed as itself.
+func strategySDK(binary []byte) (SDK, error) {
+	sdk, ok, err := embeddedSDK(binary)
+	if err != nil {
+		return SDK{}, err
+	}
+	if ok {
+		return sdk, nil
+	}
+	version, err := sdkVersion(binary)
+	if err != nil {
+		return SDK{}, err
+	}
+	return SDK{Lang: "go", Version: version}, nil
 }
 
 func sdkVersion(binary []byte) (string, error) {

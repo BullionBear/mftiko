@@ -14,7 +14,7 @@ var ErrNoContracts = errors.New("artifact: no embedded contracts list")
 // ErrContractsConflict means the binary embeds two different contracts lists.
 var ErrContractsConflict = errors.New("artifact: embedded contracts lists disagree")
 
-// embeddedContracts reads the list sdk writes into a Go strategy binary (E09-D035).
+// embeddedContracts reads the list an SDK writes into a strategy binary (E09-D035, E09-D099).
 // The marker is contractsMarkerPrefix, the comma-separated majors, and a newline.
 // Identical copies are one list. Copies that disagree are an error.
 func embeddedContracts(binary []byte) ([]string, error) {
