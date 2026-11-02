@@ -8,6 +8,7 @@
 # The controller and sts1 run sessions that have no feeds and no accounts (E15-10); md1 and td1 are not run.
 # Alloy, Loki, Prometheus and Alertmanager alert on sts1's strategy logs and on the API's metrics, and send
 # every alert to the webhook receiver, which writes deploy/dev/data/webhook/received.jsonl (E16-03).
+# latency tails sts1's event logs and Prometheus scrapes it; that job has no alert (E17-D006).
 # Tests do not use these: state starts its own etcd (etcdtest), natsx its own server (natsxtest),
 # natsdev its own JWT server, the symbol tests start their own PostgreSQL (pgtest), and artifact tests
 # speak to an in-process registry.
@@ -189,10 +190,38 @@ services:
       nats: {condition: service_healthy}
       registry: {condition: service_healthy}
 
+  # One mftiko-latency-exporter for sts1 (E17-D002, E17-D006). It runs as nobody, the same user as
+  # sts1: the session volume is 0700, so a different user cannot walk into eventlog/. The volume is
+  # read-only. -metrics-addr is this container's private address (CheckAddr rejects a wildcard and a
+  # public address). The port is not published; Prometheus, on this network, scrapes latency:9095.
+  # There is no alert on these series.
+  latency:
+    image: alpine:3.22
+    hostname: latency
+    user: "65534:65534"
+    command:
+      - sh
+      - -euc
+      - |
+        ip=$$(awk -v h="$$(hostname)" '$$1 ~ /^[0-9.]+$$/ && $$2==h {print $$1; exit}' /etc/hosts)
+        test -n "$$ip"
+        exec /mftiko/mftiko-latency-exporter -metrics-addr "$$ip:9095" -data /var/lib/mftiko/sts-agent
+    volumes:
+      - ../../bin/linux:/mftiko:ro
+      - stsdata:/var/lib/mftiko:ro
+    depends_on:
+      sts1-init: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://latency:9095/metrics"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   # ---------- strategy log alerts (E16 phase 1) ----------
   # sts1's strategy stderr → alloy → loki → loki's ruler → alertmanager → webhook; prometheus scrapes
-  # the API's /metrics and sends to the same alertmanager (E16-D002, E16-D008). The rule files are the
-  # examples docs/operations.md points to, with every for at 30s (E16-D022, E16-D024).
+  # the API's /metrics and latency:9095, and sends the API rules to the same alertmanager (E16-D002,
+  # E16-D008, E17-D006). The rule files are the examples docs/operations.md points to, with every for
+  # at 30s (E16-D022, E16-D024). The latency series have no rules.
 
   # The dev webhook receiver (E16-D021): each notification is one line in ./data/webhook/received.jsonl,
   # which `make dev-up` creates and E16-04's smoke reads. It runs as the user who ran make (DEV_UID and
@@ -258,9 +287,9 @@ services:
       timeout: 3s
       retries: 30
 
-  # Prometheus scrapes the API's /metrics (E12-D038) and evaluates prometheus/mftiko.rules.yml. The
-  # images are from quay.io, where the Prometheus project publishes them (E16-D028). Its UI is
-  # http://127.0.0.1:9090.
+  # Prometheus scrapes the API's /metrics (E12-D038) and latency:9095 (E17-D006), and evaluates
+  # prometheus/mftiko.rules.yml. The images are from quay.io, where the Prometheus project publishes
+  # them (E16-D028). Its UI is http://127.0.0.1:9090. The latency series have no rules.
   prometheus:
     image: quay.io/prometheus/prometheus:v3.15.0
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus"]

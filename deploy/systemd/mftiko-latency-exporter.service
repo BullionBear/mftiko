@@ -1,0 +1,23 @@
+# mftiko latency exporter (E17-D002, E17-D006). One process on each STS host.
+# It reads the STS agent's event logs and serves /metrics on a private address.
+# KillMode stays control-group: this process has no children to leave behind.
+# switch installs this unit and does not restart it (E12-D024). After a switch,
+# systemctl restart it so the new binary is the one running.
+
+[Unit]
+Description=mftiko latency exporter
+After=network-online.target mftiko-sts-agent.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=mftiko-sts
+EnvironmentFile=/etc/mftiko/latency-exporter/env
+ExecStart=/opt/mftiko/current/bin/mftiko-latency-exporter \
+  -metrics-addr ${MFTIKO_LATENCY_ADDR} \
+  -data /var/lib/mftiko/sts-agent
+Restart=always
+RestartSec=1s
+
+[Install]
+WantedBy=multi-user.target
