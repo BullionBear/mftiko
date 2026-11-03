@@ -195,10 +195,6 @@ func (a *account) Usage(resp *exchange.HTTPResponse, now time.Time) []exchange.U
 	return usedFrom(resp, now)
 }
 
-func (h *history) Usage(resp *exchange.HTTPResponse, now time.Time) []exchange.Used {
-	return usedFrom(resp, now)
-}
-
 // bucketWindow is the counting window named by the header. The live windows are confirmed
 // with the venue in E4-09; until then these are the intervals the header names state.
 var bucketWindow = map[string]time.Duration{

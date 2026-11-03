@@ -77,6 +77,7 @@ func TestLoadEmbedded(t *testing.T) {
 		"0004_session_records",
 		"0005_session_records_final",
 		"0006_retired_instances",
+		"0007_drop_history",
 	}
 	if len(files) != len(want) {
 		t.Fatalf("loaded %d files, want %d", len(files), len(want))
@@ -126,6 +127,7 @@ func TestUpEmptyAndRerun(t *testing.T) {
 		"0004_session_records",
 		"0005_session_records_final",
 		"0006_retired_instances",
+		"0007_drop_history",
 	}
 	if len(res.Applied) != len(want) {
 		t.Fatalf("applied %v", res.Applied)
@@ -136,7 +138,12 @@ func TestUpEmptyAndRerun(t *testing.T) {
 		}
 	}
 	conn := connect(t, srv.DSN())
-	for _, table := range []string{"orders", "fills", "symbol_active", "audit", "session_records", "retired_instances", "schema_migrations"} {
+	for _, table := range []string{"orders", "fills", "backfill_scopes", "backfill_cursors", "algo_ownership"} {
+		if regclass(t, ctx, conn, table) {
+			t.Fatalf("up left %s", table)
+		}
+	}
+	for _, table := range []string{"symbol_active", "audit", "session_records", "retired_instances", "schema_migrations"} {
 		if !regclass(t, ctx, conn, table) {
 			t.Fatalf("up did not create %s", table)
 		}
@@ -151,7 +158,7 @@ func TestUpEmptyAndRerun(t *testing.T) {
 	if err := conn.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if n != 6 {
+	if n != 7 {
 		t.Fatalf("schema_migrations rows = %d", n)
 	}
 	before := appliedAt(t, ctx, conn)
@@ -170,12 +177,57 @@ func TestUpEmptyAndRerun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(lines) != 6 {
+	if len(lines) != 7 {
 		t.Fatalf("status %d lines", len(lines))
 	}
 	for _, line := range lines {
 		if line.State != StateApplied {
 			t.Fatalf("status %s", line)
+		}
+	}
+}
+
+func TestDropHistoryDownRecreates(t *testing.T) {
+	orig, err := FS.ReadFile("0001_history.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	down, err := FS.ReadFile("0007_drop_history.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(orig, down) {
+		t.Fatal("0007 down is not the 0001 schema")
+	}
+	srv := pgtest.Start(t)
+	ctx := testCtx(t)
+	if _, err := Up(ctx, srv.DSN()); err != nil {
+		t.Fatal(err)
+	}
+	lines, err := Status(ctx, srv.DSN())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 7 {
+		t.Fatalf("status %d lines", len(lines))
+	}
+	for _, line := range lines {
+		if line.State != StateApplied {
+			t.Fatalf("status %s", line)
+		}
+	}
+	conn := connect(t, srv.DSN())
+	for _, table := range []string{"orders", "fills", "backfill_scopes", "backfill_cursors", "algo_ownership"} {
+		if regclass(t, ctx, conn, table) {
+			t.Fatalf("up left %s", table)
+		}
+	}
+	if err := conn.PgConn().Exec(ctx, string(down)).Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"orders", "fills", "backfill_scopes", "backfill_cursors", "algo_ownership"} {
+		if !regclass(t, ctx, conn, table) {
+			t.Fatalf("down did not recreate %s", table)
 		}
 	}
 }

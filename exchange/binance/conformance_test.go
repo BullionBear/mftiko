@@ -37,7 +37,6 @@ func spec() conformance.Spec {
 		Market:  &market{p: um},
 		REST:    &rest{p: um},
 		Account: accountFactory(kindUM),
-		History: historyFactory(kindUM),
 		KeyType: exchange.KeyEd25519,
 		Cases: []conformance.Case{
 			conformance.Call("submit_limit", func(e conformance.Env) (exchange.Call[*exchange.OrderResult], error) {
@@ -117,19 +116,6 @@ func spec() conformance.Spec {
 			conformance.Call("countdown", func(e conformance.Env) (exchange.Call[struct{}], error) {
 				return e.Account.(exchange.CancelOnDisconnect).ArmCancelOnDisconnect(e.Now, 120*time.Second, []*symbol.Info{btcInst()})
 			}),
-			conformance.Call("user_trades", func(e conformance.Env) (exchange.Call[*exchange.FillPage], error) {
-				return e.History.Fills(e.Now, exchange.FillQuery{Instrument: btcInst(), FromID: "100", Limit: 1})
-			}),
-			conformance.Call("order_lookup", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
-				return e.History.Order(e.Now, btcInst(), "1001")
-			}),
-			// The same testnet fill as ws/testnet.jsonl: stream trade id 545553575.
-			conformance.Call("user_trades_testnet", func(e conformance.Env) (exchange.Call[*exchange.FillPage], error) {
-				return e.History.Fills(e.Now, exchange.FillQuery{Instrument: btcInst(), FromID: "545553575", Limit: 1})
-			}),
-			conformance.Call("order_testnet", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
-				return e.History.Order(e.Now, btcInst(), "28625103204")
-			}),
 			conformance.Call("listing_perp", func(e conformance.Env) (exchange.Call[exchange.Page[symbol.Listing]], error) {
 				return e.REST.Listing(symbol.Perp)
 			}),
@@ -145,10 +131,6 @@ func spec() conformance.Spec {
 			conformance.Call("open_interest", func(e conformance.Env) (exchange.Call[*exchange.OpenInterest], error) {
 				return e.REST.OpenInterest(btcInst())
 			}),
-		},
-		FillPairs: []conformance.FillPair{
-			{Session: "private", Case: "user_trades"},
-			{Session: "testnet", Case: "user_trades_testnet"},
 		},
 		TradeSamples: []conformance.TradeSample{
 			{Name: "limit GTC", Submit: limitOrder(exchange.TIFGTC, cloidGTC)},
@@ -198,7 +180,6 @@ func spotSpec() conformance.Spec {
 		Market:  &market{p: spot},
 		REST:    &rest{p: spot},
 		Account: accountFactory(kindSpot),
-		History: historyFactory(kindSpot),
 		KeyType: exchange.KeyEd25519,
 		Cases: []conformance.Case{
 			conformance.Call("submit_limit", func(e conformance.Env) (exchange.Call[*exchange.OrderResult], error) {
@@ -236,19 +217,6 @@ func spotSpec() conformance.Spec {
 			conformance.Call("query_order_missing", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
 				return e.Account.QueryOrder(e.Now, exchange.CancelRef{Instrument: spotInst(), ClientOrderID: cloidGTC})
 			}),
-			conformance.Call("my_trades", func(e conformance.Env) (exchange.Call[*exchange.FillPage], error) {
-				return e.History.Fills(e.Now, exchange.FillQuery{Instrument: spotInst(), FromID: "100", Limit: 1})
-			}),
-			conformance.Call("order_lookup", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
-				return e.History.Order(e.Now, spotInst(), "1001")
-			}),
-			// The same testnet fill as ws/testnet.jsonl: stream trade id 207624.
-			conformance.Call("my_trades_testnet", func(e conformance.Env) (exchange.Call[*exchange.FillPage], error) {
-				return e.History.Fills(e.Now, exchange.FillQuery{Instrument: spotInst(), FromID: "207624", Limit: 1})
-			}),
-			conformance.Call("order_testnet", func(e conformance.Env) (exchange.Call[*exchange.OrderUpdate], error) {
-				return e.History.Order(e.Now, spotInst(), "1106510")
-			}),
 			conformance.Call("listing_spot", func(e conformance.Env) (exchange.Call[exchange.Page[symbol.Listing]], error) {
 				return e.REST.Listing(symbol.Spot)
 			}),
@@ -258,9 +226,6 @@ func spotSpec() conformance.Spec {
 			conformance.Call("klines", func(e conformance.Env) (exchange.Call[[]exchange.Kline], error) {
 				return e.REST.Klines(spotInst(), "1m", 0, 5)
 			}),
-		},
-		FillPairs: []conformance.FillPair{
-			{Session: "testnet", Case: "my_trades_testnet"},
 		},
 		TradeSamples: []conformance.TradeSample{
 			{Name: "limit GTC", Submit: spotLimit(exchange.TIFGTC, cloidGTC)},

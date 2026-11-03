@@ -26,7 +26,6 @@
 //	SYM                          PublicREST.Listing (ListingOver)    E02-D001
 //	in-process Resolver (dev)    InProcessUIDSource.Listing          E2-05
 //	TD account worker            AccountKind.Account, PrivateStream  E06-D002, E06-D003, E03-D001
-//	backfill read                AccountKind.History                 E06-D001, E03-D001
 //
 // Any of a venue's parts may be absent.
 //
@@ -72,8 +71,7 @@
 //     the Info, so adapters never call SYM. Inside the system the instrument is Info.UID. What the
 //     venue sends back carries a symbol.ExchKey, which the caller turns into that UID with
 //     symbol.Resolver.Reverse.
-//   - Fill.FillID is the venue's trade id and must be identical on the private stream and in
-//     History (E06-D001): the database deduplicates on (api_id, fill_id).
+//   - Fill.FillID is the venue's trade id on the private stream.
 //   - Event pointers passed to a Sink are valid only for the duration of the call.
 //   - Credentials never reach a log line (see Credentials).
 //   - An adapter does not retry, back off or reconnect on its own. The worker that owns the

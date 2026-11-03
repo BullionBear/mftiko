@@ -80,7 +80,6 @@ func Declare() exchange.Declaration {
 			// The adapter signs with ed25519 only (E03-D003); an HMAC account would never connect (#385).
 			KeyTypes: []exchange.KeyType{exchange.KeyEd25519},
 			Account:  accountFactory(k),
-			History:  historyFactory(k),
 		})
 	}
 	return d

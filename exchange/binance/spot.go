@@ -481,6 +481,22 @@ func (a *account) spotCancelAll(now time.Time, sym string) (exchange.Call[struct
 	return exchange.Call[struct{}]{Req: req, Parse: parseSpotCancelAll}, nil
 }
 
+// flexString accepts a JSON string or null. Spot leaves the commission asset null when there is none.
+type flexString string
+
+func (s *flexString) UnmarshalJSON(b []byte) error {
+	if string(b) == "null" {
+		*s = ""
+		return nil
+	}
+	var v string
+	if err := codec.DecodeBody(b, &v); err != nil {
+		return err
+	}
+	*s = flexString(v)
+	return nil
+}
+
 // parseSpotCancelAll accepts the canceled-order array, and -2011 when the symbol had none.
 func parseSpotCancelAll(resp *exchange.HTTPResponse) (struct{}, error) {
 	if resp.Status < 400 {

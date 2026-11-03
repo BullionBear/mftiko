@@ -20,7 +20,7 @@ import (
 )
 
 // TestBinanceSpotPrivate places orders on the spot testnet through one WebSocket API connection
-// and checks that myTrades reports the same trade id as executionReport (E06-D001). It does not run in CI.
+// and checks that the trade stream reports the fill. It does not run in CI.
 //
 //	MFTIKO_BINANCE_SPOT_LIVE=1 go test ./exchange/binance/ -run TestBinanceSpotPrivate -v -count=1
 //
@@ -113,88 +113,18 @@ func TestBinanceSpotPrivate(t *testing.T) {
 	h.note("post-only rested and was canceled")
 
 	req := h.order(exchange.SideBuy, exchange.OrderTypeLimit, exchange.TIFGTC, qty, cross, false)
-	res := h.place(req, exchange.OrderStatusFilled)
+	h.place(req, exchange.OrderStatusFilled)
 	stream := h.feed.fillsOf(req.ClientOrderID)
 	if len(stream) == 0 {
 		t.Fatal("the trade stream reported no fill")
 	}
-	fromID := stream[0].FillID
-	for _, f := range stream[1:] {
-		if idLess(f.FillID, fromID) {
-			fromID = f.FillID
-		}
-	}
-
-	hist, err := historyFactory(kindSpot)(exchange.AccountConfig{
-		APIID: 1, Credentials: creds, RESTEndpoint: "https://" + spotTestHost,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	q := exchange.FillQuery{Instrument: inst, FromID: fromID, Limit: len(stream)}
-	var page *exchange.FillPage
-	var fillResp *exchange.HTTPResponse
-	var fillCall exchange.Call[*exchange.FillPage]
-	deadline := time.Now().Add(15 * time.Second)
-	for {
-		fillCall, err = hist.Fills(time.Now(), q)
-		if err != nil {
-			t.Fatal(err)
-		}
-		fillResp, err = doer.Do(ctx, &fillCall.Req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		page, err = fillCall.Parse(fillResp)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if covers(page.Fills, stream) {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("myTrades never returned the stream fills %s; page has %d", fromID, len(page.Fills))
-		}
-		time.Sleep(300 * time.Millisecond)
-	}
 	for _, f := range stream {
-		got, ok := findFill(page.Fills, f.FillID)
-		if !ok {
-			t.Fatalf("fill %s is on the stream and not in myTrades", f.FillID)
-		}
-		if got.OrderID != f.OrderID || got.Side != f.Side || got.Price != f.Price || got.Qty != f.Qty {
-			t.Fatalf("fill %s differs: stream %+v history %+v", f.FillID, f, got)
-		}
 		h.note("fill %s order %s side %s price %s qty %s", f.FillID, f.OrderID, sideName(f.Side),
 			decimal.Format(f.Price, tick), decimal.Format(f.Qty, step))
 	}
 
-	orderCall, err := hist.Order(time.Now(), inst, res.OrderID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	orderResp, err := doer.Do(ctx, &orderCall.Req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	up, err := orderCall.Parse(orderResp)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if up.OrderID != res.OrderID || up.Status != exchange.OrderStatusFilled {
-		t.Fatalf("order %s status %s, want FILLED", up.OrderID, statusName(up.Status))
-	}
-	var sum float64
-	for _, f := range stream {
-		sum += f.Qty
-	}
-	if !decimal.Equal(up.FilledQty, sum, step) {
-		t.Fatalf("order filled %s, stream fills sum %s", decimal.Format(up.FilledQty, step), decimal.Format(sum, step))
-	}
-	h.note("order %s FILLED filled=%s", up.OrderID, decimal.Format(up.FilledQty, step))
-
 	if os.Getenv("MFTIKO_BINANCE_SPOT_RECORD") == "1" {
-		recordSpot(t, creds, h, req.ClientOrderID, fillCall.Req, fillResp, orderCall.Req, orderResp)
+		recordSpot(t, creds, h, req.ClientOrderID)
 	}
 
 	sold := spotSellFree(h, "flatten")
@@ -495,13 +425,10 @@ func spotQty(t *testing.T, ask, step, minNotional float64) float64 {
 	return qty
 }
 
-func recordSpot(t *testing.T, creds exchange.Credentials, h *live, cloid string, fillReq exchange.HTTPRequest, fillResp *exchange.HTTPResponse, orderReq exchange.HTTPRequest, orderResp *exchange.HTTPResponse) {
+func recordSpot(t *testing.T, creds exchange.Credentials, h *live, cloid string) {
 	t.Helper()
 	dir := filepath.Join("testdata", "conformance", "Binance")
 	if err := os.MkdirAll(filepath.Join(dir, "ws"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(dir, "http"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	var frames [][]byte
@@ -519,7 +446,7 @@ func recordSpot(t *testing.T, creds exchange.Credentials, h *live, cloid string,
 	var buf bytes.Buffer
 	w, err := conformance.NewWriter(&buf, conformance.Record{
 		Venue: VenueSpot, Side: conformance.SideTrade,
-		Note: "Spot testnet BTCUSDT fill. The trade id matches my_trades_testnet (E06-D001).",
+		Note: "Spot testnet BTCUSDT fill.",
 	}, time.Now, creds.Key, creds.Secret)
 	if err != nil {
 		t.Fatal(err)
@@ -535,8 +462,6 @@ func recordSpot(t *testing.T, creds exchange.Credentials, h *live, cloid string,
 	if err := os.WriteFile(filepath.Join(dir, "ws", "testnet.jsonl"), buf.Bytes(), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeExchange(t, filepath.Join(dir, "http", "my_trades_testnet.json"), creds, "", &fillReq, fillResp)
-	writeExchange(t, filepath.Join(dir, "http", "order_testnet.json"), creds, "", &orderReq, orderResp)
 	t.Logf("recorded %d trade frames", len(frames))
 }
 

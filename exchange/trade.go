@@ -12,7 +12,7 @@ import (
 // connection, the request ids, the time a request may wait for its answer, and the reconnect.
 //
 // An Account that has one returns it from NewTradeStream, and the worker sends Submit and Cancel over
-// it instead of REST. CancelBatch, Snapshot, Leverage and History stay on REST.
+// it instead of REST. CancelBatch, Snapshot and Leverage stay on REST.
 //
 // Not safe for concurrent use: one per connection, owned by the connection's read loop.
 type TradeStream interface {

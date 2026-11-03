@@ -10,8 +10,8 @@ import (
 	"github.com/BullionBear/mftiko/contract/symbol"
 )
 
-// AccountConfig is what the TD account worker, or the backfill read service for History, builds an
-// adapter from. The TD agent does not (E06-D038, E06-D039).
+// AccountConfig is what the TD account worker builds an adapter from. The TD agent does not
+// (E06-D038, E06-D039).
 type AccountConfig struct {
 	APIID       int64
 	Credentials Credentials
@@ -210,12 +210,12 @@ type OrderUpdate struct {
 	ExchTsNs      int64
 }
 
-// Fill follows td.v1.Fill. FillID must be the same value here and in History (E06-D001).
+// Fill follows td.v1.Fill. FillID is the venue's trade id.
 type Fill struct {
 	Exch          symbol.ExchKey
 	FillID        string
 	OrderID       string
-	ClientOrderID string // "" when the venue does not send it (REST history usually does not)
+	ClientOrderID string // "" when the venue does not send it
 	Side          Side
 	Price, Qty    float64
 	Fee           float64
