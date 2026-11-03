@@ -173,7 +173,7 @@ func (s *Server) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		s.writeAccountErr(w, err)
 		return
 	}
-	settings := mergeSettings(body.Settings, nil)
+	settings := mergeSettings(body.Settings)
 	id, rev, err := s.createAccount(r.Context(), string(body.TdInstance), func(apiID int64) ([]byte, error) {
 		rec, err := newAccount(pub, apiID, kind.Name, body.Name, body.Credentials, settings)
 		if err != nil {
@@ -411,13 +411,10 @@ func checkSettings(in *apiv1.AccountSettings) []apiv1.FieldError {
 	return nil
 }
 
-// mergeSettings keeps the backfill fields, which the API does not expose (E10-D034), and applies
-// cancel_on_disconnect_s when the request sets it. checkSettings has already accepted the value.
-func mergeSettings(in *apiv1.AccountSettings, prev *statev1.AccountSettings) *statev1.AccountSettings {
+// mergeSettings applies cancel_on_disconnect_s when the request sets it.
+// checkSettings has already accepted the value (E10-D034).
+func mergeSettings(in *apiv1.AccountSettings) *statev1.AccountSettings {
 	out := &statev1.AccountSettings{}
-	if prev != nil {
-		out = proto.Clone(prev).(*statev1.AccountSettings)
-	}
 	if in != nil && in.CancelOnDisconnectS != nil {
 		out.CancelOnDisconnectS = uint32(*in.CancelOnDisconnectS)
 	}
@@ -518,7 +515,7 @@ func accountEqual(a, b *statev1.Account) bool {
 func normalizeAccount(a *statev1.Account) *statev1.Account {
 	c := proto.Clone(a).(*statev1.Account)
 	s := c.GetSettings()
-	if s != nil && s.GetCancelOnDisconnectS() == 0 && s.GetBackfillIntervalS() == 0 && s.GetBackfillRequestedAtNs() == 0 {
+	if s != nil && s.GetCancelOnDisconnectS() == 0 {
 		c.Settings = nil
 	}
 	return c

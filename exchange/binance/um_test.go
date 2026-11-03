@@ -26,13 +26,6 @@ func TestOtherKindsUnimplemented(t *testing.T) {
 	if _, err := a.Submit(time.Unix(0, 0), limitOrder(exchange.TIFGTC, cloidGTC)); !errors.Is(err, exchange.ErrNotImplemented) {
 		t.Fatalf("Submit: %v", err)
 	}
-	h, err := historyFactory(kindCM)(exchange.AccountConfig{Credentials: creds})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := h.Fills(time.Unix(0, 0), exchange.FillQuery{Instrument: btcInst()}); !errors.Is(err, exchange.ErrNotImplemented) {
-		t.Fatalf("Fills: %v", err)
-	}
 }
 
 func TestHMACRefused(t *testing.T) {
@@ -147,21 +140,6 @@ func TestBatchAndWindow(t *testing.T) {
 	if _, err := a.(exchange.CancelOnDisconnect).ArmCancelOnDisconnect(now, time.Second, nil); err == nil {
 		t.Fatal("countdown with no symbol was accepted")
 	}
-	h := mustHist(t)
-	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()
-	_, err := h.Fills(now, exchange.FillQuery{
-		Instrument: btcInst(),
-		StartNs:    start,
-		EndNs:      start + int64(8*24*time.Hour),
-	})
-	if err == nil {
-		t.Fatal("an 8-day window was accepted")
-	}
-	if _, err := h.Fills(now, exchange.FillQuery{
-		Instrument: btcInst(), FromID: "100", StartNs: start,
-	}); err == nil {
-		t.Fatal("fromId combined with a time window was accepted")
-	}
 }
 
 func TestPositionSide(t *testing.T) {
@@ -192,15 +170,6 @@ func mustUM(t *testing.T) exchange.Account {
 		t.Fatal(err)
 	}
 	return a
-}
-
-func mustHist(t *testing.T) exchange.History {
-	t.Helper()
-	h, err := historyFactory(kindUM)(exchange.AccountConfig{Credentials: conformance.TestCredentials(exchange.KeyEd25519, false)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return h
 }
 
 // TestValidity: AccountConfig.Validity is recvWindow on REST, on the trade socket's frames and on

@@ -50,7 +50,6 @@ func TestChecksCatchFaults(t *testing.T) {
 		{"a channel over budget", faults{bigChannel: true}, "planning", "Cost 11 against Budget 10"},
 		{"an absent field filled", faults{fillTicker: true}, "capabilities", "declared absent and filled"},
 		{"a gap not noticed", faults{blindBook: true}, "books", "went unnoticed"},
-		{"fill ids that disagree", faults{otherFillID: true}, "fills", "not in History"},
 		{"a 401 not classified as auth", faults{authAs500: true}, "golden", "submit_auth"},
 		{"an order answered twice", faults{answerTwice: true}, "trade_answers", "answered again"},
 	} {
@@ -274,7 +273,7 @@ func (nopSink) Liquidation(string, *exchange.Liquidation)   {}
 func (nopSink) FundingRate(string, *exchange.FundingRate)   {}
 func (nopSink) OpenInterest(string, *exchange.OpenInterest) {}
 func (nopSink) Greeks(string, *exchange.Greeks)             {}
-func (nopSink) MarkPrice(string, *exchange.MarkPrice) {}
+func (nopSink) MarkPrice(string, *exchange.MarkPrice)       {}
 
 // venuePipe is a pipe whose other end is an exchangetest.TradeVenue: what the recorder writes is
 // handled, and the venue's answers come back.

@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	// ChangedWildcard is sym.v1.changed.> (E04-D057). Session, account worker,
-	// md.fetch and the historical backfill subscribe this. An MD instance's
+	// ChangedWildcard is sym.v1.changed.> (E04-D057). Session, account worker
+	// and md.fetch subscribe this. An MD instance's
 	// JWT allows it too; the conn worker itself subscribes only its venue.
 	ChangedWildcard = "sym.v1.changed.>"
 )

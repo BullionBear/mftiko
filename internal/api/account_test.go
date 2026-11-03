@@ -351,36 +351,6 @@ func TestAccounts(t *testing.T) {
 		t.Fatal("reseal leaked")
 	}
 
-	// A root write sets the backfill fields the API does not expose. A later name change keeps them.
-	rec.Settings = &statev1.AccountSettings{BackfillIntervalS: 9, BackfillRequestedAtNs: 42, CancelOnDisconnectS: rec.GetSettings().GetCancelOnDisconnectS()}
-	raw, err := proto.Marshal(rec)
-	if err != nil {
-		t.Fatal(err)
-	}
-	backRev := putKey(t, t.Context(), f.env.servers["tw"], state.AccountKey("td-tw-1", 2), string(raw))
-	var back apiv1.Account
-	until(t, 10*time.Second, "backfill revision", func() error {
-		code, _, body := f.call(t, http.MethodGet, "/api/v1/accounts/2", "")
-		if code != http.StatusOK {
-			return fmt.Errorf("%d", code)
-		}
-		if err := json.Unmarshal(body, &back); err != nil {
-			return err
-		}
-		if back.Revision < backRev {
-			return errors.New("mirror has not reached the backfill write")
-		}
-		return nil
-	})
-	code, _, body = f.call(t, http.MethodPut, "/api/v1/accounts/2", fmt.Sprintf(`{"revision":%d,"name":"desk-3"}`, back.Revision))
-	if code != http.StatusOK {
-		t.Fatalf("keep backfill %d %s", code, body)
-	}
-	rec = f.stored(t, "td-tw-1", 2)
-	if rec.GetName() != "desk-3" || rec.GetSettings().GetBackfillIntervalS() != 9 || rec.GetSettings().GetBackfillRequestedAtNs() != 42 {
-		t.Fatalf("backfill lost: %+v", rec.GetSettings())
-	}
-
 	code, _, body = f.call(t, http.MethodPost, "/api/v1/accounts", accountBody("referenced", "BinanceUM", "td-tw-1", "hmac", key, secret, "", nil))
 	if code != http.StatusCreated {
 		t.Fatalf("referenced create %d %s", code, body)

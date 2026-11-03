@@ -32,7 +32,6 @@ type Spec struct {
 	Market  exchange.Market
 	REST    exchange.PublicREST
 	Account exchange.AccountFactory
-	History exchange.HistoryFactory
 
 	// KeyType is the kind of test credentials the account adapters get: KeyHMAC (the default) or
 	// KeyEd25519. Passphrase gives them a passphrase as well (Okx).
@@ -50,10 +49,6 @@ type Spec struct {
 	// parse. Make them with Call.
 	Cases []Case
 
-	// FillPairs tie a private session, or a trade session that carries events, to a History case
-	// that covers the same fills (E06-D001).
-	FillPairs []FillPair
-
 	// TradeSamples are the requests whose TradeStream frames are pinned in ws/trade_dial.golden.json
 	// (E03-D003), encoded at Now with ids 1, 2, ... in order.
 	TradeSamples []TradeSample
@@ -66,19 +61,12 @@ type TradeSample struct {
 	Cancel *exchange.CancelRef
 }
 
-// FillPair names a private session fixture and a History case returning the same fills.
-type FillPair struct {
-	Session string // ws/<Session>.jsonl, side private or trade
-	Case    string // a Case whose result is a *exchange.FillPage
-}
-
 // Env is what a Case builds its request from: the adapters, made with the test credentials, and the
 // fixed time.
 type Env struct {
 	Now         time.Time
 	REST        exchange.PublicREST
 	Account     exchange.Account
-	History     exchange.History
 	Credentials exchange.Credentials
 }
 
@@ -239,13 +227,6 @@ func newRunner(s Spec) (*runner, error) {
 		}
 		r.env.Account = a
 	}
-	if s.History != nil {
-		h, err := s.History(cfg)
-		if err != nil {
-			return nil, fmt.Errorf("conformance: %s: History: %w", s.Venue, err)
-		}
-		r.env.History = h
-	}
 	return r, nil
 }
 
@@ -263,7 +244,6 @@ func (r *runner) checks() []check {
 		{"private_dial", r.checkDial},
 		{"trade_dial", r.checkTradeDial},
 		{"trade_answers", r.checkTradeAnswers},
-		{"fills", r.checkFills},
 		{"credentials", r.checkCredentials},
 	}
 }

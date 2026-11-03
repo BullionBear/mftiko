@@ -5,7 +5,7 @@
 //		return conformance.Spec{
 //			Venue:   "BinanceUM",
 //			Dir:     "testdata/conformance/BinanceUM",
-//			Market:  ..., REST: ..., Account: ..., History: ...,
+//			Market:  ..., REST: ..., Account: ...,
 //			KeyType: exchange.KeyEd25519,
 //			Cases: []conformance.Case{
 //				conformance.Call("listing_perp", func(e conformance.Env) (exchange.Call[exchange.Page[symbol.Listing]], error) {
@@ -67,8 +67,6 @@
 //   - trade_dial: the TradeStream's logon and the frames of Spec.TradeSamples match their golden
 //     file, signatures included (E03-D003).
 //   - trade_answers: in each trade session every request id is answered at most once, and never id 0.
-//   - fills: each fill of a private session, or of a trade session that carries events, is in the
-//     paired History case with the same fill_id, order, side, price and quantity (E06-D001).
 //   - credentials: no secret part of the test credentials appears in anything the adapter produced.
 //
 // The instruments the planning and book checks use are Spec.Instruments plus every valid listing the

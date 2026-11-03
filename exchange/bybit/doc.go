@@ -6,7 +6,7 @@
 // stream.bybit.com/v5/public/spot and /linear). Private REST and the private stream were checked
 // on the testnet the same day. Inverse and option have public paths this adapter does not open.
 // Submit and Cancel go over the trade websocket (E03-D003). Cancel-batch, the snapshot, leverage
-// and the dead-man switch stay on REST. History is the execution list (E3-13).
+// and the dead-man switch stay on REST.
 //
 //   - The same channel string exists on both routes: "publicTrade.BTCUSDT" is a spot atom and a
 //     linear atom. The route comes from the instrument's category and is part of the atom id
@@ -18,9 +18,6 @@
 //     the previous u plus one.
 //   - Auth signs "GET/realtime" + expires with HMAC-SHA256.
 //   - Dead-man switch: Disconnected Cancel Protection (DCP), account-wide.
-//   - History: GET /v5/execution/list, newest first, cursor paginated. execId is the fill id
-//     on both REST and the execution stream (E06-D001). One request spans at most 7 days; the
-//     venue keeps 2 years. GET /v5/order/history looks an order up by id.
 //
 // # Public market data
 //
@@ -135,25 +132,6 @@
 // ref has none. With either id the venue ignores openOnly and also returns closed orders, the 500
 // most recent per category. An empty list is exchange.ErrNotFound (E06-D005).
 //
-// # History
-//
-// GET /v5/execution/list for one category and one symbol. Rows arrive newest first
-// (HistoryTraits.Descending). execId is the fill id, the same id the execution topic
-// reports. Trade, AdlTrade, BustTrade and BlockTrade with a non-zero execQty are fills.
-// Funding, Settle and Delivery are left out of the page; the cursor still advances past
-// them. nextPageCursor, when it is non-empty and different from the cursor just sent, is
-// FillPage.Next. There is no from-id. A page is at most 100. The venue keeps 2 years
-// (HistoryTraits.Retention). One request spans at most 7 days (HistoryTraits.MaxWindow):
-// neither end means the last 7 days, and one end extends 7 days from that end. Checked
-// against the testnet execution list on 2026-10-10: the execId on the private stream is
-// the execId in this list.
-//
-// GET /v5/order/history looks up one order by orderId. An empty list is an error, so a
-// fill whose order has not landed in history yet is asked again on the next round (E06-D001).
-// The last 7 days return closed orders other than Cancelled, Rejected and Deactivated;
-// those three stay for 24 hours. Past 7 days the venue returns orders that have fills:
-// fully filled, and partial fills that were then cancelled.
-//
 // # Private stream
 //
 // No Prepare and no Refresh. Dial is wss://stream.bybit.com/v5/private, or
@@ -171,7 +149,7 @@
 //	             cumExecQty is FilledQty, avgPrice is AvgPrice. updatedTime, else
 //	             createdTime, else the frame's creationTime, in milliseconds.
 //	execution    a Fill when execType is Trade, AdlTrade, BustTrade or BlockTrade, execId is
-//	             set and execQty is not 0. execId is the fill id (E06-D001). isMaker chooses
+//	             set and execQty is not 0. execId is the fill id. isMaker chooses
 //	             maker or taker. feeCurrency is the fee asset. Funding, Settle and Delivery
 //	             are not fills.
 //	position     one Position per row with a non-zero size. The entry is avgPrice on the

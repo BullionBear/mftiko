@@ -37,9 +37,6 @@ func Declare() exchange.Declaration {
 				}
 				return &account{cfg: cfg}, nil
 			},
-			History: func(cfg exchange.AccountConfig) (exchange.History, error) {
-				return &history{cfg: cfg}, nil
-			},
 		}},
 	}
 }

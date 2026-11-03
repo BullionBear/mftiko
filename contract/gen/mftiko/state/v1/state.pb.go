@@ -314,12 +314,8 @@ func (x *AccountCredentials) GetPassphrase() string {
 type AccountSettings struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	CancelOnDisconnectS uint32                 `protobuf:"varint,1,opt,name=cancel_on_disconnect_s,json=cancelOnDisconnectS,proto3" json:"cancel_on_disconnect_s,omitempty"` // 0 = 關閉
-	// 歷史補正（DECISIONS E06-D001）。
-	BackfillIntervalS uint32 `protobuf:"varint,2,opt,name=backfill_interval_s,json=backfillIntervalS,proto3" json:"backfill_interval_s,omitempty"` // 另加 jitter；0 = 預設。必須短於交易所成交歷史的保留期。誰用見 §10 P18，不是 TD agent
-	// 手動觸發：比上次處理過的值新，就提前跑一輪。誰跑見 §10 P18，不是 TD agent。重啟後可能多跑一次，無害。
-	BackfillRequestedAtNs int64 `protobuf:"varint,3,opt,name=backfill_requested_at_ns,json=backfillRequestedAtNs,proto3" json:"backfill_requested_at_ns,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *AccountSettings) Reset() {
@@ -355,20 +351,6 @@ func (*AccountSettings) Descriptor() ([]byte, []int) {
 func (x *AccountSettings) GetCancelOnDisconnectS() uint32 {
 	if x != nil {
 		return x.CancelOnDisconnectS
-	}
-	return 0
-}
-
-func (x *AccountSettings) GetBackfillIntervalS() uint32 {
-	if x != nil {
-		return x.BackfillIntervalS
-	}
-	return 0
-}
-
-func (x *AccountSettings) GetBackfillRequestedAtNs() int64 {
-	if x != nil {
-		return x.BackfillRequestedAtNs
 	}
 	return 0
 }
@@ -1258,11 +1240,9 @@ const file_mftiko_state_v1_state_proto_rawDesc = "" +
 	"\x06secret\x18\x05 \x01(\tR\x06secret\x12\x1e\n" +
 	"\n" +
 	"passphrase\x18\x06 \x01(\tR\n" +
-	"passphrase\"\xaf\x01\n" +
+	"passphrase\"\x81\x01\n" +
 	"\x0fAccountSettings\x123\n" +
-	"\x16cancel_on_disconnect_s\x18\x01 \x01(\rR\x13cancelOnDisconnectS\x12.\n" +
-	"\x13backfill_interval_s\x18\x02 \x01(\rR\x11backfillIntervalS\x127\n" +
-	"\x18backfill_requested_at_ns\x18\x03 \x01(\x03R\x15backfillRequestedAtNs\"\xa4\x03\n" +
+	"\x16cancel_on_disconnect_s\x18\x01 \x01(\rR\x13cancelOnDisconnectSJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\x13backfill_interval_sR\x18backfill_requested_at_ns\"\xa4\x03\n" +
 	"\rSessionStatus\x12/\n" +
 	"\x13observed_generation\x18\x01 \x01(\x03R\x12observedGeneration\x12,\n" +
 	"\x05phase\x18\x02 \x01(\x0e2\x16.mftiko.state.v1.PhaseR\x05phase\x12;\n" +

@@ -29,7 +29,6 @@ type faults struct {
 	bigChannel  bool // Cost exceeds Budget
 	fillTicker  bool // the ticker fills ChangePct24h, which Topics declares absent
 	blindBook   bool // BookSync applies every update, gaps included
-	otherFillID bool // History returns another fill id than the stream
 	authAs500   bool // a 401 parses as a plain error, not ErrAuth
 	answerTwice bool // the trade codec reports every order answer twice
 }
@@ -45,9 +44,6 @@ func fakeSpec(f faults) conformance.Spec {
 		REST:   rest{f: f},
 		Account: func(cfg exchange.AccountConfig) (exchange.Account, error) {
 			return &account{c: cfg.Credentials, f: f}, nil
-		},
-		History: func(cfg exchange.AccountConfig) (exchange.History, error) {
-			return history{c: cfg.Credentials, f: f}, nil
 		},
 		Cases: []conformance.Case{
 			conformance.Call("listing_perp", func(e conformance.Env) (exchange.Call[exchange.Page[symbol.Listing]], error) {
@@ -65,11 +61,7 @@ func fakeSpec(f faults) conformance.Spec {
 			conformance.Call("open_interest", func(e conformance.Env) (exchange.Call[*exchange.OpenInterest], error) {
 				return e.REST.OpenInterest(nil)
 			}),
-			conformance.Call("fills", func(e conformance.Env) (exchange.Call[*exchange.FillPage], error) {
-				return e.History.Fills(e.Now, exchange.FillQuery{FromID: "f0", Limit: 100})
-			}),
 		},
-		FillPairs: []conformance.FillPair{{Session: "private", Case: "fills"}, {Session: "trade", Case: "fills"}},
 		TradeSamples: []conformance.TradeSample{
 			{Name: "limit buy", Submit: order()},
 			{Name: "cancel by client id", Cancel: &exchange.CancelRef{Instrument: order().Instrument, ClientOrderID: "1234567"}},
@@ -550,52 +542,6 @@ func toFill(f privFrame) (*exchange.Fill, error) {
 		FillID: f.ID, OrderID: f.Oid, Side: side, Price: px, Qty: sz, Fee: decimal.Absent(), Liquidity: "taker",
 		ExchTsNs: f.Ts * 1e6}, nil
 }
-
-// --- history ---
-
-type history struct {
-	c exchange.Credentials
-	f faults
-}
-
-func (h history) Traits() exchange.HistoryTraits {
-	return exchange.HistoryTraits{ByID: true, PageLimit: 100}
-}
-
-func (h history) Fills(now time.Time, q exchange.FillQuery) (exchange.Call[*exchange.FillPage], error) {
-	query := fmt.Sprintf("from=%s&limit=%d&ts=%d", q.FromID, q.Limit, now.UnixMilli())
-	query += "&sig=" + sign(h.c.Secret, query)
-	return exchange.Call[*exchange.FillPage]{
-		Req: exchange.HTTPRequest{Method: "GET", Base: base, Path: "/v1/fills", Query: []byte(query),
-			Header: []exchange.Header{{Name: "X-Key", Value: h.c.Key}}},
-		Parse: func(resp *exchange.HTTPResponse) (*exchange.FillPage, error) {
-			if err := status(resp, h.f); err != nil {
-				return nil, err
-			}
-			var rows []privFrame
-			if err := json.Unmarshal(resp.Body, &rows); err != nil {
-				return nil, err
-			}
-			p := &exchange.FillPage{}
-			for _, r := range rows {
-				f, err := toFill(r)
-				if err != nil {
-					return nil, err
-				}
-				if h.f.otherFillID {
-					f.FillID = "h-" + f.FillID
-				}
-				p.Fills = append(p.Fills, *f)
-			}
-			return p, nil
-		},
-	}, nil
-}
-
-func (h history) Order(time.Time, *symbol.Info, string) (exchange.Call[*exchange.OrderUpdate], error) {
-	return exchange.Call[*exchange.OrderUpdate]{}, exchange.ErrUnsupported
-}
-func (h history) Usage(*exchange.HTTPResponse, time.Time) []exchange.Used { return nil }
 
 // --- trade stream (E03-D003): a WebSocket API that also carries the account's events ---
 

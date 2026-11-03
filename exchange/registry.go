@@ -37,7 +37,6 @@ type AccountKind struct {
 	KeyTypes   []KeyType // credential algorithms the adapter signs with
 	Passphrase bool      // the credential includes a passphrase (Okx)
 	Account    AccountFactory
-	History    HistoryFactory
 }
 
 // Registry holds both enums. Built once at startup, read-only after. It is also the venue registry

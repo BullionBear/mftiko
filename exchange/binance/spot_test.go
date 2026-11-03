@@ -126,40 +126,6 @@ func TestSpotAccount(t *testing.T) {
 	}
 }
 
-func TestSpotHistoryWindow(t *testing.T) {
-	h := mustSpotHist(t)
-	tr := h.Traits()
-	if !tr.ByID || tr.Descending || tr.MaxWindow != 24*time.Hour || tr.PageLimit != 1000 || tr.Retention != 0 {
-		t.Fatalf("traits %+v", tr)
-	}
-	now := time.Unix(0, 0)
-	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()
-	if _, err := h.Fills(now, exchange.FillQuery{
-		Instrument: spotInst(), StartNs: start, EndNs: start + int64(25*time.Hour),
-	}); err == nil {
-		t.Fatal("a 25-hour window was accepted")
-	}
-	if _, err := h.Fills(now, exchange.FillQuery{
-		Instrument: spotInst(), FromID: "100", StartNs: start,
-	}); err == nil {
-		t.Fatal("fromId combined with a time window was accepted")
-	}
-	call, err := h.Fills(now, exchange.FillQuery{Instrument: spotInst(), FromID: "100", Limit: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if call.Req.Path != "/api/v3/myTrades" || !strings.Contains(string(call.Req.Query), "fromId=100") {
-		t.Fatalf("fills %s %s", call.Req.Path, call.Req.Query)
-	}
-	order, err := h.Order(now, spotInst(), "1001")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if order.Req.Path != "/api/v3/order" {
-		t.Fatalf("order path %s", order.Req.Path)
-	}
-}
-
 func TestSpotDecode(t *testing.T) {
 	ts := mustSpotTrade(t)
 	var s spotCapture
@@ -214,14 +180,6 @@ func TestSpotDecode(t *testing.T) {
 	if err := ts.Decode([]byte(`["conformance",1]`), &s); err == nil {
 		t.Fatal("an unknown array was accepted")
 	}
-
-	page, err := parseFills(&exchange.HTTPResponse{Status: 200, Body: []byte(`[{"symbol":"BTCUSDT","id":77,"orderId":9,"price":"65000","qty":"0.001","commission":"0","commissionAsset":null,"time":2,"isBuyer":true,"isMaker":false}]`)}, 1, VenueSpot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(page.Fills) != 1 || page.Fills[0].FillID != "77" || page.Fills[0].Side != exchange.SideBuy || page.Fills[0].FeeAsset != "" {
-		t.Fatalf("myTrades %+v", page.Fills)
-	}
 }
 
 func mustSpot(t *testing.T) exchange.Account {
@@ -231,15 +189,6 @@ func mustSpot(t *testing.T) exchange.Account {
 		t.Fatal(err)
 	}
 	return a
-}
-
-func mustSpotHist(t *testing.T) exchange.History {
-	t.Helper()
-	h, err := historyFactory(kindSpot)(exchange.AccountConfig{Credentials: conformance.TestCredentials(exchange.KeyEd25519, false)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return h
 }
 
 func mustSpotTrade(t *testing.T) exchange.TradeStream {

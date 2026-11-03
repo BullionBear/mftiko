@@ -100,8 +100,7 @@ func (a *account) sign(now time.Time, method, path, query string, body []byte, c
 	return signCfg(&a.signerState, a.cfg, now, method, path, query, body, cost, mutates)
 }
 
-// signCfg is the same signature account.sign builds. History signs with it too: the backfill
-// job does not start an account worker (E06-D001).
+// signCfg is the same signature account.sign builds.
 func signCfg(st *signerState, cfg exchange.AccountConfig, now time.Time, method, path, query string, body []byte, cost []exchange.Cost, mutates bool) (exchange.HTTPRequest, error) {
 	if cfg.Credentials.Passphrase == "" {
 		return exchange.HTTPRequest{}, errors.New("okx: passphrase is empty")

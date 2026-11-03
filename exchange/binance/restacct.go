@@ -16,7 +16,7 @@ import (
 )
 
 // Request weights are the USD-M table: an order is 1, openOrders with no symbol is 40,
-// positionRisk and account and userTrades are 5, countdownCancelAll is 10. An order also
+// positionRisk and account are 5, countdownCancelAll is 10. An order also
 // takes one count on each order bucket; a batch takes one per order.
 
 func (a *account) Submit(now time.Time, req *exchange.OrderRequest) (exchange.Call[*exchange.OrderResult], error) {
@@ -160,6 +160,30 @@ func (a *account) QueryOrder(now time.Time, ref exchange.CancelRef) (exchange.Ca
 		}
 		return up, err
 	}}, nil
+}
+
+// orderRoute is the single-order read of k: GET /fapi/v1/order or /api/v3/order.
+func orderRoute(k kind) (venue, path string, weight int, err error) {
+	switch k.name {
+	case kindUM.name:
+		return VenueUM, "/fapi/v1/order", 1, nil
+	case kindSpot.name:
+		return VenueSpot, "/api/v3/order", 2, nil
+	default:
+		return "", "", 0, exchange.ErrNotImplemented
+	}
+}
+
+func parseOrder(resp *exchange.HTTPResponse, venue string) (*exchange.OrderUpdate, error) {
+	if resp.Status >= 400 {
+		return nil, refuse(resp)
+	}
+	var o restOrder
+	if err := codec.DecodeBody(resp.Body, &o); err != nil {
+		return nil, err
+	}
+	up := o.update(venue)
+	return &up, nil
 }
 
 func (a *account) Snapshot(now time.Time) ([]exchange.Call[exchange.Page[exchange.AccountSnapshot]], error) {
