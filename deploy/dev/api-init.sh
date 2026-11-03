@@ -5,11 +5,12 @@
 #   api.json          user "dev", the registry from compose, td1's public key, listen :8080 (E10-D023)
 #   token             the dev user's token (E10-D009); sign in to the console with it
 #   cookie-key        the console cookie's HMAC key, passed as $MFTIKO_COOKIE_KEY
+#   account-keys      the AEAD ring for account credentials, passed as $MFTIKO_ACCOUNT_KEYS (E21-D020)
 #   log-token         the session-log bearer the API sends to sts1 (E14-D001); -log-token
 #   log-token.sha256  its SHA-256, which sts1 checks (-log-token-sha256)
 #   td1-seal.key      td1's private key (mftiko-seal); accounts created in dev are sealed to it
 #
-# The tokens, the cookie key and the seal key are made once and kept; the JSON files and the hash are
+# The tokens, the cookie key, the account keys and the seal key are made once and kept; the JSON files and the hash are
 # rewritten every time. The stack runs the controller and sts1 (E15-10). Nothing runs md1 or td1: they
 # are there so the console's forms have instances to name, and a session with feeds or accounts waits
 # for them. deploy/accept runs those agents (README there).
@@ -28,6 +29,12 @@ secret() {
 secret token
 secret cookie-key
 secret log-token
+# v1 of 32 random bytes. openssl wraps at 64 columns; 32 bytes is one line, and tr drops the newline.
+account_keys() {
+	[ -s "$out/account-keys" ] && return
+	(umask 077 && printf 'v1:%s\n' "$(openssl rand -base64 32 | tr -d '\n')" >"$out/account-keys")
+}
+account_keys
 tr -d '\n' <"$out/log-token" | shasum -a 256 | cut -d' ' -f1 >"$out/log-token.sha256"
 
 seal=(go run "$repo/cmd/mftiko-seal")

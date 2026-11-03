@@ -128,8 +128,8 @@ EOF
 
 # configure writes every /etc/mftiko/<service>/ file (E12-D004) on both hosts. NATS is the layout
 # mftiko-nats-dev wrote to NATSDIR, plus a SYM user. Secrets are made on host A and never printed:
-# etcd passwords by mftiko-etcd-roles -apply, the seal key by mftiko-seal, the API token and cookie key
-# here. Host B gets only sts-jp2-1's files. Running it again keeps every secret that exists.
+# etcd passwords by mftiko-etcd-roles -apply, the seal key by mftiko-seal, the API token, cookie key
+# and account keys here. Host B gets only sts-jp2-1's files. Running it again keeps every secret that exists.
 configure() {
 	local natsdir=$1 rel=/opt/mftiko/releases/$2/bin
 	a "install -d -m 0700 /root/e12-12/nats && rm -rf /root/e12-12/nats/*"
@@ -216,6 +216,7 @@ grep -q '^MFTIKO_ETCD_PASSWORD=' /etc/mftiko/controller/env
 
 test -s api-token || openssl rand -hex 32 >api-token
 test -s cookie-key || openssl rand -hex 32 >cookie-key
+test -s account-keys || printf 'v1:%s\n' "\$(openssl rand -base64 32 | tr -d '\n')" >account-keys
 sha=\$(tr -d '\n' <api-token | sha256sum | cut -d' ' -f1)
 pk=\$($rel/mftiko-seal pubkey -key /etc/mftiko/td-agent/seal.key)
 cat >/root/e12-12/api.json <<JSON
@@ -234,6 +235,7 @@ dsn="postgres://mftiko:\$(cat pg-password)@127.0.0.1:$PG_PORT/mftiko?sslmode=dis
 cat >/etc/mftiko/api/env <<ENV
 MFTIKO_ETCD_PASSWORD=\$(pw api)
 MFTIKO_COOKIE_KEY=\$(cat cookie-key)
+MFTIKO_ACCOUNT_KEYS=\$(cat account-keys)
 MFTIKO_POSTGRES_DSN=\$dsn
 ENV
 

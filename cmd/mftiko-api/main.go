@@ -21,7 +21,10 @@
 //
 // A zero or omitted duration takes the default. Secrets are environment variables, and the matching flag
 // overrides, as for the controller: the etcd user "api" password ($MFTIKO_ETCD_PASSWORD, -etcd-password), the
-// cookie HMAC key ($MFTIKO_COOKIE_KEY, -cookie-key) and the Postgres DSN ($MFTIKO_POSTGRES_DSN, -postgres-dsn).
+// cookie HMAC key ($MFTIKO_COOKIE_KEY, -cookie-key), the account key ring ($MFTIKO_ACCOUNT_KEYS, -account-keys;
+// E21-D020) and the Postgres DSN ($MFTIKO_POSTGRES_DSN, -postgres-dsn). Account keys are
+// v<version>:<standard base64 of 32 bytes>, comma-separated. The first key encrypts; the rest only decrypt.
+// A missing or malformed ring fails startup and does not quote the key.
 //
 // Load validates all of that and does not dial Postgres or a registry (E10-D024, E10-D060). Run opens a Postgres pool
 // and does not wait for the connection; readiness watches etcd only, and Postgres being down only affects audit
@@ -92,9 +95,9 @@ func main() {
 }
 
 type options struct {
-	in, config, web, cert, key        string
-	etcdPassword, cookieKey, postgres string
-	logToken                          string
+	in, config, web, cert, key           string
+	etcdPassword, cookieKey, accountKeys string
+	postgres, logToken                   string
 }
 
 func parseArgs(args []string, getenv func(string) string) (options, bool, error) {
@@ -112,6 +115,7 @@ func parseArgs(args []string, getenv func(string) string) (options, bool, error)
 	fs.StringVar(&opt.key, "tls-key", "", "TLS private key; with -tls-cert, serve HTTPS and HTTP/2")
 	fs.StringVar(&opt.etcdPassword, "etcd-password", getenv(api.EnvEtcdPassword), "password of the etcd user \"api\" (default $"+api.EnvEtcdPassword+")")
 	fs.StringVar(&opt.cookieKey, "cookie-key", getenv(api.EnvCookieKey), "HMAC key of the console cookie (default $"+api.EnvCookieKey+")")
+	fs.StringVar(&opt.accountKeys, "account-keys", getenv(api.EnvAccountKeys), "account credential keys, v<version>:<base64>, first encrypts (default $"+api.EnvAccountKeys+")")
 	fs.StringVar(&opt.postgres, "postgres-dsn", getenv(api.EnvPostgresDSN), "Postgres DSN; a pool is opened at startup and not waited on (default $"+api.EnvPostgresDSN+")")
 	fs.StringVar(&opt.logToken, "log-token", "", "file holding the session-log bearer; empty disables the log routes")
 	if err := fs.Parse(args); err != nil {
@@ -144,6 +148,7 @@ func run(ctx context.Context, opt options, stdin io.Reader, log zerolog.Logger) 
 	cfg, err := api.Load(dep, conf, api.Input{
 		EtcdPassword: opt.etcdPassword,
 		CookieKey:    opt.cookieKey,
+		AccountKeys:  opt.accountKeys,
 		PostgresDSN:  opt.postgres,
 		WebDir:       opt.web,
 		TLSCert:      opt.cert,

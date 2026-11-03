@@ -141,7 +141,7 @@ printf '%s' "$token" | sha256sum
 
 Put the hex digest in `users[].token_sha256`. Clients send the token string itself. The CLI and other automation send `Authorization: Bearer <token>`. The console posts it to `POST /api/v1/auth/login`, which sets an `HttpOnly`, `Secure`, `SameSite=Strict` cookie named `mftiko_session`. `Secure` is set on plaintext HTTP as well (E10-D050). `POST /api/v1/auth/logout` clears that cookie. There is no login rate limit in this phase (E10-D055).
 
-The cookie HMAC key (`MFTIKO_COOKIE_KEY` or `-cookie-key`) is shared by every replica. The Postgres DSN (`MFTIKO_POSTGRES_DSN` or `-postgres-dsn`) is the audit database. The process opens a pool at startup and does not wait for it to connect; `/readyz` still reports etcd only (E10-D048). `GET /metrics` is Prometheus text for this process's own gauges (E12-D038). Apply `migrations/0003_audit` before expecting audit rows. A failed audit write does not change the HTTP response.
+The cookie HMAC key (`MFTIKO_COOKIE_KEY` or `-cookie-key`) is shared by every replica. The account credential keys (`MFTIKO_ACCOUNT_KEYS` or `-account-keys`) are too (E21-D020): `v<version>:<standard base64 of 32 bytes>`, comma-separated, first key encrypts, the rest only decrypt. A missing or malformed ring stops the process at startup and does not print the key. The Postgres DSN (`MFTIKO_POSTGRES_DSN` or `-postgres-dsn`) is the audit database. The process opens a pool at startup and does not wait for it to connect; `/readyz` still reports etcd only (E10-D048). `GET /metrics` is Prometheus text for this process's own gauges (E12-D038). Apply `migrations/0003_audit` before expecting audit rows. A failed audit write does not change the HTTP response.
 
 ## Tests
 

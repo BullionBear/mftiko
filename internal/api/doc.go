@@ -42,9 +42,11 @@
 // instance's public key (E06-D013, E10-D062). Reads return no credential material (E10-D063).
 //
 // A zero or omitted duration takes the default. Secrets are not in either JSON file. They are the etcd user "api"
-// password (MFTIKO_ETCD_PASSWORD, flag -etcd-password), the cookie HMAC key (MFTIKO_COOKIE_KEY, flag -cookie-key)
-// and the Postgres DSN (MFTIKO_POSTGRES_DSN, flag -postgres-dsn). The flag overrides the environment variable, as
-// it does for the controller.
+// password (MFTIKO_ETCD_PASSWORD, flag -etcd-password), the cookie HMAC key (MFTIKO_COOKIE_KEY, flag -cookie-key),
+// the account key ring (MFTIKO_ACCOUNT_KEYS, flag -account-keys; E21-D020) and the Postgres DSN
+// (MFTIKO_POSTGRES_DSN, flag -postgres-dsn). The flag overrides the environment variable, as
+// it does for the controller. Account keys are v<version>:<standard base64 of 32 bytes>, comma-separated;
+// the first key encrypts and the rest only decrypt. A missing or malformed ring fails startup.
 //
 // Load validates all of that, including plain-HTTP hosts and the credentials file, and does not dial Postgres or a
 // registry (E10-D024, E10-D060). Run opens a Postgres pool without waiting for a connection (E10-D048). Readiness watches

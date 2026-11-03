@@ -16,17 +16,22 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog"
 
+	"github.com/BullionBear/mftiko/internal/platform/accountkey"
 	"github.com/BullionBear/mftiko/internal/platform/artifact"
 	"github.com/BullionBear/mftiko/internal/platform/sealbox"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
-// Environment variables for the three secrets (E10-D023). The command's flags override them.
+// Environment variables for secrets. The command's flags override them.
+// The etcd password, cookie key and Postgres DSN are E10-D023. Account keys are E21-D020.
 const (
 	// EnvEtcdPassword is the password of the etcd user "api".
 	EnvEtcdPassword = "MFTIKO_ETCD_PASSWORD"
 	// EnvCookieKey is the HMAC-SHA256 key every replica uses to sign the console cookie (E10-D009).
 	EnvCookieKey = "MFTIKO_COOKIE_KEY"
+	// EnvAccountKeys is the AEAD key ring for account credentials, shared by every replica (E21-D020).
+	// The form is v<version>:<standard base64>, comma-separated. The first key encrypts.
+	EnvAccountKeys = "MFTIKO_ACCOUNT_KEYS"
 	// EnvPostgresDSN is the Postgres connection string. Run opens a pool and does not wait for it to
 	// connect. Readiness does not use it (E10-D048, modifies E10-D024).
 	EnvPostgresDSN = "MFTIKO_POSTGRES_DSN"
@@ -55,13 +60,15 @@ type User struct {
 type Input struct {
 	EtcdPassword string
 	CookieKey    string
-	PostgresDSN  string
-	WebDir       string // empty: API routes only (E10-D028)
-	TLSCert      string // with TLSKey: HTTPS and HTTP/2; both empty: plaintext HTTP (E10-D029)
-	TLSKey       string
-	Mirror       state.MirrorOptions // zero: the Mirror defaults; tests shorten the probe
-	Log          zerolog.Logger
-	Now          func() time.Time // nil: time.Now
+	// AccountKeys is MFTIKO_ACCOUNT_KEYS (E21-D020). Empty or malformed fails Load.
+	AccountKeys string
+	PostgresDSN string
+	WebDir      string // empty: API routes only (E10-D028)
+	TLSCert     string // with TLSKey: HTTPS and HTTP/2; both empty: plaintext HTTP (E10-D029)
+	TLSKey      string
+	Mirror      state.MirrorOptions // zero: the Mirror defaults; tests shorten the probe
+	Log         zerolog.Logger
+	Now         func() time.Time // nil: time.Now
 	// LogToken is the raw bearer sent to an STS agent for session logs (E14-D001, E14-D026).
 	// Empty leaves the process up; the two log routes then answer 503 logs_unavailable.
 	LogToken string
@@ -99,13 +106,15 @@ type Config struct {
 	Catalog          *artifact.Catalog // set by Load; nil does not dial
 	EtcdPassword     string
 	CookieKey        string
-	PostgresDSN      string
-	WebDir           string
-	TLSCert          string
-	TLSKey           string
-	Mirror           state.MirrorOptions
-	Log              zerolog.Logger
-	Now              func() time.Time
+	// AccountKeys encrypts credentials at rest. The first key is current (E21-D020). Do not log a Config.
+	AccountKeys accountkey.Box
+	PostgresDSN string
+	WebDir      string
+	TLSCert     string
+	TLSKey      string
+	Mirror      state.MirrorOptions
+	Log         zerolog.Logger
+	Now         func() time.Time
 	// LogToken is the raw bearer sent to an STS agent (E14-D001, E14-D026). Empty means the log
 	// routes answer 503 and every other route still serves. Do not log a Config.
 	LogToken string
@@ -157,6 +166,11 @@ func Load(deployment, config io.Reader, in Input) (Config, error) {
 	}
 	cfg.EtcdPassword = in.EtcdPassword
 	cfg.CookieKey = in.CookieKey
+	keys, err := accountkey.Parse(in.AccountKeys)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.AccountKeys = keys
 	cfg.PostgresDSN = in.PostgresDSN
 	cfg.WebDir = in.WebDir
 	cfg.TLSCert = in.TLSCert
@@ -436,6 +450,9 @@ func (c Config) validate() error {
 	}
 	if c.CookieKey == "" {
 		return errors.New("cookie key is required")
+	}
+	if c.AccountKeys.Current() == 0 {
+		return errors.New("account keys are required")
 	}
 	if c.PostgresDSN == "" {
 		return errors.New("postgres DSN is required")

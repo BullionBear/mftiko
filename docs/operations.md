@@ -95,13 +95,21 @@ agent 的 unit 另外：
 | sts-agent | `MFTIKO_MAX_UNPACKED_BYTES`、`MFTIKO_MAX_UNPACKED_FILES`（可省略） | 一個 rootfs 或一個 input 解開後的大小與 entry 數。省略或 0 是 4 GiB、100,000。負值讓 agent 不啟動。unit 不展開這兩個變數，行程把它們當 `-max-unpacked-bytes`、`-max-unpacked-files` 的預設。要與 `mftiko-pack data` 的同名旗標一起調。rootfs 與每個 input 各自比 |
 | sts-agent | `MFTIKO_LOG_TOKEN_SHA256`；`MFTIKO_LOG_LISTEN`、`MFTIKO_LOG_ADVERTISE`、`MFTIKO_LOG_MAX_STREAMS`、`MFTIKO_LOG_MAX_RATE`、`MFTIKO_LOG_MAX_BYTES`、`MFTIKO_LOG_KEEP`（可省略，unit 有預設） | log token 的 SHA-256，64 個小寫 hex。其餘見 [session log 端點](#session-log-端點) |
 | mftiko-latency-exporter | `MFTIKO_LATENCY_ADDR` | 私有的 `host:port`。見[延遲 exporter](#延遲-exporter) |
-| API | `MFTIKO_COOKIE_KEY`、`MFTIKO_POSTGRES_DSN` | cookie 的 HMAC 金鑰、Postgres DSN。log token 不在 env，是檔案 `/etc/mftiko/api/log-token` |
+| API | `MFTIKO_COOKIE_KEY`、`MFTIKO_ACCOUNT_KEYS`、`MFTIKO_POSTGRES_DSN` | cookie 的 HMAC 金鑰、帳號憑證的 AEAD 金鑰（E21-D020）、Postgres DSN。log token 不在 env，是檔案 `/etc/mftiko/api/log-token` |
 | SYM | `DATABASE_URL`、`NATS_URL` | `-nats-creds` 固定 `/etc/mftiko/sym/nats.creds`，即 `mftiko-nats-dev` 的 `creds/sym-{inst}.creds`（E12-D079）。`MFTIKO_SYM_FEEDS` 可省略，省略就是全部 feed |
 | etcd | `/etc/etcd/etcd.env` 的 `ETCD_NAME`、`ETCD_LISTEN_CLIENT_URLS`、`ETCD_ADVERTISE_CLIENT_URLS`、`ETCD_LISTEN_PEER_URLS`、`ETCD_INITIAL_ADVERTISE_PEER_URLS`、`ETCD_INITIAL_CLUSTER`、`ETCD_INITIAL_CLUSTER_STATE`、`ETCD_AUTH_TOKEN` | 資料目錄由 unit 設成 `/var/lib/etcd`，env 不要改 `ETCD_DATA_DIR` |
 
 MD、TD 的 `MFTIKO_PLAIN_HTTP` 一定要是 `true` 或 `false`。unit 把它展開成 `-plain-http=${MFTIKO_PLAIN_HTTP}`，空字串這個旗標不收。STS 的 `MFTIKO_PLAIN_HTTP_HOSTS` 可以是空的（E10-D124）。
 
 controller 連每個 region 時，密碼先讀 `MFTIKO_ETCD_PASSWORD_<region>`，沒有再用 `MFTIKO_ETCD_PASSWORD`。見 [controller](#controller)。
+
+`MFTIKO_ACCOUNT_KEYS` 是所有 API replica 共用的一把（E21-D020），不進 Postgres、也不進 etcd。格式是 `v<版本>:<32 bytes 的 standard base64>`，逗號分隔，第一把用來加密，其餘只解密，版本號不可重複。少了或格式不對，API 起不來，錯誤不會印出金鑰。產生一把：
+
+```sh
+printf 'v1:%s\n' "$(openssl rand -base64 32 | tr -d '\n')"
+```
+
+換鑰時把新版本放在最前面，舊版本留在同一串裡。背景重新加密是 #527，還沒做；拿掉還有密文在用的版本，那些憑證就解不開。金鑰遺失，帳號要重新輸入（E21-D003）。
 
 ## controller
 

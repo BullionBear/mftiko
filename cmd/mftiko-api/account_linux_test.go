@@ -169,6 +169,7 @@ func TestAPISealedAccountReachesReady(t *testing.T) {
 	cfg, err := api.Load(bytes.NewReader(dep), bytes.NewReader(conf), api.Input{
 		EtcdPassword: etcdtest.Password(state.UserAPI),
 		CookieKey:    "cookie-key",
+		AccountKeys:  testAccountKeys,
 		PostgresDSN:  "postgres://mftiko@127.0.0.1:1/mftiko?sslmode=disable",
 		Mirror: state.MirrorOptions{
 			ProbeInterval: 50 * time.Millisecond,

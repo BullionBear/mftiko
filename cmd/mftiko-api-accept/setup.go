@@ -91,6 +91,10 @@ func setup() error {
 	if _, err := ensureToken(filepath.Join(*out, "cookie-key")); err != nil {
 		return err
 	}
+	// Both replicas encrypt account credentials with this ring (E21-D020); accept.sh passes it in the environment.
+	if err := ensureAccountKeys(filepath.Join(*out, "account-keys")); err != nil {
+		return err
+	}
 	// The session-log bearer (E14-D001): the replicas read log-token (-log-token), sts1 and sts2 get
 	// only its SHA-256 (-log-token-sha256), as on a host.
 	logToken, err := ensureToken(filepath.Join(*out, "log-token"))
@@ -118,7 +122,7 @@ func setup() error {
 			return err
 		}
 	}
-	say("wrote %s: deployment.json, api-a.json, api-b.json, token, cookie-key, log-token, log-token.sha256", *out)
+	say("wrote %s: deployment.json, api-a.json, api-b.json, token, cookie-key, account-keys, log-token, log-token.sha256", *out)
 	return nil
 }
 
@@ -169,6 +173,20 @@ func ensureToken(path string) (string, error) {
 	}
 	t := base64.StdEncoding.EncodeToString(b)
 	return t, os.WriteFile(path, []byte(t+"\n"), 0o600)
+}
+
+// ensureAccountKeys writes v1:<standard base64 of 32 bytes> when path is empty (E21-D020).
+// An existing non-empty file is kept, so a second setup does not rotate the ring.
+func ensureAccountKeys(path string) error {
+	if b, err := os.ReadFile(path); err == nil && strings.TrimSpace(string(b)) != "" {
+		return nil
+	}
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return err
+	}
+	line := "v1:" + base64.StdEncoding.EncodeToString(raw) + "\n"
+	return os.WriteFile(path, []byte(line), 0o600)
 }
 
 func writeJSON(path string, v any, mode os.FileMode) error {

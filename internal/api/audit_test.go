@@ -548,6 +548,7 @@ func TestReadyIgnoresPostgres(t *testing.T) {
 	cfg, err := Load(bytes.NewReader(dep), bytes.NewReader(conf), Input{
 		EtcdPassword: etcdtest.Password(state.UserAPI),
 		CookieKey:    testCookieKey,
+		AccountKeys:  testAccountKeys,
 		PostgresDSN:  deadDSN,
 		Mirror: state.MirrorOptions{
 			ProbeInterval: 100 * time.Millisecond,

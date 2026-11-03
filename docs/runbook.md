@@ -130,6 +130,7 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 | NATS 的 user creds | `/etc/mftiko/md-agent/nats.creds`、`/etc/mftiko/sym/nats.creds`（0600，屬該服務的使用者） | `systemctl restart mftiko-md-agent`、`mftiko-sym`。worker 照跑，下次重連用新的 |
 | registry 的帳密 | `MFTIKO_REGISTRY_CREDS` 指的同一份 `config.json`（0600）。多個 host 各做一次 `docker login <host>`，寫進這份檔的 `auths` | 該 agent，或 API（`registry_creds`） |
 | API 的 cookie 金鑰 | `/etc/mftiko/api/env` 的 `MFTIKO_COOKIE_KEY` | `mftiko-api`。console 的登入全部失效，要重新登入 |
+| API 的帳號金鑰 | `/etc/mftiko/api/env` 的 `MFTIKO_ACCOUNT_KEYS` | `mftiko-api`。所有 replica 同一份。格式見 [operations.md](operations.md#systemd)。不要拿掉還有密文在用的版本，舊版留著才能解開。金鑰遺失要重新輸入帳號（E21-D003）。背景重新加密是 #527，還沒做 |
 | Postgres 的密碼 | API 的 `MFTIKO_POSTGRES_DSN`、SYM 與 `mftiko-release` 的 `DATABASE_URL` | 先在 Postgres 改密碼，再改 env、重啟 `mftiko-api`、`mftiko-sym`。中間的空窗長過 `for` 時 `MftikoPostgresDown` 會響 |
 | session log 的 token | API 的 `/etc/mftiko/api/log-token`；每台 STS 的 `/etc/mftiko/sts-agent/env` 的 `MFTIKO_LOG_TOKEN_SHA256` | 先每台 `mftiko-sts-agent`，再每個 `mftiko-api`。中間讀 log 是 `logs_unavailable`。步驟見 [輪換 token](operations.md#輪換-token) |
 
@@ -266,7 +267,7 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 告警：`MftikoAPIDown`。
 
 - session 與 worker 不受影響；console 與 CLI 不能用，新的 session 建不了。
-- `systemctl status mftiko-api`、`journalctl -u mftiko-api`。常見：`MFTIKO_ETCD_PASSWORD` 錯（輪換沒做完）、Postgres DSN 錯、設定檔解不開。
+- `systemctl status mftiko-api`、`journalctl -u mftiko-api`。常見：`MFTIKO_ETCD_PASSWORD` 錯（輪換沒做完）、`MFTIKO_ACCOUNT_KEYS` 少了或格式不對、Postgres DSN 錯、設定檔解不開。
 - 確認：`up{job="mftiko-api"}` 是 1，`/readyz` 200。
 
 ### 3.10 etcd 壞了或資料錯了
