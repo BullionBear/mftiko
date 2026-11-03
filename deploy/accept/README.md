@@ -293,7 +293,7 @@ $A e2e-up
 
 `e2e-up` 先做 `up`（會重建 runner，裡面的行程都會停掉），再依序：`make web`；`mftiko-pack` 把 `examples/strategies/hello` 與 `examples/strategies/chatter` 推到 compose 裡的 registry（`registry:5000/strategies/hello:accept`、`registry:5000/strategies/chatter:accept`）；`td-up`；`mftiko-api-accept setup`；接著啟動還沒在跑的 md-agent、td-agent、controller、`sts1`、`sts2` 與 API 副本 a、b。可以重跑。
 
-`setup` 的部署（`data/work/e2e/deployment.json`）有兩個 region：`accept`（etcd）放 controller、`dev`（MD）、`td1`（TD）、`sts1`；`accept2`（etcd2）只放 `sts2`。兩個 cluster 的 etcd 使用者與角色都照 `state.AuthTables`，然後開 auth。同一個目錄裡還有兩個副本的 API 設定（`api-a.json` 在 :8080、`api-b.json` 在 :8081，只差 port）、token（`token`）、cookie 金鑰，以及 session log 的 token（`log-token`）與它的 SHA-256（`log-token.sha256`）。保留期設成 1 分鐘，`unavailable_after` 5 秒。
+`setup` 的部署（`data/work/e2e/deployment.json`）有兩個 region：`accept`（etcd）放 controller、`dev`（MD）、`td1`（TD）、`sts1`；`accept2`（etcd2）只放 `sts2`。兩個 cluster 的 etcd 使用者與角色都照 `state.AuthTables`，然後開 auth。同一個目錄裡還有兩個副本的 API 設定（`api-a.json` 在 :8080、`api-b.json` 在 :8081，只差 port）、token（`token`）、cookie 金鑰、帳號金鑰（`account-keys`，E21-D020），以及 session log 的 token（`log-token`）與它的 SHA-256（`log-token.sha256`）。保留期設成 1 分鐘，`unavailable_after` 5 秒。
 
 session log（E14）：兩個副本帶 `-log-token /work/e2e/log-token`。`sts1`、`sts2` 共用 runner 的網路，log 端點分別聽 `127.0.0.1:7442`、`127.0.0.1:7443`，`-log-advertise` 相同，只拿到 `log-token.sha256`。兩者的 worker 輸出都設成 64 KiB 輪替、保留 3 份（`-log-max-bytes 65536 -log-keep 3`），`cli logs` 才看得到輪替。
 

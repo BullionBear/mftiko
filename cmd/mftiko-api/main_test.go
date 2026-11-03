@@ -30,6 +30,9 @@ import (
 // envChild makes the re-executed test binary run mftiko-api instead of the tests.
 const envChild = "MFTIKO_API_CHILD"
 
+// testAccountKeys is v1 of 32 bytes of 0x11. Tests use repeated bytes on purpose (E21-03a).
+const testAccountKeys = "v1:ERERERERERERERERERERERERERERERERERERERERERE="
+
 // testMainExtra handles a re-exec of this test binary that is not the API process. The linux
 // account test sets it so the TD agent's shim and account worker can run in this binary. A nil
 // hook, or one that reports not handled, falls through to the tests.
@@ -79,6 +82,8 @@ func TestParseArgs(t *testing.T) {
 			return "from-env"
 		case api.EnvCookieKey:
 			return "cookie-env"
+		case api.EnvAccountKeys:
+			return "keys-env"
 		case api.EnvPostgresDSN:
 			return "dsn-env"
 		default:
@@ -89,11 +94,11 @@ func TestParseArgs(t *testing.T) {
 	if err != nil || version {
 		t.Fatal(err)
 	}
-	if opt.etcdPassword != "from-env" || opt.cookieKey != "cookie-env" || opt.postgres != "dsn-env" {
+	if opt.etcdPassword != "from-env" || opt.cookieKey != "cookie-env" || opt.accountKeys != "keys-env" || opt.postgres != "dsn-env" {
 		t.Fatalf("%+v", opt)
 	}
-	opt, version, err = parseArgs([]string{"-version", "-in", "deploy.json", "-etcd-password", "from-flag"}, getenv)
-	if err != nil || !version || opt.etcdPassword != "from-flag" || opt.cookieKey != "cookie-env" || opt.in != "deploy.json" {
+	opt, version, err = parseArgs([]string{"-version", "-in", "deploy.json", "-etcd-password", "from-flag", "-account-keys", "keys-flag"}, getenv)
+	if err != nil || !version || opt.etcdPassword != "from-flag" || opt.cookieKey != "cookie-env" || opt.accountKeys != "keys-flag" || opt.in != "deploy.json" {
 		t.Fatalf("version %v err %v opt %+v", version, err, opt)
 	}
 	if _, _, err := parseArgs([]string{"-no-such"}, nil); err == nil {
@@ -203,7 +208,8 @@ func TestRunCanceled(t *testing.T) {
 	go func() {
 		errCh <- run(ctx, options{
 			in: deploy, config: "-", etcdPassword: "pw", cookieKey: "cookie-key",
-			postgres: "postgres://mftiko@127.0.0.1:1/mftiko?sslmode=disable",
+			accountKeys: testAccountKeys,
+			postgres:    "postgres://mftiko@127.0.0.1:1/mftiko?sslmode=disable",
 		}, strings.NewReader(conf), zerolog.Nop())
 	}()
 	select {
@@ -243,6 +249,41 @@ func TestProcessExitCodes(t *testing.T) {
 	}
 	if code, out := runExe(); code != 1 || !strings.Contains(out, "required") {
 		t.Fatalf("missing args %d %q", code, out)
+	}
+}
+
+func TestRunRejectsAccountKeys(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoint := "http://" + ln.Addr().String()
+	ln.Close()
+	dir := t.TempDir()
+	deploy := filepath.Join(dir, "deploy.json")
+	body := `{"regions":{"tw":{"endpoints":["` + endpoint + `"]}},"instances":{"controller":"tw"},"planes":{}}`
+	if err := os.WriteFile(deploy, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	conf := `{"listen":"127.0.0.1:0","allow":["*"]}`
+	runKeys := func(keys string) error {
+		t.Helper()
+		return run(context.Background(), options{
+			in: deploy, config: "-", etcdPassword: "pw", cookieKey: "cookie-key",
+			accountKeys: keys,
+			postgres:    "postgres://mftiko@127.0.0.1:1/mftiko?sslmode=disable",
+		}, strings.NewReader(conf), zerolog.Nop())
+	}
+	if err := runKeys(""); err == nil || !strings.Contains(err.Error(), "account keys are required") {
+		t.Fatal(err)
+	}
+	hidden := "v1:" + strings.Repeat("z", 40)
+	err = runKeys(hidden)
+	if err == nil || !strings.Contains(err.Error(), "account keys:") {
+		t.Fatal(err)
+	}
+	if strings.Contains(err.Error(), "zzzz") {
+		t.Fatalf("startup error quotes the key: %v", err)
 	}
 }
 
@@ -464,6 +505,7 @@ func TestChildFollowsAndShutsDown(t *testing.T) {
 		"-config", configPath,
 		"-etcd-password", etcdtest.Password(state.UserAPI),
 		"-cookie-key", "cookie-key",
+		"-account-keys", testAccountKeys,
 		"-postgres-dsn", "postgres://mftiko@127.0.0.1:5432/mftiko?sslmode=disable",
 	)
 	var addr string

@@ -1,7 +1,9 @@
 package api
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"os"
 	"path/filepath"
@@ -9,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/BullionBear/mftiko/internal/platform/accountkey"
 	"github.com/BullionBear/mftiko/internal/platform/artifact"
 	"github.com/BullionBear/mftiko/internal/platform/sealbox"
 )
@@ -27,11 +30,15 @@ func mustPub(t *testing.T) string {
 	return k.Public().String()
 }
 
+// testAccountKeys is v1 of 32 bytes of 0x11 (E21-03a). Tests use repeated bytes on purpose.
+const testAccountKeys = "v1:ERERERERERERERERERERERERERERERERERERERERERE="
+
 func testInput(t *testing.T) Input {
 	t.Helper()
 	return Input{
 		EtcdPassword: "pw",
 		CookieKey:    "cookie-key",
+		AccountKeys:  testAccountKeys,
 		PostgresDSN:  "postgres://mftiko@127.0.0.1:1/mftiko?sslmode=disable",
 	}
 }
@@ -140,7 +147,7 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.TDKeys["td-tw-1"] != want {
 		t.Fatal("td key was not kept")
 	}
-	if cfg.EtcdPassword != "pw" || cfg.CookieKey != "cookie-key" {
+	if cfg.EtcdPassword != "pw" || cfg.CookieKey != "cookie-key" || cfg.AccountKeys.Current() != 1 {
 		t.Fatal("secrets were not copied")
 	}
 	if cfg.LogToken != "" {
@@ -336,6 +343,57 @@ func TestPostgresDSN(t *testing.T) {
 	_, err = Load(strings.NewReader(goodDeploy()), strings.NewReader(goodConfig(pub)), in)
 	if err == nil || !strings.Contains(err.Error(), "cookie key is required") {
 		t.Fatal(err)
+	}
+}
+
+func TestAccountKeys(t *testing.T) {
+	pub := mustPub(t)
+	deploy, conf := goodDeploy(), goodConfig(pub)
+	reject := func(name, keys, want, hidden string) {
+		t.Helper()
+		t.Run(name, func(t *testing.T) {
+			in := testInput(t)
+			in.AccountKeys = keys
+			_, err := Load(strings.NewReader(deploy), strings.NewReader(conf), in)
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("error %v, want substring %q", err, want)
+			}
+			if hidden != "" && strings.Contains(err.Error(), hidden) {
+				t.Fatalf("error quotes key material: %v", err)
+			}
+		})
+	}
+	reject("missing", "", "account keys are required", "")
+	reject("blank", "  ", "account keys are required", "")
+	bad := "v1:not-a-key-" + strings.Repeat("z", 24)
+	reject("not base64", bad, "standard base64", "not-a-key")
+	short := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x02}, 16))
+	reject("short", "v1:"+short, "key is 16 bytes, want 32", short)
+	reject("duplicate", "v1:"+base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x01}, 32))+",v1:"+base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x03}, 32)), "duplicate version 1", "AQEB")
+	reject("zero", "v0:"+base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x01}, 32)), "want v<version>", "AQEB")
+
+	in := testInput(t)
+	in.AccountKeys = "v2:" + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x22}, 32)) + ",v1:" + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x11}, 32))
+	cfg := loadWithin(t, deploy, conf, in)
+	if cfg.AccountKeys.Current() != 2 {
+		t.Fatalf("current %d", cfg.AccountKeys.Current())
+	}
+	got := cfg.AccountKeys.Versions()
+	if len(got) != 2 || got[0] != 2 || got[1] != 1 {
+		t.Fatalf("versions %v", got)
+	}
+	plain := bytes.Repeat([]byte{0x42}, 16)
+	sealed, err := accountkey.Parse("v1:" + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x11}, 32)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ct, err := sealed.Seal(7, "BinanceUM", plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := cfg.AccountKeys.Open(7, "BinanceUM", ct)
+	if err != nil || string(out) != string(plain) {
+		t.Fatalf("old key did not open: %v", err)
 	}
 }
 

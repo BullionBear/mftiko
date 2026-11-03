@@ -122,6 +122,7 @@ func (e *env) startAPI(conf map[string]any) string {
 	cfg, err := api.Load(bytes.NewReader(dep), bytes.NewReader(raw), api.Input{
 		EtcdPassword: etcdtest.Password(state.UserAPI),
 		CookieKey:    "cookie-key",
+		AccountKeys:  "v1:ERERERERERERERERERERERERERERERERERERERERERE=",
 		PostgresDSN:  pg.DSN(),
 		Mirror:       state.MirrorOptions{ProbeInterval: 50 * time.Millisecond, Log: &log},
 		Log:          log,

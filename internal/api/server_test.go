@@ -167,6 +167,7 @@ func offlineConfig(t *testing.T, log zerolog.Logger, cert, key string) Config {
 	return loadWithin(t, deploy, conf, Input{
 		EtcdPassword: "pw",
 		CookieKey:    "cookie-key",
+		AccountKeys:  testAccountKeys,
 		PostgresDSN:  "postgres://mftiko@127.0.0.1:1/mftiko?sslmode=disable",
 		TLSCert:      cert,
 		TLSKey:       key,
@@ -244,6 +245,7 @@ func TestMirrorFollowsCutAndDrain(t *testing.T) {
 	cfg, err := Load(bytes.NewReader(dep), bytes.NewReader(conf), Input{
 		EtcdPassword: etcdtest.Password(state.UserAPI),
 		CookieKey:    "cookie-key",
+		AccountKeys:  testAccountKeys,
 		PostgresDSN:  "postgres://mftiko@127.0.0.1:1/mftiko?sslmode=disable",
 		Mirror: state.MirrorOptions{
 			ProbeInterval: 100 * time.Millisecond,

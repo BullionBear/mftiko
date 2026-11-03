@@ -49,6 +49,7 @@ func authConfig(t *testing.T, log zerolog.Logger, dsn string, now func() time.Ti
 	return loadWithin(t, deploy, string(conf), Input{
 		EtcdPassword: "pw",
 		CookieKey:    testCookieKey,
+		AccountKeys:  testAccountKeys,
 		PostgresDSN:  dsn,
 		Mirror: state.MirrorOptions{
 			ProbeInterval: 100 * time.Millisecond,

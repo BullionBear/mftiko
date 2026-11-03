@@ -167,7 +167,7 @@ api() {
 		return 1
 	fi
 	n=$(nth "api-$r")
-	run sh -c "MFTIKO_COOKIE_KEY=\$(cat /work/e2e/cookie-key) MFTIKO_POSTGRES_DSN=\$DATABASE_URL nohup /mftiko/mftiko-api \
+	run sh -c "MFTIKO_COOKIE_KEY=\$(cat /work/e2e/cookie-key) MFTIKO_ACCOUNT_KEYS=\$(cat /work/e2e/account-keys) MFTIKO_POSTGRES_DSN=\$DATABASE_URL nohup /mftiko/mftiko-api \
 		-in /work/e2e/deployment.json -config /work/e2e/api-$r.json -web /web/build -log-token /work/e2e/log-token \
 		>/work/e2e/api-$r-$n.log 2>&1 &"
 	run sh -c "i=0; until wget -q -O /dev/null http://127.0.0.1:$port/readyz 2>/dev/null; do i=\$((i+1)); [ \$i -lt 60 ] || exit 1; sleep 0.5; done"

@@ -98,7 +98,7 @@ services:
   # The API server and the console (E10-19). bin/linux/mftiko-api from `make dev-up`, the console from
   # web/build (E10-D028), plain HTTP (E10-D029). deploy/dev/api-init.sh writes ./data/api: the deployment
   # (one region, controller, md1, td1, sts1), the API JSON, the token to sign in with, the cookie key,
-  # the session-log token and td1's seal key. etcd has no auth here; the etcd client goes on without it,
+  # the account key ring, the session-log token and td1's seal key. etcd has no auth here; the etcd client goes on without it,
   # so the password is a placeholder. Audit and session records need `make migrate-up`; until then the
   # API serves and logs the errors.
   api:
@@ -106,7 +106,7 @@ services:
     command:
       - sh
       - -c
-      - MFTIKO_COOKIE_KEY=$$(cat /api/cookie-key) exec /mftiko/mftiko-api -in /api/deployment.json -config /api/api.json -web /web/build -log-token /api/log-token
+      - MFTIKO_COOKIE_KEY=$$(cat /api/cookie-key) MFTIKO_ACCOUNT_KEYS=$$(cat /api/account-keys) exec /mftiko/mftiko-api -in /api/deployment.json -config /api/api.json -web /web/build -log-token /api/log-token
     environment:
       MFTIKO_ETCD_PASSWORD: dev
       MFTIKO_POSTGRES_DSN: postgres://mftiko@postgres:5432/mftiko?sslmode=disable
