@@ -40,6 +40,7 @@ test('console main flow', async ({ page }) => {
 	await page.getByLabel('Name', { exact: true }).fill(name);
 	await page.getByLabel('Kind').selectOption(kind);
 	await page.getByLabel('TD instance').fill('td1');
+	await page.getByLabel('Exchange account UID').fill('uid-1');
 	await page.getByLabel('Key type').selectOption(creds.key_type);
 	await page.getByLabel('Key', { exact: true }).fill(creds.key);
 	await page.locator('#secret').fill(creds.secret);

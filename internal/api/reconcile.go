@@ -81,6 +81,14 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 	if err := ctx.Err(); err != nil || s.stopped() {
 		return
 	}
+	// Account projection runs in this same pass (E21-D022). A failure is logged and the
+	// session compare still runs.
+	if err := s.reconcileAccounts(ctx); err != nil && !s.quiet(err) {
+		s.log.Error().Err(err).Msg("project accounts")
+	}
+	if err := ctx.Err(); err != nil || s.stopped() {
+		return
+	}
 	cutoff := s.now().UTC().Add(-idempotencyTTL)
 	if err := s.expireIdempotency(ctx, cutoff); err != nil {
 		s.logDB(err, "", "", "expire idempotency keys")

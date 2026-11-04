@@ -93,6 +93,16 @@ func (r *Registry) AccountKind(name string) (AccountKind, bool) {
 	return k, ok
 }
 
+// ExchangeOfKind is the exchange package that declared kind (E21-D008). The API copies it onto
+// the account response. It is not a venue name.
+func (r *Registry) ExchangeOfKind(kind string) (string, bool) {
+	if r == nil {
+		return "", false
+	}
+	ex, ok := r.exchange["k:"+kind]
+	return ex, ok
+}
+
 // Lookup implements symbol.Venues: venues only, never account kinds.
 func (r *Registry) Lookup(name string) (symbol.Venue, bool) {
 	v, ok := r.venues[name]

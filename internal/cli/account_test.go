@@ -26,7 +26,7 @@ func TestAccountCreateHMAC(t *testing.T) {
 	pass := writeCred(t, "test-pass-a\r\n")
 	got := runAt(context.Background(), home, nil, strings.NewReader(""),
 		"--context", "dev", "account", "create",
-		"-name", "ada-okx", "-kind", "Okx", "-td-instance", "td1",
+		"-name", "ada-okx", "-kind", "Okx", "-td-instance", "td1", "-exch-account-uid", "uid-1",
 		"-key-file", key, "-secret-file", secret, "-passphrase-file", pass, "-v")
 	noLeak(t, "test-key-a", got.out+got.err)
 	noLeak(t, "test-secret-a", got.out+got.err)
@@ -53,6 +53,9 @@ func TestAccountCreateHMAC(t *testing.T) {
 	if body.Credentials.Passphrase == nil || *body.Credentials.Passphrase != "test-pass-a" {
 		t.Fatalf("passphrase %+v", body.Credentials.Passphrase)
 	}
+	if body.ExchAccountUid != "uid-1" {
+		t.Fatalf("exch_account_uid %q", body.ExchAccountUid)
+	}
 	c := opCalls(srv.Calls(), "CreateAccount")[0]
 	if c.Authorization != "Bearer "+tokenA || c.ContentType != "application/json" || c.Cookie != "" {
 		t.Fatalf("headers %+v", c)
@@ -70,7 +73,7 @@ func TestAccountCreateEd25519Bytes(t *testing.T) {
 	key := writeCred(t, "test-key-a")
 	got := runAt(context.Background(), home, nil, strings.NewReader(""),
 		"--context", "dev", "-o", "json", "-v", "account", "create",
-		"-name", "ada-ed", "-kind", "Ed", "-td-instance", "td1",
+		"-name", "ada-ed", "-kind", "Ed", "-td-instance", "td1", "-exch-account-uid", "uid-1",
 		"-key-file", key, "-secret-file", secret)
 	for _, line := range strings.Split(string(fileBytes), "\n") {
 		if len(line) >= 8 {
@@ -103,7 +106,7 @@ func TestAccountCreateFromStdin(t *testing.T) {
 	in.r = strings.NewReader("test-secret-a\n")
 	got := runReader(context.Background(), home, nil, &in,
 		"--context", "dev", "account", "create",
-		"-name", "ada-okx", "-kind", "Okx", "-td-instance", "td1",
+		"-name", "ada-okx", "-kind", "Okx", "-td-instance", "td1", "-exch-account-uid", "uid-1",
 		"-key-file", key, "-secret-file", "-", "-passphrase-file", pass)
 	noLeak(t, "test-secret-a", got.out+got.err)
 	if got.code != ExitOK || in.n == 0 {
@@ -118,11 +121,12 @@ func TestAccountCreateFromStdin(t *testing.T) {
 func TestAccountCreatePrompts(t *testing.T) {
 	srv, home := startAcct(t, apitest.Option{})
 	app, out, err := newApp(home, strings.NewReader("test-key-a\ntest-secret-a\ntest-pass-a\n"), options{
-		context:    "dev",
-		contextSet: true,
-		name:       strOpt("ada-okx"),
-		kind:       strOpt("Okx"),
-		tdInstance: strOpt("td1"),
+		context:        "dev",
+		contextSet:     true,
+		name:           strOpt("ada-okx"),
+		kind:           strOpt("Okx"),
+		tdInstance:     strOpt("td1"),
+		exchAccountUid: strOpt("uid-1"),
 	}, true)
 	code := runAccountCreate(app)
 	text := out.String() + err.String()
@@ -146,11 +150,12 @@ func TestAccountCreateEd25519Prompt(t *testing.T) {
 	pemBytes := testPEM(t)
 	stdin := "test-key-a\n" + string(pemBytes)
 	app, out, err := newApp(home, strings.NewReader(stdin), options{
-		context:    "dev",
-		contextSet: true,
-		name:       strOpt("ada-ed"),
-		kind:       strOpt("Ed"),
-		tdInstance: strOpt("td1"),
+		context:        "dev",
+		contextSet:     true,
+		name:           strOpt("ada-ed"),
+		kind:           strOpt("Ed"),
+		tdInstance:     strOpt("td1"),
+		exchAccountUid: strOpt("uid-1"),
 	}, true)
 	code := runAccountCreate(app)
 	text := out.String() + err.String()
@@ -178,7 +183,7 @@ func TestAccountCreateRejected(t *testing.T) {
 		in.r = strings.NewReader("")
 		got := runReader(context.Background(), home, nil, &in,
 			"--context", "dev", "account", "create",
-			"-name", "ada", "-kind", "BinancePM", "-td-instance", "td1",
+			"-name", "ada", "-kind", "BinancePM", "-td-instance", "td1", "-exch-account-uid", "uid-1",
 			"-key-file", filepath.Join(t.TempDir(), "missing"))
 		if got.code != ExitValidationFailed || !strings.Contains(got.err, "/kind: is not accepted") {
 			t.Fatalf("%+v", got)
@@ -194,7 +199,7 @@ func TestAccountCreateRejected(t *testing.T) {
 		srv, home := startAcct(t, apitest.Option{})
 		got := runAt(context.Background(), home, nil, strings.NewReader(""),
 			"--context", "dev", "account", "create",
-			"-name", "ada", "-kind", "Okx", "-td-instance", "md1",
+			"-name", "ada", "-kind", "Okx", "-td-instance", "md1", "-exch-account-uid", "uid-1",
 			"-key-file", filepath.Join(t.TempDir(), "missing"))
 		if got.code != ExitValidationFailed || !strings.Contains(got.err, "/td_instance: is not a td instance") {
 			t.Fatalf("%+v", got)
@@ -207,7 +212,7 @@ func TestAccountCreateRejected(t *testing.T) {
 		srv, home := startAcct(t, apitest.Option{})
 		got := runAt(context.Background(), home, nil, strings.NewReader(""),
 			"--context", "dev", "account", "create",
-			"-name", "ada", "-kind", "Okx", "-td-instance", "TD1")
+			"-name", "ada", "-kind", "Okx", "-td-instance", "TD1", "-exch-account-uid", "uid-1")
 		if got.code != ExitValidationFailed || !strings.Contains(got.err, "/td_instance: is not an instance name") {
 			t.Fatalf("%+v", got)
 		}
@@ -219,7 +224,7 @@ func TestAccountCreateRejected(t *testing.T) {
 		srv, home := startAcct(t, apitest.Option{})
 		got := runAt(context.Background(), home, nil, strings.NewReader(""),
 			"--context", "dev", "account", "create",
-			"-name", "ada", "-kind", "Okx", "-td-instance", "td-missing")
+			"-name", "ada", "-kind", "Okx", "-td-instance", "td-missing", "-exch-account-uid", "uid-1")
 		if got.code != ExitValidationFailed || !strings.Contains(got.err, "/td_instance: is not in the topology") {
 			t.Fatalf("%+v", got)
 		}
@@ -231,7 +236,7 @@ func TestAccountCreateRejected(t *testing.T) {
 		srv, home := startAcct(t, apitest.Option{})
 		got := runAt(context.Background(), home, nil, strings.NewReader(""),
 			"--context", "dev", "account", "create",
-			"-name", "ada", "-kind", "Binance", "-td-instance", "td1",
+			"-name", "ada", "-kind", "Binance", "-td-instance", "td1", "-exch-account-uid", "uid-1",
 			"-key-file", filepath.Join(t.TempDir(), "missing"),
 			"-secret-file", filepath.Join(t.TempDir(), "missing"))
 		if got.code != ExitUsage || !strings.Contains(got.err, "-key-type is required") {
@@ -245,7 +250,7 @@ func TestAccountCreateRejected(t *testing.T) {
 		srv, home := startAcct(t, apitest.Option{})
 		got := runAt(context.Background(), home, nil, strings.NewReader(""),
 			"--context", "dev", "account", "create",
-			"-name", "ada", "-kind", "Okx", "-td-instance", "td1", "-key-type", "ed25519")
+			"-name", "ada", "-kind", "Okx", "-td-instance", "td1", "-exch-account-uid", "uid-1", "-key-type", "ed25519")
 		if got.code != ExitValidationFailed || !strings.Contains(got.err, "/credentials/key_type: is not accepted") {
 			t.Fatalf("%+v", got)
 		}
@@ -257,7 +262,7 @@ func TestAccountCreateRejected(t *testing.T) {
 		srv, home := startAcct(t, apitest.Option{})
 		got := runAt(context.Background(), home, nil, strings.NewReader(""),
 			"--context", "dev", "account", "create",
-			"-name", "ada", "-kind", "Binance", "-td-instance", "td1", "-key-type", "hmac",
+			"-name", "ada", "-kind", "Binance", "-td-instance", "td1", "-exch-account-uid", "uid-1", "-key-type", "hmac",
 			"-passphrase-file", filepath.Join(t.TempDir(), "missing"))
 		if got.code != ExitValidationFailed || !strings.Contains(got.err, "/credentials/passphrase: is not used by this account kind") {
 			t.Fatalf("%+v", got)
@@ -270,7 +275,7 @@ func TestAccountCreateRejected(t *testing.T) {
 		srv, home := startAcct(t, apitest.Option{})
 		got := runAt(context.Background(), home, nil, strings.NewReader(""),
 			"--context", "dev", "account", "create",
-			"-name", "ada", "-kind", "Okx", "-td-instance", "td1",
+			"-name", "ada", "-kind", "Okx", "-td-instance", "td1", "-exch-account-uid", "uid-1",
 			"-key-file", filepath.Join(t.TempDir(), "missing"),
 			"-secret-file", filepath.Join(t.TempDir(), "missing"))
 		if got.code != ExitValidationFailed || !strings.Contains(got.err, "/credentials/passphrase: required") {
@@ -286,7 +291,7 @@ func TestAccountCreateRejected(t *testing.T) {
 		in.r = strings.NewReader("test-secret-a\n")
 		got := runReader(context.Background(), home, nil, &in,
 			"--context", "dev", "account", "create",
-			"-name", "ada", "-kind", "Okx", "-td-instance", "td1",
+			"-name", "ada", "-kind", "Okx", "-td-instance", "td1", "-exch-account-uid", "uid-1",
 			"-key-file", "-", "-secret-file", "-", "-passphrase-file", filepath.Join(t.TempDir(), "missing"))
 		noLeak(t, "test-secret-a", got.out+got.err)
 		if got.code != ExitUsage || !strings.Contains(got.err, "at most one credential file can be -") || in.n != 0 {
@@ -313,7 +318,7 @@ func TestAccountCreateRejected(t *testing.T) {
 		pass := writeCred(t, "test-pass-a\n")
 		got := runAt(context.Background(), home, nil, strings.NewReader(""),
 			"--context", "dev", "account", "create",
-			"-name", "ada", "-kind", "Okx", "-td-instance", "td1",
+			"-name", "ada", "-kind", "Okx", "-td-instance", "td1", "-exch-account-uid", "uid-1",
 			"-key-file", key, "-secret-file", secret, "-passphrase-file", pass)
 		noLeak(t, "test-secret-a", got.out+got.err)
 		noLeak(t, "test-key-a", got.out+got.err)
@@ -329,7 +334,7 @@ func TestAccountCreateRejected(t *testing.T) {
 		srv, home := startAcct(t, apitest.Option{})
 		args := func() []string {
 			return []string{"--context", "dev", "account", "create",
-				"-name", "ada-okx", "-kind", "Okx", "-td-instance", "td1",
+				"-name", "ada-okx", "-kind", "Okx", "-td-instance", "td1", "-exch-account-uid", "uid-1",
 				"-key-file", writeCred(t, "test-key-a\n"),
 				"-secret-file", writeCred(t, "test-secret-a\n"),
 				"-passphrase-file", writeCred(t, "test-pass-a\n")}

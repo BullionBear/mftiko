@@ -82,6 +82,8 @@ type Kind struct {
 	Trades     []string
 	KeyTypes   []string
 	Passphrase bool
+	// Exchange is the registry's Declaration.Exchange for this kind (E21-D008). Empty is not accepted.
+	Exchange string
 }
 
 // Supported is true when the kind trades exactly one venue (E06-D014, E10-D011).

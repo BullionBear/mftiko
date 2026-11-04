@@ -57,7 +57,8 @@ type Server struct {
 	strategyOnce    sync.Once
 	strategyHandler http.Handler
 
-	// hook is nil in production. Tests fail a create at "before-etcd" or "after-etcd".
+	// hook is nil in production. Tests fail a session write at "before-etcd" or "after-etcd",
+	// and an account projection at "account-before-etcd".
 	hook func(step string) error
 	// haltBeforeDelete is a test switch. The retention pass closes the row and returns
 	// before deleteIf, so a later pass can finish the etcd delete (E10-D031). It is zero
@@ -67,7 +68,9 @@ type Server struct {
 	// W5 also counts a terminal session that has no row and is therefore not deleted (E10-D081).
 	missingRecord atomic.Int64
 	// hashMismatch counts specs whose immutable content does not match the row (E10-D071).
-	hashMismatch  atomic.Int64
+	hashMismatch atomic.Int64
+	// orphanAccount counts etcd account keys that have no Postgres row (E21-D021).
+	orphanAccount atomic.Int64
 	reconcileKick chan struct{}
 	reconcileMu   sync.Mutex
 	// reconcilePasses counts completed reconcileOnce calls so a test can wait for one pass.

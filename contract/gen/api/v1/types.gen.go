@@ -380,11 +380,23 @@ func (e WorkerPhase) Valid() bool {
 type APIIDValue = int64
 
 // Account 不含憑證、密文或指紋（E10-D063）。
+// `revision` 是 Postgres 的 CAS 序號，從 1 起，成功的更新與軟刪除加 1，不是 etcd 的 `mod_revision`（E21-D027）。
+// `exchange` 由 kind 的 registry 推出，不另存（E21-D008、E21-D031）。回應會帶 `exchange` 與 `exch_account_uid`。
+// `deleted_at` 只有軟刪除之後才有。
 type Account struct {
 	// ApiId API 隨機配發，1 到 2⁵³−1（E10-D008）。
 	ApiId APIIDValue `json:"api_id"`
-	Kind  string     `json:"kind"`
-	Name  string     `json:"name"`
+
+	// DeletedAt 軟刪除的時間（UTC）。活著的帳號省略（E21-D012）。
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
+
+	// ExchAccountUid 交易所帳戶識別（E21-D008、E21-D025）。回應會帶。
+	ExchAccountUid *string `json:"exch_account_uid,omitempty"`
+
+	// Exchange 由 kind 推出的交易所（E21-D008）。回應會帶。
+	Exchange *string `json:"exchange,omitempty"`
+	Kind     string  `json:"kind"`
+	Name     string  `json:"name"`
 
 	// ReferencedBy 引用它的非 terminal session。不為空時刪除回 409。
 	ReferencedBy []SessionIDValue `json:"referenced_by"`
@@ -401,12 +413,15 @@ type AccountCreate struct {
 	// Credentials 只寫不讀（E10-D011、E10-D063）。回應、log、`audit` 都不含明文或密文。
 	Credentials *Credentials `json:"credentials,omitempty"`
 
-	// Kind `GET /account-kinds` 裡 `supported` 的種類。
+	// ExchAccountUid 去掉前後空白後 1 到 64 字元，建立之後不能改（E21-D008、E21-D025）。
+	ExchAccountUid string `json:"exch_account_uid"`
+
+	// Kind `GET /account-kinds` 裡 `supported` 的種類。`exchange` 由這個種類推出。
 	Kind     string           `json:"kind"`
 	Name     string           `json:"name"`
 	Settings *AccountSettings `json:"settings,omitempty"`
 
-	// TdInstance 建立之後不能改：它在 etcd 的 key 路徑上。
+	// TdInstance 建立之後不能改。過渡期它決定 etcd 投影寫進哪一個 TD instance（E21-D002）。拿掉是 E21-06。
 	TdInstance InstanceName `json:"td_instance"`
 }
 
@@ -469,7 +484,10 @@ type AccountSettings struct {
 type AccountUpdate struct {
 	// Credentials 只寫不讀（E10-D011、E10-D063）。回應、log、`audit` 都不含明文或密文。
 	Credentials *Credentials `json:"credentials,omitempty"`
-	Name        *string      `json:"name,omitempty"`
+
+	// ExchAccountUid 省略則不變。去掉前後空白後必須與現值相同，否則 400（E21-D008）。
+	ExchAccountUid *string `json:"exch_account_uid,omitempty"`
+	Name           *string `json:"name,omitempty"`
 
 	// Revision etcd 的 `mod_revision`。只在同一個資源上比較有意義。
 	Revision Revision         `json:"revision"`
@@ -1113,13 +1131,22 @@ type ListAccountsParams struct {
 	// Cursor 上一頁回應的 `next_cursor`，對呼叫端不透明。
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 
-	// TdInstance 只列這個 TD instance。不是 instance 名稱、不在 topology，或不是 td，回 400。該 region 不可用時這頁是空的，並標在 `freshness`（E10-D014）。
+	// TdInstance 只列這個 TD instance。不是 instance 名稱、不在 topology，或不是 td，回 400。region 不可用仍列出 Postgres 裡的帳號，並標在 `freshness`（E21-D029）。
 	TdInstance *string `form:"td_instance,omitempty" json:"td_instance,omitempty"`
+
+	// IncludeDeleted 為 true 時一併列出已軟刪除的帳號（E21-D012）。省略是 false。
+	IncludeDeleted *bool `form:"include_deleted,omitempty" json:"include_deleted,omitempty"`
 }
 
 // DeleteAccountParams defines parameters for DeleteAccount.
 type DeleteAccountParams struct {
 	Revision Revision `form:"revision" json:"revision"`
+}
+
+// GetAccountParams defines parameters for GetAccount.
+type GetAccountParams struct {
+	// IncludeDeleted 為 true 時，已軟刪除的帳號也回 200，並帶 `deleted_at`（E21-D012）。省略是 false。
+	IncludeDeleted *bool `form:"include_deleted,omitempty" json:"include_deleted,omitempty"`
 }
 
 // StreamEventsParams defines parameters for StreamEvents.

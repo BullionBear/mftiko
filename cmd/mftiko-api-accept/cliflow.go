@@ -286,6 +286,7 @@ func (c *cli) account(name, kind, credsFile string) (int64, error) {
 		return 0, err
 	}
 	args := []string{"account", "create", "-name", name, "-kind", kind, "-td-instance", tdInst,
+		"-exch-account-uid", "accept-uid",
 		"-key-type", string(creds.KeyType), "-key-file", keyFile, "-secret-file", secretFile}
 	if creds.Passphrase != nil {
 		c.secrets = append(c.secrets, *creds.Passphrase)

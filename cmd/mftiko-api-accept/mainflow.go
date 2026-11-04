@@ -72,7 +72,8 @@ func (f *flow) mainSteps(credsFile, kind, ticker, topic string, algo int, offset
 		return err
 	}
 	acc, err := f.a.CreateAccountWithResponse(f.ctx, apiv1.AccountCreate{
-		Name: "accept-" + strings.ToLower(kind), Kind: kind, TdInstance: tdInst, Credentials: &creds,
+		Name: "accept-" + strings.ToLower(kind), Kind: kind, TdInstance: tdInst,
+		ExchAccountUid: "accept-uid", Credentials: &creds,
 	})
 	if err != nil {
 		return err
@@ -184,7 +185,7 @@ func (f *flow) mainSteps(credsFile, kind, ticker, topic string, algo int, offset
 	}
 	say("stdout and stderr cleared from %s", logs.Host)
 
-	got, err := f.b.GetAccountWithResponse(f.ctx, apiID)
+	got, err := f.b.GetAccountWithResponse(f.ctx, apiID, nil)
 	if err != nil {
 		return err
 	}

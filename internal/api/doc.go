@@ -6,8 +6,11 @@
 // Writes go to etcd under the shared "api" user, guarded by create-only and mod_revision conditions instead of an
 // election (PROTOCOL §3.2 W10, E10-D006). They go through state.APIWriter, whose scope lets the API put specs and accounts
 // and delete statuses, never put them (E10-D042). A lost condition is 409 conflict; etcd not reached is 503
-// region_unavailable. session_id and api_id are drawn at random and checked against the mirrors of the available
-// regions, then created create-only; the region written to must be available (E10-D007, E10-D008, E10-D042). Reads are answered
+// region_unavailable. session_id is drawn at random and checked against the mirrors of the available
+// regions, then created create-only; the region written to must be available (E10-D007, E10-D042).
+// api_id is drawn at random and is unique by the Postgres primary key, with no mirror scan (E10-D008, E21-D002, E21-D030).
+// Account rows are the authority. The etcd account key is a projection written after the Postgres commit (E21-D022).
+// Account reads come from Postgres (E21-D029). Session and instance reads are answered
 // from one Mirror per cluster (E10-D014). Session and instance reads, session records, and SSE are E10-D092–E10-D097.
 // Each SSE connection watches etcd from Last-Event-ID and does not read the mirror's history (E10-D094).
 // Every /api request is authenticated, except POST /api/v1/auth/login
@@ -16,8 +19,8 @@
 // agent when a log token is set (E14-D010, E14-D025–E14-D030). With no token those two routes answer
 // 503 logs_unavailable; the rest of the API, including /readyz, is unchanged. The strategy catalog is served from the registry (E10-D056–E10-D061). Load checks the DSN and the
 // registry settings and does not dial. Run creates a Postgres pool and does not wait for it to connect;
-// readiness still watches etcd only (E10-D048, modifies E10-D024). A down Postgres makes session create return
-// 503 and skip etcd (E10-D031); audit writes fail the same way. Create and end of a session, the
+// readiness still watches etcd only (E10-D048, modifies E10-D024). A down Postgres makes session create and
+// account writes return 503 and skip etcd (E10-D031, E21-D029); audit writes fail the same way. Create and end of a session, the
 // session_records row, and reconcile are E10-D068–E10-D073. W5 deletion runs in that same reconcile
 // and on DELETE /api/v1/sessions/{id} (E10-D080–E10-D085): Postgres is closed first, and a down
 // Postgres deletes nothing. A catalog
@@ -38,8 +41,9 @@
 //	shutdown_timeout                      drain limit after SIGTERM, Go duration, default 10s (E10-D027)
 //
 // Account kinds are not in either JSON file. The command sets Config.Kinds from the exchange registry
-// (E10-D034). This package does not import exchange. Creating an account seals credentials to that TD
-// instance's public key (E06-D013, E10-D062). Reads return no credential material (E10-D063).
+// (E10-D034). This package does not import exchange. Kind.Exchange is filled by the command from the registry
+// (E21-D031). Creating an account stores an account-key AEAD of the credentials and a sealbox for that TD
+// instance's public key (E06-D013, E21-D003, E21-D028). Neither is returned (E10-D063).
 //
 // A zero or omitted duration takes the default. Secrets are not in either JSON file. They are the etcd user "api"
 // password (MFTIKO_ETCD_PASSWORD, flag -etcd-password), the cookie HMAC key (MFTIKO_COOKIE_KEY, flag -cookie-key),

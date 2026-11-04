@@ -125,16 +125,18 @@ Call GET /auth/me and print the user. The default is a table with local times.
 const accountHelp = `usage: mftiko account list|show|create|update|delete
 
 list
-  mftiko account list [-td-instance name] [-limit N]
-  mftiko account list [-td-instance name] [-cursor TOKEN]
+  mftiko account list [-td-instance name] [-limit N] [-include-deleted true]
+  mftiko account list [-td-instance name] [-cursor TOKEN] [-include-deleted true]
 
--limit and -cursor cannot both be set.
+-limit and -cursor cannot both be set. -include-deleted true lists soft-deleted
+accounts. Omit it, or pass false, to list live accounts only.
 
 show
-  mftiko account show <api_id>
+  mftiko account show <api_id> [-include-deleted true]
 
 create
   mftiko account create -name NAME -kind KIND -td-instance NAME
+      -exch-account-uid UID
       [-key-type hmac|ed25519]
       [-key-file PATH] [-secret-file PATH] [-passphrase-file PATH]
 
@@ -152,7 +154,9 @@ be "-". An ed25519 secret is sent unchanged, including newlines; on a terminal
 end it with EOF. HMAC key, secret, and passphrase values lose one trailing
 newline. A kind with one key type uses it. A kind with several requires
 -key-type. Giving any credential file on update replaces the whole set. With
-none, update keeps the stored ciphertext. delete asks for confirmation.
+none, update keeps the stored ciphertext. -exch-account-uid is required on
+create. Leading and trailing spaces are removed before it is sent. delete asks
+for confirmation.
 `
 
 const sessionHelp = `usage: mftiko session create -f FILE
@@ -290,6 +294,8 @@ type options struct {
 	name           stringOpt
 	kind           stringOpt
 	tdInstance     stringOpt
+	exchAccountUid stringOpt
+	includeDeleted boolOpt
 	keyFile        stringOpt
 	secretFile     stringOpt
 	passFile       stringOpt
@@ -498,7 +504,8 @@ func parseArgs(args []string) (options, []string, error) {
 	var timeout durationOpt
 	var output stringOpt
 	var outputLong stringOpt
-	var name, kind, tdInstance stringOpt
+	var name, kind, tdInstance, exchAccountUid stringOpt
+	var includeDeleted boolOpt
 	var keyFile, secretFile, passFile, keyType, cursor stringOpt
 	var stsInstance, sessionID, strategyID, createdBy, createdAfter, createdBefore stringOpt
 	var phase stringList
@@ -528,6 +535,8 @@ func parseArgs(args []string) (options, []string, error) {
 	fs.Var(&name, "name", "account name")
 	fs.Var(&kind, "kind", "account kind")
 	fs.Var(&tdInstance, "td-instance", "TD instance")
+	fs.Var(&exchAccountUid, "exch-account-uid", "exchange account id")
+	fs.Var(&includeDeleted, "include-deleted", "true or false")
 	fs.Var(&keyFile, "key-file", "file to read the credential key from")
 	fs.Var(&secretFile, "secret-file", "file to read the credential secret from")
 	fs.Var(&passFile, "passphrase-file", "file to read the credential passphrase from")
@@ -574,6 +583,8 @@ func parseArgs(args []string) (options, []string, error) {
 		name:           name,
 		kind:           kind,
 		tdInstance:     tdInstance,
+		exchAccountUid: exchAccountUid,
+		includeDeleted: includeDeleted,
 		keyFile:        keyFile,
 		secretFile:     secretFile,
 		passFile:       passFile,
@@ -634,8 +645,9 @@ func parseArgs(args []string) (options, []string, error) {
 var (
 	valueFlags = map[string]bool{
 		"context": true, "timeout": true, "o": true, "output": true,
-		"name": true, "kind": true, "td-instance": true,
-		"key-file": true, "secret-file": true, "passphrase-file": true, "key-type": true,
+		"name": true, "kind": true, "td-instance": true, "exch-account-uid": true,
+		"include-deleted": true,
+		"key-file":        true, "secret-file": true, "passphrase-file": true, "key-type": true,
 		"limit": true, "cursor": true,
 		"phase": true, "active": true, "sts-instance": true,
 		"session-id": true, "strategy-id": true, "created-by": true,

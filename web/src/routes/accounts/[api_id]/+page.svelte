@@ -330,6 +330,13 @@
 				{detail.account.kind}
 				{@render fieldError('/kind')}
 			</dd>
+			<dt>Exchange</dt>
+			<dd>{detail.account.exchange ?? '—'}</dd>
+			<dt>Exchange account UID</dt>
+			<dd>
+				{detail.account.exch_account_uid ?? '—'}
+				{@render fieldError('/exch_account_uid')}
+			</dd>
 			<dt>TD instance</dt>
 			<dd>
 				{detail.account.td_instance}
@@ -337,6 +344,10 @@
 			</dd>
 			<dt>Region</dt>
 			<dd>{detail.account.region}</dd>
+			{#if detail.account.deleted_at}
+				<dt>Deleted</dt>
+				<dd>{detail.account.deleted_at}</dd>
+			{/if}
 			<dt>Revision</dt>
 			<dd>
 				{detail.account.revision}

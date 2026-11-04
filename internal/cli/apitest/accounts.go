@@ -72,6 +72,17 @@ func copyFresh(f apiv1.Freshness) apiv1.Freshness {
 	return f
 }
 
+func exchangeOfKind(kind string) string {
+	switch kind {
+	case "Okx":
+		return "okx"
+	case "Bybit":
+		return "bybit"
+	default:
+		return "binance"
+	}
+}
+
 func copyAccount(in apiv1.Account) apiv1.Account {
 	out := in
 	out.ReferencedBy = append([]apiv1.SessionIDValue(nil), in.ReferencedBy...)
@@ -245,14 +256,18 @@ func (a *api) CreateAccount(ctx context.Context, req apiv1.CreateAccountRequestO
 	if inst, ok := a.s.instances[string(body.TdInstance)]; ok {
 		region = inst.Region
 	}
+	uid := body.ExchAccountUid
+	ex := exchangeOfKind(body.Kind)
 	rec := copyAccount(apiv1.Account{
-		ApiId:        a.s.nextID,
-		Name:         body.Name,
-		Kind:         body.Kind,
-		TdInstance:   body.TdInstance,
-		Region:       region,
-		Revision:     1,
-		ReferencedBy: []apiv1.SessionIDValue{},
+		ApiId:          a.s.nextID,
+		Name:           body.Name,
+		Kind:           body.Kind,
+		TdInstance:     body.TdInstance,
+		Region:         region,
+		Revision:       1,
+		ReferencedBy:   []apiv1.SessionIDValue{},
+		Exchange:       &ex,
+		ExchAccountUid: &uid,
 	})
 	a.s.accounts = append(a.s.accounts, accountRow{rec: rec})
 	loc := "/api/v1/accounts/" + strconv.FormatInt(rec.ApiId, 10)

@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
-	"strings"
 
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
@@ -98,41 +96,6 @@ func (s *Server) createSession(ctx context.Context, stsInst string, spec []byte)
 	return id, rev, nil
 }
 
-// createAccount allocates an api_id and creates the account of it under tdInst, create-only (W10, E10-D008, E10-D042). It
-// returns the id and the account's revision. The region rules are createSession's; an id is taken while an account
-// of any TD instance has it.
-//
-// build runs after the id is drawn and before the create, so the sealed credentials can carry that id (E06-D013). It is
-// not called when the region is unavailable. An error from build stops the allocation; it is not a conflict.
-func (s *Server) createAccount(ctx context.Context, tdInst string, build func(apiID int64) ([]byte, error)) (int64, int64, error) {
-	if p := s.cfg.Planes[tdInst]; p != state.PlaneTD {
-		return 0, 0, fmt.Errorf("api: %q is not a TD instance", tdInst)
-	}
-	views, err := s.availableViews(tdInst)
-	if err != nil {
-		return 0, 0, err
-	}
-	taken := apiIDs(views)
-	src := s.ids()
-	w := s.cl.APIWriter()
-	var rev int64
-	id, err := allocate(idAttempts,
-		func() (int64, error) { return newAPIID(src) },
-		func(id int64) bool { _, ok := taken[id]; return ok },
-		func(id int64) (err error) {
-			val, err := build(id)
-			if err != nil {
-				return err
-			}
-			rev, err = create(ctx, w, state.AccountKey(tdInst, id), val)
-			return err
-		})
-	if err != nil {
-		return 0, 0, err
-	}
-	return id, rev, nil
-}
-
 // availableViews is the mirror copy of every available region, by name. It is errRegionUnavailable when the region of
 // inst is not one of them.
 func (s *Server) availableViews(inst string) (map[string]state.View, error) {
@@ -160,27 +123,6 @@ func sessionIDs(views map[string]state.View) map[string]struct{} {
 	for _, v := range views {
 		for key := range v.Entries {
 			if id, ok := state.SessionOf(key); ok {
-				out[id] = struct{}{}
-			}
-		}
-	}
-	return out
-}
-
-// apiIDs is every api_id with an account in views.
-func apiIDs(views map[string]state.View) map[int64]struct{} {
-	out := map[int64]struct{}{}
-	for _, v := range views {
-		for key := range v.Entries {
-			p, inst, err := state.Owner(key)
-			if err != nil || p != state.PlaneTD {
-				continue
-			}
-			rest, ok := strings.CutPrefix(key, state.AccountPrefix(inst))
-			if !ok {
-				continue
-			}
-			if id, err := strconv.ParseInt(rest, 10, 64); err == nil {
 				out[id] = struct{}{}
 			}
 		}

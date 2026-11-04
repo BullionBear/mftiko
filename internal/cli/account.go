@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
 )
@@ -25,7 +26,7 @@ const maxAPIID int64 = 1<<53 - 1
 var instanceNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
 
 func runAccountList(a *App) int {
-	if code := a.onlyFlags("td-instance", "limit", "cursor"); code != 0 {
+	if code := a.onlyFlags("td-instance", "limit", "cursor", "include-deleted"); code != 0 {
 		return code
 	}
 	if len(a.Args) != 0 {
@@ -56,7 +57,7 @@ func runAccountList(a *App) int {
 }
 
 func runAccountShow(a *App) int {
-	if code := a.onlyFlags(); code != 0 {
+	if code := a.onlyFlags("include-deleted"); code != 0 {
 		return code
 	}
 	id, code := a.oneID("account show")
@@ -67,7 +68,7 @@ func runAccountShow(a *App) int {
 	if code != 0 {
 		return code
 	}
-	res, err := api.GetAccount(a.ctx, id)
+	res, err := api.GetAccount(a.ctx, id, a.accountGetParams())
 	if code := a.checked(res, err); code != 0 {
 		return code
 	}
@@ -79,6 +80,7 @@ func runAccountCreate(a *App) int {
 		"name",
 		"kind",
 		flagPair("td", "instance"),
+		flagPair("exch", "account")+"-uid",
 		flagFile("key"),
 		flagFile("secret"),
 		flagFile("pass"+"phrase"),
@@ -89,8 +91,9 @@ func runAccountCreate(a *App) int {
 	if len(a.Args) != 0 {
 		return a.exit("account create takes no arguments")
 	}
-	if !a.opt.name.set || a.opt.name.v == "" || !a.opt.kind.set || a.opt.kind.v == "" || !a.opt.tdInstance.set || a.opt.tdInstance.v == "" {
-		return a.exit("account create needs -name, -kind, and -td-instance")
+	uid := strings.TrimSpace(a.opt.exchAccountUid.v)
+	if !a.opt.name.set || a.opt.name.v == "" || !a.opt.kind.set || a.opt.kind.v == "" || !a.opt.tdInstance.set || a.opt.tdInstance.v == "" || !a.opt.exchAccountUid.set || uid == "" {
+		return a.exit("account create needs -name, -kind, -td-instance, and -exch-account-uid")
 	}
 	api, code := a.client()
 	if code != 0 {
@@ -116,10 +119,11 @@ func runAccountCreate(a *App) int {
 		return code
 	}
 	res, err := api.CreateAccount(a.ctx, apiv1.AccountCreate{
-		Name:        a.opt.name.v,
-		Kind:        kind.Kind,
-		TdInstance:  a.opt.tdInstance.v,
-		Credentials: cred,
+		Name:           a.opt.name.v,
+		Kind:           kind.Kind,
+		TdInstance:     a.opt.tdInstance.v,
+		ExchAccountUid: uid,
+		Credentials:    cred,
 	})
 	if code := a.finish(res, err); code != 0 {
 		return code
@@ -340,7 +344,7 @@ func (a *App) requireTD(api *API, name string) int {
 }
 
 func (a *App) fetchAccount(api *API, id apiv1.APIID) (apiv1.Account, int) {
-	res, err := api.GetAccount(a.ctx, id)
+	res, err := api.GetAccount(a.ctx, id, a.accountGetParams())
 	if code := a.checked(res, err); code != 0 {
 		return apiv1.Account{}, code
 	}
@@ -427,9 +431,12 @@ func accountShowTable(acct apiv1.Account) ([]string, [][]string) {
 		{"api_id", strconv.FormatInt(acct.ApiId, 10)},
 		{"name", acct.Name},
 		{"kind", acct.Kind},
+		{"exchange", textPtr(acct.Exchange)},
+		{"exch_account_uid", textPtr(acct.ExchAccountUid)},
 		{"td_instance", acct.TdInstance},
 		{"region", acct.Region},
 		{"revision", strconv.FormatInt(acct.Revision, 10)},
+		{"deleted_at", deletedText(acct.DeletedAt)},
 		{"cancel_on_disconnect_s", cancel},
 		{"referenced_by", joinSessions(acct.ReferencedBy)},
 	}
@@ -443,13 +450,46 @@ func accountListTable(items []apiv1.Account) ([]string, [][]string) {
 			strconv.FormatInt(acct.ApiId, 10),
 			acct.Name,
 			acct.Kind,
+			textPtr(acct.Exchange),
+			textPtr(acct.ExchAccountUid),
 			acct.TdInstance,
 			acct.Region,
 			strconv.FormatInt(acct.Revision, 10),
+			deletedText(acct.DeletedAt),
 			joinSessions(acct.ReferencedBy),
 		})
 	}
-	return []string{"API_ID", "NAME", "KIND", "TD_INSTANCE", "REGION", "REVISION", "REFERENCED_BY"}, rows
+	return []string{"API_ID", "NAME", "KIND", "EXCHANGE", "UID", "TD_INSTANCE", "REGION", "REVISION", "DELETED_AT", "REFERENCED_BY"}, rows
+}
+
+func textPtr(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+func deletedText(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
+func (a *App) includeDeleted() *bool {
+	if !a.opt.includeDeleted.set {
+		return nil
+	}
+	v := a.opt.includeDeleted.v
+	return &v
+}
+
+func (a *App) accountGetParams() *apiv1.GetAccountParams {
+	include := a.includeDeleted()
+	if include == nil {
+		return nil
+	}
+	return &apiv1.GetAccountParams{IncludeDeleted: include}
 }
 
 func joinSessions(ids []apiv1.SessionIDValue) string {
@@ -464,7 +504,7 @@ func joinSessions(ids []apiv1.SessionIDValue) string {
 // set, is the total number of rows, not the size of each request.
 func (a *App) listAccounts(api *API, filter *string, capN *int, cursorSet bool, cursor string) int {
 	if cursorSet {
-		res, err := api.ListAccounts(a.ctx, accountParams(filter, accountRequestLimit(capN, 0), cursor))
+		res, err := api.ListAccounts(a.ctx, accountParams(filter, accountRequestLimit(capN, 0), cursor, a.includeDeleted()))
 		if code := a.checked(res, err); code != 0 {
 			return code
 		}
@@ -499,7 +539,7 @@ func (a *App) listAccounts(api *API, filter *string, capN *int, cursorSet bool, 
 			}
 			seen[cursor] = true
 		}
-		res, err := api.ListAccounts(a.ctx, accountParams(filter, accountRequestLimit(capN, len(raws)), cursor))
+		res, err := api.ListAccounts(a.ctx, accountParams(filter, accountRequestLimit(capN, len(raws)), cursor, a.includeDeleted()))
 		if code := a.checked(res, err); code != 0 {
 			return code
 		}
@@ -571,9 +611,9 @@ func accountRequestLimit(capN *int, have int) int {
 	return n
 }
 
-func accountParams(filter *string, limit int, cursor string) *apiv1.ListAccountsParams {
+func accountParams(filter *string, limit int, cursor string, include *bool) *apiv1.ListAccountsParams {
 	lim := apiv1.Limit(limit)
-	params := &apiv1.ListAccountsParams{Limit: &lim, TdInstance: filter}
+	params := &apiv1.ListAccountsParams{Limit: &lim, TdInstance: filter, IncludeDeleted: include}
 	if cursor != "" {
 		c := apiv1.Cursor(cursor)
 		params.Cursor = &c
@@ -693,6 +733,8 @@ func (a *App) unexpectedFlags(allow ...string) string {
 		{"name", a.opt.name.set},
 		{"kind", a.opt.kind.set},
 		{"td-instance", a.opt.tdInstance.set},
+		{flagPair("exch", "account") + "-uid", a.opt.exchAccountUid.set},
+		{"include-deleted", a.opt.includeDeleted.set},
 		{flagFile("key"), a.opt.keyFile.set},
 		{flagFile("secret"), a.opt.secretFile.set},
 		{flagFile("pass" + "phrase"), a.opt.passFile.set},
