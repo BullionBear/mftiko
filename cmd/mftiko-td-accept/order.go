@@ -7,7 +7,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -53,8 +52,8 @@ func newCloid(algo uint32) (string, error) {
 	return cloid.Encode(algo, time.Now().UnixMilli(), uint32(binary.BigEndian.Uint16(b[:]))&cloid.SeqMax)
 }
 
-// order sends one OrderRequest on td.order.{api_id} and prints the reply. It fails when TD did
-// not accept it.
+// order sends one OrderRequest on td.order.{instance}.{api_id} and prints the reply. It fails
+// when TD did not accept it.
 func order(req *tdv1.OrderRequest) error {
 	nc, err := dial()
 	if err != nil {
@@ -65,7 +64,11 @@ func order(req *tdv1.OrderRequest) error {
 	if err != nil {
 		return err
 	}
-	m, err := nc.Request("td.order."+strconv.FormatInt(*apiID, 10), b, 10*time.Second)
+	subj, err := orderSubject()
+	if err != nil {
+		return err
+	}
+	m, err := nc.Request(subj, b, 10*time.Second)
 	if err != nil {
 		return err // no responders is 101 at the SDK
 	}
@@ -175,7 +178,11 @@ func view() error {
 	if err != nil {
 		return err
 	}
-	m, err := nc.Request("td.view."+strconv.FormatInt(*apiID, 10), b, 10*time.Second)
+	subj, err := viewSubject()
+	if err != nil {
+		return err
+	}
+	m, err := nc.Request(subj, b, 10*time.Second)
 	if err != nil {
 		return err
 	}

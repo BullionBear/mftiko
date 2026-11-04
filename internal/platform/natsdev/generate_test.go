@@ -295,18 +295,23 @@ func TestInboxPrefixAndConfig(t *testing.T) {
 }
 
 func TestTDAccountPerms(t *testing.T) {
-	pub, sub, err := tdAccountPerms(42)
+	pub, sub, err := tdAccountPerms("td-a", 42)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !sameSubjects(pub, "td.evt.42", "sym") {
+	if !sameSubjects(pub, "td.evt.td-a.42", "sym") {
 		t.Fatalf("pub %v", pub)
 	}
-	if !sameSubjects(sub, "td.order.42", "td.view.42", "sym.v1.changed.>", "_INBOX_td_42.>") {
+	if !sameSubjects(sub, "td.order.td-a.42", "td.view.td-a.42", "sym.v1.changed.>", "_INBOX_td_42.>") {
 		t.Fatalf("sub %v", sub)
 	}
-	if _, _, err := tdAccountPerms(0); err == nil {
+	if _, _, err := tdAccountPerms("td-a", 0); err == nil {
 		t.Fatal("api_id 0 was accepted")
+	}
+	for _, inst := range []string{"", "td.a", "td*a", "td>a", "td a"} {
+		if _, _, err := tdAccountPerms(inst, 42); err == nil {
+			t.Fatalf("td_instance %q was accepted", inst)
+		}
 	}
 }
 

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -95,8 +94,8 @@ func describe(ev *tdv1.AccountEvent) string {
 	}
 }
 
-// watch follows td.evt.{api_id} until SIGINT or -for, checks seq with step, and writes every
-// event to -out. It fails when there was a gap, a duplicate or an event that does not parse.
+// watch follows td.evt.{instance}.{api_id} until SIGINT or -for, checks seq with step, and writes
+// every event to -out. It fails when there was a gap, a duplicate or an event that does not parse.
 func watch() error {
 	out := flag.String("out", "td-watch.jsonl", "record file, appended")
 	dur := flag.Duration("for", 0, "stop after this long; 0 runs until SIGINT")
@@ -116,7 +115,10 @@ func watch() error {
 	var mu sync.Mutex
 	st := &seqs{}
 	bad := 0
-	subject := "td.evt." + strconv.FormatInt(*apiID, 10)
+	subject, err := evtSubject()
+	if err != nil {
+		return err
+	}
 	sub, err := nc.Subscribe(subject, func(m *nats.Msg) {
 		ev := &tdv1.AccountEvent{}
 		mu.Lock()

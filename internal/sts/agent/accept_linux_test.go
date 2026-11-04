@@ -1043,7 +1043,7 @@ func (e *env) waitLog(sub string) {
 func sessionSpec(api int64, algos ...uint32) *sessionv1.SessionSpec {
 	return &sessionv1.SessionSpec{
 		Name: "s", DesiredState: sessionv1.DesiredState_DESIRED_STATE_RUNNING,
-		Accounts: []*sessionv1.AccountDecl{{Name: "a", ApiId: api, AlgoIds: algos}},
+		Accounts: []*sessionv1.AccountDecl{{Name: "a", ApiId: api, TdInstance: "td-a", AlgoIds: algos}},
 	}
 }
 

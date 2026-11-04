@@ -30,6 +30,7 @@ import (
 	tdctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/tdctl/v1"
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/contract/wire/cloid"
+	"github.com/BullionBear/mftiko/contract/wire/tdsubject"
 	"github.com/BullionBear/mftiko/exchange"
 	"github.com/BullionBear/mftiko/exchange/exchangetest"
 	"github.com/BullionBear/mftiko/exchange/transport/fasthttp"
@@ -236,7 +237,7 @@ func setup(t *testing.T) *env {
 		Unseal: func(sealed []byte, id int64, kind string) (sealbox.Credentials, error) {
 			return sealbox.OpenCredentials(key, sealed, id, kind)
 		},
-		User:       func(int64) (string, string, string, error) { return "jwt", "seed", "_INBOX_td_42", nil },
+		User:       func(string, int64) (string, string, string, error) { return "jwt", "seed", "_INBOX_td_42", nil },
 		Policy:     tdagent.Policy{Backoff: agent.Backoff{Min: 50 * time.Millisecond, Max: 200 * time.Millisecond}, Beat: 10 * time.Second, GiveUpAfter: 2},
 		Linger:     500 * time.Millisecond,
 		Resync:     25 * time.Millisecond,
@@ -425,12 +426,34 @@ func (e *env) order(req *tdv1.OrderRequest) *tdv1.OrderReply {
 	return r
 }
 
+func (e *env) tdSubject(kind string) string {
+	e.t.Helper()
+	var (
+		s   string
+		err error
+	)
+	switch kind {
+	case "order":
+		s, err = tdsubject.Order(inst, apiID)
+	case "view":
+		s, err = tdsubject.View(inst, apiID)
+	case "evt":
+		s, err = tdsubject.Evt(inst, apiID)
+	default:
+		e.t.Fatalf("subject %s", kind)
+	}
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return s
+}
+
 func (e *env) tryOrder(req *tdv1.OrderRequest) (*tdv1.OrderReply, error) {
 	b, err := proto.Marshal(req)
 	if err != nil {
 		return nil, err
 	}
-	m, err := e.nc.Request("td.order."+strconv.Itoa(apiID), b, 5*time.Second)
+	m, err := e.nc.Request(e.tdSubject("order"), b, 5*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -473,7 +496,7 @@ func (e *env) view(req *tdv1.ViewRequest) *tdv1.ViewReply {
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	m, err := e.nc.Request("td.view."+strconv.Itoa(apiID), b, 5*time.Second)
+	m, err := e.nc.Request(e.tdSubject("view"), b, 5*time.Second)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -510,7 +533,7 @@ type events struct {
 func (e *env) subscribe() *events {
 	e.t.Helper()
 	s := &events{t: e.t}
-	sub, err := e.nc.Subscribe("td.evt."+strconv.Itoa(apiID), func(m *nats.Msg) {
+	sub, err := e.nc.Subscribe(e.tdSubject("evt"), func(m *nats.Msg) {
 		ev := &tdv1.AccountEvent{}
 		if err := proto.Unmarshal(m.Data, ev); err != nil {
 			return

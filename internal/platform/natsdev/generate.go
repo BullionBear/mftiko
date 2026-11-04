@@ -14,6 +14,8 @@ import (
 
 	"github.com/nats-io/jwt/v2"
 	"github.com/nats-io/nkeys"
+
+	"github.com/BullionBear/mftiko/contract/wire/tdsubject"
 )
 
 const (
@@ -609,19 +611,31 @@ func removeTDAgentKeys(dir string) error {
 	return nil
 }
 
-// tdAccountPerms are the allow lists of the TD account worker for apiID (E06-D011): it serves
-// td.order and td.view of its own account only and publishes that account's td.evt. The TD
-// agent signs a user with these lists at spawn, with the account signing key, and sends it
-// in tdctl.InitPayload.nats; nothing writes it to disk. It answers requests, so the user
-// carries the response permission.
-func tdAccountPerms(apiID int64) (pub, sub []string, err error) {
+// tdAccountPerms are the allow lists of the TD account worker for (tdInstance, apiID)
+// (E06-D011, E21-D042): it serves td.order and td.view of that pair only and publishes that
+// pair's td.evt. The TD agent signs a user with these lists at spawn, with the account signing
+// key, and sends it in tdctl.InitPayload.nats; nothing writes it to disk. It answers requests,
+// so the user carries the response permission. A td_instance that is empty or contains '.',
+// '*', '>', or whitespace is refused (E21-D043).
+func tdAccountPerms(tdInstance string, apiID int64) (pub, sub []string, err error) {
 	inbox, err := TDAccountInbox(apiID)
 	if err != nil {
 		return nil, nil, err
 	}
-	id := strconv.FormatInt(apiID, 10)
-	return []string{"td.evt." + id, "sym"},
-		[]string{"td.order." + id, "td.view." + id, "sym.v1.changed.>", inbox + ".>"}, nil
+	evt, err := tdsubject.Evt(tdInstance, apiID)
+	if err != nil {
+		return nil, nil, err
+	}
+	order, err := tdsubject.Order(tdInstance, apiID)
+	if err != nil {
+		return nil, nil, err
+	}
+	view, err := tdsubject.View(tdInstance, apiID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return []string{evt, "sym"},
+		[]string{order, view, "sym.v1.changed.>", inbox + ".>"}, nil
 }
 
 func writeServiceUser(dir string, u loadedUser, accountKP nkeys.KeyPair) (User, error) {

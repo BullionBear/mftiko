@@ -14,6 +14,7 @@ import (
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/contract/wire/cloid"
 	"github.com/BullionBear/mftiko/contract/wire/decimal"
+	"github.com/BullionBear/mftiko/contract/wire/tdsubject"
 	"github.com/BullionBear/mftiko/exchange"
 )
 
@@ -27,7 +28,11 @@ type bookRig struct {
 
 func newRig(t *testing.T) *bookRig {
 	r := &bookRig{t: t, ctx: t.Context(), bus: newFakeBus(), ins: instruments()}
-	r.b = newBook(r.ins, r.bus, 42, &commonv1.WorkerRef{Key: "k", Incarnation: 3}, zerolog.Nop(), time.Now)
+	subj, err := tdsubject.Evt("td-1", 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.b = newBook(r.ins, r.bus, subj, &commonv1.WorkerRef{Key: "k", Incarnation: 3}, zerolog.Nop(), time.Now)
 	go r.b.run(r.ctx)
 	return r
 }

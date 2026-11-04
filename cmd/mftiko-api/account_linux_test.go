@@ -281,7 +281,7 @@ func TestAPISealedAccountReachesReady(t *testing.T) {
 		Unseal: func(sealed []byte, id int64, kind string) (sealbox.Credentials, error) {
 			return sealbox.OpenCredentials(key, sealed, id, kind)
 		},
-		User:   func(int64) (string, string, string, error) { return "jwt", "seed", "_INBOX_td_42", nil },
+		User:   func(string, int64) (string, string, string, error) { return "jwt", "seed", "_INBOX_td_42", nil },
 		Policy: tdagent.Policy{Backoff: platagent.Backoff{Min: 50 * time.Millisecond, Max: 200 * time.Millisecond}, Beat: 10 * time.Second, GiveUpAfter: 2},
 		Linger: 500 * time.Millisecond, Resync: 25 * time.Millisecond, StaleAfter: 5 * time.Second,
 		Mirror:  state.MirrorOptions{ProbeInterval: 50 * time.Millisecond, Log: &log},

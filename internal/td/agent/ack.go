@@ -2,12 +2,12 @@ package agent
 
 import (
 	"context"
-	"strconv"
 
 	"google.golang.org/protobuf/proto"
 
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
+	"github.com/BullionBear/mftiko/contract/wire/tdsubject"
 	"github.com/BullionBear/mftiko/internal/platform/agent"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
@@ -42,9 +42,13 @@ func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[ag
 		if !write {
 			continue
 		}
+		subj, err := tdsubject.Order(p.inst, o.APIID)
+		if err != nil {
+			return err
+		}
 		msg := &statev1.EntryStatus{
 			State: st, Reason: reason, UpdatedAtNs: now.UnixNano(),
-			Subject: "td.order." + strconv.FormatInt(o.APIID, 10),
+			Subject: subj,
 		}
 		if o.Worker != "" {
 			msg.Worker = &commonv1.WorkerRef{Key: string(o.Worker)}

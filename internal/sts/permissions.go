@@ -26,9 +26,9 @@ var (
 	// them (E08-D022).
 	ErrSelector = errors.New("sts: spec has selectors")
 
-	// ErrBadToken is a session id, MD instance, topic, or ticker that is empty
-	// or contains '.', '*', '>', or whitespace. Those characters are not
-	// escaped (E08-D019). An empty string is not a subject token.
+	// ErrBadToken is a session id, td_instance, MD instance, topic, or ticker
+	// that is empty or contains '.', '*', '>', or whitespace. Those characters
+	// are not escaped (E08-D019, E21-D043). An empty string is not a subject token.
 	ErrBadToken = errors.New("sts: subject token is empty or contains '.', '*', '>' or whitespace")
 
 	// ErrFeed is a feed key that is not topic.ticker.
@@ -51,15 +51,18 @@ var (
 //
 // Each declared feed adds one publish subject, md.v1.view.{inst}.{topic}.{ticker},
 // and one subscribe subject, md.v1.f.{inst}.{topic}.{ticker}. md.v1.fetch.> is
-// always published. Each account adds td.order.{api_id}, td.view.{api_id}, and
-// td.evt.{api_id}. No account means no td subject. No feed means no md.v1.f
-// and no md.v1.view. The fixed subjects are sym, _INBOX_{session_id}.>, and
-// sym.v1.changed.>. There is no log.sts.{session_id} (E10-D015, E10-D030).
+// always published. Each account adds td.order.{td_instance}.{api_id},
+// td.view.{td_instance}.{api_id}, and td.evt.{td_instance}.{api_id}
+// (E21-D042, E21-D044). td_instance is AccountDecl.td_instance. No account
+// means no td subject. No feed means no md.v1.f and no md.v1.view. The fixed
+// subjects are sym, _INBOX_{session_id}.>, and sym.v1.changed.>. There is no
+// log.sts.{session_id} (E10-D015, E10-D030).
 //
 // Pub and Sub are deduplicated and sorted, so the same input yields the same
-// lists. A spec with any selector is ErrSelector (E08-D022). A session id, MD
-// instance, topic, or ticker that is empty or contains '.', '*', '>', or
-// whitespace is ErrBadToken, and is not escaped (E08-D019). UniversalTicker's
+// lists. A spec with any selector is ErrSelector (E08-D022). A session id,
+// td_instance, MD instance, topic, or ticker that is empty or contains '.',
+// '*', '>', or whitespace is ErrBadToken, and is not escaped (E08-D019,
+// E21-D043). UniversalTicker's
 // grammar does not allow '.' (PROTOCOL §2: a fractional strike spells D), so
 // a canonical ticker passes that check. An api_id that is not greater than 0
 // is ErrAPIID.
@@ -91,6 +94,10 @@ func SessionPermissions(sessionID string, spec *sessionv1.SessionSpec, feedInst 
 		if id <= 0 {
 			return Permissions{}, fmt.Errorf("sts: api_id %d: %w", id, ErrAPIID)
 		}
+		inst := account.GetTdInstance()
+		if err := checkToken("td_instance", inst); err != nil {
+			return Permissions{}, err
+		}
 		s := strconv.FormatInt(id, 10)
 		// A positive decimal contains none of the E08-D019 characters. The check
 		// is the same rule the other tokens go through, applied to the token
@@ -98,8 +105,8 @@ func SessionPermissions(sessionID string, spec *sessionv1.SessionSpec, feedInst 
 		if err := checkToken("api_id", s); err != nil {
 			return Permissions{}, err
 		}
-		pub = append(pub, "td.order."+s, "td.view."+s)
-		sub = append(sub, "td.evt."+s)
+		pub = append(pub, "td.order."+inst+"."+s, "td.view."+inst+"."+s)
+		sub = append(sub, "td.evt."+inst+"."+s)
 	}
 	for _, decl := range spec.GetFeeds() {
 		feed := decl.GetFeed()

@@ -26,6 +26,7 @@ import (
 	"github.com/BullionBear/mftiko/contract/wire/c4"
 	"github.com/BullionBear/mftiko/contract/wire/decimal"
 	"github.com/BullionBear/mftiko/contract/wire/frame"
+	"github.com/BullionBear/mftiko/contract/wire/tdsubject"
 	"github.com/BullionBear/mftiko/exchange"
 	"github.com/BullionBear/mftiko/exchange/exchangetest"
 )
@@ -41,15 +42,16 @@ var secret = secretPart + "-secret"
 // fakeBus is the account's NATS in memory: it decodes what is published on td.evt, and calls the
 // td.view responder directly.
 type fakeBus struct {
-	mu      sync.Mutex
-	events  []*tdv1.AccountEvent
-	respond map[string]func([]byte) []byte
+	mu       sync.Mutex
+	events   []*tdv1.AccountEvent
+	subjects []string
+	respond  map[string]func([]byte) []byte
 }
 
 func newFakeBus() *fakeBus { return &fakeBus{respond: map[string]func([]byte) []byte{}} }
 
 func (b *fakeBus) Publish(subject string, data []byte) error {
-	if subject != "td.evt.42" {
+	if !strings.HasPrefix(subject, "td.evt.") {
 		return errors.New("published on " + subject)
 	}
 	ev := &tdv1.AccountEvent{}
@@ -58,8 +60,21 @@ func (b *fakeBus) Publish(subject string, data []byte) error {
 	}
 	b.mu.Lock()
 	b.events = append(b.events, ev)
+	b.subjects = append(b.subjects, subject)
 	b.mu.Unlock()
 	return nil
+}
+
+func (b *fakeBus) on(subject string) []*tdv1.AccountEvent {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var out []*tdv1.AccountEvent
+	for i, ev := range b.events {
+		if b.subjects[i] == subject {
+			out = append(out, ev)
+		}
+	}
+	return out
 }
 
 func (b *fakeBus) Respond(subject string, h func([]byte) []byte) (func(), error) {
@@ -86,13 +101,13 @@ func (b *fakeBus) recons() []*tdv1.Recon {
 	return out
 }
 
-func (b *fakeBus) view(t *testing.T, req *tdv1.ViewRequest) *tdv1.ViewReply {
+func (b *fakeBus) view(t *testing.T, subject string, req *tdv1.ViewRequest) *tdv1.ViewReply {
 	t.Helper()
 	b.mu.Lock()
-	h := b.respond["td.view.42"]
+	h := b.respond[subject]
 	b.mu.Unlock()
 	if h == nil {
-		t.Fatal("td.view is not served")
+		t.Fatal(subject + " is not served")
 	}
 	q, _ := proto.Marshal(req)
 	r := &tdv1.ViewReply{}
@@ -199,6 +214,7 @@ type harness struct {
 	v     *exchangetest.AccountVenue
 	bus   *fakeBus
 	ins   *fakeInstruments
+	inst  string
 	dials atomic.Int32 // handshakes the private stream's server received
 
 	conn net.Conn
@@ -208,17 +224,28 @@ type harness struct {
 }
 
 type setup struct {
-	opts  exchangetest.AccountOptions
-	kind  string // the account kind Init names; "Fake" when empty
-	creds *tdctlv1.Credentials
-	cfg   func(*ServeConfig)
+	opts         exchangetest.AccountOptions
+	kind         string // the account kind Init names; "Fake" when empty
+	creds        *tdctlv1.Credentials
+	cfg          func(*ServeConfig)
+	instance     string
+	keepInstance bool // keep an empty instance instead of the td-1 default
+	bus          *fakeBus
 }
 
 func start(t *testing.T, s setup) *harness {
 	t.Helper()
 	s.opts.Key = apiKey
+	inst := s.instance
+	if inst == "" && !s.keepInstance {
+		inst = "td-1"
+	}
+	bus := s.bus
+	if bus == nil {
+		bus = newFakeBus()
+	}
 	v := exchangetest.NewAccountVenue(s.opts)
-	h := &harness{t: t, v: v, bus: newFakeBus(), ins: instruments(), ups: make(chan *workerv1.WorkerUp, 256), code: make(chan int, 1)}
+	h := &harness{t: t, v: v, bus: bus, ins: instruments(), inst: inst, ups: make(chan *workerv1.WorkerUp, 256), code: make(chan int, 1)}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.dials.Add(1)
 		v.Handler().ServeHTTP(w, r)
@@ -231,7 +258,7 @@ func start(t *testing.T, s setup) *harness {
 		Connect: func(context.Context, *tdctlv1.NatsCredentials, string) (*Env, error) {
 			return &Env{Bus: h.bus, Instruments: h.ins}, nil
 		},
-		WorkerKey:    "td-1/42",
+		WorkerKey:    inst + "/42",
 		Incarnation:  3,
 		RetryAfter:   20 * time.Millisecond,
 		RetryMax:     100 * time.Millisecond,
@@ -267,7 +294,7 @@ func start(t *testing.T, s setup) *harness {
 	if creds == nil {
 		creds = &tdctlv1.Credentials{KeyType: "hmac", Key: apiKey, Secret: secret}
 	}
-	payload, err := proto.Marshal(&tdctlv1.InitPayload{ApiId: 42, Kind: kind, TdInstance: "td-1", Credentials: creds,
+	payload, err := proto.Marshal(&tdctlv1.InitPayload{ApiId: 42, Kind: kind, TdInstance: inst, Credentials: creds,
 		StreamUrl: "ws" + strings.TrimPrefix(srv.URL, "http")})
 	if err != nil {
 		t.Fatal(err)
@@ -375,6 +402,22 @@ func (h *harness) stop() {
 
 func isDone(v workerv1.Verb, ok bool) func(*workerv1.WorkerUp) bool {
 	return func(m *workerv1.WorkerUp) bool { return m.GetDone().GetVerb() == v && m.GetDone().GetOk() == ok }
+}
+
+// quietCount waits until n stops changing, then returns it. A submit's private-stream
+// echo can arrive after the reply.
+func quietCount(t *testing.T, n func() int) int {
+	t.Helper()
+	got := n()
+	deadline := time.Now().Add(200 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+		if cur := n(); cur != got {
+			got = cur
+			deadline = time.Now().Add(200 * time.Millisecond)
+		}
+	}
+	return got
 }
 
 func waitFor(t *testing.T, what string, ok func() bool) {
@@ -754,6 +797,76 @@ func TestInitRefused(t *testing.T) {
 	}
 }
 
+// An empty or illegal td_instance is refused before the venue is dialed (E21-D043).
+func TestInitRefusesBadTDInstance(t *testing.T) {
+	for _, inst := range []string{"", "td.a", "td*a", "td>a", "td a"} {
+		t.Run(fmt.Sprintf("%q", inst), func(t *testing.T) {
+			_, err := tdsubject.Order(inst, 42)
+			if err == nil {
+				t.Fatal("subject was accepted")
+			}
+			h := start(t, setup{instance: inst, keepInstance: true})
+			h.next(isDone(workerv1.Verb_VERB_INIT, false))
+			h.ending(commonv1.Outcome_OUTCOME_INIT_FAILED, "td subject: "+err.Error(), c4.ExitInit)
+			if n := h.dials.Load(); n != 0 {
+				t.Fatalf("%d dials", n)
+			}
+		})
+	}
+}
+
+// The same api_id on two instances does not share td.order or td.evt (E21-D045).
+func TestTwoInstancesDoNotShareASubject(t *testing.T) {
+	bus := newFakeBus()
+	a := start(t, setup{instance: "td-a", bus: bus})
+	b := start(t, setup{instance: "td-b", bus: bus})
+	a.startReady()
+	b.startReady()
+	evtA, err := tdsubject.Evt("td-a", 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evtB, err := tdsubject.Evt("td-b", 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeA, beforeB := len(bus.on(evtA)), len(bus.on(evtB))
+	if beforeA == 0 || beforeB == 0 {
+		t.Fatalf("recon events a=%d b=%d", beforeA, beforeB)
+	}
+	if r := a.submit(7, 7, mustCloid(t, 7, 1), 0.01, 100); !r.GetAccepted() {
+		t.Fatalf("A submit: %v", r)
+	}
+	if rep := a.nextReport(); rep.GetFirstSubmitNs()[7] == 0 {
+		t.Fatal("A did not report the first submit")
+	}
+	waitFor(t, "A did not publish", func() bool { return len(bus.on(evtA)) > beforeA })
+	afterA := quietCount(t, func() int { return len(bus.on(evtA)) })
+	if got := len(bus.on(evtB)); got != beforeB {
+		t.Fatalf("B saw A's submit: %d events, was %d", got, beforeB)
+	}
+	if r := b.submit(7, 7, mustCloid(t, 7, 2), 0.01, 100); !r.GetAccepted() {
+		t.Fatalf("B submit: %v", r)
+	}
+	if rep := b.nextReport(); rep.GetFirstSubmitNs()[7] == 0 {
+		t.Fatal("B did not report the first submit")
+	}
+	waitFor(t, "B did not publish", func() bool { return len(bus.on(evtB)) > beforeB })
+	_ = quietCount(t, func() int { return len(bus.on(evtB)) })
+	if got := len(bus.on(evtA)); got != afterA {
+		t.Fatalf("A saw B's submit: %d events, was %d", got, afterA)
+	}
+	var prev uint64
+	for _, ev := range bus.on(evtA) {
+		if ev.GetSeq() <= prev {
+			t.Fatalf("seq %d after %d", ev.GetSeq(), prev)
+		}
+		prev = ev.GetSeq()
+	}
+	a.stop()
+	b.stop()
+}
+
 // A Live is applied as is: TD has no live config yet.
 func TestLive(t *testing.T) {
 	h := start(t, setup{})
@@ -785,8 +898,17 @@ func count(reqs []string, want string) int {
 
 // ---------- E6-07: td.view and td.evt against the venue ----------
 
+func (h *harness) ask(req *tdv1.ViewRequest) *tdv1.ViewReply {
+	h.t.Helper()
+	subj, err := tdsubject.View(h.inst, 42)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return h.bus.view(h.t, subj, req)
+}
+
 func (h *harness) oms() *tdv1.ViewReply {
-	return h.bus.view(h.t, &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Recon{Recon: &tdv1.ReconRequest{}}})
+	return h.ask(&tdv1.ViewRequest{Req: &tdv1.ViewRequest_Recon{Recon: &tdv1.ReconRequest{}}})
 }
 
 // matches compares the worker's td.view with the venue's own state.
@@ -876,7 +998,7 @@ func TestViewMatchesVenue(t *testing.T) {
 	h.v.ResetRequests()
 	for range 20 {
 		h.oms()
-		h.bus.view(t, &tdv1.ViewRequest{Req: &tdv1.ViewRequest_Leverage{Leverage: &tdv1.LeverageRequest{Uid: 7}}})
+		h.ask(&tdv1.ViewRequest{Req: &tdv1.ViewRequest_Leverage{Leverage: &tdv1.LeverageRequest{Uid: 7}}})
 	}
 	if reqs := h.v.Requests(); len(reqs) != 0 {
 		t.Fatalf("td.view sent the venue %v", reqs)
@@ -899,7 +1021,7 @@ func TestViewCancelBatch(t *testing.T) {
 				{Req: &tdv1.ViewRequest_Leverage{Leverage: &tdv1.LeverageRequest{Uid: 7}}},
 				{},
 			} {
-				if got := h.bus.view(t, req).GetCancelBatch(); got != uint32(n) {
+				if got := h.ask(req).GetCancelBatch(); got != uint32(n) {
 					t.Fatalf("cancel_batch %d, want %d", got, n)
 				}
 			}

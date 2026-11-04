@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nats-io/jwt/v2"
@@ -26,6 +27,7 @@ import (
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
 	"github.com/BullionBear/mftiko/contract/wire/cloid"
 	"github.com/BullionBear/mftiko/contract/wire/envelope"
+	"github.com/BullionBear/mftiko/contract/wire/tdsubject"
 	"github.com/BullionBear/mftiko/internal/platform/natsdev"
 	"github.com/BullionBear/mftiko/internal/sts"
 	"github.com/BullionBear/mftiko/internal/sts/issuer"
@@ -34,6 +36,8 @@ import (
 const (
 	sessionID       = "c0ffee"
 	apiID     int64 = 7
+	tdInst          = "td-a"
+	otherTD         = "td-b"
 	algoID          = uint32(1)
 	uid             = uint32(1001)
 	feedKey         = "trade.Binance_Spot_BTCUSDT"
@@ -69,11 +73,15 @@ type bus struct {
 	seed         string
 	md           *nats.Conn
 	td           *nats.Conn
+	other        *nats.Conn
 	fetch        *nats.Conn
 	sym          *nats.Conn
 	feedSubject  string
 	orderSubject string
 	evtSubject   string
+	otherOrder   string
+	otherEvt     string
+	otherN       atomic.Int64
 
 	mu     sync.Mutex
 	cloids []string
@@ -125,8 +133,30 @@ func startBus() (*bus, error) {
 		return nil, errors.New("conformance: empty MD instance")
 	}
 	b.feedSubject = "md.v1.f." + b.inst + "." + feedKey
-	b.orderSubject = "td.order." + strconv.FormatInt(apiID, 10)
-	b.evtSubject = "td.evt." + strconv.FormatInt(apiID, 10)
+	orderSubject, err := tdsubject.Order(tdInst, apiID)
+	if err != nil {
+		b.close()
+		return nil, err
+	}
+	evtSubject, err := tdsubject.Evt(tdInst, apiID)
+	if err != nil {
+		b.close()
+		return nil, err
+	}
+	otherOrder, err := tdsubject.Order(otherTD, apiID)
+	if err != nil {
+		b.close()
+		return nil, err
+	}
+	otherEvt, err := tdsubject.Evt(otherTD, apiID)
+	if err != nil {
+		b.close()
+		return nil, err
+	}
+	b.orderSubject = orderSubject
+	b.evtSubject = evtSubject
+	b.otherOrder = otherOrder
+	b.otherEvt = otherEvt
 
 	conf, err := natsdev.FormatServerConfig(natsdev.ServerConfig{
 		OperatorFile:  filepath.Join(dir, "operator.jwt"),
@@ -170,7 +200,7 @@ func startBus() (*bus, error) {
 	b.url = ns.ClientURL()
 
 	spec := &sessionv1.SessionSpec{
-		Accounts: []*sessionv1.AccountDecl{{Name: "a", ApiId: apiID, AlgoIds: []uint32{algoID}}},
+		Accounts: []*sessionv1.AccountDecl{{Name: "a", ApiId: apiID, TdInstance: tdInst, AlgoIds: []uint32{algoID}}},
 		Feeds:    []*sessionv1.FeedDecl{{Feed: feedKey, MdInstance: b.inst}},
 	}
 	perms, err := sts.SessionPermissions(sessionID, spec, func(string) string { return b.inst })
@@ -205,7 +235,12 @@ func startBus() (*bus, error) {
 		b.close()
 		return nil, fmt.Errorf("conformance: md: %w", err)
 	}
-	b.td, err = b.accountConn(lay)
+	b.td, err = b.accountConn(lay, tdInst)
+	if err != nil {
+		b.close()
+		return nil, err
+	}
+	b.other, err = b.accountConn(lay, otherTD)
 	if err != nil {
 		b.close()
 		return nil, err
@@ -227,12 +262,12 @@ func startBus() (*bus, error) {
 	return b, nil
 }
 
-func (b *bus) accountConn(lay natsdev.Layout) (*nats.Conn, error) {
+func (b *bus) accountConn(lay natsdev.Layout, inst string) (*nats.Conn, error) {
 	signer, err := natsdev.LoadSigner(lay.Manifest.Account, filepath.Join(lay.Dir, filepath.FromSlash(lay.Manifest.SigningKeyFile)))
 	if err != nil {
 		return nil, err
 	}
-	userJWT, seed, inbox, err := signer.AccountWorker(apiID)
+	userJWT, seed, inbox, err := signer.AccountWorker(inst, apiID)
 	if err != nil {
 		return nil, err
 	}
@@ -302,8 +337,19 @@ func (b *bus) servePeers() error {
 	if _, err := b.td.Subscribe(b.orderSubject, b.onOrder); err != nil {
 		return err
 	}
-	view := "td.view." + strconv.FormatInt(apiID, 10)
+	view, err := tdsubject.View(tdInst, apiID)
+	if err != nil {
+		return err
+	}
 	if _, err := b.td.Subscribe(view, b.onView); err != nil {
+		return err
+	}
+	if _, err := b.other.Subscribe(b.otherOrder, func(m *nats.Msg) {
+		b.otherN.Add(1)
+		if m.Reply != "" {
+			_ = m.Respond([]byte("other"))
+		}
+	}); err != nil {
 		return err
 	}
 	if _, err := b.md.Subscribe("md.v1.view."+b.inst+".>", func(m *nats.Msg) {
@@ -327,7 +373,7 @@ func (b *bus) servePeers() error {
 	if _, err := b.sym.Subscribe("sym", b.onSym); err != nil {
 		return err
 	}
-	for _, nc := range []*nats.Conn{b.td, b.md, b.fetch, b.sym} {
+	for _, nc := range []*nats.Conn{b.td, b.other, b.md, b.fetch, b.sym} {
 		if err := nc.FlushTimeout(opTimeout); err != nil {
 			return err
 		}
@@ -519,7 +565,7 @@ func (b *bus) setInject(on bool) {
 }
 
 func (b *bus) close() {
-	for _, nc := range []*nats.Conn{b.md, b.td, b.fetch, b.sym} {
+	for _, nc := range []*nats.Conn{b.md, b.td, b.other, b.fetch, b.sym} {
 		if nc != nil {
 			nc.Close()
 		}
@@ -565,7 +611,7 @@ func (b *bus) initDown(p Params, deadline uint32, digest string) (*workerv1.Work
 		Name:         "conform",
 		Params:       rawParams,
 		Feeds:        []*sessionv1.FeedDecl{{Feed: feedKey, MdInstance: b.inst}},
-		Accounts:     []*sessionv1.AccountDecl{{Name: "a", ApiId: apiID, AlgoIds: []uint32{algoID}}},
+		Accounts:     []*sessionv1.AccountDecl{{Name: "a", ApiId: apiID, TdInstance: tdInst, AlgoIds: []uint32{algoID}}},
 		Nats:         &stsctlv1.NatsCredentials{UserJwt: b.jwt, Seed: b.seed, InboxPrefix: "_INBOX_" + sessionID},
 		RecvWindowMs: 500,
 		HookTimeoutS: 1,
@@ -694,6 +740,46 @@ func (b *bus) since(n int) []string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return append([]string(nil), b.cloids[n:]...)
+}
+
+// evtIsolated publishes one event on each instance. A session subscribed only to
+// this fixture's td.evt receives that event and not the other instance's (E21-D045).
+func (b *bus) evtIsolated() error {
+	nc, err := dialJWT(b.url, b.jwt, b.seed, "_INBOX_"+sessionID)
+	if err != nil {
+		return err
+	}
+	defer nc.Close()
+	sub, err := nc.SubscribeSync(b.evtSubject)
+	if err != nil {
+		return err
+	}
+	if err := nc.FlushTimeout(opTimeout); err != nil {
+		return err
+	}
+	if err := b.td.Publish(b.evtSubject, []byte("only-a")); err != nil {
+		return err
+	}
+	if err := b.other.Publish(b.otherEvt, []byte("only-b")); err != nil {
+		return err
+	}
+	if err := b.td.FlushTimeout(opTimeout); err != nil {
+		return err
+	}
+	if err := b.other.FlushTimeout(opTimeout); err != nil {
+		return err
+	}
+	msg, err := sub.NextMsg(opTimeout)
+	if err != nil {
+		return fmt.Errorf("td.evt: %w", err)
+	}
+	if string(msg.Data) != "only-a" {
+		return fmt.Errorf("td.evt %q", msg.Data)
+	}
+	if _, err := sub.NextMsg(300 * time.Millisecond); err == nil {
+		return errors.New("td.evt interleaved")
+	}
+	return nil
 }
 
 // denied reports whether the session user is refused for do.

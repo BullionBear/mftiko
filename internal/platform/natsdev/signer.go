@@ -39,14 +39,15 @@ func (s *Signer) AccountPublic() string { return s.account }
 // SigningKey is the account signing key. The STS agent signs session users with it (E09-D024).
 func (s *Signer) SigningKey() nkeys.KeyPair { return s.key }
 
-// AccountWorker is a new user for the account worker of apiID: its JWT, its seed, and the inbox
-// prefix it must use (_INBOX_td_{api_id}).
-func (s *Signer) AccountWorker(apiID int64) (userJWT, seed, inbox string, err error) {
+// AccountWorker is a new user for the account worker of (tdInstance, apiID): its JWT, its seed,
+// and the inbox prefix it must use (_INBOX_td_{api_id}). The allow list is only that pair
+// (E21-D042, E21-D044).
+func (s *Signer) AccountWorker(tdInstance string, apiID int64) (userJWT, seed, inbox string, err error) {
 	inbox, err = TDAccountInbox(apiID)
 	if err != nil {
 		return "", "", "", err
 	}
-	pub, sub, err := tdAccountPerms(apiID)
+	pub, sub, err := tdAccountPerms(tdInstance, apiID)
 	if err != nil {
 		return "", "", "", err
 	}
@@ -58,7 +59,8 @@ func (s *Signer) AccountWorker(apiID int64) (userJWT, seed, inbox string, err er
 	if err != nil {
 		return "", "", "", err
 	}
-	token, err := encodeUser(userPub, "td-account-"+strconv.FormatInt(apiID, 10), pub, sub, true, s.account, s.key)
+	name := "td-account-" + tdInstance + "-" + strconv.FormatInt(apiID, 10)
+	token, err := encodeUser(userPub, name, pub, sub, true, s.account, s.key)
 	if err != nil {
 		return "", "", "", err
 	}

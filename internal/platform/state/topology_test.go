@@ -35,6 +35,22 @@ func TestValidate(t *testing.T) {
 			Regions:   map[string]Region{"tw": {Endpoints: ep}},
 			Instances: map[string]string{"md/tw": "tw"},
 		},
+		"instance with a dot": {
+			Regions:   map[string]Region{"tw": {Endpoints: ep}},
+			Instances: map[string]string{"td.a": "tw"},
+		},
+		"instance with a star": {
+			Regions:   map[string]Region{"tw": {Endpoints: ep}},
+			Instances: map[string]string{"td*a": "tw"},
+		},
+		"instance with a gt": {
+			Regions:   map[string]Region{"tw": {Endpoints: ep}},
+			Instances: map[string]string{"td>a": "tw"},
+		},
+		"instance with a space": {
+			Regions:   map[string]Region{"tw": {Endpoints: ep}},
+			Instances: map[string]string{"td a": "tw"},
+		},
 		"empty instance": {
 			Regions:   map[string]Region{"tw": {Endpoints: ep}},
 			Instances: map[string]string{"": "tw"},

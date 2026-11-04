@@ -262,7 +262,7 @@ func TestProgramInit(t *testing.T) {
 		Unseal: func(s []byte, id int64, kind string) (sealbox.Credentials, error) {
 			return sealbox.OpenCredentials(k, s, id, kind)
 		},
-		User: func(id int64) (string, string, string, error) { return "jwt", "seed", "_INBOX_td_42", nil },
+		User: func(string, int64) (string, string, string, error) { return "jwt", "seed", "_INBOX_td_42", nil },
 	}
 	spec := Spec{APIID: 42, Kind: "Fake", Sealed: sealed, CancelOnDisconnectS: 30, Endpoint: Endpoint{REST: "https://r", Stream: "wss://s", Simulated: true}}
 	init, err := p.Init(WorkerKey(42), spec, Live{})

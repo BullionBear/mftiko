@@ -18,8 +18,9 @@ import (
 // Unsealer opens an account's credentials with this instance's key (E06-D013).
 type Unsealer func(sealed []byte, apiID int64, kind string) (sealbox.Credentials, error)
 
-// NATSUser signs a NATS user for the account worker of apiID (E06-D011): its JWT, seed and inbox prefix.
-type NATSUser func(apiID int64) (userJWT, seed, inbox string, err error)
+// NATSUser signs a NATS user for the account worker of (tdInstance, apiID) (E06-D011, E21-D042):
+// its JWT, seed and inbox prefix. The allow list is only that pair's subjects.
+type NATSUser func(tdInstance string, apiID int64) (userJWT, seed, inbox string, err error)
 
 // Program builds the account worker's launch and its Init.
 type Program struct {
@@ -54,7 +55,7 @@ func (p *Program) Init(_ agent.WorkerKey, spec Spec, _ Live) (*workerv1.Init, er
 	if err != nil {
 		return nil, errors.New("td: credentials: " + sealbox.Reason(err))
 	}
-	jwt, seed, inbox, err := p.User(spec.APIID)
+	jwt, seed, inbox, err := p.User(p.Instance, spec.APIID)
 	if err != nil {
 		return nil, errors.New("td: nats user: " + strings.TrimSpace(err.Error()))
 	}

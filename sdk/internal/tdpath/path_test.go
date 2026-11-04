@@ -19,6 +19,7 @@ import (
 	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
 	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
 	"github.com/BullionBear/mftiko/contract/wire/cloid"
+	"github.com/BullionBear/mftiko/contract/wire/tdsubject"
 	"github.com/BullionBear/mftiko/sdk/internal/dispatch"
 )
 
@@ -83,6 +84,26 @@ func TestOpenRejects(t *testing.T) {
 	if _, err := Open(Config{NC: nc, SessionID: "s", RecvWindow: time.Second, Accounts: []*sessionv1.AccountDecl{decl(7, 1), decl(7, 2)}}); err == nil {
 		t.Fatal("duplicate api_id was accepted")
 	}
+	empty := &sessionv1.AccountDecl{ApiId: 7, AlgoIds: []uint32{1}}
+	if _, err := Open(Config{NC: nc, SessionID: "s", RecvWindow: time.Second, Accounts: []*sessionv1.AccountDecl{empty}}); !errors.Is(err, tdsubject.ErrInstance) {
+		t.Fatalf("empty td_instance: %v", err)
+	}
+	for _, inst := range []string{"td.a", "td*a", "td>a", "td a"} {
+		d := &sessionv1.AccountDecl{ApiId: 7, TdInstance: inst, AlgoIds: []uint32{1}}
+		if _, err := Open(Config{NC: nc, SessionID: "s", RecvWindow: time.Second, Accounts: []*sessionv1.AccountDecl{d}}); !errors.Is(err, tdsubject.ErrInstance) {
+			t.Fatalf("%q: %v", inst, err)
+		}
+	}
+}
+
+const testTD = "td-a"
+
+func evtSubject(api int64) string {
+	s, err := tdsubject.Evt(testTD, api)
+	if err != nil {
+		panic(err)
+	}
+	return s
 }
 
 func TestCallsBeforeListen(t *testing.T) {
@@ -1326,7 +1347,7 @@ func listenRecon(t *testing.T, f *fake, p *Path) {
 }
 
 func decl(api int64, algos ...uint32) *sessionv1.AccountDecl {
-	return &sessionv1.AccountDecl{ApiId: api, AlgoIds: algos}
+	return &sessionv1.AccountDecl{ApiId: api, TdInstance: testTD, AlgoIds: algos}
 }
 
 func mustCloid(algo, seq uint32) string {
@@ -1396,19 +1417,16 @@ func accountQuiet(p *Path, api int64) bool {
 }
 
 func parseTD(subject string) (string, int64, bool) {
-	rest, ok := strings.CutPrefix(subject, "td.")
-	if !ok {
+	// td.{order,view,evt}.{td_instance}.{api_id}
+	parts := strings.Split(subject, ".")
+	if len(parts) != 4 || parts[0] != "td" {
 		return "", 0, false
 	}
-	kind, num, ok := strings.Cut(rest, ".")
-	if !ok {
-		return "", 0, false
-	}
-	api, err := strconv.ParseInt(num, 10, 64)
+	api, err := strconv.ParseInt(parts[3], 10, 64)
 	if err != nil {
 		return "", 0, false
 	}
-	return kind, api, true
+	return parts[1], api, true
 }
 
 func waitFor(t *testing.T, d time.Duration, cond func() bool) {

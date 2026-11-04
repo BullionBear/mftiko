@@ -305,7 +305,12 @@ func (p *Path) roundOrder(wait <-chan struct{}, release func(), call uint64, api
 	body, err := proto.Marshal(req)
 	var msg *nats.Msg
 	if err == nil {
-		msg, err = p.requestInOrder(ctx, wait, release, call, orderSubject(apiID), body)
+		subj := p.orderSubject(apiID)
+		if subj == "" {
+			err = ErrUnknownAccount
+		} else {
+			msg, err = p.requestInOrder(ctx, wait, release, call, subj, body)
+		}
 	}
 	if p.ctx.Err() != nil {
 		return

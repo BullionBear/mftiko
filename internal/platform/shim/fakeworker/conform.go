@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -25,12 +24,14 @@ import (
 
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	mdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/md/v1"
+	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
 	stsctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/stsctl/v1"
 	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
 	"github.com/BullionBear/mftiko/contract/wire/cloid"
 	"github.com/BullionBear/mftiko/contract/wire/envelope"
 	"github.com/BullionBear/mftiko/contract/wire/frame"
+	"github.com/BullionBear/mftiko/contract/wire/tdsubject"
 )
 
 const (
@@ -162,6 +163,7 @@ type conform struct {
 	kicks chan struct{}
 
 	nc          *nats.Conn
+	tdInst      string
 	feedSubject string
 	mdInst      string
 	sessionID   string
@@ -309,6 +311,7 @@ func (c *conform) onInit(m *workerv1.Init) {
 	c.sessionID = body.GetSessionId()
 	c.recvWindow = body.GetRecvWindowMs()
 	c.hookTimeout = body.GetHookTimeoutS()
+	c.takeInstance(body.GetAccounts())
 	// The deadline is armed before any NATS dial. OnInit is printed only after
 	// the sleep, so an abort leaves no OnInit line.
 	if !c.phaseOK(m.GetDeadlineMs(), c.params.InitSleepMS, workerv1.Verb_VERB_INIT) {
@@ -490,7 +493,10 @@ func (c *conform) subscribe() error {
 	if err := c.listen(subject, c.onMD); err != nil {
 		return err
 	}
-	evt := "td.evt." + strconv.FormatInt(c.api(), 10)
+	evt, err := tdsubject.Evt(c.tdInst, c.api())
+	if err != nil {
+		return err
+	}
 	return c.listen(evt, c.onTD)
 }
 
@@ -569,7 +575,11 @@ func (c *conform) runRecon() {
 	if err != nil {
 		c.bail("conformance worker: recon request: " + err.Error())
 	}
-	msg, err := c.nc.Request("td.view."+strconv.FormatInt(c.api(), 10), raw, 3*time.Second)
+	view, err := tdsubject.View(c.tdInst, c.api())
+	if err != nil {
+		c.bail("conformance worker: " + err.Error())
+	}
+	msg, err := c.nc.Request(view, raw, 3*time.Second)
 	if err != nil {
 		c.bail("conformance worker: td.view: " + err.Error())
 	}
@@ -614,12 +624,18 @@ func (c *conform) probeReads() {
 }
 
 func (c *conform) sendOrders() {
-	subject := "td.order." + strconv.FormatInt(c.api(), 10)
+	subject, err := tdsubject.Order(c.tdInst, c.api())
+	if err != nil {
+		c.bail("conformance worker: " + err.Error())
+	}
 	// E10-D030: the session may publish td.view, but that is not the order subject,
 	// so the order never shows up on td.order. The check fails without a
 	// permission error.
 	if c.violate == "subject" {
-		subject = "td.view." + strconv.FormatInt(c.api(), 10)
+		subject, err = tdsubject.View(c.tdInst, c.api())
+		if err != nil {
+			c.bail("conformance worker: " + err.Error())
+		}
 	}
 	for i := 1; i <= c.params.OrderCount; i++ {
 		id := "bad"
@@ -945,6 +961,23 @@ func (c *conform) sleepMS(ms int) {
 	if ms > 0 {
 		time.Sleep(time.Duration(ms) * time.Millisecond)
 	}
+}
+
+// takeInstance records the td_instance STS put on this api_id. A missing or illegal
+// value fails closed. The worker does not guess one (E21-D042).
+func (c *conform) takeInstance(accounts []*sessionv1.AccountDecl) {
+	id := c.api()
+	for _, a := range accounts {
+		if a.GetApiId() != id {
+			continue
+		}
+		if err := tdsubject.Token(a.GetTdInstance()); err != nil {
+			c.bail("conformance worker: " + err.Error())
+		}
+		c.tdInst = a.GetTdInstance()
+		return
+	}
+	c.bail("conformance worker: no td_instance for this api_id")
 }
 
 func (c *conform) api() int64 {
