@@ -130,12 +130,34 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 | NATS 的 user creds | `/etc/mftiko/md-agent/nats.creds`、`/etc/mftiko/sym/nats.creds`（0600，屬該服務的使用者） | `systemctl restart mftiko-md-agent`、`mftiko-sym`。worker 照跑，下次重連用新的 |
 | registry 的帳密 | `MFTIKO_REGISTRY_CREDS` 指的同一份 `config.json`（0600）。多個 host 各做一次 `docker login <host>`，寫進這份檔的 `auths` | 該 agent，或 API（`registry_creds`） |
 | API 的 cookie 金鑰 | `/etc/mftiko/api/env` 的 `MFTIKO_COOKIE_KEY` | `mftiko-api`。console 的登入全部失效，要重新登入 |
-| API 的帳號金鑰 | `/etc/mftiko/api/env` 的 `MFTIKO_ACCOUNT_KEYS` | `mftiko-api`。所有 replica 同一份。格式見 [operations.md](operations.md#systemd)。不要拿掉還有密文在用的版本，舊版留著才能解開。金鑰遺失要重新輸入帳號（E21-D003）。背景重新加密是 #527，還沒做 |
+| API 的帳號金鑰 | `/etc/mftiko/api/env` 的 `MFTIKO_ACCOUNT_KEYS` | `mftiko-api`。所有 replica 同一份。步驟見 [§2.6.1](#261-輪換-api-的帳號金鑰)。整把遺失要重新輸入帳號（E21-D003） |
 | Postgres 的密碼 | API 的 `MFTIKO_POSTGRES_DSN`、SYM 與 `mftiko-release` 的 `DATABASE_URL` | 先在 Postgres 改密碼，再改 env、重啟 `mftiko-api`、`mftiko-sym`。中間的空窗長過 `for` 時 `MftikoPostgresDown` 會響 |
 | session log 的 token | API 的 `/etc/mftiko/api/log-token`；每台 STS 的 `/etc/mftiko/sts-agent/env` 的 `MFTIKO_LOG_TOKEN_SHA256` | 先每台 `mftiko-sts-agent`，再每個 `mftiko-api`。中間讀 log 是 `logs_unavailable`。步驟見 [輪換 token](operations.md#輪換-token) |
 
 - 先寫到同一個目錄的 `<路徑>.new`（`install -m 0600 -o <使用者> <新檔> <路徑>.new`），再 `mv <路徑>.new <路徑>`。rename 是原子的；先刪再建的話，worker 剛好重連時會讀不到。
 - 一期不在 runbook 裡：NATS 的 account signing key（要同時改 NATS server 的 account 設定）與 TD 的 seal key（每個帳號都要用新公鑰重新 seal）。見 E12-D060。
+
+### 2.6.1 輪換 API 的帳號金鑰
+
+格式與產生見 [operations.md](operations.md#systemd)。所有 replica 同一份 `MFTIKO_ACCOUNT_KEYS`（E21-D020、E21-D032）。整把遺失仍要重新輸入帳號（E21-D003）。
+
+1. 產生一把新的 32-byte 金鑰，版本號用還沒出現過的。把它放在第一個，舊的每一把照原樣留在後面。每個 replica 寫同一串。整份 `/etc/mftiko/api/env` 先寫成同目錄的 `env.new`（0600，使用者 `mftiko-api`），再 `mv`（上一節的原子改名）。不要只寫這一行，檔裡還有其他變數。
+
+   ```sh
+   openssl rand -base64 32 | tr -d '\n'
+   ```
+
+   把輸出接在 `v<版本>:` 後面。例如原本是 `v1:<既有的 standard base64>`，新的就是 `v2:<上面的輸出>,v1:<既有的 standard base64>`。不要把真實金鑰寫進文件或票。
+
+2. 重啟每一台 `mftiko-api`。新的寫入用新版本。舊密文仍解得開，因為舊版本還在同一串。還沒重啟的 replica 沒有新鑰，不會把新版本改回去。不要讓兩台 replica 的第一把金鑰不同、又都解得開兩邊，否則會互相改寫、停不下來。
+
+3. 等每一台都重啟完，再等每一台的 `mftiko_account_key_old` 是 0（含已軟刪除）。沒有這個樣本不是 0；先看 `mftiko_postgres_up`。log 訊息是 `account key re-encrypt`，`remaining` 是還差幾列，`old` 是 `版本=筆數`。這段重加密不改 `revision`、`updated_at`、`sealed_credentials`，也不寫 etcd。若 gauge 一直大於 0：`old` 還列著正要拿掉的版本，就是還有列沒換成目前金鑰。同一則 log 沒有在變、又有 warn `account credentials were not re-encrypted`，那些 `api_id` 的密文解不開，重新輸入該帳號後才會離開 gauge。沒有這則 warn、版本又還在盒子裡，就是還沒跑完。
+
+4. 拿掉不再需要的舊版本（加密用的那把維持第一個），再把每一台 API 重啟一次。
+
+**舊版本拿太早。** 那些列的 `key_version` 不在盒子裡，不會被改寫，gauge 停在大於 0，`old` 仍列出那個版本。把該版本放回任意位置（不一定第一）再重啟，下一輪會改完。不放回去的話，Postgres 裡的 AEAD 解不開；etcd 的 sealbox 沒動，已經投影的 TD 帳號照跑。之後要解開 AEAD 再重封的操作做不到，重新輸入該帳號的憑證。整把金鑰都沒了，與 E21-D003 相同。
+
+密文壞掉或 associated data 對不上：每個 `api_id` 記一次 warn，不印密文。重啟會再試一次。仍解不開就重新輸入憑證。
 
 ### 2.7 instance 增減
 

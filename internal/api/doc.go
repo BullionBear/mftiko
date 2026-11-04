@@ -51,6 +51,9 @@
 // (MFTIKO_POSTGRES_DSN, flag -postgres-dsn). The flag overrides the environment variable, as
 // it does for the controller. Account keys are v<version>:<standard base64 of 32 bytes>, comma-separated;
 // the first key encrypts and the rest only decrypt. A missing or malformed ring fails startup.
+// Every replica re-encrypts credentials whose key_version is not the current key, in small
+// SELECT … FOR UPDATE SKIP LOCKED batches, with no leader (E21-D026, E21-D032). That pass does
+// not change sealed_credentials, revision, or updated_at, and does not write etcd (E21-D033).
 //
 // Load validates all of that, including plain-HTTP hosts and the credentials file, and does not dial Postgres or a
 // registry (E10-D024, E10-D060). Run opens a Postgres pool without waiting for a connection (E10-D048). Readiness watches

@@ -22,13 +22,14 @@ import (
 const (
 	metricsContentType = "text/plain; version=0.0.4; charset=utf-8"
 
-	helpAgentUp  = "1 after the region's first sync when this instance's AgentRecord key exists."
-	helpLeader   = "1 after the controller region's first sync when its AgentRecord key exists."
-	helpPhase    = "WorkerStatus phase counts after the region's first sync. BACKOFF is demand PENDING; EXITED after give-up is demand DEAD; LOST keeps the last entry state."
-	helpBus      = "1 when WorkerStatus condition bus_disconnected has status false, 0 when it is true. No series when that condition is absent. mftiko does not time it."
-	helpRegion   = "1 when the region has finished its first sync and was contacted within unavailable_after."
-	helpPostgres = "1 when a scrape-time ping of the API Postgres pool succeeds."
-	helpRegistry = "0. The API does not configure one registry address, so this gauge stays 0."
+	helpAgentUp       = "1 after the region's first sync when this instance's AgentRecord key exists."
+	helpLeader        = "1 after the controller region's first sync when its AgentRecord key exists."
+	helpPhase         = "WorkerStatus phase counts after the region's first sync. BACKOFF is demand PENDING; EXITED after give-up is demand DEAD; LOST keeps the last entry state."
+	helpBus           = "1 when WorkerStatus condition bus_disconnected has status false, 0 when it is true. No series when that condition is absent. mftiko does not time it."
+	helpRegion        = "1 when the region has finished its first sync and was contacted within unavailable_after."
+	helpPostgres      = "1 when a scrape-time ping of the API Postgres pool succeeds."
+	helpRegistry      = "0. The API does not configure one registry address, so this gauge stays 0."
+	helpAccountKeyOld = "Accounts whose key_version is not the current account key, including soft-deleted rows. No sample when the count cannot be read; a missing sample is not zero."
 
 	// artifactPullType matches the STS SessionStatus condition (E12-D068). The API does not import the STS agent.
 	artifactPullType    = "artifact_pull"
@@ -61,8 +62,18 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 		view, contact, synced := c.observe()
 		obs[i] = regionObs{name: c.name, synced: synced, contact: contact, view: view}
 	}
-	pg, reg := dependencyGauges(r.Context(), s)
-	body := renderMetrics(s.cfg, now, obs, pg, reg)
+	type scrapeGauges struct{ pg, reg int }
+	gch := make(chan scrapeGauges, 1)
+	och := make(chan int, 1)
+	go func() {
+		pg, reg := dependencyGauges(r.Context(), s)
+		gch <- scrapeGauges{pg, reg}
+	}()
+	go func() {
+		och <- accountKeyOldSample(r.Context(), s)
+	}()
+	g := <-gch
+	body := renderMetricsAt(s.cfg, now, obs, g.pg, g.reg, <-och)
 	w.Header().Set("Content-Type", metricsContentType)
 	w.WriteHeader(http.StatusOK)
 	if r.Method != http.MethodHead {
@@ -110,8 +121,15 @@ func isAgentPlane(p state.Plane) bool {
 
 // renderMetrics is the Prometheus text. Agent, controller, and worker series appear only after
 // that region's first sync, and stay after it goes stale. region_available uses the same test as
-// /readyz (E12-D040).
+// /readyz (E12-D040). The account-key family is written with no sample; HTTP scrapes pass the
+// live count through renderMetricsAt.
 func renderMetrics(cfg Config, now time.Time, obs []regionObs, postgresUp, registryUp int) []byte {
+	return renderMetricsAt(cfg, now, obs, postgresUp, registryUp, -1)
+}
+
+// renderMetricsAt is renderMetrics plus mftiko_account_key_old. oldKey < 0 omits the sample.
+// HELP and TYPE are still written. A missing sample is not zero (E21-D034).
+func renderMetricsAt(cfg Config, now time.Time, obs []regionObs, postgresUp, registryUp, oldKey int) []byte {
 	byRegion := make(map[string]regionObs, len(obs))
 	for _, o := range obs {
 		byRegion[o.name] = o
@@ -127,6 +145,11 @@ func renderMetrics(cfg Config, now time.Time, obs []regionObs, postgresUp, regis
 	failing, since := artifactPullSamples(cfg, byRegion)
 	writeFamily(&b, "mftiko_artifact_pull_failing", helpArtifactFailing, failing)
 	writeFamily(&b, "mftiko_artifact_pull_fail_since_seconds", helpArtifactSince, since)
+	var old []string
+	if oldKey >= 0 {
+		old = []string{gaugeLine("mftiko_account_key_old", nil, oldKey)}
+	}
+	writeFamily(&b, "mftiko_account_key_old", helpAccountKeyOld, old)
 	return []byte(b.String())
 }
 
