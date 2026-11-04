@@ -1,6 +1,7 @@
 package sealbox
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -221,5 +222,24 @@ func TestPublicKeyText(t *testing.T) {
 		if _, err := ParsePublicKey(s); err == nil {
 			t.Errorf("parsed %q", s)
 		}
+	}
+	sum := k.Public().SHA256()
+	fp := k.Public().Fingerprint()
+	if !bytes.Equal(sum[:len(fp)], fp[:]) {
+		t.Fatal("header tag is not the leading digest bytes")
+	}
+}
+
+func TestSealedTo(t *testing.T) {
+	a, b := mustKey(t), mustKey(t)
+	sealed, err := Seal(a.Public(), []byte("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !SealedTo(a.Public(), sealed) || SealedTo(b.Public(), sealed) {
+		t.Fatal("header compare")
+	}
+	if SealedTo(a.Public(), nil) || SealedTo(a.Public(), []byte{0, 1, 2, 3, 4, 5, 6, 7, 8}) {
+		t.Fatal("short or wrong version")
 	}
 }

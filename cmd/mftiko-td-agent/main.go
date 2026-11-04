@@ -132,6 +132,7 @@ func run(ctx context.Context, o options, log zerolog.Logger) error {
 		WorkDir: o.workDir, Shim: o.shim, Worker: worker,
 		WorkerEnv: []string{"MFTIKO_NATS_URL=" + o.natsURL},
 		Kinds:     reg, Endpoints: endpoints,
+		Pubkey: key.Public(), Publish: true,
 		Open: func(sealed []byte, id int64, kind string) error {
 			_, err := sealbox.OpenCredentials(key, sealed, id, kind)
 			return err

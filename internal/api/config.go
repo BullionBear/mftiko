@@ -97,7 +97,10 @@ type Config struct {
 	Allow    []string // strategy and input repository allowlist; "*" alone allows every repository (E10-D122, E15-D007)
 	// MaxInputBytes limits each input's declared config plus layer; zero means artifact.DefaultMaxBytes.
 	// It should equal the STS -max-artifact-bytes (E15-D006).
-	MaxInputBytes    int64
+	MaxInputBytes int64
+	// TDKeys is the fallback public key of each TD instance (E21-D035). A value at
+	// /td/{inst}/pubkey that parses wins. Load still requires one entry per TD instance.
+	// Removing the map is #518.
 	TDKeys           map[string]sealbox.PublicKey
 	Kinds            []Kind // not in the JSON; the command sets it (E10-D034). Empty rejects every kind.
 	Retention        time.Duration

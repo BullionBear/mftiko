@@ -104,6 +104,7 @@ const (
 	ErrorCodeRegionUnavailable   ErrorCode = "region_unavailable"
 	ErrorCodeRegistryUnavailable ErrorCode = "registry_unavailable"
 	ErrorCodeStorageUnavailable  ErrorCode = "storage_unavailable"
+	ErrorCodeTdPubkeyUnavailable ErrorCode = "td_pubkey_unavailable"
 	ErrorCodeUnauthenticated     ErrorCode = "unauthenticated"
 	ErrorCodeValidationFailed    ErrorCode = "validation_failed"
 )
@@ -132,6 +133,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeRegistryUnavailable:
 		return true
 	case ErrorCodeStorageUnavailable:
+		return true
+	case ErrorCodeTdPubkeyUnavailable:
 		return true
 	case ErrorCodeUnauthenticated:
 		return true

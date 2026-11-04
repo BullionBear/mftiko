@@ -255,6 +255,7 @@ func (w writeScope) areas(p Plane, inst string) (prefixes, exact []string) {
 			prefixes = append(prefixes, MDAckPrefix(w.inst), SelectorPrefix(w.inst), PlacementPrefix(w.inst))
 		case PlaneTD:
 			prefixes = append(prefixes, TDAckPrefix(w.inst))
+			exact = []string{PubkeyKey(w.inst)}
 		}
 	}
 	return prefixes, exact

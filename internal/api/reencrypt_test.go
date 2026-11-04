@@ -742,15 +742,15 @@ func TestAccountKeyOldGauge(t *testing.T) {
 		t.Fatal("cancelled context reported a count")
 	}
 
-	with := string(renderMetricsAt(Config{}, time.Unix(0, 0), nil, 1, 0, int(n)))
+	with := string(renderMetricsAt(Config{}, time.Unix(0, 0), nil, 1, 0, int(n), nil))
 	if !strings.Contains(with, "mftiko_account_key_old 2\n") {
 		t.Fatalf("gauge missing:\n%s", with)
 	}
-	zero := string(renderMetricsAt(Config{}, time.Unix(0, 0), nil, 1, 0, 0))
+	zero := string(renderMetricsAt(Config{}, time.Unix(0, 0), nil, 1, 0, 0, nil))
 	if !strings.Contains(zero, "mftiko_account_key_old 0\n") {
 		t.Fatalf("zero sample missing:\n%s", zero)
 	}
-	omitted := string(renderMetricsAt(Config{}, time.Unix(0, 0), nil, 0, 0, -1))
+	omitted := string(renderMetricsAt(Config{}, time.Unix(0, 0), nil, 0, 0, -1, nil))
 	if !strings.Contains(omitted, "# HELP mftiko_account_key_old ") || strings.Contains(omitted, "\nmftiko_account_key_old ") {
 		t.Fatalf("omitted sample:\n%s", omitted)
 	}

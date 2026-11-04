@@ -5,17 +5,19 @@
 # 2.3.0 adds account exchange, exch_account_uid, deleted_at, and include_deleted (E21-D010, E21-D027).
 # td_instance stays. Removing it is the 3.0.0 break (E21-06). exch_account_uid is required on create;
 # that one oasdiff ERR is listed in api-v1-err-ignore.txt.
+# 2.4.0 adds td_pubkey_unavailable (E21-D039, E21-D041). Compatible: one ErrorCode.
+# The oasdiff response-property-enum-value-added lines are in api-v1-err-ignore.txt.
 # oasdiff ignores only the lines in contract/openapi/api-v1-err-ignore.txt. The next incompatible
 # change opens v2.yaml. console 與 CLI 只認這份契約，不認平台的 proto（E10-D002）。
 openapi: 3.0.3
 info:
   title: mftiko API
-  version: 2.3.0
+  version: 2.4.0
   description: |
     mftiko API server 的對外契約（DECISIONS E10-D001、E10-D002）。
 
     **慣例（E10-D036）**
-    - 路徑都在 `/api/v1` 底下。`2.0.0` 這一次在原地拿掉策略 `id`（E10-D118）。`2.1.0` 加上 session log 的讀取與匯出（E14-D011–E14-D015）。`2.2.0` 加上策略事件紀錄的開關（E20-D007）。`2.3.0` 加上帳號的 `exchange`、`exch_account_uid`、`deleted_at` 與 `include_deleted`（E21-D010、E21-D027）；`td_instance` 仍在，拿掉是 3.0.0。同一個檔案只做相容擴充，讀取端忽略不認得的欄位。下一次不相容另開 `v2.yaml`。
+    - 路徑都在 `/api/v1` 底下。`2.0.0` 這一次在原地拿掉策略 `id`（E10-D118）。`2.1.0` 加上 session log 的讀取與匯出（E14-D011–E14-D015）。`2.2.0` 加上策略事件紀錄的開關（E20-D007）。`2.3.0` 加上帳號的 `exchange`、`exch_account_uid`、`deleted_at` 與 `include_deleted`（E21-D010、E21-D027）；`td_instance` 仍在，拿掉是 3.0.0。`2.4.0` 加上錯誤碼 `td_pubkey_unavailable`（E21-D039）。同一個檔案只做相容擴充，讀取端忽略不認得的欄位。下一次不相容另開 `v2.yaml`。
     - 時間是 RFC 3339 字串（UTC，奈秒精度可省略）。
     - enum 是 API 自己的小寫字串，不是 proto 的名稱。
     - 錯誤一律是 `application/problem+json`（RFC 9457），另帶穩定的 `code`；驗證錯誤的 `errors[].path` 是 JSON Pointer（RFC 6901），指向請求 body 裡的欄位（E10-D004）。
@@ -875,6 +877,7 @@ components:
         - storage_unavailable
         - registry_unavailable
         - logs_unavailable
+        - td_pubkey_unavailable
         - invalid_artifact
         - internal
     FieldError:

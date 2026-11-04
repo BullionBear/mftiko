@@ -37,6 +37,7 @@ func TestEtcdctl(t *testing.T) {
 	for _, want := range []string{
 		"# region jp\nexport ETCDCTL_ENDPOINTS='http://etcd-jp:2379'\n",
 		"etcdctl role grant-permission 'td-jp-1' readwrite '/mftiko/v1/td/td-jp-1/ack/' '/mftiko/v1/td/td-jp-1/ack0'\n",
+		"etcdctl role grant-permission 'td-jp-1' readwrite '/mftiko/v1/td/td-jp-1/pubkey'\n",
 		"etcdctl role grant-permission 'md-tw-1' readwrite '/mftiko/v1/md/md-tw-1/epoch'\n",
 		"etcdctl role grant-permission 'controller' readwrite '/mftiko/v1/sts/sts-tw-1/demand/' '/mftiko/v1/sts/sts-tw-1/demand0'\n",
 		"etcdctl user add 'api'\n",
@@ -62,6 +63,7 @@ func TestEtcdctl(t *testing.T) {
 		"grant-permission 'api' readwrite '/mftiko/v1/md/",
 		"grant-permission 'api' readwrite '/mftiko/v1/td/td-jp-1/ack/",
 		"grant-permission 'api' readwrite '/mftiko/v1/td/td-jp-1/demand/",
+		"grant-permission 'api' readwrite '/mftiko/v1/td/td-jp-1/pubkey'",
 	} {
 		if strings.Contains(out.String(), forbidden) {
 			t.Errorf("api granted %s", forbidden)

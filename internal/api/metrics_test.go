@@ -99,7 +99,10 @@ func TestRenderMetrics(t *testing.T) {
 		"# TYPE mftiko_artifact_pull_fail_since_seconds gauge\n" +
 		"\n" +
 		"# HELP mftiko_account_key_old " + helpAccountKeyOld + "\n" +
-		"# TYPE mftiko_account_key_old gauge\n"
+		"# TYPE mftiko_account_key_old gauge\n" +
+		"\n" +
+		"# HELP mftiko_td_pubkey_changed_total " + helpTDPubkeyChanged + "\n" +
+		"# TYPE mftiko_td_pubkey_changed_total counter\n"
 	if string(got) != want {
 		t.Fatalf("metrics:\n%s\nwant:\n%s", got, want)
 	}

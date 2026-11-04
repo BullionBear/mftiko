@@ -55,10 +55,10 @@ make cli-dist     # bin/dist/：與 Release 相同的四個 tarball 與 SHA256SU
 ```sh
 $ mftiko version
 mftiko v0.2.0 (commit 12c62e6, built 2026-10-24T11:22:25Z)
-api.v1 2.3.0
+api.v1 2.4.0
 ```
 
-第一行是 CLI 的版本：Makefile 或 release 注入的 `git describe`（符合 `vX.Y.Z` 的 tag）、短 commit 與 UTC build 時間。第二行是這個 CLI 編譯時所用 `api.v1` 的 `info.version`（E10-D116、E10-D118）。`2.0.0` 在原地拿掉策略 `id`。對著 `1.x` 編譯的 CLI 不能在 `2.0.0` 的 API 上建立 session 或列出策略。`2.1.0` 在契約加上 session log 的讀取與匯出（E14-D011–E14-D015）。`2.2.0` 加上 session spec 的 `event_log`（E20-D007）。`2.3.0` 加上帳號的 `exchange`、`exch_account_uid`、`deleted_at` 與 `include_deleted`（E21-D027）。`2.0.0` 之後，同一個 major 只加相容欄位，直到下一次打破另開 v2。`-version` 印一樣的內容。`-o json` 印 `{"version","commit","built","api_version"}`。這個命令不讀設定檔，也不呼叫 API。每個請求的 `User-Agent` 是 `mftiko-cli/<版本>`。
+第一行是 CLI 的版本：Makefile 或 release 注入的 `git describe`（符合 `vX.Y.Z` 的 tag）、短 commit 與 UTC build 時間。第二行是這個 CLI 編譯時所用 `api.v1` 的 `info.version`（E10-D116、E10-D118）。`2.0.0` 在原地拿掉策略 `id`。對著 `1.x` 編譯的 CLI 不能在 `2.0.0` 的 API 上建立 session 或列出策略。`2.1.0` 在契約加上 session log 的讀取與匯出（E14-D011–E14-D015）。`2.2.0` 加上 session spec 的 `event_log`（E20-D007）。`2.3.0` 加上帳號的 `exchange`、`exch_account_uid`、`deleted_at` 與 `include_deleted`（E21-D027）。`2.4.0` 加上 `td_pubkey_unavailable`（E21-D039）。`2.0.0` 之後，同一個 major 只加相容欄位，直到下一次打破另開 v2。`-version` 印一樣的內容。`-o json` 印 `{"version","commit","built","api_version"}`。這個命令不讀設定檔，也不呼叫 API。每個請求的 `User-Agent` 是 `mftiko-cli/<版本>`。
 
 ## 設定與認證
 
@@ -188,6 +188,7 @@ repository 必須在 `allow` 內；不是資料 artifact 或超過 `max_input_by
 | 20 | `internal` | API 內部錯誤；回報時附上 `X-Request-Id` |
 | 21 | `invalid_artifact` | 列出 tag 時解析結果讀不出來（E10-D059）。建立時 kind 不對是 `validation_failed`（E10-D120） |
 | 22 | `logs_unavailable` | session log 暫時讀不到（E14-D008） |
+| 23 | `td_pubkey_unavailable` | 要封給該 TD instance 但沒有可用公鑰（E21-D039） |
 
 下面這組只出現在 `session create --wait` 與 `session end --wait`（E11-D033）。到達目標 phase、`outcome=done` 或 `end_reason=ended_by_spec` 都回 0：
 

@@ -33,6 +33,7 @@ func TestKeys(t *testing.T) {
 		{SessionSpecKey("sts-tw-1", "a1b2c3"), r + "/sts/sts-tw-1/spec/a1b2c3", PlaneSTS, "sts-tw-1", "tw"},
 		{SessionStatusKey("sts-tw-1", "a1b2c3"), r + "/sts/sts-tw-1/status/a1b2c3", PlaneSTS, "sts-tw-1", "tw"},
 		{AccountKey("td-jp-1", 42), r + "/td/td-jp-1/account/42", PlaneTD, "td-jp-1", "jp"},
+		{PubkeyKey("td-jp-1"), r + "/td/td-jp-1/pubkey", PlaneTD, "td-jp-1", "jp"},
 		{SessionDemandKey("sts-tw-1", "a1b2c3"), r + "/sts/sts-tw-1/demand/a1b2c3", PlaneSTS, "sts-tw-1", "tw"},
 		// A TW session asking for JP market data: the controller writes the demand into JP's cluster; JP's MD
 		// acks there (E00-D005 rule 1).

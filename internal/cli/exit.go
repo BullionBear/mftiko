@@ -28,6 +28,7 @@ const (
 	ExitInternal            = 20
 	ExitInvalidArtifact     = 21
 	ExitLogsUnavailable     = 22
+	ExitTdPubkeyUnavailable = 23
 	// E11-D033. These are client conventions for session create --wait and
 	// session end --wait. They are not API problem codes and are not returned
 	// by ExitCode.
@@ -73,6 +74,8 @@ func ExitCode(code apiv1.ErrorCode) (int, bool) {
 		return ExitInvalidArtifact, true
 	case apiv1.ErrorCodeLogsUnavailable:
 		return ExitLogsUnavailable, true
+	case apiv1.ErrorCodeTdPubkeyUnavailable:
+		return ExitTdPubkeyUnavailable, true
 	default:
 		return 0, false
 	}

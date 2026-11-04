@@ -53,11 +53,13 @@ func (a AuthTable) Users() []string {
 //
 //   - An agent exists only in its own region's cluster. It reads its whole instance prefix and writes its own keys:
 //     election, epoch, writer, AgentRecord, WorkerStatus, incarnations, and per plane the session status (STS),
-//     acks (MD, TD), selector state and placements (MD). It writes no demand and nothing of another instance.
+//     acks (MD, TD), the exact public-key key (TD), selector state and placements (MD). It writes no demand
+//     and nothing of another instance. The public key is not bound to a lease (E21-D004).
 //   - The controller exists in every cluster. It reads everything and writes its own keys under
 //     /ctl/controller/ and the demands of every agent instance of that region (PROTOCOL §3.3).
 //   - The API server exists in every cluster. It reads everything and writes the session specs of the region's STS
-//     instances and the accounts of its TD instances. It also has write on those STS instances' status prefixes.
+//     instances and the accounts of its TD instances. It does not write /td/{inst}/pubkey; that key is the TD
+//     agent's (E21-D004). It also has write on those STS instances' status prefixes.
 //     W5 deletes a terminal status, and etcd RBAC does not separate delete from write, so the grant is the whole
 //     prefix (E10-D040). etcd therefore cannot refuse an api put of status. W1's "only the STS agent writes status"
 //     is kept by the API program, not by etcd. That gap is deliberate: STS does not clear status, which would
@@ -142,7 +144,7 @@ func agentRole(p Plane, inst string) Role {
 		perms = append(perms, prefixPerm(MDAckPrefix(inst), true), prefixPerm(SelectorPrefix(inst), true),
 			prefixPerm(PlacementPrefix(inst), true))
 	case PlaneTD:
-		perms = append(perms, prefixPerm(TDAckPrefix(inst), true))
+		perms = append(perms, prefixPerm(TDAckPrefix(inst), true), Permission{Key: PubkeyKey(inst), Write: true})
 	}
 	return Role{Name: inst, Permissions: perms}
 }

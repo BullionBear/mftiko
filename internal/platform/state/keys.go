@@ -69,6 +69,13 @@ func AccountKey(tdInst string, apiID int64) string { return AccountPrefix(tdInst
 // AccountPrefix lists every account of a TD instance.
 func AccountPrefix(tdInst string) string { return instPrefix(PlaneTD, tdInst) + "account/" }
 
+// TDPrefix is every key under the TD plane. The API watches it for public keys (E21-D037).
+const TDPrefix = Root + "/td/"
+
+// PubkeyKey is one TD instance's X25519 public key, standard base64, with no lease
+// (E21-D004, E21-D035). The TD agent writes it after the election. The API reads it.
+func PubkeyKey(inst string) string { return instPrefix(PlaneTD, inst) + "pubkey" }
+
 // DemandPrefix lists every demand the controller wrote for an agent instance (PROTOCOL §3.3): an STS instance's
 // SessionDemands, an MD or TD instance's DemandEntries.
 func DemandPrefix(p Plane, inst string) string { return instPrefix(p, inst) + "demand/" }

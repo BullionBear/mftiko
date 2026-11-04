@@ -439,7 +439,7 @@ export interface components {
             errors?: components["schemas"]["FieldError"][];
         };
         /** @enum {string} */
-        ErrorCode: "validation_failed" | "unauthenticated" | "not_found" | "conflict" | "not_terminal" | "referenced" | "algo_overlap" | "region_unavailable" | "storage_unavailable" | "registry_unavailable" | "logs_unavailable" | "invalid_artifact" | "internal";
+        ErrorCode: "validation_failed" | "unauthenticated" | "not_found" | "conflict" | "not_terminal" | "referenced" | "algo_overlap" | "region_unavailable" | "storage_unavailable" | "registry_unavailable" | "logs_unavailable" | "td_pubkey_unavailable" | "invalid_artifact" | "internal";
         FieldError: {
             /** @description JSON Pointer（RFC 6901），例如 `/feeds/2/feed`。 */
             path: string;

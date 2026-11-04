@@ -71,6 +71,12 @@ type Server struct {
 	hashMismatch atomic.Int64
 	// orphanAccount counts etcd account keys that have no Postgres row (E21-D021).
 	orphanAccount atomic.Int64
+	// pubs caches /td/{inst}/pubkey. pubRecMu serializes the fingerprint write.
+	// Lock pubMu before reading the cache. Never take pubRecMu while holding pubMu.
+	pubMu         sync.Mutex
+	pubRecMu      sync.Mutex
+	pubs          map[string]*pubkeySlot
+	pubChanged    map[string]uint64
 	reconcileKick chan struct{}
 	reconcileMu   sync.Mutex
 	// reconcilePasses counts completed reconcileOnce calls so a test can wait for one pass.
@@ -170,9 +176,12 @@ func start(cfg Config) (*Server, error) {
 	// watchMirror calls kickReconcile as soon as a mirror notifies, and that reads this field.
 	// The channel has to exist before those goroutines start (E10-D070).
 	s.reconcileKick = make(chan struct{}, 1)
+	s.pubs = map[string]*pubkeySlot{}
+	s.pubChanged = map[string]uint64{}
 	for _, c := range s.clusters {
-		s.wg.Add(1)
+		s.wg.Add(2)
 		go s.runMirror(c)
+		go s.runPubkeyMirror(c)
 	}
 	s.wg.Add(1)
 	go s.runReconcile()

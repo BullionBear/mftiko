@@ -78,10 +78,24 @@ func (p PublicKey) String() string { return base64.StdEncoding.EncodeToString(p[
 
 // Fingerprint is the first 8 bytes of SHA-256 over the key, as the header carries it.
 func (p PublicKey) Fingerprint() [fingerprintLen]byte {
-	sum := sha256.Sum256(p[:])
+	sum := p.SHA256()
 	var f [fingerprintLen]byte
 	copy(f[:], sum[:])
 	return f
+}
+
+// SHA256 is the full digest of the 32-byte key. The API stores it as the TOFU fingerprint (E21-D036).
+// The sealbox header keeps only the first 8 bytes.
+func (p PublicKey) SHA256() [sha256.Size]byte { return sha256.Sum256(p[:]) }
+
+// SealedTo reports whether sealed's header names pub. It does not authenticate the box.
+// A short buffer or another version is false.
+func SealedTo(pub PublicKey, sealed []byte) bool {
+	if len(sealed) < headerLen || sealed[0] != Version {
+		return false
+	}
+	fp := pub.Fingerprint()
+	return bytes.Equal(sealed[1:headerLen], fp[:])
 }
 
 // ParsePublicKey reads a key in standard base64; surrounding space is ignored.

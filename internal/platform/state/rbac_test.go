@@ -156,6 +156,12 @@ func TestAuthTables(t *testing.T) {
 		{"tw", "md-tw-1", PlacementKey("md-tw-1", "a"), true},
 		{"tw", "md-tw-1", MDDemandKey("md-tw-1", sid, entry), false},
 		{"tw", "td-tw-1", TDAckKey("td-tw-1", sid, 42), true},
+		{"tw", "td-tw-1", PubkeyKey("td-tw-1"), true},
+		{"tw", "td-tw-1", PubkeyKey("td-jp-1"), false},
+		{"jp", "td-jp-1", PubkeyKey("td-jp-1"), true},
+		{"jp", "td-jp-1", PubkeyKey("td-tw-1"), false},
+		{"tw", "md-tw-1", PubkeyKey("td-tw-1"), false},
+		{"tw", "sts-tw-1", PubkeyKey("td-tw-1"), false},
 		{"tw", "td-tw-1", TDDemandKey("td-tw-1", sid, 42), false},
 		{"tw", "td-tw-1", AccountKey("td-tw-1", 42), false},
 		// The controller: every demand of the region, its own keys, nothing the agents or the API write.
@@ -165,6 +171,7 @@ func TestAuthTables(t *testing.T) {
 		{"jp", "controller", MDDemandKey("md-jp-1", sid, entry), true},
 		{"jp", "controller", WriterKey(PlaneCtl, ControllerInstance), true},
 		{"tw", "controller", AgentKey(PlaneCtl, ControllerInstance), true},
+		{"tw", "controller", PubkeyKey("td-tw-1"), false},
 		{"tw", "controller", MDAckKey("md-tw-1", sid, entry), false},
 		{"tw", "controller", SessionStatusKey("sts-tw-1", sid), false},
 		{"tw", "controller", SessionSpecKey("sts-tw-1", sid), false},
@@ -180,6 +187,8 @@ func TestAuthTables(t *testing.T) {
 		{"tw", "api", TDDemandKey("td-tw-1", sid, 42), false},
 		{"tw", "api", MDAckKey("md-tw-1", sid, entry), false},
 		{"tw", "api", TDAckKey("td-tw-1", sid, 42), false},
+		{"tw", "api", PubkeyKey("td-tw-1"), false},
+		{"jp", "api", PubkeyKey("td-jp-1"), false},
 		{"tw", "api", AgentKey(PlaneSTS, "sts-tw-1"), false},
 		{"tw", "api", AgentKey(PlaneCtl, ControllerInstance), false},
 		{"tw", "api", WorkerStatusKey(PlaneSTS, "sts-tw-1", h), false},
@@ -203,6 +212,11 @@ func TestAuthTables(t *testing.T) {
 	for _, c := range []check{
 		{"tw", "md-tw-1", MDDemandKey("md-tw-1", sid, entry), true}, // its own demands, read only
 		{"tw", "td-tw-1", AccountKey("td-tw-1", 42), true},
+		{"tw", "td-tw-1", PubkeyKey("td-tw-1"), true},
+		{"jp", "td-jp-1", PubkeyKey("td-jp-1"), true},
+		{"tw", "md-tw-1", PubkeyKey("td-tw-1"), false},
+		{"tw", "td-tw-1", PubkeyKey("td-jp-1"), false},
+		{"tw", "api", PubkeyKey("td-tw-1"), true},
 		{"tw", "sts-tw-1", SessionSpecKey("sts-tw-1", sid), true},
 		{"tw", "md-tw-1", AgentKey(PlaneTD, "td-tw-1"), false}, // nothing of other instances
 		{"tw", "controller", MDAckKey("md-tw-1", sid, entry), true},
@@ -275,6 +289,10 @@ func TestRBACEnforced(t *testing.T) {
 	denied("md writes another instance's ack", put(md, MDAckKey("md-tw-2", sid, entry)))
 	denied("md writes its own demand", put(md, MDDemandKey("md-tw-1", sid, entry)))
 	denied("md writes the STS agent's status", put(md, SessionStatusKey("sts-tw-1", sid)))
+	td := etcdtest.ClientAs(t, s.Endpoints(), "td-tw-1")
+	allowed("td writes its pubkey", put(td, PubkeyKey("td-tw-1")))
+	denied("md writes a td pubkey", put(md, PubkeyKey("td-tw-1")))
+	denied("api writes a td pubkey", put(api, PubkeyKey("td-tw-1")))
 	_, err := md.Delete(ctx, instPrefix(PlaneMD, "md-tw-1"), clientv3.WithPrefix())
 	denied("md wipes its whole instance", err)
 	_, err = md.Get(ctx, instPrefix(PlaneMD, "md-tw-2"), clientv3.WithPrefix())
@@ -371,6 +389,7 @@ func TestRBACEnforced(t *testing.T) {
 		{"api writes an md ack", MDAckKey("md-tw-1", sid, entry)},
 		{"api writes another instance's ack", MDAckKey("md-tw-2", sid, entry)},
 		{"api writes a td ack", TDAckKey("td-tw-1", sid, 42)},
+		{"api writes a td pubkey", PubkeyKey("td-tw-1")},
 		{"api writes an agent record", AgentKey(PlaneSTS, "sts-tw-1")},
 		{"api writes another instance's agent", AgentKey(PlaneMD, "md-tw-2")},
 		{"api writes the controller's agent", AgentKey(PlaneCtl, ControllerInstance)},
