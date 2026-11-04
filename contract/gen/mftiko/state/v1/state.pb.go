@@ -876,7 +876,7 @@ type EntryStatus struct {
 	State  EntryState             `protobuf:"varint,1,opt,name=state,proto3,enum=mftiko.state.v1.EntryState" json:"state,omitempty"`
 	Reason string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
 	// feed：完整的 subject（md.v1.f.{inst}.{topic}.{ticker}，E04-D055）。NATS topic 用人讀的名字，不用 UID。selector：成員 subject 的前綴（md.v1.f.{inst}）；
-	// 帳號：td.order.{api_id}。由 provider 決定，訂閱端不自己組（PROTOCOL §7、DECISIONS E01-D006）。
+	// 帳號：td.order.{td_instance}.{api_id}。由 provider 決定，訂閱端不自己組（PROTOCOL §7、DECISIONS E01-D006）。
 	Subject       string        `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
 	Worker        *v1.WorkerRef `protobuf:"bytes,4,opt,name=worker,proto3" json:"worker,omitempty"`
 	Universe      *Universe     `protobuf:"bytes,5,opt,name=universe,proto3" json:"universe,omitempty"` // 只有 selector

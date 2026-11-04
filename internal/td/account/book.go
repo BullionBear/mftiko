@@ -3,7 +3,6 @@ package account
 import (
 	"context"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,11 +31,6 @@ type Bus interface {
 	// Respond answers requests on subject with h's reply, until stop.
 	Respond(subject string, h func(req []byte) []byte) (stop func(), err error)
 }
-
-// Subjects of one account (PROTOCOL §7).
-func evtSubject(apiID int64) string   { return "td.evt." + strconv.FormatInt(apiID, 10) }
-func viewSubject(apiID int64) string  { return "td.view." + strconv.FormatInt(apiID, 10) }
-func orderSubject(apiID int64) string { return "td.order." + strconv.FormatInt(apiID, 10) }
 
 // inactiveWait bounds a question to SYM about an instrument that is not in the active table.
 const inactiveWait = 2 * time.Second
@@ -103,9 +97,9 @@ type book struct {
 	qwake    chan struct{}
 }
 
-func newBook(ins Instruments, bus Bus, apiID int64, source *commonv1.WorkerRef, log zerolog.Logger, now func() time.Time) *book {
+func newBook(ins Instruments, bus Bus, evtSubj string, source *commonv1.WorkerRef, log zerolog.Logger, now func() time.Time) *book {
 	return &book{
-		ins: ins, bus: bus, subj: evtSubject(apiID), source: source, log: log, now: now,
+		ins: ins, bus: bus, subj: evtSubj, source: source, log: log, now: now,
 		in:     make(chan any, 1024),
 		orders: map[string]*tdv1.Order{}, byCloid: map[string]string{},
 		positions: map[uint32]*tdv1.Position{}, balances: map[string]*tdv1.Balance{}, leverage: map[uint32]float64{},

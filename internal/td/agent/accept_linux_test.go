@@ -168,7 +168,7 @@ func setup(t *testing.T) *env {
 		Unseal: func(sealed []byte, id int64, kind string) (sealbox.Credentials, error) {
 			return sealbox.OpenCredentials(key, sealed, id, kind)
 		},
-		User:       func(int64) (string, string, string, error) { return "jwt", "seed", "_INBOX_td_42", nil },
+		User:       func(string, int64) (string, string, string, error) { return "jwt", "seed", "_INBOX_td_42", nil },
 		Policy:     Policy{Backoff: agent.Backoff{Min: 50 * time.Millisecond, Max: 200 * time.Millisecond}, Beat: 10 * time.Second, GiveUpAfter: 2},
 		Linger:     500 * time.Millisecond,
 		Resync:     25 * time.Millisecond,

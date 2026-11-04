@@ -60,7 +60,7 @@ func TestCheckCatchesBroadAccountWorker(t *testing.T) {
 		t.Fatal(err)
 	}
 	ns := startAuthServer(t, dir, lay.Manifest.System)
-	good, err := newAccountWorker(lay, checkAPIID)
+	good, err := newAccountWorker(lay, checkTDInst, checkAPIID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestCheckCatchesBroadAccountWorker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pub, sub, err := tdAccountPerms(checkAPIID)
+	pub, sub, err := tdAccountPerms(checkTDInst, checkAPIID)
 	if err != nil {
 		t.Fatal(err)
 	}

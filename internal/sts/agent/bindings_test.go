@@ -17,7 +17,7 @@ func TestToBindings(t *testing.T) {
 		{Target: &statev1.Binding_Selector{Selector: "near"}, Instance: "md-1",
 			Status: &statev1.EntryStatus{Subject: "md.v1.f.md-1", Universe: &statev1.Universe{Epoch: 3, Members: []string{"a"}}}},
 		{Target: &statev1.Binding_ApiId{ApiId: 7}, Instance: "td-1",
-			Status: &statev1.EntryStatus{State: statev1.EntryState_ENTRY_STATE_PENDING, Subject: "td.order.7",
+			Status: &statev1.EntryStatus{State: statev1.EntryState_ENTRY_STATE_PENDING, Subject: "td.order.td-1.7",
 				Worker: &commonv1.WorkerRef{Key: "td/7", Incarnation: 2}}},
 		{Target: &statev1.Binding_ApiId{ApiId: 8}, Instance: "td-1"},
 	})

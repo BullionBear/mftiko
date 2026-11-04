@@ -241,10 +241,10 @@ func TestSessionJWTAllowsExactFeeds(t *testing.T) {
 	if err := sess.Publish(view, []byte("q")); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Publish("td.order.7", []byte("q")); err != nil {
+	if err := sess.Publish("td.order.td-a.7", []byte("q")); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Publish("td.view.7", []byte("q")); err != nil {
+	if err := sess.Publish("td.view.td-a.7", []byte("q")); err != nil {
 		t.Fatal(err)
 	}
 	if err := sess.Publish("sym", []byte("q")); err != nil {
@@ -256,7 +256,7 @@ func TestSessionJWTAllowsExactFeeds(t *testing.T) {
 	if err := sess.LastError(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sess.SubscribeSync("td.evt.7"); err != nil {
+	if _, err := sess.SubscribeSync("td.evt.td-a.7"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := sess.SubscribeSync("sym.v1.changed.>"); err != nil {
@@ -286,10 +286,16 @@ func TestSessionJWTAllowsExactFeeds(t *testing.T) {
 			return err
 		}},
 		{"view wildcard", func(nc *nats.Conn) error { return nc.Publish("md.v1.view.dev.>", []byte("q")) }},
-		{"other account order", func(nc *nats.Conn) error { return nc.Publish("td.order.8", []byte("q")) }},
+		{"other account order", func(nc *nats.Conn) error { return nc.Publish("td.order.td-a.8", []byte("q")) }},
+		{"other instance order", func(nc *nats.Conn) error { return nc.Publish("td.order.td-b.7", []byte("q")) }},
+		{"old order subject", func(nc *nats.Conn) error { return nc.Publish("td.order.7", []byte("q")) }},
 		{"log subject", func(nc *nats.Conn) error { return nc.Publish("log.sts."+session, []byte("q")) }},
 		{"other account events", func(nc *nats.Conn) error {
-			_, err := nc.SubscribeSync("td.evt.8")
+			_, err := nc.SubscribeSync("td.evt.td-a.8")
+			return err
+		}},
+		{"other instance events", func(nc *nats.Conn) error {
+			_, err := nc.SubscribeSync("td.evt.td-b.7")
 			return err
 		}},
 		{"default inbox", func(nc *nats.Conn) error {
@@ -314,7 +320,7 @@ func TestSessionJWTAllowsExactFeeds(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer nc.Close()
-	expectDenied(t, nc, func(nc *nats.Conn) error { return nc.Publish("td.order.7", []byte("q")) })
+	expectDenied(t, nc, func(nc *nats.Conn) error { return nc.Publish("td.order.td-a.7", []byte("q")) })
 }
 
 // TestSessionJWTFiveHundredFeeds connects a session that lists 500 feeds on

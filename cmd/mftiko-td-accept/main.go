@@ -8,11 +8,11 @@
 //	mftiko-td-accept account -api-id N -kind K -seal-key F   seal credentials JSON from stdin, write the account
 //	mftiko-td-accept demand  put|del SESSION API_ID          write or delete one TD demand entry
 //	mftiko-td-accept acks                                    print the instance's acks
-//	mftiko-td-accept submit  -api-id N -ticker T ...         one Submit on td.order; prints its client_order_id
-//	mftiko-td-accept cancel  -api-id N -cid C                one Cancel on td.order
-//	mftiko-td-accept batch   -api-id N -cid C1,C2,...        one BatchCancel on td.order
-//	mftiko-td-accept view    -api-id N recon                 ask td.view for one Recon
-//	mftiko-td-accept watch   -api-id N [-out FILE]           follow td.evt.N, check seq per incarnation
+//	mftiko-td-accept submit  -api-id N -ticker T ...         one Submit on td.order.{instance}.{api_id}; prints its client_order_id
+//	mftiko-td-accept cancel  -api-id N -cid C                one Cancel on td.order.{instance}.{api_id}
+//	mftiko-td-accept batch   -api-id N -cid C1,C2,...        one BatchCancel on td.order.{instance}.{api_id}
+//	mftiko-td-accept view    -api-id N recon                 ask td.view.{instance}.{api_id} for one Recon
+//	mftiko-td-accept watch   -api-id N [-out FILE]           follow td.evt.{instance}.{api_id}, check seq per incarnation
 //	mftiko-td-accept conns                                   list account workers: pid, venue sockets
 //	mftiko-td-accept cut     -pid PID -host H                shut down the worker's sockets to host H (Linux)
 //	mftiko-td-accept mode    -venue V -creds F [-dual B]     read or set the position mode (BinanceUM, Bybit, Okx)
@@ -30,6 +30,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 
+	"github.com/BullionBear/mftiko/contract/wire/tdsubject"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/natsx"
 )
@@ -82,6 +83,12 @@ func envOr(key, fallback string) string {
 
 // stamp is the wall clock every printed line starts with.
 func stamp() string { return time.Now().UTC().Format(time.RFC3339Nano) }
+
+// orderSubject, viewSubject and evtSubject are td.{order,view,evt}.{instance}.{api_id}
+// (E21-D042). -instance is the td_instance. An empty or illegal token is an error.
+func orderSubject() (string, error) { return tdsubject.Order(*instance, *apiID) }
+func viewSubject() (string, error)  { return tdsubject.View(*instance, *apiID) }
+func evtSubject() (string, error)   { return tdsubject.Evt(*instance, *apiID) }
 
 // dial is the session's raw connection: td.order, td.view and td.evt carry bare protobuf, not
 // natsx's reply framing.

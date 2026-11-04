@@ -19,7 +19,7 @@ func inst(name string) func(string) string {
 func specOf(accounts []int64, feeds []string) *sessionv1.SessionSpec {
 	s := &sessionv1.SessionSpec{}
 	for _, id := range accounts {
-		s.Accounts = append(s.Accounts, &sessionv1.AccountDecl{ApiId: id, Name: "a"})
+		s.Accounts = append(s.Accounts, &sessionv1.AccountDecl{ApiId: id, TdInstance: "td-a", Name: "a"})
 	}
 	for _, feed := range feeds {
 		// md_instance on the decl is ignored. The resolver is the source (E08-D020).
@@ -43,14 +43,14 @@ func TestSessionPermissionsOneFeedOneAccount(t *testing.T) {
 		"md.v1.fetch.>",
 		"md.v1.view.md-tw-1.trade.Binance_Spot_BTCUSDT",
 		"sym",
-		"td.order.7",
-		"td.view.7",
+		"td.order.td-a.7",
+		"td.view.td-a.7",
 	}
 	wantSub := []string{
 		"_INBOX_a1b2c3.>",
 		"md.v1.f.md-tw-1.trade.Binance_Spot_BTCUSDT",
 		"sym.v1.changed.>",
-		"td.evt.7",
+		"td.evt.td-a.7",
 	}
 	if !slices.Equal(got.Pub, wantPub) || !slices.Equal(got.Sub, wantSub) {
 		t.Fatalf("pub %q\nsub %q", got.Pub, got.Sub)
@@ -82,10 +82,10 @@ func TestNoFeedOmitsMarketData(t *testing.T) {
 			t.Fatalf("market-data subject %s", s)
 		}
 	}
-	if !slices.Contains(got.Pub, "md.v1.fetch.>") || !slices.Contains(got.Pub, "td.order.7") {
+	if !slices.Contains(got.Pub, "md.v1.fetch.>") || !slices.Contains(got.Pub, "td.order.td-a.7") {
 		t.Fatalf("pub %q", got.Pub)
 	}
-	if !slices.Contains(got.Sub, "td.evt.7") || !slices.Contains(got.Sub, "sym.v1.changed.>") {
+	if !slices.Contains(got.Sub, "td.evt.td-a.7") || !slices.Contains(got.Sub, "sym.v1.changed.>") {
 		t.Fatalf("sub %q", got.Sub)
 	}
 }
@@ -133,8 +133,8 @@ func TestSortedUniqueAcrossOrder(t *testing.T) {
 			t.Fatalf("missing %s in %q", s, a.Sub)
 		}
 	}
-	if slices.Contains(a.Pub, "td.order.11") && slices.Contains(a.Pub, "td.order.7") &&
-		slices.Contains(a.Sub, "td.evt.11") && slices.Contains(a.Sub, "td.evt.7") {
+	if slices.Contains(a.Pub, "td.order.td-a.11") && slices.Contains(a.Pub, "td.order.td-a.7") &&
+		slices.Contains(a.Sub, "td.evt.td-a.11") && slices.Contains(a.Sub, "td.evt.td-a.7") {
 		// one of each, despite the duplicate account
 		if n := countPrefix(a.Pub, "td.order."); n != 2 {
 			t.Fatalf("td.order count %d in %q", n, a.Pub)
@@ -143,7 +143,7 @@ func TestSortedUniqueAcrossOrder(t *testing.T) {
 		t.Fatalf("accounts pub %q sub %q", a.Pub, a.Sub)
 	}
 	// String order, not numeric: "11" sorts before "7".
-	if i, j := slices.Index(a.Sub, "td.evt.11"), slices.Index(a.Sub, "td.evt.7"); i > j {
+	if i, j := slices.Index(a.Sub, "td.evt.td-a.11"), slices.Index(a.Sub, "td.evt.td-a.7"); i > j {
 		t.Fatalf("td.evt order %q", a.Sub)
 	}
 }
@@ -319,6 +319,39 @@ func TestConcurrentCalls(t *testing.T) {
 	close(errc)
 	for err := range errc {
 		t.Error(err)
+	}
+}
+
+func TestSameAPIIDTwoInstances(t *testing.T) {
+	spec := &sessionv1.SessionSpec{Accounts: []*sessionv1.AccountDecl{
+		{ApiId: 7, TdInstance: "td-a", Name: "a"},
+		{ApiId: 7, TdInstance: "td-b", Name: "b"},
+	}}
+	got := perms(t, "a1b2c3", spec, inst("md-tw-1"))
+	for _, s := range []string{"td.order.td-a.7", "td.order.td-b.7", "td.view.td-a.7", "td.view.td-b.7"} {
+		if !slices.Contains(got.Pub, s) {
+			t.Fatalf("missing %s in %q", s, got.Pub)
+		}
+	}
+	for _, s := range []string{"td.evt.td-a.7", "td.evt.td-b.7"} {
+		if !slices.Contains(got.Sub, s) {
+			t.Fatalf("missing %s in %q", s, got.Sub)
+		}
+	}
+	if n := countPrefix(got.Pub, "td.order."); n != 2 {
+		t.Fatalf("td.order count %d in %q", n, got.Pub)
+	}
+}
+
+func TestBadTDInstance(t *testing.T) {
+	for _, instName := range []string{"", "td.a", "td*a", "td>a", "td a", "td\ta"} {
+		t.Run(fmt.Sprintf("%q", instName), func(t *testing.T) {
+			spec := &sessionv1.SessionSpec{Accounts: []*sessionv1.AccountDecl{{ApiId: 7, TdInstance: instName, Name: "a"}}}
+			_, err := sts.SessionPermissions("a1b2c3", spec, nil)
+			if !errors.Is(err, sts.ErrBadToken) {
+				t.Fatalf("got %v", err)
+			}
+		})
 	}
 }
 

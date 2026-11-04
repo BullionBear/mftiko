@@ -732,7 +732,16 @@ func cloidValid(ids []string) bool {
 }
 
 func (r *runner) checkSubject() (Check, error) {
-	if err := r.bus.denied(func(nc *nats.Conn) error { return nc.Publish("td.order.8", []byte{1}) }); err != nil {
+	if err := r.bus.denied(func(nc *nats.Conn) error { return nc.Publish(r.bus.otherOrder, []byte{1}) }); err != nil {
+		return fail("subject: " + err.Error()), nil
+	}
+	if err := r.bus.denied(func(nc *nats.Conn) error { return nc.Publish("td.order.7", []byte{1}) }); err != nil {
+		return fail("subject: " + err.Error()), nil
+	}
+	if err := r.bus.denied(func(nc *nats.Conn) error {
+		_, err := nc.Subscribe(r.bus.otherEvt, func(*nats.Msg) {})
+		return err
+	}); err != nil {
 		return fail("subject: " + err.Error()), nil
 	}
 	other := "md.v1.f." + r.bus.inst + ".trade.Binance_Spot_ETHUSDT"
@@ -777,6 +786,12 @@ func (r *runner) checkSubject() (Check, error) {
 	}
 	if !ok || len(r.bus.since(mark)) < 1 {
 		return fail("order not on " + r.bus.orderSubject), nil
+	}
+	if n := r.bus.otherN.Load(); n != 0 {
+		return fail(fmt.Sprintf("subject: other instance received %d", n)), nil
+	}
+	if err := r.bus.evtIsolated(); err != nil {
+		return fail("subject: " + err.Error()), nil
 	}
 	return pass(), nil
 }

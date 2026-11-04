@@ -16,6 +16,7 @@ import (
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/contract/wire/cloid"
 	"github.com/BullionBear/mftiko/contract/wire/decimal"
+	"github.com/BullionBear/mftiko/contract/wire/tdsubject"
 	"github.com/BullionBear/mftiko/exchange"
 	"github.com/BullionBear/mftiko/exchange/exchangetest"
 	"google.golang.org/protobuf/proto"
@@ -32,11 +33,15 @@ func mustCloid(t *testing.T, algo, seq uint32) string {
 
 func (h *harness) order(req *tdv1.OrderRequest) *tdv1.OrderReply {
 	h.t.Helper()
+	subj, err := tdsubject.Order(h.inst, 42)
+	if err != nil {
+		h.t.Fatal(err)
+	}
 	h.bus.mu.Lock()
-	fn := h.bus.respond["td.order.42"]
+	fn := h.bus.respond[subj]
 	h.bus.mu.Unlock()
 	if fn == nil {
-		h.t.Fatal("td.order is not served")
+		h.t.Fatal(subj + " is not served")
 	}
 	q, err := proto.Marshal(req)
 	if err != nil {

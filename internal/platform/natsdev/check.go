@@ -7,11 +7,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/nats-io/jwt/v2"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nkeys"
+
+	"github.com/BullionBear/mftiko/contract/wire/tdsubject"
 )
 
 const (
@@ -20,8 +23,12 @@ const (
 
 	// checkAPIID is the account the session caller is bound to and whose account worker the
 	// check signs. otherAPIID is an account it is not bound to.
-	checkAPIID = 7
-	otherAPIID = 8
+	// checkTDInst is that binding's td_instance. otherTDInst is a second instance of the
+	// same api_id (E21-D045).
+	checkAPIID  = 7
+	otherAPIID  = 8
+	checkTDInst = "td-a"
+	otherTDInst = "td-b"
 )
 
 // Check dials url with the credentials in dir and checks the three E04-D017 cases:
@@ -60,7 +67,10 @@ func Check(dir, url string) error {
 			return err
 		}
 	}
-	return checkAccountWorker(url, lay)
+	if err := checkAccountWorker(url, lay); err != nil {
+		return err
+	}
+	return checkTwoInstances(url, lay)
 }
 
 func checkMD(url string, lay Layout, u User) error {
@@ -204,7 +214,7 @@ func checkNoTDAgent(lay Layout) error {
 }
 
 func tdAgentUserName(name string) bool {
-	// td-account-{api_id} is an account worker. Those users are not files either (E06-D011).
+	// td-account-{td_instance}-{api_id} is an account worker. Those users are not files either (E06-D011).
 	return strings.HasPrefix(name, "td-")
 }
 
@@ -226,21 +236,33 @@ func checkAccountWorker(url string, lay Layout) error {
 	if err != nil {
 		return err
 	}
-	worker, err := newAccountWorker(lay, checkAPIID)
+	worker, err := newAccountWorker(lay, checkTDInst, checkAPIID)
 	if err != nil {
 		return err
 	}
-	own := strconv.Itoa(checkAPIID)
+	evt, err := tdsubject.Evt(checkTDInst, checkAPIID)
+	if err != nil {
+		return err
+	}
+	order, err := tdsubject.Order(checkTDInst, checkAPIID)
+	if err != nil {
+		return err
+	}
+	view, err := tdsubject.View(checkTDInst, checkAPIID)
+	if err != nil {
+		return err
+	}
+	label := checkTDInst + "/" + strconv.FormatInt(checkAPIID, 10)
 	w, err := dialCaller(url, worker)
 	if err != nil {
-		return fmt.Errorf("natsdev: account worker %s: %w", own, err)
+		return fmt.Errorf("natsdev: account worker %s: %w", label, err)
 	}
 	defer w.Close()
 	if err := allowSub(w, worker.inbox+".>"); err != nil {
-		return fmt.Errorf("natsdev: account worker %s own inbox: %w", own, err)
+		return fmt.Errorf("natsdev: account worker %s own inbox: %w", label, err)
 	}
 	if err := allowSub(w, "sym.v1.changed.>"); err != nil {
-		return fmt.Errorf("natsdev: account worker %s sym.v1.changed: %w", own, err)
+		return fmt.Errorf("natsdev: account worker %s sym.v1.changed: %w", label, err)
 	}
 	sess, err := dialCaller(url, caller)
 	if err != nil {
@@ -248,22 +270,181 @@ func checkAccountWorker(url string, lay Layout) error {
 	}
 	defer sess.Close()
 	// The account's events reach the bound session. Nobody stores them (E06-D038).
-	if err := deliver(w, "td.evt."+own, sess); err != nil {
+	if err := deliver(w, evt, sess); err != nil {
 		return err
 	}
 	if err := denyWorker(url, worker); err != nil {
 		return err
 	}
-	if err := roundTrip(url, caller, w, "td.order."+own, ""); err != nil {
+	if err := roundTrip(url, caller, w, order, ""); err != nil {
 		return err
 	}
-	return roundTrip(url, caller, w, "td.view."+own, "")
+	return roundTrip(url, caller, w, view, "")
+}
+
+// checkTwoInstances is E21-D045: api_id checkAPIID on checkTDInst and otherTDInst.
+// One request is received only by the worker of that subject. An event on the other
+// instance is not delivered to a session subscribed only to the first. That session
+// cannot publish or subscribe the other instance.
+func checkTwoInstances(url string, lay Layout) error {
+	aUser, err := newAccountWorker(lay, checkTDInst, checkAPIID)
+	if err != nil {
+		return err
+	}
+	bUser, err := newAccountWorker(lay, otherTDInst, checkAPIID)
+	if err != nil {
+		return err
+	}
+	orderA, err := tdsubject.Order(checkTDInst, checkAPIID)
+	if err != nil {
+		return err
+	}
+	orderB, err := tdsubject.Order(otherTDInst, checkAPIID)
+	if err != nil {
+		return err
+	}
+	evtA, err := tdsubject.Evt(checkTDInst, checkAPIID)
+	if err != nil {
+		return err
+	}
+	evtB, err := tdsubject.Evt(otherTDInst, checkAPIID)
+	if err != nil {
+		return err
+	}
+	wa, err := dialCaller(url, aUser)
+	if err != nil {
+		return err
+	}
+	defer wa.Close()
+	wb, err := dialCaller(url, bUser)
+	if err != nil {
+		return err
+	}
+	defer wb.Close()
+	var na, nb atomic.Int32
+	if _, err := wa.Subscribe(orderA, func(m *nats.Msg) {
+		na.Add(1)
+		if m.Reply != "" {
+			_ = m.Respond([]byte("a"))
+		}
+	}); err != nil {
+		return err
+	}
+	if _, err := wb.Subscribe(orderB, func(m *nats.Msg) {
+		nb.Add(1)
+		if m.Reply != "" {
+			_ = m.Respond([]byte("b"))
+		}
+	}); err != nil {
+		return err
+	}
+	if err := flushClean(wa); err != nil {
+		return fmt.Errorf("natsdev: two instances: %w", err)
+	}
+	if err := flushClean(wb); err != nil {
+		return fmt.Errorf("natsdev: two instances: %w", err)
+	}
+	caller, err := newCaller(lay, lay.Manifest.MD[0].Inst)
+	if err != nil {
+		return err
+	}
+	sess, err := dialCaller(url, caller)
+	if err != nil {
+		return err
+	}
+	msg, err := sess.Request(orderA, []byte("q"), opTimeout)
+	if err != nil {
+		sess.Close()
+		return fmt.Errorf("natsdev: two instances: %w", err)
+	}
+	if string(msg.Data) != "a" {
+		sess.Close()
+		return fmt.Errorf("natsdev: two instances: reply %q", msg.Data)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if na.Load() != 1 || nb.Load() != 0 {
+		sess.Close()
+		return fmt.Errorf("natsdev: two instances: order counts a=%d b=%d", na.Load(), nb.Load())
+	}
+	sub, err := sess.SubscribeSync(evtA)
+	if err != nil {
+		sess.Close()
+		return err
+	}
+	if err := flushClean(sess); err != nil {
+		sess.Close()
+		return fmt.Errorf("natsdev: two instances: %w", err)
+	}
+	if err := wa.Publish(evtA, []byte("only-a")); err != nil {
+		sess.Close()
+		return err
+	}
+	if err := wb.Publish(evtB, []byte("only-b")); err != nil {
+		sess.Close()
+		return err
+	}
+	if err := flushClean(wa); err != nil || flushClean(wb) != nil {
+		sess.Close()
+		return errors.New("natsdev: two instances: flush td.evt")
+	}
+	got, err := sub.NextMsg(opTimeout)
+	if err != nil {
+		sess.Close()
+		return fmt.Errorf("natsdev: two instances: td.evt: %w", err)
+	}
+	if string(got.Data) != "only-a" {
+		sess.Close()
+		return fmt.Errorf("natsdev: two instances: td.evt %q", got.Data)
+	}
+	if _, err := sub.NextMsg(300 * time.Millisecond); err == nil {
+		sess.Close()
+		return errors.New("natsdev: two instances: td.evt interleaved")
+	}
+	sess.Close()
+	for _, d := range []denial{
+		{"publish other instance td.order", publishTo(orderB)},
+		{"subscribe other instance td.evt", subscribeTo(evtB)},
+	} {
+		nc, err := dialCaller(url, caller)
+		if err != nil {
+			return err
+		}
+		err = expectDenied(nc, d.do)
+		nc.Close()
+		if err != nil {
+			return fmt.Errorf("natsdev: session %s: %w", d.what, err)
+		}
+	}
+	return nil
 }
 
 // denyWorker checks that the account worker reaches nothing outside its own account: no
 // other account's subjects, no account's orders as a caller, and no other reply prefix.
 func denyWorker(url string, worker *memUser) error {
-	other := strconv.Itoa(otherAPIID)
+	otherEvt, err := tdsubject.Evt(checkTDInst, otherAPIID)
+	if err != nil {
+		return err
+	}
+	otherOrder, err := tdsubject.Order(checkTDInst, otherAPIID)
+	if err != nil {
+		return err
+	}
+	otherView, err := tdsubject.View(checkTDInst, otherAPIID)
+	if err != nil {
+		return err
+	}
+	instEvt, err := tdsubject.Evt(otherTDInst, checkAPIID)
+	if err != nil {
+		return err
+	}
+	instOrder, err := tdsubject.Order(otherTDInst, checkAPIID)
+	if err != nil {
+		return err
+	}
+	instView, err := tdsubject.View(otherTDInst, checkAPIID)
+	if err != nil {
+		return err
+	}
 	otherInbox, err := TDAccountInbox(otherAPIID)
 	if err != nil {
 		return err
@@ -276,13 +457,20 @@ func denyWorker(url string, worker *memUser) error {
 	if err != nil {
 		return err
 	}
+	old := "td.order." + strconv.FormatInt(checkAPIID, 10)
 	for _, d := range []denial{
-		{"publish other td.evt", publishTo("td.evt." + other)},
-		{"subscribe other td.order", subscribeTo("td.order." + other)},
-		{"subscribe other td.view", subscribeTo("td.view." + other)},
+		{"publish other td.evt", publishTo(otherEvt)},
+		{"subscribe other td.order", subscribeTo(otherOrder)},
+		{"subscribe other td.view", subscribeTo(otherView)},
+		{"publish other instance td.evt", publishTo(instEvt)},
+		{"subscribe other instance td.order", subscribeTo(instOrder)},
+		{"subscribe other instance td.view", subscribeTo(instView)},
+		{"subscribe other instance td.evt", subscribeTo(instEvt)},
+		{"publish other instance td.order", publishTo(instOrder)},
+		{"publish old td.order", publishTo(old)},
 		{"subscribe td.order.>", subscribeTo("td.order.>")},
 		{"subscribe td.evt.>", subscribeTo("td.evt.>")},
-		{"publish other td.order", publishTo("td.order." + other)},
+		{"publish other td.order", publishTo(otherOrder)},
 		{"subscribe other account inbox", subscribeTo(otherInbox + ".>")},
 		{"subscribe td agent inbox", subscribeTo(agentInbox + ".>")},
 		{"subscribe session inbox", subscribeTo(session + ".>")},
@@ -576,32 +764,43 @@ func newCaller(lay Layout, inst string) (*memUser, error) {
 	if err != nil {
 		return nil, err
 	}
-	account := strconv.Itoa(checkAPIID)
+	order, err := tdsubject.Order(checkTDInst, checkAPIID)
+	if err != nil {
+		return nil, err
+	}
+	view, err := tdsubject.View(checkTDInst, checkAPIID)
+	if err != nil {
+		return nil, err
+	}
+	evt, err := tdsubject.Evt(checkTDInst, checkAPIID)
+	if err != nil {
+		return nil, err
+	}
 	// Publish is only what this check calls. Subscribe is the feed, the bound account's events,
 	// SYM's change notices, and this session's inbox. No response permission: the caller does
-	// not answer requests.
+	// not answer requests. The TD subjects are this session's (td_instance, api_id) only (E21-D045).
 	return signMem(lay, "session-"+checkSessionID, inbox, []string{
 		"md.v1.view." + inst + ".>",
 		"md.v1.fetch.>",
-		"td.order." + account,
-		"td.view." + account,
+		order,
+		view,
 		"sym",
 	}, []string{
 		"md.v1.f." + inst + ".>",
-		"td.evt." + account,
+		evt,
 		"sym.v1.changed.>",
 		inbox + ".>",
 	}, false)
 }
 
-// newAccountWorker signs the account worker of apiID as the TD agent does at spawn (E06-D011).
-func newAccountWorker(lay Layout, apiID int64) (*memUser, error) {
+// newAccountWorker signs the account worker of (tdInstance, apiID) as the TD agent does at spawn (E06-D011).
+func newAccountWorker(lay Layout, tdInstance string, apiID int64) (*memUser, error) {
 	// The same Signer the TD agent uses (E06-D011).
 	signer, err := LoadSigner(lay.Manifest.Account, filepath.Join(lay.Dir, filepath.FromSlash(lay.Manifest.SigningKeyFile)))
 	if err != nil {
 		return nil, err
 	}
-	token, seed, inbox, err := signer.AccountWorker(apiID)
+	token, seed, inbox, err := signer.AccountWorker(tdInstance, apiID)
 	if err != nil {
 		return nil, err
 	}
@@ -609,7 +808,7 @@ func newAccountWorker(lay Layout, apiID int64) (*memUser, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &memUser{name: "td-account-" + strconv.FormatInt(apiID, 10), jwt: token, kp: kp, inbox: inbox}, nil
+	return &memUser{name: "td-account-" + tdInstance + "-" + strconv.FormatInt(apiID, 10), jwt: token, kp: kp, inbox: inbox}, nil
 }
 
 func signMem(lay Layout, name, inbox string, pub, sub []string, resp bool) (*memUser, error) {

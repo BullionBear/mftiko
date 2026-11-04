@@ -124,7 +124,7 @@ message EntryStatus {
   EntryState state = 1;
   string reason = 2;
   // feed：完整的 subject（md.v1.f.{inst}.{topic}.{ticker}，E04-D055）。NATS topic 用人讀的名字，不用 UID。selector：成員 subject 的前綴（md.v1.f.{inst}）；
-  // 帳號：td.order.{api_id}。由 provider 決定，訂閱端不自己組（PROTOCOL §7、DECISIONS E01-D006）。
+  // 帳號：td.order.{td_instance}.{api_id}。由 provider 決定，訂閱端不自己組（PROTOCOL §7、DECISIONS E01-D006）。
   string subject = 3;
   mftiko.common.v1.WorkerRef worker = 4;
   Universe universe = 5; // 只有 selector

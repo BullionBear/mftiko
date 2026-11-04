@@ -330,7 +330,7 @@ func runLogged(t *testing.T, strat *tape, on bool) *logged {
 	init.Incarnation = 3
 	init.RecvWindowMs = 1000
 	init.Nats = &stsctlv1.NatsCredentials{UserJwt: "user-jwt-e20", Seed: "user-seed-e20", InboxPrefix: "_INBOX_s1"}
-	init.Accounts = []*sessionv1.AccountDecl{{ApiId: 7, AlgoIds: []uint32{1}}}
+	init.Accounts = []*sessionv1.AccountDecl{{ApiId: 7, TdInstance: "td-a", AlgoIds: []uint32{1}}}
 	if strat.blockOn != "" {
 		init.HookTimeoutS = 1
 	}
@@ -721,8 +721,8 @@ func newPlatform(t *testing.T, url string) *platform {
 		"sym":                 p.sym,
 		"md.v1.fetch.Binance": p.fetch,
 		bookView:              p.book,
-		"td.view.7":           p.view,
-		"td.order.7":          p.order,
+		"td.view.td-a.7":      p.view,
+		"td.order.td-a.7":     p.order,
 	} {
 		if _, err := p.nc.Subscribe(subject, fn); err != nil {
 			t.Fatal(err)
@@ -836,7 +836,7 @@ func (p *platform) event(t *testing.T, seq uint64, id string, st tdv1.OrderStatu
 			ClientOrderId: id, Status: st, Uid: btcUID, Side: commonv1.Side_SIDE_BUY,
 		}}},
 	})
-	p.publish(t, "td.evt.7", b)
+	p.publish(t, "td.evt.td-a.7", b)
 }
 
 // trade publishes one trade on the feed, stamped now, and returns the message.

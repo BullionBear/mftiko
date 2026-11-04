@@ -15,6 +15,7 @@ import (
 	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
 	tdctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/tdctl/v1"
 	"github.com/BullionBear/mftiko/contract/wire/c4"
+	"github.com/BullionBear/mftiko/contract/wire/tdsubject"
 	"github.com/BullionBear/mftiko/exchange"
 	"github.com/BullionBear/mftiko/exchange/transport"
 )
@@ -109,6 +110,8 @@ type plane struct {
 	w         *Worker
 	env       *Env
 	apiID     int64
+	orderSubj string
+	viewSubj  string
 	stopView  func()
 	stopOrder func()
 }
@@ -132,6 +135,20 @@ func (p *plane) Init(ctx context.Context, s *c4.Session, payload []byte) error {
 	}
 	if in.GetApiId() <= 0 || in.GetKind() == "" {
 		return errors.New("api_id and kind are required")
+	}
+	// td.{order,view,evt}.{td_instance}.{api_id}. Empty or illegal td_instance fails closed
+	// and is not guessed (E21-D042–E21-D044).
+	orderSubj, err := tdsubject.Order(in.GetTdInstance(), in.GetApiId())
+	if err != nil {
+		return fmt.Errorf("td subject: %w", err)
+	}
+	viewSubj, err := tdsubject.View(in.GetTdInstance(), in.GetApiId())
+	if err != nil {
+		return fmt.Errorf("td subject: %w", err)
+	}
+	evtSubj, err := tdsubject.Evt(in.GetTdInstance(), in.GetApiId())
+	if err != nil {
+		return fmt.Errorf("td subject: %w", err)
 	}
 	if p.cfg.Kinds == nil || p.cfg.Doer == nil || p.cfg.Connect == nil {
 		return errors.New("kinds, doer and connect are required")
@@ -178,7 +195,7 @@ func (p *plane) Init(ctx context.Context, s *c4.Session, payload []byte) error {
 		now = time.Now
 	}
 	source := &commonv1.WorkerRef{Key: p.cfg.WorkerKey, Incarnation: p.cfg.Incarnation}
-	bk := newBook(env.Instruments, env.Bus, in.GetApiId(), source, p.log, now)
+	bk := newBook(env.Instruments, env.Bus, evtSubj, source, p.log, now)
 	skew, hold := p.cfg.ClockSkew, p.cfg.RateHold
 	if skew == 0 {
 		skew = time.Second
@@ -188,6 +205,8 @@ func (p *plane) Init(ctx context.Context, s *c4.Session, payload []byte) error {
 	}
 	win, _ := (exchange.AccountConfig{Validity: p.cfg.Validity}).Window()
 	p.apiID = in.GetApiId()
+	p.orderSubj = orderSubj
+	p.viewSubj = viewSubj
 	p.w = newWorker(p.cfg, p.log, acct, bk, func(r *tdctlv1.Report) error { return s.Report(r) })
 	bk.configure(orderEnv{
 		trades: kind.Trades, limits: acct.Limits(), validity: win, skew: skew, hold: hold,
@@ -196,7 +215,7 @@ func (p *plane) Init(ctx context.Context, s *c4.Session, payload []byte) error {
 	go bk.run(ctx)
 	// td.view answers from here on, before the first recon: the reply says how far along the
 	// account is (E06-D006).
-	stop, err := env.Bus.Respond(viewSubject(in.GetApiId()), func(req []byte) []byte { return viewReply(ctx, bk, req) })
+	stop, err := env.Bus.Respond(p.viewSubj, func(req []byte) []byte { return viewReply(ctx, bk, req) })
 	if err != nil {
 		return fmt.Errorf("td.view: %w", err)
 	}
@@ -243,7 +262,7 @@ func (p *plane) Start(ctx context.Context, _ []byte) error {
 		return err
 	}
 	// td.order is served only once the account is READY (E06-D010).
-	stop, err := p.env.Bus.Respond(orderSubject(p.apiID), func(req []byte) []byte { return p.w.handleOrder(ctx, req) })
+	stop, err := p.env.Bus.Respond(p.orderSubj, func(req []byte) []byte { return p.w.handleOrder(ctx, req) })
 	if err != nil {
 		return fmt.Errorf("td.order: %w", err)
 	}

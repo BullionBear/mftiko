@@ -98,7 +98,7 @@ func accountDemand(start bool, issued int64, state statev1.EntryState) *statev1.
 		Bindings: []*statev1.Binding{{
 			Target:   &statev1.Binding_ApiId{ApiId: 7},
 			Instance: "td-tw-1",
-			Status:   &statev1.EntryStatus{State: state, Subject: "td.order.7"},
+			Status:   &statev1.EntryStatus{State: state, Subject: "td.order.td-tw-1.7"},
 		}},
 	}
 }

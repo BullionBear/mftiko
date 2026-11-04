@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,6 +14,7 @@ import (
 
 	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
 	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
+	"github.com/BullionBear/mftiko/contract/wire/tdsubject"
 	"github.com/BullionBear/mftiko/sdk/eventlog"
 	"github.com/BullionBear/mftiko/sdk/internal/cloidgen"
 	"github.com/BullionBear/mftiko/sdk/internal/dispatch"
@@ -137,6 +137,9 @@ func (p *Path) reserveSend() (wait <-chan struct{}, release func()) {
 
 type account struct {
 	decl      *sessionv1.AccountDecl
+	orderSubj string
+	viewSubj  string
+	evtSubj   string
 	algos     map[uint32]bool
 	orders    map[string]*tdv1.Order
 	submitGen map[string]uint64 // sentGen at the local Submit of that client id
@@ -184,6 +187,20 @@ func Open(cfg Config) (*Path, error) {
 		if id <= 0 {
 			return nil, fmt.Errorf("tdpath: api_id %d is not positive", id)
 		}
+		// td.{order,view,evt}.{td_instance}.{api_id}. The instance is the one STS
+		// put on the decl. An empty or illegal token fails closed (E21-D042–E21-D044).
+		orderSubj, err := tdsubject.Order(d.GetTdInstance(), id)
+		if err != nil {
+			return nil, fmt.Errorf("tdpath: %w", err)
+		}
+		viewSubj, err := tdsubject.View(d.GetTdInstance(), id)
+		if err != nil {
+			return nil, fmt.Errorf("tdpath: %w", err)
+		}
+		evtSubj, err := tdsubject.Evt(d.GetTdInstance(), id)
+		if err != nil {
+			return nil, fmt.Errorf("tdpath: %w", err)
+		}
 		if _, ok := by[id]; ok {
 			return nil, fmt.Errorf("tdpath: duplicate api_id %d", id)
 		}
@@ -193,6 +210,9 @@ func Open(cfg Config) (*Path, error) {
 		}
 		acc := &account{
 			decl:      d,
+			orderSubj: orderSubj,
+			viewSubj:  viewSubj,
+			evtSubj:   evtSubj,
 			algos:     algos,
 			orders:    map[string]*tdv1.Order{},
 			submitGen: map[string]uint64{},
@@ -371,7 +391,7 @@ func (p *Path) subscribeAll() ([]*nats.Subscription, error) {
 	subs := make([]*nats.Subscription, 0, len(p.accounts))
 	for _, acc := range p.accounts {
 		apiID := acc.decl.GetApiId()
-		sub, err := p.nc.Subscribe(evtSubject(apiID), func(m *nats.Msg) {
+		sub, err := p.nc.Subscribe(acc.evtSubj, func(m *nats.Msg) {
 			p.onMsg(apiID, m)
 		})
 		if err != nil {
@@ -569,7 +589,7 @@ func (p *Path) ask(acc *account) error {
 	acc.sentGen++
 	gen := acc.sentGen
 	p.mu.Unlock()
-	msg, err := p.nc.RequestWithContext(ctx, viewSubject(apiID), body)
+	msg, err := p.nc.RequestWithContext(ctx, acc.viewSubj, body)
 	if err != nil {
 		return err
 	}
@@ -825,9 +845,15 @@ func grow(d time.Duration) time.Duration {
 	return n
 }
 
-func orderSubject(apiID int64) string { return "td.order." + strconv.FormatInt(apiID, 10) }
-func viewSubject(apiID int64) string  { return "td.view." + strconv.FormatInt(apiID, 10) }
-func evtSubject(apiID int64) string   { return "td.evt." + strconv.FormatInt(apiID, 10) }
+func (p *Path) orderSubject(apiID int64) string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	acc := p.byAPI[apiID]
+	if acc == nil {
+		return ""
+	}
+	return acc.orderSubj
+}
 
 // runq is the hook queue used when Config.Push is nil. A push from a func that is
 // running appends; the running func returns before the appended one starts.

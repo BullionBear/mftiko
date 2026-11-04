@@ -161,7 +161,7 @@ func optionFeeds(n int) []string {
 func perms(t *testing.T, session string, feeds []string) sts.Permissions {
 	t.Helper()
 	spec := &sessionv1.SessionSpec{
-		Accounts: []*sessionv1.AccountDecl{{ApiId: 7, Name: "a"}},
+		Accounts: []*sessionv1.AccountDecl{{ApiId: 7, TdInstance: "td-a", Name: "a"}},
 	}
 	for _, feed := range feeds {
 		spec.Feeds = append(spec.Feeds, &sessionv1.FeedDecl{Feed: feed, MdInstance: "from-the-spec"})
