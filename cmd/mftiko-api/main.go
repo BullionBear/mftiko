@@ -179,9 +179,11 @@ func accountKinds(r *exchange.Registry) []api.Kind {
 		for i, t := range k.KeyTypes {
 			types[i] = string(t)
 		}
+		ex, _ := r.ExchangeOfKind(name)
 		out = append(out, api.Kind{
 			Name: k.Name, Label: k.Label,
 			Trades: append([]string(nil), k.Trades...), KeyTypes: types, Passphrase: k.Passphrase,
+			Exchange: ex,
 		})
 	}
 	return out

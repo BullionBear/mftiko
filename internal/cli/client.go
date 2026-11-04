@@ -215,10 +215,10 @@ func (a *API) CreateAccount(ctx context.Context, body apiv1.AccountCreate) (Resu
 	})
 }
 
-// GetAccount calls GET /accounts/{api_id}.
-func (a *API) GetAccount(ctx context.Context, id apiv1.APIID) (Result, error) {
+// GetAccount calls GET /accounts/{api_id}. params may be nil.
+func (a *API) GetAccount(ctx context.Context, id apiv1.APIID, params *apiv1.GetAccountParams) (Result, error) {
 	return a.roundTrip(ctx, func(ctx context.Context) (*http.Response, error) {
-		return a.gen.GetAccount(ctx, id)
+		return a.gen.GetAccount(ctx, id, params)
 	})
 }
 

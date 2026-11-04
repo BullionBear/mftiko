@@ -34,12 +34,14 @@ import (
 	"github.com/BullionBear/mftiko/internal/api"
 	platagent "github.com/BullionBear/mftiko/internal/platform/agent"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
+	"github.com/BullionBear/mftiko/internal/platform/pgtest"
 	"github.com/BullionBear/mftiko/internal/platform/sealbox"
 	"github.com/BullionBear/mftiko/internal/platform/shim"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 	"github.com/BullionBear/mftiko/internal/platform/state/etcdtest"
 	"github.com/BullionBear/mftiko/internal/td/account"
 	tdagent "github.com/BullionBear/mftiko/internal/td/agent"
+	"github.com/BullionBear/mftiko/migrations"
 	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
@@ -143,6 +145,12 @@ func TestAPISealedAccountReachesReady(t *testing.T) {
 	if err := state.EnsureAuth(ctx, root, tables["tw"], etcdtest.Password); err != nil {
 		t.Fatal(err)
 	}
+	pg := pgtest.Start(t)
+	migCtx, migCancel := context.WithTimeout(context.Background(), time.Minute)
+	t.Cleanup(migCancel)
+	if _, err := migrations.Up(migCtx, pg.DSN()); err != nil {
+		t.Fatal(err)
+	}
 	key, err := sealbox.GenerateKey()
 	if err != nil {
 		t.Fatal(err)
@@ -170,7 +178,7 @@ func TestAPISealedAccountReachesReady(t *testing.T) {
 		EtcdPassword: etcdtest.Password(state.UserAPI),
 		CookieKey:    "cookie-key",
 		AccountKeys:  testAccountKeys,
-		PostgresDSN:  "postgres://mftiko@127.0.0.1:1/mftiko?sslmode=disable",
+		PostgresDSN:  pg.DSN(),
 		Mirror: state.MirrorOptions{
 			ProbeInterval: 50 * time.Millisecond,
 			MinBackoff:    20 * time.Millisecond,
@@ -182,8 +190,9 @@ func TestAPISealedAccountReachesReady(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg.Kinds = []api.Kind{{
-		Name: "Fake", Label: "Fake", Trades: []string{"Fake"}, KeyTypes: []string{"hmac"},
+		Name: "Fake", Label: "Fake", Trades: []string{"Fake"}, KeyTypes: []string{"hmac"}, Exchange: "fake",
 	}}
+	cfg.ReconcileEvery = time.Hour
 	apiCtx, stopAPI := context.WithCancel(context.Background())
 	apiErr := make(chan error, 1)
 	go func() { apiErr <- api.Run(apiCtx, cfg) }()
@@ -226,7 +235,7 @@ func TestAPISealedAccountReachesReady(t *testing.T) {
 		return nil
 	})
 
-	createBody := `{"name":"desk","kind":"Fake","td_instance":"` + readyInst + `","credentials":{"key_type":"hmac","key":"` + readyAPIKey + `","secret":"` + readySecret + `"}}`
+	createBody := `{"name":"desk","kind":"Fake","td_instance":"` + readyInst + `","exch_account_uid":"uid-1","credentials":{"key_type":"hmac","key":"` + readyAPIKey + `","secret":"` + readySecret + `"}}`
 	code, raw := httpDo(t, http.MethodPost, base+"/api/v1/accounts", readyToken, createBody)
 	if code != http.StatusCreated {
 		t.Fatalf("create %d %s", code, raw)

@@ -119,6 +119,15 @@ func TestRegistry(t *testing.T) {
 	if !pm.CanTrade("W") || pm.CanTrade("XPM") {
 		t.Fatal("CanTrade")
 	}
+	if ex, ok := r.ExchangeOfKind("X"); !ok || ex != "a" {
+		t.Fatalf("ExchangeOfKind(X) = %q %v", ex, ok)
+	}
+	if _, ok := r.ExchangeOfKind("missing"); ok {
+		t.Fatal("ExchangeOfKind(missing)")
+	}
+	if _, ok := (*Registry)(nil).ExchangeOfKind("X"); ok {
+		t.Fatal("nil registry")
+	}
 }
 
 func TestAccountConfigWindow(t *testing.T) {

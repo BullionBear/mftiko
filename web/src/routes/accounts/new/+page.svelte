@@ -21,6 +21,7 @@
 	let name = $state('');
 	let kindName = $state('');
 	let tdInstance = $state('');
+	let exchAccountUid = $state('');
 	let keyType = $state<KeyType | ''>('');
 	let key = $state('');
 	let secret = $state('');
@@ -103,6 +104,7 @@
 					name,
 					kind: kind.kind,
 					td_instance: tdInstance,
+					exch_account_uid: exchAccountUid,
 					credentials
 				}
 			});
@@ -205,6 +207,20 @@
 			/>
 			<p class="status">Free input. The API checks the topology and the public key.</p>
 			{@render fieldError('/td_instance')}
+		</div>
+		<div class="field">
+			<label for="exch-account-uid">Exchange account UID</label>
+			<input
+				id="exch-account-uid"
+				bind:value={exchAccountUid}
+				autocomplete="off"
+				autocapitalize="off"
+				spellcheck={false}
+				aria-invalid={message('/exch_account_uid') ? 'true' : undefined}
+				aria-describedby={message('/exch_account_uid') ? fieldDomId('/exch_account_uid') : undefined}
+			/>
+			<p class="status">Required. Stored after trimming. It cannot be changed later.</p>
+			{@render fieldError('/exch_account_uid')}
 		</div>
 		{#if selectedKind}
 			<h2>Credentials</h2>

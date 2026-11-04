@@ -35,6 +35,7 @@ const KNOWN = new Set([
 	'/name',
 	'/kind',
 	'/td_instance',
+	'/exch_account_uid',
 	'/revision',
 	'/credentials',
 	'/credentials/key_type',

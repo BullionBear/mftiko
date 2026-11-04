@@ -34,7 +34,7 @@ type ServerInterface interface {
 	DeleteAccount(w http.ResponseWriter, r *http.Request, apiId APIID, params DeleteAccountParams)
 	// GetAccount 取得帳號
 	// (GET /accounts/{api_id})
-	GetAccount(w http.ResponseWriter, r *http.Request, apiId APIID)
+	GetAccount(w http.ResponseWriter, r *http.Request, apiId APIID, params GetAccountParams)
 	// UpdateAccount 更新帳號
 	// (PUT /accounts/{api_id})
 	UpdateAccount(w http.ResponseWriter, r *http.Request, apiId APIID)
@@ -162,6 +162,19 @@ func (siw *ServerInterfaceWrapper) ListAccounts(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// ------------- Optional query parameter "include_deleted" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "include_deleted", r.URL.Query(), &params.IncludeDeleted, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "include_deleted"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "include_deleted", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListAccounts(w, r, params)
 	}))
@@ -244,8 +257,24 @@ func (siw *ServerInterfaceWrapper) GetAccount(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAccountParams
+
+	// ------------- Optional query parameter "include_deleted" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "include_deleted", r.URL.Query(), &params.IncludeDeleted, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "include_deleted"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "include_deleted", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetAccount(w, r, apiId)
+		siw.Handler.GetAccount(w, r, apiId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1405,7 +1434,8 @@ func (response DeleteAccount503ApplicationProblemPlusJSONResponse) VisitDeleteAc
 }
 
 type GetAccountRequestObject struct {
-	ApiId APIID `json:"api_id"`
+	ApiId  APIID `json:"api_id"`
+	Params GetAccountParams
 }
 
 type GetAccountResponseObject interface {
@@ -3012,10 +3042,11 @@ func (sh *strictHandler) DeleteAccount(w http.ResponseWriter, r *http.Request, a
 }
 
 // GetAccount operation middleware
-func (sh *strictHandler) GetAccount(w http.ResponseWriter, r *http.Request, apiId APIID) {
+func (sh *strictHandler) GetAccount(w http.ResponseWriter, r *http.Request, apiId APIID, params GetAccountParams) {
 	var request GetAccountRequestObject
 
 	request.ApiId = apiId
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetAccount(ctx, request.(GetAccountRequestObject))

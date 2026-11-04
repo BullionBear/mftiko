@@ -7,6 +7,11 @@ GET /strategies removed the required property `items/items/repository` from the 
 GET /strategies/{strategy_id}/versions api path removed without deprecation
 GET /strategies/{strategy_id}/versions/{ref} api path removed without deprecation
 
+# E21-D027 (#526): exch_account_uid is required on account create. E21-D010 versions the
+# account field additions as a minor change. Removing td_instance is the 3.0.0 break.
+# This line matches only this diff. A later base already contains the property, so it matches nothing.
+POST /accounts added the new required request property `exch_account_uid`
+
 # E14-D008 (#437): logs_unavailable joined the shared ErrorCode enum.
 # These lines match only this diff. A later base already contains the value, so they match nothing.
 DELETE /accounts/{api_id} added the new `logs_unavailable` enum value to the `code` response property for the response status `401`

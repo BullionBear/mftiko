@@ -281,11 +281,14 @@ export interface paths {
         put?: never;
         /**
          * 建立帳號
-         * @description `api_id` 由 API 隨機配發（E10-D008）。`credentials` 必填，缺少回 400（E10-D062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（E06-D013、E10-D011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+         * @description 帳號列寫進 Postgres，再把 sealbox 投影寫進 `td_instance` 的 etcd（E21-D022）。`api_id` 由 API 在 1 到 2⁵³−1 隨機配發，唯一性是主鍵，不掃描 region 的副本（E10-D008、E21-D002、E21-D030）。
+         *     `credentials` 必填，缺少回 400（E10-D062）。明文以帳號金鑰做 AEAD 存進 Postgres，並以該 TD instance 的公鑰封成 sealbox 再寫進 etcd（E06-D013、E21-D003、E21-D019）。`api_id` 與 `kind` 一起封進去。明文、AEAD 與 sealbox 都不進回應。
          *     `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
-         *     `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。
-         *     `name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+         *     `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
+         *     `exch_account_uid` 必填。去掉前後空白後不可為空，最長 64 字元（E21-D025）。`exchange` 由 kind 推出，不由呼叫端指定（E21-D008）。
+         *     `name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。軟刪除後的名稱可以再用。
          *     `enabled` 不公開，API 一律寫 true（E10-D034）。
+         *     Postgres 已 commit 而 etcd 寫入失敗時回 503。reconcile 會把列補進 etcd（E21-D022）。Postgres 不可用回 503 `storage_unavailable`。
          */
         post: operations["createAccount"];
         delete?: never;
@@ -301,20 +304,23 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 取得帳號 */
+        /**
+         * 取得帳號
+         * @description 讀 Postgres（E21-D029）。不含憑證、密文或指紋（E10-D063）。已軟刪除的帳號省略 `include_deleted` 時回 404。region 不可用仍回 200。
+         */
         get: operations["getAccount"];
         /**
          * 更新帳號
-         * @description 以 `revision` 做 CAS，不成立回 409（E10-D037）。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+         * @description 以 Postgres 的 `revision` 做 CAS，不成立回 409（E10-D037、E21-D027）。這不是 etcd 的 `mod_revision`。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance`、`exch_account_uid` 不能改。`name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。已軟刪除的帳號回 404。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
          *
          *     **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
-         *     用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不寫 etcd，不會重啟。
+         *     用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不增加 `revision`、不寫 etcd，不會重啟。
          */
         put: operations["updateAccount"];
         post?: never;
         /**
          * 刪除帳號
-         * @description 仍被非 terminal 的 session 引用時回 409（`referenced`，E10-D011）。`revision` 不符回 409（`conflict`）。
+         * @description 軟刪除：Postgres 列留下並設 `deleted_at`，etcd 副本刪掉（E21-D012、E21-D024）。仍被非 terminal 的 session 引用時回 409（`referenced`，E10-D011）。`revision` 不符回 409（`conflict`）。已軟刪除的帳號回 404。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
          */
         delete: operations["deleteAccount"];
         options?: never;
@@ -785,28 +791,46 @@ export interface components {
         };
         AccountCreate: {
             name: string;
-            /** @description `GET /account-kinds` 裡 `supported` 的種類。 */
+            /** @description `GET /account-kinds` 裡 `supported` 的種類。`exchange` 由這個種類推出。 */
             kind: string;
-            /** @description 建立之後不能改：它在 etcd 的 key 路徑上。 */
+            /** @description 建立之後不能改。過渡期它決定 etcd 投影寫進哪一個 TD instance（E21-D002）。拿掉是 E21-06。 */
             td_instance: components["schemas"]["InstanceName"];
+            /** @description 去掉前後空白後 1 到 64 字元，建立之後不能改（E21-D008、E21-D025）。 */
+            exch_account_uid: string;
             credentials: components["schemas"]["Credentials"];
             settings?: components["schemas"]["AccountSettings"];
         };
         AccountUpdate: {
             revision: components["schemas"]["Revision"];
             name?: string;
+            /** @description 省略則不變。去掉前後空白後必須與現值相同，否則 400（E21-D008）。 */
+            exch_account_uid?: string;
             credentials?: components["schemas"]["Credentials"];
             settings?: components["schemas"]["AccountSettings"];
         };
-        /** @description 不含憑證、密文或指紋（E10-D063）。 */
+        /**
+         * @description 不含憑證、密文或指紋（E10-D063）。
+         *     `revision` 是 Postgres 的 CAS 序號，從 1 起，成功的更新與軟刪除加 1，不是 etcd 的 `mod_revision`（E21-D027）。
+         *     `exchange` 由 kind 的 registry 推出，不另存（E21-D008、E21-D031）。回應會帶 `exchange` 與 `exch_account_uid`。
+         *     `deleted_at` 只有軟刪除之後才有。
+         */
         Account: {
             api_id: components["schemas"]["APIIDValue"];
             name: string;
             kind: string;
+            /** @description 由 kind 推出的交易所（E21-D008）。回應會帶。 */
+            exchange?: string;
+            /** @description 交易所帳戶識別（E21-D008、E21-D025）。回應會帶。 */
+            exch_account_uid?: string;
             td_instance: components["schemas"]["InstanceName"];
             region: string;
             settings: components["schemas"]["AccountSettings"];
             revision: components["schemas"]["Revision"];
+            /**
+             * Format: date-time
+             * @description 軟刪除的時間（UTC）。活著的帳號省略（E21-D012）。
+             */
+            deleted_at?: string;
             /** @description 引用它的非 terminal session。不為空時刪除回 409。 */
             referenced_by: components["schemas"]["SessionIDValue"][];
         };
@@ -1383,8 +1407,10 @@ export interface operations {
                 limit?: components["parameters"]["Limit"];
                 /** @description 上一頁回應的 `next_cursor`，對呼叫端不透明。 */
                 cursor?: components["parameters"]["Cursor"];
-                /** @description 只列這個 TD instance。不是 instance 名稱、不在 topology，或不是 td，回 400。該 region 不可用時這頁是空的，並標在 `freshness`（E10-D014）。 */
+                /** @description 只列這個 TD instance。不是 instance 名稱、不在 topology，或不是 td，回 400。region 不可用仍列出 Postgres 裡的帳號，並標在 `freshness`（E21-D029）。 */
                 td_instance?: string;
+                /** @description 為 true 時一併列出已軟刪除的帳號（E21-D012）。省略是 false。 */
+                include_deleted?: boolean;
             };
             header?: never;
             path?: never;
@@ -1436,7 +1462,10 @@ export interface operations {
     };
     getAccount: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 為 true 時，已軟刪除的帳號也回 200，並帶 `deleted_at`（E21-D012）。省略是 false。 */
+                include_deleted?: boolean;
+            };
             header?: never;
             path: {
                 api_id: components["parameters"]["APIID"];

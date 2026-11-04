@@ -105,11 +105,14 @@ type ClientInterface interface {
 
 	// CreateAccountWithBody 建立帳號
 	//
-	// `api_id` 由 API 隨機配發（E10-D008）。`credentials` 必填，缺少回 400（E10-D062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（E06-D013、E10-D011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+	// 帳號列寫進 Postgres，再把 sealbox 投影寫進 `td_instance` 的 etcd（E21-D022）。`api_id` 由 API 在 1 到 2⁵³−1 隨機配發，唯一性是主鍵，不掃描 region 的副本（E10-D008、E21-D002、E21-D030）。
+	// `credentials` 必填，缺少回 400（E10-D062）。明文以帳號金鑰做 AEAD 存進 Postgres，並以該 TD instance 的公鑰封成 sealbox 再寫進 etcd（E06-D013、E21-D003、E21-D019）。`api_id` 與 `kind` 一起封進去。明文、AEAD 與 sealbox 都不進回應。
 	// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
-	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。
-	// `name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
+	// `exch_account_uid` 必填。去掉前後空白後不可為空，最長 64 字元（E21-D025）。`exchange` 由 kind 推出，不由呼叫端指定（E21-D008）。
+	// `name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。軟刪除後的名稱可以再用。
 	// `enabled` 不公開，API 一律寫 true（E10-D034）。
+	// Postgres 已 commit 而 etcd 寫入失敗時回 503。reconcile 會把列補進 etcd（E21-D022）。Postgres 不可用回 503 `storage_unavailable`。
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -118,11 +121,14 @@ type ClientInterface interface {
 
 	// CreateAccount 建立帳號
 	//
-	// `api_id` 由 API 隨機配發（E10-D008）。`credentials` 必填，缺少回 400（E10-D062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（E06-D013、E10-D011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+	// 帳號列寫進 Postgres，再把 sealbox 投影寫進 `td_instance` 的 etcd（E21-D022）。`api_id` 由 API 在 1 到 2⁵³−1 隨機配發，唯一性是主鍵，不掃描 region 的副本（E10-D008、E21-D002、E21-D030）。
+	// `credentials` 必填，缺少回 400（E10-D062）。明文以帳號金鑰做 AEAD 存進 Postgres，並以該 TD instance 的公鑰封成 sealbox 再寫進 etcd（E06-D013、E21-D003、E21-D019）。`api_id` 與 `kind` 一起封進去。明文、AEAD 與 sealbox 都不進回應。
 	// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
-	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。
-	// `name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
+	// `exch_account_uid` 必填。去掉前後空白後不可為空，最長 64 字元（E21-D025）。`exchange` 由 kind 推出，不由呼叫端指定（E21-D008）。
+	// `name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。軟刪除後的名稱可以再用。
 	// `enabled` 不公開，API 一律寫 true（E10-D034）。
+	// Postgres 已 commit 而 etcd 寫入失敗時回 503。reconcile 會把列補進 etcd（E21-D022）。Postgres 不可用回 503 `storage_unavailable`。
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -131,22 +137,24 @@ type ClientInterface interface {
 
 	// DeleteAccount 刪除帳號
 	//
-	// 仍被非 terminal 的 session 引用時回 409（`referenced`，E10-D011）。`revision` 不符回 409（`conflict`）。.
+	// 軟刪除：Postgres 列留下並設 `deleted_at`，etcd 副本刪掉（E21-D012、E21-D024）。仍被非 terminal 的 session 引用時回 409（`referenced`，E10-D011）。`revision` 不符回 409（`conflict`）。已軟刪除的帳號回 404。該 region 不可用時回 503，Postgres 不寫（E21-D029）。.
 	//
 	// Corresponds with DELETE /accounts/{api_id} (the `DeleteAccount` operationId).
 	DeleteAccount(ctx context.Context, apiId APIID, params *DeleteAccountParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetAccount 取得帳號
 	//
+	// 讀 Postgres（E21-D029）。不含憑證、密文或指紋（E10-D063）。已軟刪除的帳號省略 `include_deleted` 時回 404。region 不可用仍回 200。.
+	//
 	// Corresponds with GET /accounts/{api_id} (the `GetAccount` operationId).
-	GetAccount(ctx context.Context, apiId APIID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetAccount(ctx context.Context, apiId APIID, params *GetAccountParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// UpdateAccountWithBody 更新帳號
 	//
-	// 以 `revision` 做 CAS，不成立回 409（E10-D037）。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+	// 以 Postgres 的 `revision` 做 CAS，不成立回 409（E10-D037、E21-D027）。這不是 etcd 的 `mod_revision`。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance`、`exch_account_uid` 不能改。`name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。已軟刪除的帳號回 404。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
 	//
 	// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
-	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不寫 etcd，不會重啟。
+	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不增加 `revision`、不寫 etcd，不會重啟。
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -155,10 +163,10 @@ type ClientInterface interface {
 
 	// UpdateAccount 更新帳號
 	//
-	// 以 `revision` 做 CAS，不成立回 409（E10-D037）。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+	// 以 Postgres 的 `revision` 做 CAS，不成立回 409（E10-D037、E21-D027）。這不是 etcd 的 `mod_revision`。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance`、`exch_account_uid` 不能改。`name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。已軟刪除的帳號回 404。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
 	//
 	// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
-	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不寫 etcd，不會重啟。
+	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不增加 `revision`、不寫 etcd，不會重啟。
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -380,11 +388,14 @@ func (c *Client) ListAccounts(ctx context.Context, params *ListAccountsParams, r
 
 // CreateAccountWithBody 建立帳號
 //
-// `api_id` 由 API 隨機配發（E10-D008）。`credentials` 必填，缺少回 400（E10-D062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（E06-D013、E10-D011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+// 帳號列寫進 Postgres，再把 sealbox 投影寫進 `td_instance` 的 etcd（E21-D022）。`api_id` 由 API 在 1 到 2⁵³−1 隨機配發，唯一性是主鍵，不掃描 region 的副本（E10-D008、E21-D002、E21-D030）。
+// `credentials` 必填，缺少回 400（E10-D062）。明文以帳號金鑰做 AEAD 存進 Postgres，並以該 TD instance 的公鑰封成 sealbox 再寫進 etcd（E06-D013、E21-D003、E21-D019）。`api_id` 與 `kind` 一起封進去。明文、AEAD 與 sealbox 都不進回應。
 // `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
-// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。
-// `name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
+// `exch_account_uid` 必填。去掉前後空白後不可為空，最長 64 字元（E21-D025）。`exchange` 由 kind 推出，不由呼叫端指定（E21-D008）。
+// `name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。軟刪除後的名稱可以再用。
 // `enabled` 不公開，API 一律寫 true（E10-D034）。
+// Postgres 已 commit 而 etcd 寫入失敗時回 503。reconcile 會把列補進 etcd（E21-D022）。Postgres 不可用回 503 `storage_unavailable`。
 //
 // Takes any type of body and a specified content type.
 //
@@ -403,11 +414,14 @@ func (c *Client) CreateAccountWithBody(ctx context.Context, contentType string, 
 
 // CreateAccount 建立帳號
 //
-// `api_id` 由 API 隨機配發（E10-D008）。`credentials` 必填，缺少回 400（E10-D062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（E06-D013、E10-D011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+// 帳號列寫進 Postgres，再把 sealbox 投影寫進 `td_instance` 的 etcd（E21-D022）。`api_id` 由 API 在 1 到 2⁵³−1 隨機配發，唯一性是主鍵，不掃描 region 的副本（E10-D008、E21-D002、E21-D030）。
+// `credentials` 必填，缺少回 400（E10-D062）。明文以帳號金鑰做 AEAD 存進 Postgres，並以該 TD instance 的公鑰封成 sealbox 再寫進 etcd（E06-D013、E21-D003、E21-D019）。`api_id` 與 `kind` 一起封進去。明文、AEAD 與 sealbox 都不進回應。
 // `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
-// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。
-// `name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
+// `exch_account_uid` 必填。去掉前後空白後不可為空，最長 64 字元（E21-D025）。`exchange` 由 kind 推出，不由呼叫端指定（E21-D008）。
+// `name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。軟刪除後的名稱可以再用。
 // `enabled` 不公開，API 一律寫 true（E10-D034）。
+// Postgres 已 commit 而 etcd 寫入失敗時回 503。reconcile 會把列補進 etcd（E21-D022）。Postgres 不可用回 503 `storage_unavailable`。
 //
 // Takes a body of the `application/json` content type.
 //
@@ -426,7 +440,7 @@ func (c *Client) CreateAccount(ctx context.Context, body CreateAccountJSONReques
 
 // DeleteAccount 刪除帳號
 //
-// 仍被非 terminal 的 session 引用時回 409（`referenced`，E10-D011）。`revision` 不符回 409（`conflict`）。.
+// 軟刪除：Postgres 列留下並設 `deleted_at`，etcd 副本刪掉（E21-D012、E21-D024）。仍被非 terminal 的 session 引用時回 409（`referenced`，E10-D011）。`revision` 不符回 409（`conflict`）。已軟刪除的帳號回 404。該 region 不可用時回 503，Postgres 不寫（E21-D029）。.
 //
 // Corresponds with DELETE /accounts/{api_id} (the `DeleteAccount` operationId).
 func (c *Client) DeleteAccount(ctx context.Context, apiId APIID, params *DeleteAccountParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -443,9 +457,11 @@ func (c *Client) DeleteAccount(ctx context.Context, apiId APIID, params *DeleteA
 
 // GetAccount 取得帳號
 //
+// 讀 Postgres（E21-D029）。不含憑證、密文或指紋（E10-D063）。已軟刪除的帳號省略 `include_deleted` 時回 404。region 不可用仍回 200。.
+//
 // Corresponds with GET /accounts/{api_id} (the `GetAccount` operationId).
-func (c *Client) GetAccount(ctx context.Context, apiId APIID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetAccountRequest(c.Server, apiId)
+func (c *Client) GetAccount(ctx context.Context, apiId APIID, params *GetAccountParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAccountRequest(c.Server, apiId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -458,10 +474,10 @@ func (c *Client) GetAccount(ctx context.Context, apiId APIID, reqEditors ...Requ
 
 // UpdateAccountWithBody 更新帳號
 //
-// 以 `revision` 做 CAS，不成立回 409（E10-D037）。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+// 以 Postgres 的 `revision` 做 CAS，不成立回 409（E10-D037、E21-D027）。這不是 etcd 的 `mod_revision`。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance`、`exch_account_uid` 不能改。`name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。已軟刪除的帳號回 404。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
 //
 // **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
-// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不寫 etcd，不會重啟。
+// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不增加 `revision`、不寫 etcd，不會重啟。
 //
 // Takes any type of body and a specified content type.
 //
@@ -480,10 +496,10 @@ func (c *Client) UpdateAccountWithBody(ctx context.Context, apiId APIID, content
 
 // UpdateAccount 更新帳號
 //
-// 以 `revision` 做 CAS，不成立回 409（E10-D037）。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+// 以 Postgres 的 `revision` 做 CAS，不成立回 409（E10-D037、E21-D027）。這不是 etcd 的 `mod_revision`。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance`、`exch_account_uid` 不能改。`name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。已軟刪除的帳號回 404。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
 //
 // **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
-// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不寫 etcd，不會重啟。
+// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不增加 `revision`、不寫 etcd，不會重啟。
 //
 // Takes a body of the `application/json` content type.
 //
@@ -961,6 +977,18 @@ func NewListAccountsRequest(server string, params *ListAccountsParams) (*http.Re
 
 		}
 
+		if params.IncludeDeleted != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "include_deleted", *params.IncludeDeleted, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -1073,7 +1101,7 @@ func NewDeleteAccountRequest(server string, apiId APIID, params *DeleteAccountPa
 }
 
 // NewGetAccountRequest constructs an http.Request for the GetAccount method
-func NewGetAccountRequest(server string, apiId APIID) (*http.Request, error) {
+func NewGetAccountRequest(server string, apiId APIID, params *GetAccountParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1096,6 +1124,33 @@ func NewGetAccountRequest(server string, apiId APIID) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.IncludeDeleted != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "include_deleted", *params.IncludeDeleted, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -2127,11 +2182,14 @@ type ClientWithResponsesInterface interface {
 
 	// CreateAccountWithBodyWithResponse 建立帳號
 	//
-	// `api_id` 由 API 隨機配發（E10-D008）。`credentials` 必填，缺少回 400（E10-D062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（E06-D013、E10-D011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+	// 帳號列寫進 Postgres，再把 sealbox 投影寫進 `td_instance` 的 etcd（E21-D022）。`api_id` 由 API 在 1 到 2⁵³−1 隨機配發，唯一性是主鍵，不掃描 region 的副本（E10-D008、E21-D002、E21-D030）。
+	// `credentials` 必填，缺少回 400（E10-D062）。明文以帳號金鑰做 AEAD 存進 Postgres，並以該 TD instance 的公鑰封成 sealbox 再寫進 etcd（E06-D013、E21-D003、E21-D019）。`api_id` 與 `kind` 一起封進去。明文、AEAD 與 sealbox 都不進回應。
 	// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
-	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。
-	// `name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
+	// `exch_account_uid` 必填。去掉前後空白後不可為空，最長 64 字元（E21-D025）。`exchange` 由 kind 推出，不由呼叫端指定（E21-D008）。
+	// `name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。軟刪除後的名稱可以再用。
 	// `enabled` 不公開，API 一律寫 true（E10-D034）。
+	// Postgres 已 commit 而 etcd 寫入失敗時回 503。reconcile 會把列補進 etcd（E21-D022）。Postgres 不可用回 503 `storage_unavailable`。
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -2140,11 +2198,14 @@ type ClientWithResponsesInterface interface {
 
 	// CreateAccountWithResponse 建立帳號
 	//
-	// `api_id` 由 API 隨機配發（E10-D008）。`credentials` 必填，缺少回 400（E10-D062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（E06-D013、E10-D011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+	// 帳號列寫進 Postgres，再把 sealbox 投影寫進 `td_instance` 的 etcd（E21-D022）。`api_id` 由 API 在 1 到 2⁵³−1 隨機配發，唯一性是主鍵，不掃描 region 的副本（E10-D008、E21-D002、E21-D030）。
+	// `credentials` 必填，缺少回 400（E10-D062）。明文以帳號金鑰做 AEAD 存進 Postgres，並以該 TD instance 的公鑰封成 sealbox 再寫進 etcd（E06-D013、E21-D003、E21-D019）。`api_id` 與 `kind` 一起封進去。明文、AEAD 與 sealbox 都不進回應。
 	// `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
-	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。
-	// `name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+	// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
+	// `exch_account_uid` 必填。去掉前後空白後不可為空，最長 64 字元（E21-D025）。`exchange` 由 kind 推出，不由呼叫端指定（E21-D008）。
+	// `name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。軟刪除後的名稱可以再用。
 	// `enabled` 不公開，API 一律寫 true（E10-D034）。
+	// Postgres 已 commit 而 etcd 寫入失敗時回 503。reconcile 會把列補進 etcd（E21-D022）。Postgres 不可用回 503 `storage_unavailable`。
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -2153,7 +2214,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteAccountWithResponse 刪除帳號
 	//
-	// 仍被非 terminal 的 session 引用時回 409（`referenced`，E10-D011）。`revision` 不符回 409（`conflict`）。.
+	// 軟刪除：Postgres 列留下並設 `deleted_at`，etcd 副本刪掉（E21-D012、E21-D024）。仍被非 terminal 的 session 引用時回 409（`referenced`，E10-D011）。`revision` 不符回 409（`conflict`）。已軟刪除的帳號回 404。該 region 不可用時回 503，Postgres 不寫（E21-D029）。.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -2162,17 +2223,19 @@ type ClientWithResponsesInterface interface {
 
 	// GetAccountWithResponse 取得帳號
 	//
+	// 讀 Postgres（E21-D029）。不含憑證、密文或指紋（E10-D063）。已軟刪除的帳號省略 `include_deleted` 時回 404。region 不可用仍回 200。.
+	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /accounts/{api_id} (the `GetAccount` operationId).
-	GetAccountWithResponse(ctx context.Context, apiId APIID, reqEditors ...RequestEditorFn) (*GetAccountResponse, error)
+	GetAccountWithResponse(ctx context.Context, apiId APIID, params *GetAccountParams, reqEditors ...RequestEditorFn) (*GetAccountResponse, error)
 
 	// UpdateAccountWithBodyWithResponse 更新帳號
 	//
-	// 以 `revision` 做 CAS，不成立回 409（E10-D037）。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+	// 以 Postgres 的 `revision` 做 CAS，不成立回 409（E10-D037、E21-D027）。這不是 etcd 的 `mod_revision`。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance`、`exch_account_uid` 不能改。`name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。已軟刪除的帳號回 404。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
 	//
 	// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
-	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不寫 etcd，不會重啟。
+	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不增加 `revision`、不寫 etcd，不會重啟。
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -2181,10 +2244,10 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateAccountWithResponse 更新帳號
 	//
-	// 以 `revision` 做 CAS，不成立回 409（E10-D037）。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+	// 以 Postgres 的 `revision` 做 CAS，不成立回 409（E10-D037、E21-D027）。這不是 etcd 的 `mod_revision`。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance`、`exch_account_uid` 不能改。`name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。已軟刪除的帳號回 404。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
 	//
 	// **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
-	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不寫 etcd，不會重啟。
+	// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不增加 `revision`、不寫 etcd，不會重啟。
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -3823,11 +3886,14 @@ func (c *ClientWithResponses) ListAccountsWithResponse(ctx context.Context, para
 
 // CreateAccountWithBodyWithResponse 建立帳號
 //
-// `api_id` 由 API 隨機配發（E10-D008）。`credentials` 必填，缺少回 400（E10-D062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（E06-D013、E10-D011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+// 帳號列寫進 Postgres，再把 sealbox 投影寫進 `td_instance` 的 etcd（E21-D022）。`api_id` 由 API 在 1 到 2⁵³−1 隨機配發，唯一性是主鍵，不掃描 region 的副本（E10-D008、E21-D002、E21-D030）。
+// `credentials` 必填，缺少回 400（E10-D062）。明文以帳號金鑰做 AEAD 存進 Postgres，並以該 TD instance 的公鑰封成 sealbox 再寫進 etcd（E06-D013、E21-D003、E21-D019）。`api_id` 與 `kind` 一起封進去。明文、AEAD 與 sealbox 都不進回應。
 // `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
-// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。
-// `name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
+// `exch_account_uid` 必填。去掉前後空白後不可為空，最長 64 字元（E21-D025）。`exchange` 由 kind 推出，不由呼叫端指定（E21-D008）。
+// `name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。軟刪除後的名稱可以再用。
 // `enabled` 不公開，API 一律寫 true（E10-D034）。
+// Postgres 已 commit 而 etcd 寫入失敗時回 503。reconcile 會把列補進 etcd（E21-D022）。Postgres 不可用回 503 `storage_unavailable`。
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3842,11 +3908,14 @@ func (c *ClientWithResponses) CreateAccountWithBodyWithResponse(ctx context.Cont
 
 // CreateAccountWithResponse 建立帳號
 //
-// `api_id` 由 API 隨機配發（E10-D008）。`credentials` 必填，缺少回 400（E10-D062）。憑證以該 TD instance 的公鑰封裝後才寫進 etcd（E06-D013、E10-D011），`api_id` 與 `kind` 一起封進去；明文只在處理這個請求的記憶體裡。
+// 帳號列寫進 Postgres，再把 sealbox 投影寫進 `td_instance` 的 etcd（E21-D022）。`api_id` 由 API 在 1 到 2⁵³−1 隨機配發，唯一性是主鍵，不掃描 region 的副本（E10-D008、E21-D002、E21-D030）。
+// `credentials` 必填，缺少回 400（E10-D062）。明文以帳號金鑰做 AEAD 存進 Postgres，並以該 TD instance 的公鑰封成 sealbox 再寫進 etcd（E06-D013、E21-D003、E21-D019）。`api_id` 與 `kind` 一起封進去。明文、AEAD 與 sealbox 都不進回應。
 // `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
-// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。
-// `name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+// `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
+// `exch_account_uid` 必填。去掉前後空白後不可為空，最長 64 字元（E21-D025）。`exchange` 由 kind 推出，不由呼叫端指定（E21-D008）。
+// `name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。軟刪除後的名稱可以再用。
 // `enabled` 不公開，API 一律寫 true（E10-D034）。
+// Postgres 已 commit 而 etcd 寫入失敗時回 503。reconcile 會把列補進 etcd（E21-D022）。Postgres 不可用回 503 `storage_unavailable`。
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3861,7 +3930,7 @@ func (c *ClientWithResponses) CreateAccountWithResponse(ctx context.Context, bod
 
 // DeleteAccountWithResponse 刪除帳號
 //
-// 仍被非 terminal 的 session 引用時回 409（`referenced`，E10-D011）。`revision` 不符回 409（`conflict`）。.
+// 軟刪除：Postgres 列留下並設 `deleted_at`，etcd 副本刪掉（E21-D012、E21-D024）。仍被非 terminal 的 session 引用時回 409（`referenced`，E10-D011）。`revision` 不符回 409（`conflict`）。已軟刪除的帳號回 404。該 region 不可用時回 503，Postgres 不寫（E21-D029）。.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -3876,11 +3945,13 @@ func (c *ClientWithResponses) DeleteAccountWithResponse(ctx context.Context, api
 
 // GetAccountWithResponse 取得帳號
 //
+// 讀 Postgres（E21-D029）。不含憑證、密文或指紋（E10-D063）。已軟刪除的帳號省略 `include_deleted` 時回 404。region 不可用仍回 200。.
+//
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /accounts/{api_id} (the `GetAccount` operationId).
-func (c *ClientWithResponses) GetAccountWithResponse(ctx context.Context, apiId APIID, reqEditors ...RequestEditorFn) (*GetAccountResponse, error) {
-	rsp, err := c.GetAccount(ctx, apiId, reqEditors...)
+func (c *ClientWithResponses) GetAccountWithResponse(ctx context.Context, apiId APIID, params *GetAccountParams, reqEditors ...RequestEditorFn) (*GetAccountResponse, error) {
+	rsp, err := c.GetAccount(ctx, apiId, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -3889,10 +3960,10 @@ func (c *ClientWithResponses) GetAccountWithResponse(ctx context.Context, apiId 
 
 // UpdateAccountWithBodyWithResponse 更新帳號
 //
-// 以 `revision` 做 CAS，不成立回 409（E10-D037）。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+// 以 Postgres 的 `revision` 做 CAS，不成立回 409（E10-D037、E21-D027）。這不是 etcd 的 `mod_revision`。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance`、`exch_account_uid` 不能改。`name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。已軟刪除的帳號回 404。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
 //
 // **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
-// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不寫 etcd，不會重啟。
+// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不增加 `revision`、不寫 etcd，不會重啟。
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -3907,10 +3978,10 @@ func (c *ClientWithResponses) UpdateAccountWithBodyWithResponse(ctx context.Cont
 
 // UpdateAccountWithResponse 更新帳號
 //
-// 以 `revision` 做 CAS，不成立回 409（E10-D037）。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance` 不能改。`name` 依副本 best-effort 不重複，同名回 409（E10-D066）。
+// 以 Postgres 的 `revision` 做 CAS，不成立回 409（E10-D037、E21-D027）。這不是 etcd 的 `mod_revision`。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance`、`exch_account_uid` 不能改。`name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。已軟刪除的帳號回 404。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
 //
 // **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
-// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不寫 etcd，不會重啟。
+// 用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不增加 `revision`、不寫 etcd，不會重啟。
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //

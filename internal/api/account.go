@@ -1,21 +1,17 @@
 package api
 
 import (
-	"cmp"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math"
 	"net/http"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
-	"go.etcd.io/etcd/api/v3/mvccpb"
 	"google.golang.org/protobuf/proto"
 
 	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
@@ -33,16 +29,6 @@ var (
 	errReferenced = errors.New("api: account is referenced")
 	errUnreadable = errors.New("api: stored record is unreadable")
 )
-
-// accountRec is one account as a mirror holds it. rec's sealed bytes stay out of responses and logs (E10-D063).
-type accountRec struct {
-	key    string
-	inst   string
-	region string
-	id     int64
-	rev    int64
-	rec    *statev1.Account
-}
 
 func (s *Server) ListAccountKinds(w http.ResponseWriter, _ *http.Request) {
 	items := make([]apiv1.AccountKind, 0, len(s.cfg.Kinds))
@@ -67,24 +53,23 @@ func (s *Server) ListAccountKinds(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, apiv1.AccountKindList{Items: items})
 }
 
-func (s *Server) ListAccounts(w http.ResponseWriter, _ *http.Request, params apiv1.ListAccountsParams) {
+func (s *Server) ListAccounts(w http.ResponseWriter, r *http.Request, params apiv1.ListAccountsParams) {
 	limit, after, fields := bindPage(params.Limit, params.Cursor)
 	var afterID int64
-	hasAfter := false
 	if after != "" && len(fields) == 0 {
 		id, err := strconv.ParseInt(after, 10, 64)
 		if err != nil || strconv.FormatInt(id, 10) != after {
 			fields = append(fields, apiv1.FieldError{Path: "/cursor", Reason: "is not a cursor from this API"})
 		} else {
-			afterID, hasAfter = id, true
+			afterID = id
 		}
 	}
-	filter, filterRegion := "", ""
+	filter := ""
 	if params.TdInstance != nil && *params.TdInstance != "" {
-		region, ok, instFields := s.classifyInstance(*params.TdInstance)
+		_, ok, instFields := s.classifyInstance(*params.TdInstance)
 		fields = append(fields, instFields...)
 		if ok {
-			filter, filterRegion = *params.TdInstance, region
+			filter = *params.TdInstance
 		}
 	}
 	if len(fields) > 0 {
@@ -92,50 +77,22 @@ func (s *Server) ListAccounts(w http.ResponseWriter, _ *http.Request, params api
 		return
 	}
 	views, unavail := s.regionViews()
-	if len(views) == 0 {
-		s.writeAccountErr(w, errRegionUnavailable)
+	fresh := s.freshness(views, unavail)
+	rows, err := s.listAccounts(r.Context(), flagBool(params.IncludeDeleted), filter, afterID, limit+1)
+	if err != nil {
+		s.writeAccountErr(w, err)
 		return
 	}
-	fresh := s.freshness(views, unavail)
-	if filter != "" {
-		if _, up := views[filterRegion]; !up {
-			writeJSON(w, http.StatusOK, apiv1.AccountList{Items: []apiv1.Account{}, Freshness: fresh})
-			return
-		}
-	}
 	refs := referencesOf(views)
-	var hits []accountRec
-	for region, view := range views {
-		for key, e := range view.Entries {
-			inst, id, ok := accountOf(key)
-			if !ok || (filter != "" && inst != filter) {
-				continue
-			}
-			rec, err := unmarshalAccount(e.Value)
-			if err != nil {
-				s.writeAccountErr(w, err)
-				return
-			}
-			hits = append(hits, accountRec{key: key, inst: inst, region: region, id: id, rev: e.ModRevision, rec: rec})
-		}
-	}
-	slices.SortFunc(hits, func(a, b accountRec) int { return cmp.Compare(a.id, b.id) })
-	start := 0
-	if hasAfter {
-		start = sort.Search(len(hits), func(i int) bool { return hits[i].id > afterID })
-	}
-	end := start + limit
-	if end > len(hits) {
-		end = len(hits)
-	}
-	items := make([]apiv1.Account, 0, end-start)
-	for _, h := range hits[start:end] {
-		items = append(items, accountJSON(h, refs[h.id]))
-	}
 	var next *string
-	if end < len(hits) && end > start {
-		c := base64.RawURLEncoding.EncodeToString([]byte(strconv.FormatInt(hits[end-1].id, 10)))
+	if len(rows) > limit {
+		rows = rows[:limit]
+		c := base64.RawURLEncoding.EncodeToString([]byte(strconv.FormatInt(rows[len(rows)-1].ID, 10)))
 		next = &c
+	}
+	items := make([]apiv1.Account, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, accountJSON(row, refs[row.ID]))
 	}
 	writeJSON(w, http.StatusOK, apiv1.AccountList{Items: items, NextCursor: next, Freshness: fresh})
 }
@@ -147,24 +104,30 @@ func (s *Server) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fields := checkName(body.Name)
-	kind, kindOK := s.kindByName(body.Kind)
-	if !kindOK || !kind.Supported() {
+	uid, uidFields := checkUID(body.ExchAccountUid, true)
+	fields = append(fields, uidFields...)
+	kind, accepted := s.acceptedKind(body.Kind)
+	if !accepted {
 		fields = append(fields, apiv1.FieldError{Path: "/kind", Reason: "is not accepted"})
 	}
 	pub, instFields := s.checkTDInstance(string(body.TdInstance))
 	fields = append(fields, instFields...)
-	fields = append(fields, checkCredentials(body.Credentials, kind, true, kindOK && kind.Supported())...)
+	fields = append(fields, checkCredentials(body.Credentials, kind, true, accepted)...)
 	fields = append(fields, checkSettings(body.Settings)...)
 	if len(fields) > 0 {
 		writeFields(w, fields)
 		return
 	}
-	views, err := s.availableViews(string(body.TdInstance))
+	if _, err := s.availableViews(string(body.TdInstance)); err != nil {
+		s.writeAccountErr(w, err)
+		return
+	}
+	taken, err := s.liveNameTaken(r.Context(), body.Name, 0)
 	if err != nil {
 		s.writeAccountErr(w, err)
 		return
 	}
-	if nameTaken(views, body.Name, "") {
+	if taken {
 		s.writeAccountErr(w, errNameTaken)
 		return
 	}
@@ -174,32 +137,60 @@ func (s *Server) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	settings := mergeSettings(body.Settings)
-	id, rev, err := s.createAccount(r.Context(), string(body.TdInstance), func(apiID int64) ([]byte, error) {
-		rec, err := newAccount(pub, apiID, kind.Name, body.Name, body.Credentials, settings)
-		if err != nil {
-			return nil, err
-		}
-		return proto.Marshal(rec)
-	})
+	now := s.now().UTC()
+	// One reader for the whole allocation, same as createSession. A fresh reader on
+	// every draw would repeat the first id (E21-D030).
+	src := s.ids()
+	var created accountStored
+	_, err = allocate(idAttempts,
+		func() (int64, error) { return newAPIID(src) },
+		func(int64) bool { return false },
+		func(id int64) error {
+			ct, sealed, ver, err := s.sealAccount(pub, id, kind.Name, body.Credentials)
+			if err != nil {
+				return err
+			}
+			row, err := s.insertAccount(r.Context(), accountInsert{
+				ID: id, Kind: kind.Name, Name: body.Name, Credentials: ct, KeyVersion: ver,
+				Cancel: settings.GetCancelOnDisconnectS(), UID: uid, Inst: string(body.TdInstance),
+				Sealed: sealed, At: now,
+			})
+			if err != nil {
+				clear(ct)
+				clear(sealed)
+				return err
+			}
+			clear(ct)
+			clear(sealed)
+			created = row
+			return nil
+		})
 	if err != nil {
 		s.writeAccountErr(w, err)
 		return
 	}
-	w.Header().Set("Location", "/api/v1/accounts/"+strconv.FormatInt(id, 10))
-	writeJSON(w, http.StatusCreated, accountJSON(accountRec{
-		inst: string(body.TdInstance), region: region, id: id, rev: rev,
-		rec: &statev1.Account{Name: body.Name, Kind: kind.Name, Settings: settings, Enabled: true},
-	}, nil))
+	created.Exchange = kind.Exchange
+	created.Region = region
+	if err := s.publishAccount(r.Context(), created); err != nil {
+		s.writeAccountErr(w, err)
+		return
+	}
+	w.Header().Set("Location", "/api/v1/accounts/"+strconv.FormatInt(created.ID, 10))
+	writeJSON(w, http.StatusCreated, accountJSON(created.accountPublic, nil))
 }
 
-func (s *Server) GetAccount(w http.ResponseWriter, _ *http.Request, apiID apiv1.APIID) {
-	hit, err := s.findAccount(int64(apiID))
+func (s *Server) GetAccount(w http.ResponseWriter, r *http.Request, apiID apiv1.APIID, params apiv1.GetAccountParams) {
+	row, err := s.getAccount(r.Context(), int64(apiID))
 	if err != nil {
 		s.writeAccountErr(w, err)
+		return
+	}
+	if row.Deleted != nil && !flagBool(params.IncludeDeleted) {
+		s.writeAccountErr(w, errNotFound)
 		return
 	}
 	views, _ := s.regionViews()
-	writeJSON(w, http.StatusOK, accountJSON(hit, referencesOf(views)[hit.id]))
+	writeJSON(w, http.StatusOK, accountJSON(row, referencesOf(views)[row.ID]))
 }
 
 func (s *Server) UpdateAccount(w http.ResponseWriter, r *http.Request, apiID apiv1.APIID) {
@@ -212,20 +203,33 @@ func (s *Server) UpdateAccount(w http.ResponseWriter, r *http.Request, apiID api
 		writeFields(w, []apiv1.FieldError{{Path: "/revision", Reason: "must be at least 1"}})
 		return
 	}
-	hit, err := s.findAccount(int64(apiID))
+	cur, err := s.getAccount(r.Context(), int64(apiID))
 	if err != nil {
 		s.writeAccountErr(w, err)
 		return
 	}
-	kind, kindOK := s.kindByName(hit.rec.GetKind())
-	accepted := kindOK && kind.Supported()
+	if cur.Deleted != nil {
+		s.writeAccountErr(w, errNotFound)
+		return
+	}
+	kind, kindOK := s.kindByName(cur.Kind)
+	accepted := kindOK && kind.Supported() && kind.Exchange != ""
 	if body.Credentials != nil && !accepted {
 		writeFields(w, []apiv1.FieldError{{Path: "/kind", Reason: "is not accepted"}})
 		return
 	}
 	var fields []apiv1.FieldError
+	name := cur.Name
 	if body.Name != nil {
 		fields = append(fields, checkName(*body.Name)...)
+		name = *body.Name
+	}
+	if body.ExchAccountUid != nil {
+		uid, uidFields := checkUID(*body.ExchAccountUid, true)
+		fields = append(fields, uidFields...)
+		if len(uidFields) == 0 && uid != cur.UID {
+			fields = append(fields, apiv1.FieldError{Path: "/exch_account_uid", Reason: "cannot be changed"})
+		}
 	}
 	fields = append(fields, checkCredentials(body.Credentials, kind, false, accepted)...)
 	fields = append(fields, checkSettings(body.Settings)...)
@@ -233,68 +237,57 @@ func (s *Server) UpdateAccount(w http.ResponseWriter, r *http.Request, apiID api
 		writeFields(w, fields)
 		return
 	}
-	views, unavail := s.regionViews()
-	if _, up := views[hit.region]; !up {
-		if len(unavail) > 0 {
-			s.writeAccountErr(w, errRegionUnavailable)
+	if _, err := s.availableViews(cur.Inst); err != nil {
+		s.writeAccountErr(w, err)
+		return
+	}
+	if name != cur.Name {
+		taken, err := s.liveNameTaken(r.Context(), name, cur.ID)
+		if err != nil {
+			s.writeAccountErr(w, err)
+			return
+		}
+		if taken {
+			s.writeAccountErr(w, errNameTaken)
 			return
 		}
 	}
-	name := hit.rec.GetName()
-	if body.Name != nil {
-		name = *body.Name
+	cancel := cur.Cancel
+	if body.Settings != nil && body.Settings.CancelOnDisconnectS != nil {
+		cancel = uint32(*body.Settings.CancelOnDisconnectS)
 	}
-	if nameTaken(views, name, hit.key) {
-		s.writeAccountErr(w, errNameTaken)
-		return
-	}
-	var pub sealbox.PublicKey
+	next := accountChange{Name: name, Cancel: cancel, At: s.now().UTC()}
 	if body.Credentials != nil {
-		var instFields []apiv1.FieldError
-		pub, instFields = s.checkTDInstance(hit.inst)
+		pub, instFields := s.checkTDInstance(cur.Inst)
 		if len(instFields) > 0 {
 			writeFields(w, instFields)
 			return
 		}
+		ct, sealed, ver, err := s.sealAccount(pub, cur.ID, cur.Kind, body.Credentials)
+		if err != nil {
+			s.writeAccountErr(w, err)
+			return
+		}
+		next.Creds = &accountCipher{AEAD: ct, Version: ver, Sealed: sealed}
 	}
-	var next *statev1.Account
-	rev, err := update(r.Context(), s.cl.APIWriter(), hit.key, 1, func(cur *mvccpb.KeyValue) ([]byte, bool, error) {
-		if cur == nil {
-			return nil, false, errNotFound
-		}
-		if cur.ModRevision != int64(body.Revision) {
-			return nil, false, errConflict
-		}
-		rec, err := unmarshalAccount(cur.Value)
-		if err != nil {
-			return nil, false, err
-		}
-		if rec.GetKind() != hit.rec.GetKind() {
-			return nil, false, errConflict
-		}
-		built, err := applyUpdate(rec, body, pub, rec.GetKind(), int64(apiID))
-		if err != nil {
-			return nil, false, err
-		}
-		next = built
-		if accountEqual(rec, built) {
-			next = rec
-			return nil, false, nil
-		}
-		b, err := proto.Marshal(built)
-		if err != nil {
-			return nil, false, errUnreadable
-		}
-		return b, true, nil
-	})
+	stored, changed, err := s.mutateAccount(r.Context(), cur.ID, int64(body.Revision), next)
+	if next.Creds != nil {
+		clear(next.Creds.AEAD)
+		clear(next.Creds.Sealed)
+	}
 	if err != nil {
 		s.writeAccountErr(w, err)
 		return
 	}
-	views, _ = s.regionViews()
-	writeJSON(w, http.StatusOK, accountJSON(accountRec{
-		inst: hit.inst, region: hit.region, id: hit.id, rev: rev, rec: next,
-	}, referencesOf(views)[hit.id]))
+	if changed {
+		if err := s.publishAccount(r.Context(), stored); err != nil {
+			s.writeAccountErr(w, err)
+			return
+		}
+	}
+	s.decorate(&stored.accountPublic)
+	views, _ := s.regionViews()
+	writeJSON(w, http.StatusOK, accountJSON(stored.accountPublic, referencesOf(views)[stored.ID]))
 }
 
 func (s *Server) DeleteAccount(w http.ResponseWriter, r *http.Request, apiID apiv1.APIID, params apiv1.DeleteAccountParams) {
@@ -302,17 +295,31 @@ func (s *Server) DeleteAccount(w http.ResponseWriter, r *http.Request, apiID api
 		writeFields(w, []apiv1.FieldError{{Path: "/revision", Reason: "must be at least 1"}})
 		return
 	}
-	hit, err := s.findAccount(int64(apiID))
+	cur, err := s.getAccount(r.Context(), int64(apiID))
 	if err != nil {
 		s.writeAccountErr(w, err)
 		return
 	}
+	if cur.Deleted != nil {
+		s.writeAccountErr(w, errNotFound)
+		return
+	}
 	views, _ := s.regionViews()
-	if len(referencesOf(views)[hit.id]) > 0 {
+	if len(referencesOf(views)[cur.ID]) > 0 {
 		s.writeAccountErr(w, errReferenced)
 		return
 	}
-	if _, err := deleteIf(r.Context(), s.cl.APIWriter(), cond{key: hit.key, rev: int64(params.Revision)}); err != nil {
+	if _, err := s.availableViews(cur.Inst); err != nil {
+		s.writeAccountErr(w, err)
+		return
+	}
+	at := s.now().UTC()
+	stored, err := s.softDeleteAccount(r.Context(), cur.ID, int64(params.Revision), at)
+	if err != nil {
+		s.writeAccountErr(w, err)
+		return
+	}
+	if err := s.publishAccount(r.Context(), stored); err != nil {
 		s.writeAccountErr(w, err)
 		return
 	}
@@ -327,6 +334,8 @@ func (s *Server) writeAccountErr(w http.ResponseWriter, err error) {
 		}})
 	case errors.Is(err, errReferenced):
 		writeProblem(w, http.StatusConflict, apiv1.ErrorCodeReferenced, http.StatusText(http.StatusConflict), "account is referenced by a session", nil)
+	case errors.Is(err, errStorage):
+		writeProblem(w, http.StatusServiceUnavailable, apiv1.ErrorCodeStorageUnavailable, "Storage Unavailable", "storage is unavailable", nil)
 	default:
 		status, name := problemOf(err)
 		switch name {
@@ -339,8 +348,8 @@ func (s *Server) writeAccountErr(w http.ResponseWriter, err error) {
 		case "not_found":
 			writeProblem(w, status, apiv1.ErrorCodeNotFound, http.StatusText(status), "account not found", nil)
 		default:
-			// sealbox and etcd errors do not quote credential bytes. A stored record that does not
-			// unmarshal is reported as errUnreadable, which does not carry the bytes either.
+			// sealbox, accountkey, and etcd errors do not quote credential bytes. A stored record
+			// that does not unmarshal is reported as errUnreadable, which does not carry the bytes either.
 			s.log.Error().Err(err).Msg("account")
 			writeProblem(w, status, apiv1.ErrorCodeInternal, http.StatusText(status), "internal error", nil)
 		}
@@ -363,6 +372,26 @@ func checkName(name string) []apiv1.FieldError {
 		return []apiv1.FieldError{{Path: "/name", Reason: "must be 1 to 128 characters"}}
 	}
 	return nil
+}
+
+// checkUID applies E21-D025. required is create, and an update that sends the field.
+// The stored value is the trimmed string.
+func checkUID(uid string, required bool) (string, []apiv1.FieldError) {
+	trimmed := strings.TrimSpace(uid)
+	if trimmed == "" {
+		if required {
+			return "", []apiv1.FieldError{{Path: "/exch_account_uid", Reason: "required"}}
+		}
+		return "", nil
+	}
+	if utf8.RuneCountInString(trimmed) > 64 {
+		return "", []apiv1.FieldError{{Path: "/exch_account_uid", Reason: "must be 1 to 64 characters"}}
+	}
+	return trimmed, nil
+}
+
+func flagBool(p *bool) bool {
+	return p != nil && *p
 }
 
 // checkCredentials reports format problems (E10-D064). kindOK false skips the checks that need the
@@ -430,6 +459,15 @@ func (s *Server) kindByName(name string) (Kind, bool) {
 	return Kind{}, false
 }
 
+// acceptedKind is a supported kind whose registry exchange is set (E21-D008, E21-D031).
+func (s *Server) acceptedKind(name string) (Kind, bool) {
+	k, ok := s.kindByName(name)
+	if !ok || !k.Supported() || k.Exchange == "" {
+		return Kind{}, false
+	}
+	return k, true
+}
+
 // classifyInstance is the topology half of E10-D065: a name, in the deployment, on the TD plane.
 // The public-key half is checkTDInstance; a list filter does not need a key.
 func (s *Server) classifyInstance(name string) (region string, ok bool, fields []apiv1.FieldError) {
@@ -456,69 +494,6 @@ func (s *Server) checkTDInstance(name string) (sealbox.PublicKey, []apiv1.FieldE
 		return sealbox.PublicKey{}, []apiv1.FieldError{{Path: "/td_instance", Reason: "has no public key"}}
 	}
 	return pub, nil
-}
-
-func newAccount(pub sealbox.PublicKey, apiID int64, kind, name string, cred *apiv1.Credentials, settings *statev1.AccountSettings) (*statev1.Account, error) {
-	sealed, err := sealCreds(pub, apiID, kind, cred)
-	if err != nil {
-		return nil, err
-	}
-	return &statev1.Account{
-		Name: name, Kind: kind, SealedCredentials: sealed, Settings: settings, Enabled: true,
-	}, nil
-}
-
-func sealCreds(pub sealbox.PublicKey, apiID int64, kind string, cred *apiv1.Credentials) ([]byte, error) {
-	if cred == nil {
-		return nil, errors.New("api: credentials are required")
-	}
-	pass := ""
-	if cred.Passphrase != nil {
-		pass = *cred.Passphrase
-	}
-	return sealbox.SealCredentials(pub, apiID, kind, sealbox.Credentials{
-		KeyType: string(cred.KeyType), Key: cred.Key, Secret: cred.Secret, Passphrase: pass,
-	})
-}
-
-// applyUpdate copies cur, sets enabled (E10-D034), and applies the fields the request sent. Omitted
-// credentials keep the sealed bytes (E10-D062). Sending credentials always reseals: the nonce is random,
-// so the ciphertext changes and the worker restarts.
-func applyUpdate(cur *statev1.Account, body apiv1.AccountUpdate, pub sealbox.PublicKey, kind string, apiID int64) (*statev1.Account, error) {
-	next := proto.Clone(cur).(*statev1.Account)
-	next.Enabled = true
-	if body.Name != nil {
-		next.Name = *body.Name
-	}
-	if body.Settings != nil && body.Settings.CancelOnDisconnectS != nil {
-		if next.Settings == nil {
-			next.Settings = &statev1.AccountSettings{}
-		}
-		next.Settings.CancelOnDisconnectS = uint32(*body.Settings.CancelOnDisconnectS)
-	}
-	if body.Credentials != nil {
-		sealed, err := sealCreds(pub, apiID, kind, body.Credentials)
-		if err != nil {
-			return nil, err
-		}
-		next.SealedCredentials = sealed
-	}
-	return next, nil
-}
-
-// accountEqual ignores a settings message that carries only zeros, so an explicit cancel of 0 does
-// not rewrite an account that left the field unset (E10-D034: an unchanged body does not restart the worker).
-func accountEqual(a, b *statev1.Account) bool {
-	return proto.Equal(normalizeAccount(a), normalizeAccount(b))
-}
-
-func normalizeAccount(a *statev1.Account) *statev1.Account {
-	c := proto.Clone(a).(*statev1.Account)
-	s := c.GetSettings()
-	if s != nil && s.GetCancelOnDisconnectS() == 0 {
-		c.Settings = nil
-	}
-	return c
 }
 
 func (s *Server) regionViews() (map[string]state.View, []string) {
@@ -557,60 +532,6 @@ func freshnessOf(topo state.Topology, views map[string]state.View, unavail []str
 		}
 	}
 	return apiv1.Freshness{UnavailableRegions: unavail, ControllerAbsent: absent}
-}
-
-func (s *Server) findAccount(apiID int64) (accountRec, error) {
-	views, unavail := s.regionViews()
-	var hits []accountRec
-	for region, view := range views {
-		for key, e := range view.Entries {
-			inst, id, ok := accountOf(key)
-			if !ok || id != apiID {
-				continue
-			}
-			rec, err := unmarshalAccount(e.Value)
-			if err != nil {
-				return accountRec{}, err
-			}
-			hits = append(hits, accountRec{key: key, inst: inst, region: region, id: id, rev: e.ModRevision, rec: rec})
-		}
-	}
-	if len(hits) == 0 {
-		if len(unavail) > 0 {
-			return accountRec{}, fmt.Errorf("%w: account %d", errRegionUnavailable, apiID)
-		}
-		return accountRec{}, errNotFound
-	}
-	slices.SortFunc(hits, func(a, b accountRec) int {
-		if c := strings.Compare(a.region, b.region); c != 0 {
-			return c
-		}
-		return strings.Compare(a.inst, b.inst)
-	})
-	return hits[0], nil
-}
-
-// nameTaken is E10-D066: every account the replica can see, on any TD instance. except is the account
-// being updated. An unreadable record is skipped, the same best-effort as a region that is down.
-func nameTaken(views map[string]state.View, name, except string) bool {
-	for _, view := range views {
-		for key, e := range view.Entries {
-			if key == except {
-				continue
-			}
-			if _, _, ok := accountOf(key); !ok {
-				continue
-			}
-			rec, err := unmarshalAccount(e.Value)
-			if err != nil {
-				continue
-			}
-			if rec.GetName() == name {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // referencesOf is E10-D011: a non-terminal spec that names the api_id. A missing or unreadable status
@@ -691,15 +612,7 @@ func specOf(key string) (inst, id string, ok bool) {
 	return inst, rest, true
 }
 
-func unmarshalAccount(b []byte) (*statev1.Account, error) {
-	rec := &statev1.Account{}
-	if err := proto.Unmarshal(b, rec); err != nil {
-		return nil, errUnreadable
-	}
-	return rec, nil
-}
-
-func accountJSON(h accountRec, refs []string) apiv1.Account {
+func accountJSON(row accountPublic, refs []string) apiv1.Account {
 	if refs == nil {
 		refs = []string{}
 	}
@@ -707,12 +620,21 @@ func accountJSON(h accountRec, refs []string) apiv1.Account {
 	for i, id := range refs {
 		ids[i] = id
 	}
-	cancel := int(h.rec.GetSettings().GetCancelOnDisconnectS())
-	return apiv1.Account{
-		ApiId: h.id, Name: h.rec.GetName(), Kind: h.rec.GetKind(),
-		TdInstance: h.inst, Region: h.region,
-		Settings:     apiv1.AccountSettings{CancelOnDisconnectS: &cancel},
-		Revision:     h.rev,
-		ReferencedBy: ids,
+	cancel := int(row.Cancel)
+	ex := row.Exchange
+	uid := row.UID
+	out := apiv1.Account{
+		ApiId: row.ID, Name: row.Name, Kind: row.Kind,
+		TdInstance: row.Inst, Region: row.Region,
+		Settings:       apiv1.AccountSettings{CancelOnDisconnectS: &cancel},
+		Revision:       row.Revision,
+		ReferencedBy:   ids,
+		Exchange:       &ex,
+		ExchAccountUid: &uid,
 	}
+	if row.Deleted != nil {
+		t := row.Deleted.UTC()
+		out.DeletedAt = &t
+	}
+	return out
 }
