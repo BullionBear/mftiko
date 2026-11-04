@@ -165,6 +165,8 @@ func (s *Server) reconcileOnce(ctx context.Context) {
 	// W5 runs in this same pass (E10-D083). A Postgres error above already returned,
 	// which skips the round and deletes nothing (E10-D080).
 	s.retain(ctx)
+	// Replica expiry sees the ended_at this pass just wrote (E21-D056).
+	s.expireReplicas(ctx)
 }
 
 func (s *Server) liveSpecs() []liveSpec {

@@ -377,7 +377,8 @@ RETURNING revision`,
 }
 
 // softDeleteAccount sets deleted_at when rev still matches a live row (E21-D012, E21-D024).
-// Replica rows stay so reconcile can retry the etcd delete.
+// Replica rows stay until the etcd delete succeeds. Reconcile then removes them without
+// waiting for td_replica_grace (E21-D060). A failed etcd delete leaves the row for the next pass.
 func (s *Server) softDeleteAccount(ctx context.Context, id, rev int64, at time.Time) (accountPublic, error) {
 	pool, err := s.db()
 	if err != nil {

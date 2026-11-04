@@ -26,10 +26,12 @@ type replicaRow struct {
 }
 
 // replicaView is a Postgres account plus one replica, the unit reconcile projects.
+// replicaCreated is account_replicas.created_at, the clock when no session has ended (E21-D056).
 type replicaView struct {
 	accountPublic
-	Inst   string
-	sealed []byte
+	Inst           string
+	replicaCreated time.Time
+	sealed         []byte
 }
 
 // rejectTDInstance reports a request that still carries td_instance (E21-D052).
@@ -118,7 +120,7 @@ func (s *Server) loadReplicaViews(ctx context.Context) ([]replicaView, error) {
 	rows, err := pool.Query(ctx, `
 SELECT a.api_id, a.kind, a.name, a.settings, a.enabled, a.exch_account_uid,
        a.created_at, a.updated_at, a.deleted_at, a.revision,
-       r.td_instance, r.sealed_credentials
+       r.td_instance, r.sealed_credentials, r.created_at
 FROM account_replicas r
 JOIN accounts a ON a.api_id = r.api_id
 ORDER BY r.td_instance, r.api_id`)
@@ -135,7 +137,7 @@ ORDER BY r.td_instance, r.api_id`)
 		if err := rows.Scan(
 			&view.ID, &view.Kind, &view.Name, &settings, &view.Enabled, &view.UID,
 			&view.Created, &view.Updated, &view.Deleted, &view.Revision,
-			&view.Inst, &view.sealed,
+			&view.Inst, &view.sealed, &view.replicaCreated,
 		); err != nil {
 			return nil, storageErr(err)
 		}
@@ -322,8 +324,9 @@ func (s *Server) sealFromStored(pub sealbox.PublicKey, id int64, kind string, cr
 }
 
 // publishReplicas writes every replica after Postgres has committed (E21-D022).
-// deleting removes the etcd keys and leaves the replica rows. The hook
-// "account-before-etcd" runs once before the first etcd call.
+// deleting removes the etcd keys and leaves the replica rows. Reconcile deletes
+// those rows after the etcd delete succeeds, without waiting for grace (E21-D060).
+// The hook "account-before-etcd" runs once before the first etcd call.
 func (s *Server) publishReplicas(ctx context.Context, row accountPublic, reps []replicaRow, deleting bool) error {
 	if len(reps) == 0 {
 		return nil

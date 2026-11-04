@@ -79,6 +79,11 @@ func startAccountFix(t *testing.T, dsn string, env *writeEnv) *accountFix {
 	cfg.Users = []User{{Name: "ada", Token: sha256.Sum256([]byte(tokenAda))}}
 	cfg.Kinds = testKinds()
 	cfg.ReconcileEvery = time.Hour
+	// Same reason as newWriteEnv: a zero grace is the 10s default, and a mirror
+	// kick after that deletes a replica that has no ended session (E21-D056).
+	if cfg.TDReplicaGrace <= 0 {
+		cfg.TDReplicaGrace = time.Hour
+	}
 	if dsn != "" {
 		cfg.PostgresDSN = dsn
 	}
@@ -734,14 +739,21 @@ func TestAccountProjection(t *testing.T) {
 		t.Fatal("reconcile rewrote the sealed projection")
 	}
 
+	// Hold reconcile so a mirror kick cannot drop the replica row before the stale
+	// key is written. Once the row is gone, the key is an orphan and stays (E21-D055).
+	f.srv.reconcileMu.Lock()
 	code, _, body = f.call(t, http.MethodDelete, fmt.Sprintf("/api/v1/accounts/%d?revision=%d", created.ApiId, created.Revision), "")
+	left := f.env.get(t, "jp", key) != nil
+	if code == http.StatusNoContent && !left {
+		putKey(t, ctx, f.env.servers["jp"], key, "stale")
+	}
+	f.srv.reconcileMu.Unlock()
 	if code != http.StatusNoContent {
 		t.Fatalf("delete %d %s", code, body)
 	}
-	if f.env.get(t, "jp", key) != nil {
+	if left {
 		t.Fatal("soft delete left the etcd account")
 	}
-	putKey(t, ctx, f.env.servers["jp"], key, "stale")
 	f.srv.reconcileOnce(context.Background())
 	if f.env.get(t, "jp", key) != nil {
 		t.Fatal("reconcile left a soft-deleted account in etcd")

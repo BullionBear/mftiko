@@ -126,9 +126,13 @@ func TestLoadDefaults(t *testing.T) {
 	pub := mustPub(t)
 	cfg := loadWithin(t, goodDeploy(), goodConfig(pub), testInput(t))
 	if cfg.Retention != DefaultRetention || cfg.UnavailableAfter != DefaultUnavailableAfter ||
-		cfg.Listen != DefaultListen || cfg.ShutdownTimeout != DefaultShutdownTimeout {
-		t.Fatalf("retention %s unavailable %s listen %s shutdown %s",
-			cfg.Retention, cfg.UnavailableAfter, cfg.Listen, cfg.ShutdownTimeout)
+		cfg.Listen != DefaultListen || cfg.ShutdownTimeout != DefaultShutdownTimeout ||
+		cfg.TDReplicaGrace != DefaultTDReplicaGrace {
+		t.Fatalf("retention %s unavailable %s listen %s shutdown %s grace %s",
+			cfg.Retention, cfg.UnavailableAfter, cfg.Listen, cfg.ShutdownTimeout, cfg.TDReplicaGrace)
+	}
+	if tdDefaultLinger != 5*time.Second || DefaultTDReplicaGrace != 2*tdDefaultLinger {
+		t.Fatalf("linger %s grace %s", tdDefaultLinger, DefaultTDReplicaGrace)
 	}
 	if cfg.Topology.Instances["controller"] != "tw" || cfg.Planes["td-tw-1"] != "td" {
 		t.Fatalf("topology %+v planes %+v", cfg.Topology, cfg.Planes)
@@ -178,12 +182,14 @@ func TestZeroDurationIsDefault(t *testing.T) {
 		"retention": "0",
 		"unavailable_after": "0s",
 		"shutdown_timeout": "0",
+		"td_replica_grace": "0",
 		"td_keys": {"td-tw-1": "` + pub + `"}
 	}`
 	cfg := loadWithin(t, goodDeploy(), conf, testInput(t))
 	if cfg.Retention != DefaultRetention || cfg.UnavailableAfter != DefaultUnavailableAfter ||
-		cfg.ShutdownTimeout != DefaultShutdownTimeout || cfg.Listen != DefaultListen {
-		t.Fatalf("%s %s %s %s", cfg.Retention, cfg.UnavailableAfter, cfg.ShutdownTimeout, cfg.Listen)
+		cfg.ShutdownTimeout != DefaultShutdownTimeout || cfg.Listen != DefaultListen ||
+		cfg.TDReplicaGrace != DefaultTDReplicaGrace {
+		t.Fatalf("%s %s %s %s %s", cfg.Retention, cfg.UnavailableAfter, cfg.ShutdownTimeout, cfg.Listen, cfg.TDReplicaGrace)
 	}
 }
 
@@ -193,13 +199,14 @@ func TestExplicitDurationsAndListen(t *testing.T) {
 		"retention": "1h",
 		"unavailable_after": "1s",
 		"shutdown_timeout": "1s",
+		"td_replica_grace": "4s",
 		"listen": "127.0.0.1:9",
 		"td_keys": {"td-tw-1": "` + pub + `"}
 	}`
 	cfg := loadWithin(t, goodDeploy(), conf, testInput(t))
 	if cfg.Retention != time.Hour || cfg.UnavailableAfter != time.Second ||
-		cfg.ShutdownTimeout != time.Second || cfg.Listen != "127.0.0.1:9" {
-		t.Fatalf("%s %s %s %s", cfg.Retention, cfg.UnavailableAfter, cfg.ShutdownTimeout, cfg.Listen)
+		cfg.ShutdownTimeout != time.Second || cfg.TDReplicaGrace != 4*time.Second || cfg.Listen != "127.0.0.1:9" {
+		t.Fatalf("%s %s %s %s %s", cfg.Retention, cfg.UnavailableAfter, cfg.ShutdownTimeout, cfg.TDReplicaGrace, cfg.Listen)
 	}
 }
 
@@ -256,6 +263,7 @@ func TestLoadRejects(t *testing.T) {
 		{"not json", deploy, `{`, "read config"},
 		{"extra value", deploy, conf + `{}`, "extra data"},
 		{"negative retention", deploy, `{"retention": "-1s", "td_keys": {"td-tw-1": "` + pub + `"}}`, "negative duration"},
+		{"negative grace", deploy, `{"td_replica_grace": "-1s", "td_keys": {"td-tw-1": "` + pub + `"}}`, "negative duration"},
 		{"bad listen", deploy, `{"listen": "8080", "td_keys": {"td-tw-1": "` + pub + `"}}`, "listen:"},
 		{"empty user", deploy, `{"users": [{"name": "", "token_sha256": "` + hash + `"}], "td_keys": {"td-tw-1": "` + pub + `"}}`, "user name is empty"},
 		{"duplicate user", deploy, `{"users": [

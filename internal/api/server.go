@@ -58,7 +58,8 @@ type Server struct {
 	strategyHandler http.Handler
 
 	// hook is nil in production. Tests fail a session write at "before-etcd" or "after-etcd",
-	// and an account projection at "account-before-etcd".
+	// an account projection at "account-before-etcd", and a replica delete between the etcd
+	// key and the account_replicas row at "replica-after-etcd-delete" (E21-D057).
 	hook func(step string) error
 	// haltBeforeDelete is a test switch. The retention pass closes the row and returns
 	// before deleteIf, so a later pass can finish the etcd delete (E10-D031). It is zero
@@ -199,6 +200,8 @@ func start(cfg Config) (*Server, error) {
 	}
 	s.log.Info().Str("addr", ln.Addr().String()).Bool("tls", cfg.TLSCert != "").Str("web", cfg.WebDir).
 		Strs("regions", regionNames(s.clusters)).Msg("listen")
+	// A short grace does not stop startup. The API cannot read the agent's -linger (E21-D058).
+	warnShortReplicaGrace(s.log, s.cfg.replicaGrace())
 	return s, nil
 }
 

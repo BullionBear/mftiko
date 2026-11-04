@@ -15,6 +15,7 @@
 //	unavailable_after                     region unavailable threshold, Go duration, default 15s (E10-D014)
 //	listen                                listen address, default :8080 (E10-D029)
 //	shutdown_timeout                      drain limit after SIGTERM, Go duration, default 10s (E10-D027)
+//	td_replica_grace                      how long a replica stays after its last session, Go duration, default 10s; must be >= the TD agent's -linger (E21-D050, E21-D058)
 //
 // Account kinds are not in the JSON. Run copies them from the exchange registry into the API
 // (E10-D034). The API package does not import exchange.
