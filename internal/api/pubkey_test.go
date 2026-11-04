@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
+	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
 	"github.com/BullionBear/mftiko/internal/platform/sealbox"
 	"github.com/BullionBear/mftiko/internal/platform/state"
@@ -28,16 +29,29 @@ func TestPubkeyUnavailable(t *testing.T) {
 	f.srv.pubMu.Unlock()
 
 	code, _, body := f.call(t, http.MethodPost, "/api/v1/accounts", accountBody("n", "Binance", "td-tw-1", "hmac", "k", "s", "", nil))
-	if code != http.StatusConflict {
-		t.Fatalf("status %d %s", code, body)
+	if code != http.StatusCreated {
+		t.Fatalf("create %d %s", code, body)
 	}
-	p := problemBody(t, body)
-	if p.Code != apiv1.ErrorCodeTdPubkeyUnavailable || p.Detail == nil || !strings.Contains(*p.Detail, "td-tw-1") {
-		t.Fatalf("%+v", p)
+	var created apiv1.Account
+	if err := json.Unmarshal(body, &created); err != nil {
+		t.Fatal(err)
 	}
-	code, _, body = f.call(t, http.MethodPost, "/api/v1/accounts", accountBody("n", "Binance", "md-tw-1", "hmac", "k", "s", "", nil))
-	if code != http.StatusBadRequest || !bytes.Contains(body, []byte("is not a td instance")) {
-		t.Fatalf("md plane %d %s", code, body)
+	err := f.srv.ensureSessionReplicas(t.Context(), &sessionv1.SessionSpec{
+		Accounts: []*sessionv1.AccountDecl{{Name: "a", ApiId: created.ApiId, TdInstance: "td-tw-1"}},
+	})
+	var missing *pubkeyUnavailable
+	if !errors.As(err, &missing) || missing.inst != "td-tw-1" {
+		t.Fatalf("project: %v", err)
+	}
+	if n := f.replicaCount(t, created.ApiId); n != 0 {
+		t.Fatalf("replica rows %d", n)
+	}
+	if f.env.get(t, "tw", state.AccountKey("td-tw-1", created.ApiId)) != nil {
+		t.Fatal("missing pubkey wrote etcd")
+	}
+	code, _, body = f.call(t, http.MethodPost, "/api/v1/accounts", withField(accountBody("n2", "Binance", "td-tw-1", "hmac", "k", "s", "", nil), "td_instance", "td-tw-1"))
+	if code != http.StatusBadRequest || fieldReason(t, body, "/td_instance") != "is not accepted" {
+		t.Fatalf("td_instance %d %s", code, body)
 	}
 }
 
@@ -65,12 +79,22 @@ func TestPubkeyUnreadable(t *testing.T) {
 		return nil
 	})
 	code, _, body = f.call(t, http.MethodPost, "/api/v1/accounts", accountBody("desk2", "Binance", "td-tw-1", "hmac", "k", "s", "", nil))
-	if code != http.StatusConflict {
-		t.Fatalf("status %d %s", code, body)
+	if code != http.StatusCreated {
+		t.Fatalf("create while pubkey is unreadable %d %s", code, body)
 	}
-	p := problemBody(t, body)
-	if p.Code != apiv1.ErrorCodeTdPubkeyUnavailable || p.Detail == nil || !strings.Contains(*p.Detail, "td-tw-1") {
-		t.Fatalf("%+v", p)
+	var second apiv1.Account
+	if err := json.Unmarshal(body, &second); err != nil {
+		t.Fatal(err)
+	}
+	err := f.srv.ensureSessionReplicas(t.Context(), &sessionv1.SessionSpec{
+		Accounts: []*sessionv1.AccountDecl{{Name: "a", ApiId: second.ApiId, TdInstance: "td-tw-1"}},
+	})
+	var missing *pubkeyUnavailable
+	if !errors.As(err, &missing) || missing.inst != "td-tw-1" {
+		t.Fatalf("project: %v", err)
+	}
+	if n := f.replicaCount(t, second.ApiId); n != 0 {
+		t.Fatalf("replica rows %d", n)
 	}
 	if got := f.fingerprint(t, "td-tw-1"); !bytes.Equal(got, want[:]) {
 		t.Fatalf("fingerprint changed to %x", got)
@@ -113,6 +137,7 @@ func TestPubkeyFromEtcd(t *testing.T) {
 	if created.Revision != 1 {
 		t.Fatalf("revision %d", created.Revision)
 	}
+	f.project(t, created.ApiId, inst)
 	opened := f.stored(t, inst, created.ApiId)
 	if _, err := sealbox.OpenCredentials(etcdKey, opened.GetSealedCredentials(), created.ApiId, "Binance"); err != nil {
 		t.Fatal(err)
@@ -193,6 +218,19 @@ func problemBody(t *testing.T, body []byte) apiv1.Problem {
 		t.Fatalf("%s: %v", body, err)
 	}
 	return p
+}
+
+func (f *accountFix) replicaCount(t *testing.T, id int64) int {
+	t.Helper()
+	pool, err := f.srv.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM account_replicas WHERE api_id = $1`, id).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
 }
 
 func (f *accountFix) fingerprint(t *testing.T, inst string) []byte {

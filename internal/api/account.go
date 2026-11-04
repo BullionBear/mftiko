@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"math"
 	"net/http"
 	"regexp"
@@ -17,7 +18,6 @@ import (
 	apiv1 "github.com/BullionBear/mftiko/contract/gen/api/v1"
 	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
-	"github.com/BullionBear/mftiko/internal/platform/sealbox"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
@@ -64,13 +64,8 @@ func (s *Server) ListAccounts(w http.ResponseWriter, r *http.Request, params api
 			afterID = id
 		}
 	}
-	filter := ""
-	if params.TdInstance != nil && *params.TdInstance != "" {
-		_, ok, instFields := s.classifyInstance(*params.TdInstance)
-		fields = append(fields, instFields...)
-		if ok {
-			filter = *params.TdInstance
-		}
+	if r.URL.Query().Has("td_instance") {
+		fields = append(fields, apiv1.FieldError{Path: "/td_instance", Reason: "is not accepted"})
 	}
 	if len(fields) > 0 {
 		writeFields(w, fields)
@@ -78,7 +73,7 @@ func (s *Server) ListAccounts(w http.ResponseWriter, r *http.Request, params api
 	}
 	views, unavail := s.regionViews()
 	fresh := s.freshness(views, unavail)
-	rows, err := s.listAccounts(r.Context(), flagBool(params.IncludeDeleted), filter, afterID, limit+1)
+	rows, err := s.listAccounts(r.Context(), flagBool(params.IncludeDeleted), afterID, limit+1)
 	if err != nil {
 		s.writeAccountErr(w, err)
 		return
@@ -98,8 +93,17 @@ func (s *Server) ListAccounts(w http.ResponseWriter, r *http.Request, params api
 }
 
 func (s *Server) CreateAccount(w http.ResponseWriter, r *http.Request) {
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeFields(w, nil)
+		return
+	}
+	if fields := rejectTDInstance(raw); len(fields) > 0 {
+		writeFields(w, fields)
+		return
+	}
 	var body apiv1.AccountCreate
-	if err := decodeBody(r, &body); err != nil {
+	if err := json.Unmarshal(raw, &body); err != nil {
 		writeFields(w, nil)
 		return
 	}
@@ -110,21 +114,10 @@ func (s *Server) CreateAccount(w http.ResponseWriter, r *http.Request) {
 	if !accepted {
 		fields = append(fields, apiv1.FieldError{Path: "/kind", Reason: "is not accepted"})
 	}
-	_, _, instFields := s.classifyInstance(string(body.TdInstance))
-	fields = append(fields, instFields...)
 	fields = append(fields, checkCredentials(body.Credentials, kind, true, accepted)...)
 	fields = append(fields, checkSettings(body.Settings)...)
 	if len(fields) > 0 {
 		writeFields(w, fields)
-		return
-	}
-	if _, err := s.availableViews(string(body.TdInstance)); err != nil {
-		s.writeAccountErr(w, err)
-		return
-	}
-	pub, err := s.pubkeyFor(r.Context(), string(body.TdInstance))
-	if err != nil {
-		s.writeAccountErr(w, err)
 		return
 	}
 	taken, err := s.liveNameTaken(r.Context(), body.Name, 0)
@@ -136,37 +129,29 @@ func (s *Server) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		s.writeAccountErr(w, errNameTaken)
 		return
 	}
-	region, err := s.cfg.Topology.RegionOf(string(body.TdInstance))
-	if err != nil {
-		s.writeAccountErr(w, err)
-		return
-	}
 	settings := mergeSettings(body.Settings)
 	now := s.now().UTC()
 	// One reader for the whole allocation, same as createSession. A fresh reader on
 	// every draw would repeat the first id (E21-D030).
 	src := s.ids()
-	var created accountStored
+	var created accountPublic
 	_, err = allocate(idAttempts,
 		func() (int64, error) { return newAPIID(src) },
 		func(int64) bool { return false },
 		func(id int64) error {
-			ct, sealed, ver, err := s.sealAccount(pub, id, kind.Name, body.Credentials)
+			ct, ver, err := s.sealAEAD(id, kind.Name, body.Credentials)
 			if err != nil {
 				return err
 			}
 			row, err := s.insertAccount(r.Context(), accountInsert{
 				ID: id, Kind: kind.Name, Name: body.Name, Credentials: ct, KeyVersion: ver,
-				Cancel: settings.GetCancelOnDisconnectS(), UID: uid, Inst: string(body.TdInstance),
-				Sealed: sealed, At: now,
+				Cancel: settings.GetCancelOnDisconnectS(), UID: uid, At: now,
 			})
 			if err != nil {
 				clear(ct)
-				clear(sealed)
 				return err
 			}
 			clear(ct)
-			clear(sealed)
 			created = row
 			return nil
 		})
@@ -175,13 +160,8 @@ func (s *Server) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	created.Exchange = kind.Exchange
-	created.Region = region
-	if err := s.publishAccount(r.Context(), created); err != nil {
-		s.writeAccountErr(w, err)
-		return
-	}
 	w.Header().Set("Location", "/api/v1/accounts/"+strconv.FormatInt(created.ID, 10))
-	writeJSON(w, http.StatusCreated, accountJSON(created.accountPublic, nil))
+	writeJSON(w, http.StatusCreated, accountJSON(created, nil))
 }
 
 func (s *Server) GetAccount(w http.ResponseWriter, r *http.Request, apiID apiv1.APIID, params apiv1.GetAccountParams) {
@@ -199,8 +179,17 @@ func (s *Server) GetAccount(w http.ResponseWriter, r *http.Request, apiID apiv1.
 }
 
 func (s *Server) UpdateAccount(w http.ResponseWriter, r *http.Request, apiID apiv1.APIID) {
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeFields(w, nil)
+		return
+	}
+	if fields := rejectTDInstance(raw); len(fields) > 0 {
+		writeFields(w, fields)
+		return
+	}
 	var body apiv1.AccountUpdate
-	if err := decodeBody(r, &body); err != nil {
+	if err := json.Unmarshal(raw, &body); err != nil {
 		writeFields(w, nil)
 		return
 	}
@@ -242,16 +231,21 @@ func (s *Server) UpdateAccount(w http.ResponseWriter, r *http.Request, apiID api
 		writeFields(w, fields)
 		return
 	}
-	if _, err := s.availableViews(cur.Inst); err != nil {
+	reps, err := s.listReplicas(r.Context(), cur.ID)
+	if err != nil {
 		s.writeAccountErr(w, err)
 		return
 	}
-	var pub sealbox.PublicKey
+	if err := s.replicasReachable(reps); err != nil {
+		s.writeAccountErr(w, err)
+		return
+	}
 	if body.Credentials != nil {
-		pub, err = s.pubkeyFor(r.Context(), cur.Inst)
-		if err != nil {
-			s.writeAccountErr(w, err)
-			return
+		for _, rep := range reps {
+			if _, err := s.pubkeyFor(r.Context(), rep.Inst); err != nil {
+				s.writeAccountErr(w, err)
+				return
+			}
 		}
 	}
 	if name != cur.Name {
@@ -271,31 +265,31 @@ func (s *Server) UpdateAccount(w http.ResponseWriter, r *http.Request, apiID api
 	}
 	next := accountChange{Name: name, Cancel: cancel, At: s.now().UTC()}
 	if body.Credentials != nil {
-		ct, sealed, ver, err := s.sealAccount(pub, cur.ID, cur.Kind, body.Credentials)
+		ct, ver, err := s.sealAEAD(cur.ID, cur.Kind, body.Credentials)
 		if err != nil {
 			s.writeAccountErr(w, err)
 			return
 		}
-		next.Creds = &accountCipher{AEAD: ct, Version: ver, Sealed: sealed}
+		next.Creds = &accountCipher{AEAD: ct, Version: ver}
+		next.Plain = body.Credentials
 	}
-	stored, changed, err := s.mutateAccount(r.Context(), cur.ID, int64(body.Revision), next)
+	stored, written, changed, err := s.mutateAccount(r.Context(), cur.ID, int64(body.Revision), next)
 	if next.Creds != nil {
 		clear(next.Creds.AEAD)
-		clear(next.Creds.Sealed)
 	}
 	if err != nil {
 		s.writeAccountErr(w, err)
 		return
 	}
 	if changed {
-		if err := s.publishAccount(r.Context(), stored); err != nil {
+		if err := s.publishReplicas(r.Context(), stored, written, false); err != nil {
 			s.writeAccountErr(w, err)
 			return
 		}
 	}
-	s.decorate(&stored.accountPublic)
+	s.decorate(&stored)
 	views, _ := s.regionViews()
-	writeJSON(w, http.StatusOK, accountJSON(stored.accountPublic, referencesOf(views)[stored.ID]))
+	writeJSON(w, http.StatusOK, accountJSON(stored, referencesOf(views)[stored.ID]))
 }
 
 func (s *Server) DeleteAccount(w http.ResponseWriter, r *http.Request, apiID apiv1.APIID, params apiv1.DeleteAccountParams) {
@@ -317,7 +311,12 @@ func (s *Server) DeleteAccount(w http.ResponseWriter, r *http.Request, apiID api
 		s.writeAccountErr(w, errReferenced)
 		return
 	}
-	if _, err := s.availableViews(cur.Inst); err != nil {
+	reps, err := s.listReplicas(r.Context(), cur.ID)
+	if err != nil {
+		s.writeAccountErr(w, err)
+		return
+	}
+	if err := s.replicasReachable(reps); err != nil {
 		s.writeAccountErr(w, err)
 		return
 	}
@@ -327,7 +326,7 @@ func (s *Server) DeleteAccount(w http.ResponseWriter, r *http.Request, apiID api
 		s.writeAccountErr(w, err)
 		return
 	}
-	if err := s.publishAccount(r.Context(), stored); err != nil {
+	if err := s.publishReplicas(r.Context(), stored, reps, true); err != nil {
 		s.writeAccountErr(w, err)
 		return
 	}
@@ -480,17 +479,18 @@ func (s *Server) acceptedKind(name string) (Kind, bool) {
 }
 
 // classifyInstance is the topology half of E10-D065: a name, in the deployment, on the TD plane.
-// The public-key half is pubkeyFor. A list filter does not need a key.
-func (s *Server) classifyInstance(name string) (region string, ok bool, fields []apiv1.FieldError) {
+// path is the field the caller is checking, for example /accounts/0/td_instance.
+// The public-key half is pubkeyFor.
+func (s *Server) classifyInstance(path, name string) (region string, ok bool, fields []apiv1.FieldError) {
 	if !instanceNameRe.MatchString(name) {
-		return "", false, []apiv1.FieldError{{Path: "/td_instance", Reason: "is not an instance name"}}
+		return "", false, []apiv1.FieldError{{Path: path, Reason: "is not an instance name"}}
 	}
 	region, err := s.cfg.Topology.RegionOf(name)
 	if err != nil {
-		return "", false, []apiv1.FieldError{{Path: "/td_instance", Reason: "is not in the topology"}}
+		return "", false, []apiv1.FieldError{{Path: path, Reason: "is not in the topology"}}
 	}
 	if s.cfg.Planes[name] != state.PlaneTD {
-		return "", false, []apiv1.FieldError{{Path: "/td_instance", Reason: "is not a td instance"}}
+		return "", false, []apiv1.FieldError{{Path: path, Reason: "is not a td instance"}}
 	}
 	return region, true, nil
 }
@@ -624,7 +624,6 @@ func accountJSON(row accountPublic, refs []string) apiv1.Account {
 	uid := row.UID
 	out := apiv1.Account{
 		ApiId: row.ID, Name: row.Name, Kind: row.Kind,
-		TdInstance: row.Inst, Region: row.Region,
 		Settings:       apiv1.AccountSettings{CancelOnDisconnectS: &cancel},
 		Revision:       row.Revision,
 		ReferencedBy:   ids,

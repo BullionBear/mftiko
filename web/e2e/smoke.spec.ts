@@ -39,7 +39,6 @@ test('console main flow', async ({ page }) => {
 	await page.goto('/accounts/new');
 	await page.getByLabel('Name', { exact: true }).fill(name);
 	await page.getByLabel('Kind').selectOption(kind);
-	await page.getByLabel('TD instance').fill('td1');
 	await page.getByLabel('Exchange account UID').fill('uid-1');
 	await page.getByLabel('Key type').selectOption(creds.key_type);
 	await page.getByLabel('Key', { exact: true }).fill(creds.key);
@@ -66,6 +65,7 @@ test('console main flow', async ({ page }) => {
 	await page.getByRole('button', { name: 'Next' }).click();
 	await page.getByRole('button', { name: 'Add account' }).click();
 	await page.getByLabel('Account', { exact: true }).selectOption(String(apiId));
+	await page.getByLabel('TD instance').selectOption('td1');
 	await page.getByLabel('Add algo_id').fill('2');
 	await page.getByRole('button', { name: 'Add', exact: true }).click();
 	await page.getByRole('button', { name: 'Next' }).click();

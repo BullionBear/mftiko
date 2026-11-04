@@ -45,7 +45,7 @@ func TestUpStatusAndChanged(t *testing.T) {
 	if err := run(append(args, "status"), &status); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(status.String(), " pending\n") != 10 {
+	if strings.Count(status.String(), " pending\n") != 11 {
 		t.Fatalf("status before up:\n%s", status.String())
 	}
 
@@ -64,6 +64,7 @@ func TestUpStatusAndChanged(t *testing.T) {
 		"applied 0008_accounts\n",
 		"applied 0009_account_projection\n",
 		"applied 0010_td_pubkeys\n",
+		"applied 0011_account_replicas\n",
 	} {
 		if !strings.Contains(up.String(), line) {
 			t.Fatalf("up missing %q\n%s", line, up.String())

@@ -20,8 +20,10 @@ import (
 	commonv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/common/v1"
 	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
+	"github.com/BullionBear/mftiko/internal/platform/accountkey"
 	"github.com/BullionBear/mftiko/internal/platform/artifact"
 	"github.com/BullionBear/mftiko/internal/platform/pgtest"
+	"github.com/BullionBear/mftiko/internal/platform/sealbox"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 	"github.com/BullionBear/mftiko/migrations"
 )
@@ -70,7 +72,10 @@ func applySchema(t *testing.T, dsn string) {
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	for _, name := range []string{"0003_audit.up.sql", "0004_session_records.up.sql", "0005_session_records_final.up.sql", "0006_retired_instances.up.sql"} {
+	for _, name := range []string{
+		"0003_audit.up.sql", "0004_session_records.up.sql", "0005_session_records_final.up.sql", "0006_retired_instances.up.sql",
+		"0008_accounts.up.sql", "0009_account_projection.up.sql", "0010_td_pubkeys.up.sql", "0011_account_replicas.up.sql",
+	} {
 		b, err := migrations.FS.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
@@ -109,12 +114,48 @@ func newSessionEnv(t *testing.T, opt sessionOpt) *sessionEnv {
 	se := &sessionEnv{e: e, s: s, pg: pg, clock: opt.clock, cat: cat}
 	if pg != nil {
 		for _, id := range []int64{42, 43} {
-			key := state.AccountKey("td-tw-1", id)
-			putKey(t, t.Context(), e.servers["tw"], key, "acct")
-			seen(t, s, "tw", key)
+			seedSessionAccount(t, dsn, id)
 		}
 	}
 	return se
+}
+
+func seedSessionAccount(t *testing.T, dsn string, id int64) {
+	t.Helper()
+	box, err := accountkey.Parse(testAccountKeys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := proto.Marshal(&statev1.AccountCredentials{
+		ApiId: id, Kind: "Binance", KeyType: "hmac", Key: "k", Secret: "s",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(plain)
+	ct, err := box.Seal(id, "Binance", plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ver, err := accountkey.HeaderVersion(ct)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := t.Context()
+	conn, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	if _, err := conn.Exec(ctx, `
+INSERT INTO accounts (
+    api_id, kind, name, credentials, key_version, settings, enabled,
+    exch_account_uid, created_at, updated_at, revision
+) VALUES (
+    $1, 'Binance', $2, $3, $4, '{"cancel_on_disconnect_s":0}', true,
+    'uid-1', now(), now(), 1)`, id, fmt.Sprintf("a%d", id), ct, ver); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func (se *sessionEnv) call(t *testing.T, method, path, body string, hdr http.Header) (int, http.Header, []byte) {
@@ -367,7 +408,7 @@ func TestSessionCreateRoundTrip(t *testing.T) {
 		"labels":{"team":"desk"},
 		"params":{"z":1,"a":"x"},
 		"feeds":[{"feed":"not-a-ticker","md_instance":"md-tw-1"}],
-		"accounts":[{"name":"main","api_id":42,"algo_ids":[1,2]}],
+		"accounts":[{"name":"main","api_id":42,"td_instance":"td-tw-1","algo_ids":[1,2]}],
 		"inputs":[{"name":"model","digest":%q,"repository":"registry.example/mftiko/data"}],
 		"restart":{"mode":"never","max_restarts":0,"window_s":3},
 		"limits":{"memory_mb":0,"gomaxprocs":1,"volume_mb":2,"hook_timeout_s":0},
@@ -536,10 +577,10 @@ func TestSessionValidation(t *testing.T) {
 		{"dup feed", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"feeds":[{"feed":"a","md_instance":"md-tw-1"},{"feed":"a","md_instance":"md-tw-1"}]}`, "/feeds/1/feed"},
 		{"md plane", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"feeds":[{"feed":"a","md_instance":"td-tw-1"}]}`, "/feeds/0/md_instance"},
 		{"md missing", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"feeds":[{"feed":"a","md_instance":"md-nope"}]}`, "/feeds/0/md_instance"},
-		{"dup api", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"algo_ids":[1]},{"name":"b","api_id":42,"algo_ids":[2]}]}`, "/accounts/1/api_id"},
-		{"algo zero", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"algo_ids":[0]}]}`, "/accounts/0/algo_ids"},
-		{"algo high", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"algo_ids":[1024]}]}`, "/accounts/0/algo_ids"},
-		{"dup algo", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"algo_ids":[1,1]}]}`, "/accounts/0/algo_ids"},
+		{"dup api", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"td_instance":"td-tw-1","algo_ids":[1]},{"name":"b","api_id":42,"td_instance":"td-tw-1","algo_ids":[2]}]}`, "/accounts/1/api_id"},
+		{"algo zero", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"td_instance":"td-tw-1","algo_ids":[0]}]}`, "/accounts/0/algo_ids"},
+		{"algo high", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"td_instance":"td-tw-1","algo_ids":[1024]}]}`, "/accounts/0/algo_ids"},
+		{"dup algo", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"td_instance":"td-tw-1","algo_ids":[1,1]}]}`, "/accounts/0/algo_ids"},
 		{"bad label", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"labels":{" bad":"x"}}`, "/labels/ bad"},
 		{"bad input", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"inputs":[{"name":"Bad","digest":"` + dataDig + `","repository":"mftiko/data"}]}`, "/inputs/0/name"},
 		{"dup input", `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"inputs":[{"name":"m","digest":"` + dataDig + `","repository":"mftiko/data"},{"name":"m","digest":"` + dataDig + `","repository":"mftiko/data"}]}`, "/inputs/1/name"},
@@ -641,13 +682,13 @@ func TestSessionValidation(t *testing.T) {
 	mustProblem(t, body, http.StatusServiceUnavailable, "registry_unavailable")
 	delete(se.cat.readErr, catKey("registry.example/mftiko/strategies", stratDig))
 
-	code, _, body = se.post(t, `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"`+stratDig+`"},"accounts":[{"name":"a","api_id":99,"algo_ids":[1]}]}`, nil)
+	code, _, body = se.post(t, `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"`+stratDig+`"},"accounts":[{"name":"a","api_id":99,"td_instance":"td-tw-1","algo_ids":[1]}]}`, nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("account %d %s", code, body)
 	}
 	hasPath(t, body, "/accounts/0/api_id")
 
-	acct := `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"algo_ids":[7]}]}`
+	acct := `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"` + stratDig + `"},"accounts":[{"name":"a","api_id":42,"td_instance":"td-tw-1","algo_ids":[7]}]}`
 	code, hdr, body := se.post(t, acct, nil)
 	first := mustSession(t, code, hdr, body)
 	seen(t, se.s, "tw", state.SessionSpecKey("sts-tw-1", first.Id))
@@ -667,15 +708,19 @@ func TestSessionValidation(t *testing.T) {
 		t.Fatalf("terminal overlap %d %s", code, body)
 	}
 
-	both := state.AccountKey("td-jp-1", 77)
-	putKey(t, t.Context(), se.e.servers["jp"], both, "acct")
-	putKey(t, t.Context(), se.e.servers["tw"], state.AccountKey("td-tw-1", 77), "acct")
-	seen(t, se.s, "jp", both)
-	seen(t, se.s, "tw", state.AccountKey("td-tw-1", 77))
-	code, _, body = se.post(t, `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"`+stratDig+`"},"accounts":[{"name":"a","api_id":77,"algo_ids":[4]}]}`, nil)
-	lex := mustSession(t, code, nilHdr(t, code, body), body)
-	if lex.Spec.Accounts[0].TdInstance != "td-jp-1" {
-		t.Fatalf("td %s", lex.Spec.Accounts[0].TdInstance)
+	seedSessionAccount(t, se.pg.DSN(), 77)
+	code, _, body = se.post(t, `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"`+stratDig+`"},"accounts":[{"name":"a","api_id":77,"td_instance":"td-jp-1","algo_ids":[4]}]}`, nil)
+	onJP := mustSession(t, code, nilHdr(t, code, body), body)
+	if onJP.Spec.Accounts[0].TdInstance != "td-jp-1" {
+		t.Fatalf("td %s", onJP.Spec.Accounts[0].TdInstance)
+	}
+	code, _, body = se.post(t, `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"`+stratDig+`"},"accounts":[{"name":"a","api_id":77,"td_instance":"td-tw-1","algo_ids":[5]}]}`, nil)
+	onTW := mustSession(t, code, nilHdr(t, code, body), body)
+	if onTW.Spec.Accounts[0].TdInstance != "td-tw-1" || onTW.Id == onJP.Id {
+		t.Fatalf("second %+v", onTW)
+	}
+	if se.e.get(t, "jp", state.AccountKey("td-jp-1", 77)) == nil || se.e.get(t, "tw", state.AccountKey("td-tw-1", 77)) == nil {
+		t.Fatal("same api_id was not projected onto both instances")
 	}
 
 	// Last, because it writes a spec: an input exactly at max_input_bytes is accepted (E15-D006).
@@ -683,6 +728,34 @@ func TestSessionValidation(t *testing.T) {
 	se.cat.data[catKey("registry.example/mftiko/data", dataDig)] = artifact.DataInfo{Digest: dataDig, Config: artifact.DataConfig{Schema: artifact.DataSchema}, Size: 1000}
 	if code, _, body := se.post(t, inputBody, nil); code != http.StatusCreated {
 		t.Fatalf("input at the limit %d %s", code, body)
+	}
+}
+
+func TestSessionReplicaPubkey(t *testing.T) {
+	se := newSessionEnv(t, sessionOpt{})
+	delete(se.s.cfg.TDKeys, "td-jp-1")
+	se.s.pubMu.Lock()
+	sl := se.s.slotLocked("td-jp-1")
+	sl.state = pubMissing
+	sl.key = sealbox.PublicKey{}
+	se.s.pubMu.Unlock()
+	code, _, body := se.post(t, `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"`+stratDig+`"},"accounts":[{"name":"a","api_id":42,"td_instance":"td-jp-1","algo_ids":[3]}]}`, nil)
+	if code != http.StatusConflict {
+		t.Fatalf("status %d %s", code, body)
+	}
+	mustProblem(t, body, http.StatusConflict, "td_pubkey_unavailable")
+	ctx := t.Context()
+	conn, err := pgx.Connect(ctx, se.pg.DSN())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	var n int
+	if err := conn.QueryRow(ctx, `SELECT count(*) FROM account_replicas`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 || se.specCount(t, "sts-tw-1") != 0 {
+		t.Fatalf("replicas %d specs %d", n, se.specCount(t, "sts-tw-1"))
 	}
 }
 

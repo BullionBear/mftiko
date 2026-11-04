@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -21,19 +20,12 @@ const accountPage = 1000
 // maxAPIID is 2^53-1, the API's api_id ceiling (E10-D008).
 const maxAPIID int64 = 1<<53 - 1
 
-// instanceNameRe is the instance name syntax (PROTOCOL §2). The API uses the
-// same expression when it rejects /td_instance (E11-D015).
-var instanceNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
-
 func runAccountList(a *App) int {
-	if code := a.onlyFlags("td-instance", "limit", "cursor", "include-deleted"); code != 0 {
+	if code := a.onlyFlags("limit", "cursor", "include-deleted"); code != 0 {
 		return code
 	}
 	if len(a.Args) != 0 {
 		return a.exit("account list takes no arguments")
-	}
-	if a.opt.tdInstance.set && a.opt.tdInstance.v == "" {
-		return a.exit("-td-instance needs a name")
 	}
 	// E11-D010 supplement: the two paging flags together are a usage error.
 	if a.opt.limitSet && a.opt.cursorSet {
@@ -48,12 +40,7 @@ func runAccountList(a *App) int {
 		n := a.opt.limit
 		capN = &n
 	}
-	var filter *string
-	if a.opt.tdInstance.set {
-		v := a.opt.tdInstance.v
-		filter = &v
-	}
-	return a.listAccounts(api, filter, capN, a.opt.cursorSet, a.opt.cursor)
+	return a.listAccounts(api, capN, a.opt.cursorSet, a.opt.cursor)
 }
 
 func runAccountShow(a *App) int {
@@ -79,7 +66,6 @@ func runAccountCreate(a *App) int {
 	if code := a.onlyFlags(
 		"name",
 		"kind",
-		flagPair("td", "instance"),
 		flagPair("exch", "account")+"-uid",
 		flagFile("key"),
 		flagFile("secret"),
@@ -92,8 +78,8 @@ func runAccountCreate(a *App) int {
 		return a.exit("account create takes no arguments")
 	}
 	uid := strings.TrimSpace(a.opt.exchAccountUid.v)
-	if !a.opt.name.set || a.opt.name.v == "" || !a.opt.kind.set || a.opt.kind.v == "" || !a.opt.tdInstance.set || a.opt.tdInstance.v == "" || !a.opt.exchAccountUid.set || uid == "" {
-		return a.exit("account create needs -name, -kind, -td-instance, and -exch-account-uid")
+	if !a.opt.name.set || a.opt.name.v == "" || !a.opt.kind.set || a.opt.kind.v == "" || !a.opt.exchAccountUid.set || uid == "" {
+		return a.exit("account create needs -name, -kind, and -exch-account-uid")
 	}
 	api, code := a.client()
 	if code != 0 {
@@ -107,9 +93,6 @@ func runAccountCreate(a *App) int {
 	if code != 0 {
 		return code
 	}
-	if code := a.requireTD(api, a.opt.tdInstance.v); code != 0 {
-		return code
-	}
 	kt, code := a.resolveKeyType(kind)
 	if code != 0 {
 		return code
@@ -121,7 +104,6 @@ func runAccountCreate(a *App) int {
 	res, err := api.CreateAccount(a.ctx, apiv1.AccountCreate{
 		Name:           a.opt.name.v,
 		Kind:           kind.Kind,
-		TdInstance:     a.opt.tdInstance.v,
 		ExchAccountUid: uid,
 		Credentials:    cred,
 	})
@@ -312,37 +294,6 @@ func (a *App) resolveKeyType(kind apiv1.AccountKind) (apiv1.KeyType, int) {
 	return "", a.exit("-key-type is required")
 }
 
-// requireTD applies the API's /td_instance checks before create is sent (E11-D015).
-func (a *App) requireTD(api *API, name string) int {
-	if !instanceNameRe.MatchString(name) {
-		return a.validation([]apiv1.FieldError{{
-			Path: "/td_instance", Reason: "is not an instance name",
-		}})
-	}
-	res, err := api.GetInstance(a.ctx, name)
-	if err != nil {
-		return a.exitCode(ExitNetwork, "network (2): "+err.Error())
-	}
-	if res.Status == http.StatusNotFound {
-		return a.validation([]apiv1.FieldError{{
-			Path: "/td_instance", Reason: "is not in the topology",
-		}})
-	}
-	if res.Status < 200 || res.Status >= 300 {
-		return reportProblem(a.Stderr, res.Body, res.RequestID, a.sec)
-	}
-	var inst apiv1.InstanceDetail
-	if err := json.Unmarshal(res.Body, &inst); err != nil {
-		return a.exit("response is not an instance")
-	}
-	if inst.Plane != apiv1.Td {
-		return a.validation([]apiv1.FieldError{{
-			Path: "/td_instance", Reason: "is not a td instance",
-		}})
-	}
-	return 0
-}
-
 func (a *App) fetchAccount(api *API, id apiv1.APIID) (apiv1.Account, int) {
 	res, err := api.GetAccount(a.ctx, id, a.accountGetParams())
 	if code := a.checked(res, err); code != 0 {
@@ -433,8 +384,6 @@ func accountShowTable(acct apiv1.Account) ([]string, [][]string) {
 		{"kind", acct.Kind},
 		{"exchange", textPtr(acct.Exchange)},
 		{"exch_account_uid", textPtr(acct.ExchAccountUid)},
-		{"td_instance", acct.TdInstance},
-		{"region", acct.Region},
 		{"revision", strconv.FormatInt(acct.Revision, 10)},
 		{"deleted_at", deletedText(acct.DeletedAt)},
 		{"cancel_on_disconnect_s", cancel},
@@ -452,14 +401,12 @@ func accountListTable(items []apiv1.Account) ([]string, [][]string) {
 			acct.Kind,
 			textPtr(acct.Exchange),
 			textPtr(acct.ExchAccountUid),
-			acct.TdInstance,
-			acct.Region,
 			strconv.FormatInt(acct.Revision, 10),
 			deletedText(acct.DeletedAt),
 			joinSessions(acct.ReferencedBy),
 		})
 	}
-	return []string{"API_ID", "NAME", "KIND", "EXCHANGE", "UID", "TD_INSTANCE", "REGION", "REVISION", "DELETED_AT", "REFERENCED_BY"}, rows
+	return []string{"API_ID", "NAME", "KIND", "EXCHANGE", "UID", "REVISION", "DELETED_AT", "REFERENCED_BY"}, rows
 }
 
 func textPtr(p *string) string {
@@ -502,9 +449,9 @@ func joinSessions(ids []apiv1.SessionIDValue) string {
 
 // listAccounts follows pages unless cursorSet (E11-D010, E11-D011). capN, when
 // set, is the total number of rows, not the size of each request.
-func (a *App) listAccounts(api *API, filter *string, capN *int, cursorSet bool, cursor string) int {
+func (a *App) listAccounts(api *API, capN *int, cursorSet bool, cursor string) int {
 	if cursorSet {
-		res, err := api.ListAccounts(a.ctx, accountParams(filter, accountRequestLimit(capN, 0), cursor, a.includeDeleted()))
+		res, err := api.ListAccounts(a.ctx, accountParams(accountRequestLimit(capN, 0), cursor, a.includeDeleted()))
 		if code := a.checked(res, err); code != 0 {
 			return code
 		}
@@ -539,7 +486,7 @@ func (a *App) listAccounts(api *API, filter *string, capN *int, cursorSet bool, 
 			}
 			seen[cursor] = true
 		}
-		res, err := api.ListAccounts(a.ctx, accountParams(filter, accountRequestLimit(capN, len(raws)), cursor, a.includeDeleted()))
+		res, err := api.ListAccounts(a.ctx, accountParams(accountRequestLimit(capN, len(raws)), cursor, a.includeDeleted()))
 		if code := a.checked(res, err); code != 0 {
 			return code
 		}
@@ -611,9 +558,9 @@ func accountRequestLimit(capN *int, have int) int {
 	return n
 }
 
-func accountParams(filter *string, limit int, cursor string, include *bool) *apiv1.ListAccountsParams {
+func accountParams(limit int, cursor string, include *bool) *apiv1.ListAccountsParams {
 	lim := apiv1.Limit(limit)
-	params := &apiv1.ListAccountsParams{Limit: &lim, TdInstance: filter, IncludeDeleted: include}
+	params := &apiv1.ListAccountsParams{Limit: &lim, IncludeDeleted: include}
 	if cursor != "" {
 		c := apiv1.Cursor(cursor)
 		params.Cursor = &c

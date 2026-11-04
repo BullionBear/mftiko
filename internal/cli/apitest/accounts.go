@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"net/http"
-	"regexp"
 	"sort"
 	"strconv"
 
@@ -21,8 +20,6 @@ var (
 type accountRow struct {
 	rec apiv1.Account
 }
-
-var instanceNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
 
 func (s *Server) install(opt Option) {
 	s.kinds = append([]apiv1.AccountKind(nil), opt.Kinds...)
@@ -141,14 +138,6 @@ func (a *api) ListAccounts(ctx context.Context, req apiv1.ListAccountsRequestObj
 	}
 	a.s.mu.Lock()
 	defer a.s.mu.Unlock()
-	if req.Params.TdInstance != nil && *req.Params.TdInstance != "" {
-		if fields := a.s.tdFields(*req.Params.TdInstance); len(fields) > 0 {
-			return apiv1.ListAccounts400ApplicationProblemPlusJSONResponse{
-				ValidationFailedApplicationProblemPlusJSONResponse: apiv1.ValidationFailedApplicationProblemPlusJSONResponse(fieldsProblem(
-					http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, http.StatusText(http.StatusBadRequest), "invalid request", fields)),
-			}, nil
-		}
-	}
 	limit := 1000
 	if req.Params.Limit != nil {
 		if *req.Params.Limit < 1 || *req.Params.Limit > 1000 {
@@ -181,9 +170,6 @@ func (a *api) ListAccounts(ctx context.Context, req apiv1.ListAccountsRequestObj
 	sort.Slice(rows, func(i, j int) bool { return rows[i].rec.ApiId < rows[j].rec.ApiId })
 	var items []apiv1.Account
 	for _, row := range rows {
-		if req.Params.TdInstance != nil && *req.Params.TdInstance != "" && row.rec.TdInstance != *req.Params.TdInstance {
-			continue
-		}
 		if hasAfter && row.rec.ApiId <= after {
 			continue
 		}
@@ -206,20 +192,6 @@ func (a *api) ListAccounts(ctx context.Context, req apiv1.ListAccountsRequestObj
 	}
 	fresh = copyFresh(fresh)
 	return apiv1.ListAccounts200JSONResponse{Items: items, NextCursor: next, Freshness: fresh}, nil
-}
-
-func (s *Server) tdFields(name string) []apiv1.FieldError {
-	if !instanceNameRe.MatchString(name) {
-		return []apiv1.FieldError{{Path: "/td_instance", Reason: "is not an instance name"}}
-	}
-	inst, ok := s.instances[name]
-	if !ok {
-		return []apiv1.FieldError{{Path: "/td_instance", Reason: "is not in the topology"}}
-	}
-	if inst.Plane != apiv1.Td {
-		return []apiv1.FieldError{{Path: "/td_instance", Reason: "is not a td instance"}}
-	}
-	return nil
 }
 
 func (a *api) CreateAccount(ctx context.Context, req apiv1.CreateAccountRequestObject) (apiv1.CreateAccountResponseObject, error) {
@@ -252,18 +224,12 @@ func (a *api) CreateAccount(ctx context.Context, req apiv1.CreateAccountRequestO
 	if a.s.nextID < 1 {
 		a.s.nextID = 1
 	}
-	region := ""
-	if inst, ok := a.s.instances[string(body.TdInstance)]; ok {
-		region = inst.Region
-	}
 	uid := body.ExchAccountUid
 	ex := exchangeOfKind(body.Kind)
 	rec := copyAccount(apiv1.Account{
 		ApiId:          a.s.nextID,
 		Name:           body.Name,
 		Kind:           body.Kind,
-		TdInstance:     body.TdInstance,
-		Region:         region,
 		Revision:       1,
 		ReferencedBy:   []apiv1.SessionIDValue{},
 		Exchange:       &ex,

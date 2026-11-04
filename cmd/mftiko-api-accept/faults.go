@@ -143,10 +143,10 @@ func invalidFlow() error {
 			s.Feeds = &[]apiv1.FeedDeclInput{{Feed: "orderbook_delta.BinanceUM_Perp_BTCUSDT", MdInstance: tdInst}}
 		})},
 		{"algo_id out of range", "/accounts/0/algo_ids", mutate(ok, func(s *apiv1.SessionCreate) {
-			s.Accounts = &[]apiv1.AccountDeclInput{{Name: "x", ApiId: 1, AlgoIds: []int{1024}}}
+			s.Accounts = &[]apiv1.AccountDeclInput{{Name: "x", ApiId: 1, TdInstance: tdInst, AlgoIds: []int{1024}}}
 		})},
 		{"account that does not exist", "/accounts/0/api_id", mutate(ok, func(s *apiv1.SessionCreate) {
-			s.Accounts = &[]apiv1.AccountDeclInput{{Name: "x", ApiId: 999_999_999, AlgoIds: []int{1}}}
+			s.Accounts = &[]apiv1.AccountDeclInput{{Name: "x", ApiId: 999_999_999, TdInstance: tdInst, AlgoIds: []int{1}}}
 		})},
 		{"params not an object", "/params", rawBody(`{"name":"x","sts_instance":"` + stsInst + `","strategy":{"repository":"` + strategyRepository + `","ref":"` + strategyTag + `"},"params":[1]}`)},
 		{"field the API does not take", "/selectors", rawBody(`{"name":"x","sts_instance":"` + stsInst + `","strategy":{"repository":"` + strategyRepository + `","ref":"` + strategyTag + `"},"selectors":[]}`)},

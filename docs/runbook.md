@@ -151,7 +151,7 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 
 2. 重啟每一台 `mftiko-api`。新的寫入用新版本。舊密文仍解得開，因為舊版本還在同一串。還沒重啟的 replica 沒有新鑰，不會把新版本改回去。不要讓兩台 replica 的第一把金鑰不同、又都解得開兩邊，否則會互相改寫、停不下來。
 
-3. 等每一台都重啟完，再等每一台的 `mftiko_account_key_old` 是 0（含已軟刪除）。沒有這個樣本不是 0；先看 `mftiko_postgres_up`。log 訊息是 `account key re-encrypt`，`remaining` 是還差幾列，`old` 是 `版本=筆數`。這段重加密不改 `revision`、`updated_at`、`sealed_credentials`，也不寫 etcd。若 gauge 一直大於 0：`old` 還列著正要拿掉的版本，就是還有列沒換成目前金鑰。同一則 log 沒有在變、又有 warn `account credentials were not re-encrypted`，那些 `api_id` 的密文解不開，重新輸入該帳號後才會離開 gauge。沒有這則 warn、版本又還在盒子裡，就是還沒跑完。
+3. 等每一台都重啟完，再等每一台的 `mftiko_account_key_old` 是 0（含已軟刪除）。沒有這個樣本不是 0；先看 `mftiko_postgres_up`。log 訊息是 `account key re-encrypt`，`remaining` 是還差幾列，`old` 是 `版本=筆數`。這段重加密不改 `revision`、`updated_at`、`account_replicas.sealed_credentials`，也不寫 etcd。若 gauge 一直大於 0：`old` 還列著正要拿掉的版本，就是還有列沒換成目前金鑰。同一則 log 沒有在變、又有 warn `account credentials were not re-encrypted`，那些 `api_id` 的密文解不開，重新輸入該帳號後才會離開 gauge。沒有這則 warn、版本又還在盒子裡，就是還沒跑完。
 
 4. 拿掉不再需要的舊版本（加密用的那把維持第一個），再把每一台 API 重啟一次。
 

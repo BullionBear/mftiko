@@ -3,21 +3,22 @@
 # 2.1.0 adds session log read and export (E14-D011–E14-D015). Compatible: new paths and one ErrorCode.
 # 2.2.0 adds the strategy event log switch (E20-D007). Compatible: one optional request field, one response field.
 # 2.3.0 adds account exchange, exch_account_uid, deleted_at, and include_deleted (E21-D010, E21-D027).
-# td_instance stays. Removing it is the 3.0.0 break (E21-06). exch_account_uid is required on create;
-# that one oasdiff ERR is listed in api-v1-err-ignore.txt.
+# 3.0.0 removes td_instance from account requests and responses, removes Account.region,
+# and requires AccountDeclInput.td_instance (E21-D052, E21-D054, E21-D005). In place, path
+# still /api/v1. The oasdiff ERR lines are in api-v1-err-ignore.txt.
 # 2.4.0 adds td_pubkey_unavailable (E21-D039, E21-D041). Compatible: one ErrorCode.
 # The oasdiff response-property-enum-value-added lines are in api-v1-err-ignore.txt.
-# oasdiff ignores only the lines in contract/openapi/api-v1-err-ignore.txt. The next incompatible
-# change opens v2.yaml. console 與 CLI 只認這份契約，不認平台的 proto（E10-D002）。
+# oasdiff ignores only the lines in contract/openapi/api-v1-err-ignore.txt.
+# console 與 CLI 只認這份契約，不認平台的 proto（E10-D002）。
 openapi: 3.0.3
 info:
   title: mftiko API
-  version: 2.4.0
+  version: 3.0.0
   description: |
     mftiko API server 的對外契約（DECISIONS E10-D001、E10-D002）。
 
     **慣例（E10-D036）**
-    - 路徑都在 `/api/v1` 底下。`2.0.0` 這一次在原地拿掉策略 `id`（E10-D118）。`2.1.0` 加上 session log 的讀取與匯出（E14-D011–E14-D015）。`2.2.0` 加上策略事件紀錄的開關（E20-D007）。`2.3.0` 加上帳號的 `exchange`、`exch_account_uid`、`deleted_at` 與 `include_deleted`（E21-D010、E21-D027）；`td_instance` 仍在，拿掉是 3.0.0。`2.4.0` 加上錯誤碼 `td_pubkey_unavailable`（E21-D039）。同一個檔案只做相容擴充，讀取端忽略不認得的欄位。下一次不相容另開 `v2.yaml`。
+    - 路徑都在 `/api/v1` 底下。`2.0.0` 這一次在原地拿掉策略 `id`（E10-D118）。`2.1.0` 加上 session log 的讀取與匯出（E14-D011–E14-D015）。`2.2.0` 加上策略事件紀錄的開關（E20-D007）。`2.3.0` 加上帳號的 `exchange`、`exch_account_uid`、`deleted_at` 與 `include_deleted`（E21-D010、E21-D027）。`2.4.0` 加上錯誤碼 `td_pubkey_unavailable`（E21-D039）。`3.0.0` 在原地拿掉帳號請求與回應的 `td_instance`、拿掉帳號回應的 `region`，並把建立 session 的 `td_instance` 改成必填（E21-D052、E21-D054、E21-D005）。讀取端忽略不認得的欄位。
     - 時間是 RFC 3339 字串（UTC，奈秒精度可省略）。
     - enum 是 API 自己的小寫字串，不是 proto 的名稱。
     - 錯誤一律是 `application/problem+json`（RFC 9457），另帶穩定的 `code`；驗證錯誤的 `errors[].path` 是 JSON Pointer（RFC 6901），指向請求 body 裡的欄位（E10-D004）。
@@ -475,14 +476,14 @@ paths:
       operationId: createAccount
       summary: 建立帳號
       description: |
-        帳號列寫進 Postgres，再把 sealbox 投影寫進 `td_instance` 的 etcd（E21-D022）。`api_id` 由 API 在 1 到 2⁵³−1 隨機配發，唯一性是主鍵，不掃描 region 的副本（E10-D008、E21-D002、E21-D030）。
-        `credentials` 必填，缺少回 400（E10-D062）。明文以帳號金鑰做 AEAD 存進 Postgres，並以該 TD instance 的公鑰封成 sealbox 再寫進 etcd（E06-D013、E21-D003、E21-D019）。`api_id` 與 `kind` 一起封進去。明文、AEAD 與 sealbox 都不進回應。
+        帳號列只寫進 Postgres（E21-D048、E21-D052）。`api_id` 由 API 在 1 到 2⁵³−1 隨機配發，唯一性是主鍵，不掃描 region 的副本（E10-D008、E21-D002、E21-D030）。建立不指定 TD instance，也不寫 etcd。
+        `credentials` 必填，缺少回 400（E10-D062）。明文以帳號金鑰做 AEAD 存進 Postgres（E21-D003、E21-D019）。`api_id` 與 `kind` 一起封進去。明文與 AEAD 都不進回應。sealbox 在建立 session 時才寫進該 instance 的副本（E21-D005）。
         `key_type` 必須在該種類的 `key_types` 內，passphrase 依種類必須有或不能有，key 與 secret 不可為空；違反回 400，錯誤只說欄位，不向交易所驗證 key（E10-D064）。
-        `td_instance` 必須在 topology 內、平面是 td，且設定有它的公鑰，否則回 400，缺公鑰要寫明（E10-D065）。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
+        請求帶 `td_instance` 回 400，不默默忽略（E21-D052）。
         `exch_account_uid` 必填。去掉前後空白後不可為空，最長 64 字元（E21-D025）。`exchange` 由 kind 推出，不由呼叫端指定（E21-D008）。
         `name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。軟刪除後的名稱可以再用。
         `enabled` 不公開，API 一律寫 true（E10-D034）。
-        Postgres 已 commit 而 etcd 寫入失敗時回 503。reconcile 會把列補進 etcd（E21-D022）。Postgres 不可用回 503 `storage_unavailable`。
+        Postgres 不可用回 503 `storage_unavailable`。TD region 不可用不影響建立。
       requestBody:
         required: true
         content:
@@ -515,11 +516,6 @@ paths:
       parameters:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
-        - name: td_instance
-          in: query
-          description: 只列這個 TD instance。不是 instance 名稱、不在 topology，或不是 td，回 400。region 不可用仍列出 Postgres 裡的帳號，並標在 `freshness`（E21-D029）。
-          schema:
-            type: string
         - name: include_deleted
           in: query
           description: 為 true 時一併列出已軟刪除的帳號（E21-D012）。省略是 false。
@@ -567,7 +563,7 @@ paths:
       operationId: updateAccount
       summary: 更新帳號
       description: |
-        以 Postgres 的 `revision` 做 CAS，不成立回 409（E10-D037、E21-D027）。這不是 etcd 的 `mod_revision`。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064）。`kind`、`td_instance`、`exch_account_uid` 不能改。`name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。已軟刪除的帳號回 404。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
+        以 Postgres 的 `revision` 做 CAS，不成立回 409（E10-D037、E21-D027）。這不是 etcd 的 `mod_revision`。省略 `credentials` 沿用原本的密文（E10-D062）；有給就重新封裝，格式檢查與建立相同（E10-D064），並改寫每一個現存副本（E21-D047）。`kind` 與 `exch_account_uid` 不能改。請求帶 `td_instance` 回 400，不默默忽略（E21-D052）。`name` 在未軟刪除的列之中唯一，同名回 409（E21-D023）。已軟刪除的帳號回 404。任一副本所在的 region 不可用時回 503，Postgres 不寫（E21-D029）。沒有副本時不看 region。要重封而該 instance 沒有可用公鑰時回 409 `td_pubkey_unavailable`，不寫 Postgres。
 
         **換憑證或改 `settings` 會重啟這個帳號的 account worker**（E10-D034）：新連線與 recon 完成前，這個帳號的下單路徑是斷的。
         用它的 session 不會被結束，但期間的單會因沒有 responder 或逾時失敗（E08-D043）。內容沒變時不增加 `revision`、不寫 etcd，不會重啟。
@@ -601,7 +597,7 @@ paths:
       operationId: deleteAccount
       summary: 刪除帳號
       description: |
-        軟刪除：Postgres 列留下並設 `deleted_at`，etcd 副本刪掉（E21-D012、E21-D024）。仍被非 terminal 的 session 引用時回 409（`referenced`，E10-D011）。`revision` 不符回 409（`conflict`）。已軟刪除的帳號回 404。該 region 不可用時回 503，Postgres 不寫（E21-D029）。
+        軟刪除：Postgres 列留下並設 `deleted_at`，每個副本的 etcd 投影刪掉；副本列留下，由 reconcile 再試 etcd 刪除（E21-D012、E21-D024）。仍被非 terminal 的 session 引用時回 409（`referenced`，E10-D011）。`revision` 不符回 409（`conflict`）。已軟刪除的帳號回 404。任一副本所在的 region 不可用時回 503，Postgres 不寫（E21-D029）。沒有副本時不看 region。
       parameters:
         - $ref: '#/components/parameters/APIID'
         - name: revision
@@ -1067,13 +1063,19 @@ components:
           description: 必填，使用者指定（E10-D032）。必須在 topology 裡、平面是 md。
     AccountDeclInput:
       type: object
-      required: [name, api_id, algo_ids]
+      required: [name, api_id, td_instance, algo_ids]
       properties:
         name:
           type: string
           minLength: 1
         api_id:
           $ref: '#/components/schemas/APIIDValue'
+        td_instance:
+          allOf:
+            - $ref: '#/components/schemas/InstanceName'
+          description: |
+            必填，使用者指定，比照 `md_instance`（E21-D005，修訂 E10-D032）。必須在 topology 裡、平面是 td。
+            目標 instance 沒有可用公鑰時，建立 session 回 409 `td_pubkey_unavailable`，不寫副本也不寫 spec（E21-D051）。
         algo_ids:
           type: array
           minItems: 1
@@ -1143,7 +1145,7 @@ components:
     # ---------- session：讀取 ----------
     SessionSpecView:
       type: object
-      description: etcd 裡的 spec，以 API 的型別呈現。策略已解析成 digest；帳號帶入了 `td_instance`。
+      description: etcd 裡的 spec，以 API 的型別呈現。策略已解析成 digest；帳號的 `td_instance` 來自建立 session 的請求（E21-D005）。
       required: [name, labels, desired_state, strategy, params, feeds, accounts, restart, deps_timeout_s, start_timeout_s, recv_window_ms, grace_ms, limits, inputs, event_log]
       properties:
         name:
@@ -1519,7 +1521,7 @@ components:
           description: 0 = 關閉。
     AccountCreate:
       type: object
-      required: [name, kind, td_instance, credentials, exch_account_uid]
+      required: [name, kind, credentials, exch_account_uid]
       properties:
         name:
           type: string
@@ -1528,10 +1530,6 @@ components:
         kind:
           type: string
           description: '`GET /account-kinds` 裡 `supported` 的種類。`exchange` 由這個種類推出。'
-        td_instance:
-          allOf:
-            - $ref: '#/components/schemas/InstanceName'
-          description: 建立之後不能改。過渡期它決定 etcd 投影寫進哪一個 TD instance（E21-D002）。拿掉是 E21-06。
         exch_account_uid:
           type: string
           minLength: 1
@@ -1562,9 +1560,10 @@ components:
           $ref: '#/components/schemas/AccountSettings'
     Account:
       type: object
-      required: [api_id, name, kind, td_instance, region, settings, revision, referenced_by]
+      required: [api_id, name, kind, settings, revision, referenced_by]
       description: |
-        不含憑證、密文或指紋（E10-D063）。
+        不含憑證、密文或指紋（E10-D063）。沒有 `td_instance`：同一個帳號可以在多個 TD instance 上各有一份副本（E21-D052、E21-D006）。
+        沒有 `region`：它以前是單一 `td_instance` 的 region（E21-D054）。
         `revision` 是 Postgres 的 CAS 序號，從 1 起，成功的更新與軟刪除加 1，不是 etcd 的 `mod_revision`（E21-D027）。
         `exchange` 由 kind 的 registry 推出，不另存（E21-D008、E21-D031）。回應會帶 `exchange` 與 `exch_account_uid`。
         `deleted_at` 只有軟刪除之後才有。
@@ -1581,10 +1580,6 @@ components:
         exch_account_uid:
           type: string
           description: 交易所帳戶識別（E21-D008、E21-D025）。回應會帶。
-        td_instance:
-          $ref: '#/components/schemas/InstanceName'
-        region:
-          type: string
         settings:
           $ref: '#/components/schemas/AccountSettings'
         revision:

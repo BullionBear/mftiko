@@ -337,13 +337,6 @@
 				{detail.account.exch_account_uid ?? '—'}
 				{@render fieldError('/exch_account_uid')}
 			</dd>
-			<dt>TD instance</dt>
-			<dd>
-				{detail.account.td_instance}
-				{@render fieldError('/td_instance')}
-			</dd>
-			<dt>Region</dt>
-			<dd>{detail.account.region}</dd>
 			{#if detail.account.deleted_at}
 				<dt>Deleted</dt>
 				<dd>{detail.account.deleted_at}</dd>

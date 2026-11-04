@@ -34,7 +34,6 @@ export function fieldDomId(path: string): string {
 const KNOWN = new Set([
 	'/name',
 	'/kind',
-	'/td_instance',
 	'/exch_account_uid',
 	'/revision',
 	'/credentials',

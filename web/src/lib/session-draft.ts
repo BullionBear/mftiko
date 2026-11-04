@@ -8,6 +8,7 @@ export type AccountRow = {
 	key: number;
 	apiId: string;
 	name: string;
+	tdInstance: string;
 	algoIds: number[];
 	algoDraft: string;
 };
@@ -147,6 +148,7 @@ export function localErrors(draft: Draft): Record<string, string> {
 		if (seenAccounts.has(row.apiId)) errors[`/accounts/${i}/api_id`] = 'duplicate';
 		else seenAccounts.add(row.apiId);
 		if (row.name.trim() === '') errors[`/accounts/${i}/name`] = 'required';
+		if (row.tdInstance.trim() === '') errors[`/accounts/${i}/td_instance`] = 'required';
 		const path = `/accounts/${i}/algo_ids`;
 		const seen = new Set<number>();
 		for (const id of row.algoIds) {
@@ -201,6 +203,7 @@ export function sessionRequestBody(draft: Draft): string {
 		body.accounts = draft.accounts.map((row) => ({
 			name: row.name,
 			api_id: Number(row.apiId),
+			td_instance: row.tdInstance,
 			algo_ids: accountAlgos(row)
 		}));
 	}
@@ -229,7 +232,7 @@ function knownPath(path: string, draft: Draft): boolean {
 	if (STATIC_PATHS.has(path)) return true;
 	const feed = /^\/feeds\/(\d+)(?:\/(?:feed|md_instance))?$/.exec(path);
 	if (feed) return Number(feed[1]) < draft.feeds.length;
-	const account = /^\/accounts\/(\d+)(?:\/(?:name|api_id|algo_ids))?$/.exec(path);
+	const account = /^\/accounts\/(\d+)(?:\/(?:name|api_id|td_instance|algo_ids))?$/.exec(path);
 	if (account) return Number(account[1]) < draft.accounts.length;
 	return false;
 }

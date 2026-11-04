@@ -144,3 +144,16 @@ GET /strategies added the new `td_pubkey_unavailable` enum value to the `code` r
 GET /strategies added the new `td_pubkey_unavailable` enum value to the `code` response property for the response status `401`
 GET /strategies added the new `td_pubkey_unavailable` enum value to the `code` response property for the response status `404`
 GET /strategies added the new `td_pubkey_unavailable` enum value to the `code` response property for the response status `503`
+
+# E21-D052 / E21-D054 (#533): api.v1 3.0.0 drops td_instance and region from the account
+# resource and requires td_instance on a session account. These lines match only this
+# diff. A later base already contains the break, so they match nothing and stay dormant.
+GET /accounts removed the required property `items/items/region` from the response with the `200` status
+GET /accounts removed the required property `items/items/td_instance` from the response with the `200` status
+POST /accounts removed the required property `region` from the response with the `201` status
+POST /accounts removed the required property `td_instance` from the response with the `201` status
+GET /accounts/{api_id} removed the required property `region` from the response with the `200` status
+GET /accounts/{api_id} removed the required property `td_instance` from the response with the `200` status
+PUT /accounts/{api_id} removed the required property `region` from the response with the `200` status
+PUT /accounts/{api_id} removed the required property `td_instance` from the response with the `200` status
+POST /sessions added the new required request property `accounts/items/td_instance`

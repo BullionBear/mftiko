@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/protobuf/proto"
@@ -32,6 +33,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange"
 	"github.com/BullionBear/mftiko/exchange/exchangetest"
 	"github.com/BullionBear/mftiko/internal/api"
+	"github.com/BullionBear/mftiko/internal/platform/accountkey"
 	platagent "github.com/BullionBear/mftiko/internal/platform/agent"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/pgtest"
@@ -235,7 +237,7 @@ func TestAPISealedAccountReachesReady(t *testing.T) {
 		return nil
 	})
 
-	createBody := `{"name":"desk","kind":"Fake","td_instance":"` + readyInst + `","exch_account_uid":"uid-1","credentials":{"key_type":"hmac","key":"` + readyAPIKey + `","secret":"` + readySecret + `"}}`
+	createBody := `{"name":"desk","kind":"Fake","exch_account_uid":"uid-1","credentials":{"key_type":"hmac","key":"` + readyAPIKey + `","secret":"` + readySecret + `"}}`
 	code, raw := httpDo(t, http.MethodPost, base+"/api/v1/accounts", readyToken, createBody)
 	if code != http.StatusCreated {
 		t.Fatalf("create %d %s", code, raw)
@@ -246,6 +248,9 @@ func TestAPISealedAccountReachesReady(t *testing.T) {
 	if err := json.Unmarshal(raw, &created); err != nil || created.APIID < 1 {
 		t.Fatalf("created %s %v", raw, err)
 	}
+	// Session create writes this projection. This process has no strategy catalog,
+	// so the test seals the stored AEAD with the instance key and puts it itself.
+	projectReadyAccount(t, pg.DSN(), root, key, created.APIID)
 	bodies := []string{string(raw)}
 
 	self, err := os.Executable()
@@ -396,6 +401,51 @@ func TestAPISealedAccountReachesReady(t *testing.T) {
 		if strings.Contains(blob, readySecret) || strings.Contains(blob, readyAPIKey) {
 			t.Fatalf("etcd %s contains credential plaintext", kv.Key)
 		}
+	}
+}
+
+func projectReadyAccount(t *testing.T, dsn string, root *clientv3.Client, key *sealbox.PrivateKey, id int64) {
+	t.Helper()
+	box, err := accountkey.Parse(testAccountKeys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	var kind, name string
+	var cred []byte
+	if err := conn.QueryRow(ctx, `SELECT kind, name, credentials FROM accounts WHERE api_id = $1`, id).Scan(&kind, &name, &cred); err != nil {
+		t.Fatal(err)
+	}
+	plain, err := box.Open(id, kind, cred)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(plain)
+	var msg statev1.AccountCredentials
+	if err := proto.Unmarshal(plain, &msg); err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := sealbox.SealCredentials(key.Public(), id, kind, sealbox.Credentials{
+		KeyType: msg.KeyType, Key: msg.Key, Secret: msg.Secret, Passphrase: msg.Passphrase,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := proto.Marshal(&statev1.Account{
+		Name: name, Kind: kind, SealedCredentials: sealed, Enabled: true,
+		Settings: &statev1.AccountSettings{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := root.Put(ctx, state.AccountKey(readyInst, id), string(rec)); err != nil {
+		t.Fatal(err)
 	}
 }
 

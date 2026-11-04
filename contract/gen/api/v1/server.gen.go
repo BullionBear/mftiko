@@ -149,19 +149,6 @@ func (siw *ServerInterfaceWrapper) ListAccounts(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// ------------- Optional query parameter "td_instance" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "td_instance", r.URL.Query(), &params.TdInstance, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "td_instance"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "td_instance", Err: err})
-		}
-		return
-	}
-
 	// ------------- Optional query parameter "include_deleted" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "include_deleted", r.URL.Query(), &params.IncludeDeleted, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})

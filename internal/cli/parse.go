@@ -125,8 +125,8 @@ Call GET /auth/me and print the user. The default is a table with local times.
 const accountHelp = `usage: mftiko account list|show|create|update|delete
 
 list
-  mftiko account list [-td-instance name] [-limit N] [-include-deleted true]
-  mftiko account list [-td-instance name] [-cursor TOKEN] [-include-deleted true]
+  mftiko account list [-limit N] [-include-deleted true]
+  mftiko account list [-cursor TOKEN] [-include-deleted true]
 
 -limit and -cursor cannot both be set. -include-deleted true lists soft-deleted
 accounts. Omit it, or pass false, to list live accounts only.
@@ -135,7 +135,7 @@ show
   mftiko account show <api_id> [-include-deleted true]
 
 create
-  mftiko account create -name NAME -kind KIND -td-instance NAME
+  mftiko account create -name NAME -kind KIND
       -exch-account-uid UID
       [-key-type hmac|ed25519]
       [-key-file PATH] [-secret-file PATH] [-passphrase-file PATH]
