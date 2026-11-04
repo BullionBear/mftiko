@@ -13,6 +13,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/agent/fleet"
 	"github.com/BullionBear/mftiko/internal/platform/agent/latest"
 	"github.com/BullionBear/mftiko/internal/platform/agent/runner"
+	"github.com/BullionBear/mftiko/internal/platform/sealbox"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
@@ -41,7 +42,13 @@ type Config struct {
 	Endpoints map[string]Endpoint // by account kind (E06-D016)
 	Open      Opener              // checks sealed credentials, at plan time
 	Unseal    Unsealer            // opens them, at spawn
-	User      NATSUser            // signs the worker's NATS user, at spawn
+	// Pubkey is this instance's public key, from -seal-key.
+	// Publish writes it to /td/{inst}/pubkey after the election when the stored value parses
+	// to a different key (E21-D004, E21-D035). A zero key is a real curve point, so Publish
+	// is the signal. Tests leave it false. The agent writes etcd only; it does not touch Postgres.
+	Pubkey  sealbox.PublicKey
+	Publish bool
+	User    NATSUser // signs the worker's NATS user, at spawn
 
 	Policy     agent.Policy // DefaultPolicy if nil
 	Linger     time.Duration
@@ -93,6 +100,14 @@ func Run(ctx context.Context, cfg Config) error {
 	reader, err := cl.Reader(home)
 	if err != nil {
 		return err
+	}
+	if cfg.Publish {
+		pctx, cancel := context.WithTimeout(ctx, writeTimeout)
+		err := publishPubkey(pctx, reader, term, cfg.Instance, cfg.Pubkey)
+		cancel()
+		if err != nil {
+			return err
+		}
 	}
 	mopt := cfg.Mirror
 	if mopt.Log == nil {

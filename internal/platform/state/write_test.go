@@ -120,6 +120,7 @@ func TestWriteScope(t *testing.T) {
 				TDDemandKey("td-tw-1", sid, 42),
 				MDAckKey("md-jp-1", sid, entry), // the provider's
 				TDAckKey("td-jp-1", sid, 42),
+				PubkeyKey("td-tw-1"),
 				WriterKey(PlaneMD, "md-tw-1"),
 				AgentKey(PlaneMD, "md-tw-1"),
 				AgentKey(PlaneCtl, ControllerInstance),
@@ -140,6 +141,7 @@ func TestWriteScope(t *testing.T) {
 				SelectorKey("md-tw-2", "s1"),
 				AgentKey(PlaneMD, "md-tw-2"),
 				AgentKey(PlaneTD, "td-tw-1"),
+				PubkeyKey("td-tw-1"),
 				SessionStatusKey("sts-tw-1", sid),
 			),
 		},
@@ -148,12 +150,14 @@ func TestWriteScope(t *testing.T) {
 			writable: []string{
 				TDAckKey("td-tw-1", sid, 42),
 				WorkerStatusKey(PlaneTD, "td-tw-1", h),
+				PubkeyKey("td-tw-1"),
 			},
 			denied: append(reserved(PlaneTD, "td-tw-1"),
 				AgentKey(PlaneTD, "td-tw-1"),
 				AccountKey("td-tw-1", 42), // the API server's
 				TDDemandKey("td-tw-1", sid, 42),
 				TDAckKey("td-tw-2", sid, 42),
+				PubkeyKey("td-tw-2"),
 				WorkerStatusKey(PlaneTD, "td-tw-2", h),
 				MDAckKey("md-tw-1", sid, entry),
 			),
@@ -174,6 +178,7 @@ func TestWriteScope(t *testing.T) {
 				SessionStatusKey("sts-tw-1", sid), // the agents' own keys
 				MDAckKey("md-jp-1", sid, entry),
 				TDAckKey("td-tw-1", sid, 42),
+				PubkeyKey("td-tw-1"),
 				AgentKey(PlaneMD, "md-tw-1"),
 				WorkerStatusKey(PlaneSTS, "sts-tw-1", h),
 				SelectorKey("md-tw-1", "s1"),
@@ -235,6 +240,7 @@ func TestWriteScope(t *testing.T) {
 				AgentKey(PlaneTD, "td-tw-1"),
 				WriterKey(PlaneTD, "td-tw-1"),
 				IncarnationKey(PlaneTD, "td-tw-2", h),
+				PubkeyKey("td-tw-1"),
 			},
 		},
 	}

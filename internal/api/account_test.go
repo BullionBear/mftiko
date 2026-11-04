@@ -59,7 +59,11 @@ type accountFix struct {
 
 func newAccountFix(t *testing.T, dsn string) *accountFix {
 	t.Helper()
-	env := newWriteEnv(t)
+	return startAccountFix(t, dsn, newWriteEnv(t))
+}
+
+func startAccountFix(t *testing.T, dsn string, env *writeEnv) *accountFix {
+	t.Helper()
 	keys := map[string]*sealbox.PrivateKey{}
 	pubs := map[string]sealbox.PublicKey{}
 	for inst := range env.cfg.TDKeys {
@@ -175,8 +179,21 @@ func TestTDInstanceNeedsPublicKey(t *testing.T) {
 		Topology: state.Topology{Instances: map[string]string{"td-tw-1": "tw", "md-tw-1": "tw"}},
 		Planes:   map[string]state.Plane{"td-tw-1": state.PlaneTD, "md-tw-1": state.PlaneMD},
 	}}
-	if _, fields := s.checkTDInstance("td-tw-1"); len(fields) != 1 || fields[0].Path != "/td_instance" || fields[0].Reason != "has no public key" {
-		t.Fatalf("missing key: %+v", fields)
+	s.pubs = map[string]*pubkeySlot{"td-tw-1": {state: pubMissing}}
+	_, err := s.pubkeyFor(context.Background(), "td-tw-1")
+	var missing *pubkeyUnavailable
+	if !errors.As(err, &missing) || missing.inst != "td-tw-1" {
+		t.Fatalf("missing key: %v", err)
+	}
+	k, err := sealbox.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.cfg.TDKeys = map[string]sealbox.PublicKey{"td-tw-1": k.Public()}
+	s.pubs["td-tw-1"] = &pubkeySlot{state: pubBad}
+	_, err = s.pubkeyFor(context.Background(), "td-tw-1")
+	if !errors.As(err, &missing) {
+		t.Fatalf("unreadable etcd value fell back to td_keys: %v", err)
 	}
 	if _, _, fields := s.classifyInstance("md-tw-1"); len(fields) != 1 || fields[0].Reason != "is not a td instance" {
 		t.Fatalf("md: %+v", fields)

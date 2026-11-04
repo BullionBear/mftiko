@@ -218,6 +218,7 @@ func TestProblemExitCodes(t *testing.T) {
 		{apiv1.ErrorCodeInternal, 500, "Internal", ExitInternal},
 		{apiv1.ErrorCodeInvalidArtifact, 502, "Bad Gateway", ExitInvalidArtifact},
 		{apiv1.ErrorCodeLogsUnavailable, 503, "Logs Unavailable", ExitLogsUnavailable},
+		{apiv1.ErrorCodeTdPubkeyUnavailable, 409, "Conflict", ExitTdPubkeyUnavailable},
 	}
 	for _, tc := range cases {
 		t.Run(string(tc.code), func(t *testing.T) {

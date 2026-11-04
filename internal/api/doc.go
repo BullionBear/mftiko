@@ -34,7 +34,7 @@
 //	allow                                 strategy repository allowlist; "*" or host plus path prefix (E10-D122)
 //	registry_creds                        Docker config.json path; empty is anonymous (E10-D123)
 //	plain_http_hosts                      hosts that use http; empty uses https (E10-D124)
-//	td_keys                               TD instance name → public key, the mftiko-seal pubkey form (E10-D011)
+//	td_keys                               fallback TD public key, the mftiko-seal pubkey form; etcd /td/{inst}/pubkey wins (E21-D035, #518 removes it)
 //	retention                             W5 retention, Go duration, default 168h (E10-D017)
 //	unavailable_after                     region unavailable threshold, Go duration, default 15s (E10-D014)
 //	listen                                listen address, default :8080 (E10-D029)

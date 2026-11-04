@@ -110,7 +110,7 @@ func (s *Server) CreateAccount(w http.ResponseWriter, r *http.Request) {
 	if !accepted {
 		fields = append(fields, apiv1.FieldError{Path: "/kind", Reason: "is not accepted"})
 	}
-	pub, instFields := s.checkTDInstance(string(body.TdInstance))
+	_, _, instFields := s.classifyInstance(string(body.TdInstance))
 	fields = append(fields, instFields...)
 	fields = append(fields, checkCredentials(body.Credentials, kind, true, accepted)...)
 	fields = append(fields, checkSettings(body.Settings)...)
@@ -119,6 +119,11 @@ func (s *Server) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := s.availableViews(string(body.TdInstance)); err != nil {
+		s.writeAccountErr(w, err)
+		return
+	}
+	pub, err := s.pubkeyFor(r.Context(), string(body.TdInstance))
+	if err != nil {
 		s.writeAccountErr(w, err)
 		return
 	}
@@ -241,6 +246,14 @@ func (s *Server) UpdateAccount(w http.ResponseWriter, r *http.Request, apiID api
 		s.writeAccountErr(w, err)
 		return
 	}
+	var pub sealbox.PublicKey
+	if body.Credentials != nil {
+		pub, err = s.pubkeyFor(r.Context(), cur.Inst)
+		if err != nil {
+			s.writeAccountErr(w, err)
+			return
+		}
+	}
 	if name != cur.Name {
 		taken, err := s.liveNameTaken(r.Context(), name, cur.ID)
 		if err != nil {
@@ -258,11 +271,6 @@ func (s *Server) UpdateAccount(w http.ResponseWriter, r *http.Request, apiID api
 	}
 	next := accountChange{Name: name, Cancel: cancel, At: s.now().UTC()}
 	if body.Credentials != nil {
-		pub, instFields := s.checkTDInstance(cur.Inst)
-		if len(instFields) > 0 {
-			writeFields(w, instFields)
-			return
-		}
 		ct, sealed, ver, err := s.sealAccount(pub, cur.ID, cur.Kind, body.Credentials)
 		if err != nil {
 			s.writeAccountErr(w, err)
@@ -327,7 +335,10 @@ func (s *Server) DeleteAccount(w http.ResponseWriter, r *http.Request, apiID api
 }
 
 func (s *Server) writeAccountErr(w http.ResponseWriter, err error) {
+	var unavailable *pubkeyUnavailable
 	switch {
+	case errors.As(err, &unavailable):
+		writeProblem(w, http.StatusConflict, apiv1.ErrorCodeTdPubkeyUnavailable, http.StatusText(http.StatusConflict), unavailable.Error(), nil)
 	case errors.Is(err, errNameTaken):
 		writeProblem(w, http.StatusConflict, apiv1.ErrorCodeConflict, http.StatusText(http.StatusConflict), "name is already in use", []apiv1.FieldError{{
 			Path: "/name", Reason: "already in use",
@@ -469,7 +480,7 @@ func (s *Server) acceptedKind(name string) (Kind, bool) {
 }
 
 // classifyInstance is the topology half of E10-D065: a name, in the deployment, on the TD plane.
-// The public-key half is checkTDInstance; a list filter does not need a key.
+// The public-key half is pubkeyFor. A list filter does not need a key.
 func (s *Server) classifyInstance(name string) (region string, ok bool, fields []apiv1.FieldError) {
 	if !instanceNameRe.MatchString(name) {
 		return "", false, []apiv1.FieldError{{Path: "/td_instance", Reason: "is not an instance name"}}
@@ -482,18 +493,6 @@ func (s *Server) classifyInstance(name string) (region string, ok bool, fields [
 		return "", false, []apiv1.FieldError{{Path: "/td_instance", Reason: "is not a td instance"}}
 	}
 	return region, true, nil
-}
-
-func (s *Server) checkTDInstance(name string) (sealbox.PublicKey, []apiv1.FieldError) {
-	_, ok, fields := s.classifyInstance(name)
-	if !ok {
-		return sealbox.PublicKey{}, fields
-	}
-	pub, ok := s.cfg.TDKeys[name]
-	if !ok {
-		return sealbox.PublicKey{}, []apiv1.FieldError{{Path: "/td_instance", Reason: "has no public key"}}
-	}
-	return pub, nil
 }
 
 func (s *Server) regionViews() (map[string]state.View, []string) {

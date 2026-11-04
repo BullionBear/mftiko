@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
+	"github.com/BullionBear/mftiko/internal/platform/sealbox"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
@@ -110,6 +111,9 @@ func (s *Server) deleteProjection(ctx context.Context, inst string, id int64) er
 // copy of a soft-deleted row (E21-D022, E21-D024). A region that is down is skipped until a
 // later pass. An etcd account with no row is logged and left in place (E21-D021, E21-D030).
 func (s *Server) reconcileAccounts(ctx context.Context) error {
+	// A fingerprint write that the watch lost is retried here, and a sealbox whose header
+	// does not match the adopted key is rewritten before it is projected (E21-D038, E21-D041).
+	s.recordAdopted(ctx)
 	rows, err := s.loadAccountProjection(ctx)
 	if err != nil {
 		return err
@@ -126,6 +130,18 @@ func (s *Server) reconcileAccounts(ctx context.Context) error {
 		if row.Deleted != nil {
 			perr = s.deleteProjection(ctx, row.Inst, row.ID)
 		} else {
+			if pub, ok := s.adopted(row.Inst); ok && !sealbox.SealedTo(pub, row.sealed) {
+				sealed, _, rerr := s.resealAccount(ctx, row.ID, row.Inst, pub)
+				if rerr != nil {
+					if !s.quiet(rerr) {
+						s.log.Error().Err(rerr).Int64("api_id", row.ID).Str("td_instance", row.Inst).Msg("account was not resealed")
+					}
+					continue
+				}
+				if sealed != nil {
+					row.sealed = sealed
+				}
+			}
 			val, merr := projectionBytes(row.accountPublic, row.sealed)
 			if merr != nil {
 				s.log.Error().Int64("api_id", row.ID).Str("td_instance", row.Inst).Msg("account projection is unreadable")

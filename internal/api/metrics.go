@@ -22,14 +22,15 @@ import (
 const (
 	metricsContentType = "text/plain; version=0.0.4; charset=utf-8"
 
-	helpAgentUp       = "1 after the region's first sync when this instance's AgentRecord key exists."
-	helpLeader        = "1 after the controller region's first sync when its AgentRecord key exists."
-	helpPhase         = "WorkerStatus phase counts after the region's first sync. BACKOFF is demand PENDING; EXITED after give-up is demand DEAD; LOST keeps the last entry state."
-	helpBus           = "1 when WorkerStatus condition bus_disconnected has status false, 0 when it is true. No series when that condition is absent. mftiko does not time it."
-	helpRegion        = "1 when the region has finished its first sync and was contacted within unavailable_after."
-	helpPostgres      = "1 when a scrape-time ping of the API Postgres pool succeeds."
-	helpRegistry      = "0. The API does not configure one registry address, so this gauge stays 0."
-	helpAccountKeyOld = "Accounts whose key_version is not the current account key, including soft-deleted rows. No sample when the count cannot be read; a missing sample is not zero."
+	helpAgentUp         = "1 after the region's first sync when this instance's AgentRecord key exists."
+	helpLeader          = "1 after the controller region's first sync when its AgentRecord key exists."
+	helpPhase           = "WorkerStatus phase counts after the region's first sync. BACKOFF is demand PENDING; EXITED after give-up is demand DEAD; LOST keeps the last entry state."
+	helpBus             = "1 when WorkerStatus condition bus_disconnected has status false, 0 when it is true. No series when that condition is absent. mftiko does not time it."
+	helpRegion          = "1 when the region has finished its first sync and was contacted within unavailable_after."
+	helpPostgres        = "1 when a scrape-time ping of the API Postgres pool succeeds."
+	helpRegistry        = "0. The API does not configure one registry address, so this gauge stays 0."
+	helpAccountKeyOld   = "Accounts whose key_version is not the current account key, including soft-deleted rows. No sample when the count cannot be read; a missing sample is not zero."
+	helpTDPubkeyChanged = "Times this process adopted a new fingerprint for a TD instance public key. No sample until that happens."
 
 	// artifactPullType matches the STS SessionStatus condition (E12-D068). The API does not import the STS agent.
 	artifactPullType    = "artifact_pull"
@@ -73,7 +74,7 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 		och <- accountKeyOldSample(r.Context(), s)
 	}()
 	g := <-gch
-	body := renderMetricsAt(s.cfg, now, obs, g.pg, g.reg, <-och)
+	body := renderMetricsAt(s.cfg, now, obs, g.pg, g.reg, <-och, s.pubkeyChangedLines())
 	w.Header().Set("Content-Type", metricsContentType)
 	w.WriteHeader(http.StatusOK)
 	if r.Method != http.MethodHead {
@@ -124,12 +125,13 @@ func isAgentPlane(p state.Plane) bool {
 // /readyz (E12-D040). The account-key family is written with no sample; HTTP scrapes pass the
 // live count through renderMetricsAt.
 func renderMetrics(cfg Config, now time.Time, obs []regionObs, postgresUp, registryUp int) []byte {
-	return renderMetricsAt(cfg, now, obs, postgresUp, registryUp, -1)
+	return renderMetricsAt(cfg, now, obs, postgresUp, registryUp, -1, nil)
 }
 
-// renderMetricsAt is renderMetrics plus mftiko_account_key_old. oldKey < 0 omits the sample.
+// renderMetricsAt is renderMetrics plus mftiko_account_key_old and mftiko_td_pubkey_changed_total.
+// oldKey < 0 omits that sample. pubkeyChanged is empty until a fingerprint change (E21-D038).
 // HELP and TYPE are still written. A missing sample is not zero (E21-D034).
-func renderMetricsAt(cfg Config, now time.Time, obs []regionObs, postgresUp, registryUp, oldKey int) []byte {
+func renderMetricsAt(cfg Config, now time.Time, obs []regionObs, postgresUp, registryUp, oldKey int, pubkeyChanged []string) []byte {
 	byRegion := make(map[string]regionObs, len(obs))
 	for _, o := range obs {
 		byRegion[o.name] = o
@@ -150,14 +152,23 @@ func renderMetricsAt(cfg Config, now time.Time, obs []regionObs, postgresUp, reg
 		old = []string{gaugeLine("mftiko_account_key_old", nil, oldKey)}
 	}
 	writeFamily(&b, "mftiko_account_key_old", helpAccountKeyOld, old)
+	writeCounter(&b, "mftiko_td_pubkey_changed_total", helpTDPubkeyChanged, pubkeyChanged)
 	return []byte(b.String())
 }
 
 func writeFamily(b *strings.Builder, name, help string, samples []string) {
+	writeSamples(b, name, help, "gauge", samples)
+}
+
+func writeCounter(b *strings.Builder, name, help string, samples []string) {
+	writeSamples(b, name, help, "counter", samples)
+}
+
+func writeSamples(b *strings.Builder, name, help, kind string, samples []string) {
 	if b.Len() > 0 {
 		b.WriteByte('\n')
 	}
-	fmt.Fprintf(b, "# HELP %s %s\n# TYPE %s gauge\n", name, help, name)
+	fmt.Fprintf(b, "# HELP %s %s\n# TYPE %s %s\n", name, help, name, kind)
 	for _, s := range samples {
 		b.WriteString(s)
 		b.WriteByte('\n')
