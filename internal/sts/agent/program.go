@@ -214,7 +214,9 @@ func (p *Program) Init(key agent.WorkerKey, spec Spec, _ Live) (*workerv1.Init, 
 		SessionId: id, StsInstance: p.Instance, Name: msg.GetName(),
 		Strategy: strategy,
 		Params:   append([]byte(nil), msg.GetParams()...),
-		Feeds:    cloneSlice(msg.GetFeeds()), Accounts: cloneSlice(msg.GetAccounts()),
+		Feeds:    cloneSlice(msg.GetFeeds()),
+		// AccountDecl.td_instance comes from the session request (E21-D005, E21-D042).
+		Accounts: cloneSlice(msg.GetAccounts()),
 		Nats: &stsctlv1.NatsCredentials{
 			UserJwt: userJWT, Seed: seed, InboxPrefix: "_INBOX_" + id,
 		},

@@ -24,6 +24,7 @@
 
 	const accountsFeed = new AccountFeed();
 	const sts = new InstanceFeed('sts');
+	const td = new InstanceFeed('td');
 
 	let draft = $state<Draft>(emptyDraft());
 	let stepIndex = $state(0);
@@ -64,16 +65,19 @@
 	onMount(() => {
 		void accountsFeed.reload();
 		void sts.reload();
+		void td.reload();
 		return () => {
 			versionGen += 1;
 			accountsFeed.cancel();
 			sts.cancel();
+			td.cancel();
 		};
 	});
 
 	function reloadAll() {
 		void accountsFeed.reload();
 		void sts.reload();
+		void td.reload();
 		if (draft.repository.trim() !== '') void loadTags();
 	}
 
@@ -117,7 +121,7 @@
 	}
 
 	function addAccount() {
-		draft.accounts.push({ key: rowKey++, apiId: '', name: '', algoIds: [], algoDraft: '' });
+		draft.accounts.push({ key: rowKey++, apiId: '', name: '', tdInstance: '', algoIds: [], algoDraft: '' });
 		clearServer();
 	}
 
@@ -260,9 +264,9 @@
 {/if}
 
 <FeedStatus
-	loading={accountsFeed.loading || sts.loading}
-	error={accountsFeed.error ?? sts.error}
-	empty={accountsFeed.items === null || sts.items === null}
+	loading={accountsFeed.loading || sts.loading || td.loading}
+	error={accountsFeed.error ?? sts.error ?? td.error}
+	empty={accountsFeed.items === null || sts.items === null || td.items === null}
 	onretry={reloadAll}
 />
 
@@ -453,6 +457,21 @@
 							aria-describedby={describedBy(`/accounts/${i}/name`)}
 						/>
 						{@render fieldError(`/accounts/${i}/name`)}
+					</div>
+					<div class="field">
+						<label for="td-{row.key}">TD instance</label>
+						<select
+							id="td-{row.key}"
+							bind:value={draft.accounts[i].tdInstance}
+							aria-invalid={invalid(`/accounts/${i}/td_instance`)}
+							aria-describedby={describedBy(`/accounts/${i}/td_instance`)}
+						>
+							<option value="">Select a TD instance</option>
+							{#each td.items ?? [] as instance (instance.name)}
+								<option value={instance.name}>{instance.name} · {instance.region}</option>
+							{/each}
+						</select>
+						{@render fieldError(`/accounts/${i}/td_instance`)}
 					</div>
 					<div class="field">
 						<span id="algos-label-{row.key}">algo_id</span>
@@ -714,10 +733,12 @@
 							<li>
 								{row.name || accountById(row.apiId)?.name || '—'}
 								· {row.apiId || '—'}
+								· {row.tdInstance || '—'}
 								· algo {row.algoIds.length === 0 ? '—' : row.algoIds.join(', ')}
 								{@render fieldError(`/accounts/${i}`)}
 								{@render fieldError(`/accounts/${i}/api_id`)}
 								{@render fieldError(`/accounts/${i}/name`)}
+								{@render fieldError(`/accounts/${i}/td_instance`)}
 								{@render fieldError(`/accounts/${i}/algo_ids`)}
 							</li>
 						{/each}

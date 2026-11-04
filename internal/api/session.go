@@ -84,6 +84,12 @@ func (s *Server) CreateSession(w http.ResponseWriter, r *http.Request, params ap
 		s.writeSessionProblem(w, err)
 		return
 	}
+	// Replicas are sealed and projected before the pending row and the spec (E21-D005).
+	// A missing public key returns before either write (E21-D051).
+	if err := s.ensureSessionReplicas(r.Context(), spec); err != nil {
+		s.writeSessionProblem(w, err)
+		return
+	}
 	id, rev, stored, rec, err := s.allocateSession(r.Context(), req.StsInstance, raw, actorName(r), key)
 	if err != nil {
 		s.writeSessionProblem(w, err)
@@ -449,7 +455,10 @@ func getKV(ctx context.Context, w txner, key string) (*mvccpb.KeyValue, error) {
 }
 
 func (s *Server) writeSessionProblem(w http.ResponseWriter, err error) {
+	var unavailable *pubkeyUnavailable
 	switch {
+	case errors.As(err, &unavailable):
+		writeProblem(w, http.StatusConflict, apiv1.ErrorCodeTdPubkeyUnavailable, http.StatusText(http.StatusConflict), unavailable.Error(), nil)
 	case errors.Is(err, errStorage):
 		writeProblem(w, http.StatusServiceUnavailable, apiv1.ErrorCodeStorageUnavailable, "Storage Unavailable", "storage is unavailable", nil)
 	case errors.Is(err, errRegistryUnconfigured):

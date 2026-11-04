@@ -33,22 +33,6 @@ func projectionBytes(row accountPublic, sealed []byte) ([]byte, error) {
 	return b, nil
 }
 
-// publishAccount writes the projection after Postgres has committed (E21-D022).
-// The hook "account-before-etcd" runs first so a test can fail the etcd write.
-func (s *Server) publishAccount(ctx context.Context, row accountStored) error {
-	if err := s.fireHook("account-before-etcd"); err != nil {
-		return err
-	}
-	if row.Deleted != nil {
-		return s.deleteProjection(ctx, row.Inst, row.ID)
-	}
-	val, err := projectionBytes(row.accountPublic, row.sealed)
-	if err != nil {
-		return err
-	}
-	return s.putProjection(ctx, row.Inst, row.ID, val)
-}
-
 // putProjection makes key equal val. A key that already holds val is left alone.
 // A different value is replaced: the Postgres row is the authority (E21-D030).
 func (s *Server) putProjection(ctx context.Context, inst string, id int64, val []byte) error {
@@ -107,21 +91,27 @@ func (s *Server) deleteProjection(ctx context.Context, inst string, id int64) er
 	return fmt.Errorf("%w: delete of %s kept changing", errRegionUnavailable, key)
 }
 
-// reconcileAccounts projects every Postgres account into its TD instance and drops the etcd
-// copy of a soft-deleted row (E21-D022, E21-D024). A region that is down is skipped until a
-// later pass. An etcd account with no row is logged and left in place (E21-D021, E21-D030).
+type replicaKey struct {
+	inst string
+	id   int64
+}
+
+// reconcileAccounts projects every replica and drops the etcd copy of a soft-deleted
+// account (E21-D022, E21-D024). Replica rows of a soft-deleted account stay until a
+// later change removes them. A region that is down is skipped until a later pass.
+// An etcd account with no replica is logged and left in place (E21-D055).
 func (s *Server) reconcileAccounts(ctx context.Context) error {
 	// A fingerprint write that the watch lost is retried here, and a sealbox whose header
 	// does not match the adopted key is rewritten before it is projected (E21-D038, E21-D041).
 	s.recordAdopted(ctx)
-	rows, err := s.loadAccountProjection(ctx)
+	rows, err := s.loadReplicaViews(ctx)
 	if err != nil {
 		return err
 	}
-	known := make(map[int64]struct{}, len(rows))
+	known := make(map[replicaKey]struct{}, len(rows))
 	for i := range rows {
 		row := rows[i]
-		known[row.ID] = struct{}{}
+		known[replicaKey{inst: row.Inst, id: row.ID}] = struct{}{}
 		region, err := s.cfg.Topology.RegionOf(row.Inst)
 		if err != nil || !s.regionAvailable(region) {
 			continue
@@ -157,9 +147,9 @@ func (s *Server) reconcileAccounts(ctx context.Context) error {
 	return nil
 }
 
-// warnOrphanAccounts logs etcd account keys whose api_id has no Postgres row (E21-D021).
+// warnOrphanAccounts logs etcd account keys that have no account_replicas row (E21-D055).
 // The value is not logged. The key is not deleted.
-func (s *Server) warnOrphanAccounts(known map[int64]struct{}) {
+func (s *Server) warnOrphanAccounts(known map[replicaKey]struct{}) {
 	views, _ := s.regionViews()
 	for region, view := range views {
 		for key := range view.Entries {
@@ -167,11 +157,11 @@ func (s *Server) warnOrphanAccounts(known map[int64]struct{}) {
 			if !ok || key != state.AccountKey(inst, id) {
 				continue
 			}
-			if _, ok := known[id]; ok {
+			if _, ok := known[replicaKey{inst: inst, id: id}]; ok {
 				continue
 			}
 			n := s.orphanAccount.Add(1)
-			s.log.Warn().Int64("api_id", id).Str("td_instance", inst).Str("region", region).Int64("count", n).Msg("etcd account has no postgres row")
+			s.log.Warn().Int64("api_id", id).Str("td_instance", inst).Str("region", region).Int64("count", n).Msg("etcd account has no replica")
 		}
 	}
 }

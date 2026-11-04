@@ -285,7 +285,7 @@ func (c *cli) account(name, kind, credsFile string) (int64, error) {
 	if err := os.WriteFile(secretFile, []byte(creds.Secret), 0o600); err != nil {
 		return 0, err
 	}
-	args := []string{"account", "create", "-name", name, "-kind", kind, "-td-instance", tdInst,
+	args := []string{"account", "create", "-name", name, "-kind", kind,
 		"-exch-account-uid", "accept-uid",
 		"-key-type", string(creds.KeyType), "-key-file", keyFile, "-secret-file", secretFile}
 	if creds.Passphrase != nil {
@@ -300,7 +300,7 @@ func (c *cli) account(name, kind, credsFile string) (int64, error) {
 	if err := c.okJSON(&acc, args...); err != nil {
 		return 0, err
 	}
-	say("mftiko account create: api_id %d on %s", acc.ApiId, acc.TdInstance)
+	say("mftiko account create: api_id %d on %s", acc.ApiId, tdInst)
 	return acc.ApiId, nil
 }
 
@@ -367,10 +367,11 @@ feeds:
 accounts:
   - name: main
     api_id: %d
+    td_instance: %s
     algo_ids: [1]
 restart:
   mode: never
-`, stsInst, strategyRepository, strategyTag, ticker, apiID, feed, mdInst, apiID))
+`, stsInst, strategyRepository, strategyTag, ticker, apiID, feed, mdInst, apiID, tdInst))
 	if err != nil {
 		return err
 	}
@@ -530,7 +531,7 @@ const (
 func idleFile(name, sts string, apiID int64, algo int) string {
 	s := fmt.Sprintf("name: %s\nsts_instance: %s\nstrategy:\n  repository: %s\n  ref: %s\n", name, sts, strategyRepository, strategyTag)
 	if apiID != 0 {
-		s += fmt.Sprintf("accounts:\n  - name: main\n    api_id: %d\n    algo_ids: [%d]\n", apiID, algo)
+		s += fmt.Sprintf("accounts:\n  - name: main\n    api_id: %d\n    td_instance: %s\n    algo_ids: [%d]\n", apiID, tdInst, algo)
 	}
 	return s
 }

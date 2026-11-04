@@ -32,8 +32,6 @@
 				<th>Kind</th>
 				<th>Exchange</th>
 				<th>UID</th>
-				<th>TD</th>
-				<th>Region</th>
 				<th>Deleted</th>
 				<th>Referenced by</th>
 			</tr>
@@ -46,8 +44,6 @@
 					<td>{account.kind}</td>
 					<td>{account.exchange ?? '—'}</td>
 					<td>{account.exch_account_uid ?? '—'}</td>
-					<td>{account.td_instance}</td>
-					<td>{account.region}</td>
 					<td>{account.deleted_at ?? '—'}</td>
 					<td>
 						{#if account.referenced_by.length === 0}

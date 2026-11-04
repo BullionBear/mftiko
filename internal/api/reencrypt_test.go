@@ -97,12 +97,17 @@ func insertReencryptRow(t *testing.T, ctx context.Context, pool *pgxpool.Pool, i
 	_, err := pool.Exec(ctx, `
 		INSERT INTO accounts (
 			api_id, kind, name, credentials, key_version, settings, enabled,
-			exch_account_uid, td_instance, created_at, updated_at, deleted_at,
-			revision, sealed_credentials
+			exch_account_uid, created_at, updated_at, deleted_at, revision
 		) VALUES (
 			$1, $2, $3, $4, $5, '{"cancel_on_disconnect_s":0}', true,
-			'uid', 'td-tw-1', $6, $6, $7, 1, $8
-		)`, id, reencryptKind, fmt.Sprintf("n%d", id), ct, ver, reencryptStamp, deletedAt, sealed)
+			'uid', $6, $6, $7, 1
+		)`, id, reencryptKind, fmt.Sprintf("n%d", id), ct, ver, reencryptStamp, deletedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = pool.Exec(ctx, `
+		INSERT INTO account_replicas (td_instance, api_id, sealed_credentials, created_at, updated_at)
+		VALUES ('td-tw-1', $1, $2, $3, $3)`, id, sealed, reencryptStamp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,8 +138,10 @@ func readReencryptAccount(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	t.Helper()
 	var s reencryptStored
 	err := pool.QueryRow(ctx, `
-		SELECT name, credentials, key_version, revision, updated_at, sealed_credentials, deleted_at
-		FROM accounts WHERE api_id = $1`, id).Scan(
+		SELECT a.name, a.credentials, a.key_version, a.revision, a.updated_at, r.sealed_credentials, a.deleted_at
+		FROM accounts a
+		JOIN account_replicas r ON r.api_id = a.api_id AND r.td_instance = 'td-tw-1'
+		WHERE a.api_id = $1`, id).Scan(
 		&s.name, &s.ct, &s.ver, &s.rev, &s.updated, &s.sealed, &s.deleted)
 	if err != nil {
 		t.Fatal(err)

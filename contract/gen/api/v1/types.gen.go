@@ -382,7 +382,8 @@ func (e WorkerPhase) Valid() bool {
 // APIIDValue API 隨機配發，1 到 2⁵³−1（E10-D008）。
 type APIIDValue = int64
 
-// Account 不含憑證、密文或指紋（E10-D063）。
+// Account 不含憑證、密文或指紋（E10-D063）。沒有 `td_instance`：同一個帳號可以在多個 TD instance 上各有一份副本（E21-D052、E21-D006）。
+// 沒有 `region`：它以前是單一 `td_instance` 的 region（E21-D054）。
 // `revision` 是 Postgres 的 CAS 序號，從 1 起，成功的更新與軟刪除加 1，不是 etcd 的 `mod_revision`（E21-D027）。
 // `exchange` 由 kind 的 registry 推出，不另存（E21-D008、E21-D031）。回應會帶 `exchange` 與 `exch_account_uid`。
 // `deleted_at` 只有軟刪除之後才有。
@@ -403,12 +404,10 @@ type Account struct {
 
 	// ReferencedBy 引用它的非 terminal session。不為空時刪除回 409。
 	ReferencedBy []SessionIDValue `json:"referenced_by"`
-	Region       string           `json:"region"`
 
 	// Revision etcd 的 `mod_revision`。只在同一個資源上比較有意義。
-	Revision   Revision        `json:"revision"`
-	Settings   AccountSettings `json:"settings"`
-	TdInstance InstanceName    `json:"td_instance"`
+	Revision Revision        `json:"revision"`
+	Settings AccountSettings `json:"settings"`
 }
 
 // AccountCreate defines model for AccountCreate.
@@ -423,9 +422,6 @@ type AccountCreate struct {
 	Kind     string           `json:"kind"`
 	Name     string           `json:"name"`
 	Settings *AccountSettings `json:"settings,omitempty"`
-
-	// TdInstance 建立之後不能改。過渡期它決定 etcd 投影寫進哪一個 TD instance（E21-D002）。拿掉是 E21-06。
-	TdInstance InstanceName `json:"td_instance"`
 }
 
 // AccountDecl defines model for AccountDecl.
@@ -446,6 +442,10 @@ type AccountDeclInput struct {
 	// ApiId API 隨機配發，1 到 2⁵³−1（E10-D008）。
 	ApiId APIIDValue `json:"api_id"`
 	Name  string     `json:"name"`
+
+	// TdInstance 必填，使用者指定，比照 `md_instance`（E21-D005，修訂 E10-D032）。必須在 topology 裡、平面是 td。
+	// 目標 instance 沒有可用公鑰時，建立 session 回 409 `td_pubkey_unavailable`，不寫副本也不寫 spec（E21-D051）。
+	TdInstance InstanceName `json:"td_instance"`
 }
 
 // AccountKind defines model for AccountKind.
@@ -856,7 +856,7 @@ type Session struct {
 	// Revision etcd 的 `mod_revision`。只在同一個資源上比較有意義。
 	Revision Revision `json:"revision"`
 
-	// Spec etcd 裡的 spec，以 API 的型別呈現。策略已解析成 digest；帳號帶入了 `td_instance`。
+	// Spec etcd 裡的 spec，以 API 的型別呈現。策略已解析成 digest；帳號的 `td_instance` 來自建立 session 的請求（E21-D005）。
 	Spec SessionSpecView `json:"spec"`
 
 	// Status STS 寫的 `SessionStatus`。STS 還沒寫過時省略整個物件。
@@ -926,7 +926,7 @@ type SessionDetail struct {
 	// Revision etcd 的 `mod_revision`。只在同一個資源上比較有意義。
 	Revision Revision `json:"revision"`
 
-	// Spec etcd 裡的 spec，以 API 的型別呈現。策略已解析成 digest；帳號帶入了 `td_instance`。
+	// Spec etcd 裡的 spec，以 API 的型別呈現。策略已解析成 digest；帳號的 `td_instance` 來自建立 session 的請求（E21-D005）。
 	Spec SessionSpecView `json:"spec"`
 
 	// Status STS 寫的 `SessionStatus`。STS 還沒寫過時省略整個物件。
@@ -959,7 +959,7 @@ type SessionRecord struct {
 	// SessionId 6 個小寫 hex，API 隨機配發（E10-D007）。
 	SessionId SessionIDValue `json:"session_id"`
 
-	// Spec etcd 裡的 spec，以 API 的型別呈現。策略已解析成 digest；帳號帶入了 `td_instance`。
+	// Spec etcd 裡的 spec，以 API 的型別呈現。策略已解析成 digest；帳號的 `td_instance` 來自建立 session 的請求（E21-D005）。
 	Spec SessionSpecView `json:"spec"`
 
 	// State `pending`：已寫 Postgres、etcd 還沒確認。`created`：etcd 已有 spec。`abandoned`：超過 2 分鐘仍沒有對應 spec（E10-D069）。
@@ -984,7 +984,7 @@ type SessionRemovedEvent struct {
 	SessionId SessionIDValue `json:"session_id"`
 }
 
-// SessionSpecView etcd 裡的 spec，以 API 的型別呈現。策略已解析成 digest；帳號帶入了 `td_instance`。
+// SessionSpecView etcd 裡的 spec，以 API 的型別呈現。策略已解析成 digest；帳號的 `td_instance` 來自建立 session 的請求（E21-D005）。
 type SessionSpecView struct {
 	Accounts     []AccountDecl `json:"accounts"`
 	DepsTimeoutS int           `json:"deps_timeout_s"`
@@ -1133,9 +1133,6 @@ type ListAccountsParams struct {
 
 	// Cursor 上一頁回應的 `next_cursor`，對呼叫端不透明。
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
-
-	// TdInstance 只列這個 TD instance。不是 instance 名稱、不在 topology，或不是 td，回 400。region 不可用仍列出 Postgres 裡的帳號，並標在 `freshness`（E21-D029）。
-	TdInstance *string `form:"td_instance,omitempty" json:"td_instance,omitempty"`
 
 	// IncludeDeleted 為 true 時一併列出已軟刪除的帳號（E21-D012）。省略是 false。
 	IncludeDeleted *bool `form:"include_deleted,omitempty" json:"include_deleted,omitempty"`

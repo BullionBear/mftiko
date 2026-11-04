@@ -981,7 +981,11 @@ func flushResp(w http.ResponseWriter) {
 func makeLogSession(t *testing.T, se *sessionEnv, sts string) string {
 	t.Helper()
 	code, hdr, body := se.post(t, minBody(sts), nil)
-	return mustSession(t, code, hdr, body).Id
+	id := mustSession(t, code, hdr, body).Id
+	// The spec is written before the response, and the mirror applies the watch
+	// afterward. Reading it immediately races that apply.
+	seen(t, se.s, se.e.region(t, state.SessionSpecKey(sts, id)), state.SessionSpecKey(sts, id))
+	return id
 }
 
 func setLogAddr(t *testing.T, se *sessionEnv, region, sts, addr string) {

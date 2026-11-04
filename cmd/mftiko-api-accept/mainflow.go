@@ -72,7 +72,7 @@ func (f *flow) mainSteps(credsFile, kind, ticker, topic string, algo int, offset
 		return err
 	}
 	acc, err := f.a.CreateAccountWithResponse(f.ctx, apiv1.AccountCreate{
-		Name: "accept-" + strings.ToLower(kind), Kind: kind, TdInstance: tdInst,
+		Name: "accept-" + strings.ToLower(kind), Kind: kind,
 		ExchAccountUid: "accept-uid", Credentials: &creds,
 	})
 	if err != nil {
@@ -108,7 +108,7 @@ func (f *flow) mainSteps(credsFile, kind, ticker, topic string, algo int, offset
 		Strategy: apiv1.StrategySelector{Repository: strategyRepository, Ref: strategyTag},
 		Params:   &raw,
 		Feeds:    &[]apiv1.FeedDeclInput{{Feed: feed, MdInstance: mdInst}},
-		Accounts: &[]apiv1.AccountDeclInput{{Name: "main", ApiId: apiID, AlgoIds: []int{algo}}},
+		Accounts: &[]apiv1.AccountDeclInput{{Name: "main", ApiId: apiID, TdInstance: tdInst, AlgoIds: []int{algo}}},
 	}
 	created, err := f.create(f.a, body, randomHex(16))
 	if err != nil {

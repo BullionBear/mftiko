@@ -53,7 +53,8 @@ var (
 // and one subscribe subject, md.v1.f.{inst}.{topic}.{ticker}. md.v1.fetch.> is
 // always published. Each account adds td.order.{td_instance}.{api_id},
 // td.view.{td_instance}.{api_id}, and td.evt.{td_instance}.{api_id}
-// (E21-D042, E21-D044). td_instance is AccountDecl.td_instance. No account
+// (E21-D042, E21-D044). td_instance is the session spec's AccountDecl.td_instance.
+// The API copies it from the session request (E21-D005). No account
 // means no td subject. No feed means no md.v1.f and no md.v1.view. The fixed
 // subjects are sym, _INBOX_{session_id}.>, and sym.v1.changed.>. There is no
 // log.sts.{session_id} (E10-D015, E10-D030).

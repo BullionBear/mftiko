@@ -35,6 +35,8 @@ func TestStatusReads(t *testing.T) {
 	first := mustSession(t, code, hdr, body)
 	code, hdr, body = se.post(t, minBody("sts-tw-1"), keyHeader("status-b"))
 	second := mustSession(t, code, hdr, body)
+	seen(t, se.s, "tw", state.SessionSpecKey("sts-tw-1", first.Id))
+	seen(t, se.s, "tw", state.SessionSpecKey("sts-tw-1", second.Id))
 
 	page := se.sessions(t, "/api/v1/sessions?limit=1")
 	if len(page.Items) != 1 || page.NextCursor == nil {

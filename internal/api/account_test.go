@@ -140,12 +140,13 @@ func (f *accountFix) stored(t *testing.T, inst string, id int64) *statev1.Accoun
 }
 
 func accountBody(name, kind, inst, keyType, key, secret, pass string, cancel *int) string {
+	_ = inst
 	cred := map[string]any{"key_type": keyType, "key": key, "secret": secret}
 	if pass != "" {
 		cred["passphrase"] = pass
 	}
 	m := map[string]any{
-		"name": name, "kind": kind, "td_instance": inst, "exch_account_uid": "uid-1", "credentials": cred,
+		"name": name, "kind": kind, "exch_account_uid": "uid-1", "credentials": cred,
 	}
 	if cancel != nil {
 		m["settings"] = map[string]any{"cancel_on_disconnect_s": *cancel}
@@ -155,6 +156,30 @@ func accountBody(name, kind, inst, keyType, key, secret, pass string, cancel *in
 		panic(err)
 	}
 	return string(b)
+}
+
+func withField(body, key string, value any) string {
+	var m map[string]any
+	if err := json.Unmarshal([]byte(body), &m); err != nil {
+		panic(err)
+	}
+	m[key] = value
+	b, err := json.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
+// project seals the account onto inst the way session create does.
+func (f *accountFix) project(t *testing.T, id int64, inst string) {
+	t.Helper()
+	spec := &sessionv1.SessionSpec{
+		Accounts: []*sessionv1.AccountDecl{{Name: "a", ApiId: id, TdInstance: inst}},
+	}
+	if err := f.srv.ensureSessionReplicas(t.Context(), spec); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func fieldReason(t *testing.T, body []byte, path string) string {
@@ -195,7 +220,7 @@ func TestTDInstanceNeedsPublicKey(t *testing.T) {
 	if !errors.As(err, &missing) {
 		t.Fatalf("unreadable etcd value fell back to td_keys: %v", err)
 	}
-	if _, _, fields := s.classifyInstance("md-tw-1"); len(fields) != 1 || fields[0].Reason != "is not a td instance" {
+	if _, _, fields := s.classifyInstance("/td_instance", "md-tw-1"); len(fields) != 1 || fields[0].Reason != "is not a td instance" {
 		t.Fatalf("md: %+v", fields)
 	}
 }
@@ -231,10 +256,11 @@ func TestAccounts(t *testing.T) {
 	bad := []struct {
 		name, body, path, reason string
 	}{
-		{"missing credentials", `{"name":"n","kind":"Binance","td_instance":"td-tw-1","exch_account_uid":"uid-1"}`, "/credentials", "required"},
-		{"missing uid", `{"name":"n","kind":"Binance","td_instance":"td-tw-1","credentials":{"key_type":"hmac","key":"` + key + `","secret":"` + secret + `"}}`, "/exch_account_uid", "required"},
-		{"blank uid", `{"name":"n","kind":"Binance","td_instance":"td-tw-1","exch_account_uid":"  ","credentials":{"key_type":"hmac","key":"` + key + `","secret":"` + secret + `"}}`, "/exch_account_uid", "required"},
-		{"long uid", `{"name":"n","kind":"Binance","td_instance":"td-tw-1","exch_account_uid":"` + strings.Repeat("u", 65) + `","credentials":{"key_type":"hmac","key":"` + key + `","secret":"` + secret + `"}}`, "/exch_account_uid", "must be 1 to 64 characters"},
+		{"missing credentials", `{"name":"n","kind":"Binance","exch_account_uid":"uid-1"}`, "/credentials", "required"},
+		{"missing uid", `{"name":"n","kind":"Binance","credentials":{"key_type":"hmac","key":"` + key + `","secret":"` + secret + `"}}`, "/exch_account_uid", "required"},
+		{"blank uid", `{"name":"n","kind":"Binance","exch_account_uid":"  ","credentials":{"key_type":"hmac","key":"` + key + `","secret":"` + secret + `"}}`, "/exch_account_uid", "required"},
+		{"long uid", `{"name":"n","kind":"Binance","exch_account_uid":"` + strings.Repeat("u", 65) + `","credentials":{"key_type":"hmac","key":"` + key + `","secret":"` + secret + `"}}`, "/exch_account_uid", "must be 1 to 64 characters"},
+		{"td_instance rejected", withField(accountBody("n", "Binance", "td-tw-1", "hmac", key, secret, "", nil), "td_instance", "td-tw-1"), "/td_instance", "is not accepted"},
 		{"unknown kind", accountBody("n", "Nope", "td-tw-1", "hmac", key, secret, "", nil), "/kind", "is not accepted"},
 		{"portfolio margin", accountBody("n", "BinancePM", "td-tw-1", "hmac", key, secret, "", nil), "/kind", "is not accepted"},
 		{"key type", accountBody("n", "Bybit", "td-tw-1", "ed25519", key, secret, "", nil), "/credentials/key_type", "is not accepted"},
@@ -242,9 +268,6 @@ func TestAccounts(t *testing.T) {
 		{"empty secret", accountBody("n", "Binance", "td-tw-1", "hmac", key, "", "", nil), "/credentials/secret", "required"},
 		{"passphrase required", accountBody("n", "Okx", "td-tw-1", "hmac", key, secret, "", nil), "/credentials/passphrase", "required"},
 		{"passphrase forbidden", accountBody("n", "Binance", "td-tw-1", "hmac", key, secret, "nope", nil), "/credentials/passphrase", "is not used by this account kind"},
-		{"unknown instance", accountBody("n", "Binance", "nope", "hmac", key, secret, "", nil), "/td_instance", "is not in the topology"},
-		{"not a name", accountBody("n", "Binance", "TD", "hmac", key, secret, "", nil), "/td_instance", "is not an instance name"},
-		{"md plane", accountBody("n", "Binance", "md-tw-1", "hmac", key, secret, "", nil), "/td_instance", "is not a td instance"},
 		{"empty name", accountBody("", "Binance", "td-tw-1", "hmac", key, secret, "", nil), "/name", "must be 1 to 128 characters"},
 		{"long name", accountBody(strings.Repeat("名", 129), "Binance", "td-tw-1", "hmac", key, secret, "", nil), "/name", "must be 1 to 128 characters"},
 		{"cancel negative", accountBody("n", "Binance", "td-tw-1", "hmac", key, secret, "", &neg), "/settings/cancel_on_disconnect_s", "must be between 0 and 4294967295"},
@@ -283,9 +306,14 @@ func TestAccounts(t *testing.T) {
 	}
 	if strings.Contains(string(body), secret) || strings.Contains(string(body), key) ||
 		bytes.Contains(body, []byte("fingerprint")) || bytes.Contains(body, []byte("credentials")) ||
+		bytes.Contains(body, []byte("td_instance")) || bytes.Contains(body, []byte(`"region"`)) ||
 		!bytes.Contains(body, []byte(`"referenced_by":[]`)) || !bytes.Contains(body, []byte(`"cancel_on_disconnect_s":0`)) {
 		t.Fatalf("create body %s", body)
 	}
+	if f.env.get(t, "tw", state.AccountKey("td-tw-1", 2)) != nil {
+		t.Fatal("account create wrote etcd")
+	}
+	f.project(t, 2, "td-tw-1")
 	rec := f.stored(t, "td-tw-1", 2)
 	if !rec.GetEnabled() {
 		t.Fatal("enabled was not set")
@@ -339,7 +367,7 @@ func TestAccounts(t *testing.T) {
 		t.Fatal("stale delete removed the account")
 	}
 	code, _, body = f.call(t, http.MethodGet, "/api/v1/accounts?td_instance=md-tw-1", "")
-	if code != http.StatusBadRequest || fieldReason(t, body, "/td_instance") != "is not a td instance" {
+	if code != http.StatusBadRequest || fieldReason(t, body, "/td_instance") != "is not accepted" {
 		t.Fatalf("filter %d %s", code, body)
 	}
 
@@ -497,7 +525,7 @@ func mathMaxUint32() uint64 { return 4294967295 }
 
 func TestAccountRegionDown(t *testing.T) {
 	f := newAccountFix(t, startAccountsDB(t))
-	f.srv.ids = apiSeq(4, 5)
+	f.srv.ids = apiSeq(4, 5, 6)
 	code, _, body := f.call(t, http.MethodPost, "/api/v1/accounts", accountBody("jp", "Binance", "td-jp-1", "hmac", "k", "s", "", nil))
 	if code != http.StatusCreated {
 		t.Fatalf("create jp %d %s", code, body)
@@ -507,6 +535,7 @@ func TestAccountRegionDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.waitAccount(t, created.ApiId)
+	f.project(t, created.ApiId, "td-jp-1")
 	f.env.proxy.Cut()
 	until(t, 15*time.Second, "jp unavailable", func() error {
 		got, _ := f.srv.readiness(time.Now())
@@ -520,15 +549,21 @@ func TestAccountRegionDown(t *testing.T) {
 	if code != http.StatusOK || json.Unmarshal(body, &got) != nil || got.ApiId != created.ApiId || got.Name != "jp" {
 		t.Fatalf("get down %d %s", code, body)
 	}
-	code, _, body = f.call(t, http.MethodPost, "/api/v1/accounts", accountBody("again", "Binance", "td-jp-1", "hmac", "k", "s", "", nil))
+	code, _, body = f.call(t, http.MethodPut, fmt.Sprintf("/api/v1/accounts/%d", created.ApiId), fmt.Sprintf(`{"revision":%d,"name":"jp-2"}`, created.Revision))
 	if code != http.StatusServiceUnavailable {
-		t.Fatalf("create down %d %s", code, body)
+		t.Fatalf("update down %d %s", code, body)
 	}
 	mustProblem(t, body, http.StatusServiceUnavailable, "region_unavailable")
+	if again := f.waitAccount(t, created.ApiId); again.Name != "jp" || again.Revision != created.Revision {
+		t.Fatalf("down update wrote %+v", again)
+	}
 	code, _, body = f.call(t, http.MethodGet, "/api/v1/accounts?td_instance=td-jp-1", "")
-	var page apiv1.AccountList
-	if code != http.StatusOK || json.Unmarshal(body, &page) != nil || len(page.Items) != 1 || page.Items[0].ApiId != created.ApiId || len(page.Freshness.UnavailableRegions) != 1 {
+	if code != http.StatusBadRequest || fieldReason(t, body, "/td_instance") != "is not accepted" {
 		t.Fatalf("filter down %d %s", code, body)
+	}
+	code, _, body = f.call(t, http.MethodPost, "/api/v1/accounts", accountBody("again", "Binance", "td-jp-1", "hmac", "k", "s", "", nil))
+	if code != http.StatusCreated {
+		t.Fatalf("create while a replica region is down %d %s", code, body)
 	}
 	code, _, body = f.call(t, http.MethodPost, "/api/v1/accounts", accountBody("tw-still", "Binance", "td-tw-1", "hmac", "k", "s", "", nil))
 	if code != http.StatusCreated {
@@ -554,10 +589,15 @@ func TestAccountLeak(t *testing.T) {
 	if err := json.Unmarshal(body, &created); err != nil {
 		t.Fatal(err)
 	}
+	f.project(t, created.ApiId, "td-tw-1")
 	row := waitAuditID(t, conn, hdr.Get(headerRequestID))
 	rec := f.stored(t, "td-tw-1", created.ApiId)
 	var aead, sealedCol []byte
-	if err := conn.QueryRow(t.Context(), `SELECT credentials, sealed_credentials FROM accounts WHERE api_id = $1`, created.ApiId).Scan(&aead, &sealedCol); err != nil {
+	if err := conn.QueryRow(t.Context(), `
+SELECT a.credentials, r.sealed_credentials
+FROM accounts a
+JOIN account_replicas r ON r.api_id = a.api_id
+WHERE a.api_id = $1 AND r.td_instance = 'td-tw-1'`, created.ApiId).Scan(&aead, &sealedCol); err != nil {
 		t.Fatal(err)
 	}
 	plain, err := f.srv.cfg.AccountKeys.Open(created.ApiId, "Okx", aead)
@@ -678,6 +718,7 @@ func TestAccountProjection(t *testing.T) {
 	if err := json.Unmarshal(body, &created); err != nil {
 		t.Fatal(err)
 	}
+	f.project(t, created.ApiId, "td-jp-1")
 	key := state.AccountKey("td-jp-1", created.ApiId)
 	before := f.env.get(t, "jp", key)
 	if before == nil {
@@ -718,7 +759,7 @@ func TestAccountOrphanStays(t *testing.T) {
 		t.Fatal("reconcile deleted an etcd account that has no postgres row")
 	}
 	log := f.log.String()
-	if !strings.Contains(log, "etcd account has no postgres row") || !strings.Contains(log, `"api_id":99`) {
+	if !strings.Contains(log, "etcd account has no replica") || !strings.Contains(log, `"api_id":99`) {
 		t.Fatalf("orphan log = %s", log)
 	}
 	if strings.Contains(log, "leftover") {
@@ -729,28 +770,34 @@ func TestAccountOrphanStays(t *testing.T) {
 func TestAccountEtcdFailureThenReconcile(t *testing.T) {
 	f := newAccountFix(t, startAccountsDB(t))
 	f.srv.ids = apiSeq(6)
+	code, _, body := f.call(t, http.MethodPost, "/api/v1/accounts", accountBody("desk", "Binance", "td-jp-1", "hmac", "k", "s", "", nil))
+	if code != http.StatusCreated {
+		t.Fatalf("create %d %s", code, body)
+	}
+	var created apiv1.Account
+	if err := json.Unmarshal(body, &created); err != nil {
+		t.Fatal(err)
+	}
+	key := state.AccountKey("td-jp-1", created.ApiId)
+	if f.env.get(t, "jp", key) != nil {
+		t.Fatal("account create wrote etcd")
+	}
 	f.srv.hook = func(step string) error {
 		if step == "account-before-etcd" {
 			return errRegionUnavailable
 		}
 		return nil
 	}
-	code, _, body := f.call(t, http.MethodPost, "/api/v1/accounts", accountBody("desk", "Binance", "td-jp-1", "hmac", "k", "s", "", nil))
-	if code != http.StatusServiceUnavailable {
-		t.Fatalf("create %d %s", code, body)
+	spec := &sessionv1.SessionSpec{
+		Accounts: []*sessionv1.AccountDecl{{Name: "a", ApiId: created.ApiId, TdInstance: "td-jp-1"}},
 	}
-	mustProblem(t, body, http.StatusServiceUnavailable, "region_unavailable")
-	f.srv.hook = nil
-	code, _, body = f.call(t, http.MethodGet, "/api/v1/accounts", "")
-	var page apiv1.AccountList
-	if code != http.StatusOK || json.Unmarshal(body, &page) != nil || len(page.Items) != 1 || page.Items[0].Name != "desk" {
-		t.Fatalf("list %d %s", code, body)
+	if err := f.srv.ensureSessionReplicas(t.Context(), spec); !errors.Is(err, errRegionUnavailable) {
+		t.Fatalf("publish: %v", err)
 	}
-	id := page.Items[0].ApiId
-	key := state.AccountKey("td-jp-1", id)
 	if f.env.get(t, "jp", key) != nil {
 		t.Fatal("failed publish still wrote etcd")
 	}
+	f.srv.hook = nil
 	f.srv.reconcileOnce(context.Background())
 	got := f.env.get(t, "jp", key)
 	if got == nil {
@@ -774,11 +821,10 @@ func TestAccountIDCollisionRetries(t *testing.T) {
 	if _, err := conn.Exec(ctx, `
 		INSERT INTO accounts (
 			api_id, kind, name, credentials, key_version, settings, enabled,
-			exch_account_uid, td_instance, created_at, updated_at, revision, sealed_credentials
+			exch_account_uid, created_at, updated_at, revision
 		) VALUES (
 			6, 'Binance', 'taken', decode(repeat('ab', 44), 'hex'), 1,
-			'{"cancel_on_disconnect_s":0}', true, 'uid-9', 'td-jp-1', now(), now(), 1,
-			decode(repeat('cd', 57), 'hex'))`); err != nil {
+			'{"cancel_on_disconnect_s":0}', true, 'uid-9', now(), now(), 1)`); err != nil {
 		t.Fatal(err)
 	}
 	putKey(t, ctx, f.env.servers["jp"], state.AccountKey("td-jp-1", 8), "garbage")
@@ -791,6 +837,10 @@ func TestAccountIDCollisionRetries(t *testing.T) {
 	if err := json.Unmarshal(body, &created); err != nil || created.ApiId != 8 {
 		t.Fatalf("created %+v %v", created, err)
 	}
+	if got := f.env.get(t, "jp", state.AccountKey("td-jp-1", 8)); got == nil || string(got.Value) != "garbage" {
+		t.Fatal("account create replaced the colliding etcd key")
+	}
+	f.project(t, created.ApiId, "td-jp-1")
 	got := f.env.get(t, "jp", state.AccountKey("td-jp-1", 8))
 	if got == nil {
 		t.Fatal("missing projection")

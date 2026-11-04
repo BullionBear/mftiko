@@ -159,11 +159,10 @@ func (s *Server) buildSessionSpec(ctx context.Context, req apiv1.SessionCreate) 
 	if err := s.fillInputs(ctx, req, spec, &fields); err != nil || len(fields) > 0 {
 		return nil, fields, err
 	}
-	views, err := s.availableViews(req.StsInstance)
-	if err != nil {
+	if _, err := s.availableViews(req.StsInstance); err != nil {
 		return nil, nil, err
 	}
-	if err := s.fillAccounts(views, req, spec, &fields); err != nil || len(fields) > 0 {
+	if err := s.fillAccounts(ctx, req, spec, &fields); err != nil || len(fields) > 0 {
 		return nil, fields, err
 	}
 	return spec, nil, nil
@@ -240,6 +239,11 @@ func (s *Server) structural(req apiv1.SessionCreate) fieldList {
 				fields.add(p+"/api_id", "duplicate")
 			} else {
 				seenAcct[a.ApiId] = struct{}{}
+			}
+			if a.TdInstance == "" {
+				fields.add(p+"/td_instance", "required")
+			} else {
+				s.checkInstance(string(a.TdInstance), p+"/td_instance", state.PlaneTD, &fields)
 			}
 			if len(a.AlgoIds) == 0 {
 				fields.add(p+"/algo_ids", "required")
@@ -547,24 +551,20 @@ func registryFields(err error, path, missing string) (fieldList, error) {
 	}
 }
 
-func (s *Server) fillAccounts(views map[string]state.View, req apiv1.SessionCreate, spec *sessionv1.SessionSpec, fields *fieldList) error {
+func (s *Server) fillAccounts(ctx context.Context, req apiv1.SessionCreate, spec *sessionv1.SessionSpec, fields *fieldList) error {
 	if req.Accounts == nil {
 		return nil
 	}
-	down := len(views) < len(s.clusters)
 	for i, a := range *req.Accounts {
-		p := fmt.Sprintf("/accounts/%d/api_id", i)
-		inst, ok := findAccount(views, a.ApiId)
-		if !ok {
-			if down {
-				return fmt.Errorf("%w: account %d", errRegionUnavailable, a.ApiId)
-			}
-			fields.add(p, "was not found")
+		p := fmt.Sprintf("/accounts/%d", i)
+		inst := string(a.TdInstance)
+		row, err := s.getAccount(ctx, a.ApiId)
+		if errors.Is(err, errNotFound) || (err == nil && row.Deleted != nil) {
+			fields.add(p+"/api_id", "was not found")
 			continue
 		}
-		if s.cfg.Planes[inst] != state.PlaneTD {
-			fields.add(p, "must be a td instance")
-			continue
+		if err != nil {
+			return err
 		}
 		decl := &sessionv1.AccountDecl{Name: a.Name, ApiId: a.ApiId, TdInstance: inst}
 		for _, id := range a.AlgoIds {
@@ -573,24 +573,6 @@ func (s *Server) fillAccounts(views map[string]state.View, req apiv1.SessionCrea
 		spec.Accounts = append(spec.Accounts, decl)
 	}
 	return nil
-}
-
-func findAccount(views map[string]state.View, apiID int64) (string, bool) {
-	var found string
-	for _, view := range views {
-		for key := range view.Entries {
-			p, inst, err := state.Owner(key)
-			if err != nil || p != state.PlaneTD {
-				continue
-			}
-			if key == state.AccountKey(inst, apiID) {
-				if found == "" || inst < found {
-					found = inst
-				}
-			}
-		}
-	}
-	return found, found != ""
 }
 
 // algoOverlap is the best-effort check against the mirrors (E10-D012). except is a session being

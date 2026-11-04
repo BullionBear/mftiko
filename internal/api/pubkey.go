@@ -306,9 +306,10 @@ func (s *Server) resealInstance(ctx context.Context, inst string, pub sealbox.Pu
 		return
 	}
 	rows, err := pool.Query(ctx, `
-SELECT api_id FROM accounts
-WHERE td_instance = $1 AND deleted_at IS NULL
-ORDER BY api_id`, inst)
+SELECT r.api_id FROM account_replicas r
+JOIN accounts a ON a.api_id = r.api_id
+WHERE r.td_instance = $1 AND a.deleted_at IS NULL
+ORDER BY r.api_id`, inst)
 	if err != nil {
 		if !s.quiet(err) {
 			s.log.Error().Err(storageErr(err)).Str("td_instance", inst).Msg("record td pubkey")
@@ -345,12 +346,12 @@ ORDER BY api_id`, inst)
 		if !publish {
 			continue
 		}
-		row, lerr := s.loadStoredAccount(ctx, id)
-		if lerr != nil || row.Deleted != nil || !bytes.Equal(row.sealed, sealed) {
+		row, got, lerr := s.loadReplicaSealed(ctx, id, inst)
+		if lerr != nil || row.Deleted != nil || !bytes.Equal(got, sealed) {
 			s.kickReconcile()
 			continue
 		}
-		val, merr := projectionBytes(row.accountPublic, row.sealed)
+		val, merr := projectionBytes(row, got)
 		if merr != nil {
 			s.log.Error().Int64("api_id", id).Str("td_instance", inst).Msg("account projection is unreadable")
 			continue
@@ -376,9 +377,10 @@ func (s *Server) resealAccount(ctx context.Context, id int64, inst string, pub s
 	var kind string
 	var cred, cur []byte
 	err = pool.QueryRow(ctx, `
-SELECT kind, credentials, sealed_credentials
-FROM accounts
-WHERE api_id = $1 AND td_instance = $2 AND deleted_at IS NULL`, id, inst).Scan(&kind, &cred, &cur)
+SELECT a.kind, a.credentials, r.sealed_credentials
+FROM account_replicas r
+JOIN accounts a ON a.api_id = r.api_id
+WHERE r.api_id = $1 AND r.td_instance = $2 AND a.deleted_at IS NULL`, id, inst).Scan(&kind, &cred, &cur)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, false, nil
 	}
@@ -408,8 +410,8 @@ WHERE api_id = $1 AND td_instance = $2 AND deleted_at IS NULL`, id, inst).Scan(&
 		return nil, false, serr
 	}
 	tag, err := pool.Exec(ctx, `
-UPDATE accounts SET sealed_credentials = $1
-WHERE api_id = $2 AND td_instance = $3 AND sealed_credentials = $4 AND deleted_at IS NULL`,
+UPDATE account_replicas SET sealed_credentials = $1
+WHERE api_id = $2 AND td_instance = $3 AND sealed_credentials = $4`,
 		next, id, inst, cur)
 	if err != nil {
 		return nil, false, storageErr(err)
@@ -435,8 +437,9 @@ func (s *Server) currentSealed(ctx context.Context, id int64, inst string) ([]by
 	}
 	var cur []byte
 	err = pool.QueryRow(ctx, `
-SELECT sealed_credentials FROM accounts
-WHERE api_id = $1 AND td_instance = $2 AND deleted_at IS NULL`, id, inst).Scan(&cur)
+SELECT r.sealed_credentials FROM account_replicas r
+JOIN accounts a ON a.api_id = r.api_id
+WHERE r.api_id = $1 AND r.td_instance = $2 AND a.deleted_at IS NULL`, id, inst).Scan(&cur)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -444,25 +447,6 @@ WHERE api_id = $1 AND td_instance = $2 AND deleted_at IS NULL`, id, inst).Scan(&
 		return nil, storageErr(err)
 	}
 	return append([]byte(nil), cur...), nil
-}
-
-func (s *Server) loadStoredAccount(ctx context.Context, id int64) (accountStored, error) {
-	pool, err := s.db()
-	if err != nil {
-		return accountStored{}, err
-	}
-	row, err := scanStored(pool.QueryRow(ctx, `
-SELECT `+accountCols+`, sealed_credentials FROM accounts WHERE api_id = $1`, id))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return accountStored{}, errNotFound
-	}
-	if err != nil {
-		if errors.Is(err, errUnreadable) {
-			return accountStored{}, err
-		}
-		return accountStored{}, storageErr(err)
-	}
-	return row, nil
 }
 
 func (s *Server) runPubkeyMirror(c *cluster) {
