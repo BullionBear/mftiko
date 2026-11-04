@@ -109,7 +109,7 @@ controller 連每個 region 時，密碼先讀 `MFTIKO_ETCD_PASSWORD_<region>`�
 printf 'v1:%s\n' "$(openssl rand -base64 32 | tr -d '\n')"
 ```
 
-換鑰時把新版本放在最前面，舊版本留在同一串裡。背景重新加密是 #527，還沒做；拿掉還有密文在用的版本，那些憑證就解不開。金鑰遺失，帳號要重新輸入（E21-D003）。
+換鑰時把新版本放在最前面，舊版本留在同一串，等每個 replica 的 `mftiko_account_key_old` 回到 0 再拿掉舊版本。步驟與拿太早的後果見 [runbook](runbook.md#261-輪換-api-的帳號金鑰)。金鑰遺失，帳號要重新輸入（E21-D003）。
 
 ## controller
 
@@ -387,7 +387,7 @@ scrape_configs:
       - targets: ["api.example.invalid:8080"]
 ```
 
-`honor_labels: true` 不能省：系列自己帶 `instance`（`md1`、`sts1` 這種 mftiko 的 instance）。省略時 Prometheus 把它改名成 `exported_instance`，`instance` 變成刮取目標的位址，告警與抑制就對不上 instance（E16-D031）。沒有 `instance` 的系列（`mftiko_region_available`、`mftiko_postgres_up` 等）照樣拿到目標的位址。
+`honor_labels: true` 不能省：系列自己帶 `instance`（`md1`、`sts1` 這種 mftiko 的 instance）。省略時 Prometheus 把它改名成 `exported_instance`，`instance` 變成刮取目標的位址，告警與抑制就對不上 instance（E16-D031）。沒有 `instance` 的系列（`mftiko_region_available`、`mftiko_postgres_up`、`mftiko_account_key_old` 等）照樣拿到目標的位址。
 
 | metric | 標籤 | 意義 |
 |---|---|---|
@@ -397,6 +397,7 @@ scrape_configs:
 | `mftiko_worker_bus_up` | `instance`、`plane`、`region`、`worker` | md conn worker 的 NATS。`WorkerStatus` 有 type `bus_disconnected` 才有系列：status false 是 1，true 是 0。`worker` 是 `worker.key`。沒有這條的 worker（TD、STS）不出現。mftiko 不計時 |
 | `mftiko_region_available` | `region` | 與 `/readyz` 同一個判斷：第一次同步完成，且 `LastContact` 沒有嚴格舊過 `unavailable_after`（預設 15 秒，E12-D040）。尚未同步是 0 |
 | `mftiko_postgres_up` | 無 | 刮取當下 ping 稽核用的 Postgres 連線池。沒有池是 0。`/readyz` 仍不看 Postgres |
+| `mftiko_account_key_old` | 無 | `accounts.key_version` 不是目前帳號金鑰的列數，含已軟刪除。刮取當下查。查不到就沒有樣本，沒有樣本不是 0。換鑰時等它回到 0（E21-D034）。不為它加告警 |
 | `mftiko_registry_up` | 無 | API 沒有單一 registry 位址，這個 gauge 維持 0（E10-D122）。策略請求連不上仍是 `registry_unavailable` |
 | `mftiko_artifact_pull_failing` | `instance`、`region`、`digest` | STS 的非 terminal session。這個 digest 有 `artifact_pull` condition 就是 1；有 session 引用、但沒有人失敗是 0。region 還沒第一次同步時不出現。MD、TD 不在這裡 |
 | `mftiko_artifact_pull_fail_since_seconds` | `instance`、`region`、`digest` | 這個 digest 最早一筆 `artifact_pull` 的首次失敗時間，unix 秒。只在 failing 是 1 時出現 |

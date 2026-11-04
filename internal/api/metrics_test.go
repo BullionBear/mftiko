@@ -96,7 +96,10 @@ func TestRenderMetrics(t *testing.T) {
 		"# TYPE mftiko_artifact_pull_failing gauge\n" +
 		"\n" +
 		"# HELP mftiko_artifact_pull_fail_since_seconds " + helpArtifactSince + "\n" +
-		"# TYPE mftiko_artifact_pull_fail_since_seconds gauge\n"
+		"# TYPE mftiko_artifact_pull_fail_since_seconds gauge\n" +
+		"\n" +
+		"# HELP mftiko_account_key_old " + helpAccountKeyOld + "\n" +
+		"# TYPE mftiko_account_key_old gauge\n"
 	if string(got) != want {
 		t.Fatalf("metrics:\n%s\nwant:\n%s", got, want)
 	}

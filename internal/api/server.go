@@ -176,6 +176,8 @@ func start(cfg Config) (*Server, error) {
 	}
 	s.wg.Add(1)
 	go s.runReconcile()
+	s.wg.Add(1)
+	go s.runReencrypt()
 	ln, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
 		s.stop()

@@ -111,7 +111,7 @@ E14（#435）起，`mftiko-api.service` 帶 `-log-token /etc/mftiko/api/log-toke
 
 ### 換到有帳號金鑰的版本
 
-E21-03a（#525）起，API 啟動要讀 `MFTIKO_ACCOUNT_KEYS`（E21-D020）。**`switch` 之前**在每個 API 副本的 `/etc/mftiko/api/env` 加上它，所有 replica 同一份。少了或格式不對，新版的 API 起不來，`switch` 第 4 步重啟它就失敗。產生方式見 [operations.md](operations.md#systemd)。這把金鑰加密 Postgres 裡的帳號憑證；遺失就要重新輸入帳號（E21-D003）。不要拿掉還有密文在用的版本。背景重新加密是 #527，還沒做。
+E21-03a（#525）起，API 啟動要讀 `MFTIKO_ACCOUNT_KEYS`（E21-D020）。**`switch` 之前**在每個 API 副本的 `/etc/mftiko/api/env` 加上它，所有 replica 同一份。少了或格式不對，新版的 API 起不來，`switch` 第 4 步重啟它就失敗。產生方式見 [operations.md](operations.md#systemd)。這把金鑰加密 Postgres 裡的帳號憑證；遺失就要重新輸入帳號（E21-D003）。換版本見 [runbook](runbook.md#261-輪換-api-的帳號金鑰)：先加上新版本，等每個 replica 的 `mftiko_account_key_old` 是 0，再拿掉舊版本。拿太早的話那些列解不開。
 
 ## API 契約（`api.v1`）
 
