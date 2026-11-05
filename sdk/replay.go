@@ -167,6 +167,7 @@ type replayer struct {
 	resolves []eventlog.Record          // recorded resolve frames, in call order
 	resolved int                        // resolve frames answered so far
 	stopped  bool                       // the dispatcher's stop frame has been read
+	keepTD   bool                       // StopKeepTD: OnStop may cancel, and td.evt stays up through it (E08-D067)
 }
 
 // errDiverged answers a call the recording does not have.
@@ -210,13 +211,21 @@ func (r *replayer) run() error {
 		case x.Kind == eventlog.KindStop:
 			r.stop(x)
 		case x.Kind == eventlog.KindOnStop:
-			if r.stopped {
+			// An older log closed the TD buffer before OnStop, so a Post there fails. A log with
+			// StopKeepTD kept it open: OnStop may cancel, and the result frames follow the hook.
+			if r.stopped && !r.keepTD {
 				r.p.disp.CloseTD()
+			}
+			if r.keepTD {
+				r.p.td.AllowStopCancel()
 			}
 			r.hook(x, func() error {
 				r.p.strat.OnStop(r.p.sc)
 				return nil
 			})
+			if r.keepTD {
+				r.p.td.HoldOrders()
+			}
 		case x.Kind.Input():
 			r.step(x)
 		}
@@ -342,17 +351,24 @@ func (r *replayer) start(x eventlog.Record) {
 	_ = r.p.td.Recon()
 }
 
-// stop is the dispatcher's ending. With StopDeliver the session dropped TD before it delivered the
-// buffer, so from here on an order call is refused as it was (ErrStopping), and the buffered
-// inputs that follow in the log still run.
+// stop is the dispatcher's ending. StopDeliver without StopKeepTD is an older log: td.evt was
+// dropped before the buffer was delivered, so from here on an order call is refused. StopKeepTD
+// holds orders for that delivery and opens Cancel for OnStop (E08-D067). The buffered inputs that
+// follow in the log still run.
 func (r *replayer) stop(x eventlog.Record) {
 	if x.Flags&eventlog.StopHung != 0 {
 		return
 	}
 	r.stopped = true
-	if x.Flags&eventlog.StopDeliver != 0 {
-		r.p.td.Close()
+	if x.Flags&eventlog.StopDeliver == 0 || r.p.td == nil {
+		return
 	}
+	if x.Flags&eventlog.StopKeepTD != 0 {
+		r.keepTD = true
+		r.p.td.HoldOrders()
+		return
+	}
+	r.p.td.Close()
 }
 
 func (r *replayer) bindings(x eventlog.Record) {

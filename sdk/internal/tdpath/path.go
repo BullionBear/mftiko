@@ -40,7 +40,8 @@ var (
 	ErrNotListening = errors.New("tdpath: td.evt is not subscribed yet")
 	// ErrNoCancelBatch means ViewReply has not yet reported a positive cancel_batch.
 	ErrNoCancelBatch = errors.New("tdpath: the account's cancel_batch is not known yet")
-	// ErrStopping means the session has failed or Close has been called.
+	// ErrStopping means the session has failed, Close has been called, or order calls are held for
+	// the ending. After AllowStopCancel, Cancel and BatchCancel still succeed (E08-D067).
 	ErrStopping = errors.New("tdpath: the session is stopping")
 
 	errNotRecon = errors.New("tdpath: view reply is not a recon")
@@ -95,17 +96,25 @@ type Path struct {
 	listening   bool
 	subscribing bool
 	failed      bool
-	hooks       Hooks
-	push        func(in dispatch.Input, fn func()) error
-	fail        func(string)
-	nowFn       func() time.Time
-	after       func(time.Duration) <-chan time.Time
-	logf        func(string)
-	ctx         context.Context
-	cancel      context.CancelFunc
-	wg          sync.WaitGroup
-	settled     atomic.Uint64
-	failOnce    atomic.Bool
+	// ordersHeld refuses Submit, Cancel, BatchCancel and Recon. cancelOpen, set for OnStop of
+	// DONE and FAILED, lets Cancel and BatchCancel through (E08-D067). stopRounds counts cancel
+	// rounds armed in that window whose reply hook has not run. stopWait is the client ids still
+	// waiting for a terminal td.evt after an accepted or timed-out cancel.
+	ordersHeld bool
+	cancelOpen bool
+	stopRounds int
+	stopWait   map[string]struct{}
+	hooks      Hooks
+	push       func(in dispatch.Input, fn func()) error
+	fail       func(string)
+	nowFn      func() time.Time
+	after      func(time.Duration) <-chan time.Time
+	logf       func(string)
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
+	settled    atomic.Uint64
+	failOnce   atomic.Bool
 
 	rec    *evlog.Log
 	gen    *cloidgen.Gen
@@ -264,10 +273,44 @@ func Open(cfg Config) (*Path, error) {
 }
 
 // Close stops the account loops and drops the td.evt subscriptions. The NATS connection
-// stays open.
+// stays open. Every order call then returns ErrStopping.
 func (p *Path) Close() {
 	p.markFailed()
 	p.wg.Wait()
+	p.unsubscribe()
+}
+
+// HoldOrders refuses Submit, Cancel, BatchCancel and Recon without dropping td.evt.
+// DONE and FAILED call it before delivering the TD buffer already in hand (E08-D067).
+func (p *Path) HoldOrders() {
+	p.mu.Lock()
+	p.ordersHeld = true
+	p.cancelOpen = false
+	p.mu.Unlock()
+}
+
+// AllowStopCancel lets Cancel and BatchCancel through after HoldOrders. Submit and Recon stay
+// refused. OnStop of a DONE or FAILED ending calls it, and those cancels are tracked until
+// StopIdle (E08-D067).
+func (p *Path) AllowStopCancel() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.failed {
+		return
+	}
+	p.ordersHeld = true
+	p.cancelOpen = true
+}
+
+// StopIdle reports that every cancel armed by AllowStopCancel has delivered its reply, and that
+// any order still waiting on td.evt has reached a terminal status or had the cancel rejected.
+func (p *Path) StopIdle() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.stopRounds == 0 && len(p.stopWait) == 0
+}
+
+func (p *Path) unsubscribe() {
 	p.mu.Lock()
 	var subs []*nats.Subscription
 	for _, acc := range p.accounts {
@@ -345,7 +388,7 @@ func (p *Path) Listen() error {
 func (p *Path) Recon() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.failed {
+	if p.failed || p.ordersHeld {
 		return ErrStopping
 	}
 	if !p.listening {
@@ -367,7 +410,7 @@ func (p *Path) Recon() error {
 func (p *Path) RequestRecon(apiID int64) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.failed {
+	if p.failed || p.ordersHeld {
 		return ErrStopping
 	}
 	if !p.listening {
@@ -768,14 +811,18 @@ func (p *Path) apply(apiID int64, ev *tdv1.AccountEvent) {
 	}
 }
 
-func (p *Path) enqueue(in dispatch.Input, fn func()) {
+// enqueue queues fn. false means it was not queued: the caller that armed a stop-cancel must
+// settle that round itself, because fn will not.
+func (p *Path) enqueue(in dispatch.Input, fn func()) bool {
 	if err := p.push(in, fn); err != nil {
 		if strings.Contains(err.Error(), dispatch.ReasonTDFull) {
 			p.stop(dispatch.ReasonTDFull)
-			return
+			return false
 		}
 		p.markFailed()
+		return false
 	}
+	return true
 }
 
 func (p *Path) stop(reason string) {

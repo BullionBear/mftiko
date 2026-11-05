@@ -902,6 +902,95 @@ func TestCancelTimeout(t *testing.T) {
 	}
 }
 
+func TestStopCancel(t *testing.T) {
+	id := mustCloid(1, 1)
+	row := &tdv1.Order{ClientOrderId: id, Status: tdv1.OrderStatus_ORDER_STATUS_ACCEPTED, Uid: 1001}
+	rec := &tape{}
+	f, p := sessionHooks(t, time.Second, rec.hooks(), decl(7, 1))
+	f.serve()
+	f.onView = func(int64, *tdv1.ViewRequest) *tdv1.ViewReply {
+		return snap(1, 0, 1, []*tdv1.Order{row})
+	}
+	f.onOrder = accept
+	listenRecon(t, f, p)
+
+	p.HoldOrders()
+	if _, err := p.Submit(Order{APIID: 7, AlgoID: 1, UID: 1001, Qty: 1}); !errors.Is(err, ErrStopping) {
+		t.Fatalf("submit %v", err)
+	}
+	if err := p.Cancel(7, id); !errors.Is(err, ErrStopping) {
+		t.Fatalf("cancel held %v", err)
+	}
+	if err := p.BatchCancel(7, 1); !errors.Is(err, ErrStopping) {
+		t.Fatalf("batch held %v", err)
+	}
+	if err := p.RequestRecon(7); !errors.Is(err, ErrStopping) {
+		t.Fatalf("recon held %v", err)
+	}
+	if !p.StopIdle() {
+		t.Fatal("nothing is armed")
+	}
+
+	p.AllowStopCancel()
+	if _, err := p.Submit(Order{APIID: 7, AlgoID: 1, UID: 1001, Qty: 1}); !errors.Is(err, ErrStopping) {
+		t.Fatalf("submit during stop %v", err)
+	}
+	if err := p.RequestRecon(7); !errors.Is(err, ErrStopping) {
+		t.Fatalf("recon during stop %v", err)
+	}
+	if err := p.Cancel(7, id); err != nil {
+		t.Fatal(err)
+	}
+	if p.StopIdle() {
+		t.Fatal("cancel was not armed")
+	}
+	waitFor(t, 5*time.Second, func() bool { return p.settled.Load() >= 1 })
+	if p.StopIdle() {
+		t.Fatal("accepted cancel went idle before the order update")
+	}
+	publish(t, f.nc, 7, orderEv(1, 1, id, tdv1.OrderStatus_ORDER_STATUS_CANCELLED))
+	waitFor(t, 5*time.Second, func() bool { return p.StopIdle() && len(rec.orders()) == 1 })
+	if rec.orders()[0].Order.GetStatus() != tdv1.OrderStatus_ORDER_STATUS_CANCELLED {
+		t.Fatalf("%+v", rec.orders()[0].Order)
+	}
+
+	// A refused cancel is finished by its reply. Nothing further is waited on.
+	p.AllowStopCancel()
+	f.onOrder = func(int64, *tdv1.OrderRequest) *tdv1.OrderReply {
+		return &tdv1.OrderReply{Code: int32(tdv1.RejectCode_REJECT_CODE_INVALID_ORDER), Reason: "nope"}
+	}
+	before := p.settled.Load()
+	if err := p.Cancel(7, id); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, 5*time.Second, func() bool { return p.settled.Load() > before && p.StopIdle() })
+	if len(rec.rejects()) != 1 {
+		t.Fatalf("rejects %+v", rec.rejects())
+	}
+}
+
+func TestStopCancelTimeoutWaitsForEvent(t *testing.T) {
+	id := mustCloid(1, 1)
+	row := &tdv1.Order{ClientOrderId: id, Status: tdv1.OrderStatus_ORDER_STATUS_ACCEPTED, Uid: 1001}
+	rec := &tape{}
+	f, p := sessionHooks(t, 40*time.Millisecond, rec.hooks(), decl(7, 1))
+	f.serve()
+	f.onView = func(int64, *tdv1.ViewRequest) *tdv1.ViewReply {
+		return snap(1, 0, 1, []*tdv1.Order{row})
+	}
+	listenRecon(t, f, p)
+	p.AllowStopCancel()
+	if err := p.Cancel(7, id); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, 5*time.Second, func() bool { return p.settled.Load() >= 1 })
+	if p.StopIdle() || len(rec.rejects()) != 0 || len(rec.orders()) != 0 {
+		t.Fatalf("idle %v reject %d order %d", p.StopIdle(), len(rec.rejects()), len(rec.orders()))
+	}
+	publish(t, f.nc, 7, orderEv(1, 1, id, tdv1.OrderStatus_ORDER_STATUS_CANCELLED))
+	waitFor(t, 5*time.Second, func() bool { return p.StopIdle() && len(rec.orders()) == 1 })
+}
+
 func TestPushedRecon(t *testing.T) {
 	rec := &tape{}
 	f, p := sessionHooks(t, time.Second, rec.hooks(), decl(7, 1))

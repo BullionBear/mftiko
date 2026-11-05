@@ -58,12 +58,16 @@ type Context interface {
 	// Submit places an order and returns its client_order_id. The order is in OpenOrders as PENDING_NEW
 	// before Submit returns; what happens to it comes as OrderEvents. An error means nothing was sent
 	// and is a mistake in the call: an algo not declared for the account, a UID the SDK does not know.
+	// OnStop returns ErrStopping: a stopping session does not place orders (E08-D067).
 	Submit(o Order) (clientOrderID string, err error)
 	// Cancel asks TD to cancel one of the strategy's orders. A local refusal comes as a RejectEvent.
+	// OnStop of a DONE or FAILED ending may call it; the reply and the following order update are
+	// delivered before the session drops td.evt, within the same grace (E08-D067).
 	Cancel(apiID int64, clientOrderID string) error
 	// BatchCancel cancels every open order of algoID on the account (only those of uids, when given),
 	// whichever session or incarnation placed them. The SDK picks the orders from OpenOrders and splits
-	// them by the account's cancel_batch (DECISIONS E06-D002, E06-D031).
+	// them by the account's cancel_batch (DECISIONS E06-D002, E06-D031). OnStop of a DONE or FAILED
+	// ending may call it, on the same terms as Cancel (E08-D067).
 	BatchCancel(apiID int64, algoID uint32, uids ...uint32) error
 	// RequestRecon asks td.view for a new snapshot of the account; it arrives as OnRecon.
 	RequestRecon(apiID int64) error
@@ -192,5 +196,7 @@ var (
 	ErrUnknownAccount  = errors.New("sdk: the account is not bound to this session")
 	ErrAlgoNotDeclared = errors.New("sdk: the algo_id is not declared for this account")
 	ErrNoFeed          = errors.New("sdk: the session has no such feed")
-	ErrStopping        = errors.New("sdk: the session is stopping")
+	// ErrStopping means this call is refused because the session is ending. OnStop of DONE and FAILED
+	// may still Cancel and BatchCancel (E08-D067).
+	ErrStopping = errors.New("sdk: the session is stopping")
 )

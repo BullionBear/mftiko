@@ -210,8 +210,12 @@ func TestEndings(t *testing.T) {
 		t.Fatalf("hung stop %+v", f)
 	}
 	f = d.Frame(eventlog.Record{Seq: 9, Kind: eventlog.KindStop, Flags: eventlog.StopDeliver, RecvNs: 8000, TNs: 8100})
-	if f.Hung || !f.Deliver || f.StopNs != 8000 || f.OnStopAskedNs != 8100 {
+	if f.Hung || !f.Deliver || f.KeepTD || f.StopNs != 8000 || f.OnStopAskedNs != 8100 {
 		t.Fatalf("stop %+v", f)
+	}
+	f = d.Frame(eventlog.Record{Seq: 9, Kind: eventlog.KindStop, Flags: eventlog.StopDeliver | eventlog.StopKeepTD, RecvNs: 8000, TNs: 8100})
+	if f.Hung || !f.Deliver || !f.KeepTD {
+		t.Fatalf("keep td %+v", f)
 	}
 	f = d.Frame(eventlog.Record{Seq: 6, Kind: eventlog.KindHookEnd, Flags: eventlog.EndError, TNs: 2200, Ref: 5, Body: []byte("no account 7")})
 	if f.Ending != "error" || f.Error != "no account 7" || f.Input != 5 || f.HookEndNs != 2200 {

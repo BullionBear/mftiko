@@ -544,14 +544,22 @@ func testEnding(t *testing.T, kind endKind) {
 			} else {
 				remain.Store(-1)
 			}
-			if kind == endOnStopTimeout {
-				hold()
-			}
 			if err := d.PushMD([]byte{1}); !errors.Is(err, errClosed) {
 				return fmt.Errorf("PushMD %v", err)
 			}
-			if err := d.PushTD(func() {}); !errors.Is(err, errClosed) {
+			// CRASHED closes the TD buffer before OnStop. DONE and FAILED keep it open so a
+			// cancel result queued here is delivered after OnStop (E08-D067).
+			if kind == endCrashed {
+				if err := d.PushTD(func() {}); !errors.Is(err, errClosed) {
+					return fmt.Errorf("PushTD %v", err)
+				}
+				return nil
+			}
+			if err := d.PushTD(func() { d.step("late") }); err != nil {
 				return fmt.Errorf("PushTD %v", err)
+			}
+			if kind == endOnStopTimeout {
+				hold()
 			}
 			return nil
 		},
@@ -658,7 +666,7 @@ func testEnding(t *testing.T, kind endKind) {
 	tr := d.trace()
 	switch kind {
 	case endDone, endFailed:
-		want := []string{"hook", "stop-md", "c4-onstop", "unsub", "unsub-fn", "td", "onstop", "user"}
+		want := []string{"hook", "stop-md", "c4-onstop", "hold", "td", "allow-cancel", "onstop", "user", "results", "late", "unsub", "unsub-fn"}
 		if strings.Join(tr, ",") != strings.Join(want, ",") {
 			t.Fatalf("trace %v", tr)
 		}
@@ -684,7 +692,7 @@ func testEnding(t *testing.T, kind endKind) {
 			t.Fatalf("trace %v", tr)
 		}
 	case endOnStopTimeout:
-		want := []string{"hook", "stop-md", "c4-onstop", "unsub", "unsub-fn", "onstop", "user"}
+		want := []string{"hook", "stop-md", "c4-onstop", "hold", "allow-cancel", "onstop", "user", "results", "late", "unsub", "unsub-fn"}
 		if strings.Join(tr, ",") != strings.Join(want, ",") {
 			t.Fatalf("trace %v", tr)
 		}
@@ -693,7 +701,7 @@ func testEnding(t *testing.T, kind endKind) {
 			t.Fatalf("OnStop budget %s", left)
 		}
 	case endStopGrace:
-		want := []string{"hook", "stop-md", "c4-onstop", "unsub", "unsub-fn", "onstop", "user"}
+		want := []string{"hook", "stop-md", "c4-onstop", "hold", "allow-cancel", "onstop", "user", "results", "late", "unsub", "unsub-fn"}
 		if strings.Join(tr, ",") != strings.Join(want, ",") {
 			t.Fatalf("trace %v", tr)
 		}
@@ -704,6 +712,47 @@ func testEnding(t *testing.T, kind endKind) {
 		if left < 2*time.Second || left > 5*time.Second {
 			t.Fatalf("grace left %s", left)
 		}
+	}
+}
+
+// TestOnStopWaitsForArmedCancel keeps the ending open until StopIdle, which a result hook flips.
+func TestOnStopWaitsForArmedCancel(t *testing.T) {
+	var d *Disp
+	var idle atomic.Bool
+	d = New(Config{
+		OnStop: func(context.Context) error {
+			go func() {
+				if err := d.PushTD(func() {
+					idle.Store(true)
+					d.step("result")
+				}); err != nil {
+					t.Errorf("push %v", err)
+				}
+			}()
+			return nil
+		},
+		StopIdle: func() bool { return idle.Load() },
+		UnsubscribeTD: func() {
+			if !idle.Load() {
+				t.Error("unsubscribed before the cancel result")
+			}
+			d.step("unsub-fn")
+		},
+	})
+	if err := d.PushTD(func() { d.Exit() }); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := d.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.OnStop(ctx); err != nil {
+		t.Fatal(err)
+	}
+	wait(t, d.Exited())
+	if !idle.Load() || strings.Join(d.trace(), ",") != "stop-md,hold,allow-cancel,onstop,results,result,unsub,unsub-fn" {
+		t.Fatalf("idle %v trace %v", idle.Load(), d.trace())
 	}
 }
 

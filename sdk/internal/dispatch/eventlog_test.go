@@ -83,7 +83,7 @@ func TestRecordsInputsInDeliveryOrder(t *testing.T) {
 		`8 hook_end ref=7 t=5ms`,
 		`9 md_book recv=0s t=5ms "book-1"`,
 		`10 hook_end ref=9 t=6ms`,
-		`11 stop flags=1 recv=6ms t=6ms`,
+		`11 stop flags=5 recv=6ms t=6ms`,
 		`12 onstop recv=6ms t=6ms`,
 		`13 hook_end ref=12 t=7ms`,
 	}
