@@ -219,6 +219,9 @@ dev-up: web ## Dev NATS credentials and API config, Linux binaries and the conso
 	GOOS=linux GOARCH=$$($(GO) env GOARCH) CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/linux/ \
 		./cmd/mftiko-api ./cmd/mftiko-controller ./cmd/mftiko-sts-agent ./cmd/mftiko-shim ./cmd/mftiko-webhook-dev ./cmd/mftiko-latency-exporter
 	GOOS=linux GOARCH=$$($(GO) env GOARCH) CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/linux/examples/ ./examples/strategies/...
+	$(COMPOSE) up -d --wait etcd
+	$(COMPOSE) exec -T etcd /usr/local/bin/etcdctl --endpoints=http://127.0.0.1:2379 \
+		put /mftiko/v1/td/td1/pubkey "$$(tr -d '\n' < deploy/dev/data/api/td1.pub)"
 	$(COMPOSE) up -d --wait
 
 dev-down: ## Stop the dev stack. Keeps its data, including the gitignored NATS and API directories

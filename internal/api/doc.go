@@ -34,7 +34,6 @@
 //	allow                                 strategy repository allowlist; "*" or host plus path prefix (E10-D122)
 //	registry_creds                        Docker config.json path; empty is anonymous (E10-D123)
 //	plain_http_hosts                      hosts that use http; empty uses https (E10-D124)
-//	td_keys                               fallback TD public key, the mftiko-seal pubkey form; etcd /td/{inst}/pubkey wins (E21-D035, #518 removes it)
 //	retention                             W5 retention, Go duration, default 168h (E10-D017)
 //	unavailable_after                     region unavailable threshold, Go duration, default 15s (E10-D014)
 //	listen                                listen address, default :8080 (E10-D029)
@@ -46,6 +45,8 @@
 // (E21-D031). Creating an account stores an account-key AEAD of the credentials and a sealbox for that TD
 // instance's public key (E06-D013, E21-D003, E21-D028). Neither is returned (E10-D063).
 //
+// A TD instance's public key is not in either JSON file. The API reads /td/{inst}/pubkey from etcd
+// and does not keep a fallback (E21-D004, E21-D064). A config that still has td_keys fails Load.
 // A zero or omitted duration takes the default. Secrets are not in either JSON file. They are the etcd user "api"
 // password (MFTIKO_ETCD_PASSWORD, flag -etcd-password), the cookie HMAC key (MFTIKO_COOKIE_KEY, flag -cookie-key),
 // the account key ring (MFTIKO_ACCOUNT_KEYS, flag -account-keys; E21-D020) and the Postgres DSN

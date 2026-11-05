@@ -170,7 +170,6 @@ func TestAPISealedAccountReachesReady(t *testing.T) {
 		"shutdown_timeout":  "1s",
 		"allow":             []string{"*"},
 		"users":             []any{map[string]string{"name": "op", "token_sha256": tokenHash(readyToken)}},
-		"td_keys":           map[string]string{readyInst: key.Public().String()},
 	})
 	if err != nil {
 		t.Fatal(err)

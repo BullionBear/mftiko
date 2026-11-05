@@ -316,7 +316,7 @@ $A e2e main
 ```
 
 1. `GET /auth/me`、`/account-kinds`（BinanceUM 是 supported）。
-2. `POST /accounts` 建 BinanceUM 帳號，`td_instance` 是 `td1`。API 以 td1 的公鑰封裝憑證。
+2. `POST /accounts` 建 BinanceUM 帳號。建立 session 時 API 以 etcd `/td/td1/pubkey` 的公鑰封裝憑證；這把公鑰由 td-agent 發布，不在 API 設定裡。
 3. 確認 `hello` 有 `accept` 這個 tag，`POST /sessions` 部署到 `sts1`：feed `orderbook_delta.BinanceUM_Perp_BTCUSDT`（`dev`），帳號以 algo_id 1 綁定，params 讓 hello 在最佳買價下方 2000 掛一張 0.002 的買單。
 4. 等到 `phase` 是 `running`，feed 與帳號的依賴都是 `ready`，provider 分別是 `dev` 與 `td1`（「TD 帳號 READY」）。
 5. `logs` 的主機就是 runner，stdout、stderr 在那裡，檔案 0640、目錄 0750。等到 stderr 出現 hello 的 `OnRecon` 與那張單的 `ORDER_STATUS_CANCELLED`：MD、TD、STS 整條路徑都通了。

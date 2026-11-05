@@ -6,10 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"net"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
@@ -18,7 +16,6 @@ import (
 
 	"github.com/BullionBear/mftiko/internal/platform/accountkey"
 	"github.com/BullionBear/mftiko/internal/platform/artifact"
-	"github.com/BullionBear/mftiko/internal/platform/sealbox"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 )
 
@@ -103,11 +100,7 @@ type Config struct {
 	Allow    []string // strategy and input repository allowlist; "*" alone allows every repository (E10-D122, E15-D007)
 	// MaxInputBytes limits each input's declared config plus layer; zero means artifact.DefaultMaxBytes.
 	// It should equal the STS -max-artifact-bytes (E15-D006).
-	MaxInputBytes int64
-	// TDKeys is the fallback public key of each TD instance (E21-D035). A value at
-	// /td/{inst}/pubkey that parses wins. Load still requires one entry per TD instance.
-	// Removing the map is #518.
-	TDKeys           map[string]sealbox.PublicKey
+	MaxInputBytes    int64
 	Kinds            []Kind // not in the JSON; the command sets it (E10-D034). Empty rejects every kind.
 	Retention        time.Duration
 	UnavailableAfter time.Duration
@@ -143,19 +136,23 @@ type deployment struct {
 	Planes map[string]state.Plane `json:"planes"`
 }
 
+// errTDKeysRemoved is Load's error when -config still has td_keys (E21-D064, #535).
+// The value is not parsed and is not included: any JSON value, including null and {}, is enough.
+const errTDKeysRemoved = "td_keys is removed; publish the public key at /td/{instance}/pubkey"
+
 // configFile is the -config JSON (E10-D023). Durations are Go duration strings; empty or zero means the default.
 type configFile struct {
-	Users            []configUser      `json:"users"`
-	Allow            []string          `json:"allow"`
-	TDKeys           map[string]string `json:"td_keys"`
-	Retention        string            `json:"retention"`
-	UnavailableAfter string            `json:"unavailable_after"`
-	Listen           string            `json:"listen"`
-	ShutdownTimeout  string            `json:"shutdown_timeout"`
-	TDReplicaGrace   string            `json:"td_replica_grace"`
-	RegistryCreds    string            `json:"registry_creds"`
-	PlainHTTPHosts   []string          `json:"plain_http_hosts"`
-	MaxInputBytes    int64             `json:"max_input_bytes"`
+	Users            []configUser    `json:"users"`
+	Allow            []string        `json:"allow"`
+	RemovedTDKeys    json.RawMessage `json:"td_keys"`
+	Retention        string          `json:"retention"`
+	UnavailableAfter string          `json:"unavailable_after"`
+	Listen           string          `json:"listen"`
+	ShutdownTimeout  string          `json:"shutdown_timeout"`
+	TDReplicaGrace   string          `json:"td_replica_grace"`
+	RegistryCreds    string          `json:"registry_creds"`
+	PlainHTTPHosts   []string        `json:"plain_http_hosts"`
+	MaxInputBytes    int64           `json:"max_input_bytes"`
 }
 
 type configUser struct {
@@ -229,6 +226,9 @@ func decodeJSON(r io.Reader, out any) error {
 }
 
 func (f configFile) config(dep deployment) (Config, error) {
+	if f.RemovedTDKeys != nil {
+		return Config{}, errors.New(errTDKeysRemoved)
+	}
 	retention, err := parseDuration("retention", f.Retention, DefaultRetention)
 	if err != nil {
 		return Config{}, err
@@ -257,10 +257,6 @@ func (f configFile) config(dep deployment) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	keys, err := parseTDKeys(f.TDKeys)
-	if err != nil {
-		return Config{}, err
-	}
 	reg, cat, err := openRegistry(f.RegistryCreds, f.PlainHTTPHosts)
 	if err != nil {
 		return Config{}, err
@@ -274,7 +270,7 @@ func (f configFile) config(dep deployment) (Config, error) {
 	}
 	return Config{
 		Topology: dep.Topology, Planes: dep.Planes, Users: users, Allow: allow, MaxInputBytes: maxInput,
-		TDKeys: keys, Retention: retention, UnavailableAfter: unavailable, Listen: listen, ShutdownTimeout: shutdown,
+		Retention: retention, UnavailableAfter: unavailable, Listen: listen, ShutdownTimeout: shutdown,
 		TDReplicaGrace: grace, Registry: reg, Catalog: cat,
 	}, nil
 }
@@ -430,18 +426,6 @@ func allowMatches(allow []string, repository string) bool {
 	return false
 }
 
-func parseTDKeys(in map[string]string) (map[string]sealbox.PublicKey, error) {
-	out := make(map[string]sealbox.PublicKey, len(in))
-	for _, inst := range slices.Sorted(maps.Keys(in)) {
-		pub, err := sealbox.ParsePublicKey(in[inst])
-		if err != nil {
-			return nil, fmt.Errorf("td key %s: %w", inst, err)
-		}
-		out[inst] = pub
-	}
-	return out, nil
-}
-
 func (c Config) validate() error {
 	if _, err := state.AuthTables(c.Topology, c.Planes); err != nil {
 		return err
@@ -450,9 +434,6 @@ func (c Config) validate() error {
 		return err
 	}
 	if _, err := normalizeAllow(c.Allow); err != nil {
-		return err
-	}
-	if err := validateTDKeys(c.Planes, c.TDKeys); err != nil {
 		return err
 	}
 	if c.Retention <= 0 || c.UnavailableAfter <= 0 || c.ShutdownTimeout <= 0 {
@@ -501,36 +482,6 @@ func validateUsers(users []User) error {
 		}
 		names[u.Name] = true
 		tokens[u.Token] = u.Name
-	}
-	return nil
-}
-
-func validateTDKeys(planes map[string]state.Plane, keys map[string]sealbox.PublicKey) error {
-	want := map[string]bool{}
-	for inst, p := range planes {
-		if p == state.PlaneTD {
-			want[inst] = true
-		}
-	}
-	var extra []string
-	for inst := range keys {
-		if !want[inst] {
-			extra = append(extra, inst)
-		}
-	}
-	if len(extra) > 0 {
-		slices.Sort(extra)
-		return fmt.Errorf("td key for %s, which is not a td instance", extra[0])
-	}
-	var missing []string
-	for inst := range want {
-		if _, ok := keys[inst]; !ok {
-			missing = append(missing, inst)
-		}
-	}
-	if len(missing) > 0 {
-		slices.Sort(missing)
-		return fmt.Errorf("td instance %s has no public key", missing[0])
 	}
 	return nil
 }

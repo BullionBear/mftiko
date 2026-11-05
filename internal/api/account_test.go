@@ -62,20 +62,39 @@ func newAccountFix(t *testing.T, dsn string) *accountFix {
 	return startAccountFix(t, dsn, newWriteEnv(t))
 }
 
-func startAccountFix(t *testing.T, dsn string, env *writeEnv) *accountFix {
+// publishTDPubkeys writes a fresh public key for every TD instance that does not already
+// have one. Tests that seal read the private half from the returned map. An instance that
+// already has a value is left alone, and is absent from the map.
+func publishTDPubkeys(t *testing.T, env *writeEnv) map[string]*sealbox.PrivateKey {
 	t.Helper()
 	keys := map[string]*sealbox.PrivateKey{}
-	pubs := map[string]sealbox.PublicKey{}
-	for inst := range env.cfg.TDKeys {
+	for inst, plane := range env.cfg.Planes {
+		if plane != state.PlaneTD {
+			continue
+		}
+		region, err := env.cfg.Topology.RegionOf(inst)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if kv := env.get(t, region, state.PubkeyKey(inst)); kv != nil && len(kv.Value) > 0 {
+			continue
+		}
 		k, err := sealbox.GenerateKey()
 		if err != nil {
 			t.Fatal(err)
 		}
+		if _, err := env.servers[region].Client(t).Put(t.Context(), state.PubkeyKey(inst), k.Public().String()); err != nil {
+			t.Fatal(err)
+		}
 		keys[inst] = k
-		pubs[inst] = k.Public()
 	}
+	return keys
+}
+
+func startAccountFix(t *testing.T, dsn string, env *writeEnv) *accountFix {
+	t.Helper()
+	keys := publishTDPubkeys(t, env)
 	cfg := env.cfg
-	cfg.TDKeys = pubs
 	cfg.Users = []User{{Name: "ada", Token: sha256.Sum256([]byte(tokenAda))}}
 	cfg.Kinds = testKinds()
 	cfg.ReconcileEvery = time.Hour
@@ -99,6 +118,36 @@ func startAccountFix(t *testing.T, dsn string, env *writeEnv) *accountFix {
 		}
 		return nil
 	})
+	for inst, k := range keys {
+		sum := k.Public().SHA256()
+		until(t, 10*time.Second, "pubkey "+inst, func() error {
+			r.s.pubMu.Lock()
+			sl := r.s.pubs[inst]
+			cached := sl != nil && sl.state == pubOK && sl.key == k.Public()
+			r.s.pubMu.Unlock()
+			if !cached {
+				return errors.New("not cached")
+			}
+			if dsn == "" {
+				return nil
+			}
+			if err := r.s.recordFingerprint(t.Context(), inst, k.Public()); err != nil {
+				return err
+			}
+			pool, err := r.s.db()
+			if err != nil {
+				return err
+			}
+			var fp []byte
+			if err := pool.QueryRow(t.Context(), `SELECT fingerprint FROM td_pubkeys WHERE td_instance = $1`, inst).Scan(&fp); err != nil {
+				return err
+			}
+			if !bytes.Equal(fp, sum[:]) {
+				return errors.New("fingerprint")
+			}
+			return nil
+		})
+	}
 	return &accountFix{
 		env: env, srv: r.s, keys: keys, base: "http://" + r.s.Addr(),
 		client: &http.Client{Timeout: 5 * time.Second}, log: buf,
@@ -215,15 +264,10 @@ func TestTDInstanceNeedsPublicKey(t *testing.T) {
 	if !errors.As(err, &missing) || missing.inst != "td-tw-1" {
 		t.Fatalf("missing key: %v", err)
 	}
-	k, err := sealbox.GenerateKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.cfg.TDKeys = map[string]sealbox.PublicKey{"td-tw-1": k.Public()}
 	s.pubs["td-tw-1"] = &pubkeySlot{state: pubBad}
 	_, err = s.pubkeyFor(context.Background(), "td-tw-1")
 	if !errors.As(err, &missing) {
-		t.Fatalf("unreadable etcd value fell back to td_keys: %v", err)
+		t.Fatalf("unreadable etcd value was usable: %v", err)
 	}
 	if _, _, fields := s.classifyInstance("/td_instance", "md-tw-1"); len(fields) != 1 || fields[0].Reason != "is not a td instance" {
 		t.Fatalf("md: %+v", fields)

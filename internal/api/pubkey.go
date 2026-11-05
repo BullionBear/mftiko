@@ -3,7 +3,6 @@ package api
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"slices"
@@ -19,8 +18,8 @@ import (
 )
 
 // A TD public key in the process cache. unknown is "not looked up yet" and is the only
-// state that causes a direct etcd read (E21-D037). missing falls back to td_keys.
-// bad is an unreadable value and does not fall back (E21-D040).
+// state that causes a direct etcd read (E21-D037). missing and bad are not keys:
+// there is no configured fallback (E21-D040, E21-D064).
 const (
 	pubUnknown = iota
 	pubMissing
@@ -35,9 +34,6 @@ type pubkeySlot struct {
 	key      sealbox.PublicKey
 	raw      string
 	recorded []byte
-	warned   bool
-	warnEtcd [sha256.Size]byte
-	warnCfg  [sha256.Size]byte
 }
 
 // pubkeyUnavailable is a seal with no usable public key (E21-D039).
@@ -57,8 +53,8 @@ func (s *Server) slotLocked(inst string) *pubkeySlot {
 	return sl
 }
 
-// adopted is the key this process would seal to, from the cache only. unknown, bad, and a
-// missing key with no td_keys entry are not adopted.
+// adopted is the key this process would seal to, from the cache only.
+// Only a parsed etcd value is adopted (E21-D064).
 func (s *Server) adopted(inst string) (sealbox.PublicKey, bool) {
 	s.pubMu.Lock()
 	defer s.pubMu.Unlock()
@@ -70,15 +66,10 @@ func (s *Server) adoptedLocked(inst string) (sealbox.PublicKey, bool) {
 	if sl == nil {
 		return sealbox.PublicKey{}, false
 	}
-	switch sl.state {
-	case pubOK:
-		return sl.key, true
-	case pubMissing:
-		if k, ok := s.cfg.TDKeys[inst]; ok {
-			return k, true
-		}
+	if sl.state != pubOK {
+		return sealbox.PublicKey{}, false
 	}
-	return sealbox.PublicKey{}, false
+	return sl.key, true
 }
 
 func (s *Server) adoptedIs(inst string, pub sealbox.PublicKey) bool {
@@ -101,13 +92,9 @@ func (s *Server) observeValueLocked(inst string, raw []byte) (sealbox.PublicKey,
 		sl.raw = text
 		return sealbox.PublicKey{}, false
 	}
-	same := sl.state == pubOK && sl.key == pub && sl.raw == text
 	sl.state = pubOK
 	sl.key = pub
 	sl.raw = text
-	if !same {
-		s.noteMismatchLocked(inst, pub)
-	}
 	return pub, true
 }
 
@@ -116,31 +103,7 @@ func (s *Server) observeAbsentLocked(inst string) (sealbox.PublicKey, bool) {
 	sl.state = pubMissing
 	sl.key = sealbox.PublicKey{}
 	sl.raw = ""
-	if k, ok := s.cfg.TDKeys[inst]; ok {
-		return k, true
-	}
 	return sealbox.PublicKey{}, false
-}
-
-// noteMismatchLocked warns once per (etcd fingerprint, td_keys fingerprint). etcd still wins (E21-D035).
-func (s *Server) noteMismatchLocked(inst string, etcd sealbox.PublicKey) {
-	cfg, ok := s.cfg.TDKeys[inst]
-	if !ok || cfg == etcd {
-		return
-	}
-	efp := etcd.SHA256()
-	cfp := cfg.SHA256()
-	sl := s.slotLocked(inst)
-	if sl.warned && sl.warnEtcd == efp && sl.warnCfg == cfp {
-		return
-	}
-	sl.warned = true
-	sl.warnEtcd = efp
-	sl.warnCfg = cfp
-	s.log.Warn().Str("td_instance", inst).
-		Str("etcd_fingerprint", hex.EncodeToString(efp[:])).
-		Str("td_keys_fingerprint", hex.EncodeToString(cfp[:])).
-		Msg("td pubkey differs from td_keys; using etcd")
 }
 
 // pubkeyFor resolves the key create and update seal to. A known cache entry does not dial.

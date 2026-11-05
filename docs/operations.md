@@ -111,6 +111,8 @@ printf 'v1:%s\n' "$(openssl rand -base64 32 | tr -d '\n')"
 
 換鑰時把新版本放在最前面，舊版本留在同一串，等每個 replica 的 `mftiko_account_key_old` 回到 0 再拿掉舊版本。步驟與拿太早的後果見 [runbook](runbook.md#261-輪換-api-的帳號金鑰)。金鑰遺失，帳號要重新輸入（E21-D003）。
 
+API 的 JSON 沒有 TD 公鑰。`/td/{inst}/pubkey` 由該 TD agent 在當選後寫，API 只讀（E21-D004、E21-D064）。設定檔裡還有 `td_keys` 時 API 拒絕啟動。agent 還沒寫上公鑰時，要封給該 instance 的 session 回 409 `td_pubkey_unavailable`。
+
 ## controller
 
 依 [DECISIONS.md](DECISIONS.md) E12-D044–E12-D048（E12-08，#381）。

@@ -218,13 +218,11 @@ test -s api-token || openssl rand -hex 32 >api-token
 test -s cookie-key || openssl rand -hex 32 >cookie-key
 test -s account-keys || printf 'v1:%s\n' "\$(openssl rand -base64 32 | tr -d '\n')" >account-keys
 sha=\$(tr -d '\n' <api-token | sha256sum | cut -d' ' -f1)
-pk=\$($rel/mftiko-seal pubkey -key /etc/mftiko/td-agent/seal.key)
 cat >/root/e12-12/api.json <<JSON
 {
   "users": [{"name": "drill", "token_sha256": "\$sha"}],
   "allow": ["\$reg/strategies/", "\$reg/data/"],
   "plain_http_hosts": ["\$reg"],
-  "td_keys": {"td-jp-1": "\$pk"},
   "retention": "168h",
   "unavailable_after": "15s",
   "listen": "$A_IP:$API_PORT"

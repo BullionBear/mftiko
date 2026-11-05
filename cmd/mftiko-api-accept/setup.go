@@ -53,7 +53,7 @@ func accDeployment() deployment {
 // their port), the token and the session-log token, which it keeps across runs. Running it again changes nothing in etcd.
 func setup() error {
 	out := flag.String("out", "/work/e2e", "directory for deployment.json, api-*.json and token")
-	sealKey := flag.String("td-seal-key", "/work/td-seal.key", "td1's private key; the API seals accounts to its public half")
+	sealKey := flag.String("td-seal-key", "/work/td-seal.key", "td1's private key; the agent publishes its public half, and the API reads that from etcd")
 	registry := flag.String("registry", "registry:5000", "registry host:port for allow and plain HTTP")
 	retention := flag.String("retention", "1m", "W5 retention; short, so main sees the spec deleted")
 	flag.Parse()
@@ -73,8 +73,7 @@ func setup() error {
 		}
 		say("region %s: users and roles in place, auth on", name)
 	}
-	key, err := sealbox.LoadKeyFile(*sealKey)
-	if err != nil {
+	if _, err := sealbox.LoadKeyFile(*sealKey); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(*out, 0o700); err != nil {
@@ -113,7 +112,6 @@ func setup() error {
 			"users":             []any{map[string]string{"name": userName, "token_sha256": hex.EncodeToString(sum[:])}},
 			"allow":             []string{strings.TrimRight(*registry, "/") + "/strategies/", strings.TrimRight(*registry, "/") + "/data/"},
 			"plain_http_hosts":  []string{strings.TrimRight(*registry, "/")},
-			"td_keys":           map[string]string{tdInst: key.Public().String()},
 			"retention":         *retention,
 			"unavailable_after": "5s",
 			"listen":            r.listen,
