@@ -105,12 +105,14 @@ func root() (*clientv3.Client, error) {
 	return clientv3.New(clientv3.Config{Endpoints: []string{*etcdURL}, DialTimeout: 5 * time.Second, Username: "root", Password: *password, Logger: zap.NewNop()})
 }
 
-// signCreds signs a user for every subject with the account signing key mftiko-nats-dev wrote.
+// signCreds signs a user for every subject with the account signing key mftiko-nats-dev wrote, or, with
+// -pms, the PMS stand-in's user (E21-09).
 // The observer reads md.v1.f and asks md.v1.view as a session would; SYM uses it because mftiko-nats-dev
 // issues no SYM user.
 func signCreds() error {
 	dir := flag.String("nats-dir", "deploy/dev/data/nats", "mftiko-nats-dev output")
 	out := flag.String("out", "observer.creds", "credentials file to write")
+	pms := flag.Bool("pms", false, "sign the PMS user instead: publish sym, subscribe sym.v1.changed.> and _INBOX_pms.> only (E21-D009)")
 	flag.Parse()
 	lay, err := natsdev.Load(*dir)
 	if err != nil {
@@ -136,6 +138,13 @@ func signCreds() error {
 	uc.Name = "mftiko-md-accept"
 	uc.Pub.Allow.Add(">")
 	uc.Sub.Allow.Add(">")
+	if *pms {
+		// What a PMS gets from NATS: SYM, its change notes, and its own inbox. No td.evt (E21-D009).
+		uc = jwt.NewUserClaims(pub)
+		uc.Name = "mftiko-pms-sim"
+		uc.Pub.Allow.Add("sym")
+		uc.Sub.Allow.Add("sym.v1.changed.>", "_INBOX_pms.>")
+	}
 	uc.IssuerAccount = lay.Manifest.Account
 	token, err := uc.Encode(signer)
 	if err != nil {

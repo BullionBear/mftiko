@@ -532,9 +532,14 @@ func (s *Server) ListSessionRecords(w http.ResponseWriter, r *http.Request, para
 		s.writeSessionProblem(w, err)
 		return
 	}
+	retired, err := s.retiredTimes(r.Context())
+	if err != nil {
+		s.writeSessionProblem(w, err)
+		return
+	}
 	items := make([]apiv1.SessionRecord, 0, len(rows))
 	for _, rec := range rows {
-		item, err := s.sessionRecordView(rec)
+		item, err := s.sessionRecordView(rec, retired)
 		if err != nil {
 			s.writeSessionProblem(w, err)
 			return
@@ -556,7 +561,12 @@ func (s *Server) GetSessionRecord(w http.ResponseWriter, r *http.Request, id ope
 		s.writeSessionProblem(w, err)
 		return
 	}
-	item, err := s.sessionRecordView(*rec)
+	retired, err := s.retiredTimes(r.Context())
+	if err != nil {
+		s.writeSessionProblem(w, err)
+		return
+	}
+	item, err := s.sessionRecordView(*rec, retired)
 	if err != nil {
 		s.writeSessionProblem(w, err)
 		return
@@ -564,7 +574,8 @@ func (s *Server) GetSessionRecord(w http.ResponseWriter, r *http.Request, id ope
 	writeJSON(w, http.StatusOK, item)
 }
 
-func (s *Server) sessionRecordView(rec sessionRecord) (apiv1.SessionRecord, error) {
+// sessionRecordView is one record. retired maps an STS instance to its retired_at (E21-D083).
+func (s *Server) sessionRecordView(rec sessionRecord, retired map[string]time.Time) (apiv1.SessionRecord, error) {
 	id, err := uuid.Parse(rec.ID)
 	if err != nil {
 		return apiv1.SessionRecord{}, err
@@ -592,7 +603,17 @@ func (s *Server) sessionRecordView(rec sessionRecord) (apiv1.SessionRecord, erro
 		ClosedAt:         utcPtr(rec.ClosedAt),
 		EndedRequestedAt: endedRequestedAt(rec),
 		Final:            s.finalView(rec),
+		StsRetiredAt:     retiredAtOf(retired, rec.STS),
 	}, nil
+}
+
+func retiredAtOf(retired map[string]time.Time, inst string) *time.Time {
+	at, ok := retired[inst]
+	if !ok {
+		return nil
+	}
+	at = at.UTC()
+	return &at
 }
 
 func recordState(s string) (apiv1.SessionRecordState, bool) {

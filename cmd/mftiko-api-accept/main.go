@@ -11,6 +11,7 @@
 //	mftiko-api-accept region   before|down|up              one region's etcd stops; the other keeps serving
 //	mftiko-api-accept replicas                             the same writes on two replicas at once
 //	mftiko-api-accept cli      main|faults|inputs|logs|region STEP  the same, with the mftiko CLI as the only client (E11-09, E15-07, E14-08)
+//	mftiko-api-accept pms      before|retire|check         the PMS stand-in builds history from the API, SYM and the venue (E21-09)
 //
 // The flows talk to replica a (-api) and replica b (-api-b). Every request they send is checked
 // against the audit table at the end of the flow. Every subcommand exits 1 when its check fails.
@@ -62,7 +63,7 @@ const (
 
 var commands = map[string]func() error{
 	"setup": setup, "main": mainFlow, "ticker": tickerFlow, "invalid": invalidFlow,
-	"absent": absentFlow, "region": regionFlow, "replicas": replicasFlow, "cli": cliFlow,
+	"absent": absentFlow, "region": regionFlow, "replicas": replicasFlow, "cli": cliFlow, "pms": pmsFlow,
 }
 
 func main() {
@@ -86,7 +87,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: mftiko-api-accept setup|main|ticker|invalid|absent|region|replicas [flags]")
+	fmt.Fprintln(os.Stderr, "usage: mftiko-api-accept setup|main|ticker|invalid|absent|region|replicas|cli|pms [flags]")
 	os.Exit(2)
 }
 

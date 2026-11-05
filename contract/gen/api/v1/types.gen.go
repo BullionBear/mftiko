@@ -987,6 +987,10 @@ type SessionRecord struct {
 	// `closed`：etcd 的 spec 已刪除，`final` 是最後的狀態（E10-D031）。
 	State       SessionRecordState `json:"state"`
 	StsInstance InstanceName       `json:"sts_instance"`
+
+	// StsRetiredAt `sts_instance` 被永久退役的時間，取自 `retired_instances`（E12-D033）。沒有退役時省略。
+	// 退役的 STS 上的 session 不會變成 terminal，也沒有 `last_exit`，交易區間在這個時間封口（E21-D011、E21-D083）。
+	StsRetiredAt *time.Time `json:"sts_retired_at,omitempty"`
 }
 
 // SessionRecordList defines model for SessionRecordList.

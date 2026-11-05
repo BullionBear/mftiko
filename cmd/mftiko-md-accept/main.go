@@ -5,7 +5,7 @@
 // and gives every etcd user it creates one password.
 //
 //	mftiko-md-accept setup   [-topology FILE]           etcd roles and users for -instance, root, auth on
-//	mftiko-md-accept creds   -nats-dir DIR -out FILE    sign an all-subjects NATS user (observer, SYM)
+//	mftiko-md-accept creds   -nats-dir DIR -out FILE    sign an all-subjects NATS user (observer, SYM); -pms the PMS user
 //	mftiko-md-accept refresh -venue V [-ticker T]       ask SYM to refresh V; print T's uid and price_tick
 //	mftiko-md-accept demand  put|del SESSION FEED       write or delete one feed demand entry
 //	mftiko-md-accept acks                               print the instance's acks and placements
