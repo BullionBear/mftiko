@@ -491,31 +491,34 @@ func TestServe(t *testing.T) {
 	go func() { errCh <- e.Serve(ctx, ln) }()
 
 	url := "http://" + ln.Addr().String() + "/metrics"
+	// Serve accepts connections before the first Poll, so a GET can land on an
+	// empty registry. Wait until the sample is there.
+	want := []byte("mftiko_md_hook_delay_seconds_count{session_id=\"s\",kind=\"md_feed\"} 1\n")
 	var resp *http.Response
+	var body []byte
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		resp, err = http.Get(url)
 		if err == nil {
-			break
+			body, err = io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resp.StatusCode == http.StatusOK && bytes.Contains(body, want) {
+				break
+			}
 		}
 		if time.Now().After(deadline) {
-			t.Fatal(err)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Fatalf("status %d GET body:\n%s", resp.StatusCode, body)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	body, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status %d", resp.StatusCode)
-	}
 	if got := resp.Header.Get("Content-Type"); got != metricsType {
 		t.Fatalf("content type %q", got)
-	}
-	if !bytes.Contains(body, []byte("mftiko_md_hook_delay_seconds_count{session_id=\"s\",kind=\"md_feed\"} 1\n")) {
-		t.Fatalf("GET body:\n%s", body)
 	}
 	head, err := http.Head(url)
 	if err != nil {

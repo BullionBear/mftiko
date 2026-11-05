@@ -43,6 +43,7 @@ func TestAPIScope(t *testing.T) {
 		{"put md demand", put(MDDemandKey("md-tw-1", "a1b2c3", "feed/trade.Binance_Spot_BTCUSDT"))},
 		{"put td ack", put(TDAckKey("td-jp-1", "a1b2c3", 42))},
 		{"put td pubkey", put(PubkeyKey("td-jp-1"))},
+		{"put td scope", put(ScopeKey("td-jp-1", 42, 7))},
 		{"put agent record", put(AgentKey(PlaneSTS, "sts-tw-1"))},
 		{"put writer", put(WriterKey(PlaneTD, "td-jp-1"))},
 		{"put worker status", put(WorkerStatusKey(PlaneSTS, "sts-tw-1", "h"))},

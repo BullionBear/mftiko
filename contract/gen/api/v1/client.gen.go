@@ -241,6 +241,17 @@ type ClientInterface interface {
 	// Corresponds with POST /instances/{name}/retire (the `RetireInstance` operationId).
 	RetireInstance(ctx context.Context, name InstanceName, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListScopes 列出交易範圍
+	//
+	// 從每個 region 的 mirror 讀 `/td/{inst}/scope/{api_id}/{uid}`（E21-D009、E21-D010、E21-D068）。
+	// 不帶 `api_id` 列出全部。同一個 `(api_id, uid)` 在多個 instance 上時合併成一筆，`since` 取最早的。
+	// 有 region 不可用時，它的 key 不在這次結果裡，並列在 `freshness.unavailable_regions`。
+	// 這次結果是不完整的：不能當成沒有 scope，也不能把看到的 `since` 當成最早。全部 region 不可用仍回 200。
+	// 商品是 SYM 的 UID。
+	//
+	// Corresponds with GET /scopes (the `ListScopes` operationId).
+	ListScopes(ctx context.Context, params *ListScopesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListSessionRecords 列出 session 的歷史紀錄
 	//
 	// 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。.
@@ -654,6 +665,27 @@ func (c *Client) GetInstance(ctx context.Context, name InstanceName, reqEditors 
 // Corresponds with POST /instances/{name}/retire (the `RetireInstance` operationId).
 func (c *Client) RetireInstance(ctx context.Context, name InstanceName, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRetireInstanceRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListScopes 列出交易範圍
+//
+// 從每個 region 的 mirror 讀 `/td/{inst}/scope/{api_id}/{uid}`（E21-D009、E21-D010、E21-D068）。
+// 不帶 `api_id` 列出全部。同一個 `(api_id, uid)` 在多個 instance 上時合併成一筆，`since` 取最早的。
+// 有 region 不可用時，它的 key 不在這次結果裡，並列在 `freshness.unavailable_regions`。
+// 這次結果是不完整的：不能當成沒有 scope，也不能把看到的 `since` 當成最早。全部 region 不可用仍回 200。
+// 商品是 SYM 的 UID。
+//
+// Corresponds with GET /scopes (the `ListScopes` operationId).
+func (c *Client) ListScopes(ctx context.Context, params *ListScopesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListScopesRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1493,6 +1525,84 @@ func NewRetireInstanceRequest(server string, name InstanceName) (*http.Request, 
 	return req, nil
 }
 
+// NewListScopesRequest constructs an http.Request for the ListScopes method
+func NewListScopesRequest(server string, params *ListScopesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/scopes")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.ApiId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "api_id", *params.ApiId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListSessionRecordsRequest constructs an http.Request for the ListSessionRecords method
 func NewListSessionRecordsRequest(server string, params *ListSessionRecordsParams) (*http.Request, error) {
 	var err error
@@ -2321,6 +2431,19 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /instances/{name}/retire (the `RetireInstance` operationId).
 	RetireInstanceWithResponse(ctx context.Context, name InstanceName, reqEditors ...RequestEditorFn) (*RetireInstanceResponse, error)
+
+	// ListScopesWithResponse 列出交易範圍
+	//
+	// 從每個 region 的 mirror 讀 `/td/{inst}/scope/{api_id}/{uid}`（E21-D009、E21-D010、E21-D068）。
+	// 不帶 `api_id` 列出全部。同一個 `(api_id, uid)` 在多個 instance 上時合併成一筆，`since` 取最早的。
+	// 有 region 不可用時，它的 key 不在這次結果裡，並列在 `freshness.unavailable_regions`。
+	// 這次結果是不完整的：不能當成沒有 scope，也不能把看到的 `since` 當成最早。全部 region 不可用仍回 200。
+	// 商品是 SYM 的 UID。
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /scopes (the `ListScopes` operationId).
+	ListScopesWithResponse(ctx context.Context, params *ListScopesParams, reqEditors ...RequestEditorFn) (*ListScopesResponse, error)
 
 	// ListSessionRecordsWithResponse 列出 session 的歷史紀錄
 	//
@@ -3204,6 +3327,61 @@ func (r RetireInstanceResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r RetireInstanceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListScopesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ScopeList
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *ValidationFailed
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Unauthenticated
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListScopesResponse) GetJSON200() *ScopeList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ListScopesResponse) GetApplicationproblemJSON400() *ValidationFailed {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListScopesResponse) GetApplicationproblemJSON401() *Unauthenticated {
+	return r.ApplicationproblemJSON401
+}
+
+// GetBody returns the raw response body bytes
+func (r ListScopesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListScopesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListScopesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListScopesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -4110,6 +4288,25 @@ func (c *ClientWithResponses) RetireInstanceWithResponse(ctx context.Context, na
 	return ParseRetireInstanceResponse(rsp)
 }
 
+// ListScopesWithResponse 列出交易範圍
+//
+// 從每個 region 的 mirror 讀 `/td/{inst}/scope/{api_id}/{uid}`（E21-D009、E21-D010、E21-D068）。
+// 不帶 `api_id` 列出全部。同一個 `(api_id, uid)` 在多個 instance 上時合併成一筆，`since` 取最早的。
+// 有 region 不可用時，它的 key 不在這次結果裡，並列在 `freshness.unavailable_regions`。
+// 這次結果是不完整的：不能當成沒有 scope，也不能把看到的 `since` 當成最早。全部 region 不可用仍回 200。
+// 商品是 SYM 的 UID。
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /scopes (the `ListScopes` operationId).
+func (c *ClientWithResponses) ListScopesWithResponse(ctx context.Context, params *ListScopesParams, reqEditors ...RequestEditorFn) (*ListScopesResponse, error) {
+	rsp, err := c.ListScopes(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListScopesResponse(rsp)
+}
+
 // ListSessionRecordsWithResponse 列出 session 的歷史紀錄
 //
 // 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。.
@@ -4892,6 +5089,46 @@ func ParseRetireInstanceResponse(rsp *http.Response) (*RetireInstanceResponse, e
 			return nil, err
 		}
 		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListScopesResponse parses an HTTP response from a ListScopesWithResponse call
+func ParseListScopesResponse(rsp *http.Response) (*ListScopesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListScopesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ScopeList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationFailed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthenticated
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
 
 	}
 

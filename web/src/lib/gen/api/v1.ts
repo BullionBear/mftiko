@@ -328,6 +328,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scopes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 列出交易範圍
+         * @description 從每個 region 的 mirror 讀 `/td/{inst}/scope/{api_id}/{uid}`（E21-D009、E21-D010、E21-D068）。
+         *     不帶 `api_id` 列出全部。同一個 `(api_id, uid)` 在多個 instance 上時合併成一筆，`since` 取最早的。
+         *     有 region 不可用時，它的 key 不在這次結果裡，並列在 `freshness.unavailable_regions`。
+         *     這次結果是不完整的：不能當成沒有 scope，也不能把看到的 `since` 當成最早。全部 region 不可用仍回 200。
+         *     商品是 SYM 的 UID。
+         */
+        get: operations["listScopes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/instances": {
         parameters: {
             query?: never;
@@ -838,6 +862,26 @@ export interface components {
         };
         AccountList: {
             items: components["schemas"]["Account"][];
+            next_cursor?: string;
+            freshness: components["schemas"]["Freshness"];
+        };
+        /** @description 一個帳號在一個商品上開始交易的時間（E21-D009、E21-D010）。商品是 SYM 的 UID。 */
+        Scope: {
+            api_id: components["schemas"]["APIIDValue"];
+            /**
+             * Format: int64
+             * @description SYM 的商品 UID（E02-D003、E21-D009）。
+             */
+            uid: number;
+            /**
+             * Format: date-time
+             * @description 最早一筆會送出的單的時間，UTC，奈秒精度。對應 etcd 的十進位 `since_ns`（E21-D068）。
+             *     同一個 `(api_id, uid)` 在多個 instance 上時取較早的那個。
+             */
+            since: string;
+        };
+        ScopeList: {
+            items: components["schemas"]["Scope"][];
             next_cursor?: string;
             freshness: components["schemas"]["Freshness"];
         };
@@ -1543,6 +1587,34 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             503: components["responses"]["Unavailable"];
+        };
+    };
+    listScopes: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["Limit"];
+                /** @description 上一頁回應的 `next_cursor`，對呼叫端不透明。 */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description 只列這個帳號。省略則列出全部。不存在的帳號回空的 `items`，不是 404。 */
+                api_id?: components["schemas"]["APIIDValue"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 範圍。`items` 依 `api_id`、`uid` 升序。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScopeList"];
+                };
+            };
+            400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthenticated"];
         };
     };
     listInstances: {

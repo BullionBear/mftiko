@@ -27,11 +27,15 @@ func (p *plane) waiting(o outcome, st statev1.EntryState, reason string, observe
 	return reason
 }
 
-// sync writes one ack per demand key (PROTOCOL §3.5), only when it changes. A demand that left
-// loses its ack at once: linger keeps the worker, not the ack.
+// sync writes one ack per demand key (PROTOCOL §3.5), only when it changes, and records scope from
+// the latest reports (E21-D009). A demand that left loses its ack at once: linger keeps the worker,
+// not the ack. Scope keys are never deleted.
 func (p *plane) sync(ctx context.Context, _ agent.Demand[Entry], observed map[agent.WorkerKey]agent.Observed, gaveUp func(agent.WorkerKey) bool) error {
 	ctx, cancel := context.WithTimeout(ctx, writeTimeout)
 	defer cancel()
+	if err := p.recordScopes(ctx, observed); err != nil {
+		return err
+	}
 	want := map[string]bool{}
 	now := p.clock()
 	for _, o := range p.outcomes {

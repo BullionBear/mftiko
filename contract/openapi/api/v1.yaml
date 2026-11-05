@@ -3,6 +3,7 @@
 # 2.1.0 adds session log read and export (E14-D011–E14-D015). Compatible: new paths and one ErrorCode.
 # 2.2.0 adds the strategy event log switch (E20-D007). Compatible: one optional request field, one response field.
 # 2.3.0 adds account exchange, exch_account_uid, deleted_at, and include_deleted (E21-D010, E21-D027).
+# 3.1.0 adds GET /scopes (E21-D010, E21-D068). Compatible: one new path.
 # 3.0.0 removes td_instance from account requests and responses, removes Account.region,
 # and requires AccountDeclInput.td_instance (E21-D052, E21-D054, E21-D005). In place, path
 # still /api/v1. The oasdiff ERR lines are in api-v1-err-ignore.txt.
@@ -13,12 +14,12 @@
 openapi: 3.0.3
 info:
   title: mftiko API
-  version: 3.0.0
+  version: 3.1.0
   description: |
     mftiko API server 的對外契約（DECISIONS E10-D001、E10-D002）。
 
     **慣例（E10-D036）**
-    - 路徑都在 `/api/v1` 底下。`2.0.0` 這一次在原地拿掉策略 `id`（E10-D118）。`2.1.0` 加上 session log 的讀取與匯出（E14-D011–E14-D015）。`2.2.0` 加上策略事件紀錄的開關（E20-D007）。`2.3.0` 加上帳號的 `exchange`、`exch_account_uid`、`deleted_at` 與 `include_deleted`（E21-D010、E21-D027）。`2.4.0` 加上錯誤碼 `td_pubkey_unavailable`（E21-D039）。`3.0.0` 在原地拿掉帳號請求與回應的 `td_instance`、拿掉帳號回應的 `region`，並把建立 session 的 `td_instance` 改成必填（E21-D052、E21-D054、E21-D005）。讀取端忽略不認得的欄位。
+    - 路徑都在 `/api/v1` 底下。`2.0.0` 這一次在原地拿掉策略 `id`（E10-D118）。`2.1.0` 加上 session log 的讀取與匯出（E14-D011–E14-D015）。`2.2.0` 加上策略事件紀錄的開關（E20-D007）。`2.3.0` 加上帳號的 `exchange`、`exch_account_uid`、`deleted_at` 與 `include_deleted`（E21-D010、E21-D027）。`2.4.0` 加上錯誤碼 `td_pubkey_unavailable`（E21-D039）。`3.0.0` 在原地拿掉帳號請求與回應的 `td_instance`、拿掉帳號回應的 `region`，並把建立 session 的 `td_instance` 改成必填（E21-D052、E21-D054、E21-D005）。`3.1.0` 加上 `GET /scopes`（E21-D010、E21-D068）。讀取端忽略不認得的欄位。
     - 時間是 RFC 3339 字串（UTC，奈秒精度可省略）。
     - enum 是 API 自己的小寫字串，不是 proto 的名稱。
     - 錯誤一律是 `application/problem+json`（RFC 9457），另帶穩定的 `code`；驗證錯誤的 `errors[].path` 是 JSON Pointer（RFC 6901），指向請求 body 裡的欄位（E10-D004）。
@@ -44,6 +45,8 @@ tags:
     description: session 的歷史紀錄，來自 Postgres，包含 etcd 已刪除的（E10-D031）。
   - name: accounts
     description: 交易所帳號；憑證只寫不讀（E10-D011、E10-D034）。
+  - name: scopes
+    description: 帳號在商品上開始交易的時間，給 PMS（E21-D009、E21-D010）。
   - name: instances
     description: 三個平面的 instance 與 controller（E10-D014）。
   - name: events
@@ -616,6 +619,37 @@ paths:
           $ref: '#/components/responses/Conflict'
         '503':
           $ref: '#/components/responses/Unavailable'
+
+  /scopes:
+    get:
+      tags: [scopes]
+      operationId: listScopes
+      summary: 列出交易範圍
+      description: |
+        從每個 region 的 mirror 讀 `/td/{inst}/scope/{api_id}/{uid}`（E21-D009、E21-D010、E21-D068）。
+        不帶 `api_id` 列出全部。同一個 `(api_id, uid)` 在多個 instance 上時合併成一筆，`since` 取最早的。
+        有 region 不可用時，它的 key 不在這次結果裡，並列在 `freshness.unavailable_regions`。
+        這次結果是不完整的：不能當成沒有 scope，也不能把看到的 `since` 當成最早。全部 region 不可用仍回 200。
+        商品是 SYM 的 UID。
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: api_id
+          in: query
+          description: 只列這個帳號。省略則列出全部。不存在的帳號回空的 `items`，不是 404。
+          schema:
+            $ref: '#/components/schemas/APIIDValue'
+      responses:
+        '200':
+          description: 範圍。`items` 依 `api_id`、`uid` 升序。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScopeList'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
 
   /instances:
     get:
@@ -1601,6 +1635,39 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Account'
+        next_cursor:
+          type: string
+        freshness:
+          $ref: '#/components/schemas/Freshness'
+
+    # ---------- scope ----------
+    Scope:
+      type: object
+      description: 一個帳號在一個商品上開始交易的時間（E21-D009、E21-D010）。商品是 SYM 的 UID。
+      required: [api_id, uid, since]
+      properties:
+        api_id:
+          $ref: '#/components/schemas/APIIDValue'
+        uid:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 4294967295
+          description: SYM 的商品 UID（E02-D003、E21-D009）。
+        since:
+          type: string
+          format: date-time
+          description: |
+            最早一筆會送出的單的時間，UTC，奈秒精度。對應 etcd 的十進位 `since_ns`（E21-D068）。
+            同一個 `(api_id, uid)` 在多個 instance 上時取較早的那個。
+    ScopeList:
+      type: object
+      required: [items, freshness]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Scope'
         next_cursor:
           type: string
         freshness:

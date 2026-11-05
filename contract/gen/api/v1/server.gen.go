@@ -59,6 +59,9 @@ type ServerInterface interface {
 	// RetireInstance 永久退役一個 instance
 	// (POST /instances/{name}/retire)
 	RetireInstance(w http.ResponseWriter, r *http.Request, name InstanceName)
+	// ListScopes 列出交易範圍
+	// (GET /scopes)
+	ListScopes(w http.ResponseWriter, r *http.Request, params ListScopesParams)
 	// ListSessionRecords 列出 session 的歷史紀錄
 	// (GET /session-records)
 	ListSessionRecords(w http.ResponseWriter, r *http.Request, params ListSessionRecordsParams)
@@ -482,6 +485,65 @@ func (siw *ServerInterfaceWrapper) RetireInstance(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RetireInstance(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListScopes operation middleware
+func (siw *ServerInterfaceWrapper) ListScopes(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListScopesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "api_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "api_id", r.URL.Query(), &params.ApiId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "api_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListScopes(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1132,6 +1194,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/accounts/{api_id}", wrapper.DeleteAccount)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/accounts/{api_id}", wrapper.GetAccount)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/accounts/{api_id}", wrapper.UpdateAccount)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/scopes", wrapper.ListScopes)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/instances", wrapper.ListInstances)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/instances/{name}", wrapper.GetInstance)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/instances/{name}/retire", wrapper.RetireInstance)
@@ -2013,6 +2076,60 @@ func (response RetireInstance503ApplicationProblemPlusJSONResponse) VisitRetireI
 	return err
 }
 
+type ListScopesRequestObject struct {
+	Params ListScopesParams
+}
+
+type ListScopesResponseObject interface {
+	VisitListScopesResponse(w http.ResponseWriter) error
+}
+
+type ListScopes200JSONResponse ScopeList
+
+func (response ListScopes200JSONResponse) VisitListScopesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScopes400ApplicationProblemPlusJSONResponse struct {
+	ValidationFailedApplicationProblemPlusJSONResponse
+}
+
+func (response ListScopes400ApplicationProblemPlusJSONResponse) VisitListScopesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListScopes401ApplicationProblemPlusJSONResponse struct {
+	UnauthenticatedApplicationProblemPlusJSONResponse
+}
+
+func (response ListScopes401ApplicationProblemPlusJSONResponse) VisitListScopesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListSessionRecordsRequestObject struct {
 	Params ListSessionRecordsParams
 }
@@ -2849,6 +2966,9 @@ type StrictServerInterface interface {
 	// RetireInstance 永久退役一個 instance
 	// (POST /instances/{name}/retire)
 	RetireInstance(ctx context.Context, request RetireInstanceRequestObject) (RetireInstanceResponseObject, error)
+	// ListScopes 列出交易範圍
+	// (GET /scopes)
+	ListScopes(ctx context.Context, request ListScopesRequestObject) (ListScopesResponseObject, error)
 	// ListSessionRecords 列出 session 的歷史紀錄
 	// (GET /session-records)
 	ListSessionRecords(ctx context.Context, request ListSessionRecordsRequestObject) (ListSessionRecordsResponseObject, error)
@@ -3264,6 +3384,32 @@ func (sh *strictHandler) RetireInstance(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RetireInstanceResponseObject); ok {
 		if err := validResponse.VisitRetireInstanceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListScopes operation middleware
+func (sh *strictHandler) ListScopes(w http.ResponseWriter, r *http.Request, params ListScopesParams) {
+	var request ListScopesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListScopes(ctx, request.(ListScopesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListScopes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListScopesResponseObject); ok {
+		if err := validResponse.VisitListScopesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -171,6 +171,7 @@ func Run(ctx context.Context, cfg Config) error {
 type writer interface {
 	Put(ctx context.Context, key, val string, opts ...clientv3.OpOption) error
 	Delete(ctx context.Context, key string, opts ...clientv3.OpOption) error
+	Txn(ctx context.Context, cmps []clientv3.Cmp, then, els []clientv3.Op) (*clientv3.TxnResponse, error)
 }
 
 type reader interface {
@@ -197,6 +198,10 @@ type plane struct {
 	specs     map[int64]Spec
 	outcomes  map[string]outcome
 	plans     map[agent.WorkerKey]agent.Plan[Spec, Live]
+	// applied is the since_ns this term has already ensured for a scope key (E21-D066).
+	applied map[string]int64
+	// replaced marks scope keys whose unreadable value was overwritten, so the warning is once per term.
+	replaced map[string]struct{}
 }
 
 // Plan returns the last commit. A stale step does not recompute it (E01-D009).
