@@ -66,6 +66,8 @@ etcdctl endpoint health
 
 告警：空窗長過 `for` 時 `MftikoAgentDown`、`MftikoControllerNoLeader`。worker 不中斷（`KillMode=process`，新 agent 收養）。
 
+從帳號還只在 etcd 的版本（`v0.6.0` 與更早）換上來，改照 [§2.10](#210-從-e21-之前的版本升級帳號搬進-postgres)。
+
 1. **兩台都先 fetch、install**，這一步不動任何行程：
 
    ```sh
@@ -130,12 +132,13 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 | NATS 的 user creds | `/etc/mftiko/md-agent/nats.creds`、`/etc/mftiko/sym/nats.creds`（0600，屬該服務的使用者） | `systemctl restart mftiko-md-agent`、`mftiko-sym`。worker 照跑，下次重連用新的 |
 | registry 的帳密 | `MFTIKO_REGISTRY_CREDS` 指的同一份 `config.json`（0600）。多個 host 各做一次 `docker login <host>`，寫進這份檔的 `auths` | 該 agent，或 API（`registry_creds`） |
 | API 的 cookie 金鑰 | `/etc/mftiko/api/env` 的 `MFTIKO_COOKIE_KEY` | `mftiko-api`。console 的登入全部失效，要重新登入 |
-| API 的帳號金鑰 | `/etc/mftiko/api/env` 的 `MFTIKO_ACCOUNT_KEYS` | `mftiko-api`。所有 replica 同一份。步驟見 [§2.6.1](#261-輪換-api-的帳號金鑰)。整把遺失要重新輸入帳號（E21-D003） |
+| API 的帳號金鑰 | `/etc/mftiko/api/env` 的 `MFTIKO_ACCOUNT_KEYS` | `mftiko-api`。所有 replica 同一份。步驟見 [§2.6.1](#261-輪換-api-的帳號金鑰)。備份要跟 Postgres 分開，見 [operations.md](operations.md#api-的帳號金鑰)。整把遺失要重新輸入帳號（E21-D003） |
 | Postgres 的密碼 | API 的 `MFTIKO_POSTGRES_DSN`、SYM 與 `mftiko-release` 的 `DATABASE_URL` | 先在 Postgres 改密碼，再改 env、重啟 `mftiko-api`、`mftiko-sym`。中間的空窗長過 `for` 時 `MftikoPostgresDown` 會響 |
 | session log 的 token | API 的 `/etc/mftiko/api/log-token`；每台 STS 的 `/etc/mftiko/sts-agent/env` 的 `MFTIKO_LOG_TOKEN_SHA256` | 先每台 `mftiko-sts-agent`，再每個 `mftiko-api`。中間讀 log 是 `logs_unavailable`。步驟見 [輪換 token](operations.md#輪換-token) |
 
 - 先寫到同一個目錄的 `<路徑>.new`（`install -m 0600 -o <使用者> <新檔> <路徑>.new`），再 `mv <路徑>.new <路徑>`。rename 是原子的；先刪再建的話，worker 剛好重連時會讀不到。
-- 一期不在 runbook 裡：NATS 的 account signing key（要同時改 NATS server 的 account 設定）與 TD 的 seal key（每個帳號都要用新公鑰重新 seal）。見 E12-D060。
+- 一期不在 runbook 裡：NATS 的 account signing key（要同時改 NATS server 的 account 設定）。見 E12-D060。
+- TD 的 seal key：E21 之後換一把新的、重啟 td-agent，API 從 Postgres 重封該 instance 的副本（E21-D038）。備份、遺失與第一次採信的檢查見 [operations.md「祕密的備份與還原」](operations.md#祕密的備份與還原)。
 
 ### 2.6.1 輪換 API 的帳號金鑰
 
@@ -176,6 +179,108 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 - 流程、上限、帳密與 `allow` 在 [operations.md「上傳資料 artifact」](operations.md#上傳資料-artifact)：`mftiko-pack data` 推一個目錄，把印出的 digest 寫進 session 檔的 `inputs`，`mftiko session create -f`。
 - input 的 repository 要在 `allow` 內，與策略相同（E15-D007）。API 的 `registry_creds` 與 STS 的 `MFTIKO_REGISTRY_CREDS` 都要能讀那個 host。
 - 不用重啟 API 或 agent。確認：session `running`；策略自己的 log（`mftiko session logs <id>`）。
+
+### 2.10 從 E21 之前的版本升級：帳號搬進 Postgres
+
+適用於帳號還只存在 etcd 的版本（`v0.6.0` 與更早：`mftiko account list` 的帳號還有 `td_instance`），要換到含 E21 的版本。依 E21-D002–E21-D007、E21-D073–E21-D078（E21-10，#522）。
+
+這次換版有兩件事跟 §2.1 不同。第一，帳號的權威從 etcd 搬到 Postgres，而 etcd 裡的憑證只有 TD 私鑰解得開，所以要先搬，`api_id` 不變。第二，TD 的 subject 從 `td.{order,view,evt}.{api_id}` 改成 `td.{order,view,evt}.{td_instance}.{api_id}`，不雙訂閱（E21-D044），有帳號的 session 不能跨過這次換版。
+
+告警：同 §2.1。順序是：事前準備 → 1 停 session → 2 搬帳號 → 3 換版 → 4 重建 session。以下 `<tag>` 是新版，`$NEW` 是 `/opt/mftiko/releases/<tag>/bin`。命令以 root 執行。
+
+**0. 事前準備。** 這一步不動任何行程。
+
+1. **盤點。** 存到主機 A 的工作目錄，例如 `install -d -m 0700 /root/e21-upgrade`：
+   - `mftiko -o json account list > accounts.json`：每個 `api_id` 的 `kind`、`name`、`td_instance`。
+   - 宣告了 `accounts` 的 session：`mftiko session list`，再 `mftiko -o json session show <id>` 逐一存下 spec，第 4 步重建要用。
+2. **`exch_account_uid`。** 到交易所查每個帳號的 UID，寫成 `uids.json`，例如 `{"8172133045237979": "123456789"}`。同一把 key 登記成多個 kind 的，每一筆填同一個 UID。填錯不會被發現，登記之後也不能改（E21-D008、E21-D031）。
+3. **安裝新版。** 每台主機 `mftiko-release fetch <tag> && mftiko-release install`（§2.1 第 1 步）。只安裝，不 switch。
+4. **帳號金鑰。** 主機 A 每個 API replica 的 `/etc/mftiko/api/env` 加上 `MFTIKO_ACCOUNT_KEYS`（[release.md](release.md#換到有帳號金鑰的版本)），照 [operations.md](operations.md#api-的帳號金鑰) 備份一份，不要跟 Postgres 的備份放在一起。舊版 API 不讀這個變數，不用重啟。
+5. **新的 `api.json`。** 複製一份 `api.json.e21`：拿掉 `td_keys`（新版拿到就拒絕啟動，[release.md](release.md#換到拿掉-td_keys-的版本)），加上 `"td_replica_grace": "8760h"`，讓回退時 etcd 的帳號還在（見下方「回退」）。舊版 API 還要 `td_keys`，現在不要換掉 `api.json`。
+6. **策略。** 有帳號的策略用新版 Go SDK 重新 build、`mftiko-pack`、推新的 tag。舊 SDK 拼的是 `td.order.{api_id}`，新版的 session JWT 不允許，下單全部失敗（E21-D042）。Python SDK（lynxlinkage/mftik）還沒跟上（E21-D046）：用它而且帶帳號的策略，先不要重建。
+7. **CLI 與 session 檔。** 本機 CLI 換成新版（`api.v1` 3.x）。第 1 項存下的 spec，每個 `accounts[]` 補上 `td_instance`（原本從帳號帶入，現在建立時必填，E21-D005），策略換成第 6 項的 tag。
+8. **備份。** `systemctl start mftiko-etcd-backup.service`，再 `pg_dump` 一份。
+
+**1. 停掉有帳號的 session。** 對每個宣告了 `accounts` 的 session 執行 `mftiko session end <id>`，等到 `mftiko session show <id>` 是 terminal。沒有帳號的 session 不碰 TD subject，可以照 §2.1 留著，新 agent 會收養（E21-D077）。
+
+**2. 搬帳號。**
+
+1. **schema（主機 A）。** 用新版的 `mftiko-migrate`，`DATABASE_URL` 與 `mftiko-release switch` 用的相同。舊版照跑：`0007` 拿掉的表沒有程式讀，`0008`–`0012` 只加表與欄位（E21-D076）。
+
+   ```sh
+   $NEW/mftiko-migrate up
+   ```
+
+2. **轉移金鑰（主機 A）。** 一次性的 key pair。私鑰不離開主機 A，公鑰交給 TD 主機：
+
+   ```sh
+   cd /root/e21-upgrade && $NEW/mftiko-seal keygen -key transfer.key   # 印出公鑰
+   ```
+
+3. **export（每台 TD 主機，每個 TD instance）。** 以 TD 私鑰解開 etcd 裡的憑證，改封給轉移金鑰。不寫 etcd。檔案裡沒有明文（E21-D073）：
+
+   ```sh
+   set -a; . /etc/mftiko/td-agent/env; set +a   # MFTIKO_INSTANCE、MFTIKO_ETCD_PASSWORD
+   $NEW/mftiko-account-import export -topology /etc/mftiko/td-agent/topology.json \
+     -instance "$MFTIKO_INSTANCE" -seal-key /etc/mftiko/td-agent/seal.key \
+     -transfer-pubkey '<上一步印出的公鑰>' -out "/root/$MFTIKO_INSTANCE.accounts.json"
+   ```
+
+   它印出每個匯出的 `api_id`。`skipped` 的帳號解不開：`credentials_other_key` 是封給了別的 instance，`credentials_unreadable` 是壞了。這些帳號不會搬，第 3 步之後重新登記，會拿到新的 `api_id`（E21-D075）。把檔案複製到主機 A 的 `/root/e21-upgrade/`。
+
+4. **import（主機 A）。** 先看計畫，再加 `-apply`：
+
+   ```sh
+   set -a; . /etc/mftiko/api/env; set +a        # MFTIKO_ACCOUNT_KEYS、MFTIKO_POSTGRES_DSN
+   $NEW/mftiko-account-import import -transfer-key transfer.key -uids uids.json *.accounts.json
+   $NEW/mftiko-account-import import -transfer-key transfer.key -uids uids.json -apply *.accounts.json
+   ```
+
+   計畫的每一列是一個 `(td_instance, api_id)`，`ACTION` 是：`insert`（新的帳號列與副本列）、`exists`（已經搬過）、`add replica`（帳號在，補副本列）、`skip`（Postgres 裡已軟刪除），或 `PROBLEM`。有任何 `PROBLEM` 就整批不寫：`exch_account_uid missing` 補 `uids.json`；`name is already used by a live account` 是 Postgres 裡已經有同名的帳號，查清楚是誰建的；`kind` 不同表示 `api_id` 撞到別的帳號。改好再跑，重跑不會重複寫（E21-D074）。
+
+5. **確認並清掉轉移金鑰（主機 A）。**
+
+   ```sh
+   psql "$MFTIKO_POSTGRES_DSN" -c 'SELECT api_id, kind, name, exch_account_uid FROM accounts ORDER BY api_id'
+   psql "$MFTIKO_POSTGRES_DSN" -c 'SELECT td_instance, count(*) FROM account_replicas GROUP BY 1'
+   shred -u transfer.key *.accounts.json
+   ```
+
+   帳號數等於盤點的數目扣掉 `skipped`。每個 instance 的副本數等於它 export 的數目。TD 主機上的 `.accounts.json` 也 `shred -u`。不要印出 `MFTIKO_POSTGRES_DSN`。
+
+   從第 1 項到第 3 步做完，**不要用舊版 API 建立、修改或刪除帳號**：舊版只寫 etcd，Postgres 不會知道（E21-D076）。
+
+**3. 換版。**
+
+1. **etcd 角色表（主機 A，每個 region）。** 新版的 TD 角色要能寫 `/td/{inst}/pubkey` 與 `/td/{inst}/scope/`（E21-D004、E21-D067）。只加不收，舊版 agent 不受影響：
+
+   ```sh
+   $NEW/mftiko-etcd-roles -in <部署 JSON> -apply -secrets /etc/mftiko/etcd -region <region>
+   ```
+
+   沒套的話，新版 TD agent 寫不了公鑰，第 4 步建立 session 回 409 `td_pubkey_unavailable`。
+
+2. **主機 A。** `api.json.e21` 換成 `api.json`（舊的留成 `api.json.pre-e21`），`mftiko-release switch <tag>`。migrate 第 2 步跑過了，這次沒有新的。
+3. **其他主機**（TD、STS 所在的主機）：`mftiko-release switch <tag>`，換版後的動作照 §2.1。
+4. **確認。** 除了 §2.1 第 3 步：
+   - `mftiko account list`：每個搬過的 `api_id` 都在，`exchange` 與 `exch_account_uid` 正確，沒有 `td_instance`。
+   - API 的 log 沒有 `etcd account has no replica`（E21-D055）。有的話，那個 `(td_instance, api_id)` 沒有搬到，對那個 instance 回第 2 步再 export、import 一次。
+   - 每個 TD instance 的公鑰都在 etcd：`etcdctl get --keys-only --prefix /mftiko/v1/td/ | grep /pubkey$`。再照 [operations.md「公鑰第一次被採信」](operations.md#公鑰第一次被採信tofu) 做三項檢查。
+   - 歷史出處：`mftiko record list -api-id <api_id>` 列得出這個帳號以前的 session。第 2 步之後舊版 API 建立的紀錄，`api_ids` 是空的。對不到的話，跑一次 `UPDATE session_records SET api_ids = session_spec_api_ids(spec_bytes) WHERE api_ids = '{}'`（E21-D070）。
+
+**4. 重建 session。** 用第 0 步第 7 項改過的 spec 執行 `mftiko session create -f <檔>`。
+
+- 確認：session `running`，策略下得了單。第一筆單送出之後，`GET /api/v1/scopes?api_id=<api_id>` 有那個商品（E21-D066）。
+- 409 `td_pubkey_unavailable`：該 TD agent 還沒當選，或第 3 步第 1 項的角色表沒套。
+- 下單被拒、TD 的 subject permission denied：策略還是舊 SDK（第 0 步第 6 項）。
+
+**回退。**
+
+- **第 3 步之前：** 不用做什麼。舊版照跑，它不讀 Postgres 新增的表與列。
+- **第 3 步之後：** 先 rollback 其他主機，再 rollback 主機 A（§2.2）。主機 A rollback 之前，`api.json.pre-e21` 換回 `api.json`。etcd 的帳號 key 還在：新版 API 只刪最後一個 session 結束超過 `td_replica_grace` 的副本，而搬過來的帳號，上一個 session 通常已經結束好幾天了，所以第 0 步把 grace 調大（E21-D056、E21-D078）。用新 SDK 重建的策略在舊版下不了單，要換回舊的 tag。回退期間在舊版改過的帳號，下次升級前要重新 export、import。
+- **確定不回退之後**（例如跑滿一週）：從 `api.json` 拿掉 `td_replica_grace`，重啟 `mftiko-api`。沒有 session 引用的副本會在下一輪 reconcile 刪掉，之後建立 session 時再寫。
+
+**演練。** `cmd/mftiko-account-import` 的 `TestUpgradeRehearsal` 照第 2 步到第 3 步跑一次，用的是嵌入式 etcd 與 Postgres（E21-D082）。
 
 ## 3. 故障處理
 

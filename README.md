@@ -48,6 +48,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-webhook-dev      the dev Alertmanager's webhook receiver, which writes each alert to a file
   mftiko-alert-smoke      checks the dev strategy log alerts end to end (make dev-alert-smoke)
   mftiko-seal             makes a TD instance's key pair and seals account credentials to it
+  mftiko-account-import   moves pre-E21 etcd accounts into Postgres, keeping api_id (runbook §2.10)
   mftiko-conformance      SDK conformance suite
   mftiko-eventlog         dumps a Go strategy's event log as JSON lines, offline (PROTOCOL §12)
   mftiko-latency-exporter  Prometheus latency metrics from session event logs (E17-D001–E17-D006)

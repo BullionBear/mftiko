@@ -316,6 +316,67 @@ ls -l /var/backups/mftiko/etcd/*/
    - 快照之後才建立的 session 沒有了，對應的 worker 由 agent 停掉（E12-D057）。要的話重新建立。
    - 確認之後刪掉 `/var/lib/etcd.before-restore.*`。
 
+## 祕密的備份與還原
+
+依 [DECISIONS.md](DECISIONS.md) E21-D003、E21-D004、E21-D038、E21-D079–E21-D081（E21-10，#522）。etcd 快照見上一節。Postgres 的備份（`pg_dump`）由部署端安排。這一節講的兩把金鑰不在那兩份備份裡，也**不能跟它們放在一起**：
+
+| 祕密 | 在哪裡 | 跟哪一份備份放在一起，就解得開帳號 | 遺失的後果 |
+|---|---|---|---|
+| API 的帳號金鑰 `MFTIKO_ACCOUNT_KEYS` | 每個 API replica 的 `/etc/mftiko/api/env` | Postgres（`accounts.credentials`）：**所有**帳號 | 每個帳號要重新輸入憑證（E21-D003） |
+| TD 私鑰（seal key） | 每台 TD 主機的 `/etc/mftiko/td-agent/seal.key`（0600，`mftiko-td`） | 該 region 的 etcd 快照（`/td/{inst}/account/`）或 Postgres 的 `account_replicas`：該 instance 的帳號 | 換一把新的，API 從 Postgres 重封，不用重新輸入（E21-D038） |
+
+### API 的帳號金鑰
+
+- **產生：** 見 [systemd](#systemd) 最後的 `openssl rand`。新部署從 `v1` 起，版本號不重複。
+- **交付：** 整串寫進每個 API replica 的 `/etc/mftiko/api/env`（0600，root），所有 replica 同一份（E21-D020）。用 ssh 直接寫到目標主機。不要經過票、聊天、git 或 CI 變數，也不要當命令列參數（會留在 process list 與 shell history）。
+- **換鑰：** [runbook §2.6.1](runbook.md#261-輪換-api-的帳號金鑰)。
+- **備份：**
+  - 每次產生或換鑰之後，把整串（含仍在盒子裡的舊版本）存一份到**不放 Postgres 備份的地方**，例如密碼管理器或離線媒體。不要放進 `pg_dump` 的目錄、同一台備份主機或同一個 bucket。兩者都拿到就能解開每個帳號，只拿到一個解不開（E21-D003）。
+  - **舊版本要留到用它加密的 Postgres 備份全部過期。** 版本從盒子拿掉、`mftiko_account_key_old` 回到 0 之後，線上已經用不到它。但更早的 `pg_dump` 裡，那些列還是那個版本；舊版本一丟，就不能從那些備份還原帳號。備份裡記下每個版本的產生日與拿掉日。
+- **還原：**
+  1. 把備份的整串原樣寫回每個 replica 的 env，重啟 `mftiko-api`。
+  2. 資料庫也是從備份還原的話，列上的 `key_version` 都要在盒子裡：`SELECT key_version, count(*) FROM accounts GROUP BY 1`。缺的版本從金鑰備份補回去，放在第一把之後，再重啟。
+  3. 確認：`mftiko_account_key_old` 有樣本，而且最後回到 0。log 沒有 `account credentials were not re-encrypted`（[runbook §2.6.1](runbook.md#261-輪換-api-的帳號金鑰)）。要真的解開一次，就建立一個帶帳號的 session：API 從 AEAD 重封給 TD instance，建立成功就表示解得開。
+- **整串遺失：** 產生一把新的（版本號不要沿用），重啟 API，再對每個帳號 `mftiko account update <api_id> -key-file … -secret-file …` 重新輸入憑證。`api_id` 不變，所以 session 紀錄與 PMS 的歷史仍對得上。輸入之前，那個帳號不能建立新 session。已經投影到 etcd 的副本不受影響，正在跑的 session 照跑（E21-D034）。
+
+### TD 私鑰
+
+- **產生與交付：** 在該 TD 主機上 `mftiko-seal keygen -key /etc/mftiko/td-agent/seal.key`，再 `chown mftiko-td`。私鑰不離開這台主機。公鑰由 TD agent 當選後寫進 etcd 的 `/td/{inst}/pubkey`（E21-D004），不用交給 API。
+- **備份：** 每個 instance 各存一份，同樣不放在 etcd 快照或 Postgres 備份旁邊。TD 私鑰加上該 region 的 etcd 快照，就解得開那個 instance 上所有帳號的副本。
+- **還原：** 放回同一個檔案（0600，`mftiko-td`），`systemctl restart mftiko-td-agent`。公鑰不變，API 什麼都不做。確認：`mftiko-seal pubkey -key /etc/mftiko/td-agent/seal.key` 與 etcd 的 `/mftiko/v1/td/<inst>/pubkey` 相同。
+- **遺失或外洩：** 產生一把新的、重啟 td-agent。agent 當選後發布新公鑰。API 記 error log `td pubkey changed`、`mftiko_td_pubkey_changed_total{td_instance}` 加一，並從 Postgres 重封該 instance 的每個副本（E21-D038）。worker 在 spawn 時才解開憑證，所以正在跑的 worker 不受影響。重封寫完之前重新 spawn 的 worker 會 `REJECTED`（`credentials_other_key`），重封之後下一次就成功。外洩的話，舊的 etcd 快照仍解得開，該 instance 上的帳號也要到交易所換 key。
+
+### 公鑰第一次被採信（TOFU）
+
+API 第一次看到某個 instance 的 `/td/{inst}/pubkey` 就採信，把 SHA-256 指紋記進 `td_pubkeys`，不告警（E21-D004、E21-D041）。第一次採信可不可靠，靠的是 etcd RBAC：除了 root，只有該 instance 的 etcd 使用者能寫這把 key。新增 TD instance，或第一次換到 E21 的版本時，在**建立第一個用它的 session 之前**，於主機 A 檢查：
+
+1. **只有該 instance 的角色能寫。** 以 root 列出每個角色的權限，寫到這把 key 的只能是同名角色（`mftiko-etcd-roles` 產生的，角色名就是 instance 名）：
+
+   ```sh
+   export ETCDCTL_ENDPOINTS=<region 的 client URL> ETCDCTL_USER=root ETCDCTL_PASSWORD="$(cat /etc/mftiko/etcd/root)"
+   for r in $(etcdctl role list); do echo "== $r"; etcdctl role get "$r"; done
+   ```
+
+   `/mftiko/v1/td/<inst>/pubkey` 出現在 `KV Write:` 底下的，只能是 `<inst>` 那個角色。任何角色有寫入整個 `/mftiko/v1/` 或 `/mftiko/v1/td/` 的 range，都要先查清楚是誰加的。`etcdctl user get <inst>` 只有角色 `<inst>`。這個角色的密碼只在該 TD 主機的 `/etc/mftiko/td-agent/env`。
+2. **etcd 上的值就是那台主機的私鑰推出來的。** 在 TD 主機上算，與主機 A 讀到的比對：
+
+   ```sh
+   # TD 主機
+   /opt/mftiko/current/bin/mftiko-seal pubkey -key /etc/mftiko/td-agent/seal.key
+   # 主機 A
+   etcdctl get --print-value-only /mftiko/v1/td/<inst>/pubkey
+   ```
+
+3. **API 記下的指紋就是這把。** 指紋是公鑰 32 bytes 的 SHA-256：
+
+   ```sh
+   # 主機 A；DSN 用 /etc/mftiko/api/env 的 MFTIKO_POSTGRES_DSN，不要印出來
+   psql "$MFTIKO_POSTGRES_DSN" -Atc "SELECT encode(fingerprint, 'hex') FROM td_pubkeys WHERE td_instance = '<inst>'"
+   etcdctl get --print-value-only /mftiko/v1/td/<inst>/pubkey | base64 -d | sha256sum
+   ```
+
+三項都對才建立 session。任一項不對，就是有別人寫了這把 key：查清楚是誰、收回多出來的寫入權，再 `systemctl restart mftiko-td-agent`。agent 當選時發現值不同，會寫回自己的公鑰（E21-D004）；API 視為指紋改變，重封該 instance 的副本（E21-D038）。在這之前 API 已經封給錯的公鑰的帳號（`account_replicas` 有那個 instance 的列），都當成外洩，到交易所換 key。之後每次指紋改變都有 error log `td pubkey changed` 與 `mftiko_td_pubkey_changed_total`。沒有換 TD 私鑰時它增加了，照第 1 步查。
+
 ## 輪替
 
 - 每個 stream（stdout、stderr 各自）寫到 64 MiB，寫完那一行就輪替：`{h}.stdout` 改名成 `{h}.stdout.1`，原來的 `.1` 改成 `.2`，依此類推。一行不會被切到兩個檔，所以 Loki 收到的也是整行（E16-D037）。一個檔最多是上限加 64 KiB；比這還長的行在那裡切開。
