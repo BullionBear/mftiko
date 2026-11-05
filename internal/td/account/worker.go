@@ -31,6 +31,10 @@ type Worker struct {
 	mu        sync.Mutex
 	ordersUp  bool
 	orderConn *conn
+	// starting is true while Start runs. startReason is the last failure reported in that time
+	// (E06-D042).
+	starting    bool
+	startReason string
 
 	// Owned by the goroutine in Start, then Run.
 	ctx       context.Context
@@ -78,6 +82,14 @@ func newWorker(cfg ServeConfig, log zerolog.Logger, acct exchange.Account, bk *b
 // The connections it opens live until ctx ends.
 func (w *Worker) Start(ctx context.Context) error {
 	w.ctx = ctx
+	w.mu.Lock()
+	w.starting = true
+	w.mu.Unlock()
+	defer func() {
+		w.mu.Lock()
+		w.starting = false
+		w.mu.Unlock()
+	}()
 	links, err := w.links()
 	if err != nil {
 		return err
@@ -178,6 +190,7 @@ func (w *Worker) loop(ctx context.Context, starting bool) error {
 					wait = max(wait, time.Duration(rl.RetryAfterMs)*time.Millisecond)
 				}
 				w.log.Warn().Err(err).Dur("retry_in", wait).Msg("recon")
+				w.startFailed("recon", err)
 				retry = time.After(wait)
 				backoff = min(2*backoff, w.retryMax)
 			}
@@ -274,6 +287,31 @@ func (w *Worker) recon(ctx context.Context) (*exchange.AccountSnapshot, error) {
 		}
 	}
 	return out, nil
+}
+
+// maxStartReason caps the reason startFailed reports: it goes into the ack and the session's
+// terminal condition, not a log.
+const maxStartReason = 200
+
+// startFailed reports why Start has not finished yet, while it retries (E06-D042, #542). Only
+// during Start, and only when the reason changed. The state stays UNSPECIFIED: the account is not
+// up, and the agent shows the reason on its PENDING ack. The text is the same error the worker
+// logs, which names no credential; it is cut to maxStartReason runes.
+func (w *Worker) startFailed(what string, err error) {
+	reason := what + ": " + err.Error()
+	if r := []rune(reason); len(r) > maxStartReason {
+		reason = string(r[:maxStartReason-1]) + "…"
+	}
+	w.mu.Lock()
+	if !w.starting || w.startReason == reason {
+		w.mu.Unlock()
+		return
+	}
+	w.startReason = reason
+	w.mu.Unlock()
+	if err := w.report(&tdctlv1.Report{Reason: reason, FirstSubmitNs: w.book.firstCopy()}); err != nil {
+		w.log.Warn().Err(err).Msg("report")
+	}
 }
 
 // apply hands a recon to the book, which publishes it, and reports the state it leaves the account

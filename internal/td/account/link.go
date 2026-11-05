@@ -115,6 +115,7 @@ func (l *link) run(ctx context.Context) {
 				return
 			}
 			w.log.Warn().Str("conn", l.name).Err(err).Dur("retry_in", backoff).Msg("dial")
+			w.startFailed(l.name+" dial", err)
 			if !sleep(ctx, backoff) {
 				return
 			}
@@ -136,6 +137,7 @@ func (l *link) run(ctx context.Context) {
 			return
 		}
 		w.log.Warn().Str("conn", l.name).Err(err).Msg("connection lost")
+		w.startFailed(l.name+" lost", err)
 		w.post(ctx, linkEvent{role: l.role, orders: l.orders, up: false})
 	}
 }

@@ -236,6 +236,9 @@ func depFromCondition(c *commonv1.Condition) (apiv1.Dependency, bool) {
 		state = apiv1.EntryStateRejected
 	case "dead":
 		state = apiv1.EntryStateDead
+	case "pending":
+		// A deps_timeout end names the bindings that never became ready (E06-D043).
+		state = apiv1.EntryStatePending
 	default:
 		return apiv1.Dependency{}, false
 	}

@@ -58,6 +58,7 @@ etcdctl endpoint health
 | `mftiko-etcd-backup.service` 是 failed | `journalctl -u mftiko-etcd-backup` | [§2.4](#24-etcd-備份) |
 | 不響，但交易所或 NATS 斷了 | worker 的 stderr | [§3.5](#35-網路斷了) |
 | 不響，但 session `failed`、reason 是 `artifact_*`、incarnation 0 | `mftiko session show <id>` 的 spec `inputs`；STS 的 `input rejected` | [§3.11](#311-input-拉取失敗) |
+| 不響，但 session `failed`、reason 是 `deps_timeout` | `mftiko session show <id>` 的 dependencies：`pending` 那一項的 provider 與 reason。TD 帳號的 `starting: <原因>` 是 account worker 在 Start 一直失敗的錯誤（E06-D042、E06-D043）；同一行也在該 TD 主機 worker 的 stderr（`dial`、`recon`） | 依原因處理：交易所拒絕的 subscribe 或 recon 是 adapter 的問題，開票附上 reason |
 | 不響，但 `mftiko session logs` exit 22 `logs_unavailable`，console 顯示「目前讀不到 log」 | 該 STS 的 agent 與 `log endpoint` 那一行 | [§3.12](#312-讀不到-session-log) |
 
 ## 2. 例行操作

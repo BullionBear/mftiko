@@ -411,13 +411,14 @@ func (x *Drain) GetDeadlineMs() uint32 {
 }
 
 type Report struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	State          v1.AccountState        `protobuf:"varint,1,opt,name=state,proto3,enum=mftiko.td.v1.AccountState" json:"state,omitempty"` // 與 td.view 回覆的 state 相同（E06-D006）
-	Reason         string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
-	ReconciledAtNs int64                  `protobuf:"varint,3,opt,name=reconciled_at_ns,json=reconciledAtNs,proto3" json:"reconciled_at_ns,omitempty"`
-	OpenOrders     uint32                 `protobuf:"varint,4,opt,name=open_orders,json=openOrders,proto3" json:"open_orders,omitempty"`
-	Inflight       uint32                 `protobuf:"varint,5,opt,name=inflight,proto3" json:"inflight,omitempty"`
-	Draining       bool                   `protobuf:"varint,6,opt,name=draining,proto3" json:"draining,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	State v1.AccountState        `protobuf:"varint,1,opt,name=state,proto3,enum=mftiko.td.v1.AccountState" json:"state,omitempty"` // 與 td.view 回覆的 state 相同（E06-D006）
+	// state 為 UNSPECIFIED 時，是 Start 還在重試、最近一次失敗的原因（不含憑證，最多 200 字），TD agent 寫成 PENDING ack 的 `starting: <reason>`（DECISIONS E06-D042）。
+	Reason         string `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	ReconciledAtNs int64  `protobuf:"varint,3,opt,name=reconciled_at_ns,json=reconciledAtNs,proto3" json:"reconciled_at_ns,omitempty"`
+	OpenOrders     uint32 `protobuf:"varint,4,opt,name=open_orders,json=openOrders,proto3" json:"open_orders,omitempty"`
+	Inflight       uint32 `protobuf:"varint,5,opt,name=inflight,proto3" json:"inflight,omitempty"`
+	Draining       bool   `protobuf:"varint,6,opt,name=draining,proto3" json:"draining,omitempty"`
 	// 這個 incarnation 下過單的商品（UID，E02-D003）→ 第一次 Submit 的時間（DECISIONS E06-D001）。TD agent 據此建 backfill 的 scope。
 	// 新商品的第一筆單：worker 先送出含它的 Report，再送單。
 	FirstSubmitNs map[uint32]int64 `protobuf:"bytes,7,rep,name=first_submit_ns,json=firstSubmitNs,proto3" json:"first_submit_ns,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`

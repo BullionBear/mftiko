@@ -10,9 +10,12 @@ import (
 	"github.com/BullionBear/mftiko/exchange/internal/codec"
 )
 
-// privateTopics is what Dial subscribes, in order. dcp carries no account event; the venue
-// requires it before Disconnected Cancel Protection can fire.
-var privateTopics = []string{"order", "execution", "position", "wallet", "dcp"}
+// privateTopics is what Dial subscribes, in order. No dcp: the mainnet no longer has that topic,
+// and Bybit refuses the whole subscribe when one topic fails, so the stream never became ready
+// (#542). Disconnected Cancel Protection is not wired (E06-D025); when it is, it subscribes
+// dcp.future, dcp.spot or dcp.option in a frame of its own, where a refusal does not stop the
+// account topics (E06-D041).
+var privateTopics = []string{"order", "execution", "position", "wallet"}
 
 // privateStream is one /v5/private connection. Prepare is nil: auth is a frame, not a REST
 // call. Ready is the subscribe acknowledgement, after auth has succeeded.

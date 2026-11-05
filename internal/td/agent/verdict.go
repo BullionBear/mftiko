@@ -12,7 +12,7 @@ import (
 // decide is the ack of one demand. LOST keeps the previous ack (P6). A worker that ended for a
 // reason no restart fixes is REJECTED with it; one the Policy gave up on otherwise is DEAD. READY
 // is a running worker whose report says READY or DEGRADED: a dropped private connection is not a
-// dead account (E06-D003).
+// dead account (E06-D003). PENDING while starting carries the worker's last Start failure.
 func decide(o outcome, observed map[agent.WorkerKey]agent.Observed, gaveUp func(agent.WorkerKey) bool) (statev1.EntryState, string, bool) {
 	if o.Reject != "" {
 		return statev1.EntryState_ENTRY_STATE_REJECTED, o.Reject, true
@@ -38,7 +38,17 @@ func decide(o outcome, observed map[agent.WorkerKey]agent.Observed, gaveUp func(
 			return statev1.EntryState_ENTRY_STATE_READY, "", true
 		}
 	}
-	return statev1.EntryState_ENTRY_STATE_PENDING, "starting", true
+	return statev1.EntryState_ENTRY_STATE_PENDING, startingReason(obs.Report), true
+}
+
+// startingReason is "starting", or "starting: <why>" when the worker reported why its Start keeps
+// failing: a report with no state and a reason (E06-D042, #542).
+func startingReason(rep *workerv1.Report) string {
+	r := reportOf(rep)
+	if r == nil || r.GetState() != tdv1.AccountState_ACCOUNT_STATE_UNSPECIFIED || r.GetReason() == "" {
+		return "starting"
+	}
+	return "starting: " + r.GetReason()
 }
 
 // reportState is the account state in the worker's latest tdctl.Report.

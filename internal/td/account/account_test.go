@@ -351,6 +351,16 @@ func (h *harness) report(state tdv1.AccountState, reason string) *tdctlv1.Report
 	return r
 }
 
+func (h *harness) anyReport() *tdctlv1.Report {
+	h.t.Helper()
+	m := h.next(func(m *workerv1.WorkerUp) bool { return m.GetReport() != nil })
+	r := &tdctlv1.Report{}
+	if m.GetReport().GetContract() != Contract || proto.Unmarshal(m.GetReport().GetPayload(), r) != nil {
+		h.t.Fatalf("report %v", m)
+	}
+	return r
+}
+
 func (h *harness) initOK() {
 	h.t.Helper()
 	h.next(isDone(workerv1.Verb_VERB_INIT, true))
@@ -360,7 +370,17 @@ func (h *harness) startReady() *tdctlv1.Report {
 	h.t.Helper()
 	h.initOK()
 	h.send(&workerv1.WorkerDown{Msg: &workerv1.WorkerDown_Start{Start: &workerv1.Start{Contract: Contract}}})
-	r := h.report(tdv1.AccountState_ACCOUNT_STATE_READY, "")
+	// Skip the reports of a Start that failed and retried (E06-D042); they carry no state.
+	var r *tdctlv1.Report
+	for {
+		r = h.anyReport()
+		if r.GetState() != tdv1.AccountState_ACCOUNT_STATE_UNSPECIFIED {
+			break
+		}
+	}
+	if r.GetState() != tdv1.AccountState_ACCOUNT_STATE_READY || r.GetReason() != "" {
+		h.t.Fatalf("report %v %q, want READY", r.GetState(), r.GetReason())
+	}
 	if r.GetReconciledAtNs() == 0 {
 		h.t.Fatal("READY without reconciled_at")
 	}
@@ -484,6 +504,49 @@ func TestDialRetried(t *testing.T) {
 	if n := h.dials.Load(); n != 4 {
 		t.Fatalf("%d dials", n)
 	}
+	h.stop()
+}
+
+// While a dial keeps failing, Start reports why, with no state, once per distinct reason (#542,
+// E06-D042). READY follows when it gets through.
+func TestDialFailureReported(t *testing.T) {
+	h := start(t, setup{})
+	h.v.FailDials(3)
+	h.initOK()
+	h.send(&workerv1.WorkerDown{Msg: &workerv1.WorkerDown_Start{Start: &workerv1.Start{Contract: Contract}}})
+	r := h.anyReport()
+	if r.GetState() != tdv1.AccountState_ACCOUNT_STATE_UNSPECIFIED || !strings.HasPrefix(r.GetReason(), "private dial: ") || !strings.Contains(r.GetReason(), "503") {
+		t.Fatalf("first report %v %q", r.GetState(), r.GetReason())
+	}
+	if n := len([]rune(r.GetReason())); n > maxStartReason {
+		t.Fatalf("reason is %d runes", n)
+	}
+	r = h.anyReport()
+	if r.GetState() != tdv1.AccountState_ACCOUNT_STATE_READY || r.GetReason() != "" {
+		t.Fatalf("then %v %q, want READY: the same failure again is not reported twice", r.GetState(), r.GetReason())
+	}
+	h.next(isDone(workerv1.Verb_VERB_START, true))
+	h.next(func(m *workerv1.WorkerUp) bool { return m.GetStage().GetName() == "running" })
+	h.stop()
+}
+
+// A recon failing at Start is reported the same way.
+func TestReconFailureReported(t *testing.T) {
+	h := start(t, setup{opts: exchangetest.AccountOptions{PageSize: 1}})
+	h.v.SetBalance(exchange.Balance{Asset: "USDT", Free: 1})
+	h.v.SetBalance(exchange.Balance{Asset: "BTC", Free: 1})
+	h.v.FailSnapshot(exchangetest.SnapshotBalances, 1, 1)
+	h.initOK()
+	h.send(&workerv1.WorkerDown{Msg: &workerv1.WorkerDown_Start{Start: &workerv1.Start{Contract: Contract}}})
+	r := h.anyReport()
+	if r.GetState() != tdv1.AccountState_ACCOUNT_STATE_UNSPECIFIED || !strings.HasPrefix(r.GetReason(), "recon: ") {
+		t.Fatalf("first report %v %q", r.GetState(), r.GetReason())
+	}
+	if r = h.anyReport(); r.GetState() != tdv1.AccountState_ACCOUNT_STATE_READY {
+		t.Fatalf("then %v", r.GetState())
+	}
+	h.next(isDone(workerv1.Verb_VERB_START, true))
+	h.next(func(m *workerv1.WorkerUp) bool { return m.GetStage().GetName() == "running" })
 	h.stop()
 }
 
@@ -883,6 +946,9 @@ func TestStopDuringStart(t *testing.T) {
 	h.initOK()
 	h.send(&workerv1.WorkerDown{Msg: &workerv1.WorkerDown_Start{Start: &workerv1.Start{Contract: Contract}}})
 	waitFor(t, "no dial", func() bool { return h.dials.Load() > 1 })
+	if r := h.anyReport(); r.GetState() != tdv1.AccountState_ACCOUNT_STATE_UNSPECIFIED || !strings.HasPrefix(r.GetReason(), "private dial: ") {
+		t.Fatalf("start report %v %q", r.GetState(), r.GetReason())
+	}
 	h.stop()
 }
 
