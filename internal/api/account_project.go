@@ -96,10 +96,11 @@ type replicaKey struct {
 	id   int64
 }
 
-// reconcileAccounts projects every replica and drops the etcd copy of a soft-deleted
-// account (E21-D022, E21-D024). Replica rows of a soft-deleted account stay until a
-// later change removes them. A region that is down is skipped until a later pass.
-// An etcd account with no replica is logged and left in place (E21-D055).
+// reconcileAccounts projects every live replica and removes a soft-deleted account's
+// etcd key and replica row without waiting for grace (E21-D022, E21-D024, E21-D060).
+// A region that is down is skipped until a later pass. An etcd account with no replica
+// is logged and left in place (E21-D055). Grace expiry of a replica that is no longer
+// referenced runs at the end of reconcileOnce (E21-D056).
 func (s *Server) reconcileAccounts(ctx context.Context) error {
 	// A fingerprint write that the watch lost is retried here, and a sealbox whose header
 	// does not match the adopted key is rewritten before it is projected (E21-D038, E21-D041).
@@ -116,30 +117,28 @@ func (s *Server) reconcileAccounts(ctx context.Context) error {
 		if err != nil || !s.regionAvailable(region) {
 			continue
 		}
-		var perr error
 		if row.Deleted != nil {
-			perr = s.deleteProjection(ctx, row.Inst, row.ID)
-		} else {
-			if pub, ok := s.adopted(row.Inst); ok && !sealbox.SealedTo(pub, row.sealed) {
-				sealed, _, rerr := s.resealAccount(ctx, row.ID, row.Inst, pub)
-				if rerr != nil {
-					if !s.quiet(rerr) {
-						s.log.Error().Err(rerr).Int64("api_id", row.ID).Str("td_instance", row.Inst).Msg("account was not resealed")
-					}
-					continue
+			s.tryRemoveReplica(ctx, row.Inst, row.ID)
+			continue
+		}
+		if pub, ok := s.adopted(row.Inst); ok && !sealbox.SealedTo(pub, row.sealed) {
+			sealed, _, rerr := s.resealAccount(ctx, row.ID, row.Inst, pub)
+			if rerr != nil {
+				if !s.quiet(rerr) {
+					s.log.Error().Err(rerr).Int64("api_id", row.ID).Str("td_instance", row.Inst).Msg("account was not resealed")
 				}
-				if sealed != nil {
-					row.sealed = sealed
-				}
-			}
-			val, merr := projectionBytes(row.accountPublic, row.sealed)
-			if merr != nil {
-				s.log.Error().Int64("api_id", row.ID).Str("td_instance", row.Inst).Msg("account projection is unreadable")
 				continue
 			}
-			perr = s.putProjection(ctx, row.Inst, row.ID, val)
+			if sealed != nil {
+				row.sealed = sealed
+			}
 		}
-		if perr != nil && !s.quiet(perr) {
+		val, merr := projectionBytes(row.accountPublic, row.sealed)
+		if merr != nil {
+			s.log.Error().Int64("api_id", row.ID).Str("td_instance", row.Inst).Msg("account projection is unreadable")
+			continue
+		}
+		if perr := s.putProjection(ctx, row.Inst, row.ID, val); perr != nil && !s.quiet(perr) {
 			s.log.Error().Err(perr).Int64("api_id", row.ID).Str("td_instance", row.Inst).Msg("project account")
 		}
 	}

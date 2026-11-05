@@ -16,6 +16,8 @@ import (
 )
 
 // DefaultLinger is how long an account with no owners keeps its worker (E09-D005).
+// API td_replica_grace defaults to twice this and must be at least the process's -linger
+// (E21-D050). internal/api duplicates the 5s value; planes do not import each other.
 const DefaultLinger = 5 * time.Second
 
 // Reasons of a REJECTED ack the plan decides. The worker's own (auth, hedge_mode,

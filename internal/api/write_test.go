@@ -245,6 +245,10 @@ func newWriteEnv(t *testing.T) *writeEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Replicas with no ended session are deleted after td_replica_grace (E21-D056).
+	// These tests project a replica and then keep using etcd. A mirror kick after the
+	// 10s default would remove it. The grace test sets its own clock and grace.
+	cfg.TDReplicaGrace = time.Hour
 	return &writeEnv{servers: servers, proxy: proxy, cfg: cfg, log: buf}
 }
 

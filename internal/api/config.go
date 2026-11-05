@@ -43,6 +43,12 @@ const (
 	DefaultUnavailableAfter = 15 * time.Second
 	DefaultListen           = ":8080"
 	DefaultShutdownTimeout  = 10 * time.Second
+	// tdDefaultLinger duplicates internal/td/agent.DefaultLinger (E09-D005).
+	// Planes do not import each other, so this package keeps its own copy.
+	tdDefaultLinger = 5 * time.Second
+	// DefaultTDReplicaGrace is twice the TD default linger (E21-D050).
+	// Deployments must set it to at least the agent's -linger. The API cannot read that flag (E21-D058).
+	DefaultTDReplicaGrace = 2 * tdDefaultLinger
 )
 
 // keyPrefix is the whole mftiko keyspace. The api role can read all of it, so one mirror per cluster watches
@@ -107,10 +113,13 @@ type Config struct {
 	UnavailableAfter time.Duration
 	Listen           string
 	ShutdownTimeout  time.Duration
-	Registry         artifact.Registry // no address: each repository names its host (E10-D122)
-	Catalog          *artifact.Catalog // set by Load; nil does not dial
-	EtcdPassword     string
-	CookieKey        string
+	// TDReplicaGrace is how long a replica stays after its last session (E21-D050).
+	// Zero means DefaultTDReplicaGrace. It must be at least the TD agent's -linger.
+	TDReplicaGrace time.Duration
+	Registry       artifact.Registry // no address: each repository names its host (E10-D122)
+	Catalog        *artifact.Catalog // set by Load; nil does not dial
+	EtcdPassword   string
+	CookieKey      string
 	// AccountKeys encrypts credentials at rest. The first key is current (E21-D020). Do not log a Config.
 	AccountKeys accountkey.Box
 	PostgresDSN string
@@ -143,6 +152,7 @@ type configFile struct {
 	UnavailableAfter string            `json:"unavailable_after"`
 	Listen           string            `json:"listen"`
 	ShutdownTimeout  string            `json:"shutdown_timeout"`
+	TDReplicaGrace   string            `json:"td_replica_grace"`
 	RegistryCreds    string            `json:"registry_creds"`
 	PlainHTTPHosts   []string          `json:"plain_http_hosts"`
 	MaxInputBytes    int64             `json:"max_input_bytes"`
@@ -231,6 +241,10 @@ func (f configFile) config(dep deployment) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	grace, err := parseDuration("td_replica_grace", f.TDReplicaGrace, DefaultTDReplicaGrace)
+	if err != nil {
+		return Config{}, err
+	}
 	listen, err := parseListen(f.Listen)
 	if err != nil {
 		return Config{}, err
@@ -261,7 +275,7 @@ func (f configFile) config(dep deployment) (Config, error) {
 	return Config{
 		Topology: dep.Topology, Planes: dep.Planes, Users: users, Allow: allow, MaxInputBytes: maxInput,
 		TDKeys: keys, Retention: retention, UnavailableAfter: unavailable, Listen: listen, ShutdownTimeout: shutdown,
-		Registry: reg, Catalog: cat,
+		TDReplicaGrace: grace, Registry: reg, Catalog: cat,
 	}, nil
 }
 

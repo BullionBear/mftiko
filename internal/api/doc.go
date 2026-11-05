@@ -39,6 +39,7 @@
 //	unavailable_after                     region unavailable threshold, Go duration, default 15s (E10-D014)
 //	listen                                listen address, default :8080 (E10-D029)
 //	shutdown_timeout                      drain limit after SIGTERM, Go duration, default 10s (E10-D027)
+//	td_replica_grace                      how long a replica stays after its last session, Go duration, default 10s; must be >= the TD agent's -linger (E21-D050, E21-D058)
 //
 // Account kinds are not in either JSON file. The command sets Config.Kinds from the exchange registry
 // (E10-D034). This package does not import exchange. Kind.Exchange is filled by the command from the registry
