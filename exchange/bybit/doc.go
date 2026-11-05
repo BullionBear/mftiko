@@ -139,7 +139,10 @@
 // AccountConfig.StreamEndpoint replaces that URL. The first frame is
 // {"op":"auth","args":[apiKey, expires, signature]} with expires 10s ahead and signature
 // HMAC-SHA256 of "GET/realtime" + expires. The second subscribes to order, execution,
-// position, wallet and dcp. Ready is the subscribe acknowledgement. A refused auth is ErrAuth.
+// position and wallet. Ready is the subscribe acknowledgement. A refused auth is ErrAuth. A
+// refused subscribe is an error: Bybit answers success false for the whole frame when any one
+// topic fails ("Batch subscription partially succeeded"), so one bad topic keeps the account
+// from starting. It does not subscribe dcp (#542, E06-D041).
 // The client sends {"op":"ping"} every 20s. A topic this codec does not read is ignored.
 //
 //	order        one Order per data row. category and symbol are the ExchKey. A linear
@@ -158,14 +161,17 @@
 //	             unrealisedPnl and leverage are optional.
 //	wallet       one Balance per coin row, with the same free and locked split as the REST
 //	             wallet. A zero wallet with nothing locked is left out.
-//	dcp          ignored. The subscription is what lets Disconnected Cancel Protection fire.
+//	dcp          ignored. Not subscribed (#542).
 //
 // # Dead-man switch
 //
 // POST /v5/order/disconnected-cancel-all. syms is ignored. timeWindow is whole seconds from
 // 3 to 300; the body does not set product, so the window is the venue's default (OPTIONS).
-// The private stream's dcp subscription is required for the switch to run. Checked on the
-// testnet on 2026-10-10: this UID is refused with 3500716 "DCP of this UID is inactive".
+// The switch needs a private-stream subscription to run. Checked on the testnet on 2026-10-10:
+// this UID is refused with 3500716 "DCP of this UID is inactive". On the mainnet on 2026-11-05
+// the topic dcp no longer exists ("the topic does not exist"); dcp.future, dcp.spot and
+// dcp.option subscribe. The private stream subscribes none of them while the switch is not
+// wired (E06-D025, E06-D041).
 // That code is not in the 200–299 table, so Code stays 3500716.
 //
 // # Refusals

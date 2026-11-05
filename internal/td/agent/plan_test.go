@@ -209,6 +209,11 @@ func report(st tdv1.AccountState) *workerv1.Report {
 	return &workerv1.Report{Contract: account.Contract, Payload: b}
 }
 
+func startReport(reason string) *workerv1.Report {
+	b, _ := proto.Marshal(&tdctlv1.Report{Reason: reason})
+	return &workerv1.Report{Contract: account.Contract, Payload: b}
+}
+
 func TestDecide(t *testing.T) {
 	o := outcome{Session: "s", APIID: 1, Worker: WorkerKey(1)}
 	never := func(agent.WorkerKey) bool { return false }
@@ -231,6 +236,11 @@ func TestDecide(t *testing.T) {
 		"hedge":        {o, &agent.Observed{State: agent.StateExited, Exit: exit(commonv1.Outcome_OUTCOME_INIT_FAILED, account.ReasonHedgeMode)}, always, statev1.EntryState_ENTRY_STATE_REJECTED, account.ReasonHedgeMode, true},
 		"restarting":   {o, &agent.Observed{State: agent.StateExited, Exit: exit(commonv1.Outcome_OUTCOME_CRASHED, "boom")}, never, statev1.EntryState_ENTRY_STATE_PENDING, "restarting", true},
 		"dead":         {o, &agent.Observed{State: agent.StateExited, Exit: exit(commonv1.Outcome_OUTCOME_CRASHED, "boom")}, always, statev1.EntryState_ENTRY_STATE_DEAD, "gave up", true},
+		// #542: Start keeps failing; the ack says why (E06-D042).
+		"start failing": {o, &agent.Observed{State: agent.StateStarting, Report: startReport("private dial: bybit: subscribe: refused")}, never,
+			statev1.EntryState_ENTRY_STATE_PENDING, "starting: private dial: bybit: subscribe: refused", true},
+		"start failing, running": {o, &agent.Observed{State: agent.StateRunning, Report: startReport("recon: 502")}, never,
+			statev1.EntryState_ENTRY_STATE_PENDING, "starting: recon: 502", true},
 	} {
 		obs := map[agent.WorkerKey]agent.Observed{}
 		if c.obs != nil {

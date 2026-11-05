@@ -36,7 +36,7 @@ func TestAuthFrame(t *testing.T) {
 		t.Fatalf("auth\n%s\nwant\n%s", auth, want)
 	}
 	sub := string(d.Frames[1])
-	if sub != `{"op":"subscribe","args":["order","execution","position","wallet","dcp"]}` {
+	if sub != `{"op":"subscribe","args":["order","execution","position","wallet"]}` {
 		t.Fatalf("subscribe %s", sub)
 	}
 	if prep, err := s.Prepare(conformance.DefaultNow); err != nil || prep != nil {

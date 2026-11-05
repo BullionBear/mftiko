@@ -23,17 +23,30 @@ const artifactPullType = "artifact_pull"
 // dependencyConditions is the terminal SessionStatus conditions for the demand
 // that is still present (E10-D093, E10-D014). A nil demand writes none. REJECTED and
 // DEAD bindings each become one Condition, in binding order. The message is
-// four single-space tokens: kind, ident, provider instance, rejected|dead.
+// four single-space tokens: kind, ident, provider instance, rejected|dead|pending.
+//
+// A demand ended deps_timeout also names every binding that was not READY: the
+// word is pending and the reason is the provider's (for TD, the worker's last Start
+// failure, E06-D042), or no_ack when the provider never answered (E06-D043, #542).
 func dependencyConditions(d *statev1.SessionDemand, atNs int64) []*commonv1.Condition {
 	if d == nil {
 		return nil
 	}
+	timedOut := d.GetEndReason() == "deps_timeout"
 	var out []*commonv1.Condition
 	for _, b := range d.GetBindings() {
-		if b == nil || b.GetStatus() == nil {
+		if b == nil {
 			continue
 		}
-		word, ok := terminalWord(b.GetStatus().GetState())
+		st := b.GetStatus()
+		word, ok := terminalWord(st.GetState())
+		reason := st.GetReason()
+		if !ok && timedOut && st.GetState() != statev1.EntryState_ENTRY_STATE_READY {
+			word, ok = "pending", true
+			if st == nil {
+				reason = "no_ack"
+			}
+		}
 		if !ok {
 			continue
 		}
@@ -44,7 +57,7 @@ func dependencyConditions(d *statev1.SessionDemand, atNs int64) []*commonv1.Cond
 		out = append(out, &commonv1.Condition{
 			Type:    "dependency",
 			Status:  false,
-			Reason:  b.GetStatus().GetReason(),
+			Reason:  reason,
 			Message: kind + " " + ident + " " + b.GetInstance() + " " + word,
 			AtNs:    atNs,
 		})
