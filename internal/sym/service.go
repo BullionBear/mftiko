@@ -14,94 +14,83 @@ import (
 	symv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/sym/v1"
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/contract/wire/decimal"
-	"github.com/BullionBear/mftiko/internal/platform/natsx"
 )
 
-const (
-	// Subject is the sym request subject (PROTOCOL §7). Serve joins the queue
-	// group of the same name, so any replica answers.
-	Subject = "sym"
+// maxPageBytes is one byte under 1 MiB. A List page whose protobuf reaches
+// 1 MiB is unavailable rather than a short page: the caller's offset would
+// otherwise skip rows. It is the same answer on every protocol (E22-D010).
+const maxPageBytes = 1<<20 - 1
 
-	// CodeInvalid, CodeNotFound and CodeUnavailable are the business error
-	// codes. A success is a symv1.Reply and nothing else. A business failure
-	// is a natsx error reply (option A): natsx.CodeHandler, and a message that
-	// is one of these words, then ": " and a reason that names the field, the
-	// value, and why. Reply.error and Reply.reason stay empty.
-	CodeInvalid     = "invalid"
-	CodeNotFound    = "not_found"
-	CodeUnavailable = "unavailable"
+// API is SYM's logic, independent of any protocol (E22-D002, E22-D003).
+// Requests and results are sym.v1 messages. A failure is an *Error.
+type API interface {
+	Get(ctx context.Context, req *symv1.GetRequest) (*symv1.SymbolInfo, error)
+	GetByUID(ctx context.Context, req *symv1.GetByUidRequest) (*symv1.SymbolInfo, error)
+	List(ctx context.Context, req *symv1.ListRequest) (*symv1.SymbolList, error)
+	Reverse(ctx context.Context, req *symv1.ReverseRequest) (*symv1.SymbolInfo, error)
+	Revisions(ctx context.Context, req *symv1.RevisionsRequest) (*symv1.RevisionList, error)
+	Refresh(ctx context.Context, req *symv1.RefreshRequest) (*symv1.RefreshResult, error)
+}
 
-	// maxReplyBytes is one byte under NATS's default 1 MiB payload, so a
-	// published reply is accepted. A page that does not fit is unavailable
-	// rather than a short page: the caller's offset would otherwise skip rows.
-	maxReplyBytes = 1<<20 - 1
-)
+// Reader is the store reads Service answers from. *Store implements it.
+type Reader interface {
+	GetByTicker(ctx context.Context, ticker string, includeInactive bool) (symbol.Info, error)
+	GetByUID(ctx context.Context, uid uint32, includeInactive bool) (symbol.Info, error)
+	List(ctx context.Context, venue string, category symbol.Category, offset int64, limit int, includeInactive bool) ([]symbol.Info, uint32, error)
+	Reverse(ctx context.Context, key symbol.ExchKey, includeInactive bool) (symbol.Info, error)
+	Revisions(ctx context.Context) ([]TableRevision, error)
+}
 
-// Service answers Subject from the Postgres store. run, when set, serves Refresh.
+// Trigger runs a refresh now. *Runner implements it.
+type Trigger interface {
+	Trigger(ctx context.Context, venue string) ([]Report, error)
+}
+
+// Service implements API over a Reader. run, when set, serves Refresh.
 type Service struct {
-	store *Store
-	run   *Runner
-	log   zerolog.Logger
+	read Reader
+	run  Trigger
+	log  zerolog.Logger
 }
 
-// NewService serves reads from store. run may be nil; Refresh is then unavailable.
-func NewService(store *Store, run *Runner, log zerolog.Logger) *Service {
-	return &Service{store: store, run: run, log: log}
+var _ API = (*Service)(nil)
+
+// NewService serves reads from read. run may be nil; Refresh is then unavailable.
+func NewService(read Reader, run Trigger, log zerolog.Logger) *Service {
+	return &Service{read: read, run: run, log: log}
 }
 
-// Serve registers the queue group and returns once the server has the interest.
-// The handler stops when ctx is cancelled.
-func (sv *Service) Serve(ctx context.Context, c *natsx.Conn) (*natsx.Subscription, error) {
-	if sv == nil || sv.store == nil {
-		return nil, errors.New("sym: nil service")
-	}
-	if c == nil {
-		return nil, errors.New("sym: nil connection")
-	}
-	return c.Serve(ctx, Subject, Subject, func() proto.Message {
-		return &symv1.Request{}
-	}, sv.handle)
+func (sv *Service) Get(ctx context.Context, req *symv1.GetRequest) (*symv1.SymbolInfo, error) {
+	out, err := sv.get(ctx, req)
+	return out, sv.note(err)
 }
 
-func (sv *Service) handle(ctx context.Context, m proto.Message) (proto.Message, error) {
-	req, ok := m.(*symv1.Request)
-	if !ok || req == nil {
-		err := invalid("request is empty")
-		sv.note(err)
-		return nil, err
-	}
-	var (
-		reply *symv1.Reply
-		err   error
-	)
-	switch r := req.GetReq().(type) {
-	case *symv1.Request_Get:
-		reply, err = sv.get(ctx, r.Get)
-	case *symv1.Request_GetByUid:
-		reply, err = sv.getByUID(ctx, r.GetByUid)
-	case *symv1.Request_List:
-		reply, err = sv.list(ctx, r.List)
-	case *symv1.Request_Reverse:
-		reply, err = sv.reverse(ctx, r.Reverse)
-	case *symv1.Request_Refresh:
-		reply, err = sv.refresh(ctx, r.Refresh)
-	case *symv1.Request_Revisions:
-		reply, err = sv.revisions(ctx, r.Revisions)
-	default:
-		err = invalid("request is empty")
-	}
-	if err != nil {
-		sv.note(err)
-		return nil, err
-	}
-	if err := fits(reply); err != nil {
-		sv.note(err)
-		return nil, err
-	}
-	return reply, nil
+func (sv *Service) GetByUID(ctx context.Context, req *symv1.GetByUidRequest) (*symv1.SymbolInfo, error) {
+	out, err := sv.getByUID(ctx, req)
+	return out, sv.note(err)
 }
 
-func (sv *Service) get(ctx context.Context, req *symv1.GetRequest) (*symv1.Reply, error) {
+func (sv *Service) List(ctx context.Context, req *symv1.ListRequest) (*symv1.SymbolList, error) {
+	out, err := sv.list(ctx, req)
+	return out, sv.note(err)
+}
+
+func (sv *Service) Reverse(ctx context.Context, req *symv1.ReverseRequest) (*symv1.SymbolInfo, error) {
+	out, err := sv.reverse(ctx, req)
+	return out, sv.note(err)
+}
+
+func (sv *Service) Revisions(ctx context.Context, req *symv1.RevisionsRequest) (*symv1.RevisionList, error) {
+	out, err := sv.revisions(ctx, req)
+	return out, sv.note(err)
+}
+
+func (sv *Service) Refresh(ctx context.Context, req *symv1.RefreshRequest) (*symv1.RefreshResult, error) {
+	out, err := sv.refresh(ctx, req)
+	return out, sv.note(err)
+}
+
+func (sv *Service) get(ctx context.Context, req *symv1.GetRequest) (*symv1.SymbolInfo, error) {
 	if req == nil {
 		return nil, invalid("request is empty")
 	}
@@ -110,14 +99,14 @@ func (sv *Service) get(ctx context.Context, req *symv1.GetRequest) (*symv1.Reply
 		return nil, invalid(fmt.Sprintf("ticker %q is not a universal ticker", ticker))
 	}
 	op := "get ticker " + ticker
-	info, err := sv.store.GetByTicker(ctx, ticker, req.GetIncludeInactive())
+	info, err := sv.read.GetByTicker(ctx, ticker, req.GetIncludeInactive())
 	if err != nil {
 		return nil, readErr(err, op, missed("ticker "+ticker, req.GetIncludeInactive()))
 	}
-	return infoReply(info)
+	return infoResult(info)
 }
 
-func (sv *Service) getByUID(ctx context.Context, req *symv1.GetByUidRequest) (*symv1.Reply, error) {
+func (sv *Service) getByUID(ctx context.Context, req *symv1.GetByUidRequest) (*symv1.SymbolInfo, error) {
 	if req == nil {
 		return nil, invalid("request is empty")
 	}
@@ -126,14 +115,14 @@ func (sv *Service) getByUID(ctx context.Context, req *symv1.GetByUidRequest) (*s
 		return nil, notFound(fmt.Sprintf("uid %d not found; %d is not a valid uid", uid, uid))
 	}
 	op := fmt.Sprintf("get uid %d", uid)
-	info, err := sv.store.GetByUID(ctx, uid, req.GetIncludeInactive())
+	info, err := sv.read.GetByUID(ctx, uid, req.GetIncludeInactive())
 	if err != nil {
 		return nil, readErr(err, op, missed(fmt.Sprintf("uid %d", uid), req.GetIncludeInactive()))
 	}
-	return infoReply(info)
+	return infoResult(info)
 }
 
-func (sv *Service) list(ctx context.Context, req *symv1.ListRequest) (*symv1.Reply, error) {
+func (sv *Service) list(ctx context.Context, req *symv1.ListRequest) (*symv1.SymbolList, error) {
 	if req == nil {
 		return nil, invalid("request is empty")
 	}
@@ -149,7 +138,7 @@ func (sv *Service) list(ctx context.Context, req *symv1.ListRequest) (*symv1.Rep
 		return nil, err
 	}
 	op := fmt.Sprintf("list %s/%s", req.GetVenue(), cat)
-	rows, total, err := sv.store.List(ctx, req.GetVenue(), cat, int64(req.GetOffset()), limit, req.GetIncludeInactive())
+	rows, total, err := sv.read.List(ctx, req.GetVenue(), cat, int64(req.GetOffset()), limit, req.GetIncludeInactive())
 	if err != nil {
 		return nil, readErr(err, op, notFound(op+" not found"))
 	}
@@ -161,13 +150,14 @@ func (sv *Service) list(ctx context.Context, req *symv1.ListRequest) (*symv1.Rep
 		}
 		symbols = append(symbols, msg)
 	}
-	return &symv1.Reply{Result: &symv1.Reply_List{List: &symv1.SymbolList{
-		Symbols: symbols,
-		Total:   total,
-	}}}, nil
+	page := &symv1.SymbolList{Symbols: symbols, Total: total}
+	if n := proto.Size(page); n > maxPageBytes {
+		return nil, unavailable(fmt.Sprintf("page of %d rows is %d bytes, exceeds 1 MiB limit; lower limit", len(symbols), n), nil)
+	}
+	return page, nil
 }
 
-func (sv *Service) reverse(ctx context.Context, req *symv1.ReverseRequest) (*symv1.Reply, error) {
+func (sv *Service) reverse(ctx context.Context, req *symv1.ReverseRequest) (*symv1.SymbolInfo, error) {
 	if req == nil {
 		return nil, invalid("request is empty")
 	}
@@ -182,7 +172,7 @@ func (sv *Service) reverse(ctx context.Context, req *symv1.ReverseRequest) (*sym
 		return nil, invalid("exch_ticker is empty")
 	}
 	op := fmt.Sprintf("reverse %s/%s %s", req.GetVenue(), cat, req.GetExchTicker())
-	info, err := sv.store.Reverse(ctx, symbol.ExchKey{
+	info, err := sv.read.Reverse(ctx, symbol.ExchKey{
 		Venue:      req.GetVenue(),
 		Category:   cat,
 		ExchTicker: req.GetExchTicker(),
@@ -191,14 +181,14 @@ func (sv *Service) reverse(ctx context.Context, req *symv1.ReverseRequest) (*sym
 		label := fmt.Sprintf("exch_ticker %q for %s/%s", req.GetExchTicker(), req.GetVenue(), cat)
 		return nil, readErr(err, op, missed(label, req.GetIncludeInactive()))
 	}
-	return infoReply(info)
+	return infoResult(info)
 }
 
-func (sv *Service) revisions(ctx context.Context, req *symv1.RevisionsRequest) (*symv1.Reply, error) {
+func (sv *Service) revisions(ctx context.Context, req *symv1.RevisionsRequest) (*symv1.RevisionList, error) {
 	if req == nil {
 		return nil, invalid("request is empty")
 	}
-	rows, err := sv.store.Revisions(ctx)
+	rows, err := sv.read.Revisions(ctx)
 	if err != nil {
 		return nil, readErr(err, "revisions", notFound("revisions not found"))
 	}
@@ -216,10 +206,10 @@ func (sv *Service) revisions(ctx context.Context, req *symv1.RevisionsRequest) (
 			Revision: row.Revision,
 		})
 	}
-	return &symv1.Reply{Result: &symv1.Reply_Revisions{Revisions: &symv1.RevisionList{Tables: tables}}}, nil
+	return &symv1.RevisionList{Tables: tables}, nil
 }
 
-func (sv *Service) refresh(ctx context.Context, req *symv1.RefreshRequest) (*symv1.Reply, error) {
+func (sv *Service) refresh(ctx context.Context, req *symv1.RefreshRequest) (*symv1.RefreshResult, error) {
 	if req == nil {
 		return nil, invalid("request is empty")
 	}
@@ -243,111 +233,21 @@ func (sv *Service) refresh(ctx context.Context, req *symv1.RefreshRequest) (*sym
 		}
 		return nil, unavailable(what+": "+causeText(err), err)
 	}
-	return refreshReply(reports), nil
+	return refreshResult(reports), nil
 }
 
-func (sv *Service) note(err error) {
-	var ce *codeError
-	if !errors.As(err, &ce) || ce.code != CodeUnavailable {
-		return
+// note logs an unavailable failure once, with its cause, and returns err.
+func (sv *Service) note(err error) error {
+	var e *Error
+	if !errors.As(err, &e) || e.Code != CodeUnavailable {
+		return err
 	}
-	ev := sv.log.Error().Str("reason", ce.reason)
-	if ce.cause != nil {
-		ev = ev.Err(ce.cause)
+	ev := sv.log.Error().Str("reason", e.Reason)
+	if e.Cause != nil {
+		ev = ev.Err(e.Cause)
 	}
 	ev.Msg("sym unavailable")
-}
-
-// codeError is a business failure. Error is the natsx reply text.
-type codeError struct {
-	code   string
-	reason string
-	cause  error
-}
-
-func (e *codeError) Error() string {
-	if e == nil || e.code == "" {
-		return CodeUnavailable
-	}
-	if e.reason == "" {
-		return e.code
-	}
-	return e.code + ": " + e.reason
-}
-
-func (e *codeError) Unwrap() error { return e.cause }
-
-func invalid(reason string) error {
-	return &codeError{code: CodeInvalid, reason: reason}
-}
-
-func unavailable(reason string, cause error) error {
-	return &codeError{code: CodeUnavailable, reason: reason, cause: cause}
-}
-
-func notFound(reason string) error {
-	return &codeError{code: CodeNotFound, reason: reason}
-}
-
-// missed is a not_found reason. includeInactive false searched the active
-// table only, which is why a terminal row is absent.
-func missed(label string, includeInactive bool) error {
-	if includeInactive {
-		return notFound(label + " not found in active or terminal table (include_inactive=true)")
-	}
-	return notFound(label + " not found in active table (include_inactive=false)")
-}
-
-// readErr turns a store error into a business error. notFound is the message
-// when the row is absent. Other failures name the operation and the cause.
-func readErr(err error, op string, absent error) error {
-	if err == nil {
-		return nil
-	}
-	if errors.Is(err, ErrNotFound) || errors.Is(err, symbol.ErrNotFound) {
-		return absent
-	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return unavailable(op+": "+err.Error(), err)
-	}
-	return unavailable(op+": "+causeText(err), err)
-}
-
-// causeText is the client-facing part of an unavailable error. A long message
-// or one that carries a query is replaced, so the reply names the failure
-// without the SQL.
-func causeText(err error) string {
-	if err == nil {
-		return "database read failed"
-	}
-	msg := strings.Join(strings.Fields(err.Error()), " ")
-	lower := strings.ToLower(msg)
-	if len(msg) > 300 || strings.Contains(lower, "select ") || strings.Contains(lower, "insert ") || strings.Contains(lower, "update ") {
-		return "database read failed"
-	}
-	return msg
-}
-
-func fits(m proto.Message) error {
-	if m == nil {
-		return unavailable("reply is empty", nil)
-	}
-	n := proto.Size(m)
-	if n <= maxReplyBytes {
-		return nil
-	}
-	if page := replyPage(m); page != nil {
-		return unavailable(fmt.Sprintf("page of %d rows is %d bytes, exceeds 1 MiB limit; lower limit", len(page.GetSymbols()), n), nil)
-	}
-	return unavailable(fmt.Sprintf("reply is %d bytes, exceeds 1 MiB limit", n), nil)
-}
-
-func replyPage(m proto.Message) *symv1.SymbolList {
-	reply, ok := m.(*symv1.Reply)
-	if !ok {
-		return nil
-	}
-	return reply.GetList()
+	return err
 }
 
 // pageLimit turns the request limit into a row count. Zero selects the page
@@ -426,12 +326,12 @@ func canonicalVenueName(venue string) bool {
 	return err == nil && t.Venue == venue
 }
 
-func infoReply(info symbol.Info) (*symv1.Reply, error) {
+func infoResult(info symbol.Info) (*symv1.SymbolInfo, error) {
 	msg, err := infoMessage(info)
 	if err != nil {
 		return nil, statusUnavailable(info, err)
 	}
-	return &symv1.Reply{Result: &symv1.Reply_Info{Info: msg}}, nil
+	return msg, nil
 }
 
 func statusUnavailable(info symbol.Info, err error) error {
@@ -514,9 +414,9 @@ func bound(v float64) *symv1.Bound {
 	return b
 }
 
-// refreshReply keys every map by venue/category. One venue has several
+// refreshResult keys every map by venue/category. One venue has several
 // categories, and a failure has to name which feed it was.
-func refreshReply(reports []Report) *symv1.Reply {
+func refreshResult(reports []Report) *symv1.RefreshResult {
 	res := &symv1.RefreshResult{
 		Refreshed:   map[string]uint32{},
 		Deactivated: map[string]uint32{},
@@ -531,7 +431,7 @@ func refreshReply(reports []Report) *symv1.Reply {
 		res.Refreshed[key] = fitCount(rep.Seen)
 		res.Deactivated[key] = fitCount(rep.Delisted + rep.Expired)
 	}
-	return &symv1.Reply{Result: &symv1.Reply_Refresh{Refresh: res}}
+	return res
 }
 
 func fitCount(n int) uint32 {

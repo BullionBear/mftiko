@@ -28,6 +28,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/natsx"
 	"github.com/BullionBear/mftiko/internal/sym"
+	"github.com/BullionBear/mftiko/internal/sym/symnats"
 	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
@@ -98,7 +99,7 @@ func run(database, natsURL, creds, feeds, proxy, roots string, timeout time.Dura
 	defer nc.Close()
 	// After the revision commits. A subscriber that misses it compares revisions.
 	st.SetPublisher(sym.NATSChanged(nc, log))
-	if _, err := sym.NewService(st, runner, log).Serve(ctx, nc); err != nil {
+	if _, err := symnats.Serve(ctx, nc, sym.NewService(st, runner, log), log); err != nil {
 		return err
 	}
 	log.Info().Int("feeds", len(selected)).Msg("serving sym")

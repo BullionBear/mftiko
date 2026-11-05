@@ -1,7 +1,8 @@
-package sym_test
+package symnats
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"flag"
@@ -12,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/nats-io/nats.go"
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
@@ -22,9 +22,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange/exchangetest"
 	"github.com/BullionBear/mftiko/internal/platform/natsx"
 	"github.com/BullionBear/mftiko/internal/platform/natsx/natsxtest"
-	"github.com/BullionBear/mftiko/internal/platform/pgtest"
 	"github.com/BullionBear/mftiko/internal/sym"
-	"github.com/BullionBear/mftiko/migrations"
 )
 
 var updateGolden = flag.Bool("update", false, "rewrite testdata/nats_golden.txt from the running service")
@@ -165,11 +163,15 @@ func TestNATSGolden(t *testing.T) {
 }
 
 // canonicalReply keeps an error reply as sent. natsx frames it with a leading zero byte, which no
-// protobuf payload starts with.
+// protobuf payload starts with. The one exception is U+00A0: protobuf-go writes it instead of a
+// space in its own error text depending on the binary, so a -race build differs from a plain one.
 func canonicalReply(t *testing.T, name string, data []byte) []byte {
 	t.Helper()
-	if len(data) > 0 && data[0] == 0x00 {
-		return data
+	if len(data) >= 6 && data[0] == 0x00 {
+		msg := strings.ReplaceAll(string(data[6:]), "\u00a0", " ")
+		out := append([]byte(nil), data[:6]...)
+		binary.BigEndian.PutUint16(out[4:6], uint16(len(msg)))
+		return append(out, msg...)
 	}
 	var rep symv1.Reply
 	if err := proto.Unmarshal(data, &rep); err != nil {
@@ -194,28 +196,14 @@ type goldenFixture struct {
 func newGoldenFixture(t *testing.T) *goldenFixture {
 	t.Helper()
 	ctx := context.Background()
-	pg := pgtest.Start(t)
-	conn, err := pgx.Connect(ctx, pg.DSN())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = conn.Close(context.Background()) })
-	for _, name := range []string{"0001_history.up.sql", "0002_symbol.up.sql"} {
-		b, err := migrations.FS.ReadFile(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := pgtest.ExecSQL(ctx, conn, string(b)); err != nil {
-			t.Fatalf("apply %s: %v", name, err)
-		}
-	}
+	dsn := startPG(t)
 	src, err := exchangetest.New("Bybit")
 	if err != nil {
 		t.Fatal(err)
 	}
 	btc := goldenSpot("BTC", "USDT", "BTCUSDT")
 	btc.Filters = symbol.Filters{"price_tick": 0.5, "max_qty": math.NaN(), "min_notional": 5}
-	st, err := sym.Open(ctx, pg.DSN(), &seqUIDs{})
+	st, err := sym.Open(ctx, dsn, &seqUIDs{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +256,7 @@ func newGoldenFixture(t *testing.T) *goldenFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(server.Close)
-	if _, err := sym.NewService(st, run, zerolog.Nop()).Serve(t.Context(), server); err != nil {
+	if _, err := Serve(t.Context(), server, sym.NewService(st, run, zerolog.Nop()), zerolog.Nop()); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := nats.Connect(ns.URL())
