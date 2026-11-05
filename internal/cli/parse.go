@@ -264,12 +264,14 @@ const recordHelp = `usage: mftiko record list|show
 
 list
   mftiko record list [-session-id ID] [-strategy-id ID] [-created-by NAME]
-      [-created-after TIME] [-created-before TIME]
+      [-api-id ID] [-created-after TIME] [-created-before TIME]
   mftiko record list [-limit N]
   mftiko record list [-cursor TOKEN]
 
 TIME is RFC 3339, or YYYY-MM-DD at local midnight. Relative times are
-rejected. -limit and -cursor cannot both be set. Each request uses
+rejected. -api-id is an integer from 1 to 9007199254740991. It keeps records
+whose spec names that account, including sessions whose spec was deleted.
+-limit and -cursor cannot both be set. Each request uses
 limit=1000 and follows next_cursor. -limit N caps the total number of rows.
 -cursor fetches one page.
 
@@ -310,6 +312,7 @@ type options struct {
 	createdBy      stringOpt
 	createdAfter   stringOpt
 	createdBefore  stringOpt
+	apiID          stringOpt
 	wait           waitOpt
 	waitTimeout    time.Duration
 	waitTimeoutSet bool
@@ -507,7 +510,7 @@ func parseArgs(args []string) (options, []string, error) {
 	var name, kind, tdInstance, exchAccountUid stringOpt
 	var includeDeleted boolOpt
 	var keyFile, secretFile, passFile, keyType, cursor stringOpt
-	var stsInstance, sessionID, strategyID, createdBy, createdAfter, createdBefore stringOpt
+	var stsInstance, sessionID, strategyID, createdBy, createdAfter, createdBefore, apiID stringOpt
 	var phase stringList
 	var active boolOpt
 	var file, idemKey stringOpt
@@ -547,6 +550,7 @@ func parseArgs(args []string) (options, []string, error) {
 	fs.Var(&sessionID, "session-id", "session id")
 	fs.Var(&strategyID, "strategy-id", "strategy id")
 	fs.Var(&createdBy, "created-by", "user who created the record")
+	fs.Var(&apiID, "api-id", "account api_id named by the spec")
 	fs.Var(&createdAfter, "created-after", "RFC 3339 or YYYY-MM-DD")
 	fs.Var(&createdBefore, "created-before", "RFC 3339 or YYYY-MM-DD")
 	if logsCmd {
@@ -599,6 +603,7 @@ func parseArgs(args []string) (options, []string, error) {
 		createdBy:      createdBy,
 		createdAfter:   createdAfter,
 		createdBefore:  createdBefore,
+		apiID:          apiID,
 		wait:           wait,
 		waitTimeout:    waitTimeout.v,
 		waitTimeoutSet: waitTimeout.set,
@@ -650,7 +655,7 @@ var (
 		"key-file":        true, "secret-file": true, "passphrase-file": true, "key-type": true,
 		"limit": true, "cursor": true,
 		"phase": true, "active": true, "sts-instance": true,
-		"session-id": true, "strategy-id": true, "created-by": true,
+		"session-id": true, "strategy-id": true, "created-by": true, "api-id": true,
 		"created-after": true, "created-before": true,
 		"f": true, "idempotency-key": true,
 		"wait-timeout": true,

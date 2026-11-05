@@ -134,7 +134,7 @@ func runSessionDelete(a *App) int {
 }
 
 func runRecordList(a *App) int {
-	if code := a.onlyFlags("session-id", "strategy-id", "created-by", "created-after", "created-before", "limit", "cursor"); code != 0 {
+	if code := a.onlyFlags("session-id", "strategy-id", "created-by", "api-id", "created-after", "created-before", "limit", "cursor"); code != 0 {
 		return code
 	}
 	if len(a.Args) != 0 {
@@ -258,6 +258,16 @@ func (a *App) recordQuery() (apiv1.ListSessionRecordsParams, int) {
 		return p, code
 	}
 	p.CreatedBy = by
+	if a.opt.apiID.set {
+		if a.opt.apiID.v == "" {
+			return p, a.exit("-api-id needs a value")
+		}
+		api, err := parseAPIID(a.opt.apiID.v)
+		if err != nil {
+			return p, a.exit(err.Error())
+		}
+		p.ApiId = &api
+	}
 	if a.opt.createdAfter.set {
 		t, err := parseWhen("created-after", a.opt.createdAfter.v)
 		if err != nil {

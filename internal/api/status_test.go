@@ -834,6 +834,153 @@ func frameHasComment(frames []sseFrame, comment string) bool {
 	return false
 }
 
+func TestAPIIDsOfSpec(t *testing.T) {
+	raw, err := proto.Marshal(&sessionv1.SessionSpec{
+		Accounts: []*sessionv1.AccountDecl{
+			{ApiId: 43},
+			{ApiId: 42},
+			{ApiId: 42},
+			{ApiId: 0},
+			{ApiId: -1},
+			{ApiId: 1 << 62},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := apiIDsOfSpec(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []int64{-1, 42, 43, 1 << 62}
+	if len(got) != len(want) {
+		t.Fatalf("ids %v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("ids %v", got)
+		}
+	}
+	empty, err := proto.Marshal(&sessionv1.SessionSpec{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = apiIDsOfSpec(empty)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("empty %v %v", got, err)
+	}
+	if _, err := apiIDsOfSpec([]byte{0x0a, 0x05, 0x01}); err == nil {
+		t.Fatal("truncated spec was accepted")
+	}
+}
+
+func TestSessionRecordsByAPIID(t *testing.T) {
+	se := newSessionEnv(t, sessionOpt{})
+	body := func(name, accounts string) string {
+		return fmt.Sprintf(`{"name":%q,"sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":%q},"accounts":[%s]}`, name, stratDig, accounts)
+	}
+	code, hdr, raw := se.post(t, body("closed", `{"name":"a","api_id":42,"td_instance":"td-tw-1","algo_ids":[1]}`), nil)
+	closed := mustSession(t, code, hdr, raw)
+	se.exec(t, `UPDATE session_records SET state = 'closed', closed_at = now() WHERE session_id = $1`, closed.Id)
+
+	code, hdr, raw = se.post(t, body("other", `{"name":"b","api_id":43,"td_instance":"td-tw-1","algo_ids":[1]}`), nil)
+	other := mustSession(t, code, hdr, raw)
+	code, hdr, raw = se.post(t, body("both", `{"name":"a","api_id":42,"td_instance":"td-tw-1","algo_ids":[2]},{"name":"b","api_id":43,"td_instance":"td-tw-1","algo_ids":[2]}`), nil)
+	both := mustSession(t, code, hdr, raw)
+	code, hdr, raw = se.post(t, minBody("sts-tw-1"), nil)
+	none := mustSession(t, code, hdr, raw)
+
+	if got := se.recordAPIIDs(t, closed.Id); !idsEqual(got, []int64{42}) {
+		t.Fatalf("closed column %v", got)
+	}
+	if got := se.recordAPIIDs(t, both.Id); !idsEqual(got, []int64{42, 43}) {
+		t.Fatalf("both column %v", got)
+	}
+	if got := se.recordAPIIDs(t, none.Id); len(got) != 0 {
+		t.Fatalf("none column %v", got)
+	}
+
+	var pageItems []apiv1.SessionRecord
+	page := se.records(t, "/api/v1/session-records?api_id=42&limit=1")
+	if len(page.Items) != 1 || page.NextCursor == nil {
+		t.Fatalf("first page %+v", page)
+	}
+	pageItems = append(pageItems, page.Items...)
+	page = se.records(t, "/api/v1/session-records?api_id=42&limit=1&cursor="+url.QueryEscape(*page.NextCursor))
+	if len(page.Items) != 1 || page.NextCursor != nil {
+		t.Fatalf("second page %+v", page)
+	}
+	pageItems = append(pageItems, page.Items...)
+	seen := map[string]apiv1.SessionRecordState{}
+	for _, item := range pageItems {
+		seen[item.SessionId] = item.State
+	}
+	if seen[closed.Id] != apiv1.SessionRecordStateClosed || seen[both.Id] != apiv1.SessionRecordStateCreated || len(seen) != 2 {
+		t.Fatalf("api 42 pages %v", seen)
+	}
+
+	fortyThree := se.records(t, "/api/v1/session-records?api_id=43")
+	got43 := map[string]bool{}
+	for _, item := range fortyThree.Items {
+		got43[item.SessionId] = true
+	}
+	if !got43[other.Id] || !got43[both.Id] || got43[closed.Id] || got43[none.Id] || len(fortyThree.Items) != 2 {
+		t.Fatalf("api 43 %+v", fortyThree.Items)
+	}
+	if items := se.records(t, "/api/v1/session-records?api_id=99").Items; len(items) != 0 {
+		t.Fatalf("missing account %d", len(items))
+	}
+	only := se.records(t, "/api/v1/session-records?api_id=42&session_id="+url.QueryEscape(both.Id))
+	if len(only.Items) != 1 || only.Items[0].SessionId != both.Id {
+		t.Fatalf("combined %+v", only.Items)
+	}
+	all := se.records(t, "/api/v1/session-records")
+	if len(all.Items) != 4 {
+		t.Fatalf("unfiltered %d", len(all.Items))
+	}
+
+	for _, q := range []string{"api_id=0", "api_id=-1", "api_id=9007199254740992"} {
+		code, _, raw = se.call(t, http.MethodGet, "/api/v1/session-records?"+q, "", nil)
+		if code != http.StatusBadRequest {
+			t.Fatalf("%s %d %s", q, code, raw)
+		}
+		hasPath(t, raw, "/api_id")
+	}
+	code, _, raw = se.call(t, http.MethodGet, "/api/v1/session-records?api_id=abc", "", nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("abc %d %s", code, raw)
+	}
+	mustProblem(t, raw, http.StatusBadRequest, "validation_failed")
+}
+
+func (se *sessionEnv) recordAPIIDs(t *testing.T, sessionID string) []int64 {
+	t.Helper()
+	pool, err := se.s.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []int64
+	if err := pool.QueryRow(t.Context(), `SELECT api_ids FROM session_records WHERE session_id = $1`, sessionID).Scan(&ids); err != nil {
+		t.Fatal(err)
+	}
+	if ids == nil {
+		return []int64{}
+	}
+	return ids
+}
+
+func idsEqual(got, want []int64) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func revOf(id, region string) int64 {
 	for _, part := range strings.Split(id, ";") {
 		name, revStr, ok := strings.Cut(part, "=")

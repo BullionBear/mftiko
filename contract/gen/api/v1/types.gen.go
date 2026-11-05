@@ -1204,11 +1204,14 @@ type ListSessionRecordsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 
 	// SessionId 同一個 `session_id` 可能對到多筆：W5 刪除之後可能重用（E10-D007）。
-	SessionId     *SessionIDValue `form:"session_id,omitempty" json:"session_id,omitempty"`
-	StrategyId    *string         `form:"strategy_id,omitempty" json:"strategy_id,omitempty"`
-	CreatedBy     *string         `form:"created_by,omitempty" json:"created_by,omitempty"`
-	CreatedAfter  *time.Time      `form:"created_after,omitempty" json:"created_after,omitempty"`
-	CreatedBefore *time.Time      `form:"created_before,omitempty" json:"created_before,omitempty"`
+	SessionId *SessionIDValue `form:"session_id,omitempty" json:"session_id,omitempty"`
+
+	// ApiId 只回 spec 的 `accounts` 引用了這個帳號的紀錄，包含 W5 已刪除的 session（E21-D010、E21-D072）。省略則不篩。
+	ApiId         *APIIDValue `form:"api_id,omitempty" json:"api_id,omitempty"`
+	StrategyId    *string     `form:"strategy_id,omitempty" json:"strategy_id,omitempty"`
+	CreatedBy     *string     `form:"created_by,omitempty" json:"created_by,omitempty"`
+	CreatedAfter  *time.Time  `form:"created_after,omitempty" json:"created_after,omitempty"`
+	CreatedBefore *time.Time  `form:"created_before,omitempty" json:"created_before,omitempty"`
 }
 
 // ListSessionsParams defines parameters for ListSessions.

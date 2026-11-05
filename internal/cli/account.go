@@ -694,6 +694,7 @@ func (a *App) unexpectedFlags(allow ...string) string {
 		{"session-id", a.opt.sessionID.set},
 		{"strategy-id", a.opt.strategyID.set},
 		{"created-by", a.opt.createdBy.set},
+		{"api-id", a.opt.apiID.set},
 		{"created-after", a.opt.createdAfter.set},
 		{"created-before", a.opt.createdBefore.set},
 		{"f", a.opt.file.set},

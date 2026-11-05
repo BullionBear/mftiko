@@ -8,18 +8,19 @@
 # and requires AccountDeclInput.td_instance (E21-D052, E21-D054, E21-D005). In place, path
 # still /api/v1. The oasdiff ERR lines are in api-v1-err-ignore.txt.
 # 2.4.0 adds td_pubkey_unavailable (E21-D039, E21-D041). Compatible: one ErrorCode.
+# 3.2.0 adds optional query api_id on GET /session-records (E21-D069–E21-D072). Compatible.
 # The oasdiff response-property-enum-value-added lines are in api-v1-err-ignore.txt.
 # oasdiff ignores only the lines in contract/openapi/api-v1-err-ignore.txt.
 # console 與 CLI 只認這份契約，不認平台的 proto（E10-D002）。
 openapi: 3.0.3
 info:
   title: mftiko API
-  version: 3.1.0
+  version: 3.2.0
   description: |
     mftiko API server 的對外契約（DECISIONS E10-D001、E10-D002）。
 
     **慣例（E10-D036）**
-    - 路徑都在 `/api/v1` 底下。`2.0.0` 這一次在原地拿掉策略 `id`（E10-D118）。`2.1.0` 加上 session log 的讀取與匯出（E14-D011–E14-D015）。`2.2.0` 加上策略事件紀錄的開關（E20-D007）。`2.3.0` 加上帳號的 `exchange`、`exch_account_uid`、`deleted_at` 與 `include_deleted`（E21-D010、E21-D027）。`2.4.0` 加上錯誤碼 `td_pubkey_unavailable`（E21-D039）。`3.0.0` 在原地拿掉帳號請求與回應的 `td_instance`、拿掉帳號回應的 `region`，並把建立 session 的 `td_instance` 改成必填（E21-D052、E21-D054、E21-D005）。`3.1.0` 加上 `GET /scopes`（E21-D010、E21-D068）。讀取端忽略不認得的欄位。
+    - 路徑都在 `/api/v1` 底下。`2.0.0` 這一次在原地拿掉策略 `id`（E10-D118）。`2.1.0` 加上 session log 的讀取與匯出（E14-D011–E14-D015）。`2.2.0` 加上策略事件紀錄的開關（E20-D007）。`2.3.0` 加上帳號的 `exchange`、`exch_account_uid`、`deleted_at` 與 `include_deleted`（E21-D010、E21-D027）。`2.4.0` 加上錯誤碼 `td_pubkey_unavailable`（E21-D039）。`3.0.0` 在原地拿掉帳號請求與回應的 `td_instance`、拿掉帳號回應的 `region`，並把建立 session 的 `td_instance` 改成必填（E21-D052、E21-D054、E21-D005）。`3.1.0` 加上 `GET /scopes`（E21-D010、E21-D068）。`3.2.0` 加上 `GET /session-records` 的選填 query `api_id`（E21-D072）。讀取端忽略不認得的欄位。
     - 時間是 RFC 3339 字串（UTC，奈秒精度可省略）。
     - enum 是 API 自己的小寫字串，不是 proto 的名稱。
     - 錯誤一律是 `application/problem+json`（RFC 9457），另帶穩定的 `code`；驗證錯誤的 `errors[].path` 是 JSON Pointer（RFC 6901），指向請求 body 裡的欄位（E10-D004）。
@@ -392,7 +393,7 @@ paths:
       tags: [session-records]
       operationId: listSessionRecords
       summary: 列出 session 的歷史紀錄
-      description: 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。
+      description: 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。`api_id` 只留 spec 引用了這個帳號的紀錄（E21-D072）。
       parameters:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
@@ -401,6 +402,11 @@ paths:
           description: 同一個 `session_id` 可能對到多筆：W5 刪除之後可能重用（E10-D007）。
           schema:
             $ref: '#/components/schemas/SessionIDValue'
+        - name: api_id
+          in: query
+          description: 只回 spec 的 `accounts` 引用了這個帳號的紀錄，包含 W5 已刪除的 session（E21-D010、E21-D072）。省略則不篩。
+          schema:
+            $ref: '#/components/schemas/APIIDValue'
         - name: strategy_id
           in: query
           schema:

@@ -254,7 +254,7 @@ type ClientInterface interface {
 
 	// ListSessionRecords 列出 session 的歷史紀錄
 	//
-	// 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。.
+	// 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。`api_id` 只留 spec 引用了這個帳號的紀錄（E21-D072）。.
 	//
 	// Corresponds with GET /session-records (the `ListSessionRecords` operationId).
 	ListSessionRecords(ctx context.Context, params *ListSessionRecordsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -698,7 +698,7 @@ func (c *Client) ListScopes(ctx context.Context, params *ListScopesParams, reqEd
 
 // ListSessionRecords 列出 session 的歷史紀錄
 //
-// 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。.
+// 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。`api_id` 只留 spec 引用了這個帳號的紀錄（E21-D072）。.
 //
 // Corresponds with GET /session-records (the `ListSessionRecords` operationId).
 func (c *Client) ListSessionRecords(ctx context.Context, params *ListSessionRecordsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1667,6 +1667,18 @@ func NewListSessionRecordsRequest(server string, params *ListSessionRecordsParam
 
 		}
 
+		if params.ApiId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "api_id", *params.ApiId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.StrategyId != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "strategy_id", *params.StrategyId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
@@ -2447,7 +2459,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListSessionRecordsWithResponse 列出 session 的歷史紀錄
 	//
-	// 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。.
+	// 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。`api_id` 只留 spec 引用了這個帳號的紀錄（E21-D072）。.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -4309,7 +4321,7 @@ func (c *ClientWithResponses) ListScopesWithResponse(ctx context.Context, params
 
 // ListSessionRecordsWithResponse 列出 session 的歷史紀錄
 //
-// 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。.
+// 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。`api_id` 只留 spec 引用了這個帳號的紀錄（E21-D072）。.
 //
 // Returns a wrapper object for the known response body format(s).
 //

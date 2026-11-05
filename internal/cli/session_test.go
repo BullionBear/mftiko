@@ -384,6 +384,9 @@ func TestRecordList(t *testing.T) {
 		testRecord("00000000-0000-4000-8000-000000000003", "cd34ef", "late-row", bob, late),
 	}
 	recs[2].Spec.Strategy = strategyRef("beta", "late-row", digB)
+	recs[2].Spec.Accounts = []apiv1.AccountDecl{{
+		Name: "main", ApiId: 42, TdInstance: "td-tw-1", AlgoIds: []int{1},
+	}}
 	srv, home := startSess(t, apitest.Option{Records: recs, RequestID: "req-rec"})
 
 	got := runAt(context.Background(), home, nil, strings.NewReader(""), "--context", "dev", "record", "list", "-created-after", "2026-10-24")
@@ -415,6 +418,21 @@ func TestRecordList(t *testing.T) {
 	last := srv.Calls()[len(srv.Calls())-1].RawQuery
 	if !strings.Contains(last, "session_id=cd34ef") || !strings.Contains(last, "strategy_id=beta") || !strings.Contains(last, "created_by=bob") {
 		t.Fatalf("query %s", last)
+	}
+	got = runAt(context.Background(), home, nil, strings.NewReader(""),
+		"--context", "dev", "record", "list", "-api-id", "42")
+	if got.code != ExitOK || !strings.Contains(got.out, "late-row") || strings.Contains(got.out, "early-row") || strings.Contains(got.out, "midnight-row") {
+		t.Fatalf("api id %+v", got)
+	}
+	if q := srv.Calls()[len(srv.Calls())-1].RawQuery; !strings.Contains(q, "api_id=42") {
+		t.Fatalf("api query %s", q)
+	}
+	calls := len(srv.Calls())
+	for _, bad := range []string{"0", "9007199254740992", "abc", "-1"} {
+		got = runAt(context.Background(), home, nil, strings.NewReader(""), "--context", "dev", "record", "list", "-api-id", bad)
+		if got.code != ExitUsage || len(srv.Calls()) != calls {
+			t.Fatalf("%s %+v calls %d", bad, got, len(srv.Calls()))
+		}
 	}
 
 	before := len(srv.Calls())
