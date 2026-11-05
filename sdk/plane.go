@@ -200,16 +200,19 @@ func (p *plane) Init(ctx context.Context, sess *c4.Session, payload []byte) erro
 
 	p.tap = &mdpath.Tap{}
 	p.disp = dispatch.New(dispatch.Config{
-		RecvWindow:    p.recv,
-		HookTimeout:   p.hookTimeout,
-		Now:           p.host.now,
-		OnStop:        p.strategyStop,
-		UnsubscribeTD: p.unsubTD,
-		Feed:          p.tap.Feed,
-		Book:          p.tap.Book,
-		Log:           p.note,
-		Rec:           p.rec,
-		Clock:         &p.clock,
+		RecvWindow:      p.recv,
+		HookTimeout:     p.hookTimeout,
+		Now:             p.host.now,
+		OnStop:          p.strategyStop,
+		HoldTD:          p.holdTD,
+		AllowStopCancel: p.allowStopCancel,
+		StopIdle:        p.stopIdle,
+		UnsubscribeTD:   p.unsubTD,
+		Feed:            p.tap.Feed,
+		Book:            p.tap.Book,
+		Log:             p.note,
+		Rec:             p.rec,
+		Clock:           &p.clock,
 	})
 	sym, err := symclient.Open(p.root, symclient.NATS(nc), symclient.Options{Log: p.note})
 	if err != nil {
@@ -434,11 +437,34 @@ func (p *plane) strategyStop(context.Context) error {
 	return nil
 }
 
-func (p *plane) unsubTD() {
+func (p *plane) tdPath() *tdpath.Path {
 	p.mu.Lock()
-	td := p.td
-	p.mu.Unlock()
-	if td != nil {
+	defer p.mu.Unlock()
+	return p.td
+}
+
+func (p *plane) holdTD() {
+	if td := p.tdPath(); td != nil {
+		td.HoldOrders()
+	}
+}
+
+func (p *plane) allowStopCancel() {
+	if td := p.tdPath(); td != nil {
+		td.AllowStopCancel()
+	}
+}
+
+func (p *plane) stopIdle() bool {
+	td := p.tdPath()
+	if td == nil {
+		return true
+	}
+	return td.StopIdle()
+}
+
+func (p *plane) unsubTD() {
+	if td := p.tdPath(); td != nil {
 		td.Close()
 	}
 }

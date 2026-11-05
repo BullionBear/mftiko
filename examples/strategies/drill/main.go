@@ -14,9 +14,9 @@
 // The first OnRecon cancels every open order of algo_id on the account (BatchCancel, which needs the
 // account's cancel_batch from a recon): an earlier incarnation's working order stays on the exchange
 // when its worker is killed, since the platform does not cancel for the strategy (DECISIONS E06-D002).
-// OnStop cannot cancel (the SDK refuses orders once the session is stopping), so the working order
-// outlives the session. "sweep_only": true cancels and places nothing: run it before ending the drill
-// to leave no order behind.
+// OnStop of a DONE or FAILED ending can cancel (E08-D067). This drill does not: the working order
+// stays for the next incarnation. A killed worker does not run OnStop, so that order stays too.
+// "sweep_only": true cancels and places nothing: run it before ending the drill to leave no order behind.
 package main
 
 import (

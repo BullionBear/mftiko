@@ -65,10 +65,20 @@ type Config struct {
 	HookTimeout time.Duration
 	Now         func() time.Time
 	// OnStop is the strategy callback. It runs on the dispatcher goroutine, after a DONE or FAILED
-	// ending has delivered the TD buffer (E08-D003). Nil does nothing.
+	// ending has delivered the TD buffer (E08-D003). Nil does nothing. On those endings it may
+	// cancel; the cancels' results are delivered before UnsubscribeTD (E08-D067).
 	OnStop func(context.Context) error
-	// UnsubscribeTD runs on the dispatcher goroutine before that delivery, for DONE and FAILED only.
-	// It is where the session drops td.evt. Nil does nothing.
+	// HoldTD runs on the dispatcher goroutine before the DONE or FAILED delivery. It refuses order
+	// calls and leaves td.evt subscribed. Nil does nothing.
+	HoldTD func()
+	// AllowStopCancel runs on the dispatcher goroutine immediately before OnStop, for DONE and
+	// FAILED only. Cancel and BatchCancel work; Submit stays refused. Nil does nothing.
+	AllowStopCancel func()
+	// StopIdle reports that cancels issued during OnStop have delivered their results. Nil means
+	// there is nothing to wait for. A false result is waited out inside ctx (E08-D067).
+	StopIdle func() bool
+	// UnsubscribeTD runs on the dispatcher goroutine after OnStop and after those cancel results,
+	// for DONE and FAILED only. It is where the session drops td.evt. Nil does nothing.
 	UnsubscribeTD func()
 	// Feed is called with a market-data message the prehook kept. The bytes alias the ring and are
 	// valid only until Feed returns. Feed decodes; the dispatcher does not. Nil skips the message.
@@ -100,6 +110,9 @@ type Disp struct {
 	hookTimeout time.Duration
 	now         func() time.Time
 	onStop      func(context.Context) error
+	hold        func()
+	allow       func()
+	stopIdle    func() bool
 	unsub       func()
 	feed        func([]byte)
 	book        func([]byte)
@@ -153,6 +166,9 @@ func New(cfg Config) *Disp {
 		hookTimeout: cfg.HookTimeout,
 		now:         cfg.Now,
 		onStop:      cfg.OnStop,
+		hold:        cfg.HoldTD,
+		allow:       cfg.AllowStopCancel,
+		stopIdle:    cfg.StopIdle,
 		unsub:       cfg.UnsubscribeTD,
 		feed:        cfg.Feed,
 		book:        cfg.Book,
@@ -421,8 +437,9 @@ func (d *Disp) TakePost(id uint64) func() {
 	return fn
 }
 
-// CloseTD is, in a replay, the point where a session's ending closes the TD buffer: just before
-// OnStop. A Post from then on fails as it did.
+// CloseTD is, in a replay of a log without StopKeepTD, the point where the ending closes the TD
+// buffer: just before OnStop. A Post from then on fails. A StopKeepTD log leaves it open through
+// OnStop (E08-D067).
 func (d *Disp) CloseTD() { d.closeTD() }
 
 // Stats reports both buffers and the hook counters. It clears each buffer's max age, which is the
@@ -534,11 +551,14 @@ func (d *Disp) phase1() {
 }
 
 // phase2 delivers the TD buffer for DONE and FAILED, then runs the strategy OnStop. CRASHED does
-// not deliver (E08-D003). The whole of this runs on the dispatcher goroutine. c4's context is the
-// time limit, shared by the delivery and OnStop; this method does not arm a second one.
+// not deliver (E08-D003). DONE and FAILED keep td.order and td.evt through OnStop so Cancel and
+// BatchCancel work, then deliver those results before dropping the subscription (E08-D067). The
+// whole of this runs on the dispatcher goroutine. c4's context is the time limit, shared by the
+// delivery, OnStop and the cancel results; this method does not arm a second one.
 //
 // The event log gets a stop frame first: recv_ns is when the loop stopped MD, t_ns is when c4
-// asked for OnStop, and StopDeliver says whether the TD buffer is delivered.
+// asked for OnStop, and StopDeliver says whether the TD buffer is delivered. StopKeepTD is set
+// with it: td.evt stays up through OnStop.
 func (d *Disp) phase2(ctx context.Context, deliver bool) {
 	d.inStop = true
 	var askedNs int64
@@ -546,7 +566,7 @@ func (d *Disp) phase2(ctx context.Context, deliver bool) {
 		askedNs = d.now().UnixNano()
 		var flags uint16
 		if deliver && ctx.Err() == nil {
-			flags = eventlog.StopDeliver
+			flags = eventlog.StopDeliver | eventlog.StopKeepTD
 		}
 		d.rec.Append(eventlog.KindStop, flags, d.stopAt, askedNs, 0, nil, nil)
 	}
@@ -559,25 +579,35 @@ func (d *Disp) phase2(ctx context.Context, deliver bool) {
 		d.stopRes <- err
 	}()
 	if ctx.Err() != nil {
-		d.closeTD()
+		d.dropTD(deliver)
 		err = ctx.Err()
 		return
 	}
 	var delivered error
 	if deliver {
-		d.step("unsub")
-		if d.unsub != nil {
-			d.unsub()
+		d.step("hold")
+		if d.hold != nil {
+			d.hold()
 		}
 		delivered = d.drain(ctx)
+	} else {
+		// CRASHED does not deliver and does not take the stop-cancel path. The buffer is closed
+		// before OnStop, as it was.
+		d.closeTD()
 	}
-	d.closeTD()
 	d.stopTimers()
 	if ctx.Err() != nil {
+		d.dropTD(deliver)
 		err = ctx.Err()
 		return
 	}
 	if d.onStop != nil {
+		if deliver {
+			d.step("allow-cancel")
+			if d.allow != nil {
+				d.allow()
+			}
+		}
 		start := d.now()
 		d.clock.Store(start.UnixNano())
 		d.mu.Lock()
@@ -599,6 +629,100 @@ func (d *Disp) phase2(ctx context.Context, deliver bool) {
 	}
 	if err == nil {
 		err = delivered
+	}
+	if deliver && d.onStop != nil {
+		// Freeze cancels before the results run, so a result hook cannot start another round.
+		if d.hold != nil {
+			d.hold()
+		}
+		d.step("results")
+		if ctx.Err() == nil {
+			if rerr := d.deliverStopResults(ctx); rerr != nil && err == nil {
+				err = rerr
+			}
+		} else {
+			d.drainReady()
+		}
+	}
+	if deliver {
+		d.step("unsub")
+		if d.unsub != nil {
+			d.unsub()
+		}
+		d.drainReady()
+	}
+	d.closeTD()
+}
+
+// dropTD unsubscribes when this ending was delivering, and closes the TD buffer.
+func (d *Disp) dropTD(deliver bool) {
+	if deliver {
+		d.step("unsub")
+		if d.unsub != nil {
+			d.unsub()
+		}
+	}
+	d.closeTD()
+}
+
+// deliverStopResults runs TD hooks queued during OnStop, and waits for cancels armed there, until
+// StopIdle or ctx ends.
+func (d *Disp) deliverStopResults(ctx context.Context) error {
+	for {
+		if err := d.drain(ctx); err != nil {
+			return err
+		}
+		if d.stopIdle == nil || d.stopIdle() {
+			return nil
+		}
+		if err := d.waitTD(ctx); err != nil {
+			return err
+		}
+	}
+}
+
+// waitTD blocks until a TD entry is queued or ctx ends.
+func (d *Disp) waitTD(ctx context.Context) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	wake := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			d.mu.Lock()
+			d.cond.Broadcast()
+			d.mu.Unlock()
+		case <-wake:
+		}
+	}()
+	defer close(wake)
+	d.mu.Lock()
+	for d.td.n == 0 && ctx.Err() == nil {
+		d.cond.Wait()
+	}
+	err := ctx.Err()
+	d.mu.Unlock()
+	return err
+}
+
+// drainReady runs every TD entry already queued. It does not wait for more.
+func (d *Disp) drainReady() {
+	for {
+		d.mu.Lock()
+		if d.td.n == 0 {
+			d.mu.Unlock()
+			return
+		}
+		it, in := d.popLocked()
+		if age := d.now().Sub(it.at); age > d.tdMax {
+			d.tdMax = age
+		}
+		d.mu.Unlock()
+		d.runHook(in, it.fn)
+		if d.takeStopPanic() != nil {
+			return
+		}
 	}
 }
 

@@ -92,8 +92,8 @@ func TestEventLogSession(t *testing.T) {
 	}) {
 		t.Error("the Command snapshot is not marked from_command")
 	}
-	if stop := find(recs, eventlog.KindStop); stop.Flags != eventlog.StopDeliver {
-		t.Errorf("stop flags %d, want deliver", stop.Flags)
+	if stop := find(recs, eventlog.KindStop); stop.Flags != eventlog.StopDeliver|eventlog.StopKeepTD {
+		t.Errorf("stop flags %d, want deliver and keep td", stop.Flags)
 	}
 	if !bytes.Equal(find(recs, eventlog.KindMDFeed).Body, r.trade) {
 		t.Error("the md_feed body is not the message as published")
@@ -503,7 +503,7 @@ func checkDump(t *testing.T, out []byte, frames int) {
 		"read_reply":    {"reply_ns", "hook_start_ns", "read", "read_kind", "reply"},
 		"timer":         {"recv_ns", "hook_start_ns", "timer"},
 		"post":          {"recv_ns", "hook_start_ns", "post"},
-		"stop":          {"stop_ns", "onstop_asked_ns", "deliver"},
+		"stop":          {"stop_ns", "onstop_asked_ns", "deliver", "keep_td"},
 		"onstop":        {"recv_ns", "hook_start_ns"},
 		"hook_end":      {"hook_end_ns", "input", "ending"},
 		"order_call":    {"call_ns", "call", "op", "api_id", "cloids"},

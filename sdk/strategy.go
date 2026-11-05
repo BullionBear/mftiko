@@ -14,7 +14,9 @@ type Strategy interface {
 	// OnStart runs once every MD and TD lease is READY (E01-D007). Orders may be placed from here on.
 	OnStart(ctx Context) error
 	// OnStop runs when the session ends as DONE, FAILED or CRASHED, but not after HUNG (PROTOCOL §5.3).
-	// On DONE and FAILED the TD events already received are delivered first (E08-D003).
+	// On DONE and FAILED the TD events already received are delivered first (E08-D003). Cancel and
+	// BatchCancel from this hook are sent, and their results are delivered before td.evt is dropped;
+	// Submit and RequestRecon return ErrStopping (E08-D067). CRASHED does not open that path.
 	OnStop(ctx Context)
 }
 

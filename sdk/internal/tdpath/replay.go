@@ -68,6 +68,6 @@ func (p *Path) ReplayReply(call uint64, flags uint16, body []byte) error {
 	if err == nil {
 		err = proto.Unmarshal(body, reply)
 	}
-	p.finishOrder(r.apiID, r.id, r.ids, r.kind, reply, err)
+	p.finishOrder(r.apiID, r.id, r.ids, r.kind, reply, err, false)
 	return nil
 }

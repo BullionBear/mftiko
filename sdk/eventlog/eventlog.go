@@ -106,12 +106,16 @@ func (k Kind) Input() bool {
 // Flags of a bindings frame.
 const FromCommand uint16 = 1
 
-// Flags of a stop frame. StopDeliver means td.evt was dropped and the TD buffer is delivered
-// before OnStop (DONE and FAILED). Without it the ending delivers nothing (CRASHED). StopHung is
-// the watchdog: a hook passed hook_timeout_s, and that hook has no hook_end (E20-D005).
+// Flags of a stop frame. StopDeliver means the TD buffer is delivered before OnStop (DONE and
+// FAILED). Without it the ending delivers nothing (CRASHED). StopHung is the watchdog: a hook
+// passed hook_timeout_s, and that hook has no hook_end (E20-D005). StopKeepTD is set with
+// StopDeliver from E08-D067 on: td.order and td.evt stay up through OnStop, Cancel and BatchCancel
+// work there, and their results are delivered before the subscription is dropped. A StopDeliver
+// frame without StopKeepTD is an older log, which dropped td.evt before that delivery.
 const (
 	StopDeliver uint16 = 1
 	StopHung    uint16 = 2
+	StopKeepTD  uint16 = 4
 )
 
 // Flags of a hook_end frame. The body is the panic value or the error text.

@@ -69,7 +69,7 @@ func (p *Path) Submit(o Order) (string, error) {
 		Price:         opt(o.Price),
 	}
 	p.mu.Lock()
-	if p.failed {
+	if p.failed || p.ordersHeld {
 		p.mu.Unlock()
 		return "", ErrStopping
 	}
@@ -95,7 +95,7 @@ func (p *Path) Submit(o Order) (string, error) {
 		RecvWindowMs:  o.RecvWindowMs,
 	}}}
 	call := p.record(eventlog.OpSubmit, now, o.APIID, gen, id)
-	p.send(call, o.APIID, id, nil, req, orderSubmit)
+	p.send(call, o.APIID, id, nil, req, orderSubmit, false)
 	return id, nil
 }
 
@@ -130,13 +130,13 @@ func (p *Path) record(flags uint16, at time.Time, apiID int64, gen uint64, ids .
 
 // send starts the round of one request on its own goroutine. A replay sends nothing: it writes
 // the request as the order_publish it would have been and keeps the round for ReplayReply.
-func (p *Path) send(call uint64, apiID int64, id string, ids []string, req *tdv1.OrderRequest, kind orderKind) {
+func (p *Path) send(call uint64, apiID int64, id string, ids []string, req *tdv1.OrderRequest, kind orderKind, armed bool) {
 	if p.replay != nil {
 		p.replayed(call, apiID, id, ids, req, kind)
 		return
 	}
 	wait, release := p.reserveSend()
-	p.track(func() { p.roundOrder(wait, release, call, apiID, id, ids, req, kind) })
+	p.track(func() { p.roundOrder(wait, release, call, apiID, id, ids, req, kind, armed) })
 }
 
 // pending is a replayed request waiting for its recorded reply.
@@ -160,7 +160,7 @@ func (p *Path) replayed(call uint64, apiID int64, id string, ids []string, req *
 // is a RejectEvent and does not change the order. A timeout changes nothing and is
 // not reported (E08-D045).
 func (p *Path) Cancel(apiID int64, clientOrderID string) error {
-	if err := p.ready(apiID); err != nil {
+	if err := p.readyCancel(apiID); err != nil {
 		return err
 	}
 	if _, err := p.ownAlgo(apiID, clientOrderID); err != nil {
@@ -178,7 +178,8 @@ func (p *Path) Cancel(apiID int64, clientOrderID string) error {
 		ClientOrderId: clientOrderID,
 	}}}
 	call := p.record(eventlog.OpCancel, time.Time{}, apiID, 0, clientOrderID)
-	p.send(call, apiID, clientOrderID, []string{clientOrderID}, req, orderCancel)
+	armed := p.armStopCancels(apiID, []string{clientOrderID})
+	p.send(call, apiID, clientOrderID, []string{clientOrderID}, req, orderCancel, armed)
 	return nil
 }
 
@@ -186,7 +187,7 @@ func (p *Path) Cancel(apiID int64, clientOrderID string) error {
 // any are given. The list comes from OpenOrders and is split by the account's
 // cancel_batch. A value of 1 sends one Cancel per order (E06-D031).
 func (p *Path) BatchCancel(apiID int64, algoID uint32, uids ...uint32) error {
-	if err := p.ready(apiID); err != nil {
+	if err := p.readyCancel(apiID); err != nil {
 		return err
 	}
 	acc, err := p.account(apiID)
@@ -197,7 +198,7 @@ func (p *Path) BatchCancel(apiID int64, algoID uint32, uids ...uint32) error {
 		return ErrAlgoNotDeclared
 	}
 	p.mu.Lock()
-	if p.failed {
+	if p.failed || (p.ordersHeld && !p.cancelOpen) {
 		p.mu.Unlock()
 		return ErrStopping
 	}
@@ -213,10 +214,11 @@ func (p *Path) BatchCancel(apiID int64, algoID uint32, uids ...uint32) error {
 	}
 	call := p.recordBatch(apiID, batch, ids)
 	if p.replay != nil {
-		p.sendBatches(apiID, batch, ids, call)
+		p.sendBatches(apiID, batch, ids, call, nil)
 		return nil
 	}
-	p.track(func() { p.sendBatches(apiID, batch, ids, call) })
+	armed := p.armStopRounds(apiID, batch, ids)
+	p.track(func() { p.sendBatches(apiID, batch, ids, call, armed) })
 	return nil
 }
 
@@ -245,8 +247,9 @@ func (p *Path) recordBatch(apiID int64, batch uint32, ids []string) uint64 {
 
 // sendBatches sends the rounds one after another, each after the previous round's reply. call is
 // the first round's call id, or 0 with the log off.
-func (p *Path) sendBatches(apiID int64, batch uint32, ids []string, call uint64) {
+func (p *Path) sendBatches(apiID int64, batch uint32, ids []string, call uint64, armed []bool) {
 	n := int(batch)
+	round := 0
 	for i := 0; i < len(ids); i += n {
 		var (
 			id    string
@@ -276,11 +279,16 @@ func (p *Path) sendBatches(apiID int64, batch uint32, ids []string, call uint64)
 			req = &tdv1.OrderRequest{Req: &tdv1.OrderRequest_BatchCancel{BatchCancel: &tdv1.BatchCancel{Orders: orders}}}
 			kind = orderBatch
 		}
+		arm := false
+		if round < len(armed) {
+			arm = armed[round]
+		}
+		round++
 		if p.replay != nil {
 			p.replayed(call, apiID, id, chunk, req, kind)
 		} else {
 			wait, release := p.reserveSend()
-			p.roundOrder(wait, release, call, apiID, id, chunk, req, kind)
+			p.roundOrder(wait, release, call, apiID, id, chunk, req, kind, arm)
 		}
 		if call != 0 {
 			call++
@@ -296,7 +304,7 @@ const (
 	orderBatch
 )
 
-func (p *Path) roundOrder(wait <-chan struct{}, release func(), call uint64, apiID int64, id string, ids []string, req *tdv1.OrderRequest, kind orderKind) {
+func (p *Path) roundOrder(wait <-chan struct{}, release func(), call uint64, apiID int64, id string, ids []string, req *tdv1.OrderRequest, kind orderKind, armed bool) {
 	if release != nil {
 		defer release()
 	}
@@ -313,6 +321,9 @@ func (p *Path) roundOrder(wait <-chan struct{}, release func(), call uint64, api
 		}
 	}
 	if p.ctx.Err() != nil {
+		if armed {
+			p.settleCancel(apiID, ids, true)
+		}
 		return
 	}
 	in := p.replyIn(call, msg, err)
@@ -320,7 +331,9 @@ func (p *Path) roundOrder(wait <-chan struct{}, release func(), call uint64, api
 	if err == nil {
 		err = proto.Unmarshal(msg.Data, reply)
 	}
-	p.enqueue(in, func() { p.finishOrder(apiID, id, ids, kind, reply, err) })
+	if !p.enqueue(in, func() { p.finishOrder(apiID, id, ids, kind, reply, err, armed) }) && armed {
+		p.settleCancel(apiID, ids, true)
+	}
 }
 
 // replyIn is the order_reply input of a round: the reply as it came, or how the request failed.
@@ -375,15 +388,24 @@ func (p *Path) requestInOrder(ctx context.Context, wait <-chan struct{}, release
 	return sub.NextMsgWithContext(ctx)
 }
 
-func (p *Path) finishOrder(apiID int64, id string, ids []string, kind orderKind, reply *tdv1.OrderReply, callErr error) {
-	// After the hook. Callers poll this once the reply has been applied.
-	defer p.settled.Add(1)
+func (p *Path) finishOrder(apiID int64, id string, ids []string, kind orderKind, reply *tdv1.OrderReply, callErr error, armed bool) {
+	// After the hook. Callers poll settled once the reply has been applied. An armed stop-cancel
+	// also leaves the wait set here: a refusal is done, an acceptance waits for a terminal td.evt.
+	drop := false
+	defer func() {
+		if armed {
+			p.settleCancel(apiID, ids, drop)
+		}
+		p.settled.Add(1)
+	}()
 	switch {
 	case callErr == nil && reply.GetAccepted():
 		return
 	case callErr == nil:
+		drop = true
 		p.refuse(apiID, id, ids, kind, reply.GetCode(), reply.GetReason())
 	case errors.Is(callErr, nats.ErrNoResponders):
+		drop = true
 		p.refuse(apiID, id, ids, kind, int32(tdv1.RejectCode_REJECT_CODE_ACCOUNT_OFFLINE), reasonOffline)
 	default:
 		// A timeout, or a reply that is not an OrderReply. Cancel keeps its state
@@ -480,10 +502,69 @@ func (p *Path) OpenOrders(apiID int64, algoID uint32) []*tdv1.Order {
 	return out
 }
 
-func (p *Path) ready(apiID int64) error {
+// armStopCancels counts one cancel round that OnStop must see finished, and remembers each
+// live id until a terminal OrderUpdate or a refusal. A round outside AllowStopCancel is not armed.
+func (p *Path) armStopCancels(apiID int64, ids []string) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.failed {
+	if !p.cancelOpen || p.replay != nil || len(ids) == 0 {
+		return false
+	}
+	p.stopRounds++
+	for _, id := range ids {
+		if o := p.ordersOf(apiID)[id]; o != nil && terminal(o.GetStatus()) {
+			continue
+		}
+		if p.stopWait == nil {
+			p.stopWait = map[string]struct{}{}
+		}
+		p.stopWait[id] = struct{}{}
+	}
+	return true
+}
+
+// armStopRounds arms one round per batch of ids. The slice lines up with sendBatches.
+func (p *Path) armStopRounds(apiID int64, batch uint32, ids []string) []bool {
+	n := int(batch)
+	if n <= 0 {
+		return nil
+	}
+	armed := make([]bool, 0, (len(ids)+n-1)/n)
+	for i := 0; i < len(ids); i += n {
+		armed = append(armed, p.armStopCancels(apiID, ids[i:min(i+n, len(ids))]))
+	}
+	return armed
+}
+
+// settleCancel finishes one armed round. drop removes the ids from the wait set: the cancel was
+// refused, or the round will not be reported. Otherwise an id stays until its order is terminal.
+func (p *Path) settleCancel(apiID int64, ids []string, drop bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.stopRounds > 0 {
+		p.stopRounds--
+	}
+	for _, id := range ids {
+		if drop {
+			delete(p.stopWait, id)
+			continue
+		}
+		// A missing row stays: the OrderUpdate that finishes it may not have arrived. A row that
+		// is already terminal does not need that event.
+		if o := p.ordersOf(apiID)[id]; o != nil && terminal(o.GetStatus()) {
+			delete(p.stopWait, id)
+		}
+	}
+}
+
+func (p *Path) ready(apiID int64) error { return p.readyCall(apiID, false) }
+
+func (p *Path) readyCancel(apiID int64) error { return p.readyCall(apiID, true) }
+
+func (p *Path) readyCall(apiID int64, cancel bool) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.failed || (p.ordersHeld && !(cancel && p.cancelOpen)) {
 		return ErrStopping
 	}
 	if !p.listening {
@@ -627,6 +708,9 @@ func (p *Path) applyUpdate(apiID int64, ev *tdv1.AccountEvent) {
 		return
 	}
 	acc.orders[row.GetClientOrderId()] = row
+	if terminal(row.GetStatus()) {
+		delete(p.stopWait, row.GetClientOrderId())
+	}
 	p.mu.Unlock()
 	if p.hooks.Order != nil {
 		p.hooks.Order(OrderEvent{

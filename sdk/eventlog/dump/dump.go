@@ -75,6 +75,7 @@ type Frame struct {
 	CloidSlot   *uint64 `json:"cloid_slot,omitempty"`
 	FromCommand bool    `json:"from_command,omitempty"`
 	Deliver     bool    `json:"deliver,omitempty"`
+	KeepTD      bool    `json:"keep_td,omitempty"`
 	Hung        bool    `json:"hung,omitempty"`
 	Dropped     *uint64 `json:"dropped,omitempty"`
 
@@ -282,6 +283,7 @@ func (d *Dumper) Frame(x eventlog.Record) Frame {
 		} else {
 			f.OnStopAskedNs = x.TNs
 			f.Deliver = x.Flags&eventlog.StopDeliver != 0
+			f.KeepTD = x.Flags&eventlog.StopKeepTD != 0
 		}
 	case eventlog.KindOnStop:
 		f.RecvNs, f.HookStartNs = x.RecvNs, x.TNs
