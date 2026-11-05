@@ -437,3 +437,41 @@ make accept-down
 ```
 
 紀錄：每個 `e2e` 子指令的輸出、`data/work/e2e/*.log`，以及 console smoke 的輸出。E10-19 的紀錄在它的 PR。運維的說明（log 的位置、權限、輪替、保留期）在 [docs/operations.md](../../docs/operations.md)。
+
+# PMS 對接驗收
+
+E21-09（#521，E21-D083–E21-D087）。一個模擬的 PMS（`mftiko-pms-sim`）只用 API、SYM 與自己的交易所 key，建出 testnet 帳號的訂單與成交歷史，再對照策略記下的 cloid 檢查歸屬。
+
+```sh
+A=deploy/accept/accept.sh
+$A e2e-up            # 環境同端到端驗收；up 也簽 /work/pms.creds（只能 publish sym）
+$A pms
+```
+
+**它會永久退役 `sts2`。** 要在其他 flow 之後跑；之後要再跑 region 的 flow 或再跑一次 `pms`，先 `$A down` 再 `$A e2e-up`。
+
+`pms` 依序：
+
+1. `e2e pms before`：同一把 BinanceUM key 登記成兩個 `api_id`，`exch_account_uid` 都是 `accept-pms`。以 `pmsprobe` 建四個 session：
+   - **exit**（A1，algo 1）：A1 在這個商品的第一筆單。策略在 `Submit` 之後 5 毫秒就結束，交易所回來時沒有人訂 `td.evt`。stderr 沒有任何成交行。
+   - **run**（A2，algo 2）：市價買、reduce-only 市價賣，之後一直跑。
+   - **never**（A1，algo 4）：帶一個 100,001 個空檔的 input，STS 以 `artifact_unsafe_layer` 結束，incarnation 0，沒有 `last_exit`。
+   - **retired**（A1，algo 3，在 `sts2`）：買、賣。
+2. 停掉 `sts2` 的 agent。
+3. `e2e pms retire`：經 API 退役 `sts2`，等 session 紀錄出現 `sts_retired_at`。再建 **after**（A1，algo 3，在 `sts1`）。
+4. `e2e pms check`：用自己的 key 下一張 reduce-only 市價賣單（manual），再跑 `mftiko-pms-sim`。它只拿到 token（環境變數）、`/work/pms.creds` 與憑證檔，報告寫在 `data/work/e2e/pms-report.json`。最多重試 2 分鐘等交易所的歷史跟上。通過後把 run 與 after 結束掉。
+
+檢查的項目：
+
+- 兩個 `api_id` 在同一組。
+- 區間：run 開著；exit 止於 `last_exit`；never 是空的；retired 止於 `sts_retired_at`；after 開著。
+- 每張 probe 的單與它的成交都歸到下單的 session，after 的單不歸 retired；manual 不歸任何 session；沒有 ambiguous。
+- exit 的單：scope 的 `since` 不晚於它的 cloid 時間，成交讀得到，而且成交時間在 session 的 `last_exit` 之後。偶爾交易所成交得比 session 結束還快，就再跑一次（先 `down`、`e2e-up`）。
+
+單獨跑 PMS：
+
+```sh
+docker compose -f deploy/accept/compose.yaml exec -T runner sh -c 'MFTIKO_TOKEN=$(cat /work/e2e/token) /mftiko/mftiko-pms-sim \
+  -api http://127.0.0.1:8080 -nats nats://nats:4222 -nats-creds /work/pms.creds \
+  -key binance/accept-pms=/work/binanceum.creds.json -rest BinanceUM=https://testnet.binancefuture.com'
+```

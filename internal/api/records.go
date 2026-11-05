@@ -624,3 +624,32 @@ func nilIfEmpty(b []byte) []byte {
 	}
 	return b
 }
+
+// retiredTimes is retired_instances as instance → retired_at (E12-D033, E21-D083).
+// The table holds one row per retired instance, so it is read whole.
+func (s *Server) retiredTimes(ctx context.Context) (map[string]time.Time, error) {
+	pool, err := s.db()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := pool.Query(ctx, `SELECT instance, retired_at FROM retired_instances`)
+	if err != nil {
+		return nil, storageErr(err)
+	}
+	defer rows.Close()
+	out := map[string]time.Time{}
+	for rows.Next() {
+		var (
+			inst string
+			at   time.Time
+		)
+		if err := rows.Scan(&inst, &at); err != nil {
+			return nil, storageErr(err)
+		}
+		out[inst] = at
+	}
+	if err := rows.Err(); err != nil {
+		return nil, storageErr(err)
+	}
+	return out, nil
+}

@@ -31,6 +31,8 @@
 #                                cli logs reads, follows and exports session logs, E14-08)
 #   accept.sh e2e-all            every flow, with the controller and etcd2 stopped and started around
 #                                absent and region
+#   accept.sh pms                the PMS acceptance (E21-09): probes on two api_ids, sts2 stopped and
+#                                retired, then mftiko-pms-sim checked against them. Retires sts2: run last
 #   accept.sh console-smoke      the Playwright smoke (web/e2e) against replica a, from this host
 #   accept.sh controller | stop-controller
 #   accept.sh sts-agent NAME | stop-sts-agent NAME
@@ -62,8 +64,9 @@ up() {
 		./cmd/mftiko-md-agent ./cmd/mftiko-md-conn ./cmd/mftiko-shim ./cmd/mftiko-sym ./cmd/mftiko-md-accept \
 		./cmd/mftiko-td-agent ./cmd/mftiko-td-account ./cmd/mftiko-td-accept ./cmd/mftiko-seal \
 		./cmd/mftiko-controller ./cmd/mftiko-sts-agent ./cmd/mftiko-api ./cmd/mftiko-api-accept ./cmd/mftiko-pack ./cmd/mftiko \
-		./cmd/mftiko-migrate &&
-		GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -o bin/linux/examples/ ./examples/strategies/hello ./examples/strategies/chatter)
+		./cmd/mftiko-migrate ./cmd/mftiko-pms-sim &&
+		GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -o bin/linux/examples/ ./examples/strategies/hello ./examples/strategies/chatter \
+			./examples/strategies/pmsprobe)
 	mkdir -p "$here/data/work"
 	(cd "$repo" && go run ./cmd/mftiko-nats-dev -out "$here/data/nats" >/dev/null)
 	"${compose[@]}" up -d --wait
@@ -77,6 +80,8 @@ up() {
 		-repo registry:5000/bullionbear/mftiko-td-account -tag latest -plain-http'
 	tool setup -instance dev -topology /work/topology.json
 	tool creds -nats-dir /nats -out /work/observer.creds
+	# The PMS stand-in's user: sym, its change notes and _INBOX_pms only (E21-D009).
+	tool creds -nats-dir /nats -pms -out /work/pms.creds
 	if ! running /mftiko/mftiko-sym; then
 		run sh -c "nohup /mftiko/mftiko-sym -feeds '$feeds' -nats-creds /nats/creds/sym-dev.creds >/work/sym.log 2>&1 &"
 		sleep 2
@@ -185,7 +190,9 @@ e2e_up() {
 	run sh -c 'mkdir -p /work/e2e && /mftiko/mftiko-pack -bin /mftiko/examples/hello -name hello \
 		-repo registry:5000/strategies/hello -tag accept -plain-http &&
 		/mftiko/mftiko-pack -bin /mftiko/examples/chatter -name chatter \
-		-repo registry:5000/strategies/chatter -tag accept -plain-http'
+		-repo registry:5000/strategies/chatter -tag accept -plain-http &&
+		/mftiko/mftiko-pack -bin /mftiko/examples/pmsprobe -name pmsprobe \
+		-repo registry:5000/strategies/pmsprobe -tag accept -plain-http'
 	td_up
 	e2etool setup
 	running /mftiko/mftiko-md-agent || agent
@@ -234,6 +241,17 @@ e2e_all() {
 	echo "e2e: every flow passed"
 }
 
+# pms is the PMS acceptance (E21-09, #521). It retires sts2 for good: run it last, and e2e-up on a
+# fresh stack (down first) before the region flows again.
+pms() {
+	e2etool pms before
+	run sh -c "kill -TERM \$(pgrep -f '^/mftiko/mftiko-sts-agent -instance sts2 ')"
+	run sh -c "while pgrep -f '^/mftiko/mftiko-sts-agent -instance sts2 ' >/dev/null; do sleep 0.2; done"
+	echo "sts-agent sts2 stopped"
+	e2etool pms retire
+	e2etool pms check
+}
+
 case "${1:-}" in
 up) up ;;
 agent) agent ;;
@@ -269,6 +287,7 @@ e2e)
 	e2etool "$@"
 	;;
 e2e-all) e2e_all ;;
+pms) pms ;;
 console-smoke)
 	shift
 	(cd "$repo/web" && npx playwright test "$@")
@@ -282,6 +301,6 @@ stop-api) stop_api "$2" ;;
 ps) run ps -o pid,ppid,args ;;
 sh) "${compose[@]}" exec runner sh ;;
 down) "${compose[@]}" down -v ;;
-"" | -h | --help) sed -n '2,42p' "$0" ;;
+"" | -h | --help) sed -n '2,43p' "$0" ;;
 *) tool "$@" ;;
 esac

@@ -233,6 +233,13 @@ func check(pkgs []pkg, std map[string]bool) []string {
 				}
 			}
 		}
+		if from == "cmd/mftiko-pms-sim" {
+			for _, d := range p.Deps {
+				if pmsOutsideHandOff(d) {
+					out = append(out, fmt.Sprintf("%s links %s: the PMS stand-in uses only the API, SYM and its own exchange key (E21-D001, #521)", from, d))
+				}
+			}
+		}
 		if under(from, "internal/cli") || from == "cmd/mftiko" {
 			for _, d := range p.Deps {
 				if cliOutsideAPI(d) {
@@ -259,6 +266,24 @@ func cliOutsideAPI(importPath string) bool {
 		return false
 	}
 	return under(r, "internal", "exchange", "contract", "sdk", "examples")
+}
+
+// pmsOutsideHandOff reports a dependency the PMS stand-in must not link. A PMS gets the API,
+// SYM over NATS and its own exchange key (E21-D001, E21-D009): no etcd, no Postgres driver, no
+// platform or plane code, no exchange adapter. NATS is allowed for SYM only; its user cannot
+// subscribe td.evt.
+func pmsOutsideHandOff(importPath string) bool {
+	if under(importPath, "go.etcd.io", "github.com/jackc", "github.com/lib/pq", "oras.land") {
+		return true
+	}
+	r, own := rel(importPath)
+	if !own {
+		return false
+	}
+	if under(r, "cmd/mftiko-pms-sim", "internal/platform/buildinfo", "contract/gen/api", "contract/gen/mftiko/sym", "contract/wire/cloid") {
+		return false
+	}
+	return true
 }
 
 // goList runs go list over the whole module, with every dependency.

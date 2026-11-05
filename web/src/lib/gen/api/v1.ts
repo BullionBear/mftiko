@@ -785,6 +785,12 @@ export interface components {
             final?: components["schemas"]["SessionStatus"];
             /** Format: date-time */
             closed_at?: string;
+            /**
+             * Format: date-time
+             * @description `sts_instance` 被永久退役的時間，取自 `retired_instances`（E12-D033）。沒有退役時省略。
+             *     退役的 STS 上的 session 不會變成 terminal，也沒有 `last_exit`，交易區間在這個時間封口（E21-D011、E21-D083）。
+             */
+            sts_retired_at?: string;
         };
         SessionRecordList: {
             items: components["schemas"]["SessionRecord"][];

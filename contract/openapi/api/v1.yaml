@@ -15,7 +15,7 @@
 openapi: 3.0.3
 info:
   title: mftiko API
-  version: 3.2.0
+  version: 3.3.0
   description: |
     mftiko API server 的對外契約（DECISIONS E10-D001、E10-D002）。
 
@@ -1489,6 +1489,12 @@ components:
         closed_at:
           type: string
           format: date-time
+        sts_retired_at:
+          type: string
+          format: date-time
+          description: |
+            `sts_instance` 被永久退役的時間，取自 `retired_instances`（E12-D033）。沒有退役時省略。
+            退役的 STS 上的 session 不會變成 terminal，也沒有 `last_exit`，交易區間在這個時間封口（E21-D011、E21-D083）。
     SessionRecordList:
       type: object
       required: [items]

@@ -995,3 +995,40 @@ func revOf(id, region string) int64 {
 	}
 	return 0
 }
+
+// TestSessionRecordStsRetiredAt is E21-D083: a record on a retired STS carries the retired_at of
+// retired_instances, in the list and in the single read. Other records omit it.
+func TestSessionRecordStsRetiredAt(t *testing.T) {
+	se := newSessionEnv(t, sessionOpt{})
+	code, hdr, raw := se.post(t, minBody("sts-tw-1"), nil)
+	gone := mustSession(t, code, hdr, raw)
+	at := time.Date(2026, 11, 5, 3, 4, 5, 123456000, time.UTC)
+	se.exec(t, `INSERT INTO retired_instances (instance, plane, region, retired_by, retired_at) VALUES ('sts-tw-1', 'sts', 'tw', 'op', $1)`, at)
+	se.exec(t, `INSERT INTO retired_instances (instance, plane, region, retired_by, retired_at) VALUES ('td-tw-9', 'td', 'tw', 'op', now())`)
+
+	list := se.records(t, "/api/v1/session-records?session_id="+url.QueryEscape(gone.Id))
+	if len(list.Items) != 1 || list.Items[0].StsRetiredAt == nil || !list.Items[0].StsRetiredAt.Equal(at) {
+		t.Fatalf("list %+v", list.Items)
+	}
+	code, _, raw = se.call(t, http.MethodGet, "/api/v1/session-records/"+list.Items[0].RecordId.String(), "", nil)
+	if code != http.StatusOK {
+		t.Fatalf("get %d %s", code, raw)
+	}
+	var one apiv1.SessionRecord
+	if err := json.Unmarshal(raw, &one); err != nil {
+		t.Fatal(err)
+	}
+	if one.StsRetiredAt == nil || !one.StsRetiredAt.Equal(at) || !strings.Contains(string(raw), `"sts_retired_at":"2026-11-05T03:04:05.123456Z"`) {
+		t.Fatalf("get %s", raw)
+	}
+
+	se.exec(t, `DELETE FROM retired_instances WHERE instance = 'sts-tw-1'`)
+	list = se.records(t, "/api/v1/session-records?session_id="+url.QueryEscape(gone.Id))
+	if len(list.Items) != 1 || list.Items[0].StsRetiredAt != nil {
+		t.Fatalf("not retired %+v", list.Items)
+	}
+	code, _, raw = se.call(t, http.MethodGet, "/api/v1/session-records?session_id="+url.QueryEscape(gone.Id), "", nil)
+	if code != http.StatusOK || strings.Contains(string(raw), "sts_retired_at") {
+		t.Fatalf("omitted %d %s", code, raw)
+	}
+}
