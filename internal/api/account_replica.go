@@ -207,7 +207,8 @@ func (s *Server) ensureSessionReplicas(ctx context.Context, spec *sessionv1.Sess
 }
 
 // syncReplica locks the account, reuses a matching sealbox, or seals the stored
-// AEAD and upserts the replica. It does not write etcd and does not change the
+// AEAD and upserts the replica. Reuse sets updated_at to now in that same
+// transaction (E21-D063). It does not write etcd and does not change the
 // account row.
 func (s *Server) syncReplica(ctx context.Context, inst string, id int64, pub sealbox.PublicKey) (replicaView, error) {
 	pool, err := s.db()
@@ -235,6 +236,13 @@ FOR UPDATE`, inst, id).Scan(&cur)
 		return replicaView{}, storageErr(err)
 	}
 	if !missing && sealbox.SealedTo(pub, cur) {
+		// The account row is already locked. Touch updated_at before commit so a
+		// concurrent expiry, which takes the same lock, sees the reuse (E21-D063).
+		if _, err := tx.Exec(ctx, `
+UPDATE account_replicas SET updated_at = $3
+WHERE td_instance = $1 AND api_id = $2`, inst, id, s.now().UTC()); err != nil {
+			return replicaView{}, storageErr(err)
+		}
 		if err := tx.Commit(ctx); err != nil {
 			return replicaView{}, storageErr(err)
 		}

@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"errors"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/proto"
 
@@ -184,30 +186,77 @@ func liveEtcdReplicas(views map[string]state.View) map[replicaKey]struct{} {
 	return out
 }
 
-// removeReplica deletes the etcd account and then the account_replicas row (E21-D057).
-// The test hook "replica-after-etcd-delete" runs between the two. A failure leaves the
-// row so the next reconcile retries. There is no compensating write.
+// removeReplica locks the account row, then the replica row, in one transaction
+// (E21-D063). A missing replica row returns. A live account whose updated_at is
+// still inside td_replica_grace is left alone, so a session that reused the replica
+// after this pass read the in-use set is not deleted. Otherwise the etcd account
+// is deleted and then the row (E21-D057). The test hook "replica-after-etcd-delete"
+// runs between those two. A failure leaves the row so the next reconcile retries.
+// There is no compensating write. Exclusion is the database row locks.
 func (s *Server) removeReplica(ctx context.Context, inst string, id int64) error {
+	pool, err := s.db()
+	if err != nil {
+		return err
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return storageErr(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var deleted *time.Time
+	err = tx.QueryRow(ctx, `
+SELECT deleted_at FROM accounts WHERE api_id = $1 FOR UPDATE`, id).Scan(&deleted)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return storageErr(err)
+	}
+	var touched time.Time
+	err = tx.QueryRow(ctx, `
+SELECT updated_at FROM account_replicas
+WHERE td_instance = $1 AND api_id = $2
+FOR UPDATE`, inst, id).Scan(&touched)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return storageErr(err)
+	}
+	// Exactly the grace is still inside it, matching replicaDue (E21-D062, E21-D063).
+	if deleted == nil && !touched.UTC().Before(s.now().UTC().Add(-s.cfg.replicaGrace())) {
+		return nil
+	}
 	if err := s.deleteProjection(ctx, inst, id); err != nil {
 		return err
 	}
 	if err := s.fireHook("replica-after-etcd-delete"); err != nil {
 		return err
 	}
-	return s.deleteReplicaRow(ctx, inst, id)
-}
-
-func (s *Server) deleteReplicaRow(ctx context.Context, inst string, id int64) error {
-	pool, err := s.db()
-	if err != nil {
-		return err
-	}
-	if _, err := pool.Exec(ctx, `
+	if _, err := tx.Exec(ctx, `
 DELETE FROM account_replicas
 WHERE td_instance = $1 AND api_id = $2`, inst, id); err != nil {
 		return storageErr(err)
 	}
+	if err := tx.Commit(ctx); err != nil {
+		return storageErr(err)
+	}
 	return nil
+}
+
+// expireWillDelete reports whether this pass will try to remove a replica.
+// The before-expire test hook runs only then, after the in-use read.
+func (s *Server) expireWillDelete(rows []replicaView, uses map[replicaKey]replicaUse, usesErr error) bool {
+	for i := range rows {
+		row := rows[i]
+		if row.Deleted == nil && (usesErr != nil || !s.replicaDue(row, uses)) {
+			continue
+		}
+		region, err := s.cfg.Topology.RegionOf(row.Inst)
+		if err != nil || !s.regionAvailable(region) {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // tryRemoveReplica deletes one replica when its TD region can be written.
@@ -240,6 +289,16 @@ func (s *Server) expireReplicas(ctx context.Context) {
 	uses, usesErr := s.replicaUses(ctx)
 	if usesErr != nil && !s.quiet(usesErr) {
 		s.log.Error().Err(usesErr).Msg("load replica sessions")
+	}
+	// After the in-use read and before any delete, so a test can create a session
+	// in that window (E21-D063). A pass that will not delete does not call the hook.
+	if s.expireWillDelete(rows, uses, usesErr) {
+		if err := s.fireHook("replica-before-expire"); err != nil {
+			if !s.quiet(err) {
+				s.log.Error().Err(err).Msg("replica expire hook")
+			}
+			return
+		}
 	}
 	for i := range rows {
 		row := rows[i]

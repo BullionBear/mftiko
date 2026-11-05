@@ -60,6 +60,8 @@ type Server struct {
 	// hook is nil in production. Tests fail a session write at "before-etcd" or "after-etcd",
 	// an account projection at "account-before-etcd", and a replica delete between the etcd
 	// key and the account_replicas row at "replica-after-etcd-delete" (E21-D057).
+	// "replica-before-expire" runs after expireReplicas has read the in-use set and
+	// before it deletes (E21-D063).
 	hook func(step string) error
 	// haltBeforeDelete is a test switch. The retention pass closes the row and returns
 	// before deleteIf, so a later pass can finish the etcd delete (E10-D031). It is zero

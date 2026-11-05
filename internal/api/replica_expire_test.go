@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -237,6 +239,21 @@ WHERE td_instance = $1 AND api_id = $2`, inst, id).Scan(&b); err != nil {
 	return append([]byte(nil), b...)
 }
 
+func (f *accountFix) replicaUpdated(t *testing.T, inst string, id int64) time.Time {
+	t.Helper()
+	pool, err := f.srv.db()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var at time.Time
+	if err := pool.QueryRow(t.Context(), `
+SELECT updated_at FROM account_replicas
+WHERE td_instance = $1 AND api_id = $2`, inst, id).Scan(&at); err != nil {
+		t.Fatal(err)
+	}
+	return at.UTC()
+}
+
 func (f *accountFix) replicaCreated(t *testing.T, inst string, id int64) time.Time {
 	t.Helper()
 	pool, err := f.srv.db()
@@ -460,4 +477,127 @@ func TestReplicaGrace(t *testing.T) {
 	f.holdReconcile(func() { clock.Set(jpEnd.Add(grace + time.Millisecond)) })
 	f.srv.reconcileOnce(context.Background())
 	f.wantReplica(t, "td-jp-1", a5.ApiId, false)
+}
+
+// TestReplicaReuseDuringExpire is the E21-D063 race: expireReplicas has already
+// read an empty in-use set, then a new session reuses the replica before the delete.
+func TestReplicaReuseDuringExpire(t *testing.T) {
+	start := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	clock := &testClock{}
+	clock.Set(start)
+	const grace = time.Second
+	f := newGraceFix(t, clock, grace)
+	f.srv.ids = apiSeq(1)
+	acct := f.createNamed(t, "acct-1")
+	if acct.ApiId != 1 {
+		t.Fatalf("api id %d", acct.ApiId)
+	}
+	f.project(t, acct.ApiId, "td-tw-1")
+	sealed := f.replicaSealed(t, "td-tw-1", acct.ApiId)
+	f.srv.catalog = testCatalog()
+	f.srv.ids = sessionSeq(t, "000000")
+
+	var opened time.Time
+	entered := make(chan struct{})
+	cont := make(chan struct{})
+	var once sync.Once
+	var hookErr error
+	type posted struct {
+		code int
+		hdr  http.Header
+		body []byte
+		err  error
+	}
+	done := make(chan posted, 1)
+	f.holdReconcile(func() {
+		clock.Set(start.Add(grace + time.Millisecond))
+		opened = clock.Now()
+		f.srv.hook = func(step string) error {
+			if step != "replica-before-expire" {
+				return nil
+			}
+			once.Do(func() { close(entered) })
+			select {
+			case <-cont:
+				return nil
+			case <-time.After(20 * time.Second):
+				hookErr = errors.New("session was not created before replica expiry")
+				return hookErr
+			}
+		}
+	})
+	go func() {
+		defer close(cont)
+		select {
+		case <-entered:
+		case <-time.After(20 * time.Second):
+			done <- posted{err: errors.New("expire did not reach the hook")}
+			return
+		}
+		body := fmt.Sprintf(`{"name":"sess-1","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"v1"},"accounts":[{"name":"acct-1","api_id":%d,"td_instance":"td-tw-1","algo_ids":[1]}]}`, acct.ApiId)
+		req, err := http.NewRequest(http.MethodPost, f.base+"/api/v1/sessions", strings.NewReader(body))
+		if err != nil {
+			done <- posted{err: err}
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+tokenAda)
+		client := &http.Client{Timeout: 15 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			done <- posted{err: err}
+			return
+		}
+		defer resp.Body.Close()
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			done <- posted{err: err}
+			return
+		}
+		done <- posted{code: resp.StatusCode, hdr: resp.Header.Clone(), body: b}
+	}()
+	f.srv.reconcileOnce(context.Background())
+	if hookErr != nil {
+		t.Fatal(hookErr)
+	}
+	var got posted
+	select {
+	case got = <-done:
+	default:
+		t.Fatal("session create did not finish")
+	}
+	if got.err != nil {
+		t.Fatal(got.err)
+	}
+	sess := mustSession(t, got.code, got.hdr, got.body)
+	if sess.Id != "000000" {
+		t.Fatalf("session id %s", sess.Id)
+	}
+	f.wantReplica(t, "td-tw-1", acct.ApiId, true)
+	if created := f.replicaCreated(t, "td-tw-1", acct.ApiId); !created.Equal(start) {
+		t.Fatalf("created_at %s want %s", created, start)
+	}
+	if updated := f.replicaUpdated(t, "td-tw-1", acct.ApiId); !updated.Equal(opened.UTC()) {
+		t.Fatalf("updated_at %s want %s", updated, opened.UTC())
+	}
+	if !bytes.Equal(sealed, f.replicaSealed(t, "td-tw-1", acct.ApiId)) {
+		t.Fatal("reused replica was resealed")
+	}
+	specKey := state.SessionSpecKey("sts-tw-1", "000000")
+	if f.env.get(t, f.env.region(t, specKey), specKey) == nil {
+		t.Fatal("session spec missing")
+	}
+
+	// Past the reuse timestamp, the live session still keeps the replica.
+	f.holdReconcile(func() {
+		f.srv.hook = nil
+		clock.Set(opened.Add(grace + time.Millisecond))
+	})
+	for range 3 {
+		f.srv.reconcileOnce(context.Background())
+	}
+	f.wantReplica(t, "td-tw-1", acct.ApiId, true)
+	if f.env.get(t, f.env.region(t, specKey), specKey) == nil {
+		t.Fatal("session spec missing after later passes")
+	}
 }
