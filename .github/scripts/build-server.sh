@@ -41,6 +41,7 @@ bins=(
 	mftiko-etcd-backup
 	mftiko-retire-clean
 	mftiko-seal
+	mftiko-account-import
 	mftiko-latency-exporter
 )
 
