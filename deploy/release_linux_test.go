@@ -113,7 +113,7 @@ func TestReleaseSwitchRollback(t *testing.T) {
 	if out := w.must("switch", "A"); !strings.Contains(out, "applied 0001_history\n") {
 		t.Fatalf("switch A stdout %q", out)
 	}
-	appliedAt := w.migrationTimes(11)
+	appliedAt := w.migrationTimes(12)
 	w.mustCurrent("A")
 	w.mustMarker("A")
 	w.mustList("B\nA current\n")
@@ -127,7 +127,7 @@ func TestReleaseSwitchRollback(t *testing.T) {
 	if out := w.must("switch", "B"); !strings.Contains(out, "up to date\n") {
 		t.Fatalf("switch B stdout %q", out)
 	}
-	w.migrationTimes(11, appliedAt...)
+	w.migrationTimes(12, appliedAt...)
 	w.mustCurrent("B")
 	w.mustMarker("B")
 	w.mustList("B current\nA previous\n")
