@@ -113,6 +113,10 @@ E14（#435）起，`mftiko-api.service` 帶 `-log-token /etc/mftiko/api/log-toke
 
 E21-03a（#525）起，API 啟動要讀 `MFTIKO_ACCOUNT_KEYS`（E21-D020）。**`switch` 之前**在每個 API 副本的 `/etc/mftiko/api/env` 加上它，所有 replica 同一份。少了或格式不對，新版的 API 起不來，`switch` 第 4 步重啟它就失敗。產生方式見 [operations.md](operations.md#systemd)。這把金鑰加密 Postgres 裡的帳號憑證；遺失就要重新輸入帳號（E21-D003）。換版本見 [runbook](runbook.md#261-輪換-api-的帳號金鑰)：先加上新版本，等每個 replica 的 `mftiko_account_key_old` 是 0，再拿掉舊版本。拿太早的話那些列解不開。
 
+### 換到拿掉 `td_keys` 的版本
+
+E21-06c（#535，E21-D064）起，API 的 `-config` 不得再有 `td_keys`。欄位還在（含 `null` 或空物件），新版的 API 起不來，錯誤寫明公鑰只在 etcd。**`switch` 之前**從每個副本的 `/etc/mftiko/api/api.json` 刪掉它。公鑰由 TD agent 在當選後寫進 `/td/{inst}/pubkey`（E21-D004）。agent 還沒寫上時，要封給該 instance 的 session 回 409 `td_pubkey_unavailable`，API 本身照常起來。`api.v1` 仍是 `3.0.0`。
+
 ## API 契約（`api.v1`）
 
 依 E10-D002、E10-D018、E10-D116（E10-20，#325）。`contract/openapi/api/v1.yaml` 從 E10-20 起定案。

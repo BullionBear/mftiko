@@ -23,7 +23,6 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/accountkey"
 	"github.com/BullionBear/mftiko/internal/platform/artifact"
 	"github.com/BullionBear/mftiko/internal/platform/pgtest"
-	"github.com/BullionBear/mftiko/internal/platform/sealbox"
 	"github.com/BullionBear/mftiko/internal/platform/state"
 	"github.com/BullionBear/mftiko/migrations"
 )
@@ -107,6 +106,7 @@ func newSessionEnv(t *testing.T, opt sessionOpt) *sessionEnv {
 	}
 	// Set before replica: start copies Config by value (E14-D026).
 	e.cfg.LogToken = opt.logToken
+	publishTDPubkeys(t, e)
 	s := e.replica(t)
 	cat := testCatalog()
 	s.catalog = cat
@@ -733,12 +733,18 @@ func TestSessionValidation(t *testing.T) {
 
 func TestSessionReplicaPubkey(t *testing.T) {
 	se := newSessionEnv(t, sessionOpt{})
-	delete(se.s.cfg.TDKeys, "td-jp-1")
-	se.s.pubMu.Lock()
-	sl := se.s.slotLocked("td-jp-1")
-	sl.state = pubMissing
-	sl.key = sealbox.PublicKey{}
-	se.s.pubMu.Unlock()
+	if _, err := se.e.servers["jp"].Client(t).Delete(t.Context(), state.PubkeyKey("td-jp-1")); err != nil {
+		t.Fatal(err)
+	}
+	until(t, 10*time.Second, "jp pubkey gone", func() error {
+		se.s.pubMu.Lock()
+		defer se.s.pubMu.Unlock()
+		sl := se.s.pubs["td-jp-1"]
+		if sl == nil || sl.state != pubMissing {
+			return errors.New("not yet")
+		}
+		return nil
+	})
 	code, _, body := se.post(t, `{"name":"n","sts_instance":"sts-tw-1","strategy":{"repository":"registry.example/mftiko/strategies","ref":"`+stratDig+`"},"accounts":[{"name":"a","api_id":42,"td_instance":"td-jp-1","algo_ids":[3]}]}`, nil)
 	if code != http.StatusConflict {
 		t.Fatalf("status %d %s", code, body)

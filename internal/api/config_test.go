@@ -13,21 +13,11 @@ import (
 
 	"github.com/BullionBear/mftiko/internal/platform/accountkey"
 	"github.com/BullionBear/mftiko/internal/platform/artifact"
-	"github.com/BullionBear/mftiko/internal/platform/sealbox"
 )
 
 func tokenHash(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
-}
-
-func mustPub(t *testing.T) string {
-	t.Helper()
-	k, err := sealbox.GenerateKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return k.Public().String()
 }
 
 // testAccountKeys is v1 of 32 bytes of 0x11 (E21-03a). Tests use repeated bytes on purpose.
@@ -91,11 +81,10 @@ func goodDeploy() string {
 	)
 }
 
-func goodConfig(pub string) string {
+func goodConfig() string {
 	return `{
 		"users": [{"name": "yi", "token_sha256": "` + tokenHash("yi-token") + `"}],
-		"allow": ["*"],
-		"td_keys": {"td-tw-1": "` + pub + `"}
+		"allow": ["*"]
 	}`
 }
 
@@ -123,8 +112,7 @@ func loadWithin(t *testing.T, deploy, conf string, in Input) Config {
 }
 
 func TestLoadDefaults(t *testing.T) {
-	pub := mustPub(t)
-	cfg := loadWithin(t, goodDeploy(), goodConfig(pub), testInput(t))
+	cfg := loadWithin(t, goodDeploy(), goodConfig(), testInput(t))
 	if cfg.Retention != DefaultRetention || cfg.UnavailableAfter != DefaultUnavailableAfter ||
 		cfg.Listen != DefaultListen || cfg.ShutdownTimeout != DefaultShutdownTimeout ||
 		cfg.TDReplicaGrace != DefaultTDReplicaGrace {
@@ -144,13 +132,6 @@ func TestLoadDefaults(t *testing.T) {
 	if len(cfg.Allow) != 1 || cfg.Allow[0] != "*" {
 		t.Fatalf("allow %+v", cfg.Allow)
 	}
-	want, err := sealbox.ParsePublicKey(pub)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.TDKeys["td-tw-1"] != want {
-		t.Fatal("td key was not kept")
-	}
 	if cfg.EtcdPassword != "pw" || cfg.CookieKey != "cookie-key" || cfg.AccountKeys.Current() != 1 {
 		t.Fatal("secrets were not copied")
 	}
@@ -160,30 +141,27 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.MaxInputBytes != artifact.DefaultMaxBytes {
 		t.Fatalf("max input bytes %d", cfg.MaxInputBytes)
 	}
-	set := loadWithin(t, goodDeploy(), `{"max_input_bytes": 4096, "td_keys": {"td-tw-1": "`+pub+`"}}`, testInput(t))
+	set := loadWithin(t, goodDeploy(), `{"max_input_bytes": 4096}`, testInput(t))
 	if set.MaxInputBytes != 4096 {
 		t.Fatalf("max input bytes %d, want 4096", set.MaxInputBytes)
 	}
 }
 
 func TestLoadCopiesLogToken(t *testing.T) {
-	pub := mustPub(t)
 	in := testInput(t)
 	in.LogToken = strings.Repeat("a", 32)
-	cfg := loadWithin(t, goodDeploy(), goodConfig(pub), in)
+	cfg := loadWithin(t, goodDeploy(), goodConfig(), in)
 	if cfg.LogToken != in.LogToken {
 		t.Fatalf("log token len %d", len(cfg.LogToken))
 	}
 }
 
 func TestZeroDurationIsDefault(t *testing.T) {
-	pub := mustPub(t)
 	conf := `{
 		"retention": "0",
 		"unavailable_after": "0s",
 		"shutdown_timeout": "0",
-		"td_replica_grace": "0",
-		"td_keys": {"td-tw-1": "` + pub + `"}
+		"td_replica_grace": "0"
 	}`
 	cfg := loadWithin(t, goodDeploy(), conf, testInput(t))
 	if cfg.Retention != DefaultRetention || cfg.UnavailableAfter != DefaultUnavailableAfter ||
@@ -194,14 +172,12 @@ func TestZeroDurationIsDefault(t *testing.T) {
 }
 
 func TestExplicitDurationsAndListen(t *testing.T) {
-	pub := mustPub(t)
 	conf := `{
 		"retention": "1h",
 		"unavailable_after": "1s",
 		"shutdown_timeout": "1s",
 		"td_replica_grace": "4s",
-		"listen": "127.0.0.1:9",
-		"td_keys": {"td-tw-1": "` + pub + `"}
+		"listen": "127.0.0.1:9"
 	}`
 	cfg := loadWithin(t, goodDeploy(), conf, testInput(t))
 	if cfg.Retention != time.Hour || cfg.UnavailableAfter != time.Second ||
@@ -211,11 +187,9 @@ func TestExplicitDurationsAndListen(t *testing.T) {
 }
 
 func TestUppercaseTokenHash(t *testing.T) {
-	pub := mustPub(t)
 	sum := tokenHash("other")
 	conf := `{
-		"users": [{"name": "yi", "token_sha256": "` + strings.ToUpper(sum) + `"}],
-		"td_keys": {"td-tw-1": "` + pub + `"}
+		"users": [{"name": "yi", "token_sha256": "` + strings.ToUpper(sum) + `"}]
 	}`
 	cfg := loadWithin(t, goodDeploy(), conf, testInput(t))
 	want := sha256.Sum256([]byte("other"))
@@ -231,19 +205,18 @@ func TestMinimumConfig(t *testing.T) {
 		map[string]string{},
 	)
 	cfg := loadWithin(t, deploy, `{}`, testInput(t))
-	if len(cfg.Users) != 0 || len(cfg.Allow) != 0 || len(cfg.TDKeys) != 0 {
-		t.Fatalf("users %d allow %d keys %d", len(cfg.Users), len(cfg.Allow), len(cfg.TDKeys))
+	if len(cfg.Users) != 0 || len(cfg.Allow) != 0 {
+		t.Fatalf("users %d allow %d", len(cfg.Users), len(cfg.Allow))
 	}
 }
 
 func TestLoadAcceptsRegionTimeouts(t *testing.T) {
-	pub := mustPub(t)
 	deploy := `{
 		"regions": {"tw": {"endpoints": ["http://127.0.0.1:1"], "dial_timeout": "5s", "request_timeout": "2s", "stale_after": "15s"}},
 		"instances": {"controller": "tw", "td-tw-1": "tw"},
 		"planes": {"td-tw-1": "td"}
 	}`
-	cfg := loadWithin(t, deploy, goodConfig(pub), testInput(t))
+	cfg := loadWithin(t, deploy, goodConfig(), testInput(t))
 	got := cfg.Topology.Regions["tw"]
 	if got.DialTimeout != "5s" || got.RequestTimeout != "2s" || got.StaleAfter != "15s" {
 		t.Fatalf("%+v", got)
@@ -251,9 +224,8 @@ func TestLoadAcceptsRegionTimeouts(t *testing.T) {
 }
 
 func TestLoadRejects(t *testing.T) {
-	pub := mustPub(t)
 	deploy := goodDeploy()
-	conf := goodConfig(pub)
+	conf := goodConfig()
 	hash := tokenHash("yi-token")
 	cases := []struct {
 		name, deploy, conf, want string
@@ -262,33 +234,29 @@ func TestLoadRejects(t *testing.T) {
 		{"unknown deployment field", `{"regions":{"tw":{"endpoints":["http://127.0.0.1:1"]}},"instances":{"controller":"tw"},"planes":{},"extra":1}`, conf, "unknown field"},
 		{"not json", deploy, `{`, "read config"},
 		{"extra value", deploy, conf + `{}`, "extra data"},
-		{"negative retention", deploy, `{"retention": "-1s", "td_keys": {"td-tw-1": "` + pub + `"}}`, "negative duration"},
-		{"negative grace", deploy, `{"td_replica_grace": "-1s", "td_keys": {"td-tw-1": "` + pub + `"}}`, "negative duration"},
-		{"bad listen", deploy, `{"listen": "8080", "td_keys": {"td-tw-1": "` + pub + `"}}`, "listen:"},
-		{"empty user", deploy, `{"users": [{"name": "", "token_sha256": "` + hash + `"}], "td_keys": {"td-tw-1": "` + pub + `"}}`, "user name is empty"},
+		{"negative retention", deploy, `{"retention": "-1s"}`, "negative duration"},
+		{"negative grace", deploy, `{"td_replica_grace": "-1s"}`, "negative duration"},
+		{"bad listen", deploy, `{"listen": "8080"}`, "listen:"},
+		{"empty user", deploy, `{"users": [{"name": "", "token_sha256": "` + hash + `"}]}`, "user name is empty"},
 		{"duplicate user", deploy, `{"users": [
 			{"name": "yi", "token_sha256": "` + hash + `"},
 			{"name": "yi", "token_sha256": "` + tokenHash("b") + `"}
-		], "td_keys": {"td-tw-1": "` + pub + `"}}`, "duplicate user"},
+		]}`, "duplicate user"},
 		{"same token hash", deploy, `{"users": [
 			{"name": "a", "token_sha256": "` + hash + `"},
 			{"name": "b", "token_sha256": "` + strings.ToUpper(hash) + `"}
-		], "td_keys": {"td-tw-1": "` + pub + `"}}`, "same token hash"},
-		{"short token", deploy, `{"users": [{"name": "yi", "token_sha256": "abcd"}], "td_keys": {"td-tw-1": "` + pub + `"}}`, "64 hex"},
-		{"empty allow", deploy, `{"allow": [""], "td_keys": {"td-tw-1": "` + pub + `"}}`, "invalid repository"},
-		{"allow space", deploy, `{"allow": ["a b"], "td_keys": {"td-tw-1": "` + pub + `"}}`, "invalid repository"},
-		{"duplicate allow", deploy, `{"allow": ["reg.example/a", "reg.example/a"], "td_keys": {"td-tw-1": "` + pub + `"}}`, "duplicate allow entry"},
-		{"star mixed", deploy, `{"allow": ["*", "reg.example/a"], "td_keys": {"td-tw-1": "` + pub + `"}}`, "allow * must be the only entry"},
-		{"allow tag", deploy, `{"allow": ["reg.example/a:v1"], "td_keys": {"td-tw-1": "` + pub + `"}}`, "invalid repository"},
-		{"unknown registry", deploy, `{"registry": "reg.example", "td_keys": {"td-tw-1": "` + pub + `"}}`, "unknown field"},
-		{"negative max input", deploy, `{"max_input_bytes": -1, "td_keys": {"td-tw-1": "` + pub + `"}}`, "max_input_bytes"},
-		{"bad pubkey", deploy, `{"td_keys": {"td-tw-1": "not-a-key"}}`, "td key"},
-		{"missing td key", deploy, `{}`, "has no public key"},
-		{"td key for other plane", deployDoc(
-			map[string][]string{"tw": {"http://127.0.0.1:1"}},
-			map[string]string{"controller": "tw", "td-tw-1": "tw", "md-tw-1": "tw"},
-			map[string]string{"td-tw-1": "td", "md-tw-1": "md"},
-		), `{"td_keys": {"td-tw-1": "` + pub + `", "md-tw-1": "` + pub + `"}}`, "not a td instance"},
+		]}`, "same token hash"},
+		{"short token", deploy, `{"users": [{"name": "yi", "token_sha256": "abcd"}]}`, "64 hex"},
+		{"empty allow", deploy, `{"allow": [""]}`, "invalid repository"},
+		{"allow space", deploy, `{"allow": ["a b"]}`, "invalid repository"},
+		{"duplicate allow", deploy, `{"allow": ["reg.example/a", "reg.example/a"]}`, "duplicate allow entry"},
+		{"star mixed", deploy, `{"allow": ["*", "reg.example/a"]}`, "allow * must be the only entry"},
+		{"allow tag", deploy, `{"allow": ["reg.example/a:v1"]}`, "invalid repository"},
+		{"unknown registry", deploy, `{"registry": "reg.example"}`, "unknown field"},
+		{"negative max input", deploy, `{"max_input_bytes": -1}`, "max_input_bytes"},
+		{"td_keys object", deploy, `{"td_keys": {"td-tw-1": "not-a-key"}}`, errTDKeysRemoved},
+		{"td_keys empty", deploy, `{"td_keys": {}}`, errTDKeysRemoved},
+		{"td_keys null", deploy, `{"td_keys": null}`, errTDKeysRemoved},
 		{"no controller", deployDoc(
 			map[string][]string{"tw": {"http://127.0.0.1:1"}},
 			map[string]string{"md-tw-1": "tw"},
@@ -319,11 +287,10 @@ func TestLoadRejects(t *testing.T) {
 }
 
 func TestPostgresDSN(t *testing.T) {
-	pub := mustPub(t)
 	in := testInput(t)
 	const pass = "secretword"
 	in.PostgresDSN = "postgres://mftiko:" + pass + "@127.0.0.1:5432/mftiko?sslmode=not-a-mode"
-	_, err := Load(strings.NewReader(goodDeploy()), strings.NewReader(goodConfig(pub)), in)
+	_, err := Load(strings.NewReader(goodDeploy()), strings.NewReader(goodConfig()), in)
 	if err == nil {
 		t.Fatal("accepted an unparsable DSN")
 	}
@@ -336,27 +303,26 @@ func TestPostgresDSN(t *testing.T) {
 
 	in = testInput(t)
 	in.PostgresDSN = ""
-	_, err = Load(strings.NewReader(goodDeploy()), strings.NewReader(goodConfig(pub)), in)
+	_, err = Load(strings.NewReader(goodDeploy()), strings.NewReader(goodConfig()), in)
 	if err == nil || !strings.Contains(err.Error(), "postgres DSN is required") {
 		t.Fatal(err)
 	}
 	in.EtcdPassword = ""
 	in.PostgresDSN = testInput(t).PostgresDSN
-	_, err = Load(strings.NewReader(goodDeploy()), strings.NewReader(goodConfig(pub)), in)
+	_, err = Load(strings.NewReader(goodDeploy()), strings.NewReader(goodConfig()), in)
 	if err == nil || !strings.Contains(err.Error(), "etcd password is required") {
 		t.Fatal(err)
 	}
 	in = testInput(t)
 	in.CookieKey = ""
-	_, err = Load(strings.NewReader(goodDeploy()), strings.NewReader(goodConfig(pub)), in)
+	_, err = Load(strings.NewReader(goodDeploy()), strings.NewReader(goodConfig()), in)
 	if err == nil || !strings.Contains(err.Error(), "cookie key is required") {
 		t.Fatal(err)
 	}
 }
 
 func TestAccountKeys(t *testing.T) {
-	pub := mustPub(t)
-	deploy, conf := goodDeploy(), goodConfig(pub)
+	deploy, conf := goodDeploy(), goodConfig()
 	reject := func(name, keys, want, hidden string) {
 		t.Helper()
 		t.Run(name, func(t *testing.T) {
@@ -406,8 +372,7 @@ func TestAccountKeys(t *testing.T) {
 }
 
 func TestWebAndTLS(t *testing.T) {
-	pub := mustPub(t)
-	deploy, conf := goodDeploy(), goodConfig(pub)
+	deploy, conf := goodDeploy(), goodConfig()
 	dir := t.TempDir()
 	file := filepath.Join(dir, "file")
 	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
@@ -453,9 +418,8 @@ func TestWebAndTLS(t *testing.T) {
 }
 
 func TestAllowList(t *testing.T) {
-	pub := mustPub(t)
 	deploy := goodDeploy()
-	keys := `,"td_keys":{"td-tw-1":"` + pub + `"}`
+	keys := ``
 	reject := func(name, conf, want string) {
 		t.Helper()
 		t.Run(name, func(t *testing.T) {
@@ -486,9 +450,8 @@ func TestAllowList(t *testing.T) {
 }
 
 func TestRegistrySettings(t *testing.T) {
-	pub := mustPub(t)
 	deploy := goodDeploy()
-	keys := `,"td_keys":{"td-tw-1":"` + pub + `"}`
+	keys := ``
 	reject := func(conf, want string) {
 		t.Helper()
 		_, err := Load(strings.NewReader(deploy), strings.NewReader(conf), testInput(t))

@@ -224,7 +224,6 @@ func newWriteEnv(t *testing.T) *writeEnv {
 		"listen":            "127.0.0.1:0",
 		"unavailable_after": "2s",
 		"allow":             []string{"*"},
-		"td_keys":           map[string]string{"td-tw-1": mustPub(t), "td-jp-1": mustPub(t)},
 	})
 	if err != nil {
 		t.Fatal(err)

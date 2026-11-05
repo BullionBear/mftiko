@@ -21,12 +21,18 @@ import (
 
 func TestPubkeyUnavailable(t *testing.T) {
 	f := newAccountFix(t, startAccountsDB(t))
-	delete(f.srv.cfg.TDKeys, "td-tw-1")
-	f.srv.pubMu.Lock()
-	sl := f.srv.slotLocked("td-tw-1")
-	sl.state = pubMissing
-	sl.key = sealbox.PublicKey{}
-	f.srv.pubMu.Unlock()
+	if _, err := f.env.servers["tw"].Client(t).Delete(t.Context(), state.PubkeyKey("td-tw-1")); err != nil {
+		t.Fatal(err)
+	}
+	until(t, 10*time.Second, "pubkey gone", func() error {
+		f.srv.pubMu.Lock()
+		defer f.srv.pubMu.Unlock()
+		sl := f.srv.pubs["td-tw-1"]
+		if sl == nil || sl.state != pubMissing {
+			return errors.New("not yet")
+		}
+		return nil
+	})
 
 	code, _, body := f.call(t, http.MethodPost, "/api/v1/accounts", accountBody("n", "Binance", "td-tw-1", "hmac", "k", "s", "", nil))
 	if code != http.StatusCreated {
@@ -142,10 +148,7 @@ func TestPubkeyFromEtcd(t *testing.T) {
 	if _, err := sealbox.OpenCredentials(etcdKey, opened.GetSealedCredentials(), created.ApiId, "Binance"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sealbox.OpenCredentials(f.keys[inst], opened.GetSealedCredentials(), created.ApiId, "Binance"); !errors.Is(err, sealbox.ErrOtherKey) {
-		t.Fatalf("td_keys still opens: %v", err)
-	}
-	if !strings.Contains(f.log.String(), "td pubkey differs from td_keys; using etcd") {
+	if strings.Contains(f.log.String(), "td pubkey differs") {
 		t.Fatalf("log %s", f.log.String())
 	}
 	if strings.Contains(f.metrics(t), `mftiko_td_pubkey_changed_total{`) {

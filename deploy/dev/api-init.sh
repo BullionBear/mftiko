@@ -2,13 +2,15 @@
 # Writes what the dev stack's mftiko-api reads into deploy/dev/data/api (gitignored), for `make dev-up`:
 #
 #   deployment.json   one region "dev" (the compose etcd) with controller, md1, td1 and sts1 (E13-D012)
-#   api.json          user "dev", the registry from compose, td1's public key, listen :8080 (E10-D023)
+#   api.json          user "dev", the registry from compose, listen :8080 (E10-D023). No TD public key.
 #   token             the dev user's token (E10-D009); sign in to the console with it
 #   cookie-key        the console cookie's HMAC key, passed as $MFTIKO_COOKIE_KEY
 #   account-keys      the AEAD ring for account credentials, passed as $MFTIKO_ACCOUNT_KEYS (E21-D020)
 #   log-token         the session-log bearer the API sends to sts1 (E14-D001); -log-token
 #   log-token.sha256  its SHA-256, which sts1 checks (-log-token-sha256)
-#   td1-seal.key      td1's private key (mftiko-seal); accounts created in dev are sealed to it
+#   td1-seal.key      td1's private key (mftiko-seal). make dev-up publishes its public half to etcd,
+#                     because this stack does not run td1 (E21-D057).
+#   td1.pub           that public half, rewritten every run from the seal key.
 #
 # The tokens, the cookie key, the account keys and the seal key are made once and kept; the JSON files and the hash are
 # rewritten every time. The stack runs the controller and sts1 (E15-10). Nothing runs md1 or td1: they
@@ -40,6 +42,7 @@ tr -d '\n' <"$out/log-token" | shasum -a 256 | cut -d' ' -f1 >"$out/log-token.sh
 seal=(go run "$repo/cmd/mftiko-seal")
 [ -s "$out/td1-seal.key" ] || (cd "$repo" && "${seal[@]}" keygen -key "$out/td1-seal.key" >/dev/null)
 pub=$(cd "$repo" && "${seal[@]}" pubkey -key "$out/td1-seal.key")
+printf '%s\n' "$pub" >"$out/td1.pub"
 hash=$(tr -d '\n' <"$out/token" | shasum -a 256 | cut -d' ' -f1)
 
 cat >"$out/deployment.json" <<EOF
@@ -54,7 +57,6 @@ EOF
   "users": [{"name": "dev", "token_sha256": "$hash"}],
   "allow": ["registry:5000"],
   "plain_http_hosts": ["registry:5000"],
-  "td_keys": {"td1": "$pub"},
   "listen": ":8080"
 }
 EOF

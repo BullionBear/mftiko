@@ -237,7 +237,6 @@ func TestMirrorFollowsCutAndDrain(t *testing.T) {
 		"unavailable_after": "2s",
 		"allow":             []string{"*"},
 		"users":             []any{map[string]string{"name": "op", "token_sha256": tokenHash("op")}},
-		"td_keys":           map[string]string{"td-tw-1": mustPub(t), "td-jp-1": mustPub(t)},
 	})
 	if err != nil {
 		t.Fatal(err)

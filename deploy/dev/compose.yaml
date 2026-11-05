@@ -6,6 +6,8 @@
 # credentials into deploy/dev/data/nats before compose starts; that directory is gitignored and is not
 # created here, because a missing bind-mount source makes Docker create a directory in its place.
 # The controller and sts1 run sessions that have no feeds and no accounts (E15-10); md1 and td1 are not run.
+# make dev-up writes td1's public key to etcd before the API starts, from deploy/dev/data/api/td1.pub
+# (E21-D057). The API does not carry that key in its JSON.
 # Alloy, Loki, Prometheus and Alertmanager alert on sts1's strategy logs and on the API's metrics, and send
 # every alert to the webhook receiver, which writes deploy/dev/data/webhook/received.jsonl (E16-03).
 # latency tails sts1's event logs and Prometheus scrapes it; that job has no alert (E17-D006).
@@ -98,7 +100,7 @@ services:
   # The API server and the console (E10-19). bin/linux/mftiko-api from `make dev-up`, the console from
   # web/build (E10-D028), plain HTTP (E10-D029). deploy/dev/api-init.sh writes ./data/api: the deployment
   # (one region, controller, md1, td1, sts1), the API JSON, the token to sign in with, the cookie key,
-  # the account key ring, the session-log token and td1's seal key. etcd has no auth here; the etcd client goes on without it,
+  # the account key ring, the session-log token, td1's seal key and td1.pub. etcd has no auth here; the etcd client goes on without it,
   # so the password is a placeholder. Audit and session records need `make migrate-up`; until then the
   # API serves and logs the errors.
   api:
