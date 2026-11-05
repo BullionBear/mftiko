@@ -335,7 +335,19 @@ func recordKeep(r apiv1.SessionRecord, p apiv1.ListSessionRecordsParams) bool {
 	if p.CreatedBefore != nil && !r.CreatedAt.Before(*p.CreatedBefore) {
 		return false
 	}
+	if p.ApiId != nil && !recordHasAPI(r, *p.ApiId) {
+		return false
+	}
 	return true
+}
+
+func recordHasAPI(r apiv1.SessionRecord, id apiv1.APIID) bool {
+	for _, acct := range r.Spec.Accounts {
+		if acct.ApiId == id {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *api) GetSessionRecord(ctx context.Context, req apiv1.GetSessionRecordRequestObject) (apiv1.GetSessionRecordResponseObject, error) {

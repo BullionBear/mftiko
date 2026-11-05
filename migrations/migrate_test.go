@@ -82,6 +82,7 @@ func TestLoadEmbedded(t *testing.T) {
 		"0009_account_projection",
 		"0010_td_pubkeys",
 		"0011_account_replicas",
+		"0012_session_record_api_ids",
 	}
 	if len(files) != len(want) {
 		t.Fatalf("loaded %d files, want %d", len(files), len(want))
@@ -136,6 +137,7 @@ func TestUpEmptyAndRerun(t *testing.T) {
 		"0009_account_projection",
 		"0010_td_pubkeys",
 		"0011_account_replicas",
+		"0012_session_record_api_ids",
 	}
 	if len(res.Applied) != len(want) {
 		t.Fatalf("applied %v", res.Applied)
@@ -166,7 +168,7 @@ func TestUpEmptyAndRerun(t *testing.T) {
 	if err := conn.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if n != 11 {
+	if n != 12 {
 		t.Fatalf("schema_migrations rows = %d", n)
 	}
 	before := appliedAt(t, ctx, conn)
@@ -185,7 +187,7 @@ func TestUpEmptyAndRerun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(lines) != 11 {
+	if len(lines) != 12 {
 		t.Fatalf("status %d lines", len(lines))
 	}
 	for _, line := range lines {
@@ -216,7 +218,7 @@ func TestDropHistoryDownRecreates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(lines) != 11 {
+	if len(lines) != 12 {
 		t.Fatalf("status %d lines", len(lines))
 	}
 	for _, line := range lines {

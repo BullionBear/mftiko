@@ -503,6 +503,15 @@ func (s *Server) ListSessionRecords(w http.ResponseWriter, r *http.Request, para
 			cursorID = &id
 		}
 	}
+	var apiID *int64
+	if params.ApiId != nil {
+		id := int64(*params.ApiId)
+		if id < 1 || id > maxAPIID {
+			fields = append(fields, apiv1.FieldError{Path: "/api_id", Reason: "must be between 1 and 9007199254740991"})
+		} else {
+			apiID = &id
+		}
+	}
 	if len(fields) > 0 {
 		writeProblem(w, http.StatusBadRequest, apiv1.ErrorCodeValidationFailed, http.StatusText(http.StatusBadRequest), "invalid request", fields)
 		return
@@ -514,7 +523,7 @@ func (s *Server) ListSessionRecords(w http.ResponseWriter, r *http.Request, para
 	rows, more, err := s.pageSessionRecords(r.Context(), recordPage{
 		limit: limit, sessionID: params.SessionId, createdBy: params.CreatedBy,
 		after: params.CreatedAfter, before: params.CreatedBefore,
-		cursorAt: cursorAt, cursorID: cursorID,
+		cursorAt: cursorAt, cursorID: cursorID, apiID: apiID,
 		keep: func(rec sessionRecord) bool {
 			return strategy == "" || strategyIDOfBytes(rec.Spec) == strategy
 		},

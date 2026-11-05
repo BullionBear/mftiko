@@ -601,6 +601,19 @@ func (siw *ServerInterfaceWrapper) ListSessionRecords(w http.ResponseWriter, r *
 		return
 	}
 
+	// ------------- Optional query parameter "api_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "api_id", r.URL.Query(), &params.ApiId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "api_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "api_id", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "strategy_id" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "strategy_id", r.URL.Query(), &params.StrategyId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})

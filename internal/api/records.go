@@ -6,11 +6,15 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"google.golang.org/protobuf/proto"
+
+	sessionv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/session/v1"
 )
 
 // Session history (E10-D031, E10-D068–E10-D073). The audit pool is the one pool (E10-D048): session queries are
@@ -51,10 +55,10 @@ created_at, ended_at, closed_at, state_out_digest, final_status`
 const insertRecordSQL = `
 INSERT INTO session_records (
     id, session_id, sts_instance, create_revision, spec_bytes, spec_sha256,
-    state, desired_state, created_by, idempotency_key, created_at
+    state, desired_state, created_by, idempotency_key, created_at, api_ids
 ) VALUES (
     $1::uuid, $2, $3, NULL, $4, $5,
-    'pending', 'running', $6, $7, $8
+    'pending', 'running', $6, $7, $8, $9
 )`
 
 // sessionRecord is one session_records row (E10-D073).
@@ -81,6 +85,31 @@ type sessionRecord struct {
 func digestSpec(b []byte) []byte {
 	sum := sha256.Sum256(b)
 	return sum[:]
+}
+
+// apiIDsOfSpec is the indexed set of accounts named by a SessionSpec (E21-D069).
+// Zero is proto3 unset and is dropped. Duplicates collapse. The result is ascending
+// and never nil, so the INSERT stores '{}' rather than NULL.
+func apiIDsOfSpec(b []byte) ([]int64, error) {
+	spec := &sessionv1.SessionSpec{}
+	if err := proto.Unmarshal(b, spec); err != nil {
+		return nil, fmt.Errorf("api: session spec: %w", err)
+	}
+	seen := map[int64]struct{}{}
+	ids := make([]int64, 0, len(spec.GetAccounts()))
+	for _, acct := range spec.GetAccounts() {
+		id := acct.GetApiId()
+		if id == 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	return ids, nil
 }
 
 func newRecordID() (string, error) {
@@ -205,6 +234,10 @@ func (s *Server) insertPending(ctx context.Context, sessionID, sts string, spec,
 	if key != "" {
 		keyPtr = &key
 	}
+	apiIDs, err := apiIDsOfSpec(spec)
+	if err != nil {
+		return zero, err
+	}
 	row := sessionRecord{
 		ID: recID, SessionID: sessionID, STS: sts,
 		Spec: append([]byte(nil), spec...), SHA: append([]byte(nil), sha...),
@@ -212,7 +245,7 @@ func (s *Server) insertPending(ctx context.Context, sessionID, sts string, spec,
 		CreatedBy: actorPtr, IdempotencyKey: keyPtr, CreatedAt: now,
 	}
 	for range 2 {
-		_, err = pool.Exec(ctx, insertRecordSQL, recID, sessionID, sts, spec, sha, actorPtr, keyPtr, now)
+		_, err = pool.Exec(ctx, insertRecordSQL, recID, sessionID, sts, spec, sha, actorPtr, keyPtr, now, apiIDs)
 		if err == nil {
 			return row, nil
 		}
@@ -319,6 +352,7 @@ type recordPage struct {
 	after, before        *time.Time
 	cursorAt             *time.Time
 	cursorID             *string
+	apiID                *int64
 	keep                 func(sessionRecord) bool
 }
 
@@ -339,8 +373,9 @@ WHERE ($1::text IS NULL OR session_id = $1)
     OR created_at < $5
     OR (created_at = $5 AND id < $6::uuid)
   )
+  AND ($7::bigint IS NULL OR api_ids @> ARRAY[$7]::bigint[])
 ORDER BY created_at DESC, id DESC`,
-		q.sessionID, q.createdBy, q.after, q.before, q.cursorAt, q.cursorID)
+		q.sessionID, q.createdBy, q.after, q.before, q.cursorAt, q.cursorID, q.apiID)
 	if err != nil {
 		return nil, false, storageErr(err)
 	}
@@ -451,6 +486,10 @@ func (s *Server) markCreated(ctx context.Context, row *sessionRecord, createRev 
 		return err
 	}
 	sha := digestSpec(spec)
+	apiIDs, err := apiIDsOfSpec(spec)
+	if err != nil {
+		return err
+	}
 	desired := desiredOfSpec(spec)
 	var ended *time.Time
 	reason := ""
@@ -474,11 +513,12 @@ UPDATE session_records SET
     spec_sha256 = $4,
     desired_state = $5,
     end_reason = COALESCE(end_reason, NULLIF($6, '')),
-    ended_at = COALESCE(ended_at, $7)
+    ended_at = COALESCE(ended_at, $7),
+    api_ids = $8
 WHERE id = $1::uuid
   AND state IN ('pending', 'created', 'abandoned')
   AND (create_revision IS NULL OR create_revision = $2)`,
-		row.ID, createRev, spec, sha, desired, reason, ended)
+		row.ID, createRev, spec, sha, desired, reason, ended, apiIDs)
 	if err != nil {
 		if _, ok := pgConstraint(err); ok {
 			return err

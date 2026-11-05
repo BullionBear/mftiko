@@ -221,7 +221,7 @@ export interface paths {
         };
         /**
          * 列出 session 的歷史紀錄
-         * @description 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。
+         * @description 來自 Postgres，包含 etcd 已刪除的 session（E10-D031）。依 `created_at` 由新到舊。`api_id` 只留 spec 引用了這個帳號的紀錄（E21-D072）。
          */
         get: operations["listSessionRecords"];
         put?: never;
@@ -1376,6 +1376,8 @@ export interface operations {
                 cursor?: components["parameters"]["Cursor"];
                 /** @description 同一個 `session_id` 可能對到多筆：W5 刪除之後可能重用（E10-D007）。 */
                 session_id?: components["schemas"]["SessionIDValue"];
+                /** @description 只回 spec 的 `accounts` 引用了這個帳號的紀錄，包含 W5 已刪除的 session（E21-D010、E21-D072）。省略則不篩。 */
+                api_id?: components["schemas"]["APIIDValue"];
                 strategy_id?: string;
                 created_by?: string;
                 created_after?: string;

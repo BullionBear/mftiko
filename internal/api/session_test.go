@@ -74,6 +74,7 @@ func applySchema(t *testing.T, dsn string) {
 	for _, name := range []string{
 		"0003_audit.up.sql", "0004_session_records.up.sql", "0005_session_records_final.up.sql", "0006_retired_instances.up.sql",
 		"0008_accounts.up.sql", "0009_account_projection.up.sql", "0010_td_pubkeys.up.sql", "0011_account_replicas.up.sql",
+		"0012_session_record_api_ids.up.sql",
 	} {
 		b, err := migrations.FS.ReadFile(name)
 		if err != nil {
