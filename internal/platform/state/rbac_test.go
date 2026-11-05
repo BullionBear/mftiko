@@ -158,6 +158,12 @@ func TestAuthTables(t *testing.T) {
 		{"tw", "td-tw-1", TDAckKey("td-tw-1", sid, 42), true},
 		{"tw", "td-tw-1", PubkeyKey("td-tw-1"), true},
 		{"tw", "td-tw-1", PubkeyKey("td-jp-1"), false},
+		{"tw", "td-tw-1", ScopeKey("td-tw-1", 42, 7), true},
+		{"tw", "td-tw-1", ScopeKey("td-jp-1", 42, 7), false},
+		{"jp", "td-jp-1", ScopeKey("td-jp-1", 42, 7), true},
+		{"tw", "api", ScopeKey("td-tw-1", 42, 7), false},
+		{"tw", "md-tw-1", ScopeKey("td-tw-1", 42, 7), false},
+		{"tw", "controller", ScopeKey("td-tw-1", 42, 7), false},
 		{"jp", "td-jp-1", PubkeyKey("td-jp-1"), true},
 		{"jp", "td-jp-1", PubkeyKey("td-tw-1"), false},
 		{"tw", "md-tw-1", PubkeyKey("td-tw-1"), false},
@@ -214,6 +220,9 @@ func TestAuthTables(t *testing.T) {
 		{"tw", "td-tw-1", AccountKey("td-tw-1", 42), true},
 		{"tw", "td-tw-1", PubkeyKey("td-tw-1"), true},
 		{"jp", "td-jp-1", PubkeyKey("td-jp-1"), true},
+		{"tw", "td-tw-1", ScopeKey("td-tw-1", 42, 7), true},
+		{"tw", "api", ScopeKey("td-tw-1", 42, 7), true},
+		{"tw", "md-tw-1", ScopeKey("td-tw-1", 42, 7), false},
 		{"tw", "md-tw-1", PubkeyKey("td-tw-1"), false},
 		{"tw", "td-tw-1", PubkeyKey("td-jp-1"), false},
 		{"tw", "api", PubkeyKey("td-tw-1"), true},
@@ -293,6 +302,9 @@ func TestRBACEnforced(t *testing.T) {
 	allowed("td writes its pubkey", put(td, PubkeyKey("td-tw-1")))
 	denied("md writes a td pubkey", put(md, PubkeyKey("td-tw-1")))
 	denied("api writes a td pubkey", put(api, PubkeyKey("td-tw-1")))
+	allowed("td writes its scope", put(td, ScopeKey("td-tw-1", 42, 7)))
+	denied("md writes a td scope", put(md, ScopeKey("td-tw-1", 42, 7)))
+	denied("api writes a td scope", put(api, ScopeKey("td-tw-1", 42, 7)))
 	_, err := md.Delete(ctx, instPrefix(PlaneMD, "md-tw-1"), clientv3.WithPrefix())
 	denied("md wipes its whole instance", err)
 	_, err = md.Get(ctx, instPrefix(PlaneMD, "md-tw-2"), clientv3.WithPrefix())

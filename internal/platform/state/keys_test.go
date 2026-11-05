@@ -34,6 +34,8 @@ func TestKeys(t *testing.T) {
 		{SessionStatusKey("sts-tw-1", "a1b2c3"), r + "/sts/sts-tw-1/status/a1b2c3", PlaneSTS, "sts-tw-1", "tw"},
 		{AccountKey("td-jp-1", 42), r + "/td/td-jp-1/account/42", PlaneTD, "td-jp-1", "jp"},
 		{PubkeyKey("td-jp-1"), r + "/td/td-jp-1/pubkey", PlaneTD, "td-jp-1", "jp"},
+		{ScopeKey("td-jp-1", 42, 7), r + "/td/td-jp-1/scope/42/7", PlaneTD, "td-jp-1", "jp"},
+		{ScopePrefix("td-tw-1"), r + "/td/td-tw-1/scope/", PlaneTD, "td-tw-1", "tw"},
 		{SessionDemandKey("sts-tw-1", "a1b2c3"), r + "/sts/sts-tw-1/demand/a1b2c3", PlaneSTS, "sts-tw-1", "tw"},
 		// A TW session asking for JP market data: the controller writes the demand into JP's cluster; JP's MD
 		// acks there (E00-D005 rule 1).
@@ -158,6 +160,7 @@ func TestSessionOf(t *testing.T) {
 		SessionSpecPrefix("sts-tw-1"),
 		SessionSpecKey("sts-tw-1", id) + "/x",
 		AccountKey("td-tw-1", 42),
+		ScopeKey("td-tw-1", 42, 7),
 		DemandPrefix(PlaneMD, "md-jp-1") + id,
 		DemandPrefix(PlaneMD, "md-jp-1") + id + "/",
 		MDAckPrefix("md-jp-1"),
@@ -171,6 +174,31 @@ func TestSessionOf(t *testing.T) {
 	} {
 		if got, ok := SessionOf(key); ok {
 			t.Errorf("SessionOf(%q) = %q, want none", key, got)
+		}
+	}
+}
+
+func TestParseSince(t *testing.T) {
+	if got, ok := FormatSince(0); ok || got != "" {
+		t.Fatalf("zero: %q %v", got, ok)
+	}
+	if got, ok := FormatSince(-3); ok || got != "" {
+		t.Fatalf("negative: %q %v", got, ok)
+	}
+	got, ok := FormatSince(10)
+	if !ok || got != "10" {
+		t.Fatalf("format: %q %v", got, ok)
+	}
+	for _, s := range []string{"10", "9", "100"} {
+		n, ok := ParseSince([]byte(s))
+		back, backOK := FormatSince(n)
+		if !ok || !backOK || back != s {
+			t.Fatalf("parse %s -> %d %q ok %v", s, n, back, ok)
+		}
+	}
+	for _, s := range []string{"", "0", "01", "+1", "-1", "1\n", " 1", "1.0", "x"} {
+		if n, ok := ParseSince([]byte(s)); ok {
+			t.Fatalf("accepted %q as %d", s, n)
 		}
 	}
 }

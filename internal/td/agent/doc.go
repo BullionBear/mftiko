@@ -1,6 +1,7 @@
 // Package agent is the execution-plane agent (E09-D001, E09-D005, E06-D008): one account worker per api_id that
 // some session needs, started when the first demand arrives and stopped linger after the last one
-// leaves. It writes each demand's ack. It does not talk to an exchange: the account worker does.
+// leaves. It writes each demand's ack, and from the worker's latest Report the scope of instruments
+// that account has submitted (E21-D009). It does not talk to an exchange: the account worker does.
 //
 // It reads two prefixes of its instance: the demand the controller writes,
 // /td/{inst}/demand/{session}/{api_id}, and the accounts the API server declares,

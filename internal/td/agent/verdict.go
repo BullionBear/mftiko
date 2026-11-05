@@ -5,10 +5,8 @@ import (
 
 	statev1 "github.com/BullionBear/mftiko/contract/gen/mftiko/state/v1"
 	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
-	tdctlv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/tdctl/v1"
 	workerv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/worker/v1"
 	"github.com/BullionBear/mftiko/internal/platform/agent"
-	"github.com/BullionBear/mftiko/internal/td/account"
 )
 
 // decide is the ack of one demand. LOST keeps the previous ack (P6). A worker that ended for a
@@ -45,11 +43,8 @@ func decide(o outcome, observed map[agent.WorkerKey]agent.Observed, gaveUp func(
 
 // reportState is the account state in the worker's latest tdctl.Report.
 func reportState(rep *workerv1.Report) tdv1.AccountState {
-	if rep == nil || rep.GetContract() != account.Contract || len(rep.GetPayload()) == 0 {
-		return tdv1.AccountState_ACCOUNT_STATE_UNSPECIFIED
-	}
-	r := &tdctlv1.Report{}
-	if err := proto.Unmarshal(rep.GetPayload(), r); err != nil {
+	r := reportOf(rep)
+	if r == nil {
 		return tdv1.AccountState_ACCOUNT_STATE_UNSPECIFIED
 	}
 	return r.GetState()

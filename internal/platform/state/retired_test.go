@@ -58,7 +58,7 @@ func TestRetiredRouting(t *testing.T) {
 		t.Fatalf("md targets %v", mdPre)
 	}
 	tdPre, _ := RetireCleanTargets(PlaneTD, "td-tw-1")
-	if !slices.Contains(tdPre, TDAckPrefix("td-tw-1")) || slices.Contains(tdPre, AccountPrefix("td-tw-1")) {
+	if !slices.Contains(tdPre, TDAckPrefix("td-tw-1")) || slices.Contains(tdPre, AccountPrefix("td-tw-1")) || slices.Contains(tdPre, ScopePrefix("td-tw-1")) {
 		t.Fatalf("td targets %v", tdPre)
 	}
 	if pre, exact := RetireCleanTargets(PlaneCtl, ControllerInstance); pre != nil || exact != nil {

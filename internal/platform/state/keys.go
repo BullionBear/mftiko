@@ -76,6 +76,37 @@ const TDPrefix = Root + "/td/"
 // (E21-D004, E21-D035). The TD agent writes it after the election. The API reads it.
 func PubkeyKey(inst string) string { return instPrefix(PlaneTD, inst) + "pubkey" }
 
+// ScopePrefix lists every scope of a TD instance (E21-D009).
+func ScopePrefix(tdInst string) string { return instPrefix(PlaneTD, tdInst) + "scope/" }
+
+// ScopeKey is the earliest submit time of one instrument on one account. The value is
+// FormatSince of since_ns. The TD agent writes it with no lease and never deletes it (E21-D009, E21-D067).
+// uid is the SYM instrument UID.
+func ScopeKey(tdInst string, apiID int64, uid uint32) string {
+	return ScopePrefix(tdInst) + apiIDString(apiID) + "/" + strconv.FormatUint(uint64(uid), 10)
+}
+
+// FormatSince is the scope value of a positive since_ns: decimal, no sign, no leading zero (E21-D009).
+func FormatSince(ns int64) (string, bool) {
+	if ns <= 0 {
+		return "", false
+	}
+	return strconv.FormatInt(ns, 10), true
+}
+
+// ParseSince reads a scope value. Only FormatSince's decimal is accepted (E21-D067).
+func ParseSince(b []byte) (int64, bool) {
+	n, err := strconv.ParseInt(string(b), 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	got, ok := FormatSince(n)
+	if !ok || got != string(b) {
+		return 0, false
+	}
+	return n, true
+}
+
 // DemandPrefix lists every demand the controller wrote for an agent instance (PROTOCOL §3.3): an STS instance's
 // SessionDemands, an MD or TD instance's DemandEntries.
 func DemandPrefix(p Plane, inst string) string { return instPrefix(p, inst) + "demand/" }
@@ -148,7 +179,8 @@ func RetiredInstance(key string) (string, bool) {
 // instance (E12-D035). prefixes take a prefix delete; exact are single keys.
 // They are the keys W1 assigns to that instance. spec, demand and account are
 // absent: a grant wide enough to delete them would let a live agent delete
-// another writer's keys.
+// another writer's keys. scope is absent too: it is this TD agent's key, and it
+// is kept forever (E21-D067).
 func RetireCleanTargets(p Plane, inst string) (prefixes, exact []string) {
 	if !p.agent() {
 		return nil, nil

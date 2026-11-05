@@ -832,6 +832,27 @@ type RestartPolicy struct {
 // Revision etcd 的 `mod_revision`。只在同一個資源上比較有意義。
 type Revision = int64
 
+// Scope 一個帳號在一個商品上開始交易的時間（E21-D009、E21-D010）。商品是 SYM 的 UID。
+type Scope struct {
+	// ApiId API 隨機配發，1 到 2⁵³−1（E10-D008）。
+	ApiId APIIDValue `json:"api_id"`
+
+	// Since 最早一筆會送出的單的時間，UTC，奈秒精度。對應 etcd 的十進位 `since_ns`（E21-D068）。
+	// 同一個 `(api_id, uid)` 在多個 instance 上時取較早的那個。
+	Since time.Time `json:"since"`
+
+	// Uid SYM 的商品 UID（E02-D003、E21-D009）。
+	Uid int64 `json:"uid"`
+}
+
+// ScopeList defines model for ScopeList.
+type ScopeList struct {
+	// Freshness 讀取來自副本時的新鮮度（E10-D014）。
+	Freshness  Freshness `json:"freshness"`
+	Items      []Scope   `json:"items"`
+	NextCursor *string   `json:"next_cursor,omitempty"`
+}
+
 // Session defines model for Session.
 type Session struct {
 	// Assignment controller 寫的 `SessionDemand`。session 結束、需求刪除之後省略（E13-D033）。
@@ -1162,6 +1183,17 @@ type StreamEventsParams struct {
 // ListInstancesParams defines parameters for ListInstances.
 type ListInstancesParams struct {
 	Plane *Plane `form:"plane,omitempty" json:"plane,omitempty"`
+}
+
+// ListScopesParams defines parameters for ListScopes.
+type ListScopesParams struct {
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor 上一頁回應的 `next_cursor`，對呼叫端不透明。
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// ApiId 只列這個帳號。省略則列出全部。不存在的帳號回空的 `items`，不是 404。
+	ApiId *APIIDValue `form:"api_id,omitempty" json:"api_id,omitempty"`
 }
 
 // ListSessionRecordsParams defines parameters for ListSessionRecords.
