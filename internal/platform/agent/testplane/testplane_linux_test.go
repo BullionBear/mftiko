@@ -332,7 +332,11 @@ func TestStartsAndStops(t *testing.T) {
 	}
 
 	e.want("a", Worker{Script: fakeworker.Script{BeatMS: 20}, Live: "v1"})
-	st := e.waitStatus("a", "RUNNING", phase(runner.PhaseRunning, 1))
+	// Same as TestPreempted: Stage("running") follows Done(START) and is its own WorkerStatus write. Waiting for
+	// the phase alone samples the empty-stage revision, and the stage write lands during the quiet second below.
+	st := e.waitStatus("a", "RUNNING at its stage running", func(st *statev1.WorkerStatus) bool { // nothing more to write
+		return phase(runner.PhaseRunning, 1)(st) && st.GetStage() == "running"
+	})
 	if st.GetRelease() != "fake" || st.GetStartedAtNs() == 0 {
 		t.Fatalf("WorkerStatus %v", st)
 	}
