@@ -28,6 +28,30 @@ func present(t *testing.T, ctx context.Context, srv *etcdtest.Server, key string
 	return ok
 }
 
+// serverKey is one etcd key and the server it lives on.
+type serverKey struct {
+	srv *etcdtest.Server
+	key string
+}
+
+// goneAfterAssignment is one poll of an ordered removal. It reads the assignment first, then each demand. The
+// reads are separate Gets and can sit on different servers, so they are not one snapshot. Reading a demand first
+// lets both delete rounds land before the assignment is read, and the poll reports a demand the controller has
+// already removed. Once the assignment is gone, those demands were removed on an earlier round and nothing writes
+// them back, so one that is still present is the ordering failure.
+func goneAfterAssignment(t *testing.T, ctx context.Context, assign serverKey, demands ...serverKey) error {
+	t.Helper()
+	if present(t, ctx, assign.srv, assign.key) {
+		return errors.New("still present")
+	}
+	for _, d := range demands {
+		if present(t, ctx, d.srv, d.key) {
+			t.Fatalf("assignment removed while a demand remains: %s", d.key)
+		}
+	}
+	return nil
+}
+
 // A terminal session keeps every demand until its worker key is gone. Demands
 // in a fresh region go first; a stale provider region holds its demands and
 // the assignment. Restoring it removes the rest, and the assignment last.
@@ -141,16 +165,8 @@ func TestLifecycleOrder(t *testing.T) {
 	proxy.Restore()
 	waitFresh(t, c, "jp")
 	until(t, 20*time.Second, "the remaining demands go, then the assignment", func() error {
-		feed := present(t, ctx, servers["jp"], feedKey)
-		td := present(t, ctx, servers["jp"], tdKey)
-		assign := present(t, ctx, servers["tw"], sessKey)
-		if !assign && (feed || td) {
-			t.Fatal("assignment removed while a demand remains")
-		}
-		if feed || td || assign {
-			return errors.New("still present")
-		}
-		return nil
+		return goneAfterAssignment(t, ctx, serverKey{servers["tw"], sessKey},
+			serverKey{servers["jp"], feedKey}, serverKey{servers["jp"], tdKey})
 	})
 	for _, key := range []string{specKey, statusKey, ackKey, agentKey} {
 		if !present(t, ctx, servers["tw"], key) {
@@ -336,14 +352,13 @@ func TestStaleSTSKeepsDemands(t *testing.T) {
 	proxy.Restore()
 	waitFresh(t, c, "jp")
 	until(t, 20*time.Second, "jp fresh: the orphan and the ended session are removed in order", func() error {
-		tw := present(t, ctx, servers["tw"], twKey)
-		jp := present(t, ctx, servers["jp"], jpKey)
-		assign := present(t, ctx, servers["jp"], sessKey)
-		orphan := present(t, ctx, servers["tw"], orphanKey)
-		if !assign && (tw || jp) {
-			t.Fatal("assignment removed while a demand remains")
+		if err := goneAfterAssignment(t, ctx, serverKey{servers["jp"], sessKey},
+			serverKey{servers["tw"], twKey}, serverKey{servers["jp"], jpKey}); err != nil {
+			return err
 		}
-		if tw || jp || assign || orphan {
+		// The orphan is removed on the same round as the demands, but the assignment waits only for the
+		// session's own demands, so the orphan can still be present for a moment after the assignment is gone.
+		if present(t, ctx, servers["tw"], orphanKey) {
 			return errors.New("still present")
 		}
 		return nil
