@@ -121,6 +121,16 @@ services:
       nats: {condition: service_healthy}
       registry: {condition: service_healthy}
 
+  # grpcurl for accept.sh sym-grpc (E22-08): a client outside the runner, on the compose network, that
+  # dials SYM's gRPC at runner:7450. The tools profile keeps it out of `up`; accept.sh starts it with
+  # `compose run`. The contract's protos are mounted, so a call without a token reaches the RPC itself
+  # rather than stopping at reflection.
+  grpcurl:
+    image: fullstorydev/grpcurl:v1.9.3-alpine
+    profiles: [tools]
+    volumes:
+      - ../../contract/proto:/proto:ro
+
 volumes:
   pgdata:
   etcddata:
