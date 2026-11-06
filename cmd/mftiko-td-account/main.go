@@ -23,7 +23,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange/transport/fasthttp"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/natsx"
-	"github.com/BullionBear/mftiko/internal/sym"
+	"github.com/BullionBear/mftiko/internal/sym/symnats"
 	"github.com/BullionBear/mftiko/internal/td/account"
 	"github.com/BullionBear/mftiko/pkg/logger"
 )
@@ -101,11 +101,11 @@ func run() int {
 				nc.Close()
 				return nil, fmt.Errorf("unknown venue %s", venue)
 			}
-			tables := make([]sym.Table, 0, len(v.Categories))
+			tables := make([]symnats.Table, 0, len(v.Categories))
 			for _, cat := range v.Categories {
-				tables = append(tables, sym.Table{Venue: venue, Category: cat})
+				tables = append(tables, symnats.Table{Venue: venue, Category: cat})
 			}
-			ins, err := sym.OpenRemote(ctx, nc, tables, sym.RemoteOptions{Log: log})
+			ins, err := symnats.OpenRemote(ctx, nc, tables, symnats.RemoteOptions{Log: log})
 			if err != nil {
 				nc.Close()
 				return nil, fmt.Errorf("symbols: %w", err)

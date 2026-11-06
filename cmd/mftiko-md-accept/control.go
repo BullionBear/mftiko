@@ -23,7 +23,7 @@ import (
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/internal/platform/natsdev"
 	"github.com/BullionBear/mftiko/internal/platform/state"
-	"github.com/BullionBear/mftiko/internal/sym"
+	"github.com/BullionBear/mftiko/internal/sym/symnats"
 )
 
 const region = "accept"
@@ -182,7 +182,7 @@ func refresh() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	rep := &symv1.Reply{}
-	err = nc.Request(ctx, sym.Subject, &symv1.Request{Req: &symv1.Request_Refresh{Refresh: &symv1.RefreshRequest{Venue: *venue}}}, rep)
+	err = nc.Request(ctx, symnats.Subject, &symv1.Request{Req: &symv1.Request_Refresh{Refresh: &symv1.RefreshRequest{Venue: *venue}}}, rep)
 	if err != nil {
 		return err
 	}
@@ -210,7 +210,7 @@ func symbolInfo(ctx context.Context, ticker string) (*symv1.SymbolInfo, error) {
 	}
 	defer nc.Close()
 	rep := &symv1.Reply{}
-	if err := nc.Request(ctx, sym.Subject, &symv1.Request{Req: &symv1.Request_Get{Get: &symv1.GetRequest{UniversalTicker: ticker}}}, rep); err != nil {
+	if err := nc.Request(ctx, symnats.Subject, &symv1.Request{Req: &symv1.Request_Get{Get: &symv1.GetRequest{UniversalTicker: ticker}}}, rep); err != nil {
 		return nil, err
 	}
 	return rep.GetInfo(), nil

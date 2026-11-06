@@ -615,12 +615,12 @@ func TestReloadDoesNotPublishHalfTable(t *testing.T) {
 	}
 }
 
-func consistent(snap *snapshot) (int, error) {
+func consistent(snap *Snapshot) (int, error) {
 	if snap == nil {
 		return 0, errors.New("nil snapshot")
 	}
-	spot := snap.list("Bybit", symbol.Spot)
-	perp := snap.list("Bybit", symbol.Perp)
+	spot := snap.List("Bybit", symbol.Spot)
+	perp := snap.List("Bybit", symbol.Perp)
 	sg, sok := generation(spot)
 	pg, pok := generation(perp)
 	if !sok || !pok || sg != pg {

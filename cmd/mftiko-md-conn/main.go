@@ -18,7 +18,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/md/conn"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/natsx"
-	"github.com/BullionBear/mftiko/internal/sym"
+	"github.com/BullionBear/mftiko/internal/sym/symnats"
 	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
@@ -120,16 +120,16 @@ func run() int {
 			if !ok {
 				return nil, fmt.Errorf("unknown venue %s", venue)
 			}
-			tables := make([]sym.Table, 0, len(v.Categories))
+			tables := make([]symnats.Table, 0, len(v.Categories))
 			for _, c := range v.Categories {
-				tables = append(tables, sym.Table{Venue: venue, Category: c})
+				tables = append(tables, symnats.Table{Venue: venue, Category: c})
 			}
 			// One venue per conn worker. The instance JWT allows every venue (E04-D057).
-			notify, err := sym.ChangedVenueWildcard(venue)
+			notify, err := symnats.ChangedVenueWildcard(venue)
 			if err != nil {
 				return nil, err
 			}
-			return sym.OpenRemote(ctx, nc, tables, sym.RemoteOptions{Log: log, NotifySubject: notify})
+			return symnats.OpenRemote(ctx, nc, tables, symnats.RemoteOptions{Log: log, NotifySubject: notify})
 		},
 		Log:     &log,
 		Release: buildinfo.Version,

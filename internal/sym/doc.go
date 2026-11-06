@@ -1,9 +1,12 @@
 // Package sym is the symbol plane: the service that keeps the golden record of every venue's
-// instruments and answers the sym subject (E02-D001, E02-D002). It follows mftik's symbol plane.
+// instruments (E02-D001, E02-D002). It follows mftik's symbol plane.
 //
-// It is a plain service, not an agent: no lease, no fencing. Every region runs it as a NATS queue
-// group; any replica answers. Its lifetime is not tied to any session, because "what is the tick
-// size" must have an answer whether or not anything is trading.
+// This package is the logic and the storage, and imports no protocol. Each protocol that serves
+// it is an adapter in internal/sym/sym*: symnats answers the sym subject on NATS (E22-D002).
+//
+// It is a plain service, not an agent: no lease, no fencing. Every region runs replicas, and any
+// replica answers. Its lifetime is not tied to any session, because "what is the tick size" must
+// have an answer whether or not anything is trading.
 //
 // Refresh (Store.Refresh, Runner):
 //
@@ -33,10 +36,11 @@
 //   - The listing's status is stored as given. PRELISTING, TRADABLE, HALTED, SETTLING and UNKNOWN
 //     stay on the active table. EXPIRED and DELISTED move. Changing from one non-terminal status
 //     to another is a content change. Unspecified is invalid and is not written.
-//   - After that transaction commits, and only when the revision advanced, SYM publishes
-//     Changed{venue, category, revision} on sym.v1.changed.{venue}.{category} (PROTOCOL §7.3, E04-D057).
-//     Venue and category are the human-readable names. There is no inst.
-//     A failed publish is logged and the commit stands. A later revision check recovers a missed one.
+//   - After that transaction commits, and only when the revision advanced, Store calls its
+//     ChangedPublisher with (venue, category, revision). In cmd/mftiko-sym that is
+//     symnats.NATSChanged, which publishes sym.v1.changed.{venue}.{category} (PROTOCOL §7.3,
+//     E04-D057). A failed publish is logged and the commit stands. A later revision check
+//     recovers a missed one.
 //
 // Storage is PostgreSQL (migrations/0002_symbol). symbol_active holds PRELISTING, TRADABLE,
 // HALTED, SETTLING and UNKNOWN, which the Resolver and hot paths read. symbol_terminal holds
@@ -59,8 +63,8 @@
 // Service is the API every protocol serves (E22-D002); symnats answers the sym subject with it:
 // Get, GetByUid, List, Reverse, Refresh and Revisions. A success is the sym.v1 message.
 // invalid, not_found and unavailable are an *Error: the text is that word, then ": " and a
-// reason that names the field, the value, and why. On NATS that text is a natsx error reply
-// (option A). include_inactive reads the
+// reason that names the field, the value, and why. Every adapter sends that text and maps the
+// code to its own status (E22-D004). include_inactive reads the
 // terminal table as well as the active one; the default is the active table
 // only, including Reverse. When both tables match, the active row wins. Several
 // terminal rows and no active row yield the greatest updated_at_ns, then the
@@ -109,14 +113,14 @@
 // the draw is RandomSource. Either way the value is not inserted into symbol_uid and must
 // not be sent to another process or plane. Real venues wait for the UIDs SYM assigns.
 // NewResolver rejects a listing that does not implement exchange.InProcessUIDSource.
-// exchangetest.Source is the implementation that does. OpenRemote is the NATS Resolver
-// (E2-09): it loads only the active table through SYM List, keeps these same indexes,
-// and asks SYM for include_inactive without caching that answer. cmd/mftiko-sym publishes
-// with NATSChanged. Only this in-process Resolver allocates UIDs.
+// exchangetest.Source is the implementation that does. symnats.OpenRemote is the NATS
+// Resolver (E2-09): it loads only the active table through SYM List into the same Snapshot,
+// and asks SYM for include_inactive without caching that answer. Only this in-process
+// Resolver allocates UIDs.
 //
 // This process keeps no terminal table, so includeInactive does not widen a lookup.
 // A row whose status is EXPIRED or DELISTED is omitted even when the listing still
 // returns it. Only TRADABLE may trade.
 //
-// This process does not answer the sym subject. Service does, from PostgreSQL.
+// The in-process Resolver serves no protocol. Service does, from PostgreSQL, through an adapter.
 package sym

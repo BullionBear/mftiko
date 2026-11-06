@@ -24,10 +24,10 @@ func TestErrorReasons(t *testing.T) {
 	if err == nil || err.Error() != `unavailable: status "" cannot be encoded` {
 		t.Fatalf("status: %v", err)
 	}
-	if _, err := parseCategory(""); err == nil || err.Error() != `invalid: category "" is empty` {
+	if _, err := ParseCategory(""); err == nil || err.Error() != `invalid: category "" is empty` {
 		t.Fatalf("category: %v", err)
 	}
-	if err := rejectVenue("by-bit"); err == nil || err.Error() != `invalid: venue "by-bit" is not canonical` {
+	if err := CheckVenue("by-bit"); err == nil || err.Error() != `invalid: venue "by-bit" is not canonical` {
 		t.Fatalf("venue: %v", err)
 	}
 	sv := NewService(&Store{}, nil, zerolog.Nop())

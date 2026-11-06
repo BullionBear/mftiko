@@ -213,7 +213,7 @@ func TestSymService(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(raw.Close)
-		msg, err := raw.Request(sym.Subject, []byte{0xff, 0x00}, time.Second)
+		msg, err := raw.Request(Subject, []byte{0xff, 0x00}, time.Second)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -511,7 +511,7 @@ func dialSym(t *testing.T, url string) *natsx.Conn {
 func callSym(t *testing.T, c *natsx.Conn, req *symv1.Request) *symv1.Reply {
 	t.Helper()
 	var resp symv1.Reply
-	if err := c.Request(t.Context(), sym.Subject, req, &resp); err != nil {
+	if err := c.Request(t.Context(), Subject, req, &resp); err != nil {
 		t.Fatalf("request: %v", err)
 	}
 	if resp.GetError() != "" || resp.GetReason() != "" {
@@ -540,7 +540,7 @@ func callSymErrHas(t *testing.T, c *natsx.Conn, req *symv1.Request, code, detail
 func symErr(t *testing.T, c *natsx.Conn, req *symv1.Request) string {
 	t.Helper()
 	var resp symv1.Reply
-	err := c.Request(t.Context(), sym.Subject, req, &resp)
+	err := c.Request(t.Context(), Subject, req, &resp)
 	var re *natsx.ReplyError
 	if !errors.As(err, &re) || re.Code != natsx.CodeHandler {
 		t.Fatalf("got %v, want handler error", err)

@@ -49,7 +49,7 @@ type Resolver struct {
 	mu      sync.Mutex
 	venues  []venueSrc
 	uids    Source
-	snap    atomic.Pointer[snapshot]
+	snap    atomic.Pointer[Snapshot]
 	live    map[symbol.UniversalTicker]uint32
 	used    map[uint32]struct{}
 	dirty   map[string]struct{}
@@ -65,16 +65,8 @@ type venueSrc struct {
 	cats  []symbol.Category
 }
 
-// snapshot is an immutable active table. Indexes are UID → Info, ticker → UID,
-// and ExchKey → UID. A published snapshot is not mutated.
-type snapshot struct {
-	byUID    map[uint32]symbol.Info
-	byTicker map[symbol.UniversalTicker]uint32
-	byExch   map[symbol.ExchKey]uint32
-}
-
 type state struct {
-	snap *snapshot
+	snap *Snapshot
 	live map[symbol.UniversalTicker]uint32
 	used map[uint32]struct{}
 }
@@ -109,7 +101,7 @@ func newResolver(ctx context.Context, sources []VenueListing, uids Source, log z
 		all:    true,
 		log:    log,
 	}
-	r.snap.Store(newSnapshot())
+	r.snap.Store(NewSnapshot())
 	if err := r.refresh(ctx); err != nil {
 		return nil, err
 	}
@@ -163,7 +155,7 @@ func (r *Resolver) Get(ctx context.Context, t symbol.UniversalTicker, includeIna
 	if err != nil {
 		return nil, err
 	}
-	return snap.findTicker(t)
+	return snap.FindTicker(t)
 }
 
 // GetByUID resolves an in-process UID. A uid outside MinUID..MaxUID is ErrNotFound.
@@ -178,7 +170,7 @@ func (r *Resolver) GetByUID(ctx context.Context, uid uint32, includeInactive boo
 		return nil, err
 	}
 	snap := r.snap.Load()
-	info, ok := snap.findUID(uid)
+	info, ok := snap.FindUID(uid)
 	if ok {
 		if err := r.failure(info.Ticker.Venue); err != nil {
 			return nil, err
@@ -200,7 +192,7 @@ func (r *Resolver) Reverse(ctx context.Context, key symbol.ExchKey, includeInact
 	if err != nil {
 		return nil, err
 	}
-	info, ok := snap.findExch(key)
+	info, ok := snap.FindExch(key)
 	if !ok {
 		return nil, symbol.ErrNotFound
 	}
@@ -215,7 +207,7 @@ func (r *Resolver) List(ctx context.Context, venue string, c symbol.Category) ([
 	if err != nil {
 		return nil, err
 	}
-	return snap.list(venue, c), nil
+	return snap.List(venue, c), nil
 }
 
 // Invalidate marks a venue for reload, or every venue when venue is "".
@@ -232,7 +224,7 @@ func (r *Resolver) Invalidate(venue string) {
 
 // serve reloads when needed and returns the snapshot for venue.
 // A failed reload of venue is returned; another venue's failure is not.
-func (r *Resolver) serve(ctx context.Context, venue string) (*snapshot, error) {
+func (r *Resolver) serve(ctx context.Context, venue string) (*Snapshot, error) {
 	if err := r.refresh(ctx); err != nil && ctxErr(err) {
 		return nil, err
 	}
@@ -498,85 +490,10 @@ func drawUID(used map[uint32]struct{}, src Source) (uint32, error) {
 	return 0, fmt.Errorf("%w: in-process sequence collided", ErrUID)
 }
 
-func newSnapshot() *snapshot {
-	return &snapshot{
-		byUID:    map[uint32]symbol.Info{},
-		byTicker: map[symbol.UniversalTicker]uint32{},
-		byExch:   map[symbol.ExchKey]uint32{},
-	}
-}
-
-func (s *snapshot) clone() *snapshot {
-	if s == nil {
-		return newSnapshot()
-	}
-	return &snapshot{
-		byUID:    maps.Clone(s.byUID),
-		byTicker: maps.Clone(s.byTicker),
-		byExch:   maps.Clone(s.byExch),
-	}
-}
-
 func (s state) clone() state {
 	return state{
 		snap: s.snap.clone(),
 		live: maps.Clone(s.live),
 		used: maps.Clone(s.used),
 	}
-}
-
-func (s *snapshot) findUID(uid uint32) (symbol.Info, bool) {
-	if s == nil {
-		return symbol.Info{}, false
-	}
-	info, ok := s.byUID[uid]
-	if !ok {
-		return symbol.Info{}, false
-	}
-	info.Filters = maps.Clone(info.Filters)
-	return info, true
-}
-
-func (s *snapshot) findTicker(t symbol.UniversalTicker) (*symbol.Info, error) {
-	if s == nil {
-		return nil, symbol.ErrNotFound
-	}
-	uid, ok := s.byTicker[t]
-	if !ok {
-		return nil, symbol.ErrNotFound
-	}
-	info, ok := s.findUID(uid)
-	if !ok {
-		return nil, symbol.ErrNotFound
-	}
-	return &info, nil
-}
-
-func (s *snapshot) findExch(key symbol.ExchKey) (symbol.Info, bool) {
-	if s == nil {
-		return symbol.Info{}, false
-	}
-	uid, ok := s.byExch[key]
-	if !ok {
-		return symbol.Info{}, false
-	}
-	return s.findUID(uid)
-}
-
-func (s *snapshot) list(venue string, c symbol.Category) []symbol.Info {
-	out := []symbol.Info{}
-	if s == nil {
-		return out
-	}
-	for _, info := range s.byUID {
-		if info.Ticker.Venue != venue || info.Ticker.Category != c {
-			continue
-		}
-		info.Filters = maps.Clone(info.Filters)
-		out = append(out, info)
-	}
-	slices.SortFunc(out, func(a, b symbol.Info) int {
-		return strings.Compare(a.Ticker.String(), b.Ticker.String())
-	})
-	return out
 }
