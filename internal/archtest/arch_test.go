@@ -84,13 +84,14 @@ func forbiddenInPureAgent(importPath string) bool {
 		"internal/platform/agent/testplane")
 }
 
-// forbiddenInStrategy reports whether a strategy binary, which links sdk, must not contain the package.
+// forbiddenInStrategy reports whether a strategy binary, which links sdk, must not contain the package. That includes
+// contract S's gRPC code: the SDK reaches SYM through sym.v1 on NATS (E22-D005, E22-D006).
 func forbiddenInStrategy(importPath string) bool {
-	if under(importPath, "go.etcd.io", "github.com/jackc", "github.com/lib/pq") {
+	if under(importPath, "go.etcd.io", "github.com/jackc", "github.com/lib/pq", "connectrpc.com", "google.golang.org/grpc") {
 		return true
 	}
 	r, own := rel(importPath)
-	return own && under(r, "exchange", "internal")
+	return own && under(r, "exchange", "internal", "contract/gen/mftiko/sym/v1/symv1connect")
 }
 
 // forbiddenInSDKRuntime reports whether the SDK a strategy runs on must not link the package. The
@@ -165,6 +166,10 @@ func check(pkgs []pkg, std map[string]bool) []string {
 				if external && !under(imp, "google.golang.org/protobuf") {
 					// OpenAPI codegen links the oapi-codegen runtime. The rest of contract does not (E10-D045, E00-D006).
 					if under(from, "contract/gen/api") && under(imp, "github.com/oapi-codegen/runtime") {
+						break
+					}
+					// Contract S's connect code is a package of its own, so symv1 stays protobuf only (E22-D006).
+					if from == "contract/gen/mftiko/sym/v1/symv1connect" && under(imp, "connectrpc.com/connect") {
 						break
 					}
 					bad(imp, "contract depends only on protobuf and the standard library")
@@ -242,7 +247,7 @@ func check(pkgs []pkg, std map[string]bool) []string {
 		if under(from, "sdk") {
 			for _, d := range p.Deps {
 				if forbiddenInStrategy(d) {
-					out = append(out, fmt.Sprintf("%s links %s: a strategy binary has no etcd, PostgreSQL, exchange or internal code", from, d))
+					out = append(out, fmt.Sprintf("%s links %s: a strategy binary has no etcd, PostgreSQL, exchange, internal or gRPC code", from, d))
 				}
 			}
 		}
@@ -425,7 +430,13 @@ func TestCheckReportsViolations(t *testing.T) {
 			"github.com/oapi-codegen/runtime", "github.com/oapi-codegen/runtime/types", // E10-D045: allowed
 			"github.com/rs/zerolog", // not the runtime
 		}},
-		{ImportPath: m("contract/wire/frame"), Imports: []string{"github.com/oapi-codegen/runtime"}}, // not contract/gen/api
+		{ImportPath: m("contract/wire/frame"), Imports: []string{"github.com/oapi-codegen/runtime"}},                                             // not contract/gen/api
+		{ImportPath: m("contract/gen/mftiko/sym/v1/symv1connect"), Imports: []string{"connectrpc.com/connect", m("contract/gen/mftiko/sym/v1")}}, // E22-D006: allowed
+		{ImportPath: m("contract/gen/mftiko/sym/v1"), Imports: []string{"connectrpc.com/connect"}},                                               // not symv1connect
+		{ImportPath: m("sdk/internal/symclient"), Deps: []string{m("contract/gen/mftiko/sym/v1"), m("contract/gen/mftiko/sym/v1/symv1connect"),
+			"connectrpc.com/connect", "google.golang.org/grpc"}},
+		{ImportPath: m("internal/api/symproxy"), Imports: []string{m("contract/gen/mftiko/sym/v1/symv1connect")}},
+		{ImportPath: m("internal/controller/daemon"), Deps: []string{m("contract/gen/mftiko/sym/v1/symv1connect")}},
 		{ImportPath: m("internal/sym"), Imports: []string{m("internal/platform/natsx"), m("contract/gen/mftiko/sym/v1")},
 			Deps: []string{m("internal/platform/natsx"), "github.com/nats-io/nats.go", "net/http", "connectrpc.com/connect",
 				"google.golang.org/grpc", "google.golang.org/protobuf/proto", m("contract/gen/mftiko/sym/v1")}},
@@ -476,6 +487,12 @@ func TestCheckReportsViolations(t *testing.T) {
 		"cmd/mftiko-sts-agent imports oras.land/oras-go/v2",
 		"contract/gen/api/v1 imports github.com/rs/zerolog",
 		"contract/wire/frame imports github.com/oapi-codegen/runtime",
+		"contract/gen/mftiko/sym/v1 imports connectrpc.com/connect",
+		"sdk/internal/symclient links " + m("contract/gen/mftiko/sym/v1/symv1connect"),
+		"sdk/internal/symclient links connectrpc.com/connect",
+		"sdk/internal/symclient links google.golang.org/grpc",
+		"internal/api/symproxy imports " + m("contract/gen/mftiko/sym/v1/symv1connect"),
+		"internal/controller/daemon links " + m("contract/gen/mftiko/sym/v1/symv1connect"),
 		"internal/sym links " + m("internal/platform/natsx"),
 		"internal/sym links github.com/nats-io/nats.go",
 		"internal/sym links net/http",
