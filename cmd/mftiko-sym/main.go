@@ -113,11 +113,18 @@ func run(database, natsURL, creds, feeds, proxy, roots string, timeout time.Dura
 	// After the revision commits. A subscriber that misses it compares revisions.
 	st.SetPublisher(symnats.NATSChanged(nc, log))
 	svc := sym.NewService(st, runner, log)
+	// WatchChanges is gRPC's. The hub's LISTEN connection exists only when gRPC does (E22-D009).
+	var hub *sym.Hub
+	if grpcCfg != nil {
+		hub = sym.NewHub(st, sym.HubOptions{Log: log})
+		svc.WithHub(hub)
+	}
 	if _, err := symnats.Serve(ctx, nc, svc, log); err != nil {
 		return err
 	}
 	// Every part runs until ctx ends. One that stops or fails ends the process, and systemd
-	// restarts it. The Store and NATS close after all of them return (E22-D012).
+	// restarts it. The Store and NATS close after all of them return (E22-D012). The hub ending
+	// ends the watches, so the gRPC server is not left waiting on open streams.
 	g, gctx := errgroup.WithContext(ctx)
 	if grpcCfg != nil {
 		srv, err := symgrpc.New(svc, *grpcCfg)
@@ -128,6 +135,7 @@ func run(database, natsURL, creds, feeds, proxy, roots string, timeout time.Dura
 		if err != nil {
 			return fmt.Errorf("grpc listen: %w", err)
 		}
+		stay(g, gctx, "hub", hub.Run)
 		stay(g, gctx, "grpc", func(ctx context.Context) error { return srv.Serve(ctx, ln) })
 	}
 	log.Info().Int("feeds", len(selected)).Str("grpc", grpc.addr).Msg("serving sym")
