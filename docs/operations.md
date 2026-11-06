@@ -91,7 +91,7 @@ agent 的 unit 另外：
 | md-agent | `MFTIKO_MD_ENDPOINTS`、`MFTIKO_MD_REST_ENDPOINTS`（可省略） | 空的就是交易所預設 URL；有覆寫時是 JSON 檔的路徑 |
 | td-agent、sts-agent | `NATS_URL`、`MFTIKO_NATS_ACCOUNT` | account 的公鑰。簽章種子是固定路徑 `/etc/mftiko/<服務>/nats-signing.nk` |
 | td-agent | `MFTIKO_TD_ENDPOINTS`、`MFTIKO_TD_REST_ENDPOINTS`（可省略） | 同 MD，空的就是預設 |
-| sts-agent | `MFTIKO_STS_DATA_REPOSITORY`（可省略） | 資料 artifact 的完整路徑 `host/path`。空的表示非空 volume 一直重試 |
+| sts-agent | `MFTIKO_STS_DATA_REPOSITORY`（可省略） | 資料 artifact 的完整路徑 `host/path`，`state_out` 推到這裡。空的表示 session 結束後非空的 volume 留在主機上、不推；設好之後重啟 sts-agent 才會推（E09-D100）。推送要有這個 repository 的寫入權限 |
 | sts-agent | `MFTIKO_MAX_UNPACKED_BYTES`、`MFTIKO_MAX_UNPACKED_FILES`（可省略） | 一個 rootfs 或一個 input 解開後的大小與 entry 數。省略或 0 是 4 GiB、100,000。負值讓 agent 不啟動。unit 不展開這兩個變數，行程把它們當 `-max-unpacked-bytes`、`-max-unpacked-files` 的預設。要與 `mftiko-pack data` 的同名旗標一起調。rootfs 與每個 input 各自比 |
 | sts-agent | `MFTIKO_LOG_TOKEN_SHA256`；`MFTIKO_LOG_LISTEN`、`MFTIKO_LOG_ADVERTISE`、`MFTIKO_LOG_MAX_STREAMS`、`MFTIKO_LOG_MAX_RATE`、`MFTIKO_LOG_MAX_BYTES`、`MFTIKO_LOG_KEEP`（可省略，unit 有預設） | log token 的 SHA-256，64 個小寫 hex。其餘見 [session log 端點](#session-log-端點) |
 | mftiko-latency-exporter | `MFTIKO_LATENCY_ADDR` | 私有的 `host:port`。見[延遲 exporter](#延遲-exporter) |

@@ -27,9 +27,23 @@ import (
 // pushBackoff is the state_out retry (E09-D083, E09-D026). It is not a deployment setting.
 var pushBackoff = agent.Backoff{Min: time.Second, Max: 60 * time.Second}
 
+// refusedBackoff is the retry after a push the registry or the request refused for good:
+// a permanent artifact error or artifact.ErrRequest (E09-D100). The same request gets the
+// same answer until an operator changes something, so it is retried slowly.
+var refusedBackoff = agent.Backoff{Min: time.Minute, Max: time.Hour}
+
+// noRepoRecheck is how often a held volume is looked at again while the agent has no
+// data repository (E09-D100). The repository only changes with a restart, so this is a
+// cheap check, not a push.
+const noRepoRecheck = time.Hour
+
 // errBusy means the worker is still observed, or the session is not terminal yet.
 // It is not a push failure: the volume stays, and the attempt is not counted.
 var errBusy = errors.New("sts: volume still in use")
+
+// errNoDataRepo means the volume is not empty and the agent has no data repository.
+// The volume is kept and nothing is packed; a restart with a repository pushes it (E09-D100).
+var errNoDataRepo = errors.New("sts: no data repository")
 
 // errTerminalFile means sessions/<id>/terminal.json cannot be trusted. It is left
 // in place; the fields are not invented (E09-D082).
@@ -191,6 +205,10 @@ type pushJob struct {
 	blocked bool
 	kick    uint64 // ensure bumps this so a pass cannot hide a newer wake
 	snap    *statev1.StateSnapshot
+	// layer is the packed volume kept across failed pushes, so a retry does not pack
+	// again (E09-D100). It is removed after the push lands or when the loop stops.
+	layer  string
+	noRepo bool // errNoDataRepo was logged for this job
 }
 
 func newFinisher(ctx context.Context, p *plane) *finisher {
@@ -202,6 +220,7 @@ func newFinisher(ctx context.Context, p *plane) *finisher {
 
 func (f *finisher) loop() {
 	defer close(f.done)
+	defer f.dropLayers()
 	for {
 		if f.ctx.Err() != nil {
 			return
@@ -312,11 +331,23 @@ func (f *finisher) pass() {
 				j.blocked = true
 				j.next = time.Now().Add(time.Hour)
 			}
+		case errors.Is(err, errNoDataRepo):
+			// Not blocked: an ensure must not turn this into an immediate retry.
+			j.blocked = false
+			j.next = time.Now().Add(noRepoRecheck)
+			if !j.noRepo {
+				j.noRepo = true
+				f.plane.log.Warn().Str("session", id).Msg("state_out held: no data repository; volume kept until a restart with one")
+			}
 		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 			f.mu.Unlock()
 			return
 		default:
-			wait := pushBackoff.After(j.fails)
+			b := pushBackoff
+			if refused(err) {
+				b = refusedBackoff
+			}
+			wait := b.After(j.fails)
 			j.fails++
 			j.blocked = false
 			j.next = time.Now().Add(wait)
@@ -374,7 +405,87 @@ func (f *finisher) scan() {
 		}
 		id := e.Name()
 		if _, err := os.Lstat(terminalPath(f.plane.prog.DataDir, id)); err == nil {
-			f.ensure(id)
+			f.adopt(id)
+		}
+	}
+}
+
+// adopt is ensure without the wake. scan runs inside a pass, and a wake from there
+// made the loop run pass after pass while any job was waiting (E09-D100). The pass
+// that scanned runs the job anyway: a new or unblocked job has a zero next.
+func (f *finisher) adopt(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, done := f.finished[id]; done {
+		return
+	}
+	j := f.jobs[id]
+	if j == nil {
+		j = &pushJob{}
+		f.jobs[id] = j
+	}
+	j.kick++
+	if j.blocked {
+		j.blocked = false
+		j.next = time.Time{}
+	}
+}
+
+// refused reports a push failure that another attempt with the same request and
+// credentials will get again (E09-D100).
+func refused(err error) bool {
+	return artifact.Permanent(err) || errors.Is(err, artifact.ErrRequest)
+}
+
+// packed returns the job's layer, packing the volume only when there is none yet.
+func (f *finisher) packed(id, vol string) (string, error) {
+	f.mu.Lock()
+	var have string
+	if j := f.jobs[id]; j != nil {
+		have = j.layer
+	}
+	f.mu.Unlock()
+	if have != "" {
+		if st, err := os.Stat(have); err == nil && st.Mode().IsRegular() {
+			return have, nil
+		}
+	}
+	p := f.plane
+	layer, skipped, err := p.art.PackDataFile(vol)
+	if err != nil {
+		return "", err
+	}
+	for _, s := range skipped {
+		p.log.Warn().Str("session", id).Str("path", s.Path).Str("reason", s.Reason).Msg("volume entry skipped")
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if j := f.jobs[id]; j != nil {
+		j.layer = layer
+		return layer, nil
+	}
+	os.Remove(layer)
+	return "", errBusy
+}
+
+func (f *finisher) dropLayer(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if j := f.jobs[id]; j != nil && j.layer != "" {
+		os.Remove(j.layer)
+		j.layer = ""
+	}
+}
+
+// dropLayers removes every kept layer when the loop stops. They are temp files the
+// next process would not reuse.
+func (f *finisher) dropLayers() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, j := range f.jobs {
+		if j.layer != "" {
+			os.Remove(j.layer)
+			j.layer = ""
 		}
 	}
 }
@@ -430,16 +541,15 @@ func (f *finisher) step(ctx context.Context, id string) error {
 	if empty {
 		return p.releaseVolume(id)
 	}
+	if p.dataRepo == "" {
+		return errNoDataRepo
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	layer, skipped, err := p.art.PackDataFile(vol)
+	layer, err := f.packed(id, vol)
 	if err != nil {
 		return err
-	}
-	defer os.Remove(layer)
-	for _, s := range skipped {
-		p.log.Warn().Str("session", id).Str("path", s.Path).Str("reason", s.Reason).Msg("volume entry skipped")
 	}
 	pushed, err := p.art.PushData(ctx, artifact.DataPush{
 		Repository: p.dataRepo,
@@ -452,6 +562,7 @@ func (f *finisher) step(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
+	f.dropLayer(id)
 	if pushed.Size < 0 {
 		return fmt.Errorf("sts: layer size %d", pushed.Size)
 	}
