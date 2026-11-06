@@ -31,6 +31,8 @@ DEV_NATS     := deploy/dev/data/nats
 DEV_WEBHOOK  := deploy/dev/data/webhook
 
 PROTOC_GEN_GO_VERSION := v1.36.12
+# protoc-gen-connect-go ships in connectrpc.com/connect; the plugin and the runtime stay on one version (E22-D005).
+CONNECT_VERSION       := v1.21.1
 # v1.72.0 is the newest buf that `go install`s with this module's Go 1.26.0.
 # v1.73.0 needs Go 1.26.7, and CI sets GOTOOLCHAIN=local (E10-D043).
 BUF_VERSION          := v1.72.0
@@ -46,7 +48,7 @@ OAS_BASE ?= main
 # api.v1 is final (E10-D018, E10-D116): a breaking change against OAS_BASE fails the build. Empty prints the report only.
 OASDIFF_FAIL_ON ?= ERR
 
-# buf, protoc-gen-go, oapi-codegen and oasdiff are installed into bin/tools (E10-D043, E10-D044).
+# buf, protoc-gen-go, protoc-gen-connect-go, oapi-codegen and oasdiff are installed into bin/tools (E10-D043, E10-D044, E22-D006).
 # Redocly CLI and openapi-typescript come from web/node_modules.
 export PATH := $(TOOLS):$(NODE_BIN):$(PATH)
 
@@ -61,11 +63,15 @@ help: ## List targets
 
 # ---------- codegen ----------
 
-tools: $(TOOLS)/protoc-gen-go $(TOOLS)/buf $(TOOLS)/oapi-codegen $(TOOLS)/oasdiff ## Install Go codegen tools into bin/tools
+tools: $(TOOLS)/protoc-gen-go $(TOOLS)/protoc-gen-connect-go $(TOOLS)/buf $(TOOLS)/oapi-codegen $(TOOLS)/oasdiff ## Install Go codegen tools into bin/tools
 
 $(TOOLS)/protoc-gen-go:
 	mkdir -p $(TOOLS)
 	GOBIN=$(TOOLS) $(GO) install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION)
+
+$(TOOLS)/protoc-gen-connect-go:
+	mkdir -p $(TOOLS)
+	GOBIN=$(TOOLS) $(GO) install connectrpc.com/connect/cmd/protoc-gen-connect-go@$(CONNECT_VERSION)
 
 $(TOOLS)/buf:
 	mkdir -p $(TOOLS)
@@ -82,7 +88,7 @@ $(TOOLS)/oasdiff:
 proto: tools ## Regenerate contract/gen/mftiko from contract/proto/; commit the result
 	rm -rf $(GEN)/mftiko
 	buf generate
-	$(GO) get google.golang.org/protobuf@$(PROTOC_GEN_GO_VERSION)
+	$(GO) get google.golang.org/protobuf@$(PROTOC_GEN_GO_VERSION) connectrpc.com/connect@$(CONNECT_VERSION)
 	$(GO) mod tidy
 
 proto-lint: tools ## buf lint (STANDARD)

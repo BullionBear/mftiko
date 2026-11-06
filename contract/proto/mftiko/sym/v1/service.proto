@@ -1,0 +1,48 @@
+// Source of truth: docs/PROTOCOL.md §7.3. Keep the two in sync.
+// Contract S, draft (E22-D006): SYM over gRPC for services outside mftiko.
+syntax = "proto3";
+
+package mftiko.sym.v1;
+
+import "mftiko/sym/v1/sym.proto";
+
+option go_package = "github.com/BullionBear/mftiko/contract/gen/mftiko/sym/v1;symv1";
+
+// 對外的 SYM（契約 S）。語意與 NATS 的 sym subject 相同：同一組請求、同一組業務錯誤。
+service SymService {
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc GetByUid(GetByUidRequest) returns (GetByUidResponse);
+  rpc List(ListRequest) returns (ListResponse);
+  rpc Reverse(ReverseRequest) returns (ReverseResponse);
+  rpc Revisions(RevisionsRequest) returns (RevisionsResponse);
+  // 第一則是 snapshot，之後每次 revision commit 一則 changed。
+  rpc WatchChanges(WatchChangesRequest) returns (stream WatchChangesResponse);
+}
+
+message GetResponse {
+  SymbolInfo info = 1;
+}
+message GetByUidResponse {
+  SymbolInfo info = 1;
+}
+message ListResponse {
+  SymbolList list = 1;
+}
+message ReverseResponse {
+  SymbolInfo info = 1;
+}
+message RevisionsResponse {
+  RevisionList revisions = 1;
+}
+
+message WatchChangesRequest {
+  string venue = 1; // 空 = 每個 venue
+  string category = 2; // 空 = 該 venue 每個 category；venue 空時必須空
+}
+
+message WatchChangesResponse {
+  oneof event {
+    RevisionList snapshot = 1; // 第一則：符合過濾的每張表目前的 revision
+    Changed changed = 2; // 之後每次 commit
+  }
+}
