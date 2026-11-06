@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	"github.com/BullionBear/mftiko/exchange/all"
 	"github.com/BullionBear/mftiko/internal/sym"
 )
@@ -90,4 +92,45 @@ func testCertPEM(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+}
+
+func TestGRPCFlags(t *testing.T) {
+	dir := t.TempDir()
+	tokens := filepath.Join(dir, "tokens")
+	if err := os.WriteFile(tokens, []byte("pms tok\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	empty := filepath.Join(dir, "empty")
+	if err := os.WriteFile(empty, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cert := filepath.Join(dir, "cert.pem")
+	if err := os.WriteFile(cert, testCertPEM(t), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	log := zerolog.Nop()
+
+	// Without -grpc-addr nothing changes: no gRPC server.
+	if cfg, err := (grpcFlags{}).config(log); cfg != nil || err != nil {
+		t.Fatalf("off: %v %v", cfg, err)
+	}
+	cfg, err := grpcFlags{addr: ":0", tokenFile: tokens}.config(log)
+	if err != nil || cfg == nil || cfg.Tokens == nil || cfg.TLS != nil {
+		t.Fatalf("h2c: %+v %v", cfg, err)
+	}
+	bad := map[string]grpcFlags{
+		"addr without token file": {addr: ":0"},
+		"empty token file":        {addr: ":0", tokenFile: empty},
+		"missing token file":      {addr: ":0", tokenFile: filepath.Join(dir, "absent")},
+		"cert without key":        {addr: ":0", tokenFile: tokens, certFile: cert},
+		"key without cert":        {addr: ":0", tokenFile: tokens, keyFile: cert},
+		"cert as key":             {addr: ":0", tokenFile: tokens, certFile: cert, keyFile: cert},
+		"token file without addr": {tokenFile: tokens},
+		"tls without addr":        {certFile: cert, keyFile: cert},
+	}
+	for name, f := range bad {
+		if _, err := f.config(log); err == nil {
+			t.Fatalf("%s was accepted", name)
+		}
+	}
 }
