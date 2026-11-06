@@ -91,6 +91,14 @@ func Open(ctx context.Context, dsn string, src Source) (*Store, error) {
 // Close releases the pool.
 func (s *Store) Close() { s.db.Close() }
 
+// listenConn is a connection of its own, outside the pool and with the pool's settings, for the
+// Hub's LISTEN. A pooled connection would be handed to other queries between notifications.
+func (s *Store) listenConn(ctx context.Context) (*pgx.Conn, error) {
+	cfg := s.db.Config().ConnConfig.Copy()
+	cfg.RuntimeParams["application_name"] = "mftiko-sym-hub"
+	return pgx.ConnectConfig(ctx, cfg)
+}
+
 // SetPublisher receives a change after the revision commit returns.
 // A nil publisher publishes nothing. Safe to call while the store is in use.
 func (s *Store) SetPublisher(p ChangedPublisher) {
