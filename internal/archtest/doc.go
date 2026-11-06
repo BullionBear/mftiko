@@ -17,6 +17,9 @@
 //     and the skeleton's decisions (internal/platform/agent) link no etcd, NATS, state, natsx, shim, or the
 //     skeleton's I/O (agent/c3, fleet, runner, testplane): they hold the decisions, testable without a cluster.
 //     The wiring is in internal/{plane}/daemon (DECISIONS E01-D010, E13-D001).
+//   - SYM's logic layer, the internal/sym root package, links no protocol: natsx, nats.go, connect, grpc or net/http.
+//     Each protocol is an adapter in internal/sym/sym* (symnats, symgrpc, symhttp), and adapters do not import each
+//     other. internal/sym/symtest, the conformance suite that drives every adapter, is not an adapter (DECISIONS E22-D002).
 //   - internal/td links no contract/wire/cloid. The account worker treats client_order_id as an opaque string;
 //     the SDK and conformance own the layout (DECISIONS E06-D033).
 //

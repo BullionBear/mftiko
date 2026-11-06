@@ -1,10 +1,9 @@
-package sym
+package symnats
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,13 +15,10 @@ import (
 	"github.com/BullionBear/mftiko/contract/symbol"
 	"github.com/BullionBear/mftiko/contract/wire/decimal"
 	"github.com/BullionBear/mftiko/internal/platform/natsx"
+	"github.com/BullionBear/mftiko/internal/sym"
 )
 
 const (
-	// Subject is the sym request subject (PROTOCOL §7). symnats.Serve joins
-	// the queue group of the same name, so any replica answers.
-	Subject = "sym"
-
 	// DefaultCheckInterval is how often a remote resolver compares revisions
 	// when no notification arrived. A reconnect checks immediately as well.
 	DefaultCheckInterval = 5 * time.Minute
@@ -70,7 +66,7 @@ type Remote struct {
 	interval time.Duration
 	log      zerolog.Logger
 
-	snap atomic.Pointer[snapshot]
+	snap atomic.Pointer[sym.Snapshot]
 
 	mu    sync.Mutex
 	revs  map[revKey]revState
@@ -133,7 +129,7 @@ func OpenRemote(ctx context.Context, c *natsx.Conn, tables []Table, opt RemoteOp
 		kick:     make(chan struct{}, 1),
 		cancel:   cancel,
 	}
-	r.snap.Store(newSnapshot())
+	r.snap.Store(sym.NewSnapshot())
 	notify := opt.NotifySubject
 	if notify == "" {
 		notify = ChangedWildcard
@@ -166,15 +162,15 @@ func checkTables(tables []Table) ([]Table, error) {
 	seen := map[revKey]struct{}{}
 	out := make([]Table, 0, len(tables))
 	for _, t := range tables {
-		if err := rejectVenue(t.Venue); err != nil {
+		if err := sym.CheckVenue(t.Venue); err != nil {
 			return nil, err
 		}
-		if _, err := parseCategory(string(t.Category)); err != nil {
+		if _, err := sym.ParseCategory(string(t.Category)); err != nil {
 			return nil, err
 		}
 		key := revKey{t.Venue, t.Category}
 		if _, ok := seen[key]; ok {
-			return nil, invalid(fmt.Sprintf("venue %s category %s is listed twice", t.Venue, t.Category))
+			return nil, &sym.Error{Code: sym.CodeInvalid, Reason: fmt.Sprintf("venue %s category %s is listed twice", t.Venue, t.Category)}
 		}
 		seen[key] = struct{}{}
 		out = append(out, t)
@@ -199,7 +195,7 @@ func (r *Remote) Get(ctx context.Context, t symbol.UniversalTicker, includeInact
 	if err := r.failure(t.Venue); err != nil {
 		return nil, err
 	}
-	return r.snap.Load().findTicker(t)
+	return r.snap.Load().FindTicker(t)
 }
 
 // GetByUID resolves a UID from the cached active table.
@@ -218,7 +214,7 @@ func (r *Remote) GetByUID(ctx context.Context, uid uint32, includeInactive bool)
 		return nil, err
 	}
 	snap := r.snap.Load()
-	info, ok := snap.findUID(uid)
+	info, ok := snap.FindUID(uid)
 	if ok {
 		if err := r.failure(info.Ticker.Venue); err != nil {
 			return nil, err
@@ -250,7 +246,7 @@ func (r *Remote) Reverse(ctx context.Context, key symbol.ExchKey, includeInactiv
 	if err := r.failure(key.Venue); err != nil {
 		return nil, err
 	}
-	info, ok := r.snap.Load().findExch(key)
+	info, ok := r.snap.Load().FindExch(key)
 	if !ok {
 		return nil, symbol.ErrNotFound
 	}
@@ -266,7 +262,7 @@ func (r *Remote) List(ctx context.Context, venue string, c symbol.Category) ([]s
 	if err := r.failure(venue); err != nil {
 		return nil, err
 	}
-	return r.snap.Load().list(venue, c), nil
+	return r.snap.Load().List(venue, c), nil
 }
 
 // Invalidate marks a venue for reload, or every configured venue when venue
@@ -413,7 +409,7 @@ func (r *Remote) reload(ctx context.Context, venue string, cat symbol.Category) 
 	if err != nil {
 		return err
 	}
-	next, err := r.snap.Load().withTable(venue, cat, rows)
+	next, err := r.snap.Load().WithTable(venue, cat, rows)
 	if err != nil {
 		return err
 	}
@@ -536,8 +532,8 @@ func (r *Remote) revisionMap(ctx context.Context) (map[revKey]int64, error) {
 		if row.GetRevision() < 0 {
 			return nil, fmt.Errorf("sym: unavailable: revisions: revision %d is negative", row.GetRevision())
 		}
-		cat := symbol.Category(row.GetCategory())
-		if !knownCategory(cat) {
+		cat, err := sym.ParseCategory(row.GetCategory())
+		if err != nil {
 			return nil, fmt.Errorf("sym: unavailable: revisions: category %q is not a category", row.GetCategory())
 		}
 		out[revKey{row.GetVenue(), cat}] = row.GetRevision()
@@ -568,7 +564,7 @@ func (r *Remote) rpc(ctx context.Context, op string, req *symv1.Request) (*symv1
 	}
 	var re *natsx.ReplyError
 	if errors.As(err, &re) && re.Code == natsx.CodeHandler {
-		if strings.HasPrefix(re.Message, CodeNotFound+":") {
+		if strings.HasPrefix(re.Message, sym.CodeNotFound+":") {
 			return nil, fmt.Errorf("%w: %s", symbol.ErrNotFound, re.Message)
 		}
 		return nil, fmt.Errorf("sym: %s", re.Message)
@@ -643,47 +639,6 @@ func mapsValues(m map[string]error) []error {
 	return out
 }
 
-func (s *snapshot) withTable(venue string, cat symbol.Category, rows []symbol.Info) (*snapshot, error) {
-	next := s.clone()
-	for uid, info := range next.byUID {
-		if info.Ticker.Venue == venue && info.Ticker.Category == cat {
-			delete(next.byUID, uid)
-			delete(next.byTicker, info.Ticker)
-			delete(next.byExch, info.Exch())
-		}
-	}
-	seenT := map[symbol.UniversalTicker]struct{}{}
-	seenE := map[symbol.ExchKey]struct{}{}
-	for _, info := range rows {
-		if info.Ticker.Venue != venue || info.Ticker.Category != cat {
-			return nil, fmt.Errorf("sym: %s %s: row %s", venue, cat, info.Ticker)
-		}
-		if _, ok := seenT[info.Ticker]; ok {
-			return nil, fmt.Errorf("sym: duplicate ticker %s", info.Ticker)
-		}
-		key := info.Exch()
-		if _, ok := seenE[key]; ok {
-			return nil, fmt.Errorf("sym: duplicate exch ticker %s", info.ExchTicker)
-		}
-		if prev, ok := next.byUID[info.UID]; ok {
-			return nil, fmt.Errorf("sym: uid %d is already %s", info.UID, prev.Ticker)
-		}
-		if _, ok := next.byTicker[info.Ticker]; ok {
-			return nil, fmt.Errorf("sym: ticker %s is already loaded", info.Ticker)
-		}
-		if _, ok := next.byExch[key]; ok {
-			return nil, fmt.Errorf("sym: exch ticker %s is already loaded", info.ExchTicker)
-		}
-		seenT[info.Ticker] = struct{}{}
-		seenE[key] = struct{}{}
-		info.Filters = maps.Clone(info.Filters)
-		next.byUID[info.UID] = info
-		next.byTicker[info.Ticker] = info.UID
-		next.byExch[key] = info.UID
-	}
-	return next, nil
-}
-
 func infoFromProto(msg *symv1.SymbolInfo) (symbol.Info, error) {
 	if msg == nil {
 		return symbol.Info{}, errors.New("sym: empty info")
@@ -732,23 +687,38 @@ func infoFromProto(msg *symv1.SymbolInfo) (symbol.Info, error) {
 	return info, nil
 }
 
-func statusFromProto(s symv1.SymbolStatus) (Status, error) {
+func statusFromProto(s symv1.SymbolStatus) (sym.Status, error) {
 	switch s {
 	case symv1.SymbolStatus_SYMBOL_STATUS_PRELISTING:
-		return Prelisting, nil
+		return sym.Prelisting, nil
 	case symv1.SymbolStatus_SYMBOL_STATUS_TRADABLE:
-		return Tradable, nil
+		return sym.Tradable, nil
 	case symv1.SymbolStatus_SYMBOL_STATUS_HALTED:
-		return Halted, nil
+		return sym.Halted, nil
 	case symv1.SymbolStatus_SYMBOL_STATUS_SETTLING:
-		return Settling, nil
+		return sym.Settling, nil
 	case symv1.SymbolStatus_SYMBOL_STATUS_EXPIRED:
-		return Expired, nil
+		return sym.Expired, nil
 	case symv1.SymbolStatus_SYMBOL_STATUS_DELISTED:
-		return Delisted, nil
+		return sym.Delisted, nil
 	case symv1.SymbolStatus_SYMBOL_STATUS_UNKNOWN:
-		return Unknown, nil
+		return sym.Unknown, nil
 	default:
 		return "", fmt.Errorf("status %q cannot be decoded", s.String())
+	}
+}
+
+func ctxErr(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
+func wait(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }

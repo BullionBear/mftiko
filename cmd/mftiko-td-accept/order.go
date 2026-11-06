@@ -17,7 +17,7 @@ import (
 	symv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/sym/v1"
 	tdv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/td/v1"
 	"github.com/BullionBear/mftiko/contract/wire/cloid"
-	"github.com/BullionBear/mftiko/internal/sym"
+	"github.com/BullionBear/mftiko/internal/sym/symnats"
 )
 
 const session = "accept" // Submit.session_id and Cancel.session_id: for the worker's log only
@@ -34,7 +34,7 @@ func uidOf(ticker string) (uint32, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	rep := &symv1.Reply{}
-	if err := nc.Request(ctx, sym.Subject, &symv1.Request{Req: &symv1.Request_Get{Get: &symv1.GetRequest{UniversalTicker: ticker}}}, rep); err != nil {
+	if err := nc.Request(ctx, symnats.Subject, &symv1.Request{Req: &symv1.Request_Get{Get: &symv1.GetRequest{UniversalTicker: ticker}}}, rep); err != nil {
 		return 0, err
 	}
 	if rep.GetInfo().GetUid() == 0 {

@@ -98,7 +98,7 @@ func run(database, natsURL, creds, feeds, proxy, roots string, timeout time.Dura
 	}
 	defer nc.Close()
 	// After the revision commits. A subscriber that misses it compares revisions.
-	st.SetPublisher(sym.NATSChanged(nc, log))
+	st.SetPublisher(symnats.NATSChanged(nc, log))
 	if _, err := symnats.Serve(ctx, nc, sym.NewService(st, runner, log), log); err != nil {
 		return err
 	}

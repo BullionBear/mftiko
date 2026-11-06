@@ -1,6 +1,3 @@
-// Package symnats serves SYM's API on NATS: the sym subject, request/reply in a queue group
-// (PROTOCOL §7.3, E22-D002). It owns the Request oneof envelope and the NATS payload cap. The
-// business rules are sym.Service's.
 package symnats
 
 import (
@@ -16,11 +13,17 @@ import (
 	"github.com/BullionBear/mftiko/internal/sym"
 )
 
-// maxReplyBytes is one byte under NATS's default 1 MiB payload, so a published reply is
-// accepted. sym.Service already caps a List page; this guards the Reply envelope around it.
-const maxReplyBytes = 1<<20 - 1
+const (
+	// Subject is the sym request subject (PROTOCOL §7). Serve joins the queue group of the
+	// same name, so any replica answers.
+	Subject = "sym"
 
-// Serve answers sym.Subject from api in the queue group of the same name, so any replica
+	// maxReplyBytes is one byte under NATS's default 1 MiB payload, so a published reply is
+	// accepted. sym.Service already caps a List page; this guards the Reply envelope around it.
+	maxReplyBytes = 1<<20 - 1
+)
+
+// Serve answers Subject from api in the queue group of the same name, so any replica
 // answers. It returns once the server has the interest. The handler stops when ctx is
 // cancelled.
 //
@@ -35,7 +38,7 @@ func Serve(ctx context.Context, c *natsx.Conn, api sym.API, log zerolog.Logger) 
 		return nil, errors.New("symnats: nil connection")
 	}
 	s := &server{api: api, log: log}
-	return c.Serve(ctx, sym.Subject, sym.Subject, func() proto.Message {
+	return c.Serve(ctx, Subject, Subject, func() proto.Message {
 		return &symv1.Request{}
 	}, s.handle)
 }

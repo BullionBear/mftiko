@@ -126,10 +126,10 @@ func (sv *Service) list(ctx context.Context, req *symv1.ListRequest) (*symv1.Sym
 	if req == nil {
 		return nil, invalid("request is empty")
 	}
-	if err := rejectVenue(req.GetVenue()); err != nil {
+	if err := CheckVenue(req.GetVenue()); err != nil {
 		return nil, err
 	}
-	cat, err := parseCategory(req.GetCategory())
+	cat, err := ParseCategory(req.GetCategory())
 	if err != nil {
 		return nil, err
 	}
@@ -161,10 +161,10 @@ func (sv *Service) reverse(ctx context.Context, req *symv1.ReverseRequest) (*sym
 	if req == nil {
 		return nil, invalid("request is empty")
 	}
-	if err := rejectVenue(req.GetVenue()); err != nil {
+	if err := CheckVenue(req.GetVenue()); err != nil {
 		return nil, err
 	}
-	cat, err := parseCategory(req.GetCategory())
+	cat, err := ParseCategory(req.GetCategory())
 	if err != nil {
 		return nil, err
 	}
@@ -194,10 +194,10 @@ func (sv *Service) revisions(ctx context.Context, req *symv1.RevisionsRequest) (
 	}
 	tables := make([]*symv1.TableRevision, 0, len(rows))
 	for _, row := range rows {
-		if err := rejectVenue(row.Venue); err != nil {
+		if err := CheckVenue(row.Venue); err != nil {
 			return nil, unavailable(fmt.Sprintf("revisions: venue %q is not canonical", row.Venue), err)
 		}
-		if _, err := parseCategory(string(row.Category)); err != nil {
+		if _, err := ParseCategory(string(row.Category)); err != nil {
 			return nil, unavailable(fmt.Sprintf("revisions: category %q is not a category", row.Category), err)
 		}
 		tables = append(tables, &symv1.TableRevision{
@@ -218,7 +218,7 @@ func (sv *Service) refresh(ctx context.Context, req *symv1.RefreshRequest) (*sym
 	}
 	venue := req.GetVenue()
 	if venue != "" {
-		if err := rejectVenue(venue); err != nil {
+		if err := CheckVenue(venue); err != nil {
 			return nil, err
 		}
 	}
@@ -263,7 +263,9 @@ func pageLimit(n uint32) (int, error) {
 	return int(n), nil
 }
 
-func parseCategory(s string) (symbol.Category, error) {
+// ParseCategory is s as a category, or an invalid *Error that names the
+// canonical spelling when s differs from one only by case.
+func ParseCategory(s string) (symbol.Category, error) {
 	c := symbol.Category(s)
 	if knownCategory(c) {
 		return c, nil
@@ -279,9 +281,9 @@ func parseCategory(s string) (symbol.Category, error) {
 	return "", invalid(fmt.Sprintf("category %q is not one of Spot, Perp, Inverse, Future, Option", s))
 }
 
-// rejectVenue reports a venue that cannot be the first part of a ticker.
-// A spelling that differs only by case names the canonical form.
-func rejectVenue(name string) error {
+// CheckVenue reports, as an invalid *Error, a venue that cannot be the first
+// part of a ticker. A spelling that differs only by case names the canonical form.
+func CheckVenue(name string) error {
 	if canonicalVenueName(name) {
 		return nil
 	}

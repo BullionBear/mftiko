@@ -33,7 +33,7 @@ import (
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/natsdev"
 	"github.com/BullionBear/mftiko/internal/platform/natsx"
-	"github.com/BullionBear/mftiko/internal/sym"
+	"github.com/BullionBear/mftiko/internal/sym/symnats"
 	"github.com/BullionBear/mftiko/pkg/logger"
 )
 
@@ -102,15 +102,15 @@ func run(natsURL, creds, venues, proxy, roots string, timeout time.Duration, rat
 	}
 	defer nc.Close()
 
-	tables := make([]sym.Table, 0, len(selected))
+	tables := make([]symnats.Table, 0, len(selected))
 	names := make([]string, 0, len(selected))
 	for _, v := range selected {
 		names = append(names, v.Name)
 		for _, c := range v.Categories {
-			tables = append(tables, sym.Table{Venue: v.Name, Category: c})
+			tables = append(tables, symnats.Table{Venue: v.Name, Category: c})
 		}
 	}
-	remote, err := sym.OpenRemote(ctx, nc, tables, sym.RemoteOptions{Log: log, NotifySubject: sym.ChangedWildcard})
+	remote, err := symnats.OpenRemote(ctx, nc, tables, symnats.RemoteOptions{Log: log, NotifySubject: symnats.ChangedWildcard})
 	if err != nil {
 		return err
 	}

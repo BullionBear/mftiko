@@ -119,7 +119,7 @@ func (b *fakeBus) view(t *testing.T, subject string, req *tdv1.ViewRequest) *tdv
 
 // fakeInstruments is a symbol table keyed by exch_ticker alone: the fake venues fill the rest of an
 // ExchKey unevenly. inactive are only found with includeInactive.
-// The book reads it on its own goroutine while a test changes it, as sym.Remote's reloads do: mu guards
+// The book reads it on its own goroutine while a test changes it, as symnats.Remote's reloads do: mu guards
 // the maps, and an Info in them is never changed in place. Tests change the table with put, edit and remove.
 type fakeInstruments struct {
 	mu               sync.Mutex

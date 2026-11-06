@@ -131,7 +131,7 @@ func TestNATSGolden(t *testing.T) {
 			}
 			data = b
 		}
-		msg, err := fx.raw.Request(sym.Subject, data, 5*time.Second)
+		msg, err := fx.raw.Request(Subject, data, 5*time.Second)
 		if err != nil {
 			t.Fatalf("%s: %v", s.name, err)
 		}
