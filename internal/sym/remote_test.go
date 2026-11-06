@@ -3,15 +3,18 @@ package sym
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
+	"google.golang.org/protobuf/proto"
 
 	symv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/sym/v1"
 	"github.com/BullionBear/mftiko/contract/symbol"
+	"github.com/BullionBear/mftiko/exchange/exchangetest"
 	"github.com/BullionBear/mftiko/internal/platform/natsx"
 	"github.com/BullionBear/mftiko/internal/platform/natsx/natsxtest"
 )
@@ -348,4 +351,153 @@ func awaitMsg(t *testing.T, ch <-chan natsx.Msg) natsx.Msg {
 		t.Fatal("no change notification")
 		return natsx.Msg{}
 	}
+}
+
+type symFixture struct {
+	client *natsx.Conn
+	src    *exchangetest.Source
+	store  *Store
+	run    *Runner
+	ns     *natsxtest.Server
+	url    string
+	btc    uint32
+	btcRow symbol.Listing
+	clock  *atomicClock
+}
+
+func newSymFixture(t *testing.T) *symFixture {
+	t.Helper()
+	pg, _ := startSym(t)
+	src, err := exchangetest.New("Bybit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	btc := spotL("BTC", "USDT", "BTCUSDT")
+	btc.Filters = symbol.Filters{"price_tick": 0.5, "max_qty": math.NaN()}
+	for _, row := range []symbol.Listing{
+		btc,
+		spotL("ETH", "USDT", "ETHUSDT"),
+		spotL("SOL", "USDT", "SOLUSDT"),
+		spotL("XRP", "USDT", "XRPUSDT"),
+		spotL("DOGE", "USDT", "DOGEUSDT"),
+		perpL("BTC", "USDT", "BTCUSDT"),
+	} {
+		if err := src.Add(row); err != nil {
+			t.Fatal(err)
+		}
+	}
+	clock := &atomicClock{ns: 1_000}
+	uids := &safeScript{script: script{uids: uidSeq(1, 32)}}
+	st := openStore(t, pg.DSN(), uids)
+	run, err := NewRunner(st, []Feed{
+		{Venue: "Bybit", Category: symbol.Spot, REST: src},
+		{Venue: "Bybit", Category: symbol.Perp, REST: src},
+	}, Options{NoJitter: true, Now: clock.Now, Log: zerolog.Nop()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run.Trigger(context.Background(), ""); err != nil {
+		t.Fatal(err)
+	}
+	info, err := st.GetByTicker(context.Background(), "Bybit_Spot_BTCUSDT", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := src.Remove(symbol.Spot, "BTCUSDT"); err != nil {
+		t.Fatal(err)
+	}
+	clock.Add(1_000_000_000)
+	if _, err := run.Trigger(context.Background(), "Bybit"); err != nil {
+		t.Fatal(err)
+	}
+	ns := natsxtest.Start(t)
+	server := dialSym(t, ns.URL())
+	if _, err := serveSym(t.Context(), server, NewService(st, run, zerolog.Nop())); err != nil {
+		t.Fatal(err)
+	}
+	return &symFixture{
+		client: dialSym(t, ns.URL()),
+		src:    src,
+		store:  st,
+		run:    run,
+		ns:     ns,
+		url:    ns.URL(),
+		btc:    info.UID,
+		btcRow: btc,
+		clock:  clock,
+	}
+}
+
+type atomicClock struct {
+	mu sync.Mutex
+	ns int64
+}
+
+func (c *atomicClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.ns += 1_000
+	return time.Unix(0, c.ns)
+}
+
+func (c *atomicClock) Add(ns int64) {
+	c.mu.Lock()
+	c.ns += ns
+	c.mu.Unlock()
+}
+
+type safeScript struct {
+	mu sync.Mutex
+	script
+}
+
+func (s *safeScript) NextUID() (uint32, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.script.NextUID()
+}
+
+func uidSeq(from, n int) []uint32 {
+	out := make([]uint32, n)
+	for i := range out {
+		out[i] = uint32(from + i)
+	}
+	return out
+}
+
+func dialSym(t *testing.T, url string) *natsx.Conn {
+	t.Helper()
+	c, err := natsx.Connect(url, natsx.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Close)
+	return c
+}
+
+// serveSym answers Subject for the Remote tests. symnats serves it in production, and a test in
+// this package cannot import symnats. It goes when Remote moves to symnats (E22-03).
+func serveSym(ctx context.Context, c *natsx.Conn, api API) (*natsx.Subscription, error) {
+	return c.Serve(ctx, Subject, Subject, func() proto.Message { return &symv1.Request{} },
+		func(ctx context.Context, m proto.Message) (proto.Message, error) {
+			switch r := m.(*symv1.Request).GetReq().(type) {
+			case *symv1.Request_Get:
+				info, err := api.Get(ctx, r.Get)
+				return &symv1.Reply{Result: &symv1.Reply_Info{Info: info}}, err
+			case *symv1.Request_GetByUid:
+				info, err := api.GetByUID(ctx, r.GetByUid)
+				return &symv1.Reply{Result: &symv1.Reply_Info{Info: info}}, err
+			case *symv1.Request_Reverse:
+				info, err := api.Reverse(ctx, r.Reverse)
+				return &symv1.Reply{Result: &symv1.Reply_Info{Info: info}}, err
+			case *symv1.Request_List:
+				list, err := api.List(ctx, r.List)
+				return &symv1.Reply{Result: &symv1.Reply_List{List: list}}, err
+			case *symv1.Request_Revisions:
+				revs, err := api.Revisions(ctx, r.Revisions)
+				return &symv1.Reply{Result: &symv1.Reply_Revisions{Revisions: revs}}, err
+			default:
+				return nil, invalid("request is empty")
+			}
+		})
 }

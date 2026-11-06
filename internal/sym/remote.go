@@ -19,6 +19,10 @@ import (
 )
 
 const (
+	// Subject is the sym request subject (PROTOCOL §7). symnats.Serve joins
+	// the queue group of the same name, so any replica answers.
+	Subject = "sym"
+
 	// DefaultCheckInterval is how often a remote resolver compares revisions
 	// when no notification arrived. A reconnect checks immediately as well.
 	DefaultCheckInterval = 5 * time.Minute
