@@ -97,6 +97,41 @@ services:
       timeout: 3s
       retries: 30
 
+  # SYM with SymService over gRPC (contract S, E22-D007): h2c on 127.0.0.1:7450, with the token from
+  # deploy/dev/sym-init.sh in ./data/sym. It refreshes only DEV_SYM_FEEDS (default BinanceUM/Perp), from
+  # the venue's public REST, so it needs the internet. The tables need `make migrate-up`; on a fresh
+  # stack, `docker compose -f deploy/dev/compose.yaml restart sym` after it fills them at once instead
+  # of at the next jittered refresh. The healthcheck is grpc.health.v1 over the Connect protocol, which
+  # takes no token (E22-D014) and which busybox wget can speak. Try it with grpcurl:
+  #   grpcurl -plaintext -H "authorization: Bearer $(cat deploy/dev/data/sym/token)" \
+  #     -d '{"universal_ticker":"BinanceUM_Perp_BTCUSDT"}' 127.0.0.1:7450 mftiko.sym.v1.SymService/Get
+  sym:
+    image: alpine:3.22
+    command:
+      - sh
+      - -c
+      - >-
+        exec /mftiko/mftiko-sym -nats nats://nats:4222 -nats-creds /nats/sym-dev.creds
+        -feeds "$${DEV_SYM_FEEDS:-BinanceUM/Perp}" -grpc-addr :7450 -grpc-token-file /sym/grpc-tokens
+    environment:
+      DATABASE_URL: postgres://mftiko@postgres:5432/mftiko?sslmode=disable
+      DEV_SYM_FEEDS: ${DEV_SYM_FEEDS:-}
+    ports:
+      - "127.0.0.1:7450:7450"
+    volumes:
+      - ../../bin/linux:/mftiko:ro
+      - ./data/nats/creds/sym-dev.creds:/nats/sym-dev.creds:ro
+      - ./data/sym:/sym:ro
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+      nats: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "--header", "Content-Type: application/json", "--post-data", "{}", "http://127.0.0.1:7450/grpc.health.v1.Health/Check"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   # The API server and the console (E10-19). bin/linux/mftiko-api from `make dev-up`, the console from
   # web/build (E10-D028), plain HTTP (E10-D029). deploy/dev/api-init.sh writes ./data/api: the deployment
   # (one region, controller, md1, td1, sts1), the API JSON, the token to sign in with, the cookie key,
