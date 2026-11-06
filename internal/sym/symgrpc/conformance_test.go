@@ -3,6 +3,7 @@ package symgrpc
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"testing"
 
@@ -27,13 +28,28 @@ func TestConformance(t *testing.T) {
 	})
 }
 
-func withBearer(token string) connect.UnaryInterceptorFunc {
-	return func(next connect.UnaryFunc) connect.UnaryFunc {
-		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-			req.Header().Set("Authorization", "Bearer "+token)
-			return next(ctx, req)
-		}
+// withBearer sets the token on every call, unary and streaming.
+func withBearer(token string) connect.Interceptor { return bearerClient(token) }
+
+type bearerClient string
+
+func (b bearerClient) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		req.Header().Set("Authorization", "Bearer "+string(b))
+		return next(ctx, req)
 	}
+}
+
+func (b bearerClient) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		conn := next(ctx, spec)
+		conn.RequestHeader().Set("Authorization", "Bearer "+string(b))
+		return conn
+	}
+}
+
+func (b bearerClient) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return next
 }
 
 // grpcClient is a connect client speaking gRPC. A business failure's code comes from the status
@@ -98,4 +114,34 @@ func (g grpcClient) Revisions(ctx context.Context, req *symv1.RevisionsRequest) 
 		return nil, business(err)
 	}
 	return resp.Msg.GetRevisions(), nil
+}
+
+func (g grpcClient) Watch(ctx context.Context, req *symv1.WatchChangesRequest) (symtest.Stream, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	s, err := g.c.WatchChanges(ctx, connect.NewRequest(req))
+	if err != nil {
+		cancel()
+		return nil, business(err)
+	}
+	return &grpcStream{s: s, cancel: cancel}, nil
+}
+
+type grpcStream struct {
+	s      *connect.ServerStreamForClient[symv1.WatchChangesResponse]
+	cancel context.CancelFunc
+}
+
+func (g *grpcStream) Recv() (*symv1.WatchChangesResponse, error) {
+	if g.s.Receive() {
+		return g.s.Msg(), nil
+	}
+	if err := g.s.Err(); err != nil {
+		return nil, business(err)
+	}
+	return nil, io.EOF
+}
+
+func (g *grpcStream) Close() {
+	g.cancel()
+	_ = g.s.Close()
 }

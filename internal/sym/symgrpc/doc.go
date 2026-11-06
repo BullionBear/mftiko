@@ -5,8 +5,12 @@
 // Get, GetByUid, List, Reverse and Revisions call sym.API and wrap the result in its
 // …Response. A *sym.Error becomes a status (E22-D004): invalid is InvalidArgument, not_found is
 // NotFound, unavailable is Unavailable, or Canceled and DeadlineExceeded when the cause is the
-// context's. The message is the same "<code>: <reason>" the sym subject sends. WatchChanges is
-// Unimplemented until E22-07. There is no Refresh (E22-D008).
+// context's. The message is the same "<code>: <reason>" the sym subject sends. There is no
+// Refresh (E22-D008).
+//
+// WatchChanges sends a snapshot of the matching tables' revisions, then a changed message per
+// commit from any replica, from sym.Hub (E22-D009). A stream that falls behind ends with
+// ResourceExhausted; SYM shutting down ends it with Unavailable.
 //
 // Every SymService and reflection call carries "authorization: Bearer <token>" from the token
 // file. A missing or unknown token is Unauthenticated. Each call writes one access log line with
