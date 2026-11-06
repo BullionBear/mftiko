@@ -2,7 +2,11 @@
 # Drives the MD, TD and end-to-end acceptance in deploy/accept (README.md is the runbook).
 #
 #   accept.sh up                 build bin/linux, NATS creds, start the stack, migrate, push the conn and
-#                                account workers to the registry as latest, etcd auth, SYM
+#                                account workers to the registry as latest, etcd auth, SYM (gRPC on
+#                                runner:7450, token in data/work/sym/token)
+#   accept.sh sym-grpc           the SYM gRPC smoke (E22-08) with grpcurl from another container: the
+#                                five unary RPCs, no token and a wrong one refused, and WatchChanges
+#                                hearing a changed after a refresh
 #   accept.sh agent              start an md-agent (log /work/agent-<n>.log); refuses if one runs
 #   accept.sh stop-agent         SIGTERM the md-agent; its shims and conn workers stay
 #   accept.sh bg NAME ARGS...    run mftiko-md-accept ARGS in the background, log /work/NAME.log
@@ -82,8 +86,14 @@ up() {
 	tool creds -nats-dir /nats -out /work/observer.creds
 	# The PMS stand-in's user: sym, its change notes and _INBOX_pms only (E21-D009).
 	tool creds -nats-dir /nats -pms -out /work/pms.creds
+	# SymService over gRPC (E22-D007), h2c on :7450 inside the runner. The token is made once; the
+	# token file is rewritten. A SYM left from an older up without gRPC keeps running: down first.
+	mkdir -p "$here/data/work/sym"
+	[ -s "$here/data/work/sym/token" ] || (umask 077 && openssl rand -hex 32 >"$here/data/work/sym/token")
+	(umask 077 && printf 'accept %s\n' "$(tr -d '\n' <"$here/data/work/sym/token")" >"$here/data/work/sym/grpc-tokens")
 	if ! running /mftiko/mftiko-sym; then
-		run sh -c "nohup /mftiko/mftiko-sym -feeds '$feeds' -nats-creds /nats/creds/sym-dev.creds >/work/sym.log 2>&1 &"
+		run sh -c "nohup /mftiko/mftiko-sym -feeds '$feeds' -nats-creds /nats/creds/sym-dev.creds \
+			-grpc-addr :7450 -grpc-token-file /work/sym/grpc-tokens >/work/sym.log 2>&1 &"
 		sleep 2
 	fi
 	tool refresh -venue "$venue" -ticker "$ticker"
@@ -241,6 +251,87 @@ e2e_all() {
 	echo "e2e: every flow passed"
 }
 
+# sym_grpc is the SYM gRPC smoke (E22-08, #555). grpcurl runs in a container of its own, so the
+# calls cross the compose network as an outside client's would. Every RPC goes through the contract's
+# protos, not reflection, so "no token" is refused by SymService itself. WatchChanges is opened on
+# the venue, a refresh through NATS commits a new revision of the ticker's table, and the stream
+# must hear a changed for it.
+sym_grpc() {
+	local addr=runner:7450 token category exch uid out watch pid i
+	token=$(tr -d '\n' <"$here/data/work/sym/token")
+	category=${ticker#*_}
+	category=${category%%_*}
+	g() { "${compose[@]}" run --rm -T grpcurl -plaintext "$@"; }
+	authed() { g -H "authorization: Bearer $token" -import-path /proto -proto mftiko/sym/v1/service.proto "$@"; }
+	fail() {
+		echo "sym-grpc: $*" >&2
+		return 1
+	}
+	call() { authed -d "$2" "$addr" "mftiko.sym.v1.SymService/$1"; }
+
+	out=$(g -H "authorization: Bearer $token" "$addr" list) || fail "reflection list: $out"
+	grep -qx mftiko.sym.v1.SymService <<<"$out" || fail "reflection does not list SymService: $out"
+	out=$(g -H "authorization: Bearer $token" "$addr" grpc.health.v1.Health/Check) || fail "health: $out"
+	grep -q SERVING <<<"$out" || fail "health: $out"
+	echo "ok reflection and health"
+
+	out=$(call Get "{\"universal_ticker\":\"$ticker\"}") || fail "Get: $out"
+	uid=$(sed -nE 's/^ *"uid": ([0-9]+),?$/\1/p' <<<"$out")
+	exch=$(sed -nE 's/^ *"exch(T|_t)icker": "([^"]*)",?$/\2/p' <<<"$out")
+	[ -n "$uid" ] && [ -n "$exch" ] || fail "Get $ticker has no uid or exch ticker: $out"
+	echo "ok Get $ticker uid $uid exch $exch"
+	out=$(call GetByUid "{\"uid\":$uid}") || fail "GetByUid: $out"
+	grep -q "\"$ticker\"" <<<"$out" || fail "GetByUid $uid is not $ticker: $out"
+	echo "ok GetByUid $uid"
+	out=$(call Reverse "{\"venue\":\"$venue\",\"category\":\"$category\",\"exch_ticker\":\"$exch\"}") || fail "Reverse: $out"
+	grep -qE "\"uid\": $uid,?$" <<<"$out" || fail "Reverse $exch is not uid $uid: $out"
+	echo "ok Reverse $venue $category $exch"
+	out=$(call List "{\"venue\":\"$venue\",\"category\":\"$category\",\"limit\":2}") || fail "List: $out"
+	[ "$(grep -cE '"universal(T|_t)icker"' <<<"$out")" = 2 ] || fail "List limit 2 is not two rows: $out"
+	echo "ok List $venue $category limit 2"
+	out=$(call Revisions '{}') || fail "Revisions: $out"
+	grep -q "\"$venue\"" <<<"$out" || fail "Revisions has no $venue: $out"
+	echo "ok Revisions"
+
+	# A missing token and a wrong one: Unauthenticated, on the RPC and on reflection.
+	out=$(g -import-path /proto -proto mftiko/sym/v1/service.proto -d "{\"universal_ticker\":\"$ticker\"}" \
+		"$addr" mftiko.sym.v1.SymService/Get 2>&1) && fail "Get without a token succeeded: $out"
+	grep -q Unauthenticated <<<"$out" || fail "Get without a token: $out"
+	out=$(g -H "authorization: Bearer wrong-$token" -import-path /proto -proto mftiko/sym/v1/service.proto \
+		-d "{\"universal_ticker\":\"$ticker\"}" "$addr" mftiko.sym.v1.SymService/Get 2>&1) && fail "Get with a wrong token succeeded: $out"
+	grep -q Unauthenticated <<<"$out" || fail "Get with a wrong token: $out"
+	out=$(g "$addr" list 2>&1) && fail "reflection without a token succeeded: $out"
+	grep -q Unauthenticated <<<"$out" || fail "reflection without a token: $out"
+	echo "ok no token and a wrong token are Unauthenticated"
+
+	# WatchChanges: the snapshot first, then a changed once the refresh commits. -max-time ends the
+	# stream; its DeadlineExceeded is expected.
+	watch=$here/data/work/sym/watch.out
+	: >"$watch"
+	authed -max-time 30 -d "{\"venue\":\"$venue\"}" "$addr" mftiko.sym.v1.SymService/WatchChanges >"$watch" 2>&1 &
+	pid=$!
+	for i in $(seq 60); do
+		grep -q '"snapshot"' "$watch" && break
+		sleep 0.5
+	done
+	grep -q '"snapshot"' "$watch" || fail "WatchChanges sent no snapshot: $(cat "$watch")"
+	# A refresh that finds nothing new commits no revision. Mark the ticker UNKNOWN behind SYM's back
+	# (this touches no revision, so it notifies nothing); the refresh writes the venue's status back
+	# and commits the next revision of that table.
+	"${compose[@]}" exec -T postgres psql -U mftiko -d mftiko -qc \
+		"UPDATE symbol_active SET status = 'UNKNOWN' WHERE universal_ticker = '$ticker'"
+	tool refresh -venue "$venue"
+	for i in $(seq 60); do
+		grep -q '"changed"' "$watch" && break
+		sleep 0.5
+	done
+	grep -q '"changed"' "$watch" || fail "WatchChanges heard no changed: $(cat "$watch")"
+	wait "$pid" || true
+	grep -A4 '"changed"' "$watch" | grep -q "\"$category\"" || fail "WatchChanges: no changed for $venue $category: $(cat "$watch")"
+	echo "ok WatchChanges: snapshot, then changed (data/work/sym/watch.out)"
+	echo "sym-grpc: every check passed"
+}
+
 # pms is the PMS acceptance (E21-09, #521). It retires sts2 for good: run it last, and e2e-up on a
 # fresh stack (down first) before the region flows again.
 pms() {
@@ -288,6 +379,7 @@ e2e)
 	;;
 e2e-all) e2e_all ;;
 pms) pms ;;
+sym-grpc) sym_grpc ;;
 console-smoke)
 	shift
 	(cd "$repo/web" && npx playwright test "$@")
@@ -301,6 +393,6 @@ stop-api) stop_api "$2" ;;
 ps) run ps -o pid,ppid,args ;;
 sh) "${compose[@]}" exec runner sh ;;
 down) "${compose[@]}" down -v ;;
-"" | -h | --help) sed -n '2,43p' "$0" ;;
+"" | -h | --help) sed -n '2,47p' "$0" ;;
 *) tool "$@" ;;
 esac

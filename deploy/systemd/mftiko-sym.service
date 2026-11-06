@@ -1,5 +1,8 @@
 # mftiko SYM (E12-D018, E12-D019). KillMode stays control-group.
 # md.fetch is a separate process and has no unit in this set (E12-05).
+# SymService over gRPC (contract S, E22-D007) is on only when MFTIKO_SYM_GRPC_ADDR is set in the env
+# file. Unset, both -grpc-* flags expand to empty and SYM serves NATS alone. MFTIKO_SYM_GRPC_TOKEN_FILE
+# is then required, or SYM refuses to start; /etc/mftiko/sym/grpc-tokens, 0600, owned by mftiko-sym.
 
 [Unit]
 Description=mftiko SYM
@@ -12,7 +15,9 @@ User=mftiko-sym
 EnvironmentFile=/etc/mftiko/sym/env
 ExecStart=/opt/mftiko/current/bin/mftiko-sym \
   -nats-creds /etc/mftiko/sym/nats.creds \
-  -feeds ${MFTIKO_SYM_FEEDS}
+  -feeds ${MFTIKO_SYM_FEEDS} \
+  -grpc-addr ${MFTIKO_SYM_GRPC_ADDR} \
+  -grpc-token-file ${MFTIKO_SYM_GRPC_TOKEN_FILE}
 Restart=always
 RestartSec=1s
 

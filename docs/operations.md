@@ -43,7 +43,7 @@
 
 - host binary 在 `/opt/mftiko/releases/<tag>/`，`/opt/mftiko/current` 指到現用的一版。安裝、換版與清理用 tarball 裡的 `bin/mftiko-release`（E12-D022–E12-D026，[release.md](release.md)）。
 - shim 與 worker 沿用 agent 的使用者。TD 的 seal key 只有 `mftiko-td` 讀得到。
-- `/etc/mftiko/<服務>/` 是 `root:<使用者>` 0750；設定檔 0640；祕密檔（NATS creds、signing key、seal key、registry 的 config.json、API 的 `log-token`）0600，屬服務的使用者。STS 主機上只有 log token 的 SHA-256，放在 env（[session log 端點](#session-log-端點)）。
+- `/etc/mftiko/<服務>/` 是 `root:<使用者>` 0750；設定檔 0640；祕密檔（NATS creds、signing key、seal key、registry 的 config.json、API 的 `log-token`、SYM 的 `grpc-tokens`）0600，屬服務的使用者。STS 主機上只有 log token 的 SHA-256，放在 env（[session log 端點](#session-log-端點)）。
 - etcd 密碼放在 `/etc/mftiko/<服務>/env`（0600，root），以 `EnvironmentFile=` 帶進 `MFTIKO_ETCD_PASSWORD`。不用 `LoadCredential=`：unit 停下時那個目錄會被刪，agent 停下後還在跑的 worker 就讀不到 creds 了。instance、registry、NATS 也在這份 env，見下方 systemd。
 - 改祕密就改檔案，路徑不變，再重啟 unit。
 - 同一個使用者底下，策略讀得到 sts-agent 的祕密檔與 shim 的環境，一期接受（E12-D004）。
@@ -97,6 +97,7 @@ agent 的 unit 另外：
 | mftiko-latency-exporter | `MFTIKO_LATENCY_ADDR` | 私有的 `host:port`。見[延遲 exporter](#延遲-exporter) |
 | API | `MFTIKO_COOKIE_KEY`、`MFTIKO_ACCOUNT_KEYS`、`MFTIKO_POSTGRES_DSN` | cookie 的 HMAC 金鑰、帳號憑證的 AEAD 金鑰（E21-D020）、Postgres DSN。log token 不在 env，是檔案 `/etc/mftiko/api/log-token` |
 | SYM | `DATABASE_URL`、`NATS_URL` | `-nats-creds` 固定 `/etc/mftiko/sym/nats.creds`，即 `mftiko-nats-dev` 的 `creds/sym-{inst}.creds`（E12-D079）。`MFTIKO_SYM_FEEDS` 可省略，省略就是全部 feed |
+| SYM | `MFTIKO_SYM_GRPC_ADDR`、`MFTIKO_SYM_GRPC_TOKEN_FILE`（可省略） | 對外的 gRPC（契約 S）。兩個都省略就不開，SYM 只走 NATS。開的時候是私有的 `host:7450` 與 `/etc/mftiko/sym/grpc-tokens`；只給位址不給 token 檔，SYM 起不來（E22-D007）。見 [SYM 的 gRPC](#sym-的-grpc) |
 | etcd | `/etc/etcd/etcd.env` 的 `ETCD_NAME`、`ETCD_LISTEN_CLIENT_URLS`、`ETCD_ADVERTISE_CLIENT_URLS`、`ETCD_LISTEN_PEER_URLS`、`ETCD_INITIAL_ADVERTISE_PEER_URLS`、`ETCD_INITIAL_CLUSTER`、`ETCD_INITIAL_CLUSTER_STATE`、`ETCD_AUTH_TOKEN` | 資料目錄由 unit 設成 `/var/lib/etcd`，env 不要改 `ETCD_DATA_DIR` |
 
 MD、TD 的 `MFTIKO_PLAIN_HTTP` 一定要是 `true` 或 `false`。unit 把它展開成 `-plain-http=${MFTIKO_PLAIN_HTTP}`，空字串這個旗標不收。STS 的 `MFTIKO_PLAIN_HTTP_HOSTS` 可以是空的（E10-D124）。
@@ -435,6 +436,90 @@ API 第一次看到某個 instance 的 `/td/{inst}/pubkey` 就採信，把 SHA-2
 | `MFTIKO_LOG_MAX_BYTES`、`MFTIKO_LOG_KEEP` | 0、0 | worker 輸出的輪替。0 是 shim 的預設 64 MiB、5 份（[輪替](#輪替)，E14-D023）。改了只影響之後啟動的 worker |
 
 讀到已經被輪替掉的位置時，CLI 在 stderr 印 `mftiko: some output was rotated out`，console 顯示一行 `some output was rotated out`，然後從最舊還在的檔接著讀（E14-D017）。
+
+## SYM 的 gRPC
+
+依 [DECISIONS.md](DECISIONS.md) E22-D007、E22-D009、E22-D014、E22-D015（E22-08，#555）與 [PROTOCOL.md](PROTOCOL.md) §7.3 的契約 S。給 mftiko 以外的客戶端（例如 Python 的研究程式）讀商品資料：`mftiko.sym.v1.SymService` 的 `Get`、`GetByUid`、`List`、`Reverse`、`Revisions` 與串流 `WatchChanges`。沒有 Refresh（E22-D008）。內部平面仍走 NATS，開不開 gRPC 都不影響它（E22-D011）。
+
+### 開啟
+
+在 `/etc/mftiko/sym/env` 加兩行，`systemctl restart mftiko-sym`：
+
+```sh
+MFTIKO_SYM_GRPC_ADDR=<私有 IP>:7450
+MFTIKO_SYM_GRPC_TOKEN_FILE=/etc/mftiko/sym/grpc-tokens
+```
+
+- 兩個都不設就不開：unit 把它們展開成空字串，`-grpc-addr` 空的就是關（E22-D007）。關的時候也不開下面的 LISTEN 連線（E22-D015）。
+- 只設位址、沒設 token 檔，或 token 檔讀不了、格式不對、一個 token 都沒有，SYM 啟動就退出，`journalctl -u mftiko-sym` 有原因；錯誤不印 token。
+- TLS 選配：`-grpc-tls-cert`、`-grpc-tls-key` 不在 unit 裡，要開就用 drop-in（`systemctl edit mftiko-sym`）覆寫 `ExecStart=`。預設是 h2c 明文。
+- 起來之後 log 有 `serving grpc`（帶 `addr`、`tls`）與 `sym change listener up`。
+
+### gRPC 的 port 與防火牆
+
+- **7450/tcp，只開給要讀的客戶端主機**，走私有網路或 VPN，與 etcd、NATS、session log 一樣（E12-D052）。h2c 是明文，token 在線上看得到。
+- `MFTIKO_SYM_GRPC_ADDR` 寫私有 IP，不寫 `:7450`：`:7450` 會聽到每張網卡，包括公網那張。
+- 每個 RPC 一行 access log（`"message":"grpc"`，帶 `rpc`、`name`、`peer`、`code`、`took`），`name` 是 token 檔裡那一行的名字，查是誰在呼叫。health 不寫（E22-D014）。
+- 多個 SYM replica 時，每個都可以開，客戶端連哪一個都一樣：任一 replica 的 `WatchChanges` 都收得到每張表的變更（E22-D009）。gRPC 的負載平衡不在一期（E22-D013）。
+
+### gRPC 的 token
+
+- `/etc/mftiko/sym/grpc-tokens`，0600，屬 `mftiko-sym`。一行一個 `name token`，空行與 `#` 開頭的行略過。名字或 token 重複都是錯。每個客戶端一個名字、一個 token，撤掉一個不必換其他人的。
+- token 不分讀寫，一期也只有讀（E22-D008）。
+- 產生一個（以 root）：
+
+  ```sh
+  token=$(openssl rand -hex 32)
+  printf '%s %s\n' research "$token" >>/etc/mftiko/sym/grpc-tokens
+  chown mftiko-sym /etc/mftiko/sym/grpc-tokens && chmod 0600 /etc/mftiko/sym/grpc-tokens
+  systemctl restart mftiko-sym
+  printf '%s\n' "$token"   # 交給客戶端，主機上不另外留
+  ```
+
+  token 不得含空白。客戶端每個呼叫帶 metadata `authorization: Bearer <token>`；沒帶或不符是 `Unauthenticated`。
+- **SYM 只在啟動時讀這個檔。** 改了要 `systemctl restart mftiko-sym`。重啟會結束每條 `WatchChanges`（`Unavailable`），客戶端重連時拿一份新的 snapshot（E22-D015）。
+
+### 輪換 gRPC 的 token
+
+同一個檔可以同時有新舊兩行，所以不必有讀不到的空窗：
+
+1. 加一行新的（新名字，例如 `research-2`），重啟 SYM。
+2. 客戶端換成新的 token，從 access log 確認舊名字不再出現：`journalctl -u mftiko-sym --since -1h | grep '"name":"research"'`。
+3. 刪掉舊的那行，重啟 SYM。
+
+多個 replica 時每台都做同樣的改動。撤掉一個客戶端只做第 3 步。
+
+### LISTEN 要直連 Postgres
+
+`WatchChanges` 的來源是 Postgres 的 `NOTIFY sym_changed`（migration `0013`）。開了 gRPC 的 SYM 會另外開一條連線 `LISTEN sym_changed`，不在連線池裡（E22-D009、E22-D015）。
+
+- **`DATABASE_URL` 要直連 Postgres，或經 session pooling。** 經 transaction pooling（pgbouncer 的 `pool_mode = transaction`）時 LISTEN 收不到任何通知：查詢都正常，只有串流永遠只有 snapshot。
+- 在 `pg_stat_activity` 找得到它：
+
+  ```sh
+  psql "$DATABASE_URL" -c "SELECT pid, state, backend_start FROM pg_stat_activity WHERE application_name = 'mftiko-sym-hub'"
+  ```
+
+  每個開了 gRPC 的 SYM 一列。Postgres 的 `max_connections` 要多算這一條。
+- 斷線時 SYM 以 100ms 起、加倍、最多 5 秒退避重連，log 是 `sym change listener`（warn）；重連後對 revision 前進的表補發，串流不關（E22-D015）。
+
+### health 檢查
+
+- `grpc.health.v1.Health/Check` **不要 token**（E22-D014），服務名空字串或 `mftiko.sym.v1.SymService`。探針用 `grpc_health_probe -addr <私有 IP>:7450`，或不裝工具，用 Connect 協議：
+
+  ```sh
+  curl -fsS -H 'Content-Type: application/json' -d '{}' http://<私有 IP>:7450/grpc.health.v1.Health/Check
+  # {"status":"SERVING_STATUS_SERVING"}
+  ```
+
+- health 是靜態的：只說進程在聽，不看 Postgres 或 NATS。資料庫斷了，查詢回 `Unavailable`，health 仍是 `SERVING`。關閉時先轉 `NOT_SERVING`，進行中的呼叫最多等 10 秒。
+- 要確認真的讀得到資料，帶 token 打一次 `Revisions`。grpcurl 經 reflection 拿 schema，reflection 也要 token，所以 grpcurl 連 health 也要帶：
+
+  ```sh
+  grpcurl -plaintext -H "authorization: Bearer $token" <私有 IP>:7450 mftiko.sym.v1.SymService/Revisions
+  ```
+
+- 驗收：`deploy/accept/accept.sh sym-grpc`（[deploy/accept/README.md](../deploy/accept/README.md)）。
 
 ## 監控與告警
 

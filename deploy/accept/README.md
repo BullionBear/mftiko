@@ -475,3 +475,36 @@ docker compose -f deploy/accept/compose.yaml exec -T runner sh -c 'MFTIKO_TOKEN=
   -api http://127.0.0.1:8080 -nats nats://nats:4222 -nats-creds /work/pms.creds \
   -key binance/accept-pms=/work/binanceum.creds.json -rest BinanceUM=https://testnet.binancefuture.com'
 ```
+
+# SYM gRPC 驗收
+
+E22-08（#555）。外部客戶端經 gRPC 讀 SYM（契約 S，E22-D007）。`up` 起的 SYM 已經開著 gRPC：runner 裡 h2c 的 `:7450`，token 檔是 `data/work/sym/grpc-tokens`（名字 `accept`），token 本身在 `data/work/sym/token`，第一次 `up` 產生後保留。比這張票早的 `up` 起的 SYM 沒開 gRPC，先 `down` 再 `up`。
+
+```sh
+deploy/accept/accept.sh up
+deploy/accept/accept.sh sym-grpc
+```
+
+grpcurl 在另一個容器（compose 的 `grpcurl`，`tools` profile，`up` 不起它），經 compose 網路連 `runner:7450`，跟外面的客戶端一樣。RPC 用掛進去的 `contract/proto`，不靠 reflection，所以「沒帶 token」是 `SymService` 本身拒絕的。依序：
+
+1. 帶 token：reflection 的 `list` 有 `mftiko.sym.v1.SymService`；`grpc.health.v1.Health/Check` 是 `SERVING`。
+2. `Get` `ACCEPT_TICKER`，拿到 uid 與交易所拼法；`GetByUid` 回同一個 ticker；`Reverse` 回同一個 uid；`List` 該 venue 與 category，`limit` 2 是兩列；`Revisions` 有這個 venue。
+3. 沒帶 token、帶錯的 token：`Get` 與 reflection 都是 `Unauthenticated`。
+4. `WatchChanges`（`venue` 過濾）先收到 snapshot。把 ticker 在 `symbol_active` 改成 `UNKNOWN`（不碰 revision，不會通知），再 `refresh`：SYM 把狀態寫回，commit 該表的下一個 revision，串流要收到那張表的 `changed`。沒有變化的 refresh 不前進 revision，所以要先改一列。串流 30 秒後以 `DeadlineExceeded` 結束，是預期的。
+
+通過時最後一行是 `sym-grpc: every check passed`。串流的輸出在 `data/work/sym/watch.out`，SYM 的 access log（每個 RPC 一行，`name` 是 `accept`）在 `data/work/sym.log`。
+
+從主機另外試一個客戶端，在同一個網路上（例如 Python grpcio，E22-08 的紀錄在 #555）：
+
+```sh
+docker run --rm --network mftiko-accept_default -v "$PWD/contract/proto:/proto:ro" \
+  -v "$PWD/deploy/accept/data/work/sym/token:/token:ro" python:3.12-slim sh -c '
+pip install -q grpcio==1.71.0 grpcio-tools==1.71.0 && mkdir /gen &&
+python -m grpc_tools.protoc -I/proto --python_out=/gen --grpc_python_out=/gen mftiko/sym/v1/sym.proto mftiko/sym/v1/service.proto &&
+cd /gen && python -c "
+import grpc
+from mftiko.sym.v1 import service_pb2_grpc, sym_pb2
+stub = service_pb2_grpc.SymServiceStub(grpc.insecure_channel(\"runner:7450\"))
+print(stub.Get(sym_pb2.GetRequest(universal_ticker=\"BinanceUM_Perp_BTCUSDT\"),
+               metadata=[(\"authorization\", \"Bearer \" + open(\"/token\").read().strip())]).info)"'
+```

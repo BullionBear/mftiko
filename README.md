@@ -17,7 +17,7 @@ internal/                 ① the planes, private
   sts/                    strategy plane; conformance/ (SDK conformance suite)
   md/                     market-data plane; conn/ (conn worker), fetch/ (md.fetch)
   td/                     execution plane; account/ (account worker), history/ (PostgreSQL)
-  sym/                    symbol service
+  sym/                    symbol service: one logic layer, served over NATS (symnats/, the internal planes) and gRPC (symgrpc/, contract S for outside clients)
   controller/             controller: pure decisions, daemon/ campaigns and writes
 sdk/                      ② Go strategy SDK, the reference implementation of PROTOCOL §9; depends on contract only
 contract/                 ③ what both ends compile against; source of truth is docs/PROTOCOL.md
@@ -37,7 +37,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-md-conn          MD conn worker: one websocket per (venue, route, n)
   mftiko-td-account       TD account worker: one per api_id (connections, recon, account state)
   mftiko-mdfetch          stateless md.fetch service
-  mftiko-sym              symbol service
+  mftiko-sym              symbol service: NATS always; SymService over gRPC with -grpc-addr and a bearer token file (docs/operations.md, "SYM 的 gRPC")
   mftiko-migrate          applies the PostgreSQL migrations (a deploy step)
   mftiko-pack             packs a strategy binary into an OCI artifact and pushes it
   mftiko-controller       controller: one leader, derives demands, fences per region
@@ -57,7 +57,7 @@ cmd/                      one directory per binary (bin/<name> after `make build
   mftiko-api-accept       drives the end-to-end acceptance through mftiko-api (deploy/accept)
 examples/strategies/      hello, tape-keeper; import only sdk and contract, as an outside author would
 migrations/               PostgreSQL schema: NNNN_name.up.sql / .down.sql, embedded into mftiko-migrate
-deploy/dev/               local development services (PostgreSQL, etcd, NATS, registry), mftiko-api serving the console, the controller and sts1; Alloy, Loki, Prometheus and Alertmanager for alerts; Prometheus also scrapes mftiko-latency-exporter (E17-D006)
+deploy/dev/               local development services (PostgreSQL, etcd, NATS, registry), SYM with gRPC on 127.0.0.1:7450, mftiko-api serving the console, the controller and sts1; Alloy, Loki, Prometheus and Alertmanager for alerts; Prometheus also scrapes mftiko-latency-exporter (E17-D006)
 deploy/accept/            MD, TD and end-to-end acceptance against a venue's testnet: compose stack, accept.sh, runbook
 web/                      SvelteKit console (single-page app served by mftiko-api); e2e/ is the Playwright smoke
 docs/                     DECISIONS.md, PROTOCOL.md, runbook.md (alerts and operations), operations.md (reference), release.md, cli.md
@@ -81,8 +81,8 @@ docs/                     DECISIONS.md, PROTOCOL.md, runbook.md (alerts and oper
 | `make test` / `make test-race` / `make vet` | Go tests / with the race detector, uncached / vet |
 | `make check` | `proto-lint`, `proto-breaking`, `openapi-lint`, `openapi-breaking`, `gen-check`, `vet`, `build`, `cli-dist`, `test-race`, `sdk-conformance`, `web-check`, `web`, `server-dist` (CI runs these from `.github/workflows/ci.yml`) |
 | `make web` / `make web-dev` / `make web-check` | build, dev server, svelte-check |
-| `make dev-up` / `make dev-down` | generate dev NATS credentials and API config (`deploy/dev/data/api`, token in `token`), build Linux binaries (`mftiko-api`, `mftiko-controller`, `mftiko-sts-agent`, `mftiko-shim`, `mftiko-webhook-dev`, `mftiko-latency-exporter`, and the example strategies in `bin/linux/examples/`) and the console, then start / stop a local PostgreSQL, etcd, NATS, registry, the API with the console on `127.0.0.1:8080`, the controller and the STS agent `sts1` (Docker); `dev-up` waits until all are healthy. Sessions with no feeds and no accounts run; `md1` and `td1` are not started (docs/operations.md, "dev"). Alongside: Alloy sends sts1's strategy stderr to Loki (`127.0.0.1:3100`), Prometheus (`127.0.0.1:9090`) scrapes the API and `mftiko-latency-exporter` (no latency alerts; E17-D006), and both the API rules and Loki send alerts to one Alertmanager (`127.0.0.1:9093`), which writes each one to `deploy/dev/data/webhook/received.jsonl` (E16-03; docs/operations.md, "策略 log 與告警") |
-| `make accept-up` / `make accept-down` | start / stop the acceptance stack; the checks themselves, including the end-to-end ones (`accept.sh e2e-up`, `e2e-all`, `console-smoke`), are in `deploy/accept/README.md` |
+| `make dev-up` / `make dev-down` | generate dev NATS credentials and API config (`deploy/dev/data/api`, token in `token`), build Linux binaries (`mftiko-api`, `mftiko-controller`, `mftiko-sts-agent`, `mftiko-shim`, `mftiko-webhook-dev`, `mftiko-latency-exporter`, `mftiko-sym`, and the example strategies in `bin/linux/examples/`) and the console, then start / stop a local PostgreSQL, etcd, NATS, registry, SYM (refreshing `DEV_SYM_FEEDS`, default `BinanceUM/Perp`; gRPC on `127.0.0.1:7450`, token in `deploy/dev/data/sym/token`), the API with the console on `127.0.0.1:8080`, the controller and the STS agent `sts1` (Docker); `dev-up` waits until all are healthy. Sessions with no feeds and no accounts run; `md1` and `td1` are not started (docs/operations.md, "dev"). Alongside: Alloy sends sts1's strategy stderr to Loki (`127.0.0.1:3100`), Prometheus (`127.0.0.1:9090`) scrapes the API and `mftiko-latency-exporter` (no latency alerts; E17-D006), and both the API rules and Loki send alerts to one Alertmanager (`127.0.0.1:9093`), which writes each one to `deploy/dev/data/webhook/received.jsonl` (E16-03; docs/operations.md, "策略 log 與告警") |
+| `make accept-up` / `make accept-down` | start / stop the acceptance stack; the checks themselves, including the end-to-end ones (`accept.sh e2e-up`, `e2e-all`, `console-smoke`) and the SYM gRPC smoke (`accept.sh sym-grpc`), are in `deploy/accept/README.md` |
 | `make dev-nats-smoke` | run the dev NATS permission checks (`deploy/dev/nats-smoke.sh`) against the compose server |
 | `make dev-alert-smoke` | after `make dev-up` and `make migrate-up`, check the strategy log alerts end to end (`deploy/dev/alert-smoke.sh`): R1, R2 and R5 once each and `MftikoAgentDown` once reach the webhook receiver, and the three are inhibited while sts1 is stopped (E16-04; docs/operations.md, "策略 log 與告警"). It stops sts1 for about a minute, so it refuses while sts1 runs a session |
 | `make migrate-up` / `make migrate-status` | apply pending migrations / list them against `$DATABASE_URL` |

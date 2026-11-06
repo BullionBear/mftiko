@@ -218,12 +218,14 @@ web-dev: web-install ## Dev server; proxies /api to mftiko-api on :8080
 # bin/linux/examples/ holds the example strategies built for those containers. deploy/dev/data/webhook
 # is created here, by the user webhook runs as: a bind mount whose source is missing makes Docker
 # create it, as root.
-dev-up: web ## Dev NATS credentials and API config, Linux binaries and the console, then start PostgreSQL, etcd, NATS, a registry, the API (console on :8080), the controller, sts1, the latency exporter, and Alloy, Loki, Prometheus and Alertmanager with a webhook receiver
+dev-up: web ## Dev NATS credentials and API config, Linux binaries and the console, then start PostgreSQL, etcd, NATS, a registry, SYM (gRPC on :7450), the API (console on :8080), the controller, sts1, the latency exporter, and Alloy, Loki, Prometheus and Alertmanager with a webhook receiver
 	$(GO) run ./cmd/mftiko-nats-dev -out $(DEV_NATS)
 	deploy/dev/api-init.sh
+	deploy/dev/sym-init.sh
 	mkdir -p $(DEV_WEBHOOK)
 	GOOS=linux GOARCH=$$($(GO) env GOARCH) CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/linux/ \
-		./cmd/mftiko-api ./cmd/mftiko-controller ./cmd/mftiko-sts-agent ./cmd/mftiko-shim ./cmd/mftiko-webhook-dev ./cmd/mftiko-latency-exporter
+		./cmd/mftiko-api ./cmd/mftiko-controller ./cmd/mftiko-sts-agent ./cmd/mftiko-shim ./cmd/mftiko-webhook-dev ./cmd/mftiko-latency-exporter \
+		./cmd/mftiko-sym
 	GOOS=linux GOARCH=$$($(GO) env GOARCH) CGO_ENABLED=0 $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/linux/examples/ ./examples/strategies/...
 	$(COMPOSE) up -d --wait etcd
 	$(COMPOSE) exec -T etcd /usr/local/bin/etcdctl --endpoints=http://127.0.0.1:2379 \
