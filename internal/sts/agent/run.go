@@ -187,6 +187,9 @@ func Run(ctx context.Context, cfg Config) error {
 	if cfg.Logs.Listen != "" && cfg.Logs.TokenSHA256 == "" {
 		cfg.Log.Warn().Msg("log endpoint disabled: -log-token-sha256 is empty")
 	}
+	if cfg.DataRepository == "" {
+		cfg.Log.Warn().Msg("state_out disabled: -data-repository is empty; a non-empty volume stays on this host after its session ends")
+	}
 	cfg.Log.Info().
 		Str("registry_creds", cfg.RegistryCreds).
 		Str("data_repository", cfg.DataRepository).
