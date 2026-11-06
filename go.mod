@@ -4,6 +4,8 @@ go 1.26.0
 
 require (
 	connectrpc.com/connect v1.21.1
+	connectrpc.com/grpchealth v1.5.0
+	connectrpc.com/grpcreflect v1.3.1
 	github.com/bytedance/sonic v1.15.4
 	github.com/coder/websocket v1.8.15
 	github.com/google/uuid v1.6.0
@@ -22,6 +24,7 @@ require (
 	go.etcd.io/etcd/client/v3 v3.7.2
 	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.57.0
+	golang.org/x/sync v0.24.0
 	golang.org/x/sys v0.48.0
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
@@ -55,7 +58,6 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/arch v0.8.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa // indirect
