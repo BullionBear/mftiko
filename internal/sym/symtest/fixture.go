@@ -33,16 +33,20 @@ import (
 //
 // Bybit/Perp: BTC uid 20 @500 (active). Okx/Spot: bigRows rows of bigFilters filters each, so a
 // page of all of them is over 1 MiB and a page of 10 is not.
+//
+// commit lists ADA on Bybit/Spot as uid 30 @12000: one more revision, for the watch cases. They
+// run after every other case.
 const (
-	btcOld, btc, eth, solOld, sol, dogeOld, doge, xrp, perp = 10, 15, 11, 12, 5, 13, 3, 14, 20
+	btcOld, btc, eth, solOld, sol, dogeOld, doge, xrp, perp, ada = 10, 15, 11, 12, 5, 13, 3, 14, 20, 30
 
 	bigRows    = 40
 	bigFilters = 300
 )
 
-// fixture is a Postgres store with the tables above, and the logic layer over it.
+// fixture is a Postgres store with the tables above, and the logic layer over it, with a Hub.
 type fixture struct {
-	api sym.API
+	api    sym.API
+	commit func(t *testing.T)
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -52,6 +56,7 @@ func newFixture(t *testing.T) *fixture {
 	for i := range bigRows {
 		uids = append(uids, uint32(1000+i))
 	}
+	uids = append(uids, ada)
 	st, err := sym.Open(ctx, startPG(t), &script{uids: uids})
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +111,27 @@ func newFixture(t *testing.T) *fixture {
 		okx.add(row)
 	}
 	refresh(sym.Feed{Venue: "Okx", Category: symbol.Spot, REST: okx}, 500)
-	return &fixture{api: sym.NewService(st, nil, zerolog.Nop())}
+	hub := sym.NewHub(st, sym.HubOptions{Log: zerolog.Nop()})
+	hubCtx, stop := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = hub.Run(hubCtx)
+	}()
+	t.Cleanup(func() {
+		stop()
+		<-done
+	})
+	return &fixture{
+		api: sym.NewService(st, nil, zerolog.Nop()).WithHub(hub),
+		commit: func(t *testing.T) {
+			t.Helper()
+			bybit.add(spotListing("Bybit", "ADA", "ADAUSDT", 1))
+			if _, err := st.Refresh(ctx, spotFeed, 12000, zerolog.Nop()); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
 }
 
 // listing is one venue's listing as the fixture sets it, by category and exch_ticker. Refresh
@@ -145,7 +170,7 @@ func startPG(t *testing.T) string {
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	for _, name := range []string{"0001_history.up.sql", "0002_symbol.up.sql"} {
+	for _, name := range []string{"0001_history.up.sql", "0002_symbol.up.sql", "0013_symbol_changed.up.sql"} {
 		b, err := migrations.FS.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)

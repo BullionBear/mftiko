@@ -72,6 +72,10 @@
 // the uid stored on that row. List pages with offset and limit. A limit of 0
 // means symbol.ListPage, and a limit above that is invalid. A page whose SymbolList
 // reaches 1 MiB is unavailable rather than a shorter page (E22-D010).
+// Watch is the change stream (E22-D009): a snapshot of the matching tables' revisions, then
+// every later commit. Hub is its source: one LISTEN connection per process on sym_changed,
+// which migration 0013's trigger notifies on every symbol_revision commit, so a watch on any
+// replica sees every replica's commits.
 // Only this service writes the tables.
 //
 // It is also the only place that uppercases asset codes and applies the alias table (XBT to BTC,

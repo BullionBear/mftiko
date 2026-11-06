@@ -11,9 +11,8 @@ import (
 	"github.com/BullionBear/mftiko/internal/sym"
 )
 
-// handler is SymService over sym.API. WatchChanges answers Unimplemented until E22-07.
+// handler is SymService over sym.API.
 type handler struct {
-	symv1connect.UnimplementedSymServiceHandler
 	api sym.API
 }
 
@@ -57,6 +56,42 @@ func (h *handler) Revisions(ctx context.Context, req *connect.Request[symv1.Revi
 		return nil, status(err)
 	}
 	return connect.NewResponse(&symv1.RevisionsResponse{Revisions: revs}), nil
+}
+
+// WatchChanges sends the snapshot, then every commit after it (E22-D009). A watch that falls
+// behind ends with ResourceExhausted; SYM shutting down ends it with Unavailable.
+func (h *handler) WatchChanges(ctx context.Context, req *connect.Request[symv1.WatchChangesRequest], stream *connect.ServerStream[symv1.WatchChangesResponse]) error {
+	w, err := h.api.Watch(ctx, sym.WatchFilter{Venue: req.Msg.GetVenue(), Category: req.Msg.GetCategory()})
+	if err != nil {
+		return status(err)
+	}
+	defer w.Close()
+	if err := stream.Send(&symv1.WatchChangesResponse{Event: &symv1.WatchChangesResponse_Snapshot{Snapshot: w.Snapshot}}); err != nil {
+		return err
+	}
+	for {
+		ch, err := w.Next(ctx)
+		if err != nil {
+			return watchEnd(ctx, err)
+		}
+		if err := stream.Send(&symv1.WatchChangesResponse{Event: &symv1.WatchChangesResponse_Changed{Changed: ch}}); err != nil {
+			return err
+		}
+	}
+}
+
+// watchEnd is the status a stream ends with when Next fails.
+func watchEnd(ctx context.Context, err error) error {
+	switch {
+	case errors.Is(err, sym.ErrSlowWatcher):
+		return connect.NewError(connect.CodeResourceExhausted, errors.New("watch fell behind; open a new watch for a new snapshot"))
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return connect.NewError(connect.CodeDeadlineExceeded, ctx.Err())
+	case ctx.Err() != nil:
+		return connect.NewError(connect.CodeCanceled, ctx.Err())
+	default:
+		return status(err)
+	}
 }
 
 // status maps a business error to its gRPC code (E22-D004). The message is the same

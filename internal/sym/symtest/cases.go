@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -33,6 +34,94 @@ func Run(t *testing.T, serve Serve) {
 			c.check(t, got, gotErr)
 			same(t, got, gotErr, want, wantErr)
 		})
+	}
+	w, ok := client.(Watcher)
+	if !ok {
+		return
+	}
+	refW := ref.(Watcher)
+	for _, c := range watchErrors() {
+		t.Run(c.name, func(t *testing.T) {
+			_, gotErr := open(t, w, c.req)
+			_, wantErr := open(t, refW, c.req)
+			c.check(t, nil, gotErr)
+			same(t, nil, gotErr, nil, wantErr)
+		})
+	}
+	t.Run("watch snapshot then changed", func(t *testing.T) {
+		req := &symv1.WatchChangesRequest{Venue: "Bybit"}
+		got, err := open(t, w, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := open(t, refW, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var tables []string
+		var spot int64
+		for _, r := range got.snapshot.GetTables() {
+			tables = append(tables, r.GetVenue()+"/"+r.GetCategory())
+			if r.GetCategory() == "Spot" {
+				spot = r.GetRevision()
+			}
+		}
+		if !slices.Equal(tables, []string{"Bybit/Perp", "Bybit/Spot"}) || !proto.Equal(got.snapshot, want.snapshot) {
+			t.Fatalf("snapshot %v, the logic layer's %v", got.snapshot, want.snapshot)
+		}
+		fx.commit(t)
+		for _, s := range []*opened{got, want} {
+			resp, err := s.stream.Recv()
+			if err != nil {
+				t.Fatal(err)
+			}
+			ch := resp.GetChanged()
+			if ch.GetVenue() != "Bybit" || ch.GetCategory() != "Spot" || ch.GetRevision() != spot+1 {
+				t.Fatalf("changed %v, want Bybit/Spot/%d", resp, spot+1)
+			}
+		}
+	})
+}
+
+type opened struct {
+	stream   Stream
+	snapshot *symv1.RevisionList
+}
+
+// open starts a watch and reads its snapshot. A failure from either step is the watch's.
+func open(t *testing.T, w Watcher, req *symv1.WatchChangesRequest) (*opened, error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	t.Cleanup(cancel)
+	s, err := w.Watch(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	t.Cleanup(s.Close)
+	resp, err := s.Recv()
+	if err != nil {
+		return nil, err
+	}
+	if resp.GetSnapshot() == nil {
+		t.Fatalf("first message %v, want a snapshot", resp)
+	}
+	return &opened{stream: s, snapshot: resp.GetSnapshot()}, nil
+}
+
+type watchCase struct {
+	tcase
+	req *symv1.WatchChangesRequest
+}
+
+// watchErrors are the filters WatchChanges refuses (PROTOCOL §7.3).
+func watchErrors() []watchCase {
+	return []watchCase{
+		{tcase{name: "watch category without venue", err: `invalid: category "Spot" needs a venue`},
+			&symv1.WatchChangesRequest{Category: "Spot"}},
+		{tcase{name: "watch venue case", err: `invalid: venue "bybit" is not canonical, use "Bybit"`},
+			&symv1.WatchChangesRequest{Venue: "bybit"}},
+		{tcase{name: "watch category case", err: `invalid: category "spot" is not canonical, use "Spot"`},
+			&symv1.WatchChangesRequest{Venue: "Bybit", Category: "spot"}},
 	}
 }
 

@@ -30,6 +30,7 @@ type API interface {
 	Reverse(ctx context.Context, req *symv1.ReverseRequest) (*symv1.SymbolInfo, error)
 	Revisions(ctx context.Context, req *symv1.RevisionsRequest) (*symv1.RevisionList, error)
 	Refresh(ctx context.Context, req *symv1.RefreshRequest) (*symv1.RefreshResult, error)
+	Watch(ctx context.Context, f WatchFilter) (*Watch, error)
 }
 
 // Reader is the store reads Service answers from. *Store implements it.
@@ -46,10 +47,11 @@ type Trigger interface {
 	Trigger(ctx context.Context, venue string) ([]Report, error)
 }
 
-// Service implements API over a Reader. run, when set, serves Refresh.
+// Service implements API over a Reader. run, when set, serves Refresh; hub, when set, serves Watch.
 type Service struct {
 	read Reader
 	run  Trigger
+	hub  *Hub
 	log  zerolog.Logger
 }
 
@@ -58,6 +60,13 @@ var _ API = (*Service)(nil)
 // NewService serves reads from read. run may be nil; Refresh is then unavailable.
 func NewService(read Reader, run Trigger, log zerolog.Logger) *Service {
 	return &Service{read: read, run: run, log: log}
+}
+
+// WithHub serves Watch from h. Call it before the service is in use. Without it, Watch is
+// unavailable.
+func (sv *Service) WithHub(h *Hub) *Service {
+	sv.hub = h
+	return sv
 }
 
 func (sv *Service) Get(ctx context.Context, req *symv1.GetRequest) (*symv1.SymbolInfo, error) {

@@ -25,6 +25,19 @@ type Client interface {
 	Revisions(ctx context.Context, req *symv1.RevisionsRequest) (*symv1.RevisionList, error)
 }
 
+// Watcher is a Client that streams changes (WatchChanges). NATS is not one: its changes are the
+// sym.v1.changed subjects (C6).
+type Watcher interface {
+	Watch(ctx context.Context, req *symv1.WatchChangesRequest) (Stream, error)
+}
+
+// Stream is one open watch. A business failure is an *Error, from Watch or from the first Recv,
+// whichever the protocol reports it on.
+type Stream interface {
+	Recv() (*symv1.WatchChangesResponse, error)
+	Close()
+}
+
 // Error is a business failure as a client received it: sym.CodeInvalid, sym.CodeNotFound or
 // sym.CodeUnavailable, and the "<code>: <reason>" text (E22-D004).
 type Error struct {
@@ -63,6 +76,34 @@ func (d direct) Revisions(ctx context.Context, req *symv1.RevisionsRequest) (*sy
 	out, err := d.api.Revisions(ctx, req)
 	return out, business(err)
 }
+
+func (d direct) Watch(ctx context.Context, req *symv1.WatchChangesRequest) (Stream, error) {
+	w, err := d.api.Watch(ctx, sym.WatchFilter{Venue: req.GetVenue(), Category: req.GetCategory()})
+	if err != nil {
+		return nil, business(err)
+	}
+	return &directStream{ctx: ctx, w: w}, nil
+}
+
+type directStream struct {
+	ctx  context.Context
+	w    *sym.Watch
+	sent bool
+}
+
+func (s *directStream) Recv() (*symv1.WatchChangesResponse, error) {
+	if !s.sent {
+		s.sent = true
+		return &symv1.WatchChangesResponse{Event: &symv1.WatchChangesResponse_Snapshot{Snapshot: s.w.Snapshot}}, nil
+	}
+	ch, err := s.w.Next(s.ctx)
+	if err != nil {
+		return nil, business(err)
+	}
+	return &symv1.WatchChangesResponse{Event: &symv1.WatchChangesResponse_Changed{Changed: ch}}, nil
+}
+
+func (s *directStream) Close() { s.w.Close() }
 
 func business(err error) error {
 	var e *sym.Error

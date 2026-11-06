@@ -108,6 +108,10 @@ func (f *fakeAPI) Refresh(context.Context, *symv1.RefreshRequest) (*symv1.Refres
 	return nil, errors.New("refresh is not on contract S")
 }
 
+func (f *fakeAPI) Watch(context.Context, sym.WatchFilter) (*sym.Watch, error) {
+	return nil, &sym.Error{Code: sym.CodeUnavailable, Reason: "watch is not served by this process"}
+}
+
 // syncBuffer is a log sink the server writes from its own goroutines.
 type syncBuffer struct {
 	mu  sync.Mutex
@@ -230,8 +234,9 @@ func TestGRPCClientCallsEveryRPC(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = stream.CloseSend()
-	if err := stream.RecvMsg(&symv1.WatchChangesResponse{}); grpcstatus.Code(err) != codes.Unimplemented {
-		t.Fatalf("watch changes: %v, want Unimplemented until E22-07", err)
+	err = stream.RecvMsg(&symv1.WatchChangesResponse{})
+	if st := grpcstatus.Convert(err); st.Code() != codes.Unavailable || st.Message() != "unavailable: watch is not served by this process" {
+		t.Fatalf("watch changes: %v", err)
 	}
 }
 
@@ -507,5 +512,22 @@ func TestParseTokens(t *testing.T) {
 	}
 	if _, err := New(&fakeAPI{}, Config{}); err == nil {
 		t.Fatal("a server without tokens was built")
+	}
+}
+
+func TestWatchEnd(t *testing.T) {
+	err := watchEnd(t.Context(), sym.ErrSlowWatcher)
+	if connect.CodeOf(err) != connect.CodeResourceExhausted {
+		t.Fatalf("slow: %v", err)
+	}
+	err = watchEnd(t.Context(), &sym.Error{Code: sym.CodeUnavailable, Reason: "change stream stopped"})
+	var ce *connect.Error
+	if !errors.As(err, &ce) || ce.Code() != connect.CodeUnavailable || ce.Message() != "unavailable: change stream stopped" {
+		t.Fatalf("stopped: %v", err)
+	}
+	gone, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := watchEnd(gone, gone.Err()); connect.CodeOf(err) != connect.CodeCanceled || !errors.Is(err, context.Canceled) {
+		t.Fatalf("client gone: %v", err)
 	}
 }
