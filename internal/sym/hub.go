@@ -111,7 +111,8 @@ func (h *Hub) Run(ctx context.Context) error {
 	}
 }
 
-// listen is one connection. heard reports that LISTEN took, so the backoff starts over.
+// listen is one connection. heard reports that LISTEN and the catch-up read both took, so the
+// backoff starts over. A catch-up that fails keeps backing off (E22-D015).
 func (h *Hub) listen(ctx context.Context) (heard bool, err error) {
 	conn, err := h.store.listenConn(ctx)
 	if err != nil {
@@ -123,7 +124,7 @@ func (h *Hub) listen(ctx context.Context) (heard bool, err error) {
 	}
 	// After LISTEN, so a commit is in this read or in a notification, never in neither.
 	if err := h.catchUp(ctx, conn); err != nil {
-		return true, err
+		return false, err
 	}
 	h.log.Info().Msg("sym change listener up")
 	for {

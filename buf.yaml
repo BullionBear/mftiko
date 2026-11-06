@@ -22,9 +22,9 @@ breaking:
   # tdctl.proto came off in E6-15. td.proto came off again after #242 (E06-D034).
   # state.proto, session.proto and stsctl.proto came off in E9-12 (E09-D027); their selector.proto files stay
   # on until E5 (E09-D091). shim.proto, worker.proto and common.proto came off in #302 (E09-D094).
+  # sym/v1/service.proto (contract S) went on in E22-04 and came off in E22-09 (E22-D006, E22-D016).
   ignore:
     - contract/proto/mftiko/session/v1/selector.proto # E5 (E09-D091)
     - contract/proto/mftiko/state/v1/selector.proto # E5 (E09-D091)
     - contract/proto/mftiko/stsctl/v1/selector.proto # E5 (E09-D091)
     - contract/proto/mftiko/log/v1/log.proto # E14 (E14-D003, #437); draft until the epic finalizes it
-    - contract/proto/mftiko/sym/v1/service.proto # contract S, E22-09 (E22-D006)

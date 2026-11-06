@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/BullionBear/mftiko/contract/gen/mftiko/sym/v1/symv1connect"
+	"github.com/BullionBear/mftiko/internal/platform/bearer"
 	"github.com/BullionBear/mftiko/internal/sym"
 )
 
@@ -30,7 +31,7 @@ const (
 type Config struct {
 	// Tokens are required: every SymService and reflection call presents one. Health does not
 	// (E22-D014).
-	Tokens *Tokens
+	Tokens *bearer.Tokens
 	// TLS, when set, serves HTTP/2 over TLS. Nil serves h2c, plaintext HTTP/2.
 	TLS *tls.Config
 	Log zerolog.Logger
@@ -54,7 +55,7 @@ func New(api sym.API, cfg Config) (*Server, error) {
 	if api == nil {
 		return nil, errors.New("symgrpc: nil api")
 	}
-	if cfg.Tokens == nil || len(cfg.Tokens.names) == 0 {
+	if cfg.Tokens.Len() == 0 {
 		return nil, errors.New("symgrpc: no tokens")
 	}
 	timeout := cfg.ShutdownTimeout

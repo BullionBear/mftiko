@@ -28,6 +28,7 @@ import (
 	"github.com/BullionBear/mftiko/exchange/all"
 	"github.com/BullionBear/mftiko/exchange/transport"
 	"github.com/BullionBear/mftiko/exchange/transport/fasthttp"
+	"github.com/BullionBear/mftiko/internal/platform/bearer"
 	"github.com/BullionBear/mftiko/internal/platform/buildinfo"
 	"github.com/BullionBear/mftiko/internal/platform/natsx"
 	"github.com/BullionBear/mftiko/internal/sym"
@@ -177,9 +178,9 @@ func (f grpcFlags) config(log zerolog.Logger) (*symgrpc.Config, error) {
 	if (f.certFile == "") != (f.keyFile == "") {
 		return nil, errors.New("-grpc-tls-cert and -grpc-tls-key are set together")
 	}
-	tokens, err := symgrpc.LoadTokens(f.tokenFile)
+	tokens, err := bearer.Load(f.tokenFile)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("grpc %w", err)
 	}
 	cfg := &symgrpc.Config{Tokens: tokens, Log: log}
 	if f.certFile != "" {

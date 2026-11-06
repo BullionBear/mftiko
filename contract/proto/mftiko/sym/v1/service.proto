@@ -1,5 +1,5 @@
 // Source of truth: docs/PROTOCOL.md §7.3. Keep the two in sync.
-// Contract S, draft (E22-D006): SYM over gRPC for services outside mftiko.
+// Contract S, final (E22-D006, E22-D016): SYM over gRPC for services outside mftiko.
 syntax = "proto3";
 
 package mftiko.sym.v1;

@@ -37,6 +37,7 @@ import (
 
 	symv1 "github.com/BullionBear/mftiko/contract/gen/mftiko/sym/v1"
 	"github.com/BullionBear/mftiko/contract/gen/mftiko/sym/v1/symv1connect"
+	"github.com/BullionBear/mftiko/internal/platform/bearer"
 	"github.com/BullionBear/mftiko/internal/sym"
 )
 
@@ -139,7 +140,7 @@ type served struct {
 
 func serve(t *testing.T, api sym.API, tlsCfg *tls.Config) *served {
 	t.Helper()
-	tokens, err := ParseTokens(strings.NewReader("# who calls\npms " + testToken + "\n\nops other-token\n"))
+	tokens, err := bearer.Parse(strings.NewReader("# who calls\npms " + testToken + "\n\nops other-token\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -480,36 +481,7 @@ func selfSigned(t *testing.T) ([]byte, []byte) {
 		pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
 }
 
-func TestParseTokens(t *testing.T) {
-	bad := map[string]string{
-		"empty":        "\n# only a comment\n",
-		"one field":    "pms\n",
-		"three fields": "pms sekrit extra\n",
-		"name twice":   "pms sekrit\npms other\n",
-		"token twice":  "pms sekrit\nops sekrit\n",
-	}
-	for name, in := range bad {
-		_, err := ParseTokens(strings.NewReader(in))
-		if err == nil {
-			t.Fatalf("%s was accepted", name)
-		}
-		if strings.Contains(err.Error(), "sekrit") {
-			t.Fatalf("%s: the error names the token: %v", name, err)
-		}
-	}
-	tokens, err := ParseTokens(strings.NewReader("  pms   tok1  \nops\ttok2\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if name, ok := tokens.match("tok2"); !ok || name != "ops" {
-		t.Fatalf("tok2 -> %q %v", name, ok)
-	}
-	if _, ok := tokens.match("tok3"); ok {
-		t.Fatal("unknown token matched")
-	}
-	if _, err := LoadTokens(filepath.Join(t.TempDir(), "absent")); err == nil {
-		t.Fatal("a missing file was accepted")
-	}
+func TestNewNeedsTokens(t *testing.T) {
 	if _, err := New(&fakeAPI{}, Config{}); err == nil {
 		t.Fatal("a server without tokens was built")
 	}

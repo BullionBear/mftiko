@@ -13,7 +13,7 @@ Three blocks plus the exchange package (DECISIONS E00-D006); `internal/archtest`
 ```
 internal/                 ① the planes, private
   api/                    API server: declarations into etcd, serves the web console
-  platform/               trading-agnostic runtime: agent skeleton, shim, state (etcd), natsx, artifact, sealbox, logger, buildinfo
+  platform/               trading-agnostic runtime: agent skeleton, shim, state (etcd), natsx, artifact, sealbox, bearer (token files), logger, buildinfo
   sts/                    strategy plane; conformance/ (SDK conformance suite)
   md/                     market-data plane; conn/ (conn worker), fetch/ (md.fetch)
   td/                     execution plane; account/ (account worker), history/ (PostgreSQL)
