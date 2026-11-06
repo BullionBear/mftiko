@@ -110,6 +110,30 @@ func forbiddenInExchange(importPath string) bool {
 	return under(importPath, "github.com/valyala/fasthttp", "github.com/coder/websocket", "github.com/bytedance/sonic")
 }
 
+// forbiddenInSymLogic reports whether SYM's logic layer, the internal/sym root package, must not link the package:
+// a protocol. Protocols are adapters in internal/sym/sym* (DECISIONS E22-D002).
+func forbiddenInSymLogic(importPath string) bool {
+	if under(importPath, "github.com/nats-io", "connectrpc.com", "google.golang.org/grpc", "net/http") {
+		return true
+	}
+	r, own := rel(importPath)
+	return own && under(r, "internal/platform/natsx")
+}
+
+// symAdapter is the protocol adapter path lies in, internal/sym/sym*, or "" (DECISIONS E22-D002). internal/sym/symtest
+// is the conformance suite that drives every adapter, not an adapter.
+func symAdapter(path string) string {
+	rest, ok := strings.CutPrefix(path, "internal/sym/")
+	if !ok {
+		return ""
+	}
+	top, _, _ := strings.Cut(rest, "/")
+	if !strings.HasPrefix(top, "sym") || top == "symtest" {
+		return ""
+	}
+	return "internal/sym/" + top
+}
+
 // forbiddenInTD reports whether a package under internal/td must not link it. The account worker does not
 // decode client_order_id (DECISIONS E06-D033).
 func forbiddenInTD(importPath string) bool {
@@ -185,6 +209,9 @@ func check(pkgs []pkg, std map[string]bool) []string {
 				case under(to, "exchange") && to != "exchange" && !under(to, "exchange/transport"):
 					bad(imp, "planes use exchange's interfaces and exchange/transport only; cmd registers the exchanges")
 				}
+				if a, b := symAdapter(from), symAdapter(to); a != "" && b != "" && a != b {
+					bad(imp, "SYM's protocol adapters do not import each other (E22-D002)")
+				}
 			}
 			if strings.HasPrefix(imp, "oras.land/oras-go") &&
 				from != "internal/platform/artifact" && from != "cmd/mftiko-pack" {
@@ -223,6 +250,13 @@ func check(pkgs []pkg, std map[string]bool) []string {
 			for _, d := range p.Deps {
 				if forbiddenInSDKRuntime(d) {
 					out = append(out, fmt.Sprintf("%s links %s: the SDK writes the event log as raw bytes; JSON is the offline dump's (E20-D002)", from, d))
+				}
+			}
+		}
+		if from == "internal/sym" {
+			for _, d := range p.Deps {
+				if forbiddenInSymLogic(d) {
+					out = append(out, fmt.Sprintf("%s links %s: SYM's logic layer carries no protocol; adapters are in internal/sym/sym* (E22-D002)", from, d))
 				}
 			}
 		}
@@ -333,7 +367,7 @@ func TestDependencyRules(t *testing.T) {
 	for _, want := range []string{"contract/symbol", "contract/wire/frame", "exchange", "sdk", "sdk/eventlog/dump", "pkg/logger", "internal/platform/state",
 		"internal/platform/agent", "internal/platform/agent/runner", "internal/platform/natsx", "internal/platform/shim",
 		"internal/platform/artifact", "cmd/mftiko-pack",
-		"internal/md", "internal/td", "internal/sts", "internal/sym", "internal/api",
+		"internal/md", "internal/td", "internal/sts", "internal/sym", "internal/sym/symnats", "internal/api",
 		"internal/controller", "internal/controller/daemon",
 		"internal/cli", "cmd/mftiko"} {
 		if !slices.Contains(own, want) {
@@ -392,6 +426,14 @@ func TestCheckReportsViolations(t *testing.T) {
 			"github.com/rs/zerolog", // not the runtime
 		}},
 		{ImportPath: m("contract/wire/frame"), Imports: []string{"github.com/oapi-codegen/runtime"}}, // not contract/gen/api
+		{ImportPath: m("internal/sym"), Imports: []string{m("internal/platform/natsx"), m("contract/gen/mftiko/sym/v1")},
+			Deps: []string{m("internal/platform/natsx"), "github.com/nats-io/nats.go", "net/http", "connectrpc.com/connect",
+				"google.golang.org/grpc", "google.golang.org/protobuf/proto", m("contract/gen/mftiko/sym/v1")}},
+		{ImportPath: m("internal/sym/symnats"), Imports: []string{m("internal/sym"), m("internal/platform/natsx")},
+			Deps: []string{m("internal/platform/natsx"), "github.com/nats-io/nats.go"}}, // an adapter: free
+		{ImportPath: m("internal/sym/symgrpc"), Imports: []string{m("internal/sym"), m("internal/sym/symnats"), "connectrpc.com/connect"}},
+		{ImportPath: m("internal/sym/symhttp/ws"), Imports: []string{m("internal/sym/symhttp"), m("internal/sym/symgrpc")}},
+		{ImportPath: m("internal/sym/symtest"), Imports: []string{m("internal/sym/symnats"), m("internal/sym/symgrpc")}}, // the conformance suite: allowed
 		{ImportPath: m("cmd/mftiko"), Deps: []string{m("internal/cli"), m("internal/md")}},
 		{ImportPath: m("internal/cli"), Deps: []string{m("contract/gen/api/v1"), m("internal/platform/buildinfo"), "go.etcd.io/etcd/client/v3"}},
 	}
@@ -434,6 +476,13 @@ func TestCheckReportsViolations(t *testing.T) {
 		"cmd/mftiko-sts-agent imports oras.land/oras-go/v2",
 		"contract/gen/api/v1 imports github.com/rs/zerolog",
 		"contract/wire/frame imports github.com/oapi-codegen/runtime",
+		"internal/sym links " + m("internal/platform/natsx"),
+		"internal/sym links github.com/nats-io/nats.go",
+		"internal/sym links net/http",
+		"internal/sym links connectrpc.com/connect",
+		"internal/sym links google.golang.org/grpc",
+		"internal/sym/symgrpc imports " + m("internal/sym/symnats"),
+		"internal/sym/symhttp/ws imports " + m("internal/sym/symgrpc"),
 		"cmd/mftiko links " + m("internal/md"),
 		"internal/cli links go.etcd.io/etcd/client/v3",
 	}
