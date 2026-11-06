@@ -3,6 +3,7 @@ module github.com/BullionBear/mftiko
 go 1.26.0
 
 require (
+	connectrpc.com/connect v1.21.1
 	github.com/bytedance/sonic v1.15.4
 	github.com/coder/websocket v1.8.15
 	github.com/google/uuid v1.6.0

@@ -122,7 +122,7 @@ shim 與 worker 會比 agent 活得久（E01-D003），所以**版本偏差是�
 | §8 | artifact manifest（§8.2、§8.4 的 config） | `mftiko-pack`、CI、STS agent ⇄ 三種 agent | 定案 | E9（E09-D093） |
 | A | `contract/openapi/api/v1.yaml` | console、CLI ⇄ API server | 定案（CI 跑 lint 與 `oasdiff breaking`，不相容的改動擋下，E10-D116） | E10（E10-D018） |
 | L | `log.proto` | API server ⇄ STS agent | 草案（`breaking.ignore`，E00-D007） | E14 |
-| S | `sym/v1/service.proto` | 外部服務 ⇄ SYM | 草案（E22-04 建檔時進 `breaking.ignore`，E00-D007） | E22 |
+| S | `sym/v1/service.proto` | 外部服務 ⇄ SYM | 草案（`breaking.ignore`，E00-D007） | E22 |
 | — | 策略事件紀錄的檔案（§12，`sdk/eventlog`） | Go SDK ⇄ `mftiko-eventlog dump`、`sdk.Replay` | `format_version` 1，kind 只增不改（E20-D008） | E20 |
 | — | exchange 的 adaptor 介面（DECISIONS E00-D006、E03-D002、E03-D003、E04-D020：sans-I/O 的 codec，REST 是 `Call`，`Used.ResetAt` 是計數器歸零時間，傳輸由 worker 執行） | exchange ⇄ MD、TD、SYM | 定案 | E3 |
 
