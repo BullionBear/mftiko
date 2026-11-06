@@ -1,6 +1,6 @@
 # Runbook（一期）
 
-依 [DECISIONS.md](DECISIONS.md) E12-D059–E12-D061（E12-11，#384）、E12-D066（#401）、E12-D071（#403）、E12-D074（#405）與 E16-D032–E16-D035（E16-04，#484）。一期的常見操作與故障處理，照順序做。每一項先寫**告警**與**先看**，再寫**做**與**確認**。長的程序在 [operations.md](operations.md) 與 [release.md](release.md)，這裡連過去，不重抄；那邊是參考，這裡是入口。
+依 [DECISIONS.md](DECISIONS.md) E12-D059–E12-D061（E12-11，#384）、E12-D066（#401）、E12-D071（#403）、E12-D074（#405）、E16-D032–E16-D035（E16-04，#484）與 E22-D007、E22-D009、E22-D014、E22-D015（E22-08，#555）。一期的常見操作與故障處理，照順序做。每一項先寫**告警**與**先看**，再寫**做**與**確認**。長的程序在 [operations.md](operations.md) 與 [release.md](release.md)，這裡連過去，不重抄；那邊是參考，這裡是入口。
 
 告警名稱是 [operations.md「監控與告警」](operations.md#監控與告警)的範例規則（E12-10），策略 log 的告警（`MftikoStrategy*`）在[「策略 log 與告警」](operations.md#策略-log-與告警)（E16）。`for` 與門檻由部署端決定。
 
@@ -136,6 +136,7 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 | API 的帳號金鑰 | `/etc/mftiko/api/env` 的 `MFTIKO_ACCOUNT_KEYS` | `mftiko-api`。所有 replica 同一份。步驟見 [§2.6.1](#261-輪換-api-的帳號金鑰)。備份要跟 Postgres 分開，見 [operations.md](operations.md#api-的帳號金鑰)。整把遺失要重新輸入帳號（E21-D003） |
 | Postgres 的密碼 | API 的 `MFTIKO_POSTGRES_DSN`、SYM 與 `mftiko-release` 的 `DATABASE_URL` | 先在 Postgres 改密碼，再改 env、重啟 `mftiko-api`、`mftiko-sym`。中間的空窗長過 `for` 時 `MftikoPostgresDown` 會響 |
 | session log 的 token | API 的 `/etc/mftiko/api/log-token`；每台 STS 的 `/etc/mftiko/sts-agent/env` 的 `MFTIKO_LOG_TOKEN_SHA256` | 先每台 `mftiko-sts-agent`，再每個 `mftiko-api`。中間讀 log 是 `logs_unavailable`。步驟見 [輪換 token](operations.md#輪換-token) |
+| SYM gRPC 的 token | `/etc/mftiko/sym/grpc-tokens`（0600，`mftiko-sym`），一行一個 `name token` | `mftiko-sym`。新舊兩行可以並存：先加新的、重啟，客戶端換完再刪舊的、重啟。每次重啟會結束 `WatchChanges`，客戶端重連。步驟見 [輪換 token](operations.md#輪換-grpc-的-token) |
 
 - 先寫到同一個目錄的 `<路徑>.new`（`install -m 0600 -o <使用者> <新檔> <路徑>.new`），再 `mv <路徑>.new <路徑>`。rename 是原子的；先刪再建的話，worker 剛好重連時會讀不到。
 - 一期不在 runbook 裡：NATS 的 account signing key（要同時改 NATS server 的 account 設定）。見 E12-D060。
@@ -361,7 +362,7 @@ systemctl restart mftiko-<md|td|sts>-agent      # 或 mftiko-controller
 告警：`MftikoPostgresDown`。`/readyz` 不看 Postgres，不變。
 
 - API 降級（E10-D080）：保留期掃描跳過；`session create`、`session delete`、`record list` 回 503 `storage_unavailable`；`session list` 照常，但沒有建立時間與建立者；`session end` 照常（只寫 etcd）。已經在跑的 session 不受影響。恢復後自己補上，停機中結束的 session 的 record 是 closed（E12-D077）。
-- SYM 也用這個 Postgres（`DATABASE_URL`），看 `journalctl -u mftiko-sym`。
+- SYM 也用這個 Postgres（`DATABASE_URL`），看 `journalctl -u mftiko-sym`。gRPC 的查詢回 `Unavailable`，health 仍是 `SERVING`（E22-D014）；`WatchChanges` 不關，恢復後補發（[§3.14](#314-sym-的-grpc-讀不到)）。
 - `mftiko-release switch` 會在 migrate 失敗，不要在這時候換版。
 - 做：`systemctl status postgresql`、`journalctl -u postgresql`；磁碟滿見 [§3.8](#38-磁碟快滿)。恢復後不用重啟 API，下一輪掃描補上。
 - 確認：`mftiko_postgres_up` 是 1。
@@ -489,3 +490,38 @@ worker 有啟動、last exit 是 `init_failed` 的不是這一項：input 已經
 2. `sudo -u alloy head -c 0 /var/lib/mftiko/sts-agent/log/sts/<h>.stderr`。讀不到時看 `ls -ld …/log/sts` 是不是 `drwxr-s--- … mftiko-ops`、檔的 group 是不是 `mftiko-ops`；v0.4.0 與更早的 agent 會清掉 setgid（E16-D036），照[Alloy 的權限](operations.md#alloy-的權限)補。
 3. `curl -s 127.0.0.1:12345/metrics | grep -E 'loki_source_file_read_lines_total|loki_write_(sent|dropped)_entries_total'`：讀了沒有、送了沒有、丟了沒有。
 4. 從那台 `curl http://<主機 A>:3100/ready`。連不上就看主機 A 的防火牆是否放行這台（[主機](operations.md#主機)）。
+
+### 3.14 SYM 的 gRPC 讀不到
+
+沒有告警。外部客戶端（grpcurl、Python grpcio）呼叫 `mftiko.sym.v1.SymService` 失敗，或 `WatchChanges` 只有 snapshot、收不到 `changed`。內部平面走 NATS，不受影響。設定與防火牆見 [operations.md「SYM 的 gRPC」](operations.md#sym-的-grpc)。
+
+**先看：**
+
+1. `journalctl -u mftiko-sym --since -1h | grep -E 'serving grpc|grpc token|grpc listen|sym change listener'`。
+
+   | 那一行 | 意思 |
+   |---|---|
+   | `serving grpc`，帶 `addr` | gRPC 開著，`addr` 是實際聽的位址 |
+   | 沒有 `serving grpc`，`serving sym` 的 `grpc` 是空的 | `MFTIKO_SYM_GRPC_ADDR` 沒設，gRPC 沒開 |
+   | `exit` 帶 `grpc token file`、`-grpc-addr needs -grpc-token-file` | token 檔不在、讀不了或格式不對，SYM 起不來（systemd 每秒重啟） |
+   | `exit` 帶 `grpc listen` | port 被占用（`ss -ltnp 'sport = :7450'`）或位址不是這台的 |
+   | `sym change listener`（warn，一再出現） | LISTEN 連線一直斷，串流暫時收不到；看 Postgres（[§3.6](#36-postgres-停機)） |
+
+2. 從客戶端主機查 health，不要 token：
+
+   ```sh
+   curl -fsS -H 'Content-Type: application/json' -d '{}' http://<SYM 私有 IP>:7450/grpc.health.v1.Health/Check
+   ```
+
+**做：**
+
+| 結果 | 原因 | 做 |
+|---|---|---|
+| 連不上、逾時 | gRPC 沒開、防火牆沒開 7450 給這台、或聽在別的網卡 | 照 operations.md 設 env、開防火牆，`systemctl restart mftiko-sym` |
+| health 是 `SERVING`，呼叫是 `Unauthenticated` | 沒帶 `authorization: Bearer …`，或 token 不在檔裡（輪換只做了一半） | 對齊 token 檔，重啟 SYM；grpcurl 連 `list` 也要帶 token（E22-D014） |
+| `Unavailable`，訊息 `unavailable: …` | Postgres 讀不到 | [§3.6](#36-postgres-停機) |
+| `WatchChanges` 以 `ResourceExhausted` 結束 | 客戶端讀得太慢，緩衝 256 則滿了（E22-D015） | 客戶端重開串流，拿新的 snapshot；讀串流的迴圈不要做慢的事 |
+| `WatchChanges` 以 `Unavailable`（`change stream stopped`）結束 | SYM 重啟或關閉 | 客戶端重連 |
+| `WatchChanges` 只有 snapshot，`Revisions` 卻前進了 | LISTEN 收不到通知：`DATABASE_URL` 經過 transaction pooling | 改成直連 Postgres（[LISTEN 要直連](operations.md#listen-要直連-postgres)），重啟 SYM |
+
+**確認：** `psql "$DATABASE_URL" -c "SELECT count(*) FROM pg_stat_activity WHERE application_name = 'mftiko-sym-hub'"` 是開了 gRPC 的 SYM 數；客戶端帶 token 打 `Revisions` 成功。
