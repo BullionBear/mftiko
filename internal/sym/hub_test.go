@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -191,6 +192,47 @@ func TestHubCatchesUpAfterReconnect(t *testing.T) {
 	waitListeners(t, conn, 1)
 	rev = bump(t, conn, "Bybit", "Perp")
 	want(t, next(t, w), "Bybit", "Perp", rev)
+}
+
+// A catch-up read that keeps failing backs off like a connection that does: here symbol_revision
+// does not exist yet, as before the migrations. Doubling from 50ms up to 400ms makes about six
+// attempts in 1.5s; starting over at 50ms each time would make about thirty.
+func TestHubBacksOffWhenCatchUpFails(t *testing.T) {
+	srv := pgtest.Start(t)
+	st := openStore(t, srv.DSN(), nil)
+	var attempts countWriter
+	h := NewHub(st, HubOptions{MinBackoff: 50 * time.Millisecond, MaxBackoff: 400 * time.Millisecond, Log: zerolog.New(&attempts)})
+	stop := runHub(t, h)
+	time.Sleep(1500 * time.Millisecond)
+	stop()
+	if n := attempts.count("sym change listener"); n < 2 || n > 10 {
+		t.Fatalf("%d attempts in 1.5s, want about 6", n)
+	}
+}
+
+// countWriter counts log lines that contain a message.
+type countWriter struct {
+	mu    sync.Mutex
+	lines []string
+}
+
+func (w *countWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.lines = append(w.lines, string(p))
+	return len(p), nil
+}
+
+func (w *countWriter) count(msg string) int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	n := 0
+	for _, l := range w.lines {
+		if strings.Contains(l, `"message":"`+msg+`"`) {
+			n++
+		}
+	}
+	return n
 }
 
 // A watch that does not read is closed once its buffer is full. The others get every change.
