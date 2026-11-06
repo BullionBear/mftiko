@@ -85,8 +85,10 @@ func watchEnd(ctx context.Context, err error) error {
 	switch {
 	case errors.Is(err, sym.ErrSlowWatcher):
 		return connect.NewError(connect.CodeResourceExhausted, errors.New("watch fell behind; open a new watch for a new snapshot"))
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return connect.NewError(connect.CodeDeadlineExceeded, ctx.Err())
 	case ctx.Err() != nil:
-		return ctx.Err()
+		return connect.NewError(connect.CodeCanceled, ctx.Err())
 	default:
 		return status(err)
 	}

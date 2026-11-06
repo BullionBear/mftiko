@@ -527,7 +527,7 @@ func TestWatchEnd(t *testing.T) {
 	}
 	gone, cancel := context.WithCancel(t.Context())
 	cancel()
-	if err := watchEnd(gone, gone.Err()); !errors.Is(err, context.Canceled) {
+	if err := watchEnd(gone, gone.Err()); connect.CodeOf(err) != connect.CodeCanceled || !errors.Is(err, context.Canceled) {
 		t.Fatalf("client gone: %v", err)
 	}
 }
